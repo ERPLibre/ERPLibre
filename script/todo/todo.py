@@ -1087,8 +1087,20 @@ class TODO(
                     "make todo", source_erplibre=True
                 )
             elif status == "7":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
+                verdict, combien = todo_prefs.reset()
+                if verdict == todo_prefs.ECHEC_ECRITURE:
+                    print(
+                        f"✗ {t('Nothing erased: the file was not written.')}"
+                    )
+                elif verdict == todo_prefs.EFFACE_SANS_COMPTE:
+                    # « (0) » aurait dit « il n'y avait rien » sur un
+                    # fichier plein qu'on vient de remplacer.
+                    print(
+                        f"✅ {t('Preferences reset')} —"
+                        f" {t('the file did not read back, nothing counted')}"
+                    )
+                else:
+                    print(f"✅ {t('Preferences reset')} ({combien})")
             else:
                 print(t("Command not found !"))
 
@@ -5537,7 +5549,7 @@ class TODO(
         if self._is_yes(input(f"💬 {t('Keep the digit count? (y/N): ')}")):
             extra.append("--keep-digits")
         mots = input(
-            f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
+            f"💬 {t('JSON file of words (empty for the built-in): ')}"
         ).strip()
         if mots:
             if not os.path.isfile(os.path.expanduser(mots)):
@@ -6723,6 +6735,11 @@ class TODO(
 
     def generate_config_from_database(self):
         database_name = self.db_manager.select_database()
+        # Même refus, même piège : composé tel quel, « False » devient le
+        # nom de base passé au générateur de configuration.
+        if not database_name:
+            print(t("No database selected."))
+            return False
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -6912,6 +6929,11 @@ class TODO(
 
     def callback_execute_custom_database(self, config):
         database_name = self.db_manager.select_database()
+        # Même refus, troisième porte. Passé tel quel, le faux traverse
+        # jusqu'à la commande, qui cherche une base nommée « False ».
+        if not database_name:
+            print(t("No database selected."))
+            return
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):

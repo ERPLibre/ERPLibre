@@ -13,6 +13,7 @@ Rien ici ne touche à PostgreSQL ni à Odoo : les archives sont fabriquées
 dans un répertoire temporaire, et aucune épreuve n'est sautée.
 """
 
+import ast
 import os
 import sys
 import tempfile
@@ -271,19 +272,141 @@ class TestElleNeFaitRienDAutre(unittest.TestCase):
         for interdit in ("print", "input", "exec", "eval"):
             self.assertNotIn(interdit, appels)
 
+    # LES APPELS, ET NON LE TEXTE. Ce garde comparait quatre chaînes
+    # exactes au source entier, et les deux bras du piège s'y trouvaient.
+    # Il laissait passer trois écritures réelles — `open(path, "wb")`, dont
+    # le littéral cherché n'est PAS un préfixe, `shutil.unpack_archive`, qui
+    # ne porte pas « extract », et `os.unlink`, qui ne porte pas
+    # « remove( ». Et il rougissait sur un COMMENTAIRE conforme aux
+    # conventions du dépôt, qui doit nommer le mode de défaillance empêché.
+    #
+    # Les verbes sont nommés avec leur module quand le nom seul est ambigu :
+    # `os.replace` écrit, `str.replace` non.
+    ECRITURES = {
+        "os": {
+            "remove",
+            "unlink",
+            "rmdir",
+            "removedirs",
+            "rename",
+            "replace",
+            "truncate",
+            "chmod",
+            "chown",
+            "mkdir",
+            "makedirs",
+            "symlink",
+            "link",
+            "write",
+        },
+        "shutil": {
+            "rmtree",
+            "unpack_archive",
+            "move",
+            "copy",
+            "copy2",
+            "copyfile",
+            "copytree",
+        },
+    }
+    # Distinctifs à eux seuls : aucun de ces noms n'a d'homonyme inoffensif
+    # dans une bibliothèque standard.
+    ECRITURES_NUES = {
+        "extractall",
+        "extract",
+        "write_text",
+        "write_bytes",
+        "unpack_archive",
+    }
+    # Les modes d'ouverture qui écrivent. « r » et « rb » sont les seuls
+    # admis ; l'absence de mode vaut « r ».
+    MODES_QUI_ECRIVENT = set("wax+")
+
+    @staticmethod
+    def _pointe(noeud):
+        """(module, verbe) d'un appel, le module étant "" s'il est absent."""
+        cible = noeud.func
+        if isinstance(cible, ast.Attribute):
+            base = cible.value
+            return (getattr(base, "id", "") or "", cible.attr)
+        return ("", getattr(cible, "id", "") or "")
+
+    def _ecritures(self, arbre):
+        """Les appels qui écriraient sur le disque, avec leur ligne."""
+        trouves = []
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Call):
+                continue
+            module, verbe = self._pointe(noeud)
+            if verbe in self.ECRITURES.get(module, ()):
+                trouves.append((noeud.lineno, f"{module}.{verbe}"))
+            elif verbe in self.ECRITURES_NUES:
+                trouves.append((noeud.lineno, verbe))
+            elif verbe == "open":
+                mode = self._mode(noeud)
+                if set(mode) & self.MODES_QUI_ECRIVENT:
+                    trouves.append((noeud.lineno, f"open(…, {mode!r})"))
+        return trouves
+
+    @staticmethod
+    def _mode(noeud):
+        """Le mode littéral d'un `open`, "r" par défaut.
+
+        Un mode CALCULÉ est traité comme une écriture : on ne peut pas le
+        lire, donc on ne peut pas l'autoriser.
+        """
+        candidat = None
+        if len(noeud.args) >= 2:
+            candidat = noeud.args[1]
+        for mot in noeud.keywords:
+            if mot.arg == "mode":
+                candidat = mot.value
+        if candidat is None:
+            return "r"
+        if isinstance(candidat, ast.Constant) and isinstance(
+            candidat.value, str
+        ):
+            return candidat.value
+        return "w"
+
     def test_it_never_writes_and_never_extracts(self):
         """Vérifier n'est pas restaurer, et un contrôle qui écrit sur le
         disque de l'opérateur n'est plus un contrôle."""
+        import ast as _ast
+
         chemin = os.path.join(RACINE, "script", "database", "backup_verify.py")
         with open(chemin, encoding="utf-8") as fichier:
-            source = fichier.read()
-        for interdit in (
-            "extractall",
-            "extract(",
-            'open(path, "w"',
-            "remove(",
+            arbre = _ast.parse(fichier.read(), filename=chemin)
+        self.assertEqual([], self._ecritures(arbre))
+
+    def test_the_scan_sees_the_writes_it_claims_to_forbid(self):
+        """Un détecteur qui ne détecte rien passe le test précédent sans
+        rien garder. Les trois formes ci-dessous sont celles que le contrôle
+        par chaînes laissait passer."""
+        import ast as _ast
+
+        for source in (
+            'with open(path, "wb") as f:\n    f.write(b"x")\n',
+            "import shutil\nshutil.unpack_archive(path, dest)\n",
+            "import os\nos.unlink(chemin)\n",
+            "zf.extractall(dest)\n",
+            "from pathlib import Path\nPath(p).write_text('x')\n",
         ):
-            self.assertNotIn(interdit, source)
+            with self.subTest(source=source.splitlines()[-1]):
+                self.assertTrue(self._ecritures(_ast.parse(source)), source)
+
+    def test_a_comment_naming_the_ban_is_not_a_write(self):
+        """Les conventions du dépôt EXIGENT qu'un commentaire nomme le mode
+        de défaillance empêché. Le garde d'avant rougissait dessus, ce qui
+        apprend à le désarmer."""
+        import ast as _ast
+
+        source = (
+            "# `extractall(` écrirait sur le disque de l'opérateur : on lit\n"
+            "# les membres, on ne les sort pas. os.remove( non plus.\n"
+            'donnees = open(path, "rb").read()\n'
+        )
+        self.assertEqual([], self._ecritures(_ast.parse(source)))
 
 
 if __name__ == "__main__":

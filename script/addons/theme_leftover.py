@@ -240,12 +240,21 @@ DEFAULT_ANSWER = "d"
 
 
 def prompt(database, theme, attachments, views, config_path, ask=None):
-    """Effacer ou garder. Effacer par défaut, et la sauvegarde D'ABORD.
+    """Effacer ou garder LES PIÈCES JOINTES. Effacer par défaut.
 
     Ce qui rend ce défaut tenable, c'est l'ordre : le contenu part dans un
     fichier avant que la base ne soit touchée. Sans cette sauvegarde, le
     défaut aurait dû rester « garder » — on ne fait pas d'une décision
     irréversible la réponse que l'on obtient en ne répondant pas.
+
+    LA QUESTION NOMME CE QU'ELLE DÉTRUIT. L'écran des restes liste deux
+    ensembles sous un même titre — pièces jointes ET vues dont la clé nomme
+    encore le thème — et la question portait sur « ces restes » ; seules les
+    pièces jointes partaient. Les vues restent, et c'est le parti du dépôt :
+    leur contenu peut être la seule trace d'une personnalisation, et aucune
+    sauvegarde ne les couvre. Mais un accord donné sur un ensemble plus
+    large que celui qu'on touche n'est pas un accord — dans un sens comme
+    dans l'autre.
     """
     if not attachments:
         return False
@@ -257,9 +266,16 @@ def prompt(database, theme, attachments, views, config_path, ask=None):
             if auto_ask
             else (lambda prompt="": input(prompt) or DEFAULT_ANSWER)
         )
+    if views:
+        # AVANT LA QUESTION. Dit après, l'accord aurait déjà été donné sur
+        # un ensemble qu'on croyait plus large.
+        print(
+            f"ℹ {len(views)}" f" {t('view(s) stay: no backup covers them.')}"
+        )
     answer = (
         ask(
-            f"💬 {t('Delete these leftovers, or keep them?')}"
+            f"💬 {len(attachments)}"
+            f" {t('attachment(s): delete them, or keep them?')}"
             f" ({t('Enter = delete, after saving them')},"
             f" k = {t('keep')}) : "
         )

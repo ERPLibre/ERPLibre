@@ -901,5 +901,112 @@ class TestLesDeuxEntreesQuiNeDifferentQueParUnMot(CasDeMenu):
         self.assertNotIn("*", texte)
 
 
+class TestLimaRelitSaPosture(unittest.TestCase):
+    """Le provisionnement pose les règles, et rien ne les relisait.
+
+    Une instance créée sous une posture bornée porte le fichier et l'unité
+    qui le recharge à chaque démarrage. Un rechargement qui échoue plus tard
+    la laisse debout et sortante, et rien ne le disait — c'était le dernier
+    des trois chemins de livraison sans relecture.
+    """
+
+    def ecran(self, reponse, nom="vive"):
+        """Rejoue la vérification, et rend ce qui a été demandé et rendu."""
+        from script.todo import devstack_report as R
+
+        menu = MenuDeBanc()
+        vus = {"R": R}
+        menu._lima_select = lambda running=None: (
+            vus.update(running=running) or nom
+        )
+        menu._lima_capture = lambda argv, timeout=60: (
+            vus.update(argv=list(argv)) or (0, reponse, "")
+        )
+        with contextlib.redirect_stdout(_io.StringIO()) as sortie:
+            vus["verdict"] = menu._lima_verify_egress()
+        vus["ecran"] = sortie.getvalue()
+        return vus
+
+    def mot(self, verdict):
+        from script.posture import plan as posture_plan
+
+        return f"{posture_plan.MARQUEUR}{verdict}"
+
+    def test_it_only_offers_a_running_instance(self):
+        """Une instance arrêtée ne répond pas, et lire son silence comme une
+        table absente ferait corriger des règles là où il n'y a qu'une
+        machine éteinte."""
+        self.assertIs(True, self.ecran(self.mot("loaded"))["running"])
+
+    def test_the_probe_is_the_one_the_deployment_uses(self):
+        from script.posture import plan as posture_plan
+
+        argv = self.ecran(self.mot("loaded"))["argv"]
+        self.assertIn(posture_plan.probe_command(), argv)
+
+    def test_it_asks_the_instance_by_name(self):
+        self.assertIn("vive", self.ecran(self.mot("loaded"))["argv"])
+
+    def test_a_loaded_table_reads_as_confined(self):
+        vus = self.ecran(self.mot("loaded"))
+        self.assertEqual(vus["R"].DS_OK, vus["verdict"])
+
+    def test_an_absent_table_is_never_read_as_confined(self):
+        vus = self.ecran(self.mot("table-absent"))
+        self.assertNotEqual(vus["R"].DS_OK, vus["verdict"])
+
+    def test_a_silent_instance_is_not_read_as_confined(self):
+        """Ce qui n'a pas été lu vaut « non lu », jamais « chargé »."""
+        vus = self.ecran("")
+        self.assertNotEqual(vus["R"].DS_OK, vus["verdict"])
+
+    def test_giving_up_probes_nothing(self):
+        menu = MenuDeBanc()
+        menu._lima_select = lambda running=None: ""
+        appels = []
+        menu._lima_capture = lambda *a, **k: appels.append(a) or (0, "", "")
+        with contextlib.redirect_stdout(_io.StringIO()):
+            menu._lima_verify_egress()
+        self.assertEqual([], appels)
+
+
+class TestUneSeuleMecaniqueDeLancement(unittest.TestCase):
+    """La mécanique subprocess est écrite à UN endroit.
+
+    L'inventaire et la sonde n'en font pas la même lecture — l'un refuse de
+    deviner entre « aucune instance » et « pas d'outil », l'autre lit la
+    sortie telle quelle — mais le lancement, le délai et les pannes
+    système sont les mêmes, et deux copies divergent.
+    """
+
+    def test_the_module_runs_commands_in_one_place(self):
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(lima_menu))
+        lances = [
+            n.lineno
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "run"
+            and getattr(n.func.value, "id", "") == "subprocess"
+        ]
+        self.assertEqual(
+            1, len(lances), f"subprocess.run écrit {len(lances)} fois"
+        )
+
+    def test_a_tool_that_cannot_be_launched_is_told_apart(self):
+        """« l'outil n'a pas pu être lancé » et « il a rendu une erreur » se
+        corrigent de deux côtés : le premier s'installe, le second se lit."""
+        menu = MenuDeBanc()
+        code, sortie, panne = menu._lima_capture(
+            ["ce-binaire-nexiste-pas-du-tout"]
+        )
+        self.assertEqual(255, code)
+        self.assertEqual("", sortie)
+        self.assertTrue(panne)
+
+
 if __name__ == "__main__":
     unittest.main()

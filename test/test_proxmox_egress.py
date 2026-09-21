@@ -32,6 +32,7 @@ sys.argv = ["todo.py"]
 
 from script.posture import allowlist as A  # noqa: E402
 from script.posture import plan as posture_plan  # noqa: E402
+from script.todo import devstack_report as R  # noqa: E402
 from script.qemu import deploy_qemu as DQ  # noqa: E402
 from script.todo.proxmox_deploy_form import build_spec  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
@@ -282,8 +283,6 @@ class TestLaSpecPorteLeChoix(unittest.TestCase):
         self.assertIs(False, spec["real_data"])
 
 
-
-
 class TestUneVmNonConfineeNeRecoitRien(unittest.TestCase):
     """La règle d'or, au dernier instant où elle peut encore tenir.
 
@@ -370,6 +369,115 @@ class TestUneVmNonConfineeNeRecoitRien(unittest.TestCase):
         """Contrôle positif : refuser tout passerait les trois précédents."""
         vus = self.deploie("local-only", guide_cede=False)
         self.assertEqual(["vm-a"], vus.get("installe", []))
+
+
+class TestProxmoxRelitSaPosture(unittest.TestCase):
+    """La voie Proxmox ne relisait JAMAIS la posture d'une VM.
+
+    Son seul verdict venait du code de retour du lot qui pose et charge, à
+    la pose. Un rechargement qui échoue à un démarrage ULTÉRIEUR laisse la
+    machine debout et sortante, et rien ne le disait — là où la voie libvirt
+    offre « vérifier une VM déployée, couche par couche » autant de fois
+    qu'on veut.
+    """
+
+    HOTE = {"target": "compte@pve.example", "sudo": "", "jump": ""}
+
+    def ecran(self, reponse_invitee):
+        """Rejoue la vérification sur une VM, et rend (verdict, affichage)."""
+        todo = menu()
+        vus = {}
+        todo._pve_host = lambda ask=True: dict(self.HOTE)
+        todo._pve_pick_vm = lambda *a, **k: {"vmid": 101, "name": "vm-a"}
+        todo._pve_ssh = lambda cible, remote, timeout=60: (
+            vus.update(cible=cible, remote=remote) or (0, reponse_invitee)
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vus["verdict"] = todo._pve_verify_egress()
+        vus["ecran"] = sortie.getvalue()
+        return vus
+
+    def mot(self, verdict):
+        """Ce qu'une VM répond pour ce verdict, par la sonde du dépôt."""
+        return f"{posture_plan.MARQUEUR}{verdict}"
+
+    def test_it_asks_the_vm_through_its_alias(self):
+        """Par l'alias et non par l'adresse : lui seul porte le rebond vers
+        le réseau interne de l'hôte."""
+        vus = self.ecran(self.mot(posture_plan.LOADED))
+        self.assertEqual("pve.example+vm-a", vus["cible"])
+
+    def test_the_probe_is_the_one_the_deployment_uses(self):
+        """Une seconde sonde écrite ici divergerait de celle du déploiement
+        le jour où l'une des deux change."""
+        vus = self.ecran(self.mot(posture_plan.LOADED))
+        self.assertEqual(posture_plan.probe_command(), vus["remote"])
+
+    def test_a_loaded_table_reads_as_confined(self):
+        vus = self.ecran(self.mot(posture_plan.LOADED))
+        self.assertEqual(R.DS_OK, vus["verdict"])
+
+    def test_an_absent_table_is_never_read_as_confined(self):
+        """Le défaut que cette entrée existe pour voir."""
+        vus = self.ecran(self.mot(posture_plan.TABLE_ABSENT))
+        self.assertNotEqual(R.DS_OK, vus["verdict"])
+
+    def test_a_missing_analyser_is_named_apart(self):
+        """« pas d'outil » et « pas de table » ne se corrigent pas au même
+        endroit : l'un s'installe, l'autre se recharge."""
+        outil = self.ecran(self.mot(posture_plan.TOOL_ABSENT))["ecran"]
+        table = self.ecran(self.mot(posture_plan.TABLE_ABSENT))["ecran"]
+        self.assertNotEqual(outil, table)
+
+    def test_a_silent_vm_is_not_read_as_confined(self):
+        """Ce qui n'a pas été lu vaut « non lu », jamais « chargé » : un
+        silence annoncé comme une garantie est le mensonge que cette
+        relecture existe pour empêcher."""
+        vus = self.ecran("")
+        self.assertNotEqual(R.DS_OK, vus["verdict"])
+
+
+class TestLAliasNeSeRecopiePlus(unittest.TestCase):
+    """La convention « hôte+vm » était écrite à chaque appelant.
+
+    Un caractère de plus admis d'un côté suffit à ce que l'autre cherche un
+    alias qui n'existe pas — et l'écran qui écrit ~/.ssh/config et celui qui
+    y revient sont justement deux appelants différents.
+    """
+
+    def test_one_place_composes_it(self):
+        import ast
+        import inspect
+
+        from script.todo import proxmox_menu
+
+        source = inspect.getsource(proxmox_menu)
+        arbre = ast.parse(source)
+        # La sanitisation du nom d'hôte est la marque de la convention.
+        recopies = [
+            n.lineno
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and n.value == "[^A-Za-z0-9._-]"
+        ]
+        self.assertEqual(
+            1, len(recopies), f"la convention est écrite {len(recopies)} fois"
+        )
+
+    def test_the_composer_sanitises_and_falls_back(self):
+        from script.todo.todo import TODO
+
+        compose = TODO._pve_alias_chaine
+        self.assertEqual(
+            "pve.example+vm-a",
+            compose({"target": "compte@pve.example"}, "vm-a"),
+        )
+        # Un hôte dont le nom ne porte aucun caractère admis : le repli
+        # nomme quand même quelque chose, sinon l'alias commencerait par
+        # « + » et ssh chercherait une machine sans nom.
+        self.assertTrue(compose({"target": "compte@///"}, "x").endswith("+x"))
+        self.assertTrue(compose({}, "x").startswith("pve+"))
 
 
 if __name__ == "__main__":

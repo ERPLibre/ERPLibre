@@ -45,9 +45,20 @@ class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
     et deux sur un message de refus de Proxmox — celui-là s'affiche
     justement quand quelque chose va mal.
 
-    LE CONTRÔLE PORTE SUR LES CLÉS LITTÉRALES. Une clé calculée —
-    `t(controle["title"])` — ne se lit pas dans le source, et c'est une
-    autre affaire, plus vaste, que cette garde ne prétend pas couvrir.
+    DEUX FORMES SONT COUVERTES, ET LA SECONDE EST LA LEÇON. Les clés
+    LITTÉRALES, `t("…")`. Et les clés prises dans une TABLE de niveau
+    module, `t(TABLE[x])` — l'idiome du dépôt pour « une phrase par
+    verdict ». La première garde ne voyait que la première forme : elle
+    mesurait l'ORTHOGRAPHE à l'appel, là où la propriété est « toute chaîne
+    qui peut atteindre `t()` est dans la table ». Une phrase rangée dans une
+    table y échappait, et c'est le cas NOMINAL d'un écran qui s'affichait en
+    anglais pendant que ses huit voisins étaient traduits.
+
+    Ce qui reste hors de portée : une clé venue d'une variable locale ou
+    d'un champ d'enregistrement — `t(controle["title"])`. Sa table est
+    pourtant de niveau module, et un garde PROPRE à son module l'atteint en
+    la parcourant ; c'est ce que font `test_check_instance_state` et
+    `test_check_migration_quality`.
     """
 
     # L'ARBRE, ET NON LES LIGNES. Un motif de texte ne voit qu'une ligne à
@@ -119,6 +130,112 @@ class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
             if cle not in todo_i18n.TRANSLATIONS
         ]
         self.assertEqual([], absentes)
+
+    @staticmethod
+    def _table_de_base(noeud):
+        """Le nom à la racine d'une chaîne d'indexations, ou None.
+
+        `TABLE[x]` comme `TABLE[x]["champ"]` : on redescend jusqu'au Name.
+        """
+        import ast
+
+        while isinstance(noeud, (ast.Subscript, ast.Attribute)):
+            noeud = noeud.value
+        return noeud.id if isinstance(noeud, ast.Name) else None
+
+    @classmethod
+    def _phrases(cls, noeud):
+        """Les chaînes qu'un littéral peut RENDRE, à toute profondeur.
+
+        Les CLÉS d'un dictionnaire sont écartées : elles indexent, elles ne
+        s'affichent pas. Les compter ferait réclamer « marque » ou
+        « dead_field » à la table de traduction, et le garde crierait au
+        loup à chaque table bien faite.
+        """
+        import ast
+
+        if isinstance(noeud, ast.Dict):
+            return [p for v in noeud.values for p in cls._phrases(v)]
+        if isinstance(noeud, (ast.List, ast.Tuple)):
+            return [p for v in noeud.elts for p in cls._phrases(v)]
+        if isinstance(noeud, ast.Constant) and isinstance(noeud.value, str):
+            return [noeud.value]
+        return []
+
+    @classmethod
+    def phrases_des_tables(cls):
+        """{phrase: [fichier:ligne]} pour tout `t(TABLE[…])` de script/.
+
+        Ne rend que les chaînes des tables RÉELLEMENT passées à `t()` : une
+        table de requêtes SQL de niveau module n'est pas du texte d'écran,
+        et la réclamer à la table de traduction serait un garde qui rougit
+        sur ce qui va bien.
+        """
+        import ast
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        vues = {}
+        for dossier, _sous, fichiers in os.walk(
+            os.path.join(racine, "script")
+        ):
+            for nom in sorted(fichiers):
+                if not nom.endswith(".py") or nom == "todo_i18n.py":
+                    continue
+                chemin = os.path.join(dossier, nom)
+                with open(chemin, encoding="utf-8") as fichier:
+                    arbre = ast.parse(fichier.read(), filename=chemin)
+                court = os.path.relpath(chemin, racine)
+                tables = {}
+                for noeud in arbre.body:
+                    if isinstance(noeud, ast.Assign) and isinstance(
+                        noeud.value, (ast.Dict, ast.List, ast.Tuple)
+                    ):
+                        for cible in noeud.targets:
+                            if isinstance(cible, ast.Name):
+                                tables[cible.id] = noeud.value
+                for noeud in ast.walk(arbre):
+                    if not (
+                        isinstance(noeud, ast.Call)
+                        and (
+                            getattr(noeud.func, "id", None)
+                            or getattr(noeud.func, "attr", None)
+                        )
+                        == "t"
+                        and len(noeud.args) == 1
+                        and not noeud.keywords
+                    ):
+                        continue
+                    arg = noeud.args[0]
+                    if not isinstance(arg, ast.Subscript):
+                        continue
+                    table = tables.get(cls._table_de_base(arg))
+                    if table is None:
+                        continue
+                    for phrase in cls._phrases(table):
+                        if phrase:
+                            vues.setdefault(phrase, []).append(
+                                f"{court}:{noeud.lineno}"
+                            )
+        return vues
+
+    def test_every_sentence_of_a_table_passed_to_t_is_in_the_table(self):
+        """`t(TABLE[x])` est l'idiome du dépôt pour « une phrase par
+        verdict ». Une phrase qui y manque s'affiche en anglais, et c'est
+        le cas NOMINAL qui est passé à travers : celui qu'on voit tous les
+        jours, donc celui dont l'anglais finit par paraître normal."""
+        absentes = [
+            f"{ou[0]} : « {phrase[:60]} »"
+            for phrase, ou in sorted(self.phrases_des_tables().items())
+            if phrase not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absentes)
+
+    def test_the_table_scan_actually_finds_sentences(self):
+        """Un analyseur qui ne trouve rien passe le test précédent sans
+        rien garder."""
+        self.assertGreater(len(self.phrases_des_tables()), 20)
 
     def cles_du_texte(self, source):
         """Les clés d'un extrait, par le même chemin que le dépôt."""

@@ -256,11 +256,25 @@ def _refuse_la_posture(posture, destinations):
 #
 # `no-rendering` : le rendu refuse cette posture, il n'y a rien à appliquer.
 # `reload-failure-unseen` : le rechargement a lieu à chaque démarrage, mais
-#   un rechargement qui ÉCHOUE ne l'empêche pas et personne ne l'apprend —
-#   la relecture n'a lieu qu'au déploiement. Le rendre fatal est à portée
-#   d'une directive, et refusé faute de preuve : une image dépourvue de
-#   l'analyseur s'éteindrait à son premier démarrage, sans message, avant
-#   que la relecture puisse en dire la cause.
+#   un rechargement qui ÉCHOUE ne l'empêche pas. La machine revient DEBOUT,
+#   sa table absente, et elle sort librement en portant son fichier de
+#   règles — l'apparence exacte du contraire.
+#
+#   CE QUI LE VOIT, ET CE QUI NE LE VOIT PAS. La sonde de `plan` distingue
+#   ses quatre verdicts, et CHAQUE chemin de livraison l'offre désormais à
+#   la demande. Le manque n'est donc pas « personne ne regarde » mais
+#   « rien ne regarde de soi-même » : entre deux lectures voulues, une
+#   machine dont le rechargement a cédé passe pour confinée, et c'est
+#   l'opérateur qui doit penser à demander.
+#
+#   LE RENDRE FATAL est à portée d'une directive — « FailureAction=poweroff »
+#   éteint bien la machine plutôt que de la laisser sortir, et la console
+#   nomme l'unité en échec avant l'extinction, là où l'hôte journalise ce
+#   port. Ce n'est pas l'absence de message qui le fait refuser, c'est le
+#   retour : la machine s'éteint à CHAQUE amorçage, donc on n'entre plus la
+#   réparer. Seule une ligne de commande noyau vers `rescue.target` y mène,
+#   et la plupart des hébergements ne l'offrent pas. Confiner en rendant
+#   irréparable déplace la panne, il ne la retire pas.
 #
 # `containers-unproven` A ÉTÉ LEVÉ. La chaîne forward a été confrontée à des
 # conteneurs vivants, dans une instance jetable : deux écouteurs qui
