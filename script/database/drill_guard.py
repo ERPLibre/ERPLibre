@@ -97,6 +97,36 @@ def _run_psql_par_defaut():
     return run_psql
 
 
+def _premier_champ(sortie):
+    """Le premier champ de la première ligne, quelle que soit la forme.
+
+    DEUX FORMES DE SORTIE COEXISTENT, et les confondre coûte les comptes.
+    Le lecteur du dépôt lance psql en « -tAc » et rend sa sortie BRUTE :
+    une CHAÎNE. Un lecteur injecté rend une liste de lignes. Un
+    `sortie[0][0]` qui convient à la seconde lit, sur la première, le
+    premier CARACTÈRE — « 250 » devient « 2 ».
+
+    Le verdict y survivait par accident : le premier chiffre d'un entier
+    positif n'est jamais zéro, donc la véracité booléenne se conservait.
+    Les comptes, eux, sont faux dès qu'ils dépassent neuf — et l'inspection
+    promet de les faire voyager pour qu'un rapport n'envoie pas chercher au
+    hasard.
+
+    None veut dire « rien à lire », jamais zéro.
+    """
+    if sortie is None:
+        return None
+    if isinstance(sortie, str):
+        lignes = sortie.strip().splitlines()
+        return lignes[0].strip() if lignes else None
+    if not sortie:
+        return None
+    ligne = sortie[0]
+    if isinstance(ligne, str):
+        return ligne.strip()
+    return ligne[0] if ligne else None
+
+
 def _compte(run_psql, database, sql):
     """Le nombre que rend un COUNT, ou None si la requête n'a pas abouti.
 
@@ -105,14 +135,15 @@ def _compte(run_psql, database, sql):
     fait passer une base illisible pour une base propre.
     """
     try:
-        lignes = run_psql(database, sql)
+        sortie = run_psql(database, sql)
     except Exception:
         return None
-    if not lignes:
+    champ = _premier_champ(sortie)
+    if champ is None:
         return None
     try:
-        return int(lignes[0][0])
-    except (TypeError, ValueError, IndexError):
+        return int(champ)
+    except (TypeError, ValueError):
         return None
 
 
@@ -122,10 +153,25 @@ def inspect(database, run_psql=None) -> Inspection:
     `run_psql` est injectable : c'est ce qui rend la décision vérifiable
     sans serveur, et c'est le seul geste de ce module qui parlerait à
     quelque chose.
-    """
-    from script.analyse.monitoring import NEUTRALIZE_SQL
 
-    run_psql = run_psql or _run_psql_par_defaut()
+    NE PAS LEVER SE TIENT ICI, et non chez l'appelant. Les deux imports
+    tardifs s'exécutent à chaque appel : hors de tout garde-fou, ils
+    rendaient une trace d'exception là où la docstring promet un verdict,
+    dès que le module est chargé autrement que par le paquet `script`. Un
+    appelant qui croit la promesse ouvrait alors la porte que la garde
+    existe pour tenir — un import manquant n'est pas un feu vert, c'est
+    une lecture qui n'a pas eu lieu.
+    """
+    try:
+        from script.analyse.monitoring import NEUTRALIZE_SQL
+    except Exception as souci:
+        return Inspection(UNREADABLE, detail=f"monitoring ({souci})")
+
+    if run_psql is None:
+        try:
+            run_psql = _run_psql_par_defaut()
+        except Exception as souci:
+            return Inspection(UNREADABLE, detail=f"psql ({souci})")
 
     # Sans cette question, une base vide rend « relation inexistante » sur
     # chaque contrôle, et quatre illisibles se lisent comme une base qu'on

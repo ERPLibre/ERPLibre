@@ -957,6 +957,32 @@ def restore_env(image):
     return env
 
 
+def missing_image(config, lst_db_cache, exists=os.path.isfile):
+    """Le chemin du zip qui manquera, ou "" si rien ne manque.
+
+    ELLE EST INTERROGÉE AVANT LE DROP, et c'est tout le sujet. Sans elle,
+    un « --image » mal tapé supprime la base, puis échoue sur un fichier
+    absent, et il ne reste rien : la restauration ne regarde l'archive
+    qu'APRÈS la suppression.
+
+    L'IMAGE N'EST EXIGÉE QUE SI ELLE VA SERVIR. « --only_drop » ne
+    restaure rien, et un clone depuis un cache déjà restauré n'ouvre pas
+    le zip : l'exiger dans ces deux cas refuserait des chaînes qui
+    marchent, et une garde qui refuse à tort finit désactivée. Le cache est
+    celui de « nom_cache » : une image donnée par un chemin n'en a pas.
+
+    `exists` est injectable : c'est ce qui rend la décision vérifiable
+    sans poser un fichier sur le disque.
+    """
+    if config.only_drop:
+        return ""
+    cache = nom_cache(config.image)
+    if cache and not config.ignore_cache and cache in lst_db_cache:
+        return ""
+    chemin = chemin_image(config.image)
+    return "" if exists(chemin) else chemin
+
+
 def drop_database(arg_base, database):
     """Supprimer une base par « odoo_bin.sh db drop », sortie filtrée.
 
@@ -1376,8 +1402,18 @@ def restaurer_cible(config, arg_base):
         )
     with Verrou(config.database) as verrou:
         verrou.prendre(exclusif=True)
-        if config.database in bases_existantes(arg_base):
-            _logger.info(f"## Drop {config.database} ##")
+        bases = bases_existantes(arg_base)
+        absente = missing_image(
+            config, [b for b in bases if b.startswith("_cache_")]
+        )
+        if absente:
+            _logger.error(f"Image not found: {absente} — nothing was dropped.")
+            sys.exit(1)
+        if config.database in bases:
+            # DIT, et non journalisé. `logging` part au niveau que réclame
+            # LOGLEVEL : sous « WARNING », la seule trace d'une destruction
+            # disparaîtrait. Ce qui détruit se dit toujours.
+            print(f"## Drop {config.database} ##")
             drop_database(arg_base, config.database)
         if config.only_drop:
             return

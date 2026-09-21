@@ -67,13 +67,17 @@ def jouer(argv, timeout=900):
     return vu.returncode, (vu.stdout or "") + (vu.stderr or "")
 
 
+# Les commandes viennent TOUTES de `script.vm.lima`, et aucune n'est écrite
+# en littéral ici. Une copie dans ce fichier ferait confronter le script à
+# lui-même : il passerait pendant que le code livré porte une autre forme, et
+# c'est justement ce que « non éprouvé » veut dire qu'on ne sait pas.
 def outil_present():
-    chemin = shutil.which("limactl")
+    chemin = shutil.which(lima.LIMACTL)
     if not chemin:
-        print("✗ limactl absent : rien à confronter.")
+        print(f"✗ {lima.LIMACTL} absent : rien à confronter.")
         return False
     _code, version = jouer([chemin, "--version"], timeout=30)
-    print(f"  limactl : {chemin}")
+    print(f"  {lima.LIMACTL} : {chemin}")
     print(f"  version : {version.strip()}")
     return True
 
@@ -81,7 +85,7 @@ def outil_present():
 def question_1_et_2():
     """La forme de l'inventaire, et ce qu'il porte comme identité."""
     print("\n── 1 et 2 : la forme de l'inventaire, et son identité ──")
-    code, sortie = jouer(["limactl", "list", "--json"], timeout=60)
+    code, sortie = jouer(lima.list_argv(), timeout=60)
     if code:
         print(f"  ✗ l'inventaire a échoué ({code}) : {sortie.strip()[:200]}")
         return
@@ -152,9 +156,7 @@ def question_4(dry_run):
         return
     with open(chemin, "w", encoding="utf-8") as fh:
         fh.write(texte)
-    code, sortie = jouer(
-        ["limactl", "start", "--name", INSTANCE, "--tty=false", chemin]
-    )
+    code, sortie = jouer(lima.start_argv(INSTANCE, chemin))
     print(f"  {'✓' if code == 0 else '✗'} démarrage : code {code}")
     if code:
         print(f"    {sortie.strip()[-600:]}")
@@ -162,12 +164,9 @@ def question_4(dry_run):
 
 def detruire():
     print(f"── retrait de l'instance « {INSTANCE} » ──")
-    for argv in (
-        ["limactl", "stop", "-f", INSTANCE],
-        ["limactl", "delete", "-f", INSTANCE],
-    ):
+    for argv in (lima.stop_argv(INSTANCE), lima.delete_argv(INSTANCE)):
         code, sortie = jouer(argv, timeout=300)
-        print(f"  {' '.join(argv)} -> {code} {sortie.strip()[:120]}")
+        print(f"  {lima.display(argv)} -> {code} {sortie.strip()[:120]}")
 
 
 def main():

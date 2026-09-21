@@ -805,7 +805,10 @@ class TestProxmoxChain(unittest.TestCase):
             )
             entree = self.entrees[nom]
             self.assertEqual(COMPTE, entree["user"])
-            self.assertTrue(entree["ssh"].startswith(f"ssh {COMPTE}@"))
+            # La ligne vient du backend : celle d'une VM Proxmox porte le
+            # rebond par l'hôte, puis le compte.
+            self.assertTrue(entree["ssh"].startswith("ssh "))
+            self.assertIn(f" {COMPTE}@", entree["ssh"])
             self.assertTrue(
                 mon.vm_ssh_prefix(entree).endswith(
                     f" {COMPTE}@{entree['pve']['addr']}"

@@ -24,10 +24,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import click
 
+from script.posture import plan as posture_plan
+from script.posture import spec as posture_spec
 from script.remote import appliance_ssh, host_memory, host_probe
 from script.todo import qemu_privilege, todo_journal, todo_prefs
 from script.todo.deploy_form_lib import VM_LOGIN_READ_CMD, VM_USER_DEFAULT
 from script.todo.qemu_privilege import virsh_argv
+from script.todo import todo_prefs, vm_profiles
 from script.todo.todo_i18n import t
 
 
@@ -1335,6 +1338,15 @@ class ProxmoxMenuMixin:
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
             "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
+            # LES TROIS CLÉS DE POSTURE, que cet écran n'offrait pas :
+            # une VM Proxmox naissait sans confinement quelle que soit la
+            # demande, alors que le mécanisme existe de bout en bout.
+            #
+            # `after_boot` VRAI : ce chemin pose les règles une fois la
+            # machine joignable, donc elle sort librement pendant tout son
+            # démarrage. L'écran d'à côté écrit avant le premier boot et
+            # n'a pas cet écart — le copier tel quel mentirait ici.
+            **vm_profiles.form_context(after_boot=True),
             # Type de VM, magasin d'applications, outils, fuseau,
             # interpréteur Python : les réglages du système INVITÉ, qui ne
             # regardent pas l'hyperviseur. Cet écran n'en portait que trois —
@@ -1536,6 +1548,21 @@ class ProxmoxMenuMixin:
         # depuis. Pris avant la première commande, création comprise.
         debut = time.time()
 
+        # LA RÈGLE D'OR, avant que la machine existe. C'est le seul moment
+        # où un refus ne coûte rien : après « qm create », une posture
+        # incohérente se corrige en détruisant la VM. Une posture inconnue
+        # est refusée elle aussi — replier sur la plus libre déploierait en
+        # sortie libre une spec qui demandait du confinement.
+        verdict = posture_spec.check(spec)
+        if verdict != posture_spec.OK:
+            print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
+            print(
+                f"  {t('Network posture')} :"
+                f" « {posture_spec.posture_name(spec)} », "
+                f"{t('This machine carries real data')} :"
+                f" {posture_spec.real_data(spec)}"
+            )
+            return
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, des
         # centaines de Mio d'image se téléchargeraient pour finir sur
@@ -2120,6 +2147,7 @@ class ProxmoxMenuMixin:
 
         install = spec.get("install") or {}
         cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        regles, unite = self._pve_egress_texts(spec, mod)
         args = types.SimpleNamespace(
             distro=vm.get("distro") or "",
             version=vm.get("version") or "",
@@ -2150,6 +2178,13 @@ class ProxmoxMenuMixin:
             ),
             no_git_identity=False,
             user=spec.get("user") or VM_USER_DEFAULT,
+            # LES RÈGLES DE SORTIE, par la même voie que le guide.
+            # `guide_files` les ajoute à sa liste dès que ces deux champs
+            # sont remplis — le chemin libvirt s'en sert depuis toujours,
+            # et celui-ci ne les remplissait jamais. Le mécanisme
+            # n'existait pas ici parce que personne ne le demandait.
+            egress_rules=regles,
+            egress_unit_text=unite,
         )
         try:
             fichiers = mod.guide_files(args)
@@ -2165,12 +2200,61 @@ class ProxmoxMenuMixin:
             )
             if proprio:
                 morceaux.append(f"sudo chown {shlex.quote(proprio)}: {q}")
+        # ARMER DANS LE MÊME LOT. `guide_files` ÉCRIT, il ne charge rien :
+        # un fichier de règles posé et jamais chargé laisse la machine
+        # sortir pour toujours, tout en donnant l'apparence du contraire.
+        # Le chemin libvirt arme par le « runcmd » de cloud-init ; ici il
+        # n'y a que ce canal, donc l'armement le suit immédiatement.
+        morceaux.extend(self._pve_egress_arm(regles, unite, mod))
         code, _o = self._pve_ssh(cible, " && ".join(morceaux))
         if code:
             print(f"  ⚠ {t('guide not written')} ({code})")
             return False
         print(f"  ✓ {t('connection guide written')}")
+        if regles:
+            print(f"  ✓ {t('egress rules posed and armed')}")
         return True
+
+    def _pve_egress_texts(self, spec, mod):
+        """(règles, unité) que cette spec demande, ou ("", "").
+
+        Le rendu vient du MÊME calcul que le chemin libvirt — une recopie
+        divergerait au premier correctif, et c'est un confinement.
+        """
+        try:
+            regles = self._qemu_egress_rules(spec)
+        except Exception as exc:  # noqa: BLE001
+            # Le refus d'une posture qui attend des adresses que le site
+            # n'a pas nommées est LÉGITIME et remonte ; ici on est déjà
+            # après la création, et l'arrêter laisserait une VM sans son
+            # guide. On le DIT, et la posture reste non posée.
+            print(f"  ⚠ {t('egress rules not rendered')} : {exc}")
+            return "", ""
+        if not regles:
+            return "", ""
+        # L'unité vient du paquet posture, comme sur le chemin libvirt :
+        # c'est lui qui la possède, et `deploy_qemu` ne fait que la
+        # recevoir en argument.
+        return regles, posture_plan.unit_text()
+
+    @staticmethod
+    def _pve_egress_arm(regles, unite, mod):
+        """Les commandes qui CHARGENT les règles, [] s'il n'y en a pas.
+
+        « enable » et « nft -f » liés : armer sans charger laisse la
+        machine sortir jusqu'au premier redémarrage, charger sans armer la
+        laisse sortir à partir du deuxième. C'est la raison écrite dans le
+        chemin libvirt, et elle vaut mot pour mot ici.
+        """
+        if not regles:
+            return []
+        commandes = []
+        if unite:
+            commandes.append(
+                f"sudo systemctl enable {shlex.quote(mod.EGRESS_UNIT_NAME)}"
+            )
+        commandes.append(f"sudo nft -f {shlex.quote(mod.EGRESS_GUEST_PATH)}")
+        return commandes
 
     @staticmethod
     def _pve_ssh(cible, remote, timeout=60):

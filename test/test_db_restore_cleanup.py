@@ -144,6 +144,9 @@ class Base(unittest.TestCase):
             ("base_existe", odoo.base_existe),
             ("restore_env", lambda image: None),
             ("verify_filestore", lambda *a: None),
+            # L'archive est VIRTUELLE : FauxOdoo restaure sans fichier, et le
+            # contrôle d'avant la suppression la chercherait sur le disque.
+            ("missing_image", lambda *a, **k: ""),
         ):
             patch = mock.patch.object(db_restore, cible, remplacement)
             patch.start()

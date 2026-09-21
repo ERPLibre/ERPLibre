@@ -186,6 +186,9 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
+from script.todo.lima_menu import LimaMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -276,6 +279,9 @@ class TODO(
     SealMenuMixin,
     SshKeyMenuMixin,
     SystemMenuMixin,
+    ForgeMenuMixin,
+    LimaMenuMixin,
+    EgressBookMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
@@ -1365,6 +1371,9 @@ class TODO(
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_execute_devstack": "Devstack",
+        "prompt_execute_forge": "Forge",
+        "prompt_execute_lima": "Lima",
+        "prompt_execute_egress_book": "Address book",
         "prompt_configuration": "Configuration",
     }
 
@@ -1964,9 +1973,9 @@ class TODO(
                 )
             },
         ]
-        # NEUVIÈME, déclarée par « method ». Posée plus haut, elle
-        # décalerait les huit rangs que les « elif » codent en dur — et une
-        # épreuve cherche les chaînes littérales des rangs 6 et 7, qu'une
+        # APRÈS les rangs que les « elif » codent en dur, et déclarée par
+        # « method ». Posée plus haut, elle les décalerait — et une épreuve
+        # cherche les chaînes littérales des rangs 6 et 7, qu'une
         # renumérotation pourtant correcte ferait disparaître.
         choices.append(
             {
@@ -1976,8 +1985,22 @@ class TODO(
                 "method": "_deploy_vm_backends",
             }
         )
-        # DIXIÈME, déclarée par « method » comme la neuvième, et pour la
-        # même raison : les rangs codés en dur s'arrêtent à huit.
+        # Déclarée par « method » comme la précédente, et pour la même
+        # raison : elle suit les rangs codés en dur.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - Site address book (what a confined VM reaches)"
+                ),
+                "method": "prompt_execute_egress_book",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Lima - instances (macOS, Linux)"),
+                "method": "prompt_execute_lima",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t(
@@ -4176,6 +4199,10 @@ class TODO(
             },
             *groupes["tools"],
             {"section": t("Server")},
+            {
+                "prompt_description": t("Forge (Forgejo/Gitea)"),
+                "method": "prompt_execute_forge",
+            },
             {
                 "prompt_description": t("Local git server"),
                 "method": "prompt_execute_git_local_server",
