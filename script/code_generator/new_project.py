@@ -79,10 +79,6 @@ def get_config():
         Example : "{\"model\":[{\"name\":\"a\",\"fields\":[{\"name\":\"a\",\"type\":\"char\"}]}]}" """,
     )
     parser.add_argument(
-        "--directory_code_generator",
-        help="The directory of the code_generator to use.",
-    )
-    parser.add_argument(
         "--coverage",
         action="store_true",
         help="Execute coverage file.",
@@ -90,10 +86,6 @@ def get_config():
     parser.add_argument(
         "--code_generator_name",
         help="The name of the code_generator to use.",
-    )
-    parser.add_argument(
-        "--directory_template_name",
-        help="The directory of the template to use.",
     )
     parser.add_argument(
         "--template_name",

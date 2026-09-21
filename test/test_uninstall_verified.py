@@ -190,12 +190,12 @@ class TestAFailedOpenUpgradeStaysUnrecorded(unittest.TestCase):
     """Un OpenUpgrade raté ne doit pas passer pour fait.
 
     `lst_upgrade_odoo` n'est pas une copie : `dct_progression.get()` rend
-    l'objet stocké. L'affecter avant l'exécution le faisait persister au
+    l'objet stocké. L'affecter avant l'exécution le fait persister au
     premier `write_config()` venu — celui du chemin d'échec compris, qui
     remet pourtant le drapeau de clonage à zéro pour forcer un nouvel
-    essai. La reprise sautait alors OpenUpgrade et laissait une base 17
-    tourner sous le code 18. Mesuré sur test_neutralize_upgrade_18 :
-    base = 17.0.1.3, et sa commande de migration déjà consignée.
+    essai. La reprise saute alors OpenUpgrade et laisse une base 17
+    tourner sous le code 18, sa commande de migration consignée comme
+    faite.
 
     Conduire `execute_odoo_upgrade` en vrai demanderait une migration
     complète ; la faute est un ORDRE dans le source, et c'est l'ordre
@@ -387,13 +387,13 @@ class FauxPiloteParNom(FauxPilote):
 
 
 class TestOneBadNameNoLongerProtectsTheOthers(unittest.TestCase):
-    """Un seul module fautif emportait tout le lot.
+    """Un seul module fautif emporte tout le lot.
 
-    « --uninstall » prend une liste et Odoo annule la transaction
-    entière au premier échec. Mesuré sur une chaîne 12 → 18 :
-    `crm_phone` échoue sur une colonne absente de res_users et fait
-    tomber les 22 autres — dont huit modules sans code en 13, qui sont
-    alors montés d'un palier « installed » sans rien pour les charger.
+    « --uninstall » prend une liste et Odoo annule la transaction entière
+    au premier échec : sur une chaîne 12 → 18, un module qui échoue sur
+    une colonne absente de `res_users` fait tomber tous les autres du lot
+    — dont ceux qui n'ont plus de code au palier suivant, et qui montent
+    alors d'un cran « installed » sans rien pour les charger.
     """
 
     def pilote(self, fautifs, tous):

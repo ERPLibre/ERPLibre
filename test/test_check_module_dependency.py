@@ -4,10 +4,10 @@
 
 """Qui dépend de qui, et ce qu'on peut retirer sans casser.
 
-La question posée au palier 17 → 18 — « puis-je retirer web_responsive »
-— a demandé une requête écrite à la main. L'outil y répond, et la réponse
-qui compte n'est pas « deux modules en dépendent » mais « aucun de ceux
-qui en dépendent n'est installé ».
+« Peut-on retirer ce module avant un palier ? » se répond autrement
+qu'à la main. L'outil y répond, et la réponse qui compte n'est pas
+« deux modules en dépendent » mais « aucun de ceux qui en dépendent
+n'est installé ».
 """
 
 import os
@@ -205,9 +205,8 @@ class TestRows(unittest.TestCase):
 class TestTheTransientStates(unittest.TestCase):
     """Un module qui reste en chemin est une opération inachevée.
 
-    Mesuré sur test_neutralize_upgrade_13, en pleine migration :
-    22 modules figés en « to remove ». Aucun autre filtre ne les montrait
-    pour ce qu'ils sont.
+    Une migration en cours en laisse des dizaines figés en « to remove »,
+    et aucun autre filtre ne les montre pour ce qu'ils sont.
     """
 
     def test_the_three_transient_states_are_pending(self):

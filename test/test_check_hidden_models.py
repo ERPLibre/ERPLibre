@@ -240,11 +240,11 @@ class TestTheWiring(unittest.TestCase):
 class TestItDeclaresWhatItCouldNotProve(unittest.TestCase):
     """Un vert qui prouve moins qu'il n'en a l'air est pire qu'un rouge.
 
-    Mesuré sur une base réelle : l'outil éprouvait 45 modèles sur 125
-    portant une règle globale, contre 4 utilisateurs internes — et les
-    QUATRE étaient administrateurs. Un modèle que seuls les
-    administrateurs peuvent lire passait donc au vert. C'est exactement
-    la forme du bug DMS qui a motivé l'outil, vue d'un autre angle.
+    L'outil éprouve les modèles portant une règle globale contre les
+    utilisateurs internes de la base ; quand ceux-ci sont tous
+    administrateurs, un modèle que seuls les administrateurs peuvent lire
+    passe au vert. C'est exactement la forme du bug DMS qui a motivé
+    l'outil, vue d'un autre angle.
 
     L'outil ne peut pas créer un témoin ordinaire — ce serait une
     écriture. Il peut dire qu'il n'en avait pas.

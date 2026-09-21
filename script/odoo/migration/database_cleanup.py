@@ -368,10 +368,10 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
     """Pousser le script dans « odoo-bin shell » et rendre son rapport.
 
     On LIT au fil de l'eau plutôt que de tout capturer : ce nettoyage dure
-    des minutes — dix-sept, mesurées, sur une base de 5984 modules — et la
-    version précédente n'affichait rien avant la fin. Un travail qui avance
-    et un blocage se ressemblent alors trait pour trait, et c'est ainsi
-    qu'on interrompt une réparation à moitié faite.
+    des minutes — une quinzaine sur une base de plusieurs milliers de
+    modules — et tout capturer n'afficherait rien avant la fin. Un travail
+    qui avance et un blocage se ressemblent alors trait pour trait, et
+    c'est ainsi qu'on interrompt une réparation à moitié faite.
 
     Les journaux d'Odoo se mêlent à la sortie, d'où les sentinelles : on ne
     lit comme rapport que ce qui est entre elles. Leur absence est une

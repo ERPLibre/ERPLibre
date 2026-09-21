@@ -5,6 +5,7 @@
 import ast
 import collections
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -30,6 +31,70 @@ class TestTranslations(unittest.TestCase):
 
     def test_translations_not_empty(self):
         self.assertGreater(len(todo_i18n.TRANSLATIONS), 0)
+
+
+class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
+    """Une clé absente de la table s'affiche EN ANGLAIS, sans rien dire.
+
+    `t()` rend la clé quand elle ne la connaît pas — c'est le bon repli,
+    mais il est SILENCIEUX : au milieu d'une interface française, une
+    phrase anglaise se lit comme un oubli de traduction, pas comme un
+    défaut, et personne ne la signale.
+
+    Neuf clés étaient dans cet état, dont cinq sur un même écran d'analyse
+    et deux sur un message de refus de Proxmox — celui-là s'affiche
+    justement quand quelque chose va mal.
+
+    LE CONTRÔLE PORTE SUR LES CLÉS LITTÉRALES. Une clé calculée —
+    `t(controle["title"])` — ne se lit pas dans le source, et c'est une
+    autre affaire, plus vaste, que cette garde ne prétend pas couvrir.
+    """
+
+    # Le motif accepte les deux guillemets, et exige la frontière de mot :
+    # sans `\b`, il attrape la fin de « print( ».
+    #
+    # Le contenu ne peut porter AUCUN guillemet : sans cette contrainte le
+    # motif traverse une expression entière et prend
+    # `t("a" if x else "b")` pour une clé unique — qui n'existe évidemment
+    # pas dans la table. Les deux branches y sont, elles, et un ternaire
+    # n'est pas une clé littérale.
+    MOTIF = re.compile(r"""\bt\(\s*(["'])([^"']*)\1\s*\)""")
+
+    @classmethod
+    def cles_du_depot(cls):
+        """{clé: [fichier:ligne]} pour tout `t("...")` de script/."""
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        vues = {}
+        for dossier, _sous, fichiers in os.walk(
+            os.path.join(racine, "script")
+        ):
+            for nom in sorted(fichiers):
+                if not nom.endswith(".py") or nom == "todo_i18n.py":
+                    continue
+                chemin = os.path.join(dossier, nom)
+                with open(chemin, encoding="utf-8") as fichier:
+                    for numero, ligne in enumerate(fichier, 1):
+                        for _q, cle in cls.MOTIF.findall(ligne):
+                            court = os.path.relpath(chemin, racine)
+                            vues.setdefault(cle, []).append(
+                                f"{court}:{numero}"
+                            )
+        return vues
+
+    def test_every_literal_key_is_in_the_table(self):
+        absentes = [
+            f"{ou[0]} : « {cle} »"
+            for cle, ou in sorted(self.cles_du_depot().items())
+            if cle not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absentes)
+
+    def test_the_scan_actually_finds_keys(self):
+        """Sur zéro clé trouvée, la garde passe et ne tient rien : c'est
+        ici qu'un motif cassé doit tomber, pas dans un silence vert."""
+        self.assertGreater(len(self.cles_du_depot()), 500)
 
 
 class TestT(unittest.TestCase):

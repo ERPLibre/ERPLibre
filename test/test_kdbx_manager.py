@@ -3,10 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ouverture du coffre KeePass depuis le CLI.
 
-Signalé à l'usage : une mauvaise saisie affichait une trace `construct` de
-quarante lignes, puis `pykeepass.exceptions.CredentialsError`, et tuait le
-CLI — `make: *** Error 1`. L'invite disait par ailleurs `enter_password`,
-la clé i18n brute, sans nommer ce qu'elle demandait.
+Sans garde, une mauvaise saisie affiche une trace `construct` de quarante
+lignes, puis `pykeepass.exceptions.CredentialsError`, et tue le CLI —
+`make: *** Error 1`. L'invite dit par ailleurs `enter_password`, la clé i18n
+brute, sans nommer ce qu'elle demande.
 
 Un mot de passe refusé est le cas NORMAL de cette fonction : elle doit le
 dire, laisser recommencer, et laisser partir.

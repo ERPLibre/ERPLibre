@@ -240,10 +240,10 @@ class TestTheOrder(unittest.TestCase):
 class TestOneEntryCannotSinkThePass(unittest.TestCase):
     def test_a_healthy_category_is_purged_in_ONE_call(self):
         # LE point du correctif. `purge()` d'un module appelle
-        # button_immediate_uninstall(), qui recharge le registre ENTIER —
-        # 5984 modules à relire. En purgeant ligne par ligne j'en faisais
-        # un rechargement PAR MODULE : mesuré, dix secondes chacun,
-        # dix-sept minutes pour neuf modules, sans rien afficher.
+        # button_immediate_uninstall(), qui recharge le registre ENTIER.
+        # Purger ligne par ligne en fait un rechargement PAR MODULE —
+        # une dizaine de secondes chacun, soit des minutes pour une
+        # poignée de modules, sans rien afficher.
         journal = []
         lines = [
             FakeLine("a", journal=journal),
@@ -316,15 +316,15 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
 class TestTheReportSurvivesAnything(unittest.TestCase):
     """Sans rapport, on ne sait même pas si la base a été touchée.
 
-    Vécu : `create({})` échouait, l'erreur était notée mais la transaction
-    restait AVORTÉE. La lecture de nom suivante mourait dessus, hors de tout
-    garde, et le script entier s'arrêtait — aucun rapport, juste une trace.
+    Un `create({})` qui échoue laisse l'erreur notée mais la transaction
+    AVORTÉE. La lecture de nom suivante meurt dessus, hors de tout garde, et
+    le script entier s'arrête — aucun rapport, juste une trace.
     """
 
     def test_reading_the_names_is_inside_the_guard(self):
         # C'est la lecture des noms qui déclenche la requête, pas la
-        # création : la laisser hors du `try` était le défaut — elle mourait
-        # sur une transaction déjà avortée, sans rien pour la rattraper.
+        # création : la laisser hors du `try` la fait mourir sur une
+        # transaction déjà avortée, sans rien pour la rattraper.
         source = cleanup.build_script(1, False)
         creation = source.index("wizard = env[model].create({})")
         garde = source.rindex("try:", 0, creation)
@@ -366,14 +366,13 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
 
 
 class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
-    """Dix-sept minutes sans une ligne, et l'on croit à une boucle infinie.
+    """De longues minutes sans une ligne, et l'on croit à une boucle infinie.
 
-    Vécu, sur test_neutralize_upgrade_16 : l'outil affichait « ⧖ Nettoyage
-    de … » puis PLUS RIEN. Le processus travaillait — zéro verrou en
-    attente, des requêtes qui changeaient à chaque instantané — mais un
-    travail qui avance et un blocage se ressemblent trait pour trait quand
-    aucun des deux ne parle. On interrompt alors une réparation à moitié
-    faite, ce qui est le pire des deux mondes.
+    L'outil affiche « ⧖ Nettoyage de … » puis PLUS RIEN. Le processus
+    travaille — aucun verrou en attente, des requêtes qui changent à chaque
+    instantané — mais un travail qui avance et un blocage se ressemblent
+    trait pour trait quand aucun des deux ne parle. On interrompt alors une
+    réparation à moitié faite, ce qui est le pire des deux mondes.
     """
 
     def test_the_pushed_script_announces_what_it_does(self):
@@ -500,16 +499,16 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
 
 
 class TestTheCascadeThatKilledEverything(unittest.TestCase):
-    """Vécu, sur test_neutralize_upgrade_13 : sept catégories mortes d'une.
+    """Une catégorie qui tombe emporte toutes les suivantes.
 
-       passe 1 : 0 purgés
-    ⚠️ 0 purgés ; 7 n'ont pas pu l'être :
-       - [modules] - : savepoint "10eb6971..." does not exist
-       - [columns] - : current transaction is aborted, commands ignored
-       ... et ainsi de suite jusqu'à la dernière.
+    Le rapport porte alors « savepoint … does not exist » sur la catégorie
+    fautive, puis « current transaction is aborted, commands ignored » sur
+    chacune de celles qui suivent, jusqu'à la dernière : zéro purgé, toutes
+    en échec.
 
-    Une seule panne, six victimes. La cause n'était pas dans OCA mais chez
-    nous : on n'a jamais remis la transaction d'aplomb après l'échec.
+    Une seule panne, autant de victimes qu'il reste de catégories. La cause
+    n'est pas dans OCA mais ici : la transaction n'est jamais remise
+    d'aplomb après l'échec.
     """
 
     def build(self):

@@ -5,7 +5,7 @@
 """Le trou dans un manifeste, et ce qui le distingue d'une absence normale.
 
 Beaucoup de dépôts n'ont pas de branche pour toutes les versions d'Odoo.
-Les signaler tous ferait 46 % de bruit — mesuré : 35 trous, 19 vraies
+Les signaler tous ferait 46 % de bruit : 35 trous pour 19 vraies
 omissions. L'outil ne vaut que par ce tri, et c'est donc lui qu'on teste.
 
 Aucun test ne touche au réseau : `judge` reçoit son lecteur d'amont, et

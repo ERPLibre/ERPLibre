@@ -15,8 +15,9 @@ commentaires. « Bac à sable » pour la libre, « Connectée », « Paranoïde 
 moitié « réseau » de ce qu'on appelait « local-webui » ; l'autre moitié est
 un profil d'installation, et les séparer est ce qui permet de servir autre
 chose sur la même posture ». Le profil porte donc le nom entier, et sa
-moitié réseau est `local-only` — mais il ne PRÉTEND pas que la moitié
-installation existe : `install_half` dit ce qui manque, en un mot.
+moitié réseau est `local-only`, et sa moitié installation est portée par
+`serves_web` puis rendue par `web_forward` — qui exige les DEUX moitiés,
+le profil qui promet et l'installation qui pose Odoo.
 
 CE QUE L'ÉCRAN DOIT DIRE. `rules.unenforced(posture)` rend la liste de ce
 qu'une posture promet et que rien ne tient — le mécanisme même que le dépôt
