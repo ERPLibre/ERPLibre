@@ -390,12 +390,43 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
         )
         self.assertEqual(mon.reboot_expected(""), "")
 
-    def test_the_wrapper_only_reboots_when_asked(self):
-        import inspect
+    def enveloppe(self, reboot):
+        """Le script détaché que l'enveloppe composerait, sans rien lancer."""
+        vues = {}
 
-        src = inspect.getsource(mon._launch_one)
-        self.assertIn("_reboot_steps(log_q, reboot,", src)
-        self.assertIn("if reboot", src)
+        class FauxPopen:
+            def __init__(self, argv, *_a, **_k):
+                vues["argv"] = argv
+
+        with mock.patch.object(mon.subprocess, "Popen", FauxPopen):
+            mon._launch_one(
+                mon.handle_of({"name": "vm-a", "ip": "192.0.2.10"}),
+                "vrai",
+                "/dev/null",
+                reboot=reboot,
+            )
+        return vues["argv"][-1]
+
+    def test_the_wrapper_only_reboots_when_asked(self):
+        """CE QU'ELLE COMPOSE, et non ce qu'elle s'écrit.
+
+        Cette épreuve lisait le source et exigeait « if reboot ». Or
+        « if reboot is not None » LE CONTIENT : une mutation qui inverse le
+        sens — redémarrer même quand personne ne l'a demandé — la laissait
+        verte. Elle épinglait en outre les noms des variables locales dans
+        leur ordre positionnel, si bien que passer aux arguments nommés,
+        qui alignerait l'appel sur la signature réelle, l'aurait fait
+        rougir sur une amélioration.
+
+        La propriété s'observe en neuf lignes, sans VM ni réseau.
+        """
+        self.assertNotIn("systemctl reboot", self.enveloppe(""))
+
+    def test_a_reboot_that_was_asked_for_is_composed(self):
+        """Contrôle positif : ne jamais redémarrer satisferait l'épreuve
+        ci-dessus, et une installation qui pose un NOYAU ne vaut rien
+        avant le redémarrage."""
+        self.assertIn("systemctl reboot", self.enveloppe("-pve"))
 
     def test_the_reboot_no_longer_names_ssh_itself(self):
         """Il composait « ssh compte@$ip » DEUX fois : une VM qui ne

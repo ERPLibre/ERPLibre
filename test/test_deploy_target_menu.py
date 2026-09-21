@@ -23,6 +23,7 @@ RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
 from script.remote import deploy_target as D  # noqa: E402
+from script.todo import deploy_target_menu as M  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
@@ -68,19 +69,27 @@ class EcranCase(unittest.TestCase):
                 self.ecran._deploy_ssh_targets()
         return sortie.getvalue()
 
-    # Le formulaire, dans l'ordre de CHAMPS : nom, adresse, rebond, port,
-    # clé, chemin, domaine, courriel. Une réponse vide garde la valeur.
     def formulaire(self, nom, adresse, **reste):
-        return [
-            nom,
-            adresse,
-            reste.get("jump", ""),
-            reste.get("port", ""),
-            reste.get("identity", ""),
-            reste.get("path", ""),
-            reste.get("domain", ""),
-            reste.get("admin_email", ""),
-        ]
+        """Les réponses au formulaire, DÉRIVÉES de l'ordre de `CHAMPS`.
+
+        Énumérées à la main, elles décalaient d'un cran le jour où un champ
+        s'ajoutait ailleurs qu'à la fin — et le test continuait de passer, en
+        écrivant chaque valeur dans le champ du voisin.
+
+        Une réponse vide garde la valeur en place, y compris pour le genre,
+        qui se choisit par numéro et non en toutes lettres.
+        """
+        reponses = {"name": nom, "target": adresse, **reste}
+        return [reponses.get(cle, "") for cle, _ in M.CHAMPS]
+
+    @staticmethod
+    def rang_du_genre(genre):
+        """Le numéro qui désigne ce genre à l'écran, DÉRIVÉ de `KINDS`.
+
+        Écrit « 2 », il désignerait l'autre genre le jour où l'ordre change,
+        et le test l'affirmerait sans broncher.
+        """
+        return str(list(D.KINDS).index(genre) + 1)
 
 
 class TestLEcranVide(EcranCase):
@@ -491,6 +500,145 @@ class TestLaSondeDeLaCible(EcranCase):
         """« cat » sur un dossier quelconque peut rendre n'importe quoi."""
         self.sonder(cat=(0, "ceci n'est pas une version\n"), true=(0, ""))
         self.assertEqual("product-absent", D.load("un")["verdict"])
+
+
+class TestLeFormulaireNOubliePersonne(unittest.TestCase):
+    """Le formulaire réclame CHAQUE champ que le site doit déclarer.
+
+    DÉRIVÉ, et non compté. Le défaut que ce garde attrape est celui qui l'a
+    fait naître : `kind` manquait à `CHAMPS`, donc toute cible créée à
+    l'écran était une cible de déploiement, et le seul écran que le code
+    nomme pour en créer une de sauvegarde ne savait pas en créer.
+    """
+
+    def test_every_declarable_field_is_asked(self):
+        demandes = {cle for cle, _ in M.CHAMPS}
+        self.assertEqual(
+            set(D.DEFAULTS) - set(M.CHAMPS_SONDE),
+            demandes,
+            "un champ de DEFAULTS n'est ni demandé au formulaire, ni nommé"
+            " dans CHAMPS_SONDE comme déposé par la sonde",
+        )
+
+    def test_the_probe_fields_are_really_the_probe_s(self):
+        """`CHAMPS_SONDE` est l'exemption du garde précédent.
+
+        Sans cette épreuve, y glisser un champ de SAISIE ferait taire l'autre
+        test au lieu de le faire rougir. L'autorité est `record_probe` : les
+        clés qu'il écrit sont exactement celles que personne ne saisit.
+        """
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(D.record_probe))
+        ecrites = {
+            mot.arg
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Name)
+            and noeud.func.id == "dict"
+            for mot in noeud.keywords
+            if mot.arg
+        }
+        self.assertEqual(set(M.CHAMPS_SONDE), ecrites)
+
+    def test_every_kind_has_a_sentence(self):
+        """Un genre sans phrase se montrerait comme un nom technique nu.
+
+        `GENRES` est interrogée sans défaut : l'oubli lèverait à l'écran. Ce
+        garde le dit avant.
+        """
+        self.assertEqual(set(D.KINDS), set(M.GENRES))
+
+
+class TestDeclarerUneCibleDeSauvegarde(EcranCase):
+    """Le genre se choisit, s'écrit, et ne se prend jamais pour l'autre."""
+
+    def test_the_form_can_declare_a_backup_target(self):
+        """Sans cela le segment « sauvegarde hors instance » reste à régler
+        et aucun geste de l'écran ne peut le régler."""
+        self.jouer(
+            "a",
+            *self.formulaire(
+                "archives",
+                "compte@depot.example",
+                kind=self.rang_du_genre(D.KIND_BACKUP),
+            ),
+            "0",
+        )
+        self.assertEqual(D.KIND_BACKUP, D.load("archives")["kind"])
+
+    def test_an_empty_answer_keeps_the_kind_in_place(self):
+        D.save(
+            {
+                "name": "archives",
+                "target": "a@b.example",
+                "kind": D.KIND_BACKUP,
+            }
+        )
+        self.jouer("m", "1", *self.formulaire("", ""), "0")
+        self.assertEqual(D.KIND_BACKUP, D.load("archives")["kind"])
+
+    def test_an_answer_that_designates_nothing_is_said_and_asked_again(self):
+        """Retomber sur le défaut poserait une cible de déploiement là où on
+        voulait une cible de sauvegarde, et les deux se ressemblent trop dans
+        la liste pour qu'on le remarque."""
+        affiche = self.jouer(
+            "a",
+            "essai",
+            "9",
+            self.rang_du_genre(D.KIND_BACKUP),
+            "compte@depot.example",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "0",
+        )
+        self.assertIn("✗", affiche)
+        self.assertEqual(D.KIND_BACKUP, D.load("essai")["kind"])
+
+    def test_a_backup_target_never_becomes_the_deployment_one(self):
+        """Onze commandes agissent sur la cible retenue, dont cinq
+        installent : y retenir un dépôt d'archives y installerait ERPLibre."""
+        self.jouer(
+            "a",
+            *self.formulaire(
+                "archives",
+                "compte@depot.example",
+                kind=self.rang_du_genre(D.KIND_BACKUP),
+            ),
+            "0",
+        )
+        self.assertIsNone(D.selected())
+
+    def test_choosing_it_says_why_rather_than_doing_nothing(self):
+        D.save(
+            {
+                "name": "archives",
+                "target": "a@b.example",
+                "kind": D.KIND_BACKUP,
+            }
+        )
+        affiche = self.jouer("1", "0")
+        self.assertIn("✗", affiche)
+        self.assertIsNone(D.selected())
+
+    def test_changing_the_kind_of_the_selected_one_drops_it(self):
+        """La sélection se relit ; elle ne se fige pas au moment du choix."""
+        D.save({"name": "un", "target": "compte@un.example"})
+        D.select("un")
+        self.assertIsNotNone(D.selected())
+        D.save(
+            {
+                "name": "un",
+                "target": "compte@un.example",
+                "kind": D.KIND_BACKUP,
+            }
+        )
+        self.assertIsNone(D.selected())
 
 
 if __name__ == "__main__":

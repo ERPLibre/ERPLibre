@@ -21,6 +21,7 @@ surtout là-dessus.
 import os
 import sys
 import unittest
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "script", "odoo", "migration"))
@@ -427,12 +428,59 @@ class TestTheMigrationAsksAtTheRightMoment(unittest.TestCase):
 
 
 class TestThePromptStaysOutOfAPipe(unittest.TestCase):
-    def test_it_only_asks_in_front_of_a_terminal(self):
-        # Une invite dans un tube bloquerait l'appelant sur une question que
-        # personne ne voit.
-        with open(scss.__file__) as handle:
-            source = handle.read()
-        self.assertIn("sys.stdin.isatty()", source)
+    """Une invite dans un tube bloque l'appelant sur une question que
+    personne ne voit.
+
+    Cette épreuve cherchait « sys.stdin.isatty() » dans le FICHIER. La
+    chaîne vit dans la définition de la porte : retirer la PORTE — l'appel
+    qui la franchit — la laissait donc verte, alors que c'est l'appel qui
+    protège, jamais la définition.
+
+    Deux choses sont tenues ici : ce que la porte décide, et qu'elle soit
+    bien sur le chemin.
+    """
+
+    def porte(self, entree, sortie):
+        import sys as systeme
+
+        with mock.patch.object(
+            systeme, "stdin", mock.Mock(isatty=lambda: entree)
+        ), mock.patch.object(
+            systeme, "stdout", mock.Mock(isatty=lambda: sortie)
+        ):
+            return scss.can_ask()
+
+    def test_it_asks_in_front_of_a_terminal(self):
+        self.assertTrue(self.porte(True, True))
+
+    def test_it_stays_quiet_without_a_way_to_read_the_answer(self):
+        self.assertFalse(self.porte(False, True))
+
+    def test_it_stays_quiet_without_a_way_to_show_the_question(self):
+        """DEUX CHOSES, PAS UNE. Une invite qui part dans un tube reste en
+        tampon, invisible, pendant que le processus attend : on croit à un
+        blocage et l'on tape Entrée à l'aveugle."""
+        self.assertFalse(self.porte(True, False))
+
+    def test_the_prompt_is_behind_that_gate(self):
+        """La définition ne protège rien — c'est l'APPEL qui protège. En
+        le retirant, l'ancienne épreuve restait verte."""
+        import ast
+
+        with open(scss.__file__, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+        principale = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        appels = {
+            getattr(n.func, "id", "") or getattr(n.func, "attr", "")
+            for n in ast.walk(principale)
+            if isinstance(n, ast.Call)
+        }
+        self.assertIn("can_ask", appels)
+        self.assertIn("prompt", appels)
 
 
 if __name__ == "__main__":

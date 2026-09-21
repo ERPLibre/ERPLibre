@@ -50,19 +50,46 @@ class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
     autre affaire, plus vaste, que cette garde ne prétend pas couvrir.
     """
 
-    # Le motif accepte les deux guillemets, et exige la frontière de mot :
-    # sans `\b`, il attrape la fin de « print( ».
+    # L'ARBRE, ET NON LES LIGNES. Un motif de texte ne voit qu'une ligne à
+    # la fois : un appel coupé sur plusieurs lignes — la forme que prennent
+    # justement les clés longues — lui échappe entièrement. Il lisait 2829
+    # clés là où le code en porte 2888 : soixante n'étaient confrontées à
+    # la table par personne, et les plus longues sont celles qu'on oublie
+    # d'y mettre.
     #
-    # Le contenu ne peut porter AUCUN guillemet : sans cette contrainte le
-    # motif traverse une expression entière et prend
-    # `t("a" if x else "b")` pour une clé unique — qui n'existe évidemment
-    # pas dans la table. Les deux branches y sont, elles, et un ternaire
-    # n'est pas une clé littérale.
-    MOTIF = re.compile(r"""\bt\(\s*(["'])([^"']*)\1\s*\)""")
+    # Il en INVENTAIT une, de surcroît : « … », prise dans une docstring.
+    # C'est la preuve qu'il lisait du texte et non du code.
+    #
+    # L'analyseur traite le ternaire sans qu'on l'en prie : `t("a" if x
+    # else "b")` a pour argument une expression, pas une constante, donc
+    # il n'est pas une clé littérale et sort de lui-même.
+
+    @staticmethod
+    def _cle_litterale(noeud):
+        """La clé d'un appel `t("…")`, ou None si ce n'en est pas un.
+
+        `t(...)` comme `objet.t(...)` : le second n'existe pas aujourd'hui
+        dans script/, et l'accepter coûte une ligne plutôt qu'une reprise
+        le jour où il apparaît.
+        """
+        import ast
+
+        if not isinstance(noeud, ast.Call):
+            return None
+        cible = noeud.func
+        nom = getattr(cible, "id", None) or getattr(cible, "attr", None)
+        if nom != "t" or len(noeud.args) != 1 or noeud.keywords:
+            return None
+        arg = noeud.args[0]
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+        return None
 
     @classmethod
     def cles_du_depot(cls):
         """{clé: [fichier:ligne]} pour tout `t("...")` de script/."""
+        import ast
+
         racine = os.path.normpath(
             os.path.join(os.path.dirname(__file__), "..")
         )
@@ -75,12 +102,14 @@ class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
                     continue
                 chemin = os.path.join(dossier, nom)
                 with open(chemin, encoding="utf-8") as fichier:
-                    for numero, ligne in enumerate(fichier, 1):
-                        for _q, cle in cls.MOTIF.findall(ligne):
-                            court = os.path.relpath(chemin, racine)
-                            vues.setdefault(cle, []).append(
-                                f"{court}:{numero}"
-                            )
+                    arbre = ast.parse(fichier.read(), filename=chemin)
+                court = os.path.relpath(chemin, racine)
+                for noeud in ast.walk(arbre):
+                    cle = cls._cle_litterale(noeud)
+                    if cle is not None:
+                        vues.setdefault(cle, []).append(
+                            f"{court}:{noeud.lineno}"
+                        )
         return vues
 
     def test_every_literal_key_is_in_the_table(self):
@@ -90,6 +119,52 @@ class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
             if cle not in todo_i18n.TRANSLATIONS
         ]
         self.assertEqual([], absentes)
+
+    def cles_du_texte(self, source):
+        """Les clés d'un extrait, par le même chemin que le dépôt."""
+        import ast
+
+        return {
+            cle
+            for noeud in ast.walk(ast.parse(source))
+            if (cle := self._cle_litterale(noeud)) is not None
+        }
+
+    def test_a_call_split_over_lines_is_seen(self):
+        """LE TROU QUI A JUSTIFIÉ L'ARBRE. Un motif de texte ne lit qu'une
+        ligne à la fois, et c'est la forme que prennent les clés LONGUES —
+        celles qu'on oublie le plus souvent d'ajouter à la table."""
+        self.assertEqual(
+            {"une clé longue coupée en deux"},
+            self.cles_du_texte(
+                'x = t(\n    "une clé longue coupée en deux"\n)\n'
+            ),
+        )
+
+    def test_a_docstring_that_mentions_a_call_is_not_a_key(self):
+        """Le motif en inventait une, prise dans une docstring : la preuve
+        qu'il lisait du texte et non du code."""
+        self.assertEqual(
+            set(), self.cles_du_texte('"""Un exemple : t(\'…\')."""\n')
+        )
+
+    def test_a_ternary_is_not_a_literal_key(self):
+        """Les deux branches sont des clés ; l'expression qui choisit n'en
+        est pas une, et la prendre pour telle ferait chercher dans la
+        table quelque chose qui n'y sera jamais."""
+        self.assertEqual(
+            set(), self.cles_du_texte('x = t("a" if cond else "b")\n')
+        )
+
+    def test_a_computed_key_is_not_claimed_to_be_literal(self):
+        """Contrôle de portée : cette garde ne tient QUE les littérales.
+        Prétendre autre chose ferait croire le reste couvert."""
+        self.assertEqual(set(), self.cles_du_texte("x = t(variable)\n"))
+
+    def test_an_ordinary_call_is_still_seen(self):
+        """Contrôle positif : ne rien voir satisferait tout ce qui
+        précède."""
+        self.assertEqual({"clé"}, self.cles_du_texte('x = t("clé")\n'))
 
     def test_the_scan_actually_finds_keys(self):
         """Sur zéro clé trouvée, la garde passe et ne tient rien : c'est

@@ -73,7 +73,10 @@ def ecrit(posture, carnet=CARNET):
     mod = todo._qemu_import_module()
     spec = {"user": "erplibre", "install": None, "posture": posture}
     with contextlib.redirect_stdout(io.StringIO()) as sortie:
-        vus["ok"] = todo._pve_write_guide("hote+vm-a", dict(VM), spec, mod)
+        # LA RAISON DE REFUSER, ou "". Nommée « refus » et non « ok » :
+        # la polarité vit dans le nom, faute de quoi un vide se lirait
+        # comme un échec et une phrase comme un succès.
+        vus["refus"] = todo._pve_write_guide("hote+vm-a", dict(VM), spec, mod)
     vus["ecran"] = sortie.getvalue()
     return vus
 
@@ -163,7 +166,7 @@ class TestLeCarnetVide(unittest.TestCase):
         """S'arrêter ici laisserait une VM debout ET sans son guide : deux
         manques au lieu d'un."""
         vus = ecrit("paranoid", carnet={})
-        self.assertTrue(vus["ok"])
+        self.assertEqual("", vus["refus"])
         self.assertIn("/etc/motd", vus["remote"])
 
     def test_no_rule_is_laid(self):
@@ -277,6 +280,96 @@ class TestLaSpecPorteLeChoix(unittest.TestCase):
         spec = build_spec([dict(VM)], [], dict(self.FORM))
         self.assertEqual("", spec["posture"])
         self.assertIs(False, spec["real_data"])
+
+
+
+
+class TestUneVmNonConfineeNeRecoitRien(unittest.TestCase):
+    """La règle d'or, au dernier instant où elle peut encore tenir.
+
+    Le chargement des règles partait dans le même lot que le guide, et son
+    verdict était JETÉ : le lot pouvait céder — sudo refusé, `nft` absent,
+    lien coupé — et ERPLibre s'installait quand même sur une VM qui sortait
+    librement. Rien ne le disait ; le fichier de règles était peut-être même
+    posé, ce qui donne exactement l'apparence du contraire.
+
+    La VM reste au SOMMAIRE : elle existe, et il faut aller la défaire.
+    C'est l'installation et le suivi qu'elle ne reçoit pas — l'un et l'autre
+    se lisent comme une machine en service.
+    """
+
+    def deploie(self, posture, guide_cede):
+        """Rejoue `_pve_after_create` sur une VM jointe, et rend ce qu'on a
+        installé, suivi, sommé et affiché."""
+        todo = menu(CARNET)
+        vus = {"suivi": None}
+        spec = {
+            "user": "erplibre",
+            "posture": posture,
+            "vms": [dict(VM, vmid=101, ipconfig="ip=198.51.100.5/24")],
+            "install": {"cmd": "make install_os", "branch": "develop"},
+            "monitor": False,
+            "add_ssh_config": True,
+            "storage": "local",
+            "bridge": "vmbr0",
+            "res_label": "",
+        }
+        todo._qemu_list_domains = lambda: []
+        todo._pve_alias_names = lambda *a, **k: (["pve+vm-a"], "")
+        todo._qemu_write_ssh_config = lambda *a, **k: None
+        todo._pve_alias_perime = lambda *a, **k: []
+        todo._ssh_private_key = lambda *a, **k: ""
+        todo._pve_set_timezone = lambda *a, **k: None
+        todo._pve_print_summary = lambda *a, **k: None
+        todo._qemu_per_vm = lambda cartes, commun: False
+        # LE VRAI POSEUR DE LA VOIE NON SUIVIE, une VM à la fois. Le
+        # laisser passer ferait partir une installation réelle par ssh :
+        # l'épreuve a mis une minute à ne rien prouver avant qu'on le voie.
+        todo._qemu_install_erplibre_vm = lambda nom, *a, **k: vus.setdefault(
+            "installe", []
+        ).append(nom)
+        todo._qemu_install_erplibre_monitored = (
+            lambda noms, *a, **k: vus.update(suivi=list(noms))
+        )
+        # Le lot du guide cède, ou passe. C'est le SEUL levier de l'épreuve.
+        todo._pve_ssh = lambda *a, **k: (
+            (255, "no route") if guide_cede else (0, "")
+        )
+        host = {"target": "compte@pve.example", "sudo": "", "jump": ""}
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vus["sommaire"] = todo._pve_after_create(host, spec, {"vm-a"}, "")
+        vus["ecran"] = sortie.getvalue()
+        return vus
+
+    def test_a_confined_vm_whose_rules_did_not_load_is_not_installed(self):
+        vus = self.deploie("local-only", guide_cede=True)
+        self.assertEqual([], vus.get("installe", []))
+        self.assertIsNone(vus["suivi"])
+
+    def test_it_says_which_vm_and_why(self):
+        """Écarter sans nommer laisserait chercher une panne d'installation
+        là où il n'y a qu'une posture qui n'a pas pris."""
+        ecran = self.deploie("local-only", guide_cede=True)["ecran"]
+        self.assertIn("vm-a", ecran)
+        self.assertIn(t("egress rules did not load"), ecran)
+
+    def test_it_stays_in_the_summary_because_it_exists(self):
+        """Une VM créée et écartée doit se retrouver : il faut aller la
+        défaire."""
+        vus = self.deploie("local-only", guide_cede=True)
+        self.assertEqual(["vm-a"], [vm["name"] for vm in vus["sommaire"]])
+
+    def test_the_same_failure_without_a_posture_installs_anyway(self):
+        """Contrôle négatif. Sans posture, le lot qui cède ne coûte qu'un
+        guide — et un guide manquant n'est pas une promesse rompue. Refuser
+        ici ferait payer à la sortie libre le prix du confinement."""
+        vus = self.deploie("open", guide_cede=True)
+        self.assertEqual(["vm-a"], vus.get("installe", []))
+
+    def test_a_confined_vm_whose_rules_loaded_is_installed(self):
+        """Contrôle positif : refuser tout passerait les trois précédents."""
+        vus = self.deploie("local-only", guide_cede=False)
+        self.assertEqual(["vm-a"], vus.get("installe", []))
 
 
 if __name__ == "__main__":

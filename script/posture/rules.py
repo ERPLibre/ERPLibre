@@ -261,8 +261,21 @@ def _refuse_la_posture(posture, destinations):
 #   d'une directive, et refusé faute de preuve : une image dépourvue de
 #   l'analyseur s'éteindrait à son premier démarrage, sans message, avant
 #   que la relecture puisse en dire la cause.
-# `containers-unproven` : la chaîne forward est rendue, jamais confrontée à
-#   un conteneur vivant qui tente une sortie hors liste.
+#
+# `containers-unproven` A ÉTÉ LEVÉ. La chaîne forward a été confrontée à des
+# conteneurs vivants, dans une instance jetable : deux écouteurs qui
+# RÉPONDENT, à un adressage près identiques, l'un nommé et l'autre non. Le
+# nommé passe, celui hors liste est refusé, et la table survit au
+# redémarrage du moteur de conteneurs.
+#
+# Ce qui rendait la confrontation impossible n'était pas la chaîne mais
+# l'épreuve : elle visait deux adresses de documentation, qui ne répondent
+# NI l'une NI l'autre. Les deux sondes rendaient donc le même délai épuisé,
+# et l'on ne mesurait que le silence du réseau. Voir
+# `long_test/egress_confront.py`.
+#
+# Le nom reste défini : une posture ancienne peut le porter, et un jeton
+# inconnu se lirait comme une absence de manque.
 NO_RENDERING = "no-rendering"
 RELOAD_FAILURE_UNSEEN = "reload-failure-unseen"
 CONTAINERS_UNPROVEN = "containers-unproven"
@@ -334,7 +347,9 @@ def unenforced(posture, after_boot: bool = False) -> tuple:
         # Seul jeton : le reste porterait sur un rendu qui n'existe pas, et
         # une fenêtre ne s'ouvre pas sur des règles qu'on ne pose jamais.
         return (NO_RENDERING,)
-    return (RELOAD_FAILURE_UNSEEN, CONTAINERS_UNPROVEN) + fenetre
+    # « containers-unproven » n'est plus émis : la chaîne forward a été
+    # confrontée. Le rechargement, lui, reste non surveillé.
+    return (RELOAD_FAILURE_UNSEEN,) + fenetre
 
 
 def render_egress(posture, destinations=()) -> str:

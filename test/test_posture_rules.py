@@ -401,9 +401,14 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
 
     def test_bounding_ports_only_names_what_its_rendering_misses(self):
         """Elle rend désormais : ses écarts sont ceux d'un jeu posé, et
-        non l'absence de jeu. `no-rendering` porterait un mensonge."""
+        non l'absence de jeu. `no-rendering` porterait un mensonge.
+
+        « containers-unproven » n'y est plus : la chaîne forward a été
+        confrontée à des conteneurs vivants, et ce qui est nommé passe
+        quand le reste est refusé.
+        """
         self.assertEqual(
-            (rules.RELOAD_FAILURE_UNSEEN, rules.CONTAINERS_UNPROVEN),
+            (rules.RELOAD_FAILURE_UNSEEN,),
             rules.unenforced(R.get_posture("connected")),
         )
 
@@ -413,12 +418,18 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
 
     def test_the_rendered_posture_names_what_is_still_missing(self):
         manques = rules.unenforced(R.get_posture("paranoid"))
-        for jeton in (
-            rules.RELOAD_FAILURE_UNSEEN,
-            rules.CONTAINERS_UNPROVEN,
-        ):
-            with self.subTest(jeton=jeton):
-                self.assertIn(jeton, manques)
+        self.assertIn(rules.RELOAD_FAILURE_UNSEEN, manques)
+
+    def test_a_token_that_has_been_earned_is_no_longer_claimed(self):
+        """Dire un manque qui n'existe plus coûte autant que taire un
+        manque réel : les deux font lire un écran qui ne décrit pas la
+        machine. La chaîne forward a été confrontée."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn(
+                    rules.CONTAINERS_UNPROVEN,
+                    rules.unenforced(R.get_posture(nom)),
+                )
 
     def test_no_posture_at_all_promises_nothing(self):
         self.assertEqual((), rules.unenforced(None))
@@ -482,7 +493,10 @@ class TestLeJetonCommandeLaBascule(unittest.TestCase):
         un compteur qui suit tout seul ne compte rien."""
         stricte = R.get_posture("paranoid")
         self.assertFalse(R.allows_real_data(stricte))
-        self.assertEqual(2, len(rules.unenforced(stricte)))
+        # DEUX, PUIS UN : « containers-unproven » a été levé par une
+        # confrontation dans une instance jetable. Le suivant est le
+        # rechargement, qui échoue encore sans que personne l'apprenne.
+        self.assertEqual(1, len(rules.unenforced(stricte)))
 
 
 class TestElleNAppliqueRien(unittest.TestCase):

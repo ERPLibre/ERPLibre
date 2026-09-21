@@ -1214,7 +1214,20 @@ class TestTheRestoreWiring(unittest.TestCase):
 
     def test_db_restore_checks_after_a_real_restore(self):
         src = self.source("script/database/db_restore.py")
-        self.assertEqual(src.count("verify_filestore("), 3)
+        # LES APPELS, et non la définition qui s'y ajoutait. Le « 3 »
+        # comptait « def verify_filestore( » avec les deux appels, si bien
+        # qu'extraire la fonction ailleurs — ce qui ne retire aucun
+        # contrôle — aurait fait rougir la garde.
+        import ast
+
+        appels = [
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
+            and (getattr(n.func, "id", "") or getattr(n.func, "attr", ""))
+            == "verify_filestore"
+        ]
+        self.assertEqual(2, len(appels), [n.lineno for n in appels])
         self.assertIn(
             "if config.ignore_cache:\n        verify_filestore("
             "config.database",

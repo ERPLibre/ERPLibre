@@ -33,6 +33,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+from script.forge import mirror  # noqa: E402
 from script.forge.mirror import (  # noqa: E402
     Plan,
     clone_url,
@@ -453,6 +454,118 @@ class TestSurLesVraisManifestes(unittest.TestCase):
         premier = plan(self.noms, [])
         avec_proprietaire = [f"proprietaire/{n}" for n in premier.to_create]
         self.assertEqual((), plan(self.noms, avec_proprietaire).to_create)
+
+
+class TestLeSensSeDerive(unittest.TestCase):
+    """Le manifeste sait déjà d'où vient chaque projet.
+
+    Un projet dont l'adresse de clone est chez un amont extérieur y VIT :
+    la forge le suit, donc le miroir est entrant. Un projet que rien
+    d'extérieur ne porte vient d'ici, et part se montrer.
+
+    Le dériver plutôt que le déclarer, c'est un réglage de moins à tenir —
+    et un réglage qui ne peut pas mentir, puisque l'adresse est celle qu'on
+    clone vraiment.
+    """
+
+    # Une adresse d'amont inventée : un test fige pour toujours ce qu'il
+    # cite, et le vrai amont du dépôt n'a rien à faire ici.
+    AMONTS = ("https://amont.example/",)
+
+    def test_a_project_carried_elsewhere_is_followed(self):
+        self.assertEqual(
+            mirror.ENTRANT,
+            mirror.sens("https://amont.example/oca/outils.git", self.AMONTS),
+        )
+
+    def test_a_project_of_our_own_goes_out(self):
+        self.assertEqual(
+            mirror.SORTANT,
+            mirror.sens(
+                "https://forge.example/equipe/interne.git", self.AMONTS
+            ),
+        )
+
+    def test_a_site_without_upstreams_follows_nobody(self):
+        """Vide, tout est sortant : on ne suit personne."""
+        self.assertEqual(
+            mirror.SORTANT,
+            mirror.sens("https://amont.example/oca/outils.git", ()),
+        )
+
+    def test_the_case_of_the_address_does_not_decide(self):
+        """Un hôte s'écrit indifféremment : le laisser décider ferait
+        suivre un projet et pas son voisin, sans raison lisible."""
+        self.assertEqual(
+            mirror.ENTRANT,
+            mirror.sens("HTTPS://Amont.Example/oca/x.git", self.AMONTS),
+        )
+
+
+class TestLaSurchargeDitCeQueLaDerivationNeSaitPas(unittest.TestCase):
+    """Pousser vers un amont un dépôt qui en vient aussi.
+
+    La dérivation ne peut pas l'exprimer : l'adresse dit d'où il vient, pas
+    ce qu'on veut en faire. La surcharge est nommée dépôt par dépôt, donc
+    elle se relit — sans elle il faudrait déclarer les neuf cents autres
+    pour en corriger un.
+    """
+
+    AMONTS = ("https://amont.example/",)
+
+    def test_it_wins_over_what_the_address_says(self):
+        self.assertEqual(
+            mirror.SORTANT,
+            mirror.sens(
+                "https://amont.example/oca/outils.git",
+                self.AMONTS,
+                mirror.SORTANT,
+            ),
+        )
+
+    def test_an_unknown_direction_is_ignored_not_obeyed(self):
+        """Le vocabulaire est CLOS : un sens inventé ne doit pas renverser
+        ce que l'adresse établit."""
+        self.assertEqual(
+            mirror.ENTRANT,
+            mirror.sens(
+                "https://amont.example/oca/outils.git",
+                self.AMONTS,
+                "de-cote",
+            ),
+        )
+
+    def test_the_plan_names_the_forge_name_not_the_manifest_one(self):
+        """Les confondre créerait des doublons portant « .git »."""
+        plan = mirror.plan_mirrors(
+            [
+                {
+                    "name": "outils.git",
+                    "clone_url": "https://amont.example/oca/outils.git",
+                },
+                {
+                    "name": "interne.git",
+                    "clone_url": "https://forge.example/nous/interne.git",
+                },
+            ],
+            self.AMONTS,
+        )
+        self.assertEqual(["outils"], plan[mirror.ENTRANT])
+        self.assertEqual(["interne"], plan[mirror.SORTANT])
+
+    def test_the_plan_honours_an_override_by_forge_name(self):
+        plan = mirror.plan_mirrors(
+            [
+                {
+                    "name": "outils.git",
+                    "clone_url": "https://amont.example/oca/outils.git",
+                }
+            ],
+            self.AMONTS,
+            {"outils": mirror.SORTANT},
+        )
+        self.assertEqual([], plan[mirror.ENTRANT])
+        self.assertEqual(["outils"], plan[mirror.SORTANT])
 
 
 if __name__ == "__main__":

@@ -475,5 +475,110 @@ class TestLeModuleNAfficheRienEtNOuvrePasLeCoffre(unittest.TestCase):
             self.assertNotIn(interdit, source)
 
 
+class TestLeMiroirSortant(unittest.TestCase):
+    """La forge pousse d'elle-même, et le jeton ne ressort jamais.
+
+    Un « git push --mirror » depuis la station ne part que si quelqu'un l'y
+    lance. La forge, elle, pousse sans que la station soit allumée : c'est
+    la différence entre un miroir et une copie qu'on a faite une fois.
+    """
+
+    SECRET = "jeton-de-banc-invente"
+
+    def client(self):
+        return client()
+
+    def test_it_reads_what_is_already_posed(self):
+        """La forge accepte DEUX miroirs vers la même adresse, et l'on
+        obtient alors deux poussées qui se courent après. Le refus qui le
+        dirait n'existe pas."""
+        client, session = self.client()
+        client.push_mirrors("equipe", "outils")
+        self.assertEqual("GET", session.appels[0]["methode"])
+        self.assertIn(
+            "repos/equipe/outils/push_mirrors", session.appels[0]["url"]
+        )
+
+    def test_the_token_never_travels_in_the_url(self):
+        """Une URL se retrouve dans un journal de mandataire, dans un
+        historique de shell, dans une capture d'écran."""
+        client, session = self.client()
+        client.add_push_mirror(
+            "equipe",
+            "outils",
+            "https://amont.example/e/o.git",
+            remote_password=self.SECRET,
+        )
+        for vu in session.appels:
+            with self.subTest(url=vu["url"][:40]):
+                self.assertNotIn(self.SECRET, vu["url"])
+
+    def test_the_token_goes_in_the_body(self):
+        client, session = self.client()
+        client.add_push_mirror(
+            "equipe",
+            "outils",
+            "https://amont.example/e/o.git",
+            remote_password=self.SECRET,
+        )
+        self.assertEqual(
+            self.SECRET, session.appels[0]["json"]["remote_password"]
+        )
+
+    def test_it_asks_for_a_push_on_every_commit(self):
+        """Sans elle, un correctif attend la prochaine échéance et l'on
+        croit le miroir en panne."""
+        client, session = self.client()
+        client.add_push_mirror(
+            "equipe", "outils", "https://amont.example/e/o.git"
+        )
+        self.assertIs(True, session.appels[0]["json"]["sync_on_commit"])
+
+    def test_a_fallback_cadence_is_always_given(self):
+        """Sans cadence, un miroir dont la poussée immédiate échoue ne
+        repart jamais."""
+        client, session = self.client()
+        client.add_push_mirror(
+            "equipe", "outils", "https://amont.example/e/o.git"
+        )
+        self.assertTrue(session.appels[0]["json"]["interval"])
+
+
+class TestLesDeuxJetonsNeSeConfondentPas(unittest.TestCase):
+    """Le jeton de la forge ouvre la FORGE ; celui du miroir ouvre l'AMONT
+    vers lequel elle pousse. Les confondre donnerait à la forge un jeton
+    qui écrit chez le tiers, ou l'inverse."""
+
+    def test_they_are_two_distinct_references(self):
+        from script.forge import profiles
+
+        self.assertNotEqual(
+            profiles.secret_ref("amont"),
+            profiles.mirror_secret_ref("amont"),
+        )
+
+    def test_they_share_one_group_in_the_vault(self):
+        """Deux conventions dans un coffre le rendent illisible, et un
+        lecteur ne sait plus laquelle chercher."""
+        from script.forge import profiles
+
+        groupe = f"kdbx:{profiles.SECRET_GROUP}/"
+        for ref in (
+            profiles.secret_ref("amont"),
+            profiles.mirror_secret_ref("amont"),
+        ):
+            with self.subTest(ref=ref):
+                self.assertTrue(ref.startswith(groupe))
+
+    def test_both_follow_the_profile_name(self):
+        """Dérivées plutôt que stockées : deux sources de vérité pour un
+        même lien finissent toujours par diverger."""
+        from script.forge import profiles
+
+        for nom in ("amont", "atelier"):
+            with self.subTest(profil=nom):
+                self.assertIn(nom, profiles.mirror_secret_ref(nom))
+
+
 if __name__ == "__main__":
     unittest.main()

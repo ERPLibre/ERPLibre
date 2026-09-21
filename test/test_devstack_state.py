@@ -33,6 +33,8 @@ def releve(**remplace):
         "profils_servant_le_web": ("local-webui",),
         "profils_forge": ("forge-du-site",),
         "cibles_sauvegarde": ("nas-hors-site",),
+        "forge_canonique": "amont",
+        "miroirs_sortants": ("interne",),
     }
     base.update(remplace)
     return D.Releve(**base)
@@ -155,6 +157,57 @@ class TestLEtatSuitCeQuiDecide(CasDeLangue):
                     D.A_REGLER,
                     self.etat_de(D.lignes(releve(**manque)), "local-webui"),
                 )
+
+
+class TestLesDeuxLignesDesForges(CasDeLangue):
+    """Elles disaient « absent du dépôt », et le dépôt sait désormais.
+
+    Le rôle d'autorité existe et refuse deux canoniques ; le sens du miroir
+    se dérive du manifeste et la surcharge le corrige ; la forge pousse
+    d'elle-même. Ce qui manque est un RÉGLAGE de site, pas du code — et les
+    deux ne s'adressent pas à la même personne.
+    """
+
+    @staticmethod
+    def etat_de(rendu, segment):
+        return next(l.etat for l in rendu if l.segment == segment)
+
+    def test_an_authority_the_site_has_declared(self):
+        self.assertEqual(
+            D.PORTE, self.etat_de(D.lignes(releve()), "canonical-forge")
+        )
+
+    def test_a_site_without_one_has_something_to_set_not_to_write(self):
+        """L'ÉTAT DU MILIEU : dire « absent » accuserait le code de ce
+        qu'il sait faire, et « fait » enverrait chercher une panne là où il
+        n'y a qu'un réglage."""
+        self.assertEqual(
+            D.A_REGLER,
+            self.etat_de(
+                D.lignes(releve(forge_canonique="")), "canonical-forge"
+            ),
+        )
+
+    def test_the_authority_is_named_and_not_just_counted(self):
+        """Un « oui » ne dirait pas laquelle, et c'est justement ce qu'on
+        vient voir."""
+        ligne = next(
+            l for l in D.lignes(releve()) if l.segment == "canonical-forge"
+        )
+        self.assertIn("amont", ligne.detail)
+
+    def test_an_outbound_mirror_the_site_has_declared(self):
+        self.assertEqual(
+            D.PORTE, self.etat_de(D.lignes(releve()), "github-mirror")
+        )
+
+    def test_no_outbound_mirror_is_a_setting_too(self):
+        self.assertEqual(
+            D.A_REGLER,
+            self.etat_de(
+                D.lignes(releve(miroirs_sortants=())), "github-mirror"
+            ),
+        )
 
 
 class TestLeCompte(CasDeLangue):
