@@ -33,6 +33,12 @@ class PropositionEffacement(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.efface = []
         self.todo._cleanup_delete_files = self._faux_effacement
+        # Les deux SEULES feuilles impures du contrôle de propriété sont
+        # bouchonnées ; le contrôle lui-même tourne pour de vrai. Sans
+        # cela, l'épreuve interrogerait le libvirt de la station qui la
+        # lance, et mesurerait son parc au lieu du code.
+        self.todo._qemu_referenced_files = lambda noms=None: {}
+        self.todo._qemu_files_in_use = lambda: set()
 
     def _faux_effacement(self, title, items, prompt):
         self.efface.append([p for _s, p in items])
@@ -61,6 +67,97 @@ class PropositionEffacement(unittest.TestCase):
         ):
             ok = self.todo._qemu_offer_orphan_removal(["vm-a", "vm-b"])
         return ok, self.efface
+
+    def test_a_disk_owned_by_another_domain_is_never_offered(self):
+        """LE défaut : le chemin est DÉDUIT du nom, et une VM renommée
+        garde le nom de fichier d'avant. Déployer une machine qui reprend
+        l'ancien nom proposait d'effacer le disque vivant de la voisine."""
+        chemin = "/var/lib/libvirt/images/vm-a.qcow2"
+        self.todo._qemu_orphan_disks = lambda names: [
+            (n, f"/var/lib/libvirt/images/{n}.qcow2")
+            for n in names
+            if n == "vm-a"
+        ]
+        self.todo._qemu_referenced_files = lambda noms=None: {
+            chemin: "vm-renommee"
+        }
+        with mock.patch("builtins.input", return_value="y"), mock.patch(
+            "builtins.print"
+        ):
+            self.todo._qemu_offer_orphan_removal(["vm-a"])
+        self.assertEqual([[]], self.efface)
+
+    def test_and_the_screen_names_what_holds_it(self):
+        """« Gardé » sans dire par quoi envoie chercher au hasard."""
+        chemin = "/var/lib/libvirt/images/vm-a.qcow2"
+        self.todo._qemu_orphan_disks = lambda names: [("vm-a", chemin)]
+        self.todo._qemu_referenced_files = lambda noms=None: {
+            chemin: "vm-renommee"
+        }
+        vues = []
+        with mock.patch("builtins.input", return_value="n"), mock.patch(
+            "builtins.print",
+            lambda *a, **k: vues.append(" ".join(map(str, a))),
+        ):
+            self.todo._qemu_offer_orphan_removal(["vm-a"])
+        ecrit = "\n".join(vues)
+        self.assertIn("vm-renommee", ecrit)
+        self.assertIn(chemin, ecrit)
+
+    def test_a_disk_held_open_by_a_process_is_kept_too(self):
+        """Un domaine peut avoir été retiré alors que qemu tourne encore."""
+        chemin = "/var/lib/libvirt/images/vm-a.qcow2"
+        self.todo._qemu_orphan_disks = lambda names: [("vm-a", chemin)]
+        self.todo._qemu_files_in_use = lambda: {chemin}
+        with mock.patch("builtins.input", return_value="y"), mock.patch(
+            "builtins.print"
+        ):
+            self.todo._qemu_offer_orphan_removal(["vm-a"])
+        self.assertEqual([[]], self.efface)
+
+    def test_a_truly_orphan_disk_is_still_offered(self):
+        """Contrôle positif : tout protéger rendrait la proposition
+        inutile, et la création échouerait comme avant."""
+        chemin = "/var/lib/libvirt/images/vm-a.qcow2"
+        self.todo._qemu_orphan_disks = lambda names: [("vm-a", chemin)]
+        with mock.patch("builtins.input", return_value="y"), mock.patch(
+            "builtins.print"
+        ):
+            self.todo._qemu_offer_orphan_removal(["vm-a"])
+        self.assertEqual([[chemin]], self.efface)
+
+    def test_the_check_lives_where_one_deletes_not_where_one_detects(self):
+        """La détection est PURE exprès : le formulaire la rappelle à
+        chaque frappe, et un contrôle de propriété y demanderait root —
+        donc une invite qui n'a nulle part où s'afficher."""
+        import ast
+
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "script",
+            "todo",
+            "qemu_deploy.py",
+        )
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        par_nom = {
+            noeud.name: noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+        }
+
+        def appels(nom):
+            return [
+                n.func.attr
+                for n in ast.walk(par_nom[nom])
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+            ]
+
+        self.assertIn(
+            "_qemu_split_orphans", appels("_qemu_offer_orphan_removal")
+        )
+        self.assertNotIn("_qemu_split_orphans", appels("_qemu_orphan_disks"))
 
     def test_without_orphans_nothing_is_asked(self):
         self.todo._qemu_orphan_disks = lambda names: []

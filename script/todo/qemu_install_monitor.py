@@ -2647,7 +2647,7 @@ def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
 def delete_suite_pve(vmid: int, name: str = "", purge: bool = True) -> str:
     """Le shell que delete_vm_cmd_pve joue SUR l'hôte : le garde d'identité
     si `name` est connu, puis l'arrêt et la destruction du VMID."""
-    return vm_verbs.delete_suite(
+    return vm_verbs.pve_delete_suite(
         pve_handle({"vmid": vmid}, name), purge, tr=t
     )
 

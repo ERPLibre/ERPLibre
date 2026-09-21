@@ -29,6 +29,7 @@ sys.path.append(RACINE)
 sys.argv = ["todo.py"]
 
 from script.posture import plan  # noqa: E402
+from script.todo import deploy_verify as V  # noqa: E402
 from script.todo import devstack_report as R  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -81,14 +82,14 @@ class TestLaCommandeDeSonde(unittest.TestCase):
 class TestChaqueVerdictSaCouche(unittest.TestCase):
     def test_loaded_is_the_only_green_one(self):
         for verdict in plan.VERDICTS:
-            couches = menu()._egress_layers(verdict)
+            couches = V.egress_layers(verdict)
             vert = all(c.code == R.DS_OK for c in couches)
             with self.subTest(verdict=verdict):
                 self.assertEqual(verdict == plan.LOADED, vert)
 
     def test_a_missing_tool_is_about_the_guest_and_not_the_firewall(self):
         """Il se corrige en changeant d'image, pas en rechargeant."""
-        couche = menu()._egress_layers(plan.TOOL_ABSENT)[0]
+        couche = V.egress_layers(plan.TOOL_ABSENT)[0]
         self.assertEqual("guest", couche.layer)
         self.assertEqual(R.DS_ERR, couche.code)
 
@@ -96,14 +97,14 @@ class TestChaqueVerdictSaCouche(unittest.TestCase):
         """La machine a reçu une posture qui promet un confinement : une
         vérification qui n'aboutit pas ne doit pas se lire comme un
         succès."""
-        couche = menu()._egress_layers(plan.NO_PRIVILEGE)[0]
+        couche = V.egress_layers(plan.NO_PRIVILEGE)[0]
         self.assertEqual(R.DS_ERR, couche.code)
         self.assertNotEqual(R.DS_SKIP, couche.code)
 
     def test_silence_is_the_only_clean_withdrawal(self):
         """Là, rien n'a été sondé du tout — et la couche nommée est celle
         qui a cédé, le transport, pas le pare-feu jamais mesuré."""
-        couche = menu()._egress_layers(plan.UNREAD)[0]
+        couche = V.egress_layers(plan.UNREAD)[0]
         self.assertEqual(R.DS_SKIP, couche.code)
         self.assertEqual("transport", couche.layer)
 
@@ -112,7 +113,7 @@ class TestChaqueVerdictSaCouche(unittest.TestCase):
         for verdict in plan.VERDICTS:
             if verdict == plan.LOADED:
                 continue
-            for couche in menu()._egress_layers(verdict):
+            for couche in V.egress_layers(verdict):
                 with self.subTest(verdict=verdict):
                     self.assertTrue(couche.remedy)
 
@@ -121,7 +122,7 @@ class TestChaqueVerdictSaCouche(unittest.TestCase):
         chaque verdict est ce qui fait tomber l'épreuve si l'un d'eux se
         met à en nommer une qui n'existe pas."""
         for verdict in plan.VERDICTS:
-            for couche in menu()._egress_layers(verdict):
+            for couche in V.egress_layers(verdict):
                 with self.subTest(verdict=verdict):
                     self.assertIn(couche.layer, R.LAYERS)
 
