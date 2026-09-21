@@ -38,6 +38,7 @@ sys.path.insert(0, str(RACINE))
 
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend  # noqa: E402
 from script.todo.deploy_form_lib import (  # noqa: E402
     VM_PASSWORD_ALPHABET,
     VM_PASSWORD_DEFAULT,
@@ -453,7 +454,12 @@ class TestLaunchWrapper(unittest.TestCase):
             vus["env"] = k.get("env")
 
         with mock.patch.object(mon.subprocess, "Popen", faux_popen):
-            mon._launch_one("192.0.2.7", "true", "/dev/null", "vm-a", **kw)
+            mon._launch_one(
+                backend.libvirt_handle("vm-a", ip="192.0.2.7"),
+                "true",
+                "/dev/null",
+                **kw,
+            )
         return vus["argv"][-1], vus["env"]
 
     def test_every_ssh_uses_the_account(self):

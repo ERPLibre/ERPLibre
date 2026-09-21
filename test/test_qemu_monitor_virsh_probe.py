@@ -27,6 +27,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend  # noqa: E402
 
 FAUX_SSH = """#!/bin/sh
 for dernier in "$@"; do :; done
@@ -96,7 +97,10 @@ class TestRelectureDAdresse(unittest.TestCase):
         journal.write_text("")
         with mock.patch.object(mon.subprocess, "Popen") as popen:
             mon._launch_one(
-                "10.0.0.5", "true", str(log), name="vm-a", emulated=False
+                backend.libvirt_handle("vm-a", ip="10.0.0.5"),
+                "true",
+                str(log),
+                emulated=False,
             )
         commande = popen.call_args[0][0][4]
         env = dict(

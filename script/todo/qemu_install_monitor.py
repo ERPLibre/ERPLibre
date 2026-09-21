@@ -292,12 +292,10 @@ def is_emulated(vm_arch: str | None, machine: str | None = None) -> bool:
 
 
 def _launch_one(
-    ip: str,
+    handle,
     remote_cmd: str,
     log_path: str,
-    name: str = "",
     installs: bool = True,
-    pve: bool = False,
     reboot: str = "",
     emulated: bool = True,
     identity: str = "",
@@ -335,12 +333,15 @@ def _launch_one(
     par son propriétaire et root seuls. None : rien n'est déposé, et la
     commande distante fait avec le fichier déjà là.
 
-    `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
-    adresse par virsh — et c'est vital. Une VM Proxmox peut porter le nom d'un
-    domaine LOCAL existant : la ré-résolution trouverait le domaine local, et
-    l'installation d'ERPLibre + Odoo partirait sur la mauvaise machine, sans
-    que rien ne le dise. Pour une VM distante, l'alias ~/.ssh/config est la
-    seule vérité : il porte le rebond par l'hôte."""
+    `handle` dit à la fois PAR OÙ entrer et si l'adresse se ré-résout. On ne
+    la ré-résout que pour une VM que l'hyperviseur LOCAL connaît, et c'est
+    vital : une VM déployée ailleurs dont le nom existe aussi comme domaine
+    local ferait trouver ce domaine-là, et l'installation partirait sur la
+    mauvaise machine sans que rien ne le dise. Pour une VM d'hôte distant,
+    l'alias ~/.ssh/config est la seule vérité — il porte le rebond."""
+    ip = vm_verbs.exec_address(handle)
+    name = handle.name
+    relit = bool(name) and resolves_locally(handle)
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
     # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~20 min :
     # une architecture ÉMULÉE, s390x/arm64 sur hôte x86, boote lentement).
@@ -457,7 +458,7 @@ def _launch_one(
             f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
-        if name and not pve
+        if relit
         else ""
     )
     slow = (
@@ -491,18 +492,25 @@ def _launch_one(
         if secret
         else ""
     )
+    # Le PRÉFIXE d'exécution vient du backend : là où celui-ci rend
+    # « ssh … », un autre rendra une commande qui joint la VM par son nom.
+    # Le compte y est la variable « $u », posée une fois dans l'enveloppe.
+    sonde_prefixe = vm_verbs.exec_prefix(
+        handle, f"{SSH_OPTS_BATCH} -o BatchMode=yes", user="$u"
+    )
+    exec_prefixe = vm_verbs.exec_prefix(handle, SSH_OPTS_BATCH, user="$u")
     wrapper = (
         f"{capture}"
         f"{ssh_fn}"
         f"ip={shlex.quote(ip)}; "
         f"u={shlex.quote(user or VM_USER_DEFAULT)}; "
-        f"{vsh if name and not pve else ''}"
+        f"{vsh if relit else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"{slow}"
         "seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
-        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "$u@$ip" '
+        f"st=$({sonde_prefixe} "
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
@@ -521,8 +529,7 @@ def _launch_one(
         f"{push}"
         # Marquée en TÊTE (voir INSTALL_TAG) : c'est ce qui fait reconnaître
         # cette installation par RELAUNCH_GUARD, dans la VM.
-        f'ssh {SSH_OPTS_BATCH} "$u@$ip" '
-        f"{shlex.quote(f': {INSTALL_TAG}; ' + remote_cmd)} "
+        f"{exec_prefixe} {shlex.quote(f': {INSTALL_TAG}; ' + remote_cmd)} "
         f">> {log_q} 2>&1; rc=$?; "
         + (_reboot_steps(log_q, reboot) if reboot else "")
         + f'echo "{EXIT_MARKER} $rc" >> {log_q}'
@@ -681,15 +688,10 @@ def launch_installs(
         # intacts les appelants qui n'en fournissent qu'une.
         cmd_vm = vm.get("remote_cmd") or remote_cmd
         _launch_one(
-            vm["ip"],
+            handle_of(vm),
             cmd_vm,
             log_path,
-            vm["name"],
             installs=bool(branch),
-            # Ré-résoudre l'adresse par virsh ne vaut que pour une VM que
-            # l'hyperviseur LOCAL connaît : ailleurs, il trouve le domaine
-            # homonyme d'ici.
-            pve=not resolves_locally(handle_of(vm)),
             # Une installation qui pose un NOYAU ne vaut rien avant le
             # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
             reboot=reboot_expected(cmd_vm),
@@ -980,12 +982,10 @@ def relaunch_install(
                 msg=t("An install is already running in this VM.")
             )
             _launch_one(
-                vm["ip"],
+                handle_of(vm),
                 garde + vm["remote_cmd"],
                 vm["log"],
-                vm["name"],
                 installs=bool(manifest.get("branch")),
-                pve=bool(vm.get("pve")),
                 reboot=reboot_expected(vm["remote_cmd"]),
                 emulated=is_emulated(vm.get("arch")),
                 identity=vm.get("identity") or "",

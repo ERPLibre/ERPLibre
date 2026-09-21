@@ -62,7 +62,14 @@ class TestLeGardeDIdentite(unittest.TestCase):
         """Désarmement ASSUMÉ : mieux vaut la prudence d'avant que refuser
         toute opération sur un poste où la preuve n'a pas pu être relevée."""
         self.assertEqual("", V.identity_guard(LOCALE._replace(proof="")))
-        self.assertEqual("", V.identity_guard(None))
+
+    def test_no_handle_at_all_is_a_refusal_and_not_a_disarming(self):
+        """Les deux se ressemblent et ne sont pas la même chose. « Sa preuve
+        manque » se constate sur une machine qu'on désigne ; « aucune
+        machine désignée » est une faute de l'appelant, et la lui rendre
+        comme un désarmement la lui cacherait."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.identity_guard(None)
 
     def test_a_name_carrying_a_substitution_is_never_run(self):
         """Le nom était interpolé BRUT dans le message du garde, donc relu
@@ -126,7 +133,7 @@ class TestLeGardeDIdentite(unittest.TestCase):
 
     def test_an_unknown_backend_says_so_instead_of_guessing(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.identity_guard(LOCALE._replace(backend="lima"))
+            V.identity_guard(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLaSuppression(unittest.TestCase):
@@ -169,7 +176,7 @@ class TestLaSuppression(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.delete_command(LOCALE._replace(backend="lima"))
+            V.delete_command(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLaCommandeSurLHote(unittest.TestCase):
@@ -295,7 +302,7 @@ class TestLaConsole(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.console(LOCALE._replace(backend="lima"))
+            V.console(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLAccesWeb(unittest.TestCase):
@@ -448,6 +455,17 @@ class TestLaLigneSshVersLaVm(unittest.TestCase):
         with self.assertRaises(B.VerbNotImplemented):
             V.ssh_prefix(None)
 
+    def test_the_backend_without_ssh_is_told_where_to_go(self):
+        """Le refus général dirait « backend inconnu », ce qui serait FAUX :
+        il est parfaitement connu, il ne s'atteint simplement pas ainsi. Un
+        refus qui se trompe de raison envoie chercher au mauvais endroit —
+        c'est tout le sujet de ce dépôt."""
+        with self.assertRaises(B.VerbNotImplemented) as pris:
+            V.ssh_prefix(B.lima_handle("essai"))
+        message = str(pris.exception)
+        self.assertIn("exec_prefix", message)
+        self.assertNotIn("inconnu", message)
+
 
 class TestLAlimentation(unittest.TestCase):
     """La pause est le pire endroit pour se tromper de machine : rien ne
@@ -506,7 +524,9 @@ class TestLAlimentation(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.power_command(LOCALE._replace(backend="lima"), "suspend")
+            V.power_command(
+                LOCALE._replace(backend="jamais-un-backend"), "suspend"
+            )
 
 
 class TestArmerLaPreuve(unittest.TestCase):
@@ -604,7 +624,212 @@ class TestEcrireEtRelireLaMemeIdentite(unittest.TestCase):
 
     def test_an_unknown_backend_writes_nothing_and_says_so(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.identity_fields(LOCALE._replace(backend="lima"))
+            V.identity_fields(LOCALE._replace(backend="jamais-un-backend"))
+
+
+class TestLeCanalDExecution(unittest.TestCase):
+    """Par où le script détaché entre dans la VM pour y travailler."""
+
+    DISTANTE_COMPLETE = B.handle_of(
+        {
+            "name": "vm-a",
+            "ip": "pve1+vm-a",
+            "pve": {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"},
+        }
+    )
+
+    def test_a_local_vm_is_entered_by_its_address(self):
+        handle = B.libvirt_handle("vm-a", ip="192.0.2.10")
+        self.assertEqual("192.0.2.10", V.exec_address(handle))
+
+    def test_a_remote_vm_is_entered_by_its_alias(self):
+        """Son adresse interne n'est routable que depuis l'hôte : l'attendre
+        d'ici, c'est attendre vingt minutes pour rien."""
+        self.assertEqual("pve1+vm-a", V.exec_address(self.DISTANTE_COMPLETE))
+
+    def test_the_entry_address_is_not_the_service_address(self):
+        """Les deux vivent dans la même fiche, à un champ près."""
+        self.assertNotEqual(
+            V.exec_address(self.DISTANTE_COMPLETE),
+            self.DISTANTE_COMPLETE.address,
+        )
+
+    def test_a_remote_vm_without_an_alias_falls_back_on_its_address(self):
+        """Mieux vaut essayer que ne rien tenter du tout."""
+        handle = B.pve_handle(
+            {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"}, "vm-a"
+        )
+        self.assertEqual("10.10.10.151", V.exec_address(handle))
+
+    def test_the_prefix_carries_the_account(self):
+        """Sans lui, ssh se connecte sous le compte local de la station."""
+        self.assertIn("erplibre@", V.exec_prefix(LOCALE))
+        self.assertIn("root@", V.exec_prefix(LOCALE, user="root"))
+
+    def test_the_address_stays_a_shell_variable(self):
+        """Figée ici, elle ne se ré-résout plus : le script détaché suit un
+        bail qui bouge, et une adresse morte ferait attendre en vain."""
+        handle = B.libvirt_handle("vm-a", ip="192.0.2.10")
+        prefixe = V.exec_prefix(handle)
+        self.assertIn("$ip", prefixe)
+        self.assertNotIn("192.0.2.10", prefixe)
+
+    def test_the_options_land_before_the_target(self):
+        prefixe = V.exec_prefix(LOCALE, options="-o BatchMode=yes")
+        self.assertTrue(prefixe.startswith("ssh -o BatchMode=yes "), prefixe)
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        for verbe in (V.exec_address, V.exec_prefix):
+            with self.subTest(verbe=verbe.__name__):
+                with self.assertRaises(B.VerbNotImplemented):
+                    verbe(None)
+
+    def test_an_unknown_backend_has_no_channel_yet(self):
+        """Un backend qui n'a pas déclaré comment on entre chez lui doit le
+        DIRE : composer un « ssh » au hasard le ferait joindre autre chose."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.exec_prefix(LOCALE._replace(backend="jamais-un-backend"))
+
+
+class TestLesVieuxManifestesSOuvrentEncore(unittest.TestCase):
+    """Le suivi se rouvre sur un manifeste qui peut avoir des semaines.
+
+    Il a été écrit avant que rien de tout ceci n'existe : ni UUID, ni
+    adresse interne, ni alias distinct. Refuser de le lire, ou le lire de
+    travers, perdrait le suivi d'une installation en cours.
+    """
+
+    ANCIENS = (
+        ("locale nue", {"name": "vm-a", "ip": "192.0.2.10"}),
+        (
+            "locale armée",
+            {"name": "vm-b", "ip": "192.0.2.11", "uuid": "abc-123"},
+        ),
+        (
+            "distante sans adresse interne",
+            {
+                "name": "vm-c",
+                "ip": "pve1+vm-c",
+                "pve": {"target": "pve1", "vmid": 7},
+            },
+        ),
+    )
+
+    def test_every_old_shape_still_yields_a_usable_channel(self):
+        self.assertEqual(3, len(self.ANCIENS))
+        for nom, entree in self.ANCIENS:
+            with self.subTest(forme=nom):
+                handle = B.handle_of(entree)
+                self.assertIsNotNone(handle)
+                self.assertEqual(entree["ip"], V.exec_address(handle))
+                self.assertIn("$ip", V.exec_prefix(handle))
+
+    def test_an_old_local_entry_is_refreshed_and_a_remote_one_is_not(self):
+        """C'est ce qui décide de ré-résoudre par virsh, et se tromper y
+        fait installer sur le domaine local homonyme."""
+        self.assertTrue(B.resolves_locally(B.handle_of(self.ANCIENS[0][1])))
+        self.assertFalse(B.resolves_locally(B.handle_of(self.ANCIENS[2][1])))
+
+
+class TestLeBackendSansAdresse(unittest.TestCase):
+    """Joindre une VM par son NOM, sans bail à relire.
+
+    C'est le seul apport de ce backend sur un hôte qui a déjà libvirt, et
+    c'est celui qui compte là où il n'y a aucun réseau d'hyperviseur à
+    interroger.
+
+    RIEN ICI N'A TOURNÉ contre un vrai « limactl » : ces épreuves tiennent ce
+    qu'on COMPOSE, pas ce que l'outil en fait. La confrontation est dans
+    `long_test/`.
+    """
+
+    LIMA = B.lima_handle("essai")
+
+    def test_it_is_entered_by_its_name(self):
+        self.assertEqual("essai", V.exec_address(self.LIMA))
+
+    def test_its_channel_names_no_address_at_all(self):
+        prefixe = V.exec_prefix(self.LIMA)
+        self.assertNotIn("$ip", prefixe)
+        self.assertNotIn("ssh", prefixe)
+        self.assertIn("essai", prefixe)
+
+    def test_the_composed_line_splits_into_the_expected_words(self):
+        """« limactl shell » exécute des ARGUMENTS : sans « bash -c », une
+        suite arriverait comme une liste de mots. On fait découper la ligne
+        par un vrai shell plutôt que de relire la chaîne."""
+        suite = "a && b || c"
+        ligne = f"{V.exec_prefix(self.LIMA)} {shlex.quote(suite)}"
+        mots = subprocess.run(
+            ["bash", "-c", ligne.replace("limactl ", "printf '%s\\n' ", 1)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        self.assertEqual(["shell", "essai", "--", "bash", "-c", suite], mots)
+
+    def test_a_name_that_would_split_the_line_cannot(self):
+        piege = B.lima_handle("essai; touch /tmp/rien-de-reel")
+        self.assertNotIn(
+            "; touch /tmp/rien-de-reel bash", V.exec_prefix(piege)
+        )
+        mots = subprocess.run(
+            [
+                "bash",
+                "-c",
+                V.exec_prefix(piege).replace("limactl ", "printf '%s\\n' ", 1),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        self.assertIn("essai; touch /tmp/rien-de-reel", mots)
+
+    def test_its_identity_survives_the_round_trip(self):
+        entree = {"name": "essai", "ip": ""}
+        entree.update(V.identity_fields(self.LIMA))
+        self.assertEqual(self.LIMA, B.handle_of(entree))
+
+    def test_it_is_disarmed_and_says_so(self):
+        """Un nom d'instance se réutilise. Fabriquer une preuve serait pire
+        que de dire qu'il n'y en a pas : la suppression retombe alors sur la
+        confirmation à deux mains, ce qui est la protection d'avant."""
+        self.assertFalse(B.is_armed(self.LIMA))
+        self.assertEqual("", V.identity_guard(self.LIMA))
+
+    def test_the_verbs_it_cannot_do_yet_say_so(self):
+        """« pas encore » se distingue d'une panne : l'écran peut retirer
+        l'entrée proprement au lieu d'envoyer chercher ce qui ne va pas."""
+        for verbe, args in (
+            (V.delete_command, ()),
+            (V.console, ()),
+            (V.power_command, ("suspend",)),
+            (V.host_command, ("echo",)),
+        ):
+            with self.subTest(verbe=verbe.__name__):
+                with self.assertRaises(B.VerbNotImplemented):
+                    verbe(self.LIMA, *args)
+
+
+class TestCeQuiATourneContreUneVraieMachine(unittest.TestCase):
+    """« Non éprouvé » ne veut pas dire douteux : il veut dire NON
+    CONFRONTÉ. Un écran qui ne le dit pas laisse croire l'inverse."""
+
+    def test_the_two_hypervisors_are_proven(self):
+        self.assertTrue(B.is_proven(B.LIBVIRT))
+        self.assertTrue(B.is_proven(B.PVE))
+
+    def test_the_new_backend_is_not(self):
+        self.assertFalse(B.is_proven(B.LIMA))
+
+    def test_an_unknown_backend_is_not_proven_by_default(self):
+        """Le doute penche du côté qui ne promet rien."""
+        self.assertFalse(B.is_proven("jamais-un-backend"))
+
+    def test_every_backend_of_the_vocabulary_has_an_answer(self):
+        for nom in B.BACKENDS:
+            with self.subTest(backend=nom):
+                self.assertIn(nom, B.PROVEN)
 
 
 if __name__ == "__main__":
