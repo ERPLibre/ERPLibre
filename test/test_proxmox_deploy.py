@@ -30,6 +30,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.remote import appliance_ssh  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -550,8 +551,8 @@ class TestChoixDeLHote(unittest.TestCase):
             "The authenticity of host '10.0.0.1' can't be established.",
             "No ED25519 host key is known for 10.0.0.1",
         ):
-            self.assertTrue(TODO._pve_hostkey_missing(texte), texte)
-        self.assertFalse(TODO._pve_hostkey_missing("Permission denied"))
+            self.assertTrue(appliance_ssh.hostkey_missing(texte), texte)
+        self.assertFalse(appliance_ssh.hostkey_missing("Permission denied"))
 
     def _confirm(self, reponses):
         """reponses : [(code, sortie)] pour chaque appel à pve.run."""
@@ -612,16 +613,6 @@ class TestChoixDeLHote(unittest.TestCase):
         )
         self.assertIsNone(host)
         self.assertNotIn("Permanently added", sortie)
-
-    def test_only_the_lines_that_teach_something_are_kept(self):
-        self.assertEqual(
-            TODO._pve_clean_output(
-                AVERTISSEMENT + "\nbash: pveversion: command not found\n"
-            ),
-            ["bash: pveversion: command not found"],
-        )
-        self.assertEqual(TODO._pve_clean_output(AVERTISSEMENT), [])
-        self.assertEqual(TODO._pve_clean_output(""), [])
 
     def test_the_install_hint_pipes_the_repo_script(self):
         # Le script est autonome : « bash -s » suffit, rien à copier d'abord.
@@ -1180,14 +1171,14 @@ class TestReparerEtcHosts(unittest.TestCase):
         """cloud-init « write_files » n'en met pas.
 
         sed PRÉSERVE l'absence — vérifié — et notre ligne se collait à la
-        précédente : « 192.168.1.9 autre-machine10.10.10.150 pve », donc le
+        précédente : « 192.0.2.9 autre-machine10.10.10.150 pve », donc le
         nom du nœud résolvait vers l'adresse d'une AUTRE machine. awk émet un
         saut de ligne par enregistrement, donc il normalise."""
         vu = self._joue(
-            "127.0.0.1 localhost\n127.0.1.1 pve\n192.168.1.9 autre-machine"
+            "127.0.0.1 localhost\n127.0.1.1 pve\n192.0.2.9 autre-machine"
         )
         self.assertEqual(vu["verdicts"], ["HOSTS-OK"] * 3)
-        self.assertIn("192.168.1.9 autre-machine", vu["lignes"])
+        self.assertIn("192.0.2.9 autre-machine", vu["lignes"])
         self.assertIn("10.10.10.150\tpve\t# erplibre-hosts", vu["lignes"])
         self.assertTrue(vu["brut"].endswith("\n"))
 

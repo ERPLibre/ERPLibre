@@ -38,6 +38,9 @@ from unittest import mock
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script/proxmox/install_proxmox.sh"
 
+DISQUE_BOUCHON_COURT = "vdz"
+DISQUE_BOUCHON = f"/dev/{DISQUE_BOUCHON_COURT}"
+
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -198,6 +201,14 @@ DEBIAN = {
         " *addr*) echo '2: eth0 inet 192.0.2.10/24 scope global eth0' ;;"
         " *) exit 1 ;; esac"
     ),
+    # boot_disk() lit le disque d'amorçage RÉEL de la station. Le fixer
+    # tient la préréponse grub-pc sur la logique du script plutôt que sur
+    # le partitionnement de qui lance les tests : « / » sur LVM, sur btrfs
+    # ou dans un conteneur rend un pkname vide, et la préréponse disparaît.
+    # Le nom est inventé, et absent du reste du dépôt : s'il n'apparaît pas
+    # dans la sortie, c'est que le bouchon n'a pas servi.
+    "findmnt": f"echo {DISQUE_BOUCHON}3",
+    "lsblk": f"echo {DISQUE_BOUCHON_COURT}",
 }
 
 
@@ -343,7 +354,9 @@ class TestLeScript(unittest.TestCase):
         proceeding ». Mesuré : dpkg s'arrête et emporte la transaction."""
         res = self._lance(["--dry-run"])
         self.assertIn("grub-pc/install_devices", res.stdout)
-        self.assertRegex(res.stdout, r"install_devices multiselect /dev/\w+")
+        self.assertIn(
+            f"install_devices multiselect {DISQUE_BOUCHON}", res.stdout
+        )
 
     def test_apt_waits_for_the_lock_instead_of_giving_up(self):
         """Sur une VM fraîche, cloud-init tient encore le verrou : mesuré,

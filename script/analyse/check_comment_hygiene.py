@@ -53,7 +53,8 @@ sys.path.append(RACINE)
 sys.path.append(os.path.join(RACINE, "script"))
 
 # Réexportés pour que ce module reste le seul point d'entrée de l'outil.
-from lib_identifiant import (  # noqa: E402,F401
+from lib_identifiant import exemples_declares  # noqa: E402,F401
+from lib_identifiant import (
     NOMS_INTERDITS,
     adresse_de_machine,
     identifiants,
@@ -68,24 +69,61 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
-SUFFIXES = (".py", ".sh", ".bash", ".go")
+# Le code porte ses phrases dans des commentaires ; la prose et les gabarits
+# les portent partout. Les deux familles se lisent donc différemment, mais
+# la même règle s'y applique : un nom de machine se dépose aussi bien dans un
+# runbook ou un vhost que dans une docstring.
+SUFFIXES_CODE = (".py", ".sh", ".bash", ".go")
+SUFFIXES_TEXTE = (
+    ".md",
+    ".txt",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".html",
+    ".hcl",
+    ".tsv",
+)
+SUFFIXES = SUFFIXES_CODE + SUFFIXES_TEXTE
 
 # Ce qui vient d'ailleurs ou n'est pas du source : le dépôt ne le réécrit pas.
+# « /private/ » et « /tasks/ » ne sont pas versionnés et portent EXPRÈS ce que
+# ni le code ni un commit ne doivent porter — l'un la donnée de client, l'autre
+# l'enquête et ses relevés. L'y signaler ferait une faute de ce qui est rangé
+# là pour cette raison même.
 EXCLUS = (
     "/OCA_",
     "/addons/",
     "/.venv",
     "/node_modules/",
     "/.git/",
+    "/private/",
+    "/tasks/",
 )
 
 
+def est_genere(chemin):
+    """Ce Markdown est-il produit par mmg depuis un « .base.md » ?
+
+    La règle 07 interdit d'éditer un fichier produit : la modification part
+    au prochain rendu. Signaler la copie en plus de sa source ferait pointer
+    la même phrase jusqu'à trois fois, dont deux à une ligne qu'on ne peut
+    pas corriger.
+    """
+    if not chemin.endswith(".md"):
+        return False
+    base = re.sub(r"(\.fr)?\.md$", ".base.md", chemin)
+    return base != chemin and os.path.exists(base)
+
+
 def a_balayer(chemin):
-    """Un chemin du dépôt, et non du code tiers ou un environnement."""
+    """Un chemin du dépôt, et non du code tiers, un environnement ou du rendu."""
     normalise = chemin.replace(os.sep, "/")
     while normalise.startswith("./"):
         normalise = normalise[2:]
-    return not any(exclu in "/" + normalise for exclu in EXCLUS)
+    if any(exclu in "/" + normalise for exclu in EXCLUS):
+        return False
+    return not est_genere(normalise)
 
 
 # Le témoignage : la phrase prend un événement pour sujet au lieu du code.
@@ -366,12 +404,29 @@ def blocs_go(source):
     return _regroupe(commentaires)
 
 
+def blocs_texte(source):
+    """Toutes les lignes non vides, les consécutives regroupées.
+
+    Un fichier de prose ou de gabarit n'a pas de syntaxe de commentaire à
+    isoler : sa phrase EST son contenu. Ne lire que les lignes ouvertes par
+    « # » n'y rendrait que les titres d'un Markdown, et rien du corps.
+    """
+    lignes = [
+        (numero, ligne.strip())
+        for numero, ligne in enumerate(source.split("\n"), start=1)
+        if ligne.strip()
+    ]
+    return _regroupe(lignes)
+
+
 def blocs(chemin, source):
-    """Les commentaires d'un fichier, selon son suffixe."""
+    """Les phrases d'un fichier, selon son suffixe."""
     if chemin.endswith(".py"):
         return blocs_python(source)
     if chemin.endswith(".go"):
         return blocs_go(source)
+    if chemin.endswith(SUFFIXES_TEXTE):
+        return blocs_texte(source)
     return blocs_shell(source)
 
 
@@ -428,10 +483,14 @@ def inspect(chemin, source=None, termes=None):
         with io.open(chemin, encoding="utf-8", errors="replace") as fh:
             source = fh.read()
 
+    # Les déclarations se lisent sur le fichier ENTIER : un test déclare en
+    # tête la valeur qu'il porte plus bas, là où elle sert.
+    exemples = exemples_declares(source)
+
     trouvailles = []
     for bloc in blocs(chemin, source):
         familles = (
-            ("identifiant", identifiants(bloc["text"], termes)),
+            ("identifiant", identifiants(bloc["text"], termes, exemples)),
             ("récit", recits(bloc["text"])),
             ("nom", noms_dhote(bloc["text"])),
         )

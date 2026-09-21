@@ -5,6 +5,7 @@
 import getpass
 import logging
 
+from script.config.config_file import CONFIG_OVERRIDE_PRIVATE_FILE
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -54,9 +55,16 @@ class KdbxManager:
                 filetypes=(("KeepassX files", "*.kdbx"),),
             )
         if not kdbx_file_path:
+            # Le fichier NOMMÉ est celui des trois fusionnés par get_config
+            # qui n'est pas versionné : un chemin de coffre est une valeur de
+            # machine, et l'écrire dans le fichier suivi le fait committer.
+            # C'est le même que celui où set_config_value écrit, et le lire
+            # ici sur l'instance levait un AttributeError — la constante est
+            # au niveau module, jamais un attribut de ConfigFile — dans le
+            # chemin d'erreur, c'est-à-dire au moment où le message sert.
             _logger.error(
                 "KDBX is not configured, please fill"
-                f" {self._config_file.CONFIG_FILE}"
+                f" {CONFIG_OVERRIDE_PRIVATE_FILE}"
             )
             return None
 

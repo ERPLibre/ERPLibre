@@ -68,5 +68,8 @@
             "prompt_description_key": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
             "bash_command": "./script/qemu/deploy_qemu.py --name demo-vm --version 24.04 --dry-run"
         }
-    ]
+    ],
+    "deploy_from_makefile": [],
+    "proxmox_from_makefile": [],
+    "devstack": {}
 }

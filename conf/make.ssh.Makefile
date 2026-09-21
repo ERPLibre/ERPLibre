@@ -8,18 +8,25 @@ SSH_USER ?= erplibre
 SSH_PORT ?= 22
 SSH_KEY  ?=
 SSH_PATH ?= ~/erplibre_deploy_2
+# Machine de rebond. Une cible qui n'est joignable qu'à travers elle reste
+# hors de portée de tous ces verbes sans lui, y compris de rsync.
+SSH_JUMP ?=
 
 # Target to run remotely via ssh_make
 SSH_TARGET ?= run
 
-# Build SSH/rsync options from variables
-_SSH_KEY_OPT = $(if $(SSH_KEY),-i $(SSH_KEY),)
-_SSH_CMD     = ssh -p $(SSH_PORT) -o StrictHostKeyChecking=accept-new $(_SSH_KEY_OPT)
-_RSYNC_SSH   = ssh -p $(SSH_PORT) -o StrictHostKeyChecking=accept-new $(_SSH_KEY_OPT)
+# Build SSH/rsync options from variables. L'espace est DANS le $(if ...) :
+# posée dehors, elle reste dans la ligne quand l'option est vide.
+_SSH_OPTS = $(if $(SSH_KEY), -i $(SSH_KEY))$(if $(SSH_JUMP), -J $(SSH_JUMP))
+_SSH_CMD  = ssh -p $(SSH_PORT) -o StrictHostKeyChecking=accept-new$(_SSH_OPTS)
+# rsync reçoit la MÊME ligne. Deux définitions identiques divergent au
+# premier réglage ajouté d'un seul côté, et la copie est justement le verbe
+# où l'oubli se voit le plus tard.
+_RSYNC_SSH = $(_SSH_CMD)
 
 define _require_host
 	@test -n "$(SSH_HOST)" || \
-		(echo "Error: SSH_HOST is required. Usage: make $@ SSH_HOST=hostname [SSH_USER=erplibre] [SSH_PORT=22] [SSH_KEY=~/.ssh/id_rsa]" && exit 1)
+		(echo "Error: SSH_HOST is required. Usage: make $@ SSH_HOST=hostname [SSH_USER=erplibre] [SSH_PORT=22] [SSH_KEY=~/.ssh/id_rsa] [SSH_JUMP=bastion]" && exit 1)
 endef
 
 # Test SSH connectivity
@@ -101,7 +108,7 @@ ssh_logs:
 ssh_make:
 	$(call _require_host)
 	@test -n "$(SSH_TARGET)" || \
-		(echo "Error: SSH_TARGET is required. Usage: make ssh_make SSH_HOST=hostname SSH_TARGET=make_target" && exit 1)
+		(echo "Error: SSH_TARGET is required. Usage: make ssh_make SSH_HOST=hostname SSH_TARGET=make_target [SSH_JUMP=bastion]" && exit 1)
 	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) "cd $(SSH_PATH) && make $(SSH_TARGET)"
 
 # Install systemd service on remote server
@@ -121,7 +128,7 @@ SSH_ADMIN_EMAIL ?=
 ssh_install_nginx:
 	$(call _require_host)
 	@test -n "$(SSH_DOMAIN)" || \
-		(echo "Error: SSH_DOMAIN is required. Usage: make ssh_install_nginx SSH_HOST=hostname SSH_DOMAIN=example.com [SSH_ADMIN_EMAIL=admin@example.com]" && exit 1)
+		(echo "Error: SSH_DOMAIN is required. Usage: make ssh_install_nginx SSH_HOST=hostname SSH_DOMAIN=example.com [SSH_ADMIN_EMAIL=admin@example.com] [SSH_JUMP=bastion]" && exit 1)
 	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) \
 		"cd $(SSH_PATH) && sudo python3 script/nginx/deploy_nginx_and_certbot.py \
 		--generate_nginx \

@@ -30,27 +30,30 @@ from async_case import AsyncCase  # noqa: E402
 
 class TestParseRecipients(unittest.TestCase):
     def test_single(self):
-        self.assertEqual(parse_recipients("a@y.ca"), ["a@y.ca"])
+        self.assertEqual(parse_recipients("a@example.com"), ["a@example.com"])
 
     def test_comma_separated(self):
         self.assertEqual(
-            parse_recipients("a@y.ca, b@y.ca"), ["a@y.ca", "b@y.ca"]
+            parse_recipients("a@example.com, b@example.com"),
+            ["a@example.com", "b@example.com"],
         )
 
     def test_semicolon_also_works(self):
         self.assertEqual(
-            parse_recipients("a@y.ca; b@y.ca"), ["a@y.ca", "b@y.ca"]
+            parse_recipients("a@example.com; b@example.com"),
+            ["a@example.com", "b@example.com"],
         )
 
     def test_keeps_display_names(self):
         self.assertEqual(
-            parse_recipients("Alice <a@y.ca>, b@y.ca"),
-            ["Alice <a@y.ca>", "b@y.ca"],
+            parse_recipients("Alice <a@example.com>, b@example.com"),
+            ["Alice <a@example.com>", "b@example.com"],
         )
 
     def test_drops_empty_fragments(self):
         self.assertEqual(
-            parse_recipients("a@y.ca,,  ,b@y.ca"), ["a@y.ca", "b@y.ca"]
+            parse_recipients("a@example.com,,  ,b@example.com"),
+            ["a@example.com", "b@example.com"],
         )
 
     def test_empty_string(self):
@@ -185,7 +188,9 @@ class DeliverCase(unittest.TestCase):
             self.account, mode="clear", base=Path(self.tmp.name)
         )
         self.store.open()
-        self.msg = build_message(self.account, "a@y.ca", "Devis", "Bonjour")
+        self.msg = build_message(
+            self.account, "a@example.com", "Devis", "Bonjour"
+        )
 
     def tearDown(self):
         self.store.close()
@@ -273,7 +278,7 @@ class TestDeliver(DeliverCase):
 
         Ce test a longtemps parcouru le chemin d'ÉCHEC : le harnais
         fournissait un transport `None`, l'APPEND partait en AttributeError,
-        et l'unique assertion — « a@y.ca » dans le statut — était vraie du
+        et l'unique assertion — « a@example.com » dans le statut — était vraie du
         statut d'échec comme de celui du succès. Les deux assertions du bas
         sont ce qui distingue les deux, et donc ce qui protège encore si le
         défaut du harnais redevenait cassé.
@@ -282,10 +287,10 @@ class TestDeliver(DeliverCase):
         status = deliver(
             self.session(),
             self.msg,
-            send_fn=lambda acc, m, tr: sent.append(m) or ["a@y.ca"],
+            send_fn=lambda acc, m, tr: sent.append(m) or ["a@example.com"],
         )
         self.assertEqual(len(sent), 1)
-        self.assertIn("a@y.ca", status)
+        self.assertIn("a@example.com", status)
         # `⚠` et le balisage rouge sont posés par le chemin d'échec seul, et
         # ne dépendent pas de la langue — contrairement au texte traduit.
         self.assertNotIn("⚠", status)
@@ -303,7 +308,7 @@ class TestDeliver(DeliverCase):
         deliver(
             self.session(transport=transport),
             self.msg,
-            send_fn=lambda acc, m, tr: ["a@y.ca"],
+            send_fn=lambda acc, m, tr: ["a@example.com"],
         )
         self.assertEqual(transport.appended[0][0], self.account.sent_folder)
         self.assertIn("\\Seen", transport.appended[0][1])
@@ -326,7 +331,7 @@ class TestDeliver(DeliverCase):
         deliver(
             self.session(transport=transport),
             self.msg,
-            send_fn=lambda acc, m, tr: ["a@y.ca"],
+            send_fn=lambda acc, m, tr: ["a@example.com"],
         )
         self.assertEqual(transport.appended[0][0], "INBOX.Sent")
 
@@ -340,9 +345,9 @@ class TestDeliver(DeliverCase):
         status = deliver(
             self.session(transport=BrokenTransport()),
             self.msg,
-            send_fn=lambda acc, m, tr: ["a@y.ca"],
+            send_fn=lambda acc, m, tr: ["a@example.com"],
         )
-        self.assertIn("a@y.ca", status)
+        self.assertIn("a@example.com", status)
 
     def test_append_failure_is_unmistakable_and_logged(self):
         """Round 17 : l'échec ne doit plus se lire comme un simple suffixe en
@@ -357,9 +362,9 @@ class TestDeliver(DeliverCase):
             status = deliver(
                 self.session(transport=BrokenTransport()),
                 self.msg,
-                send_fn=lambda acc, m, tr: ["a@y.ca"],
+                send_fn=lambda acc, m, tr: ["a@example.com"],
             )
-        self.assertIn("a@y.ca", status)
+        self.assertIn("a@example.com", status)
         self.assertTrue(status.startswith("[b red]"))
         self.assertIn("dossier Envoyés introuvable", status)
 
@@ -385,7 +390,9 @@ class TestDeliver(DeliverCase):
                 pass
 
         session = self.session(transport=FakeTransport())
-        deliver(session, self.msg, send_fn=lambda acc, m, tr: ["a@y.ca"])
+        deliver(
+            session, self.msg, send_fn=lambda acc, m, tr: ["a@example.com"]
+        )
         self.assertEqual(session.syncer.synced, [self.account.sent_folder])
 
     def test_targeted_sync_uses_the_resolved_folder_not_the_preset(self):
@@ -397,7 +404,9 @@ class TestDeliver(DeliverCase):
         self.assertNotEqual("INBOX.Sent", self.account.sent_folder)
 
         session = self.session(transport=FakeTransport())
-        deliver(session, self.msg, send_fn=lambda acc, m, tr: ["a@y.ca"])
+        deliver(
+            session, self.msg, send_fn=lambda acc, m, tr: ["a@example.com"]
+        )
         self.assertEqual(session.syncer.synced, ["INBOX.Sent"])
 
     def test_failed_append_does_not_trigger_a_sync(self):
@@ -408,7 +417,9 @@ class TestDeliver(DeliverCase):
                 raise OSError("dossier Envoyés introuvable")
 
         session = self.session(transport=BrokenTransport())
-        deliver(session, self.msg, send_fn=lambda acc, m, tr: ["a@y.ca"])
+        deliver(
+            session, self.msg, send_fn=lambda acc, m, tr: ["a@example.com"]
+        )
         self.assertEqual(session.syncer.synced, [])
 
     def test_appended_copy_has_no_bcc_header(self):
@@ -427,13 +438,17 @@ class TestDeliver(DeliverCase):
                 self.appended.append(raw)
 
         msg = build_message(
-            self.account, "a@y.ca", "Devis", "Bonjour", bcc="secret@y.ca"
+            self.account,
+            "a@example.com",
+            "Devis",
+            "Bonjour",
+            bcc="secret@y.ca",
         )
         transport = FakeTransport()
         deliver(
             self.session(transport=transport),
             msg,
-            send_fn=lambda acc, m, tr: ["a@y.ca"],
+            send_fn=lambda acc, m, tr: ["a@example.com"],
         )
         self.assertNotIn(b"X-ERPLibre-Bcc", transport.appended[0])
         self.assertNotIn(b"secret@y.ca", transport.appended[0])
@@ -1101,7 +1116,7 @@ class TestPreviewShowsFullDate(ComposeScreenCase):
             size=100,
             flags="",
             msgid="<1@x.ca>",
-            frm="Alice <a@y.ca>",
+            frm="Alice <a@example.com>",
             to="moi@x.ca",
             subject="Devis",
             snippet="",
@@ -1195,7 +1210,7 @@ class TestPreviewNeverParsesTheMessageAsMarkup(ComposeScreenCase):
         self.assertIn("Promo", rendu)
 
     async def test_a_bracket_token_in_the_sender_is_harmless(self):
-        rendu = await self._apercu(frm=f"Pub {self.JETON} <a@y.ca>")
+        rendu = await self._apercu(frm=f"Pub {self.JETON} <a@example.com>")
         self.assertIn("Pub", rendu)
 
     async def test_the_labels_are_still_emphasised(self):
@@ -1209,7 +1224,7 @@ class TestPreviewNeverParsesTheMessageAsMarkup(ComposeScreenCase):
             size=100,
             flags="",
             msgid="<1@x.ca>",
-            frm="a@y.ca",
+            frm="a@example.com",
             to="moi@x.ca",
             subject="Devis",
             snippet="",
@@ -1253,7 +1268,7 @@ class TestSearchClear(ComposeScreenCase):
                     size=10,
                     flags="",
                     msgid="<1@x.ca>",
-                    frm="Alice <a@y.ca>",
+                    frm="Alice <a@example.com>",
                     to="moi@x.ca",
                     subject="Devis",
                     snippet="",
@@ -1264,7 +1279,7 @@ class TestSearchClear(ComposeScreenCase):
                     size=10,
                     flags="",
                     msgid="<2@x.ca>",
-                    frm="Bob <b@y.ca>",
+                    frm="Bob <b@example.com>",
                     to="moi@x.ca",
                     subject="CR réunion",
                     snippet="",
