@@ -87,6 +87,12 @@ def _deploy():
 
 DQ = _deploy()
 
+# Proxmox VE 9 est bâtie sur Debian 13 : c'est ce qui autorise sa ligne de
+# catalogue à recopier le nom de code et l'identifiant libosinfo de
+# celle-ci. Le lien est nommé ici pour que les épreuves l'épinglent à la
+# TABLE plutôt qu'au littéral qu'elle contient aujourd'hui.
+DEBIAN_SOUS_PVE9 = "13"
+
 # Somme publiée par l'amont sur « Install Proxmox VE on Debian 13 Trixie », et
 # recopiée ici EXPRÈS : deux copies indépendantes, c'est ce qui donne son sens
 # à un condensat épinglé. Si l'une change sans l'autre, ce test le dit.
@@ -137,8 +143,25 @@ class TestCatalogue(unittest.TestCase):
 
     def test_it_reuses_debians_osinfo(self):
         """Le système EST une Debian : libosinfo n'a pas d'entrée Proxmox, et
-        en inventer une ferait échouer virt-install."""
-        self.assertEqual("debian13", DQ.PROXMOX_VERSIONS["9"][1])
+        en inventer une ferait échouer virt-install.
+
+        Épinglé à la TABLE DEBIAN et non à un littéral : ce qui est copié se
+        vérifie contre son autorité, sans quoi l'épreuve reste verte le jour
+        où l'autorité change et où la copie, elle, ne bouge pas.
+        """
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][1],
+            DQ.PROXMOX_VERSIONS["9"][1],
+        )
+
+    def test_it_reuses_debians_code_name(self):
+        """Le nom de code choisit l'image téléchargée : divergent, il en
+        vise une qui n'existe pas, et le déploiement s'arrête au premier
+        téléchargement."""
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][0],
+            DQ.PROXMOX_VERSIONS["9"][0],
+        )
 
     def test_it_is_named_after_proxmox_not_after_the_key(self):
         self.assertEqual("Proxmox VE 9", DQ.distro_label("proxmox", "9"))
@@ -148,7 +171,14 @@ class TestCatalogue(unittest.TestCase):
 
 
 class TestLesDeuxCatalogues(unittest.TestCase):
-    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent."""
+    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent.
+
+    S'ACCORDER PORTE SUR TOUT CE QUI EST RECOPIÉ, et la copie porte les
+    versions et la version par défaut autant que les noms. Comparer les
+    seuls noms laissait passer une version ajoutée d'un côté — l'écran ne
+    la propose pas — et un défaut déplacé — l'écran en propose une autre
+    que celle que le déploiement retiendra.
+    """
 
     def test_the_menu_offers_every_distro_of_the_catalogue(self):
         menu = set(TODO._QEMU_DISTROS)
@@ -159,6 +189,86 @@ class TestLesDeuxCatalogues(unittest.TestCase):
             "les deux catalogues divergent : "
             f"menu seul {menu - catalogue}, deploy seul {catalogue - menu}",
         )
+
+    def test_the_menu_offers_every_version_of_each_distro(self):
+        """Une version ajoutée à la table et pas au menu n'est proposée
+        nulle part : elle existe pour le déploiement et pour personne."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    list(DQ.DISTROS[distro][0]),
+                    list(TODO._QEMU_DISTROS[distro][0]),
+                )
+
+    def test_the_menu_preselects_the_version_the_deploy_would_take(self):
+        """Le défaut du menu est ce qu'on obtient en tapant Entrée. Décalé
+        de celui de la table, l'écran annonce une version et le
+        déploiement en pose une autre, sans qu'un mot soit dit."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    DQ.DISTROS[distro][1], TODO._QEMU_DISTROS[distro][1]
+                )
+
+    def test_the_package_families_match_the_authoritative_table(self):
+        """Le filtre d'outils est une COPIE de plus, et elle avait dérivé.
+
+        Une famille absente rend "" et le filtre écarte alors tout outil
+        qui en exige une : une VM Proxmox — qui EST une Debian — perdait
+        les deux outils réclamant « apt ». Ne déclarer aucune distribution
+        les gardait, donc le filtre punissait la précision.
+        """
+        self.assertEqual(
+            DQ.DISTRO_PKG,
+            TODO._QEMU_DISTRO_FAMILY,
+            "la table des familles diverge de l'autorité : "
+            f"autorité seule "
+            f"{set(DQ.DISTRO_PKG) - set(TODO._QEMU_DISTRO_FAMILY)}, "
+            f"copie seule "
+            f"{set(TODO._QEMU_DISTRO_FAMILY) - set(DQ.DISTRO_PKG)}",
+        )
+
+    def test_naming_a_distro_never_gives_fewer_tools_than_naming_none(self):
+        """LE RENVERSEMENT EST LE SIGNE. Ne rien dire ne doit pas offrir
+        plus que dire juste — c'est ainsi qu'une famille manquante se
+        voit, quelle que soit la distribution qui la perd."""
+        tous = tuple(TODO._QEMU_VM_TOOLS)
+        muet = len(TODO._qemu_tools_for(tous, "amd64", "gnome", distro=""))
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                nomme = len(
+                    TODO._qemu_tools_for(tous, "amd64", "gnome", distro=distro)
+                )
+                self.assertLessEqual(
+                    nomme,
+                    muet,
+                    "nommer une distribution ne peut pas en ajouter",
+                )
+
+    def test_a_proxmox_vm_gets_the_apt_tools(self):
+        """Contrôle positif : la borne par famille doit continuer d'écarter
+        ce qu'une distribution ne sait pas installer."""
+        tous = tuple(TODO._QEMU_VM_TOOLS)
+        apt = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="debian"
+            )
+        }
+        pve = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="proxmox"
+            )
+        }
+        dnf = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="fedora"
+            )
+        }
+        self.assertEqual(apt, pve)
+        self.assertNotEqual(apt, dnf)
 
     def test_the_fallback_tuples_match_the_authoritative_table(self):
         """Le repli du menu est une COPIE, et une copie ne suit pas.

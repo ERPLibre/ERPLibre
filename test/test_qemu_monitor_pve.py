@@ -1070,5 +1070,270 @@ class TestLEtat(unittest.TestCase):
         self.assertIsNone(mon.PVE_ETATS.get("n'importe quoi"))
 
 
+class TestUneVmSansPointDEntreeNEmportePasLesAutres(unittest.TestCase):
+    """Un lot d'installations se lance VM par VM, et l'une peut n'être
+    joignable par rien : ni adresse, ni alias, et portée par un hôte, donc
+    aucun hyperviseur local pour relire son bail.
+
+    Refuser d'un bloc laisserait alors sans installation des machines qui,
+    elles, se joignent — et le lot est justement la raison d'être de cet
+    écran. Le refus va dans le journal de CETTE VM, que le tableau de bord
+    affiche déjà.
+    """
+
+    INJOIGNABLE = {"name": "vm-muette", "ip": "", "pve": {"vmid": 101}}
+    JOIGNABLE = {
+        "name": "vm-claire",
+        "ip": "alias-de-banc",
+        "pve": {"vmid": 102, "target": "hote.exemple"},
+    }
+
+    def lancer(self, vms):
+        import tempfile
+        from pathlib import Path
+
+        lances = []
+        vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+
+        def faux_launch(fiche, *_a, **_k):
+            # La PREMIÈRE ligne du vrai lanceur, et rien d'autre : c'est
+            # d'elle que vient le refus, et le reste ouvrirait un « ssh ».
+            vm_verbs.exec_address(fiche)
+            lances.append(fiche.name)
+
+        mon._launch_one = faux_launch
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        mon.session_dir = lambda: Path(tmp.name)
+        try:
+            manifeste = mon.launch_installs(vms, "", "true")
+        finally:
+            mon._launch_one, mon.session_dir = vrai_launch, vrai_dir
+        journaux = {
+            chemin.name: chemin.read_text(encoding="utf-8")
+            for chemin in Path(tmp.name).rglob("*.log")
+        }
+        return lances, journaux, manifeste
+
+    def test_the_reachable_vm_is_still_launched(self):
+        lances, _j, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertEqual(["vm-claire"], lances)
+
+    def test_a_vm_without_an_ssh_line_still_enters_the_manifest(self):
+        """LA LIGNE SSH EST UN CONFORT, pas une condition d'existence.
+
+        Une VM libvirt sans bail traverse le lanceur — son adresse se
+        ré-résout en chemin — puis butait sur la composition de sa ligne
+        ssh, une ligne plus bas et hors du garde. L'exception sortait de
+        la boucle ET de la fonction : AUCUN manifeste n'était écrit, donc
+        la VM joignable du même lot disparaissait avec elle, son
+        installation détachée tournant sans rien pour la retrouver.
+        """
+        import json
+        import tempfile
+        from pathlib import Path
+
+        vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+        mon._launch_one = lambda *_a, **_k: None
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        mon.session_dir = lambda: Path(tmp.name)
+        try:
+            chemin = mon.launch_installs(
+                [
+                    {"name": "sans-bail", "ip": ""},
+                    {"name": "avec-bail", "ip": "192.0.2.10"},
+                ],
+                "",
+                "true",
+            )
+        finally:
+            mon._launch_one, mon.session_dir = vrai_launch, vrai_dir
+        with open(chemin, encoding="utf-8") as fh:
+            vms = {v["name"]: v for v in json.load(fh)["vms"]}
+        self.assertEqual({"sans-bail", "avec-bail"}, set(vms))
+        self.assertEqual("", vms["sans-bail"]["ssh"])
+        self.assertIn("192.0.2.10", vms["avec-bail"]["ssh"])
+
+    def test_the_unreachable_vm_says_so_in_its_own_log(self):
+        """Sans cette ligne, son journal s'arrête sur l'en-tête et se lit
+        comme une installation qui n'a pas encore commencé."""
+        _l, journaux, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertIn("exec_address", journaux["vm-muette.log"])
+        self.assertNotIn("exec_address", journaux["vm-claire.log"])
+
+
+class TestUnePauseDeParcNAbandonnePasLesSuivantes(unittest.TestCase):
+    """Un backend qui ne sait pas mettre en pause refuse — et ce refus
+    n'est ni une panne de sous-processus, ni une raison d'abandonner les
+    VM suivantes du lot.
+
+    L'`except` ne guettait que `OSError` et les pannes de sous-processus.
+    Le refus du verbe sortait donc de la boucle : tout ce qui venait après
+    la première VM refusée restait en marche, et l'écran annonçait
+    pourtant le lot entier mis en pause.
+    """
+
+    def app(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        chemin = Path(tmp.name) / "session.json"
+        chemin.write_text(
+            json.dumps({"branch": "", "started": 0, "vms": []}),
+            encoding="utf-8",
+        )
+        return mon.run_monitor(str(chemin), run_app=False)
+
+    def cibles(self):
+        return [
+            mon.handle_of({"name": "libvirt-a", "ip": "192.0.2.10"}),
+            mon.handle_of({"name": "lima-b", "ip": "lima-b", "lima": True}),
+            mon.handle_of({"name": "libvirt-c", "ip": "192.0.2.11"}),
+        ]
+
+    def jouer(self):
+        lancees = []
+        vrai = mon.subprocess.run
+        mon.subprocess.run = lambda cmd, **_k: lancees.append(cmd)
+        try:
+            manques = self.app()._virsh_bulk("suspend", self.cibles())
+        finally:
+            mon.subprocess.run = vrai
+        return manques, lancees
+
+    def test_the_vms_after_the_refused_one_are_still_acted_on(self):
+        _manques, lancees = self.jouer()
+        self.assertEqual(2, len(lancees), lancees)
+        self.assertTrue(any("libvirt-c" in c for c in lancees), lancees)
+
+    def test_it_names_what_it_could_not_do(self):
+        """Compter le lot entier comme mis en pause laisse croire un parc
+        au repos qui tourne encore."""
+        manques, _lancees = self.jouer()
+        self.assertEqual(["lima-b"], manques)
+
+    def test_a_lot_it_can_serve_entirely_reports_nothing(self):
+        """Contrôle positif : nommer toujours un manque rendrait le
+        message illisible là où tout s'est bien passé."""
+        lancees = []
+        vrai = mon.subprocess.run
+        mon.subprocess.run = lambda cmd, **_k: lancees.append(cmd)
+        try:
+            manques = self.app()._virsh_bulk(
+                "suspend", [self.cibles()[0], self.cibles()[2]]
+            )
+        finally:
+            mon.subprocess.run = vrai
+        self.assertEqual([], manques)
+        self.assertEqual(2, len(lancees))
+
+
+class TestLeSuiviNeMeurtPasSurUnVerbeRefuse(unittest.TestCase):
+    """Une exception levée dans une action Textual DÉMONTE l'application.
+
+    L'écran disparaît, une trace s'imprime, et `run()` revient NORMALEMENT
+    — si bien que le `except` posé autour de lui par le menu ne se
+    déclenche jamais. L'utilisateur se retrouve au shell sans un mot du
+    programme, tandis que l'installation, détachée, continue sans plus
+    rien pour la suivre. Rouvrir le suivi le ramène au même écran, avec la
+    même touche piégée.
+
+    Un backend qui ne sait pas faire le DIT : c'est une nouvelle à
+    afficher, pas une panne du tableau de bord.
+    """
+
+    LIMA = {"name": "lima-b", "ip": "lima-b", "lima": True}
+
+    def app(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        chemin = Path(tmp.name) / "session.json"
+        chemin.write_text(
+            json.dumps({"branch": "", "started": 0, "vms": [self.LIMA]}),
+            encoding="utf-8",
+        )
+        app = mon.run_monitor(str(chemin), run_app=False)
+        self.dits = []
+        app.notify = lambda texte, **_k: self.dits.append(texte)
+        app._selected = self.LIMA["name"]
+        app._vm_by_name = lambda _n: self.LIMA
+        return app
+
+    def test_entering_the_vm_says_so_instead_of_dying(self):
+        app = self.app()
+        app.action_ssh()
+        self.assertTrue(self.dits)
+        self.assertIn("ssh", self.dits[0])
+
+    def test_the_console_says_so_instead_of_dying(self):
+        app = self.app()
+        app.action_console()
+        self.assertTrue(self.dits)
+
+    def test_deleting_is_refused_before_the_confirmation_screen(self):
+        """Proposer puis refuser ferait LIRE, puis ACCORDER, une
+        destruction qui n'aura pas lieu — et l'écran décrivait un geste
+        qui n'est pas celui de cette VM."""
+        app = self.app()
+        ecrans = []
+        app.push_screen = lambda ecran, *_a, **_k: ecrans.append(ecran)
+        app._ask_delete(self.LIMA)
+        self.assertEqual([], ecrans)
+        self.assertTrue(self.dits)
+
+    def test_a_backend_it_serves_still_gets_its_screen(self):
+        """Contrôle positif : tout refuser rendrait la suppression
+        impossible là où elle marche."""
+        app = self.app()
+        ecrans = []
+        app.push_screen = lambda ecran, *_a, **_k: ecrans.append(ecran)
+        app._ask_delete({"name": "libvirt-a", "ip": "192.0.2.10"})
+        self.assertEqual(1, len(ecrans))
+
+
+class TestCeQueLaConfirmationAnnonce(unittest.TestCase):
+    """« Une confirmation doit nommer ce qu'elle détruit, sur la machine où
+    elle le détruit » — la phrase est du fichier, et elle ne tenait que
+    deux backends sur trois.
+
+    L'écran traitait libvirt, puis SUPPOSAIT Proxmox pour tout le reste :
+    une instance Lima s'y voyait annoncer « qm destroy … --purge » sur un
+    hôte Proxmox nommé « ? ».
+    """
+
+    def test_a_lima_instance_is_not_announced_as_a_proxmox_vm(self):
+        lignes = " ".join(
+            mon.delete_lines({"name": "lima-b", "ip": "lima-b", "lima": True})
+        )
+        self.assertNotIn("qm destroy", lignes)
+        self.assertNotIn("Proxmox", lignes)
+
+    def test_a_proxmox_vm_still_gets_its_own_words(self):
+        lignes = " ".join(
+            mon.delete_lines(
+                {
+                    "name": "vm-a",
+                    "ip": "hote+vm-a",
+                    "pve": {"vmid": 101, "target": "hote.exemple"},
+                }
+            )
+        )
+        self.assertIn("qm destroy", lignes)
+
+    def test_a_libvirt_vm_still_gets_its_own_words(self):
+        lignes = " ".join(
+            mon.delete_lines({"name": "vm-a", "ip": "192.0.2.10"})
+        )
+        self.assertIn("qcow2", lignes)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1079,11 +1079,24 @@ class QemuInstallMixin:
         },
     }
 
-    # Famille de paquets de chaque distribution, pour borner un outil à ce qui
-    # sait l'installer.
+    # Famille de paquets de chaque distribution, pour borner un outil à ce
+    # qui sait l'installer.
+    #
+    # UNE COPIE DÉLIBÉRÉE de `deploy_qemu.DISTRO_PKG`, pour la même raison
+    # que le catalogue du menu : le filtre est une méthode de CLASSE, elle
+    # n'a pas le module sous la main, et elle doit répondre même quand plus
+    # rien ne peut le lire. Une épreuve tient l'accord des deux — sans
+    # elle, la copie avait déjà perdu « proxmox ».
+    #
+    # CE QUE LE MANQUE COÛTAIT : `.get(distro, "")` rend une famille vide,
+    # et le filtre écarte alors tout outil qui en exige une. Une VM Proxmox
+    # — qui EST une Debian — perdait la compilation mobile et l'AVD, les
+    # deux qui demandent « apt ». Ne déclarer AUCUNE distribution les
+    # gardait : le filtre punissait la précision.
     _QEMU_DISTRO_FAMILY = {
         "ubuntu": "apt",
         "debian": "apt",
+        "proxmox": "apt",
         "fedora": "dnf",
         "almalinux": "dnf",
         "rocky": "dnf",

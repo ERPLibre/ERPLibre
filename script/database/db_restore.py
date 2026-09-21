@@ -241,8 +241,19 @@ def offer_tidy(check_filestore, rapport):
         shutil.move(source, cible)
     for source, _cible in doublons:
         os.remove(source)
-    shutil.rmtree(check_filestore.nested_dir(rapport), ignore_errors=True)
     print(f"✅ {len(remonter)} remontés, {len(doublons)} doublons supprimés.")
+    # ON NOMME, ON N'EFFACE PAS — même raison que l'écran du menu, dont ce
+    # bloc est le jumeau : le plan ne couvre qu'une forme, et retirer le nid
+    # d'un bloc emportait ce qu'il n'avait ni compté ni montré.
+    dossier = check_filestore.nested_dir(rapport)
+    restes = check_filestore.tidy_nested_leftovers(dossier)
+    if restes:
+        print(f"⚠  {len(restes)} fichier(s) hors du plan, laissés en place :")
+        for chemin in restes[:10]:
+            print(f"     {chemin}")
+        print(f"   Dossier : {dossier}")
+    elif check_filestore.drop_empty_tree(dossier):
+        print("   Dossier imbriqué retiré (il était vide).")
 
 
 def image_path(image):

@@ -29,6 +29,8 @@ from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
 from script.vm.backend import (
     LIBVIRT,
+    PVE,
+    VerbNotImplemented,
     group_by_host,
     handle_of,
     is_hosted,
@@ -410,6 +412,25 @@ def _log_header(vm: dict, branch: str, when: str) -> str:
     )
 
 
+def _ligne_ssh(handle) -> str:
+    """La ligne à recopier pour entrer dans cette VM, ou "".
+
+    UN CONFORT, PAS UNE CONDITION D'EXISTENCE. Une VM libvirt sans bail
+    traverse le lanceur — son adresse se ré-résout en chemin — puis ne sait
+    pas encore composer sa ligne ssh. Laisser le refus sortir emportait la
+    boucle ET la fonction : aucun manifeste n'était écrit, si bien que les
+    VM joignables du même lot disparaissaient avec elle, leurs
+    installations détachées tournant sans rien pour les retrouver.
+
+    Vide dit « pas encore connue ». Le tableau de bord ré-résout l'adresse
+    à chaque tour, et l'affichera dès qu'elle existe.
+    """
+    try:
+        return vm_verbs.connect_command(handle)
+    except VerbNotImplemented:
+        return ""
+
+
 def launch_installs(
     vms: list[dict],
     branch: str,
@@ -451,15 +472,25 @@ def launch_installs(
         # laisserait trois vérités possibles si le dictionnaire bougeait
         # entre-temps, et c'est la preuve d'identité qui en souffrirait.
         fiche = handle_of(vm)
-        _launch_one(
-            fiche,
-            cmd_vm,
-            log_path,
-            installs=bool(branch),
-            # Une installation qui pose un NOYAU ne vaut rien avant le
-            # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
-            reboot=reboot_expected(cmd_vm),
-        )
+        try:
+            _launch_one(
+                fiche,
+                cmd_vm,
+                log_path,
+                installs=bool(branch),
+                # Une installation qui pose un NOYAU ne vaut rien avant le
+                # redémarrage : l'enveloppe s'en charge et ne conclut
+                # qu'après.
+                reboot=reboot_expected(cmd_vm),
+            )
+        except VerbNotImplemented as injoignable:
+            # Une VM sans point d'entrée n'emporte pas les autres : son
+            # refus va dans SON journal, que le tableau de bord affiche
+            # déjà, et la boucle poursuit. Refuser d'un bloc laisserait
+            # sans installation des machines qui, elles, se joignent.
+            with open(log_path, "a", encoding="utf-8") as journal:
+                journal.write(f"\n  ✗ {injoignable}\n")
+            continue
         entree = {
             "name": vm["name"],
             "ip": vm["ip"],
@@ -472,7 +503,7 @@ def launch_installs(
             # s'atteignent pas par ssh. Le tableau de bord l'affiche pour
             # qu'on la recopie : fausse, elle échoue chez qui la recopie, et
             # le message de ssh ne dit pas que le backend était le mauvais.
-            "ssh": vm_verbs.connect_command(fiche),
+            "ssh": _ligne_ssh(fiche),
         }
         # La preuve d'identité est relevée MAINTENANT : c'est le seul
         # instant où l'on sait que ce nom désigne bien cette machine.
@@ -1916,6 +1947,16 @@ def delete_lines(vm) -> list:
             "",
             f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
         ]
+    # LE VOCABULAIRE EST CLOS ICI AUSSI. Traiter libvirt puis SUPPOSER
+    # Proxmox donnait à une instance Lima le texte d'un hôte qu'elle n'a
+    # pas — « qm destroy … --purge » sur un hôte nommé « ? ». C'est la
+    # faute même que cette fonction existe pour empêcher, un backend plus
+    # tard.
+    if handle.backend != PVE:
+        return [
+            f"Cet écran ne sait pas détruire une VM « {handle.backend} ».",
+            "Rien ne sera touché ici.",
+        ]
     hote = handle.host.get("target") or "?"
     return [
         f"Sur l'hôte Proxmox {hote}, la VM {handle.key} est arrêtée",
@@ -2790,7 +2831,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):
                     vm["ip"] = ip
-                    vm["ssh"] = vm_verbs.connect_command(handle_of(vm))
+                    vm["ssh"] = _ligne_ssh(handle_of(vm))
                     changed = True
             if changed:
                 self._refresh_ssh()
@@ -2822,11 +2863,32 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def action_follow(self) -> None:
             self._follow = not self._follow
 
+        def _verbe(self, faire):
+            """Exécute un verbe de VM. Rend son résultat, ou None.
+
+            UNE EXCEPTION DANS UNE ACTION TEXTUAL DÉMONTE L'APPLICATION :
+            l'écran disparaît, une trace s'imprime, et `run()` revient
+            NORMALEMENT — si bien que le « except » posé autour de lui par
+            le menu ne se déclenche jamais. L'utilisateur se retrouve au
+            shell sans un mot du programme, tandis que l'installation,
+            détachée, continue sans plus rien pour la suivre.
+
+            Un backend qui ne sait pas faire le DIT. C'est une nouvelle à
+            afficher, pas une panne du tableau de bord.
+            """
+            try:
+                return faire()
+            except VerbNotImplemented as refus:
+                self.notify(str(refus), severity="warning")
+                return None
+
         def action_ssh(self) -> None:
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
-            cmd = vm_ssh_prefix(vm)
+            cmd = self._verbe(lambda: vm_ssh_prefix(vm))
+            if not cmd:
+                return
             with self.suspend():
                 print(f"\n→ {cmd}\n")
                 os.system(f"{cmd} || true")
@@ -2849,9 +2911,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # L'identité choisit l'outil ET la séquence de sortie : elles
             # ne sont pas les mêmes selon qui attache, et la donner fausse
             # laisse l'utilisateur enfermé dans une console.
-            ouverture = vm_verbs.console(
-                handle_of(vm), sudo=sudo_prefix(), uri=URI
+            ouverture = self._verbe(
+                lambda: vm_verbs.console(
+                    handle_of(vm), sudo=sudo_prefix(), uri=URI
+                )
             )
+            if not ouverture:
+                return
             cmd, titre, sortie = ouverture
             with self.suspend():
                 # La console n'affiche que ce qui arrive APRÈS l'attachement :
@@ -3021,26 +3087,44 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _virsh_bulk(action, cibles):
             """Suspend/reprend chaque VM, chacune par SON hyperviseur.
 
+            Rend les NOMS qu'elle n'a pas pu traiter, pour que l'appelant
+            n'annonce pas le lot entier. Compter comme mise en pause une VM
+            qui tourne encore est le même défaut que la pause posée sur la
+            mauvaise machine : rien ne casse, rien n'alerte.
+
             `cibles` : des identités. La pause est le pire endroit pour se
             tromper de machine — rien ne casse, rien n'alerte, et la VM
             figée est celle qu'on n'a pas regardée.
 
+            UN BACKEND QUI NE SAIT PAS METTRE EN PAUSE REFUSE, et ce refus
+            n'est ni une panne de sous-processus ni une raison d'abandonner
+            les suivantes. Absent du filet, il sortait de la boucle et
+            laissait en marche tout ce qui venait après la première
+            refusée.
+
             Le délai est celui de la plus lente : une commande distante
             traverse un ou deux rebonds avant d'atteindre l'hyperviseur.
             """
+            manques = []
             for handle in cibles:
                 try:
+                    commande = vm_verbs.power_command(
+                        handle, action, sudo_prefix(), URI
+                    )
+                except VerbNotImplemented:
+                    manques.append(handle.name)
+                    continue
+                try:
                     subprocess.run(
-                        vm_verbs.power_command(
-                            handle, action, sudo_prefix(), URI
-                        ),
+                        commande,
                         shell=True,
                         capture_output=True,
                         text=True,
                         timeout=60,
                     )
                 except (OSError, subprocess.SubprocessError):
-                    pass
+                    manques.append(handle.name)
+            return manques
 
         # -- largeur des colonnes ---------------------------------------- #
         COL_STEP = 2
@@ -3176,11 +3260,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not vm.get("ip"):
                 self.notify("Pas d'IP pour cette VM.", severity="error")
                 return
+            prefixe = self._verbe(lambda: vm_ssh_prefix(vm))
+            if not prefixe:
+                return
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
-                os.system(
-                    f"{vm_ssh_prefix(vm)} " f"{shlex.quote(cmd)} || true"
-                )
+                os.system(f"{prefixe} {shlex.quote(cmd)} || true")
                 input("\nEntrée pour revenir au suivi… ")
 
         def _run_update(self, vm, parts) -> None:
@@ -3191,21 +3276,33 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._run_in_vm(vm, cmd, "Mise a jour")
 
         def _ask_delete(self, vm) -> None:
-            """Suppression : jamais sans une seconde main."""
+            """Suppression : jamais sans une seconde main.
 
-            def confirmed(yes):
-                if not yes:
-                    return
-                # Le garde d'identité voyage avec la VM : c'est ce qui
-                # rend une suppression sûre depuis un suivi ROUVERT, dont le
-                # manifeste peut avoir des semaines. L'identité choisit le
-                # backend ; l'écran n'a plus à savoir lequel.
-                cmd = vm_verbs.delete_command(
+            LA COMMANDE EST COMPOSÉE AVANT L'ÉCRAN, et pas seulement pour
+            attraper le refus : un backend qu'on ne sait pas détruire ferait
+            autrement LIRE puis ACCORDER une destruction qui n'aura pas
+            lieu. Composée ici, elle garantit aussi que le texte montré et
+            le geste lancé viennent de la même décision.
+
+            Le garde d'identité voyage avec la VM : c'est ce qui rend une
+            suppression sûre depuis un suivi ROUVERT, dont le manifeste peut
+            avoir des semaines. L'identité choisit le backend ; l'écran n'a
+            plus à savoir lequel.
+            """
+            cmd = self._verbe(
+                lambda: vm_verbs.delete_command(
                     handle_of(vm),
                     with_disks=True,
                     sudo=sudo_prefix(),
                     uri=URI,
                 )
+            )
+            if not cmd:
+                return
+
+            def confirmed(yes):
+                if not yes:
+                    return
                 with self.suspend():
                     print(f"\n=== Suppression — {vm['name']} ===")
                     print(f"→ {cmd}\n")
@@ -3245,9 +3342,19 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     else t("No paused VM to resume.")
                 )
                 return
-            await asyncio.to_thread(self._virsh_bulk, action, targets)
+            manques = await asyncio.to_thread(
+                self._virsh_bulk, action, targets
+            )
             verb = t("paused") if action == "suspend" else t("resumed")
-            self.notify(f"{len(targets)} VM {verb}.")
+            # LE COMPTE EST CELUI DES VM TRAITÉES. Annoncer le lot entier
+            # quand une partie n'a pas bougé laisse croire un parc au repos
+            # qui tourne encore.
+            message = f"{len(targets) - len(manques)} VM {verb}."
+            if manques:
+                message += f" {len(manques)} {t('left alone:')} " + ", ".join(
+                    manques
+                )
+            self.notify(message)
             # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
             self.run_worker(self._tick_domstate(), exclusive=False)
 

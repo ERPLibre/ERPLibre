@@ -209,6 +209,69 @@ class TestGivingUp(ShrinkToolsBase):
         self.assertIn("100", out)
 
 
+class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
+    """« e2fsck -f -y » RÉPARE : il écrit, et « -y » répond oui à tout.
+
+    Deux abandons qui viennent APRÈS lui déclaraient pourtant
+    « changed=False ». Or ce drapeau décide du sort de la sauvegarde : à
+    faux, elle est SUPPRIMÉE comme inutile. Le disque restait donc tel que
+    fsck l'avait laissé, et la seule copie d'avant partait avec.
+
+    Les trois abandons qui précèdent le fsck gardent « False » à juste
+    titre : là, rien n'a touché le disque, et garder une sauvegarde
+    inutile encombrerait le répertoire d'images à chaque essai.
+    """
+
+    RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    @classmethod
+    def corps(cls):
+        import ast
+
+        chemin = os.path.join(cls.RACINE, "script", "todo", "qemu_manage.py")
+        source = open(chemin, encoding="utf-8").read()
+        for noeud in ast.walk(ast.parse(source)):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "_qemu_safe_shrink"
+            ):
+                return source.splitlines(), noeud
+        raise AssertionError("_qemu_safe_shrink introuvable")
+
+    def test_no_abandon_after_the_fsck_claims_nothing_changed(self):
+        """Le contrôle porte sur la POSITION, que rien d'autre ne tient :
+        déplacer un abandon sous le fsck ne casse aucune autre épreuve."""
+        import re
+
+        lignes, fonction = self.corps()
+        fscks = [
+            n
+            for n in range(fonction.lineno, fonction.end_lineno + 1)
+            if '"e2fsck"' in lignes[n - 1] and "subprocess" in lignes[n - 1]
+        ]
+        self.assertTrue(fscks, "le fsck a disparu de la réduction")
+        premier = min(fscks)
+        fautifs = [
+            n
+            for n in range(premier, fonction.end_lineno + 1)
+            if re.search(r"changed=False", lignes[n - 1])
+        ]
+        self.assertEqual([], fautifs)
+
+    def test_the_abandons_before_the_fsck_still_drop_the_backup(self):
+        """Contrôle positif : tout passer à « True » ferait garder une
+        sauvegarde inutile à chaque essai qui n'a rien touché."""
+        import re
+
+        lignes, fonction = self.corps()
+        avant = [
+            n
+            for n in range(fonction.lineno, 2049)
+            if re.search(r"changed=False", lignes[n - 1])
+        ]
+        self.assertTrue(avant, "plus aucun abandon ne rend la sauvegarde")
+
+
 class TestLaRestaurationQuiEchoue(unittest.TestCase):
     """La réparation était ANNONCÉE et n'était jamais vérifiée.
 

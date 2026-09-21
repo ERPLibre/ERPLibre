@@ -412,6 +412,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
+                    yield from self.compose_ai_tools()
+                    yield from self.compose_locale()
                     # Offerte seulement là où elle a un effet : sans cache
                     # actif, rien n'intercepte, et une case qui ne change
                     # rien apprend au lecteur une chose fausse.
@@ -421,33 +423,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                             value=defaults.get("cache_bypass", False),
                             id="f_cache_bypass",
                         )
-                    # Révélés par la case « AI coding tools » du bloc des
-                    # outils : sans elle, ni l'agent ni l'identité git n'ont
-                    # d'objet, et trois widgets de plus encombrent un écran
-                    # déjà dense. Le nom et le courriel sont pré-remplis avec
-                    # l'identité de l'HÔTE — c'est ce que la VM reçoit
-                    # aujourd'hui, et un champ vide la ferait croire absente.
-                    yield Static(
-                        f"  {t('AI coding tools')}",
-                        id="t_ai",
-                        classes="grouptitle",
-                    )
-                    yield Select(
-                        [("Claude Code", "claude"), ("opencode", "opencode")],
-                        value=defaults.get("ai_agent") or "claude",
-                        allow_blank=False,
-                        id="f_ai_agent",
-                    )
-                    yield Input(
-                        value=defaults.get("git_name", ""),
-                        placeholder=t("Name for git"),
-                        id="f_git_name",
-                    )
-                    yield Input(
-                        value=defaults.get("git_email", ""),
-                        placeholder=t("Email for git"),
-                        id="f_git_email",
-                    )
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.
@@ -538,8 +513,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     yield Static("", id="totals")
             yield Footer()
 
-        # Les widgets que la case « AI coding tools » découvre.
-        _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
 
         # L'avertissement que la case « Sans connexion internet » découvre.
         _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 8))
@@ -571,18 +544,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif not vu and suivi.disabled:
                 suivi.disabled = False
                 suivi.value = getattr(self, "_suivi_avant", True)
-
-        def _sync_ai(self) -> None:
-            """Montre ou cache le bloc IA selon la case des outils.
-
-            Cacher plutôt que griser : un champ grisé occupe la place et se
-            lit comme un réglage qu'on aurait le droit de changer."""
-            case = self.query("#f_tool_aidev")
-            vu = bool(case) and bool(case.first(Checkbox).value)
-            for sel in self._AI_WIDGETS:
-                for widget in self.query(sel):
-                    widget.display = vu
-
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
             self._reload_catalog(first_load=True)
@@ -1185,11 +1146,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     and self.query_one("#f_cache_bypass", Checkbox).value
                 ),
                 "offline": offline,
-                "ai_agent": self.query_one("#f_ai_agent", Select).value,
-                "git_name": self.query_one("#f_git_name", Input).value.strip(),
-                "git_email": self.query_one(
-                    "#f_git_email", Input
-                ).value.strip(),
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"

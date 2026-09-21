@@ -79,6 +79,74 @@ class TestProcessZip(unittest.TestCase):
         self.assertIn("secret", other)
 
 
+class TestCeQuUneSortieEnCatastropheLaisse(unittest.TestCase):
+    """`run_cmd` sort par `sys.exit` dès qu'une commande échoue.
+
+    L'étape de nettoyage ne tourne alors jamais, et les bases de travail
+    restent sur l'instance SANS UN MOT. Une base orpheline ne se voit pas :
+    elle occupe un nom que la prochaine génération réutilise, et la
+    création échoue alors sur une collision dont la cause est trois
+    exécutions plus tôt.
+
+    ON NOMME, ON N'EFFACE PAS : la génération vient d'échouer, et ces bases
+    sont l'état dans lequel elle a échoué.
+    """
+
+    @staticmethod
+    def module():
+        import importlib.util
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        chemin = os.path.join(racine, "script", "database", "image_db.py")
+        spec = importlib.util.spec_from_file_location("image_db_banc", chemin)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_every_temporary_database_is_named(self):
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a", "tmp_b"], keep_database=False
+        )
+        texte = "\n".join(lignes)
+        self.assertIn("tmp_a", texte)
+        self.assertIn("tmp_b", texte)
+
+    def test_it_says_how_to_remove_them(self):
+        """Nommer sans dire comment retirer laisse chercher la commande."""
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a"], keep_database=False
+        )
+        self.assertTrue(any("--drop --database tmp_a" in l for l in lignes))
+
+    def test_it_offers_no_removal_when_the_run_asked_to_keep(self):
+        """Proposer d'effacer ce qu'on a demandé de garder se lit comme un
+        écran qui n'a pas suivi."""
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a"], keep_database=True
+        )
+        self.assertTrue(any("tmp_a" in l for l in lignes))
+        self.assertEqual([], [l for l in lignes if "--drop" in l])
+
+    def test_no_temporary_database_says_nothing_at_all(self):
+        """Une ligne vide après un échec se lit comme un second défaut."""
+        self.assertEqual(
+            [], self.module().nommer_les_bases_restantes([], False)
+        )
+
+    def test_the_crash_path_goes_through_the_naming(self):
+        """Le contrôle porte sur le CHEMIN : sans lui, la fonction peut
+        être juste et n'être appelée par personne — c'est l'état d'où l'on
+        part."""
+        import inspect
+
+        corps = inspect.getsource(self.module().main)
+        self.assertIn("except SystemExit", corps)
+        self.assertIn("nommer_les_bases_restantes", corps)
+        self.assertIn("raise", corps)
+
+
 class TestLAideNOrdonnePasCeQueLeParserRefuse(unittest.TestCase):
     """L'aide et le parser du même script se contredisaient.
 

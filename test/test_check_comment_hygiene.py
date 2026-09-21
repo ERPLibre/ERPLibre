@@ -284,6 +284,53 @@ class TestLesIdentifiants(unittest.TestCase):
             {t[0] for t in hygiene.identifiants("/home/prenomnom/git/")},
         )
 
+    # UNE BASE SE NOMME DANS UN « -d ». C'est la forme sous laquelle un nom
+    # de base réelle entre dans un commentaire : une recette collée depuis un
+    # terminal, avec la base sur laquelle on l'a jouée. Les valeurs ci-dessous
+    # sont INVENTÉES et vérifiées absentes du reste du dépôt — une règle qui
+    # interdit de nommer ne se cite pas elle-même en clair.
+    BASES_TROUVEES = (
+        "odoo-bin shell -d acme_stage_prod_17_nov_2025",
+        "psql -d client2024 -c 'SELECT 1'",
+        "pg_dump -d essai_migration_18 > /tmp/x.sql",
+    )
+
+    # Ce qui ne désigne aucune base réelle. Chacun a fait rougir le
+    # détecteur avant d'être borné : un rouge qui crie faux apprend à
+    # ignorer le rouge.
+    BASES_IGNOREES = (
+        "odoo-bin shell -d <base>",
+        "odoo-bin shell -d $DB_NAME",
+        "odoo-bin shell -d my_database",
+        "psql -d erplibre_analyse_selftest -c x",
+        "produit un -d vide dès que bd n'est pas défini",
+        "ls -d .venv.odoo*",
+    )
+
+    def test_une_base_nommee_est_trouvee(self):
+        """Ni adresse, ni courriel, ni chemin de compte : ce nom-là ne se
+        voyait que s'il figurait dans la liste privée, absente d'un poste
+        sur deux."""
+        for texte in self.BASES_TROUVEES:
+            with self.subTest(texte=texte):
+                self.assertIn(
+                    "base", {t[0] for t in hygiene.identifiants(texte)}
+                )
+
+    def test_un_gabarit_ou_un_nom_du_depot_passe(self):
+        for texte in self.BASES_IGNOREES:
+            with self.subTest(texte=texte):
+                self.assertEqual([], hygiene.identifiants(texte), texte)
+
+    def test_un_mot_de_la_phrase_nest_pas_une_base(self):
+        """Un nom de base porte une STRUCTURE — tiret bas ou chiffre. Sans
+        cette borne, « -d » suivi d'un mot de la phrase qui l'entoure
+        compte pour une base."""
+        self.assertEqual([], hygiene.identifiants("un -d vide"))
+        self.assertIn(
+            "base", {t[0] for t in hygiene.identifiants("un -d vide_2")}
+        )
+
     def test_un_nom_prive_se_cherche_a_frontieres_de_mot(self):
         """Un sigle court se retrouve autrement dans des mots communs, et
         la trouvaille se noie dans ce qu'elle a ramassé."""

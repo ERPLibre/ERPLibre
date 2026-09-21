@@ -14,15 +14,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+# Les chemins de configuration viennent de LEUR module, jamais d'un
+# ré-export : todo.py en portait trois copies que rien ne lisait, et dont
+# l'une CONTREDISAIT l'autorité sur l'override privé. Cette épreuve
+# épinglait la copie, donc le contresens.
+from script.config.config_file import (
+    CONFIG_FILE,
+    CONFIG_OVERRIDE_FILE,
+    LOGO_ASCII_FILE,
+)
 from script.todo import todo_i18n
 from script.todo.todo import (
     ANDROID_DIR,
-    CONFIG_FILE,
-    CONFIG_OVERRIDE_FILE,
     ENABLE_CRASH,
     ERROR_LOG_PATH,
     GRADLE_FILE,
-    LOGO_ASCII_FILE,
     MOBILE_HOME_PATH,
     STRINGS_FILE,
     TODO,
@@ -272,7 +278,42 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(CONFIG_FILE, "./script/todo/todo.json")
 
     def test_config_override_path(self):
-        self.assertEqual(CONFIG_OVERRIDE_FILE, "./private/todo/todo.json")
+        """LE CHEMIN QUE LE CHARGEUR LIT. Cette épreuve épinglait celui
+        d'une copie morte — « ./private/todo/todo.json » — que rien
+        n'ouvrait jamais. Qui s'y fiait écrivait un fichier de réglages
+        qu'aucune lecture ne prenait, sans message."""
+        self.assertEqual(
+            CONFIG_OVERRIDE_FILE, "./private/todo/todo_override.json"
+        )
+
+    def test_no_copy_of_these_paths_lives_elsewhere(self):
+        """Ce module est le SEUL à les nommer. Une copie reprise ailleurs
+        ne suit pas, et c'est exactement ainsi que l'une d'elles a fini par
+        désigner un fichier que personne ne lit."""
+        import ast
+        import io as _io
+
+        chemin = Path(__file__).resolve().parents[1] / "script" / "todo"
+        for fichier in sorted(chemin.glob("*.py")):
+            with _io.open(fichier, encoding="utf-8") as fh:
+                arbre = ast.parse(fh.read())
+            poses = {
+                cible.id
+                for noeud in ast.walk(arbre)
+                if isinstance(noeud, ast.Assign)
+                for cible in noeud.targets
+                if isinstance(cible, ast.Name)
+            }
+            with self.subTest(fichier=fichier.name):
+                self.assertEqual(
+                    set(),
+                    poses
+                    & {
+                        "CONFIG_FILE",
+                        "CONFIG_OVERRIDE_FILE",
+                        "LOGO_ASCII_FILE",
+                    },
+                )
 
     def test_logo_path(self):
         self.assertEqual(LOGO_ASCII_FILE, "./script/todo/logo_ascii.txt")
