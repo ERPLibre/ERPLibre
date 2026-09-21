@@ -38,6 +38,8 @@ manifest/default.dev.xml
 poetry.lock
 pyproject.toml
 .erplibre-semver-version
+# State of what this checkout has installed.
+.erplibre-state.json
 .erplibre-version
 .odoo-version
 .poetry-version
@@ -50,3 +52,6 @@ screencasts
 private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+
+# Working notes, kept out of tracked files by the code conventions.
+tasks/
