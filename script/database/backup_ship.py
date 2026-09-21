@@ -47,6 +47,12 @@ FINGERPRINT_TOOL = "sha256sum"
 CHUNK = 1 << 20
 
 
+# Le nom sous lequel l'archive VOYAGE. Distinct du nom final, et retiré
+# quand l'envoi échoue : c'est ce qui fait que le nom d'une sauvegarde ne
+# désigne jamais autre chose qu'une sauvegarde entière et vérifiée.
+SUFFIXE_PARTIEL = ".partiel"
+
+
 def remote_path(target: dict, name: str) -> str:
     """Où l'archive se pose chez la cible. Lève si le nom sort du chemin.
 
@@ -151,14 +157,39 @@ def ship(
         if str(ask(distant)).strip() != name:
             return Shipping(REFUSED, print_detail, distant)
 
+    # LE NOM DÉFINITIF NE PARAÎT QU'AU BOUT. Une redirection CRÉE le
+    # fichier avant le premier octet : un transport coupé laissait sinon,
+    # chez la cible, une archive tronquée sous le nom exact d'une vraie
+    # sauvegarde — au seul endroit où l'on ira chercher le jour d'une
+    # panne, et aucun des contrôles locaux ne se rejoue là-bas.
+    travail = distant + SUFFIXE_PARTIEL
+    cite_travail = shlex.quote(travail)
+
     # SOUS MASQUE, et non par un chmod après : une redirection ne prend pas
     # de mode, et la charge serait lisible de tous le temps de son écriture.
     with open(local, "rb") as flux:
-        code, sortie = run(host, f"umask 0077 && cat > {cite}", entree=flux)
+        code, sortie = run(
+            host, f"umask 0077 && cat > {cite_travail}", entree=flux
+        )
     if code:
+        # RETIRÉ, et non laissé : un nom de travail qui traîne ferait
+        # échouer la reprise sur la garde de collision, pour un fichier
+        # mort.
+        run(host, f"rm -f {cite_travail}")
         return Shipping(UNREACHABLE, sortie or "envoi refusé", distant)
 
-    code, sortie = run(host, fingerprint_command(cite))
+    code, sortie = run(host, fingerprint_command(cite_travail))
     distante = parse_fingerprint(sortie if code == 0 else "")
     verdict = compare(local_fingerprint(local), distante)
+    if verdict != SHIPPED:
+        run(host, f"rm -f {cite_travail}")
+        return Shipping(verdict, sortie.strip(), distant)
+
+    # RENOMMAGE DANS LE MÊME RÉPERTOIRE, donc atomique : il n'existe aucun
+    # instant où le nom final désigne un fichier incomplet.
+    code, sortie_mv = run(host, f"mv -f {cite_travail} {cite}")
+    if code:
+        # Le contenu est bon et n'est pas à sa place : dire « déposé »
+        # enverrait chercher un fichier qui n'existe pas.
+        return Shipping(UNREACHABLE, sortie_mv or "renommage refusé", distant)
     return Shipping(verdict, sortie.strip(), distant)

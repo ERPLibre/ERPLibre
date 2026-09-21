@@ -91,11 +91,10 @@ CONTROLE_CMD = (
     " | tail -1 | sed s/^/DISQUE=/"
 )
 
-# Les listes apt AVANT toute installation. Constaté au premier lancement
-# réel : « --setup-host » a échoué en ZÉRO seconde sur « Unable to locate
-# package qemu-system-x86 », alors que le paquet existe. La VM venait de
-# démarrer, ses listes ne portaient que « bookworm-security », et un
-# apt-get update les a complétées d'un coup.
+# Les listes apt AVANT toute installation. Sur une VM qui vient de démarrer,
+# les listes ne portent que « bookworm-security » : « --setup-host » échoue en
+# ZÉRO seconde sur « Unable to locate package qemu-system-x86 », alors que le
+# paquet existe, et un apt-get update les complète d'un coup.
 #
 # Deux causes, une seule parade : cloud-init n'a pas fini de composer
 # /etc/apt, et apt-daily tient le verrou des listes au premier démarrage.
@@ -339,11 +338,10 @@ class Descente(descente.Descente):
     def rallumer_a_froid(self, parent, nom):
         """« virsh destroy » puis « start » : un processus QEMU neuf.
 
-        Mesuré sur la machine bloquée : à chaud elle restait 46 minutes au
-        même pointeur d'instruction, dans son micrologiciel ; à froid elle a
-        chargé son noyau en 60 à 90 secondes, trois fois de suite, à 2, 3 et
-        4 Go. Ce n'est donc pas la taille de la mémoire — c'est la façon de
-        redémarrer.
+        Une machine bloquée reste, à chaud, des dizaines de minutes au même
+        pointeur d'instruction, dans son micrologiciel ; à froid elle charge
+        son noyau en 60 à 90 secondes, à 2, 3 comme à 4 Go. Ce n'est donc pas
+        la taille de la mémoire — c'est la façon de redémarrer.
         """
         if self.dry_run or not parent:
             return False
@@ -425,10 +423,10 @@ class Descente(descente.Descente):
     def attendre_adresse(self, parent, nom):
         """Le bail DHCP de l'enfant, attendu. Rend l'adresse, ou "".
 
-        ATTENDU, et non lu une fois. Constaté au troisième étage : le domaine
-        était créé, en type='kvm', et « domifaddr » ne rendait rien — l'invité
-        n'avait pas encore demandé son bail. Plus l'étage est profond, plus il
-        démarre lentement, et c'est justement ce qu'on mesure.
+        ATTENDU, et non lu une fois : un domaine créé, en type='kvm', ne rend
+        rien à « domifaddr » tant que l'invité n'a pas demandé son bail. Plus
+        l'étage est profond, plus il démarre lentement, et c'est justement ce
+        qu'on mesure.
 
         `deploy_qemu` attend lui-même l'adresse — 90 secondes par défaut — puis
         rend 0 quand il ne l'a pas trouvée. Son code de sortie ne prouve donc

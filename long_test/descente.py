@@ -388,12 +388,12 @@ class Descente:
         session longue.
 
         `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
-        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
-        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
-        4 d'un coup ; la descente a attendu son délai entier — quarante
-        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
-        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
-        lente, sa MAISON n'existait plus.
+        répondre, on abandonne tout de suite. Un étage qui redémarre éteint
+        d'un coup tous ceux qu'il héberge ; sans ce contrôle, la descente
+        attend son délai entier — des dizaines de minutes — un ssh qui ne
+        peut plus aboutir, puis rend « jamais joignable en ssh ». Le
+        diagnostic est faux : la machine n'est pas lente, sa MAISON n'existe
+        plus.
         """
         if self.dry_run:
             return 0
@@ -540,9 +540,8 @@ class Descente:
             return None
         # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
         # « ssh deep-pve-1 » rend « Name or service not known » et la descente
-        # attendait son plein délai avant de conclure « jamais joignable » —
-        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
-        # lancement réel.
+        # attend son plein délai avant de conclure « jamais joignable » —
+        # sur une VM qui répond parfaitement à son adresse.
         from script.todo.todo import TODO
 
         todo = TODO.__new__(TODO)
@@ -694,8 +693,8 @@ class Descente:
                     self.etages.append(etage)
                     return self.rapport(interrompu=True)
 
-            # En dry-run, aucune étape n'a été mesurée : les marquer
-            # « atteintes » produisait un rapport indiscernable d'une vraie
+            # En dry-run, aucune étape n'est mesurée, et les marquer
+            # « atteintes » produirait un rapport indiscernable d'une vraie
             # réussite, JSON compris, et un code de sortie 0.
             etage["etape"] = "plan" if self.dry_run else "termine"
             etage["ok"] = not self.dry_run
@@ -860,11 +859,10 @@ def autre_descente():
     """Les PID des AUTRES descentes vivantes. Le sien est exclu.
 
     Le garde-fou du rapport — un PID dans le fichier — ne protège que les
-    descentes lancées APRÈS son écriture : celle qui tournait déjà avait
-    chargé l'ancien module en mémoire et n'écrira jamais de PID. Constaté sur
-    une descente réelle de dix étages, à l'étage 4. Ce contrôle-ci ne dépend
-    d'aucun rapport : détruire pendant qu'une descente tourne n'est jamais
-    juste, quel que soit le rapport choisi.
+    descentes lancées APRÈS son écriture : celle qui tourne déjà a chargé
+    l'ancien module en mémoire et n'écrira jamais de PID. Ce contrôle-ci ne
+    dépend d'aucun rapport : détruire pendant qu'une descente tourne n'est
+    jamais juste, quel que soit le rapport choisi.
 
     /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
     l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
@@ -908,7 +906,7 @@ def profondeur_de(cible):
     """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
 
     C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
-    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
+    pour les hôtes que la descente déploie : c'est elle qui écrit ces
     entrées, un ProxyJump par étage.
     """
     try:

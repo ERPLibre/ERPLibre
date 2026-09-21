@@ -18,10 +18,14 @@ import shutil
 from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo.todo_i18n import t
 
-# La phrase qui évite de prendre une promesse tenue pour une panne.
+# La phrase qui évite de prendre un refus attendu pour une panne. Elle
+# annonçait l'inverse — « aucun chemin ne pilote encore un autre backend » —
+# alors que la valeur retenue entre dans la description de machine et fait
+# refuser le déploiement local. Sur un poste Apple, « automatique » suffit à
+# y arriver.
 NOTE_INDICATIVE = (
-    "This choice informs and preselects; no deployment path drives another"
-    " backend yet."
+    "The local deployment path drives libvirt only: choosing another"
+    " backend makes it refuse, and names the one it found."
 )
 
 

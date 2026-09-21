@@ -368,10 +368,17 @@ class ProxmoxMenuMixin:
         code, out = self._pve_show("qm list", quiet=True)
         return pve.parse_qm_list(out) if code == 0 else []
 
-    def _pve_pick_vm(self, titre="", multiple=False):
+    def _pve_pick_vm(self, titre="", multiple=False, vms=None):
         """Choisit une VM de l'hôte (numéro de la liste, jamais le VMID à
-        retaper). Renvoie un dict, une liste si `multiple`, ou None."""
-        vms = self._pve_vms()
+        retaper). Renvoie un dict, une liste si `multiple`, ou None.
+
+        `vms` réutilise une liste DÉJÀ affichée. Sans lui, l'appelant qui
+        vient d'en montrer une en redemande une seconde : un aller-retour
+        SSH de plus, et surtout une numérotation qui peut ne plus désigner
+        les mêmes machines — une VM créée entre les deux décale tout ce qui
+        la suit, et le numéro tapé porte alors sur la voisine.
+        """
+        vms = self._pve_vms() if vms is None else vms
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return [] if multiple else None
@@ -416,8 +423,26 @@ class ProxmoxMenuMixin:
         # Le pendant du sous-menu de QEMU/KVM : la liste est le bon endroit
         # pour agir sur ce qu'on vient de lire.
         print(f"\n  [1] {t('Change the state of one or more VMs')}")
-        if input(t("Choice (blank = back): ")).strip() == "1":
+        print(f"  [2] {t('Detail of one VM (uptime, CPU, memory)')}")
+        choix = input(t("Choice (blank = back): ")).strip()
+        if choix == "1":
             self._pve_change_state(vms)
+        elif choix == "2":
+            self._pve_detail(vms)
+
+    def _pve_detail(self, vms=None):
+        """Le détail d'UNE machine, là où la liste en résume cinq colonnes.
+
+        Ici plutôt que dans le menu principal : le détail se demande sur une
+        machine qu'on vient de voir, et un choix par numéro de liste évite de
+        retaper un VMID — le retaper est ce qui fait agir sur la voisine.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm(vms=vms)
+        if not vm:
+            return
+        self._pve_show(pve.status_cmd(vm["vmid"]))
 
     def _pve_change_state(self, vms=None):
         """Démarre ou éteint des VM de l'hôte, avec double validation.
@@ -1358,8 +1383,10 @@ class ProxmoxMenuMixin:
         la demande initiale quand ERPLibre s'installe. Ici la marge se perdait
         entre l'écran et « qm resize ».
         """
-        from script.todo.deploy_form_extras import (extras_disk_gb,
-                                                    extras_tables)
+        from script.todo.deploy_form_extras import (
+            extras_disk_gb,
+            extras_tables,
+        )
 
         demande = vm.get("disk") or ""
         gigs = self._parse_disk_gb(demande)

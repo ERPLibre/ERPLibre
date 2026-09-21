@@ -982,9 +982,24 @@ class TestTheDetailButton(Base):
         self.assertIn("d", touches)
 
     def test_the_cycle_visits_every_category_and_comes_back(self):
-        suite = (None,) + quality.DETAILS
-        self.assertEqual(len(suite), 6)
-        self.assertEqual(suite[len(suite) % len(suite)], None)
+        """Le parcours, JOUÉ — et non décrit.
+
+        L'épreuve calculait `suite[len(suite) % len(suite)]`, c'est-à-dire
+        `suite[0]`, et comparait à None : vraie pour toute liste non vide,
+        et sur sa propre variable locale. Le cycle réel vivait dans une
+        méthode du TUI qu'aucune épreuve n'atteignait ; sauter la dernière
+        catégorie n'aurait rien fait rougir.
+        """
+        vus, courant = [], None
+        for _ in range(len(quality.DETAILS) + 1):
+            courant = qtui.next_mode(courant)
+            vus.append(courant)
+        self.assertEqual(list(quality.DETAILS) + [None], vus)
+
+    def test_the_cycle_recovers_from_a_mode_it_does_not_know(self):
+        """Un mode retiré de DETAILS entre deux versions laisserait sinon
+        `index()` lever au premier appui sur la touche."""
+        self.assertEqual(quality.DETAILS[0], qtui.next_mode("inconnu"))
 
     def test_ONE_mode_not_two_flags(self):
         """« fichiers absents » et « liste des modèles » ne peuvent pas
@@ -1069,7 +1084,7 @@ class TestTheFullScreen(Base):
         self.assertEqual(debut, ["step", "step", "overall"])
 
     def test_the_overall_closes_the_steps(self):
-        # On descend la liste comme on a vécu la migration ; « qu'en
+        # On descend la liste comme on vit la migration ; « qu'en
         # reste-t-il » se pose une fois le chemin vu. Ce qui suit — les
         # verdicts, où les lire, quoi vérifier — répond à « et après ».
         lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
@@ -1303,9 +1318,8 @@ class TestTheOpenUpgradeOverlay(unittest.TestCase):
         )
 
     def test_a_field_whose_model_vanished_is_not_counted_again(self):
-        # 544 champs pour un seul modèle disparu, mesuré sur un vrai
-        # palier : listés un par un, ils cachaient les vingt vraies
-        # trouvailles.
+        # Un seul modèle disparu entraîne des centaines de champs :
+        # listés un par un, ils cachent les quelques vraies trouvailles.
         d = self.pose(
             modeles=["account.unreconcile"],
             champs=["account.unreconcile.name"],
@@ -1378,14 +1392,13 @@ class TestGroupingByFieldName(unittest.TestCase):
 class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
     """Un champ sans colonne n'a rien perdu — et il noyait le rapport.
 
-    Mesuré sur une chaîne 12 → 18 : le seau « NON déclarés par
-    OpenUpgrade » comptait 565 champs au palier 16 → 17, dont 397
-    `__last_update` — un champ magique qu'Odoo 17 cesse d'inscrire et
-    qui n'a jamais eu de colonne. Un chiffre de tête qui fait peur pour
-    rien fait ignorer le rapport entier.
+    Le seau « NON déclarés par OpenUpgrade » se remplit de champs
+    magiques comme `__last_update`, qu'Odoo 17 cesse d'inscrire et qui
+    n'a jamais eu de colonne. Un chiffre de tête qui fait peur pour rien
+    fait ignorer le rapport entier.
 
-    Après la règle : 565 → 57, et les 508 autres sont NOMMÉS sous
-    « sans donnée propre », en une ligne par nom de champ.
+    La règle les sort du compte et les NOMME sous « sans donnée propre »,
+    en une ligne par nom de champ.
     """
 
     def declare(self, perdus, stockes, origines=None):
@@ -1427,9 +1440,9 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
 
     def test_it_comes_before_the_not_analysed_bucket(self):
         # « sans donnée propre » est une raison plus forte que « hors du
-        # champ d'OpenUpgrade ». Mesuré : le placement avant fait tomber
-        # `not_analysed` de 181 à 47 au palier 16 → 17, sans changer
-        # `undeclared` — le seau résiduel se réduit au risque réel.
+        # champ d'OpenUpgrade ». Le placement avant fait tomber
+        # `not_analysed` sans changer `undeclared` — le seau résiduel se
+        # réduit au risque réel.
         res = self.declare(
             ["oca_module.model.champ"],
             set(),
@@ -1540,10 +1553,10 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
 class TestWhyAnAttachmentWentAway(Base):
     """« 409 pièces jointes perdues » n'en recouvrait presque aucune.
 
-    Mesuré sur une chaîne 12 → 18 : des 516 lignes parties au palier 18,
-    452 avaient perdu leur CHAMP PORTEUR aux paliers 13 et 14 — elles
-    étaient déjà illisibles, Odoo lève un KeyError en les contrôlant. Ce
-    ne sont pas des données, ce sont des débris, et la 18 les ramasse.
+    L'essentiel des lignes parties au dernier palier a perdu son CHAMP
+    PORTEUR bien plus tôt dans la chaîne — elles sont déjà illisibles,
+    Odoo lève un KeyError en les contrôlant. Ce ne sont pas des données,
+    ce sont des débris, et le dernier palier les ramasse.
 
     On ne DÉCLARE pas cette perte dans SEMANTIC_MAP : cette carte nomme
     une TABLE, et la cause n'est pas la table, ce sont ces lignes-là.

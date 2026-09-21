@@ -657,10 +657,10 @@ class TestRetryPassword(unittest.TestCase):
         return MagicMock()
 
     def test_a_timeout_does_not_blame_the_password(self):
-        """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
+        """Le serveur ne dit RIEN : la commande part, aucune réponse.
         Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        d'application pour un problème qui est ailleurs — « The read
+        operation timed out » ne dit rien de l'authentification."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",

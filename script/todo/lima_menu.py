@@ -9,10 +9,11 @@ aucun argument de `limactl` en littéral — les rendus viennent du module, et
 c'est ce qui fait que la confrontation de `long_test/` éprouve le code
 livré plutôt que ses propres copies.
 
-L'ÉCRAN DIT QUE LE BACKEND N'EST PAS ÉPROUVÉ. « Non éprouvé » ne veut pas
-dire douteux : il veut dire NON CONFRONTÉ à un vrai « limactl ». Un écran
-muet là-dessus laisse croire l'inverse, et c'est le seul backend du dépôt
-dans cet état.
+L'ÉCRAN MARQUE UN BACKEND NON ÉPROUVÉ, S'IL Y EN A UN. « Non éprouvé » ne
+veut pas dire douteux : il veut dire NON CONFRONTÉ à un vrai outil, et un
+écran muet là-dessus laisse croire l'inverse. La marque vient de la table de
+`script.vm.backend` et non d'un jugement écrit ici ; elle disparaît d'
+elle-même quand la table change, sans qu'un écran soit retouché.
 
 LA COMMANDE SE MONTRE AVANT DE SE JOUER. Deux raisons, et la seconde est la
 vraie : une faute de frappe se voit, et surtout une opération qui détruit se
@@ -35,7 +36,7 @@ from script.todo.vm_backend_choice import UNPROVEN_NOTE
 from script.vm import backend as vm_backend
 from script.vm import lima, lima_install
 from script.vm import verbs as vm_verbs
-from script.vm.backend import LIMA, is_proven
+from script.vm.backend import LIMA, VmBackendError, is_proven
 
 # Où vivent les configurations d'instance. Sous le répertoire ERPLibre de
 # l'utilisateur, et pas dans le dépôt : une instance appartient à la
@@ -318,13 +319,21 @@ class LimaMenuMixin:
                 continue
             print(f"  ⚠ {t('Not held for this posture:')} {manque}")
         image = self._lima_image(arch)
+        # LE REFUS SE MONTRE, il ne remonte pas. Une posture qui nomme des
+        # rôles dont le site n'a donné aucune adresse est refusée — et ce
+        # refus est juste — mais le laisser traverser rendait une trace de
+        # pile et tuait le programme entier. Rien n'est créé à ce stade :
+        # on rend la main au menu, où le carnet est à deux entrées.
+        try:
+            regles = self._qemu_egress_rules(fragment)
+        except VmBackendError as refus:
+            print(f"  ✗ {refus}")
+            return
         texte = lima.render_config(
             image,
             arch=arch,
             macos=macos,
-            provision_script=posture_plan.provision_script(
-                self._qemu_egress_rules(fragment)
-            ),
+            provision_script=posture_plan.provision_script(regles),
         )
         chemin = config_path(nom)
 
@@ -492,7 +501,13 @@ class LimaMenuMixin:
         vms = [{"name": nom, "ip": nom, "lima": True}]
         chemin = launch_installs(vms, branche, remote)
         print(f"  ✓ {t('Install started. Manifest:')} {chemin}")
-        print(f"  {t('Follow it from')} TODO › Execute › QEMU/KVM")
+        chemin_menu = self.menu_path(
+            "run",
+            "prompt_execute",
+            "prompt_execute_deploy",
+            "prompt_execute_qemu",
+        )
+        print(f"  {t('Follow it from')} {chemin_menu}")
 
     def _lima_ask_branch(self):
         """La branche à installer, "" si l'utilisateur renonce.

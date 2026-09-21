@@ -501,9 +501,9 @@ def collect(
             # « flagged » ne compare que ce qui porte déjà un signe : rapide,
             # et ce qu'il rapporte est fiable. « all » compare toute vue ayant
             # un arch_fs, ce qui trouve la dérive qu'aucun drapeau ne signale —
-            # une vue réécrite en SQL direct — mais au prix d'un plancher de
-            # bruit MESURÉ : sur une base 18.0 fraîchement installée, 160 des
-            # 974 vues à arch_fs diffèrent déjà. read_arch_from_file rend le
+            # une vue réécrite en SQL direct — mais au prix d'un plancher
+            # de bruit : sur une base 18.0 fraîchement installée, une vue à
+            # arch_fs sur six diffère déjà. read_arch_from_file rend le
             # XML brut du fichier, alors que la base porte l'arch APRÈS
             # traitement au chargement : un attribut « groups » est consommé,
             # un <xpath position="attributes"> est appliqué. En « all », un

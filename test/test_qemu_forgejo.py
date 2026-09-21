@@ -318,7 +318,7 @@ class TestTheScriptGuards(unittest.TestCase):
     def code_lines(self):
         """Les lignes de CODE : le piège est expliqué en commentaire, et un
         test qui cherche dans les commentaires trébuche sur sa propre
-        documentation — vécu à l'écriture de ce fichier."""
+        documentation."""
         return [
             ln
             for ln in self.body.splitlines()

@@ -78,6 +78,7 @@ try:
     import humanize
     import openai
     import todo_file_browser
+
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
@@ -644,14 +645,37 @@ class TODO(
         "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
-        "prompt_execute_vpn": "VPN",
+            "_analyse_follow_up": "Go further",
+            "rtk_install": "rtk",
+        "prompt_execute_claude_plugins": "Claude plugins",
+        "prompt_execute_egress_book": "Address book",
+        "prompt_execute_forge": "Forge",
+        "prompt_execute_lima": "Lima",
+        "prompt_execute_longtest": "Long test",
+        "prompt_execute_longtest": "Long tests",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
         "prompt_execute_test": "Test",
-        "prompt_execute_longtest": "Long test",
+        "prompt_execute_vpn": "VPN",
         "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
     }
+
+    @classmethod
+    def menu_path(cls, *fonctions) -> str:
+        """« TODO › Execute › Deploy › QEMU/KVM », depuis des noms de menus.
+
+        LE FIL D'ARIANE NE SERT PAS ICI. Il se dérive de la pile d'appels
+        et dit donc OÙ L'ON EST ; un message qui envoie ailleurs parle
+        d'un endroit où personne ne se trouve, et n'a pas de pile à lire.
+
+        Il compose alors depuis la MÊME table, et lève sur un menu qu'elle
+        ne connaît pas : un menu renommé casse ici, à l'épreuve, et non à
+        l'écran devant quelqu'un qui cherchera le chemin indiqué. Trois
+        messages l'écrivaient à la main — l'un oubliait un niveau, deux
+        traduisaient un libellé que le fil n'affiche pas traduit.
+        """
+        return " › ".join(cls._MENU_LABELS[nom] for nom in fonctions)
 
     def _menu_header(self):
         """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
@@ -760,7 +784,7 @@ class TODO(
                 ("auto", "Automatic (decided by the system)"),
                 ("libvirt", "libvirt/QEMU - this machine"),
                 ("pve", "Proxmox VE - a remote host"),
-                ("lima", "Lima - for macOS, never run against the tool"),
+                ("lima", "Lima - a VM on this machine, lighter than libvirt"),
             ),
         ),
     }
@@ -5345,11 +5369,51 @@ class TODO(
         if not in_path:
             self.rtk_report_path_warning()
 
-        config_path = os.path.expanduser("~/.config/rtk/config.toml")
-        if os.path.exists(config_path):
+        if self.rtk_global_hook_active():
             print(t("Global auto-rewrite hook: active"))
         else:
             print(t("Global auto-rewrite hook: inactive"))
+
+    # Là où « rtk init --global » écrit : les réglages de l'ASSISTANT, et
+    # non ceux de rtk. Son aide le dit — « add to global assistant config
+    # directory ».
+    RTK_HOOK_SETTINGS = "~/.claude/settings.json"
+    RTK_HOOK_COMMANDE = "rtk hook"
+
+    @classmethod
+    def rtk_global_hook_active(cls, chemin: str = "") -> bool:
+        """Le crochet est-il posé dans les réglages de l'assistant ?
+
+        PAS « ~/.config/rtk/config.toml » : celui-là est la configuration
+        de rtk LUI-MÊME, écrite dès qu'il tourne une fois. Le témoin y
+        répondait donc « actif » à qui n'avait jamais lancé
+        « init --global », et l'écran conseillait de ne rien faire.
+
+        Le fichier est lu en JSON et parcouru : chercher « rtk » dans le
+        texte brut répondrait oui sur un réglage qui le NOMME sans
+        l'appeler — un commentaire, un chemin, une variable.
+        """
+        chemin = os.path.expanduser(chemin or cls.RTK_HOOK_SETTINGS)
+        try:
+            with open(chemin, encoding="utf-8") as fichier:
+                reglages = json.load(fichier)
+        except (OSError, ValueError):
+            return False
+
+        def commandes(noeud):
+            if isinstance(noeud, dict):
+                for valeur in noeud.values():
+                    yield from commandes(valeur)
+            elif isinstance(noeud, list):
+                for valeur in noeud:
+                    yield from commandes(valeur)
+            elif isinstance(noeud, str):
+                yield noeud
+
+        return any(
+            c.strip().startswith(cls.RTK_HOOK_COMMANDE)
+            for c in commandes(reglages)
+        )
 
     def prompt_execute_config(self):
         print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")

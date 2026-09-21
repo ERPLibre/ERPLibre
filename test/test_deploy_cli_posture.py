@@ -193,6 +193,69 @@ class TestLaSpecDesInvitesLesPorte(unittest.TestCase):
         self.assertEqual(S.OK, S.check(spec))
 
 
+class TestUnCarnetVideNeTuePasLeProgramme(unittest.TestCase):
+    """Le refus est LÉGITIME ; sa propagation ne l'est pas.
+
+    Une posture qui nomme des rôles dont le site n'a donné aucune adresse
+    DOIT être refusée : la laisser passer déploierait une machine qui ne
+    joint pas sa forge, et le manque se découvrirait sur la machine plutôt
+    que devant l'écran.
+
+    Mais la levée traversait tout le programme jusqu'au Makefile. Deux
+    chemins sur quatre l'attrapaient ; les deux autres — le déploiement
+    libvirt, qui ne guette que les refus de backend, et le menu Lima, qui
+    ne guettait rien — rendaient une trace de pile et un « Error 1 ».
+
+    Le refus porte désormais le type que les appelants guettent déjà, et
+    l'écran dit OÙ poser les adresses qui manquent.
+    """
+
+    SPEC = {S.POSTURE_KEY: "paranoid", S.REAL_DATA_KEY: False}
+
+    def rendu(self):
+        todo = TODO.__new__(TODO)
+        todo.config_file = None
+        return todo
+
+    def test_the_missing_address_is_a_backend_refusal(self):
+        """Le type EST le contrat : le déploiement libvirt ne guette que
+        celui-là, et une autre famille le traverse."""
+        with self.assertRaises(VmBackendError) as vu:
+            TODO._qemu_egress_rules(self.rendu(), self.SPEC)
+        self.assertIn("dns-resolver", str(vu.exception))
+
+    def test_the_refusal_says_where_to_fix_it(self):
+        """Nommer le rôle manquant sans dire où le poser laisse chercher
+        dans vingt-trois écrans."""
+        with self.assertRaises(VmBackendError) as vu:
+            TODO._qemu_egress_rules(self.rendu(), self.SPEC)
+        self.assertIn(
+            TODO.menu_path(
+                "run",
+                "prompt_execute",
+                "prompt_execute_deploy",
+                "prompt_execute_egress_book",
+            ),
+            str(vu.exception),
+        )
+
+    def test_a_posture_that_needs_no_address_still_renders(self):
+        """Contrôle positif : refuser toujours rendrait « connected »
+        indéployable, alors qu'elle ne borne que des ports."""
+        texte = TODO._qemu_egress_rules(
+            self.rendu(), {S.POSTURE_KEY: "connected", S.REAL_DATA_KEY: False}
+        )
+        self.assertIn("erplibre", texte)
+
+    def test_free_egress_asks_for_no_rule_at_all(self):
+        self.assertEqual(
+            "",
+            TODO._qemu_egress_rules(
+                self.rendu(), {S.POSTURE_KEY: "open", S.REAL_DATA_KEY: False}
+            ),
+        )
+
+
 class TestLaGardePartageeDeProxmox(unittest.TestCase):
     """Le refus vit dans UNE fonction, appelée par les deux voies.
 

@@ -493,10 +493,9 @@ class TestCreerUnPont(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLInterpretePython(unittest.TestCase):
-    """L'écran Proxmox n'offrait pas le choix, donc envoyait toujours
-    « automatique » — et comme mise n'est jamais installé d'office, c'était
-    pyenv, qui COMPILE Python. Rapporté sur une VM Arch : « il utilise le
-    tar.xz pour le compiler »."""
+    """Sans ce choix, l'écran Proxmox envoie toujours « automatique » — et
+    comme mise n'est jamais installé d'office, c'est pyenv, qui COMPILE
+    Python depuis le tar.xz."""
 
     def _ecran(self, gestes=None, mise_arches=("amd64", "arm64")):
         from script.todo.proxmox_deploy_form import run_proxmox_form
@@ -1483,17 +1482,16 @@ class TestUnParcMixte(unittest.TestCase):
 
 
 class TestLaVmCloneLeDepotDistant(unittest.TestCase):
-    """« Le problème est revenu » — alors qu'il était corrigé.
+    """Un correctif commité ici et non poussé reste invisible à la VM.
 
     La VM ne reçoit pas le checkout d'ici : elle CLONE la branche depuis le
     dépôt DISTANT. Tout ce qui tourne dedans — install_proxmox.sh, les
-    scripts d'installation, le Makefile — vient donc de là. Un correctif
-    commité ici et non poussé lui est invisible.
+    scripts d'installation, le Makefile — vient donc de là.
 
-    Vécu deux fois de suite : la correction de /etc/hosts était dans le
-    checkout depuis la veille, absente du distant, et chaque VM déployée
-    ensuite recevait l'ancien script. Il a fallu comparer les deux versions à
-    la main pour le voir. Rien ne le disait."""
+    Le défaut se lit comme une régression : un correctif présent dans le
+    checkout et absent du distant laisse chaque VM déployée ensuite recevoir
+    l'ancien script, et rien ne le signale — seule la comparaison des deux
+    versions le montre."""
 
     def _todo(self, sortie, code=0):
         import sys
@@ -1561,7 +1559,7 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
     """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
 
-    Résultat rapporté : la strophe posée dans /etc/network/interfaces, le
+    Résultat : la strophe posée dans /etc/network/interfaces, le
     pont absent, et six lignes d'iptables qui ne parlent pas de redémarrage.
     L'avertissement sur le noyau existait — mais à la CONFIRMATION de l'hôte,
     et l'hôte est ensuite mémorisé : on revient des jours plus tard créer un
@@ -1781,7 +1779,7 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         self.assertFalse(vole)
 
     def test_a_fleet_gets_one_single_convention(self):
-        # Le défaut rapporté : trois VM du même déploiement, deux nommées
+        # Le défaut : trois VM du même déploiement, deux nommées
         # d'une façon et la troisième d'une autre.
         noms = [
             self._choisit(n, locaux=("erplibre-ubuntu-2604",))[0][0]
@@ -1975,10 +1973,9 @@ class TestLAncienNomSEnVa(unittest.TestCase):
         """Retirer sans réécrire est un appel légitime : les machines
         n'existent plus.
 
-        Constaté dans le vrai ~/.ssh/config de l'utilisateur : l'appel écrivait
-        « Host » NU, suivi d'un « HostName » vide, puis mourait sur un
-        IndexError en annonçant l'ajout. Le bloc sans nom s'applique à rien et
-        brouille la lecture du fichier."""
+        Sans la garde, l'appel écrit « Host » NU, suivi d'un « HostName »
+        vide, puis meurt sur un IndexError en annonçant l'ajout. Le bloc sans
+        nom s'applique à rien et brouille la lecture du fichier."""
         import os
 
         self.todo._write_ssh_config_entry(
@@ -2051,12 +2048,12 @@ class TestLAncienNomSEnVa(unittest.TestCase):
 
 
 class TestLeGuideDeConnexion(unittest.TestCase):
-    """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
+    """Une VM Proxmox ne reçoit AUCUN guide de connexion, quelle que soit
+    sa distribution, là où la voie libvirt en pose un.
 
-    Rapporté sur Arch : « pas l'écran de connexion, avec le guide qui dit de
-    prendre pacman, comme sur ubuntu ». La voie libvirt livre /etc/motd par le
-    « write_files » de cloud-init ; « qm set » n'offre pas cela. Le contenu
-    vient de la MÊME source (`guide_files`) et part par ssh.
+    La voie libvirt livre /etc/motd par le « write_files » de cloud-init ;
+    « qm set » n'offre pas cela. Le contenu vient de la MÊME source
+    (`guide_files`) et part par ssh.
     """
 
     def _ecrit(self, vm=None, install=None, distro="arch"):

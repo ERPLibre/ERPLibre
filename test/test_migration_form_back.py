@@ -92,8 +92,8 @@ class TestBackWorks(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(app._result["answer"], expected)
 
     async def test_there_is_a_button_too(self):
-        # C'est l'absence VISIBLE qui a été signalée : une touche seule ne se
-        # voit pas parmi quatre boutons. Les widgets ne se lisent qu'une fois
+        # C'est l'absence VISIBLE qui compte : une touche seule ne se voit
+        # pas parmi quatre boutons. Les widgets ne se lisent qu'une fois
         # l'écran monté, d'où le pilote.
         from textual.widgets import Button
 

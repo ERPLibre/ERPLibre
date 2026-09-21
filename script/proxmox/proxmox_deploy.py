@@ -87,8 +87,8 @@ def parse_nameservers(text: str) -> list:
 
     Les adresses de boucle sont écartées : « nameserver 127.0.0.53 » est le
     stub de systemd-resolved, qui n'existe que sur l'hôte. Une VM qui le
-    reçoit n'a pas de DNS — mesuré, la VM d'essai ne résolvait rien alors que
-    le NAT marchait, et « apt update » aurait échoué sans rien expliquer.
+    reçoit n'a pas de DNS : elle ne résout rien alors que le NAT route, et
+    « apt update » échoue sans rien expliquer.
     """
     serveurs = []
     for ligne in (text or "").splitlines():
@@ -236,9 +236,9 @@ def parse_cluster_check(text: str) -> dict:
     # Filtré sur ce qu'EST une adresse, pas sur sa ponctuation. run() colle
     # stderr après stdout, donc tout ce que sudo écrit atterrit dans cette
     # queue — et « sudo: unable to resolve host pve: … » se produit
-    # précisément dans la panne qu'on diagnostique. Mesuré : l'écran affichait
-    # « le nom d'hôte ne résout que vers 127.0.1.1 sudo: pve: ». Il affirmait
-    # des adresses là où la sonde n'avait rien mesuré.
+    # précisément dans la panne qu'on diagnostique. Sans ce filtre, l'écran
+    # rend « le nom d'hôte ne résout que vers 127.0.1.1 sudo: pve: » : il
+    # affirme des adresses là où la sonde n'a rien constaté.
     adresses = []
     for jeton in queue.split():
         try:
@@ -312,9 +312,8 @@ def hosts_repair_cmd(ip: str) -> str:
 
     La première version promettait « une seule commande » et n'en tenait rien :
     « sed -i » puis « printf >> » sont DEUX écritures, sans set -e et sans
-    retour en arrière. Une attaque adversariale l'a mesuré sur trois états
-    réels — /etc en lecture seule, fichier rendu immuable par chattr, quota
-    atteint :
+    retour en arrière. Trois états refusent l'écriture — /etc en lecture
+    seule, fichier rendu immuable par chattr, quota atteint :
 
     * sed refusé, ajout réussi -> la ligne 127.0.1.1 survit et reste PREMIÈRE,
       donc gagnante, et notre ligne s'ajoute UNE FOIS PAR TENTATIVE. Le
@@ -638,8 +637,8 @@ INTERNAL_CIDR = "10.10.10.1/24"
 # Proxmox hérite du réseau interne de son parent, et l'adresse de
 # INTERNAL_CIDR y est celle de sa propre PASSERELLE. La poser sur son pont rend tout le /24
 # local — la passerelle devient injoignable et la machine s'isole
-# instantanément, au milieu de la commande qui la configure. Vécu : « ifup »
-# n'a jamais rendu la main et la VM ne répondait plus, ni en ssh ni en ping.
+# instantanément, au milieu de la commande qui la configure : « ifup » ne
+# rend jamais la main et la VM ne répond plus, ni en ssh ni en ping.
 #
 # On choisit donc un /24 que l'hôte ne connaît pas encore. La liste va du plus
 # attendu au plus improbable : un parc imbriqué descend d'un cran par étage.

@@ -259,6 +259,48 @@ class MenuCoherence:
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
 
+    # Un numéro d'entrée écrit EN DUR dans un message d'aide. Rien ne le
+    # relie à la liste : insérer une entrée au-dessus décale la cible, le
+    # message continue de s'afficher, et il envoie désormais ailleurs.
+    # La table est déclarative comme EXPECTED — un renvoi non déclaré est
+    # un échec, sans quoi le prochain échapperait au contrôle.
+    RENVOIS = {}
+    # « \bt( » et non « t( » : sans la frontière, le motif attrape la fin
+    # de « print( » et prend tout message imprimé pour un texte traduit.
+    RE_RENVOI = re.compile(
+        r"""\bt\(\s*\n?\s*["']([^"']*\[(\d+)\][^"']*)["']"""
+    )
+
+    def _entrees_par_numero(self):
+        return {n: label for n, label in self.shown}
+
+    def test_every_hardcoded_entry_number_points_where_it_means(self):
+        source = self.SOURCE.read_text(encoding="utf-8")
+        par_numero = self._entrees_par_numero()
+        vus = set()
+        for message, numero in self.RE_RENVOI.findall(source):
+            numero = int(numero)
+            vus.add((message, numero))
+            self.assertIn(
+                (message, numero),
+                set(self.RENVOIS),
+                f"« {message} » renvoie à [{numero}] et n'est pas déclaré :"
+                " dire vers quelle entrée il pointe",
+            )
+            vise = par_numero.get(numero, "")
+            self.assertTrue(
+                vise.startswith(self.RENVOIS[(message, numero)]),
+                f"« {message} » renvoie à [{numero}], qui est désormais"
+                f" « {vise} » et non « {self.RENVOIS[(message, numero)]} »",
+            )
+
+    def test_no_stale_hardcoded_reference_is_declared(self):
+        """Un renvoi déclaré que le code n'écrit plus laisse croire qu'un
+        message est tenu alors qu'il a disparu."""
+        source = self.SOURCE.read_text(encoding="utf-8")
+        vus = {(m, int(n)) for m, n in self.RE_RENVOI.findall(source)}
+        self.assertEqual(set(), set(self.RENVOIS) - vus)
+
     def test_self_dispatched_entries_name_a_real_method(self):
         """« method » est une chaîne : rien ne la relie au code sans ceci."""
         from script.todo.todo import TODO
@@ -316,6 +358,80 @@ class TestLaParitéProxmox(unittest.TestCase):
         from script.todo.todo import TODO as CLASSE
 
         self.assertTrue(callable(CLASSE._pve_change_state))
+
+    def test_the_list_offers_the_detail_of_one_vm(self):
+        """La liste rend cinq colonnes ; « qm status --verbose » en rend
+        bien plus, et c'est le seul endroit du dépôt qui le demande.
+
+        Le bâtisseur existait sans appelant : écrit, jamais câblé, donc
+        invisible à l'usage — un écran ne dit pas ce qu'il ne montre pas.
+        """
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.proxmox import proxmox_deploy as pve
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("_pve_detail", self.src)
+        self.assertTrue(callable(CLASSE._pve_detail))
+        self.assertIn("status_cmd", self.src)
+        self.assertIn("--verbose", pve.status_cmd(1))
+
+    def test_typing_2_in_the_list_really_runs_the_detail(self):
+        """L'entrée est IMPRIMÉE : la garde structurelle ne voit pas qu'elle
+        mène nulle part.
+
+        Une entrée affichée dont la répartition ne reconnaît pas le numéro
+        rend la main sans un mot — l'écran promet alors une action qui
+        n'existe pas. Chercher la méthode dans le source ne voit rien de
+        cela : le numéro peut ne plus lui mener.
+        """
+        import builtins
+        import io as _io
+        import sys
+        from contextlib import redirect_stdout
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        todo = CLASSE.__new__(CLASSE)
+        vms = [
+            {
+                "vmid": 142,
+                "name": "vm-essai",
+                "status": "running",
+                "mem": "2048",
+                "disk": "12G",
+            }
+        ]
+        jouees = []
+        todo._pve_vms = lambda: list(vms)
+        todo._pve_show = lambda cmd, timeout=120, quiet=False: (
+            jouees.append(cmd) or (0, "")
+        )
+        saisies = iter(["2", "1"])
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: next(saisies)
+        try:
+            with redirect_stdout(_io.StringIO()):
+                todo._pve_list()
+        finally:
+            builtins.input = vrai
+        self.assertEqual(["qm status 142 --verbose"], jouees)
+
+    def test_the_detail_reuses_the_list_it_was_called_from(self):
+        """Redemander « qm list » renumérote sur une liste qui peut avoir
+        changé, et le numéro tapé porte alors sur la voisine. L'épreuve
+        tient le PASSAGE de la liste, que rien d'autre ne rend visible."""
+        import inspect
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("vms", inspect.signature(CLASSE._pve_pick_vm).parameters)
+        corps = inspect.getsource(CLASSE._pve_detail)
+        self.assertIn("vms=vms", corps)
 
     def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
         # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
@@ -575,6 +691,16 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     ENTRY = "def prompt_execute_proxmox(self):"
     END = "def _pve_fetch_image(self):"
     MINIMUM = 15
+
+    # Deux messages nomment une entrée par son NUMÉRO. Ils visent juste
+    # aujourd'hui ; ils le resteront tant que ceci tient.
+    RENVOIS = {
+        ("No address yet. Try [6] later.", 6): "Show a VM IP address",
+        (
+            "Use [13] to add a ProxyJump entry, then a tunnel.",
+            13,
+        ): "SSH configuration",
+    }
 
     EXPECTED = {
         "Deploy a VM on the Proxmox host": "_pve_deploy",
@@ -1141,13 +1267,10 @@ class TestMenuLabels(unittest.TestCase):
     passagère.
     """
 
-    ECRANS_EXEMPTES = {
-        "_analyse_follow_up",
-        "rtk_install",
-        "generate_config_from_preconfiguration",
-        "debug_ide",
-        "execute_odoo_upgrade",
-    }
+    # VIDE, et c'est le but : la liste était « figée pour que le nombre ne
+    # grandisse pas, pas pour bénir ce qu'elle contient ». Les trois ont
+    # leur étiquette.
+    ECRANS_EXEMPTES: set = set()
 
     def setUp(self):
         source = TODO_PY.read_text(encoding="utf-8")
@@ -1231,6 +1354,39 @@ class TestMenuLabels(unittest.TestCase):
     def test_an_exemption_is_never_also_labelled(self):
         """Exempter ET étiqueter dirait deux choses opposées du même écran."""
         self.assertEqual(self.ECRANS_EXEMPTES & self.labels, set())
+    def test_no_menu_anywhere_forgets_its_label(self):
+        """La garde ne voyait que les menus atteints depuis « Execute ».
+
+        Elle en connaissait trois sans étiquette ; il y en avait NEUF. Les
+        six autres se rejoignent depuis un autre menu — Deploy, Database —
+        et leur fil d'Ariane était muet sans que rien ne le dise.
+
+        Ce qui fait un menu, et non une action : il liste des choix et
+        boucle sur une saisie. `prompt_uninstall_theme` fait une chose et
+        rend la main ; il n'a rien à situer.
+        """
+        racine = TODO_PY.parent
+        manquants = []
+        for chemin in sorted(racine.rglob("*.py")):
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            lignes = chemin.read_text(encoding="utf-8").splitlines()
+            for noeud in ast.walk(arbre):
+                if not isinstance(noeud, ast.FunctionDef):
+                    continue
+                if not noeud.name.startswith("prompt_"):
+                    continue
+                corps = "\n".join(lignes[noeud.lineno - 1 : noeud.end_lineno])
+                if "fill_help_info" not in corps or "while True" not in corps:
+                    continue
+                if noeud.name not in self.labels:
+                    manquants.append(
+                        f"{chemin.name}:{noeud.lineno} {noeud.name}"
+                    )
+        self.assertEqual([], manquants)
+
+    def test_the_menu_scan_actually_finds_menus(self):
+        """Sur zéro menu trouvé, la garde passe et ne tient rien."""
+        self.assertGreater(len(self.labels), 25)
 
 
 if __name__ == "__main__":

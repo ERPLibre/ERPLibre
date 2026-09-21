@@ -71,6 +71,8 @@ STUBS_DEFAUT = {
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+
+TODO_DIR = pathlib.Path(RACINE) / "script" / "todo"
 from script.todo.todo_i18n import t  # noqa: E402
 
 
@@ -157,6 +159,60 @@ class TestLesDeuxCatalogues(unittest.TestCase):
             "les deux catalogues divergent : "
             f"menu seul {menu - catalogue}, deploy seul {catalogue - menu}",
         )
+
+    def test_the_fallback_tuples_match_the_authoritative_table(self):
+        """Le repli du menu est une COPIE, et une copie ne suit pas.
+
+        Le commentaire du menu raconte déjà cette panne : les tuples étaient
+        tenus par la seule promesse « cohérent avec deploy_qemu », et Debian
+        a gagné s390x là-bas sans l'obtenir ici — l'écran ne le proposait
+        donc pas. La voie normale lit désormais la table ; le repli, lui,
+        est toujours une copie et sert justement quand plus rien ne peut la
+        lire.
+        """
+        for arch, copie in (
+            ("s390x", TODO._QEMU_S390X_DISTROS),
+            ("arm64", TODO._QEMU_ARM64_DISTROS),
+        ):
+            with self.subTest(arch=arch):
+                self.assertEqual(
+                    set(DQ.ARCH_DISTRO_SUPPORT[arch]),
+                    set(copie),
+                    f"le repli {arch} diverge de la table : "
+                    f"table seule "
+                    f"{set(DQ.ARCH_DISTRO_SUPPORT[arch]) - set(copie)}, "
+                    f"repli seul "
+                    f"{set(copie) - set(DQ.ARCH_DISTRO_SUPPORT[arch])}",
+                )
+
+    def test_no_screen_label_claims_a_single_distro_per_arch(self):
+        """L'écran du choix d'architecture annonçait « Ubuntu only » pour
+        s390x, que la table sert en six distributions.
+
+        Une restriction énoncée EN DUR à côté d'une table qui l'infirme
+        envoie choisir une autre architecture pour une raison fausse. La
+        liste qui suit est déjà filtrée par la table : l'écran n'a pas à
+        la résumer, et ne peut pas le faire sans dériver.
+        """
+        lignes = (
+            (TODO_DIR / "qemu_menu.py")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+        multiples = [
+            a for a, d in DQ.ARCH_DISTRO_SUPPORT.items() if len(d) > 1
+        ]
+        for seule in ("Ubuntu only", "Debian only", "Fedora only"):
+            # La LIGNE fautive, et non la page : un assertNotIn sur le
+            # source entier rend un message de cinquante kilo-octets, que
+            # personne ne lit — donc une garde qui ne renseigne pas.
+            fautives = [
+                f"qemu_menu.py:{n}: {l.strip()}"
+                for n, l in enumerate(lignes, 1)
+                if seule in l
+            ]
+            with self.subTest(mention=seule, arches=multiples):
+                self.assertEqual([], fautives)
 
     def test_the_versions_agree_for_proxmox(self):
         versions, defaut = TODO._QEMU_DISTROS["proxmox"]
@@ -370,7 +426,7 @@ class TestLeScript(unittest.TestCase):
         """Le piège propre à l'image cloud : elle amorce en EFI, les paquets
         pve tirent grub-pc, et sa post-installation refuse de deviner le
         disque — « You must correct your GRUB install devices before
-        proceeding ». Mesuré : dpkg s'arrête et emporte la transaction."""
+        proceeding » : dpkg s'arrête et emporte la transaction."""
         res = self._lance(["--dry-run"])
         self.assertIn("grub-pc/install_devices", res.stdout)
         self.assertIn(
@@ -378,9 +434,9 @@ class TestLeScript(unittest.TestCase):
         )
 
     def test_apt_waits_for_the_lock_instead_of_giving_up(self):
-        """Sur une VM fraîche, cloud-init tient encore le verrou : mesuré,
-        « held by process 996 (apt-get) », et le script mourait 40 secondes
-        après le démarrage."""
+        """Sur une VM fraîche, cloud-init tient encore le verrou : apt
+        rend « held by process … (apt-get) » et, sans attente, le script
+        meurt dans la minute qui suit le démarrage."""
         texte = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("DPkg::Lock::Timeout", texte)
         res = self._lance(["--dry-run"])

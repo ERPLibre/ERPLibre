@@ -96,10 +96,10 @@ class TestMemSegment(unittest.TestCase):
 class TestLogSilence(unittest.TestCase):
     """Une installation morte et une qui travaille portent le même sablier.
 
-    Vécu : une session ssh emportée, l'installation morte sans marqueur de
-    sortie, et le tableau de bord a montré « ⏳ » pendant 54 minutes. Le
-    marqueur manque dans les deux cas — seule la date d'écriture du journal
-    les sépare.
+    Une session ssh emportée laisse l'installation morte sans marqueur de
+    sortie, et le tableau de bord affiche « ⏳ » indéfiniment. Le marqueur
+    manque dans les deux cas — seule la date d'écriture du journal les
+    sépare.
     """
 
     def setUp(self):
@@ -139,9 +139,9 @@ class TestLogSilence(unittest.TestCase):
         self.assertIn("48", mark)
 
     def test_the_threshold_clears_the_longest_measured_silence(self):
-        """Mesuré : le téléchargement d'Android Studio reste ~5 min sans une
-        ligne. Un seuil en dessous transformerait chaque installation en alerte,
-        et l'alerte cesserait d'être lue."""
+        """Le téléchargement d'Android Studio reste ~5 min sans une ligne.
+        Un seuil en dessous transformerait chaque installation en alerte, et
+        l'alerte cesserait d'être lue."""
         studio_download = 5 * 60
         self.assertGreater(m.IDLE_HINT_SECS, studio_download)
         # Et pas si haut qu'une installation morte passe la demi-heure.

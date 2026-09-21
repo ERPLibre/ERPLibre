@@ -79,6 +79,80 @@ class TestProcessZip(unittest.TestCase):
         self.assertIn("secret", other)
 
 
+class TestLAideNOrdonnePasCeQueLeParserRefuse(unittest.TestCase):
+    """L'aide et le parser du même script se contredisaient.
+
+    La description était recopiée du script voisin, qui lit une
+    sauvegarde : elle ordonnait « Use --backup_path or --backup_name »,
+    et le parser rendait « unrecognized arguments » sur les deux. Le même
+    écran donnait l'ordre et le refus.
+
+    Le contrôle porte sur les DEUX scripts : celui qui avait la faute et
+    celui d'où elle venait. Une recopie se refait.
+    """
+
+    SCRIPTS = (
+        "script/database/get_repo_from_module.py",
+        "script/database/get_repo_from_backup.py",
+    )
+
+    @staticmethod
+    def racine():
+        return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    def lancer(self, script, *args):
+        import subprocess
+        import sys
+
+        return subprocess.run(
+            [sys.executable, os.path.join(self.racine(), script)] + list(args),
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=60,
+        )
+
+    def test_every_flag_the_help_names_is_accepted(self):
+        """L'épreuve TAPE le drapeau au lieu de lire la mise en page.
+
+        Comparer le corps de l'aide à la ligne « usage: » se heurte à sa
+        forme — « --help » n'y figure pas, il vit sous « options: ». Le
+        seul contrôle qui ne dépende d'aucune mise en page est de jouer
+        le drapeau et de regarder si l'analyseur le connaît.
+        """
+        import re
+
+        for script in self.SCRIPTS:
+            aide = self.lancer(script, "--help")
+            with self.subTest(script=script, etape="aide"):
+                self.assertEqual(0, aide.returncode)
+            for drapeau in sorted(
+                set(re.findall(r"--[a-z0-9_]+", aide.stdout))
+            ):
+                if drapeau == "--help":
+                    continue
+                vu = self.lancer(script, drapeau)
+                sortie = vu.stdout + vu.stderr
+                with self.subTest(script=script, drapeau=drapeau):
+                    # LE DRAPEAU LUI-MÊME, et non n'importe quel refus :
+                    # le script peut échouer pour une autre raison — un
+                    # fichier absent, une valeur attendue — et c'est hors
+                    # sujet. Lui donner une valeur au hasard fait d'ailleurs
+                    # de « x » un positionnel orphelin sur un drapeau
+                    # booléen, et c'est LUI que l'analyseur nomme alors.
+                    self.assertNotIn(
+                        f"unrecognized arguments: {drapeau}", sortie
+                    )
+
+    def test_the_only_useful_flag_is_required_and_says_so(self):
+        """Sans lui, le script mourait sur « 'NoneType' object has no
+        attribute 'split' » — une trace qui ne dit pas ce qui manque."""
+        vu = self.lancer("script/database/get_repo_from_module.py")
+        self.assertNotEqual(0, vu.returncode)
+        self.assertIn("--module", vu.stdout + vu.stderr)
+        self.assertNotIn("Traceback", vu.stdout + vu.stderr)
+
+
 class TestCompareDatabaseApplicationLogic(unittest.TestCase):
     """Test CSV set comparison logic used by compare_database_application."""
 
