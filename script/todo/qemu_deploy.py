@@ -21,7 +21,8 @@ from typing import NamedTuple
 
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
-from script.posture import registry as posture_registry
+from script.todo import egress_book
+from script.todo import vm_profiles
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
@@ -158,7 +159,7 @@ class QemuDeployMixin:
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
-        if "install_odoo" in final_cmd:
+        if vm_profiles.ODOO_MARK in final_cmd:
             # Le snippet de service est une SUITE d'instructions séparées par
             # « ; ». Collé tel quel après « && », l'opérateur ne lie que la
             # première : tout le reste s'exécute même quand le make a échoué, et
@@ -1365,9 +1366,13 @@ class QemuDeployMixin:
 
     # La clé sous laquelle le site nomme l'adresse de chaque rôle. Le
     # dépôt sait de QUOI une machine a besoin ; ceci dit OÙ, et c'est une
-    # donnée de site — elle vit dans la configuration privée, le seul des
-    # trois fichiers fusionnés qui ne soit pas suivi.
-    EGRESS_BOOK_KEY = "egress_destinations"
+    # donnée de site.
+    #
+    # RELAYÉE et non recopiée : `egress_book` la porte, avec la lecture, le
+    # refus du fichier suivi et l'écriture. Deux littéraux voisins cessent
+    # de correspondre au premier renommage, et celui-là déciderait d'où une
+    # liste blanche tire ses adresses.
+    EGRESS_BOOK_KEY = egress_book.BOOK_KEY
 
     @staticmethod
     def _egress_probe_command(ip, user="erplibre"):
@@ -1589,13 +1594,20 @@ class QemuDeployMixin:
     def _qemu_egress_rules(self, spec):
         """Le texte des règles que cette spec demande, ou une chaîne vide.
 
-        Vide n'est pas un échec : trois postures sur quatre n'ont pas de
-        liste bornée, et la plupart des déploiements ne posent rien.
+        Vide n'est pas un échec : deux postures sur quatre ne demandent rien,
+        et la plupart des déploiements ne posent aucune règle.
 
         Ce qui est refusé ici, c'est l'inverse — une posture qui EN attend
         et dont le site n'a pas nommé les adresses. La laisser passer
         déploierait une machine qui ne joint pas sa forge, et le manque se
         découvrirait sur la machine plutôt que devant l'écran.
+
+        LA QUESTION POSÉE EST « CETTE POSTURE VEUT-ELLE DES RÈGLES ». Elle
+        était « a-t-elle une liste bornée à résoudre », ce qui est une
+        AUTRE question : une sortie coupée n'a aucune adresse à nommer et
+        veut pourtant des règles. « local-only » se déployait donc avec la
+        sortie entière — la posture qui promet le plus étant la seule à ne
+        rien poser.
         """
         posture = posture_spec.posture_of(spec)
         if posture is None:
@@ -1604,9 +1616,14 @@ class QemuDeployMixin:
                 " inconnue. Déployer en sortie libre une spec qui demandait"
                 " du confinement serait le sens inverse de la demande."
             )
-        if not posture_destinations.has_bounded_list(posture):
+        if not posture_rules.wants_rules(posture):
             return ""
-        carnet = self.config_file.get_config(self.EGRESS_BOOK_KEY) or {}
+        # PAR LE MODULE DU CARNET, et non par une lecture directe : c'est
+        # lui qui refuse le fichier SUIVI par git. Le carnet ne porte que
+        # des adresses, et une adresse y devient publique — lire d'abord
+        # donnerait un déploiement réussi derrière lequel la fuite ne se
+        # verrait jamais.
+        carnet = egress_book.read(self.config_file)
         cibles = posture_destinations.destinations_for(posture, carnet)
         return posture_rules.render_egress(posture, cibles)
 
@@ -1677,6 +1694,14 @@ class QemuDeployMixin:
                 f" Posture « {posture_spec.posture_name(spec)} »,"
                 f" données réelles : {posture_spec.real_data(spec)}."
             )
+        # AUCUN REFUS SUR LE COUPLE (profil, installation) ICI, et c'est
+        # une décision. Un spec porte une POSTURE, pas le libellé sous
+        # lequel on l'a choisie — et le registre sépare les deux exprès :
+        # « les séparer est ce qui permet de servir autre chose sur la même
+        # posture ». Déduire « on voulait une interface web » de « on a
+        # choisi local-only » inverse cette séparation, et refuserait la
+        # seule posture qui porte une donnée réelle. La question se pose là
+        # où le LIBELLÉ existe : dans le formulaire.
         demande = spec.get("backend") or vm_backend.LIBVIRT
         if demande != vm_backend.LIBVIRT:
             raise vm_backend.VerbNotImplemented(
@@ -2044,10 +2069,12 @@ class QemuDeployMixin:
                 host_os.host_os(),
                 bool(shutil.which("limactl")),
             ),
-            # Les postures dans l'ordre du registre, du plus libre au plus
-            # contraint : on descend vers la contrainte, on n'y tombe pas.
-            "postures": posture_registry.posture_names(),
-            "posture": posture_registry.DEFAULT_POSTURE,
+            # LES TROIS CLÉS DE POSTURE, par le module qui les possède.
+            # Recopiées d'un écran à l'autre, elles avaient déjà divergé :
+            # la ligne composée à la main perdait la phrase du profil qui
+            # promet une interface servie. Le défaut ici est PAR DÉFAUT :
+            # ce chemin écrit les règles avant le premier démarrage.
+            **vm_profiles.form_context(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée

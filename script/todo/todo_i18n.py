@@ -1183,6 +1183,18 @@ TRANSLATIONS = {
         "fr": "Deploy - vérifier une VM déployée, couche par couche",
         "en": "Deploy - verify a deployed VM, layer by layer",
     },
+    "The backup command failed; nothing was verified: ": {
+        "fr": "La sauvegarde a échoué ; rien n'a été relu : ",
+        "en": "The backup command failed; nothing was verified: ",
+    },
+    "Archive not found where expected; not verified: ": {
+        "fr": "Archive introuvable là où on l'attendait ; non relue : ",
+        "en": "Archive not found where expected; not verified: ",
+    },
+    "Finding not recorded: ": {
+        "fr": "Constat non enregistré : ",
+        "en": "Finding not recorded: ",
+    },
     "nothing checked": {
         "fr": "rien de contrôlé",
         "en": "nothing checked",
@@ -1214,6 +1226,18 @@ TRANSLATIONS = {
     "Network posture": {
         "fr": "Posture réseau",
         "en": "Network posture",
+    },
+    "Deployment refused:": {
+        "fr": "Déploiement refusé :",
+        "en": "Deployment refused:",
+    },
+    "egress rules posed and armed": {
+        "fr": "règles de sortie posées et armées",
+        "en": "egress rules posed and armed",
+    },
+    "egress rules not rendered": {
+        "fr": "règles de sortie non rendues",
+        "en": "egress rules not rendered",
     },
     "Withheld: egress rules did not hold on": {
         "fr": "Retenu : les règles de sortie n'ont pas tenu sur",
@@ -6339,6 +6363,17 @@ TRANSLATIONS = {
     "system account, systemd service, admin account": {
         "fr": "compte système, service systemd, compte administrateur",
         "en": "system account, systemd service, admin account",
+    },
+    "admin password drawn into /etc/forgejo/admin-password": {
+        "fr": (
+            "mot de passe admin tiré au sort dans"
+            " /etc/forgejo/admin-password"
+        ),
+        "en": "admin password drawn into /etc/forgejo/admin-password",
+    },
+    "registration closed, private-range mirrors refused": {
+        "fr": "inscription fermée, miroirs en plage privée refusés",
+        "en": "registration closed, private-range mirrors refused",
     },
     "posed by script/forgejo/install_forgejo.sh": {
         "fr": "posé par script/forgejo/install_forgejo.sh",
@@ -15529,6 +15564,574 @@ TRANSLATIONS = {
     "A dry run touches no secret": {
         "fr": "Un essai à blanc ne touche à aucun secret",
         "en": "A dry run touches no secret",
+    },
+    # Carnet d'adresses (script/todo/egress_book_menu.py)
+    "Deploy - Site address book (what a confined VM reaches)": {
+        "fr": "Deploy - Carnet d'adresses du site (ce qu'une VM bornée atteint)",
+        "en": "Deploy - Site address book (what a confined VM reaches)",
+    },
+    "Site address book: what a confined VM may reach": {
+        "fr": "Carnet d'adresses du site : ce qu'une VM bornée a le droit de joindre",
+        "en": "Site address book: what a confined VM may reach",
+    },
+    "Book - Show the book": {
+        "fr": "Carnet - Voir le carnet",
+        "en": "Book - Show the book",
+    },
+    "Book - Set a role's addresses": {
+        "fr": "Carnet - Poser les adresses d'un rôle",
+        "en": "Book - Set a role's addresses",
+    },
+    "Book - Forget a role": {
+        "fr": "Carnet - Oublier un rôle",
+        "en": "Book - Forget a role",
+    },
+    "Book - What each profile still needs": {
+        "fr": "Carnet - Ce qui manque encore à chaque profil",
+        "en": "Book - What each profile still needs",
+    },
+    "The book is empty.": {
+        "fr": "Le carnet est vide.",
+        "en": "The book is empty.",
+    },
+    "A confined profile refuses to deploy without it.": {
+        "fr": "Un profil qui confine refuse de se déployer sans lui.",
+        "en": "A confined profile refuses to deploy without it.",
+    },
+    "no address": {
+        "fr": "aucune adresse",
+        "en": "no address",
+    },
+    "ports": {
+        "fr": "ports",
+        "en": "ports",
+    },
+    "comes from the team book: forgetting here will not remove it": {
+        "fr": "vient du carnet de l'équipe : l'oublier ici ne le retirera pas",
+        "en": "comes from the team book: forgetting here will not remove it",
+    },
+    "These addresses live in the team book and will stay open:": {
+        "fr": "Ces adresses vivent dans le carnet de l'équipe et resteront ouvertes :",
+        "en": "These addresses live in the team book and will stay open:",
+    },
+    "Networks, comma separated. An address alone means /32.": {
+        "fr": "Réseaux, séparés par des virgules. Une adresse seule vaut /32.",
+        "en": "Networks, comma separated. An address alone means /32.",
+    },
+    "A HOSTNAME is refused: resolving it would freeze the address.": {
+        "fr": "Un NOM d'hôte est refusé : le résoudre figerait l'adresse.",
+        "en": "A HOSTNAME is refused: resolving it would freeze the address.",
+    },
+    "Networks: ": {
+        "fr": "Réseaux : ",
+        "en": "Networks: ",
+    },
+    "Ports, comma separated (empty: the repository knows): ": {
+        "fr": "Ports, séparés par des virgules (vide : le dépôt les connaît) : ",
+        "en": "Ports, comma separated (empty: the repository knows): ",
+    },
+    "Role number (empty to cancel): ": {
+        "fr": "Numéro du rôle (vide pour renoncer) : ",
+        "en": "Role number (empty to cancel): ",
+    },
+    "Nothing typed: the book is unchanged.": {
+        "fr": "Rien de tapé : le carnet est inchangé.",
+        "en": "Nothing typed: the book is unchanged.",
+    },
+    "Written for": {
+        "fr": "Écrit pour",
+        "en": "Written for",
+    },
+    "Forget": {
+        "fr": "Oublier",
+        "en": "Forget",
+    },
+    "Forgotten from this machine:": {
+        "fr": "Oublié de cette machine :",
+        "en": "Forgotten from this machine:",
+    },
+    "Not in this machine book, nothing changed:": {
+        "fr": "Absent du carnet de cette machine, rien de changé :",
+        "en": "Not in this machine book, nothing changed:",
+    },
+    "refuses to deploy, missing": {
+        "fr": "refuse de se déployer, il manque",
+        "en": "refuses to deploy, missing",
+    },
+    # Profils de VM (script/todo/vm_profiles.py)
+    "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.": {
+        "fr": "Ce chemin ne pose les règles qu'une fois la machine joignable : elle sort donc librement pendant tout son premier démarrage — des minutes, pas des secondes.",
+        "en": "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.",
+    },
+    "This profile expects an install that lays down Odoo.": {
+        "fr": "Ce profil attend une installation qui pose Odoo.",
+        "en": "This profile expects an install that lays down Odoo.",
+    },
+    "The install serves what the profile promises.": {
+        "fr": "L'installation sert ce que le profil promet.",
+        "en": "The install serves what the profile promises.",
+    },
+    "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.": {
+        "fr": "Le nom de ce profil promet une interface servie, et l'installation choisie ne pose aucun Odoo. La machine ne servirait rien, sous un nom qui dit le contraire.",
+        "en": "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.",
+    },
+    "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.": {
+        "fr": "Aucun fichier de règles n'est produit : cette posture déclare une politique que rien n'installe. Elle se comporte exactement comme une sortie libre.",
+        "en": "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.",
+    },
+    "A failed reload of the rules on a later boot is not reported.": {
+        "fr": "Un rechargement des règles qui échoue à un démarrage ultérieur n'est pas signalé.",
+        "en": "A failed reload of the rules on a later boot is not reported.",
+    },
+    "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.": {
+        "fr": "Le trafic des conteneurs n'est pas prouvé attrapé : il traverse FORWARD, qu'aucune confrontation n'a encore mesuré.",
+        "en": "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.",
+    },
+    "Unknown posture: this profile deploys nothing.": {
+        "fr": "Posture inconnue : ce profil ne déploie rien.",
+        "en": "Unknown posture: this profile deploys nothing.",
+    },
+    "Nothing is confined, and that is the point.": {
+        "fr": "Rien n'est confiné, et c'est le principe.",
+        "en": "Nothing is confined, and that is the point.",
+    },
+    "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.": {
+        "fr": "INTENTION SEULEMENT : cette posture déclare une politique qu'aucune règle n'installe. Elle se comporte comme une sortie libre.",
+        "en": "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.",
+    },
+    "Rules are written, loaded and armed in the guest.": {
+        "fr": "Des règles sont écrites, chargées et armées dans l'invité.",
+        "en": "Rules are written, loaded and armed in the guest.",
+    },
+    # Lima (script/todo/lima_menu.py)
+    "ERPLibre": {
+        "fr": "ERPLibre",
+        "en": "ERPLibre",
+    },
+    "Lima - Install ERPLibre in an instance": {
+        "fr": "Lima - Installer ERPLibre dans une instance",
+        "en": "Lima - Install ERPLibre in an instance",
+    },
+    "ERPLibre branch: ": {
+        "fr": "Branche ERPLibre : ",
+        "en": "ERPLibre branch: ",
+    },
+    "Production layout (/opt/erplibre, systemd)? (o/N): ": {
+        "fr": "Disposition de production (/opt/erplibre, systemd) ? (o/N) : ",
+        "en": "Production layout (/opt/erplibre, systemd)? (o/N): ",
+    },
+    "Start the install? (o/N): ": {
+        "fr": "Lancer l'installation ? (o/N) : ",
+        "en": "Start the install? (o/N): ",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "Install directory:": {
+        "fr": "Répertoire d'installation :",
+        "en": "Install directory:",
+    },
+    "Remote script:": {
+        "fr": "Script distant :",
+        "en": "Remote script:",
+    },
+    "characters": {
+        "fr": "caractères",
+        "en": "characters",
+    },
+    "Enters by:": {
+        "fr": "Entre par :",
+        "en": "Enters by:",
+    },
+    "Install started. Manifest:": {
+        "fr": "Installation lancée. Manifeste :",
+        "en": "Install started. Manifest:",
+    },
+    "Follow it from": {
+        "fr": "La suivre depuis",
+        "en": "Follow it from",
+    },
+    "Lima - instances (macOS, Linux)": {
+        "fr": "Lima - instances (macOS, Linux)",
+        "en": "Lima - instances (macOS, Linux)",
+    },
+    "Lima: VMs on macOS and Linux, by name": {
+        "fr": "Lima : des VM sur macOS et Linux, par leur nom",
+        "en": "Lima: VMs on macOS and Linux, by name",
+    },
+    "The tool": {
+        "fr": "L'outil",
+        "en": "The tool",
+    },
+    "Instances": {
+        "fr": "Instances",
+        "en": "Instances",
+    },
+    "Lima - How this host gets the tool": {
+        "fr": "Lima - Par où cet hôte obtient l'outil",
+        "en": "Lima - How this host gets the tool",
+    },
+    "Lima - List the instances": {
+        "fr": "Lima - Lister les instances",
+        "en": "Lima - List the instances",
+    },
+    "Lima - Create and start an instance": {
+        "fr": "Lima - Créer et démarrer une instance",
+        "en": "Lima - Create and start an instance",
+    },
+    "Lima - Start an instance": {
+        "fr": "Lima - Démarrer une instance",
+        "en": "Lima - Start an instance",
+    },
+    "Lima - Stop an instance": {
+        "fr": "Lima - Arrêter une instance",
+        "en": "Lima - Stop an instance",
+    },
+    "Lima - Delete an instance": {
+        "fr": "Lima - Supprimer une instance",
+        "en": "Lima - Delete an instance",
+    },
+    "Lima - Open a shell in an instance": {
+        "fr": "Lima - Ouvrir un shell dans une instance",
+        "en": "Lima - Open a shell in an instance",
+    },
+    "Instance name": {
+        "fr": "Nom d'instance",
+        "en": "Instance name",
+    },
+    "Instance name: ": {
+        "fr": "Nom de l'instance : ",
+        "en": "Instance name: ",
+    },
+    "Instance number (empty to cancel): ": {
+        "fr": "Numéro de l'instance (vide pour renoncer) : ",
+        "en": "Instance number (empty to cancel): ",
+    },
+    "Config file:": {
+        "fr": "Fichier de configuration :",
+        "en": "Config file:",
+    },
+    "Config removed:": {
+        "fr": "Configuration retirée :",
+        "en": "Config removed:",
+    },
+    "is not installed.": {
+        "fr": "n'est pas installé.",
+        "en": "is not installed.",
+    },
+    "Run:": {
+        "fr": "Jouer :",
+        "en": "Run:",
+    },
+    "Archive:": {
+        "fr": "Archive :",
+        "en": "Archive:",
+    },
+    "SHA-256:": {
+        "fr": "SHA-256 :",
+        "en": "SHA-256:",
+    },
+    "No instance yet.": {
+        "fr": "Aucune instance.",
+        "en": "No instance yet.",
+    },
+    "No instance matches.": {
+        "fr": "Aucune instance ne correspond.",
+        "en": "No instance matches.",
+    },
+    "Not held by this config:": {
+        "fr": "Non tenu par cette configuration :",
+        "en": "Not held by this config:",
+    },
+    "Write and start? (o/N): ": {
+        "fr": "Écrire et démarrer ? (o/N) : ",
+        "en": "Write and start? (o/N): ",
+    },
+    "Type the instance name to confirm (empty to cancel): ": {
+        "fr": "Retapez le nom de l'instance pour confirmer (vide pour annuler) : ",
+        "en": "Type the instance name to confirm (empty to cancel): ",
+    },
+    "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.": {
+        "fr": "Le gestionnaire de paquets le fournit. Sa chaîne de signature porte sur l'index entier, ce qui est plus fort qu'une somme recopiée à la main.",
+        "en": "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.",
+    },
+    "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.": {
+        "fr": "Une version épinglée correspond. La télécharger, puis vérifier la somme AVANT d'exécuter quoi que ce soit de l'archive.",
+        "en": "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.",
+    },
+    "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Le gestionnaire de paquets de cet hôte n'est pas installé. L'installer, ou relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Aucun gestionnaire de paquets connu pour cet hôte, et aucune version épinglée. Les deux routes sont fermées : relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.": {
+        "fr": "La version demandée n'est pas épinglée. « latest » désigne une chose différente à chaque appel, donc il n'y a rien à vérifier.",
+        "en": "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.",
+    },
+    "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.": {
+        "fr": "Cette version ne porte aucune somme dans RELEASES. Une somme se relève sur une publication, elle ne s'invente jamais.",
+        "en": "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.",
+    },
+    "No archive is published for this system and architecture.": {
+        "fr": "Aucune archive n'est publiée pour ce système et cette architecture.",
+        "en": "No archive is published for this system and architecture.",
+    },
+    "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.": {
+        "fr": "La somme ne correspond PAS. N'exécuter rien de cette archive : c'est le dernier moment où rien n'a encore été exécuté.",
+        "en": "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.",
+    },
+    "The archive is not where it was expected.": {
+        "fr": "L'archive n'est pas où on l'attendait.",
+        "en": "The archive is not where it was expected.",
+    },
+    # Forge Forgejo/Gitea (script/todo/forge_menu.py)
+    "Forge - Mirror the manifest from its upstreams": {
+        "fr": "Forge - Miroiter le manifeste depuis ses amonts",
+        "en": "Forge - Mirror the manifest from its upstreams",
+    },
+    "to mirror.": {
+        "fr": "à miroiter.",
+        "en": "to mirror.",
+    },
+    "mirrored.": {
+        "fr": "miroités.",
+        "en": "mirrored.",
+    },
+    "No upstream for:": {
+        "fr": "Aucun amont pour :",
+        "en": "No upstream for:",
+    },
+    "Mirror these repositories? (o/N): ": {
+        "fr": "Miroiter ces dépôts ? (o/N) : ",
+        "en": "Mirror these repositories? (o/N): ",
+    },
+    "Forge - Create the repositories the manifest declares": {
+        "fr": "Forge - Créer les dépôts que le manifeste déclare",
+        "en": "Forge - Create the repositories the manifest declares",
+    },
+    "The manifest declares no project.": {
+        "fr": "Le manifeste ne déclare aucun projet.",
+        "en": "The manifest declares no project.",
+    },
+    "No synced manifest at": {
+        "fr": "Aucun manifeste synchronisé à",
+        "en": "No synced manifest at",
+    },
+    "Run repo sync, or give a manifest path below.": {
+        "fr": "Lancer repo sync, ou donner un chemin de manifeste ci-dessous.",
+        "en": "Run repo sync, or give a manifest path below.",
+    },
+    "Manifest path (empty to cancel): ": {
+        "fr": "Chemin du manifeste (vide pour renoncer) : ",
+        "en": "Manifest path (empty to cancel): ",
+    },
+    "No such file:": {
+        "fr": "Fichier introuvable :",
+        "en": "No such file:",
+    },
+    "Unreadable manifest:": {
+        "fr": "Manifeste illisible :",
+        "en": "Unreadable manifest:",
+    },
+    "already there,": {
+        "fr": "déjà là,",
+        "en": "already there,",
+    },
+    "to create.": {
+        "fr": "à créer.",
+        "en": "to create.",
+    },
+    "created.": {
+        "fr": "créés.",
+        "en": "created.",
+    },
+    "Same forge name for:": {
+        "fr": "Même nom de forge pour :",
+        "en": "Same forge name for:",
+    },
+    "Create these repositories? (o/N): ": {
+        "fr": "Créer ces dépôts ? (o/N) : ",
+        "en": "Create these repositories? (o/N): ",
+    },
+    "Forge (Forgejo/Gitea)": {
+        "fr": "Forge (Forgejo/Gitea)",
+        "en": "Forge (Forgejo/Gitea)",
+    },
+    "Forge (Forgejo/Gitea): profiles, token, repos": {
+        "fr": "Forge (Forgejo/Gitea) : profils, jeton, dépôts",
+        "en": "Forge (Forgejo/Gitea): profiles, token, repos",
+    },
+    "Profiles & token": {
+        "fr": "Profils et jeton",
+        "en": "Profiles & token",
+    },
+    "The forge itself": {
+        "fr": "La forge elle-même",
+        "en": "The forge itself",
+    },
+    "Forge - List the profiles": {
+        "fr": "Forge - Lister les profils",
+        "en": "Forge - List the profiles",
+    },
+    "Forge - Add or edit a profile": {
+        "fr": "Forge - Créer ou modifier un profil",
+        "en": "Forge - Add or edit a profile",
+    },
+    "Forge - Store the API token": {
+        "fr": "Forge - Déposer le jeton d'API",
+        "en": "Forge - Store the API token",
+    },
+    "Forge - Delete a profile": {
+        "fr": "Forge - Supprimer un profil",
+        "en": "Forge - Delete a profile",
+    },
+    "Forge - Check the connection": {
+        "fr": "Forge - Vérifier la connexion",
+        "en": "Forge - Check the connection",
+    },
+    "Forge - List the repositories": {
+        "fr": "Forge - Lister les dépôts",
+        "en": "Forge - List the repositories",
+    },
+    "No forge profile yet: create one first.": {
+        "fr": "Aucun profil de forge : en créer un d'abord.",
+        "en": "No forge profile yet: create one first.",
+    },
+    "Profile name: ": {
+        "fr": "Nom du profil : ",
+        "en": "Profile name: ",
+    },
+    "Profile number (empty to cancel): ": {
+        "fr": "Numéro du profil (vide pour renoncer) : ",
+        "en": "Profile number (empty to cancel): ",
+    },
+    "Forge URL: ": {
+        "fr": "Adresse de la forge : ",
+        "en": "Forge URL: ",
+    },
+    "Owning account or organisation: ": {
+        "fr": "Compte ou organisation propriétaire : ",
+        "en": "Owning account or organisation: ",
+    },
+    "Verify the TLS certificate": {
+        "fr": "Vérifier le certificat TLS",
+        "en": "Verify the TLS certificate",
+    },
+    "Allow http to a remote address": {
+        "fr": "Autoriser http vers une adresse distante",
+        "en": "Allow http to a remote address",
+    },
+    "Profile saved:": {
+        "fr": "Profil enregistré :",
+        "en": "Profile saved:",
+    },
+    "Profile deleted:": {
+        "fr": "Profil supprimé :",
+        "en": "Profile deleted:",
+    },
+    "Not in the private file, nothing deleted:": {
+        "fr": "Absent du fichier privé, rien de supprimé :",
+        "en": "Not in the private file, nothing deleted:",
+    },
+    "Unknown profile:": {
+        "fr": "Profil inconnu :",
+        "en": "Unknown profile:",
+    },
+    "TLS verification is OFF for this profile.": {
+        "fr": "La vérification TLS est COUPÉE pour ce profil.",
+        "en": "TLS verification is OFF for this profile.",
+    },
+    "API token (not echoed): ": {
+        "fr": "Jeton d'API (saisie non affichée) : ",
+        "en": "API token (not echoed): ",
+    },
+    "Empty: nothing stored.": {
+        "fr": "Vide : rien de déposé.",
+        "en": "Empty: nothing stored.",
+    },
+    "Token stored for": {
+        "fr": "Jeton déposé pour",
+        "en": "Token stored for",
+    },
+    "TLS UNVERIFIED": {
+        "fr": "TLS NON VÉRIFIÉ",
+        "en": "TLS UNVERIFIED",
+    },
+    "PLAINTEXT": {
+        "fr": "EN CLAIR",
+        "en": "PLAINTEXT",
+    },
+    "token stored": {
+        "fr": "jeton déposé",
+        "en": "token stored",
+    },
+    "no token": {
+        "fr": "aucun jeton",
+        "en": "no token",
+    },
+    "The forge said:": {
+        "fr": "La forge a répondu :",
+        "en": "The forge said:",
+    },
+    "Connected as:": {
+        "fr": "Connecté en tant que :",
+        "en": "Connected as:",
+    },
+    "repositories": {
+        "fr": "dépôts",
+        "en": "repositories",
+    },
+    "private": {
+        "fr": "privé",
+        "en": "private",
+    },
+    "PUBLIC": {
+        "fr": "PUBLIC",
+        "en": "PUBLIC",
+    },
+    "Forge reached.": {
+        "fr": "Forge jointe.",
+        "en": "Forge reached.",
+    },
+    "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.": {
+        "fr": "Aucun jeton d'API pour ce profil. En déposer un par « Déposer le jeton d'API » ; il se crée dans la forge sous Paramètres > Applications.",
+        "en": "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.",
+    },
+    "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.": {
+        "fr": "La forge a refusé le jeton. Vérifier qu'il n'a pas expiré, et qu'il porte les portées que l'opération demande.",
+        "en": "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.",
+    },
+    "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.": {
+        "fr": "La forge refuse une cible en plage privée. C'est son réglage ALLOW_LOCALNETWORKS, PAS le jeton : en régénérer un n'y change rien. Poser FORGEJO_ALLOW_LOCALNETWORKS=1 et réinstaller, ou modifier [migrations] dans /etc/forgejo/app.ini.",
+        "en": "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.",
+    },
+    "Nothing at that address on the forge.": {
+        "fr": "Rien à cette adresse sur la forge.",
+        "en": "Nothing at that address on the forge.",
+    },
+    "It already exists on the forge.": {
+        "fr": "Cela existe déjà sur la forge.",
+        "en": "It already exists on the forge.",
+    },
+    "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.": {
+        "fr": "Le certificat n'est pas approuvé. Approuver l'autorité sur cette machine ; couper la vérification dans le profil envoie le jeton à qui répond à la place de la forge.",
+        "en": "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.",
+    },
+    "No answer from the forge. Check the address, the port, and that the service is running.": {
+        "fr": "Aucune réponse de la forge. Vérifier l'adresse, le port, et que le service tourne.",
+        "en": "No answer from the forge. Check the address, the port, and that the service is running.",
+    },
+    "The forge refused the call.": {
+        "fr": "La forge a refusé l'appel.",
+        "en": "The forge refused the call.",
     },
 }
 

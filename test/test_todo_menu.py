@@ -594,6 +594,7 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Add a remote to a local repository": "_git_add_remote",
         "Install git hooks": "_git_install_hooks",
         "Set merge.conflictStyle": "_git_set_conflict_style",
+        "Forge (Forgejo/Gitea)": "prompt_execute_forge",
         "Install Starship on Shell": "_shell_install_starship",
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",
@@ -627,6 +628,11 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         # bougé — dont les rangs 6 et 7, qu'une épreuve Proxmox cherche en
         # chaînes littérales.
         "Deploy - VM backends": "_deploy_vm_backends",
+        # ONZIÈME, greffée par « method » juste après le choix des
+        # backends : c'est là qu'on lit ce qu'une machine atteint.
+        "Deploy - Site address book": "prompt_execute_egress_book",
+        # DOUZIÈME, même greffe et même raison.
+        "Lima - instances": "prompt_execute_lima",
         # DIXIÈME, même greffe et même raison : les rangs codés en dur
         # s'arrêtent à huit, et une entrée posée plus haut les décalerait.
         "Deploy - verify this station, layer by layer": (
@@ -689,6 +695,32 @@ class TestVpnMenuNumbering(MenuCoherence, unittest.TestCase):
         "VPN - Delete a profile": "_vpn_delete_profile",
         "VPN - Install the client packages": "_vpn_install",
         "VPN - What can this machine do?": "_vpn_check",
+    }
+
+
+class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Lima : huit entrées en trois sections, aucun garde.
+
+    Sa sixième DÉTRUIT une instance et son disque ; sa huitième lance une
+    installation détachée qui dure une demi-heure. Trois sections font
+    qu'aucun rang ne se lit à l'œil sur la liste, et un « elif » oublié
+    ferait lancer l'entrée voisine sous le libellé attendu.
+    """
+
+    SOURCE = TODO_DIR / "lima_menu.py"
+    ENTRY = "def prompt_execute_lima(self):"
+    END = "def _lima_tool(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Lima - How this host gets the tool": "_lima_tool",
+        "Lima - List the instances": "_lima_list",
+        "Lima - Create and start an instance": "_lima_create",
+        "Lima - Start an instance": "_lima_power",
+        "Lima - Stop an instance": "_lima_power",
+        "Lima - Delete an instance": "_lima_delete",
+        "Lima - Open a shell in an instance": "_lima_shell",
+        "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
     }
 
 

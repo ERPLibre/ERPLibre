@@ -256,5 +256,130 @@ class TestElleNeFaitRienDAutre(unittest.TestCase):
                     self.assertNotIn(mot, sql.upper())
 
 
+class TestLaFormeDeLaSortie(unittest.TestCase):
+    """Le lecteur du dépôt et le lecteur de banc ne rendaient pas la même
+    chose, et seule la seconde forme était éprouvée.
+
+    `run_psql` lance psql en « -tAc » et rend sa sortie BRUTE : une
+    CHAÎNE. Le banc rendait des listes de lignes. Un `sortie[0][0]` qui
+    convient aux listes lit, sur une chaîne, le premier CARACTÈRE — et
+    tout compte à deux chiffres était amputé sur le SEUL chemin
+    réellement emprunté.
+    """
+
+    @staticmethod
+    def chaine(valeur):
+        """Ce que rend psql en « -tAc » : la valeur, puis un saut."""
+        return lambda _base, _sql: f"{valeur}\n"
+
+    def test_the_repository_reader_returns_a_string(self):
+        """Contrôle du banc : si le lecteur réel rendait des lignes, tout
+        ce fichier mesurerait une forme qui n'existe pas."""
+        import inspect as inspection
+
+        from script.analyse import lib_analyse
+
+        source = inspection.getsource(lib_analyse.run_psql)
+        self.assertIn("-tAc", source)
+        self.assertIn("return result.stdout", source)
+
+    def test_a_two_digit_count_survives_the_string_form(self):
+        self.assertEqual(33, G._compte(self.chaine(33), "x", "sql"))
+
+    def test_a_three_digit_count_survives_too(self):
+        """250 tâches planifiées actives se lisaient « 2 »."""
+        self.assertEqual(250, G._compte(self.chaine(250), "x", "sql"))
+
+    def test_the_row_form_still_works(self):
+        """Le banc existant ne doit pas changer de contrat pour autant."""
+        self.assertEqual(33, G._compte(lambda _b, _s: [[33]], "x", "sql"))
+
+    def test_a_row_of_strings_works_as_well(self):
+        """Un lecteur qui rend des chaînes par ligne est une forme
+        plausible, et la deviner vaut mieux que la refuser."""
+        self.assertEqual(33, G._compte(lambda _b, _s: ["33"], "x", "sql"))
+
+    def test_zero_is_read_as_zero_and_not_as_nothing(self):
+        self.assertEqual(0, G._compte(self.chaine(0), "x", "sql"))
+
+    def test_an_empty_string_is_nothing_read(self):
+        """Rien lu n'est pas zéro : l'un dit qu'on n'a pas pu regarder."""
+        self.assertIsNone(G._compte(lambda _b, _s: "", "x", "sql"))
+
+    def test_an_empty_list_is_nothing_read(self):
+        self.assertIsNone(G._compte(lambda _b, _s: [], "x", "sql"))
+
+    def test_a_word_is_nothing_read(self):
+        """Une sortie qui n'est pas un nombre ne se devine pas."""
+        self.assertIsNone(G._compte(lambda _b, _s: "ERROR\n", "x", "sql"))
+
+    def test_the_counts_that_travel_are_the_real_ones(self):
+        """L'inspection promet de faire voyager les comptes « pour ne pas
+        envoyer chercher au hasard » : un compte faux tient la promesse
+        à l'envers."""
+
+        def run(_base, sql):
+            return "250\n" if "ir_cron" in sql else "1\n"
+
+        constat = G.inspect("x", run_psql=run)
+        self.assertEqual(G.REAL, constat.verdict)
+        self.assertEqual(250, constat.cron_active)
+
+
+class TestElleNeLevePas(unittest.TestCase):
+    """La docstring promet « ne lève pas », et deux imports tardifs la
+    démentaient.
+
+    Ils s'exécutent à chaque appel, hors de tout garde-fou. Un appelant
+    qui charge ce fichier autrement que par le paquet « script » recevait
+    une trace d'exception là où un verdict était promis — et un appelant
+    qui croit la promesse n'enveloppe rien, donc ouvre la porte que la
+    garde existe pour tenir.
+    """
+
+    def _sans_module(self, prefixe):
+        """Rend tout import commençant par `prefixe` introuvable."""
+        import builtins
+
+        vrai = builtins.__import__
+
+        def faux(nom, *args, **kwargs):
+            if nom.startswith(prefixe):
+                raise ModuleNotFoundError(f"No module named {prefixe!r}")
+            return vrai(nom, *args, **kwargs)
+
+        builtins.__import__ = faux
+        self.addCleanup(setattr, builtins, "__import__", vrai)
+
+    def test_a_missing_monitoring_gives_a_verdict_not_a_traceback(self):
+        self._sans_module("script.analyse")
+        constat = G.inspect("x", run_psql=lambda _b, _s: "1\n")
+        self.assertEqual(G.UNREADABLE, constat.verdict)
+
+    def test_that_verdict_says_what_could_not_be_read(self):
+        """Un « illisible » sans motif envoie chercher au hasard."""
+        self._sans_module("script.analyse")
+        constat = G.inspect("x", run_psql=lambda _b, _s: "1\n")
+        self.assertIn("monitoring", constat.detail)
+
+    def test_the_green_light_stays_shut(self):
+        """Le point qui compte : une lecture qui n'a pas eu lieu n'est
+        pas un feu vert."""
+        self._sans_module("script.analyse")
+        self.assertFalse(
+            G.is_drill_database("x", run_psql=lambda _b, _s: "1\n")
+        )
+
+    def test_a_reader_that_blows_up_is_a_verdict_too(self):
+        """Le lecteur par défaut n'est cherché que faute de lecteur
+        injecté, et son absence se dit de la même façon."""
+
+        def explose(*_a, **_k):
+            raise RuntimeError("pas de psql")
+
+        constat = G.inspect("x", run_psql=explose)
+        self.assertEqual(G.UNREADABLE, constat.verdict)
+
+
 if __name__ == "__main__":
     unittest.main()
