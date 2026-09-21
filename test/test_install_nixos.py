@@ -154,7 +154,18 @@ class LeModule(unittest.TestCase):
                 self.assertIn(lib, self.src)
 
     def test_the_python_matches_what_the_repository_wants(self):
-        voulu = (RACINE / ".python-odoo-version").read_text().strip()
+        """DÉPENDANCE DÉCLARÉE : « .python-odoo-version » est ÉCRIT par
+        l'installation, pas suivi par git. Un checkout qui n'a pas encore
+        installé ne le porte pas, et le lire sans condition faisait lever
+        cette épreuve au lieu de la dire ignorée — la même règle que le
+        lanceur applique au dépôt mobile.
+        """
+        marque = RACINE / ".python-odoo-version"
+        if not marque.exists():
+            self.skipTest(
+                f"{marque.name} absent : installation pas encore faite"
+            )
+        voulu = marque.read_text().strip()
         majeur, mineur = voulu.split(".")[:2]
         self.assertIn(f"python{majeur}{mineur}", self.src)
 

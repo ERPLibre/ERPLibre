@@ -135,9 +135,15 @@ def main():
         # détruit. Le cas s'atteint dès que « parallel » manque du PATH — le
         # shell rend 127 et pas une base n'est touchée, pendant que la liste
         # s'affiche.
-        print(f"L'effacement a échoué ({status}) :")
-        print(sortie[-2000:])
-        return 1
+        #
+        # LE CODE DU SHELL REMONTE TEL QUEL, et l'échec part sur la sortie
+        # d'erreur. Aplati à 1, il ne distingue plus « outil absent » de
+        # « base occupée » ; mêlé à la sortie standard, il se perd dans ce
+        # qu'un appelant lit pour obtenir la liste des bases effacées.
+        print("Database NOT deleted :", file=sys.stderr)
+        if sortie:
+            print(sortie[-2000:], file=sys.stderr)
+        return status
     print("Database deleted :")
     for db_name in lst_db_name:
         print(db_name)

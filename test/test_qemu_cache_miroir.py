@@ -192,6 +192,21 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(depots_des_manifestes(tempfile.mkdtemp()), [])
 
 
+def version_active(test):
+    """La version d'Odoo de CE checkout, ou l'épreuve se dit ignorée.
+
+    DÉPENDANCE DÉCLARÉE : « .odoo-version » est ÉCRIT par l'installation et
+    n'est pas suivi par git. Un checkout qui n'a pas encore installé ne le
+    porte pas, et le lire sans condition faisait LEVER ces épreuves au lieu
+    de les dire ignorées — la même règle que le lanceur applique au dépôt
+    mobile.
+    """
+    marque = RACINE / ".odoo-version"
+    if not marque.exists():
+        test.skipTest(f"{marque.name} absent : installation pas encore faite")
+    return marque.read_text(encoding="utf-8").strip()
+
+
 class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
     """Sans version donnée, le verdict prend celle que le checkout porte.
 
@@ -204,6 +219,10 @@ class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
     def test_le_verdict_est_borne_par_defaut(self):
         from script.todo.deploy_form_lib import _depots_declares
 
+        # La BORNE est la version du checkout : sans le fichier qui la
+        # porte, il n'y a rien à borner et l'épreuve comparerait une
+        # lecture à elle-même.
+        version_active(self)
         tous = depots_des_manifestes(str(RACINE))
         bornes = _depots_declares()
         self.assertTrue(tous, "aucun manifeste lu")
@@ -219,9 +238,7 @@ class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
         changer de version d'Odoo doit changer le verdict."""
         from script.todo.deploy_form_lib import _depots_declares
 
-        version = (
-            (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
-        )
+        version = version_active(self)
         self.assertEqual(
             sorted(_depots_declares()),
             sorted(depots_des_manifestes(str(RACINE), version)),
@@ -234,9 +251,7 @@ class TestLaBaseReelle(unittest.TestCase):
     qu'une installation par défaut ne clone jamais."""
 
     def test_la_base_ne_porte_pas_lextra(self):
-        version = (
-            (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
-        )
+        version = version_active(self)
         base = set(depots_des_manifestes(str(RACINE), version))
         extra = set(
             depots_des_manifestes(

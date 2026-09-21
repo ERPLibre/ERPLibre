@@ -35,20 +35,20 @@ from unittest import mock
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
+from test.devstack_harness import (  # noqa: E402
+    catalogue_de_banc,
+)
+
 sys.argv = ["todo.py"]
 
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
-MOD = type(
-    "ModuleDeBanc",
-    (),
-    {
-        "DISTROS": {"ubuntu": [{"24.04": ("noble", "24.04")}]},
-        "image_url": staticmethod(lambda *_a: "http://example.invalid/i.img"),
-        "default_image_name": staticmethod(lambda *_a: "i.img"),
-    },
-)()
+MOD = catalogue_de_banc(
+    DISTROS={"ubuntu": [{"24.04": ("noble", "24.04")}]},
+    image_url=lambda *_a: "http://example.invalid/i.img",
+    default_image_name=lambda *_a: "i.img",
+)
 
 # Une adresse de documentation (RFC 5737), vérifiée absente du reste du
 # dépôt : un résolveur pris dans un parc réel se figerait ici pour toujours.
@@ -105,7 +105,7 @@ def deployer(reponses, resolv=RESOLV):
         "pick_bridge": lambda _p: "vmbr0",
         "next_vmid": lambda _v: 100,
         "ipconfig_for": lambda _i, _v: "ip=192.0.2.10/24,gw=192.0.2.1",
-        "image_fetch_cmd": lambda _u, _i: "true",
+        "image_fetch_cmd": lambda _u, _i, **_k: "true",
         "ip_from_ipconfig": lambda _i: "192.0.2.10",
         "create_cmds": lambda vmid, detail: vus.append((vmid, detail)) or [],
     }

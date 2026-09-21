@@ -16317,10 +16317,6 @@ TRANSLATIONS = {
         "fr": "aucune adresse",
         "en": "no address",
     },
-    "ports": {
-        "fr": "ports",
-        "en": "ports",
-    },
     "comes from the team book: forgetting here will not remove it": {
         "fr": "vient du carnet de l'équipe : l'oublier ici ne le retirera pas",
         "en": "comes from the team book: forgetting here will not remove it",
@@ -16454,10 +16450,6 @@ TRANSLATIONS = {
     "Remote script:": {
         "fr": "Script distant :",
         "en": "Remote script:",
-    },
-    "characters": {
-        "fr": "caractères",
-        "en": "characters",
     },
     "Enters by:": {
         "fr": "Entre par :",
