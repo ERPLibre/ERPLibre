@@ -212,13 +212,6 @@ class SeleniumLib(object):
         )
         # disable pdf viewer from firefox
         firefox_options.set_preference("pdfjs.disabled", True)
-        firefox_services = None
-        if self.config.firefox_binary_path:
-            firefox_services = Service(
-                executable_path=self.config.firefox_binary_path
-            )
-        if self.config.gecko_binary_path:
-            firefox_options.binary_location = self.config.gecko_binary_path
 
         # Créez une instance du navigateur Firefox avec les options de navigation privée
         try:
@@ -1423,10 +1416,22 @@ class SeleniumLib(object):
                 By.XPATH,
                 "//div[contains(@class, 'o_user_menu')]/button[contains(@class, 'py-1')]",
             )
-            element = self.get_element(
-                By.XPATH,
-                f"//div[contains(@class, 'o_popover')]//span[@data-menu=\"{key}\"]//input",
-            )
+            try:
+                element = self.get_element(
+                    By.XPATH,
+                    "//div[contains(@class, 'o_popover')]//span"
+                    f'[@data-menu="{key}"]//input',
+                )
+            except TimeoutException:
+                # Entrée absente du menu profil (ex. Odoo sans bascule de
+                # thème) : le popover reste ouvert tant qu'on ne le referme
+                # pas nous-même, ce qui gênerait le clic suivant.
+                print(f"Entrée de menu profil '{key}' absente, ignorée.")
+                self.click_with_mouse_move(
+                    By.XPATH,
+                    "//div[contains(@class, 'o_user_menu')]/button[contains(@class, 'py-1')]",
+                )
+                return
             if element.is_selected() != enable:
                 self.click_with_mouse_move(
                     By.XPATH,
@@ -2124,6 +2129,11 @@ def fill_parser(parser):
         "--gecko_binary_path",
         help="Can specify firefox path to open selenium.",
     )
+    group_browser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Verbose driver logging (passed as log_output to the Service).",
+    )
 
     group_record = parser.add_argument_group(title="Recording")
     group_record.add_argument(
@@ -2178,4 +2188,16 @@ def fill_parser(parser):
         action="store_true",
         default=True,
         help="Will convert .webm to .mp4 when done.",
+    )
+
+    group_screenshot = parser.add_argument_group(title="Screenshot")
+    group_screenshot.add_argument(
+        "--scenario_screenshot",
+        action="store_true",
+        help="Save a screenshot on each do_screenshot() call.",
+    )
+    group_screenshot.add_argument(
+        "--scenario",
+        default="",
+        help="Scenario name, used as screenshot filename prefix.",
     )
