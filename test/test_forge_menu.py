@@ -33,7 +33,10 @@ sys.path.append(
 from script.forge import api  # noqa: E402
 from script.forge.api import Reponse  # noqa: E402
 from script.todo import forge_menu, todo_i18n  # noqa: E402
+from script.forge import profiles  # noqa: E402
 from script.todo.forge_menu import (  # noqa: E402
+    CHAMPS_REPORTES,
+    ROLES_DITS,
     SENTENCES,
     ForgeMenuMixin,
     profile_line,
@@ -578,6 +581,181 @@ class TestLaFrontiereAvecLeModuleDeForge(CasDeMenu):
         ) as fichier:
             source = fichier.read()
         self.assertIn('"method": "prompt_execute_forge"', source)
+
+
+
+
+class CasDeProfil(CasDeMenu):
+    """Le formulaire de profil, sur une configuration jetable.
+
+    Les trois fichiers fusionnés sont déplacés dans un temporaire : ce qui
+    est éprouvé est ce que l'écran ÉCRIT, et non ce que le poste porte.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        chemins = {
+            "CONFIG_FILE": os.path.join(self.tmp.name, "todo.json"),
+            "CONFIG_OVERRIDE_FILE": os.path.join(self.tmp.name, "o.json"),
+            "CONFIG_OVERRIDE_PRIVATE_FILE": os.path.join(
+                self.tmp.name, "p.json"
+            ),
+        }
+        with open(chemins["CONFIG_FILE"], "w") as fh:
+            fh.write("{}")
+        for cle, chemin in chemins.items():
+            correctif = patch(f"script.config.config_file.{cle}", chemin)
+            correctif.start()
+            self.addCleanup(correctif.stop)
+        self.menu = MenuDeBanc()
+
+    def remplir(
+        self,
+        nom,
+        role="",
+        url="https://forge.example",
+        owner="equipe",
+        avant=(),
+    ):
+        """Déroule le formulaire. `role` est la RÉPONSE au choix de rôle."""
+        reponses = [nom, url, owner, "", "", *avant, role]
+        with patch("builtins.input", side_effect=reponses):
+            return sortie(self.menu._forge_edit_profile)
+
+    @staticmethod
+    def rang_du_role(role):
+        """Le numéro qui désigne ce rôle, DÉRIVÉ de `profiles.ROLES`.
+
+        Écrit « 2 », il désignerait l'autre rôle le jour où l'ordre change,
+        et le test l'affirmerait sans broncher.
+        """
+        return str(list(profiles.ROLES).index(role) + 1)
+
+
+class TestLeFormulaireDeProfilNOubliePersonne(CasDeProfil):
+    """Le formulaire propose CHAQUE champ que le site doit déclarer.
+
+    DÉRIVÉ, et non compté. Le défaut que ce garde attrape est celui qui l'a
+    fait naître : `role` manquait au formulaire, donc l'autorité ne pouvait
+    pas se déclarer — et rouvrir un profil qui la portait déjà la
+    rétrogradait en silence, sous un « ✓ enregistré ».
+    """
+
+    def test_the_form_proposes_every_declarable_field(self):
+        vu = {}
+        vrai = profiles.save
+
+        def espion(profil, *a, **k):
+            vu.update(profil)
+            return vrai(profil, *a, **k)
+
+        with patch.object(profiles, "save", espion):
+            self.remplir("atelier")
+        attendus = (set(profiles.DEFAULTS) | {"name"}) - set(CHAMPS_REPORTES)
+        self.assertEqual(
+            attendus,
+            set(vu) - set(CHAMPS_REPORTES),
+            "un champ de DEFAULTS n'est ni proposé par le formulaire, ni"
+            " nommé dans CHAMPS_REPORTES",
+        )
+
+    def test_the_carried_field_is_only_carried_while_it_has_one_value(self):
+        """`CHAMPS_REPORTES` est l'exemption du garde précédent.
+
+        Le pilote se reporte parce que le vocabulaire n'en connaît qu'un :
+        une question à une seule réponse n'en est pas une. Un second pilote
+        rend cette raison fausse, et ce garde doit alors rougir — c'est le
+        travail à faire, pas une fausse alerte.
+        """
+        self.assertEqual(("driver",), CHAMPS_REPORTES)
+        self.assertEqual(
+            1,
+            len(profiles.DRIVERS),
+            "un second pilote existe : le formulaire doit le DEMANDER",
+        )
+
+    def test_every_role_has_a_marker_and_a_sentence(self):
+        """Un rôle sans phrase s'afficherait comme un choix vide."""
+        self.assertEqual(set(profiles.ROLES), set(ROLES_DITS))
+        for role, dit in ROLES_DITS.items():
+            self.assertEqual({"marque", "phrase"}, set(dit), role)
+            self.assertTrue(dit["phrase"], role)
+
+    def test_the_sentences_are_real_translation_keys(self):
+        """Une clé fabriquée rend l'anglais en silence chez un francophone."""
+        for role, dit in ROLES_DITS.items():
+            for champ in ("marque", "phrase"):
+                if dit[champ]:
+                    self.assertIn(dit[champ], todo_i18n.TRANSLATIONS, role)
+
+
+class TestLeRoleSeChoisitEtTient(CasDeProfil):
+    def test_the_role_can_be_declared_from_the_screen(self):
+        """Sans cela le segment de l'autorité reste à régler, et aucun geste
+        de l'écran ne peut le régler."""
+        self.remplir("amont", role=self.rang_du_role(profiles.ROLE_CANONIQUE))
+        self.assertEqual(
+            profiles.ROLE_CANONIQUE, profiles.load("amont")["role"]
+        )
+
+    def test_reopening_the_authority_does_not_demote_it(self):
+        """Quatre fois Entrée pour corriger un drapeau la rétrogradait, sous
+        un message qui annonçait un succès."""
+        profiles.save(
+            {
+                "name": "amont",
+                "url": "https://amont.example",
+                "owner": "equipe",
+                "role": profiles.ROLE_CANONIQUE,
+            }
+        )
+        self.remplir("amont", role="", url="", owner="")
+        self.assertEqual(
+            profiles.ROLE_CANONIQUE, profiles.load("amont")["role"]
+        )
+
+    def test_an_answer_that_designates_nothing_is_said_and_asked_again(self):
+        affiche = self.remplir(
+            "amont",
+            role=self.rang_du_role(profiles.ROLE_CANONIQUE),
+            avant=("9",),
+        )
+        self.assertIn("!", affiche)
+        self.assertEqual(
+            profiles.ROLE_CANONIQUE, profiles.load("amont")["role"]
+        )
+
+    def test_a_second_authority_is_refused_by_name(self):
+        """`canonical()` refuse deux autorités : poser la seconde n'en
+        ajoute pas une, elle les annule toutes les deux."""
+        profiles.save(
+            {
+                "name": "amont",
+                "url": "https://amont.example",
+                "owner": "equipe",
+                "role": profiles.ROLE_CANONIQUE,
+            }
+        )
+        affiche = self.remplir(
+            "atelier", role=self.rang_du_role(profiles.ROLE_CANONIQUE)
+        )
+        self.assertIn("amont", affiche)
+        self.assertIsNone(profiles.load("atelier"))
+        self.assertEqual("amont", profiles.canonical()["name"])
+
+    def test_the_list_line_shows_the_authority(self):
+        """Une autorité perdue ne se voit qu'au geste qui la cherche et n'en
+        trouve plus : la liste doit la porter."""
+        ligne = profile_line(
+            dict(PROFIL, role=profiles.ROLE_CANONIQUE), has_token=True
+        )
+        self.assertIn(
+            t_en := ROLES_DITS[profiles.ROLE_CANONIQUE]["marque"], ligne
+        )
+        self.assertTrue(t_en)
+        self.assertNotIn(t_en, profile_line(dict(PROFIL, role=""), True))
 
 
 if __name__ == "__main__":

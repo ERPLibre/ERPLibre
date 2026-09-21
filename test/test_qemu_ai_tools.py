@@ -30,6 +30,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import io
 import unittest
 from pathlib import Path
 
@@ -129,13 +130,58 @@ class LaCommandeDistante(unittest.TestCase):
 
         L'invariant est vérifié pose par pose plutôt que par un compte : un
         compte figé se contente d'être mis à jour quand une pose s'ajoute,
-        sans rien dire de la nouvelle."""
+        sans rien dire de la nouvelle.
+
+        LE FILTRE PORTE SUR LA POSE, ET NON SUR LE REMÈDE. Il retenait les
+        fragments contenant « timeout » — c'est-à-dire ceux qui étaient
+        DÉJÀ bornés. Une pose nue, exactement celle qui peut pendre, était
+        écartée par le filtre même qui prétendait l'éprouver, et la boucle
+        ne pouvait que confirmer ce qu'elle avait sélectionné.
+        """
+        for morceau in self.poses(self._cmd("claude")):
+            with self.subTest(pose=morceau.strip()[:50]):
+                self.assertIn("timeout ", morceau)
+                self.assertIn("</dev/null", morceau)
+                self.assertIn("|| true", morceau)
+
+    # Ce qui peut PENDRE : un script tiré du réseau et versé dans un shell.
+    # Le gestionnaire de paquets, lui, porte sa propre borne — la CLASSE
+    # ci-dessous l'éprouve séparément, parce que la borne n'a pas la même
+    # forme et qu'une seule liste les confondrait.
+    TIRE_DU_RESEAU = ("curl", "wget")
+
+    @classmethod
+    def poses(cls, cmd):
+        """Les fragments qui vont chercher quelque chose sur le réseau."""
+        return [
+            x
+            for x in cmd.split("; ")
+            if any(outil in x for outil in cls.TIRE_DU_RESEAU)
+        ]
+
+    def test_the_bench_finds_poses_to_judge(self):
+        """Contrôle du banc : zéro pose retenue rendrait l'épreuve
+        ci-dessus verte sans rien éprouver — c'est exactement ce que
+        l'ancien filtre risquait."""
+        self.assertGreaterEqual(len(self.poses(self._cmd("claude"))), 3)
+
+    def test_the_package_manager_carries_its_own_bound(self):
+        """Il ne se borne pas par « timeout » mais par le sien, et « -y »
+        l'empêche de demander. Le confondre avec les autres poses ferait
+        rougir une borne qui existe, sous une autre forme."""
         cmd = self._cmd("claude")
-        bornees = [x for x in cmd.split("; ") if "timeout " in x]
-        self.assertGreaterEqual(len(bornees), 4)
-        for morceau in bornees:
-            self.assertIn("</dev/null", morceau)
-            self.assertIn("|| true", morceau)
+        # « apt-get -o … install » : les options s'intercalent, donc le
+        # motif porte sur les DEUX mots. Écrit d'un bloc, le filtre ne
+        # retenait rien et la boucle ne s'exécutait jamais.
+        poses = [
+            x for x in cmd.split("; ") if "apt-get" in x and " install" in x
+        ]
+        self.assertTrue(poses, "aucune pose de paquet à éprouver")
+        for morceau in poses:
+            with self.subTest(pose=morceau.strip()[:50]):
+                self.assertIn("DPkg::Lock::Timeout", morceau)
+                self.assertIn("-y", morceau)
+                self.assertIn("DEBIAN_FRONTEND=noninteractive", morceau)
 
     def test_starship_is_told_not_to_ask(self):
         """Sans « -y », son installateur attend une confirmation."""
@@ -712,6 +758,87 @@ class UneApostropheTraduite(unittest.TestCase):
                     ["bash", "-n"], input=cmd, text=True, capture_output=True
                 )
                 self.assertEqual(0, fini.returncode, fini.stderr[:400])
+class TestLesQuatreAppelsDInstallationSAccordent(unittest.TestCase):
+    """Les réglages de l'invité franchissent les QUATRE appels, ou aucun.
+
+    Le choix de l'agent se fait à l'écran, entre dans la spec, et voyage
+    jusqu'aux installateurs — puis il était JETÉ à l'appel, du côté
+    Proxmox : le mot « ai_agent » n'apparaissait pas une seule fois dans ce
+    fichier. La VM recevait l'agent de repli quelle que soit la réponse, et
+    rien ne le disait — les deux agents s'installent sans bruit.
+
+    L'épreuve porte sur l'ACCORD des quatre sites, dérivé de ce que la voie
+    libvirt passe. Une liste écrite à la main ne grandit pas avec eux : le
+    prochain réglage d'invité se poserait sur une voie et pas l'autre,
+    exactement comme celui-ci.
+    """
+
+    INSTALLATEURS = (
+        "_qemu_install_erplibre_monitored",
+        "_qemu_install_erplibre_vm",
+    )
+
+    # LA VOIE LIBVIRT FAIT RÉFÉRENCE. Ce qu'elle passe par mot-clé décrit
+    # l'INVITÉ, et vaut donc mot pour mot sur l'autre hyperviseur. Prendre
+    # l'union des quatre à la place ferait entrer « meta » et « pve », qui
+    # nomment l'HÔTE Proxmox, et « prod », que trois sites passent
+    # positionnellement — un écart de forme, pas de fond. Une exclusion
+    # sous une raison qui n'est pas la sienne est le défaut même qu'on
+    # corrige ici.
+    REFERENCE = "qemu_deploy.py"
+
+    @staticmethod
+    def sites():
+        """{fichier:ligne: jeu de mots-clés} pour les quatre appels."""
+        import ast
+
+        vus = {}
+        for court in ("qemu_deploy.py", "proxmox_menu.py"):
+            chemin = RACINE / "script" / "todo" / court
+            with io.open(chemin, encoding="utf-8") as fichier:
+                arbre = ast.parse(fichier.read())
+            for noeud in ast.walk(arbre):
+                if (
+                    isinstance(noeud, ast.Call)
+                    and isinstance(noeud.func, ast.Attribute)
+                    and noeud.func.attr
+                    in TestLesQuatreAppelsDInstallationSAccordent.INSTALLATEURS
+                ):
+                    vus[f"{court}:{noeud.lineno}"] = {
+                        k.arg for k in noeud.keywords if k.arg
+                    }
+        return vus
+
+    def test_the_four_call_sites_are_found(self):
+        """Contrôle du banc : zéro site trouvé rendrait tout le reste vert
+        sans rien prouver."""
+        self.assertEqual(4, len(self.sites()))
+
+    def reglages_de_reference(self):
+        """Les réglages d'invité, tels que la voie libvirt les passe."""
+        sites = self.sites()
+        chez_libvirt = [
+            mots for ou, mots in sites.items() if ou.startswith(self.REFERENCE)
+        ]
+        self.assertTrue(chez_libvirt, "la référence est introuvable")
+        return set.intersection(*chez_libvirt)
+
+    def test_every_guest_setting_crosses_every_call(self):
+        attendus = self.reglages_de_reference()
+        for ou, mots in sorted(self.sites().items()):
+            with self.subTest(site=ou):
+                self.assertEqual(
+                    set(),
+                    attendus - mots,
+                    f"{ou} jette un réglage que la voie libvirt passe",
+                )
+
+    def test_the_chosen_agent_is_one_of_them(self):
+        """Contrôle du banc : une référence vide, ou qui aurait perdu
+        l'agent, rendrait l'épreuve ci-dessus verte sans rien tenir."""
+        attendus = self.reglages_de_reference()
+        self.assertIn("ai_agent", attendus)
+        self.assertIn("vm_tools", attendus)
 
 
 if __name__ == "__main__":
