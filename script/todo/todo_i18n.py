@@ -1453,6 +1453,261 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Ask the package manager: it is the one that holds authority "
+    "here, and its signature chain covers the whole index, which is "
+    "stronger than a hand-copied checksum. If it answers that the "
+    "package does not exist, that route is shut — read a checksum "
+    "off a verified release and pin it in RELEASES.": {
+        "fr": "Demander au gestionnaire de paquets : c'est lui qui fait "
+        "autorité ici, et sa chaîne de signatures couvre l'index "
+        "entier, ce qui vaut mieux qu'une somme recopiée à la main. "
+        "S'il répond que le paquet n'existe pas, cette voie est fermée "
+        "— relever une somme sur une version vérifiée et l'épingler "
+        "dans RELEASES.",
+        "en": "Ask the package manager: it is the one that holds authority "
+        "here, and its signature chain covers the whole index, which is "
+        "stronger than a hand-copied checksum. If it answers that the "
+        "package does not exist, that route is shut — read a checksum "
+        "off a verified release and pin it in RELEASES.",
+    },
+    "Nobody runs the scheduler on a restored copy: measured 11 late "
+    "on an untouched source database.": {
+        "fr": "Personne ne fait tourner l'ordonnanceur sur une copie "
+        "restaurée : 11 en retard relevés sur une base source intacte.",
+        "en": "Nobody runs the scheduler on a restored copy: measured 11 late "
+        "on an untouched source database.",
+    },
+    "update_prod_to_dev deletes them on purpose; their absence here "
+    "proves nothing.": {
+        "fr": "update_prod_to_dev les supprime exprès ; leur absence ici ne "
+        "prouve rien.",
+        "en": "update_prod_to_dev deletes them on purpose; their absence here "
+        "proves nothing.",
+    },
+    "invoices became journal entries": {
+        "fr": "les factures sont devenues des écritures comptables",
+        "en": "invoices became journal entries",
+    },
+    "Discuss was renamed": {
+        "fr": "Discussion a été renommé",
+        "en": "Discuss was renamed",
+    },
+    "redirections were reworked": {
+        "fr": "les redirections ont été refondues",
+        "en": "redirections were reworked",
+    },
+    "tags became shared": {
+        "fr": "les étiquettes sont devenues partagées",
+        "en": "tags became shared",
+    },
+    "translations moved into jsonb columns": {
+        "fr": "les traductions sont passées dans des colonnes jsonb",
+        "en": "translations moved into jsonb columns",
+    },
+    "company-dependent values moved into jsonb columns": {
+        "fr": "les valeurs dépendantes de la société sont passées dans des "
+        "colonnes jsonb",
+        "en": "company-dependent values moved into jsonb columns",
+    },
+    "chart templates left the database": {
+        "fr": "les modèles de plan comptable ont quitté la base",
+        "en": "chart templates left the database",
+    },
+    "needaction became notifications": {
+        "fr": "needaction est devenu les notifications",
+        "en": "needaction became notifications",
+    },
+    "inventory adjustments became quants": {
+        "fr": "les ajustements d'inventaire sont devenus des quants",
+        "en": "inventory adjustments became quants",
+    },
+    "tracking of fields that ceased to exist": {
+        "fr": "le suivi de champs qui ont cessé d'exister",
+        "en": "tracking of fields that ceased to exist",
+    },
+    "nothing was deleted.": {
+        "fr": "rien n'a été supprimé.",
+        "en": "nothing was deleted.",
+    },
+    "Deleted:": {"fr": "Supprimées :", "en": "Deleted:"},
+    "still in the file.": {
+        "fr": "toujours dans le fichier.",
+        "en": "still in the file.",
+    },
+    "Entries removed:": {
+        "fr": "Entrées retirées :",
+        "en": "Entries removed:",
+    },
+    "Nothing was removed.": {
+        "fr": "Rien n'a été retiré.",
+        "en": "Nothing was removed.",
+    },
+    "attachment(s): delete them, or keep them?": {
+        "fr": "pièce(s) jointe(s) : les effacer, ou les garder ?",
+        "en": "attachment(s): delete them, or keep them?",
+    },
+    "view(s) stay: no backup covers them.": {
+        "fr": "vue(s) restent : aucune sauvegarde ne les couvre.",
+        "en": "view(s) stay: no backup covers them.",
+    },
+    "Nothing erased: the file was not written.": {
+        "fr": "Rien n'a été effacé : le fichier n'a pas été écrit.",
+        "en": "Nothing erased: the file was not written.",
+    },
+    "the file did not read back, nothing counted": {
+        "fr": "le fichier ne s'est pas relu, rien ne les a comptées",
+        "en": "the file did not read back, nothing counted",
+    },
+    "This file is not JSON:": {
+        "fr": "Ce fichier n'est pas du JSON :",
+        "en": "This file is not JSON:",
+    },
+    "Words must be a list or an object:": {
+        "fr": "Les mots doivent être une liste ou un objet :",
+        "en": "Words must be a list or an object:",
+    },
+    "This file declares no word:": {
+        "fr": "Ce fichier ne déclare aucun mot :",
+        "en": "This file declares no word:",
+    },
+    "JSON file of replacement words": {
+        "fr": "fichier JSON de mots de remplacement",
+        "en": "JSON file of replacement words",
+    },
+    "JSON file of words (empty for the built-in): ": {
+        "fr": "Fichier JSON de mots (vide pour ceux d'origine) : ",
+        "en": "JSON file of words (empty for the built-in): ",
+    },
+    "mail_purge_failed": {
+        "fr": "le cache n'a pas été effacé :",
+        "en": "the cache was not erased:",
+    },
+    "The lock was not regenerated; nothing replaced.": {
+        "fr": "Le lock n'a pas été régénéré ; rien n'a été remplacé.",
+        "en": "The lock was not regenerated; nothing replaced.",
+    },
+    "No version in .erplibre-version; nothing replaced.": {
+        "fr": "Aucune version dans .erplibre-version ; rien remplacé.",
+        "en": "No version in .erplibre-version; nothing replaced.",
+    },
+    "Reference lock updated:": {
+        "fr": "Lock de référence mis à jour :",
+        "en": "Reference lock updated:",
+    },
+    "Outbound mirrors": {
+        "fr": "Miroirs sortants",
+        "en": "Outbound mirrors",
+    },
+    "Forge - Declare which way a repository mirrors": {
+        "fr": "Forge - Déclarer dans quel sens un dépôt se miroite",
+        "en": "Forge - Declare which way a repository mirrors",
+    },
+    "Forge - Lay the outbound mirror on the forge": {
+        "fr": "Forge - Poser le miroir sortant sur la forge",
+        "en": "Forge - Lay the outbound mirror on the forge",
+    },
+    "Forge - Show a repository's outbound mirrors": {
+        "fr": "Forge - Montrer les miroirs sortants d'un dépôt",
+        "en": "Forge - Show a repository's outbound mirrors",
+    },
+    "inbound: it lives upstream, and the forge follows it": {
+        "fr": "entrant : il vit chez un amont, et la forge le suit",
+        "en": "inbound: it lives upstream, and the forge follows it",
+    },
+    "outbound: it lives here, and goes out to be seen": {
+        "fr": "sortant : il vit ici, et part se montrer",
+        "en": "outbound: it lives here, and goes out to be seen",
+    },
+    "The manifest derives:": {
+        "fr": "Le manifeste dérive :",
+        "en": "The manifest derives:",
+    },
+    "This site declares:": {
+        "fr": "Ce site déclare :",
+        "en": "This site declares:",
+    },
+    "This site declares nothing.": {
+        "fr": "Ce site ne déclare rien.",
+        "en": "This site declares nothing.",
+    },
+    "follow the manifest (remove the declaration)": {
+        "fr": "suivre le manifeste (retirer la déclaration)",
+        "en": "follow the manifest (remove the declaration)",
+    },
+    "follows the manifest again": {
+        "fr": "suit de nouveau le manifeste",
+        "en": "follows the manifest again",
+    },
+    "Repository number (empty to cancel): ": {
+        "fr": "Numéro du dépôt (vide pour annuler) : ",
+        "en": "Repository number (empty to cancel): ",
+    },
+    "not declared outbound; nothing laid.": {
+        "fr": "non déclaré sortant ; rien n'a été posé.",
+        "en": "not declared outbound; nothing laid.",
+    },
+    "Declare it first with the entry above.": {
+        "fr": "Le déclarer d'abord avec l'entrée au-dessus.",
+        "en": "Declare it first with the entry above.",
+    },
+    "Upstream address to push to: ": {
+        "fr": "Adresse de l'amont vers lequel pousser : ",
+        "en": "Upstream address to push to: ",
+    },
+    "Account on the upstream: ": {
+        "fr": "Compte chez l'amont : ",
+        "en": "Account on the upstream: ",
+    },
+    "Upstream token (not echoed): ": {
+        "fr": "Jeton de l'amont (non affiché) : ",
+        "en": "Upstream token (not echoed): ",
+    },
+    "Empty: nothing laid.": {
+        "fr": "Vide : rien n'a été posé.",
+        "en": "Empty: nothing laid.",
+    },
+    "a mirror already pushes there.": {
+        "fr": "un miroir pousse déjà vers là.",
+        "en": "a mirror already pushes there.",
+    },
+    "The forge pushes this repository nowhere.": {
+        "fr": "La forge ne pousse ce dépôt nulle part.",
+        "en": "The forge pushes this repository nowhere.",
+    },
+    "never pushed": {"fr": "jamais poussé", "en": "never pushed"},
+    "Posture": {"fr": "Posture", "en": "Posture"},
+    "Verify a VM's egress posture, layer by layer": {
+        "fr": "Vérifier la posture de sortie d'une VM, couche par couche",
+        "en": "Verify a VM's egress posture, layer by layer",
+    },
+    "Lima - Verify an instance's egress posture": {
+        "fr": "Lima - Vérifier la posture de sortie d'une instance",
+        "en": "Lima - Verify an instance's egress posture",
+    },
+    "%s guard(s) pinned to the source text — read them again": {
+        "fr": "%s garde(s) épinglé(s) au texte du source — à relire",
+        "en": "%s guard(s) pinned to the source text — read them again",
+    },
+    "does a guard measure a property, or the spelling of the code": {
+        "fr": "un garde mesure-t-il une propriété, ou l'orthographe du code",
+        "en": "does a guard measure a property, or the spelling of the code",
+    },
+    "read %s times here, ignored %s": {
+        "fr": "lu %s fois ici, ignoré %s",
+        "en": "read %s times here, ignored %s",
+    },
+    "%s verdict(s) dropped where this file reads them — read again": {
+        "fr": "%s verdict(s) jeté(s) là où ce fichier les lit — à relire",
+        "en": "%s verdict(s) dropped where this file reads them — read again",
+    },
+    "a verdict dropped where the same file reads it": {
+        "fr": "un verdict jeté là où le même fichier le lit",
+        "en": "a verdict dropped where the same file reads it",
+    },
+    "Could not read the networks this host uses.": {
+        "fr": "Impossible de relever les réseaux que cet hôte utilise.",
+        "en": "Could not read the networks this host uses.",
+    },
     "egress rules did not load": {
         "fr": "les règles de sortie ne se sont pas chargées",
         "en": "egress rules did not load",
@@ -5702,10 +5957,6 @@ TRANSLATIONS = {
         "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
         "en": "Confirm deletion? (y/N, default: no): ",
     },
-    "Deletion done.": {
-        "fr": "Effacement terminé.",
-        "en": "Deletion done.",
-    },
     "Clean up QEMU (orphan files)": {
         "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
         "en": "🧹 Clean up QEMU (orphan files)",
@@ -9199,10 +9450,6 @@ TRANSLATIONS = {
     "Unknown choice, nothing was reset.": {
         "fr": "Choix inconnu, rien n'a été réinitialisé.",
         "en": "Unknown choice, nothing was reset.",
-    },
-    "Delete these leftovers, or keep them?": {
-        "fr": "Effacer ces restes, ou les garder ?",
-        "en": "Delete these leftovers, or keep them?",
     },
     "Enter = keep": {
         "fr": "Entrée = garder",

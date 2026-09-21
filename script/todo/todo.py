@@ -861,8 +861,20 @@ class TODO(
             elif status == "5":
                 self._pref_edit("vm_backend")
             elif status == "6":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
+                verdict, combien = todo_prefs.reset()
+                if verdict == todo_prefs.ECHEC_ECRITURE:
+                    print(
+                        f"✗ {t('Nothing erased: the file was not written.')}"
+                    )
+                elif verdict == todo_prefs.EFFACE_SANS_COMPTE:
+                    # « (0) » aurait dit « il n'y avait rien » sur un
+                    # fichier plein qu'on vient de remplacer.
+                    print(
+                        f"✅ {t('Preferences reset')} —"
+                        f" {t('the file did not read back, nothing counted')}"
+                    )
+                else:
+                    print(f"✅ {t('Preferences reset')} ({combien})")
             else:
                 print(t("Command not found !"))
 
@@ -4958,7 +4970,7 @@ class TODO(
         if self._is_yes(input(f"💬 {t('Keep the digit count? (y/N): ')}")):
             extra.append("--keep-digits")
         mots = input(
-            f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
+            f"💬 {t('JSON file of words (empty for the built-in): ')}"
         ).strip()
         if mots:
             if not os.path.isfile(os.path.expanduser(mots)):
@@ -5870,6 +5882,11 @@ class TODO(
 
     def generate_config_from_database(self):
         database_name = self.db_manager.select_database()
+        # Même refus, même piège : composé tel quel, « False » devient le
+        # nom de base passé au générateur de configuration.
+        if not database_name:
+            print(t("No database selected."))
+            return False
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -6021,22 +6038,28 @@ class TODO(
                 source_erplibre=False,
             )
 
+        # Le lock de TRAVAIL part avant : c'est son absence qui force une
+        # résolution neuve. Il est ignoré par git, donc rien de suivi n'est
+        # en jeu.
         poetry_lock = "./poetry.lock"
         try:
             os.remove(poetry_lock)
-        except Exception as e:
+        except OSError:
             pass
         odoo_long_version = ""
         if os.path.exists("./.erplibre-version"):
             with open("./.erplibre-version") as f:
-                odoo_long_version = f.read()
+                # DÉPOUILLÉ : la fin de ligne du fichier se retrouvait au
+                # MILIEU du chemin composé en dessous, qui ne désignait
+                # alors aucun fichier existant.
+                odoo_long_version = f.read().strip()
         path_file_odoo_lock = f"./requirement/poetry.{odoo_long_version}.lock"
-        if odoo_long_version:
-            try:
-                os.remove(path_file_odoo_lock)
-            except Exception as e:
-                pass
 
+        # LE LOCK DE RÉFÉRENCE N'EST PLUS EFFACÉ D'ABORD. Il est SUIVI par
+        # git, et la commande censée le reconstituer ne venait qu'APRÈS :
+        # elle échoue — résolution impossible, réseau coupé, poetry absent —
+        # et le dépôt reste amputé d'un fichier que personne n'a demandé à
+        # supprimer, sans qu'un mot le dise. On écrase à la fin, ou rien.
         status = self.execute.exec_command_live(
             f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
             f"./script/poetry/poetry_update.py -f",
@@ -6045,12 +6068,26 @@ class TODO(
             single_source_odoo=True,
             source_odoo=odoo_long_version,
         )
-
-        if os.path.exists(poetry_lock):
-            shutil.copy2(poetry_lock, path_file_odoo_lock)
+        if status or not os.path.exists(poetry_lock):
+            print(f"❌ {t('The lock was not regenerated; nothing replaced.')}")
+            return
+        if not odoo_long_version:
+            # Sans version, le chemin composé serait « poetry..lock » : un
+            # fichier qui ne correspond à aucune version supportée.
+            print(
+                f"❌ {t('No version in .erplibre-version; nothing replaced.')}"
+            )
+            return
+        shutil.copy2(poetry_lock, path_file_odoo_lock)
+        print(f"✅ {t('Reference lock updated:')} {path_file_odoo_lock}")
 
     def callback_execute_custom_database(self, config):
         database_name = self.db_manager.select_database()
+        # Même refus, troisième porte. Passé tel quel, le faux traverse
+        # jusqu'à la commande, qui cherche une base nommée « False ».
+        if not database_name:
+            print(t("No database selected."))
+            return
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):

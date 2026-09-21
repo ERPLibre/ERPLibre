@@ -4352,8 +4352,20 @@ def build_preseed(
         "d-i partman/confirm boolean true",
         "d-i partman/confirm_nooverwrite boolean true",
         "tasksel tasksel/first multiselect ssh-server",
+        # L'ANALYSEUR VIENT AVEC LES RÈGLES. Cette voie POSE le fichier de
+        # règles et l'unité qui les recharge à chaque démarrage, et c'est la
+        # SEULE des quatre où le système installé n'apporte pas nftables :
+        # les images cloud des autres distributions le portent d'origine.
+        # Sans lui, l'unité échoue à chaque amorçage, la machine revient
+        # DEBOUT et sort librement — en portant un fichier de règles, ce qui
+        # donne l'apparence du contraire.
+        #
+        # Posé INCONDITIONNELLEMENT, et non quand la spec demande une
+        # posture : le preseed est écrit une fois pour l'image, et une VM
+        # dont on resserre la posture plus tard trouverait sinon un système
+        # sans de quoi la tenir.
         "d-i pkgsel/include string openssh-server sudo python3"
-        " qemu-guest-agent ca-certificates",
+        " qemu-guest-agent ca-certificates nftables",
         "d-i pkgsel/upgrade select none",
         "popularity-contest popularity-contest/participate boolean false",
         "d-i finish-install/reboot_in_progress note",

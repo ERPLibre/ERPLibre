@@ -20,6 +20,7 @@ import sys
 import unittest
 
 sys.argv = ["todo.py"]
+from script.todo import qemu_manage  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 # La forme que libvirt écrit VRAIMENT : le nvram porte un attribut
@@ -438,6 +439,70 @@ class TestLesFichiersOuverts(unittest.TestCase):
         # /var/lib/libvirt/n-existe-pas-du-tout
         for chemin in TODO._qemu_files_in_use():
             self.assertTrue(os.path.exists(chemin), chemin)
+
+
+class TestRetirerUneEntreeSansEmporterSaVoisine(unittest.TestCase):
+    """Une ligne « Host » peut porter PLUSIEURS noms, qui partagent un corps.
+
+    Le retrait était bâti sur « ^Host <nom> » suivi d'une fin de ligne : il
+    exigeait que le nom soit SEUL. Une entrée « Host a b » était donc
+    annoncée orpheline, confirmée, et jamais retirée — sous un « nettoyage
+    fait » sur un fichier intact.
+
+    Et l'inverse compte autant : retirer le bloc entier parce qu'UN de ses
+    noms est orphelin emporterait les autres, qui mènent encore quelque
+    part. On nomme, on n'efface pas.
+    """
+
+    CONFIG = (
+        "Host erplibre-a erplibre-b\n"
+        "    HostName 192.0.2.10\n"
+        "    User erplibre\n"
+        "\n"
+        "Host erplibre-c\n"
+        "    HostName 192.0.2.11\n"
+        "\n"
+        "Host *\n"
+        "    ServerAliveInterval 30\n"
+    )
+
+    def sans(self, *noms):
+        return qemu_manage.ssh_config_without(self.CONFIG, list(noms))
+
+    def noms(self, contenu):
+        return set(qemu_manage.parse_ssh_blocks(contenu))
+
+    def test_a_shared_line_actually_loses_the_name_asked_for(self):
+        """Le défaut lui-même : rien ne partait."""
+        self.assertNotIn("erplibre-a", self.noms(self.sans("erplibre-a")))
+
+    def test_its_neighbour_on_the_same_line_stays(self):
+        reste = self.sans("erplibre-a")
+        self.assertIn("erplibre-b", self.noms(reste))
+        # Le CORPS reste avec elle : une entrée sans HostName ne mène nulle
+        # part, et l'aurait perdue sans le dire.
+        self.assertIn("192.0.2.10", reste)
+
+    def test_the_block_goes_only_when_no_name_is_left(self):
+        reste = self.sans("erplibre-a", "erplibre-b")
+        self.assertNotIn("192.0.2.10", reste)
+        self.assertIn("erplibre-c", self.noms(reste))
+
+    def test_a_lone_entry_still_goes_whole(self):
+        """Contrôle : le cas simple ne doit pas régresser."""
+        reste = self.sans("erplibre-c")
+        self.assertNotIn("192.0.2.11", reste)
+
+    def test_patterns_are_never_touched(self):
+        """« Host * » est une règle, pas une machine : elle porte souvent
+        les options de tout le fichier."""
+        reste = self.sans("erplibre-a", "erplibre-b", "erplibre-c")
+        self.assertIn("Host *", reste)
+        self.assertIn("ServerAliveInterval", reste)
+
+    def test_asking_for_nothing_changes_nothing(self):
+        """Contrôle positif : tout effacer passerait les autres."""
+        self.assertEqual(self.CONFIG, self.sans())
 
 
 if __name__ == "__main__":

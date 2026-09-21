@@ -1741,5 +1741,71 @@ class TestConstaterLeMontage(unittest.TestCase):
         self.assertEqual(self._attends(False)["verdict"], "ABSENT")
 
 
+class TestLeReleveDesReseauxDeLHote(unittest.TestCase):
+    """Le choix du réseau interne lit le CODE du relevé, pas sa seule sortie.
+
+    Un relevé qui échoue ne contient aucun réseau, donc `parse_used_nets`
+    n'en trouve aucun, donc « rien n'est pris », donc le PREMIER candidat
+    est rendu — celui que l'hôte utilise peut-être déjà. Le poser sur le
+    pont rend tout le /24 local : la passerelle devient injoignable et la
+    machine s'isole au milieu de la commande qui la configure.
+
+    Les deux échecs sont nommés SÉPARÉMENT. Ils mènent au même refus mais
+    pas au même geste : libérer un réseau, ou chercher pourquoi la commande
+    distante a cédé.
+    """
+
+    def menu(self, code, sortie):
+        """Un TODO nu dont le relevé distant rend ce couple, et qui note la
+        commande réellement partie."""
+        todo = TODO.__new__(TODO)
+        self.vu = {}
+        self.addCleanup(setattr, pve, "run", pve.run)
+        pve.run = lambda host, remote, timeout=120, entree=None: (
+            self.vu.update(remote=remote) or (code, sortie)
+        )
+        return todo
+
+    def test_a_survey_that_failed_yields_no_network_at_all(self):
+        """Le défaut lui-même : sans lecture du code, le premier candidat
+        sortait d'ici."""
+        todo = self.menu(255, "timeout")
+        cidr, raison = todo._pve_internal_cidr({"target": "c@h.example"})
+        self.assertEqual("", cidr)
+        self.assertIn(t("Could not read the networks this host uses."), raison)
+
+    def test_a_full_host_says_the_other_thing(self):
+        """Le même refus, une autre raison, un autre geste. Un préfixe plus
+        large qu'un /24 écarte tous les candidats d'un coup."""
+        pris = "\n".join(f"1: x inet {c}" for c in pve.INTERNAL_CANDIDATES)
+        todo = self.menu(0, pris)
+        cidr, raison = todo._pve_internal_cidr({"target": "c@h.example"})
+        self.assertEqual("", cidr)
+        self.assertEqual(
+            t("No free subnet left for an internal bridge."), raison
+        )
+
+    def test_a_survey_that_succeeded_picks_a_free_one(self):
+        """Contrôle positif : refuser toujours passerait les deux autres."""
+        todo = self.menu(0, "1: lo inet 127.0.0.1/8")
+        cidr, raison = todo._pve_internal_cidr({"target": "c@h.example"})
+        self.assertEqual("", raison)
+        self.assertTrue(cidr)
+
+    def test_no_bridge_is_built_on_a_survey_that_failed(self):
+        """Le refus doit atteindre le GESTE, pas seulement le relevé."""
+        todo = self.menu(255, "timeout")
+        todo._pve_uplink = lambda: ""
+        # L'hôte est MÉMORISÉ, pas passé : le geste le relit lui-même.
+        todo._pve_host = lambda ask=True: {"target": "c@h.example"}
+        todo._pve_nat_reason = lambda host: ""
+        pont, raison = todo._pve_make_internal_bridge()
+        self.assertEqual("", pont)
+        self.assertIn(t("Could not read the networks this host uses."), raison)
+        # Le relevé est la SEULE commande partie : rien n'a été écrit sur
+        # l'hôte.
+        self.assertEqual(pve.USED_NETS_CMD, self.vu["remote"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
