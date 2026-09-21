@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""La configuration d'une instance Lima, et ce qu'elle ne sait pas tenir.
+
+RIEN ICI N'A ÉTÉ CONFRONTÉ au vrai « limactl ». Ces fonctions composent et
+analysent du texte ; ce que l'outil en fait se mesure sur une machine, et
+`long_test/` porte cette confrontation. Le backend se déclare non éprouvé
+pour cette raison, et l'écran le dit.
+
+Le rendu est écrit LIGNE À LIGNE plutôt que sérialisé : la configuration
+d'une instance se relit à la main, et un commentaire qui explique un réglage
+vaut mieux qu'un champ nu. Une épreuve la relit avec un analyseur YAML, ce
+qui rattrape ce que l'écriture manuelle risque de casser.
+
+DEUX RÉGLAGES N'EXISTENT QUE SUR macOS, et les poser ailleurs fait échouer
+le démarrage : « vmType: vz » demande Virtualization.framework, et le bloc
+« networks » demande socket_vmnet. Ailleurs, l'instance se contente du réseau
+en mode utilisateur — ce qui suffit à sortir, et ne suffit pas à être jointe.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import NamedTuple
+
+# Le montage de l'hôte est VIDE, et c'est un choix. Lima monte par défaut le
+# répertoire personnel dans l'invité : une VM censée être confinée y lirait
+# alors tout ce que l'utilisateur possède, sans qu'une seule règle réseau
+# soit en cause. Une VM ERPLibre n'en a pas besoin — elle reçoit son code par
+# le canal d'exec.
+MOUNTS_VIDES = "mounts: []"
+
+# Ce que « vmType » vaut là où il existe. Ailleurs, on ne l'écrit pas du
+# tout : Lima choisit alors son moteur, et un « vz » posé sur un système qui
+# n'a pas Virtualization.framework fait échouer le démarrage.
+VM_TYPE_MACOS = "vz"
+
+
+def render_config(
+    image: str,
+    arch: str = "",
+    cpus: int = 2,
+    memory: str = "4GiB",
+    disk: str = "30GiB",
+    macos: bool = False,
+    reachable: bool = False,
+    load_host_keys: bool = False,
+) -> str:
+    """Le YAML d'une instance, prêt à écrire. Fonction PURE.
+
+    `reachable` demande une adresse joignable depuis l'hôte. Elle passe par
+    socket_vmnet, qui n'existe que sur macOS : demandée ailleurs, elle est
+    ignorée plutôt que d'écrire un bloc qui ferait échouer le démarrage.
+
+    `load_host_keys` à FAUX par défaut : Lima injecte sinon les clés
+    publiques du répertoire personnel dans l'invité. Le canal d'exec n'en a
+    pas besoin — il passe par la clé que Lima génère — et une VM confinée n'a
+    pas à connaître les identités de son hôte.
+    """
+    lignes = [
+        "# Généré par ERPLibre. Les commentaires expliquent les réglages qui",
+        "# ne se devinent pas ; le reste est la taille demandée.",
+    ]
+    if macos:
+        lignes += [
+            "# Virtualization.framework : n'existe que sur macOS 13+, et y",
+            "# vaut nettement mieux que l'émulation.",
+            f"vmType: {VM_TYPE_MACOS}",
+        ]
+    if arch:
+        lignes.append(f"arch: {arch}")
+    lignes += [
+        "images:",
+        f'  - location: "{image}"',
+    ]
+    if arch:
+        lignes.append(f"    arch: {arch}")
+    lignes += [
+        f"cpus: {int(cpus)}",
+        f'memory: "{memory}"',
+        f'disk: "{disk}"',
+        "# Rien de l'hôte n'est monté : une VM confinée n'a pas à lire le",
+        "# répertoire personnel de qui la lance.",
+        MOUNTS_VIDES,
+        "ssh:",
+        f"  loadDotSSHPubKeys: {str(bool(load_host_keys)).lower()}",
+    ]
+    if reachable and macos:
+        lignes += [
+            "# Adresse joignable depuis l'hôte. Passe par socket_vmnet, qui",
+            "# demande une installation privilégiée à part.",
+            "networks:",
+            "  - lima: shared",
+        ]
+    return "\n".join(lignes) + "\n"
+
+
+def unenforceable(posture, macos: bool = False) -> tuple:
+    """Ce que la configuration d'instance ne sait PAS tenir de cette posture.
+
+    Une configuration muette sur ce qu'elle n'applique pas est ce qui fait
+    croire à un confinement qui n'existe pas. Elle rend ici la LISTE de ce
+    qui manque, en jetons non traduits, et l'appelant décide : renoncer, ou
+    poser le verrou ailleurs — dans l'invité, où il attrape ce que la
+    configuration ne peut pas.
+
+    Rend un tuple VIDE quand tout est tenable. Une posture absente ne promet
+    rien, donc rien ne manque.
+    """
+    if posture is None:
+        return ()
+    manques = []
+    # Le réseau en mode utilisateur donne TOUJOURS la sortie, et aucun
+    # réglage d'instance ne la retire. Annoncer « rien ne sort » sur cette
+    # base serait faux.
+    if posture.egress == "none":
+        manques.append("egress-none")
+    # Une liste blanche se pose dans l'invité, pas dans la description de
+    # l'instance.
+    if posture.destinations_bounded:
+        manques.append("destinations-bounded")
+    # Sans socket_vmnet, l'invité sort mais ne se laisse pas joindre.
+    if not macos:
+        manques.append("reachable-address")
+    return tuple(manques)
+
+
+# Ce que l'inventaire de Lima rend, et ce qu'on en garde. Les autres champs
+# existent ; on ne les lit pas, donc on ne s'engage pas sur eux.
+class Instance(NamedTuple):
+    """Une instance vue par l'inventaire. Les champs absents sont vides."""
+
+    name: str
+    status: str
+    arch: str = ""
+    ssh_port: str = ""
+
+
+# Ce que l'outil appelle « en marche ». Comparé sans la casse : la valeur
+# est un mot anglais capitalisé, et un jour minuscule ferait passer une
+# instance vivante pour éteinte.
+RUNNING = "running"
+
+
+def parse_instances(text: str) -> tuple:
+    """Les instances décrites par l'inventaire, quelle qu'en soit la forme.
+
+    DEUX FORMES SONT ACCEPTÉES, et ce n'est pas de l'indécision : selon la
+    version, l'inventaire rend soit un objet JSON PAR LIGNE, soit un tableau
+    unique. Parier sur l'une des deux rendrait une liste vide sur l'autre —
+    et une liste vide se lit comme « aucune instance », ce qui est un
+    mensonge tranquille.
+
+    Une ligne illisible est SAUTÉE plutôt que de faire échouer la lecture
+    entière : une instance en cours de création peut très bien produire une
+    ligne partielle, et perdre les autres pour elle serait pire.
+    """
+    brut = (text or "").strip()
+    if not brut:
+        return ()
+    objets = _comme_tableau(brut)
+    if objets is None:
+        objets = _ligne_a_ligne(brut)
+    lues = []
+    for objet in objets:
+        nom = str(objet.get("name") or "")
+        if not nom:
+            continue
+        lues.append(
+            Instance(
+                name=nom,
+                status=str(objet.get("status") or ""),
+                arch=str(objet.get("arch") or ""),
+                ssh_port=str(objet.get("sshLocalPort") or ""),
+            )
+        )
+    return tuple(lues)
+
+
+def _comme_tableau(brut: str):
+    """Le tout comme un tableau JSON, ou None si ce n'en est pas un."""
+    try:
+        charge = json.loads(brut)
+    except ValueError:
+        return None
+    if isinstance(charge, list):
+        return [item for item in charge if isinstance(item, dict)]
+    if isinstance(charge, dict):
+        return [charge]
+    return None
+
+
+def _ligne_a_ligne(brut: str) -> list:
+    """Un objet par ligne, les lignes illisibles sautées."""
+    objets = []
+    for ligne in brut.splitlines():
+        ligne = ligne.strip()
+        if not ligne:
+            continue
+        try:
+            charge = json.loads(ligne)
+        except ValueError:
+            continue
+        if isinstance(charge, dict):
+            objets.append(charge)
+    return objets
+
+
+def is_running(instance) -> bool:
+    """Cette instance tourne-t-elle ?"""
+    return bool(instance) and instance.status.lower() == RUNNING
+
+
+def find(instances, name: str):
+    """L'instance qui porte ce nom, ou None."""
+    for instance in instances or ():
+        if instance.name == name:
+            return instance
+    return None
