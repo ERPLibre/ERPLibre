@@ -270,7 +270,7 @@ class TestLeCorps(unittest.TestCase):
 
     def test_un_chemin_de_compte(self):
         problemes = check(
-            _message("Le venv vit dans /home/garance/git/erplibre/.")
+            _message("Le venv vit dans /home/compte/git/erplibre/.")
         )
         self.assertEqual(1, len(problemes))
         self.assertIn("chemin de compte", problemes[0])

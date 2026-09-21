@@ -558,8 +558,15 @@ class ProxmoxMenuMixin:
             print(t("Cancelled."))
             return
         for vm in vms:
-            for cmd in pve.destroy_cmds(vm["vmid"]):
-                self._pve_show(cmd, timeout=300)
+            # Le nom PROUVE : il est en main depuis la liste, et le jeter
+            # laissait détruire ce qui porte ce VMID maintenant. UN seul
+            # appel, parce que le garde ne vaut que dans le shell qu'il
+            # peut arrêter.
+            nom = (vm.get("name") or "").strip()
+            if not nom:
+                print(f"  ⛔ {vm['vmid']} : {t('no identity proof; refused')}")
+                continue
+            self._pve_show(pve.destroy_cmd(vm["vmid"], nom), timeout=300)
 
     def _pve_cleanup(self):
         """Volumes de disque qu'aucune VM ne réclame plus.

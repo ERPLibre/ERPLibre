@@ -31,7 +31,7 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin
 [Guide pour configurer git localement](https://railsware.com/blog/taming-the-git-daemon-to-quickly-share-git-repository/).
 
 ```bash
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors --verbose &
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
 .venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
@@ -66,7 +66,7 @@ Lorsque dev contient une révision spécifique avec la révision par défaut, vo
 ./script/git/git_merge_repo_manifest.py --input "./manifest/default.dev.xml;./default.xml" --output ./manifest/default.staged.xml
 git commit -am "Updated manifest/default.staged.xml"
 
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors --verbose &
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
 .venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.staged.xml
