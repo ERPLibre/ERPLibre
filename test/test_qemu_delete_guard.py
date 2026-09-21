@@ -35,6 +35,7 @@ sys.path.append(RACINE)
 sys.argv = ["todo.py"]
 
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 from script.vm import backend as VM  # noqa: E402
 
 # Deux domaines de banc, preuves inventées.
@@ -565,6 +566,60 @@ class TestCeQuiEstEfficeEstCeQuiAEteNomme(unittest.TestCase):
             and getattr(n.func, "attr", "") == "_qemu_vm_own_files"
         ]
         self.assertEqual(1, len(appels), [n.lineno for n in appels])
+
+
+class TestLEcranNAnnoncePasCeQuIlNaPasFait(unittest.TestCase):
+    """Le garde d'identité vit DANS la chaîne : son refus est un code.
+
+    Jeté, ce code faisait imprimer « suppression faite » sur une VM
+    toujours debout — et sur une machine qu'on croit détruite, on réemploie
+    le nom, l'adresse et le port.
+
+    « toutes sauf une » et « toutes » se ressemblent trop dans une liste
+    pour qu'un compte global les distingue : l'écran NOMME.
+    """
+
+    # Deux VM : le choix, le refus des disques, puis le NOMBRE — la
+    # confirmation d'un ensemble se fait par son compte, et il faut avoir lu
+    # le bloc pour le connaître.
+    def ecran(self, code, reponses=("1,2", "n", "2")):
+        todo = todo_avec()
+        todo.execute = Bancal(code)
+        return jouer(todo, reponses), todo
+
+    def test_a_refusal_is_never_announced_as_a_deletion(self):
+        affiche, _todo = self.ecran(1)
+        self.assertNotIn("✅", affiche)
+
+    def test_it_names_the_ones_that_did_not_go(self):
+        """LE NOM ET LA RAISON SUR LA MÊME LIGNE. Chercher le nom seul dans
+        l'écran ne prouve rien : le bloc « Sera effacé » le porte déjà, donc
+        l'assertion passait même en retirant la ligne de refus. Un garde qui
+        mesure ce qui était vrai avant ne garde rien."""
+        affiche, _todo = self.ecran(1)
+        refus = t("nothing was deleted.")
+        for nom in ("machine-a", "machine-b"):
+            self.assertTrue(
+                any(
+                    nom in ligne and refus in ligne
+                    for ligne in affiche.splitlines()
+                ),
+                f"aucune ligne ne dit le refus pour {nom}",
+            )
+
+    def test_the_commands_were_still_all_attempted(self):
+        """Un refus sur la première ne doit pas taire la seconde : chaque
+        VM porte sa propre preuve, et l'une peut avoir changé de porteur
+        sans l'autre."""
+        _affiche, todo = self.ecran(1)
+        self.assertEqual(2, len(todo.execute.vues))
+
+    def test_a_clean_run_still_says_so(self):
+        """Contrôle positif : se taire toujours passerait les trois
+        précédents."""
+        affiche, _todo = self.ecran(0)
+        self.assertIn("✅", affiche)
+        self.assertIn("machine-a", affiche)
 
 
 if __name__ == "__main__":

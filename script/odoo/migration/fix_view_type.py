@@ -170,12 +170,20 @@ def db_major(database):
 
 
 def arch_is_jsonb(database):
-    """`arch_db` est un jsonb depuis la 16, un texte avant."""
+    """`arch_db` est un jsonb depuis la 16, un texte avant. None si la base
+    ne répond pas.
+
+    LE TROISIÈME ÉTAT EXISTE. Rendre FAUX pour une base muette la ferait
+    traiter comme une base d'avant la 16 : les requêtes suivantes liraient
+    la colonne comme du texte, sur une base dont on ne sait rien.
+    """
     lignes = run_psql(
         database,
         "SELECT data_type FROM information_schema.columns"
         " WHERE table_name = 'ir_ui_view' AND column_name = 'arch_db'",
     )
+    if lignes is None:
+        return None
     return bool(lignes) and lignes[0][0] == "jsonb"
 
 
@@ -323,18 +331,36 @@ def main(argv=None):
     )
     config = parser.parse_args(argv)
 
-    vues = find(config.database)
-    if vues is None:
+    # UNE BASE QUI NE RÉPOND PAS N'EST PAS UNE BASE PROPRE. Chaque relevé
+    # d'ici rend None quand la lecture échoue, et None est FAUX : avalé, il
+    # faisait lire « rien à corriger » sur une base dont on ne savait rien,
+    # et l'outil concluait par un succès. Les cinq lectures s'arrêtent donc
+    # de la même façon, et avec la même phrase.
+    def muette():
         print(f"❌ {t('Cannot read the database: ')}{config.database}")
         return 2
+
+    vues = find(config.database)
+    if vues is None:
+        return muette()
     # Le renommage `tree` → `list` n'a de sens qu'à partir de la 18 :
     # avant, la balise est parfaitement légitime et la « corriger »
     # casserait des vues saines.
     jsonb = arch_is_jsonb(config.database)
+    if jsonb is None:
+        return muette()
     majeure = db_major(config.database)
+    if majeure is None:
+        # Toute base Odoo porte la version du module « base ». Ne pas la
+        # lire, c'est ne pas savoir si le renommage s'applique — et le
+        # sauter en silence laisserait les vues fautives en place sous un
+        # « tout concorde ».
+        return muette()
     arbres = []
-    if majeure and majeure >= PREMIERE_VERSION_LIST:
-        arbres = find_tree(config.database, jsonb) or []
+    if majeure >= PREMIERE_VERSION_LIST:
+        arbres = find_tree(config.database, jsonb)
+        if arbres is None:
+            return muette()
 
     if not vues and not arbres:
         print(f"✅ {t('Every view agrees with what Odoo expects.')}")
@@ -348,8 +374,14 @@ def main(argv=None):
             print(f"❌ {t('The correction failed.')}")
             return 2
     # Relire APRÈS : annoncer « corrigé » sans vérifier ferait relancer
-    # la migration sur le même mur.
-    if find(config.database) or (arbres and find_tree(config.database, jsonb)):
+    # la migration sur le même mur. Et « la relecture n'a pas abouti » n'est
+    # pas « plus rien à corriger » — c'est justement après une écriture
+    # qu'une connexion peut être tombée.
+    restantes = find(config.database)
+    restants = find_tree(config.database, jsonb) if arbres else []
+    if restantes is None or restants is None:
+        return muette()
+    if restantes or restants:
         print(f"❌ {t('The correction failed.')}")
         return 2
     print(

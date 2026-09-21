@@ -93,5 +93,81 @@ class TestElleDitAvantDeCouper(unittest.TestCase):
         self.assertTrue(rendu)
 
 
+class TestUnRefusArreteLEpreuve(unittest.TestCase):
+    """« tapez OUI » n'est pas une formalité.
+
+    Le retour de `poser` était jeté : le refus imprimait « Rien n'a été
+    chargé », puis les sondes partaient quand même, sur une machine
+    ordinaire. Elles rendent alors deux fois « passe », ce qui se lit comme
+    une confrontation CONCLUANTE — et l'épilogue invite à lever un jeton de
+    posture sur cette lecture.
+    """
+
+    def setUp(self):
+        self.mod = module()
+
+    def jouer(self, reponse, argv=("--terrain", "hote")):
+        """Déroule main() sur cette réponse, et rend (code, écran, sondes)."""
+        sondes = []
+        tampon = io.StringIO()
+        with mock.patch.object(
+            self.mod, "jouer", lambda a, **k: (0, "")
+        ), mock.patch.object(
+            self.mod, "outillage", lambda: ("podman", [])
+        ), mock.patch.object(
+            self.mod,
+            "question_1_et_2",
+            lambda *a, **k: sondes.append("1-2"),
+        ), mock.patch.object(
+            self.mod,
+            "question_3",
+            lambda *a, **k: sondes.append("3"),
+        ), mock.patch.object(
+            sys, "argv", ["egress_confront.py", *argv]
+        ), mock.patch(
+            "builtins.input", return_value=reponse
+        ):
+            with redirect_stdout(tampon):
+                code = self.mod.main()
+        return code, tampon.getvalue(), sondes
+
+    def test_a_refusal_probes_nothing(self):
+        _code, _ecran, sondes = self.jouer("non")
+        self.assertEqual([], sondes)
+
+    def test_a_refusal_never_reads_as_conclusive(self):
+        """L'épilogue nomme le jeton que ces réponses lèvent : l'imprimer
+        sans réponse est une invitation à lever sur rien."""
+        code, ecran, _s = self.jouer("non")
+        self.assertEqual(self.mod.SORTIE_NON_CONCLUANTE, code)
+        self.assertNotIn("covers_containers", ecran)
+
+    def test_typing_it_goes_all_the_way(self):
+        """Contrôle positif : s'arrêter toujours passerait les deux
+        précédents."""
+        code, ecran, sondes = self.jouer("OUI")
+        self.assertEqual(0, code)
+        self.assertIn("1-2", sondes)
+        self.assertIn("covers_containers", ecran)
+
+    def test_a_dry_run_still_shows_what_would_happen(self):
+        """À blanc, `poser` rend faux par construction : l'affichage EST le
+        but, et l'arrêt le supprimerait."""
+        _code, _ecran, sondes = self.jouer(
+            "", argv=("--terrain", "hote", "--dry-run")
+        )
+        self.assertIn("1-2", sondes)
+
+    def test_the_two_failure_codes_are_distinct(self):
+        """Confondus, « l'outillage manque » et « rien n'a été mesuré » se
+        corrigeraient au même endroit, et ce ne sont pas les mêmes gestes."""
+        self.assertNotEqual(
+            self.mod.SORTIE_OUTILLAGE, self.mod.SORTIE_NON_CONCLUANTE
+        )
+        self.assertNotIn(
+            0, (self.mod.SORTIE_OUTILLAGE, self.mod.SORTIE_NON_CONCLUANTE)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -147,6 +147,12 @@ class LimaMenuMixin:
                     "Lima - Install ERPLibre in an instance"
                 )
             },
+            {"section": t("Posture")},
+            {
+                "prompt_description": t(
+                    "Lima - Verify an instance's egress posture"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -171,6 +177,8 @@ class LimaMenuMixin:
                 self._lima_shell()
             elif status == "8":
                 self._lima_install_erplibre()
+            elif status == "9":
+                self._lima_verify_egress()
             else:
                 print(t("Command not found !"))
 
@@ -201,6 +209,25 @@ class LimaMenuMixin:
     # ------------------------------------------------------------------
     # Lire l'inventaire
     # ------------------------------------------------------------------
+    @staticmethod
+    def _lima_capture(argv, timeout=60):
+        """(code, sortie, panne) d'une commande de l'outil. Ne lève jamais.
+
+        `panne` porte la raison quand l'outil n'a pas pu être lancé du tout
+        — absent, non exécutable — là où `code` porte celle qu'il rend
+        lui-même. Les appelants n'en font pas la même chose : l'inventaire
+        refuse de deviner entre « aucune instance » et « pas d'outil », la
+        sonde de posture lit la sortie telle quelle. Un seul endroit tient
+        la mécanique, chacun sa lecture.
+        """
+        try:
+            fini = subprocess.run(
+                argv, capture_output=True, text=True, timeout=timeout
+            )
+        except (OSError, subprocess.SubprocessError) as panne:
+            return 255, "", str(panne)
+        return fini.returncode, fini.stdout or "", (fini.stderr or "").strip()
+
     def _lima_instances(self):
         """Les instances, ou None si l'outil n'a pas répondu.
 
@@ -209,20 +236,14 @@ class LimaMenuMixin:
         proposer de créer une instance sur une machine sans outil.
         """
         argv = lima.list_argv()
-        try:
-            resultat = subprocess.run(
-                argv, capture_output=True, text=True, timeout=60
-            )
-        except (OSError, subprocess.SubprocessError) as panne:
+        code, sortie, panne = self._lima_capture(argv)
+        if code == 255 and not sortie:
             print(f"  ✗ {lima.display(argv)} : {panne}")
             return None
-        if resultat.returncode:
-            print(
-                f"  ✗ {lima.display(argv)} :"
-                f" {(resultat.stderr or '').strip()[:200]}"
-            )
+        if code:
+            print(f"  ✗ {lima.display(argv)} : {panne[:200]}")
             return None
-        return lima.parse_instances(resultat.stdout)
+        return lima.parse_instances(sortie)
 
     def _lima_list(self):
         instances = self._lima_instances()
@@ -452,6 +473,40 @@ class LimaMenuMixin:
         self.execute.exec_command_live(
             lima.display(argv), source_erplibre=False
         )
+
+    # ------------------------------------------------------------------
+    # La posture, relue
+    # ------------------------------------------------------------------
+    def _lima_verify_egress(self):
+        """La posture d'une instance, RELUE dedans, quand on le demande.
+
+        LE PROVISIONNEMENT POSE LES RÈGLES ET RIEN NE LES RELISAIT. Une
+        instance créée sous une posture bornée porte le fichier et l'unité
+        qui le recharge à chaque démarrage ; un rechargement qui échoue plus
+        tard la laisse debout et sortante, et rien ne le disait.
+
+        La sonde est celle du déploiement, mot pour mot : elle rend toujours
+        0 et répond par un mot, de sorte qu'une instance muette se distingue
+        d'une table absente. Ce qui n'a pas été lu vaut « non lu », jamais
+        « chargé ».
+
+        L'instance doit TOURNER : une instance arrêtée ne répond pas, et
+        lire son silence comme une absence de table ferait corriger des
+        règles là où il n'y a qu'une machine éteinte.
+        """
+        from script.todo import deploy_verify
+        from script.todo import devstack_report as report
+
+        nom = self._lima_select(running=True)
+        if not nom:
+            return
+        argv = lima.shell_argv(nom, posture_plan.probe_command())
+        _code, sortie, _panne = self._lima_capture(argv)
+        lu = posture_plan.parse_probe(sortie)
+        couches = list(deploy_verify.egress_layers(lu))
+        print()
+        print(report.render_layers(couches, subject=nom))
+        return report.aggregate_layers(couches)
 
     # ------------------------------------------------------------------
     # ERPLibre dans l'instance

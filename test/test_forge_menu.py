@@ -33,10 +33,13 @@ sys.path.append(
 from script.forge import api  # noqa: E402
 from script.forge.api import Reponse  # noqa: E402
 from script.todo import forge_menu, todo_i18n  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 from script.forge import profiles  # noqa: E402
+from script.forge import mirror  # noqa: E402
 from script.todo.forge_menu import (  # noqa: E402
     CHAMPS_REPORTES,
     ROLES_DITS,
+    SENS_DITS,
     SENTENCES,
     ForgeMenuMixin,
     profile_line,
@@ -583,8 +586,6 @@ class TestLaFrontiereAvecLeModuleDeForge(CasDeMenu):
         self.assertIn('"method": "prompt_execute_forge"', source)
 
 
-
-
 class CasDeProfil(CasDeMenu):
     """Le formulaire de profil, sur une configuration jetable.
 
@@ -756,6 +757,226 @@ class TestLeRoleSeChoisitEtTient(CasDeProfil):
         )
         self.assertTrue(t_en)
         self.assertNotIn(t_en, profile_line(dict(PROFIL, role=""), True))
+
+
+MANIFESTE = """<?xml version="1.0"?>
+<manifest>
+  <remote name="amont" fetch="https://amont.example/"/>
+  <remote name="chez-nous" fetch="https://forge.example/"/>
+  <project name="oca/outils.git" remote="amont"/>
+  <project name="equipe/interne.git" remote="chez-nous"/>
+</manifest>
+"""
+
+
+class ClientDeMiroirSortant:
+    """Une forge de banc : elle retient ce qu'on lui demande de poser."""
+
+    def __init__(self, deja=(), verdict=None):
+        self.deja = list(deja)
+        self.poses = []
+        self.verdict = verdict or api.OK
+
+    def push_mirrors(self, owner, repo):
+        return Reponse(api.OK, data=list(self.deja))
+
+    def add_push_mirror(self, owner, repo, adresse, compte="", jeton="", **k):
+        self.poses.append(
+            {
+                "owner": owner,
+                "repo": repo,
+                "adresse": adresse,
+                "compte": compte,
+                "jeton": jeton,
+            }
+        )
+        return Reponse(self.verdict)
+
+
+class CasDeMiroirSortant(CasDeProfil):
+    """Le sens déclaré, puis le miroir posé. Aucune forge, aucun réseau."""
+
+    PROFIL = {
+        "name": "atelier",
+        "url": "https://forge.example",
+        "owner": "equipe",
+    }
+
+    def setUp(self):
+        super().setUp()
+        profiles.save(dict(self.PROFIL))
+        self.manifeste = os.path.join(self.tmp.name, "manifeste.xml")
+        with open(self.manifeste, "w", encoding="utf-8") as fh:
+            fh.write(MANIFESTE)
+        self.menu._forge_manifest_path = lambda: self.manifeste
+        self.menu._forge_select_profile = lambda: "atelier"
+
+    def rang_du_depot(self, nom):
+        """Le numéro qui désigne ce dépôt, DÉRIVÉ de l'ordre affiché."""
+        noms = sorted({"outils", "interne"})
+        return str(noms.index(nom) + 1)
+
+    def rang_du_sens(self, sens):
+        return str(list(mirror.SENS).index(sens) + 1)
+
+
+class TestLeSensSeDeclareEtSeRetire(CasDeMiroirSortant):
+    def test_the_manifest_derives_inbound_for_an_upstream_repo(self):
+        """Contrôle du mécanisme : « outils » vient d'un amont."""
+        with patch(
+            "builtins.input", side_effect=[self.rang_du_depot("outils"), "0"]
+        ):
+            affiche = sortie(self.menu._forge_mirror_direction)
+        self.assertIn(t(SENS_DITS[mirror.ENTRANT]), affiche)
+
+    def test_a_declaration_is_written(self):
+        """Sans elle, le segment « miroir sortant » reste à régler et aucun
+        geste de l'écran ne peut le régler."""
+        with patch(
+            "builtins.input",
+            side_effect=[
+                self.rang_du_depot("outils"),
+                self.rang_du_sens(mirror.SORTANT),
+            ],
+        ):
+            sortie(self.menu._forge_mirror_direction)
+        self.assertEqual(("outils",), mirror.sortants())
+
+    def test_zero_removes_it_and_the_manifest_rules_again(self):
+        """LA DÉCLARATION PART, elle ne bascule pas. Mesurer les seuls
+        sortants passait aussi bien quand « 0 » écrivait « entrant » : la
+        surcharge restait, et le manifeste ne redécidait plus rien."""
+        mirror.declarer("outils", mirror.SORTANT)
+        with patch(
+            "builtins.input",
+            side_effect=[self.rang_du_depot("outils"), "0"],
+        ):
+            sortie(self.menu._forge_mirror_direction)
+        self.assertEqual({}, mirror.surcharges())
+        self.assertEqual((), mirror.sortants())
+
+    def test_the_screen_shows_the_derived_and_the_declared(self):
+        """Ne montrer que l'effectif ferait croire la dérivation fautive là
+        où c'est un réglage qui la corrige."""
+        mirror.declarer("outils", mirror.SORTANT)
+        with patch(
+            "builtins.input",
+            side_effect=[self.rang_du_depot("outils"), "0"],
+        ):
+            affiche = sortie(self.menu._forge_mirror_direction)
+        self.assertIn(t("The manifest derives:"), affiche)
+        self.assertIn(t("This site declares:"), affiche)
+
+    def test_an_answer_that_designates_nothing_writes_nothing(self):
+        with patch(
+            "builtins.input",
+            side_effect=[self.rang_du_depot("outils"), "9"],
+        ):
+            affiche = sortie(self.menu._forge_mirror_direction)
+        self.assertIn(t("Command not found !"), affiche)
+        self.assertEqual({}, mirror.surcharges())
+
+
+class TestLeMiroirNeSePosePasAContresens(CasDeMiroirSortant):
+    """Poser un miroir sortant sur un dépôt que la dérivation dit ENTRANT
+    écraserait chez le tiers ce qu'on en avait reçu."""
+
+    def poser(self, client, reponses):
+        self.menu._forge_client = lambda nom: (
+            profiles.load("atelier"),
+            client,
+        )
+        with patch("builtins.input", side_effect=list(reponses)), patch(
+            "script.todo.forge_menu.getpass.getpass", return_value="jeton"
+        ):
+            return sortie(self.menu._forge_push_mirror_add)
+
+    def test_an_inbound_repo_is_refused_and_told_what_to_do(self):
+        client = ClientDeMiroirSortant()
+        affiche = self.poser(client, [self.rang_du_depot("outils")])
+        self.assertEqual([], client.poses)
+        self.assertIn(t("not declared outbound; nothing laid."), affiche)
+
+    def test_a_declared_outbound_repo_is_laid(self):
+        """Contrôle positif : refuser toujours passerait le précédent."""
+        mirror.declarer("outils", mirror.SORTANT)
+        client = ClientDeMiroirSortant()
+        self.poser(
+            client,
+            [
+                self.rang_du_depot("outils"),
+                "https://amont.example/o/x.git",
+                "compte",
+            ],
+        )
+        self.assertEqual(1, len(client.poses))
+        self.assertEqual("outils", client.poses[0]["repo"])
+
+    def test_a_mirror_that_already_pushes_there_is_refused(self):
+        """La forge accepte deux miroirs vers la même adresse, et l'on
+        obtient deux poussées qui se courent après."""
+        mirror.declarer("outils", mirror.SORTANT)
+        client = ClientDeMiroirSortant(
+            deja=[{"remote_address": "https://amont.example/o/x.git"}]
+        )
+        affiche = self.poser(
+            client,
+            [self.rang_du_depot("outils"), "https://amont.example/o/x.git"],
+        )
+        self.assertEqual([], client.poses)
+        self.assertIn(t("a mirror already pushes there."), affiche)
+
+    def test_an_empty_address_lays_nothing(self):
+        mirror.declarer("outils", mirror.SORTANT)
+        client = ClientDeMiroirSortant()
+        self.poser(client, [self.rang_du_depot("outils"), ""])
+        self.assertEqual([], client.poses)
+
+
+class TestLeJetonDuMiroirNeSaffichePas(CasDeMiroirSortant):
+    def test_the_token_is_never_printed(self):
+        """Un menu se déroule devant quelqu'un, et sa sortie se colle dans
+        un rapport de panne."""
+        mirror.declarer("outils", mirror.SORTANT)
+        client = ClientDeMiroirSortant()
+        self.menu._forge_client = lambda nom: (
+            profiles.load("atelier"),
+            client,
+        )
+        with patch(
+            "builtins.input",
+            side_effect=[
+                self.rang_du_depot("outils"),
+                "https://amont.example/o/x.git",
+                "compte",
+            ],
+        ), patch(
+            "script.todo.forge_menu.getpass.getpass",
+            return_value="jeton-de-banc-0123456789",
+        ):
+            affiche = sortie(self.menu._forge_push_mirror_add)
+        self.assertNotIn("jeton-de-banc-0123456789", affiche)
+        # Il est bien PARTI, lui : ce n'est pas l'absence qui le cache.
+        self.assertEqual("jeton-de-banc-0123456789", client.poses[0]["jeton"])
+
+    def test_it_is_stored_under_its_OWN_reference(self):
+        """Le jeton du miroir ouvre l'amont, celui de la forge ouvre la
+        forge : les confondre donnerait à la forge un jeton qui écrit chez
+        le tiers."""
+        self.assertNotEqual(
+            profiles.secret_ref("atelier"),
+            profiles.mirror_secret_ref("atelier"),
+        )
+
+
+class TestChaqueSensAUnePhrase(unittest.TestCase):
+    def test_the_table_covers_the_vocabulary(self):
+        """Un sens sans phrase offrirait un choix muet."""
+        self.assertEqual(set(mirror.SENS), set(SENS_DITS))
+
+    def test_the_sentences_are_real_translation_keys(self):
+        for phrase in SENS_DITS.values():
+            self.assertIn(phrase, todo_i18n.TRANSLATIONS)
 
 
 if __name__ == "__main__":

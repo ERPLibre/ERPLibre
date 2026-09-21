@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from script.config.config_file import ConfigFile
 from script.forge import mirror as forge_mirror
 from script.forge import profiles as forge_profiles
 from script.posture import registry as posture_registry
@@ -43,12 +42,6 @@ ABSENT = "absent"
 ETATS = (PORTE, A_REGLER, ABSENT)
 
 MARQUES = {PORTE: "✓", A_REGLER: "◐", ABSENT: "○"}
-
-# La section qui nomme le sens du miroir, dépôt par dépôt. Le sens se
-# DÉRIVE du manifeste ; ce qui est écrit ici ne sert qu'à le corriger, et
-# c'est pourquoi l'écran ne compte que les surcharges SORTANTES : ce sont
-# les seules qu'un site déclare vraiment.
-CLE_MIROIR = "forge_mirror"
 
 
 class Releve(NamedTuple):
@@ -128,21 +121,15 @@ def _miroirs_sortants(config_file) -> tuple:
 
     Lu dans la CONFIGURATION et non sur la forge : cet écran doit se rendre
     sans réseau, et un appel d'API y ferait attendre une machine qui dort.
+
+    DEMANDÉ À SON AUTORITÉ. La clé de section et le vocabulaire des sens
+    vivent dans `script.forge.mirror` ; les relire ici en ferait une seconde
+    déclaration, qui se tairait le jour où l'une des deux change.
     """
     try:
-        cfg = config_file or ConfigFile()
-        declares = cfg.get_config(CLE_MIROIR)
+        return forge_mirror.sortants(config_file)
     except Exception:  # noqa: BLE001 - un relevé, pas le sujet
         return ()
-    if not isinstance(declares, dict):
-        return ()
-    return tuple(
-        sorted(
-            nom
-            for nom, sens in declares.items()
-            if str(sens or "").strip() == forge_mirror.SORTANT
-        )
-    )
 
 
 def _porte_ou_a_regler(regle: bool, porte: str, a_regler: str) -> tuple:

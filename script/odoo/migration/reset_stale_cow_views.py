@@ -127,6 +127,13 @@ def fetch_views(database):
     )
     rows = {}
     for item in json.loads(raw.strip() or "[]"):
+        # THE COLUMN AS IT STANDS, kept beside the analysed arch. From 16.0
+        # ``arch_db`` is jsonb with one entry per language; ``normalise_arch``
+        # unwraps ONE of them, which is all the analysis needs and is NOT
+        # what a reset replaces — the UPDATE writes the whole column. A
+        # backup holding the unwrapped string could not put the other
+        # languages back.
+        item["arch_column"] = item.get("arch")
         item["arch"] = normalise_arch(item.get("arch"))
         rows[item["id"]] = item
     return rows
@@ -227,25 +234,33 @@ def analyse(database):
     return findings
 
 
-def find_copy_by_key(views, key):
-    """(copie COW, jumelle module) pour cette clé, ou (None, None).
+def find_copies_by_key(views, key):
+    """(copies COW, jumelle module) pour cette clé. Les copies : une LISTE.
 
     La détection différentielle ne voit qu'une copie dont un ENFANT casse.
-    Une copie périmée sans enfant lui échappe : celle de
-    `website_crm.contactus_form`, plus petite d'un tiers que sa jumelle, rend
-    /contactus en 500 sans qu'aucun enfant ne casse. Demander sa
-    réinitialisation par clé doit donc marcher même hors détection.
+    Une copie périmée sans enfant lui échappe : celle d'un formulaire de
+    contact, plus petite d'un tiers que sa jumelle, rend sa page en 500 sans
+    qu'aucun enfant ne casse. Demander sa réinitialisation par clé doit donc
+    marcher même hors détection.
+
+    UNE COPIE COW EST PAR SITE. `ir_ui_view` porte une ligne par
+    `website_id` pour la même clé, donc une base à plusieurs sites en a
+    autant. Rendre la plus petite par identifiant en annonçait UNE pendant
+    que la clé, elle, en désigne N : les autres sites gardaient leur copie
+    périmée et la page restait cassée, sans qu'un mot le dise.
+
+    Les copies sont ordonnées par identifiant, pour que l'écran les liste
+    toujours dans le même ordre.
     """
-    copy = twin = None
+    copies, twin = [], None
     for row in views.values():
         if row.get("key") != key:
             continue
         if row.get("website_id"):
-            if copy is None or row["id"] < copy["id"]:
-                copy = row
+            copies.append(row)
         elif twin is None or row["id"] < twin["id"]:
             twin = row
-    return copy, twin
+    return sorted(copies, key=lambda r: r["id"]), twin
 
 
 def render_diff(module_view, cow_view, indent="    "):
@@ -303,7 +318,16 @@ def show_diff(module_view, cow_view):
 
 
 def backup(database, cow_view, directory):
-    """Store the arch about to be replaced, and return the file path."""
+    """Store the column about to be replaced, and return the file path.
+
+    ``arch_db`` holds what the COLUMN holds, every language included — that
+    is what ``reset`` overwrites. Saving the unwrapped single-language
+    string instead would announce a backup that cannot undo the write.
+
+    ``arch`` keeps the unwrapped one beside it: it is what the diff on
+    screen showed, and a file that carries only the raw jsonb would be
+    unreadable to whoever opens it to re-apply the customization by hand.
+    """
     os.makedirs(directory, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(
@@ -317,7 +341,8 @@ def backup(database, cow_view, directory):
                 "key": cow_view["key"],
                 "website_id": cow_view["website_id"],
                 "saved_at": stamp,
-                "arch_db": cow_view["arch"],
+                "arch_db": cow_view.get("arch_column", cow_view["arch"]),
+                "arch": cow_view["arch"],
             },
             fh,
             indent=2,
@@ -478,8 +503,8 @@ def main():
     # réinitialisée alors que la page qu'elle devait réparer rend encore
     # 500.
     for key in sorted(wanted - honoured - {"all"}):
-        copy, twin = find_copy_by_key(views, key)
-        if copy is None:
+        copies, twin = find_copies_by_key(views, key)
+        if not copies:
             print(f"⚠️ {t('No COW copy carries this key')} : {key}")
             missed.append(key)
             continue
@@ -487,20 +512,27 @@ def main():
             print(f"⚠️ {key} : {t('no module view to reset onto, skipped.')}")
             missed.append(key)
             continue
-        if copy["arch"] == twin["arch"]:
-            print(f"ℹ {key} : {t('already identical to the module view.')}")
-            continue
-        if not config.apply:
-            print(
-                f"[{t('dry-run')}] {t('would reset')} id={copy['id']}"
-                f" ({key}) {t('onto')} id={twin['id']}"
-            )
-            continue
-        path = backup(config.database, copy, directory)
-        reset(config.database, copy, twin)
-        done += 1
-        print(f"✅ {t('reset')} id={copy['id']} ({key})")
-        print(f"   {t('previous arch saved to')} {path}")
+        # TOUTES LES COPIES DE CETTE CLÉ, une par site. N'en traiter qu'une
+        # laissait les autres sites sur leur copie périmée, page toujours
+        # cassée, sous un « réinitialisé » qui nommait la clé.
+        for copy in copies:
+            if copy["arch"] == twin["arch"]:
+                print(
+                    f"ℹ {key} (site {copy['website_id']}) :"
+                    f" {t('already identical to the module view.')}"
+                )
+                continue
+            if not config.apply:
+                print(
+                    f"[{t('dry-run')}] {t('would reset')} id={copy['id']}"
+                    f" ({key}) {t('onto')} id={twin['id']}"
+                )
+                continue
+            path = backup(config.database, copy, directory)
+            reset(config.database, copy, twin)
+            done += 1
+            print(f"✅ {t('reset')} id={copy['id']} ({key})")
+            print(f"   {t('previous arch saved to')} {path}")
 
     if config.apply and done:
         print(

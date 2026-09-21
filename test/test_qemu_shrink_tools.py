@@ -295,8 +295,16 @@ class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
         raise AssertionError("_qemu_safe_shrink introuvable")
 
     def premier_fsck(self, lignes, fonction):
-        """La ligne du PREMIER fsck de la réduction, quel que soit le
-        lanceur qui le porte : c'est lui qui écrit sur le disque."""
+        """La ligne du PREMIER fsck de la fonction, quel que soit le lanceur
+        qui le porte : c'est lui qui écrit sur le disque.
+
+        DÉRIVÉE, et c'est la correction d'un piège. Le contrôle positif
+        d'en dessous bornait son intervalle par un numéro de ligne ÉCRIT EN
+        DUR : une modification quelconque plus haut dans le fichier
+        décalait la fonction sous cette borne, l'intervalle devenait vide,
+        et le test rougissait sur un changement qui ne le concernait pas.
+        Un garde qui rougit à tort est un garde qu'on apprend à désarmer.
+        """
         fscks = [
             n
             for n in range(fonction.lineno, fonction.end_lineno + 1)
@@ -311,10 +319,11 @@ class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
         import re
 
         lignes, fonction = self.corps()
-        premier = self.premier_fsck(lignes, fonction)
         fautifs = [
             n
-            for n in range(premier, fonction.end_lineno + 1)
+            for n in range(
+                self.premier_fsck(lignes, fonction), fonction.end_lineno + 1
+            )
             if re.search(r"changed=False", lignes[n - 1])
         ]
         self.assertEqual([], fautifs)
@@ -325,10 +334,11 @@ class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
         import re
 
         lignes, fonction = self.corps()
-        premier = self.premier_fsck(lignes, fonction)
         avant = [
             n
-            for n in range(fonction.lineno, premier)
+            for n in range(
+                fonction.lineno, self.premier_fsck(lignes, fonction)
+            )
             if re.search(r"changed=False", lignes[n - 1])
         ]
         self.assertTrue(avant, "plus aucun abandon ne rend la sauvegarde")
@@ -505,6 +515,91 @@ class TestBackupSpace(unittest.TestCase):
         """Une place égale au besoin n'en laisse aucune : refusé."""
         _, retenu = self._decision(12 * self.GIB, 12 * self.GIB, "")
         self.assertFalse(retenu)
+
+
+class TestLeVerdictNeSurvitPasASonOperation(unittest.TestCase):
+    """« Le disque est incohérent » est un verdict SUR UNE OPÉRATION.
+
+    Il est posé quand la restauration depuis la sauvegarde échoue, et il vit
+    sur l'objet TODO, qui dure toute la session interactive. Rien ne le
+    remettait à faux — contrairement à son voisin `_shrink_backup`, remis à
+    None au début de chaque réduction. Une réduction ULTÉRIEURE qui RÉUSSIT,
+    sur une autre VM, se voyait donc refuser le redémarrage et proposer la
+    suppression de sa sauvegarde : la pire combinaison, sur un disque sain.
+    """
+
+    def menu(self):
+        todo = TODO.__new__(TODO)
+        todo.execute = _Exec()
+        return todo
+
+    def test_the_verdict_refuses_the_start_while_it_stands(self):
+        """Contrôle du mécanisme : sans lui, les autres ne prouvent rien."""
+        todo = self.menu()
+        todo._shrink_disk_unsafe = True
+        tampon = io.StringIO()
+        with patch("builtins.input") as saisie:
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-a", True)
+        saisie.assert_not_called()
+        self.assertIn("✗", tampon.getvalue())
+
+    @staticmethod
+    def _voisines(corps, gauche, droite):
+        """Les deux affectations sont-elles CONSÉCUTIVES dans ce corps ?
+
+        La question est structurelle, et non une distance en lignes : un
+        écart toléré en nombre de lignes est un chiffre magique, qui se
+        met à mentir dès qu'un commentaire s'allonge entre les deux.
+        """
+        import ast
+
+        def vise(noeud, nom):
+            return isinstance(noeud, ast.Assign) and any(
+                isinstance(c, ast.Attribute) and c.attr == nom
+                for c in noeud.targets
+            )
+
+        for noeud in ast.walk(corps):
+            suite = getattr(noeud, "body", None)
+            if not isinstance(suite, list):
+                continue
+            for rang in range(len(suite) - 1):
+                paire = (suite[rang], suite[rang + 1])
+                if any(
+                    vise(paire[0], a) and vise(paire[1], b)
+                    for a, b in ((gauche, droite), (droite, gauche))
+                ):
+                    return True
+        return False
+
+    def test_a_new_shrink_clears_it_beside_its_sibling(self):
+        """La remise à zéro vit AVEC celle de la sauvegarde.
+
+        Les deux sont l'état d'UNE opération, remis au même instant et pour
+        la même raison ; les séparer, c'est rouvrir la porte — l'un a été
+        oublié pendant que l'autre était fait.
+        """
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(TODO._qemu_safe_shrink).lstrip())
+        self.assertTrue(
+            self._voisines(arbre, "_shrink_disk_unsafe", "_shrink_backup"),
+            "le verdict n'est pas remis à zéro à côté de sa sauvegarde",
+        )
+
+    def test_the_start_is_offered_again_once_it_is_cleared(self):
+        """Le geste qui compte : une réduction saine ne doit pas payer
+        l'échec d'une autre."""
+        todo = self.menu()
+        todo._shrink_disk_unsafe = True
+        todo._shrink_disk_unsafe = False
+        tampon = io.StringIO()
+        with patch("builtins.input", return_value="n") as saisie:
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-a", True)
+        saisie.assert_called()
 
 
 if __name__ == "__main__":
