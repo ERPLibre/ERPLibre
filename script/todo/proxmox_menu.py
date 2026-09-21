@@ -269,8 +269,8 @@ class ProxmoxMenuMixin:
         print(f"  ✓ Proxmox VE {version}")
         # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
         # bridge ni table NAT — donc aucun pont à créer et aucune VM à
-        # démarrer. Vécu sur l'hôte d'essai, où ifupdown2 répondait
-        # « Another instance of this program is already running » au lieu de
+        # démarrer. Le symptôme n'oriente pas : ifupdown2 répond alors
+        # « Another instance of this program is already running » plutôt que
         # « Operation not supported ». On le dit ici, une fois, plutôt que de
         # laisser chercher.
         noyau = pve.parse_kernel(verdict.raw)
@@ -769,15 +769,14 @@ class ProxmoxMenuMixin:
     def _pve_depth_note(self, host, cpu):
         """(cpu borné, lignes à dire). Ce que la profondeur impose.
 
-        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
-        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
-        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
-        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
-        pour sa profondeur.
+        Offrir la capacité entière de l'HÔTE produit, au troisième étage de
+        virtualisation, une VM qui ne démarre pas : le processeur virtuel
+        n'avance plus et rien n'est lu du disque. Le nombre n'est pas absurde
+        pour la machine ; il l'est pour sa profondeur.
 
-        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
-        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
-        l'étage suivant.
+        Un seul levier, le vCPU : le gel tombe au MÊME octet avec 9 Go et
+        avec 2 Go, donc rogner la mémoire ne gagne rien et prive l'étage
+        suivant.
         """
         from script.proxmox import nesting
 
@@ -924,8 +923,8 @@ class ProxmoxMenuMixin:
         interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
         de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
-        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
-        la VM ne répondait plus, ni en ssh ni en ping."""
+        commande qui la configure : « ifup » ne rend pas la main, et plus rien
+        ne répond, ni en ssh ni en ping."""
         from script.proxmox import proxmox_deploy as pve
 
         _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
@@ -1087,14 +1086,22 @@ class ProxmoxMenuMixin:
         if not host:
             return
         mod = self._qemu_import_module()
-        try:
-            from script.todo.proxmox_deploy_form import run_proxmox_form
+        # PROPOSER D'INSTALLER Textual, comme toutes les autres portes de
+        # cet écran-là dans le dépôt : sans cela, un hôte sans la
+        # bibliothèque tombe dans le repli par questions sans l'avoir
+        # demandé, et le repli est un choix offert, pas un défaut.
+        from script.todo import textual_setup
 
-            ctx = self._pve_form_context(mod, host)
-            spec = run_proxmox_form(ctx)
-        except ImportError as exc:
-            print(f"  ⚠ {t('TUI unavailable')} : {exc}")
-            spec = {}
+        spec = {}
+        if textual_setup.ensure():
+            try:
+                from script.todo.proxmox_deploy_form import run_proxmox_form
+
+                ctx = self._pve_form_context(mod, host)
+                spec = run_proxmox_form(ctx)
+            except ImportError as exc:
+                print(f"  ⚠ {t('TUI unavailable')} : {exc}")
+                spec = {}
         if spec is None:
             print(t("Cancelled."))
             return
@@ -1351,10 +1358,8 @@ class ProxmoxMenuMixin:
         la demande initiale quand ERPLibre s'installe. Ici la marge se perdait
         entre l'écran et « qm resize ».
         """
-        from script.todo.deploy_form_extras import (
-            extras_disk_gb,
-            extras_tables,
-        )
+        from script.todo.deploy_form_extras import (extras_disk_gb,
+                                                    extras_tables)
 
         demande = vm.get("disk") or ""
         gigs = self._parse_disk_gb(demande)
@@ -1432,6 +1437,32 @@ class ProxmoxMenuMixin:
             pve.image_fetch_cmd(url, image, sha256=somme)
         ] + pve.create_cmds(vm["vmid"], detail)
 
+    def _pve_posture_refused(self, spec) -> bool:
+        """LA RÈGLE D'OR sur cet hôte. Vrai si le déploiement est refusé.
+
+        UNE fonction et non un bloc recopié : les DEUX voies de cet écran
+        la traversent — celle du formulaire et celle des questions, qui
+        bâtit sa propre spec et appelait « qm create » sans passer par ici.
+        Un refus posé d'un seul côté est le mécanisme de la dérive.
+
+        Elle est appelée avant que la machine existe : c'est le seul moment
+        où un refus ne coûte rien, puisque après « qm create » une posture
+        incohérente se corrige en détruisant la VM. Une posture inconnue est
+        refusée elle aussi — replier sur la plus libre déploierait en sortie
+        libre une spec qui demandait du confinement.
+        """
+        verdict = posture_spec.check(spec)
+        if verdict == posture_spec.OK:
+            return False
+        print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
+        print(
+            f"  {t('Network posture')} :"
+            f" « {posture_spec.posture_name(spec)} », "
+            f"{t('This machine carries real data')} :"
+            f" {posture_spec.real_data(spec)}"
+        )
+        return True
+
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
 
@@ -1452,20 +1483,7 @@ class ProxmoxMenuMixin:
         # depuis. Pris avant la première commande, création comprise.
         debut = time.time()
 
-        # LA RÈGLE D'OR, avant que la machine existe. C'est le seul moment
-        # où un refus ne coûte rien : après « qm create », une posture
-        # incohérente se corrige en détruisant la VM. Une posture inconnue
-        # est refusée elle aussi — replier sur la plus libre déploierait en
-        # sortie libre une spec qui demandait du confinement.
-        verdict = posture_spec.check(spec)
-        if verdict != posture_spec.OK:
-            print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
-            print(
-                f"  {t('Network posture')} :"
-                f" « {posture_spec.posture_name(spec)} », "
-                f"{t('This machine carries real data')} :"
-                f" {posture_spec.real_data(spec)}"
-            )
+        if self._pve_posture_refused(spec):
             return
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
@@ -2502,6 +2520,13 @@ class ProxmoxMenuMixin:
         if not host:
             return
         mod = self._qemu_import_module()
+        # LA POSTURE EN TÊTE, et le refus tout de suite : rien de ce qui
+        # suit n'en dépend, et un couple incohérent ferait répondre à tout
+        # le questionnaire avant de l'apprendre. `after_boot` parce que sur
+        # cet hôte les règles n'arrivent qu'une fois la machine debout.
+        posture = self._deploy_ask_posture(after_boot=True)
+        if self._pve_posture_refused(posture):
+            return
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
         arch = "amd64"
@@ -2673,6 +2698,11 @@ class ProxmoxMenuMixin:
             # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
             # voie libvirt reprend le fuseau de l'hôte depuis toujours.
             "timezone": self._qemu_host_timezone(),
+            # LE FRAGMENT JUSQU'ICI : c'est cette spec que lit le guide, et
+            # le guide qui rend puis arme les règles. Refuser le couple
+            # incohérent sans la transmettre laissait cette voie créer la VM
+            # et n'en poser aucune, quelle que soit la posture choisie.
+            **posture,
         }
         joignables = self._pve_after_create(
             host, spec_finale, [nom], cle_locale

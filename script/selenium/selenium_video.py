@@ -95,15 +95,6 @@ class VideoRecorder(object):
         )
 
 
-def VideoViewer(*args, **kwargs):
-    """Shorthand for `VideoRecorder(filename=None)`.
-
-    Useful with PhantomJS.
-    """
-    kwargs["filename"] = None
-    return VideoRecorder(*args, **kwargs)
-
-
 def _patch_driver(driver):
     """Prevent failures caused by concurrent connections to the remote
     WebDriver.

@@ -31,7 +31,6 @@ elle ; l'appelant fait la correspondance, comme il la fait déjà ailleurs.
 from __future__ import annotations
 
 from script.lib_valid import ValidationError
-
 # Le nom de la table interrogée vient du RENDU : écrit deux fois, il
 # divergerait, et la sonde chercherait une table que personne ne crée.
 from script.posture.rules import TABLE
@@ -152,6 +151,41 @@ def load_command() -> str:
     déploiement continuerait en annonçant un confinement que rien ne tient.
     """
     return f"nft -f {RULES_PATH}"
+
+
+def provision_script(rules: str) -> str:
+    """Le shell qui POSE les deux fichiers et arme, pour un backend qui
+    provisionne par script. Vide si les règles le sont.
+
+    Une redirection shell ne prend pas de mode : c'est le masque qui le
+    décide, et poser 0600 par un chmod APRÈS laisserait le fichier lisible
+    le temps de son écriture — or il porte les adresses du site.
+
+    Composé ICI et non chez l'appelant : les chemins, les modes, le texte
+    de l'unité et l'ordre des deux commandes vivent dans ce module, et un
+    backend qui les recopierait divergerait du jour où ils changent.
+    """
+    if not (rules or "").strip():
+        return ""
+    masque = f"{0o666 ^ int(RULES_MODE, 8):04o}"
+    lignes = [
+        "#!/bin/sh",
+        "set -eu",
+        f"umask {masque}",
+        f"cat > {RULES_PATH} <<'ERPLIBRE_NFT'",
+    ]
+    lignes += rules.rstrip("\n").splitlines()
+    lignes += [
+        "ERPLIBRE_NFT",
+        f"cat > {UNIT_PATH} <<'ERPLIBRE_UNIT'",
+    ]
+    lignes += unit_text().rstrip("\n").splitlines()
+    lignes += [
+        "ERPLIBRE_UNIT",
+        f"chmod {UNIT_MODE} {UNIT_PATH}",
+        first_boot_command(),
+    ]
+    return "\n".join(lignes) + "\n"
 
 
 def probe_command() -> str:

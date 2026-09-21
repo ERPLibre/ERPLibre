@@ -156,28 +156,30 @@ class TestLeModeleDitCeQueLesGardesFontDeja(unittest.TestCase):
     """
 
     def test_the_proxmox_guard_checks_what_the_handle_says(self):
-        from script.todo.qemu_install_monitor import pve_identity_guard
+        from script.vm import verbs
 
         handle = V.handle_of(DISTANTE)
-        garde = pve_identity_guard(int(handle.key), handle.proof)
+        garde = verbs.identity_guard(handle)
         self.assertIn(handle.key, garde)
         self.assertIn(handle.proof, garde)
 
     def test_the_local_guard_checks_what_the_handle_says(self):
-        from script.todo.qemu_install_monitor import delete_vm_cmd
+        from script.vm import verbs
 
         handle = V.handle_of(LOCALE)
-        commande = delete_vm_cmd(handle.name, False, uuid=handle.proof)
+        commande = verbs.delete_command(handle, with_disks=False)
         self.assertIn(handle.key, commande)
         self.assertIn(handle.proof, commande)
 
     def test_an_unarmed_local_entry_produces_no_guard(self):
         """C'est le désarmement documenté, et il doit rester visible."""
-        from script.todo.qemu_install_monitor import delete_vm_cmd
+        from script.vm import verbs
 
         handle = V.handle_of({"name": "essai"})
         self.assertFalse(V.is_armed(handle))
-        self.assertNotIn("REFUS", delete_vm_cmd(handle.name, False, uuid=""))
+        self.assertNotIn(
+            "REFUS", verbs.delete_command(handle, with_disks=False)
+        )
 
 
 class TestLaFicheDHoteNeSePartagePas(unittest.TestCase):

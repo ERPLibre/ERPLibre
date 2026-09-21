@@ -25,13 +25,16 @@ import subprocess
 import click
 
 from script.lib_valid import NAME_RE, ValidationError
+from script.posture import plan as posture_plan
+from script.posture import registry
+from script.posture import spec as posture_spec
 from script.todo import host_os
 from script.todo.qemu_install_monitor import launch_installs
 from script.todo.todo_i18n import t
+from script.todo.vm_backend_choice import UNPROVEN_NOTE
 from script.vm import backend as vm_backend
 from script.vm import lima, lima_install
 from script.vm import verbs as vm_verbs
-from script.todo.vm_backend_choice import UNPROVEN_NOTE
 from script.vm.backend import LIMA, is_proven
 
 # Où vivent les configurations d'instance. Sous le répertoire ERPLibre de
@@ -45,8 +48,11 @@ LIMA_DIR = "~/.erplibre/lima"
 # rendre une chaîne vide, qui s'afficherait comme un succès.
 TOOL_SENTENCES = {
     lima_install.MANAGER: (
-        "The package manager provides it. Its signature chain covers the"
-        " whole index, which is stronger than a hand-copied checksum."
+        "Ask the package manager: it is the one that holds authority here,"
+        " and its signature chain covers the whole index, which is stronger"
+        " than a hand-copied checksum. If it answers that the package does"
+        " not exist, that route is shut — read a checksum off a verified"
+        " release and pin it in RELEASES."
     ),
     lima_install.OK: (
         "A pinned release matches. Download it, then verify the checksum"
@@ -286,8 +292,40 @@ class LimaMenuMixin:
             return
         arch = host_os.arch_token()
         macos = host_os.is_macos()
+        # LA POSTURE, comme les deux autres backends. `after_boot` est
+        # FAUX : le provisionnement d'instance tourne au premier démarrage,
+        # avant que rien ne soit joignable, donc il n'y a pas de fenêtre.
+        fragment = self._deploy_ask_posture()
+        posture = registry.get_posture(posture_spec.posture_name(fragment))
+        manques = lima.unenforceable(posture, macos=macos)
+        # CE QUE L'INSTANCE NE PEUT PAS TENIR : refuser ce qui est
+        # structurel, dire le reste. Le réseau en mode utilisateur DONNE
+        # toujours la sortie, et aucun réglage ne la retire : offrir une
+        # posture qui promet le contraire serait le nom rassurant que le
+        # registre s'interdit. Une liste blanche, elle, se pose dans
+        # l'invité — c'est ce que fait le provisionnement ci-dessous.
+        if "egress-none" in manques:
+            print(f"  ✗ {t('Lima cannot hold this posture:')} egress-none")
+            print(f"    {t('User-mode networking always gives egress.')}")
+            return
+        # UNE AUTRE PHRASE que celle de `config_limits`, et les docstrings
+        # du module disent pourquoi : celle-ci répond « ce que cette
+        # POSTURE promet et que l'instance ne tient pas », l'autre « ce que
+        # CETTE configuration n'offre pas ». Le même mot pour les deux
+        # ferait lire une limite d'hôte comme un réglage oublié.
+        for manque in manques:
+            if manque == "destinations-bounded":
+                continue
+            print(f"  ⚠ {t('Not held for this posture:')} {manque}")
         image = self._lima_image(arch)
-        texte = lima.render_config(image, arch=arch, macos=macos)
+        texte = lima.render_config(
+            image,
+            arch=arch,
+            macos=macos,
+            provision_script=posture_plan.provision_script(
+                self._qemu_egress_rules(fragment)
+            ),
+        )
         chemin = config_path(nom)
 
         print(

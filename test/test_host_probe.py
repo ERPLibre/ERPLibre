@@ -49,6 +49,57 @@ class RunFaux:
         return 127, "command not found"
 
 
+class TestLeModeDEmploiSuitLaSonde(unittest.TestCase):
+    """Un verdict ajouté sans être documenté est un verdict qu'on lit sans
+    savoir ce qu'il dit.
+
+    Le README du paquet les nomme TOUS — le compte n'est pas figé ici, il
+    se lit dans le vocabulaire — et dit ce que chacun envoie faire :
+    « l'outil n'est pas là », « rien n'a pu être lu » et « la clé n'est pas
+    connue ici » mènent à trois endroits différents, et c'est tout le sujet
+    d'un vocabulaire clos.
+
+    Le contrôle vise la LIGNE qui les liste, dans CHAQUE langue : un
+    verdict retiré de la liste se retrouve nommé ailleurs dans la page, et
+    un contrôle sur le texte entier ne verrait rien.
+    """
+
+    @staticmethod
+    def moities():
+        chemin = os.path.join(RACINE, "script", "remote", "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            texte = fichier.read()
+        anglais, _sep, francais = texte.partition("<!-- [fr] -->")
+        return anglais, francais
+
+    def ligne_contenant(self, moitie, amorce):
+        lignes = [l for l in moitie.splitlines() if amorce in l]
+        self.assertEqual(1, len(lignes), f"{amorce} : {len(lignes)}")
+        return lignes[0]
+
+    def test_every_verdict_is_on_the_line_that_lists_them(self):
+        for moitie in self.moities():
+            ligne = self.ligne_contenant(moitie, "`ok`, `hostkey`")
+            for verdict in P.VERDICTS:
+                with self.subTest(verdict=verdict, langue=moitie[:30]):
+                    self.assertIn(f"`{verdict}`", ligne)
+
+    def test_every_privilege_mode_is_on_its_line(self):
+        for moitie in self.moities():
+            ligne = self.ligne_contenant(moitie, "`required`,")
+            for mode in P.PRIVILEGE_MODES:
+                with self.subTest(mode=mode, langue=moitie[:30]):
+                    self.assertIn(f"`{mode}`", ligne)
+
+    def test_the_documentation_names_no_product_either(self):
+        """La sonde s'interdit de nommer un produit ; son mode d'emploi
+        ferait la même faute en le nommant à sa place."""
+        entier = "".join(self.moities()).lower()
+        for produit in ("truenas", "synology", "proxmox", "qnap"):
+            with self.subTest(produit=produit):
+                self.assertNotIn(produit, entier)
+
+
 class TestLesQuatreVerdicts(unittest.TestCase):
     def test_a_healthy_root_host_is_ok_without_sudo(self):
         run = RunFaux(produit=(0, "produit 9.2\n"), id=(0, "0\n"))

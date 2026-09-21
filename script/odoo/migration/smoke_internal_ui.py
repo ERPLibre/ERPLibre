@@ -103,11 +103,6 @@ def user_state(database, login=DEFAULT_LOGIN, run_psql=None):
         return "unknown"
 
 
-def user_exists(database, login=DEFAULT_LOGIN, run_psql=None):
-    """Raccourci : seul « present » vaut oui."""
-    return user_state(database, login, run_psql=run_psql) == "present"
-
-
 class Session:
     """Un client HTTP qui garde son cookie de session.
 
@@ -212,11 +207,11 @@ class Session:
         if not status:
             return False, t("The server did not serve the login page.")
         if status >= 400:
-            # DIRE le statut. Sans cela on rapportait « Session expired »,
-            # qui décrit la conséquence et cache la cause : la page de
-            # connexion elle-même rendait 500. Mesuré — une copie COW de
-            # `website.submenu` casse /web/login comme elle casse le site,
-            # et l'on cherchait du côté du mot de passe.
+            # DIRE le statut. Sans cela, « Session expired » décrit la
+            # conséquence et cache la cause : la page de connexion
+            # elle-même rend 500. Une copie COW de `website.submenu` casse
+            # /web/login comme elle casse le site, et le symptôme envoie
+            # alors chercher du côté du mot de passe.
             return False, (
                 f"{t('The login page itself failed')} : HTTP {status} —"
                 f" {error_from_page(body)}"
@@ -282,10 +277,11 @@ class Session:
 
         `search_read` et non `web_search_read` : ce dernier a changé de
         signature en cours de route — `fields` (une liste) est devenu
-        `specification` (un dictionnaire) en 17. Mesuré sur une base 18 :
-        seize applications sur vingt-cinq échouaient sur
-        « unexpected keyword argument 'fields' », c'est-à-dire sur MON
-        appel, pas sur la base. `search_read` n'a pas bougé depuis la 12.
+        `specification` (un dictionnaire) en 17. Sur une base 18, l'appel
+        échoue donc sur « unexpected keyword argument 'fields' », et la
+        faute est dans l'appel, jamais dans la base : c'est la majorité des
+        applications qui tombe d'un coup. `search_read`, lui, n'a pas bougé
+        depuis la 12.
 
         Une vue peut se rendre sur un modèle vide et exploser sur de
         vraies données : un champ calculé qui ne résout plus ne se voit
@@ -377,7 +373,7 @@ def model_is_unregistered(error):
     « 404 Not Found: The requested URL was not found ». C'est illisible, et
     pourtant c'est la trouvaille la plus nette d'une migration — le module
     est installé dans la base, mais son code n'est plus dans l'addons path
-    de la version cible. Mesuré : cinq applications sur vingt-cinq.
+    de la version cible. Il en touche couramment plusieurs à la fois.
     """
     return "notfound" in (error.get("name") or "").lower().replace(".", "")
 
@@ -626,21 +622,6 @@ def error_from_page(body):
 RE_LOG_EXCEPTION = re.compile(
     r"^(\w[\w.]*(?:Error|Exception|NotFound)):\s*(.*)$", re.M
 )
-
-
-def log_exceptions(lst_log):
-    """Les exceptions du journal du serveur, dans l'ordre.
-
-    La page d'erreur d'Odoo en production ne montre PAS la trace : on
-    obtient « 500: Internal Server Error » et rien d'autre. Le journal, lui,
-    la contient — et c'est la seule chose qui permette de réparer plutôt que
-    de constater.
-    """
-    texte = "\n".join(lst_log or [])
-    return [
-        f"{nom}: {reste.strip()}"[:200]
-        for nom, reste in RE_LOG_EXCEPTION.findall(texte)
-    ]
 
 
 # La ligne d'accès de werkzeug : c'est elle qui porte le CHEMIN, donc la

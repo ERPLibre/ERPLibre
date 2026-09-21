@@ -144,11 +144,6 @@ def layer_verdict(
     return LayerVerdict(layer, code, detail, remedy)
 
 
-def code_token(code: int) -> str:
-    """Le jeton non traduit d'un code, pour une sortie lisible par machine."""
-    return _TOKENS.get(code, "unexpected")
-
-
 def worst_code(codes: Sequence[int]) -> int:
     """Le pire code de la suite, selon la gravité.
 
@@ -175,7 +170,7 @@ def aggregate_layers(verdicts: Sequence[LayerVerdict]) -> int:
 
 def report(code: int) -> str:
     """La ligne humaine d'un code : sa marque, puis son verdict traduit."""
-    if code not in _TOKENS:
+    if code not in CODES:
         return f"{MARKS.get(code, '?')} {t('Unexpected exit code')} : {code}"
     verdicts = {
         DS_OK: "Done",

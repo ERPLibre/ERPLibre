@@ -42,6 +42,31 @@ VM_TYPE_MACOS = "vz"
 # l'écran annoncerait « joignable » sur une instance qui ne l'est pas.
 NETWORK_SHARED = "  - lima: shared"
 
+# Le champ « arch » d'une description d'instance a son PROPRE vocabulaire,
+# et ce n'est ni celui du dépôt ni celui des images. L'outil refuse le
+# démarrage sur un jeton hors liste, en nommant la liste :
+#
+#     field `arch` must be one of [x86_64 aarch64 armv7l ppc64le riscv64
+#     s390x]
+#
+# Une image Ubuntu, elle, s'appelle « amd64 ». Les deux mots désignent la
+# même machine et voyagent dans le même appel : traduire ICI est ce qui
+# évite qu'un appelant choisisse au hasard lequel des deux poser.
+#
+# Un jeton inconnu passe TEL QUEL : l'outil le refuse alors en nommant sa
+# liste, ce qu'une correspondance devinée ici ne ferait pas.
+ARCH_CONFIG = {
+    "amd64": "x86_64",
+    "x86_64": "x86_64",
+    "arm64": "aarch64",
+    "aarch64": "aarch64",
+}
+
+
+def config_arch(jeton: str) -> str:
+    """Le jeton d'architecture tel qu'une description d'instance l'écrit."""
+    return ARCH_CONFIG.get((jeton or "").strip().lower(), jeton)
+
 
 def render_config(
     image: str,
@@ -52,6 +77,7 @@ def render_config(
     macos: bool = False,
     reachable: bool = False,
     load_host_keys: bool = False,
+    provision_script: str = "",
 ) -> str:
     """Le YAML d'une instance, prêt à écrire. Fonction PURE.
 
@@ -63,6 +89,16 @@ def render_config(
     publiques du répertoire personnel dans l'invité. Le canal d'exec n'en a
     pas besoin — il passe par la clé que Lima génère — et une VM confinée n'a
     pas à connaître les identités de son hôte.
+
+    `provision_script` pose un verrou DANS L'INVITÉ. La description
+    d'instance ne sait pas borner des destinations — c'est ce que
+    `unenforceable` nomme — et sa docstring donne la sortie : « poser le
+    verrou ailleurs, dans l'invité ». Le provisionnement est cet ailleurs.
+
+    Le script arrive COMPOSÉ. Ce paquet ne connaît pas les postures — une
+    épreuve tient qu'il ne dépend de rien du dépôt — et c'est l'appelant
+    qui rapproche les deux. Vide, aucun bloc n'est écrit : un bloc sans
+    script se lirait comme un provisionnement qui a tourné.
     """
     lignes = [
         "# Généré par ERPLibre. Les commentaires expliquent les réglages qui",
@@ -74,14 +110,15 @@ def render_config(
             "# vaut nettement mieux que l'émulation.",
             f"vmType: {VM_TYPE_MACOS}",
         ]
+    jeton = config_arch(arch)
     if arch:
-        lignes.append(f"arch: {arch}")
+        lignes.append(f"arch: {jeton}")
     lignes += [
         "images:",
         f'  - location: "{image}"',
     ]
     if arch:
-        lignes.append(f"    arch: {arch}")
+        lignes.append(f"    arch: {jeton}")
     lignes += [
         f"cpus: {int(cpus)}",
         f'memory: "{memory}"',
@@ -99,7 +136,35 @@ def render_config(
             "networks:",
             NETWORK_SHARED,
         ]
+    lignes += _lignes_provisionnement(provision_script)
     return "\n".join(lignes) + "\n"
+
+
+def _lignes_provisionnement(script: str) -> list:
+    """Le bloc YAML qui porte un script de provisionnement système.
+
+    Le document est écrit en bloc littéral : un script porte des accolades,
+    des guillemets et des sauts de ligne qu'une chaîne simple ferait
+    échapper.
+    """
+    if not (script or "").strip():
+        return []
+    lignes = [
+        "# Le verrou se pose DANS l'invité : la description d'instance ne",
+        "# sait pas borner des destinations, et Lima ne le fera pas pour",
+        "# nous. « mode: system » parce que nft et systemctl demandent root.",
+        "provision:",
+        "  - mode: system",
+        "    script: |",
+    ]
+    # LIGNE À LIGNE, et une ligne vide reste VIDE : dans un bloc littéral,
+    # seule la première ligne d'une chaîne multiligne reçoit l'indentation,
+    # et les suivantes retombent en colonne zéro — ce qui ferme le bloc.
+    lignes += [
+        f"      {ligne}" if ligne else ""
+        for ligne in script.rstrip("\n").splitlines()
+    ]
+    return lignes
 
 
 def config_limits(rendered: str) -> tuple:

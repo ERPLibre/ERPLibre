@@ -182,6 +182,9 @@ def main():
     web_login.fill_parser(parser)
     fill_parser(parser)
     args = parser.parse_args()
+    # De la couche la plus BASSE à la sienne, dans l'ordre où les parseurs
+    # ont été remplis.
+    selenium_lib.compute_args(args)
     web_login.compute_args(args)
     compute_args(args)
     # Instance selenium tool

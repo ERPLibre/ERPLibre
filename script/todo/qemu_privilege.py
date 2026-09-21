@@ -9,8 +9,8 @@ passe pour rien. La question se tranche en ESSAYANT, jamais en lisant
 /etc/group : les groupes d'un processus sont figés à l'ouverture de session,
 donc un utilisateur fraîchement ajouté y figure sans que le shell courant en
 dispose. L'essai dit ce que le shell peut FAIRE, la table dit ce qui a été
-DÉCLARÉ — et c'est l'écart entre les deux qui explique « je suis pourtant
-dans le groupe ».
+DÉCLARÉ — et c'est l'écart entre les deux qui surprend un utilisateur
+déjà inscrit au groupe.
 
 Le même fichier porte de quoi ATTEINDRE ces outils : le PATH à assainir pour
 qu'un outil de la distribution ne s'amorce pas sur le venv, et la commande
@@ -30,7 +30,18 @@ PROBE = ["virsh", "--connect", "qemu:///system", "list", "--name"]
 
 
 def reset_cache() -> None:
-    """Oublie le sondage. À appeler après un changement de droits."""
+    """Oublie le sondage, pour qu'il soit refait.
+
+    AUCUN APPELANT DE PRODUCTION, et c'est structurel plutôt qu'un oubli.
+    Le cache est propre au PROCESSUS, et la seule façon d'obtenir le groupe
+    libvirt est un « usermod », dont les droits ne prennent qu'à la session
+    SUIVANTE — donc dans un autre processus, au cache neuf. L'appeler après
+    un usermod ne ferait que relancer un virsh pour relire la même réponse.
+
+    Elle reste comme poignée d'ISOLATION : le sondage est un global de
+    module, et sans elle deux épreuves du même fichier héritent l'une de
+    l'autre.
+    """
     global _CACHE
     _CACHE = None
 

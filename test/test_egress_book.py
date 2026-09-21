@@ -109,32 +109,39 @@ class TestLeFichierSuiviEstRefuse(CarnetDeBanc):
 
 
 class TestDouViennentLesAdresses(CarnetDeBanc):
+    """CHAQUE SOURCE A SON ACCESSEUR, et l'écran les emploie.
+
+    Un accesseur générique rendant les trois fichiers d'un bloc vivait à
+    côté d'eux sans appelant. L'écran, lui, marque l'origine ADRESSE PAR
+    ADRESSE — plus fin qu'un regroupement par fichier — et ces épreuves
+    visent donc les trois accesseurs qu'il emprunte vraiment.
+    """
+
     def test_each_file_is_read_apart(self):
         self.ecrire(B.TEAM, {"forge": ["198.51.100.9"]})
         self.ecrire(B.MACHINE, {"vault": ["203.0.113.8"]})
-        par_source = B.by_source()
-        self.assertEqual({"forge": ["198.51.100.9"]}, par_source[B.TEAM])
-        self.assertEqual({"vault": ["203.0.113.8"]}, par_source[B.MACHINE])
+        self.assertEqual(["198.51.100.9"], B.shared_networks("forge"))
+        self.assertEqual({"vault": ["203.0.113.8"]}, B.machine_book())
 
     def test_a_missing_file_is_an_empty_book_and_not_a_crash(self):
         os.remove(self.chemins[B.TRACKED])
-        self.assertEqual({}, B.by_source()[B.TRACKED])
+        self.assertEqual((), B.tracked_roles())
 
     def test_a_truncated_file_does_not_take_the_others_down(self):
         """Le carnet d'un fichier n'engage pas les autres."""
         with open(self.chemins[B.TEAM], "w", encoding="utf-8") as fichier:
             fichier.write('{"egress_destinations": ')
         self.ecrire(B.MACHINE, {"vault": ["203.0.113.8"]})
-        self.assertEqual({}, B.by_source()[B.TEAM])
+        self.assertEqual([], B.shared_networks("vault"))
         self.assertEqual({"vault": ["203.0.113.8"]}, B.machine_book())
 
     def test_a_file_without_the_key_is_an_empty_book(self):
         with open(self.chemins[B.TEAM], "w", encoding="utf-8") as fichier:
             json.dump({"autre_chose": 1}, fichier)
-        self.assertEqual({}, B.by_source()[B.TEAM])
+        self.assertEqual([], B.shared_networks("forge"))
 
-    def test_every_source_is_in_the_closed_vocabulary(self):
-        self.assertEqual(set(B.SOURCES), set(B.by_source()))
+    def test_every_source_has_a_file_of_its_own(self):
+        self.assertEqual(set(B.SOURCES), set(B._fichiers()))
 
 
 class TestCeQuUneSuppressionNeRetirePas(CarnetDeBanc):
@@ -213,9 +220,9 @@ class TestLaSaisieEstControleeAvantDEtreEcrite(CarnetDeBanc):
 class TestLEcritureVaDansLeBonFichier(CarnetDeBanc):
     def test_it_writes_the_machine_file_and_not_the_others(self):
         B.save("vault", ["203.0.113.8"])
-        self.assertEqual({}, B.by_source()[B.TEAM])
-        self.assertEqual({}, B.by_source()[B.TRACKED])
-        self.assertIn("vault", B.by_source()[B.MACHINE])
+        self.assertEqual([], B.shared_networks("vault"))
+        self.assertEqual((), B.tracked_roles())
+        self.assertIn("vault", B.machine_book())
 
     def test_the_machine_file_is_owner_only(self):
         """Il nomme les machines d'un site : c'est une carte, et une carte

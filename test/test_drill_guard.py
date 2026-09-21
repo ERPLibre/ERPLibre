@@ -309,6 +309,17 @@ class TestLaFormeDeLaSortie(unittest.TestCase):
     def test_an_empty_list_is_nothing_read(self):
         self.assertIsNone(G._compte(lambda _b, _s: [], "x", "sql"))
 
+    def test_a_reader_that_returns_nothing_at_all_is_nothing_read(self):
+        """LA BRANCHE QUI N'ÉTAIT TENUE PAR PERSONNE. Un lecteur qui rend
+        None dit qu'il n'a pas pu regarder ; rendre zéro à sa place dirait
+        qu'il a regardé et qu'il n'y a rien — et une base illisible
+        passerait pour une base propre, donc pour une base d'exercice.
+
+        Le lecteur du dépôt ne rend jamais None aujourd'hui : la garde
+        n'est donc pas atteignable par lui, et c'est précisément pourquoi
+        seule une épreuve peut la tenir."""
+        self.assertIsNone(G._compte(lambda _b, _s: None, "x", "sql"))
+
     def test_a_word_is_nothing_read(self):
         """Une sortie qui n'est pas un nombre ne se devine pas."""
         self.assertIsNone(G._compte(lambda _b, _s: "ERROR\n", "x", "sql"))

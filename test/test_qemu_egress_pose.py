@@ -30,6 +30,7 @@ from pathlib import Path
 RACINE = Path(os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.append(str(RACINE))
 
+from script.lib_valid import ValidationError  # noqa: E402
 from script.posture import plan  # noqa: E402
 
 
@@ -195,6 +196,83 @@ class TestLUnitePoseeEtArmee(unittest.TestCase):
         self.assertNotIn(DQ.EGRESS_UNIT_NAME, texte)
 
 
+class TestLeModeDEmploiDitLeTrou(unittest.TestCase):
+    """Ce moteur s'enseigne en appels directs, et il ne confine rien seul.
+
+    Il pose ce qu'on lui DONNE — son aide le dit — donc un appel direct
+    sans règles crée une machine à sortie libre, quelle que soit
+    l'intention. Le taire est ce qui ferait croire qu'une VM faite « à la
+    main » vaut celle du menu, alors que la règle d'or est tenue au point
+    de passage unique de CELUI-CI.
+
+    Le contrôle porte sur la source bilingue, et les drapeaux qu'elle
+    enseigne doivent EXISTER : un mode d'emploi qui nomme une option
+    absente envoie taper une commande qui refuse.
+    """
+
+    @staticmethod
+    def source():
+        chemin = os.path.join(RACINE, "script", "qemu", "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            return fichier.read()
+
+    @classmethod
+    def blocs(cls, marque):
+        """Tout ce qui vit sous une marque, recollé.
+
+        Ce fichier ALTERNE les marques une dizaine de fois, là où les
+        autres n'en ont qu'une de chaque : couper au premier séparateur ne
+        rendrait que le premier paragraphe, et le contrôle passerait au
+        vert sur une section absente.
+        """
+        morceaux, courante = [], None
+        for ligne in cls.source().splitlines():
+            nue = ligne.strip()
+            if nue.startswith("<!-- [") and nue.endswith("] -->"):
+                courante = nue[6:-5]
+                continue
+            if courante == marque:
+                morceaux.append(ligne)
+        return "\n".join(morceaux)
+
+    def test_each_language_says_it_confines_nothing_alone(self):
+        """La phrase, dans CHAQUE langue : la retirer d'une moitié
+        laisserait l'autre complète, et un lecteur sur deux ne saurait pas
+        qu'il vient de créer une machine à sortie libre."""
+        self.assertIn("free egress", self.blocs("en"))
+        self.assertIn("sortie libre", self.blocs("fr"))
+
+    def test_the_example_that_confines_it_is_in_the_common_block(self):
+        """Une commande ne se traduit pas : la poser dans une moitié la
+        ferait disparaître de l'autre au prochain rendu."""
+        commun = self.blocs("common")
+        for drapeau in ("--egress-file", "--egress-unit"):
+            with self.subTest(drapeau=drapeau):
+                self.assertIn(drapeau, commun)
+
+    def test_the_flags_it_teaches_exist_in_the_engine(self):
+        """Nommer une option absente envoie taper une commande refusée."""
+        source = open(
+            os.path.join(RACINE, "script", "qemu", "deploy_qemu.py"),
+            encoding="utf-8",
+        ).read()
+        for drapeau in ("--egress-file", "--egress-unit"):
+            with self.subTest(drapeau=drapeau):
+                self.assertIn(f'"{drapeau}"', source)
+
+    def test_the_posture_it_renders_in_the_example_exists(self):
+        """Un exemple qui nomme une posture retirée ne tourne pas."""
+        from script.posture import registry
+
+        texte = self.source()
+        nommees = [
+            nom
+            for nom in registry.posture_names()
+            if f"get_posture('{nom}')" in texte
+        ]
+        self.assertTrue(nommees, "l'exemple ne rend aucune posture connue")
+
+
 class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
     """L'import est impossible ; l'égalité, elle, se vérifie."""
 
@@ -208,6 +286,40 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
         self.assertEqual(plan.UNIT_PATH, DQ.EGRESS_UNIT_PATH)
         self.assertEqual(plan.UNIT_NAME, DQ.EGRESS_UNIT_NAME)
         self.assertEqual(plan.UNIT_MODE, DQ.EGRESS_UNIT_MODE)
+
+    def test_the_rules_entry_is_the_one_the_renderer_composes(self):
+        """Le TUPLE entier, et non ses seules constantes. Les trois
+        premières sont épinglées ci-dessus ; ce qui ne l'était pas est leur
+        ASSEMBLAGE, et une entrée mal composée pose un fichier au bon
+        chemin avec le mauvais mode, ou sous le mauvais propriétaire."""
+        entrees = DQ.guide_files(args_de_banc(REGLES, plan.unit_text()))
+        self.assertIn(plan.file_entry(REGLES), entrees)
+
+    def test_the_unit_entry_is_the_one_the_renderer_composes(self):
+        entrees = DQ.guide_files(args_de_banc(REGLES, plan.unit_text()))
+        self.assertIn(plan.unit_entry(), entrees)
+
+    def test_rules_that_are_only_blank_are_posed_by_neither(self):
+        """Le composeur REFUSE un contenu vide — « un fichier vide se
+        chargerait sans rien appliquer, et la machine se lirait comme
+        confinée ». Le chemin recopié teste la vérité de la chaîne, ce qui
+        laisse passer des espaces. Les deux doivent refuser, sans quoi
+        l'épinglage ne tient que sur le cas facile."""
+        with self.assertRaises(ValidationError):
+            plan.file_entry("   \n  ")
+        entrees = DQ.guide_files(args_de_banc("   \n  ", plan.unit_text()))
+        self.assertEqual(
+            [], [e for e in entrees if e[0] == DQ.EGRESS_GUEST_PATH]
+        )
+
+    def test_a_unit_that_is_only_blank_is_not_posed_either(self):
+        """La symétrique de la précédente. Une unité vide s'installerait et
+        échouerait à chaque démarrage, sur une machine qui n'a rien
+        demandé — le fichier de règles et l'unité vont par paire."""
+        entrees = DQ.guide_files(args_de_banc(REGLES, "  \n "))
+        self.assertEqual(
+            [], [e for e in entrees if e[0] == DQ.EGRESS_UNIT_PATH]
+        )
 
     def test_the_first_boot_line_is_the_one_the_renderer_names(self):
         lignes = (

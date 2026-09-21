@@ -143,8 +143,3 @@ def verify(path, deep=True) -> Verification:
     return Verification(
         SOUND, path=str(path), size=taille, checks=tuple(passes)
     )
-
-
-def is_sound(path, deep=True) -> bool:
-    """Le feu vert, et rien d'autre. Vrai sur le SEUL verdict complet."""
-    return verify(path, deep=deep).verdict == SOUND

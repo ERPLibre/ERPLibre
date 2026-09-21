@@ -111,6 +111,50 @@ class TestLaValidation(unittest.TestCase):
         self.assertEqual("2026-01-31T14:05:00Z", clean["last_probe"])
 
 
+class TestLeSecondGenreDeCible(unittest.TestCase):
+    """Le champ « genre » existe pour ce cas-ci.
+
+    Son commentaire le dit : « Un seul genre aujourd'hui, et le champ
+    existe quand même : une cible sans genre ne se distinguerait pas d'une
+    autre le jour où un second transport arrive, et il faudrait alors
+    deviner d'après les champs présents. » Une cible de SAUVEGARDE est ce
+    second genre : même transport ssh, même fiche, un usage distinct.
+    """
+
+    def test_the_vocabulary_carries_both_kinds(self):
+        self.assertIn(D.KIND_SSH, D.KINDS)
+        self.assertIn(D.KIND_BACKUP, D.KINDS)
+        self.assertEqual(2, len(D.KINDS))
+
+    def test_the_two_kinds_are_not_the_same_word(self):
+        """Les confondre ferait déployer sur la cible des sauvegardes."""
+        self.assertNotEqual(D.KIND_SSH, D.KIND_BACKUP)
+
+    def test_a_backup_target_validates_like_its_sibling(self):
+        cible = D.validate(
+            {
+                "name": "nas",
+                "kind": D.KIND_BACKUP,
+                "target": "sauvegarde@203.0.113.9",
+                "path": "/tank/erplibre",
+            }
+        )
+        self.assertEqual(D.KIND_BACKUP, cible["kind"])
+        self.assertEqual("/tank/erplibre", cible["path"])
+
+    def test_an_unknown_kind_is_still_refused_by_name(self):
+        with self.assertRaises(ValidationError) as leve:
+            D.validate(
+                {
+                    "name": "nas",
+                    "kind": "inventé",
+                    "target": "a@b",
+                    "path": "/x",
+                }
+            )
+        self.assertIn("inventé", str(leve.exception))
+
+
 class TestLaFicheDHote(unittest.TestCase):
     """Ce qu'on écrit et ce qu'on donne au transport ne se confondent pas."""
 

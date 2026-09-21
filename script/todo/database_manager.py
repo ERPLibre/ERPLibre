@@ -6,8 +6,11 @@ import datetime
 import getpass
 import logging
 import os
+import shlex
 
-from script.database import backup_verify, backup_witness
+from script.database import (backup_ship, backup_verify, backup_witness,
+                             db_restore, drill_guard)
+from script.remote import appliance_ssh, deploy_target
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -22,13 +25,98 @@ except Exception:
 
 
 class DatabaseManager:
-    def __init__(self, execute, fill_help_info) -> None:
+    def __init__(self, execute, fill_help_info, image_name=None) -> None:
         self._execute = execute
         self._fill_help_info = fill_help_info
+        # CE QUE db_restore ATTEND, composé par le menu qui sait déjà le
+        # faire : un NOM sous image_db/, jamais un chemin. Injecté comme
+        # `fill_help_info`, parce que le composeur pose une question quand
+        # le fichier vient d'ailleurs — et qu'un écran pose les questions.
+        # Le repli ne sait que dépouiller, ce qui suffit à un appelant qui
+        # ne parcourt rien.
+        self._image_name = image_name or self._bare_image_name
         self._dir_path: str | None = None
+
+    @staticmethod
+    def _bare_image_name(zip_path: str) -> str:
+        """Le nom d'une image, sans son répertoire ni son « .zip »."""
+        nom = os.path.basename(zip_path or "")
+        return nom[:-4] if nom.endswith(".zip") else nom
 
     def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
+
+    def _list_databases(self) -> tuple[bool, list]:
+        """(a-t-on pu lire, les bases). DEUX réponses, jamais confondues.
+
+        Zéro base EST une réponse ; une liste illisible n'en est pas une.
+        Les rendre par une seule valeur fausse laisse un appelant qui
+        détruit conclure « il n'y a rien à écraser » d'un PostgreSQL muet.
+
+        Le code de retour est vérifié : la sortie et l'erreur sont fusionnées
+        dans le même flux (`stderr=STDOUT`, execute.py), donc sans lui les
+        lignes d'une trace d'appel deviennent des noms de base.
+        """
+        status, output = self._execute.exec_command_live(
+            "./odoo_bin.sh db --list",
+            return_status_and_output=True,
+            quiet=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+        if status:
+            print(
+                f"\u274c {t('Cannot list the databases (exit code): ')}"
+                f"{status}"
+            )
+            print(f"   {t('Is PostgreSQL running?')}")
+            for line in output[-5:]:
+                print(f"   {line}")
+            return False, []
+        return True, [a.strip() for a in output if a.strip()]
+
+    def _may_destroy(self, database_name: str) -> bool:
+        """Le feu vert avant d'écraser une base. Faux arrête tout.
+
+        LE POINT DE PASSAGE de l'étage interactif. Restaurer DÉTRUIT la
+        base cible, dont le nom est du texte libre : la collision était
+        imprimée et jamais questionnée.
+
+        Trois réponses, et la troisième est la seule qui demande quelque
+        chose. Une base absente n'a rien à protéger. Une base d'exercice —
+        drapeau de neutralisation ou compte d'essai — passe, et la ligne
+        le DIT : muette, elle ne distingue plus une base reconnue d'une
+        base que rien n'a lue. Tout le reste fait retaper le nom, parce que
+        recopier oblige à regarder ce qu'on détruit là où « o » se tape par
+        réflexe.
+
+        L'étage LOT n'en veut pas : une base fraîchement restaurée n'a ni
+        drapeau ni compte d'essai, donc elle se lit réelle, et la garde y
+        refuserait les dizaines de cibles make qui recyclent leurs noms.
+        """
+        lisible, bases = self._list_databases()
+        if not lisible:
+            # Ne pas savoir n'est pas savoir qu'il n'y a rien.
+            print(f"\u274c {t('Nothing is destroyed without reading first.')}")
+            return False
+        if database_name not in bases:
+            return True
+        if drill_guard.is_drill_database(database_name):
+            print(
+                f"\u2139\ufe0f  {t('Drill database: overwriting it is safe.')}"
+            )
+            return True
+        print(
+            f"\u26a0\ufe0f  {t('This database will be ERASED: ')}"
+            f"{database_name}"
+        )
+        retape = input(
+            f"\U0001f4ac {t('Retype its name to confirm: ')}"
+        ).strip()
+        if retape != database_name:
+            print(t("Database deletion cancelled."))
+            return False
+        return True
 
     def select_database(self) -> str | bool:
         """Faire choisir une base parmi celles que PostgreSQL expose.
@@ -41,22 +129,10 @@ class DatabaseManager:
         last): » s'affichait comme la base [1], et la choisir renvoyait cette
         ligne comme nom de base à l'appelant, qui la passait à sa commande.
         """
-        cmd_server = "./odoo_bin.sh db --list"
-        status, output = self._execute.exec_command_live(
-            cmd_server,
-            return_status_and_output=True,
-            quiet=True,
-            source_erplibre=False,
-            single_source_erplibre=True,
-        )
-        if status:
-            print(f"❌ {t('Cannot list the databases (exit code): ')}{status}")
-            print(f"   {t('Is PostgreSQL running?')}")
-            for line in output[-5:]:
-                print(f"   {line}")
+        lisible, databases = self._list_databases()
+        if not lisible:
             return False
 
-        databases = [a.strip() for a in output if a.strip()]
         if not databases:
             print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
             return False
@@ -141,59 +217,109 @@ class DatabaseManager:
             single_source_erplibre=True,
         )
 
-    def restore_from_database(self, show_remote_list: bool = True) -> None:
+    def _ask_image_name(self) -> str:
+        """Le nom d'image à restaurer, ou "" si on renonce.
+
+        UN SEUL PRODUCTEUR pour les deux branches. « [1] » promettait un
+        nom de fichier et n'en demandait aucun — elle visait donc toujours
+        image_db/1.zip. Le navigateur, lui, rendait un basename portant
+        « .zip », là où `image_path` en rajoute un.
+
+        Le zip est cherché AVANT de bâtir la moindre commande : son absence
+        se découvrait sur la machine, après le lancement.
+        """
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
-        status = input("\U0001f4ac Select : ")
-        if status == "1":
-            file_name = status
+        if input("\U0001f4ac Select : ") == "1":
+            nom = input(f"\U0001f4ac {t('Image name (no .zip): ')}").strip()
         else:
-            file_name = self.open_file_image_db()
+            self.open_file_image_db()
+            nom = self._image_name(self._dir_path or "")
+        if not nom:
+            print(t("Cancelled."))
+            return ""
+        chemin = db_restore.image_path(nom)
+        if not os.path.isfile(chemin):
+            print(f"\u274c {t('Image not found: ')}{chemin}")
+            return ""
+        return nom
+
+    def restore_from_database(self, show_remote_list: bool = True) -> None:
+        """Restaure une image dans une base, et LIT ce qu'elle lance.
+
+        Le code de retour était capturé puis écrasé par la question
+        suivante : une seule variable portait le choix de menu, deux
+        réponses oui/non et trois codes de sortie. La chaîne continuait
+        donc sur une base que la restauration venait d'échouer à créer,
+        et proposait d'y mettre à jour tous les modules.
+
+        Les deux noms sont CITÉS : ils traversent un f-string exécuté par
+        bash, où un point-virgule tapé au clavier ouvre une commande.
+        """
+        file_name = self._ask_image_name()
+        if not file_name:
+            return
 
         default_database_name = file_name.replace(" ", "_")
-        if default_database_name.endswith(".zip"):
-            default_database_name = default_database_name[:-4]
-
         database_name = input(
-            f"\U0001f4ac Database name (default={default_database_name}) : "
-        )
+            f"\U0001f4ac {t('Database name (default=')}"
+            f"{default_database_name}) : "
+        ).strip()
         if not database_name:
             database_name = default_database_name
 
-        status = (
-            input("\U0001f4ac Would you like to neutralize database (n/N)? ")
+        neutralise = (
+            input(f"\U0001f4ac {t('Neutralize the database (Y/n)? ')}")
             .strip()
             .lower()
         )
-        is_neutralize = False
         more_arg = ""
-        if status != "n":
+        if neutralise != "n":
             more_arg = "--neutralize "
-            is_neutralize = True
             database_name += "_neutralize"
-        status, output_lines = self._execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} "
-            f"{more_arg}--ignore_cache --image {file_name}",
+
+        if not self._may_destroy(database_name):
+            return
+
+        status, _ = self._execute.exec_command_live(
+            f"python3 ./script/database/db_restore.py "
+            f"-d {shlex.quote(database_name)} "
+            f"{more_arg}--ignore_cache --image {shlex.quote(file_name)}",
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
         )
-        if is_neutralize:
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
+        if status:
+            print(f"\u274c {t('The restore failed.')}")
+            return
+        # SUR LE DRAPEAU, et non sur `status` : l'un dit qu'on a demandé la
+        # neutralisation, l'autre si la commande d'avant a réussi.
+        if more_arg:
+            status, _ = self._execute.exec_command_live(
+                f"./script/addons/update_prod_to_dev.sh "
+                f"{shlex.quote(database_name)}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
-        status = (
-            input("\U0001f4ac Would you like to update all addons (y/Y)? ")
+            if status:
+                print(
+                    f"\u26a0  {t('update_prod_to_dev did not finish: do not')}"
+                    f" {t('count on the test/test account.')}"
+                )
+                return
+        answer = (
+            input(
+                f"\U0001f4ac {t('Would you like to update all addons (y/N)? ')}"
+            )
             .strip()
             .lower()
         )
-        if status == "y":
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_addons_all.sh {database_name}",
+        if answer == "y":
+            self._execute.exec_command_live(
+                f"./script/addons/update_addons_all.sh "
+                f"{shlex.quote(database_name)}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
@@ -333,6 +459,45 @@ class DatabaseManager:
             print(f"ℹ️  {t('Finding not recorded: ')}{souci}")
         return constat
 
+    def _backup_ship(self, constat, path, name) -> None:
+        """Dépose la sauvegarde chez la cible, ou DIT qu'il n'y en a pas.
+
+        LE CROCHET ÉTAIT PLANTÉ, ET VIDE. « backup-target » est dans le
+        socle des destinations de sortie, avec son port et sa raison — « la
+        cible des sauvegardes, l'ouvrir en sortie est ce qui permet de
+        sauvegarder sans monter le disque de la machine sur l'hôte » — et
+        rien ne le remplissait : le pare-feu d'une machine confinée ouvrait
+        cette porte sur le vide.
+
+        Une archive qui n'a pas passé les contrôles ICI ne part pas : en
+        déposer ailleurs une qu'on sait abîmée remplirait la cible de
+        copies inutilisables, et ferait croire à une sauvegarde.
+        """
+        if not constat or constat.verdict != backup_verify.SOUND:
+            return
+        cibles = [
+            cible
+            for cible in deploy_target.load_all()
+            if cible.get("kind") == deploy_target.KIND_BACKUP
+        ]
+        if not cibles:
+            # UNE FOIS, et en nommant où la créer. Se taire ferait qu'une
+            # sauvegarde qui ne part nulle part ne se distingue plus d'une
+            # sauvegarde qui part.
+            print(f"\u2139\ufe0f  {t('No backup target is configured.')}")
+            print(f"   {t('Create one in:')} {t('Deployment targets')}")
+            return
+        cible = deploy_target.with_defaults(cibles[0])
+        depot = backup_ship.ship(
+            cible,
+            deploy_target.fiche(cible),
+            path,
+            name,
+            run=appliance_ssh.run,
+        )
+        marque = "✅" if depot.verdict == backup_ship.SHIPPED else "⚠️"
+        print(f"{marque}  {cible['name']} : {depot.verdict} {depot.detail}")
+
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
@@ -373,7 +538,12 @@ class DatabaseManager:
                 f"{backup_name}"
             )
             return
-        self.verify_and_witness(self.backup_archive(backup_name), backup_name)
+        archive = self.backup_archive(backup_name)
+        constat = self.verify_and_witness(archive, backup_name)
+        # ET AILLEURS. Une sauvegarde qui ne vit que sur la machine qui l'a
+        # produite n'en est pas une : le 3-2-1 reste à une copie, un
+        # support, zéro hors-site tant que rien ne la déplace.
+        self._backup_ship(constat, archive, backup_name)
 
     def open_file_image_db(self) -> str:
         self._dir_path = ""
