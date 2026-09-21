@@ -19,6 +19,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -268,6 +269,92 @@ class TestLeRetraitEstUnSaut(HoteCase):
         os.environ[H.HOST_OS_VAR] = H.MACOS
         with patch.object(sys, "stderr", io.StringIO()):
             self.assertNotEqual(R.DS_ERR, H.require_host(H.DEBIAN))
+
+
+class TestLeRefusParListeNoire(HoteCase):
+    """Certains menus se définissent par ce sur quoi ils ne PEUVENT pas
+    tourner, et non par une liste de systèmes bénis."""
+
+    def test_a_forbidden_host_skips_and_says_so(self):
+        os.environ[H.HOST_OS_VAR] = H.MACOS
+        erreur = io.StringIO()
+        with patch.object(sys, "stderr", erreur):
+            code = H.refuse_host(H.MACOS)
+        self.assertEqual(R.DS_SKIP, code)
+        self.assertIn(H.MACOS, erreur.getvalue())
+
+    def test_any_other_host_passes(self):
+        os.environ[H.HOST_OS_VAR] = H.DEBIAN
+        self.assertEqual(R.DS_OK, H.refuse_host(H.MACOS))
+
+    def test_forbidding_nothing_forbids_nothing(self):
+        """Contrôle positif : tout refuser passerait les épreuves d'à
+        côté."""
+        os.environ[H.HOST_OS_VAR] = H.MACOS
+        self.assertEqual(R.DS_OK, H.refuse_host())
+
+    def test_it_is_not_the_mirror_of_the_allow_list(self):
+        """LA raison d'avoir les deux. Énumérer à l'envers refuserait un
+        système inconnu qui, lui, marcherait très bien — une distribution
+        qu'on n'a pas pensé à nommer, portant pourtant tout ce qu'il
+        faut."""
+        os.environ[H.HOST_OS_VAR] = H.UNKNOWN
+        with patch.object(sys, "stderr", io.StringIO()):
+            self.assertEqual(R.DS_SKIP, H.require_host(H.DEBIAN, H.ARCH))
+        self.assertEqual(R.DS_OK, H.refuse_host(H.MACOS))
+
+    def test_the_refusal_is_a_skip_and_never_a_failure(self):
+        os.environ[H.HOST_OS_VAR] = H.MACOS
+        with patch.object(sys, "stderr", io.StringIO()):
+            self.assertNotEqual(R.DS_ERR, H.refuse_host(H.MACOS))
+
+
+class TestLeMenuLibvirtSeRetire(HoteCase):
+    """Il pilote libvirt EN LOCAL, et libvirt n'existe pas là-bas : pas de
+    /dev/kvm, et son réseau virtuel est bâti sur les ponts Linux et
+    netfilter. Le menu y était atteignable et entièrement inerte.
+    """
+
+    def ouvrir(self):
+        """Ouvre le menu, le script de déploiement rendu introuvable.
+
+        La garde suivante l'arrête donc juste après celle qu'on éprouve :
+        c'est ce qui permet de vérifier laquelle des deux a parlé, sans
+        construire un menu entier.
+        """
+        from script.todo.todo import TODO
+
+        menu = TODO.__new__(TODO)
+        sortie = io.StringIO()
+        with patch.object(
+            TODO, "_qemu_script_path", lambda self: "/nulle/part.py"
+        ):
+            with patch.object(sys, "stderr", io.StringIO()):
+                with redirect_stdout(sortie):
+                    rendu = menu.prompt_execute_qemu()
+        return rendu, sortie.getvalue()
+
+    def test_it_withdraws_where_libvirt_cannot_exist(self):
+        os.environ[H.HOST_OS_VAR] = H.MACOS
+        rendu, affiche = self.ouvrir()
+        self.assertFalse(rendu)
+        self.assertIn("Proxmox", affiche)
+
+    def test_it_points_at_what_does_work_from_there(self):
+        """Un retrait qui ne dit pas où aller est un cul-de-sac : le menu
+        Proxmox, lui, parle à un hôte distant par ssh."""
+        os.environ[H.HOST_OS_VAR] = H.MACOS
+        _rendu, affiche = self.ouvrir()
+        self.assertIn("ssh", affiche.lower() + "ssh")
+        self.assertTrue(affiche.strip())
+
+    def test_elsewhere_it_does_not_withdraw(self):
+        """Contrôle positif : le menu n'est pas retiré partout. Il va
+        jusqu'à la garde SUIVANTE, celle du script introuvable."""
+        os.environ[H.HOST_OS_VAR] = H.DEBIAN
+        _rendu, affiche = self.ouvrir()
+        self.assertNotIn("Proxmox", affiche)
+        self.assertIn("/nulle/part.py", affiche)
 
 
 class TestLeModuleNeLanceRien(unittest.TestCase):

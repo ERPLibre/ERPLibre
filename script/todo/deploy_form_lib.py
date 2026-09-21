@@ -30,6 +30,9 @@ import os
 import re
 import time
 
+from script.posture.registry import DEFAULT_POSTURE
+from script.vm.backend import LIBVIRT
+
 try:
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
@@ -559,6 +562,17 @@ def build_spec(vms, domains, form):
         # Au niveau du déploiement : la 3D est une propriété du matériel de la
         # VM, pas de ce qu'on installe dedans.
         "gpu3d": form.get("gpu3d", False),
+        # Au niveau du déploiement, et surtout PAS dans « install » : là, il
+        # disparaîtrait dès qu'on décoche la case, emportant le choix de
+        # machine avec ce qu'on installe dedans. Absent, il vaut le backend
+        # local — la seule chose que ce chemin sache piloter.
+        "backend": form.get("backend") or LIBVIRT,
+        # Au niveau du déploiement : la posture dit ce que le RÉSEAU de la
+        # machine atteint, ce qui est une propriété de la machine et non de
+        # ce qu'on installe dedans. Absente, elle vaut la plus libre — les
+        # invites en ligne n'en posent pas, et leur déploiement doit valoir
+        # exactement ce qu'il valait.
+        "posture": form.get("posture") or DEFAULT_POSTURE,
         # Au niveau du déploiement : l'agent choisi et l'identité git valent
         # pour tout le parc, comme le fuseau ou le magasin d'applications.
         "ai_agent": form.get("ai_agent", ""),

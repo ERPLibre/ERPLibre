@@ -201,6 +201,25 @@ def require_host(*permis: str) -> int:
     return DS_SKIP
 
 
+def refuse_host(*interdits: str) -> int:
+    """DS_SKIP si l'hôte figure parmi `interdits`, DS_OK sinon.
+
+    Le pendant de `require_host`, et pas un doublon : certains menus se
+    définissent par ce sur quoi ils ne PEUVENT pas tourner, et non par une
+    liste de systèmes bénis. Les énumérer à l'envers refuserait un système
+    inconnu qui, lui, marcherait très bien — un menu libvirt sur une
+    distribution qu'on n'a pas pensé à nommer, par exemple.
+
+    Le retrait reste un SAUT : un menu qui ne s'applique pas à ce système
+    n'a rien raté.
+    """
+    courant = host_os()
+    if courant not in interdits:
+        return DS_OK
+    diag(t("This menu is not available on {os}").format(os=courant))
+    return DS_SKIP
+
+
 def _capacite_binaire(nom: str, remede: str = "") -> Capability:
     """Une capacité qui tient à la présence d'un binaire dans le PATH."""
     chemin = shutil.which(nom)

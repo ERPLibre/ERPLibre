@@ -19,7 +19,13 @@ from __future__ import annotations
 import shlex
 from typing import NamedTuple
 
-from script.vm.backend import LIBVIRT, PVE, VerbNotImplemented
+from script.vm.backend import (
+    LIBVIRT,
+    LIMA,
+    PVE,
+    VerbNotImplemented,
+    is_hosted,
+)
 
 # L'URI libvirt par défaut. Passée en paramètre partout : un backend qui
 # parle à une autre instance n'a pas à recompiler celui-ci.
@@ -40,8 +46,15 @@ def host_command(handle, remote: str, tty: bool = False) -> str:
     autorité pour une VM distante, et sa clé le seul identifiant.
     """
     info = (handle.host if handle else None) or {}
-    sudo = info.get("sudo") or ""
     cible = info.get("target") or ""
+    if not cible:
+        # Sans porteuse, il n'y a personne à qui parler. Composer quand même
+        # donnait « ssh '' <commande> » : une cible VIDE, que ssh refuse par
+        # un message qui ne nomme aucune machine.
+        raise VerbNotImplemented(
+            "host_command : aucune machine porteuse à qui parler."
+        )
+    sudo = info.get("sudo") or ""
     prefixe = f"{sudo}sh -c {shlex.quote(remote)}" if sudo else remote
     saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
     return (
@@ -72,14 +85,24 @@ def identity_guard(handle) -> str:
     l'endroit précis où le garde annonce qu'il n'a rien fait — et sur l'hôte,
     sous élévation. Une variable se développe sans être réévaluée.
     """
-    if not handle or not handle.proof:
+    if handle is None:
+        raise VerbNotImplemented("identity_guard : aucune identité.")
+    # LE BACKEND D'ABORD, la preuve ensuite. Répondre « désarmé » sur un
+    # backend qu'on ne connaît pas serait un échec OUVERT : on ne sait même
+    # pas ce qui prouverait son identité, donc pas davantage que sa preuve
+    # manque.
+    if handle.backend not in (PVE, LIBVIRT, LIMA):
+        raise VerbNotImplemented(
+            f"identity_guard : backend « {handle.backend} » inconnu."
+        )
+    if not handle.proof:
         return ""
     if handle.backend == PVE:
         return _guard_pve(handle)
     if handle.backend == LIBVIRT:
         return _guard_libvirt(handle)
     raise VerbNotImplemented(
-        f"identity_guard : backend « {handle.backend} » inconnu."
+        f"identity_guard : backend « {handle.backend} » sans preuve connue."
     )
 
 
@@ -237,6 +260,12 @@ def web_access(handle, port: int = 18069, service: int = 8069) -> WebAccess:
     """
     if handle is None:
         raise VerbNotImplemented("web_access : aucune identité.")
+    if handle.backend not in (LIBVIRT, PVE, LIMA):
+        # Composer une URL pour un backend inconnu, c'est affirmer qu'on
+        # sait où son service écoute. On ne le sait pas.
+        raise VerbNotImplemented(
+            f"web_access : backend « {handle.backend} » inconnu."
+        )
     if not handle.address:
         return WebAccess("", ())
     if handle.backend == PVE and handle.host.get("target"):
@@ -268,6 +297,30 @@ def ssh_prefix(handle, user: str = "erplibre", options: str = "") -> str:
     """
     if handle is None:
         raise VerbNotImplemented("ssh_prefix : aucune identité.")
+    if handle.backend == LIMA:
+        # On n'entre pas par ssh dans une instance qui n'a pas d'adresse.
+        # Son outil ouvre lui-même un shell, et la forme diffère selon
+        # qu'on veut une session ou une commande : ce verbe ne peut pas
+        # rendre les deux, et en choisir une en silence donnerait à
+        # l'appelant une ligne qui marche une fois sur deux.
+        raise VerbNotImplemented(
+            "ssh_prefix : cette VM ne s'atteint pas par ssh ;"
+            " voir exec_prefix."
+        )
+    if handle.backend not in (LIBVIRT, PVE):
+        # Un quatrième nom n'hérite du chemin d'aucun des trois. Le laisser
+        # tomber ici composait une ligne ssh pour une machine dont personne
+        # n'a dit qu'elle en acceptait une.
+        raise VerbNotImplemented(
+            f"ssh_prefix : backend « {handle.backend} » inconnu."
+        )
+    if not (handle.address or handle.alias):
+        # Sans adresse ni alias, la ligne composée serait « ssh compte@ » —
+        # une cible VIDE que ssh refuse par un message qui ne nomme aucune
+        # machine. Le silence est ici le pire des rendus.
+        raise VerbNotImplemented(
+            "ssh_prefix : aucune adresse ni alias pour joindre cette VM."
+        )
     debut = f"ssh {options} " if options else "ssh "
     rebonds = [
         saut
@@ -350,6 +403,61 @@ def identity_fields(handle) -> dict:
         return {"pve": dict(handle.host)}
     if handle.backend == LIBVIRT:
         return {"uuid": handle.proof}
+    if handle.backend == LIMA:
+        # Un drapeau, et non une preuve : il n'y en a pas encore. Il dit
+        # seulement quel backend relira cette entrée.
+        return {"lima": True}
     raise VerbNotImplemented(
         f"identity_fields : backend « {handle.backend} » inconnu."
+    )
+
+
+def exec_address(handle) -> str:
+    """L'adresse par laquelle on ENTRE dans la VM pour y travailler.
+
+    Ce n'est pas celle où son service écoute. Une VM d'hôte distant écoute
+    sur une adresse que seul l'hôte route ; d'ici on passe par l'alias de
+    ~/.ssh/config, qui porte le rebond. Les confondre fait attendre vingt
+    minutes une adresse qui ne répondra jamais, sur une VM parfaitement
+    saine.
+    """
+    if handle is None:
+        raise VerbNotImplemented("exec_address : aucune identité.")
+    if handle.backend == LIMA:
+        # On entre par le NOM. C'est tout l'apport de ce backend, et sur un
+        # système sans réseau d'hyperviseur à interroger, c'est le seul
+        # moyen : il n'y a aucun bail à relire.
+        return handle.key
+    if is_hosted(handle):
+        return handle.alias or handle.address
+    return handle.address or handle.alias
+
+
+def exec_prefix(handle, options: str = "", user: str = "erplibre") -> str:
+    """Le début de commande qui exécute DANS la VM, commande non comprise.
+
+    L'adresse y est une VARIABLE de shell et non une valeur : le script
+    détaché la ré-résout en cours de route quand le bail bouge, et la figer
+    ici ferait attendre une adresse morte. C'est l'appelant qui définit
+    « ip », une fois, avec `exec_address`.
+
+    C'est LA couture qu'un backend sans adresse impose : là où celui-ci rend
+    « ssh … », un autre rendra une commande qui joint la VM par son NOM.
+    """
+    if handle is None:
+        raise VerbNotImplemented("exec_prefix : aucune identité.")
+    if handle.backend in (LIBVIRT, PVE):
+        espace = f"{options} " if options else ""
+        return f'ssh {espace}"{user}@$ip"'
+    if handle.backend == LIMA:
+        # « bash -c » est indispensable ICI et inutile pour ssh : le premier
+        # exécute des ARGUMENTS, si bien qu'une suite (« a && b ») lui
+        # arriverait comme une liste de mots ; le second passe la commande
+        # au shell distant de lui-même.
+        #
+        # Ni compte ni adresse : l'instance appartient à l'utilisateur qui
+        # la lance, et le nom suffit à la joindre.
+        return f"limactl shell {shlex.quote(handle.key)} -- bash -c"
+    raise VerbNotImplemented(
+        f"exec_prefix : backend « {handle.backend} » inconnu."
     )

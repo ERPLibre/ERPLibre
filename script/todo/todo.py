@@ -146,6 +146,7 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
+from script.todo.vm_backend_menu import VmBackendMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -217,6 +218,7 @@ class TODO(
     ContainerMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
+    VmBackendMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -829,6 +831,18 @@ class TODO(
                 ("cli", "Classic questions (line by line)"),
             ),
         ),
+        # « Non éprouvé » est dit EN TOUTES LETTRES et non par une étoile :
+        # dans cet écran, l'étoile marque déjà la valeur courante, et une
+        # seconde étoile s'y lirait « c'est celle-là qui est active ».
+        "vm_backend": (
+            "VM backend",
+            (
+                ("auto", "Automatic (decided by the system)"),
+                ("libvirt", "libvirt/QEMU - this machine"),
+                ("pve", "Proxmox VE - a remote host"),
+                ("lima", "Lima - for macOS, never run against the tool"),
+            ),
+        ),
     }
 
     def _pref_label(self, key):
@@ -883,6 +897,12 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('VM backend')}  "
+                        f"({self._pref_label('vm_backend')})"
+                    )
+                },
                 {"prompt_description": t("Fork - Open TODO in a new tab")},
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
@@ -900,10 +920,12 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self._pref_edit("vm_backend")
+            elif status == "6":
                 self.execute.exec_command_live(
                     "make todo", source_erplibre=True
                 )
-            elif status == "6":
+            elif status == "7":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:
@@ -1131,6 +1153,18 @@ class TODO(
                 )
             },
         ]
+        # NEUVIÈME, déclarée par « method ». Posée plus haut, elle
+        # décalerait les huit rangs que les « elif » codent en dur — et une
+        # épreuve cherche les chaînes littérales des rangs 6 et 7, qu'une
+        # renumérotation pourtant correcte ferait disparaître.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - VM backends (which one this machine uses)"
+                ),
+                "method": "_deploy_vm_backends",
+            }
+        )
         # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
         # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
         # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,

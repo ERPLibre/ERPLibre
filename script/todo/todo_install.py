@@ -25,7 +25,12 @@ from script.todo.todo_i18n import t
 
 # Les familles, dans l'ordre où le PATH est interrogé quand l'ID de la
 # distribution est inconnu.
-FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
+#
+# « brew » vient EN DERNIER, et c'est le seul ordre juste : une machine Linux
+# peut très bien porter Homebrew à côté de son gestionnaire système, et c'est
+# alors celui-ci qui possède le système. Sur macOS il n'y a pas d'os-release,
+# donc pas d'ID à consulter — le PATH tranche, et brew y est seul.
+FAMILIES = ("apt-get", "dnf", "pacman", "zypper", "brew")
 
 # Le préfixe de commande de chaque famille ; les paquets s'ajoutent au bout.
 # Tous non interactifs : un menu qui rend la main à un prompt apt bloque.
@@ -34,7 +39,20 @@ _INSTALL = {
     "dnf": ("sudo", "dnf", "install", "-y"),
     "pacman": ("sudo", "pacman", "-S", "--needed", "--noconfirm"),
     "zypper": ("sudo", "zypper", "--non-interactive", "install"),
+    "brew": ("brew", "install"),
 }
+
+# Les gestionnaires qui ne sont pas SYSTÈME : ils installent pour
+# l'utilisateur, pas pour la machine. Ce seul fait explique leurs DEUX écarts,
+# et c'est pourquoi il est nommé une fois plutôt qu'écrit deux :
+#
+#   ils ne s'élèvent pas — Homebrew refuse même de tourner en root, et le
+#   préfixer ferait échouer chaque installation sur un message de permissions
+#   là où il s'agit d'une politique ;
+#
+#   ils ne reçoivent pas de drapeau non interactif — ils n'en ont pas, et
+#   n'en ont pas besoin, n'ayant personne à qui demander.
+USER_LEVEL = ("brew",)
 
 # ID de /etc/os-release -> famille. Les dérivées sont nommées explicitement :
 # ID_LIKE existe mais manque ou ment sur assez de distributions pour qu'on ne

@@ -8,6 +8,48 @@ on any machine, including one without virtualisation.
 
 Run them from the menu — `TODO › Execute › Test › Long tests` — or directly.
 
+## lima_confront.py — the backend nobody has ever run
+
+The Lima backend was written with no machine to test it on. Its unit tests
+hold what it COMPOSES and what it PARSES, not what `limactl` does with any of
+it. It therefore declares itself unproven, and this script is what will lift
+that mention — not a code review.
+
+Four questions, none deducible from the code: which SHAPE the inventory
+answers in, whether it carries anything that could PROVE an identity, whether
+a compound command really survives the exec channel, and whether the rendered
+configuration actually starts.
+
+It exits 20 — dependency absent — where `limactl` is not installed.
+
+```
+./long_test/lima_confront.py              # the four questions
+./long_test/lima_confront.py --dry-run    # what it would do, nothing done
+./long_test/lima_confront.py --detruire   # remove the trial instance
+```
+
+## egress_confront.py — the forward chain nobody has ever tried
+
+The egress rules are tested on what they COMPOSE, and real `nft` accepts the
+rendered file. None of that says the FORWARD chain catches what a container
+emits: a lock hooked to the host's own output lets container traffic straight
+through, and the rules read as complete while data leaves by the window.
+
+Three questions: whether a NAMED destination is reachable from inside a
+container, whether one OUTSIDE the list is refused, and whether that refusal
+survives a restart of the container engine — which writes its own rules on
+start-up.
+
+It needs privilege: loading a ruleset and reading a table both require it, and
+`nft -c`, which only parses, already fails without it. It exits 20 where the
+tooling is missing.
+
+```
+./long_test/egress_confront.py             # the three questions
+./long_test/egress_confront.py --dry-run   # what it would do, nothing done
+./long_test/egress_confront.py --detruire  # remove table and container
+```
+
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?
 
 The practicable nesting depth cannot be deduced, only measured — and one

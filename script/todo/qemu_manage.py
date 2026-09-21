@@ -1950,6 +1950,12 @@ class QemuManageMixin:
     # Les deux qui changent de famille en famille : sgdisk vit dans « gdisk »
     # chez Debian et Fedora, dans « gptfdisk » chez Arch et openSUSE, et
     # qemu-nbd porte quatre noms de paquet différents.
+    #
+    # La table ne couvre que les gestionnaires SYSTÈME, et l'omission est
+    # voulue : ces deux outils découpent un qcow2 que libvirt monte en local,
+    # et cette pile n'existe pas là où le gestionnaire est celui d'un
+    # utilisateur. Y nommer un paquet laisserait croire que le rétrécissement
+    # s'y fait.
     _SHRINK_PKG_FAMILY = {
         "apt-get": {"sgdisk": "gdisk", "qemu-nbd": "qemu-utils"},
         "dnf": {"sgdisk": "gdisk", "qemu-nbd": "qemu-img"},

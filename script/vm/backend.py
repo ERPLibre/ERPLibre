@@ -44,7 +44,19 @@ from typing import NamedTuple
 # il est visible, et non au moment où une commande part sur une machine.
 LIBVIRT = "libvirt"
 PVE = "pve"
-BACKENDS = (LIBVIRT, PVE)
+LIMA = "lima"
+BACKENDS = (LIBVIRT, PVE, LIMA)
+
+# Ce qui a réellement tourné contre une machine, et ce qui n'a que des
+# épreuves unitaires. « Non éprouvé » ne veut pas dire douteux : il veut dire
+# NON CONFRONTÉ, et un écran qui ne le dit pas laisse croire l'inverse. La
+# même distinction que les pilotes de tunnel portent déjà.
+PROVEN = {LIBVIRT: True, PVE: True, LIMA: False}
+
+
+def is_proven(backend) -> bool:
+    """Ce backend a-t-il déjà tourné contre une vraie machine ?"""
+    return bool(PROVEN.get(backend))
 
 
 class VmBackendError(Exception):
@@ -118,6 +130,31 @@ def libvirt_handle(name: str, uuid: str = "", ip: str = "") -> VmHandle:
     )
 
 
+def lima_handle(name: str, ip: str = "") -> VmHandle:
+    """L'identité d'une VM Lima. Elle s'adresse par son NOM, sans adresse.
+
+    C'est le seul apport que Lima ait sur un hôte qui a déjà libvirt, et
+    c'est celui qui compte sur macOS : il n'y a pas là de réseau libvirt à
+    interroger pour obtenir un bail, donc pas d'adresse à relire.
+
+    LA PREUVE MANQUE, et c'est dit plutôt que fabriqué. Un nom d'instance se
+    réutilise comme un nom de domaine ; il faudrait quelque chose qui naisse
+    et meure avec l'instance. Reste à établir si l'inventaire de Lima en
+    expose un — cela se mesure sur une machine, pas ici, et `long_test/`
+    porte la question. Jusque-là la fiche est DÉSARMÉE, ce que `is_armed`
+    dit, et la suppression retombe sur la confirmation à deux mains.
+    """
+    return VmHandle(
+        backend=LIMA,
+        name=name,
+        key=name,
+        proof="",
+        address=str(ip or ""),
+        alias="",
+        host={},
+    )
+
+
 def handle_of(entry) -> VmHandle | None:
     """L'identité que porte une entrée de manifeste, ou None.
 
@@ -134,6 +171,9 @@ def handle_of(entry) -> VmHandle | None:
     """
     entry = entry or {}
     nom = str(entry.get("name") or "")
+    if entry.get("lima"):
+        # Le nom EST la clé : sans lui, il n'y a rien à viser.
+        return lima_handle(nom, ip=entry.get("ip")) if nom else None
     info = entry.get("pve") or {}
     if info:
         if not (nom or int(info.get("vmid") or 0)):
