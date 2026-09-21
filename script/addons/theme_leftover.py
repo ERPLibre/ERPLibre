@@ -142,9 +142,18 @@ def render(theme, attachments, views):
 def backup_attachments(database, theme, lst_row, filestore=None):
     """Écrire le contenu des pièces jointes AVANT de les supprimer.
 
-    C'est la condition pour pouvoir répondre « efface ». Sans elle, on
-    détruirait ce dont on vient d'écrire qu'il peut être la seule trace
-    d'une personnalisation.
+    Rend (sauvegardées, sans copie). C'est la condition pour pouvoir
+    répondre « efface » : sans elle, on détruirait ce dont on vient
+    d'écrire qu'il peut être la seule trace d'une personnalisation.
+
+    DEUX RAISONS DE NE RIEN SAUVEGARDER, et elles n'appellent pas la même
+    suite. Un fichier DÉJÀ disparu est exactement le reste qu'on vient
+    nettoyer — il n'y a rien à copier, et refuser là bloquerait le cas le
+    plus courant. Un contenu qui vit en base sans fichier, lui, part sans
+    copie : c'est celui-là qui est rendu à l'appelant.
+
+    L'écran imprimait « sauvées : 1 » puis « 2 effacées », deux nombres à
+    trois lignes d'écart que rien ne reliait.
     """
     base = filestore or os.path.join(
         os.path.expanduser("~"),
@@ -159,6 +168,11 @@ def backup_attachments(database, theme, lst_row, filestore=None):
     )
     os.makedirs(directory, exist_ok=True)
     lst_saved = []
+    # Les pièces dont le CONTENU existe encore et dont aucune copie ne
+    # part : ni fichier sur le disque, ni sauvegarde ici. Elles sont
+    # rendues à l'appelant plutôt que tues — l'écran imprimait « sauvées :
+    # 1 » puis « 2 effacées », deux nombres que rien ne reliait.
+    sans_copie = []
     for row in lst_row:
         att_id = row.split("|")[0]
         rows = run_psql(
@@ -168,9 +182,25 @@ def backup_attachments(database, theme, lst_row, filestore=None):
         )
         store_fname = rows[0].strip() if rows else ""
         if not store_fname:
+            # PAS DE FICHIER, MAIS PEUT-ÊTRE UN CONTENU. Odoo range une
+            # pièce jointe soit dans le filestore, soit dans « db_datas » —
+            # une installation sans filestore, ou une pièce marquée d'un
+            # autre emplacement. La sauter en silence puis l'effacer
+            # détruisait un contenu dont rien ne portait copie.
+            contenu = run_psql(
+                database,
+                "SELECT COALESCE(LENGTH(db_datas), 0) FROM ir_attachment"
+                f" WHERE id = {int(att_id)};",
+            )
+            if contenu and contenu[0].strip().isdigit():
+                if int(contenu[0].strip()):
+                    sans_copie.append(att_id)
             continue
         source = os.path.join(base, store_fname)
         if not os.path.isfile(source):
+            # Le fichier a DÉJÀ disparu : c'est exactement le reste qu'on
+            # vient nettoyer, et il n'y a rien à sauvegarder. Refuser ici
+            # bloquerait le cas le plus courant et le plus légitime.
             continue
         target = os.path.join(
             directory, f"{att_id}_" + os.path.basename(row.split("|")[1])
@@ -178,6 +208,7 @@ def backup_attachments(database, theme, lst_row, filestore=None):
         with open(source, "rb") as src, open(target, "wb") as dst:
             dst.write(src.read())
         lst_saved.append(target)
+    return lst_saved, sans_copie
     return lst_saved
 
 
@@ -238,10 +269,19 @@ def prompt(database, theme, attachments, views, config_path, ask=None):
     if answer != "d":
         print(f"ℹ -> {t('Kept. Nothing was deleted.')}")
         return False
-    lst_saved = backup_attachments(database, theme, attachments)
+    lst_saved, sans_copie = backup_attachments(database, theme, attachments)
     print(f"📦 {t('Saved before deleting')} : {len(lst_saved)}")
     if lst_saved:
         print(f"   {os.path.dirname(lst_saved[0])}")
+    if sans_copie:
+        # ON NOMME AVANT D'EFFACER : leur contenu vit en base et aucune
+        # copie n'en part. Le taire faisait accorder « efface » sur un
+        # compte de sauvegardes qui ne les couvrait pas.
+        print(
+            f"⚠  {len(sans_copie)}"
+            f" {t('attachment(s) whose content leaves no copy:')}"
+            f" {', '.join(sans_copie[:10])}"
+        )
     status, output = delete_attachments(database, attachments, config_path)
     print(output.strip()[-1500:])
     if status:
@@ -283,10 +323,18 @@ def main(argv=None):
     if not attachments and not views:
         return 0
     if config.delete:
-        lst_saved = backup_attachments(
+        lst_saved, sans_copie = backup_attachments(
             config.database, config.theme, attachments
         )
         print(f"📦 {t('Saved before deleting')} : {len(lst_saved)}")
+        if sans_copie:
+            # Même raison que la voie interactive : leur contenu vit en
+            # base et aucune copie n'en part.
+            print(
+                f"⚠  {len(sans_copie)}"
+                f" {t('attachment(s) whose content leaves no copy:')}"
+                f" {', '.join(sans_copie[:10])}"
+            )
         status, output = delete_attachments(
             config.database, attachments, config.config
         )

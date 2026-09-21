@@ -351,6 +351,53 @@ class ForgeClient:
             },
         )
 
+    def push_mirrors(self, owner: str, repo: str) -> Reponse:
+        """Les miroirs SORTANTS déjà posés sur ce dépôt.
+
+        À lire AVANT d'en poser un : la forge accepte deux miroirs vers la
+        même adresse, et l'on obtient alors deux poussées qui se courent
+        après. Le refus qui le dirait n'existe pas.
+        """
+        return self._appel("GET", f"repos/{owner}/{repo}/push_mirrors")
+
+    def add_push_mirror(
+        self,
+        owner: str,
+        repo: str,
+        remote_address: str,
+        remote_username: str = "",
+        remote_password: str = "",
+        interval: str = "8h0m0s",
+        sync_on_commit: bool = True,
+    ) -> Reponse:
+        """Pose un miroir sortant : la forge poussera d'elle-même.
+
+        DÉLÉGUÉ À LA FORGE, et non lancé d'ici. Un « git push --mirror »
+        depuis la station ne part que si quelqu'un l'y lance ; la forge, elle,
+        pousse sans que la station soit allumée. C'est la différence entre un
+        miroir et une copie qu'on a faite une fois.
+
+        `remote_password` est un JETON, et il ne ressort jamais : ni `repos`
+        ni `push_mirrors` ne le rendent une fois posé. Le retirer et le
+        reposer est le seul moyen d'en changer — la forge ne sait pas le
+        modifier.
+
+        `interval` est la cadence de repli. « sync_on_commit » la double
+        d'une poussée immédiate : sans elle, un correctif attend la
+        prochaine échéance, et l'on croit le miroir en panne.
+        """
+        return self._appel(
+            "POST",
+            f"repos/{owner}/{repo}/push_mirrors",
+            json={
+                "remote_address": remote_address,
+                "remote_username": remote_username,
+                "remote_password": remote_password,
+                "interval": interval,
+                "sync_on_commit": bool(sync_on_commit),
+            },
+        )
+
     def migrate(self, clone_addr: str, name: str, mirror=True) -> Reponse:
         """Importe un dépôt distant, en miroir par défaut.
 

@@ -22,6 +22,7 @@ précisément pour comprendre ce qui a été lancé.
 
 import io
 import os
+import re
 import sys
 import unittest
 
@@ -57,6 +58,67 @@ class TestCeQueLeFiltreRetire(unittest.TestCase):
         for vide in ("", None):
             with self.subTest(vide=vide):
                 self.assertFalse(E.redact_secrets(vide))
+
+
+class TestLesDeuxVocabulairesSAccordent(unittest.TestCase):
+    """Un secret se nomme de deux façons, et le filtre en connaissait une.
+
+    Le mot de passe maître a été DÉPLACÉ vers l'environnement pour le tenir
+    hors d'argv, que « /proc/<pid>/cmdline » expose à tout utilisateur de la
+    machine — la raison est écrite au-dessus du filtre. Or le motif des
+    variables ne portait ni « pwd » ni « api_key », et il était sensible à
+    la casse : « MASTER_PWD= », « EL_PWD= », « master_pwd= » ressortaient
+    intacts du filtre censé les couvrir.
+
+    L'épreuve tient l'ACCORD : chaque mot que la forme option reconnaît, la
+    forme variable le reconnaît aussi. Une liste écrite d'un seul côté est
+    exactement ce qui a dérivé.
+    """
+
+    @staticmethod
+    def mots_du_motif():
+        """Les mots secrets que le motif des OPTIONS énumère."""
+        groupe = re.search(
+            r"\(\?:([^)]*password[^)]*)\)", E._SECRET_OPTION.pattern, re.I
+        )
+        assert groupe, "l'alternance des options est introuvable"
+        return [m.strip() for m in groupe.group(1).split("|") if m.strip()]
+
+    def test_the_pattern_still_enumerates_its_words(self):
+        """Contrôle du banc : une alternance vide rendrait tout le reste
+        vert sans rien éprouver."""
+        self.assertGreaterEqual(len(self.mots_du_motif()), 4)
+
+    def test_every_word_is_redacted_in_both_shapes(self):
+        for brut in self.mots_du_motif():
+            # « api[-_]?key » décrit deux écritures : on éprouve la plus
+            # simple, celle qu'un motif oublie le plus facilement.
+            mot = brut.replace("[-_]?", "_")
+            for forme in (
+                f"./x.sh --{mot} {SECRET}",
+                f"EL_{mot.upper()}={SECRET} ./x.sh",
+                f"el_{mot}={SECRET} ./x.sh",
+            ):
+                with self.subTest(forme=forme):
+                    self.assertNotIn(SECRET, E.redact_secrets(forme))
+
+    def test_a_quoted_value_goes_too(self):
+        """Une valeur entre guillemets est la forme d'une recette collée."""
+        for forme in (
+            f"MASTER_PWD='{SECRET}'",
+            f'MASTER_PWD="{SECRET}"',
+            f'curl -F "master_pwd={SECRET}"',
+        ):
+            with self.subTest(forme=forme):
+                self.assertNotIn(SECRET, E.redact_secrets(forme))
+
+    def test_the_shells_own_pwd_is_left_alone(self):
+        """« PWD » et « OLDPWD » nomment le répertoire courant et le
+        précédent. Les caviarder retirerait une information utile et se
+        lirait comme un défaut."""
+        for forme in ("PWD=/home/essai/git", "OLDPWD=/tmp/ailleurs"):
+            with self.subTest(forme=forme):
+                self.assertEqual(forme, E.redact_secrets(forme))
 
 
 class TestLesTroisLanceursCaviardentLaCommande(unittest.TestCase):

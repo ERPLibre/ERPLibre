@@ -21,11 +21,19 @@ from script.todo.todo_i18n import t
 # Le nom court du produit, pour le libellé d'une fiche déjà sondée.
 PRODUIT = "ERPLibre"
 
-# Les champs du formulaire, dans l'ordre où on les demande : d'abord joindre
-# la machine, ensuite ce qu'on y installe, enfin ce qu'elle sert. Les champs
-# que la sonde dépose — verdict, version, date — ne se saisissent pas.
+# Ce que la SONDE dépose, et que personne ne saisit. Nommé plutôt que laissé
+# implicite : c'est la SEULE raison admise pour qu'une clé de
+# `deploy_target.DEFAULTS` manque au formulaire, et un garde dérivé s'appuie
+# dessus pour réclamer toutes les autres. Une liste écrite en prose dans un
+# commentaire en avait déjà oublié une sans que rien ne le dise.
+CHAMPS_SONDE = ("verdict", "version", "sudo", "last_probe")
+
+# Les champs du formulaire, dans l'ordre où on les demande. Le genre vient en
+# deuxième parce qu'il décide de ce que les suivants VEULENT DIRE ; ensuite
+# joindre la machine, ce qu'on y installe, ce qu'elle sert.
 CHAMPS = (
     ("name", "Target name (lowercase, digits, - or _)"),
+    ("kind", "What the target is for"),
     ("target", "Address: user@host, or a ~/.ssh/config alias"),
     ("jump", "Jump host (empty: connect directly)"),
     ("port", "SSH port (empty: let ssh decide)"),
@@ -34,6 +42,18 @@ CHAMPS = (
     ("domain", "Domain served over HTTPS (empty: not served)"),
     ("admin_email", "Admin email for the certificate"),
 )
+
+# Ce que chaque genre veut dire pour qui remplit la fiche. Le nom technique
+# ne le dit pas : « backup-ssh » tait que la cible REÇOIT, et prendre l'une
+# pour l'autre déploierait ERPLibre sur le dépôt d'archives.
+#
+# La table est interrogée SANS défaut : un genre ajouté à
+# `deploy_target.KINDS` et oublié ici lève, là où une explication vide se
+# serait affichée sans que personne ne la réclame.
+GENRES = {
+    deploy_target.KIND_SSH: "ERPLibre is installed and served there",
+    deploy_target.KIND_BACKUP: "it RECEIVES the backup archives",
+}
 
 
 class DeployTargetMenuMixin:
@@ -53,7 +73,16 @@ class DeployTargetMenuMixin:
                 libelle = host_memory.label(
                     deploy_target.fiche(cible), PRODUIT
                 )
-                print(f"   [{rang}] {libelle}{marque}")
+                # LE GENRE SE VOIT. Deux fiches au même format, sur le même
+                # transport, ne se distinguent que par lui ; les confondre
+                # ferait déployer ERPLibre sur le dépôt d'archives.
+                genre = deploy_target.with_defaults(cible)["kind"]
+                suffixe = (
+                    ""
+                    if genre == deploy_target.KIND_SSH
+                    else f" — {t(GENRES[genre])}"
+                )
+                print(f"   [{rang}] {libelle}{suffixe}{marque}")
             print(
                 f"\n   [a] {t('Add')}   [m] {t('Edit')}   [s] {t('Delete')}"
                 f"   [o] {t('Forget the selection')}   [0] {t('Back')}"
@@ -109,7 +138,17 @@ class DeployTargetMenuMixin:
         if rang is None:
             print(t("Command not found !"))
             return
-        deploy_target.select(cibles[rang - 1]["name"])
+        cible = deploy_target.with_defaults(cibles[rang - 1])
+        if cible["kind"] != deploy_target.KIND_SSH:
+            # ON NOMME, ON N'EFFACE PAS. `selected()` refuse déjà cette
+            # cible ; retenir sans le dire laisserait l'écran sans « ← » et
+            # sans raison, et on croirait avoir choisi.
+            print(
+                f"✗ {t('Not a deployment target:')} {cible['name']}"
+                f" — {t(GENRES[cible['kind']])}"
+            )
+            return
+        deploy_target.select(cible["name"])
 
     @staticmethod
     def _deploy_target_pick(cibles):
@@ -139,6 +178,9 @@ class DeployTargetMenuMixin:
                 return
         brouillon = deploy_target.with_defaults(courante)
         for cle, libelle in CHAMPS:
+            if cle == "kind":
+                brouillon[cle] = _demander_genre(brouillon.get(cle, ""))
+                continue
             brouillon[cle] = _demander(t(libelle), brouillon.get(cle, ""))
         try:
             ecrite = deploy_target.save(brouillon)
@@ -146,23 +188,30 @@ class DeployTargetMenuMixin:
             print(f"\n✗ {t('Target refused: ')}{erreur}")
             return
         print(f"\n✓ {t('Target saved: ')}{ecrite['name']}")
-        self._deploy_target_after_save(nom, ecrite["name"])
+        self._deploy_target_after_save(nom, ecrite)
 
     @staticmethod
-    def _deploy_target_after_save(ancien, nouveau):
-        """Suit le renommage, et retient la première cible écrite.
+    def _deploy_target_after_save(ancien, ecrite):
+        """Suit le renommage, et retient la première cible de DÉPLOIEMENT.
 
         Écrire sous un nom neuf SANS retirer l'ancien laisserait la même
         machine deux fois dans l'inventaire, et la sélection sur celle qu'on
         croyait avoir quittée.
+
+        Une cible de sauvegarde n'est jamais retenue : `selected()` la refuse,
+        et annoncer « elle devient la cible retenue » sur une cible que le
+        reste de l'écran ne verra JAMAIS retenue serait un message faux.
         """
+        nouveau = ecrite["name"]
+        deployable = ecrite.get("kind") == deploy_target.KIND_SSH
         retenue = deploy_target.selected()
         if ancien and ancien != nouveau:
             deploy_target.delete(ancien)
             if retenue is None or retenue["name"] == ancien:
-                deploy_target.select(nouveau)
+                if deployable:
+                    deploy_target.select(nouveau)
                 return
-        if deploy_target.selected() is None:
+        if deployable and deploy_target.selected() is None:
             deploy_target.select(nouveau)
             print(f"  {t('It becomes the selected target.')}")
 
@@ -199,3 +248,32 @@ def _demander(libelle, defaut):
     """Question à réponse par défaut. Vide = on garde `defaut`."""
     montre = f" [{defaut}]" if defaut else ""
     return input(f"{libelle}{montre} : ").strip() or defaut
+
+
+def _demander_genre(defaut):
+    """Le genre de la cible, choisi par NUMÉRO parmi ceux que le code connaît.
+
+    Rend un membre de `deploy_target.KINDS`, toujours. Tapé en toutes lettres,
+    « backup-ssh » se saisit mal et n'est refusé qu'à l'écriture, la fiche
+    entière déjà ressaisie ; un numéro ne peut désigner qu'un genre existant.
+
+    Vide garde celui en place, comme partout dans ce formulaire. Une réponse
+    qui ne désigne rien est DITE et redemandée : retomber sur le défaut
+    poserait une cible de déploiement là où on voulait une cible de
+    sauvegarde, et les deux se ressemblent trop dans la liste pour qu'on le
+    remarque.
+    """
+    genres = list(deploy_target.KINDS)
+    courant = defaut if defaut in genres else deploy_target.KIND_SSH
+    print(f"\n   {t('What the target is for')} :")
+    for rang, genre in enumerate(genres, 1):
+        marque = " ←" if genre == courant else ""
+        print(f"   [{rang}] {genre} — {t(GENRES[genre])}{marque}")
+    while True:
+        reponse = input(f"   [1-{len(genres)}] [{courant}] : ").strip()
+        if not reponse:
+            return courant
+        rang = _rang(reponse, len(genres))
+        if rang:
+            return genres[rang - 1]
+        print(f"   ✗ {t('Command not found !')}")

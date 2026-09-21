@@ -210,9 +210,7 @@ class TestLeProfilValide(unittest.TestCase):
         renommé chercherait son jeton sous l'ancienne référence."""
         self.assertNotIn("secret_ref", profiles.validate(VALIDE))
         self.assertIn("atelier", profiles.secret_ref("atelier"))
-        self.assertNotEqual(
-            profiles.secret_ref("a"), profiles.secret_ref("b")
-        )
+        self.assertNotEqual(profiles.secret_ref("a"), profiles.secret_ref("b"))
 
     def test_the_secret_reference_is_one_the_repository_store_parses(self):
         """La forme du coffre VPN — un titre à plat — ne serait pas
@@ -332,6 +330,90 @@ class TestLeModuleNeParleAPersonne(unittest.TestCase):
                 self.assertTrue(noms, "aucun appel lu : rien n'est prouvé")
                 for interdit in ("print", "input", "urlopen", "run"):
                     self.assertNotIn(interdit, noms)
+
+
+class TestLeRoleDAutorite(unittest.TestCase):
+    """Un profil dit ce qu'il EST : un atelier, ou l'autorité.
+
+    Vide, c'est un atelier — on y travaille, et ce qu'on y pose peut se
+    refaire. « canonical » nomme celle dont on repart quand la station
+    brûle, et c'est ce qui donne un sens à « pousser vers l'autorité ».
+
+    Le vocabulaire est CLOS, comme celui des pilotes : un rôle inconnu est
+    refusé plutôt que deviné. Replier sur « atelier » ferait travailler sans
+    autorité une installation qui croyait en avoir une.
+    """
+
+    def profil(self, **extra):
+        base = {
+            "name": "atelier",
+            "url": "https://forge.example",
+            "owner": "equipe",
+        }
+        base.update(extra)
+        return base
+
+    def test_a_profile_without_a_role_is_a_workshop(self):
+        """Un site qui n'a qu'une forge n'a rien à déclarer : l'exiger
+        ferait refuser une configuration qui marchait."""
+        self.assertEqual("", profiles.validate(self.profil())["role"])
+
+    def test_the_authority_says_so(self):
+        vu = profiles.validate(self.profil(role="canonical"))
+        self.assertEqual("canonical", vu["role"])
+
+    def test_an_unknown_role_is_refused_and_not_folded_back(self):
+        with self.assertRaises(profiles.ProfileError) as refus:
+            profiles.validate(self.profil(role="principale"))
+        self.assertIn("principale", str(refus.exception))
+
+
+class TestUneSeuleAutorite(unittest.TestCase):
+    """Deux profils canoniques, ce sont DEUX vérités.
+
+    Les gestes qui poussent « vers l'autorité » en choisiraient une au
+    hasard, et l'autre vieillirait sans que rien ne le dise. C'est
+    exactement ce dont une autorité doit protéger.
+    """
+
+    def config(self, *profils):
+        class Faux:
+            def get_config(self, _cle):
+                return list(profils)
+
+        return Faux()
+
+    def test_no_authority_is_not_a_failure(self):
+        """None n'est pas une panne : c'est l'appelant qui décide si
+        l'absence l'empêche."""
+        self.assertIsNone(
+            profiles.canonical(self.config({"name": "a", "url": "https://x"}))
+        )
+
+    def test_the_only_authority_comes_back_complete(self):
+        vu = profiles.canonical(
+            self.config(
+                {"name": "atelier", "url": "https://a.example"},
+                {
+                    "name": "amont",
+                    "url": "https://b.example",
+                    "role": "canonical",
+                },
+            )
+        )
+        self.assertEqual("amont", vu["name"])
+        self.assertIn("driver", vu, "le profil doit être complété")
+
+    def test_two_authorities_are_refused_rather_than_picked(self):
+        with self.assertRaises(profiles.ProfileError) as refus:
+            profiles.canonical(
+                self.config(
+                    {"name": "une", "url": "https://a", "role": "canonical"},
+                    {"name": "deux", "url": "https://b", "role": "canonical"},
+                )
+            )
+        for nom in ("une", "deux"):
+            self.assertIn(nom, str(refus.exception))
 
 
 if __name__ == "__main__":

@@ -41,6 +41,20 @@ CONFIG_KEY = "forge"
 # API v1 : les distinguer ici serait une différence qui n'existe pas.
 DRIVERS = ("forgejo",)
 
+# LE RÔLE D'UN PROFIL. Vide, c'est un atelier : on y travaille, et ce qu'on
+# y pose peut se refaire. « canonical » nomme celle qui FAIT AUTORITÉ —
+# celle dont on repart quand la station brûle.
+#
+# Le vocabulaire est CLOS, comme celui des pilotes : un rôle inconnu est
+# refusé plutôt que deviné. Replier sur « atelier » ferait travailler sans
+# autorité une installation qui croyait en avoir une.
+ROLES = ("", "canonical")
+
+# Le rôle d'autorité est UNIQUE. Deux profils canoniques, ce sont deux
+# vérités : les gestes qui poussent « vers l'autorité » en choisiraient une
+# au hasard, et l'autre vieillirait sans que rien ne le dise.
+ROLE_CANONIQUE = "canonical"
+
 
 # LE MÊME OBJET, et pas une sous-classe. Un appelant écrit « except
 # ProfileError » ou « except ValidationError » selon d'où il vient ; deux
@@ -57,6 +71,10 @@ DEFAULTS = {
     # Le compte ou l'organisation qui possède les dépôts. Vide, les
     # opérations qui créent un dépôt ne savent pas où le mettre.
     "owner": "",
+    # Vide par défaut : un site qui n'a qu'une forge n'a pas à déclarer
+    # laquelle fait autorité, et l'exiger ferait refuser une configuration
+    # qui marchait.
+    "role": "",
     # VRAI par défaut. Une forge auto-hébergée porte souvent un certificat
     # signé par soi-même, et la tentation est de couper la vérification pour
     # avancer : le jeton part alors vers qui se présente à la place de la
@@ -85,6 +103,20 @@ def secret_ref(name: str) -> str:
     son jeton sous l'ancienne référence sans le dire.
     """
     return f"kdbx:{SECRET_GROUP}/{name}"
+
+
+def mirror_secret_ref(name: str) -> str:
+    """Référence du jeton de MIROIR de ce profil, dans le coffre.
+
+    Le jeton de la forge ouvre la forge ; celui-ci ouvre l'amont vers
+    lequel elle pousse. Deux portes, deux clés : les confondre donnerait à
+    la forge un jeton qui écrit chez le tiers, ou l'inverse.
+
+    Même GROUPE que le jeton de forge — deux conventions dans un coffre le
+    rendent illisible dans KeePassXC, et un lecteur ne sait plus laquelle
+    chercher — et un titre distinct, dérivé du nom comme l'autre.
+    """
+    return f"kdbx:{SECRET_GROUP}/{name}-mirror"
 
 
 def load_all(config=None) -> list[dict]:
@@ -205,4 +237,35 @@ def validate(profile: dict) -> dict:
     valid.base_url(full, "url", "Adresse de la forge")
 
     lib_valid.text(full, "owner", "Compte propriétaire", pattern=NAME_RE)
+
+    role = str(full.get("role") or "").strip()
+    if role not in ROLES:
+        connus = ", ".join(r or "« vide »" for r in ROLES)
+        raise ProfileError(f"Rôle inconnu : « {role} ». Connus : {connus}.")
+    full["role"] = role
     return full
+
+
+def canonical(config=None) -> dict | None:
+    """Le profil qui fait AUTORITÉ, ou None s'il n'y en a pas.
+
+    None n'est pas une panne : un site qui n'a qu'une forge n'a rien à
+    déclarer. C'est l'appelant qui décide si l'absence l'empêche — pousser
+    « vers l'autorité » l'exige, lister les dépôts non.
+
+    DEUX CANONIQUES SONT REFUSÉES plutôt que départagées : choisir la
+    première au hasard ferait vieillir la seconde en silence, et c'est
+    exactement ce dont une autorité doit protéger.
+    """
+    vus = [
+        p
+        for p in load_all(config)
+        if str(p.get("role") or "").strip() == ROLE_CANONIQUE
+    ]
+    if len(vus) > 1:
+        noms = ", ".join(sorted(p.get("name", "") for p in vus))
+        raise ProfileError(
+            f"Deux profils se disent l'autorité : {noms}."
+            " Une seule peut l'être."
+        )
+    return with_defaults(vus[0]) if vus else None
