@@ -19,6 +19,7 @@ from __future__ import annotations
 import shlex
 from typing import NamedTuple
 
+from script.vm import lima
 from script.vm.backend import (
     LIBVIRT,
     LIMA,
@@ -354,6 +355,32 @@ def ssh_prefix(handle, user: str = "erplibre", options: str = "") -> str:
     return f"{debut}{user}@{handle.alias or handle.address}"
 
 
+def connect_command(handle, user: str = "erplibre", options: str = "") -> str:
+    """La ligne qu'un HUMAIN recopie pour ouvrir une session dans la VM.
+
+    LA TROISIÈME FORME, et `ssh_prefix` la nommait déjà en creux : « la
+    forme diffère selon qu'on veut une session ou une commande ». Celle-ci
+    est la SESSION. `exec_prefix`, lui, prépare une commande et finit donc
+    par « bash -c » : le recopier ouvrirait un shell qui attend une commande
+    qui ne vient jamais.
+
+    Rendue pour TOUS les backends, y compris celui que `ssh_prefix` refuse.
+    Il n'y a rien à refuser ici : chaque backend a une façon d'entrer, et
+    c'est justement ce qu'un tableau de bord affiche pour qu'on la recopie.
+    Composer « ssh compte@instance » pour une VM qui ne s'atteint pas par
+    ssh donnerait une ligne qui échoue chez celui qui la recopie, et rien
+    dans le message de ssh ne dirait que le backend était le mauvais.
+    """
+    if handle is None:
+        raise VerbNotImplemented("connect_command : aucune identité.")
+    if handle.backend == LIMA:
+        # Le NOM suffit, et la forme vient du module de l'outil : ce fichier
+        # nommait « limactl » en dur, et deux littéraux voisins cessent de
+        # correspondre au premier ajustement.
+        return lima.display(lima.shell_argv(handle.key))
+    return ssh_prefix(handle, user=user, options=options)
+
+
 def power_command(
     handle, action: str, sudo: str = "", uri: str = LIBVIRT_URI
 ) -> str:
@@ -478,7 +505,8 @@ def exec_prefix(handle, options: str = "", user: str = "erplibre") -> str:
         #
         # Ni compte ni adresse : l'instance appartient à l'utilisateur qui
         # la lance, et le nom suffit à la joindre.
-        return f"limactl shell {shlex.quote(handle.key)} -- bash -c"
+        base = lima.display(lima.shell_argv(handle.key))
+        return f"{base} -- bash -c"
     raise VerbNotImplemented(
         f"exec_prefix : backend « {handle.backend} » inconnu."
     )

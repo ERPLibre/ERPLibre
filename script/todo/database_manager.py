@@ -7,7 +7,7 @@ import getpass
 import logging
 import os
 
-from script.database import backup_verify
+from script.database import backup_verify, backup_witness
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -207,11 +207,12 @@ class DatabaseManager:
         ouvertes sur la source, régénère le `database.uuid`, copie le
         filestore et sait neutraliser pour de bon.
 
-        La neutralisation est proposée par DÉFAUT. Mesuré sur trois
-        migrations de suite : la copie gardait 33 crons actifs, aucun
-        serveur de courriel — donc le repli sur `smtp_server` de la
-        configuration — et une clé de paiement vivante. Le défaut à
-        « oui » est le seul qui protège celui qui appuie sur Entrée.
+        La neutralisation est proposée par DÉFAUT. Une copie qui ne l'est
+        pas garde les tâches planifiées actives, aucun serveur de courriel
+        — donc le repli sur le `smtp_server` de la configuration — et les
+        clés de paiement vivantes : elle envoie et encaisse pour de vrai.
+        Le défaut à « oui » est le seul qui protège celui qui appuie sur
+        Entrée.
         """
         source = self.select_database()
         if not source:
@@ -268,6 +269,70 @@ class DatabaseManager:
         except Exception as exc:  # noqa: BLE001 - un rapport, pas le sujet
             print(f"ℹ️  {t('Cannot read the copy back: ')}{exc}")
 
+    # Le répertoire des images du dépôt. Nommé ici parce que deux
+    # méthodes le cherchent, et qu'une seconde composition diverge le jour
+    # où il change de nom.
+    IMAGE_DIR = "image_db"
+
+    @classmethod
+    def backup_archive(cls, backup_name, exists=os.path.isfile) -> str:
+        """Le chemin de l'archive produite, ou "" si on ne la trouve pas.
+
+        "" NE VEUT PAS DIRE « absente », et les confondre ferait annoncer
+        une sauvegarde manquante là où elle est peut-être parfaite. Le nom
+        est résolu par `odoo-bin`, dont le code ne vit pas dans ce dépôt :
+        ne pas trouver le fichier dit qu'on ne sait pas où il est.
+
+        DEUX FORMES SONT CHERCHÉES parce que deux ont cours : l'option
+        `--restore_image` est documentée « nom sans .zip », et l'écran
+        propose un nom qui porte déjà le sien. Chercher les deux vaut
+        mieux que parier sur celle qui a résolu.
+
+        `exists` est injectable : la décision se vérifie sans poser un
+        fichier sur le disque.
+        """
+        for candidat in (backup_name, f"{backup_name}.zip"):
+            chemin = os.path.join(cls.IMAGE_DIR, candidat)
+            if exists(chemin):
+                return chemin
+        return ""
+
+    @staticmethod
+    def verify_and_witness(path: str, label: str = ""):
+        """Relit la sauvegarde, DIT jusqu'où, et fait survivre le constat.
+
+        Un vérificateur ne dit que ce qu'il voit à l'instant où on le
+        lance, et personne ne le relance avant d'en avoir besoin. Le
+        témoin est ce qui permet de répondre « la dernière fois qu'on a
+        regardé, c'était il y a trois semaines » — une réponse que ni le
+        fichier ni le vérificateur ne portent. Il était écrit, éprouvé, et
+        appelé par personne.
+
+        Le constat est un PLUS : ne pas pouvoir l'écrire ne doit pas
+        emporter une sauvegarde qui, elle, est faite. D'où le refus
+        DIT plutôt que levé.
+        """
+        if not path:
+            print(
+                "ℹ️  "
+                f"{t('Archive not found where expected; not verified: ')}"
+                f"{label}"
+            )
+            return None
+        constat = backup_verify.verify(path)
+        if constat.verdict == backup_verify.SOUND:
+            _logger.info(f"'{path}' : {', '.join(constat.checks)}.")
+        else:
+            _logger.error(
+                f"'{path}' : {constat.verdict}"
+                f" ({', '.join(constat.checks) or t('nothing checked')})."
+            )
+        try:
+            backup_witness.record(constat)
+        except Exception as souci:  # noqa: BLE001 - un constat, pas le sujet
+            print(f"ℹ️  {t('Finding not recorded: ')}{souci}")
+        return constat
+
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
@@ -292,12 +357,23 @@ class DatabaseManager:
             f"./odoo_bin.sh db --backup --database {database_name}"
             f" --restore_image {backup_name}"
         )
-        status, output_lines = self._execute.exec_command_live(
+        status, _output_lines = self._execute.exec_command_live(
             cmd,
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
         )
+        # LE CODE DE RETOUR ÉTAIT JETÉ. Une sauvegarde qui échoue rendait
+        # donc exactement le même écran qu'une sauvegarde réussie, et
+        # relire une archive qui n'a pas été écrite dirait « absente »
+        # pour la mauvaise raison.
+        if status:
+            print(
+                f"❌ {t('The backup command failed; nothing was verified: ')}"
+                f"{backup_name}"
+            )
+            return
+        self.verify_and_witness(self.backup_archive(backup_name), backup_name)
 
     def open_file_image_db(self) -> str:
         self._dir_path = ""
@@ -396,12 +472,5 @@ class DatabaseManager:
         # sauvegardes produites ailleurs, tandis que le dump, lui, est la
         # seule pièce indispensable. Le contrôle dit désormais JUSQU'OÙ il
         # est allé, ce qui n'est pas la même chose que « validée ».
-        constat = backup_verify.verify(output_path)
-        if constat.verdict == backup_verify.SOUND:
-            _logger.info(f"'{output_path}' : {', '.join(constat.checks)}.")
-        else:
-            _logger.error(
-                f"'{output_path}' : {constat.verdict}"
-                f" ({', '.join(constat.checks) or t('nothing checked')})."
-            )
+        self.verify_and_witness(output_path, output_path)
         return status, output_path, database_name

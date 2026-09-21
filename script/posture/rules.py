@@ -133,6 +133,38 @@ def _lignes_chaine(nom, accroche, destinations):
     return lignes
 
 
+def wants_rules(posture) -> bool:
+    """Cette posture demande-t-elle un jeu de règles ?
+
+    DEUX RAISONS D'EN VOULOIR, ET UNE SEULE ÉTAIT CONSULTÉE. Une liste
+    bornée en donne une : il y a des adresses à nommer. Une sortie COUPÉE
+    en donne une autre, et le rendu la sert depuis toujours — « policy
+    drop », la boucle locale, les connexions déjà établies. Ne demander que
+    la première laissait « local-only » se déployer avec la sortie ENTIÈRE :
+    la posture qui promet le plus était la seule à ne rien poser, et rien ne
+    le disait.
+
+    Le prédicat vit ICI et non dans `destinations` parce que c'est ce
+    fichier qui décide des refus : `wants_rules` est faux exactement là où
+    `_refuse_la_posture` refuse quelle que soit la liste. Une épreuve tient
+    cet accord, qui ne peut donc pas dériver.
+
+    Ce n'est PAS « a-t-elle une liste bornée » : `destinations.has_bounded_
+    list` répond à cette autre question — « y a-t-il des adresses à
+    résoudre » — et les deux ne coïncident que sur trois postures sur
+    quatre.
+    """
+    if posture is None:
+        return False
+    # « nat » est assumé : lui rendre un jeu donnerait l'apparence d'un
+    # confinement que le nom de la posture dément.
+    if posture.egress == "nat":
+        return False
+    # Des destinations non bornées se liraient comme une liste blanche
+    # portant la sortie entière.
+    return bool(posture.destinations_bounded)
+
+
 def _refuse_la_posture(posture, destinations):
     """Ce qu'on ne rend PAS, et pourquoi le dire vaut mieux que rendre."""
     if posture is None:
@@ -189,20 +221,41 @@ def _refuse_la_posture(posture, destinations):
 NO_RENDERING = "no-rendering"
 RELOAD_FAILURE_UNSEEN = "reload-failure-unseen"
 CONTAINERS_UNPROVEN = "containers-unproven"
+# La machine SORT LIBREMENT entre son premier démarrage et la pose des
+# règles. Ce n'est pas une propriété de la posture mais du CHEMIN qui la
+# livre : là où l'amorce écrit les règles avant le premier boot, il n'y a
+# pas de fenêtre ; là où elles arrivent après, par un canal qui exige que
+# la machine réponde déjà, il y en a une de plusieurs minutes.
+BOOT_WINDOW_OPEN = "boot-window-open"
 UNENFORCED_TOKENS = (
     NO_RENDERING,
     RELOAD_FAILURE_UNSEEN,
     CONTAINERS_UNPROVEN,
+    BOOT_WINDOW_OPEN,
 )
 
-# Ce que le rendu ne fournit PAS, mais que la posture tient déjà par la
-# nature de son réseau : « nat » ne promet que la sortie, que la traduction
-# d'adresses donne, et un réseau isolé n'a pas de route du tout. Ni l'une ni
-# l'autre n'attend quoi que ce soit d'un jeu de règles.
+# Ce que le rendu ne fournit PAS, mais que la posture tient déjà — soit par
+# la nature de son réseau, soit parce que ce qu'elle demande est TOTAL.
+#
+# « nat » ne promet que la sortie, et la traduction d'adresses la donne : il
+# n'y a rien à poser.
+#
+# « none » ne demande aucune liste : elle demande que RIEN ne sorte, et les
+# deux chaînes rendues le font en bloc — « policy drop » sur la sortie ET sur
+# le transfert, donc le trafic des conteneurs avec. Il n'y a pas de
+# destination à énumérer, donc pas d'énumération qui puisse être incomplète :
+# c'est ce qui la distingue d'une liste blanche bornée, dont les deux
+# faiblesses restantes tiennent justement à ce qu'elle énumère.
+#
+# Le motif écrit ici auparavant — « un réseau isolé n'a pas de route du
+# tout » — reposait sur `network_kind`, qui est DÉCLARÉ et qu'aucun code ne
+# configure : la VM reçoit le réseau ordinaire. La conclusion tenait, la
+# raison non ; et depuis que le jeu de règles est réellement posé, elle tient
+# pour une raison qui, elle, a du code derrière.
 TENUES_PAR_LE_RESEAU = ("nat", "none")
 
 
-def unenforced(posture) -> tuple:
+def unenforced(posture, after_boot: bool = False) -> tuple:
     """Ce que le rendu de règles ne tient PAS de cette posture.
 
     Un mécanisme muet sur ce qu'il n'applique pas est ce qui fait croire à
@@ -215,16 +268,28 @@ def unenforced(posture) -> tuple:
     avec `egress_enforced` : tant qu'un jeton reste, elle REFUSE la bascule
     du drapeau ; le jour où il n'en reste aucun, elle l'EXIGE.
 
+    `after_boot` décrit le CHEMIN de livraison et non la posture. Vrai, les
+    règles n'arrivent qu'une fois la machine debout et joignable : elle sort
+    librement pendant tout son démarrage. Le drapeau de la posture, lui, ne
+    peut pas en tenir compte — il est per-posture, et deux chemins livrent
+    la même. C'est pourquoi le défaut est FAUX : l'équivalence porte sur le
+    chemin qui écrit avant le premier boot, et ce paramètre dit l'autre.
+
     Une posture absente ne promet rien, donc rien ne manque.
     """
     if posture is None:
         return ()
+    fenetre = (BOOT_WINDOW_OPEN,) if after_boot else ()
     if posture.egress in TENUES_PAR_LE_RESEAU:
-        return ()
+        # La sortie libre n'a pas de fenêtre : rien n'est à poser, donc
+        # rien n'arrive en retard. La sortie coupée, elle, en a une — ses
+        # règles arrivent par le même canal tardif que les autres.
+        return () if posture.egress == "nat" else fenetre
     if not posture.destinations_bounded:
-        # Seul jeton : le reste porterait sur un rendu qui n'existe pas.
+        # Seul jeton : le reste porterait sur un rendu qui n'existe pas, et
+        # une fenêtre ne s'ouvre pas sur des règles qu'on ne pose jamais.
         return (NO_RENDERING,)
-    return (RELOAD_FAILURE_UNSEEN, CONTAINERS_UNPROVEN)
+    return (RELOAD_FAILURE_UNSEEN, CONTAINERS_UNPROVEN) + fenetre
 
 
 def render_egress(posture, destinations=()) -> str:

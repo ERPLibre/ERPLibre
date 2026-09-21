@@ -23,8 +23,8 @@ from unittest import mock
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 
-# La forme que produit libvirt : le nvram porte un attribut « template »,
-# qu'un filtre sur la seule valeur de l'élément laisse passer.
+# La forme que libvirt écrit VRAIMENT : le nvram porte un attribut
+# « template », ce qu'un filtre sur le seul nom de balise laisse passer.
 XML_MIGRATION = """<domain type='kvm'>
   <name>erplibre-ubuntu-2404-MIGRATION</name>
   <os firmware='efi'>
@@ -173,8 +173,15 @@ class TestEffacerUneVm(unittest.TestCase):
         self.assertEqual(todo._qemu_vm_own_files("vm-a"), [])
 
 
-CONFIG_SSH = """Host exo
-    HostName 132.207.112.51
+# Les adresses sont INVENTÉES, prises dans les plages de documentation
+# (RFC 5737) ou privées. Une fixture fige sa valeur pour toujours : celle-ci
+# a d'abord porté l'adresse publique réelle d'une machine tierce, recopiée
+# d'un ~/.ssh/config du parc.
+#
+# La première entrée n'est pas préfixée « erplibre- » exprès : elle tient la
+# place d'un hôte personnel, que le nettoyage ne doit jamais candidater.
+CONFIG_SSH = """Host poste-personnel
+    HostName 203.0.113.51
 
 Host erplibre-ubuntu-2404
     HostName 198.51.100.170
@@ -364,9 +371,9 @@ class TestLAdresseDUneVm(unittest.TestCase):
     """« --source arp » remonte les passerelles des ponts : la dernière
     candidate n'est pas la bonne.
 
-    Une VM renommée, dont le bail porte encore l'ancien nom d'hôte, n'a
-    aucune correspondance : le repli sur « la dernière » lui attribue alors
-    la passerelle du pont au lieu de sa propre adresse.
+    Une VM renommée garde dans son bail l'ancien nom d'hôte : plus aucune
+    correspondance par le nom, et le repli sur « la dernière candidate »
+    rend alors la passerelle du pont au lieu de l'adresse de la machine.
     """
 
     def _todo(self, par_source):

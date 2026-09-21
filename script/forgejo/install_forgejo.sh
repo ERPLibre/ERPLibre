@@ -19,10 +19,15 @@
 #   FORGEJO_HTTP_PORT      port web                       (défaut : 3000)
 #   FORGEJO_SSH_PORT       port SSH interne de Forgejo    (défaut : 2222)
 #   FORGEJO_ADMIN_USER     compte administrateur créé  (défaut : erplibre)
-#   FORGEJO_ADMIN_PASSWORD son mot de passe               (défaut : erplibre)
+#   FORGEJO_ADMIN_PASSWORD son mot de passe (défaut : tiré au sort et déposé
+#                          dans /etc/forgejo/admin-password, lisible par root)
 #   FORGEJO_ADMIN_EMAIL    son courriel     (défaut : admin@erplibre.local)
 #   FORGEJO_USER           compte système propriétaire    (défaut : git)
 #   FORGEJO_SKIP_ADMIN     à 1, ne crée aucun compte (installateur web)
+#   FORGEJO_OPEN_REGISTRATION    à 1, quiconque atteint le port ouvre un
+#                          compte lui-même                        (défaut : 0)
+#   FORGEJO_ALLOW_LOCALNETWORKS  à 1, migrations et miroirs vers une adresse
+#                          de plage privée sont permis            (défaut : 0)
 set -euo pipefail
 
 Red='\033[0;31m'
@@ -36,10 +41,27 @@ SSH_PORT="${FORGEJO_SSH_PORT:-2222}"
 # « admin » est REFUSÉ par Forgejo — « CreateUser: name is reserved », mesuré.
 # La liste des noms réservés couvre aussi api, assets, avatars, explore, user…
 ADMIN_USER="${FORGEJO_ADMIN_USER:-erplibre}"
-ADMIN_PASSWORD="${FORGEJO_ADMIN_PASSWORD:-erplibre}"
+# VIDE par défaut, et tiré au sort au moment de créer le compte. Un mot de
+# passe écrit en clair dans un script publié n'est pas un défaut, c'est une
+# clé publiée : le compte est administrateur et la forge écoute sur toutes
+# les interfaces. Celui qui pose la variable garde la main.
+ADMIN_PASSWORD="${FORGEJO_ADMIN_PASSWORD:-}"
 ADMIN_EMAIL="${FORGEJO_ADMIN_EMAIL:-admin@erplibre.local}"
 RUN_USER="${FORGEJO_USER:-git}"
 SKIP_ADMIN="${FORGEJO_SKIP_ADMIN:-0}"
+
+# L'inscription libre laisse quiconque atteint le port se faire un compte, et
+# la forge n'écoute pas que la boucle locale. L'administrateur crée les
+# comptes ; ouvrir se demande.
+OPEN_REGISTRATION="${FORGEJO_OPEN_REGISTRATION:-0}"
+
+# Forgejo REFUSE par défaut de migrer ou de miroiter depuis une adresse de
+# plage privée : c'est sa protection contre le SSRF, une forge sachant
+# atteindre des adresses que son visiteur n'atteint pas. Le refus se présente
+# en « 401 Permission denied », qui se lit comme un jeton invalide et envoie
+# régénérer des jetons parfaitement valides. Miroiter entre deux machines
+# d'un même réseau privé demande donc ce drapeau, en connaissance de cause.
+ALLOW_LOCALNETWORKS="${FORGEJO_ALLOW_LOCALNETWORKS:-0}"
 
 # Ce qui a changé sur le disque pendant ce passage. Le service ne redémarre que
 # si quelque chose a bougé : rejouer le script sur une forge saine ne doit pas
@@ -49,13 +71,21 @@ CHANGED=0
 BIN=/usr/local/bin/forgejo
 CONF_DIR=/etc/forgejo
 CONF="$CONF_DIR/app.ini"
+# Le mot de passe tiré au sort n'est jamais AFFICHÉ : la sortie de ce script
+# part dans les journaux d'installation et dans toute capture de CI. Il est
+# déposé dans un fichier que seul root lit, et c'est le chemin qu'on annonce.
+PASSWORD_FILE="$CONF_DIR/admin-password"
 DATA=/var/lib/forgejo
 UNIT=/etc/systemd/system/forgejo.service
 API=https://codeberg.org/api/v1/repos/forgejo/forgejo/releases
 DL=https://codeberg.org/forgejo/forgejo/releases/download
 
 usage() {
-    sed -n '5,26p' "$0" | sed 's/^# \?//'
+    # Le bloc de commentaires en tête, jusqu'à la première ligne qui n'en est
+    # pas un. Des numéros de ligne en dur tronquent l'aide EN SILENCE dès
+    # qu'un réglage s'ajoute au-dessus de la borne : le réglage existe, le
+    # script l'honore, et personne ne peut le découvrir.
+    sed -n '5,/^[^#]/p' "$0" | sed -n 's/^# \?//p'
     exit 0
 }
 case "${1:-}" in
@@ -189,15 +219,31 @@ if sudo test -f "$CONF"; then
     say "configuration conservée : $CONF"
 else
     host=$(host_address)
-    # Les QUATRE secrets, et pas seulement les deux évidents. Vécu : sans
-    # « oauth2.JWT_SECRET », Forgejo tente de l'écrire dans app.ini au
+    # Les QUATRE secrets, et pas seulement les deux évidents. Un
+    # « oauth2.JWT_SECRET » absent, Forgejo tente de l'écrire dans app.ini au
     # démarrage, n'y arrive pas — le fichier appartient à root — et s'arrête
-    # sur « [F] save oauth2.JWT_SECRET failed ». Le service redémarrait en
-    # boucle, 25 fois, sans jamais écouter le port.
+    # sur « [F] save oauth2.JWT_SECRET failed ». Le service redémarre alors
+    # en boucle sans jamais écouter le port.
     #
     # Les poser ici garde app.ini NON inscriptible par le service : c'est la
     # bonne posture, et ça évite un fichier de configuration qui se réécrit
     # tout seul.
+    #
+    # app.ini attend « true » ou « false ». Un « 1 » recopié tel quel y est
+    # lu comme faux, sans un mot dans le journal : l'inscription resterait
+    # ouverte alors qu'on croit l'avoir fermée.
+    #
+    # « [ x ] && y=z » en dernière instruction d'une fonction la ferait
+    # rendre 1 sous « set -e » quand le test est faux : la forme « if » est
+    # insensible à l'endroit où on la déplace.
+    disable_registration=true
+    if [ "$OPEN_REGISTRATION" = 1 ]; then
+        disable_registration=false
+    fi
+    allow_localnetworks=false
+    if [ "$ALLOW_LOCALNETWORKS" = 1 ]; then
+        allow_localnetworks=true
+    fi
     secret=$("$BIN" generate secret SECRET_KEY)
     token=$("$BIN" generate secret INTERNAL_TOKEN)
     jwt=$("$BIN" generate secret JWT_SECRET)
@@ -243,8 +289,11 @@ INTERNAL_TOKEN = $token
 JWT_SECRET = $jwt
 
 [service]
-DISABLE_REGISTRATION = false
+DISABLE_REGISTRATION = $disable_registration
 REQUIRE_SIGNIN_VIEW = false
+
+[migrations]
+ALLOW_LOCALNETWORKS = $allow_localnetworks
 
 [lfs]
 PATH = $DATA/data/lfs
@@ -336,16 +385,37 @@ elif sudo -u "$RUN_USER" "$BIN" admin user list --config "$CONF" 2>/dev/null \
         | tail -n +2 | grep -q .; then
     say "comptes déjà présents, administrateur non recréé"
 else
+    tire_au_sort=0
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        tire_au_sort=1
+        # 32 octets d'urandom, base64, réduits à l'alphanumérique. Chaque
+        # étage lit une quantité BORNÉE et rend 0 : « tr -dc < /dev/urandom
+        # | head -c N » ferme le tube sous head, tue tr par SIGPIPE, et
+        # « pipefail » fait alors échouer toute l'affectation.
+        ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 \
+            | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-24)
+        [ ${#ADMIN_PASSWORD} -ge 16 ] \
+            || die "tirage du mot de passe trop court, administrateur non créé"
+        # Le fichier est créé VIDE et en 0600 avant d'être rempli : un « tee »
+        # suivi d'un « chmod » laisse le secret lisible par tous le temps de
+        # deux appels système.
+        sudo install -m 600 -o root -g root /dev/null "$PASSWORD_FILE" \
+            || die "dépôt du mot de passe impossible dans $PASSWORD_FILE"
+        printf '%s\n' "$ADMIN_PASSWORD" | sudo tee "$PASSWORD_FILE" >/dev/null
+    fi
     sudo -u "$RUN_USER" "$BIN" admin user create --admin \
         --username "$ADMIN_USER" --password "$ADMIN_PASSWORD" \
         --email "$ADMIN_EMAIL" --must-change-password=false \
         --config "$CONF" >/dev/null \
         || die "création de l'administrateur impossible"
-    # Le mot de passe n'est PAS réaffiché : cette sortie part dans les
-    # journaux d'installation et dans toute capture de CI. Celui qui a
-    # posé FORGEJO_ADMIN_PASSWORD le connaît déjà ; les autres ont le
-    # défaut, documenté en tête de ce fichier.
+    # Le mot de passe n'est JAMAIS affiché : cette sortie part dans les
+    # journaux d'installation et dans toute capture de CI. Celui qui a posé
+    # FORGEJO_ADMIN_PASSWORD le connaît déjà ; sinon c'est le chemin du
+    # fichier qu'on annonce, pas son contenu.
     say "${Green}administrateur créé : $ADMIN_USER${Color_Off}"
+    if [ "$tire_au_sort" = 1 ]; then
+        say "  mot de passe tiré au sort : sudo cat $PASSWORD_FILE"
+    fi
 fi
 
 # --- 9. Résumé -------------------------------------------------------------

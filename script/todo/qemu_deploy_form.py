@@ -34,6 +34,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo import vm_profiles
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
     CLIP_LIMIT,
@@ -241,12 +242,27 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # qu'elle décrit le réseau de la machine et non ce qu'on
                     # installe dedans.
                     yield Static(t("Network posture"), classes="grouptitle")
+                    # LES LIBELLÉS, et la valeur reste le nom de posture :
+                    # c'est lui que la spec porte. Le repli sur les noms
+                    # bruts garde l'écran utilisable si un contexte plus
+                    # ancien ne porte pas encore les choix.
+                    choix = ctx.get("posture_choices") or vm_profiles.choices()
                     yield Select(
-                        [(nom, nom) for nom in ctx.get("postures", ())],
-                        value=ctx.get("posture") or Select.BLANK,
+                        choix,
+                        # LE PREMIER CHOIX OFFERT, et non un blanc : un
+                        # Select sans blanc autorisé REFUSE une liste vide
+                        # et une valeur absente. Le repli d'avant était un
+                        # contexte plus ancien — donc une liste vide, donc
+                        # l'écran qui ne monte pas du tout.
+                        value=ctx.get("posture") or choix[0][1],
                         allow_blank=False,
                         id="f_posture",
                     )
+                    # CE QU'ELLE APPLIQUE, sous elle. Un nom sans cette
+                    # ligne vend l'assurance que le registre s'interdit de
+                    # donner : une politique déclarée sans mécanisme se
+                    # comporte comme l'absence de politique.
+                    yield Static("", id="t_posture_effet", classes="hint")
                     # Sous la posture parce qu'on les lit ensemble, et
                     # SÉPARÉE d'elle parce qu'aucune des deux ne se déduit
                     # de l'autre : le déploiement refuse le couple
@@ -574,6 +590,23 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._sync_install_deps()
             self._sync_ai()
             self._sync_offline()
+            self._sync_posture()
+
+        def _sync_posture(self) -> None:
+            """Écrit sous le sélecteur ce que la posture choisie APPLIQUE.
+
+            La ligne est composée par `vm_profiles` : ici il ne reste qu'une
+            affectation, parce que ce fichier est du Textual et qu'aucune
+            épreuve unitaire ne le pilote.
+            """
+            try:
+                choisie = self.query_one("#f_posture", Select).value
+                ligne = self.query_one("#t_posture_effet", Static)
+            except Exception:  # pragma: no cover - widget absent
+                return
+            # `ctx` est la FERMETURE : la classe est définie dans
+            # `run_deploy_form`, et le reste du fichier la lit ainsi.
+            ligne.update((ctx.get("posture_screen") or {}).get(choisie, ""))
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -958,6 +991,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._syncing:
                 return
             wid = event.select.id or ""
+            if wid == "f_posture":
+                # Réécrit avant tout le reste : ce que la posture applique
+                # est la seule information de cet écran qui change de sens
+                # d'un choix à l'autre.
+                self._sync_posture()
             row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
             if row and not self._is_current(event.select):
                 # Widget d'une génération périmée : son rang ne désigne plus
@@ -1276,6 +1314,29 @@ def run_deploy_form(ctx, run_app: bool = True):
                     + t("press F5 again to confirm"),
                     severity="error",
                     timeout=10,
+                )
+                return
+            # LE COUPLE (libellé choisi, installation choisie). Ici, et pas
+            # au déploiement : l'écran SAIT qu'un libellé a été choisi —
+            # c'est lui qui l'a montré — alors qu'un spec ne porte qu'une
+            # posture, que les invites en ligne posent sans libellé. Un
+            # avertissement et non un refus : servir autre chose sur la même
+            # posture reste légitime, et c'est la raison même pour laquelle
+            # le registre sépare les deux.
+            commande = (spec.get("install") or {}).get("cmd", "")
+            verdict = vm_profiles.check_install(
+                vm_profiles.label_of(spec.get("posture", "")), commande
+            )
+            if verdict != vm_profiles.INSTALL_OK and not getattr(
+                self, "_serves_ack", False
+            ):
+                self._serves_ack = True
+                self.notify(
+                    vm_profiles.install_sentence(verdict)
+                    + " — "
+                    + t("press F5 again to confirm"),
+                    severity="warning",
+                    timeout=12,
                 )
                 return
             result["spec"] = spec

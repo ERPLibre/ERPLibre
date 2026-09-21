@@ -147,6 +147,9 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
+from script.todo.lima_menu import LimaMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -216,6 +219,9 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    ForgeMenuMixin,
+    LimaMenuMixin,
+    EgressBookMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
@@ -730,6 +736,9 @@ class TODO(
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_execute_devstack": "Devstack",
+        "prompt_execute_forge": "Forge",
+        "prompt_execute_lima": "Lima",
+        "prompt_execute_egress_book": "Address book",
         "prompt_configuration": "Configuration",
     }
 
@@ -1167,6 +1176,20 @@ class TODO(
         )
         # DIXIÈME, déclarée par « method » comme la neuvième, et pour la
         # même raison : les rangs codés en dur s'arrêtent à huit.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - Site address book (what a confined VM reaches)"
+                ),
+                "method": "prompt_execute_egress_book",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Lima - instances (macOS, Linux)"),
+                "method": "prompt_execute_lima",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t(
@@ -3086,6 +3109,12 @@ class TODO(
         # rang dépend du nombre d'entrées venues de todo.json, donc « method »
         # porte la destination dans l'entrée elle-même — un numéro codé en dur
         # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
+        choices.append(
+            {
+                "prompt_description": t("Forge (Forgejo/Gitea)"),
+                "method": "prompt_execute_forge",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Install Starship on Shell"),

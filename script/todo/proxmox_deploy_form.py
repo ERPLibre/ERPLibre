@@ -23,6 +23,7 @@ Le formulaire ne touche à rien : il rend une spec. C'est l'appelant
 import os
 import re
 
+from script.todo import vm_profiles
 from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_lib import (
     CSS_BASE,
@@ -99,6 +100,12 @@ def build_spec(vms, existants, form):
         "ssh_key": form["ssh_key"],
         "user": form.get("user") or "erplibre",
         "start": form["start"],
+        # LA POSTURE ET LES DONNÉES RÉELLES traversent jusqu'ici, sans quoi
+        # le choix de l'écran s'arrêtait à l'écran : cette fonction ÉNUMÈRE
+        # les clés de la spec, et une clé non nommée n'existe pas pour le
+        # déploiement, quel que soit le widget qui l'a produite.
+        "posture": form.get("posture") or "",
+        "real_data": bool(form.get("real_data")),
         "add_ssh_config": form["add_ssh_config"],
         "install": form["install"],
         "python_provider": form.get("python_provider") or "",
@@ -364,6 +371,40 @@ def run_proxmox_form(ctx, run_app: bool = True):
                                     t("Install on the host"),
                                     id="f_gpu_poser",
                                 )
+                    # SOUS LE PONT : la posture décrit ce que le réseau
+                    # de la machine atteint, et le pont est ce par quoi
+                    # elle l'atteint. On les lit ensemble.
+                    yield Static(t("Network posture"), classes="grouptitle")
+                    # LES LIBELLÉS, et la valeur reste le nom de posture :
+                    # c'est lui que la spec porte, et lui que la règle d'or
+                    # relit au déploiement. Le repli sur les noms bruts
+                    # garde l'écran utilisable si un contexte plus ancien
+                    # ne porte pas encore les choix.
+                    choix = ctx.get("posture_choices") or vm_profiles.choices()
+                    yield Select(
+                        choix,
+                        # LE PREMIER CHOIX OFFERT, et non un blanc : un
+                        # Select sans blanc autorisé REFUSE une liste vide
+                        # et une valeur absente. Le repli d'avant était un
+                        # contexte plus ancien — donc une liste vide, donc
+                        # l'écran qui ne monte pas du tout.
+                        value=ctx.get("posture") or choix[0][1],
+                        allow_blank=False,
+                        id="f_posture",
+                    )
+                    # CE QU'ELLE APPLIQUE, sous elle. Un nom sans cette
+                    # ligne vend l'assurance que le registre s'interdit de
+                    # donner : une politique déclarée sans mécanisme se
+                    # comporte comme l'absence de politique.
+                    yield Static("", id="t_posture_effet", classes="hint")
+                    # Séparée de la posture parce qu'aucune des deux ne se
+                    # déduit de l'autre : le déploiement refuse le couple
+                    # incohérent, il ne le devine pas.
+                    yield Checkbox(
+                        t("This machine carries real data"),
+                        value=bool(ctx.get("real_data", False)),
+                        id="f_real_data",
+                    )
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(
@@ -588,6 +629,22 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._reload_catalog()
             self._sync_install_deps()
             self._sync_offline()
+            self._sync_posture()
+
+        def _sync_posture(self) -> None:
+            """Écrit sous le sélecteur ce que la posture choisie APPLIQUE.
+
+            La ligne est composée par `vm_profiles` : ici il ne reste
+            qu'une affectation, parce que ce fichier est du Textual et
+            qu'aucune épreuve unitaire ne le pilote.
+            """
+            try:
+                choisie = self.query_one("#f_posture", Select).value
+                ligne = self.query_one("#t_posture_effet", Static)
+            except Exception:  # pragma: no cover - widget absent
+                return
+            # `ctx` est la FERMETURE, comme partout dans ce fichier.
+            ligne.update((ctx.get("posture_screen") or {}).get(choisie, ""))
 
         # ---------------------------------------------------------------- #
         # Le plan
@@ -889,6 +946,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 event.select
             ):
                 return
+            if ident == "f_posture":
+                self._sync_posture()
+                return
             if ident == "f_bridge" and event.value == CREER_PONT:
                 self._creer_pont()
                 return
@@ -1049,6 +1109,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 "nameservers": ctx.get("nameservers") or (),
                 "res_label": res_label(self.profile),
                 "ssh_key": os.path.expanduser(cle) if cle else "",
+                # La posture et les données réelles : deux CHAMPS, et
+                # aucun ne se déduit de l'autre. Le déploiement relit le
+                # couple avant que la machine existe.
+                "posture": self.query_one("#f_posture", Select).value,
+                "real_data": self.query_one("#f_real_data", Checkbox).value,
                 "start": self.query_one("#f_start", Checkbox).value,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 "install": self._install(),
@@ -1102,8 +1167,45 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not spec["bridge"]:
                 self.notify(t("No bridge on the host."), severity="error")
                 return
+            # LE COUPLE (libellé choisi, installation choisie). Ici, et pas
+            # au déploiement : l'écran SAIT sous quel libellé la posture a
+            # été choisie — c'est lui qui l'a montré — alors qu'une spec ne
+            # porte que la posture. Un avertissement et non un refus :
+            # servir autre chose sur la même posture reste légitime, et
+            # c'est la raison même pour laquelle le registre les sépare.
+            if self._warn_serves_nothing(spec):
+                return
             self.result = spec
             self.exit()
+
+        def _warn_serves_nothing(self, spec) -> bool:
+            """Vrai quand l'écran vient d'avertir et attend une confirmation.
+
+            La commande examinée est celle que la VM subira VRAIMENT :
+            l'installation commune, sauf quand la rangée en a figé une
+            autre. Une seule machine qui ne sert rien suffit — la posture
+            est commune à toutes, la promesse aussi.
+            """
+            libelle = vm_profiles.label_of(spec.get("posture", ""))
+            commune = (spec.get("install") or {}).get("cmd", "")
+            verdicts = {
+                vm_profiles.check_install(
+                    libelle, vm.get("install_cmd") or commune
+                )
+                for vm in spec["vms"]
+            }
+            manque = verdicts - {vm_profiles.INSTALL_OK}
+            if not manque or getattr(self, "_serves_ack", False):
+                return False
+            self._serves_ack = True
+            self.notify(
+                vm_profiles.install_sentence(sorted(manque)[0])
+                + " — "
+                + t("press F5 again to confirm"),
+                severity="warning",
+                timeout=12,
+            )
+            return True
 
         def action_preview(self) -> None:
             build = ctx.get("build_command")
