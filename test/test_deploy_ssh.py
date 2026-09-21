@@ -14,9 +14,11 @@ Les valeurs piégées de ces épreuves sont INVENTÉES. Choisir un vrai chemin
 
 import os
 import shlex
+import io
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -105,8 +107,11 @@ class TestCeQuiEntreDansLaLigne(unittest.TestCase):
 # Chaque verbe et la cible « make » qu'il doit atteindre. La liste est le
 # contrat : un verbe qui se tromperait de cible redémarrerait Odoo là où on
 # demandait un journal, et rien d'autre ne le dirait.
+#
+# « SSH - Check connection » n'y figure PAS : il ne passe plus par make, il
+# sonde. Il garde son rang et son nom dans le menu, et ce qu'il vérifie
+# s'éprouve avec la cible, là où la sonde est bouchonnée.
 VERBES = {
-    "_deploy_ssh_check": "ssh_check",
     "_deploy_ssh_push": "ssh_push",
     "_deploy_ssh_install": "ssh_install",
     "_deploy_ssh_run": "ssh_run",
@@ -143,13 +148,31 @@ def menu_factice(params=CONNEXION):
     return menu
 
 
-class TestLesOnzeVerbesAtteignentLeurCible(unittest.TestCase):
+class SansInventaire(unittest.TestCase):
+    """Aucune cible retenue, quelle que soit la station qui lance.
+
+    Sans cette isolation, ces épreuves liraient les préférences réelles :
+    vertes chez qui n'a rien choisi, elles emprunteraient un autre chemin
+    chez qui a une cible portant déjà un domaine.
+    """
+
+    def setUp(self):
+        patcheur = patch(
+            "script.remote.deploy_target.selected", return_value={}
+        )
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+
+class TestChaqueVerbeAtteintSaCible(SansInventaire):
     def test_the_list_covers_every_verb(self):
         """Une liste incomplète rendrait les autres épreuves vertes sans
         rien prouver du verbe oublié."""
-        self.assertEqual(11, len(VERBES))
+        self.assertEqual(10, len(VERBES))
         for methode in VERBES:
             self.assertTrue(hasattr(TODO, methode), methode)
+        # Le onzième existe toujours, et c'est la sonde.
+        self.assertTrue(hasattr(TODO, "_deploy_ssh_check"))
 
     def test_every_verb_reaches_its_own_make_target(self):
         for methode, cible in VERBES.items():
@@ -177,7 +200,7 @@ class TestLesOnzeVerbesAtteignentLeurCible(unittest.TestCase):
                 self.assertEqual([], menu.execute.jouees)
 
 
-class TestLOrdreDesQuestions(unittest.TestCase):
+class TestLOrdreDesQuestions(SansInventaire):
     """Deux verbes posent une question à eux, après la connexion."""
 
     def test_the_connection_comes_before_the_verbs_own_question(self):
@@ -218,6 +241,37 @@ class TestLOrdreDesQuestions(unittest.TestCase):
         with patch("script.todo.todo.click.prompt", return_value="db_restore"):
             menu._deploy_ssh_make()
         self.assertIn("SSH_TARGET=db_restore", jouee(menu.execute.jouees[0]))
+
+
+class TestLesTroisManquesSeDisentAutrement(SansInventaire):
+    """Trois manques, trois messages : les confondre envoie corriger le
+    mauvais champ, et l'utilisateur retape une adresse qui allait bien."""
+
+    def manque(self, methode, reponse):
+        menu = menu_factice()
+        sortie = io.StringIO()
+        with patch("script.todo.todo.click.prompt", return_value=reponse):
+            with redirect_stdout(sortie):
+                getattr(menu, methode)()
+        self.assertEqual([], menu.execute.jouees)
+        return sortie.getvalue()
+
+    def test_a_missing_make_target_does_not_blame_the_host(self):
+        dit = self.manque("_deploy_ssh_make", "   ")
+        self.assertNotIn("host", dit.lower())
+        self.assertNotIn("hôte", dit.lower())
+
+    def test_a_missing_domain_does_not_blame_the_host_either(self):
+        dit = self.manque("_deploy_ssh_install_nginx", "   ")
+        self.assertNotIn("host", dit.lower())
+        self.assertNotIn("hôte", dit.lower())
+
+    def test_the_two_messages_are_not_the_same(self):
+        """Contrôle positif : deux manques différents, deux phrases."""
+        self.assertNotEqual(
+            self.manque("_deploy_ssh_make", "  "),
+            self.manque("_deploy_ssh_install_nginx", "  "),
+        )
 
 
 if __name__ == "__main__":
