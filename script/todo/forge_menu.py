@@ -69,6 +69,39 @@ SENTENCES = {
 }
 
 
+# Ce que chaque rôle veut dire. Le rôle VIDE en a une lui aussi : montré nu,
+# il ne se distinguerait pas d'une question restée sans réponse, alors que
+# l'atelier est un choix et non un défaut subi.
+#
+# Interrogée SANS défaut, comme SENTENCES : un rôle ajouté à
+# `profiles.ROLES` et oublié ici lève, au lieu d'afficher une ligne vide qui
+# se lirait comme un choix offert.
+ROLES_DITS = {
+    # `marque` est ce qu'une LIGNE DE LISTE porte, `phrase` ce que le
+    # formulaire propose. La marque de l'atelier est vide : c'est le cas
+    # ordinaire, et l'annoter chargerait toutes les lignes pour ne rien
+    # distinguer. Les deux sont des CLÉS de traduction écrites en toutes
+    # lettres — une clé fabriquée par découpe rendrait l'anglais en silence.
+    "": {
+        "marque": "",
+        "phrase": "workshop: one works here, and what is laid here"
+        " can be redone",
+    },
+    profiles.ROLE_CANONIQUE: {
+        "marque": "AUTHORITY",
+        "phrase": "authority: the one you start again from when the"
+        " station burns",
+    },
+}
+
+# Ce que le formulaire REPORTE sans le demander. Nommé plutôt que laissé
+# implicite : c'est la seule raison admise pour qu'une clé de
+# `profiles.DEFAULTS` ne soit pas une question, et un garde dérivé s'appuie
+# dessus pour réclamer toutes les autres. Le pilote n'a qu'une valeur
+# connue — une question à une seule réponse n'en est pas une.
+CHAMPS_REPORTES = ("driver",)
+
+
 def verdict_sentence(kind: str) -> str:
     """La phrase d'un verdict, traduite. Lève sur un verdict inconnu.
 
@@ -84,11 +117,15 @@ def verdict_sentence(kind: str) -> str:
 def profile_line(profile: dict, has_token: bool) -> str:
     """Une ligne de liste : ce qu'on voit d'un profil sans le déplier.
 
-    La posture y figure parce qu'elle est le seul champ dont l'oubli se paie
-    en secret : une vérification TLS coupée ne se voit nulle part ailleurs.
-    Le jeton se dit PRÉSENT ou ABSENT, jamais en valeur.
+    Deux champs y figurent parce que leur oubli se paie en secret : une
+    vérification TLS coupée ne se voit nulle part ailleurs, et une autorité
+    perdue ne se voit qu'au geste qui la cherche et n'en trouve plus. Le
+    jeton se dit PRÉSENT ou ABSENT, jamais en valeur.
     """
     marques = []
+    role = str(profile.get("role") or "").strip()
+    if ROLES_DITS[role]["marque"]:
+        marques.append(t(ROLES_DITS[role]["marque"]))
     if not profile.get("verify_tls", True):
         marques.append(t("TLS UNVERIFIED"))
     if profile.get("allow_plaintext"):
@@ -248,8 +285,18 @@ class ForgeMenuMixin:
                 t("Allow http to a remote address"),
                 bool(actuel.get("allow_plaintext", False)),
             ),
+            "role": self._forge_ask_role(
+                str(actuel.get("role") or "").strip()
+            ),
             "driver": actuel.get("driver", profiles.DEFAULTS["driver"]),
         }
+        conflit = self._forge_autre_autorite(nom, propose["role"])
+        if conflit:
+            print(
+                f"! {t('Another profile is already the authority:')}"
+                f" {conflit}"
+            )
+            return
         try:
             propre = profiles.save(propose)
         except ValidationError as refus:
@@ -274,6 +321,58 @@ class ForgeMenuMixin:
         if not reponse:
             return defaut
         return reponse in ("o", "oui", "y", "yes", "1", "true")
+
+    def _forge_ask_role(self, defaut):
+        """Le rôle du profil, choisi par NUMÉRO parmi ceux que le code connaît.
+
+        Rend un membre de `profiles.ROLES`, toujours. Vide garde celui en
+        place, comme le reste du formulaire — et c'est ce qui manquait : le
+        rôle n'étant pas demandé, le profil réécrit repartait au défaut, donc
+        rouvrir l'autorité pour corriger un drapeau la RÉTROGRADAIT, sous un
+        « ✓ enregistré » qui annonçait un succès.
+
+        Une réponse qui ne désigne rien est dite et redemandée : retomber sur
+        le rôle en place ferait croire au choix qu'on venait de rater.
+        """
+        roles = list(profiles.ROLES)
+        courant = defaut if defaut in roles else ""
+        print(f"\n  {t('Role of this profile')} :")
+        for rang, role in enumerate(roles, start=1):
+            marque = " ←" if role == courant else ""
+            print(f"  [{rang}] {t(ROLES_DITS[role]['phrase'])}{marque}")
+        while True:
+            reponse = input(f"  [1-{len(roles)}] ").strip()
+            if not reponse:
+                return courant
+            if reponse.isdigit() and 1 <= int(reponse) <= len(roles):
+                return roles[int(reponse) - 1]
+            print(f"  ! {t('Command not found !')}")
+
+    @staticmethod
+    def _forge_autre_autorite(nom, role):
+        """Le ou les AUTRES profils qui se disent déjà l'autorité, ou "".
+
+        Dit au geste, et non au premier appel qui en dépend. `canonical()`
+        refuse deux autorités : poser la seconde n'en ajoute pas une, elle
+        les annule toutes les deux, et l'écran d'avancement retombe à « à
+        régler » sans que rien n'ait nommé le conflit.
+
+        On REFUSE plutôt que de rétrograder l'autre en silence : laquelle des
+        deux doit céder n'est pas une question que cet écran peut trancher.
+
+        Lit `load_all` et non `canonical()`, qui lève quand deux existent
+        déjà : un fichier écrit à la main ne doit pas rendre l'écran de
+        correction inutilisable.
+        """
+        if role != profiles.ROLE_CANONIQUE:
+            return ""
+        autres = [
+            p.get("name", "")
+            for p in profiles.load_all()
+            if p.get("name") != nom
+            and str(p.get("role") or "").strip() == profiles.ROLE_CANONIQUE
+        ]
+        return ", ".join(sorted(autres))
 
     def _forge_delete_profile(self):
         nom = self._forge_select_profile()

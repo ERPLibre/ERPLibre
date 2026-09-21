@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+from script.config.config_file import ConfigFile
+from script.forge import mirror as forge_mirror
 from script.forge import profiles as forge_profiles
 from script.posture import registry as posture_registry
 from script.posture import rules as posture_rules
@@ -42,6 +44,12 @@ ETATS = (PORTE, A_REGLER, ABSENT)
 
 MARQUES = {PORTE: "✓", A_REGLER: "◐", ABSENT: "○"}
 
+# La section qui nomme le sens du miroir, dépôt par dépôt. Le sens se
+# DÉRIVE du manifeste ; ce qui est écrit ici ne sert qu'à le corriger, et
+# c'est pourquoi l'écran ne compte que les surcharges SORTANTES : ce sont
+# les seules qu'un site déclare vraiment.
+CLE_MIROIR = "forge_mirror"
+
 
 class Releve(NamedTuple):
     """Ce que le dépôt et ce site disent, à un instant.
@@ -55,6 +63,11 @@ class Releve(NamedTuple):
     profils_servant_le_web: tuple
     profils_forge: tuple
     cibles_sauvegarde: tuple
+    # Le nom de la forge qui fait autorité, ou "" — pas un booléen : l'écran
+    # la nomme, et un « oui » ne dirait pas laquelle.
+    forge_canonique: str = ""
+    # Les dépôts que ce site déclare pousser vers un amont.
+    miroirs_sortants: tuple = ()
 
 
 class Ligne(NamedTuple):
@@ -86,11 +99,49 @@ def releve(config_file=None) -> Releve:
             p.label for p in vm_profiles.profiles() if p.serves_web
         ),
         profils_forge=tuple(forge_profiles.names()),
+        forge_canonique=_nom_de_l_autorite(config_file),
+        miroirs_sortants=_miroirs_sortants(config_file),
         cibles_sauvegarde=tuple(
             c.get("name", "")
             for c in deploy_target.load_all(config_file)
             if c.get("kind") == deploy_target.KIND_BACKUP
         ),
+    )
+
+
+def _nom_de_l_autorite(config_file) -> str:
+    """Le nom de la forge canonique, ou "".
+
+    DEUX AUTORITÉS SONT UN RÉGLAGE À FAIRE, pas un écran cassé : le relevé
+    rend "" et la ligne dira « à régler ici ». Laisser le refus traverser
+    tuerait un écran qui ne fait que décrire.
+    """
+    try:
+        profil = forge_profiles.canonical(config_file)
+    except Exception:  # noqa: BLE001 - un relevé, pas le sujet
+        return ""
+    return (profil or {}).get("name", "")
+
+
+def _miroirs_sortants(config_file) -> tuple:
+    """Les dépôts que ce site déclare pousser vers un amont.
+
+    Lu dans la CONFIGURATION et non sur la forge : cet écran doit se rendre
+    sans réseau, et un appel d'API y ferait attendre une machine qui dort.
+    """
+    try:
+        cfg = config_file or ConfigFile()
+        declares = cfg.get_config(CLE_MIROIR)
+    except Exception:  # noqa: BLE001 - un relevé, pas le sujet
+        return ()
+    if not isinstance(declares, dict):
+        return ()
+    return tuple(
+        sorted(
+            nom
+            for nom, sens in declares.items()
+            if str(sens or "").strip() == forge_mirror.SORTANT
+        )
     )
 
 
@@ -167,15 +218,21 @@ def lignes(vu: Releve) -> tuple:
     )
     out.append(Ligne("local-forge", etat, detail, "script.forge.profiles"))
 
-    for segment in ("canonical-forge", "github-mirror"):
-        out.append(
-            Ligne(
-                segment,
-                ABSENT,
-                t("No second authority and no mirror remote."),
-                "—",
-            )
-        )
+    etat, detail = _porte_ou_a_regler(
+        bool(vu.forge_canonique),
+        f"{t('authority declared:')} {vu.forge_canonique}",
+        t("The code carries the role and refuses two authorities; this")
+        + t(" site declares none."),
+    )
+    out.append(Ligne("canonical-forge", etat, detail, "script.forge.profiles"))
+
+    etat, detail = _porte_ou_a_regler(
+        bool(vu.miroirs_sortants),
+        f"{t('outbound mirrors declared:')} " + ", ".join(vu.miroirs_sortants),
+        t("The code derives the direction and drives the push mirror;")
+        + t(" this site declares no outbound one."),
+    )
+    out.append(Ligne("github-mirror", etat, detail, "script.forge.mirror"))
 
     for segment in ("openbao-master", "openbao-follower"):
         out.append(

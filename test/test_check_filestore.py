@@ -1234,10 +1234,23 @@ class TestTheRestoreWiring(unittest.TestCase):
             return handle.read()
 
     def test_db_restore_checks_after_a_real_restore(self):
-        # La définition, puis un appel après chacune des deux vraies
-        # restaurations : la directe (« --ignore_cache ») et celle du cache.
+        # Un appel après chacune des deux vraies restaurations : la directe
+        # (« --ignore_cache ») et celle du cache.
         src = self.source("script/database/db_restore.py")
-        self.assertEqual(src.count("verify_filestore("), 3)
+        # LES APPELS, et non la définition qui s'y ajoutait. Le « 3 »
+        # comptait « def verify_filestore( » avec les deux appels, si bien
+        # qu'extraire la fonction ailleurs — ce qui ne retire aucun
+        # contrôle — aurait fait rougir la garde.
+        import ast
+
+        appels = [
+            n
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
+            and (getattr(n.func, "id", "") or getattr(n.func, "attr", ""))
+            == "verify_filestore"
+        ]
+        self.assertEqual(2, len(appels), [n.lineno for n in appels])
         debut = src.index("def restore_or_clone")
         corps = src[debut : src.index("\ndef ", debut)]
         direct = corps.index("if config.ignore_cache:")

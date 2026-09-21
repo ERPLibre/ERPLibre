@@ -207,17 +207,23 @@ class TestLesEcartsSontDitsEtNonTus(CasDeProfil):
         with inscrite():
             self.assertIn(rules.NO_RENDERING, V.gaps("declaree"))
 
-    def test_the_bounded_ports_have_the_two_of_their_mechanism(self):
+    def test_the_bounded_ports_name_what_their_mechanism_misses(self):
         """Elle rend désormais : ses écarts sont ceux d'un jeu posé."""
         ecarts = V.gaps("connected")
         self.assertIn(rules.RELOAD_FAILURE_UNSEEN, ecarts)
-        self.assertIn(rules.CONTAINERS_UNPROVEN, ecarts)
         self.assertNotIn(rules.NO_RENDERING, ecarts)
 
-    def test_the_bounded_allowlist_has_the_two_of_its_mechanism(self):
-        ecarts = V.gaps("paranoid")
-        self.assertIn(rules.RELOAD_FAILURE_UNSEEN, ecarts)
-        self.assertIn(rules.CONTAINERS_UNPROVEN, ecarts)
+    def test_the_bounded_allowlist_names_what_its_mechanism_misses(self):
+        self.assertIn(rules.RELOAD_FAILURE_UNSEEN, V.gaps("paranoid"))
+
+    def test_no_profile_still_claims_the_container_gap(self):
+        """Il a été levé : la chaîne forward a été confrontée à des
+        conteneurs vivants. Le dire encore ferait chercher une faiblesse
+        qui n'existe plus."""
+        for profil in V.profiles():
+            nom = profil.posture
+            with self.subTest(profil=nom):
+                self.assertNotIn(rules.CONTAINERS_UNPROVEN, V.gaps(nom))
 
     def test_the_free_one_has_none(self):
         """Contrôle positif : tout déclarer en écart ne dirait plus rien."""

@@ -45,8 +45,15 @@ _SECRET_OPTION = re.compile(
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
     re.IGNORECASE,
 )
+# LES DEUX VOCABULAIRES ONT DÉRIVÉ. Celui des options porte « pwd » et
+# « api_key » ; celui des variables ne les avait pas, et il était de plus
+# sensible à la casse. Or c'est précisément vers l'ENVIRONNEMENT que le
+# dépôt a déplacé le mot de passe maître pour le tenir hors d'argv —
+# « MASTER_PWD », « EL_PWD », « master_pwd » ressortaient donc INTACTS du
+# filtre censé les couvrir.
 _SECRET_ENV = re.compile(
-    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\w*=)"
+    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[-_]?KEY)\w*="
+    r"|\b\w+PWD\w*=|\b\w*PWD\w+=)"
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
     re.IGNORECASE,
 )
@@ -58,6 +65,11 @@ _SECRET_HEADER = re.compile(
     r"(?P<schema>\bAuthorization:\s*(?:Bearer|Basic)\s+)(?P<val>\S+)",
     re.IGNORECASE,
 )
+
+# Ce que « PWD » nomme quand il ne nomme pas un secret : le shell pose le
+# répertoire courant et le précédent sous ces deux noms exactement. Les
+# caviarder retirerait une information utile et se lirait comme un défaut.
+_PWD_DU_SHELL = frozenset({"PWD", "OLDPWD"})
 
 
 # Les formes qui ne portent pas le mot « password » dans un nom d'option ou de
@@ -129,7 +141,7 @@ def redact_secrets(text):
     )
     text = _SECRET_OPTION.sub(lambda m: m.group("opt") + masque, text)
     text = _SECRET_OUTIL.sub(lambda m: m.group("opt") + masque, text)
-    text = _SECRET_ENV.sub(lambda m: m.group("var") + masque, text)
+    text = _SECRET_ENV.sub(_caviarder_variable, text)
     text = _SECRET_CONFIG.sub(lambda m: m.group("cle") + masque, text)
     text = _SECRET_JSON.sub(lambda m: m.group("cle") + '"***"', text)
     text = _SECRET_URL.sub(lambda m: m.group("pre") + masque, text)
@@ -151,6 +163,14 @@ def _caviarder_ligne(ligne, dans_cle):
     if _PEM_DEBUT.search(ligne) and not _PEM_FIN.search(ligne):
         return ligne, True
     return redact_secrets(ligne), False
+
+
+def _caviarder_variable(trouve):
+    """La valeur d'une variable d'environnement, sauf celles du shell."""
+    var = trouve.group("var")
+    if var.rstrip("=").upper() in _PWD_DU_SHELL:
+        return trouve.group(0)
+    return var + "'***'"
 
 
 new_path = os.path.normpath(

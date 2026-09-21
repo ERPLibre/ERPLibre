@@ -124,6 +124,63 @@ def clone_url(fetch: str, manifest_name: str) -> str:
     return f"{fetch.rstrip('/')}/{nom}"
 
 
+# Les deux sens d'un miroir. ENTRANT : le projet vit ailleurs et la forge
+# le suit. SORTANT : il vit chez nous et part se montrer.
+ENTRANT = "entrant"
+SORTANT = "sortant"
+SENS = (ENTRANT, SORTANT)
+
+
+def sens(clone_url: str, amonts=(), surcharge=None) -> str:
+    """Le sens du miroir pour ce projet. Fonction PURE.
+
+    LE MANIFESTE SAIT DÉJÀ. Un projet dont l'adresse de clone est chez un
+    amont extérieur y vit : la forge le SUIT, donc le miroir est entrant. Un
+    projet que rien d'extérieur ne porte vient d'ici, et part se montrer.
+    Le dériver plutôt que le déclarer, c'est un réglage de moins à tenir —
+    et un réglage qui ne peut pas mentir, puisque l'adresse est celle qu'on
+    clone vraiment.
+
+    LA SURCHARGE EXISTE POUR CE QUE LA DÉRIVATION NE SAIT PAS DIRE :
+    pousser vers un amont un dépôt qui en vient aussi. Elle est nommée
+    dépôt par dépôt, donc elle se relit ; sans elle, il faudrait déclarer
+    les neuf cents autres pour en corriger un.
+
+    `amonts` : les préfixes d'adresse qui désignent un porteur extérieur.
+    Vide, tout est sortant — un site sans amont ne suit personne.
+    """
+    if surcharge in SENS:
+        return surcharge
+    adresse = (clone_url or "").strip().lower()
+    for amont in amonts:
+        prefixe = (amont or "").strip().lower()
+        if prefixe and adresse.startswith(prefixe):
+            return ENTRANT
+    return SORTANT
+
+
+def plan_mirrors(projets, amonts=(), surcharges=None) -> dict:
+    """{sens: [noms de forge]} pour un manifeste entier. Fonction PURE.
+
+    Les NOMS DE FORGE et non ceux du manifeste : c'est sous ce nom que la
+    forge les porte, et les confondre créerait des doublons en « .git ».
+    """
+    surcharges = dict(surcharges or {})
+    out = {ENTRANT: [], SORTANT: []}
+    for projet in projets:
+        nom = forge_name(projet.get("name", ""))
+        if not nom:
+            continue
+        out[
+            sens(
+                projet.get("clone_url", ""),
+                amonts,
+                surcharges.get(nom) or surcharges.get(projet.get("name", "")),
+            )
+        ].append(nom)
+    return out
+
+
 def parse_projects(xml_text: str) -> list:
     """[{"name", "clone_url"}] pour chaque projet du manifeste.
 

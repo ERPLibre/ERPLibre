@@ -125,6 +125,53 @@ class DriverContract(unittest.TestCase):
                 self.assertTrue(cls.server_label)
                 self.assertIsInstance(cls.proven, bool)
 
+    # Les libellés d'un pilote passent par `t()` DYNAMIQUEMENT — le menu
+    # écrit `t(driver_cls.server_label)` — donc la garde des clés
+    # littérales ne les voit pas. Sans celle-ci, un pilote neuf s'affiche
+    # en anglais sur une installation française, et rien ne le dit : `t()`
+    # rend la clé quand elle lui est inconnue.
+    #
+    # « label » n'en est PAS : il porte un nom de produit — WireGuard,
+    # OpenVPN, sshuttle — que le menu affiche tel quel, sans le traduire.
+    # Un nom propre ne se traduit pas, et l'exiger dans la table ferait
+    # rougir une justesse.
+    PORTEURS_DE_LIBELLE = ("server_label", "hint")
+
+    def test_every_driver_label_is_in_the_translation_table(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for nom, cls in DRIVERS.items():
+            for champ in self.PORTEURS_DE_LIBELLE:
+                valeur = getattr(cls, champ, "") or ""
+                with self.subTest(pilote=nom, champ=champ):
+                    self.assertIn(valeur, TRANSLATIONS)
+
+    def test_every_field_label_is_in_the_table_too(self):
+        """Les champs de formulaire et de secret sont traduits un à un par
+        le menu, au même endroit et de la même façon."""
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for nom, cls in DRIVERS.items():
+            for attribut in ("form_fields", "secret_fields"):
+                for entree in getattr(cls, attribut, ()) or ():
+                    libelle = entree[1] if len(entree) > 1 else ""
+                    if not isinstance(libelle, str) or not libelle:
+                        continue
+                    with self.subTest(pilote=nom, champ=libelle[:24]):
+                        self.assertIn(libelle, TRANSLATIONS)
+
+    def test_the_sweep_actually_reads_labels(self):
+        """Contrôle du banc : zéro libellé relevé rendrait les deux
+        épreuves ci-dessus vertes sans rien éprouver."""
+        releves = [
+            getattr(cls, champ, "")
+            for cls in DRIVERS.values()
+            for champ in self.PORTEURS_DE_LIBELLE
+        ]
+        self.assertGreaterEqual(
+            len([x for x in releves if x]), 2 * len(DRIVERS)
+        )
+
     def test_form_fields_are_well_formed(self):
         for name, cls in DRIVERS.items():
             for field in cls.form_fields:

@@ -706,7 +706,8 @@ class TestProxmoxChain(unittest.TestCase):
         todo._pve_confirm_spec = lambda host, spec: True
         todo._pve_push_key = lambda cle: True
         todo._pve_attendre_ssh = lambda alias: True
-        todo._pve_write_guide = lambda *a, **k: True
+        # "" : rien n'empêche d'installer — la règle n'est pas l'objet ici.
+        todo._pve_write_guide = lambda *a, **k: ""
         todo._pve_set_timezone = lambda *a, **k: True
         todo._pve_guest_ip = lambda vmid, attente=120: ""
         cls.todo = todo
