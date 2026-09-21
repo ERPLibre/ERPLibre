@@ -620,5 +620,42 @@ class TestLeGainSeCalculeParCondition(unittest.TestCase):
         self.assertNotIn("gain", texte)
 
 
+class UneUrlQueLaPremiereNaJamaisObtenue(unittest.TestCase):
+    """Deux miroirs rangent le même paquet sous deux chemins, et la clé porte
+    le chemin. La première VM reçoit « 504 » sur l'un — amont jugé muet — puis
+    est servie du disque par l'autre ; rien n'entre au magasin sous le premier
+    chemin. Le téléchargement de la seconde n'y est donc pas une faute.
+    """
+
+    AUTRE = PAQUET_A.replace("miroir.example", "autre-miroir.example")
+
+    def test_un_504_chez_la_premiere_ne_rend_pas_la_seconde_fautive(self):
+        premier = [
+            ligne(
+                self.AUTRE, True, issue="offline-miss", octets=0, statut=504
+            ),
+            ligne(PAQUET_A, False, issue="hit", statut=200),
+        ]
+        second = [ligne(self.AUTRE, True, issue="stored", statut=200)]
+        self.assertTrue(
+            QC.verdict(premier, second, None),
+            "un 504 de la première VM fait accuser le cache d'un fichier"
+            " qu'il n'a jamais eu à garder",
+        )
+
+    def test_un_fichier_livre_deux_fois_reste_une_faute(self):
+        premier = [ligne(PAQUET_A, True, statut=200)]
+        second = [ligne(PAQUET_A, True, statut=200)]
+        self.assertFalse(QC.verdict(premier, second, None))
+
+    def test_un_statut_absent_vaut_livre(self):
+        """Les journaux d'avant ne l'écrivaient pas toujours : le prendre pour
+        un échec effacerait des mesures entières."""
+        self.assertTrue(QC.livre({"url": PAQUET_A}))
+        self.assertTrue(QC.livre({"url": PAQUET_A, "status": 206}))
+        self.assertFalse(QC.livre({"url": PAQUET_A, "status": 504}))
+        self.assertFalse(QC.livre({"url": PAQUET_A, "status": 404}))
+
+
 if __name__ == "__main__":
     unittest.main()

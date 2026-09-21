@@ -95,8 +95,61 @@ func Key(method, rawURL string) string {
 // Réservé aux fichiers dont le NOM porte l'identité — paquets, index de
 // dépôt. L'appliquer à tout ferait entrer en collision les « /index.html » de
 // deux sites sans rapport.
+//
+// Le chemin ENTIER ne suffisait pas : un miroir le préfixe à sa guise —
+// « /rocky/10.2/… », « /mirror/rocky-linux/10.2/… », « /pub/archive/fedora/… »
+// — et le même octet prenait alors deux clés. Seule la FIN du chemin est
+// retenue (voir SegmentsDeCle), ce qui réunit ces copies sans jamais
+// confondre deux distributions.
+// SegmentsDeCle : combien de segments de FIN de chemin identifient un fichier.
+//
+// Six, et pas moins : un chemin Debian en porte exactement six —
+// « debian/pool/main/p/<paquet>/<fichier>.deb » — si bien que cinq
+// effaceraient le segment de distribution et donneraient la même clé au
+// paquet d'Ubuntu, qui porte le même nom pour d'autres octets.
+const SegmentsDeCle = 6
+
+// SegmentsDeCleArch : les paquets d'Arch en demandent moins.
+//
+// Un miroir d'Arch sert « archlinux/core/os/x86_64/<paquet> » là où un autre
+// sert « core/os/x86_64/<paquet> » : quatre et cinq segments, donc plus COURTS
+// que la borne commune, qui les garde alors entiers et en fait deux clés.
+//
+// Quatre, et non moins : la clé garde ainsi le nom du dépôt — « core »,
+// « extra » — et ne perd que le segment décoratif du miroir. Deux ou trois
+// réuniraient les mêmes copies, mais effaceraient cette distinction sans
+// nécessité.
+//
+// Le cas est sûr là où celui de Debian ne l'est pas : Ubuntu reprend les
+// paquets de Debian en gardant leur version, si bien qu'un même nom « .deb »
+// porte deux contenus selon la distribution. Un espace de noms partagé exige
+// la borne haute ; celui d'Arch n'appartient qu'à lui.
+const SegmentsDeCleArch = 4
+
+// estPaquetArch reconnaît un paquet de la famille pacman à son nom.
+func estPaquetArch(nom string) bool {
+	nom = strings.ToLower(nom)
+	return strings.HasSuffix(nom, ".pkg.tar.zst") ||
+		strings.HasSuffix(nom, ".pkg.tar.xz")
+}
+
 func KeySansHote(method string, u *url.URL) string {
-	chemin := u.Path
+	segments := make([]string, 0, SegmentsDeCle+2)
+	for _, s := range strings.Split(u.Path, "/") {
+		// Les segments vides tombent : un miroir écrit « /pub/rocky//10.2 »,
+		// et deux écritures d'un même chemin feraient sinon deux clés.
+		if s != "" {
+			segments = append(segments, s)
+		}
+	}
+	borne := SegmentsDeCle
+	if len(segments) > 0 && estPaquetArch(segments[len(segments)-1]) {
+		borne = SegmentsDeCleArch
+	}
+	if len(segments) > borne {
+		segments = segments[len(segments)-borne:]
+	}
+	chemin := strings.Join(segments, "/")
 	if u.RawQuery != "" {
 		chemin += "?" + u.RawQuery
 	}
