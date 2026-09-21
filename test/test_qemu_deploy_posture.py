@@ -75,13 +75,49 @@ def spec_de(posture):
 
 
 class TestCeQuiEstRenduEtCeQuiNeLEstPas(unittest.TestCase):
-    def test_a_posture_that_bounds_nothing_renders_nothing(self):
-        """La plupart des déploiements sont là, et ne doivent rien payer."""
-        for nom in ("open", "connected", "local-only"):
+    def test_a_posture_that_asks_for_nothing_renders_nothing(self):
+        """La plupart des déploiements sont là, et ne doivent rien payer.
+
+        « local-only » N'EN FAIT PLUS PARTIE, et cette épreuve l'y rangeait
+        — elle épinglait donc le défaut comme le comportement attendu. Une
+        sortie coupée n'a aucune adresse à nommer, mais elle veut des
+        règles : « policy drop » est précisément ce qu'elle promet. Sans
+        elles, la posture la plus confinée se déployait avec la sortie
+        entière.
+        """
+        for nom in ("open", "connected"):
             with self.subTest(posture=nom):
                 self.assertEqual(
                     "", menu(CARNET)._qemu_egress_rules(spec_de(nom))
                 )
+
+    def test_a_cut_egress_does_render_and_drops(self):
+        """Le contrôle qui manquait. Ce que le déploiement pose désormais
+        pour « local-only », et ce que ces octets valent."""
+        rendu = menu(CARNET)._qemu_egress_rules(spec_de("local-only"))
+        self.assertTrue(rendu, "la posture qui promet le plus ne posait rien")
+        self.assertIn("policy drop", rendu)
+        self.assertIn('oif "lo" accept', rendu)
+
+    def test_the_cut_egress_rendering_is_relayed_word_for_word(self):
+        """Le déploiement ne compose rien : il relaie. Une recopie
+        divergerait au premier correctif du rendu."""
+        from script.posture import destinations as D
+
+        posture = R.get_posture("local-only")
+        attendu = RULES.render_egress(
+            posture, D.destinations_for(posture, CARNET)
+        )
+        self.assertEqual(
+            attendu, menu(CARNET)._qemu_egress_rules(spec_de("local-only"))
+        )
+
+    def test_the_address_book_changes_nothing_for_a_cut_egress(self):
+        """Elle ne joint rien : un carnet rempli ne doit pas lui faire
+        nommer des adresses que le fichier dirait joignables."""
+        avec = menu(CARNET)._qemu_egress_rules(spec_de("local-only"))
+        sans = menu({})._qemu_egress_rules(spec_de("local-only"))
+        self.assertEqual(avec, sans)
 
     def test_a_mute_spec_renders_nothing_either(self):
         spec = build_spec([VM_UNE], [], FORM)

@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-################################################################################
-# Script for installing ERPLibre on OSX
-# Author: Alexandre Ferreira Benevides
-#-------------------------------------------------------------------------------
-# This script will install dependency for ERPLibre on your OSX server.
-#-------------------------------------------------------------------------------
-################################################################################
+# © 2023-2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+#
+# Dépendances système ERPLibre pour macOS, par Homebrew.
 
 EL_USER=${USER}
 
