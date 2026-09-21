@@ -297,14 +297,24 @@ PREF_KEY = "deploy_ssh_target"
 
 
 def selected(config=None) -> dict | None:
-    """La cible retenue, RELUE de l'inventaire, ou None.
+    """La cible de DÉPLOIEMENT retenue, RELUE de l'inventaire, ou None.
 
-    Rend None aussi quand le nom retenu ne désigne plus rien : une cible
-    supprimée ne doit pas faire échouer l'écran, seulement se faire
-    redemander.
+    Rend None quand le nom retenu ne désigne plus rien : une cible supprimée
+    ne doit pas faire échouer l'écran, seulement se faire redemander.
+
+    Rend None AUSSI quand elle ne désigne plus une cible où l'on déploie.
+    C'est le point de passage unique des onze commandes de déploiement, dont
+    cinq installent ou redémarrent : une cible de genre `KIND_BACKUP` retenue
+    ici — choisie à l'écran, ou obtenue en changeant le genre d'une cible
+    déjà retenue — ferait installer ERPLibre sur le dépôt d'archives. Le
+    genre distingue les deux ; ne le lire sur aucun chemin le rendrait
+    décoratif.
     """
     nom = todo_prefs.get(PREF_KEY) or ""
-    return load(str(nom), config) if nom else None
+    cible = load(str(nom), config) if nom else None
+    if cible is None or cible.get("kind") != KIND_SSH:
+        return None
+    return cible
 
 
 def select(name: str) -> None:
