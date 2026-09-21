@@ -49,6 +49,10 @@ REGLAGES = ("f_type", "f_prod", "f_store", "f_tools", "f_tz", "f_python")
 PROPRES = {
     "QEMU/KVM": {
         "f_gpu3d": "passe un GPU de l'hôte, ce que libvirt seul sait faire",
+        "f_cache_bypass": (
+            "écarte UNE VM du cache ; la voie Proxmox fixe le miroir de"
+            " toutes ses VM sans exception par machine"
+        ),
     },
     "Proxmox": {
         "f_storage": "où poser le disque sur l'hôte Proxmox",
@@ -61,7 +65,7 @@ PROPRES = {
 # Les clés de spec qu'un seul écran produit, mêmes raisons. « backend » dit
 # quel hyperviseur reçoit la spec ; « host » nomme l'hôte Proxmox.
 CLES_PROPRES = {
-    "QEMU/KVM": ("backend", "gpu3d"),
+    "QEMU/KVM": ("backend", "cache_bypass"),
     "Proxmox": ("bridge", "host", "nameservers", "start", "storage"),
 }
 
@@ -116,6 +120,13 @@ def contexte_proxmox(todo):
         host_cpu=8,
         free_ram=16000,
         extra_disk_gb=5,
+        # LE BLOC RÉSEAU EST OFFERT DES DEUX CÔTÉS. Les deux écrans ne le
+        # composent que si un cache tourne ; ce contexte-ci est bâti à la
+        # main et l'oubliait, si bien que « f_offline » passait pour propre
+        # à l'autre écran. Fixé ici plutôt que lu sur la station : une
+        # parité qui dépend de ce qui tourne ne se compare pas deux fois
+        # de suite.
+        cache_offert=True,
         **todo._qemu_guest_context(),
     )
 

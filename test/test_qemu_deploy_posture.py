@@ -304,22 +304,25 @@ class TestLaCommandePosee(unittest.TestCase):
         source = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
         with open(source, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
-        corps = [
-            noeud
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.FunctionDef)
-            and noeud.name == "_qemu_run_spec"
-        ]
-        self.assertEqual(1, len(corps), "_qemu_run_spec introuvable")
+        # LE FICHIER ENTIER, et non une fonction nommée : le corps du
+        # déploiement a été scindé en enveloppe et corps, et viser l'ancien
+        # nom rendait zéro appel — donc une garde verte qui ne regardait
+        # plus rien. Ce qui se juge est le MAILLON, où qu'il vive.
         appels = [
             noeud
-            for noeud in ast.walk(corps[0])
+            for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Attribute)
             and noeud.func.attr == "_qemu_deploy_parts_for"
         ]
-        self.assertEqual(1, len(appels), "l'appel du déploiement a bougé")
-        self.assertIn("egress", [mot.arg for mot in appels[0].keywords])
+        # TOUS LES APPELS, et non « exactement un ». Épingler le nombre
+        # rendait la garde fausse dès qu'un aperçu s'ajoutait, alors que ce
+        # qui compte est qu'aucun appel n'oublie le fichier — et un appel
+        # de plus est justement l'occasion de l'oublier.
+        self.assertTrue(appels, "l'appel du déploiement a disparu")
+        for appel in appels:
+            with self.subTest(ligne=appel.lineno):
+                self.assertIn("egress", [mot.arg for mot in appel.keywords])
 
     def test_the_run_path_opens_the_block_that_writes_the_file(self):
         """L'autre moitié du même maillon : passer « egress » ne sert à
@@ -329,15 +332,9 @@ class TestLaCommandePosee(unittest.TestCase):
         source = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
         with open(source, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
-        corps = [
-            noeud
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.FunctionDef)
-            and noeud.name == "_qemu_run_spec"
-        ][0]
         ouvertures = [
             noeud
-            for noeud in ast.walk(corps)
+            for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.Call)
             and isinstance(noeud.func, ast.Attribute)
             and noeud.func.attr == "_qemu_egress_file"

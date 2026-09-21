@@ -167,8 +167,51 @@ class LeMenuFabriqueLeUserData(unittest.TestCase):
         self.assertIn("mod.build_cloud_config(", self.SRC)
         self.assertIn("def _pve_user_data", self.SRC)
 
-    def test_both_call_sites_use_it(self):
-        self.assertEqual(2, self.SRC.count('"user_data"'))
+    # Ce qui EXÉCUTE sur l'hôte. Une fonction qui compose des commandes sans
+    # jamais en appeler un ne crée rien : c'est un aperçu, et il n'a pas de VM
+    # à rendre joignable.
+    EXECUTANTS = ("_pve_show", "_pve_ssh")
+
+    def test_every_creation_path_goes_through_it(self):
+        """CHAQUE VOIE QUI CRÉE pose le user-data — et non « deux endroits le
+        posent ». Compter les occurrences liait la garde à la FORME du
+        fichier : ramener deux descriptions jumelles à un seul composeur la
+        faisait rougir alors qu'elle tient MIEUX, un site de moins étant un
+        site de moins à oublier. L'aperçu se distingue par ce qu'il fait —
+        il n'atteint aucun exécutant — et non par son nom.
+        """
+        import ast
+
+        arbre = ast.parse(self.SRC)
+        pose = set()
+        cree = set()
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.FunctionDef):
+                continue
+            corps = ast.get_source_segment(self.SRC, noeud)
+            if '"user_data"' in corps:
+                pose.add(noeud.name)
+            if "pve.create_cmds(" in corps and any(
+                x in corps for x in self.EXECUTANTS
+            ):
+                cree.add(noeud.name)
+        self.assertTrue(pose, "personne ne pose de user-data")
+        self.assertEqual(set(), cree - pose, sorted(cree - pose))
+
+    def test_a_creation_path_is_actually_seen(self):
+        """Contrôle du banc : zéro voie de création rendrait l'épreuve
+        ci-dessus verte sans rien tenir."""
+        import ast
+
+        arbre = ast.parse(self.SRC)
+        composeurs = [
+            n.name
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+            and '"user_data"' in ast.get_source_segment(self.SRC, n)
+            and "pve.create_cmds(" in ast.get_source_segment(self.SRC, n)
+        ]
+        self.assertEqual(["_pve_vm_commands"], composeurs)
 
     def test_an_unreadable_key_falls_back_instead_of_locking_out(self):
         """Un user-data sans clé donnerait une VM sans aucun moyen d'entrer :

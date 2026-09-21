@@ -375,16 +375,21 @@ class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
         src = (RACINE / "script/todo/proxmox_menu.py").read_text(
             encoding="utf-8"
         )
-        # Les appels qui TÉLÉCHARGENT, l'exemple d'affichage excepté : les
-        # trois du déploiement, plus celui du téléchargement d'avance — une
-        # image posée par lui est celle qu'un déploiement futur trouvera
-        # « déjà présente », et il ne la regardera pas mieux.
+        # Les appels qui TÉLÉCHARGENT, l'exemple d'affichage excepté : la
+        # création de VM, et le téléchargement d'avance — une image posée
+        # par lui est celle qu'un déploiement futur trouvera « déjà
+        # présente », et il ne la regardera pas mieux.
+        #
+        # LEUR NOMBRE N'EST PAS ÉPINGLÉ. Il l'était, et ramener les trois
+        # descriptions jumelles du déploiement à UN composeur faisait alors
+        # rougir la garde — alors qu'un site de moins est un site de moins
+        # à oublier. Ce qui compte est qu'aucun ne parte sans la somme.
         vrais = [
             l
             for l in src.splitlines()
             if "pve.image_fetch_cmd(" in l and "https://…" not in l
         ]
-        self.assertEqual(4, len(vrais))
+        self.assertTrue(vrais, "plus personne ne télécharge d'image")
         for ligne in vrais:
             with self.subTest(ligne=ligne.strip()[:50]):
                 self.assertIn("sha256=", ligne)
