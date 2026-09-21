@@ -218,15 +218,22 @@ def render_capabilities(caps: Sequence[Capability]) -> str:
     return _section(t("Capabilities"), lignes)
 
 
-def render_layers(verdicts: Sequence[LayerVerdict]) -> str:
+def render_layers(verdicts: Sequence[LayerVerdict], subject: str = "") -> str:
     """Le bloc des couches : une ligne chacune, son remède en dessous.
 
     Une liste VIDE le dit. Une vérification qui n'a rien sondé n'a rien
     prouvé, et un bloc muet se lirait comme « tout va bien » — c'est le
     mensonge que `worst_code` refuse déjà de faire sur le code.
+
+    `subject` NOMME ce que le bloc décrit — une machine, une cible. Un
+    rapport qui en traverse plusieurs rendait sinon des blocs identiques
+    qu'il fallait coiffer soi-même, et le titre improvisé sortait de la
+    géométrie que ce module décide à un seul endroit. Vide, le titre ne
+    bouge pas d'un caractère.
     """
+    titre = subject or t("Layers")
     if not verdicts:
-        return _section(t("Layers"), [_line("-", t("Nothing was probed"), "")])
+        return _section(titre, [_line("-", t("Nothing was probed"), "")])
     lignes = []
     for verdict in verdicts:
         # Le nom de couche se rend BRUT, comme LAYERS le prescrit : traduit,
@@ -236,7 +243,7 @@ def render_layers(verdicts: Sequence[LayerVerdict]) -> str:
         )
         if verdict.code != DS_OK and verdict.remedy:
             lignes.append(_line(" ", "", f"{t('Remedy:')} {verdict.remedy}"))
-    return _section(t("Layers"), lignes)
+    return _section(titre, lignes)
 
 
 def diag(text: str, stream: TextIO | None = None) -> None:

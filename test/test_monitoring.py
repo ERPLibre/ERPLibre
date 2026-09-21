@@ -669,7 +669,9 @@ class TestTheVerdictsSection(unittest.TestCase):
         )
 
     def test_a_plain_name_is_its_own_lineage(self):
-        self.assertEqual("copy_garance3", residue.famille("copy_garance3"))
+        self.assertEqual(
+            "copy_base_temoin3", residue.famille("copy_base_temoin3")
+        )
 
     def test_another_migration_verdicts_are_not_shown(self):
         # Deux migrations partagent le fichier. Attribuer l'échec de
