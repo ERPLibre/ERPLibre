@@ -133,7 +133,10 @@ from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.deploy_target_menu import DeployTargetMenuMixin
 from script.todo.devstack_menu import DevstackMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
 from script.todo.kdbx_manager import KdbxManager
+from script.todo.lima_menu import LimaMenuMixin
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -148,9 +151,6 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
-from script.todo.egress_book_menu import EgressBookMenuMixin
-from script.todo.forge_menu import ForgeMenuMixin
-from script.todo.lima_menu import LimaMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -171,7 +171,6 @@ try:
     import humanize
     import openai
     import todo_file_browser
-
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
@@ -230,7 +229,9 @@ class TODO(
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
         self.kdbx_manager = KdbxManager(self.config_file)
-        self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
+        self.db_manager = DatabaseManager(
+            self.execute, self.fill_help_info, self._monitoring_image_name
+        )
 
     def _ask_language(self):
         if not lang_is_configured():
@@ -5266,6 +5267,24 @@ class TODO(
 
         from script.analyse import monitoring
 
+        # CE QUI N'EST PAS TENU, DIT AVANT LE SECRET. L'écran de choix
+        # refusait déjà chaque analyse avec sa raison — mais APRÈS avoir
+        # fait saisir une clé d'API de production, c'est-à-dire trop tard
+        # pour renoncer. Aucune analyse ne lit une session RPC, et ce
+        # n'est pas un oubli : elles descendent dans des tables qu'aucune
+        # session n'expose, et la dernière écrit.
+        if not monitoring.available(monitoring.KIND_LIVE):
+            print(f"\u26a0  {t('No analysis reads a live instance yet.')}")
+            for analyse in monitoring.unavailable(monitoring.KIND_LIVE):
+                print(f"   \u2716 {t(analyse['title'])}")
+                print(f"     {t(analyse['why_not'])}")
+            print()
+            if not self._is_yes(
+                input(t("Connect anyway, to check the credentials? (y/N): "))
+            ):
+                return None
+            print()
+
         base_url = input(t("Instance URL (ex. https://example.com): ")).strip()
         if not base_url:
             return None
@@ -6370,6 +6389,13 @@ class TODO(
         status = self.execute.exec_command_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
+        # L'ÉTAT SUIT LE LANCEMENT, et non l'intention. Le champ existait,
+        # son lecteur aussi, et rien ne l'écrivait : « Mobile context »
+        # annonçait « inactive » sur tout poste, pour toujours. Le code de
+        # sortie était déjà capturé ici et n'était jamais relu.
+        from script.version import erplibre_state
+
+        erplibre_state.set_mobile_active(not status)
 
 
 if __name__ == "__main__":

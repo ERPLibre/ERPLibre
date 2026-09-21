@@ -28,8 +28,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from script.posture import registry, rules
 from script.posture import destinations as posture_destinations
+from script.posture import registry, rules
 
 try:
     from script.todo.todo_i18n import t
@@ -125,14 +125,51 @@ def label_of(posture_name: str) -> str:
     return profil.label if profil else str(posture_name or "")
 
 
-def choices() -> list:
+def _carries_real_data(profil) -> bool:
+    """Ce profil peut-il porter des données réelles ?
+
+    Le prédicat du registre, et non un champ de plus : `allows_real_data`
+    DÉDUIT la réponse de trois propriétés de la posture, et un profil qui
+    déclarerait « oui » de son côté pourrait contredire la garde qui refuse
+    le déploiement.
+    """
+    return registry.allows_real_data(registry.get_posture(profil.posture))
+
+
+def choices(real_data: bool = False) -> list:
     """[(libellé, nom de posture)] pour un sélecteur.
 
     La VALEUR reste le nom de posture : c'est lui que la spec porte et que
     le déploiement lit. Un libellé stocké obligerait à le retraduire, et une
     spec relue dans une autre langue ne se retrouverait plus.
+
+    `real_data` retire les postures sous lesquelles la garde REFUSERA le
+    déploiement. Le filtre lit le même prédicat qu'elle : offrir une posture
+    que le déploiement rejette fait répondre à tout le questionnaire avant
+    de le dire. Faux par défaut, pour qu'un appelant qui ne pose pas la
+    question offre la liste entière.
     """
-    return [(profil.label, profil.posture) for profil in PROFILES]
+    return [
+        (profil.label, profil.posture)
+        for profil in PROFILES
+        if not real_data or _carries_real_data(profil)
+    ]
+
+
+def withheld(real_data: bool = False) -> list:
+    """Ce que `choices(real_data)` a retiré, dans le même ordre.
+
+    Un écran les nomme au lieu de les taire : une liste qui rétrécit sans
+    rien dire laisse croire que la posture n'existe pas, et son absence se
+    lit alors comme une panne. Le complément exact de `choices`, pour que
+    les deux ne puissent pas diverger.
+    """
+    offerts = {posture for _libelle, posture in choices(real_data)}
+    return [
+        (profil.label, profil.posture)
+        for profil in PROFILES
+        if profil.posture not in offerts
+    ]
 
 
 def gap_sentence(token: str) -> str:
@@ -184,17 +221,6 @@ def enforcement(posture_name: str) -> str:
     return t("Rules are written, loaded and armed in the guest.")
 
 
-def bounded_addresses(posture_name: str) -> bool:
-    """Ce profil demande-t-il au site de nommer des adresses ?
-
-    Vrai, un carnet vide fait REFUSER le déploiement — et le dire devant
-    l'écran vaut mieux que de le découvrir sur la machine.
-    """
-    return posture_destinations.has_bounded_list(
-        registry.get_posture(posture_name)
-    )
-
-
 def screen_line(posture_name: str, after_boot: bool = False) -> str:
     """Ce qu'un écran écrit sous le sélecteur, en une seule chaîne.
 
@@ -241,9 +267,10 @@ def form_context(after_boot: bool = False) -> dict:
         # retraduirait mal d'une langue à l'autre.
         "posture_choices": choices(),
         # CE QUE CHACUNE APPLIQUE, ses écarts, et ce que son nom promet —
-        # en une ligne. Un écran qui nomme « VM Connecté » sans dire que
-        # rien n'applique sa politique vend l'assurance que le registre
-        # s'interdit de donner.
+        # en une ligne. Un écran qui nomme une posture sans dire ce qu'elle
+        # applique VRAIMENT vend l'assurance que le registre s'interdit de
+        # donner : le nom rassure, et deux postures au nom voisin ne tiennent
+        # pas la même chose.
         "posture_screen": {
             nom: screen_line(nom, after_boot)
             for nom in registry.posture_names()
@@ -261,8 +288,6 @@ def missing_addresses(posture_name: str, book) -> tuple:
     Le carnet est un PARAMÈTRE : ce module ne lit aucun fichier, et la
     liste des rôles vient du paquet posture, qui la déduit de la posture.
     """
-    from script.posture import destinations as posture_destinations
-
     # PAS DE GARDE SUR None : `symbols_for` en pose déjà un — il passe par
     # `has_bounded_list`, qui répond faux pour une posture absente. Le
     # doubler ici ferait deux endroits à tenir en accord, et le second ne
@@ -287,6 +312,12 @@ ODOO_MARK = "install_odoo"
 # du CHOIX. Une attente et non un refus : servir autre chose sur la même
 # posture reste légitime, et le registre sépare les deux pour cela.
 EXPECTS_ODOO = "This profile expects an install that lays down Odoo."
+
+# L'en-tête des postures que `withheld` a retirées. Elles s'affichent avec
+# leur raison plutôt que de disparaître : une liste qui rétrécit en silence
+# laisse croire que la posture n'existe pas, et son absence se lit alors
+# comme une panne plutôt que comme une règle.
+CANNOT_CARRY_REAL_DATA = "Cannot carry real data:"
 
 # Le verdict du couple (profil, installation). Clos, comme celui du couple
 # (posture, données réelles) dont il est le frère.
@@ -326,6 +357,39 @@ def check_install(label: str, final_cmd: str) -> str:
     if ODOO_MARK in (final_cmd or ""):
         return INSTALL_OK
     return SERVES_NOTHING
+
+
+# Les deux ports du couple, nommés UNE fois. `script/vm/verbs.py` les a
+# déjà choisis pour son accès web : en retenir d'autres ici ferait deux
+# conventions pour la même chose, et l'une des deux serait fausse selon
+# l'écran qu'on lit. Une épreuve tient l'égalité.
+WEB_HOST_PORT = 18069
+WEB_GUEST_PORT = 8069
+
+
+def web_forward(posture_name: str, final_cmd: str) -> tuple:
+    """Le renvoi de port qui rend l'interface joignable, ou rien.
+
+    LA MOITIÉ INSTALLATION du profil servi. La sortie coupée est tenue par
+    les règles ; ce qui manquait est de rendre l'interface atteignable
+    depuis l'hôte, à une adresse stable qui ne dépend pas de l'IP du jour.
+
+    DEUX CONDITIONS, et aucune ne se déduit de l'autre. Le profil doit
+    PROMETTRE une interface — un nom qui ne promet rien n'en reçoit pas —
+    et l'installation choisie doit POSER Odoo : renvoyer un port vers une
+    machine qui ne sert rien promet une page qui n'existe pas. C'est le
+    même couple que l'écran avertit déjà, pris ici dans le sens positif.
+
+    Le libellé se retrouve depuis la posture, comme le formulaire le fait
+    pour son avertissement : un spec porte la posture, et la table des
+    profils est le pont entre les deux.
+    """
+    profil = by_posture(posture_name)
+    if profil is None or not profil.serves_web:
+        return ()
+    if check_install(profil.label, final_cmd) != INSTALL_OK:
+        return ()
+    return (("local", f"{WEB_HOST_PORT} localhost:{WEB_GUEST_PORT}"),)
 
 
 def install_sentence(verdict: str) -> str:

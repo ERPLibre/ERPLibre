@@ -352,7 +352,7 @@ class TestExecuteUnitTests(unittest.TestCase):
         # Verify it was called - error handling path
 
     def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
+        """Le verdict tombe en DERNIER, là où le lecteur le cherche.
 
         unittest écrit son verdict sur stderr et les tests impriment sur
         stdout ; capturés ensemble, le stdout tamponné se déversait après
@@ -855,36 +855,54 @@ class TestSelectDatabase(unittest.TestCase):
         self.assertFalse(result)
 
 
-class TestRestoreFromDatabase(unittest.TestCase):
-    @patch("builtins.input")
-    def test_restore_by_filename(self, mock_input):
-        todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
-        )
-        # status="1" (by filename), db name default, no neutralize
-        mock_input.side_effect = ["1", "", "n", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
-        self.assertIn("db_restore.py", cmd)
+def _commande_de_restauration(todo):
+    """La commande de restauration, CHERCHÉE et non prise au rang zéro.
 
+    La porte lit d'abord la liste des bases : un rang codé en dur désigne
+    cette lecture, et l'épreuve juge alors une commande qui ne détruit rien.
+    """
+    for appel in todo.db_manager._execute.exec_command_live.call_args_list:
+        if "db_restore.py" in appel[0][0]:
+            return appel[0][0]
+    raise AssertionError("aucune restauration lancée")
+
+
+class TestRestoreFromDatabase(unittest.TestCase):
+    """L'entrée « [1] » demande désormais un NOM d'image, et le zip est
+    cherché avant que la moindre commande soit bâtie : ces deux épreuves
+    posent donc une saisie de plus et simulent le fichier présent. Ce
+    qu'elles tenaient reste tenu ; test/test_restore_menu.py couvre le
+    reste du chemin."""
+
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
     @patch("builtins.input")
-    def test_restore_with_neutralize(self, mock_input):
+    def test_restore_by_filename(self, mock_input, _isfile):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             [],
         )
-        mock_input.side_effect = ["1", "mydb", "y", "n"]
+        # [1], le nom d'image, le nom de base par défaut, pas de
+        # neutralisation, pas de mise à jour des modules
+        mock_input.side_effect = ["1", "backup", "", "n", "n"]
         todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
+        cmd = _commande_de_restauration(todo)
+        self.assertIn("db_restore.py", cmd)
+        self.assertIn("--image backup", cmd)
+
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
+    @patch("builtins.input")
+    def test_restore_with_neutralize(self, mock_input, _isfile):
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
+            0,
+            [],
+        )
+        mock_input.side_effect = ["1", "backup", "mydb", "y", "n"]
+        todo.db_manager.restore_from_database()
+        cmd = _commande_de_restauration(todo)
         self.assertIn("--neutralize", cmd)
         self.assertIn("mydb_neutralize", cmd)
 
