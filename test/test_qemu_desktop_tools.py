@@ -335,7 +335,7 @@ class TestMobileBuild(unittest.TestCase):
             with mock.patch.object(TODO, "_qemu_host_git", lambda s, c: ""):
                 ctx = self.todo._qemu_guest_context()
         self.assertEqual(
-            ("debian",), ctx["vm_tool_distros_excluded"]["mobile"]
+            ("debian", "proxmox"), ctx["vm_tool_distros_excluded"]["mobile"]
         )
         self.assertEqual((), ctx["vm_tool_distros_excluded"]["pycharm"])
 

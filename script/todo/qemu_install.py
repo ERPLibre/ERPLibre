@@ -1504,6 +1504,7 @@ class QemuInstallMixin:
         # sont ceux d'Ubuntu. Debian 12 n'a pas openjdk-21-jdk, que le
         # prérequis du SDK installe, ni en principal ni en rétroportages ;
         # Debian 13 n'a plus openjdk-17-jdk, qu'exige install-android.sh.
+        # Proxmox VE est une Debian : le même manque l'écarte.
         #
         # Disque : ~1,5 Go de SDK et plateformes, ~2,5 Go de NDK, whisper.cpp
         # et sentencepiece clonés, node_modules, et les artefacts Gradle.
@@ -1519,7 +1520,7 @@ class QemuInstallMixin:
             "desktops": (),
             "needs_desktop": False,
             "families": ("apt",),
-            "distros_excluded": ("debian",),
+            "distros_excluded": ("debian", "proxmox"),
             # APRÈS l'installation : le build a besoin du dépôt mobile, que le
             # manifeste ajoute, et du venv d'outils pour le synchroniser.
             "phase": "after",
@@ -1653,16 +1654,29 @@ class QemuInstallMixin:
             "families": ("apt",),
             # Même SDK et même JDK que la compilation mobile : mêmes
             # distributions écartées.
-            "distros_excluded": ("debian",),
+            "distros_excluded": ("debian", "proxmox"),
             "phase": "after",
         },
     }
 
-    # Famille de paquets de chaque distribution, pour borner un outil à ce qui
-    # sait l'installer.
+    # Famille de paquets de chaque distribution, pour borner un outil à ce
+    # qui sait l'installer.
+    #
+    # UNE COPIE DÉLIBÉRÉE de `deploy_qemu.DISTRO_PKG`, pour la même raison
+    # que le catalogue du menu : le filtre est une méthode de CLASSE, elle
+    # n'a pas le module sous la main, et elle doit répondre même quand plus
+    # rien ne peut le lire. Une épreuve tient l'accord des deux — sans
+    # elle, la copie avait déjà perdu « proxmox ».
+    #
+    # CE QUE LE MANQUE COÛTAIT : `.get(distro, "")` rend une famille vide,
+    # et le filtre écarte alors tout outil qui en exige une. Une VM Proxmox
+    # — qui EST une Debian — perdait la compilation mobile et l'AVD, les
+    # deux qui demandent « apt ». Ne déclarer AUCUNE distribution les
+    # gardait : le filtre punissait la précision.
     _QEMU_DISTRO_FAMILY = {
         "ubuntu": "apt",
         "debian": "apt",
+        "proxmox": "apt",
         "fedora": "dnf",
         "almalinux": "dnf",
         "rocky": "dnf",

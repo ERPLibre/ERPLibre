@@ -136,3 +136,27 @@ def planifier_venvs(versions, venvs, sources, complets=None, active=None):
             }
         )
     return plan
+
+
+def get_venv_python(odoo_version: str) -> str:
+    """Le python du venv d'une version d'Odoo, LU dans l'autorité.
+
+    Prend « 18.0 » et rend « .venv.odoo<odoo>_python<python>/bin/python ».
+
+    LE NOM DU VENV PORTE LE COUPLE Odoo/Python, et la moitié Python bouge :
+    le catalogue en porte déjà deux valeurs pour les versions vivantes. Écrite
+    en littéral, elle fige un interpréteur que la prochaine montée renomme, et
+    la commande cherche alors un chemin qui n'existe plus.
+
+    Refuse plutôt que de composer un nom au hasard : un venv inventé échoue
+    dans le shell, où le message ne dit pas d'où vient le nom.
+    """
+    versions, _installees, _courante = get_odoo_version()
+    for entree in versions:
+        if entree.get("odoo_version") == odoo_version:
+            return f".venv.{entree.get('erplibre_version')}/bin/python"
+    connues = ", ".join(sorted(e.get("odoo_version", "") for e in versions))
+    raise Exception(
+        f"Odoo '{odoo_version}' absente de {VERSION_DATA_FILE}"
+        f" — connues : {connues}"
+    )

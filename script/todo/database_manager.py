@@ -121,7 +121,7 @@ class DatabaseManager:
             return True
         if drill_guard.is_drill_database(database_name):
             print(
-                f"\u2139\ufe0f  {t('Drill database: overwriting it is safe.')}"
+                f"\u2139\ufe0f  {t('Drill database: destroying it is safe.')}"
             )
             return True
         print(
@@ -275,8 +275,19 @@ class DatabaseManager:
         if not self._confirm_drop(message):
             print(t("Database deletion cancelled."))
             return
-        failed = []
+        # LA MÊME PORTE QUE LA RESTAURATION, et pour la même raison : un
+        # « oui » se tape par réflexe, recopier un nom oblige à regarder.
+        # Une base d'exercice passe sans question ; une autre fait retaper
+        # son nom, une par une.
+        #
+        # Sans elle, l'étage LOT serait plus sûr que l'unité, ce qui est à
+        # rebours : « db_drop_all » consulte le garde d'exercice et REFUSE
+        # ce qui ne se prouve pas jetable.
+        refused = [name for name in names if not self._may_destroy(name)]
+        failed = list(refused)
         for name in names:
+            if name in refused:
+                continue
             status, _output = self._execute.exec_command_live(
                 f"./odoo_bin.sh db drop {name}",
                 return_status_and_output=True,
@@ -461,12 +472,12 @@ class DatabaseManager:
         source = self.select_database()
         if not source:
             return
-        defaut = f"{source}_neutralize"
-        cible = input(
-            f"\U0001f4ac {t('Name of the copy (default=')}{defaut}) : "
-        ).strip()
-        cible = cible or defaut
-
+        # LA NEUTRALISATION SE DEMANDE D'ABORD, parce qu'elle décide de ce
+        # que le nom a le droit d'annoncer. Posée après, elle laissait
+        # « <source>_neutralize » comme défaut à qui allait la décliner :
+        # taper Entrée puis « n » rendait une base au nom rassurant qui
+        # garde ses tâches planifiées, son repli SMTP et ses clés de
+        # paiement vivantes.
         reponse = (
             input(f"\U0001f4ac {t('Neutralize the copy (Y/n)? ')}")
             .strip()
@@ -478,6 +489,17 @@ class DatabaseManager:
                 f"⚠️  {t('The copy will keep its scheduled actions, its')}"
                 f" {t('outgoing mail and its payment providers.')}"
             )
+        defaut = f"{source}_neutralize" if neutraliser else f"{source}_copy"
+        cible = input(
+            f"\U0001f4ac {t('Name of the copy (default=')}{defaut}) : "
+        ).strip()
+        cible = cible or defaut
+        # UN NOM CHOISI À LA MAIN N'EST PAS REFUSÉ, mais s'il annonce une
+        # neutralisation qui n'a pas lieu, le taire laisse la base mentir à
+        # qui la relira dans six mois — et le nom ne trompe pas que l'œil :
+        # le test de fumée en tirait son verdict avant de s'authentifier.
+        if not neutraliser and "neutralize" in cible.lower():
+            print(f"⚠️  {t('This name says neutralized, and it is not.')}")
 
         commande = (
             f"python3 ./script/database/db_duplicate.py -s {source} -d {cible}"

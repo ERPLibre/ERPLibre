@@ -19,9 +19,18 @@ tout le fichier se saute proprement. Pour les lancer volontairement :
 """
 
 import email.utils
+import os
+import sys
 import threading
 import unittest
 import unittest.mock
+
+# `mail_sandbox` est un VOISIN de ce fichier, pas un module du dépôt. Sans
+# cette ligne il ne se trouve que si le lanceur a déjà mis « test/ » sur le
+# chemin — ce que « unittest discover » fait et « unittest test.<module> »
+# non. Le fichier se lançait donc par un chemin et pas par l'autre, et
+# l'échec se lisait comme une dépendance absente.
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     import aiosmtpd  # noqa: F401
