@@ -94,6 +94,17 @@ ROLES_DITS = {
     },
 }
 
+# Ce que chaque sens de miroir veut dire. « entrant » et « sortant » ne
+# disent pas d'eux-mêmes QUI pousse, et se tromper de sens écrase chez un
+# tiers ce qu'on en avait reçu.
+#
+# Interrogée SANS défaut, comme SENTENCES et ROLES_DITS : un sens ajouté à
+# `mirror.SENS` et oublié ici lève, au lieu d'offrir un choix muet.
+SENS_DITS = {
+    mirror.ENTRANT: "inbound: it lives upstream, and the forge follows it",
+    mirror.SORTANT: "outbound: it lives here, and goes out to be seen",
+}
+
 # Ce que le formulaire REPORTE sans le demander. Nommé plutôt que laissé
 # implicite : c'est la seule raison admise pour qu'une clé de
 # `profiles.DEFAULTS` ne soit pas une question, et un garde dérivé s'appuie
@@ -162,6 +173,22 @@ class ForgeMenuMixin:
                     "Forge - Mirror the manifest from its upstreams"
                 )
             },
+            {"section": t("Outbound mirrors")},
+            {
+                "prompt_description": t(
+                    "Forge - Declare which way a repository mirrors"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Forge - Lay the outbound mirror on the forge"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Forge - Show a repository's outbound mirrors"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -186,6 +213,12 @@ class ForgeMenuMixin:
                 self._forge_create_missing()
             elif status == "8":
                 self._forge_mirror_manifest()
+            elif status == "9":
+                self._forge_mirror_direction()
+            elif status == "10":
+                self._forge_push_mirror_add()
+            elif status == "11":
+                self._forge_push_mirror_list()
             else:
                 print(t("Command not found !"))
 
@@ -564,6 +597,223 @@ class ForgeMenuMixin:
             print(f"  ✗ {a_creer} : {verdict_sentence(verdict)}")
             if detail:
                 print(f"      {detail}")
+
+    # ------------------------------------------------------------------
+    # Le miroir SORTANT : ce qui vit ici et part se montrer
+    # ------------------------------------------------------------------
+    def _forge_mirror_sens(self, profil, projets, nom_forge):
+        """Le sens DÉRIVÉ pour ce dépôt, et la surcharge qui le corrige.
+
+        Rend (dérivé, surcharge, effectif). Les trois, parce que l'écran
+        doit pouvoir dire « le manifeste dit entrant, ce site déclare
+        sortant » : ne montrer que l'effectif ferait croire à une dérivation
+        qui se trompe, là où c'est un réglage qui la corrige.
+        """
+        amonts = mirror.amonts_du_manifeste(projets, profil.get("url", ""))
+        adresse = ""
+        for projet in projets:
+            if mirror.forge_name(projet.get("name", "")) == nom_forge:
+                adresse = projet.get("clone_url", "")
+                break
+        derive = mirror.sens(adresse, amonts)
+        surcharge = mirror.surcharges().get(nom_forge, "")
+        return derive, surcharge, (surcharge or derive)
+
+    def _forge_pick_repo(self, projets):
+        """Un nom de dépôt DE FORGE, choisi par numéro, ou "".
+
+        Les noms viennent du manifeste et non d'une saisie : c'est lui qui
+        sait comment la forge les nomme, et un nom retapé se trompe d'un
+        caractère sans que rien ne le dise avant l'appel.
+        """
+        noms = sorted(
+            {
+                mirror.forge_name(p.get("name", ""))
+                for p in projets
+                if mirror.forge_name(p.get("name", ""))
+            }
+        )
+        if not noms:
+            print(t("The manifest declares no project."))
+            return ""
+        for rang, nom in enumerate(noms, start=1):
+            print(f"  [{rang}] {nom}")
+        reponse = input(t("Repository number (empty to cancel): ")).strip()
+        if not reponse.isdigit() or not 1 <= int(reponse) <= len(noms):
+            return ""
+        return noms[int(reponse) - 1]
+
+    def _forge_mirror_direction(self):
+        """Déclare le sens du miroir d'un dépôt, ou retire la déclaration.
+
+        LE SENS SE DÉRIVE, ET LA DÉCLARATION LE CORRIGE. Un dépôt dont
+        l'adresse de clone est chez un amont y vit : la forge le SUIT. La
+        surcharge existe pour ce que la dérivation ne sait pas dire —
+        pousser vers un amont un dépôt qui en vient aussi — et l'écran
+        montre donc les DEUX, faute de quoi on croirait la dérivation
+        fautive là où c'est un réglage qui la corrige.
+        """
+        nom = self._forge_select_profile()
+        if not nom:
+            return
+        profil = profiles.load(nom)
+        if profil is None:
+            print(f"! {t('Unknown profile:')} {nom}")
+            return
+        chemin = self._forge_manifest_path()
+        if not chemin:
+            return
+        projets = self._forge_declared_projects(chemin)
+        if not projets:
+            print(t("The manifest declares no project."))
+            return
+        depot = self._forge_pick_repo(projets)
+        if not depot:
+            return
+        derive, surcharge, effectif = self._forge_mirror_sens(
+            profil, projets, depot
+        )
+        print(f"\n  {t('The manifest derives:')} {t(SENS_DITS[derive])}")
+        if surcharge:
+            print(f"  {t('This site declares:')} {t(SENS_DITS[surcharge])}")
+        else:
+            print(f"  {t('This site declares nothing.')}")
+        choix = list(mirror.SENS)
+        for rang, sens in enumerate(choix, start=1):
+            marque = " ←" if sens == effectif else ""
+            print(f"  [{rang}] {t(SENS_DITS[sens])}{marque}")
+        print(f"  [0] {t('follow the manifest (remove the declaration)')}")
+        reponse = input(f"  [0-{len(choix)}] ").strip()
+        if not reponse.isdigit() or int(reponse) > len(choix):
+            print(t("Command not found !"))
+            return
+        voulu = "" if reponse == "0" else choix[int(reponse) - 1]
+        try:
+            mirror.declarer(depot, voulu)
+        except ValidationError as refus:
+            print(f"! {refus}")
+            return
+        if voulu:
+            print(f"✓ {depot} : {t(SENS_DITS[voulu])}")
+        else:
+            print(f"✓ {depot} : {t('follows the manifest again')}")
+
+    def _forge_push_mirror_add(self):
+        """Pose sur la forge le miroir sortant d'un dépôt déclaré tel.
+
+        DÉCLARÉ D'ABORD, POSÉ ENSUITE. Poser un miroir sur un dépôt que le
+        site n'a pas déclaré sortant ferait pousser vers un amont ce que la
+        dérivation dit entrant, c'est-à-dire écraser chez le tiers ce qu'on
+        en avait reçu.
+
+        LE JETON DU MIROIR N'EST PAS CELUI DE LA FORGE. Le premier ouvre
+        l'amont vers lequel elle pousse, le second ouvre la forge ; les
+        confondre donnerait à la forge un jeton qui écrit chez le tiers, ou
+        l'inverse. Il ne s'affiche à aucun moment, et la forge ne le rend
+        jamais une fois posé.
+        """
+        nom = self._forge_select_profile()
+        if not nom:
+            return
+        profil, client = self._forge_client(nom)
+        if client is None:
+            return
+        chemin = self._forge_manifest_path()
+        if not chemin:
+            return
+        projets = self._forge_declared_projects(chemin)
+        if not projets:
+            print(t("The manifest declares no project."))
+            return
+        depot = self._forge_pick_repo(projets)
+        if not depot:
+            return
+        _derive, _surcharge, effectif = self._forge_mirror_sens(
+            profil, projets, depot
+        )
+        if effectif != mirror.SORTANT:
+            print(f"! {depot} : {t('not declared outbound; nothing laid.')}")
+            print(f"  {t('Declare it first with the entry above.')}")
+            return
+        proprio = profil.get("owner", "")
+        # LIRE AVANT DE POSER : la forge accepte deux miroirs vers la même
+        # adresse, et l'on obtient alors deux poussées qui se courent après.
+        # Le refus qui le dirait n'existe pas.
+        deja = client.push_mirrors(proprio, depot)
+        if deja.kind != api.OK:
+            print(f"  {verdict_sentence(deja.kind)}")
+            if deja.detail:
+                print(f"  {t('The forge said:')} {deja.detail}")
+            return
+        adresse = self._forge_ask(t("Upstream address to push to: "), "")
+        if not adresse:
+            print(t("Empty: nothing laid."))
+            return
+        presents = [(m.get("remote_address") or "") for m in (deja.data or [])]
+        if adresse in presents:
+            print(f"! {depot} : {t('a mirror already pushes there.')}")
+            return
+        compte = self._forge_ask(t("Account on the upstream: "), "")
+        jeton = getpass.getpass(t("Upstream token (not echoed): "))
+        if not jeton:
+            print(t("Empty: nothing laid."))
+            return
+        # DÉPOSÉ AU COFFRE AUSSI. La forge ne rend jamais ce jeton : sans
+        # copie ici, en changer obligerait à le retrouver ailleurs, et le
+        # retirer puis le reposer est le seul moyen d'en changer.
+        try:
+            self._forge_store().set(profiles.mirror_secret_ref(nom), jeton)
+        except SecretError as refus:
+            print(f"! {refus}")
+        rendu = client.add_push_mirror(proprio, depot, adresse, compte, jeton)
+        if rendu.kind != api.OK:
+            print(f"  ✗ {verdict_sentence(rendu.kind)}")
+            if rendu.detail:
+                print(f"  {t('The forge said:')} {rendu.detail}")
+            return
+        print(f"✓ {depot} → {adresse}")
+
+    def _forge_push_mirror_list(self):
+        """Ce que la forge pousse DÉJÀ pour un dépôt.
+
+        À lire avant d'en poser un, et après : c'est le seul endroit qui
+        dise si la forge pousse vraiment, là où la configuration locale ne
+        dit que ce qu'on a voulu.
+        """
+        nom = self._forge_select_profile()
+        if not nom:
+            return
+        profil, client = self._forge_client(nom)
+        if client is None:
+            return
+        chemin = self._forge_manifest_path()
+        if not chemin:
+            return
+        projets = self._forge_declared_projects(chemin)
+        depot = self._forge_pick_repo(projets) if projets else ""
+        if not depot:
+            return
+        rendu = client.push_mirrors(profil.get("owner", ""), depot)
+        if rendu.kind != api.OK:
+            print(f"  {verdict_sentence(rendu.kind)}")
+            if rendu.detail:
+                print(f"  {t('The forge said:')} {rendu.detail}")
+            return
+        miroirs = rendu.data or []
+        if not miroirs:
+            # LE DIRE. Une liste vide imprimée comme rien se confond avec un
+            # appel qui n'a pas eu lieu.
+            print(f"  {t('The forge pushes this repository nowhere.')}")
+            return
+        for miroir in miroirs:
+            # Le JETON ne figure dans aucune de ces lignes : la forge ne le
+            # rend pas, et le redemander pour l'afficher serait le sortir du
+            # coffre pour rien.
+            print(
+                f"  {miroir.get('remote_address', '?')}"
+                f"  [{miroir.get('interval', '?')}]"
+                f"  {miroir.get('last_update') or t('never pushed')}"
+            )
 
     def _forge_mirror_manifest(self):
         """Miroite sur la forge les dépôts du manifeste, depuis leur amont.

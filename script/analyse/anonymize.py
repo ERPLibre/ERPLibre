@@ -44,6 +44,7 @@ Rien n'est écrit sans `--apply` ET `--confirm <nom de la base>`.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -888,19 +889,36 @@ def render(etapes, applique=False, verbeux=False):
 
 
 def charger_mots(chemin):
-    """Lire un fichier Python qui déclare MOTS.
+    """Les mots de remplacement, lus d'un fichier JSON. None si aucun.
 
-    Une liste — les mêmes mots partout — ou un dictionnaire par nom de
-    champ avec un repli `*`. Aucun réseau, aucun modèle : des mots.
+    Une LISTE — les mêmes mots partout — ou un OBJET par nom de champ, avec
+    un repli « * ». Aucun réseau, aucun modèle : des mots.
+
+    JSON ET NON PYTHON. Le fichier était compilé puis EXÉCUTÉ : « --words »
+    donnait à qui le fournit l'exécution de code arbitraire avec les droits
+    de l'outil, sur une base qui porte des données personnelles. La promesse
+    de la ligne au-dessus était alors intenable — le fichier pouvait
+    importer ce qu'il voulait, et aucune lecture du moteur ne l'aurait vu.
+    JSON ne déclare que des données ; il n'appelle rien.
+
+    Un fichier Python est REFUSÉ en le disant, plutôt que lu à moitié : la
+    conversion est une liste entre crochets, et la taire ferait chercher une
+    panne de lecture là où il n'y a qu'un format à changer.
     """
     if not chemin:
         return None
-    espace = {}
     with open(chemin, "r", encoding="utf-8") as handle:
-        exec(compile(handle.read(), chemin, "exec"), espace)  # noqa: S102
-    mots = espace.get("MOTS")
+        contenu = handle.read()
+    try:
+        mots = json.loads(contenu)
+    except ValueError as souci:
+        raise ValueError(
+            f"{t('This file is not JSON:')} {chemin} — {souci}"
+        ) from souci
+    if not isinstance(mots, (list, dict)):
+        raise ValueError(f"{t('Words must be a list or an object:')} {chemin}")
     if not mots:
-        raise ValueError(f"{t('This file declares no MOTS:')} {chemin}")
+        raise ValueError(f"{t('This file declares no word:')} {chemin}")
     return mots
 
 
@@ -988,7 +1006,7 @@ def main(argv=None):
     parser.add_argument(
         "--exclude", default="", help=t("comma separated, removed from it")
     )
-    parser.add_argument("--words", help=t("python file declaring MOTS"))
+    parser.add_argument("--words", help=t("JSON file of replacement words"))
     parser.add_argument("--include-logins", action="store_true")
     parser.add_argument(
         "--keep-digits",

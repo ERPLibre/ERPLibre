@@ -42,22 +42,35 @@ container, whether one OUTSIDE the list is refused, and whether that refusal
 survives a restart of the container engine — which writes its own rules on
 start-up.
 
-It needs privilege: loading a ruleset and reading a table both require it, and
-`nft -c`, which only parses, already fails without it. It exits 20 where the
-tooling is missing.
+**The ground is a disposable Lima instance**, and that is the default. The
+ruleset loads with `policy drop` on output and forward into the tables of
+whatever machine hosts it: on the host, an ssh session drops with everything
+else, including the one reading the output. The instance carries all of it,
+the host risks nothing, and `--detruire` removes it.
 
-**It cuts THIS machine's egress.** The ruleset loads into the host's own
-tables — no namespace — with `policy drop` on output and forward, and the one
-named destination is a documentation address that does not exist. An ssh
-session drops with everything else, including the one reading the output. It
-asks for a typed `OUI` before loading, and a **disposable** machine is the
-only reasonable place to run it. `--dry-run` renders the file and loads
+`--terrain hote` keeps the older way, for a machine already decided to be
+disposable. It asks for a typed `OUI` before loading, and **that refusal stops
+the trial**: with no rules, the probes measure an ordinary machine and answer
+« passes » twice, which reads as a conclusive confrontation. `--dry-run`
+renders the file and loads nothing.
+
+**What made it inconclusive was the trial, not the chain.** It aimed at two
+documentation addresses, and neither answers: both probes returned the same
+exhausted timeout. Two listeners now ANSWER, alike but for their address, on a
+network separate from the prober's so the traffic crosses forward. The verdict
+is then a DIFFERENCE, and it reads without interpretation.
+
+The exit codes, and the vocabulary is closed: `0` the trial went all the way,
+`20` the tooling is missing and nothing was attempted, `30` something stopped
+it before it measured — a refusal to load, listeners that do not answer.
+Confusing `0` and `30` would read « conclusive » over a trial that confronted
 nothing.
 
 ```
-./long_test/egress_confront.py             # the three questions
-./long_test/egress_confront.py --dry-run   # what it would do, nothing done
-./long_test/egress_confront.py --detruire  # remove table and container
+./long_test/egress_confront.py                  # inside a Lima instance
+./long_test/egress_confront.py --terrain hote   # HERE, and it cuts egress
+./long_test/egress_confront.py --dry-run        # what it would do
+./long_test/egress_confront.py --detruire       # remove the ground
 ```
 
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?

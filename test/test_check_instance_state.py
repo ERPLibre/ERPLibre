@@ -25,6 +25,7 @@ sys.path.insert(
 )
 
 from script.analyse import check_instance_state as etat  # noqa: E402
+from script.todo import todo_i18n  # noqa: E402
 
 
 class TestEveryCheckDeclaresBothReadings(unittest.TestCase):
@@ -278,6 +279,48 @@ class TestNoQueryEverReadsASecret(unittest.TestCase):
             majuscule = f" {sql.upper()} "
             for interdit in ("INSERT", "UPDATE", "DELETE", "DROP", "ALTER"):
                 self.assertNotIn(f" {interdit} ", majuscule, controle["key"])
+
+
+class TestChaquePhraseDeLaTableEstTraduite(unittest.TestCase):
+    """Les phrases de CONTROLES passent par `t()` depuis une VARIABLE.
+
+    `t(politique[1])` et `t(controle["title"])` : la clé n'est pas dans le
+    source, donc le garde général du dépôt — qui lit `t("…")` et
+    `t(TABLE[x])` — ne la voit pas. Ici on parcourt la table elle-même, ce
+    qui la suit quand elle grandit.
+
+    Les deux phrases de « skip » y manquaient : elles s'affichent sur une
+    copie restaurée, c'est-à-dire le cas le plus fréquent de cet outil.
+    """
+
+    # Les champs de CONTROLES qui atteignent un écran, et NON ceux qui
+    # nomment une table, une colonne ou une requête. Un champ ajouté au
+    # schéma est un acte délibéré, et c'est là qu'on décide s'il se traduit.
+    CHAMPS_DITS = ("title", "section", "why_copy", "why_live")
+
+    def phrases(self):
+        for controle in etat.CONTROLES:
+            for champ in self.CHAMPS_DITS:
+                valeur = controle.get(champ) or ""
+                if valeur:
+                    yield controle["key"], champ, valeur
+            for attente in ("copy", "live"):
+                politique = controle.get(attente)
+                if politique and politique[0] == "skip" and politique[1]:
+                    yield controle["key"], f"{attente}/skip", politique[1]
+
+    def test_every_sentence_the_screen_shows_is_in_the_table(self):
+        absentes = [
+            f"{cle}.{champ} : « {valeur[:56]} »"
+            for cle, champ, valeur in self.phrases()
+            if valeur not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absentes)
+
+    def test_the_scan_actually_finds_sentences(self):
+        """Un parcours qui ne trouve rien passe le test précédent sans rien
+        garder."""
+        self.assertGreater(len(list(self.phrases())), 10)
 
 
 if __name__ == "__main__":

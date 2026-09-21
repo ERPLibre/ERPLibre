@@ -44,22 +44,36 @@ conteneur, une destination HORS LISTE est-elle refusée, et ce refus survit-il
 au redémarrage du moteur de conteneurs — qui écrit ses propres règles à son
 démarrage.
 
-Il demande le privilège : charger un jeu de règles et lire une table en
-exigent, et `nft -c`, qui ne fait que l'analyse, échoue déjà sans lui. Il rend
-20 là où l'outillage manque.
+**Le terrain est une instance Lima jetable**, et c'est le défaut. Le jeu de
+règles se charge en `policy drop` sur output et forward dans les tables de la
+machine qui l'accueille : sur l'hôte, une session ssh tombe avec le reste, y
+compris celle qui lit la sortie. L'instance porte donc tout, l'hôte ne risque
+rien, et `--detruire` la retire.
 
-**Il coupe la sortie de CETTE machine.** Le jeu de règles se charge dans les
-tables de l'hôte — sans espace de noms — en `policy drop` sur output et
-forward, et la seule destination nommée est une adresse de documentation qui
-n'existe pas. Une session ssh tombe avec le reste, y compris celle qui lit la
-sortie. Il demande un `OUI` tapé avant de charger, et une machine **jetable**
-est le seul endroit raisonnable pour le lancer. `--dry-run` rend le fichier et
-ne charge rien.
+`--terrain hote` garde l'ancienne voie, pour une machine dont on a décidé
+qu'elle est jetable. Elle demande un `OUI` tapé avant de charger, et **ce
+refus arrête l'épreuve** : sans règles, les sondes mesurent une machine
+ordinaire et rendent deux fois « passe », ce qui se lit comme une
+confrontation concluante. `--dry-run` rend le fichier et ne charge rien.
+
+**Ce qui la rendait non concluante était l'épreuve, pas la chaîne.** Elle
+visait deux adresses de documentation, et ni l'une ni l'autre ne répond : les
+deux sondes rendaient le même délai épuisé. Deux écouteurs RÉPONDENT
+maintenant, à un adressage près identiques, sur un réseau séparé de celui du
+sondeur pour que le trafic traverse forward. Le verdict est alors une
+DIFFÉRENCE, qui se lit sans interprétation.
+
+Les sorties, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure — un refus de charger, des témoins qui ne répondent pas.
+Confondre `0` et `30` ferait lire « concluant » sur une épreuve qui n'a rien
+confronté.
 
 ```
-./long_test/egress_confront.py             # les trois questions
-./long_test/egress_confront.py --dry-run   # ce qui serait fait, rien de fait
-./long_test/egress_confront.py --detruire  # retirer table et conteneur
+./long_test/egress_confront.py                  # dans une instance Lima
+./long_test/egress_confront.py --terrain hote   # ICI, et ça coupe la sortie
+./long_test/egress_confront.py --dry-run        # ce qui serait fait
+./long_test/egress_confront.py --detruire       # retirer le terrain
 ```
 
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?

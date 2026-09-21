@@ -568,5 +568,132 @@ class TestLaSurchargeDitCeQueLaDerivationNeSaitPas(unittest.TestCase):
         self.assertEqual(["outils"], plan[mirror.SORTANT])
 
 
+class TestLaDeclarationDeSens(unittest.TestCase):
+    """Le sens se DÉRIVE ; la déclaration le corrige, et elle s'écrit.
+
+    Sans écriture, le segment « miroir sortant » de l'écran d'avancement
+    restait à régler et aucun geste ne pouvait le régler : le code savait
+    piloter le miroir, et rien ne pouvait lui dire sur quoi.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        import os
+
+        from unittest.mock import patch
+
+        with open(os.path.join(self.tmp.name, "todo.json"), "w") as fh:
+            fh.write("{}")
+        for cle, nom in (
+            ("CONFIG_FILE", "todo.json"),
+            ("CONFIG_OVERRIDE_FILE", "o.json"),
+            ("CONFIG_OVERRIDE_PRIVATE_FILE", "p.json"),
+        ):
+            correctif = patch(
+                f"script.config.config_file.{cle}",
+                os.path.join(self.tmp.name, nom),
+            )
+            correctif.start()
+            self.addCleanup(correctif.stop)
+
+    def test_a_declaration_is_read_back(self):
+        mirror.declarer("depot", mirror.SORTANT)
+        self.assertEqual({"depot": mirror.SORTANT}, mirror.surcharges())
+
+    def test_an_unknown_direction_is_refused(self):
+        """Le vocabulaire est CLOS : replier sur « sortant » ferait pousser
+        vers un amont un dépôt qui en vient."""
+        from script.lib_valid import ValidationError
+
+        self.assertRaises(
+            ValidationError, mirror.declarer, "depot", "de-travers"
+        )
+        self.assertEqual({}, mirror.surcharges())
+
+    def test_an_empty_name_is_refused(self):
+        from script.lib_valid import ValidationError
+
+        self.assertRaises(ValidationError, mirror.declarer, "", mirror.SORTANT)
+
+    def test_an_empty_direction_removes_the_declaration(self):
+        """Retirer, ce n'est pas basculer : le manifeste redécide."""
+        mirror.declarer("depot", mirror.SORTANT)
+        mirror.declarer("depot", "")
+        self.assertEqual({}, mirror.surcharges())
+
+    def test_it_keeps_the_others(self):
+        """Réécrire la table entière à chaque réglage perdrait les voisins."""
+        mirror.declarer("un", mirror.SORTANT)
+        mirror.declarer("deux", mirror.ENTRANT)
+        self.assertEqual(
+            {"un": mirror.SORTANT, "deux": mirror.ENTRANT},
+            mirror.surcharges(),
+        )
+
+    def test_only_the_outbound_ones_are_counted(self):
+        """Ce sont les seules qu'un site déclare vraiment : le reste se
+        dérive."""
+        mirror.declarer("un", mirror.SORTANT)
+        mirror.declarer("deux", mirror.ENTRANT)
+        self.assertEqual(("un",), mirror.sortants())
+
+    def test_a_value_out_of_vocabulary_in_the_file_is_left_out(self):
+        """Un fichier corrigé à la main ne doit pas rendre l'écran
+        d'avancement inutilisable."""
+        from script.config.config_file import ConfigFile
+
+        ConfigFile().set_config_value(
+            [mirror.CONFIG_KEY], {"un": "de-travers", "deux": mirror.SORTANT}
+        )
+        self.assertEqual({"deux": mirror.SORTANT}, mirror.surcharges())
+
+
+class TestLesAmontsSeDerivent(unittest.TestCase):
+    """Tenir la liste des amonts à la main en ferait une de plus à
+    entretenir, et elle vieillirait sans un mot."""
+
+    PROJETS = (
+        {"name": "a.git", "clone_url": "https://amont.example/oca/a.git"},
+        {"name": "b.git", "clone_url": "https://forge.example/nous/b.git"},
+        {"name": "c.git", "clone_url": "https://tiers.example/x/c.git"},
+        {"name": "d.git", "clone_url": "https://amont.example/oca/d.git"},
+    )
+
+    def test_our_own_forge_is_not_an_upstream(self):
+        amonts = mirror.amonts_du_manifeste(
+            self.PROJETS, "https://forge.example"
+        )
+        self.assertNotIn("https://forge.example/", amonts)
+
+    def test_each_upstream_appears_once(self):
+        amonts = mirror.amonts_du_manifeste(
+            self.PROJETS, "https://forge.example"
+        )
+        self.assertEqual(
+            ("https://amont.example/", "https://tiers.example/"), amonts
+        )
+
+    def test_without_our_address_nothing_is_ours(self):
+        """Un site qui n'a pas dit où vit sa forge ne peut pas décider ce
+        qui lui est extérieur, et supposer ferait pousser vers l'amont ce
+        qui en vient. Tout devient entrant, donc rien ne part."""
+        amonts = mirror.amonts_du_manifeste(self.PROJETS, "")
+        self.assertIn("https://forge.example/", amonts)
+        self.assertEqual(
+            mirror.ENTRANT,
+            mirror.sens("https://forge.example/nous/b.git", amonts),
+        )
+
+    def test_an_address_without_a_host_is_left_out(self):
+        """Un projet sans remote a une adresse vide : en faire un préfixe
+        rendrait TOUT entrant."""
+        self.assertEqual(
+            (), mirror.amonts_du_manifeste([{"name": "x", "clone_url": ""}])
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

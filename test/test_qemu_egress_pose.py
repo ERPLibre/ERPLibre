@@ -447,5 +447,84 @@ class TestLireLeFichierRendu(unittest.TestCase):
             )
 
 
+class TestLAnalyseurVientAvecLesRegles(unittest.TestCase):
+    """La voie de l'installateur POSE des règles sur un système qui ne
+    portait pas de quoi les charger.
+
+    Les images cloud des autres distributions apportent nftables d'origine.
+    Le preseed, lui, installe ce qu'il ÉNUMÈRE, et l'analyseur n'y était
+    pas : l'unité échoue alors à chaque amorçage, la machine revient DEBOUT
+    et sort librement en portant un fichier de règles — l'apparence exacte
+    du contraire.
+
+    Son armement est en « || true » sur ce chemin, donc rien ne s'arrête ;
+    et la relecture d'après déploiement, seule à le voir, n'a lieu qu'une
+    fois.
+    """
+
+    def paquets(self, texte):
+        """Les paquets que le preseed demande à installer."""
+        for ligne in texte.splitlines():
+            if "pkgsel/include" in ligne:
+                return ligne.split("string", 1)[1].split()
+        return []
+
+    def test_the_installer_path_brings_the_loader(self):
+        texte = DQ.build_preseed(
+            args_de_banc(
+                REGLES,
+                (
+                    DQ.EGRESS_UNIT_TEXT
+                    if hasattr(DQ, "EGRESS_UNIT_TEXT")
+                    else plan.unit_text()
+                ),
+            ),
+            None,
+            [],
+        )
+        self.assertIn("nftables", self.paquets(texte))
+
+    def test_it_brings_it_even_with_no_posture_asked(self):
+        """Le preseed est écrit une fois pour l'image ; une VM dont on
+        resserre la posture plus tard trouverait sinon un système sans de
+        quoi la tenir."""
+        self.assertIn(
+            "nftables",
+            self.paquets(DQ.build_preseed(args_de_banc(), None, [])),
+        )
+
+    def test_the_other_packages_are_still_there(self):
+        """Contrôle : réécrire la ligne ne doit rien perdre."""
+        paquets = self.paquets(DQ.build_preseed(args_de_banc(), None, []))
+        for attendu in (
+            "openssh-server",
+            "sudo",
+            "python3",
+            "qemu-guest-agent",
+            "ca-certificates",
+        ):
+            self.assertIn(attendu, paquets)
+
+    def test_the_loader_the_unit_calls_is_the_one_installed(self):
+        """DÉRIVÉ : l'unité nomme le binaire qu'elle lance, et le preseed
+        nomme le paquet. Les deux sont écrits à des endroits différents, et
+        un renommage de l'un sans l'autre rendrait l'installation inutile
+        sans qu'un mot le dise."""
+        binaire = ""
+        for ligne in plan.unit_text().splitlines():
+            if ligne.startswith("ExecStart="):
+                # « … -c 'exec nft -f … ' » : le mot qui suit « exec ».
+                morceaux = ligne.split("exec ", 1)[1].split()
+                binaire = morceaux[0]
+        self.assertTrue(binaire, "l'unité ne nomme aucun analyseur")
+        paquets = self.paquets(DQ.build_preseed(args_de_banc(), None, []))
+        # Le paquet Debian de « nft » est « nftables ».
+        self.assertTrue(
+            any(binaire in p for p in paquets),
+            f"l'unité lance « {binaire} » et le preseed n'installe rien"
+            f" qui le porte : {paquets}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
