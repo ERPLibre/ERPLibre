@@ -118,8 +118,8 @@ class Banc:
         # ÉCHÉANCE sur la LECTURE, pas seulement sur l'attente du fils.
         # `os.read` sur un pseudo-terminal bloque tant que le maître est
         # ouvert : si une régression ouvre un menu là où le test ne tape
-        # rien, la suite entière pend au lieu d'échouer. Mesuré — une
-        # mutation du filtre « _cache_ » a fait durer 600 s.
+        # rien, la suite entière pend au lieu d'échouer : une mutation du
+        # filtre « _cache_ » fait durer 600 s.
         limite = time.monotonic() + DELAI
         depasse = False
         try:

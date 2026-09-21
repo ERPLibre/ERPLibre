@@ -28,8 +28,13 @@ from pathlib import Path
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
-from script.vm.backend import (LIBVIRT, group_by_host, handle_of, is_hosted,
-                               resolves_locally)
+from script.vm.backend import (
+    LIBVIRT,
+    group_by_host,
+    handle_of,
+    is_hosted,
+    resolves_locally,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -1382,8 +1387,14 @@ class WriteWindow:
 
 
 def fmt_rate(bps) -> str:
-    """Octets/s -> « 12.3M/s ». « - » tant qu'on ne sait pas."""
-    return "-" if bps is None else f"{_fmt_size(int(bps))}/s"
+    """Octets/s -> « 12M/s », « 1.1G/s ». « - » tant qu'on ne sait pas.
+
+    LE FORMATEUR QUI SERRE, comme les paires : il vit dans une COLONNE, et
+    `_fmt_size` y rendait huit caractères pour sept dès 100 Mo/s — un débit
+    d'installation ordinaire sur disque local. La décimale, elle, ne se
+    perd qu'au-dessus de dix unités, là où elle n'apprend rien.
+    """
+    return "-" if bps is None else f"{_fmt_tight(int(bps))}/s"
 
 
 def _fmt_tight(nbytes) -> str:
@@ -1795,8 +1806,9 @@ COL_DEFAULT_WIDTHS = {
     # 6 : « 125:30 » est le pire cas d'une installation de deux heures.
     "elapsed": 6,
     # Section statistiques de la VM : ce qu'elle écrit, sa RAM, son disque.
-    # « 12.3M/s » tient en 7 et « 1.1G/12G » en 9 : au-delà, « Disque » sortait
-    # de l'écran sur un terminal de 150 colonnes, moitié prise par le journal.
+    # 7 comme l'en-tête « Écrit/s », qui TIRE la largeur : le contenu serré
+    # tient en 6 au pire (« 999M/s »). Au-delà, « Disque » sortait de l'écran
+    # sur un terminal de 150 colonnes, moitié prise par le journal.
     "wr": 7,
     # 10 et non 9 : sur une VM de 128 Go, « 1001M/128G » fait dix caractères.
     "ram": 10,
@@ -1923,8 +1935,15 @@ def run_monitor(manifest_path: str, run_app: bool = True):
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import (Button, Checkbox, DataTable, Footer, Header,
-                                 RichLog, Static)
+    from textual.widgets import (
+        Button,
+        Checkbox,
+        DataTable,
+        Footer,
+        Header,
+        RichLog,
+        Static,
+    )
 
     manifest = json.loads(Path(manifest_path).read_text())
     started = manifest.get("started", time.time())

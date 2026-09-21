@@ -15,25 +15,26 @@ quatre choses de plus que `exp_duplicate_database` réunit :
 2. Il RÉGÉNÈRE le `database.uuid`. Deux bases qui partagent le leur se
    présentent comme la même instance au service de garantie d'Odoo.
 3. Il copie le FILESTORE. Sans lui, chaque pièce jointe de la copie
-   pointe vers un fichier qui n'existe pas — 57 Mo perdus en silence sur
-   la base qui a servi à écrire ceci.
+   pointe vers un fichier qui n'existe pas, et la perte est silencieuse :
+   rien ne la signale.
 4. Il neutralise pour de bon, quand on le demande.
 
-Ce que « neutraliser » veut dire, mesuré
-----------------------------------------
+Ce que « neutraliser » veut dire
+--------------------------------
 Le dépôt a trois modules maison — `disable_mail_server`,
 `disable_auto_backup`, `disable_payment_provider` — qui font trois gestes.
 Aucun ne pose le drapeau, et l'un d'eux ouvre une porte : supprimer tous
 les `ir.mail_server` fait retomber Odoo sur le `smtp_server` du fichier
 de configuration.
 
-`neutralize_database` d'Odoo exécute les 73 fichiers `neutralize.sql`
-livrés par les modules INSTALLÉS. Mesuré sur une base migrée 12 → 18 :
+`neutralize_database` d'Odoo exécute les fichiers `neutralize.sql`
+livrés par les modules INSTALLÉS. Ce qu'il change dans la copie :
 
-    database.is_neutralized   ABSENT  →  true
-    crons actifs                  33  →  1   (l'autovacuum, voulu)
-    serveurs de courriel           0  →  1   le bouchon « invalid »
-    clé Stripe présente            1  →  0
+    database.is_neutralized   absent   →  true
+    crons actifs              tous     →  le seul autovacuum, voulu
+    serveurs de courriel      ceux de  →  le bouchon « invalid »
+                              la base
+    clés de paiement          en place →  retirées
 
 Deux techniques, selon la version
 ---------------------------------

@@ -44,11 +44,19 @@ no proof to arm it with.
 
 ## Proven, and not proven
 
-`libvirt` and `pve` have run against real machines. **`lima` has not**, and
-the package says so rather than letting a screen assume it. "Unproven" does
-not mean doubtful: it means what `limactl` makes of the rendered text has
-never been measured. `long_test/lima_confront.py` is what will lift the
-mention — not a code review.
+All three backends have run against a real machine, through the WHOLE
+lifecycle: create, start, list, execute a command chain, stop, delete.
+"Unproven" never meant doubtful — it meant that what the tool makes of the
+rendered text had not been measured. `long_test/lima_confront.py` is what
+lifted the mention on `lima` — not a code review.
+
+That distinction earns its keep: the instance description the package
+rendered parsed perfectly as YAML and did not start, because the `arch`
+field has a vocabulary of its own — `x86_64` where the repository and the
+image both say `amd64`. No amount of reading finds that; one boot does.
+
+A backend absent from the table is unproven by default: doubt leans towards
+the side that promises nothing.
 
 ```bash
 # L'identité d'une fiche de manifeste, et ce qu'elle arme :

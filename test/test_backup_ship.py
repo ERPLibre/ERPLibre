@@ -121,6 +121,105 @@ class TestLeVerdictDuDepot(unittest.TestCase):
         self.assertEqual(S.UNREACHABLE, S.compare("abc", None))
 
 
+class TestLeNomFinalNeParaitQueComplet(unittest.TestCase):
+    """Une redirection CRÉE le fichier avant le premier octet.
+
+    Le transport coupé en route laissait donc, chez la cible hors-site,
+    une archive TRONQUÉE portant le nom exact d'une sauvegarde légitime —
+    au seul endroit où l'on ira chercher une sauvegarde le jour où l'on
+    en a besoin. Aucun des contrôles locaux ne se rejoue là-bas ; rien
+    n'aurait distingué ce fichier d'un bon.
+
+    Le nom définitif n'apparaît désormais qu'au bout : l'archive voyage
+    sous un nom de travail, son empreinte est comparée SOUS ce nom, et le
+    renommage ne vient qu'après. Un renommage dans le même répertoire est
+    atomique — il n'y a pas d'instant où le nom final désigne un fichier
+    incomplet.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self.archive = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        self.archive.write(b"des octets de sauvegarde")
+        self.archive.close()
+        self.addCleanup(os.unlink, self.archive.name)
+        self.empreinte = hashlib.sha256(
+            b"des octets de sauvegarde"
+        ).hexdigest()
+
+    def deposer(self, reponses):
+        transport = Transport(reponses)
+        rendu = S.ship(
+            CIBLE,
+            FICHE,
+            self.archive.name,
+            "base.zip",
+            run=transport,
+            ask=lambda _invite: "",
+        )
+        return rendu, transport
+
+    @staticmethod
+    def commandes(transport):
+        return [remote for _h, remote, _e in transport.appels]
+
+    def test_the_payload_never_travels_under_the_final_name(self):
+        _rendu, transport = self.deposer(
+            [(1, "test: absent"), (0, ""), (0, f"{'a' * 64}  x"), (0, "")]
+        )
+        envoi = [c for c in self.commandes(transport) if "cat >" in c]
+        self.assertEqual(1, len(envoi))
+        self.assertNotIn("/tank/erplibre/base.zip'", envoi[0])
+        self.assertIn(S.SUFFIXE_PARTIEL, envoi[0])
+
+    def test_a_cut_transport_leaves_nothing_behind(self):
+        """Le nom de travail est retiré : le laisser ferait échouer la
+        reprise sur une garde de collision, pour un fichier mort."""
+        rendu, transport = self.deposer([(1, "test: absent"), (255, "coupé")])
+        self.assertEqual(S.UNREACHABLE, rendu.verdict)
+        retraits = [c for c in self.commandes(transport) if "rm -f" in c]
+        self.assertEqual(1, len(retraits))
+        self.assertIn(S.SUFFIXE_PARTIEL, retraits[0])
+
+    def test_a_mismatch_never_takes_the_final_name(self):
+        """Un contenu qui diffère est un contenu qu'on ne veut pas relire
+        un jour de panne, et surtout pas sous un nom rassurant."""
+        rendu, transport = self.deposer(
+            [(1, "test: absent"), (0, ""), (0, f"{'b' * 64}  x")]
+        )
+        self.assertEqual(S.MISMATCH, rendu.verdict)
+        self.assertEqual(
+            [], [c for c in self.commandes(transport) if "mv " in c]
+        )
+        self.assertTrue(any("rm -f" in c for c in self.commandes(transport)))
+
+    def test_only_a_proven_payload_is_renamed(self):
+        empreinte = self.empreinte
+        rendu, transport = self.deposer(
+            [(1, "test: absent"), (0, ""), (0, f"{empreinte}  x"), (0, "")]
+        )
+        self.assertEqual(S.SHIPPED, rendu.verdict)
+        renommages = [c for c in self.commandes(transport) if "mv " in c]
+        self.assertEqual(1, len(renommages))
+        self.assertIn(S.SUFFIXE_PARTIEL, renommages[0])
+        self.assertIn("base.zip", renommages[0])
+
+    def test_a_rename_that_fails_is_not_a_success(self):
+        """Le contenu est bon et pourtant il n'est pas à sa place : dire
+        « déposé » enverrait chercher un fichier qui n'existe pas."""
+        empreinte = self.empreinte
+        rendu, _t = self.deposer(
+            [
+                (1, "test: absent"),
+                (0, ""),
+                (0, f"{empreinte}  x"),
+                (1, "mv: refus"),
+            ]
+        )
+        self.assertNotEqual(S.SHIPPED, rendu.verdict)
+
+
 class TestLeDepot(unittest.TestCase):
     """Déposer, puis relire ce qui est arrivé."""
 
@@ -156,7 +255,13 @@ class TestLeDepot(unittest.TestCase):
             ]
         )
         self.assertEqual(S.SHIPPED, rendu.verdict)
-        self.assertEqual(3, len(transport.appels))
+        # LES GESTES, et non leur nombre : compter fige une étape de plus
+        # ou de moins, là où le contrat est « on regarde, on envoie, on
+        # relit, on renomme » — et le renommage est arrivé après coup.
+        gestes = [remote for _h, remote, _e in transport.appels]
+        self.assertTrue(any("cat >" in g for g in gestes))
+        self.assertTrue(any("sha256" in g or "shasum" in g for g in gestes))
+        self.assertTrue(any(g.startswith("mv ") for g in gestes))
 
     def test_the_payload_travels_on_the_standard_input(self):
         """Un envoi composé à côté perdrait le privilège, le délai et le
@@ -187,7 +292,13 @@ class TestLeDepot(unittest.TestCase):
     def test_a_failed_send_never_pretends_to_read_back(self):
         rendu, transport = self.deposer([(1, ""), (255, "timeout")])
         self.assertEqual(S.UNREACHABLE, rendu.verdict)
-        self.assertEqual(2, len(transport.appels))
+        gestes = [remote for _h, remote, _e in transport.appels]
+        # RIEN N'EST RELU : lire une empreinte après un envoi mort rendrait
+        # « rien lu », qui se lit comme un transport en panne alors que
+        # c'est l'envoi qui n'a pas eu lieu.
+        self.assertEqual([], [g for g in gestes if "sha256" in g])
+        # …et le nom de travail est retiré.
+        self.assertTrue(any("rm -f" in g for g in gestes))
 
     def test_a_name_that_climbs_is_refused_before_anything(self):
         transport = Transport()
@@ -217,7 +328,13 @@ class TestLaCollisionSeQuestionne(TestLeDepot):
             [(0, ""), (0, ""), (0, f"{self.empreinte}  x")], retape="base.zip"
         )
         self.assertEqual(S.SHIPPED, rendu.verdict)
-        self.assertEqual(3, len(transport.appels))
+        # LES GESTES, et non leur nombre : compter fige une étape de plus
+        # ou de moins, là où le contrat est « on regarde, on envoie, on
+        # relit, on renomme » — et le renommage est arrivé après coup.
+        gestes = [remote for _h, remote, _e in transport.appels]
+        self.assertTrue(any("cat >" in g for g in gestes))
+        self.assertTrue(any("sha256" in g or "shasum" in g for g in gestes))
+        self.assertTrue(any(g.startswith("mv ") for g in gestes))
 
     def test_a_free_name_asks_nothing(self):
         demandes = []

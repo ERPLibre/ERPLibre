@@ -318,9 +318,9 @@ class TestCanonical(unittest.TestCase):
     """Ce qui décide s'il y a un écart. Le bruit se joue ici."""
 
     def test_indentation_is_not_a_change(self):
-        # Le cas mesuré sur une vraie base : une arch ré-indentée n'est pas
-        # une modification, et c'est l'erreur que fait `has_diff` d'Odoo —
-        # une comparaison de chaînes brutes — dans son propre assistant.
+        # Une arch ré-indentée n'est pas une modification, et c'est l'erreur
+        # que fait `has_diff` d'Odoo — une comparaison de chaînes brutes —
+        # dans son propre assistant.
         left = "<form><field name='a'/></form>"
         right = "<form>\n    <field name='a'/>\n</form>"
         self.assertEqual(L.canonical(left), L.canonical(right))

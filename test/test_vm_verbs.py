@@ -817,12 +817,13 @@ class TestCeQuiATourneContreUneVraieMachine(unittest.TestCase):
     """« Non éprouvé » ne veut pas dire douteux : il veut dire NON
     CONFRONTÉ. Un écran qui ne le dit pas laisse croire l'inverse."""
 
-    def test_the_two_hypervisors_are_proven(self):
-        self.assertTrue(B.is_proven(B.LIBVIRT))
-        self.assertTrue(B.is_proven(B.PVE))
+    def test_every_backend_of_the_table_is_proven(self):
+        """Les trois ont joué le cycle de vie ENTIER contre leur outil.
 
-    def test_the_new_backend_is_not(self):
-        self.assertFalse(B.is_proven(B.LIMA))
+        Le compter plutôt que les nommer un à un : un quatrième backend
+        ajouté à la table serait sinon éprouvé par le silence.
+        """
+        self.assertEqual([], [n for n in B.BACKENDS if not B.is_proven(n)])
 
     def test_an_unknown_backend_is_not_proven_by_default(self):
         """Le doute penche du côté qui ne promet rien."""

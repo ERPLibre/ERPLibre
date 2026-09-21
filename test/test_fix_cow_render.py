@@ -8,12 +8,10 @@
 que l'arch doit avoir a changé. Deux autres la laissent finir sans un mot
 et ne se voient qu'à l'ouverture de la page.
 
-Mesuré sur une migration 12 → 18 réelle : /contact rendait 500 depuis le
-palier 14 → 15 — quatre paliers de silence. La copie COW de
-`website.contactus` n'a jamais eu le `t-set='contactus_form_values'` que
-le module a gagné en chemin, et sur lequel sa vue héritière fait un
-xpath. Les deux copies appelaient en plus `website.company_description`,
-gabarit disparu en 18.
+Une copie COW n'a jamais le `t-set='contactus_form_values'` que le
+module a gagné en chemin, et sur lequel sa vue héritière fait un xpath ;
+elle peut aussi appeler `website.company_description`, gabarit disparu en
+18. La page rend alors 500 des paliers durant, sans que rien ne le dise.
 """
 
 import os

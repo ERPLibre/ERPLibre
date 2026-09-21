@@ -22,6 +22,7 @@ libvirt), une panne après l'autre :
   répondait « not running ».
 """
 
+import re
 import shlex
 import subprocess
 import sys
@@ -220,7 +221,7 @@ class TestLeNoyau(unittest.TestCase):
     """Tant que l'hôte tourne le noyau de la distribution, il n'a ni module
     bridge ni table NAT : ifupdown2 répond « Operation not supported », et
     quand /run/network manque il répond même « Another instance of this
-    program is already running » — un mensonge. Vécu sur l'hôte d'essai."""
+    program is already running » — un mensonge."""
 
     def test_the_running_kernel_is_read_from_pveversion(self):
         self.assertEqual(
@@ -252,8 +253,8 @@ class TestLeNoyau(unittest.TestCase):
 
 class TestLeDns(unittest.TestCase):
     """« --ipconfig0 » ne porte pas le DNS : une VM en adresse fixe se
-    retrouvait sans résolveur. Mesuré sur la VM d'essai — le NAT routait, mais
-    « getent hosts deb.debian.org » ne rendait rien."""
+    retrouve sans résolveur — le NAT route, mais « getent hosts
+    deb.debian.org » ne rend rien."""
 
     def test_the_resolved_stub_is_useless_to_a_guest(self):
         self.assertEqual(pve.parse_nameservers("nameserver 127.0.0.53"), [])
@@ -549,6 +550,176 @@ class TestLesCommandes(unittest.TestCase):
         self.assertEqual("", pve.ip_from_ipconfig("ip=dhcp"))
 
 
+class TestLesBatisseursDeCommandeDeGestion(unittest.TestCase):
+    """Cinq fonctions composent une commande pour un shell ROOT distant.
+
+    Aucune n'avait d'épreuve. Elles ne décident rien et n'affichent rien —
+    c'est justement ce qui les rend éprouvables sans hôte, et ce qui rendait
+    leur absence de couverture facile à ne pas voir.
+
+    Ce qui se vérifie ici n'est pas l'orthographe d'une chaîne, qui ne vaut
+    qu'une relecture : ce sont les INVARIANTS QUI TRAVERSENT LES MODULES —
+    un réglage posé à la création dont une action de gestion dépend des mois
+    plus tard, et les valeurs qui, interpolées, arriveraient dans ce shell.
+    """
+
+    def test_the_serial_console_needs_what_creation_lays_down(self):
+        """« qm terminal » ouvre serial0. Retirer « --serial0 » de la
+        création laisserait cette action échouer sur des VM neuves
+        seulement, longtemps après le changement qui l'a cassée."""
+        spec = {
+            "name": "vm-essai",
+            "memory": 2048,
+            "vcpus": 2,
+            "disk": "12G",
+            "storage": "local",
+            "bridge": "vmbr0",
+            "image": "debian-13-genericcloud-amd64.qcow2",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "ipconfig": "ip=dhcp",
+        }
+        # Le lien est à SENS UNIQUE et ne se voit dans aucune signature :
+        # la commande de console ne nomme pas le périphérique, elle ouvre
+        # celui que la création a posé. C'est donc le côté création qui se
+        # tient ici — le seul des deux qui puisse casser l'autre.
+        creation = "\n".join(pve.create_cmds(100, spec))
+        self.assertIn("--serial0 socket", creation)
+        self.assertIn("--vga serial0", creation)
+        self.assertEqual("qm terminal 100", pve.console_cmd(100))
+
+    def test_the_guest_ip_needs_the_agent_creation_enables(self):
+        """L'adresse se demande à l'agent invité ; sans « --agent » à la
+        création, la commande rend une erreur de l'outil plutôt qu'une
+        adresse, et l'on cherche du côté du réseau."""
+        spec = {
+            "name": "vm-essai",
+            "memory": 2048,
+            "vcpus": 2,
+            "disk": "12G",
+            "storage": "local",
+            "bridge": "vmbr0",
+            "image": "debian-13-genericcloud-amd64.qcow2",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "ipconfig": "ip=dhcp",
+        }
+        self.assertIn("--agent", "\n".join(pve.create_cmds(100, spec)))
+        self.assertIn("guest cmd", pve.guest_ip_cmd(100))
+
+    def test_the_vmid_is_a_number_everywhere(self):
+        """Le seul jeton interpolé dans ces commandes vient de « qm list »,
+        où il est converti en entier derrière un contrôle de chiffres. Le
+        vérifier ici plutôt que de s'en souvenir : ces fonctions sont
+        publiques et le prochain appelant ne lira pas l'analyseur."""
+        vmid = pve.parse_qm_list("100 nom running 2048 disque 1234")[0]["vmid"]
+        self.assertIsInstance(vmid, int)
+        for commande in (
+            pve.status_cmd(vmid),
+            pve.console_cmd(vmid),
+            pve.guest_ip_cmd(vmid),
+            pve.resize_cmd(vmid, "+10G"),
+        ):
+            with self.subTest(commande=commande):
+                self.assertIn(" 100", commande)
+
+    def test_nothing_shell_special_survives_the_size_check(self):
+        """La taille est la SEULE valeur saisie qui entre dans ces
+        commandes. Le contrôle vit chez l'appelant ; l'épreuve tient ce
+        qu'il laisse passer, parce qu'un second appelant le recopiera."""
+        motif = re.compile(r"^\+?\d+[MGT]$")
+        for refuse in (
+            "10G; rm -rf /",
+            "$(id)",
+            "`id`",
+            "10G && reboot",
+            "10G\nreboot",
+            "",
+            "10",
+            "-5G",
+        ):
+            with self.subTest(saisie=refuse):
+                self.assertIsNone(motif.match(refuse.strip()))
+        for accepte in ("+10G", "40G", "512M", "2T"):
+            with self.subTest(saisie=accepte):
+                self.assertIsNotNone(motif.match(accepte))
+
+    def test_resize_never_builds_a_shrink_of_its_own(self):
+        """Proxmox refuse de rétrécir, et le dire AVANT évite de croire à
+        une panne de l'outil. La fonction ne compose donc rien qui
+        prétende le faire — elle recopie ce qu'on lui donne."""
+        self.assertEqual("qm resize 7 scsi0 +10G", pve.resize_cmd(7, "+10G"))
+        self.assertEqual(
+            "qm resize 7 virtio0 40G", pve.resize_cmd(7, "40G", "virtio0")
+        )
+
+    def test_the_orphan_sweep_lists_and_never_erases(self):
+        """« On les LISTE, on n'efface rien sans demander. » Un « rm » ou un
+        « pvesm free » glissé là effacerait des disques à la lecture d'un
+        écran d'inventaire."""
+        commande = pve.orphan_disks_cmd()
+        self.assertIn("pvesm list", commande)
+        for destructeur in ("rm ", "free", "destroy", "delete", "wipe"):
+            with self.subTest(mot=destructeur):
+                self.assertNotIn(destructeur, commande)
+
+    def test_the_verbose_status_asks_for_more_than_the_list_shows(self):
+        """« qm list » rend cinq colonnes ; le détail d'UNE machine demande
+        « --verbose », sans quoi cette action redirait ce qu'on vient de
+        lire."""
+        self.assertIn("--verbose", pve.status_cmd(100))
+
+
+class TestLeModeDEmploiNeCompteNiNeNumerote(unittest.TestCase):
+    """Une page qui compte des entrées de menu, ou qui en désigne une par
+    son rang, vieillit au premier ajout — et sans un mot.
+
+    Les deux sont arrivés ici : « les dix-sept entrées de QEMU/KVM » quand
+    le menu en portait vingt, et « l'entrée 13 écrit ~/.ssh/config » dans
+    la même phrase. Le lecteur n'a aucun moyen de savoir que le compte a
+    bougé ; la page reste parfaitement lisible.
+
+    Le contrôle porte sur la SOURCE bilingue et sur chaque langue : une
+    moitié corrigée laisserait l'autre mentir.
+    """
+
+    CHIFFRES = (
+        r"\d+",
+        "dix-sept|dix-huit|dix-neuf|vingt|seize|quinze",
+        "seventeen|eighteen|nineteen|twenty|sixteen|fifteen",
+    )
+
+    @classmethod
+    def moities(cls):
+        import pathlib
+
+        racine = pathlib.Path(__file__).resolve().parents[1]
+        chemin = racine / "script" / "proxmox" / "README.base.md"
+        source = chemin.read_text(encoding="utf-8")
+        anglais, _sep, francais = source.partition("<!-- [fr] -->")
+        return (("en", anglais), ("fr", francais))
+
+    def test_it_counts_no_menu_entry(self):
+        # Jusqu'à trois mots entre le nombre et « entrées » : le compte
+        # s'écrit « les vingt entrées de QEMU/KVM » comme « the twenty
+        # QEMU/KVM entries ». Exiger l'adjacence laisse passer la
+        # seconde forme.
+        motif = re.compile(
+            r"(%s)((\s+|\s*/\s*)[\w./-]+){0,3}\s+(entries|entrées)"
+            % "|".join(self.CHIFFRES),
+            re.IGNORECASE,
+        )
+        for langue, moitie in self.moities():
+            with self.subTest(langue=langue):
+                self.assertEqual([], motif.findall(moitie))
+
+    def test_it_points_at_no_entry_by_its_rank(self):
+        """Insérer une entrée au-dessus décale la cible, et la page
+        continue d'envoyer au même rang."""
+        motif = re.compile(r"(entry|entrée)\s+\d+", re.IGNORECASE)
+        for langue, moitie in self.moities():
+            with self.subTest(langue=langue):
+                self.assertEqual([], motif.findall(moitie))
+
+
 class TestLePrivilege(unittest.TestCase):
     def test_the_whole_command_is_wrapped_not_just_its_first_word(self):
         """« sudo mkdir && if … fi » n'élèverait que le mkdir, et la
@@ -627,9 +798,10 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("pveversion", sortie)
 
     def test_a_reachable_machine_without_proxmox_says_exactly_that(self):
-        """Le cas rapporté : « je n'arrive pas à me connecter, pourtant il est
-        accessible ». La machine répondait ; c'est Proxmox qui manquait, et le
-        message parlait d'injoignabilité."""
+        """Le symptôme « connexion impossible, pourtant la machine est
+        accessible » a deux causes que tout sépare : la machine répond, et
+        c'est Proxmox qui manque. Le message doit nommer Proxmox, et non
+        l'injoignabilité."""
         host, sortie = self._confirm(
             [
                 (127, AVERTISSEMENT + "bash: pveversion: command not found"),
@@ -766,7 +938,7 @@ class TestLaTableNat(unittest.TestCase):
         self.assertEqual(lu["kernel"], "7.0.14-14-pve")
 
     def test_the_cloud_kernel_waiting_for_a_reboot(self):
-        # L'état exact rapporté : le noyau Proxmox est POSÉ, pas amorcé.
+        # L'état à distinguer : le noyau Proxmox est POSÉ, pas amorcé.
         lu = pve.parse_nat_check(
             self._sortie("6.12.101+deb13-cloud-amd64", False, "7.0.14-14-pve")
         )
@@ -799,8 +971,8 @@ class TestLeReseauDuPontInterne(unittest.TestCase):
     vivait en 10.10.10.152 avec 10.10.10.1 pour PASSERELLE. Lui demander de
     poser 10.10.10.1/24 sur son propre pont, c'est prendre l'adresse de sa
     passerelle et rendre tout le /24 local — la machine s'isole au milieu de
-    la commande qui la configure. Vécu : « ifup » n'a jamais rendu la main, et
-    la VM ne répondait plus ni en ssh ni en ping."""
+    la commande qui la configure : « ifup » ne rend jamais la main, et la VM
+    ne répond plus ni en ssh ni en ping."""
 
     IMBRIQUE = (
         "2: eth0    inet 10.10.10.152/24 brd 10.10.10.255 scope global eth0\n"
@@ -908,10 +1080,10 @@ class TestPourquoiAucunStockage(unittest.TestCase):
     terre, la commande répond « Connection refused », la liste est vide, et
     l'écran s'arrête sur le symptôme — le défaut est trois étages plus bas.
 
-    Vécu sur un Proxmox imbriqué : le nom d'hôte ne résolvait que vers
-    127.0.1.1, parce que cloud-init réécrit /etc/hosts à CHAQUE démarrage. Le
-    redémarrage désormais automatique défaisait donc la correction que
-    l'installation venait de poser."""
+    Sur un Proxmox imbriqué, le nom d'hôte ne résout que vers 127.0.1.1,
+    parce que cloud-init réécrit /etc/hosts à CHAQUE démarrage : le
+    redémarrage automatique défait la correction que l'installation vient de
+    poser."""
 
     def _sortie(self, actif, monte, adresses):
         return (
@@ -933,9 +1105,9 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         """« La sonde n'a pas répondu » n'est PAS « rien n'est monté ».
 
         Un dépassement de délai — hostname bloqué sur un DNS injoignable —
-        rend les mêmes vides. On affirmait alors « le nom ne résout que vers
-        ? » sans avoir rien mesuré, ce qui envoyait réécrire /etc/hosts sur
-        une machine peut-être saine."""
+        rend les mêmes vides. Affirmer alors « le nom ne résout que vers
+        ? » sans rien avoir constaté enverrait réécrire /etc/hosts sur une
+        machine peut-être saine."""
         self.assertFalse(pve.parse_cluster_check("timeout")["lu"])
         self.assertFalse(pve.parse_cluster_check("")["lu"])
         self.assertTrue(
@@ -945,7 +1117,7 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         )
 
     def test_a_link_local_address_is_not_routable(self):
-        """Mesuré : « hostname --ip-address » peut ne rendre QUE des fe80::.
+        """« hostname --ip-address » peut ne rendre QUE des fe80::.
 
         Le seul test « ne commence pas par 127. » les prenait pour routables,
         et une APIPA en 169.254 aussi. pmxcfs n'a alors rien d'utilisable,
@@ -979,9 +1151,8 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         """storage.cfg N'EXISTE PAS sur une installation neuve.
 
         Proxmox se contente alors de ses stockages par défaut, et « local »
-        répond parfaitement — mesuré sur l'hôte imbriqué, où /etc/pve était
-        monté sans ce fichier. Le tester revenait à déclarer /etc/pve absent
-        sur un hôte sain."""
+        répond parfaitement, et /etc/pve se monte sans ce fichier. Le tester
+        revient à déclarer /etc/pve absent sur un hôte sain."""
         self.assertNotIn("storage.cfg", pve.CLUSTER_CHECK_CMD)
         self.assertIn("/etc/pve/.version", pve.CLUSTER_CHECK_CMD)
 
@@ -1195,8 +1366,8 @@ class TestReparerEtcHosts(unittest.TestCase):
         )
 
     def test_a_refused_write_leaves_the_file_ALONE(self):
-        """Le constat le plus grave de l'attaque, mesuré sur trois états
-        réels : /etc en lecture seule, fichier immuable, quota atteint.
+        """Le constat le plus grave, sur les trois états qui refusent
+        l'écriture : /etc en lecture seule, fichier immuable, quota atteint.
 
         « sed -i » puis « printf >> » étaient DEUX écritures. Sed refusé et
         ajout réussi, la ligne 127.0.1.1 survivait EN PREMIER et notre ligne
@@ -1369,7 +1540,7 @@ class TestGelerCloudInit(unittest.TestCase):
 class TestQuelleAdressePourLeNoeud(unittest.TestCase):
     """L'adresse écrite doit être celle par laquelle on JOINT l'hôte.
 
-    Mesuré sur une Proxmox imbriquée : « hostname -I » rend
+    Sur une Proxmox imbriquée, « hostname -I » rend
     « 10.10.10.150 10.10.20.1 », et la seconde est le pont interne que notre
     propre code vient de créer. La poser ferait s'identifier le nœud par une
     adresse que personne ne joint."""

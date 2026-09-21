@@ -6,9 +6,9 @@
 
 `fix_duplicate_index.py` et `restore_config_defaults.py` étaient écrits,
 éprouvés sur copie, et absents du pilote. Chaque migration refabriquait
-donc ses index redondants et reperdait sa liste de prix par défaut —
-mesuré à l'identique sur DEUX chaînes 12 → 18 indépendantes : 414 index
-et une liste manquante dans l'une comme dans l'autre.
+donc ses index redondants et reperdait sa liste de prix par défaut, à
+l'identique sur DEUX chaînes 12 → 18 indépendantes : 414 index et une
+liste manquante dans l'une comme dans l'autre.
 
 Un outil qui existe sans être appelé est le défaut le plus discret de ce
 dépôt : rien n'échoue, rien ne l'écrit, et l'on croit le problème réglé

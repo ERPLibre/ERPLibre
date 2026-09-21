@@ -125,6 +125,16 @@ class EgressBookMenuMixin:
         role = self._book_pick_role()
         if not role:
             return
+        self._book_write_role(role)
+
+    def _book_write_role(self, role: str) -> bool:
+        """Demande les adresses d'UN rôle et les écrit. Vrai si écrit.
+
+        PARTAGÉ par « poser les adresses » et par « ce qui manque » : les
+        deux écrans demandent la même chose, et une seconde copie aurait
+        perdu l'indice, le refus à la saisie, ou les ports — c'est ce
+        genre d'écart qui fait qu'un chemin refuse ce que l'autre accepte.
+        """
         indice = role_hint(role)
         if indice:
             print(f"  {indice}")
@@ -138,7 +148,7 @@ class EgressBookMenuMixin:
         saisie = input(f"{t('Networks: ')}").strip()
         if not saisie:
             print(t("Nothing typed: the book is unchanged."))
-            return
+            return False
         reseaux = [m.strip() for m in saisie.split(",") if m.strip()]
         ports = self._book_ask_ports()
         try:
@@ -147,8 +157,9 @@ class EgressBookMenuMixin:
             # REFUSÉ À LA SAISIE, et non au déploiement : une faute de
             # frappe se découvrait après un formulaire entier.
             print(f"  ✗ {refus}")
-            return
+            return False
         print(f"  ✓ {t('Written for')} {role}")
+        return True
 
     def _book_ask_ports(self):
         """Les ports du site pour ce rôle, ou () pour ceux du dépôt.
@@ -211,7 +222,68 @@ class EgressBookMenuMixin:
     # Ce qui manque
     # ------------------------------------------------------------------
     def _book_missing(self):
+        """Ce qui manque, puis de quoi le poser SANS quitter l'écran.
+
+        Rendre la liste et s'arrêter là est un cul-de-sac : il faut
+        retenir sept noms de rôle, revenir au menu, et les reposer un à
+        un en retrouvant lequel servait à quoi.
+
+        LA QUESTION EST « CE SITE A-T-IL CE SERVICE », pas « veux-tu le
+        taper ». Un site qui n'a pas de coffre n'a pas d'adresse à
+        donner, et la bonne réponse est non — l'écran dit alors ce qui
+        reste bloqué, plutôt que de redemander.
+        """
+        bloques = self._book_report()
+        if not bloques:
+            return
+        # UNE FOIS PAR RÔLE, et non par profil : un rôle posé débloque
+        # d'un coup tous ceux qui l'attendaient, et le redemander ferait
+        # retaper la même adresse.
+        print()
+        for role, profils in bloques.items():
+            print(f"  · {role} — {t('unblocks:')} {', '.join(profils)}")
+        if not self._is_yes(
+            input(f"\n{t('Post the missing addresses now?')} [o/N] : ")
+        ):
+            return
+        pose, refuses = 0, []
+        for role in bloques:
+            # LE RÔLE EST DANS LA QUESTION, et il n'y a pas d'en-tête
+            # séparé : posé avant la réponse, il resterait orphelin à
+            # l'écran quand on arrête, et se lirait comme un rôle traité.
+            reponse = input(
+                f"\n  {t('Does this site have a')} « {role} » ?"
+                f" [o/N/{t('q to stop')}] : "
+            ).strip()
+            if reponse.lower() in ("q", "quit"):
+                break
+            if not self._is_yes(reponse):
+                refuses.append(role)
+                continue
+            if self._book_write_role(role):
+                pose += 1
+        for role in refuses:
+            # NOMMÉ, et non compté : « 3 rôles refusés » n'apprend pas
+            # lesquels, et c'est ce qu'il faut pour savoir quoi déployer.
+            # La phrase met le rôle en SUJET : « VM paranoid restent »
+            # ne s'accorde pas quand un seul profil attend.
+            print(
+                f"  ○ {t('Left aside:')} {role} — "
+                f"{t('still blocks:')} {', '.join(bloques[role])}"
+            )
+        if pose:
+            print(f"\n{t('After posting:')}")
+            self._book_report()
+
+    def _book_report(self) -> dict:
+        """Imprime l'état de chaque profil, et rend {rôle: [profils]}.
+
+        Le dictionnaire est ce qui permet d'agir ensuite ; l'impression
+        est ce qui permet de décider. Les deux au même endroit parce
+        qu'une seconde lecture du carnet pourrait donner un autre état.
+        """
         carnet = egress_book.read(self.config_file)
+        bloques: dict = {}
         for profil in vm_profiles.profiles():
             manque = vm_profiles.missing_addresses(profil.posture, carnet)
             if manque:
@@ -219,5 +291,8 @@ class EgressBookMenuMixin:
                     f"  ✗ {profil.label} : {t('refuses to deploy, missing')}"
                     f" {', '.join(manque)}"
                 )
+                for role in manque:
+                    bloques.setdefault(role, []).append(profil.label)
             else:
                 print(f"  ✓ {profil.label}")
+        return bloques

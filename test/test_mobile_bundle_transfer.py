@@ -9,9 +9,9 @@ est un ZIP borné à 65535 entrées, quand les 139 dépôts pèsent plus de 116 
 fichiers. Un fichier par source donnait « Too many zip entries 123678
 (MAX=65535) » — la compilation s'arrêtait là, et l'application ne portait rien.
 
-Regroupés en tranches de 4 Mo, ces fichiers tiennent en 391 entrées. Mesuré sur
-la VM : 3 002 entrées dans l'APK, 282 Mo, et 20 fichiers relus depuis les packs
-identiques octet pour octet à leur source.
+Regroupés en tranches de 4 Mo, ces fichiers tiennent en 391 entrées, et l'APK
+entier en compte quelques milliers — loin du plafond. Un fichier relu depuis un
+pack est identique octet pour octet à sa source.
 
 Ce que ces tests vérifient : qu'un transfert vide, tronqué ou incohérent est
 DIT, et non pris pour bon. Les trois pannes correspondantes ont chacune leur
@@ -289,8 +289,7 @@ class TestTheRealBundle(unittest.TestCase):
     def setUpClass(cls):
         if not MOBILE.is_dir():
             # Pas de « relative_to » : il lève quand le chemin sort du
-            # dépôt, et une erreur n'est pas un « ignoré » — mesuré en
-            # simulant l'absence.
+            # dépôt, et une erreur n'est pas un « ignoré ».
             raise unittest.SkipTest(
                 "mobile/erplibre_home_mobile absent :"
                 " ./mobile/install_mobile_dev.sh"
@@ -304,10 +303,9 @@ class TestTheRealBundle(unittest.TestCase):
             )
         # Manifeste PRÉSENT mais VIDE : l'application a été compilée sans le
         # transfert des dépôts. C'est un choix légitime, pas une régression —
-        # et le distinguer importe, car ces tests échouaient alors sur
-        # « aucun dépôt à vérifier », ce qui se lit comme une panne du
-        # transfert. Vu le 23 août 2026 sur un build de 07:55 : manifeste à
-        # zéro entrée, aucun pack.
+        # et le distinguer importe, car ces tests échouent sinon sur « aucun
+        # dépôt à vérifier », ce qui se lit comme une panne du transfert. Cet
+        # état se reconnaît à un manifeste à zéro entrée et aucun pack.
         try:
             entrees = json.loads(manifeste.read_text())
         except (OSError, ValueError) as exc:
@@ -318,11 +316,11 @@ class TestTheRealBundle(unittest.TestCase):
                 " relancer ./mobile/compile_and_run.sh pour les inclure"
             )
         # Manifeste PLEIN mais index MANQUANTS : un transfert interrompu, ou
-        # un build qui a écrit le manifeste avant les paquets. Vu le
-        # 24 août 2026 — « <slug> : index.json absent » remontait en ERREUR,
-        # ce qui se lit comme une régression du transfert alors que rien
-        # n'était encore transféré. Un état incomplet s'IGNORE ; seule une
-        # incohérence entre ce qui est là et le dépôt doit échouer.
+        # un build qui a écrit le manifeste avant les paquets. Sans ce tri,
+        # « <slug> : index.json absent » remonte en ERREUR, ce qui se lit
+        # comme une régression du transfert alors que rien n'est encore
+        # transféré. Un état incomplet s'IGNORE ; seule une incohérence entre
+        # ce qui est là et le dépôt doit échouer.
         # L'index se cherche par la MÊME résolution que le vérificateur : la
         # chercher ici en dur, sous `<slug>/index.json`, faisait sauter ces
         # tests sur toute compilation en archives — ils regardaient ailleurs au

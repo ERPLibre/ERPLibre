@@ -3,11 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Combien d'étages de Proxmox tiennent, et avec quelles ressources.
 
-L'écran de déploiement lisait la capacité de l'HÔTE et l'offrait en entier.
-Sur un troisième étage à 14 cœurs et 9 Go de libre, il a proposé 12 vCPU et
-9 Go à une VM qui n'a jamais démarré : même RIP à trois relevés deux minutes
-d'écart, pas un octet lu de plus. Le nombre n'était pas absurde pour la
-machine ; il l'était pour sa profondeur.
+L'écran de déploiement qui lit la capacité de l'HÔTE et l'offre en entier
+propose, sur un troisième étage à 14 cœurs et 9 Go de libre, 12 vCPU et 9 Go
+à une VM qui ne démarre jamais : même RIP d'un relevé à l'autre, pas un octet
+lu de plus. Le nombre n'est pas absurde pour la machine ; il l'est pour sa
+profondeur.
 """
 
 import sys
@@ -20,12 +20,11 @@ from script.proxmox import nesting  # noqa: E402
 class TestLePlanDesEtages(unittest.TestCase):
     """Le plan se dimensionne DEPUIS LE BAS, et c'est une correction.
 
-    De haut en bas, chaque étage recevait ce que son parent pouvait céder.
-    Mesuré sur une descente réelle : l'étage 4 se retrouvait avec 44 Go de RAM
-    et deux vCPU sur un hôte qui en avait deux — cent pour cent de
-    surengagement, à chaque étage. Son installation dépassait deux heures et
-    demie contre treize minutes pour l'étage 3, et l'extrapolation donnait cinq
-    ANS pour le dixième.
+    De haut en bas, chaque étage reçoit ce que son parent peut céder :
+    l'étage 4 se retrouve avec 44 Go de RAM et deux vCPU sur un hôte qui en a
+    deux — cent pour cent de surengagement, à chaque étage. Son installation
+    dépasse deux heures et demie contre treize minutes pour l'étage 3, et
+    l'extrapolation donne cinq ANS pour le dixième.
 
     Le plus profond reçoit donc ce qu'un Proxmox de test demande, et chaque
     parent ajoute son propre surcoût — un vCPU, deux gibioctets, dix
@@ -61,12 +60,12 @@ class TestLePlanDesEtages(unittest.TestCase):
             )
 
     def test_no_nested_level_is_ever_wide(self):
-        """MESURÉ, deux fois : au quatrième étage un invité large GÈLE.
+        """Au quatrième étage, un invité large GÈLE.
 
-        Douze vCPU d'abord, sur un parent qui en avait deux : on avait imputé
-        le gel au surengagement. Puis huit vCPU sur un parent qui en avait
-        NEUF, charge 1,47, aucun surengagement — 32 Mio lus en 106 minutes,
-        même RIP à trois relevés espacés de cinq minutes. C'est le nombre de
+        Douze vCPU sur un parent qui en a deux gèlent, ce que le
+        surengagement expliquerait ; huit vCPU sur un parent qui en a NEUF,
+        charge 1,47, aucun surengagement, gèlent aussi — 32 Mio lus en
+        106 minutes, RIP immobile d'un relevé à l'autre. C'est le nombre de
         vCPU de l'invité imbriqué, et rien d'autre.
 
         Une version de ce module donnait un vCPU de plus à chaque parent, ce
@@ -86,8 +85,8 @@ class TestLePlanDesEtages(unittest.TestCase):
         """Le coût d'un vCPU dépend de la PROFONDEUR de l'étage, pas d'une
         largeur absolue.
 
-        Mesuré : le troisième vCPU ne coûte rien aux étages 2 et 3 — ssh en
-        37 s et 93 s, comme à deux vCPU — et coûte 4 h 20 au quatrième, contre
+        Le troisième vCPU ne coûte rien aux étages 2 et 3 — ssh en 37 s et
+        93 s, comme à deux vCPU — et coûte 4 h 20 au quatrième, contre
         1 664 s à deux. Un seul vCPU de plus, l'amorçage ×9,4."""
         niveaux = nesting.nesting_plan(6, **self.HOTE)["niveaux"]
         largeurs = {n["niveau"]: n["vcpu"] for n in niveaux}
@@ -126,10 +125,10 @@ class TestLePlanDesEtages(unittest.TestCase):
 
     def test_a_parent_is_never_narrower_than_its_child(self):
         """Deux vCPU hébergeant deux vCPU, c'est cent pour cent de
-        surengagement — et l'hyperviseur à servir en plus. Mesuré : une VM
-        démarrée au quatrième étage a lu DEUX KILO-OCTETS en onze minutes,
-        affamée par l'installation qui tournait à côté. L'installation de
-        l'étage 4 dépassait alors 2 h 50 contre 793 s pour l'étage 3.
+        surengagement — et l'hyperviseur à servir en plus. Une VM démarrée au
+        quatrième étage y lit DEUX KILO-OCTETS en onze minutes, affamée par
+        l'installation qui tourne à côté, dont la durée passe alors à 2 h 50
+        contre 793 s pour l'étage 3.
 
         « Jamais plus étroit », et non « toujours plus large » : deux étages
         imbriqués voisins ont la même largeur, ce que le gel du quatrième

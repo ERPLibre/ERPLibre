@@ -6,15 +6,16 @@
 
 Personnaliser un site écrit du SCSS dans `ir_attachment`. Cette copie est
 figée le jour où elle est écrite et continue d'employer les variables de
-CETTE version. Un module peut les renommer d'un palier à l'autre : mesuré,
-`website/.../primary_variables.scss` déclarait `$o-theme-font-number` en 12.0
-et a remplacé tout le mécanisme en 13.0. Une personnalisation de 2020
-demandait encore l'ancien nom, et le bundle s'arrêtait dessus.
+CETTE version. Un module peut les renommer d'un palier à l'autre :
+`website/.../primary_variables.scss` déclare `$o-theme-font-number` en 12.0
+et remplace tout le mécanisme en 13.0. Une personnalisation écrite avant le
+palier demande encore l'ancien nom, et le bundle s'arrête dessus.
 
 Ce qui rend un tel détecteur utilisable n'est pas de trouver — c'est de ne
-pas crier à tort. Sur le seul fichier mesuré, la première version rapportait
-dix noms dont six n'étaient pas des manques : paramètres de mixin, variables
-de boucle, arguments nommés d'`@include`. Ces tests portent surtout là-dessus.
+pas crier à tort : sur un seul fichier, la majorité de ce qu'une première
+version rapporte n'est pas un manque, mais des paramètres de mixin, des
+variables de boucle et des arguments nommés d'`@include`. Ces tests portent
+surtout là-dessus.
 """
 
 import os
@@ -35,8 +36,8 @@ class TestWhatCountsAsAUse(unittest.TestCase):
         self.assertNotIn("color", scss.used_names("$color: red;"))
 
     def test_a_named_include_argument_is_not_a_use(self):
-        # LE faux positif mesuré : « @include o-position-absolute(
-        # $right: 50%) » se lisait comme l'usage d'un $right inexistant.
+        # LE faux positif à éviter : « @include o-position-absolute(
+        # $right: 50%) » se lit sinon comme l'usage d'un $right inexistant.
         source = "@include o-position-absolute($right: 50%, $left: 50%);"
         self.assertEqual(scss.used_names(source), set())
 
@@ -322,11 +323,10 @@ class TestTheMigrationRunsIt(unittest.TestCase):
 class TestTheFixCannotRunTooEarly(unittest.TestCase):
     """Corriger exige la version d'ARRIVÉE, pas celle de départ.
 
-    Mesuré sur une vraie migration : la question a été posée avant le palier,
-    alors que le checkout était encore sur odoo12.0. Répondre « a » a lancé
-    reset_asset dans un shell Odoo 12, qui ne connaît pas `web_editor.assets`
-    — KeyError, rien de modifié, et la migration a continué jusqu'à casser au
-    palier suivant.
+    Posée avant le palier, alors que le checkout est encore sur odoo12.0,
+    la question lance `reset_asset` dans un shell Odoo 12, qui ne connaît pas
+    `web_editor.assets` — KeyError, rien de modifié, et la migration continue
+    jusqu'à casser au palier suivant.
 
     Prédire tôt reste juste. C'est corriger tôt qui ne l'est pas.
     """

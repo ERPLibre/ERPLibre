@@ -5,10 +5,9 @@
 """Capturer la sortie d'un test SANS que le test s'en aperçoive.
 
 Le journal d'étape gardait la commande et son code, jamais ce que la
-commande avait écrit. Mesuré sur une vraie migration : « $ …
-smoke_public_url.py … » suivi IMMÉDIATEMENT de « -> 1 », zéro ligne entre
-les deux, trois fois de suite. L'écran d'analyse ne pouvait donc rien
-montrer de ce qui avait échoué.
+commande avait écrit : « $ … smoke_public_url.py … » suivi IMMÉDIATEMENT
+de « -> 1 », zéro ligne entre les deux. L'écran d'analyse ne pouvait donc
+rien montrer de ce qui avait échoué.
 
 Un tube aurait suffi à capturer, et aurait changé le programme :
 `smoke_public_url` appelle `can_ask()`, qui exige stdin ET stdout sur un

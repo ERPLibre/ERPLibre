@@ -49,8 +49,8 @@ from script.todo.deploy_form_plan import PlanMixin, preview_screen
 PAS_D_ORPHELIN = None
 
 # Dernier choix du sélecteur de pont : il ne désigne pas un pont, il en crée
-# un. Rapporté — l'écran refusait de déployer « aucun pont sur l'hôte » sans
-# offrir le moindre moyen d'en avoir un.
+# un. Sans lui, l'écran oppose « aucun pont sur l'hôte » et refuse de
+# déployer, sans offrir le moindre moyen d'en avoir un.
 CREER_PONT = "__creer_pont__"
 
 

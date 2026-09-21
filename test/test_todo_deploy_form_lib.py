@@ -55,9 +55,9 @@ class TestRessourcesLibres(unittest.TestCase):
 class TestLesBranches(unittest.TestCase):
     """« git ls-remote » rend les branches par ordre alphabétique.
 
-    Rapporté : le formulaire Proxmox proposait « dependabot/pip/aiobotocore-
-    3.1.3 » — la première de la liste. Le bon défaut est la branche du DÉPÔT
-    qu'on a sous les yeux, puis develop, puis master.
+    Prendre la première de la liste donne une branche « dependabot/… ».
+    Le bon défaut est la branche du DÉPÔT qu'on a sous les yeux, puis
+    develop, puis master.
     """
 
     BRANCHES = [

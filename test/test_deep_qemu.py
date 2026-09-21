@@ -166,10 +166,10 @@ class TestUnEtageQuiNeSaitPasHeberger(unittest.TestCase):
 
 
 class TestLesListesAptAvantToute(unittest.TestCase):
-    """Constaté au premier lancement réel : « --setup-host » a échoué en ZÉRO
-    seconde sur « Unable to locate package qemu-system-x86 », alors que le
-    paquet existe. La VM venait de démarrer, ses listes ne portaient que
-    « bookworm-security », et un apt-get update les a complétées d'un coup.
+    """« --setup-host » échoue en ZÉRO seconde sur « Unable to locate package
+    qemu-system-x86 », alors que le paquet existe : une VM qui vient de
+    démarrer ne porte que « bookworm-security » dans ses listes, et un
+    apt-get update les complète d'un coup.
 
     Le message parlait de paquets introuvables, pas de listes vides : c'est
     exactement le genre de diagnostic qui envoie chercher au mauvais endroit.
@@ -227,9 +227,8 @@ class TestLesListesAptAvantToute(unittest.TestCase):
 class TestChaqueEtageSonSousReseau(unittest.TestCase):
     """Le « default » de libvirt sert 192.168.122.0/24 à TOUS les étages.
 
-    Constaté au premier essai réel : l'étage 2, dont l'adresse était
-    192.168.122.45 — servie par le « default » de son parent — a vu son propre
-    « net-start default » refusé net :
+    Un étage dont l'adresse vient du « default » de son parent voit son
+    propre « net-start default » refusé net :
 
         error: internal error: Network is already in use by interface enp1s0
 
@@ -435,10 +434,9 @@ class TestUneVmEmuleeNestPasUneMesure(unittest.TestCase):
 
 
 class TestLeBailSeFaitAttendre(unittest.TestCase):
-    """Constaté au troisième étage : le domaine était créé, en type='kvm', et
-    « domifaddr » ne rendait rien — l'invité n'avait pas encore demandé son
-    bail. Plus l'étage est profond, plus il démarre lentement, et c'est
-    justement ce qu'on mesure.
+    """Le domaine est créé, en type='kvm', et « domifaddr » ne rend rien :
+    l'invité n'a pas encore demandé son bail. Plus l'étage est profond, plus
+    il démarre lentement, et c'est justement ce qu'on mesure.
 
     `deploy_qemu` attend lui-même l'adresse puis rend 0 quand il ne l'a pas
     trouvée : son code de sortie ne prouve rien ici non plus."""

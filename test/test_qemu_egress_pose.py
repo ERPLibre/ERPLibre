@@ -358,6 +358,69 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
         self.assertEqual([], du_depot)
 
 
+class TestLeModeDEmploiNeRecopiePasLeCatalogue(unittest.TestCase):
+    """Une page qui recopie un catalogue vieillit, et sans un mot.
+
+    Deux recopies ont dérivé ici : « --distro : ubuntu, debian ou fedora »
+    quand le catalogue en sert huit, et des minimums de disque figés
+    (Debian 10G, Fedora 15G) quand toutes les entrées disent 20G. Aucune
+    des deux ne s'annonce fausse à la lecture.
+
+    La garde n'interdit pas de citer un exemple : elle refuse une LISTE
+    FERMÉE de distributions et des chiffres de dimensionnement, qui sont
+    exactement ce que `--list-images` rend et que la page n'a pas à
+    doubler.
+    """
+
+    @staticmethod
+    def source():
+        chemin = os.path.join(RACINE, "script", "qemu", "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            return fichier.read()
+
+    @classmethod
+    def ligne_distro(cls):
+        for ligne in cls.source().splitlines():
+            if ligne.strip().startswith("- `--distro`"):
+                yield ligne
+
+    def test_the_distro_option_names_no_closed_list(self):
+        """Nommer trois distributions sur huit se lit comme le catalogue
+        entier ; le lecteur n'a aucun moyen de savoir qu'il en manque."""
+        DQ = _deploy_qemu()
+        for ligne in self.ligne_distro():
+            cites = {d for d in DQ.DISTROS if f"`{d}`" in ligne}
+            with self.subTest(ligne=ligne.strip()[:60]):
+                self.assertLessEqual(
+                    len(cites),
+                    1,
+                    f"la page fige {sorted(cites)} sur"
+                    f" {len(DQ.DISTROS)} du catalogue",
+                )
+
+    def test_the_page_repeats_no_sizing_figure_of_the_catalogue(self):
+        """Les minimums vivent dans le catalogue et changent avec lui.
+
+        Le contrôle porte sur les DEUX langues : un chiffre corrigé d'un
+        seul côté laisse l'autre mentir, et une page complète se lit
+        comme une page.
+        """
+        DQ = _deploy_qemu()
+        disques = set()
+        for versions, _defaut in DQ.DISTROS.values():
+            for spec in versions.values():
+                disques.add(str(spec[3]))
+        anglais, _s, francais = self.source().partition("<!-- [fr] -->")
+        for moitie, langue in ((anglais, "en"), (francais, "fr")):
+            for ligne in moitie.splitlines():
+                if not ligne.strip().startswith("- `--memory`"):
+                    continue
+                bloc = moitie[moitie.index(ligne) :].split("\n- ")[0]
+                for taille in disques:
+                    with self.subTest(langue=langue, taille=taille):
+                        self.assertNotIn(f"/{taille}", bloc)
+
+
 class TestLireLeFichierRendu(unittest.TestCase):
     def test_nothing_asked_reads_nothing(self):
         self.assertEqual("", DQ.load_posed_file("", "Règles"))

@@ -8,11 +8,10 @@
 utile est ailleurs : combien sont PERDUS, et combien dorment quelque part
 sur la machine en attendant qu'on les remette ?
 
-Mesuré sur une migration réelle : sur 266 absents, 262 étaient des images
-engendrées par des modules — dont 235 drapeaux de pays dont le champ
-n'existe même plus en 18 — et QUATRE étaient de vrais documents. Ces
-quatre-là sont la réponse. Les 262 autres sont du bruit qu'il ne faut pas
-confondre avec eux.
+Sur une migration, 262 de ces 266 absents sont des images engendrées par
+des modules — dont 235 drapeaux de pays, dont le champ n'existe même plus
+en 18 — et QUATRE sont de vrais documents. Ces quatre-là sont la réponse.
+Les 262 autres sont du bruit qu'il ne faut pas confondre avec eux.
 
 Où l'outil cherche
 ------------------
@@ -22,9 +21,9 @@ Où l'outil cherche
 2. Les `filestore/` NICHÉS. `shutil.move(src, dst)` d'Odoo renomme quand
    la destination n'existe pas et IMBRIQUE quand elle existe : une base
    restaurée deux fois sous le même nom se retrouve avec
-   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais. Mesuré :
-   1168 fichiers, 133 Mo, recopiés à l'identique dans les sept bases de
-   la chaîne par le clone.
+   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais — et le
+   clone recopie ensuite ce nid à l'identique dans chaque base de la
+   chaîne.
 3. Les sauvegardes `.zip`. Leur répertoire central se lit sans tout
    décompresser.
 
@@ -304,9 +303,9 @@ def verify_restore(database, zip_path, config_path=None):
     destination n'existe pas et IMBRIQUE quand elle existe. Un dossier
     `filestore/<base>/` laissé par une restauration précédente suffit
     donc à envoyer toute la sauvegarde dans
-    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Mesuré :
-    1168 fichiers, 133 Mo, recopiés ensuite dans les six bases de la
-    chaîne par le clone, sans que rien ne le signale.
+    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Le clone
+    recopie ensuite ce nid dans chaque base de la chaîne, sans que rien
+    ne le signale.
     """
     attendus = set(scan_zip(zip_path))
     racine = filestore_root(config_path)

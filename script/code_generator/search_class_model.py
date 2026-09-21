@@ -86,19 +86,6 @@ def get_config():
         help="If --json is enabled, will format json for human reader.",
     )
     parser.add_argument(
-        "--show_error_json",
-        action="store_true",
-        help="Will show error when --json is enabled.",
-    )
-    parser.add_argument(
-        "--extract_field",
-        action="store_true",
-        help=(
-            "Return list of field for each model, detected. With inherit"
-            " information"
-        ),
-    )
-    parser.add_argument(
         "-q",
         "--quiet",
         action="store_true",

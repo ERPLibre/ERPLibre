@@ -19,15 +19,15 @@ version : les déclarer serait une erreur. Le seul signal qui vaille est
 donc le TROU — présent avant, présent après, absent au milieu — CONFIRMÉ
 par l'existence de la branche en amont.
 
-Mesuré sur ce dépôt : 35 trous, dont 19 sont de vraies omissions. Les
-seize autres n'ont pas la branche en amont et sont donc corrects. Un
-outil qui aurait signalé les 35 aurait eu 46 % de bruit, et un rapport
-qui fait peur pour rien finit ignoré en entier.
+Sur ce dépôt, près de la moitié des trous n'ont pas la branche en amont
+et sont donc corrects. Un outil qui les rapporterait tous noierait les
+vraies omissions sous autant de bruit, et un rapport qui fait peur pour
+rien finit ignoré en entier.
 
-Quinze des dix-neuf partagent le même motif : déclarés en 16 et en 18,
-absents du 17, la branche 17.0 existant en amont. Un lot ajouté pour la
-18 sans rétro-portage — exactement le genre d'oubli qu'aucune relecture
-ne voit et qu'un compte de trous rend évident.
+Beaucoup des vraies omissions partagent le même motif : déclarées en 16
+et en 18, absentes du 17, la branche 17.0 existant en amont. Un lot
+ajouté pour la 18 sans rétro-portage — exactement le genre d'oubli
+qu'aucune relecture ne voit et qu'un compte de trous rend évident.
 
 Pourquoi le réseau est OPTIONNEL
 --------------------------------

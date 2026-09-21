@@ -26,13 +26,14 @@ sys.path.append(RACINE)
 
 sys.argv = ["todo.py"]
 
-from script.lib_valid import ValidationError  # noqa: E402
 from script.posture import allowlist as A  # noqa: E402
 from script.posture import registry as R  # noqa: E402
 from script.posture import rules as RULES  # noqa: E402
 from script.todo.deploy_form_lib import build_spec  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.vm import backend as VM  # noqa: E402
+from script.vm import backend as vm_backend
+from script.vm.backend import VmBackendError  # noqa: E402
 
 FORM = {
     "res_label": "x1",
@@ -152,18 +153,46 @@ class TestCeQuiEstRefuseAvantDeRienCreer(unittest.TestCase):
 
     def test_a_role_the_site_never_addressed_is_refused_by_name(self):
         ampute = {k: v for k, v in CARNET.items() if k != "forge"}
-        with self.assertRaises(ValidationError) as pris:
+        with self.assertRaises(VmBackendError) as pris:
             menu(ampute)._qemu_egress_rules(spec_de("paranoid"))
         self.assertIn("forge", str(pris.exception))
 
     def test_no_address_book_at_all_is_refused(self):
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(VmBackendError):
             menu(None)._qemu_egress_rules(spec_de("paranoid"))
+
+    def test_the_refusal_carries_the_type_the_callers_watch_for(self):
+        """Le TYPE est le contrat, pas un détail.
+
+        Le refus venait du module des destinations et portait sa propre
+        famille. Deux chemins sur quatre la laissaient passer — le
+        déploiement libvirt ne guette que les refus de backend, le menu
+        Lima ne guettait rien — et la levée sortait jusqu'au Makefile,
+        trace de pile comprise.
+        """
+        with self.assertRaises(vm_backend.VmBackendError):
+            menu(None)._qemu_egress_rules(spec_de("paranoid"))
+
+    def test_the_refusal_says_where_to_set_the_address(self):
+        """Nommer le rôle sans dire où le poser laisse chercher dans
+        vingt-trois écrans. Le chemin est COMPOSÉ depuis la table des
+        menus : écrit à la main, il se périme au premier renommage."""
+        with self.assertRaises(VmBackendError) as pris:
+            menu(None)._qemu_egress_rules(spec_de("paranoid"))
+        self.assertIn(
+            TODO.menu_path(
+                "run",
+                "prompt_execute",
+                "prompt_execute_deploy",
+                "prompt_execute_egress_book",
+            ),
+            str(pris.exception),
+        )
 
     def test_the_refusal_lands_before_the_block_is_entered(self):
         """Le fichier temporaire ne doit pas exister quand le refus tombe :
         c'est ce qui garantit qu'aucune machine n'a été touchée."""
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(VmBackendError):
             with menu(None)._qemu_egress_file(spec_de("paranoid")):
                 self.fail("le bloc ne devait pas s'ouvrir")
 

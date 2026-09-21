@@ -10,11 +10,11 @@ orphelinée sans la retirer — son modèle porte `_auto = False` et
 registry.py exclut ces modèles du contrôle des tables manquantes.
 
 Elle n'est pas seulement morte, elle est FAUSSE : bâtie sur la colonne
-`code` que l'ORM 18 n'écrit plus, elle rendait 14 racines là où la donnée
-vivante en portait 31. Mesuré sur une migration 12 → 18 réelle.
+`code` que l'ORM 18 n'écrit plus, elle rend moins de racines que la donnée
+vivante n'en porte.
 
-Et elle est l'unique épingle de deux colonnes héritées : database_cleanup
-a purgé 110 colonnes orphelines au palier 18 et n'a échoué que sur
+Et elle est l'unique épingle de deux colonnes héritées : une purge des
+colonnes orphelines au palier 18 les emporte toutes sauf
 account_account.code et .company_id, dont la vue dépend.
 
 Ce que ce fichier garde, c'est la PRUDENCE du geste. On supprime une vue

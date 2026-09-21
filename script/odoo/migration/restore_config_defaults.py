@@ -10,7 +10,7 @@ changer de devise, cocher une case, charger un plan comptable. Une
 migration ne fait aucun de ces gestes. L'enregistrement part avec le
 nettoyage des orphelins et rien ne le remet.
 
-Deux cas mesurés sur une chaîne 12 → 18 réelle :
+Deux cas le montrent :
 
   liste de prix          `product.list0` est déclaré jusqu'en 16 et plus
                          après. Odoo 18 crée les listes par défaut dans
