@@ -23,6 +23,12 @@ from pathlib import Path
 # Clés connues et leur valeur par défaut. Une clé absente de ce dictionnaire
 # reste lisible/écrivable, mais n'apparaît pas dans l'écran de configuration.
 DEFAULTS = {
+    # Le backend de VM employé : auto | libvirt | pve | lima. La préférence
+    # est INDICATIVE — elle préselectionne et elle informe, elle ne route
+    # rien : aucun chemin de déploiement ne sait piloter autre chose que
+    # libvirt en local aujourd'hui. « auto » se résout par le système, voir
+    # `script.todo.vm_backend_choice.effective`.
+    "vm_backend": "auto",
     # Interface du déploiement QEMU : "ask" pose la question à chaque fois,
     # "tui" ouvre le formulaire directement, "cli" garde les invites en ligne.
     "qemu_deploy_ui": "ask",

@@ -295,18 +295,24 @@ class TestQuiPorteLaMachine(unittest.TestCase):
     def test_an_absence_is_not_hosted(self):
         self.assertFalse(V.is_hosted(None))
 
-    def test_it_is_not_merely_the_opposite_of_resolving_locally(self):
-        """Les deux répondent l'inverse l'une de l'autre tant qu'il n'y a
-        que deux backends. Un backend LOCAL qui n'est pas libvirt les fera
-        diverger — cette épreuve tombera alors, et c'est voulu : elle dira
-        qu'il faut décider pour lui plutôt que d'hériter d'un silence."""
-        self.assertEqual(2, len(V.BACKENDS))
+    def test_the_two_hypervisors_answer_inversely(self):
+        """C'est cette coïncidence qui rendait la confusion possible."""
         for entree in (LOCALE, DISTANTE):
             handle = V.handle_of(entree)
             with self.subTest(backend=handle.backend):
                 self.assertNotEqual(
                     V.is_hosted(handle), V.resolves_locally(handle)
                 )
+
+    def test_a_third_backend_answers_no_to_both(self):
+        """LE cas qui prouve que ce sont deux questions distinctes. Une
+        instance Lima n'est portée par personne — donc rien ne teste son
+        service pour nous — ET virsh ne la connaît pas — donc son adresse
+        ne se relit pas d'ici. Un prédicat unique aurait fait prendre l'un
+        pour l'autre, en silence."""
+        handle = V.lima_handle("essai")
+        self.assertFalse(V.is_hosted(handle))
+        self.assertFalse(V.resolves_locally(handle))
 
 
 class TestRegrouperParMachinePorteuse(unittest.TestCase):

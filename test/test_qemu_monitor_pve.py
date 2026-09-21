@@ -740,7 +740,7 @@ class TestLaBonneMachine(unittest.TestCase):
     porte le rebond par l'hôte Proxmox.
     """
 
-    def _wrapper(self, **kw):
+    def _wrapper(self, entree):
         """Le script du lanceur, capturé sans rien exécuter."""
         vus = {}
         vrai = mon.subprocess.Popen
@@ -751,26 +751,41 @@ class TestLaBonneMachine(unittest.TestCase):
 
         mon.subprocess.Popen = FauxPopen
         try:
-            mon._launch_one("cible", "echo bonjour", "/dev/null", "vm-a", **kw)
+            mon._launch_one(mon.handle_of(entree), "echo bonjour", "/dev/null")
         finally:
             mon.subprocess.Popen = vrai
         return vus["argv"][-1]
 
+    ENTREE_LOCALE = {"name": "vm-a", "ip": "cible"}
+    ENTREE_DISTANTE = {
+        "name": "vm-a",
+        "ip": "cible",
+        "pve": {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"},
+    }
+
     def test_a_local_vm_still_gets_its_address_refreshed(self):
         # Le bail change en cours de route (cloud-init renomme l'hôte) : la
         # ré-résolution est indispensable pour une VM LOCALE.
-        script = self._wrapper(pve=False)
+        script = self._wrapper(self.ENTREE_LOCALE)
         self.assertIn("virsh", script)
 
-    def test_a_proxmox_vm_is_never_re_resolved(self):
+    def test_a_remote_vm_is_never_re_resolved(self):
         # C'est le correctif : aucun appel à virsh, donc aucun risque de
         # tomber sur un domaine local homonyme.
-        script = self._wrapper(pve=True)
+        script = self._wrapper(self.ENTREE_DISTANTE)
         self.assertNotIn("virsh", script)
 
     def test_the_target_stays_the_alias(self):
-        script = self._wrapper(pve=True)
+        script = self._wrapper(self.ENTREE_DISTANTE)
         self.assertIn("ip=cible", script)
+
+    def test_a_remote_vm_is_entered_by_its_alias_and_not_by_its_service(self):
+        """Son adresse interne n'est routable que depuis l'hôte. Attendre
+        une réponse dessus, c'est attendre vingt minutes pour rien sur une
+        VM parfaitement saine — et les deux adresses vivent dans la même
+        fiche, à un champ près."""
+        script = self._wrapper(self.ENTREE_DISTANTE)
+        self.assertNotIn("10.10.10.151", script)
 
 
 class TestLeDisque(unittest.TestCase):

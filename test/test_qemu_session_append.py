@@ -53,7 +53,7 @@ class TestLaunchInstallsSession(unittest.TestCase):
         self.dossier = tmp.name
         self.lances = []
         for nom, val in (
-            ("_launch_one", lambda *a, **k: self.lances.append(a[3])),
+            ("_launch_one", lambda *a, **k: self.lances.append(a[0].name)),
             ("local_uuid", lambda nom: f"uuid-{nom}"),
             # Un nouveau dossier de session serait une régression : il se
             # verrait ici, à côté de celui de la session.

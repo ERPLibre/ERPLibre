@@ -13,6 +13,48 @@ on any machine, including one without virtualisation.
 
 Run them from the menu — `TODO › Execute › Test › Long tests` — or directly.
 
+## lima_confront.py — the backend nobody has ever run
+
+The Lima backend was written with no machine to test it on. Its unit tests
+hold what it COMPOSES and what it PARSES, not what `limactl` does with any of
+it. It therefore declares itself unproven, and this script is what will lift
+that mention — not a code review.
+
+Four questions, none deducible from the code: which SHAPE the inventory
+answers in, whether it carries anything that could PROVE an identity, whether
+a compound command really survives the exec channel, and whether the rendered
+configuration actually starts.
+
+It exits 20 — dependency absent — where `limactl` is not installed.
+
+```
+./long_test/lima_confront.py              # the four questions
+./long_test/lima_confront.py --dry-run    # what it would do, nothing done
+./long_test/lima_confront.py --detruire   # remove the trial instance
+```
+
+## egress_confront.py — the forward chain nobody has ever tried
+
+The egress rules are tested on what they COMPOSE, and real `nft` accepts the
+rendered file. None of that says the FORWARD chain catches what a container
+emits: a lock hooked to the host's own output lets container traffic straight
+through, and the rules read as complete while data leaves by the window.
+
+Three questions: whether a NAMED destination is reachable from inside a
+container, whether one OUTSIDE the list is refused, and whether that refusal
+survives a restart of the container engine — which writes its own rules on
+start-up.
+
+It needs privilege: loading a ruleset and reading a table both require it, and
+`nft -c`, which only parses, already fails without it. It exits 20 where the
+tooling is missing.
+
+```
+./long_test/egress_confront.py             # the three questions
+./long_test/egress_confront.py --dry-run   # what it would do, nothing done
+./long_test/egress_confront.py --detruire  # remove table and container
+```
+
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?
 
 The practicable nesting depth cannot be deduced, only measured — and one
@@ -280,6 +322,49 @@ compris sans virtualisation.
 
 Ils se lancent depuis le menu — `TODO › Execute › Test › Tests longs` — ou
 directement.
+
+## lima_confront.py — le backend que personne n'a jamais lancé
+
+Le backend Lima a été écrit sans machine pour l'éprouver. Ses tests unitaires
+tiennent ce qu'il COMPOSE et ce qu'il ANALYSE, pas ce que « limactl » en fait.
+Il se déclare donc non éprouvé, et ce script est ce qui lèvera la mention —
+pas une relecture.
+
+Quatre questions dont aucune ne se déduit du code : sous quelle FORME
+l'inventaire répond, s'il porte de quoi PROUVER une identité, si une suite de
+commandes traverse vraiment le canal d'exec, et si la configuration rendue
+démarre.
+
+Il rend 20 — dépendance absente — là où « limactl » n'est pas installé.
+
+```
+./long_test/lima_confront.py              # les quatre questions
+./long_test/lima_confront.py --dry-run    # ce qui serait fait, rien de fait
+./long_test/lima_confront.py --detruire   # retirer l'instance d'essai
+```
+
+## egress_confront.py — la chaîne forward que personne n'a jamais tentée
+
+Les règles de sortie sont éprouvées sur ce qu'elles COMPOSENT, et le vrai
+`nft` accepte le fichier rendu. Rien de cela ne dit que la chaîne FORWARD
+attrape ce qu'un conteneur émet : un verrou accroché à la sortie de l'hôte
+laisse passer le trafic d'un conteneur, et les règles affichent complet
+pendant que la donnée sort par la fenêtre.
+
+Trois questions : une destination NOMMÉE est-elle joignable depuis un
+conteneur, une destination HORS LISTE est-elle refusée, et ce refus survit-il
+au redémarrage du moteur de conteneurs — qui écrit ses propres règles à son
+démarrage.
+
+Il demande le privilège : charger un jeu de règles et lire une table en
+exigent, et `nft -c`, qui ne fait que l'analyse, échoue déjà sans lui. Il rend
+20 là où l'outillage manque.
+
+```
+./long_test/egress_confront.py             # les trois questions
+./long_test/egress_confront.py --dry-run   # ce qui serait fait, rien de fait
+./long_test/egress_confront.py --detruire  # retirer table et conteneur
+```
 
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
