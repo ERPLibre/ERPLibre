@@ -82,6 +82,10 @@ ARCH_DEFAUT = "amd64"
 _override_fautif_dit = False
 
 
+# Le nœud que QEMU lui-même interroge pour savoir s'il peut accélérer.
+CHEMIN_KVM = "/dev/kvm"
+
+
 def _chemin_os_release() -> str:
     return os.environ.get(OS_RELEASE_VAR) or OS_RELEASE
 
@@ -231,6 +235,30 @@ def _capacite_binaire(nom: str, remede: str = "") -> Capability:
     )
 
 
+def kvm_available(euid: int = None) -> bool:
+    """L'accélération matérielle est-elle disponible pour les VM ?
+
+    LA PRÉSENCE SUFFIT hors root : libvirt tourne en root et se moque de
+    notre appartenance au groupe kvm. Tester nos propres
+    droits en non-root ferait crier « pas de KVM » à un utilisateur
+    simplement hors du groupe, alors que ses machines s'accéléreraient très
+    bien.
+
+    En root, l'accès EST concluant, et il vaut mieux que la présence : un
+    nœud présent mais illisible donne une émulation intégrale — sept
+    minutes et demie de démarrage au lieu de quelques dizaines de secondes,
+    sans que rien ne le signale.
+
+    `euid` se passe pour éprouver les deux régimes depuis un seul compte.
+    """
+    if not os.path.exists(CHEMIN_KVM):
+        return False
+    identite = os.geteuid() if euid is None else euid
+    if identite == 0:
+        return os.access(CHEMIN_KVM, os.R_OK | os.W_OK)
+    return True
+
+
 def capabilities(kdbx_path: str = "") -> list:
     """Ce que cet hôte sait faire, sans rien lancer ni rien lever.
 
@@ -253,8 +281,8 @@ def capabilities(kdbx_path: str = "") -> list:
     trouvees.append(
         Capability(
             "kvm",
-            os.path.exists("/dev/kvm"),
-            "/dev/kvm",
+            kvm_available(),
+            CHEMIN_KVM,
             t("Load the kvm module, or join the kvm group"),
         )
     )

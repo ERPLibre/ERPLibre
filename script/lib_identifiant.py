@@ -163,11 +163,23 @@ def motif_de_termes(termes):
     Les frontières sont la différence entre chercher un nom et chercher une
     suite de lettres : un sigle de quatre lettres se retrouve autrement dans
     des mots communs, et la trouvaille se noie dans ce qu'elle a ramassé.
+
+    LE SOULIGNÉ COMPTE POUR UNE FRONTIÈRE, et c'est le point : « \\b » ne
+    voit pas la fin d'un nom collé à un suffixe par un souligné, alors que
+    c'est la forme même d'un nom de base de données. Un nom listé passait
+    donc à travers dès qu'il portait un suffixe — le mécanisme existait, la
+    liste pouvait être juste, et la trouvaille n'arrivait pas.
+
+    Les frontières portent sur les LETTRES seules. Un chiffre qui suit ne
+    prolonge pas le nom, il le numérote : « copy_<nom>3 » est la copie d'une
+    base réelle, et l'exclure des trouvailles laisserait passer la forme la
+    plus courante. Ce qui précède ou suit dans un identifiant compose avec
+    le nom, il n'en fait pas un autre mot.
     """
     if not termes:
         return None
     return re.compile(
-        r"\b(?:%s)\b" % "|".join(re.escape(t) for t in termes),
+        r"(?<![a-z])(?:%s)(?![a-z])" % "|".join(re.escape(t) for t in termes),
         re.IGNORECASE,
     )
 

@@ -37,6 +37,7 @@ s'appuyer dessus, un par un.
 
 from __future__ import annotations
 
+import re
 from types import MappingProxyType
 from typing import NamedTuple
 
@@ -128,6 +129,103 @@ def libvirt_handle(name: str, uuid: str = "", ip: str = "") -> VmHandle:
         address=str(ip or ""),
         host={},
     )
+
+
+# La forme d'un UUID libvirt : 8-4-4-4-12 chiffres hexadécimaux. Elle sert
+# à reconnaître la COLONNE, et non à valider la valeur : si l'inventaire
+# changeait l'ordre de ses colonnes un jour, une ligne dont le premier champ
+# n'a pas cette forme ne doit pas voir son nom pris pour une preuve.
+# Une adresse IPv4 seule : ce qui distingue la colonne servie de l'heure
+# d'expiration et de l'identifiant client, quelle que soit la langue.
+_ADRESSE_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def parse_uuid_listing(text: str) -> tuple:
+    """Les domaines de « virsh list --all --uuid --name », dans l'ordre.
+
+    UN SEUL APPEL donne le nom ET la preuve. Les deux options ne s'excluent
+    pas, et la sortie porte l'UUID EN TÊTE quel que soit l'ordre où on les
+    écrit — mesuré contre le pilote de test intégré, qui a toujours un
+    domaine et ne demande aucun hyperviseur.
+
+    LE DÉCOUPAGE EST PAR LIGNE, puis en DEUX champs. Un découpage sur tout
+    blanc rendrait [uuid, nom, uuid, nom…] : un écran qui numérote cette
+    liste proposerait des UUID comme s'ils étaient des machines. Deux champs
+    et non plus : un nom de domaine peut porter un espace, et il est ce qui
+    reste après la preuve.
+
+    Une ligne dont le premier champ n'a pas la forme d'un UUID rend un
+    handle SANS preuve, nom entier conservé : la faire disparaître de la
+    liste cacherait une machine, alors que l'appelant doit pouvoir la nommer
+    pour la refuser.
+    """
+    domaines = []
+    for ligne in (text or "").splitlines():
+        nu = ligne.strip()
+        if not nu:
+            continue
+        champs = nu.split(None, 1)
+        if len(champs) == 2 and _UUID_RE.match(champs[0]):
+            domaines.append(libvirt_handle(champs[1], uuid=champs[0]))
+        else:
+            domaines.append(libvirt_handle(nu))
+    return tuple(domaines)
+
+
+class Lease(NamedTuple):
+    """Un bail DHCP : l'adresse servie, et le nom sous lequel elle l'est."""
+
+    address: str
+    hostname: str
+
+
+def parse_leases(text: str) -> tuple:
+    """Les baux de « net-dhcp-leases », reconnus par la FORME de l'adresse.
+
+    L'INVENTAIRE EST TRADUIT. Sous une locale française ses en-têtes
+    deviennent « Adresse IP » et « Nom d'hôte » : un analyseur qui cherche
+    ses étiquettes ne trouve rien et rend une liste vide — laquelle se lit
+    comme « aucun bail », ce qui est un mensonge tranquille. Ici l'adresse
+    se reconnaît à sa forme, et le nom est le champ SUIVANT : l'ordre des
+    colonnes, lui, ne dépend d'aucune langue.
+
+    Un nom absent s'écrit « - » dans cette sortie, et devient une chaîne
+    vide : garder le tiret ferait comparer un nom de machine à un tiret.
+
+    Le préfixe que libvirt accole à l'adresse est retiré — « /24 » décrit
+    le réseau servi, pas la machine servie.
+    """
+    baux = []
+    for ligne in (text or "").splitlines():
+        champs = ligne.split()
+        for rang, champ in enumerate(champs):
+            adresse = champ.split("/")[0]
+            if not _ADRESSE_RE.match(adresse):
+                continue
+            suivant = champs[rang + 1] if rang + 1 < len(champs) else ""
+            baux.append(
+                Lease(adresse, "" if suivant in ("-", "") else suivant)
+            )
+            break
+    return tuple(baux)
+
+
+def lease_hostname(text: str, address: str) -> str:
+    """Le nom sous lequel `address` est servie, ou "" si elle ne l'est pas.
+
+    Par l'ADRESSE et non par la MAC : l'appelant vient de la résoudre, et
+    la demander à nouveau coûterait une lecture de plus pour une réponse
+    qu'il a déjà.
+    """
+    for bail in parse_leases(text):
+        if bail.address == (address or "").split("/")[0]:
+            return bail.hostname
+    return ""
 
 
 def lima_handle(name: str, ip: str = "") -> VmHandle:
