@@ -269,12 +269,32 @@ def cpu_label(mode: str) -> str:
 
 
 def net_spec(token: str) -> str:
-    """Jeton -> argument « --network » de virt-xml."""
-    kind, _, name = token.partition(":")
+    """Jeton -> argument « --network » de virt-xml.
+
+    UN JETON À DEUX-POINTS NE SE REND PAS BRUT. virt-install lit le premier
+    mot comme un TYPE d'interface : « direct:eno1 » produit
+    « <interface type="direct:eno1"> », que libvirt refuse. Mesuré contre
+    l'outil, sur le pilote d'essai.
+
+    Un jeton SANS deux-points, lui, est déjà un type valide — « user »
+    rend « <interface type="user"> » — et se rend donc tel quel.
+    """
+    kind, sep, name = token.partition(":")
     if kind == "network":
         return f"network={name}"
     if kind == "bridge":
         return f"bridge={name}"
+    if kind == "direct":
+        # macvtap. « bridge » est le mode qui laisse les VM se parler entre
+        # elles ; sans mode explicite libvirt applique « vepa », qui exige
+        # un commutateur qui sait se répondre à lui-même et coupe le parc
+        # en silence sur un commutateur ordinaire.
+        return f"type=direct,source={name},source_mode=bridge"
+    if sep:
+        raise ValueError(
+            f"« {token} » : type d'interface inconnu."
+            " Rendu brut, virt-install en ferait un type que libvirt refuse."
+        )
     return token
 
 

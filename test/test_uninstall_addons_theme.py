@@ -21,6 +21,7 @@ Ces tests portent sur ce que le script fait, pas sur son texte.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -237,6 +238,65 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         self.assertIn("name <> 'theme_default'", source)
 
 
+class TestCeQueLaSauvegardeNePrendPas(unittest.TestCase):
+    """DEUX RAISONS DE NE RIEN COPIER, et elles n'appellent pas la même suite.
+
+    Un fichier DÉJÀ disparu est exactement le reste qu'on vient nettoyer :
+    il n'y a rien à copier, et refuser là bloquerait le cas le plus courant
+    et le plus légitime.
+
+    Un contenu qui vit EN BASE sans fichier, lui, part sans copie. Odoo
+    range une pièce jointe soit dans le filestore, soit dans « db_datas » —
+    une installation sans filestore, ou une pièce marquée d'un autre
+    emplacement. La sauter en silence puis l'effacer détruisait un contenu
+    dont rien ne portait trace.
+
+    L'écran imprimait « sauvées : 1 » puis « 2 effacées », deux nombres à
+    trois lignes d'écart que rien ne reliait.
+    """
+
+    def relever(self, sans_fichier, octets_en_base):
+        """Rend (sauvegardées, sans copie) sur un banc sans PostgreSQL."""
+        import tempfile
+
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        os.makedirs(os.path.join(base, "ab"), exist_ok=True)
+        with open(os.path.join(base, "ab", "sha"), "wb") as fh:
+            fh.write(b"contenu")
+
+        def faux_psql(db, sql, **kw):
+            if "store_fname" in sql:
+                return [""] if f"id = {sans_fichier}" in sql else ["ab/sha"]
+            if "db_datas" in sql:
+                return [str(octets_en_base)]
+            return []
+
+        vrai = theme_leftover.run_psql
+        theme_leftover.run_psql = faux_psql
+        self.addCleanup(setattr, theme_leftover, "run_psql", vrai)
+        vrai_dir = os.getcwd()
+        travail = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, travail, ignore_errors=True)
+        os.chdir(travail)
+        self.addCleanup(os.chdir, vrai_dir)
+        return theme_leftover.backup_attachments(
+            "db", "th", ["1|a.scss|x", "2|b.scss|x"], filestore=base
+        )
+
+    def test_a_content_living_in_the_database_is_named(self):
+        saved, sans_copie = self.relever(sans_fichier=2, octets_en_base=4096)
+        self.assertEqual(1, len(saved))
+        self.assertEqual(["2"], sans_copie)
+
+    def test_a_file_already_gone_is_not_named(self):
+        """Contrôle positif : le nommer ferait crier sur le cas le plus
+        courant — c'est exactement le reste qu'on vient nettoyer."""
+        saved, sans_copie = self.relever(sans_fichier=2, octets_en_base=0)
+        self.assertEqual(1, len(saved))
+        self.assertEqual([], sans_copie)
+
+
 class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
     """Signaler sans offrir le geste oblige à le composer soi-même.
 
@@ -260,9 +320,15 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
         self.deleted = []
         self.original_backup = theme_leftover.backup_attachments
         self.original_delete = theme_leftover.delete_attachments
-        theme_leftover.backup_attachments = (
-            lambda db, th, rows, fs=None: self.saved.append(rows) or ["/tmp/x"]
-        )
+        # Le couple (sauvegardées, sans copie) : la seconde moitié nomme
+        # les pièces dont le contenu part sans qu'aucune copie en soit
+        # prise. Un banc qui ne rendrait qu'une liste cacherait justement
+        # ce que l'appelant doit dire avant d'effacer.
+        self.sans_copie = []
+        theme_leftover.backup_attachments = lambda db, th, rows, fs=None: (
+            self.saved.append(rows),
+            (["/tmp/x"], list(self.sans_copie)),
+        )[1]
         theme_leftover.delete_attachments = (
             lambda db, rows, cfg="./config.conf": (
                 self.deleted.append(rows),
@@ -277,6 +343,23 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
         )
         self.addCleanup(
             setattr, theme_leftover, "delete_attachments", self.original_delete
+        )
+
+    def test_it_names_what_leaves_without_a_copy(self):
+        """L'écran imprimait « sauvées : 1 » puis « 2 effacées », deux
+        nombres à trois lignes d'écart que rien ne reliait. Une pièce dont
+        le contenu vit en base part sans copie : elle se dit AVANT."""
+        self.sans_copie = ["4457"]
+        _fait, sortie = self.run_prompt("d")
+        self.assertIn("4457", sortie)
+
+    def test_it_says_nothing_when_every_content_is_copied(self):
+        """Contrôle positif : le dire toujours noierait le seul cas où
+        l'avertissement corrige une attente."""
+        _fait, sortie = self.run_prompt("d")
+        self.assertNotIn(
+            theme_leftover.t("attachment(s) whose content leaves no copy:"),
+            sortie,
         )
 
     def run_prompt(self, answer, rows=None):

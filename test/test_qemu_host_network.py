@@ -546,11 +546,32 @@ class LOrdreDuDeploiement(unittest.TestCase):
 
     def test_it_is_settled_once_and_not_twice(self):
         """Contrôle positif : deux appels laisseraient le second rattraper
-        le premier à l'œil, et le défaut se rejouerait entre les deux."""
+        le premier à l'œil, et le défaut se rejouerait entre les deux.
+
+        L'APPEL DANS `main`, et non un motif de texte sur tout le fichier.
+        Compter « ensure_network(network_name( » épinglait une ÉCRITURE :
+        calculer le nom dans une variable avant l'appel — ce qui se lit
+        mieux — l'aurait fait rougir sur une amélioration, et une
+        occurrence en commentaire l'aurait fait rougir sans code.
+        """
+        import ast
+
         chemin = RACINE / "script" / "qemu" / "deploy_qemu.py"
         with io.open(chemin, encoding="utf-8") as fichier:
-            source = fichier.read()
-        self.assertEqual(1, source.count("ensure_network(network_name("))
+            arbre = ast.parse(fichier.read())
+        principale = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        appels = [
+            n
+            for n in ast.walk(principale)
+            if isinstance(n, ast.Call)
+            and (getattr(n.func, "id", "") or getattr(n.func, "attr", ""))
+            == "ensure_network"
+        ]
+        self.assertEqual(1, len(appels), [n.lineno for n in appels])
 
 
 if __name__ == "__main__":

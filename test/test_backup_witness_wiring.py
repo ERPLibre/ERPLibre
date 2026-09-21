@@ -247,12 +247,70 @@ class TestLeCablage(unittest.TestCase):
         appelants = [f for f in sortie if not f.endswith("backup_witness.py")]
         self.assertTrue(appelants, "aucun appelant du témoin dans script/")
 
-    def test_both_backup_paths_go_through_the_same_seam(self):
+    # Ce qui produit une archive porte « backup » dans son nom. Ce qui en
+    # est écarté l'est AVEC SA RAISON, sans quoi la liste redevient un
+    # nombre déguisé :
+    #   backup_archive     — rend un chemin, n'écrit aucune archive
+    #   _backup_ship       — reçoit le constat déjà pris, il ne le prend pas
+    #   select_backup_path — choisit un fichier qui existe déjà
+    SANS_ARCHIVE = {
+        "backup_archive": "rend un chemin, n'écrit rien",
+        "_backup_ship": "reçoit le constat déjà pris",
+        "select_backup_path": "choisit un fichier existant",
+    }
+
+    def voies_de_sauvegarde(self):
+        """Les méthodes qui PRODUISENT une archive, lues dans la classe."""
+        import ast
+
+        classe = next(
+            noeud
+            for noeud in ast.walk(
+                ast.parse(self.source("script/todo/database_manager.py"))
+            )
+            if isinstance(noeud, ast.ClassDef)
+            and noeud.name == "DatabaseManager"
+        )
+        return [
+            m
+            for m in classe.body
+            if isinstance(m, ast.FunctionDef)
+            and "backup" in m.name
+            and m.name not in self.SANS_ARCHIVE
+        ]
+
+    def test_every_backup_path_goes_through_the_same_seam(self):
         """Deux relectures écrites séparément divergent au premier
-        correctif — c'est déjà ce qui les distinguait."""
-        source = self.source("script/todo/database_manager.py")
-        # Les APPELS, et non la définition qui s'y ajouterait.
-        self.assertEqual(2, source.count("self.verify_and_witness("))
+        correctif — c'est déjà ce qui les distinguait.
+
+        LE COMPTE SE TROMPAIT DANS LES DEUX SENS. Il restait à deux sur une
+        troisième voie MUETTE, qu'il aurait dû dénoncer ; et il passait à
+        trois sur une troisième voie CORRECTE, qu'il dénonçait à tort. Une
+        fausse alerte sur du code juste est le pire des deux : elle apprend
+        à désarmer la garde.
+        """
+        import ast
+
+        voies = self.voies_de_sauvegarde()
+        self.assertTrue(voies, "aucune voie trouvée : rien n'est prouvé")
+        for voie in voies:
+            with self.subTest(voie=voie.name):
+                self.assertIn(
+                    "verify_and_witness",
+                    ast.dump(voie),
+                    f"{voie.name} produit une archive sans la relire",
+                )
+
+    def test_nothing_is_excluded_without_a_reason(self):
+        """Contrôle positif : tout verser dans « sans archive »
+        satisferait l'épreuve ci-dessus sans rien tenir."""
+        for nom, raison in self.SANS_ARCHIVE.items():
+            with self.subTest(methode=nom):
+                self.assertTrue(raison.strip())
+                self.assertIn(
+                    f"def {nom}(",
+                    self.source("script/todo/database_manager.py"),
+                )
 
     def test_the_local_backup_listens_to_the_return_code(self):
         source = self.source("script/todo/database_manager.py")
