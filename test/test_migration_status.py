@@ -596,10 +596,10 @@ class TestWhatSurvivesClosingTheTool(DiskCase):
     def test_logs_written_before_the_name_are_brought_back(self):
         """Les deux premières étapes tournent avant qu'on nomme la base.
 
-        Leurs journaux atterrissaient sous « sans-nom », c'est-à-dire hors
-        de la migration à laquelle ils appartiennent : mesuré sur la VM,
-        deux fichiers invisibles depuis l'écran d'état, et l'on cherchait
-        des logs manquants qui étaient simplement à côté.
+        Leurs journaux atterrissent sous « sans-nom », c'est-à-dire hors de
+        la migration à laquelle ils appartiennent : les fichiers restent
+        invisibles depuis l'écran d'état, et l'on cherche des logs manquants
+        qui sont simplement à côté.
         """
         from script.todo import todo_upgrade as tu
 

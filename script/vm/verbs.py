@@ -9,9 +9,11 @@ station, sans machine, et de MONTRER la commande avant de la lancer — ce que
 le tableau de bord fait déjà pour la suppression.
 
 Rien n'est sondé ici. Ce qui dépend de la machine locale — faut-il sudo pour
-joindre libvirt, à quelle URI — entre en PARAMÈTRE. Le module n'importe donc
-que la bibliothèque standard, et une épreuve le vérifie : c'est ce qui le
-garde utilisable par un backend qui n'existe pas encore.
+joindre libvirt, à quelle URI — entre en PARAMÈTRE. Le module ne sort donc
+pas de son paquet : la bibliothèque standard et ses voisins de `script.vm`,
+rien d'autre — pas d'écran, pas de configuration, pas de posture. Une épreuve
+tient cette frontière pour le paquet entier, et c'est ce qui le garde
+utilisable par un backend qui n'existe pas encore.
 """
 
 from __future__ import annotations

@@ -9,9 +9,9 @@ que l'arch doit avoir change. Deux autres la laissent finir et ne se
 voient qu'à l'ouverture de la page — et personne n'ouvre les pages avant
 la fin.
 
-Mesuré sur une chaîne 12 → 18 réelle : /contact rendait 500 depuis le
-palier 14 → 15. Rejouée avec ce contrôle, la prédiction nomme le défaut
-dès le palier 13 → 14, cinq paliers avant que quiconque s'en aperçoive.
+Sur une chaîne 12 → 18, une copie rend 500 dès le palier 14 → 15, celui
+qui déplace son ancrage. Ce contrôle nomme le défaut dès le palier
+13 → 14, cinq paliers avant que quiconque s'en aperçoive.
 
 Ces copies-là ne se NEUTRALISENT pas : chacune porte une page écrite par
 quelqu'un, et la mettre de côté l'effacerait du site. Elles se réparent.

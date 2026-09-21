@@ -371,9 +371,9 @@ class TestInstallerGuideNames(unittest.TestCase):
 class TestDesktopBlock(unittest.TestCase):
     """Le bloc « Bureau » : présent seulement là où un bureau existe.
 
-    Vécu : une VM graphique restait sur une console texte, GNOME installé et
-    gdm3 installé — graphical.target était déjà atteinte quand le paquet est
-    arrivé. La commande qui répare tient sur une ligne, encore faut-il la lire
+    Une VM graphique reste sur une console texte, GNOME et gdm3 pourtant
+    installés : graphical.target est déjà atteinte quand le paquet arrive.
+    La commande qui répare tient sur une ligne, encore faut-il la lire
     quelque part. Sur un serveur, elle ne mènerait à aucune unité : le bloc
     n'y apparaît pas.
     """

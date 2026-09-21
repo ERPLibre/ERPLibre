@@ -141,20 +141,22 @@ le voisinage de l'hôte (`ip neigh`), qui ne demande rien à l'invité.
 <!-- [en] -->
 ## The menu, entry by entry
 
-The seventeen QEMU/KVM entries have their counterpart. Four of them are the
-**same code**, because it is the same work: reopening the install monitoring,
-the remote desktop tunnel, the Android emulator and the image catalog. They
-reach Proxmox guests through the `~/.ssh/config` entries that entry 13 writes,
-with the Proxmox host as ProxyJump.
+Every QEMU/KVM entry has its counterpart — counting them here would go
+stale the day one is added, and it did. Four of them are the **same code**,
+because it is the same work: reopening the install monitoring, the remote
+desktop tunnel, the Android emulator and the image catalog. They reach
+Proxmox guests through the `~/.ssh/config` entries the SSH configuration
+entry writes, with the Proxmox host as ProxyJump.
 
 <!-- [fr] -->
 ## Le menu, entrée par entrée
 
-Les dix-sept entrées de QEMU/KVM ont leur équivalent. Quatre sont le **même
-code**, parce que c'est le même travail : rouvrir le suivi d'installation, le
-tunnel bureau distant, l'émulateur Android et le catalogue d'images. Elles
-atteignent les invités Proxmox par les entrées `~/.ssh/config` que l'entrée 13
-écrit, avec l'hôte Proxmox en ProxyJump.
+Chaque entrée de QEMU/KVM a son équivalent — les compter ici vieillirait
+dès qu'une s'ajoute, et c'est arrivé. Quatre sont le **même code**, parce que
+c'est le même travail : rouvrir le suivi d'installation, le tunnel bureau
+distant, l'émulateur Android et le catalogue d'images. Elles atteignent les
+invités Proxmox par les entrées `~/.ssh/config` qu'écrit l'entrée de
+configuration SSH, avec l'hôte Proxmox en ProxyJump.
 
 <!-- [common] -->
 ```text

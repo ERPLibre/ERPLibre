@@ -59,10 +59,10 @@ FILTRES = (
 ETATS_PRESENTS = ("installed", "to upgrade")
 
 # Les états qu'Odoo traverse et ne devrait pas garder. Un module qui y
-# reste est une opération inachevée : mesuré sur test_neutralize_upgrade_13
-# en pleine migration, 22 modules figés en « to remove ». Ils ne sont plus
-# tout à fait installés et pas encore partis, donc aucun autre filtre ne
-# les montre pour ce qu'ils sont.
+# reste est une opération inachevée : sur une base en pleine migration, des
+# dizaines de modules peuvent rester figés en « to remove ». Ils ne sont
+# plus tout à fait installés et pas encore partis, donc aucun autre filtre
+# ne les montre pour ce qu'ils sont.
 ETATS_EN_COURS = ("to install", "to upgrade", "to remove")
 
 

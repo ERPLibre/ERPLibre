@@ -30,15 +30,26 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-        Extract all repo path from installed module into backup.
-        Use --backup_path or --backup_name
+        Extract all repo paths from a list of installed modules.
+        Use --module "module_a;module_b"
 """,
         epilog="""\
 """,
     )
     parser.add_argument("--module", help="Module list separate by ;")
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Will show all debug and execution information",
+    )
     args = parser.parse_args()
+
+    # LE SEUL DRAPEAU UTILE, EXIGÉ ICI. Sans lui le script mourait plus
+    # bas sur « 'NoneType' object has no attribute 'split' », qui ne dit
+    # pas ce qui manque. `die` était écrit dans ce fichier et n'avait
+    # aucun appelant ; le voisin qui lit une sauvegarde s'en sert de la
+    # même façon pour ses deux drapeaux.
+    die(not args.module, "Take --module")
 
     return args
 

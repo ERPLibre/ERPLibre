@@ -210,7 +210,7 @@ def step_slug(msg):
 
 
 # Le format d'une ligne de journal Odoo :
-#   2026-08-19 09:21:07,074 132948 ERROR <base> odoo.tools.translate: message
+#   AAAA-MM-JJ hh:mm:ss,mmm <pid> ERROR <base> odoo.tools.translate: message
 # Le nom de la base en fait partie, et c'est ce qui permet de séparer six
 # paliers écrits dans un même fichier — ce qui était le cas avant qu'une
 # étape n'ouvre son propre journal.

@@ -4,7 +4,7 @@
 
 """Ce qu'une montée de version ajoute au référentiel comptable, sans le dire.
 
-Le cas qui a fait écrire cet outil, mesuré sur une migration 12 → 18 :
+L'écart que cet outil cherche prend, d'un palier au suivant, cette forme :
 
     palier 17 :  96 comptes,  32 taxes, 14 positions,   0 groupe
     palier 18 : 427 comptes,  64 taxes, 28 positions, 168 groupes

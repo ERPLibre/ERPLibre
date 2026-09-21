@@ -7,7 +7,7 @@ Cet écran ne CONTIENT aucune analyse. Il en choisit une, se referme, et
 rend la clé choisie ; l'appelant lance ensuite l'outil, qui dispose alors
 du terminal entier et peut ouvrir sa propre TUI.
 
-Deux raisons, toutes deux mesurées dans ce dépôt. `run_tui` refuse de
+Deux raisons, toutes deux tenant à la boucle d'événements. `run_tui` refuse de
 s'ouvrir quand une boucle asyncio tourne déjà — un écran qui en ouvrirait
 un autre afficherait « open it in its own process instead » et rien
 d'autre. Et une analyse lourde appelée depuis un gestionnaire de touche

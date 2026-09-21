@@ -344,7 +344,7 @@ def build_app(dct, path=None):
             En SOUS-PROCESSUS, et ce n'est pas un choix de confort :
             `app.run()` appelle `asyncio.run()`, qui refuse de tourner
             dans une boucle déjà en cours — et nous sommes justement
-            dedans. Mesuré, la trace est
+            dedans. L'appel direct lève
             « asyncio.run() cannot be called from a running event loop ».
             `suspend()` rend le terminal ; le sous-processus a sa propre
             boucle et le repeint.

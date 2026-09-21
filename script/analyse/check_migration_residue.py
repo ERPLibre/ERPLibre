@@ -12,8 +12,8 @@ base qu'on a sous la main.
 
 Le piège, et pourquoi la moitié des contrôles évidents ont été écartés
 --------------------------------------------------------------------
-Un compteur absolu ne prouve rien. Mesuré sur une chaîne 12 → 18 réelle,
-en comparant la base d'ORIGINE à la migrée :
+Un compteur absolu ne prouve rien. Sur une chaîne 12 → 18, la base
+d'ORIGINE porte déjà l'essentiel de ce qu'on compte dans la migrée :
 
     champs stockés sans colonne      25 → 72     ← 25 AVANT toute migration
     modèles sans table               90 → 158    ← 90 AVANT
@@ -148,11 +148,10 @@ CONTROLES = (
         "title": "Default pricelist missing while product is installed",
         "why": "product.list0 was declared up to Odoo 16 only; nothing"
         " recreates it, and a quotation has no price list to pick.",
-        # On cherche une LISTE, pas son xmlid. Mesuré : la réparation
-        # laisse Odoo créer « Par défaut » sans poser `product.list0` —
-        # chercher l'xmlid signalait donc une base parfaitement saine, et
-        # aurait signalé de même celle d'un client qui a créé la sienne à
-        # la main.
+        # On cherche une LISTE, pas son xmlid. La réparation laisse Odoo
+        # créer « Par défaut » sans poser `product.list0` : chercher
+        # l'xmlid signale donc une base parfaitement saine, et signalerait
+        # de même celle où la liste a été créée à la main.
         #
         # Et seulement si la FONCTIONNALITÉ est active, c'est-à-dire si
         # `base.group_user` implique `product.group_product_pricelist` —

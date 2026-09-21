@@ -4441,9 +4441,9 @@ def run_tui(
         les liaisons de `MailApp` ne sont plus consultées —
         `Screen._modal_binding_chain` (`screen.py:449`) tronque la chaîne au
         dernier écran modal, et c'est elle qu'`App._check_bindings`
-        (`app.py:3978`) parcourt pour une liaison sans priorité. Mesuré sur
-        Textual 8.2.8, et c'est aussi ce qui interdit `priority=True` sur
-        `h` (voir `MailApp.BINDINGS`).
+        (`app.py:3978`) parcourt pour une liaison sans priorité. Ce
+        comportement est celui de Textual 8.2.8, et c'est aussi ce qui
+        interdit `priority=True` sur `h` (voir `MailApp.BINDINGS`).
         """
 
         BINDINGS = [

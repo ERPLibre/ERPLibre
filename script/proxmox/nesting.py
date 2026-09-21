@@ -22,10 +22,10 @@ documente l'imbrication qu'à DEUX niveaux.
 
 Deux nombres viennent de la même mesure, et méritent d'être dits :
 
-* au QUATRIÈME étage, un invité large GÈLE en tout début de démarrage. Mesuré
-  deux fois, à douze vCPU puis à huit : même RIP à trois relevés espacés de
-  cinq minutes, 32 Mio lus et plus un octet — 106 minutes durant, pour le
-  second. Les mêmes 2 vCPU démarrent.
+* au QUATRIÈME étage, un invité large GÈLE en tout début de démarrage : à
+  douze vCPU comme à huit, même RIP à trois relevés espacés de cinq minutes,
+  32 Mio lus et plus un octet — 106 minutes durant. Les mêmes 2 vCPU
+  démarrent.
 
   On avait d'abord imputé le premier gel au SURENGAGEMENT : cette VM à douze
   vCPU tournait sur un hôte qui en avait deux. La seconde mesure l'a réfuté —
@@ -64,12 +64,11 @@ PVE_DISQUE_GO = 10
 
 # Ce dont le PLUS PROFOND a besoin — et c'est de là qu'on part.
 #
-# Le dimensionnement allait d'abord de haut en bas : chaque étage recevait tout
-# ce que son parent pouvait céder. Mesuré sur une descente réelle, l'étage 4 se
-# retrouvait avec 44 Go — onze millions de pages à cartographier, chaque défaut
-# traversant les quatre hyperviseurs empilés. Son installation dépassait deux
-# heures et demie là où l'étage 3 mettait treize minutes, et l'extrapolation
-# donnait cinq ANS pour le dixième étage.
+# Un dimensionnement de haut en bas — chaque étage recevant tout ce que son
+# parent peut céder — donne 44 Go à l'étage 4 : onze millions de pages à
+# cartographier, chaque défaut traversant les quatre hyperviseurs empilés. Son
+# installation dépasse alors deux heures et demie là où l'étage 3 met treize
+# minutes, et l'extrapolation donne cinq ANS pour le dixième étage.
 #
 # On part donc du bas : le plus profond reçoit ce qu'un Proxmox de test demande
 # vraiment, et chaque parent ajoute seulement son propre surcoût. Pour dix
@@ -113,9 +112,9 @@ VCPU_IMBRIQUE = 2
 VCPU_INTERMEDIAIRE = 3
 # Le premier étage qui doit rester au strict minimum.
 #
-# Amorçage du quatrième étage, mesuré : 1 664 s à 2 vCPU, 15 608 s à 3, jamais
-# à 8 ni à 12 — même RIP à cinq minutes d'intervalle. Le « gel » observé à 8 et
-# 12 n'est probablement pas autre chose que cette courbe poussée assez loin :
+# Amorçage du quatrième étage : 1 664 s à 2 vCPU, 15 608 s à 3, jamais à 8 ni
+# à 12 — même RIP à cinq minutes d'intervalle. Le « gel » à 8 et à 12 n'est
+# probablement pas autre chose que cette courbe poussée assez loin :
 # 1 664 × 9,4 par vCPU supplémentaire dépasse vite toute patience.
 #
 # Aux étages 2 et 3, la même largeur ne coûte rien. Le seuil est donc là.
@@ -191,8 +190,8 @@ COUTS_PVE = Couts(
 # Le couple (6 Go de cible, 2 Go par étage) n'est pas arbitraire : il fait
 # tomber le PREMIER étage d'une descente à dix sur exactement 24 Go, ce qu'une
 # machine à 36 Go peut porter. Descendre plus bas au fond ne servirait à rien —
-# c'est l'écart entre parent et enfant qui compte, mesuré à 127 Mo de libre
-# quand il n'était que d'un gibioctet.
+# c'est l'écart entre parent et enfant qui compte : à un gibioctet d'écart, il
+# ne reste que 127 Mo de libre.
 COUTS_QEMU = Couts(
     ram_par_etage=2048,
     disque_par_etage=6,
@@ -330,8 +329,8 @@ def depth_from_jumps(jumps: int) -> int:
 
     Un hôte joint sans rebond est au niveau 1 ; chaque ProxyJump ajoute un
     étage. C'est la seule mesure dont on dispose de l'extérieur, et elle est
-    exacte pour les hôtes que nous avons nous-mêmes déployés — c'est nous qui
-    écrivons ces entrées.
+    exacte pour les hôtes que ce code a lui-même déployés — c'est lui qui
+    écrit ces entrées.
     """
     return max(1, int(jumps) + 1)
 

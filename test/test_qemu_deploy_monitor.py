@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Suivre un déploiement qui n'installe PAS ERPLibre.
 
-Symptôme rapporté : en décochant l'installation d'ERPLibre, le tableau de bord
-ne s'ouvrait plus du tout. Deux causes, l'une derrière l'autre :
+Décocher l'installation d'ERPLibre empêchait le tableau de bord de s'ouvrir
+du tout. Deux causes, l'une derrière l'autre :
 
 - la case « suivi » vivait DANS le groupe de l'installation ERPLibre, et
   `build_spec` ne la recopiait même pas dans la spec finale ;

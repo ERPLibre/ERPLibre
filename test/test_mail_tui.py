@@ -145,7 +145,7 @@ class TestEphemeralCleanupOnSignals(SessionCase):
     vrai signal au processus de test, et on restaure l'ancien gestionnaire
     dans `tearDown` pour ne pas polluer le reste de la suite.
 
-    Piège vécu : quand la disposition précédente n'est PAS appelable
+    Le piège : quand la disposition précédente n'est PAS appelable
     (`SIG_DFL`, le cas par défaut), le gestionnaire se renvoie maintenant
     POUR DE VRAI le signal après le nettoyage — sinon il l'avalerait (voir
     `test_sigterm_actually_terminates_the_process`). Appeler ce gestionnaire

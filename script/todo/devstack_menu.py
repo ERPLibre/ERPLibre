@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import click
 
-from script.todo import host_os
+from script.todo import devstack_state, host_os
 from script.todo.devstack_report import (
     DS_ERR,
     DS_OK,
@@ -40,6 +40,13 @@ class DevstackMenuMixin:
                 ),
                 "method": "_devstack_doctor",
             },
+            {"section": t("Integration")},
+            {
+                "prompt_description": t(
+                    "State of the integration - segment by segment"
+                ),
+                "method": "_devstack_integration",
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -50,6 +57,28 @@ class DevstackMenuMixin:
                 return False
             elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
+
+    def _devstack_integration(self):
+        """Où en est l'intégration, DÉRIVÉ de ce qui décide.
+
+        Un tableau d'avancement écrit à la main vieillit sans un mot : il
+        reste lisible, personne ne le relit, et il dit « fait » longtemps
+        après qu'on a défait. Chaque ligne se calcule ici depuis la table
+        des backends éprouvés, le registre des postures, les profils et
+        les cibles déclarées.
+
+        CHAQUE LIGNE DIT D'OÙ ELLE VIENT. C'est ce qui permet de
+        contredire cet écran sans lire le module qui le rend — sans quoi
+        ce serait une affirmation de plus.
+        """
+        print(f"\n🧱 {t('Devstack integration, segment by segment')}")
+        vu = devstack_state.releve(self.config_file)
+        for ligne in devstack_state.render(devstack_state.lignes(vu)):
+            print(ligne)
+        print(
+            f"\n  {t('« to set up here » is not a gap in the code:')}"
+            f" {t('the repository knows how, this site has not declared it.')}"
+        )
 
     def _devstack_doctor(self):
         """Le rapport de capacités de l'hôte. Ne modifie rien.

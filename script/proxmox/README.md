@@ -65,11 +65,12 @@ the host's own neighbour table (`ip neigh`), which needs nothing from the guest.
 
 ## The menu, entry by entry
 
-The seventeen QEMU/KVM entries have their counterpart. Four of them are the
-**same code**, because it is the same work: reopening the install monitoring,
-the remote desktop tunnel, the Android emulator and the image catalog. They
-reach Proxmox guests through the `~/.ssh/config` entries that entry 13 writes,
-with the Proxmox host as ProxyJump.
+Every QEMU/KVM entry has its counterpart — counting them here would go
+stale the day one is added, and it did. Four of them are the **same code**,
+because it is the same work: reopening the install monitoring, the remote
+desktop tunnel, the Android emulator and the image catalog. They reach
+Proxmox guests through the `~/.ssh/config` entries the SSH configuration
+entry writes, with the Proxmox host as ProxyJump.
 
 ```text
 [1] Déployer une VM        [8]  Redimensionner un disque   [15] Émulateur Android *
