@@ -170,13 +170,71 @@ class TestAucuneLigneNEstPlusComposeeALaMain(unittest.TestCase):
         l'épreuve passerait sans avoir rien lu."""
         self.assertTrue(self.litteraux("cloud-init"))
 
-    def test_the_verb_is_what_both_sites_call(self):
+    # Le verbe, et l'aide qui l'enveloppe en dégradant son refus. Les deux
+    # comptent : ce qui est interdit, c'est de composer la ligne à la main.
+    SOURCES_LEGITIMES = ("connect_command", "_ligne_ssh")
+
+    def test_every_site_takes_its_line_from_the_verb(self):
+        """Chaque endroit qui pose une ligne de connexion la tient du
+        VERBE, directement ou par l'aide qui l'enveloppe.
+
+        Cette épreuve COMPTAIT les appels — deux, exactement — et le
+        compte est tombé le jour où l'un d'eux est passé par une aide qui
+        rend "" plutôt que de laisser le refus emporter le manifeste. La
+        propriété, elle, n'avait pas bougé : ce que le compte tenait,
+        c'était sa propre valeur.
+        """
+        import ast
+
         chemin = os.path.join(
             RACINE, "script", "todo", "qemu_install_monitor.py"
         )
         with open(chemin, encoding="utf-8") as fichier:
-            source = fichier.read()
-        self.assertEqual(2, source.count("vm_verbs.connect_command("))
+            arbre = ast.parse(fichier.read())
+
+        def appel(noeud):
+            """Le nom appelé, ou "" si ce n'est pas un appel."""
+            if not isinstance(noeud, ast.Call):
+                return ""
+            cible = noeud.func
+            return getattr(cible, "attr", getattr(cible, "id", ""))
+
+        poses = []
+        for noeud in ast.walk(arbre):
+            # « vm["ssh"] = … »
+            if isinstance(noeud, ast.Assign):
+                for cible in noeud.targets:
+                    if (
+                        isinstance(cible, ast.Subscript)
+                        and isinstance(cible.slice, ast.Constant)
+                        and cible.slice.value == "ssh"
+                    ):
+                        poses.append(appel(noeud.value))
+            # « {"ssh": …} »
+            if isinstance(noeud, ast.Dict):
+                for clef, valeur in zip(noeud.keys, noeud.values):
+                    if isinstance(clef, ast.Constant) and clef.value == "ssh":
+                        poses.append(appel(valeur))
+        self.assertTrue(poses, "plus aucun endroit ne pose de ligne ssh")
+        for nom in poses:
+            with self.subTest(pose=nom):
+                self.assertIn(nom, self.SOURCES_LEGITIMES)
+
+    def test_the_helper_itself_calls_the_verb(self):
+        """Contrôle positif : une aide qui composerait la ligne à la main
+        satisferait l'épreuve ci-dessus sans rien tenir."""
+        import ast
+        import inspect
+
+        from script.todo import qemu_install_monitor as mon
+
+        corps = inspect.getsource(mon._ligne_ssh)
+        appels = {
+            n.func.attr
+            for n in ast.walk(ast.parse(corps))
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        }
+        self.assertIn("connect_command", appels)
 
 
 if __name__ == "__main__":

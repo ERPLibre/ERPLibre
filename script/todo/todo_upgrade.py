@@ -18,7 +18,10 @@ from script.todo import (
     migration_status,
     todo_file_browser,
 )
-from script.todo.version_manager import get_odoo_version
+from script.todo.version_manager import (
+    get_odoo_version,
+    get_venv_python,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -1274,10 +1277,19 @@ class TodoUpgrade:
             has_cmd = False
             # cmd_serial = ""
             cmd_parallel = "parallel :::"
+            # LE VENV EST LU, JAMAIS COMPOSÉ. Son nom porte le couple
+            # Odoo/Python, et la moitié Python bouge d'une version à l'autre :
+            # écrite en littéral, elle vise un interpréteur que la prochaine
+            # montée renomme. La commande tourne sous « parallel », où
+            # l'échec de chaque branche se noie dans la sortie — on ne
+            # saurait même pas pourquoi.
+            venv_python = get_venv_python(f"{next_version}.0")
             for path_git_clone_migrate in lst_path_git_clone_migrate:
                 cmd_migration = (
                     f"echo 'views_migration_18 {path_git_clone_migrate}' && "
-                    f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
+                    f"./{venv_python}"
+                    " ./script/code/odoo_upgrade_code_with_dir_module.py"
+                    f" --path {path_git_clone_migrate}"
                 )
                 cmd_parallel += f' "{cmd_migration}"'
                 # cmd_serial += f"{cmd_migration};"
@@ -1753,7 +1765,9 @@ class TodoUpgrade:
             # TODO exécuter next line si status != 0 et log contient
             # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
             # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
-            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d riplop_stage_prod_17_nov_2025
+            # source <venv odoo>/bin/activate && cat script/postgresql/migration/\
+            #   fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py\
+            #   | ./odoo18.0/odoo/odoo-bin shell -d <base>
             # psycopg2.errors.ForeignKeyViolation: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
             # DÉTAIL : Key (channel_id)=(20) is not present in table "discuss_channel".
             # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
@@ -3540,7 +3554,23 @@ class TodoUpgrade:
         # neutralisée » laissait la question ouverte pendant tout le
         # parcours, et un saut annoncé en une ligne à la fin d'un long
         # rapport ne se voit pas : on croit alors le back-office testé.
-        neutralise = "_neutralize" in database_name
+        # LA BASE, PAS SON NOM. Un nom se choisit à la main, et l'écran de
+        # duplication proposait « <source>_neutralize » avant même de
+        # demander s'il fallait neutraliser : une copie qui déclinait
+        # gardait ce nom et passait ici pour neutralisée. On s'authentifiait
+        # alors — « --internal-required » — contre une base aux tâches
+        # planifiées actives et aux clés de paiement vivantes.
+        #
+        # « database.is_neutralized » est le drapeau qu'Odoo pose lui-même.
+        # ILLISIBLE N'EST PAS « NEUTRALISÉE » : PostgreSQL injoignable ou
+        # table absente rendent None, et prendre la voie prudente ne coûte
+        # qu'une couverture moindre là où l'autre exerce une base vivante.
+        from script.analyse import monitoring
+
+        drapeau = monitoring.neutralize_state(database_name).get("flag")
+        neutralise = bool(drapeau)
+        if drapeau is None:
+            print(f"   ⚠ {t('Could not read the neutralization flag.')}")
         if neutralise:
             print(
                 f"   {t('Public pages, then the back office and /my as the')}"
@@ -3549,8 +3579,8 @@ class TodoUpgrade:
         else:
             print(
                 f"   {t('Public pages only:')} '{database_name}'"
-                f" {t('was not neutralized, so there is no test user to')}"
-                f" {t('sign in with.')}"
+                f" {t('does not carry the neutralization flag, so there is')}"
+                f" {t('no test user to sign in with.')}"
             )
         self.run_tool(
             "smoke_public_url",
@@ -3604,12 +3634,23 @@ class TodoUpgrade:
         """
         import pty
 
-        self.lst_command_executed.append(cmd)
+        # CAVIARDÉE AVANT LES TROIS SORTIES. Le filtre disait couvrir
+        # « CHAQUE affichage d'une commande » et ne tenait que ceux du
+        # lanceur voisin : ici la commande partait brute à l'écran, au
+        # journal d'étape — deux lignes avant que l'écho de l'enfant y soit
+        # caviardé, dans le MÊME fichier — et sur disque, dans un fichier
+        # de progression que deux autres écrans relisent et réaffichent.
+        #
+        # Le filtre ne retire que la VALEUR : le nom de l'option reste, et
+        # la ligne demeure lisible — on relit ces journaux pour comprendre
+        # ce qui a été lancé.
+        montree = execute.redact_secrets(cmd)
+        self.lst_command_executed.append(montree)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         print(f"\n🏠 ⬇ {t('Execute command')} :\n")
-        print(cmd)
-        self.note_step_log(f"$ {cmd}")
+        print(montree)
+        self.note_step_log(f"$ {montree}")
 
         handle = getattr(self, "step_log", None)
         if not handle:
@@ -3683,12 +3724,23 @@ class TodoUpgrade:
         copies », ce qui est la raison même de l'avoir ouvert. L'annoncer
         comme un échec inquiétait pour rien.
         """
-        self.lst_command_executed.append(cmd)
+        # CAVIARDÉE AVANT LES TROIS SORTIES. Le filtre disait couvrir
+        # « CHAQUE affichage d'une commande » et ne tenait que ceux du
+        # lanceur voisin : ici la commande partait brute à l'écran, au
+        # journal d'étape — deux lignes avant que l'écho de l'enfant y soit
+        # caviardé, dans le MÊME fichier — et sur disque, dans un fichier
+        # de progression que deux autres écrans relisent et réaffichent.
+        #
+        # Le filtre ne retire que la VALEUR : le nom de l'option reste, et
+        # la ligne demeure lisible — on relit ces journaux pour comprendre
+        # ce qui a été lancé.
+        montree = execute.redact_secrets(cmd)
+        self.lst_command_executed.append(montree)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         print(f"\n🏠 ⬇ {t('Execute command')} :\n")
-        print(cmd)
-        self.note_step_log(f"$ {cmd}")
+        print(montree)
+        self.note_step_log(f"$ {montree}")
         status = subprocess.call(cmd, shell=True, executable="/bin/bash")
         self.note_step_log(f"  -> {status}")
         return status

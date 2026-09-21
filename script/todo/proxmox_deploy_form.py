@@ -452,6 +452,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         id="f_branch",
                     )
                     yield from self.compose_install_extras()
+                    yield from self.compose_ai_tools()
+                    yield from self.compose_locale()
                     yield from self.compose_timezone()
                     yield from self.compose_python()
                     # Hors de la section « Installation » : le suivi regarde la
@@ -628,6 +630,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
         def on_mount(self) -> None:
             self._reload_catalog()
             self._sync_install_deps()
+            self._sync_ai()
             self._sync_offline()
             self._sync_posture()
 
@@ -907,6 +910,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._refresh_after()
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
+            elif event.checkbox.id == "f_tool_aidev":
+                # La case qui découvre le bloc IA, et un IDE de plus : les
+                # deux à la fois, donc avant la branche générale.
+                self._sync_ai()
+                self._refresh_after()
             elif event.checkbox.id == "f_offline":
                 self._sync_offline()
             elif str(event.checkbox.id or "").startswith("f_tool_"):

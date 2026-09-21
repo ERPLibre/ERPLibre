@@ -300,6 +300,34 @@ def main():
     base_image_name = dct_config_image.get("base")
     all_temp_bd = []
 
+    try:
+        return _generer(
+            config,
+            dct_config_image,
+            image_name_to_generate,
+            bd_temp_name,
+            base_image_name,
+            all_temp_bd,
+        )
+    except SystemExit:
+        # `run_cmd` sort par `sys.exit` : le nettoyage n'a pas tourné, et
+        # sans un mot les bases de travail deviennent des orphelines que
+        # la prochaine génération heurtera sur une collision de nom.
+        for ligne in nommer_les_bases_restantes(
+            all_temp_bd, config.keep_database
+        ):
+            _logger.warning(ligne)
+        raise
+
+
+def _generer(
+    config,
+    dct_config_image,
+    image_name_to_generate,
+    bd_temp_name,
+    base_image_name,
+    all_temp_bd,
+):
     # Step 0, drop and restore
     cmd_drop_db = f"./odoo_bin.sh db --drop --database {bd_temp_name}"
     all_temp_bd.append(bd_temp_name)
@@ -349,6 +377,34 @@ def main():
         for db_name in all_temp_bd:
             cmd_drop_db = f"./odoo_bin.sh db --drop --database {db_name}"
             run_cmd(cmd_drop_db)
+
+
+def nommer_les_bases_restantes(noms, keep_database):
+    """Ce qu'une sortie en catastrophe laisse derrière, NOMMÉ.
+
+    `run_cmd` appelle `sys.exit` dès qu'une commande échoue : l'étape de
+    nettoyage ne tourne alors jamais, et les bases de travail restent sur
+    l'instance. Une base orpheline ne se voit pas — elle occupe un nom que
+    la prochaine génération réutilise, et « db --create » échoue alors sur
+    une collision dont la cause est trois exécutions plus tôt.
+
+    ON NOMME, ON N'EFFACE PAS. La génération vient d'échouer, et ces bases
+    sont l'état dans lequel elle a échoué : les détruire emporterait ce
+    qu'il faut pour comprendre. C'est le même parti que le balayage des
+    disques orphelins — « on les LISTE, on n'efface rien sans demander ».
+    """
+    if not noms:
+        return []
+    lignes = [
+        "Bases de travail restées sur l'instance :",
+        *(f"  {nom}" for nom in noms),
+    ]
+    if not keep_database:
+        lignes.append("Les retirer :")
+        lignes += [
+            f"  ./odoo_bin.sh db --drop --database {nom}" for nom in noms
+        ]
+    return lignes
 
 
 def run_cmd(cmd, quiet=False, sys_exit=True):
