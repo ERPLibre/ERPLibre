@@ -61,6 +61,12 @@ def menu(carnet=None):
         (),
         {"get_config": staticmethod(lambda _cle: carnet)},
     )()
+    # LA VM RÉPOND DÉJÀ. L'attente de sshd est bornée par le TEMPS — cinq
+    # minutes de sommeil réel — et non par un nombre d'essais : laissée
+    # vive, elle fait passer ces épreuves pour la mauvaise raison, une VM
+    # « laissée telle quelle » n'installant rien non plus. Ce qui se juge
+    # ici est le chargement des règles, pas la naissance de la machine.
+    todo._pve_attendre_ssh = lambda *a, **k: True
     return todo
 
 
