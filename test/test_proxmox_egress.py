@@ -35,6 +35,7 @@ from script.posture import plan as posture_plan  # noqa: E402
 from script.qemu import deploy_qemu as DQ  # noqa: E402
 from script.todo.proxmox_deploy_form import build_spec  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 CARNET = {
     nom: [f"198.51.100.{index + 10}/32"]
@@ -147,16 +148,37 @@ class TestCeQuiEstCharge(unittest.TestCase):
 
 
 class TestLeCarnetVide(unittest.TestCase):
-    """Une posture qui attend des adresses que le site n'a pas nommées."""
+    """Une posture qui attend des adresses que le site n'a pas nommées.
 
-    def test_the_refusal_is_said_and_the_guide_still_goes(self):
-        """On est ICI après la création : arrêter laisserait une VM sans
-        son guide. On le dit, et la posture reste non posée."""
+    Ce chemin est le DERNIER RECOURS : le rendu est désormais tenté à la
+    porte, avant « qm create », comme le font libvirt et Lima. On n'arrive
+    donc plus ici par le carnet — mais s'il s'y trouve une autre cause, la
+    machine EXISTE déjà, et s'arrêter ne la confinerait pas davantage.
+
+    Ce qui se dit alors compte double : c'est le seul endroit d'où l'on
+    peut apprendre qu'une posture n'est pas tenue.
+    """
+
+    def test_the_guide_still_goes_out(self):
+        """S'arrêter ici laisserait une VM debout ET sans son guide : deux
+        manques au lieu d'un."""
         vus = ecrit("paranoid", carnet={})
         self.assertTrue(vus["ok"])
-        self.assertIn("⚠", vus["ecran"])
-        self.assertNotIn(DQ.EGRESS_GUEST_PATH, vus["remote"])
         self.assertIn("/etc/motd", vus["remote"])
+
+    def test_no_rule_is_laid(self):
+        vus = ecrit("paranoid", carnet={})
+        self.assertNotIn(DQ.EGRESS_GUEST_PATH, vus["remote"])
+
+    def test_the_screen_says_the_machine_is_not_confined(self):
+        """« Règles non rendues » se lisait comme un détail d'affichage au
+        milieu d'un flot de déploiement. Ce qui compte est qu'une posture
+        de confinement n'est PAS tenue sur une machine qui tourne."""
+        ecran = ecrit("paranoid", carnet={})["ecran"]
+        self.assertIn(t("This VM gets NO egress rule:"), ecran)
+        self.assertIn(
+            t("It runs with free egress, despite its posture."), ecran
+        )
 
 
 class TestLesDeuxHelpers(unittest.TestCase):

@@ -14,7 +14,14 @@ et rien ne le disait. La duplication était le mécanisme de la dérive, pas son
 symptôme : chaque correctif se posait sur un seul des deux écrans.
 
 Ce fichier teste donc la PARITÉ elle-même, et pas six comportements. Ajouter
-un réglage à un seul écran le fait échouer, quel que soit ce réglage."""
+un réglage à un seul écran le fait échouer, quel que soit ce réglage.
+
+ET « QUEL QUE SOIT CE RÉGLAGE » SE DÉRIVE. Une liste de six identifiants ne
+tenait que ces six-là : trois réglages de l'invité — l'agent de code et
+l'identité git — vivaient sur le seul écran QEMU/KVM sans qu'un mot soit
+dit. La comparaison porte désormais sur l'ENSEMBLE des widgets de réglage,
+et ce qu'un écran porte seul doit être nommé, avec sa raison, dans
+`PROPRES`."""
 
 import asyncio
 import sys
@@ -33,6 +40,30 @@ except Exception:  # pragma: no cover - dépend de l'environnement
 # Ce que porte le socle partagé. Les identifiants, parce qu'ils sont le
 # contrat : c'est par eux que la spec est lue.
 REGLAGES = ("f_type", "f_prod", "f_store", "f_tools", "f_tz", "f_python")
+
+# Ce que chaque écran porte SEUL, et pourquoi. Chacun décrit la machine QUI
+# PORTE la VM, jamais la VM elle-même. Un réglage de l'INVITÉ n'a rien à
+# faire ici : allonger cette liste est exactement la dérive que ce fichier
+# existe pour empêcher, et la raison écrite à côté est ce qui le rend
+# visible à qui l'allonge.
+PROPRES = {
+    "QEMU/KVM": {
+        "f_gpu3d": "passe un GPU de l'hôte, ce que libvirt seul sait faire",
+    },
+    "Proxmox": {
+        "f_storage": "où poser le disque sur l'hôte Proxmox",
+        "f_bridge": "à quel pont de l'hôte rattacher la VM",
+        "f_vmid": "l'identifiant que Proxmox donne à la VM",
+        "f_start": "démarrer la VM une fois « qm create » passé",
+    },
+}
+
+# Les clés de spec qu'un seul écran produit, mêmes raisons. « backend » dit
+# quel hyperviseur reçoit la spec ; « host » nomme l'hôte Proxmox.
+CLES_PROPRES = {
+    "QEMU/KVM": ("backend", "gpu3d"),
+    "Proxmox": ("bridge", "host", "nameservers", "start", "storage"),
+}
 
 CATALOGUE = [
     {
@@ -153,6 +184,34 @@ class TestLesDeuxEcrans(unittest.TestCase):
                 self.assertTrue(self._porte(self.qemu, ident), "QEMU/KVM")
                 self.assertTrue(self._porte(self.pve, ident), "Proxmox")
 
+    def test_neither_screen_keeps_a_setting_widget_to_itself(self):
+        """La parité, DÉRIVÉE : tout widget de réglage présent d'un seul
+        côté doit être nommé, avec sa raison.
+
+        C'est la seule forme qui tient « quel que soit ce réglage » : une
+        liste des réglages à surveiller ne surveille que ceux qu'on a pensé
+        à y mettre, et trois y avaient manqué.
+        """
+        q = {i for i in self.qemu["ids"] if i.startswith("f_")}
+        p = {i for i in self.pve["ids"] if i.startswith("f_")}
+        self.assertEqual(set(PROPRES["QEMU/KVM"]), q - p)
+        self.assertEqual(set(PROPRES["Proxmox"]), p - q)
+
+    def test_nothing_is_screen_specific_without_a_reason(self):
+        """Contrôle positif : tout verser dans « PROPRES » ferait passer
+        l'épreuve ci-dessus sans qu'aucune parité soit tenue."""
+        for ecran, propres in PROPRES.items():
+            for ident, raison in propres.items():
+                with self.subTest(ecran=ecran, widget=ident):
+                    self.assertTrue(raison.strip())
+
+    def test_neither_spec_carries_a_guest_key_of_its_own(self):
+        """Un réglage peut atteindre la spec sans widget : le contrôle des
+        widgets ne couvre donc pas celui des clés."""
+        q, p = set(self.qemu["spec"]), set(self.pve["spec"])
+        self.assertEqual(set(CLES_PROPRES["QEMU/KVM"]), q - p)
+        self.assertEqual(set(CLES_PROPRES["Proxmox"]), p - q)
+
     def test_both_specs_carry_the_same_guest_keys(self):
         from script.todo.deploy_form_extras import ExtrasMixin
 
@@ -219,6 +278,92 @@ class TestLesDeuxEcrans(unittest.TestCase):
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLaLocaleDesTroisVoies(unittest.TestCase):
+    """La locale décrit l'INVITÉ : elle vaut sur les trois voies.
+
+    Les deux écrans ne la posaient pas du tout. Leur spec n'en portait
+    aucune, « --locale » ne partait donc jamais, et le déploiement retombait
+    sur SON défaut — « fr_CA.UTF-8 », qui n'est pas celui d'ici. Chaque VM
+    née d'un écran payait un locale-gen DANS l'invité, que la voie par
+    invites évite depuis toujours : sa docstring en chiffre le coût à 36 s
+    sur une architecture émulée.
+
+    Ni le nom de la locale ni celui du défaut ne sont écrits ici : les deux
+    se lisent où ils sont décidés.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        cls.qemu = releve(run_deploy_form, todo._qemu_form_context(mod))
+        cls.pve = releve(run_proxmox_form, contexte_proxmox(todo))
+
+    def test_both_screens_carry_one(self):
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            with self.subTest(ecran=nom):
+                self.assertTrue(vu["spec"].get("locale"), nom)
+
+    def test_they_carry_the_one_that_costs_nothing(self):
+        """« C.UTF-8 » est le seul choix qui ne déclenche aucun
+        locale-gen. Le défaut du déploiement, lui, en déclenche un."""
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            with self.subTest(ecran=nom):
+                self.assertEqual(
+                    ExtrasMixin.LOCALE_DEFAUT, vu["spec"]["locale"], nom
+                )
+
+    def test_it_is_not_the_deploy_script_own_default(self):
+        """Contrôle positif : si les deux valeurs étaient les mêmes, les
+        épreuves ci-dessus passeraient sans qu'aucune locale ne parte."""
+        import argparse
+        import io as _io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        analyseur = None
+        for nom in ("build_parser", "make_parser", "parser"):
+            if hasattr(mod, nom):
+                analyseur = getattr(mod, nom)
+                break
+        if analyseur is None:
+            self.skipTest("deploy_qemu n'expose pas son analyseur")
+        with redirect_stdout(_io.StringIO()), redirect_stderr(_io.StringIO()):
+            defauts = analyseur().parse_args([])
+        self.assertNotEqual(
+            ExtrasMixin.LOCALE_DEFAUT,
+            getattr(defauts, "locale", None),
+            "le défaut du déploiement et celui du socle se confondent",
+        )
+
+    def test_a_locale_in_the_spec_reaches_the_command(self):
+        """Sans cela, la poser à l'écran ne changerait rien."""
+        todo = todo_muet()
+        todo.config_file = None
+        spec = {
+            "posture": "open",
+            "real_data": False,
+            "vms": [],
+            "install": None,
+            "add_ssh_config": False,
+            "parallelism": 1,
+            "locale": "C.UTF-8",
+        }
+        vm = dict(CATALOGUE[0], vcpus=2)
+        parts = todo._qemu_deploy_parts_for(vm, spec, dry_run=True)
+        self.assertIn("--locale", parts)
+        self.assertIn("C.UTF-8", parts)
+
+
 class TestCeQueLeBureauChange(unittest.TestCase):
     """Choisir un bureau doit se voir sur les DEUX écrans, et de la même
     façon : le nom prend un suffixe, le disque grossit."""
@@ -355,19 +500,56 @@ class TestLeFuseauDUneVmProxmox(unittest.TestCase):
         self.assertEqual(self._pose({}), "")
 
     def test_the_prompt_path_still_gets_one(self):
-        # La voie par questions ne demande pas le fuseau ; sans défaut, elle
-        # laissait la VM en UTC alors que la voie libvirt reprend celui de
-        # l'hôte depuis toujours.
-        import re
+        """La voie par questions laissait la VM en UTC, là où la voie
+        libvirt reprend le fuseau de l'hôte depuis toujours.
+
+        Cette épreuve cherchait une LIGNE DE CODE — « "timezone":
+        self._qemu_host_timezone() » — et elle est tombée le jour où cette
+        voie s'est mise à POSER la question au lieu de prendre un défaut.
+        La propriété n'avait pas bougé, elle s'était renforcée : ce que le
+        motif tenait, c'était sa propre écriture.
+        """
+        import ast
         from pathlib import Path
 
         src = Path("script/todo/proxmox_menu.py").read_text(encoding="utf-8")
-        bloc = src[src.index("def _pve_deploy_prompts") :]
-        bloc = bloc[: bloc.index("_pve_after_create")]
+        for noeud in ast.walk(ast.parse(src)):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "_pve_deploy_prompts"
+            ):
+                appels = {
+                    n.func.attr
+                    for n in ast.walk(noeud)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                }
+                break
+        else:
+            raise AssertionError("_pve_deploy_prompts introuvable")
+        # Ou bien elle POSE la question par l'invite partagée, ou bien elle
+        # reprend le fuseau de l'hôte. Ce qui est interdit, c'est ni l'un
+        # ni l'autre — la VM démarre alors en UTC et on ne s'en aperçoit
+        # qu'aux horodatages.
         self.assertTrue(
-            re.search(r'"timezone":\s*self\._qemu_host_timezone\(\)', bloc),
+            appels & {"_deploy_ask_guest", "_qemu_host_timezone"},
             "le spec des invites doit porter un fuseau",
         )
+
+    def test_the_shared_prompt_is_what_carries_it(self):
+        """Contrôle positif : traverser l'invite partagée ne vaut que si
+        elle rend vraiment un fuseau."""
+        todo = todo_muet()
+        todo._qemu_ask_timezone = lambda: "America/Montreal"
+        todo._qemu_ask_locale = lambda: "C.UTF-8"
+        todo._qemu_ask_desktop = lambda: ""
+        todo._qemu_desktop_suffixes = lambda: {}
+        todo._qemu_ask_app_store = lambda _vms: "deb"
+        todo._qemu_ask_vm_tools = lambda _vms: ()
+        todo._qemu_ask_python_provider = lambda _a: ""
+        todo._qemu_ask_ai_tools = lambda _t: ("", "", "")
+        fragment = todo._deploy_ask_guest([{"name": "vm1", "arch": "amd64"}])
+        self.assertEqual("America/Montreal", fragment["timezone"])
 
 
 if __name__ == "__main__":

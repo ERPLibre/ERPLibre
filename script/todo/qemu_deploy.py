@@ -1641,6 +1641,25 @@ class QemuDeployMixin:
             ) from manque
         return posture_rules.render_egress(posture, cibles)
 
+    def _qemu_apercu_egress(self, spec):
+        """Ce qu'un aperçu doit montrer du pare-feu : (EgressFiles, texte).
+
+        Vides tous les deux quand la posture n'attend rien — la commande
+        composée est alors celle d'avant, mot pour mot. RIEN N'EST ÉCRIT :
+        un fichier créé pour afficher son nom serait retiré avant que
+        quiconque le lise, d'où les noms de gabarit.
+
+        UN SEUL ENDROIT POUR LES DEUX APERÇUS, celui du formulaire et celui
+        de la ligne. Recopié d'un écran à l'autre, ce calcul laisse un
+        panneau montrer une commande sans pare-feu pour un déploiement qui
+        en pose un — et c'est ce panneau qu'on lit pour vérifier ce qui va
+        tourner.
+        """
+        texte = self._qemu_egress_rules(spec)
+        if not texte:
+            return EgressFiles("", ""), ""
+        return EgressFiles(APERCU_REGLES, APERCU_UNITE), texte
+
     @contextlib.contextmanager
     def _qemu_egress_file(self, spec):
         """Le chemin d'un fichier de règles, le temps du bloc.
@@ -2137,13 +2156,21 @@ class QemuDeployMixin:
     def _qemu_preview_command(self, vm, spec, dry):
         """La commande qu'un aperçu affiche, en UNE ligne.
 
-        Le MÊME constructeur que le déploiement — c'est ce qui rend leur
-        divergence vérifiable. Mais il porte la règle d'or, qui lève : un
-        aperçu ne crée rien et n'a aucune raison de finir en pile, donc le
-        refus s'affiche ici à la place de la commande, et l'écran reste.
+        Le MÊME constructeur que le déploiement, et le MÊME calcul de
+        pare-feu — c'est ce qui rend leur divergence vérifiable. Sans le
+        second, ce panneau montrait une commande sans « --egress-file »
+        pour un déploiement qui en posait un : l'utilisateur choisit sa
+        posture DANS cet écran, puis lit ici ce qui va tourner.
+
+        Il porte la règle d'or, qui lève : un aperçu ne crée rien et n'a
+        aucune raison de finir en pile, donc le refus s'affiche ici à la
+        place de la commande, et l'écran reste.
         """
         try:
-            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
+            egress, _texte = self._qemu_apercu_egress(spec)
+            parts = self._qemu_deploy_parts_for(
+                vm, spec, dry_run=dry, egress=egress
+            )
         except vm_backend.VmBackendError as refus:
             return f"✗ {t('Deployment refused:')} {refus}"
         return " ".join(shlex.quote(p) for p in parts)
@@ -2268,15 +2295,11 @@ class QemuDeployMixin:
         # aperçu. Il ne s'interrompt pas pour autant : un essai à blanc
         # doit rester lançable, et le dire vaut mieux que se taire.
         regles = ""
+        egress = EgressFiles("", "")
         try:
-            regles = self._qemu_egress_rules(spec)
+            egress, regles = self._qemu_apercu_egress(spec)
         except Exception as souci:
             print(f"\n⛔ {t('Egress rules cannot be rendered:')} {souci}")
-        egress = (
-            EgressFiles(APERCU_REGLES, APERCU_UNITE)
-            if regles
-            else EgressFiles("", "")
-        )
         print(f"\n{t('Preview (dry-run):')}")
         for vm in machines:
             parts = self._qemu_deploy_parts_for(
@@ -2465,6 +2488,47 @@ class QemuDeployMixin:
                     " at once."
                 )
                 print(f"  ⚠ {warn}")
+
+    def _deploy_ask_guest(self, vms) -> dict:
+        """Les réglages de l'INVITÉ, en ligne. Rend un FRAGMENT de spec.
+
+        POSÉ PAR LES DEUX CHEMINS SANS FORMULAIRE, comme la règle d'or
+        juste en dessous. Les écrans les partagent depuis `ExtrasMixin` ;
+        les invites n'en posaient aucun côté Proxmox VE, si bien qu'une VM
+        y naissait serveur nu, dans le magasin par défaut, sans outil, en
+        UTC — et son disque était taillé sans la marge d'un bureau, que
+        « qm create » fige pour de bon.
+
+        LE TYPE DE VM SE RECOPIE SUR CHAQUE MACHINE AVANT LE MAGASIN, qui
+        ne concerne que les graphiques, et le nom suit le type. Par la même
+        fonction que le formulaire, pas une seconde implémentation : sans
+        suffixe, une VM graphique et sa jumelle serveur portent le même
+        nom, et la seconde est signalée « existe déjà » puis ignorée.
+        """
+        from script.todo.qemu_deploy_form import vm_name
+
+        fragment = {
+            "timezone": self._qemu_ask_timezone(),
+            "locale": self._qemu_ask_locale(),
+        }
+        fragment["desktop"] = self._qemu_ask_desktop()
+        suffixes = self._qemu_desktop_suffixes()
+        for vm in vms:
+            vm.setdefault("desktop", fragment["desktop"])
+            vm["name"] = vm_name(vm["name"], vm.get("desktop"), suffixes)
+        fragment["app_store"] = self._qemu_ask_app_store(vms)
+        fragment["vm_tools"] = self._qemu_ask_vm_tools(vms)
+        fragment["python_provider"] = self._qemu_ask_python_provider(
+            [vm["arch"] for vm in vms]
+        )
+        # Ces trois réponses n'ont d'objet que si l'outil est coché : les
+        # poser toujours ferait trois questions de plus à qui n'en veut pas.
+        (
+            fragment["ai_agent"],
+            fragment["git_name"],
+            fragment["git_email"],
+        ) = self._qemu_ask_ai_tools(fragment["vm_tools"])
+        return fragment
 
     def _deploy_ask_posture(self, after_boot: bool = False) -> dict:
         """Les deux questions de la règle d'or, en ligne. Rend un FRAGMENT
@@ -2742,24 +2806,13 @@ class QemuDeployMixin:
         if ssh_key:
             ssh_key = os.path.expanduser(ssh_key)
 
-        timezone = self._qemu_ask_timezone()
-        locale = self._qemu_ask_locale()
-        desktop = self._qemu_ask_desktop()
-        # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
-        # VM avant de décider du magasin, qui ne concerne que les graphiques.
-        # Le nom suit le type, exactement comme dans le formulaire — c'est la
-        # même fonction, pas une seconde implémentation.
-        from script.todo.qemu_deploy_form import vm_name
-
-        suffixes = self._qemu_desktop_suffixes()
-        for _vm in vms:
-            _vm.setdefault("desktop", desktop)
-            _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
-        app_store = self._qemu_ask_app_store(vms)
-        vm_tools = self._qemu_ask_vm_tools(vms)
-        python_provider = self._qemu_ask_python_provider(
-            [vm["arch"] for vm in vms]
-        )
+        invite = self._deploy_ask_guest(vms)
+        timezone = invite["timezone"]
+        locale = invite["locale"]
+        desktop = invite["desktop"]
+        app_store = invite["app_store"]
+        vm_tools = invite["vm_tools"]
+        python_provider = invite["python_provider"]
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -2816,6 +2869,9 @@ class QemuDeployMixin:
             )
         )
 
+        ai_agent = invite["ai_agent"]
+        git_name = invite["git_name"]
+        git_email = invite["git_email"]
         # Posée seulement quand un cache tourne : ailleurs, la réponse ne
         # changerait rien et la question ferait croire le contraire.
         cache_bypass = False
@@ -2823,10 +2879,6 @@ class QemuDeployMixin:
             cache_bypass = self._is_yes(
                 input(t("Keep this VM out of the download cache? (y/N): "))
             )
-
-        # Ces trois réponses n'ont d'objet que si l'outil est coché : les
-        # poser toujours ferait trois questions de plus à qui n'en veut pas.
-        ai_agent, git_name, git_email = self._qemu_ask_ai_tools(vm_tools)
 
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))

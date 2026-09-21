@@ -37,7 +37,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from lib_identifiant import (  # noqa: E402
-    NOMS_INTERDITS,
     identifiants,
     termes_interdits,
 )
@@ -217,7 +216,7 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
             )
             break
 
-    termes = termes_interdits(NOMS_INTERDITS)
+    termes = termes_interdits()
     par_motif = {}
     for motif, extrait, _ in identifiants(avec_trailers, termes):
         if motif != "courriel":

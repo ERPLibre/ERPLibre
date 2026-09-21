@@ -16,8 +16,16 @@ tombe sans bruit.
 
 « Utilisable » se vérifie par le DÉCOUPAGE : aucun mot vide, aucun mot qui
 s'arrête sur « @ ». Relire la chaîne ne prouverait rien.
+
+« CHAQUE VERBE » SE LIT DANS LE MODULE. Une liste écrite ici ne grandit pas
+avec lui : elle tenait neuf verbes sur onze, et le seuil qui la gardait
+(« au moins huit ») laissait aussi bien en retirer un. Ce que ce fichier
+tient désormais, c'est que tout verbe public soit ou bien dans la table, ou
+bien nommé hors contrat AVEC sa raison — le choix reste possible, le silence
+non.
 """
 
+import inspect
 import os
 import shlex
 import sys
@@ -41,7 +49,20 @@ VERBES = (
     ("identity_guard", lambda h: V.identity_guard(h)),
     ("pve_delete_suite", lambda h: V.pve_delete_suite(h)),
     ("web_access", lambda h: " ".join(V.web_access(h).tunnel)),
+    ("connect_command", lambda h: V.connect_command(h)),
 )
+
+# Les verbes publics qui ne composent PAS de commande. Chacun porte sa
+# raison : un nom seul dans une liste d'exclusion redevient un oubli au
+# bout de quelques mois.
+HORS_COMMANDE = {
+    "arm": "agit sur la machine et rend une fiche ; une sonde muette la"
+    " laisse désarmée plutôt que d'échouer, donc il ne refuse pas non plus"
+    " sur un backend inconnu",
+    "identity_fields": "écrit une entrée de manifeste, pas une commande",
+    "exec_address": "rend un point d'entrée et non une commande — son"
+    " contrat est plus bas, et il est plus strict",
+}
 
 # Deux états par backend : la fiche COMPLÈTE, et la fiche NUE — celle d'un
 # manifeste ancien ou d'une machine à peine créée. C'est la nue qui révèle
@@ -87,12 +108,89 @@ def mots_douteux(commande):
     )
 
 
+class TestLePointDEntreeNestJamaisVideEnSilence(unittest.TestCase):
+    """`exec_address` rend une chaîne NUE, que le découpage ne juge pas.
+
+    Vide, elle passe toutes les épreuves de commande — il n'y a aucun mot à
+    inspecter — et c'est l'appelant qui en fait « ip= ». Le script détaché
+    lance alors « ssh "compte@$ip" » en boucle pendant les vingt minutes
+    prévues pour un boot émulé, sur un message qui ne nomme aucune machine.
+
+    LE VIDE N'EST TENABLE QUE LÀ OÙ L'ADRESSE SE RÉSOUT PLUS TARD : le
+    script la ré-résout en chemin quand un hyperviseur LOCAL connaît la VM,
+    et seulement là.
+    """
+
+    def test_an_empty_entry_point_means_the_address_is_re_resolved(self):
+        for nom_fiche, fiche in FICHES:
+            with self.subTest(fiche=nom_fiche):
+                try:
+                    entree = V.exec_address(fiche)
+                except B.VerbNotImplemented:
+                    continue
+                if entree:
+                    continue
+                self.assertTrue(
+                    B.resolves_locally(fiche),
+                    f"{nom_fiche} : point d'entrée vide et rien pour le"
+                    " relire",
+                )
+
+    def test_a_hosted_vm_without_address_or_alias_is_refused(self):
+        """Elle n'a ni l'un ni l'autre et aucun hyperviseur local ne la
+        connaît : il n'y a rien à essayer, et le dire coûte vingt minutes
+        de moins que de l'essayer."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.exec_address(B.pve_handle({"vmid": 101}, "vm-a"))
+
+    def test_a_hosted_vm_still_falls_back_on_its_address(self):
+        """Contrôle positif : refuser dès que l'alias manque écarterait une
+        VM parfaitement joignable par son adresse."""
+        self.assertEqual(
+            "198.51.100.7",
+            V.exec_address(
+                B.pve_handle(
+                    {
+                        "vmid": 101,
+                        "target": "hote.exemple",
+                        "addr": "198.51.100.7",
+                    },
+                    "vm-a",
+                )
+            ),
+        )
+
+
 class TestChaqueVerbeRendOuRefuse(unittest.TestCase):
     def test_the_table_covers_every_backend(self):
         """Un backend absent de la table passerait toutes les épreuves."""
         couverts = {fiche.backend for _nom, fiche in FICHES}
         self.assertEqual(set(B.BACKENDS), couverts)
-        self.assertGreaterEqual(len(VERBES), 8)
+
+    def test_the_table_is_the_module_s_own_verb_list(self):
+        """« Chaque verbe » doit se DÉRIVER du module.
+
+        Un seuil — « au moins huit » — ne dit rien du onzième : il passe au
+        vert le jour où on l'ajoute, et reste vert le jour où on en retire
+        un. C'est ainsi que deux verbes sont restés hors contrat.
+        """
+        publics = {
+            nom
+            for nom, objet in vars(V).items()
+            if not nom.startswith("_")
+            and inspect.isfunction(objet)
+            and objet.__module__ == V.__name__
+        }
+        self.assertEqual(
+            publics, {nom for nom, _v in VERBES} | set(HORS_COMMANDE)
+        )
+
+    def test_nothing_is_excluded_without_a_reason(self):
+        """Contrôle positif : tout verser dans « hors commande »
+        satisferait l'épreuve ci-dessus sans rien éprouver."""
+        for nom, raison in HORS_COMMANDE.items():
+            with self.subTest(verbe=nom):
+                self.assertTrue(raison.strip())
 
     def test_nothing_ever_composes_an_empty_target(self):
         """LA faute que ce fichier existe pour empêcher, et qui est passée
