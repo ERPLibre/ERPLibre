@@ -34,6 +34,11 @@ docker build -f Dockerfile.base -t technolibre/erplibre-base:12.0 .
 docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 ```
 
+
+`.venv.erplibre` est bâti sur le Python de l'image, celui d'Odoo, sans mise ni
+pyenv. La construction s'arrête quand ce Python ne sait pas lire `script/`, ce
+qui arrive avec une version d'Odoo dépréciée.
+
 ### Exécuter ERPLibre avec Docker-Compose
 
 Allez à la racine de ce projet git.

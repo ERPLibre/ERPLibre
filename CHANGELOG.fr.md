@@ -79,6 +79,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une VM déployée l'amont du cache coupé — formulaire QEMU, Proxmox VE, ou `deploy_qemu.py --offline` — a l'audit de sécurité de npm désactivé (`NPM_CONFIG_AUDIT=false`) : il interroge un service qu'aucun cache ne rejoue, et échouait à chaque installation hors ligne. Une VM en ligne garde son audit
 - Vérifier une image téléchargée ne demande plus `--verify` : c'est le défaut pour toute distribution qui publie une somme, et `--no-verify` est ce qui la saute — à réserver aux essais hors ligne, où une image substituée passerait autrement sans un mot
 - `--bios` est refusé sur une image sans secteur d'amorçage BIOS, et dit pourquoi. Forcé là, il donnait une VM « running » à console muette — la panne même que ce drapeau évite ailleurs
+- L'environnement virtuel d'outillage `.venv.erplibre` tourne en Python 3.14.7, indépendamment de celui d'Odoo (3.12.10 pour Odoo 18.0). `install_erplibre.sh` le bâtit par `install_venv.sh` et `EL_PYTHON_PROVIDER` plutôt qu'avec le `python3` du système
+- Un environnement virtuel sur un Python incompatible — `.venv.erplibre`, ou celui d'Odoo lors d'un `make install_odoo_*` — est SUPPRIMÉ puis rebâti ; ce qu'on y avait posé à la main part avec lui. Un répertoire sans `pyvenv.cfg` n'est jamais effacé
+- `make` et `make todo` relancent TODO dans `.venv.erplibre`. S'il manque, TODO propose de lancer `install_erplibre.sh` en terminal, ou affiche la commande
+- L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo et s'arrête quand ce Python ne sait pas lire `script/`
 - `make format_script` formate `script/` pour le plancher de syntaxe ; `black.sh` garde `py37` pour les addons
 
 ## Corrigé

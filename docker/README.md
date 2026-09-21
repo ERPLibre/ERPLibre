@@ -34,6 +34,11 @@ docker build -f Dockerfile.base -t technolibre/erplibre-base:12.0 .
 docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 ```
 
+
+`.venv.erplibre` is built on the image's own Python, Odoo's, without mise or
+pyenv. The build stops when that Python cannot parse `script/`, which happens
+with a deprecated Odoo version.
+
 ### Running ERPLibre using Docker-Compose
 
 Go at the root of this git project.

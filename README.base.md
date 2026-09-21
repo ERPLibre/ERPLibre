@@ -86,9 +86,20 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 
 Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
+The Python in that table is the one of the Odoo virtual environment. The
+tooling virtual environment `.venv.erplibre` (TODO, `repo`, formatters) runs
+its own interpreter, **3.14.7**, set by `conf/python-erplibre-version`. The
+source code keeps a lower syntax floor, `conf/python-erplibre-floor` (**3.10**).
+
 <!-- [fr] -->
 
 Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
+
+Le Python de ce tableau est celui de l'environnement virtuel Odoo.
+L'environnement virtuel d'outillage `.venv.erplibre` (TODO, `repo`, formateurs)
+tourne sur son propre interpréteur, **3.14.7**, fixé par
+`conf/python-erplibre-version`. Le code source tient un plancher de syntaxe plus
+bas, `conf/python-erplibre-floor` (**3.10**).
 
 <!-- [en] -->
 
@@ -240,6 +251,24 @@ Suivez les instructions du script suivant, il essaiera de détecter votre enviro
 ```bash
 make
 ```
+
+<!-- [en] -->
+
+`make` starts TODO, which relaunches itself in `.venv.erplibre`. When that
+environment is missing, TODO offers to run `./script/install/install_erplibre.sh`
+(in a terminal) or prints that command. The install builds the environment
+through `EL_PYTHON_PROVIDER` (mise or pyenv); an existing `.venv.erplibre` on
+another Python version is DELETED and rebuilt, and whatever was installed in it
+by hand goes with it.
+
+<!-- [fr] -->
+
+`make` lance TODO, qui se relance dans `.venv.erplibre`. Si cet environnement
+manque, TODO propose de lancer `./script/install/install_erplibre.sh` (dans un
+terminal) ou affiche cette commande. L'installation bâtit l'environnement par
+`EL_PYTHON_PROVIDER` (mise ou pyenv) ; un `.venv.erplibre` existant sur une
+autre version de Python est SUPPRIMÉ puis rebâti, et ce qu'on y avait posé à la
+main part avec lui.
 
 <!-- [en] -->
 

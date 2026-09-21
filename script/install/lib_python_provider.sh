@@ -58,11 +58,8 @@ el_python_is_version() {
 # Vrai si l'exécutable CONVIENT : même majeure.mineure, et patch au moins
 # égal au demandé. C'est exactement ce qu'exige le pyproject — « >=3.12.10,
 # <3.13 » — et non l'égalité stricte que testait el_python_is_version.
-#
-# La distinction n'est pas théorique. Tumbleweed s390x livre python312 en
-# 3.12.13 : parfaitement utilisable, mais rejeté par l'égalité, ce qui forçait
-# pyenv à COMPILER CPython — et gcc 15.2 s'y arrête sur une erreur interne
-# dans Parser/parser.c, un fichier généré de quarante mille lignes.
+# L'égalité rejetterait un python de distribution d'un patch plus récent, et
+# forcerait pyenv à compiler CPython là où il n'y a rien à compiler.
 el_python_is_compatible() {
   local exe="$1" want="$2" got
   [ -x "${exe}" ] || return 1
@@ -175,6 +172,26 @@ el_pyenv_install() {
   echo "${exe}"
 }
 
+# Annonce la compilation pyenv AVANT de la subir, et le geste qui l'évite :
+# poser mise, ou lire ce que mise reproche quand il est déjà là. Muet si pyenv
+# porte déjà la version, puisque rien ne sera compilé.
+el_warn_pyenv_fallback() {
+  local version="$1"
+  [ -d "$(el_pyenv_root)/versions/${version}" ] && return 0
+  if command -v mise > /dev/null 2>&1; then
+    echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv," >&2
+    echo "  qui COMPILE CPython. Pour lire ce que mise reproche :" >&2
+    echo "    mise install python@${version}   (reseau requis)" >&2
+  else
+    echo "mise est absent : pyenv va etre pose, puis COMPILER CPython" >&2
+    echo "  ${version} -- quelques minutes, bien plus sous emulation, et il" >&2
+    echo "  lui faut une douzaine de -dev (openssl, zlib, readline, sqlite," >&2
+    echo "  bzip2, xz, tk). Pour l'eviter : Ctrl+C, puis" >&2
+    echo "    make install_mise" >&2
+    echo "  qui pose un CPython precompile en quelques secondes, et relancez." >&2
+  fi
+}
+
 # API publique : imprime le chemin absolu d'un interpréteur de cette version,
 # ou rien (et rend non nul) si aucun fournisseur n'y parvient.
 el_python_exec() {
@@ -220,8 +237,7 @@ el_python_exec() {
       return 0
     fi
     [ "${provider}" = "mise" ] && return 1
-    command -v mise > /dev/null 2>&1 \
-      && echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv." >&2
+    el_warn_pyenv_fallback "${version}"
   fi
   el_pyenv_install "${version}"
 }

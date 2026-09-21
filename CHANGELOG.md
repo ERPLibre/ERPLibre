@@ -79,6 +79,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 - Verifying a downloaded image no longer needs `--verify`: it runs by default for every distribution that publishes a sum, and `--no-verify` is what skips it — to be kept for offline runs, where a substituted image would otherwise pass unremarked
 - `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
+- The tooling virtual environment `.venv.erplibre` runs Python 3.14.7, independently of the Odoo one (3.12.10 for Odoo 18.0). `install_erplibre.sh` builds it through `install_venv.sh` and `EL_PYTHON_PROVIDER` instead of the system `python3`
+- A virtual environment on an incompatible Python — `.venv.erplibre`, or Odoo's during `make install_odoo_*` — is DELETED and rebuilt; whatever was installed in it by hand goes with it. A directory without `pyvenv.cfg` is never deleted
+- `make` and `make todo` relaunch TODO in `.venv.erplibre`. When it is missing, TODO offers to run `install_erplibre.sh` in a terminal, or prints the command
+- The production Docker image builds `.venv.erplibre` on Odoo's Python and stops when that Python cannot parse `script/`
 - `make format_script` formats `script/` for the syntax floor; `black.sh` keeps `py37` for the addons
 
 ## Fixed
