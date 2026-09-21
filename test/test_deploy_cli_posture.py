@@ -32,6 +32,10 @@ from unittest import mock
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
+from test.devstack_harness import (  # noqa: E402
+    catalogue_de_banc,
+)
+
 sys.argv = ["todo.py"]
 
 from script.posture import spec as S  # noqa: E402
@@ -40,17 +44,11 @@ from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 from script.vm.backend import VmBackendError  # noqa: E402
 
-MOD = type(
-    "ModuleDeBanc",
-    (),
-    {
-        "DISTROS": {"ubuntu": [{"24.04": ("noble", "24.04")}]},
-        "image_url": staticmethod(lambda *_a: "http://example.invalid/i.img"),
-        "default_image_name": staticmethod(lambda *_a: "i.img"),
-        "requiert_uefi": staticmethod(lambda _distro: False),
-        "pinned_sha256": staticmethod(lambda _distro: ""),
-    },
-)()
+MOD = catalogue_de_banc(
+    DISTROS={"ubuntu": [{"24.04": ("noble", "24.04")}]},
+    image_url=lambda *_a: "http://example.invalid/i.img",
+    default_image_name=lambda *_a: "i.img",
+)
 
 
 VM_APERCU = {
@@ -169,6 +167,11 @@ class TestLaSpecDesInvitesLesPorte(unittest.TestCase):
         "_qemu_confirm_collisions": lambda _e, _p: True,
         "_qemu_print_recap": lambda _s, _e: None,
         "_confirm_or_discard": lambda _q: True,
+        # AUCUN CACHE ICI. La question du contournement n'est posée que
+        # lorsqu'un cache tourne ; la laisser dépendre de la station ferait
+        # que la liste de réponses ci-dessous vaudrait sur une machine et
+        # pas sur l'autre. Ce fichier éprouve la posture, pas le cache.
+        "_qemu_cache_active": lambda: False,
     }
 
     def collecte(self, reponses):

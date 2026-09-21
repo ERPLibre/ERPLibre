@@ -119,3 +119,39 @@ def which_sous(shim: ShimDir, nom: str):
     lirait ensuite.
     """
     return shutil.which(nom, path=shim.path())
+
+
+def catalogue_de_banc(**remplacements):
+    """Le catalogue de distributions RÉDUIT, dont le reste de la surface est
+    celle du vrai module.
+
+    Les bancs de déploiement n'ont besoin que d'un couple (distribution,
+    version) : énumérer le catalogue entier les ferait dépendre de son
+    contenu, qui bouge. Mais ils recopiaient AUSSI la surface du module —
+    trois fichiers, la même poignée de noms — et une fonction ajoutée au
+    catalogue les faisait tous lever `AttributeError` avant d'atteindre ce
+    qu'ils tiennent, la posture ou la parité des commandes.
+
+    Ici, seul ce qui est NOMMÉ est remplacé ; tout le reste délègue. Un
+    nouveau nom au catalogue arrive donc dans les bancs sans qu'aucun ne
+    soit touché, et c'est le vrai qui répond.
+    """
+    import importlib.util
+
+    chemin = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "script",
+        "qemu",
+        "deploy_qemu.py",
+    )
+    spec = importlib.util.spec_from_file_location("deploy_qemu", chemin)
+    vrai = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vrai)
+
+    class Catalogue:
+        def __getattr__(self, nom):
+            if nom in remplacements:
+                return remplacements[nom]
+            return getattr(vrai, nom)
+
+    return Catalogue()

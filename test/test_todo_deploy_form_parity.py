@@ -62,8 +62,8 @@ PROPRES = {
     "QEMU/KVM": {
         "f_gpu3d": "passe un GPU de l'hôte, ce que libvirt seul sait faire",
         "f_cache_bypass": (
-            "soustrait la VM au cache de téléchargement de la station, que"
-            " seules les VM locales traversent"
+            "écarte UNE VM du cache ; la voie Proxmox fixe le miroir de"
+            " toutes ses VM sans exception par machine"
         ),
     },
     "Proxmox": {
@@ -132,9 +132,12 @@ def contexte_proxmox(todo):
         host_cpu=8,
         free_ram=16000,
         extra_disk_gb=5,
-        # Le cache OFFERT des deux côtés : sans lui, ni la coupure réseau
-        # ni la soustraction au cache ne s'affichent, et la parité ne
-        # dépendrait plus du code mais de la station qui lance l'épreuve.
+        # LE BLOC RÉSEAU EST OFFERT DES DEUX CÔTÉS. Les deux écrans ne le
+        # composent que si un cache tourne ; ce contexte-ci est bâti à la
+        # main et l'oubliait, si bien que « f_offline » passait pour propre
+        # à l'autre écran. Fixé ici plutôt que lu sur la station : une
+        # parité qui dépend de ce qui tourne ne se compare pas deux fois
+        # de suite.
         cache_offert=True,
         **todo._qemu_guest_context(),
     )

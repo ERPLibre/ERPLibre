@@ -268,9 +268,11 @@ class TestLaPorteTientLES_DEUX_CheminsInteractifs(PorteDeBanc):
 
     def restaurer(self, saisies, bases, exercice=False, listable=True):
         todo = self.porte(bases=bases, listable=listable, exercice=exercice)
-        # Le MÊME exécutant simulé pour la liste et pour la restauration :
-        # le menu lance db_restore par `execute`, et un exécutant réel
-        # lancerait ici une vraie restauration.
+        # LE MÊME MOCK DES DEUX CÔTÉS. « _monitoring_restore » vit sur TODO
+        # et lance par son propre exécutant ; le garde, lui, interroge le
+        # gestionnaire de bases. Les séparer ferait lire les appels d'un
+        # objet pendant que le code en emploie un autre, et la liste
+        # rendrait vide sans qu'aucune épreuve ne le dise.
         todo.execute = todo.db_manager._execute
         # Le nom d'image est POSÉ : le calculer déplace un fichier sur le
         # disque, et ce n'est pas ce que cette classe éprouve.
