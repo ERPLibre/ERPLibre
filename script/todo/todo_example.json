@@ -15,13 +15,13 @@
             "server": "vpn.acme.example",
             "ppp_user": "ACME\\user",
             "routes": [
-                "10.20.0.0/16"
+                "198.51.100.0/24"
             ],
             "default_route": false,
             "mtu": 1280,
             "use_peer_dns": true,
             "dns_search": "acme.example",
-            "probe": "10.20.0.1"
+            "probe": "198.51.100.1"
         },
         {
             "name": "client-beta",
@@ -43,9 +43,9 @@
             "port": 22,
             "ssh_dns": true,
             "routes": [
-                "10.90.0.0/16"
+                "203.0.113.0/24"
             ],
-            "probe": "10.90.0.1"
+            "probe": "203.0.113.1"
         }
     ],
     "instance": [

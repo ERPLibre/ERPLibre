@@ -177,7 +177,7 @@ CONFIG_SSH = """Host exo
     HostName 132.207.112.51
 
 Host erplibre-ubuntu-2404
-    HostName 192.168.123.170
+    HostName 198.51.100.170
     User erplibre
 
 Host erplibre-partie
@@ -207,7 +207,7 @@ class TestLesEntreesSsh(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
         self.domaines = {"erplibre-ubuntu-2404-MIGRATION"}
-        self.adresses = {"192.168.123.170": "erplibre-ubuntu-2404-MIGRATION"}
+        self.adresses = {"198.51.100.170": "erplibre-ubuntu-2404-MIGRATION"}
 
     def _juge(self, nom, distantes=()):
         return self.todo._ssh_entry_alive(
@@ -251,7 +251,7 @@ class TestLeRebondQuiNExistePlus(unittest.TestCase):
 
     CONFIG = """
 Host erplibre-vivante
-    HostName 192.168.123.170
+    HostName 198.51.100.170
 
 Host erplibre-proxmox-9
     HostName 192.168.123.208
@@ -318,7 +318,7 @@ Host mon-serveur-perso
 
         sans_parent = """
 Host erplibre-vivante
-    HostName 192.168.123.170
+    HostName 198.51.100.170
 
 Host erplibre-proxmox-9+enfant
     HostName 10.10.10.150
@@ -378,12 +378,12 @@ class TestLAdresseDUneVm(unittest.TestCase):
     def test_the_lease_wins_over_the_arp_table(self):
         todo = self._todo(
             {
-                "lease": ["192.168.123.170"],
-                "agent": ["192.168.123.170", "192.168.122.1"],
-                "arp": ["192.168.123.170", "192.168.122.1"],
+                "lease": ["198.51.100.170"],
+                "agent": ["198.51.100.170", "192.168.122.1"],
+                "arp": ["198.51.100.170", "192.168.122.1"],
             }
         )
-        self.assertEqual(todo._qemu_vm_ip_now("x"), "192.168.123.170")
+        self.assertEqual(todo._qemu_vm_ip_now("x"), "198.51.100.170")
 
     def test_without_a_lease_the_agent_speaks(self):
         todo = self._todo({"agent": ["10.0.0.5"], "arp": ["192.168.122.1"]})
