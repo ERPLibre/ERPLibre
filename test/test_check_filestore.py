@@ -24,7 +24,8 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.analyse import check_filestore as fs  # noqa: E402
+from script.analyse import check_filestore as fs
+from script.todo.todo_i18n import t  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 
@@ -500,6 +501,97 @@ class TestTidyingTheNested(unittest.TestCase):
         self.assertEqual(fs.nested_dir({"root": self.base}), "")
 
 
+class TestCeQueLePlanNeCouvrePas(unittest.TestCase):
+    """Le nid portait plus que ce que le plan sait lire.
+
+    `tidy_nested_plan` ne connaît qu'UNE forme : un répertoire de deux
+    caractères, puis des fichiers. Un fichier posé à la racine du nid, ou
+    un niveau de plus, lui est invisible — jamais compté, jamais montré,
+    jamais consenti.
+
+    Et le geste retirait le nid d'un BLOC. L'écran annonçait « 1 à
+    remonter, 0 doublon », l'utilisateur acceptait, et deux fichiers qu'il
+    n'avait jamais vus disparaissaient. « ignore_errors » achevait : ce qui
+    résistait se taisait pendant que la ligne de succès s'imprimait.
+
+    ON NOMME, ON N'EFFACE PAS — le parti déjà pris pour les disques
+    orphelins.
+    """
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine, ignore_errors=True)
+        self.base = os.path.join(self.racine, "ma_base")
+        self.nid = os.path.join(self.base, "filestore")
+        for chemin, contenu in (
+            ("filestore/bb/absent", "au bon niveau, à remonter"),
+            ("filestore/cd/plus_profond/sha", "un niveau de trop"),
+            ("filestore/manifest.json", "à la racine du nid"),
+        ):
+            complet = os.path.join(self.base, chemin)
+            os.makedirs(os.path.dirname(complet), exist_ok=True)
+            with open(complet, "w", encoding="utf-8") as handle:
+                handle.write(contenu)
+
+    def test_the_plan_does_not_see_them(self):
+        """LE FAIT QUI FONDE TOUT LE RESTE. Sans lui, on croirait que le
+        nid ne porte que ce qui a été annoncé."""
+        remonter, doublons = fs.tidy_nested_plan({"root": self.base})
+        self.assertEqual(1, len(remonter) + len(doublons))
+        sous_le_nid = sum(len(f) for _r, _d, f in os.walk(self.nid))
+        self.assertEqual(3, sous_le_nid)
+
+    def test_what_the_plan_misses_is_named(self):
+        self.assertEqual(
+            ["cd/plus_profond/sha", "manifest.json"],
+            [
+                c
+                for c in fs.tidy_nested_leftovers(self.nid)
+                if not c.startswith("bb/")
+            ],
+        )
+
+    def test_the_nest_is_kept_while_anything_is_left(self):
+        """Le retirer emporterait ce que personne n'a consenti."""
+        self.assertFalse(fs.drop_empty_tree(self.nid))
+        self.assertTrue(os.path.isdir(self.nid))
+
+    def test_an_empty_nest_goes(self):
+        """Contrôle positif : le garder toujours laisserait un répertoire
+        vide à chaque rangement, et le prochain relevé le signalerait."""
+        for racine, _dossiers, fichiers in os.walk(self.nid):
+            for nom in fichiers:
+                os.remove(os.path.join(racine, nom))
+        self.assertTrue(fs.drop_empty_tree(self.nid))
+        self.assertFalse(os.path.isdir(self.nid))
+
+    def test_a_nest_that_resists_is_not_silenced(self):
+        """« ignore_errors » faisait imprimer la ligne de succès sur un
+        rangement qui n'avait pas eu lieu.
+
+        L'APPEL, et non le texte : la docstring nomme le drapeau pour dire
+        qu'elle s'en passe, et une recherche de chaîne l'y trouverait.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        arbre = ast.parse(
+            textwrap.dedent(inspect.getsource(fs.drop_empty_tree))
+        )
+        effacements = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.Call)
+            and getattr(noeud.func, "attr", "") == "rmtree"
+        ]
+        self.assertTrue(effacements, "plus rien ne retire le nid vide")
+        for appel in effacements:
+            self.assertEqual(
+                [], [k.arg for k in appel.keywords if k.arg == "ignore_errors"]
+            )
+
+
 class TestTheRepairMenu(unittest.TestCase):
     """Les réparations ÉCRIVENT. On éprouve ce qui part, pas les appels.
 
@@ -578,6 +670,62 @@ class TestTheRepairMenu(unittest.TestCase):
             self.obj._filestore_purge_dead("db", self.rapport())
         self.assertEqual(demandes, [])
         self.assertEqual(self.lancees, [])
+
+    def test_the_question_counts_what_the_delete_erases(self):
+        """L'ACCORD HUMAIN PORTE SUR UN NOMBRE. Le résumé compte des
+        FICHIERS — il est dédoublonné par « store_fname » — et la
+        suppression porte sur des LIGNES. Demander l'accord sur le premier
+        pour effacer le second obtenait un oui sur un chiffre que rien ne
+        reliait au geste.
+
+        Les deux ensembles diffèrent par construction : « dead_ids » reçoit
+        aussi les pièces dont le fichier est présent mais le champ mort,
+        qui n'entrent dans aucun groupe.
+        """
+        import re
+
+        demandes = []
+        self.auto_ask.ask = lambda p, default="", seconds=None: (
+            demandes.append(p) or "n"
+        )
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [10, 11, 12])
+            )
+        chiffres = [int(n) for n in re.findall(r"\d+", demandes[0])]
+        self.assertIn(3, chiffres, demandes[0])
+        self.assertNotIn(1, chiffres, demandes[0])
+
+    def test_the_gap_between_files_and_rows_is_said(self):
+        """Deux nombres à l'écran sans un mot laissent chercher lequel
+        décide."""
+        tampon = io.StringIO()
+        self.repond("n")
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [10, 11, 12])
+            )
+        self.assertIn(t("file(s) shown"), tampon.getvalue())
+        self.assertIn(t("row(s) to delete"), tampon.getvalue())
+
+    def test_no_gap_line_when_the_two_counts_agree(self):
+        """Contrôle positif : la dire toujours noierait le seul cas où
+        elle corrige une attente."""
+        tampon = io.StringIO()
+        self.repond("n")
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.assertNotIn(t("row(s) to delete"), tampon.getvalue())
+
+    def test_the_count_and_the_sql_cannot_diverge(self):
+        """UN SEUL endroit décide ce que la purge efface : le compte de la
+        question et les identifiants du DELETE en sortent tous les deux."""
+        rapport = self.rapport([piece("a/1")], [12, 10, 10, 11])
+        ids = fs.purge_dead_ids(rapport)
+        self.assertEqual([10, 11, 12], ids)
+        self.assertIn("(10, 11, 12)", fs.purge_dead_sql(rapport))
 
     def test_the_menu_offers_both_repairs(self):
         racine = os.path.normpath(

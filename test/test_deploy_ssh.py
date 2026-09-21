@@ -12,9 +12,10 @@ Les valeurs piégées de ces épreuves sont INVENTÉES. Choisir un vrai chemin
 « parce qu'il est parlant » le figerait pour toujours dans le dépôt.
 """
 
-import os
-import shlex
 import io
+import os
+import re
+import shlex
 import subprocess
 import sys
 import unittest
@@ -124,6 +125,22 @@ VERBES = {
     "_deploy_ssh_install_nginx": "ssh_install_nginx",
 }
 
+# LE FRAGMENT QUI FAIT AUTORITÉ sur ce que le menu doit savoir atteindre.
+# La table ci-dessus dit QUELLE méthode mène à QUELLE cible ; le Makefile,
+# lui, dit quelles cibles existent. Gardée par un compte — « dix » — elle
+# laissait une cible neuve sans menu pour l'atteindre.
+MAKEFILE_SSH = os.path.join(RACINE, "conf", "make.ssh.Makefile")
+
+CIBLE_SSH = re.compile(r"^(ssh_[a-z0-9_]*)\s*:", re.M)
+
+# Ce qu'aucune entrée de menu ne mène, et pourquoi. La sonde n'est pas un
+# verbe : elle répond à « cette machine est-elle joignable », et le menu
+# l'appelle avant les autres plutôt que de l'offrir. Un verbe de plus ici
+# se remarque ; un verbe de plus dans le silence, non.
+SANS_ENTREE = {
+    "ssh_check": "la sonde de joignabilité, appelée avant les autres",
+}
+
 CONNEXION = {"SSH_HOST": "machine.example"}
 
 
@@ -168,11 +185,29 @@ class TestChaqueVerbeAtteintSaCible(SansInventaire):
     def test_the_list_covers_every_verb(self):
         """Une liste incomplète rendrait les autres épreuves vertes sans
         rien prouver du verbe oublié."""
-        self.assertEqual(10, len(VERBES))
         for methode in VERBES:
             self.assertTrue(hasattr(TODO, methode), methode)
-        # Le onzième existe toujours, et c'est la sonde.
-        self.assertTrue(hasattr(TODO, "_deploy_ssh_check"))
+
+    def test_every_make_target_has_a_menu_entry_that_reaches_it(self):
+        """« CHAQUE verbe » se lit dans le Makefile, pas ici.
+
+        Un compte ne dit rien de la cible suivante : il passe au vert le
+        jour où on l'ajoute au fragment, et rien ne signale qu'aucune
+        entrée de menu ne la joint. Ce qui en est écarté doit être NOMMÉ,
+        avec sa raison.
+        """
+        with io.open(MAKEFILE_SSH, encoding="utf-8") as fichier:
+            declarees = set(CIBLE_SSH.findall(fichier.read()))
+        self.assertTrue(declarees, "plus aucune cible ssh_* n'est lue")
+        self.assertEqual(declarees - set(SANS_ENTREE), set(VERBES.values()))
+
+    def test_nothing_is_left_out_without_a_reason(self):
+        """Contrôle positif : tout verser dans « sans entrée »
+        satisferait l'épreuve ci-dessus sans rien tenir."""
+        for cible, raison in SANS_ENTREE.items():
+            with self.subTest(cible=cible):
+                self.assertTrue(raison.strip())
+                self.assertTrue(hasattr(TODO, f"_deploy_{cible}"))
 
     def test_every_verb_reaches_its_own_make_target(self):
         for methode, cible in VERBES.items():
