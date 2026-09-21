@@ -317,6 +317,32 @@ class TestLeModuleResteUneBibliotheque(unittest.TestCase):
 class TestLeRenduDesCouches(unittest.TestCase):
     """Le bloc qui dit LAQUELLE a tenu, et non un seul code."""
 
+    def test_a_subject_names_what_the_block_describes(self):
+        """Un rapport qui traverse plusieurs machines rendait des blocs
+        identiques qu'il fallait coiffer soi-même — et le titre improvisé
+        sortait de la géométrie que ce module décide à un seul endroit."""
+        rendu = R.render_layers(
+            [R.layer_verdict("firewall", R.DS_OK, "x")], subject="essai"
+        )
+        self.assertIn("── essai ──", rendu)
+        self.assertNotIn(todo_i18n.t("Layers"), rendu)
+
+    def test_without_a_subject_the_title_does_not_move(self):
+        """Deux appelants existent et n'en passent pas : leur sortie doit
+        rester la même, au caractère près."""
+        verdicts = [R.layer_verdict("firewall", R.DS_OK, "x")]
+        self.assertEqual(
+            R.render_layers(verdicts), R.render_layers(verdicts, subject="")
+        )
+        self.assertIn(todo_i18n.t("Layers"), R.render_layers(verdicts))
+
+    def test_an_empty_block_still_names_its_subject(self):
+        """« Rien n'a été sondé » sans dire de QUOI ne sert à rien quand
+        plusieurs machines défilent."""
+        rendu = R.render_layers([], subject="essai")
+        self.assertIn("── essai ──", rendu)
+        self.assertIn(todo_i18n.t("Nothing was probed"), rendu)
+
     def test_nothing_probed_says_so_rather_than_looking_fine(self):
         """Un bloc muet se lirait comme « tout va bien »."""
         rendu = R.render_layers([])

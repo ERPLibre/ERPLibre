@@ -49,6 +49,8 @@ DISK_CONTENT = ("images", "rootdir")
 # une seconde appliance en aurait fait une copie. Ces noms restent lisibles
 # ici — une quarantaine d'appels et leurs tests les nomment ainsi, et un test
 # qui REMPLACE `run` le fait sur ce module.
+from script.vm import verbs as vm_verbs  # noqa: E402
+from script.vm.backend import pve_handle  # noqa: E402
 from script.remote.appliance_ssh import (  # noqa: E402,F401
     collapse_progress,
     run,
@@ -1052,15 +1054,24 @@ def create_cmds(vmid: int, spec: dict) -> list:
     return cmds
 
 
-def destroy_cmds(vmid: int, purge: bool = True) -> list:
-    """Arrêt puis suppression. « --purge » retire aussi les disques et les
-    entrées de sauvegarde : sans lui, le stockage garde des volumes orphelins
-    que rien ne réclame plus."""
-    return [
-        f"qm stop {vmid} --skiplock 1 || true",
-        f"qm destroy {vmid} --purge {1 if purge else 0}"
-        " --destroy-unreferenced-disks 1",
-    ]
+def destroy_cmd(vmid: int, name: str, purge: bool = True) -> str:
+    """Arrêt puis suppression, garde d'identité en tête. UNE seule chaîne.
+
+    « --purge » retire aussi les disques et les entrées de sauvegarde : sans
+    lui, le stockage garde des volumes orphelins que rien ne réclame plus.
+
+    LE VMID ADRESSE, LE NOM PROUVE. Un VMID libéré est RÉATTRIBUÉ : détruire
+    « le 101 » d'un écran d'il y a trois questions, c'est détruire ce qui
+    porte le 101 maintenant — avec ses disques et ses sauvegardes.
+
+    UNE CHAÎNE ET NON DEUX. Rendues en deux morceaux, elles étaient jouées
+    dans deux shells distants : le « exit 1 » du garde ne fermait que le
+    premier, et la destruction partait quand même.
+
+    Le corps vient du verbe partagé, jamais recopié ici : deux copies
+    divergent, et c'est celle du menu qui perdrait le garde.
+    """
+    return vm_verbs.pve_delete_suite(pve_handle({"vmid": vmid}, name), purge)
 
 
 def resize_cmd(vmid: int, taille: str, disque: str = "scsi0") -> str:

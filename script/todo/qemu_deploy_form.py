@@ -246,6 +246,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id="f_posture",
                     )
+                    # Sous la posture parce qu'on les lit ensemble, et
+                    # SÉPARÉE d'elle parce qu'aucune des deux ne se déduit
+                    # de l'autre : le déploiement refuse le couple
+                    # incohérent, il ne le devine pas.
+                    yield Checkbox(
+                        t("This machine carries real data"),
+                        value=bool(ctx.get("real_data", False)),
+                        id="f_real_data",
+                    )
                     yield Static(t("Architecture"), classes="grouptitle")
                     with RadioSet(id="f_arch"):
                         for a in arches:
@@ -1124,6 +1133,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "backend": ctx.get("backend", ""),
                 # Elle, l'écran la CHOISIT : ce chemin sait la poser.
                 "posture": self.query_one("#f_posture", Select).value,
+                "real_data": self.query_one("#f_real_data", Checkbox).value,
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.

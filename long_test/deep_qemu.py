@@ -44,6 +44,7 @@ sys.path.insert(0, os.path.join(RACINE, "long_test"))
 
 from script.proxmox import nesting  # noqa: E402
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.vm import backend as vm_backend  # noqa: E402
 
 import descente  # noqa: E402
 from descente import (  # noqa: E402,F401
@@ -200,19 +201,27 @@ def parse_domifaddr(texte):
 
 
 def parse_domaine(xml):
-    """Le domaine tourne-t-il sous KVM, et son CPU passe-t-il l'hôte ?
+    """Le domaine tourne-t-il sous KVM, son CPU passe-t-il, et qui est-il ?
 
-    Les deux comptent, et pour la même raison : un domaine type='qemu' est
-    ÉMULÉ, et un CPU qui ne passe pas les drapeaux de l'hôte ne porte pas la
-    virtualisation — l'étage suivant serait émulé à son tour, sept minutes et
-    demie de démarrage, sans qu'aucun code de retour ne le dise.
+    Les deux premiers comptent pour la même raison : un domaine type='qemu'
+    est ÉMULÉ, et un CPU qui ne passe pas les drapeaux de l'hôte ne porte pas
+    la virtualisation — l'étage suivant serait émulé à son tour, sept minutes
+    et demie de démarrage, sans qu'aucun code de retour ne le dise.
+
+    L'UUID est le troisième, et il était JETÉ : cette description est lue de
+    toute façon, et un nom de domaine se réemploie là où un UUID naît et
+    meurt avec la machine. Sans lui, la destruction ne pouvait garder que
+    par le nom.
     """
     propre = pve.strip_ssh_noise(xml or "")
     domaine = re.search(r"<domain[^>]*\btype=['\"](\w+)['\"]", propre)
     cpu = re.search(r"<cpu[^>]*\bmode=['\"]([\w-]+)['\"]", propre)
+    # Le frère immédiat de « <name> », et présent même sur un domaine arrêté.
+    uuid = re.search(r"<uuid>\s*([0-9a-fA-F-]{36})\s*</uuid>", propre)
     return {
         "type": domaine.group(1) if domaine else "",
         "cpu": cpu.group(1) if cpu else "",
+        "uuid": uuid.group(1) if uuid else "",
     }
 
 
@@ -508,31 +517,54 @@ class Descente(descente.Descente):
             self.dire("      ✗ créée, mais sans adresse : rien à joindre")
             return None, None
         self.dire(f"      {nom} : {adresse}")
-        return nom, adresse
+        # L'IDENTITÉ EST L'UUID, et non le nom. Le nom adresse, l'UUID
+        # prouve : c'est ce qui permet à la destruction de refuser une
+        # machine qui aurait pris ce nom depuis. Un rapport écrit avant ce
+        # changement porte un nom, et reste défaisable — la destruction
+        # reconnaît les deux formes.
+        return (vu["uuid"] or nom), adresse
 
 
 def detruire_une(parent_alias, identite, nom, journal):
-    """Arrête puis détruit UNE VM chez son parent, par son NOM et son UUID.
+    """Arrête puis détruit UNE VM chez son parent, par son nom et sa preuve.
 
     Par égalité STRICTE du nom : un filtre par sous-chaîne aurait pris une
     « deep-qemu-lab » de production, et « --remove-all-storage » efface un
     disque pour de bon.
+
+    ET PAR L'UUID QUAND LE RAPPORT EN PORTE UN. Le nom seul ne prouve rien :
+    entre l'écriture du rapport et son défaisage, une autre machine peut
+    avoir pris ce nom. Un rapport plus ancien porte le nom comme identité —
+    il reste défaisable, avec ce que le nom seul vaut, et le journal le dit.
     """
     parent = {"target": parent_alias, "sudo": "sudo ", "jump": ""}
     code, out = pve.run(
-        parent, "virsh -c qemu:///system list --all --name", 180
+        parent, "virsh -c qemu:///system list --all --uuid --name", 180
     )
     if code:
         dire(f"    ✗ {parent_alias} injoignable : rien touché", journal)
         return False
-    presents = [
-        ligne.strip()
-        for ligne in pve.strip_ssh_noise(out).splitlines()
-        if ligne.strip()
-    ]
-    if nom not in presents:
+    vus = {
+        d.name: d.proof
+        for d in vm_backend.parse_uuid_listing(pve.strip_ssh_noise(out))
+    }
+    if nom not in vus:
         dire(f"    — {nom} : absent de {parent_alias}", journal)
         return True
+    attendu = (identite or "").strip()
+    if attendu and attendu != nom:
+        if vus[nom] != attendu:
+            dire(
+                f"    ✗ {nom} sur {parent_alias} : l'UUID a changé"
+                f" ({vus[nom] or 'aucun'}), rien touché",
+                journal,
+            )
+            return False
+    else:
+        dire(
+            f"    ⚠ {nom} : rapport sans UUID, garde par le nom seul",
+            journal,
+        )
     pve.run(parent, f"virsh -c qemu:///system destroy {nom}", 300)
     code, _o = pve.run(
         parent,

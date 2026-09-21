@@ -292,6 +292,41 @@ class TestLesIdentifiants(unittest.TestCase):
         self.assertEqual(1, len(trouves), trouves)
         self.assertEqual("nom privé", trouves[0][0])
 
+    def test_un_nom_prive_colle_par_un_souligne_se_trouve(self):
+        """LA forme qui échappait, et c'est la plus courante : un nom de
+        base de données porte son suffixe collé par un souligné. « \\b » ne
+        voit pas de frontière devant un souligné, si bien qu'un nom listé
+        passait à travers dès qu'il en portait un."""
+        trouves = hygiene.identifiants(
+            "recopier acmecorp_neutralize_upgrade_18 oblige à regarder",
+            termes=["acmecorp"],
+        )
+        self.assertEqual(1, len(trouves), trouves)
+        self.assertEqual("nom privé", trouves[0][0])
+
+    def test_un_nom_prive_precede_dun_souligne_se_trouve(self):
+        trouves = hygiene.identifiants(
+            "la base copy_acmecorp", termes=["acmecorp"]
+        )
+        self.assertEqual(1, len(trouves), trouves)
+
+    def test_un_chiffre_numerote_le_nom_il_ne_le_prolonge_pas(self):
+        """« copy_<nom>3 » est la copie d'une base réelle : exclure la
+        forme numérotée laisserait passer celle qu'on rencontre le plus."""
+        for texte in ("acmecorp2 tourne", "la base copy_acmecorp3"):
+            with self.subTest(texte=texte):
+                trouves = hygiene.identifiants(texte, termes=["acmecorp"])
+                self.assertEqual(1, len(trouves), trouves)
+
+    def test_une_lettre_qui_suit_fait_un_autre_mot(self):
+        """Contrôle positif : élargir les frontières ne doit pas noyer la
+        trouvaille dans ce qu'elle ramasse."""
+        for texte in ("acmecorporation vend", "chez monacmecorp"):
+            with self.subTest(texte=texte):
+                self.assertEqual(
+                    [], hygiene.identifiants(texte, termes=["acmecorp"])
+                )
+
     def test_un_nom_prive_se_trouve_quelle_que_soit_la_casse(self):
         # Contrôle positif : le motif à frontières trouve encore.
         for ecrit in ("AcmeCorp", "acmecorp", "ACMECORP"):

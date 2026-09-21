@@ -1072,6 +1072,24 @@ class TODO(
                 "method": "_deploy_vm_backends",
             }
         )
+        # DIXIÈME, déclarée par « method » comme la neuvième, et pour la
+        # même raison : les rangs codés en dur s'arrêtent à huit.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - verify this station, layer by layer"
+                ),
+                "method": "_qemu_verify_station",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - verify a deployed VM, layer by layer"
+                ),
+                "method": "_qemu_verify_vm",
+            }
+        )
         # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
         # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
         # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,

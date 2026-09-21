@@ -627,6 +627,12 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         # bougé — dont les rangs 6 et 7, qu'une épreuve Proxmox cherche en
         # chaînes littérales.
         "Deploy - VM backends": "_deploy_vm_backends",
+        # DIXIÈME, même greffe et même raison : les rangs codés en dur
+        # s'arrêtent à huit, et une entrée posée plus haut les décalerait.
+        "Deploy - verify this station, layer by layer": (
+            "_qemu_verify_station"
+        ),
+        "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
     }
 
 

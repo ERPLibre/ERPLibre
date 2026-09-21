@@ -1091,6 +1091,126 @@ TRANSLATIONS = {
     },
     "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
     "Backend:": {"fr": "Backend :", "en": "Backend:"},
+    "This machine carries real data": {
+        "fr": "Cette machine porte des données réelles",
+        "en": "This machine carries real data",
+    },
+    "The libvirt network overlaps a route of this host:": {
+        "fr": "Le réseau libvirt recouvre une route de cet hôte :",
+        "en": "The libvirt network overlaps a route of this host:",
+    },
+    "Move its subnet, or stop the network.": {
+        "fr": "Déplacer son sous-réseau, ou arrêter le réseau.",
+        "en": "Move its subnet, or stop the network.",
+    },
+    "The libvirt network is defined but not started.": {
+        "fr": "Le réseau libvirt est défini mais pas démarré.",
+        "en": "The libvirt network is defined but not started.",
+    },
+    "Start it: nothing reaches the VMs without it.": {
+        "fr": "Le démarrer : sans lui rien ne joint les VM.",
+        "en": "Start it: nothing reaches the VMs without it.",
+    },
+    "It works, and it will not come back after a reboot.": {
+        "fr": "Il marche, et il ne remontera pas au prochain démarrage.",
+        "en": "It works, and it will not come back after a reboot.",
+    },
+    "Arm autostart, the subnet being free of collision.": {
+        "fr": "Armer l'autostart, le sous-réseau étant libre de collision.",
+        "en": "Arm autostart, the subnet being free of collision.",
+    },
+    "Network up and armed for the next boot.": {
+        "fr": "Réseau levé et armé pour le prochain démarrage.",
+        "en": "Network up and armed for the next boot.",
+    },
+    "Deploy - verify this station, layer by layer": {
+        "fr": "Deploy - vérifier cette station, couche par couche",
+        "en": "Deploy - verify this station, layer by layer",
+    },
+    "Verify the deploying station": {
+        "fr": "Vérifier la station qui déploie",
+        "en": "Verify the deploying station",
+    },
+    "Station": {
+        "fr": "Station",
+        "en": "Station",
+    },
+    "The libvirt network could not be read.": {
+        "fr": "Le réseau libvirt n'a pas pu être lu.",
+        "en": "The libvirt network could not be read.",
+    },
+    "Check virsh and the system URI.": {
+        "fr": "Vérifier virsh et l'URI système.",
+        "en": "Check virsh and the system URI.",
+    },
+    "The lease carries the machine's name.": {
+        "fr": "Le bail porte le nom de la machine.",
+        "en": "The lease carries the machine's name.",
+    },
+    "An address answers, under another name:": {
+        "fr": "Une adresse répond, sous un autre nom :",
+        "en": "An address answers, under another name:",
+    },
+    "unknown": {
+        "fr": "inconnu",
+        "en": "unknown",
+    },
+    "Rename the machine, or clear the stale lease.": {
+        "fr": "Renommer la machine, ou effacer le bail périmé.",
+        "en": "Rename the machine, or clear the stale lease.",
+    },
+    "No lease yet for this machine.": {
+        "fr": "Aucun bail encore pour cette machine.",
+        "en": "No lease yet for this machine.",
+    },
+    "Wait for it to boot, then check again.": {
+        "fr": "Attendre qu'elle démarre, puis recommencer.",
+        "en": "Wait for it to boot, then check again.",
+    },
+    "No domain declared: nothing is served behind TLS.": {
+        "fr": "Aucun domaine déclaré : rien n'est servi derrière TLS.",
+        "en": "No domain declared: nothing is served behind TLS.",
+    },
+    "A domain is declared, and the certificate is not probed:": {
+        "fr": "Un domaine est déclaré, et le certificat n'est pas sondé :",
+        "en": "A domain is declared, and the certificate is not probed:",
+    },
+    "Probing it is not written yet.": {
+        "fr": "Le sonder n'est pas encore écrit.",
+        "en": "Probing it is not written yet.",
+    },
+    "Deploy - verify a deployed VM, layer by layer": {
+        "fr": "Deploy - vérifier une VM déployée, couche par couche",
+        "en": "Deploy - verify a deployed VM, layer by layer",
+    },
+    "nothing checked": {
+        "fr": "rien de contrôlé",
+        "en": "nothing checked",
+    },
+    "libvirt group is active.": {
+        "fr": "Le groupe libvirt est actif.",
+        "en": "libvirt group is active.",
+    },
+    "You are in the libvirt group, but this session predates it.": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session lui est antérieure.",
+        "en": "You are in the libvirt group, but this session predates it.",
+    },
+    "Log out and back in, or run: newgrp libvirt": {
+        "fr": "Fermer puis rouvrir la session, ou lancer : newgrp libvirt",
+        "en": "Log out and back in, or run: newgrp libvirt",
+    },
+    "Join the libvirt group, then open a new session.": {
+        "fr": "Entrer dans le groupe libvirt, puis ouvrir une nouvelle session.",
+        "en": "Join the libvirt group, then open a new session.",
+    },
+    "Hardware acceleration is available.": {
+        "fr": "L'accélération matérielle est disponible.",
+        "en": "Hardware acceleration is available.",
+    },
+    "No hardware acceleration: VMs will be EMULATED.": {
+        "fr": "Pas d'accélération matérielle : les VM seront ÉMULÉES.",
+        "en": "No hardware acceleration: VMs will be EMULATED.",
+    },
     "Network posture": {
         "fr": "Posture réseau",
         "en": "Network posture",
@@ -1102,6 +1222,34 @@ TRANSLATIONS = {
     "Nothing is installed there.": {
         "fr": "Rien n'y est installé.",
         "en": "Nothing is installed there.",
+    },
+    "Egress rules cannot be rendered:": {
+        "fr": "Les règles de sortie ne peuvent pas être rendues :",
+        "en": "Egress rules cannot be rendered:",
+    },
+    "Egress rules that would be posed:": {
+        "fr": "Règles de sortie qui seraient posées :",
+        "en": "Egress rules that would be posed:",
+    },
+    "Type the VM name to confirm (empty to cancel): ": {
+        "fr": "Retaper le nom de la VM pour confirmer (vide pour renoncer) : ",
+        "en": "Type the VM name to confirm (empty to cancel): ",
+    },
+    "Type how many VMs are deleted": {
+        "fr": "Retaper combien de VM sont effacées",
+        "en": "Type how many VMs are deleted",
+    },
+    "Kept - these disks belong to something:": {
+        "fr": "Gardés — ces disques appartiennent à quelque chose :",
+        "en": "Kept - these disks belong to something:",
+    },
+    "no proof": {
+        "fr": "aucune preuve",
+        "en": "no proof",
+    },
+    "no identity proof; refused": {
+        "fr": "aucune preuve d'identité ; refusé",
+        "en": "no identity proof; refused",
     },
     "Egress rules loaded.": {
         "fr": "Règles de sortie chargées.",
