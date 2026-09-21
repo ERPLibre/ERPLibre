@@ -61,6 +61,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The install log carries what the host decided before launching: the download cache authority placed or refused, the bypass, the mirror. Those lines were said on a console that scrolls away, while the file reopened after a failure held only the symptom — on a guest with no trust store, a refused certificate, hundreds of derivations to build and six hundred lines of errors, without a word on the cause
 - One entry of the download cache can be forgotten from the menu, under « Age and cleanup ». The binary could already do it; the menu offered only the two bulk purges, neither of which reaches a single object — « erase what has not served » never reaches one the service rejuvenates each time it serves it, and « erase everything » costs the whole cache for one file. `--detient` runs first and is the preview: same line, same key, nothing modified
 - `erplibre_go_qemu_cache --recle` stores a cache's objects again under the current key, without downloading anything, and merges the copies a mirror carried under several paths. Objects written under the former key rule stay on disk but become UNREACHABLE, so the service asks upstream for them again and the space they hold serves no one: on a store of 12 764 objects, 5 419 were in that case — 9.11 GiB — and merging the duplicates returned about 3.37 GiB. The service must be stopped, the body being renamed before its meta, and `--dry-run` only counts what would move. A status-only entry is left alone, its key carrying the host rather than the path
+- `conf/python-erplibre-floor` states the syntax floor of `script/`, `3.10`, distinct from the `.venv.erplibre` interpreter. The f-strings that needed Python 3.12 are rewritten to parse under it
+- The `pre-commit` hook runs `check_python_floor.py` on staged files: it reports a syntax above the floor without blocking the commit, and says when no floor interpreter was there to check
 
 ## Changed
 
@@ -77,6 +79,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 - Verifying a downloaded image no longer needs `--verify`: it runs by default for every distribution that publishes a sum, and `--no-verify` is what skips it — to be kept for offline runs, where a substituted image would otherwise pass unremarked
 - `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
+- `make format_script` formats `script/` for the syntax floor; `black.sh` keeps `py37` for the addons
 
 ## Fixed
 

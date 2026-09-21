@@ -116,10 +116,9 @@ def main():
         args.config_name
         or f"erplibre_{el_user}_{os.path.basename(os.getcwd())}"
     )
-    exec_param = (
-        " "
-        + f" {w_cmd("-d", args.database or "")} {w_cmd("-p", args.port or "")}".strip()
-    )
+    db_param = w_cmd("-d", args.database or "")
+    port_param = w_cmd("-p", args.port or "")
+    exec_param = " " + f" {db_param} {port_param}".strip()
 
     # Render the systemd service file content
     unit_content = UNIT_TEMPLATE.format(

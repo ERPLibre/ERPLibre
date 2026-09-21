@@ -9502,6 +9502,25 @@ TRANSLATIONS = {
         "fr": "donner un chemin, ou --staged",
         "en": "give a path, or --staged",
     },
+    # check_python_floor.py partage « only the files added to the git index »
+    # et « give a path, or --staged » avec check_comment_hygiene.py.
+    "does this source parse under the floor Python": {
+        "fr": "ce source parse-t-il sous le Python plancher",
+        "en": "does this source parse under the floor Python",
+    },
+    "no floor in conf/python-erplibre-floor: nothing checked": {
+        "fr": "aucun plancher dans conf/python-erplibre-floor : rien vérifié",
+        "en": "no floor in conf/python-erplibre-floor: nothing checked",
+    },
+    "floor not checked (no Python %s): mise install python@%s": {
+        "fr": "plancher NON vérifié (aucun Python %s ici) :"
+        " mise install python@%s",
+        "en": "floor not checked (no Python %s): mise install python@%s",
+    },
+    "%s file(s) refused by Python %s, the floor": {
+        "fr": "%s fichier(s) refusé(s) par Python %s, le plancher",
+        "en": "%s file(s) refused by Python %s, the floor",
+    },
     "unknown result": {
         "fr": "résultat inconnu",
         "en": "unknown result",

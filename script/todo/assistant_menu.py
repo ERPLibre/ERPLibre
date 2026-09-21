@@ -805,9 +805,8 @@ class AssistantMenuMixin:
             f"  {t('Look somewhere else')} · {t('Type an address')}"
             f" · {t('Carry on with the OpenAI API (key from the vault)')}"
         )
-        print(
-            f"  💡 {t('A local server: \"ollama serve\" listens on 11434.')}"
-        )
+        astuce = t('A local server: "ollama serve" listens on 11434.')
+        print(f"  💡 {astuce}")
 
     def _llm_server_card(self):
         """Ce que le serveur en usage annonce savoir faire.

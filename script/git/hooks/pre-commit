@@ -7,6 +7,9 @@ Il INFORME et ne refuse jamais — le nettoyage se fait au fur et à mesure, sur
 les fichiers qu'on touche déjà, et non en une passe qui réécrirait le dépôt.
 Un hook qui bloquerait sur du style se ferait désinstaller la même semaine.
 
+Il relaie aussi check_python_floor.py, sans bloquer davantage : le source
+indexé qui ne parse plus sous le plancher de conf/python-erplibre-floor.
+
 Installation :
 
     git config core.hooksPath script/git/hooks
@@ -15,6 +18,7 @@ Il sort toujours en 0. Pour l'interroger à la main, sur un fichier ou un
 répertoire :
 
     python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
+    python3 script/analyse/check_python_floor.py script/todo/todo.py
 """
 import subprocess
 import sys
@@ -22,12 +26,13 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[3]
 OUTIL = RACINE / "script" / "analyse" / "check_comment_hygiene.py"
+PLANCHER = RACINE / "script" / "analyse" / "check_python_floor.py"
 
 # Au-delà, le rapport cesse d'être une invitation et devient un mur.
 PLAFOND = 12
 
 
-def main() -> int:
+def commentaires() -> int:
     if not OUTIL.is_file():
         return 0
 
@@ -73,6 +78,38 @@ def main() -> int:
         "\n  Le commit n'est PAS bloqué. Corrigez ce que vous touchez.\n",
         file=sys.stderr,
     )
+    return 0
+
+
+def plancher() -> None:
+    """Relaie les refus du plancher, ou l'avis d'un contrôle absent."""
+    if not PLANCHER.is_file():
+        return
+    try:
+        sortie = subprocess.run(
+            [sys.executable, str(PLANCHER), "--staged"],
+            capture_output=True,
+            text=True,
+            cwd=str(RACINE),
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    lignes = (sortie.stdout + sortie.stderr).strip().split("\n")
+    if not lignes[0]:
+        return
+    trop = len(lignes) - PLAFOND
+    if trop > 0:
+        lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
+    print("\n  ⓘ plancher de syntaxe Python\n", file=sys.stderr)
+    for ligne in lignes:
+        print(f"   {ligne}", file=sys.stderr)
+    print("\n  Le commit n'est PAS bloqué.\n", file=sys.stderr)
+
+
+def main() -> int:
+    commentaires()
+    plancher()
     return 0
 
 

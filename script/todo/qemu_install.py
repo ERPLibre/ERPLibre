@@ -1310,6 +1310,12 @@ class QemuInstallMixin:
         Tout le bloc est gardé : un IDE qui ne s'installe pas ne doit pas faire
         échouer l'installation d'ERPLibre, qui elle a duré une heure."""
         el_dir = self._qemu_install_dir(prod)
+        # Hors de la f-string : une expression sur deux lignes dans ses
+        # accolades ne parse qu'à partir de 3.12 (PEP 701).
+        idea_note = t(
+            "open the project once and close PyCharm; the .idea "
+            "it writes is what the install configures"
+        )
         return (
             f'echo "== {t("Installing PyCharm (long)")} =="; '
             "{ "
@@ -1378,8 +1384,7 @@ class QemuInstallMixin:
             # PyCharm n'a évidemment jamais ouvert le dépôt.
             + f'echo "   {t("PyCharm installed:")} /opt/pycharm '
             f'({t("command")} pycharm, {t("project")} {el_dir})"; '
-            f'echo "   {t("open the project once and close PyCharm; the .idea "
-                          "it writes is what the install configures")}"; '
+            f'echo "   {idea_note}"; '
             f'}} || echo "   ⚠ {t("PyCharm not installed (see above)")}"; '
         )
 

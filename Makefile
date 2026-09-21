@@ -220,10 +220,12 @@ format_code_generator_template:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
+# script/ suit le plancher de conf/python-erplibre-floor ; les addons, py37.
 .PHONY: format_script
 format_script:
 	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
-	./script/maintenance/black.sh ./script/
+	EL_BLACK_TARGET=py$$(tr -d '.\n' < conf/python-erplibre-floor) \
+		./script/maintenance/black.sh ./script/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:

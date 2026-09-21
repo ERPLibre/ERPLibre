@@ -707,7 +707,7 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None, hints=True):
         f"🔬 {t('Customised views')} — {data['database']} (Odoo {version}"
         f"{', ' + t('from a backup') if data.get('source') == 'backup' else ''})",
         "",
-        f"  {t("Views"):<38}: {data['n_views']}",
+        f"  {t('Views'):<38}: {data['n_views']}",
     ]
     for name in CATEGORIES:
         if counts.get(name):

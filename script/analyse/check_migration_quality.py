@@ -1443,8 +1443,9 @@ def render_text(lst_snapshot, colour=None, limit=8):
                 f"   ⚠️  {etat['database']} : {t('database not found')}"
             )
             continue
+        etape = paint(f"{etat['odoo']:<6}", "step", colour)
         lignes.append(
-            f"   {paint(f'{etat['odoo']:<6}', 'step', colour)}"
+            f"   {etape}"
             f" {etat['database']:<34}"
             f" {len(etat['installed']):>4} {t('modules')}"
             f" · {len(etat['model']):>4} {t('models')}"
