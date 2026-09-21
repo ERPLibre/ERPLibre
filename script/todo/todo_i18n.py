@@ -1095,6 +1095,14 @@ TRANSLATIONS = {
         "fr": "Cette machine porte des données réelles",
         "en": "This machine carries real data",
     },
+    "Cannot carry real data:": {
+        "fr": "Ne peut pas porter de données réelles :",
+        "en": "Cannot carry real data:",
+    },
+    "Choice (number or name, blank = the first):": {
+        "fr": "Choix (numéro ou nom, vide = le premier) :",
+        "en": "Choice (number or name, blank = the first):",
+    },
     "The libvirt network overlaps a route of this host:": {
         "fr": "Le réseau libvirt recouvre une route de cet hôte :",
         "en": "The libvirt network overlaps a route of this host:",
@@ -1410,6 +1418,14 @@ TRANSLATIONS = {
     "SSH - Choose the target machine": {
         "fr": "🎯 SSH - Choisir la machine visée",
         "en": "🎯 SSH - Choose the target machine",
+    },
+    "No backup target is configured.": {
+        "fr": "Aucune cible de sauvegarde n'est configurée.",
+        "en": "No backup target is configured.",
+    },
+    "Create one in:": {
+        "fr": "En créer une dans :",
+        "en": "Create one in:",
     },
     "Deployment targets": {
         "fr": "Cibles de déploiement",
@@ -13022,6 +13038,14 @@ TRANSLATIONS = {
         "fr": "Identifiant : ",
         "en": "User login: ",
     },
+    "No analysis reads a live instance yet.": {
+        "fr": "Aucune analyse ne lit encore une instance vivante.",
+        "en": "No analysis reads a live instance yet.",
+    },
+    "Connect anyway, to check the credentials? (y/N): ": {
+        "fr": "Se connecter quand même, pour vérifier les accès (o/N) ? ",
+        "en": "Connect anyway, to check the credentials? (y/N): ",
+    },
     "Instance URL (ex. https://example.com): ": {
         "fr": "URL de l'instance (ex. https://exemple.com) : ",
         "en": "Instance URL (ex. https://example.com): ",
@@ -13061,6 +13085,34 @@ TRANSLATIONS = {
     "Neutralize the database (Y/n)? ": {
         "fr": "Neutraliser la base (O/n) ? ",
         "en": "Neutralize the database (Y/n)? ",
+    },
+    "Image name (no .zip): ": {
+        "fr": "Nom de l'image (sans .zip) : ",
+        "en": "Image name (no .zip): ",
+    },
+    "Image not found: ": {
+        "fr": "Image introuvable : ",
+        "en": "Image not found: ",
+    },
+    "Would you like to update all addons (y/N)? ": {
+        "fr": "Mettre à jour tous les modules (o/N) ? ",
+        "en": "Would you like to update all addons (y/N)? ",
+    },
+    "Nothing is destroyed without reading first.": {
+        "fr": "Rien n'est détruit sans avoir lu d'abord.",
+        "en": "Nothing is destroyed without reading first.",
+    },
+    "Drill database: overwriting it is safe.": {
+        "fr": "Base d'exercice : l'écraser ne coûte rien.",
+        "en": "Drill database: overwriting it is safe.",
+    },
+    "This database will be ERASED: ": {
+        "fr": "Cette base va être EFFACÉE : ",
+        "en": "This database will be ERASED: ",
+    },
+    "Retype its name to confirm: ": {
+        "fr": "Retaper son nom pour confirmer : ",
+        "en": "Retype its name to confirm: ",
     },
     "The restore failed.": {
         "fr": "La restauration a échoué.",
@@ -15843,6 +15895,18 @@ TRANSLATIONS = {
     "No instance matches.": {
         "fr": "Aucune instance ne correspond.",
         "en": "No instance matches.",
+    },
+    "Not held for this posture:": {
+        "fr": "Non tenu pour cette posture :",
+        "en": "Not held for this posture:",
+    },
+    "Lima cannot hold this posture:": {
+        "fr": "Lima ne peut pas tenir cette posture :",
+        "en": "Lima cannot hold this posture:",
+    },
+    "User-mode networking always gives egress.": {
+        "fr": "Le réseau en mode utilisateur donne toujours la sortie.",
+        "en": "User-mode networking always gives egress.",
     },
     "Not held by this config:": {
         "fr": "Non tenu par cette configuration :",

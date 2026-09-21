@@ -506,6 +506,30 @@ class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestDropDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu « Effacer une base », qui n'avait aucune table.
+
+    LE TROU N'ÉTAIT PAS DANS UNE TABLE, IL ÉTAIT DANS LEUR LISTE. Chacune
+    couvre exactement son écran, et les gardes du fichier rendent une
+    entrée manquante impossible à laisser passer — mais seulement sur les
+    écrans déclarés ici. Celui-ci ne l'était pas, et c'est le plus cher de
+    tous : ses DEUX entrées effacent, et les intervertir efface tout là où
+    l'on voulait effacer une seule base.
+    """
+
+    SOURCE = TODO_DIR / "database_manager.py"
+    ENTRY = "def drop_database(self) -> None:"
+    END = "def _drop_all_databases(self) -> None:"
+    # Le plancher se FRANCHIT, il ne s'atteint pas : deux entrées demandent
+    # donc 1. Le poser à 2 rendrait ce garde rouge sur un menu correct.
+    MINIMUM = 1
+
+    EXPECTED = {
+        "Erase ALL databases": "_drop_all_databases",
+        "Erase a single database": "_drop_single_database",
+    }
+
+
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 
