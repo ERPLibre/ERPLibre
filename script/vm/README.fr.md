@@ -45,11 +45,20 @@ aucune preuve pour l'armer.
 
 ## Éprouvé, et non éprouvé
 
-`libvirt` et `pve` ont tourné contre de vraies machines. **`lima` non**, et
-le paquet le dit plutôt que de laisser un écran le supposer. « Non éprouvé »
-ne veut pas dire douteux : il veut dire que ce que `limactl` fait du texte
-rendu n'a jamais été mesuré. `long_test/lima_confront.py` est ce qui lèvera
-la mention — pas une relecture.
+Les trois backends ont tourné contre une vraie machine, sur le cycle de vie
+ENTIER : créer, démarrer, inventorier, exécuter une suite, arrêter,
+supprimer. « Non éprouvé » n'a jamais voulu dire douteux — il voulait dire
+que ce que l'outil fait du texte rendu n'avait pas été mesuré.
+`long_test/lima_confront.py` est ce qui a levé la mention sur `lima` — pas
+une relecture.
+
+La distinction gagne son prix : la description d'instance que le paquet
+rendait se relisait parfaitement en YAML et ne démarrait pas, le champ
+« arch » ayant son propre vocabulaire — `x86_64` là où le dépôt et l'image
+disent tous deux `amd64`. Aucune lecture ne trouve cela ; un démarrage si.
+
+Un backend absent de la table est non éprouvé par défaut : le doute penche
+du côté qui ne promet rien.
 
 ```bash
 # L'identité d'une fiche de manifeste, et ce qu'elle arme :

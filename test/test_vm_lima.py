@@ -3,10 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La configuration d'une instance Lima, et la lecture de son inventaire.
 
-RIEN ICI N'A ÉTÉ CONFRONTÉ au vrai outil. Ces épreuves tiennent ce qu'on
-COMPOSE et ce qu'on ANALYSE — pas ce que « limactl » en fait. La
-confrontation est dans `long_test/`, et le backend se déclare non éprouvé
-tant qu'elle n'a pas eu lieu.
+CES ÉPREUVES TIENNENT CE QU'ON COMPOSE ET CE QU'ON ANALYSE — pas ce que
+l'outil en fait. La distinction n'est pas théorique : une description
+d'instance a passé ces épreuves, s'est relue en YAML, et a été refusée au
+démarrage parce que le champ « arch » a son propre vocabulaire. C'est
+`long_test/lima_confront.py` qui mesure cette moitié-là.
 
 Le rendu est écrit ligne à ligne pour rester lisible ; il est donc relu ici
 par un analyseur YAML, qui rattrape ce que l'écriture manuelle risque de

@@ -3,10 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La configuration d'une instance Lima, et ce qu'elle ne sait pas tenir.
 
-RIEN ICI N'A ÉTÉ CONFRONTÉ au vrai « limactl ». Ces fonctions composent et
-analysent du texte ; ce que l'outil en fait se mesure sur une machine, et
-`long_test/` porte cette confrontation. Le backend se déclare non éprouvé
-pour cette raison, et l'écran le dit.
+CE MODULE NE COMPOSE ET N'ANALYSE QUE DU TEXTE. Ce que l'outil en fait ne s'y
+lit pas : une description d'instance peut se relire parfaitement en YAML et
+être refusée au démarrage, le champ « arch » ayant son propre vocabulaire.
+C'est `long_test/lima_confront.py` qui mesure cela sur une machine, et c'est
+lui qui a levé la mention « non éprouvé » du backend.
 
 Le rendu est écrit LIGNE À LIGNE plutôt que sérialisé : la configuration
 d'une instance se relit à la main, et un commentaire qui explique un réglage

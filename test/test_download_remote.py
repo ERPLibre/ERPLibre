@@ -177,12 +177,15 @@ class TestDownloadDatabaseBackupCli(unittest.TestCase):
     def telecharger(self, chemin, statut):
         self.execute.exec_command_live.return_value = (statut, "commande")
         reponses = iter(["https://odoo.essai.invalid", "essai_base", chemin])
+        # Le témoin du constat s'écrit dans le dossier de l'utilisateur :
+        # bouchonné, l'épreuve ne laisse rien derrière elle.
         with (
             mock.patch("builtins.input", lambda *_: next(reponses)),
             mock.patch.object(
                 database_manager.getpass, "getpass", lambda **_: "x"
             ),
             mock.patch("sys.stderr", new_callable=io.StringIO),
+            mock.patch.object(database_manager.backup_witness, "record"),
         ):
             return self.gestion.download_database_backup_cli(
                 show_remote_list=False
@@ -191,23 +194,27 @@ class TestDownloadDatabaseBackupCli(unittest.TestCase):
     def test_le_chemin_choisi_est_celui_qu_on_verifie(self):
         chemin = str(self.dossier / "choisi.zip")
         with zipfile.ZipFile(chemin, "w") as archive:
-            archive.writestr("manifest.json", "{}")
+            archive.writestr("dump.sql", "-- essai")
         with self.assertLogs(database_manager._logger, "INFO") as journal:
             statut, rendu, base = self.telecharger(chemin, 0)
         self.assertEqual((0, chemin, "essai_base"), (statut, rendu, base))
-        self.assertIn("validated", "\n".join(journal.output))
+        self.assertIn(chemin, "\n".join(journal.output))
 
     def test_un_echec_du_script_n_est_pas_reverifie(self):
         chemin = str(self.dossier / "jamais_ecrit.zip")
-        with mock.patch.object(database_manager.zipfile, "ZipFile") as ouvrir:
+        with mock.patch.object(
+            database_manager.backup_verify, "verify"
+        ) as verifier:
             statut, _rendu, _base = self.telecharger(chemin, 1)
         self.assertEqual(1, statut)
-        ouvrir.assert_not_called()
+        verifier.assert_not_called()
 
-    def test_un_zip_sans_manifeste_rend_un_echec(self):
-        chemin = str(self.dossier / "sans_manifeste.zip")
+    def test_un_zip_sans_dump_rend_un_echec(self):
+        """Le dump est la seule pièce indispensable : le manifeste manque
+        légitimement aux sauvegardes produites ailleurs."""
+        chemin = str(self.dossier / "sans_dump.zip")
         with zipfile.ZipFile(chemin, "w") as archive:
-            archive.writestr("autre.txt", "")
+            archive.writestr("manifest.json", "{}")
         with self.assertLogs(database_manager._logger, "ERROR"):
             statut, _rendu, _base = self.telecharger(chemin, 0)
         self.assertEqual(1, statut)

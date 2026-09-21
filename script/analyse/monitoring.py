@@ -180,15 +180,15 @@ def describe_source(kind, target):
 
 # ── La neutralisation a-t-elle vraiment eu lieu ? ────────────────────────
 #
-# Mesuré sur les sept bases d'une chaîne 12 → 18 dont le nom porte pourtant
-# « neutralize » : `database.is_neutralized` ABSENT dans les sept, 16 à 35
-# crons actifs, et `mail.catchall.domain` toujours au domaine du CLIENT.
-# Demander « voulez-vous neutraliser ? », recevoir oui, et ne rien vérifier
-# reproduit exactement cette illusion.
+# Un nom de base qui porte « neutralize » ne prouve rien : sur une chaîne
+# 12 → 18, `database.is_neutralized` peut manquer à chaque palier, des
+# dizaines de crons rester actifs et `mail.catchall.domain` pointer encore
+# le domaine d'origine. Demander « voulez-vous neutraliser ? », recevoir
+# oui, et ne rien vérifier reproduit exactement cette illusion.
 #
-# On ne lit que des booléens de PRÉSENCE. Une clé de paiement vivante a été
-# trouvée dans cette base de test ; un rapport finit dans un billet ou
-# devant un agent, et n'a aucune raison de la porter.
+# On ne lit que des booléens de PRÉSENCE. Une base de test peut porter une
+# clé de paiement vivante ; un rapport finit dans un billet ou devant un
+# agent, et n'a aucune raison de la porter.
 
 NEUTRALIZE_SQL = {
     "flag": "SELECT count(*) FROM ir_config_parameter"

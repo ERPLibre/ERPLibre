@@ -4,17 +4,14 @@
 
 """Ce qu'une montée de version ajoute au référentiel comptable.
 
-Mesuré sur une migration 12 → 18 réelle, entre les deux derniers paliers :
-
-    comptes    96 → 427        taxes           32 → 64
-    groupes     0 → 168        positions       14 → 28
-
 Le script de migration de `l10n_ca` recharge le plan `ca_2023` sans
-`force_create=False` ; les codes du client ne recouvrent le gabarit que
-sur 15 des 341, et les 326 autres sont créés. Rien n'est détruit — mais
-les 168 groupes reclassent les comptes du client par PRÉFIXE de code, et
-un compte fournisseurs de 1067 écritures se retrouve sous « Residential
-Mortgage Loans ».
+`force_create=False` : tout code du gabarit que le plan en place ne
+recouvre pas donne un compte de plus, et il y en a des centaines. Comptes,
+taxes et positions fiscales enflent ensemble d'un palier à l'autre. Rien
+n'est détruit — mais le gabarit apporte aussi des GROUPES là où il n'y en
+avait aucun, et ces groupes reclassent les comptes en place par PRÉFIXE
+de code : un compte fournisseurs se retrouve sous « Residential Mortgage
+Loans ».
 
 Ce qui se teste ici n'est pas le comptage — psql le fait — mais le
 JUGEMENT : un compte absolu ne dit rien (un plan peut légitimement porter

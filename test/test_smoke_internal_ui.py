@@ -10,21 +10,21 @@ champ retiré du modèle mais toujours nommé dans un formulaire, un modèle
 dont le code n'accompagne plus la version cible. Rien de tout cela n'arrête
 le chargement des modules ; cela arrête le jour où quelqu'un ouvre l'appli.
 
-Ce que ces tests verrouillent est ce que l'exécution réelle a corrigé — et
-chaque point ci-dessous a d'abord été un vrai défaut, mesuré sur une base
-18.0 de 25 applications :
+Chaque point ci-dessous est un mode de défaillance que ces tests
+verrouillent :
 
 - `web_search_read` a changé de signature en 17 (`fields` est devenu
-  `specification`). Seize applications sur vingt-deux échouaient sur MON
-  appel. `search_read` n'a pas bougé depuis la 12 ;
+  `specification`) : l'appeler à l'ancienne fait échouer l'APPEL, et non
+  la base, sur la plupart des applications d'une 18.0. `search_read` n'a
+  pas bougé depuis la 12 ;
 - un modèle absent du registre rend un « 404 Not Found » nu, illisible,
   alors que c'est la trouvaille la plus nette d'une migration ;
 - lire les champs d'un arch à l'expression régulière ramasse ceux des
-  SOUS-VUES : neuf applications rapportées « nommant un champ absent »,
-  toutes fausses, parce que les lignes d'une facture ne sont pas des
+  SOUS-VUES, et rapporte « nommant un champ absent » des applications
+  parfaitement saines, parce que les lignes d'une facture ne sont pas des
   champs de la facture ;
 - `run_psql` rend une liste vide aussi bien pour « aucune ligne » que pour
-  « requête refusée » : un SQL fautif faisait dire « base non neutralisée ».
+  « requête refusée » : un SQL fautif fait dire « base non neutralisée ».
 """
 
 import os
@@ -174,9 +174,9 @@ class TestReadingTheFieldsOfAPage(unittest.TestCase):
         )
 
     def test_the_fields_of_an_embedded_view_are_NOT(self):
-        # Le défaut mesuré : `product_id` et `price_unit` sont des champs de
-        # la LIGNE de facture. Les attribuer à la facture faisait rapporter
-        # neuf applications cassées qui allaient parfaitement bien.
+        # `product_id` et `price_unit` sont des champs de la LIGNE de
+        # facture. Les attribuer à la facture fait rapporter cassées des
+        # applications qui vont parfaitement bien.
         lst = ui.arch_fields(self.FORM)
         self.assertNotIn("product_id", lst)
         self.assertNotIn("price_unit", lst)
@@ -203,9 +203,9 @@ class TestReadingTheFieldsOfAPage(unittest.TestCase):
 class TestTheThreeStatesOfTheTestUser(unittest.TestCase):
     """« je ne sais pas » n'est pas « il n'y en a pas ».
 
-    Vécu : un « id » ambigu dans MON SQL faisait rendre une liste vide, et
-    l'outil annonçait tranquillement que la base n'avait pas été
-    neutralisée. Le back-office n'était pas testé, et rien ne le disait.
+    Un « id » ambigu dans le SQL fait rendre une liste vide, et l'outil
+    annonce alors que la base n'a pas été neutralisée : le back-office
+    n'est pas testé, et rien ne le dit.
     """
 
     def test_a_row_saying_one_is_present(self):
@@ -323,12 +323,11 @@ class TestWhatIsWorthOpening(unittest.TestCase):
 class TestLoadingTheFirstPage(unittest.TestCase):
     """L'appel qui charge les enregistrements, et sa forme exacte.
 
-    C'EST le défaut qui a coûté le plus cher : `web_search_read` a changé
-    de signature en 17 — `fields`, une liste, est devenu `specification`,
-    un dictionnaire. Mesuré sur une base 18.0 : seize applications sur
-    vingt-deux échouaient sur « unexpected keyword argument 'fields' »,
-    c'est-à-dire sur MON appel et non sur la base. `search_read` n'a pas
-    bougé depuis la 12.
+    `web_search_read` a changé de signature en 17 — `fields`, une liste,
+    est devenu `specification`, un dictionnaire. Passer l'ancienne forme à
+    une base 18.0 rend « unexpected keyword argument 'fields' » sur toute
+    application qui emprunte cet appel : le défaut est dans l'appel, pas
+    dans la base. `search_read`, lui, n'a pas bougé depuis la 12.
     """
 
     def call(self, lst_field=None):
@@ -407,11 +406,11 @@ class TestTheViewsAreRenderedServerSide(unittest.TestCase):
 class TestASkipThatHidesAFailure(unittest.TestCase):
     """Tous les sauts ne se valent pas, et c'est mesuré.
 
-    L'utilisateur `test` survit aux paliers 12 à 15 puis DISPARAÎT : relevé
-    sur les six bases d'une vraie migration, présent jusqu'à 15, absent en
-    17 et 18. La passe back-office s'arrêtait donc sans bruit exactement là
-    où une migration fait le plus de dégâts, et le rapport disait
-    tranquillement « la base n'a pas été neutralisée » — ce qui était faux.
+    L'utilisateur `test` survit aux paliers 12 à 15 puis DISPARAÎT :
+    présent jusqu'à 15, absent en 17 et 18. Sans garde, la passe
+    back-office s'arrête donc sans bruit exactement là où une migration
+    fait le plus de dégâts, et le rapport annonce « la base n'a pas été
+    neutralisée » alors qu'elle l'a bien été.
 
     `required` porte ce que la migration SAIT : elle a neutralisé cette
     base, le compte devrait y être. Son absence devient alors une
@@ -507,11 +506,10 @@ class TestASkipThatHidesAFailure(unittest.TestCase):
 class TestSayingWHYTheLoginFailed(unittest.TestCase):
     """« Session expired » décrit la conséquence et cache la cause.
 
-    Vécu : la passe back-office rapportait « Connexion impossible en tant
-    que test : SessionExpiredException », et l'on a cherché du côté du mot
-    de passe pendant que la vraie cause était sous les yeux — /web/login
-    rendait 500. Une copie COW de `website.submenu` casse la page de
-    connexion comme elle casse le site : les deux passent par le même
+    « Connexion impossible en tant que test : SessionExpiredException »
+    envoie chercher du côté du mot de passe, alors que la cause est que
+    /web/login rend 500. Une copie COW de `website.submenu` casse la page
+    de connexion comme elle casse le site : les deux passent par le même
     gabarit.
     """
 
@@ -623,11 +621,12 @@ class TestTheBackOfficeIsJudgedAfterTheRepair(unittest.TestCase):
 
 
 class TestItRefusesTheWrongOdooVersion(unittest.TestCase):
-    """Mesuré en diagnostiquant ce même incident, et je m'y suis pris.
+    """Un checkout dont la version ne correspond pas à celle de la base.
 
-    Un checkout passé en 18.0 démarré sur une base 17.0 rend 500 sur les
-    trente-sept URL ET sur /web/login. On conclut à un site entièrement
-    cassé alors que rien ne l'est — et Odoo écrit en chemin.
+    Un checkout passé en 18.0 démarré sur une base 17.0 rend 500 sur
+    TOUTES les URL, /web/login compris. Le rapport ressemble alors à un
+    site entièrement cassé alors que rien ne l'est — et Odoo écrit dans la
+    base en chemin.
     """
 
     def test_the_smoke_tool_has_the_guard(self):
@@ -702,7 +701,7 @@ class TestThePortalPage(unittest.TestCase):
         self.assertIsNotNone(item["error"])
 
     def test_a_login_form_served_with_200_is_NOT_a_success(self):
-        # MESURÉ : /my demandé sans session redirige vers
+        # /my demandé sans session redirige vers
         # /web/login?redirect=/my et rend 200. Compter cela comme une
         # réussite serait le mensonge le plus coûteux du lot — on
         # annoncerait un portail sain sans l'avoir jamais vu.
@@ -727,8 +726,9 @@ class TestThePortalPage(unittest.TestCase):
         self.assertIsNone(item["error"])
 
     def test_the_error_page_is_read_without_its_stylesheet(self):
-        # MESURÉ : « Internal Server Error html { font-size: 14px; } Home
-        # Back 500 » — du CSS présenté comme un diagnostic.
+        # Feuille de style comprise, la page d'erreur se lit « Internal
+        # Server Error html { font-size: 14px; } Home Back 500 » — du CSS
+        # présenté comme un diagnostic.
         page = (
             "<html><style>html { font-size: 14px; }</style>"
             "<body>500: Internal Server Error</body></html>"
@@ -760,10 +760,10 @@ class TestThePortalPage(unittest.TestCase):
 class TestBlamingTheRightRequest(unittest.TestCase):
     """Une cause fausse coûte plus cher qu'une cause absente.
 
-    Vécu : le portail est interrogé en PREMIER, donc sa trace est la
-    première du journal. En prenant simplement la dernière, on accusait /my
-    d'une panne appartenant à une application testée bien après — et l'on
-    aurait cherché des heures du mauvais côté, avec confiance.
+    Le portail est interrogé en PREMIER, donc sa trace est la première du
+    journal. Prendre simplement la dernière accuse /my d'une panne
+    appartenant à une application testée bien après, et envoie chercher du
+    mauvais côté avec confiance.
     """
 
     JOURNAL = [

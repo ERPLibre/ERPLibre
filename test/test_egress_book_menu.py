@@ -242,10 +242,28 @@ class TestPoserUneAdresse(CasDeCarnet):
 
 
 class TestCeQuiManqueAChaqueProfil(CasDeCarnet):
-    def montrer(self, carnet):
+    def montrer(self, carnet, saisies=("n",), ecrits=None):
+        """L'écran joué, avec les saisies bouchonnées.
+
+        `input` EST BOUCHONNÉ même quand le chemin nominal ne le lit pas :
+        l'écran propose désormais de poser ce qui manque, et une épreuve
+        qui ne bouchonne pas attend sur l'entrée standard — elle rougit
+        ici où stdin est fermé, et FIGE dans un terminal.
+        """
         menu = MenuDeBanc()
+        it = iter(saisies)
+        ecrits = [] if ecrits is None else ecrits
+
+        def saisie(*_a, **_k):
+            return next(it)
+
+        def ecrire(role, reseaux, ports, config=None):
+            ecrits.append((role, list(reseaux), tuple(ports)))
+
         with patch.object(M.egress_book, "read", return_value=carnet):
-            return sortie(menu._book_missing)
+            with patch.object(M.egress_book, "save", ecrire):
+                with patch("builtins.input", saisie):
+                    return sortie(menu._book_missing)
 
     def test_an_empty_book_says_which_profile_refuses(self):
         texte = self.montrer({})
@@ -274,6 +292,94 @@ class TestCeQuiManqueAChaqueProfil(CasDeCarnet):
         texte = self.montrer(complet)
         self.assertIn("✓ VM paranoid", texte)
         self.assertNotIn("refuses to deploy", texte)
+
+
+class TestPoserCeQuiManqueSansQuitterLEcran(CasDeCarnet):
+    """La liste seule était un cul-de-sac.
+
+    Il fallait retenir sept noms de rôle, revenir au menu, et les reposer
+    un à un en retrouvant lequel servait à quoi. L'écran propose
+    maintenant de les poser, et la question porte sur le SITE — « a-t-il
+    un coffre ? » — et non sur l'envie de taper.
+    """
+
+    def jouer(self, saisies, carnet=None):
+        menu = MenuDeBanc()
+        it = iter(saisies)
+        ecrits = []
+
+        def ecrire(role, reseaux, ports, config=None):
+            ecrits.append((role, list(reseaux), tuple(ports)))
+
+        with patch.object(M.egress_book, "read", return_value=carnet or {}):
+            with patch.object(M.egress_book, "save", ecrire):
+                with patch("builtins.input", lambda *_a, **_k: next(it)):
+                    return sortie(menu._book_missing), ecrits
+
+    def test_declining_the_offer_writes_nothing(self):
+        texte, ecrits = self.jouer(["n"])
+        self.assertEqual([], ecrits)
+        self.assertIn("refuses to deploy", texte)
+
+    def test_accepting_writes_the_role_that_was_answered_yes(self):
+        texte, ecrits = self.jouer(["o", "o", "198.51.100.5/32", "", "q"])
+        self.assertEqual([("dns-resolver", ["198.51.100.5/32"], ())], ecrits)
+        self.assertIn("After posting:", texte)
+
+    def test_a_role_the_site_does_not_have_is_named_with_what_it_blocks(self):
+        """« 3 rôles refusés » n'apprend pas lesquels, et c'est justement
+        ce qu'il faut pour savoir quel profil reste hors de portée."""
+        texte, ecrits = self.jouer(["o", "n", "q"])
+        self.assertEqual([], ecrits)
+        self.assertIn("Left aside:", texte)
+        self.assertIn("dns-resolver", texte)
+        self.assertIn("still blocks:", texte)
+        self.assertIn("VM paranoid", texte)
+
+    def test_q_stops_and_asks_nothing_more(self):
+        """Sans arrêt, il faut répondre aux sept pour sortir de l'écran."""
+        texte, _e = self.jouer(["o", "q"])
+        self.assertNotIn("Left aside:", texte)
+
+    def test_each_role_is_asked_once_not_once_per_profile(self):
+        """Un rôle posé débloque d'un coup tous ceux qui l'attendaient ;
+        le redemander ferait retaper la même adresse."""
+        _t, _e = self.jouer(["o"] + ["n"] * 7)
+        # Sept rôles manquent, sept questions et pas une de plus : si
+        # l'écran bouclait par profil, l'itérateur serait vide avant la
+        # fin et l'épreuve lèverait StopIteration.
+
+    def test_nothing_missing_never_reaches_the_prompt(self):
+        """Un écran qui pose une question quand tout va bien fait douter.
+
+        L'itérateur est VIDE : toute lecture d'entrée lève ici.
+        """
+        complet = {
+            r: ["203.0.113.7"]
+            for r in (
+                "dns-resolver",
+                "ntp",
+                "package-mirror",
+                "python-index",
+                "vault",
+                "backup-target",
+                "forge",
+            )
+        }
+        texte, ecrits = self.jouer([], carnet=complet)
+        self.assertEqual([], ecrits)
+        self.assertIn("✓ VM paranoid", texte)
+
+    def test_the_two_screens_share_one_way_to_ask_for_addresses(self):
+        """« Poser » et « ce qui manque » demandent la même chose. Une
+        seconde copie perdrait l'indice, le refus à la saisie ou les
+        ports — et un chemin refuserait ce que l'autre accepte."""
+        import inspect
+
+        corps = inspect.getsource(M.EgressBookMenuMixin._book_set)
+        self.assertIn("_book_write_role", corps)
+        corps = inspect.getsource(M.EgressBookMenuMixin._book_missing)
+        self.assertIn("_book_write_role", corps)
 
 
 class TestLaFrontiereAvecLeModuleDuCarnet(CasDeCarnet):

@@ -19,11 +19,12 @@ et il revient à chaque resynchronisation de Google Repo.
 
 Le piège, et pourquoi ni grep ni regex
 --------------------------------------
-« tree » est d'abord un morceau d'IDENTIFIANT. Sur 465 occurrences
-mesurées dans `odoo18.0/addons`, une soixantaine cassent ; le reste est
-un id de `<record>`, un `<field name="name">`, un `env.ref()`, un nom de
-variable. Et ce n'est pas de la négligence : le noyau 18 a gardé ses
-propres identifiants historiques en ne renommant que les balises —
+« tree » est d'abord un morceau d'IDENTIFIANT. Sur les centaines
+d'occurrences que portent les addons, une sur huit environ est une balise
+cassée ; le reste est un id de `<record>`, un `<field name="name">`, un
+`env.ref()`, un nom de variable. Et ce n'est pas de la négligence : le
+noyau 18 a gardé ses propres identifiants historiques en ne renommant que
+les balises —
 `account.view_invoice_tree` existe toujours, son arch en `<list>`.
 
 La démonstration tient en deux lignes du même dépôt :
@@ -223,9 +224,9 @@ def _modes(texte):
 def ligne_de_la_balise(chemin, sourceline, balise="tree"):
     """lxml rend la ligne où FINIT la balise ouvrante ; on remonte.
 
-    Mesuré : sur une balise étalée sur six lignes, `sourceline` disait 66
-    quand `<tree` commençait à 61. Citer la fin envoie chercher au mauvais
-    endroit.
+    Sur une balise étalée sur plusieurs lignes, `sourceline` pointe la
+    dernière, à plusieurs lignes de l'ouverture. Citer la fin envoie
+    chercher au mauvais endroit.
     """
     try:
         with io.open(chemin, encoding="utf-8", errors="replace") as handle:

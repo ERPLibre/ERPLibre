@@ -232,9 +232,9 @@ class PlanMixin:
         """Cette valeur est-elle l'ÉCHO du montage plutôt qu'une saisie ?
 
         Poser « value= » sur un Select fait émettre un Changed que Textual
-        délivre APRÈS coup : un verrou temporel ne l'attrape pas — mesuré, les
-        trois champs de chaque VM se retrouvaient surchargés dès l'affichage
-        et le réglage commun devenait inopérant. On compare donc à ce que le
+        délivre APRÈS coup : un verrou temporel ne l'attrape pas, et chaque
+        champ de chaque VM se retrouve surchargé dès l'affichage, le réglage
+        commun devenu inopérant. On compare donc à ce que le
         modèle dit déjà : une valeur identique n'est pas une saisie.
 
         Cas limite assumé : choisir explicitement la valeur que le réglage
