@@ -596,10 +596,10 @@ class TestWhatSurvivesClosingTheTool(DiskCase):
     def test_logs_written_before_the_name_are_brought_back(self):
         """Les deux premières étapes tournent avant qu'on nomme la base.
 
-        Leurs journaux atterrissaient sous « sans-nom », c'est-à-dire hors
-        de la migration à laquelle ils appartiennent : mesuré sur la VM,
-        deux fichiers invisibles depuis l'écran d'état, et l'on cherchait
-        des logs manquants qui étaient simplement à côté.
+        Leurs journaux atterrissent sous « sans-nom », c'est-à-dire hors de
+        la migration à laquelle ils appartiennent : les fichiers restent
+        invisibles depuis l'écran d'état, et l'on cherche des logs manquants
+        qui sont simplement à côté.
         """
         from script.todo import todo_upgrade as tu
 
@@ -904,10 +904,30 @@ class TestWhenColourWouldBeAMistake(Base):
         self.assertFalse(status.supports_colour(Muet()))
 
     def test_the_report_decides_by_itself_when_not_told(self):
-        import inspect
+        """CE QU'IL REND, et non ce qu'il s'écrit.
 
-        source = inspect.getsource(status.render_text)
-        self.assertIn("colour = supports_colour()", source)
+        Cette épreuve cherchait « colour = supports_colour() » dans le
+        source. Elle rougissait donc sur « colour = supports_colour(
+        sys.stdout) », qui est strictement équivalent — et elle passait sur
+        un commentaire. Le paramètre `colour` a pourtant été ajouté EXPRÈS
+        pour rendre la chose éprouvable : son docstring le dit.
+        """
+        vrai = status.supports_colour
+        self.addCleanup(setattr, status, "supports_colour", vrai)
+        for decide, attendu in ((True, True), (False, False)):
+            with self.subTest(sortie_coloriable=decide):
+                status.supports_colour = lambda *_a, **_k: decide
+                texte = status.render_text(progression())
+                self.assertEqual(attendu, "\x1b[" in texte)
+
+    def test_being_told_wins_over_what_the_output_can_do(self):
+        """Contrôle positif : ne jamais colorier satisferait l'épreuve
+        ci-dessus pour moitié, et forcer sert aux épreuves qui doivent
+        vérifier les deux sans dépendre d'où elles tournent."""
+        vrai = status.supports_colour
+        self.addCleanup(setattr, status, "supports_colour", vrai)
+        status.supports_colour = lambda *_a, **_k: False
+        self.assertIn("\x1b[", status.render_text(progression(), colour=True))
 
 
 class TestTheFullScreenColoursToo(Base):

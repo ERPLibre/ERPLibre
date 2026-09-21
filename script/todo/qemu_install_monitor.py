@@ -26,6 +26,16 @@ from pathlib import Path
 
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
+from script.vm import verbs as vm_verbs
+from script.vm.backend import (
+    LIBVIRT,
+    PVE,
+    VerbNotImplemented,
+    group_by_host,
+    handle_of,
+    is_hosted,
+    resolves_locally,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -112,7 +122,13 @@ def list_install_runs() -> list:
     return runs
 
 
-def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
+def _reboot_steps(
+    log_q: str,
+    motif: str,
+    prefixe: str,
+    sonde: str,
+    tours: int = REBOOT_TOURS,
+) -> str:
     """Shell qui redémarre la VM, attend son retour, et vérifie son noyau.
 
     Trois choses valent d'être dites.
@@ -128,6 +144,15 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
     `tours` est un paramètre pour que ce shell soit ÉPROUVABLE : un garde
     qu'on ne sait pas exécuter s'ouvre le jour où il casse.
 
+    `prefixe` et `sonde` VIENNENT DU BACKEND et ne sont plus écrits ici.
+    Ce shell composait « ssh compte@$ip » en clair, deux fois : une VM qui
+    ne s'atteint pas par ssh y recevait donc une commande visant un hôte
+    ssh nommé comme elle, et le « || true » de l'ordre de redémarrage
+    avalait l'échec sans un mot. La sonde est SÉPARÉE de l'ordre parce
+    qu'elle exige en plus « BatchMode » : une invite de mot de passe dans
+    la boucle d'attente la ferait tourner cent quatre-vingts fois pour
+    rien.
+
     Et l'échec est un vrai échec : sans le noyau attendu, l'hyperviseur n'a ni
     table NAT ni module bridge. Le dire ✅ serait le mensonge qui a coûté deux
     jours à le comprendre."""
@@ -140,7 +165,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('== ' + msg_reboot + ' ==')} >> {log_q}; "
         # « || true » : la session MEURT avec le redémarrage, et son code 255
         # ne dit rien de l'ordre lui-même.
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        f"{prefixe} "
         # « sudo -n » : cette enveloppe tourne DÉTACHÉE, sans terminal. Un
         # sudo qui demande son mot de passe échoue alors tout de suite au lieu
         # d'attendre une frappe que personne ne fera.
@@ -149,7 +174,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('   ' + msg_wait)} >> {log_q}; "
         "krn=''; "
         f"for i in $(seq 1 {tours}); do sleep ${{ERPLIBRE_REBOOT_SLEEP:-5}}; "
-        f'k=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        f"k=$({sonde} "
         "'uname -r' 2>/dev/null); "
         f'case "$k" in *{motif}*) krn="$k"; break;; esac; '
         "if [ $((i % 6)) -eq 0 ]; then "
@@ -163,12 +188,10 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
 
 
 def _launch_one(
-    ip: str,
+    handle,
     remote_cmd: str,
     log_path: str,
-    name: str = "",
     installs: bool = True,
-    pve: bool = False,
     reboot: str = "",
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
@@ -180,13 +203,15 @@ def _launch_one(
     C'est ici et non dans la VM parce qu'un script ne survit pas à son propre
     redémarrage : cette enveloppe, elle, tourne sur NOTRE machine.
 
-    `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
-    adresse par virsh — et c'est vital. Vécu le 24 août 2026 : une VM
-    « erplibre-ubuntu-2604 » déployée sur Proxmox portait le nom d'un domaine
-    LOCAL existant ; la ré-résolution a trouvé le domaine local et
-    l'installation d'ERPLibre + Odoo est partie sur la mauvaise machine, sans
-    que rien ne le dise. Pour une VM distante, l'alias ~/.ssh/config est la
-    seule vérité : il porte le rebond par l'hôte."""
+    `handle` dit à la fois PAR OÙ entrer et si l'adresse se ré-résout. On ne
+    la ré-résout que pour une VM que l'hyperviseur LOCAL connaît, et c'est
+    vital : une VM déployée ailleurs dont le nom existe aussi comme domaine
+    local ferait trouver ce domaine-là, et l'installation partirait sur la
+    mauvaise machine sans que rien ne le dise. Pour une VM d'hôte distant,
+    l'alias ~/.ssh/config est la seule vérité — il porte le rebond."""
+    ip = vm_verbs.exec_address(handle)
+    name = handle.name
+    relit = bool(name) and resolves_locally(handle)
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
     # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~20 min :
     # une architecture ÉMULÉE, s390x/arm64 sur hôte x86, boote lentement).
@@ -225,8 +250,8 @@ def _launch_one(
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
     # lancement devient donc morte en cours de route, et l'attente échouait
-    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
-    # pendant que la VM vivait en .248).
+    # 20 minutes durant sur une VM parfaitement saine, le bail périmé
+    # coexistant avec le vivant.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -242,9 +267,9 @@ def _launch_one(
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
     # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
-    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
-    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
-    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # y échoue dès que l'hôte exige une authentification interactive
+    # (« interactive authentication is required »), et la ré-résolution reste
+    # alors muette sans laisser la moindre trace.
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
@@ -287,18 +312,24 @@ def _launch_one(
             f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
-        if name and not pve
+        if relit
         else ""
     )
+    # Le PRÉFIXE d'exécution vient du backend : là où celui-ci rend
+    # « ssh … », un autre rendra une commande qui joint la VM par son nom.
+    sonde_prefixe = vm_verbs.exec_prefix(
+        handle, f"{SSH_OPTS_BATCH} -o BatchMode=yes"
+    )
+    exec_prefixe = vm_verbs.exec_prefix(handle, SSH_OPTS_BATCH)
     wrapper = (
         f"ip={shlex.quote(ip)}; "
-        f"{vsh if name and not pve else ''}"
+        f"{vsh if relit else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
         f"seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
-        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        f"st=$({sonde_prefixe} "
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
@@ -314,9 +345,13 @@ def _launch_one(
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
         f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" {shlex.quote(remote_cmd)} '
+        f"{exec_prefixe} {shlex.quote(remote_cmd)} "
         f">> {log_q} 2>&1; rc=$?; "
-        + (_reboot_steps(log_q, reboot) if reboot else "")
+        + (
+            _reboot_steps(log_q, reboot, exec_prefixe, sonde_prefixe)
+            if reboot
+            else ""
+        )
         + f'echo "{EXIT_MARKER} $rc" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
@@ -377,6 +412,25 @@ def _log_header(vm: dict, branch: str, when: str) -> str:
     )
 
 
+def _ligne_ssh(handle) -> str:
+    """La ligne à recopier pour entrer dans cette VM, ou "".
+
+    UN CONFORT, PAS UNE CONDITION D'EXISTENCE. Une VM libvirt sans bail
+    traverse le lanceur — son adresse se ré-résout en chemin — puis ne sait
+    pas encore composer sa ligne ssh. Laisser le refus sortir emportait la
+    boucle ET la fonction : aucun manifeste n'était écrit, si bien que les
+    VM joignables du même lot disparaissaient avec elle, leurs
+    installations détachées tournant sans rien pour les retrouver.
+
+    Vide dit « pas encore connue ». Le tableau de bord ré-résout l'adresse
+    à chaque tour, et l'affichera dès qu'elle existe.
+    """
+    try:
+        return vm_verbs.connect_command(handle)
+    except VerbNotImplemented:
+        return ""
+
+
 def launch_installs(
     vms: list[dict],
     branch: str,
@@ -414,17 +468,29 @@ def launch_installs(
         # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
         # intacts les appelants qui n'en fournissent qu'une.
         cmd_vm = vm.get("remote_cmd") or remote_cmd
-        _launch_one(
-            vm["ip"],
-            cmd_vm,
-            log_path,
-            vm["name"],
-            installs=bool(branch),
-            pve=bool(vm.get("pve")),
-            # Une installation qui pose un NOYAU ne vaut rien avant le
-            # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
-            reboot=reboot_expected(cmd_vm),
-        )
+        # UNE fiche pour les trois usages qui suivent : la relire trois fois
+        # laisserait trois vérités possibles si le dictionnaire bougeait
+        # entre-temps, et c'est la preuve d'identité qui en souffrirait.
+        fiche = handle_of(vm)
+        try:
+            _launch_one(
+                fiche,
+                cmd_vm,
+                log_path,
+                installs=bool(branch),
+                # Une installation qui pose un NOYAU ne vaut rien avant le
+                # redémarrage : l'enveloppe s'en charge et ne conclut
+                # qu'après.
+                reboot=reboot_expected(cmd_vm),
+            )
+        except VerbNotImplemented as injoignable:
+            # Une VM sans point d'entrée n'emporte pas les autres : son
+            # refus va dans SON journal, que le tableau de bord affiche
+            # déjà, et la boucle poursuit. Refuser d'un bloc laisserait
+            # sans installation des machines qui, elles, se joignent.
+            with open(log_path, "a", encoding="utf-8") as journal:
+                journal.write(f"\n  ✗ {injoignable}\n")
+            continue
         entree = {
             "name": vm["name"],
             "ip": vm["ip"],
@@ -432,17 +498,20 @@ def launch_installs(
             "version": vm.get("version"),
             "arch": vm.get("arch"),
             "log": log_path,
-            "ssh": f"ssh erplibre@{vm['ip']}",
+            # LA LIGNE VIENT DU BACKEND. Composée à la main, elle disait
+            # « ssh compte@… » de toute machine — y compris de celles qui ne
+            # s'atteignent pas par ssh. Le tableau de bord l'affiche pour
+            # qu'on la recopie : fausse, elle échoue chez qui la recopie, et
+            # le message de ssh ne dit pas que le backend était le mauvais.
+            "ssh": _ligne_ssh(fiche),
         }
-        # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
-        if vm.get("pve"):
-            entree["pve"] = vm["pve"]
-        else:
-            # L'UUID du domaine, relevé MAINTENANT : c'est le seul instant où
-            # l'on sait que ce nom désigne bien cette machine. Rouvert des
-            # semaines plus tard, le suivi ne peut plus le savoir — et c'est
-            # lui qui arme le garde de la suppression.
-            entree["uuid"] = local_uuid(vm["name"])
+        # La preuve d'identité est relevée MAINTENANT : c'est le seul
+        # instant où l'on sait que ce nom désigne bien cette machine.
+        # Rouvert des semaines plus tard, le suivi ne peut plus le savoir —
+        # et c'est elle qui armera le garde de la suppression.
+        entree.update(
+            vm_verbs.identity_fields(vm_verbs.arm(fiche, probe=local_uuid))
+        )
         entries.append(entree)
     manifest = {
         "branch": branch,
@@ -521,8 +590,8 @@ def read_status(log_path: str) -> tuple[str, int | None]:
 
 # Au-delà de ce silence, la colonne d'état le DIT. Ce n'est pas un verdict mais
 # un chiffre : plusieurs étapes sont légitimement muettes, leur sortie partant
-# ailleurs. Mesuré sur une installation réelle : le téléchargement d'Android
-# Studio tient ~5 min sans une ligne, et l'étape « APK debug » davantage — son
+# ailleurs. Le téléchargement d'Android Studio tient ~5 min sans une seule
+# ligne, et l'étape « APK debug » davantage — son
 # détail va dans le journal de la VM. Dix minutes passent donc au-dessus du
 # premier sans attendre le second, qui reste bruyant par nature.
 #
@@ -795,9 +864,8 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         if EXIT_MARKER in line:
             continue
         # Un échec d'étape EST une erreur, même sans le mot « error » : sinon le
-        # tableau de bord affiche « 0 erreur » sur une installation ratée —
-        # mesuré sur erplibre-ubuntu-2604-gnome, 0 ligne « error » pour un APK
-        # tué par le noyau.
+        # tableau de bord affiche « 0 erreur » sur une installation ratée.
+        # Un APK tué par le noyau n'écrit aucune ligne « error ».
         if _is_hard_signal(line):
             nerr += 1
             continue
@@ -1349,8 +1417,14 @@ class WriteWindow:
 
 
 def fmt_rate(bps) -> str:
-    """Octets/s -> « 12.3M/s ». « - » tant qu'on ne sait pas."""
-    return "-" if bps is None else f"{_fmt_size(int(bps))}/s"
+    """Octets/s -> « 12M/s », « 1.1G/s ». « - » tant qu'on ne sait pas.
+
+    LE FORMATEUR QUI SERRE, comme les paires : il vit dans une COLONNE, et
+    `_fmt_size` y rendait huit caractères pour sept dès 100 Mo/s — un débit
+    d'installation ordinaire sur disque local. La décimale, elle, ne se
+    perd qu'au-dessus de dix unités, là où elle n'apprend rien.
+    """
+    return "-" if bps is None else f"{_fmt_tight(int(bps))}/s"
 
 
 def _fmt_tight(nbytes) -> str:
@@ -1420,7 +1494,7 @@ def vm_stats_line(name, rec, bps, now, ecrit=None) -> str:
 def read_domstats() -> str:
     """Sortie brute de « virsh domstats --balloon --block » (tout le parc).
 
-    UN appel pour toutes les VM — 0,03 s mesuré sur deux domaines. Le suivi
+    UN appel pour toutes les VM — 0,03 s pour deux domaines. Le suivi
     relève toutes les deux secondes : une commande par VM y coûterait N
     processus à chaque tour."""
     try:
@@ -1480,7 +1554,7 @@ def odoo_reading(vm, releve, deja_vert, dernier, maintenant, sonde):
     en cours d'install » était faux : le service redémarre au moins une fois,
     et il lui arrive de mourir. Le 🟢 restait alors acquis pour toujours.
     """
-    if vm.get("pve"):
+    if is_hosted(handle_of(vm)):
         return (bool(releve.get("odoo")) if releve else None), False
     if deja_vert and maintenant - dernier < ODOO_RECHECK:
         return None, False
@@ -1598,8 +1672,8 @@ def parse_pvestats(text: str) -> dict:
 # Combien de relevés SUCCESSIFS sans la VM avant de la déclarer effacée. Un
 # seul silence ne prouve rien : l'hôte peut être occupé, la VM en train de
 # démarrer, le relevé en cache d'avant sa création. Or « effacée » est un état
-# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Vécu sur une VM Arch
-# déployée sur Proxmox : poubelle dès le premier tour.
+# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Une VM à peine
+# déployée y tombait dès le premier tour.
 PVE_ABSENCES_AVANT_EFFACEE = 3
 
 
@@ -1622,17 +1696,17 @@ def drop_local_twins(stats, vms) -> dict:
     """Retire des relevés LOCAUX ceux d'une VM qui vit ailleurs.
 
     « virsh domstats » indexe par NOM, et un nom se partage : une VM posée
-    sur un Proxmox distant héritait des chiffres du domaine local homonyme.
-    Vécu sur trois VM — « erplibre-ubuntu-2604 » affichait 1,5 Gio de RAM sur
-    12 et 58 Gio de disque sur 65, tout cela appartenant à la machine locale
-    du même nom, pendant que la vraie tournait avec 3 Gio et 25.
+    sur un Proxmox distant héritait des chiffres du domaine local homonyme :
+    sa mémoire, son disque, son taux d'occupation. Des chiffres justes,
+    appartenant à une autre machine — ce qui est pire qu'une colonne vide,
+    car rien ne les signale.
 
     Retirés AVANT d'ajouter ceux de l'hôte : ainsi un hôte muet laisse la
     colonne VIDE — ce qui est vrai — au lieu de la remplir avec la mauvaise
     machine. Une colonne vide se remarque ; une colonne juste et fausse, non.
     """
     for vm in vms or ():
-        if vm.get("pve"):
+        if is_hosted(handle_of(vm)):
             stats.pop(vm.get("name"), None)
     return stats
 
@@ -1644,12 +1718,10 @@ def _read_pvestats(vms, now=None):
     Les VM concernées sont celles dont le manifeste porte un bloc « pve »
     (adresse de l'hôte, sudo, vmid).
     """
-    hotes = {}
-    for vm in vms or ():
-        info = vm.get("pve") or {}
-        if info.get("target"):
-            hotes[(info["target"], info.get("sudo") or "")] = info
-    if not hotes:
+    groupes = group_by_host(
+        [fiche for fiche in (handle_of(vm) for vm in vms or ()) if fiche]
+    )
+    if not groupes:
         return {}, False
     maintenant = now if now is not None else time.time()
     # « at > 0 » explicitement : sans lui, un tout PREMIER relevé pris moins de
@@ -1665,27 +1737,17 @@ def _read_pvestats(vms, now=None):
         from script.proxmox import proxmox_deploy as pve
     except ImportError:  # pragma: no cover - le module est dans le dépôt
         return {}, False
-    # {nom: adresse interne} — ce qui permet de tester Odoo depuis l'hôte.
-    adresses = {
-        vm["name"]: (vm.get("pve") or {}).get("addr")
-        for vm in vms or ()
-        if (vm.get("pve") or {}).get("addr")
-    }
     stats, ok = {}, False
-    for (target, sudo), info in hotes.items():
-        siennes = [
-            a
-            for nom, a in adresses.items()
-            if (
-                (
-                    next((v for v in vms if v["name"] == nom), {}).get("pve")
-                    or {}
-                ).get("target")
-                == target
-            )
-        ]
+    for (target, sudo), fiches in groupes.items():
+        # Les adresses internes de CET hôte : c'est de là que le port d'Odoo
+        # se teste, une adresse de pont interne ne répondant qu'à lui.
+        siennes = [fiche.address for fiche in fiches if fiche.address]
         _code, sortie = pve.run(
-            {"target": target, "sudo": sudo, "jump": info.get("jump", "")},
+            {
+                "target": target,
+                "sudo": sudo,
+                "jump": fiches[0].host.get("jump", ""),
+            },
             pve_stats_cmd(siennes),
             40,
         )
@@ -1697,8 +1759,8 @@ def _read_pvestats(vms, now=None):
         # l'exiger à 0 était l'erreur SYMÉTRIQUE : tant qu'Odoo n'écoute pas
         # — c'est-à-dire pendant TOUTE l'installation, précisément quand on
         # regarde — la boucle finit en échec et le relevé, parfait, était
-        # jeté. Mesuré sur trois VM : colonnes vides côté Proxmox, et les
-        # lignes qui avaient un homonyme LOCAL affichaient ses chiffres.
+        # jeté : colonnes vides côté Proxmox, et les lignes qui ont un
+        # homonyme LOCAL affichent les chiffres de celui-ci.
         #
         # Ce qui prouve une réponse, c'est une LISTE de ressources
         # analysable. Rien d'autre, et surtout pas le code.
@@ -1710,84 +1772,31 @@ def _read_pvestats(vms, now=None):
             # nommer ses VM (pvestatd arrêté).
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
-            for vm in vms or ():
-                pve_info = vm.get("pve") or {}
-                if pve_info.get("target") != target:
-                    continue
-                rec = releves.get(int(pve_info.get("vmid") or 0))
+            for fiche in fiches:
+                rec = releves.get(int(fiche.key))
                 if not rec:
                     continue
-                rec["odoo"] = adresses.get(vm["name"]) in ouverts
-                stats[vm["name"]] = rec
+                rec["odoo"] = bool(fiche.address) and fiche.address in ouverts
+                stats[fiche.name] = rec
     _PVE_CACHE.update({"at": maintenant, "stats": stats, "ok": ok})
     return dict(stats), ok
-
-
-def web_tunnel_argv(info, port=18069, cible_port=8069):
-    """argv d'un tunnel local vers le port web d'une VM distante, ou None.
-
-    Une VM sur pont interne n'est pas routable d'ici : un navigateur ne peut
-    pas l'atteindre, et la touche « w » ouvrait une page morte. Le tunnel
-    passe par l'hôte, dure le temps de la visite, et se referme par son PID —
-    « pkill -f <motif> » tuait le shell qui l'avait lancé, le motif figurant
-    dans sa propre ligne de commande.
-    """
-    info = info or {}
-    if not (info.get("addr") and info.get("target")):
-        return None
-    argv = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes"]
-    if info.get("jump"):
-        argv += ["-J", info["jump"]]
-    argv += ["-L", f"{port}:{info['addr']}:{cible_port}", info["target"]]
-    return argv
 
 
 def vm_ssh_prefix(vm) -> str:
     """« ssh … » pour entrer dans CETTE VM, adresse comprise.
 
-    Une VM d'un hôte Proxmox vit derrière lui : son adresse n'est pas
-    routable d'ici, et seul le rebond y mène. On le construit explicitement
-    plutôt que de compter sur un alias ~/.ssh/config, qui peut ne pas exister
-    — ou, pire, désigner une VM LOCALE homonyme. C'est ce qui a fait ouvrir
-    la mauvaise machine avec « s ».
+    Relais vers `script.vm.verbs.ssh_prefix`, qui compose les rebonds pour
+    tous les backends.
     """
-    info = (vm or {}).get("pve") or {}
-    adresse = info.get("addr")
-    if info.get("target") and adresse:
-        saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
-        return (
-            f"ssh {SSH_OPTS} {saut}-J {shlex.quote(info['target'])} "
-            f"erplibre@{adresse}"
-        )
-    return f"ssh {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
-
-
-def pve_host_cmd(info, remote, tty=False) -> str:
-    """Commande shell qui exécute `remote` SUR l'hôte Proxmox d'une VM.
-
-    Chaque action du tableau de bord qui parlait à libvirt par le NOM frappait
-    la mauvaise machine dès qu'un domaine local portait le même : la console
-    ouvrait celle de la VM locale, la pause suspendait la locale. L'hôte est
-    la seule autorité pour une VM distante, et le VMID son seul identifiant.
-    """
-    sudo = (info or {}).get("sudo") or ""
-    cible = (info or {}).get("target") or ""
-    prefixe = f"{sudo}sh -c {shlex.quote(remote)}" if sudo else remote
-    saut = (
-        f"-J {shlex.quote(info['jump'])} " if (info or {}).get("jump") else ""
-    )
-    return (
-        f"ssh {'-t ' if tty else ''}{saut}{shlex.quote(cible)} "
-        f"{shlex.quote(prefixe)}"
-    )
+    return vm_verbs.ssh_prefix(handle_of(vm), options=SSH_OPTS)
 
 
 def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
     Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
-    dernier rapport du pilote : mesuré sur une VM fraîche, 388 Mo annoncés
-    contre 1,1 Go réellement occupés, avec un horodatage vieux d'une
+    dernier rapport du pilote. Sur une VM fraîche, cela donne 388 Mo annoncés
+    contre 1,1 Go réellement occupés, sur un horodatage vieux d'une
     demi-heure. La période se perd quand le domaine redémarre — ce qu'une
     installation fait — donc on la réarme à intervalle lent.
     """
@@ -1827,8 +1836,9 @@ COL_DEFAULT_WIDTHS = {
     # 6 : « 125:30 » est le pire cas d'une installation de deux heures.
     "elapsed": 6,
     # Section statistiques de la VM : ce qu'elle écrit, sa RAM, son disque.
-    # « 12.3M/s » tient en 7 et « 1.1G/12G » en 9 : au-delà, « Disque » sortait
-    # de l'écran sur un terminal de 150 colonnes, moitié prise par le journal.
+    # 7 comme l'en-tête « Écrit/s », qui TIRE la largeur : le contenu serré
+    # tient en 6 au pire (« 999M/s »). Au-delà, « Disque » sortait de l'écran
+    # sur un terminal de 150 colonnes, moitié prise par le journal.
     "wr": 7,
     # 10 et non 9 : sur une VM de 128 Go, « 1001M/128G » fait dix caractères.
     "ram": 10,
@@ -1916,45 +1926,6 @@ def restart_odoo_cmd() -> str:
     )
 
 
-def pve_identity_guard(vmid: int, name: str) -> str:
-    """Shell qui S'ARRÊTE si le VMID ne porte plus ce nom.
-
-    Un VMID libéré est RÉATTRIBUÉ, et le suivi se rouvre sur un manifeste qui
-    peut avoir des semaines : effacer « le 101 » d'un run de mars, c'est
-    effacer ce qui porte le 101 aujourd'hui.
-
-    Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
-    vérifiable. Enfouie dans la commande, elle ne se testait qu'à travers deux
-    « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le jour
-    où il casse, au lieu de se fermer."""
-    q = shlex.quote(name)
-    return (
-        f"vu=$(qm config {int(vmid)} 2>/dev/null"
-        " | sed -n 's/^name: //p' | head -1); "
-        f'if [ "$vu" != {q} ]; then '
-        f'echo "REFUS : le VMID {int(vmid)} porte maintenant $vu,"'
-        f' "et non {name}. Rien n\'a ete efface."; exit 1; fi; '
-    )
-
-
-def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
-    """Efface une VM sur son hôte PROXMOX, par son VMID.
-
-    « virsh undefine <nom> » y aurait effacé le domaine LOCAL homonyme — le
-    même piège que partout ailleurs, avec la pire conséquence.
-
-    `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
-    commande efface le VMID quoi qu'il porte aujourd'hui."""
-    vmid = int((info or {}).get("vmid") or 0)
-    suite = pve_identity_guard(vmid, name) if name else ""
-    suite += (
-        f"qm stop {vmid} --skiplock 1 || true; "
-        f"qm destroy {vmid}"
-        f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
-    )
-    return pve_host_cmd(info, suite)
-
-
 def delete_lines(vm) -> list:
     """Ce qui va RÉELLEMENT disparaître, dit selon l'endroit où la VM vit.
 
@@ -1968,58 +1939,34 @@ def delete_lines(vm) -> list:
 
     Une confirmation doit nommer ce qu'elle détruit, sur la machine où elle
     le détruit."""
-    info = vm.get("pve")
-    if not info:
+    handle = handle_of(vm)
+    if handle is None or handle.backend == LIBVIRT:
         return [
             "La VM est arrêtée, sa définition retirée,",
             "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
             "",
             f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
         ]
-    hote = info.get("target") or "?"
+    # LE VOCABULAIRE EST CLOS ICI AUSSI. Traiter libvirt puis SUPPOSER
+    # Proxmox donnait à une instance Lima le texte d'un hôte qu'elle n'a
+    # pas — « qm destroy … --purge » sur un hôte nommé « ? ». C'est la
+    # faute même que cette fonction existe pour empêcher, un backend plus
+    # tard.
+    if handle.backend != PVE:
+        return [
+            f"Cet écran ne sait pas détruire une VM « {handle.backend} ».",
+            "Rien ne sera touché ici.",
+        ]
+    hote = handle.host.get("target") or "?"
     return [
-        f"Sur l'hôte Proxmox {hote}, la VM {info.get('vmid')} est arrêtée",
+        f"Sur l'hôte Proxmox {hote}, la VM {handle.key} est arrêtée",
         "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
         "",
-        f"  qm destroy {info.get('vmid')} --purge",
+        f"  qm destroy {handle.key} --purge",
         "",
         "Aucun fichier n'est touché ici : le disque vit dans le",
         "stockage de l'hôte.",
     ]
-
-
-def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
-    """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
-    arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
-    disques à la demande.
-
-    `uuid` arme un GARDE. Le suivi se rouvre sur un manifeste passé, et un nom
-    de domaine se réemploie : « erplibre-ubuntu-2604 » d'un run de mars n'est
-    pas forcément celui d'aujourd'hui. L'UUID, lui, naît avec le domaine et
-    meurt avec lui — c'est la seule chose qui distingue deux machines du même
-    nom."""
-    q = shlex.quote(name)
-    cmd = ""
-    if uuid:
-        cmd = (
-            f"vu=$({sudo_prefix()}virsh --connect {URI} domuuid {q}"
-            " 2>/dev/null"
-            " | tr -d '[:space:]'); "
-            f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f'echo "REFUS : {name} n\'est plus le même domaine"'
-            f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
-        )
-    cmd += (
-        f"{sudo_prefix()}virsh --connect {URI} destroy {q} 2>/dev/null; "
-        f"{sudo_prefix()}virsh --connect {URI} "
-        f"undefine {q} --nvram 2>/dev/null "
-        f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
-    )
-    if with_disks:
-        disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
-        seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
-        cmd += f"; sudo rm -f {disk} {seed}"
-    return cmd
 
 
 def run_monitor(manifest_path: str, run_app: bool = True):
@@ -2690,7 +2637,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
                 self._update_stats()
-                # Les chiffres de la VM sélectionnée viennent d'être relevés :
+                # Les chiffres de la VM sélectionnée viennent d'être lus ;
                 # sa section les redit ici, détaillés.
                 self._refresh_vmstats()
             except Exception:
@@ -2797,20 +2744,21 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 states = await asyncio.to_thread(virsh_domstates)
             except Exception:
                 return
-            # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
-            # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
-            # ses colonnes vivantes. Son état vient de l'hôte.
+            # Une VM que porte une autre machine est ABSENTE de
+            # « virsh list » : elle passait donc pour EFFACÉE, ce qui
+            # éteignait du même coup ses colonnes vivantes. Son état vient de
+            # l'hôte, seule autorité pour elle.
             distants, hote_ok = await asyncio.to_thread(
                 read_pvestats_detail, vms
             )
             for vm in vms:
                 nom = vm["name"]
-                if vm.get("pve"):
+                if is_hosted(handle_of(vm)):
                     if not hote_ok:
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
                         # « effacée » ici gelait la ligne sur 🗑 dès le premier
-                        # tour, pour toujours — vécu sur une VM Arch à peine
-                        # déployée. Et on OUBLIE les absences déjà comptées :
+                        # tour, pour toujours, sur une VM à peine déployée.
+                        # Et on OUBLIE les absences déjà comptées :
                         # elles ne prouvent une disparition que si elles se
                         # SUIVENT, l'hôte répondant à chaque fois.
                         self._pve_absences[nom] = 0
@@ -2858,7 +2806,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vivantes = [
                 vm["name"]
                 for vm in vms
-                if not vm.get("pve") and states.get(vm["name"]) == "running"
+                if resolves_locally(handle_of(vm))
+                and states.get(vm["name"]) == "running"
             ]
             if vivantes:
                 await asyncio.to_thread(arm_balloon, vivantes)
@@ -2871,15 +2820,18 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # appel virsh par VM — celui-ci est déjà le relevé lent.
             changed = False
             for vm in vms:
-                if self._domstate.get(vm["name"]) == "gone" or vm.get("pve"):
-                    # Une VM distante n'a pas de bail chez nous : son adresse
-                    # est celle que cloud-init a posée, et virsh ne la voit
-                    # pas. La chercher rendrait « gone » à chaque tour.
+                if self._domstate.get(
+                    vm["name"]
+                ) == "gone" or not resolves_locally(handle_of(vm)):
+                    # Une VM que l'hyperviseur local ne connaît pas n'a pas de
+                    # bail chez nous : son adresse est celle que cloud-init a
+                    # posée, et virsh ne la voit pas. La chercher rendrait
+                    # « gone » à chaque tour.
                     continue
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):
                     vm["ip"] = ip
-                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    vm["ssh"] = _ligne_ssh(handle_of(vm))
                     changed = True
             if changed:
                 self._refresh_ssh()
@@ -2911,11 +2863,32 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def action_follow(self) -> None:
             self._follow = not self._follow
 
+        def _verbe(self, faire):
+            """Exécute un verbe de VM. Rend son résultat, ou None.
+
+            UNE EXCEPTION DANS UNE ACTION TEXTUAL DÉMONTE L'APPLICATION :
+            l'écran disparaît, une trace s'imprime, et `run()` revient
+            NORMALEMENT — si bien que le « except » posé autour de lui par
+            le menu ne se déclenche jamais. L'utilisateur se retrouve au
+            shell sans un mot du programme, tandis que l'installation,
+            détachée, continue sans plus rien pour la suivre.
+
+            Un backend qui ne sait pas faire le DIT. C'est une nouvelle à
+            afficher, pas une panne du tableau de bord.
+            """
+            try:
+                return faire()
+            except VerbNotImplemented as refus:
+                self.notify(str(refus), severity="warning")
+                return None
+
         def action_ssh(self) -> None:
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
-            cmd = vm_ssh_prefix(vm)
+            cmd = self._verbe(lambda: vm_ssh_prefix(vm))
+            if not cmd:
+                return
             with self.suspend():
                 print(f"\n→ {cmd}\n")
                 os.system(f"{cmd} || true")
@@ -2935,25 +2908,17 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
-            info = vm.get("pve")
-            if info:
-                # VM d'un hôte Proxmox : sa console est « qm terminal », sur
-                # l'hôte. « virsh console <nom> » ouvrait celle du domaine
-                # LOCAL homonyme — la mauvaise machine, sans le dire.
-                cmd = pve_host_cmd(
-                    info, f"qm terminal {int(info.get('vmid') or 0)}", tty=True
+            # L'identité choisit l'outil ET la séquence de sortie : elles
+            # ne sont pas les mêmes selon qui attache, et la donner fausse
+            # laisse l'utilisateur enfermé dans une console.
+            ouverture = self._verbe(
+                lambda: vm_verbs.console(
+                    handle_of(vm), sudo=sudo_prefix(), uri=URI
                 )
-                titre = (
-                    f"qm terminal {info.get('vmid')} @ {info.get('target')}"
-                )
-                sortie = "Ctrl+O"
-            else:
-                cmd = (
-                    f"{sudo_prefix()}virsh --connect {URI} "
-                    f"console {shlex.quote(vm['name'])}"
-                )
-                titre = f"virsh console {vm['name']}"
-                sortie = "Ctrl+]"
+            )
+            if not ouverture:
+                return
+            cmd, titre, sortie = ouverture
             with self.suspend():
                 # La console n'affiche que ce qui arrive APRÈS l'attachement :
                 # sur une VM déjà démarrée l'écran reste noir tant qu'on n'a
@@ -2978,12 +2943,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not browser:
                 return
             port = 18069
-            argv_tunnel = web_tunnel_argv(vm.get("pve"), port)
-            url = (
-                f"http://127.0.0.1:{port}"
-                if argv_tunnel
-                else f"http://{vm['ip']}:8069"
-            )
+            # L'URL et le tunnel viennent ENSEMBLE : décidés séparément, ils
+            # pouvaient se contredire — une page en 127.0.0.1 sans tunnel,
+            # ou l'inverse. Le repli garde l'adresse du déploiement.
+            acces = vm_verbs.web_access(handle_of(vm), port)
+            argv_tunnel = list(acces.tunnel)
+            url = acces.url or f"http://{vm['ip']}:8069"
             with self.suspend():
                 proc = None
                 if argv_tunnel:
@@ -3122,29 +3087,44 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _virsh_bulk(action, cibles):
             """Suspend/reprend chaque VM, chacune par SON hyperviseur.
 
-            `cibles` : [(nom, info_pve|None)]. Une VM distante se suspend par
-            son VMID sur son hôte — « virsh suspend <nom> » aurait mis en
-            pause le domaine LOCAL homonyme."""
-            for nom, info in cibles:
+            Rend les NOMS qu'elle n'a pas pu traiter, pour que l'appelant
+            n'annonce pas le lot entier. Compter comme mise en pause une VM
+            qui tourne encore est le même défaut que la pause posée sur la
+            mauvaise machine : rien ne casse, rien n'alerte.
+
+            `cibles` : des identités. La pause est le pire endroit pour se
+            tromper de machine — rien ne casse, rien n'alerte, et la VM
+            figée est celle qu'on n'a pas regardée.
+
+            UN BACKEND QUI NE SAIT PAS METTRE EN PAUSE REFUSE, et ce refus
+            n'est ni une panne de sous-processus ni une raison d'abandonner
+            les suivantes. Absent du filet, il sortait de la boucle et
+            laissait en marche tout ce qui venait après la première
+            refusée.
+
+            Le délai est celui de la plus lente : une commande distante
+            traverse un ou deux rebonds avant d'atteindre l'hyperviseur.
+            """
+            manques = []
+            for handle in cibles:
                 try:
-                    if info:
-                        vmid = int(info.get("vmid") or 0)
-                        subprocess.run(
-                            pve_host_cmd(info, f"qm {action} {vmid}"),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                            timeout=60,
-                        )
-                    else:
-                        subprocess.run(
-                            virsh_argv(action, nom),
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
+                    commande = vm_verbs.power_command(
+                        handle, action, sudo_prefix(), URI
+                    )
+                except VerbNotImplemented:
+                    manques.append(handle.name)
+                    continue
+                try:
+                    subprocess.run(
+                        commande,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
                 except (OSError, subprocess.SubprocessError):
-                    pass
+                    manques.append(handle.name)
+            return manques
 
         # -- largeur des colonnes ---------------------------------------- #
         COL_STEP = 2
@@ -3171,9 +3151,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _apply_column_widths(self, table) -> None:
             """Fait PRENDRE les largeurs à l'écran.
 
-            « refresh(layout=True) » ne suffit pas, et c'est le piège :
-            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
-            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
+            « refresh(layout=True) » ne suffit pas, et c'est le piège : sur
+            Textual 8.2.8, la largeur de la colonne passe bien de 22 à 34,
+            mais la taille virtuelle du tableau reste à 81 — donc
             rien ne bouge. « clear_cached_dimensions » et « refresh_column »
             n'y changent rien non plus ; seul le recalcul des dimensions la
             porte à 93.
@@ -3280,11 +3260,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not vm.get("ip"):
                 self.notify("Pas d'IP pour cette VM.", severity="error")
                 return
+            prefixe = self._verbe(lambda: vm_ssh_prefix(vm))
+            if not prefixe:
+                return
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
-                os.system(
-                    f"{vm_ssh_prefix(vm)} " f"{shlex.quote(cmd)} || true"
-                )
+                os.system(f"{prefixe} {shlex.quote(cmd)} || true")
                 input("\nEntrée pour revenir au suivi… ")
 
         def _run_update(self, vm, parts) -> None:
@@ -3295,20 +3276,33 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._run_in_vm(vm, cmd, "Mise a jour")
 
         def _ask_delete(self, vm) -> None:
-            """Suppression : jamais sans une seconde main."""
+            """Suppression : jamais sans une seconde main.
+
+            LA COMMANDE EST COMPOSÉE AVANT L'ÉCRAN, et pas seulement pour
+            attraper le refus : un backend qu'on ne sait pas détruire ferait
+            autrement LIRE puis ACCORDER une destruction qui n'aura pas
+            lieu. Composée ici, elle garantit aussi que le texte montré et
+            le geste lancé viennent de la même décision.
+
+            Le garde d'identité voyage avec la VM : c'est ce qui rend une
+            suppression sûre depuis un suivi ROUVERT, dont le manifeste peut
+            avoir des semaines. L'identité choisit le backend ; l'écran n'a
+            plus à savoir lequel.
+            """
+            cmd = self._verbe(
+                lambda: vm_verbs.delete_command(
+                    handle_of(vm),
+                    with_disks=True,
+                    sudo=sudo_prefix(),
+                    uri=URI,
+                )
+            )
+            if not cmd:
+                return
 
             def confirmed(yes):
                 if not yes:
                     return
-                info = vm.get("pve")
-                # Le garde d'identité voyage avec la VM : c'est ce qui
-                # rend une suppression sûre depuis un suivi ROUVERT, dont le
-                # manifeste peut avoir des semaines.
-                cmd = (
-                    delete_vm_cmd_pve(info, name=vm["name"])
-                    if info
-                    else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
-                )
                 with self.suspend():
                     print(f"\n=== Suppression — {vm['name']} ===")
                     print(f"→ {cmd}\n")
@@ -3337,7 +3331,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         async def _bulk_worker(self, action):
             want = "running" if action == "suspend" else "paused"
             targets = [
-                (vm["name"], vm.get("pve"))
+                handle_of(vm)
                 for vm in vms
                 if self._domstate.get(vm["name"]) == want
             ]
@@ -3348,9 +3342,19 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     else t("No paused VM to resume.")
                 )
                 return
-            await asyncio.to_thread(self._virsh_bulk, action, targets)
+            manques = await asyncio.to_thread(
+                self._virsh_bulk, action, targets
+            )
             verb = t("paused") if action == "suspend" else t("resumed")
-            self.notify(f"{len(targets)} VM {verb}.")
+            # LE COMPTE EST CELUI DES VM TRAITÉES. Annoncer le lot entier
+            # quand une partie n'a pas bougé laisse croire un parc au repos
+            # qui tourne encore.
+            message = f"{len(targets) - len(manques)} VM {verb}."
+            if manques:
+                message += f" {len(manques)} {t('left alone:')} " + ", ".join(
+                    manques
+                )
+            self.notify(message)
             # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
             self.run_worker(self._tick_domstate(), exclusive=False)
 

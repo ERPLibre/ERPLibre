@@ -205,7 +205,7 @@ git fetch REMOTE --unshallow
 
 <!-- [common] -->
 ```bash
-git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@mail.com>' --no-edit"
+git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@example.com>' --no-edit"
 ```
 
 <!-- [en] -->

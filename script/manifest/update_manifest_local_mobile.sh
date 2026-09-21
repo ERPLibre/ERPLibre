@@ -13,7 +13,7 @@ fi
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 # Update git-repo
-git daemon --base-path=. --export-all --reuseaddr --informative-errors ${DAEMON_VERBOSE} &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors ${DAEMON_VERBOSE} &
 DAEMON_PID=$!
 
 if [ -L "$EL_MANIFEST_DEV" ]; then

@@ -1,78 +1,123 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Hook pre-commit : montre les commentaires hors convention des fichiers indexés.
+"""Hook pre-commit : ce qu'il y a à relire dans les fichiers indexés.
 
 Il INFORME et ne refuse jamais — le nettoyage se fait au fur et à mesure, sur
 les fichiers qu'on touche déjà, et non en une passe qui réécrirait le dépôt.
 Un hook qui bloquerait sur du style se ferait désinstaller la même semaine.
 
+DEUX OUTILS, UNE SEULE MÉCANIQUE. Ils partagent la convention de sortie des
+outils du dépôt — 0 rien, 1 des trouvailles, 2 l'outil a échoué — et donc le
+même lancement, le même plafond et le même silence quand il n'y a rien.
+Écrire le second à côté du premier aurait donné deux façons de se taire.
+
 Installation :
 
     git config core.hooksPath script/git/hooks
 
-Il sort toujours en 0. Pour l'interroger à la main, sur un fichier ou un
+Il sort toujours en 0. Pour les interroger à la main, sur un fichier ou un
 répertoire :
 
     python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
+    python3 script/analyse/check_guard_shape.py test/
 """
 import subprocess
 import sys
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[3]
-OUTIL = RACINE / "script" / "analyse" / "check_comment_hygiene.py"
+ANALYSE = RACINE / "script" / "analyse"
 
-# Au-delà, le rapport cesse d'être une invitation et devient un mur.
+# Au-delà, le rapport cesse d'être une invitation et devient un mur. Le
+# plafond est PAR OUTIL : deux rapports tronqués valent mieux qu'un seul
+# qui mange la place de l'autre.
 PLAFOND = 12
 
+# Chaque outil, son titre et ce qu'il faut savoir pour agir. La liste est
+# la seule chose à toucher pour en ajouter un troisième.
+OUTILS = (
+    {
+        "script": "check_comment_hygiene.py",
+        "titre": "commentaires à relire dans ce que vous committez",
+        "pied": (
+            "  🔴 identifiant : à retirer. 🟡 récit : à relire — un fait"
+            " durable\n     reste, l'incident où on l'a vu part."
+            "\n  La règle : .claude/rules/04-code-conventions.md"
+        ),
+    },
+    {
+        "script": "check_discarded_verdict.py",
+        "titre": "verdicts jetés là où le fichier les lit ailleurs",
+        "pied": (
+            "  🟡 Ce dépôt LIT cette réponse ailleurs. Jetée, elle se lit"
+            " comme\n     un succès — un refus annoncé comme une"
+            " suppression faite.\n     Un appelant peut avoir raison de"
+            " l'ignorer : qu'il le dise."
+        ),
+    },
+    {
+        "script": "check_guard_shape.py",
+        "titre": "gardes épinglés au texte du source",
+        "pied": (
+            "  🟡 Ce garde compare l'ORTHOGRAPHE du code. Il sera vert le"
+            " jour\n     où il devrait être rouge, et rouge sur un"
+            " renommage anodin.\n     Mesurer la propriété demande souvent"
+            " l'arbre syntaxique."
+        ),
+    },
+)
 
-def main() -> int:
-    if not OUTIL.is_file():
-        return 0
 
+def rapport(outil):
+    """Les lignes à montrer pour cet outil, [] s'il n'y a rien à dire."""
+    chemin = ANALYSE / outil["script"]
+    if not chemin.is_file():
+        return []
     try:
         sortie = subprocess.run(
-            [sys.executable, str(OUTIL), "--staged", "--no-color"],
+            [sys.executable, str(chemin), "--staged", "--no-color"],
             capture_output=True,
             text=True,
             cwd=str(RACINE),
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
-        return 0
-
+        return []
     if sortie.returncode not in (0, 1):
         # Jamais bloquant, mais jamais muet non plus : un outil cassé qui se
         # tait se confond avec un dépôt propre.
         print(
-            f"\n  ⓘ check_comment_hygiene a échoué ({sortie.returncode}) ;"
-            " les commentaires n'ont pas été relus\n",
+            f"\n  ⓘ {outil['script']} a échoué ({sortie.returncode}) ;"
+            " ce qu'il lit n'a pas été relu\n",
             file=sys.stderr,
         )
-        return 0
-
+        return []
     if sortie.returncode != 1 or not sortie.stdout.strip():
-        return 0
-
+        return []
     lignes = sortie.stdout.rstrip("\n").split("\n")
     trop = len(lignes) - PLAFOND
     if trop > 0:
         lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
+    return lignes
 
-    print(
-        "\n  ⓘ commentaires à relire dans ce que vous committez\n",
-        file=sys.stderr,
-    )
-    for ligne in lignes:
-        print(f"   {ligne}", file=sys.stderr)
-    print(
-        "\n  🔴 identifiant : à retirer. 🟡 récit : à relire — un fait durable"
-        "\n     reste, l'incident où on l'a vu part."
-        "\n  La règle : .claude/rules/04-code-conventions.md"
-        "\n  Le commit n'est PAS bloqué. Corrigez ce que vous touchez.\n",
-        file=sys.stderr,
-    )
+
+def main() -> int:
+    dit = False
+    for outil in OUTILS:
+        lignes = rapport(outil)
+        if not lignes:
+            continue
+        dit = True
+        print(f"\n  ⓘ {outil['titre']}\n", file=sys.stderr)
+        for ligne in lignes:
+            print(f"   {ligne}", file=sys.stderr)
+        print(f"\n{outil['pied']}", file=sys.stderr)
+    if dit:
+        print(
+            "\n  Le commit n'est PAS bloqué. Corrigez ce que vous touchez.\n",
+            file=sys.stderr,
+        )
     return 0
 
 

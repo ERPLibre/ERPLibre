@@ -38,10 +38,10 @@ except Exception:  # pragma: no cover - dépend de l'environnement
 class TestSaPlace(unittest.TestCase):
     """L'ordre du panneau est une décision, pas un hasard.
 
-    Relevé sur l'ÉCRAN MONTÉ et non dans la source : depuis que les réglages
-    du système invité viennent d'un socle partagé, le fichier ne contient
-    plus qu'un « yield from » là où le test cherchait un identifiant. Il
-    passait au vert sur un écran qu'il ne lisait plus — puis au rouge sans
+    L'ordre se lit sur l'ÉCRAN MONTÉ et non dans la source : les réglages du
+    système invité venant d'un socle partagé, le fichier ne porte plus qu'un
+    « yield from » là où une épreuve chercherait un identifiant. Lire la
+    source passe au vert sur un écran qu'on ne lit plus, puis au rouge sans
     qu'aucun ordre ait bougé. Le DOM, lui, dit ce que l'utilisateur voit."""
 
     @classmethod

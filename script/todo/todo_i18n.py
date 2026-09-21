@@ -10,7 +10,6 @@ ENV_VAR_FILE = "./env_var.sh"
 _current_lang = None
 
 TRANSLATIONS = {
-    # Main menu
     "Importation success!": {
         "fr": "L'importation est un succès!",
         "en": "Importation success!",
@@ -55,7 +54,6 @@ TRANSLATIONS = {
         "fr": "🔙 Retour",
         "en": "🔙 Back",
     },
-    # Execute submenu
     "Run - Execute and install an instance": {
         "fr": "🏃 Run - Exécuter et installer une instance",
         "en": "🏃 Run - Execute and install an instance",
@@ -104,7 +102,6 @@ TRANSLATIONS = {
         "fr": "🌍 Langue - Changer la langue / Change language",
         "en": "🌍 Language - Change language / Changer la langue",
     },
-    # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "🚀 Déploiement - Déployer ERPLibre localement",
         "en": "🚀 Deploy - Deploy ERPLibre locally",
@@ -330,7 +327,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors du montage sshfs : ",
         "en": "Error mounting sshfs: ",
     },
-    # RTK (Rust Token Killer)
     "Manage RTK (Rust Token Killer) for token optimization!": {
         "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",
         "en": "Manage RTK (Rust Token Killer) for token optimization!",
@@ -410,7 +406,6 @@ TRANSLATIONS = {
         "fr": "cargo - Compilation depuis les sources (Rust requis)",
         "en": "cargo - Build from source (Rust required)",
     },
-    # Prompts and messages
     "Enter your password: ": {
         "fr": "Entrez votre mot de passe : ",
         "en": "Enter your password: ",
@@ -455,7 +450,6 @@ TRANSLATIONS = {
         "fr": "Faites des modifications sur les bases de données!",
         "en": "Make changes to databases!",
     },
-    # Database drop / erase
     "Erase a database": {
         "fr": "🗑  Effacer une base de données",
         "en": "🗑  Erase a database",
@@ -593,7 +587,6 @@ TRANSLATIONS = {
         "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
         "en": "Install with extra modules (CybroOdoo - large, slow)",
     },
-    # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "🧪 Test - Instance de base minimale",
         "en": "🧪 Test - Minimal base instance",
@@ -626,7 +619,6 @@ TRANSLATIONS = {
         "fr": "🎨 Formater le code modifié",
         "en": "🎨 Format modified code",
     },
-    # todo.py hardcoded prompt_descriptions
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",
@@ -730,7 +722,6 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
-    # Test section
     "Test - Test an Odoo module": {
         "fr": "🧪 Test - Tester un module Odoo",
         "en": "🧪 Test - Test an Odoo module",
@@ -823,7 +814,6 @@ TRANSLATIONS = {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
     },
-    # Git section
     "Git - Git and shell tools": {
         "fr": "🌿 Git - Outils Git et Shell",
         "en": "🌿 Git - Git and shell tools",
@@ -880,7 +870,6 @@ TRANSLATIONS = {
         "fr": "Serve - Démarrer le daemon git",
         "en": "Serve - Start git daemon",
     },
-    # Git remote add
     "Add a remote to a local repository": {
         "fr": "🔗 Ajouter un remote vers un dépôt local",
         "en": "🔗 Add a remote to a local repository",
@@ -905,8 +894,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
-    # Git hooks
-    # Starship
     "Install Starship on Shell": {
         "fr": "🚀 Installer Starship sur le shell",
         "en": "🚀 Install Starship on Shell",
@@ -1006,7 +993,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'installation des hooks : ",
         "en": "Error installing hooks: ",
     },
-    # Git config vim
     "Configure git local editor to vim": {
         "fr": "📝 Configuration git local par vim",
         "en": "📝 Configure git local editor to vim",
@@ -1023,7 +1009,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la configuration : ",
         "en": "Error during configuration: ",
     },
-    # GPT code - Claude automation
     "Add an automation with Claude in todo.py": {
         "fr": "🤖 Ajouter une automatisation avec Claude dans todo.py",
         "en": "🤖 Add an automation with Claude in todo.py",
@@ -1048,7 +1033,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout de l'automatisation : ",
         "en": "Error adding automation: ",
     },
-    # SSH Deploy section
     "Deploy - Deploy ERPLibre via SSH": {
         "fr": "Déploiement - Déployer ERPLibre via SSH",
         "en": "Deploy - Deploy ERPLibre via SSH",
@@ -1101,25 +1085,720 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
-    "Remote host (user@hostname or hostname): ": {
-        "fr": "Hôte distant (user@hostname ou hostname) : ",
-        "en": "Remote host (user@hostname or hostname): ",
+    "Deploy › Proxmox VE reaches a remote host from here.": {
+        "fr": "Deploy › Proxmox VE joint un hôte distant depuis ici.",
+        "en": "Deploy › Proxmox VE reaches a remote host from here.",
     },
-    "SSH user (default: erplibre): ": {
-        "fr": "Utilisateur SSH (défaut: erplibre) : ",
-        "en": "SSH user (default: erplibre): ",
+    "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
+    "Backend:": {"fr": "Backend :", "en": "Backend:"},
+    "This machine carries real data": {
+        "fr": "Cette machine porte des données réelles",
+        "en": "This machine carries real data",
     },
-    "SSH port (default: 22): ": {
-        "fr": "Port SSH (défaut: 22) : ",
-        "en": "SSH port (default: 22): ",
+    "Cannot carry real data:": {
+        "fr": "Ne peut pas porter de données réelles :",
+        "en": "Cannot carry real data:",
     },
-    "SSH key path (default: ~/.ssh/id_rsa, empty for none): ": {
-        "fr": "Chemin de la clé SSH (défaut: ~/.ssh/id_rsa, vide pour aucune) : ",
-        "en": "SSH key path (default: ~/.ssh/id_rsa, empty for none): ",
+    "Choice (number or name, blank = the first):": {
+        "fr": "Choix (numéro ou nom, vide = le premier) :",
+        "en": "Choice (number or name, blank = the first):",
     },
-    "Remote path (default: ~/erplibre_deploy_2): ": {
-        "fr": "Chemin distant (défaut: ~/erplibre_deploy_2) : ",
-        "en": "Remote path (default: ~/erplibre_deploy_2): ",
+    "The libvirt network overlaps a route of this host:": {
+        "fr": "Le réseau libvirt recouvre une route de cet hôte :",
+        "en": "The libvirt network overlaps a route of this host:",
+    },
+    "Move its subnet, or stop the network.": {
+        "fr": "Déplacer son sous-réseau, ou arrêter le réseau.",
+        "en": "Move its subnet, or stop the network.",
+    },
+    "The libvirt network is defined but not started.": {
+        "fr": "Le réseau libvirt est défini mais pas démarré.",
+        "en": "The libvirt network is defined but not started.",
+    },
+    "Start it: nothing reaches the VMs without it.": {
+        "fr": "Le démarrer : sans lui rien ne joint les VM.",
+        "en": "Start it: nothing reaches the VMs without it.",
+    },
+    "It works, and it will not come back after a reboot.": {
+        "fr": "Il marche, et il ne remontera pas au prochain démarrage.",
+        "en": "It works, and it will not come back after a reboot.",
+    },
+    "Arm autostart, the subnet being free of collision.": {
+        "fr": "Armer l'autostart, le sous-réseau étant libre de collision.",
+        "en": "Arm autostart, the subnet being free of collision.",
+    },
+    "Network up and armed for the next boot.": {
+        "fr": "Réseau levé et armé pour le prochain démarrage.",
+        "en": "Network up and armed for the next boot.",
+    },
+    "Deploy - verify this station, layer by layer": {
+        "fr": "🩺 Deploy - vérifier cette station, couche par couche",
+        "en": "🩺 Deploy - verify this station, layer by layer",
+    },
+    "Verify the deploying station": {
+        "fr": "Vérifier la station qui déploie",
+        "en": "Verify the deploying station",
+    },
+    "Station": {
+        "fr": "Station",
+        "en": "Station",
+    },
+    "The libvirt network could not be read.": {
+        "fr": "Le réseau libvirt n'a pas pu être lu.",
+        "en": "The libvirt network could not be read.",
+    },
+    "Check virsh and the system URI.": {
+        "fr": "Vérifier virsh et l'URI système.",
+        "en": "Check virsh and the system URI.",
+    },
+    "The lease carries the machine's name.": {
+        "fr": "Le bail porte le nom de la machine.",
+        "en": "The lease carries the machine's name.",
+    },
+    "An address answers, under another name:": {
+        "fr": "Une adresse répond, sous un autre nom :",
+        "en": "An address answers, under another name:",
+    },
+    "unknown": {
+        "fr": "inconnu",
+        "en": "unknown",
+    },
+    "Rename the machine, or clear the stale lease.": {
+        "fr": "Renommer la machine, ou effacer le bail périmé.",
+        "en": "Rename the machine, or clear the stale lease.",
+    },
+    "No lease yet for this machine.": {
+        "fr": "Aucun bail encore pour cette machine.",
+        "en": "No lease yet for this machine.",
+    },
+    "Wait for it to boot, then check again.": {
+        "fr": "Attendre qu'elle démarre, puis recommencer.",
+        "en": "Wait for it to boot, then check again.",
+    },
+    "No domain declared: nothing is served behind TLS.": {
+        "fr": "Aucun domaine déclaré : rien n'est servi derrière TLS.",
+        "en": "No domain declared: nothing is served behind TLS.",
+    },
+    "A domain is declared, and the certificate is not probed:": {
+        "fr": "Un domaine est déclaré, et le certificat n'est pas sondé :",
+        "en": "A domain is declared, and the certificate is not probed:",
+    },
+    "Probing it is not written yet.": {
+        "fr": "Le sonder n'est pas encore écrit.",
+        "en": "Probing it is not written yet.",
+    },
+    "Deploy - verify a deployed VM, layer by layer": {
+        "fr": "🔬 Deploy - vérifier une VM déployée, couche par couche",
+        "en": "🔬 Deploy - verify a deployed VM, layer by layer",
+    },
+    "The backup command failed; nothing was verified: ": {
+        "fr": "La sauvegarde a échoué ; rien n'a été relu : ",
+        "en": "The backup command failed; nothing was verified: ",
+    },
+    "Archive not found where expected; not verified: ": {
+        "fr": "Archive introuvable là où on l'attendait ; non relue : ",
+        "en": "Archive not found where expected; not verified: ",
+    },
+    "Finding not recorded: ": {
+        "fr": "Constat non enregistré : ",
+        "en": "Finding not recorded: ",
+    },
+    "nothing checked": {
+        "fr": "rien de contrôlé",
+        "en": "nothing checked",
+    },
+    "libvirt group is active.": {
+        "fr": "Le groupe libvirt est actif.",
+        "en": "libvirt group is active.",
+    },
+    "You are in the libvirt group, but this session predates it.": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session lui est antérieure.",
+        "en": "You are in the libvirt group, but this session predates it.",
+    },
+    "Log out and back in, or run: newgrp libvirt": {
+        "fr": "Fermer puis rouvrir la session, ou lancer : newgrp libvirt",
+        "en": "Log out and back in, or run: newgrp libvirt",
+    },
+    "Join the libvirt group, then open a new session.": {
+        "fr": "Entrer dans le groupe libvirt, puis ouvrir une nouvelle session.",
+        "en": "Join the libvirt group, then open a new session.",
+    },
+    "Hardware acceleration is available.": {
+        "fr": "L'accélération matérielle est disponible.",
+        "en": "Hardware acceleration is available.",
+    },
+    "No hardware acceleration: VMs will be EMULATED.": {
+        "fr": "Pas d'accélération matérielle : les VM seront ÉMULÉES.",
+        "en": "No hardware acceleration: VMs will be EMULATED.",
+    },
+    "Network posture": {
+        "fr": "Posture réseau",
+        "en": "Network posture",
+    },
+    "Deployment refused:": {
+        "fr": "Déploiement refusé :",
+        "en": "Deployment refused:",
+    },
+    "egress rules posed and armed": {
+        "fr": "règles de sortie posées et armées",
+        "en": "egress rules posed and armed",
+    },
+    "egress rules not rendered": {
+        "fr": "règles de sortie non rendues",
+        "en": "egress rules not rendered",
+    },
+    "Withheld: egress rules did not hold on": {
+        "fr": "Retenu : les règles de sortie n'ont pas tenu sur",
+        "en": "Withheld: egress rules did not hold on",
+    },
+    "Nothing is installed there.": {
+        "fr": "Rien n'y est installé.",
+        "en": "Nothing is installed there.",
+    },
+    "Egress rules cannot be rendered:": {
+        "fr": "Les règles de sortie ne peuvent pas être rendues :",
+        "en": "Egress rules cannot be rendered:",
+    },
+    "Egress rules that would be posed:": {
+        "fr": "Règles de sortie qui seraient posées :",
+        "en": "Egress rules that would be posed:",
+    },
+    "Type the VM name to confirm (empty to cancel): ": {
+        "fr": "Retaper le nom de la VM pour confirmer (vide pour renoncer) : ",
+        "en": "Type the VM name to confirm (empty to cancel): ",
+    },
+    "Type how many VMs are deleted": {
+        "fr": "Retaper combien de VM sont effacées",
+        "en": "Type how many VMs are deleted",
+    },
+    "Kept - these disks belong to something:": {
+        "fr": "Gardés — ces disques appartiennent à quelque chose :",
+        "en": "Kept - these disks belong to something:",
+    },
+    "no proof": {
+        "fr": "aucune preuve",
+        "en": "no proof",
+    },
+    "no identity proof; refused": {
+        "fr": "aucune preuve d'identité ; refusé",
+        "en": "no identity proof; refused",
+    },
+    "Egress rules loaded.": {
+        "fr": "Règles de sortie chargées.",
+        "en": "Egress rules loaded.",
+    },
+    "Egress rules did not load.": {
+        "fr": "Les règles de sortie ne se sont pas chargées.",
+        "en": "Egress rules did not load.",
+    },
+    "Read cloud-init output in the guest.": {
+        "fr": "Lire la sortie de cloud-init dans l'invité.",
+        "en": "Read cloud-init output in the guest.",
+    },
+    "The guest image has no nftables.": {
+        "fr": "L'image de l'invité n'a pas nftables.",
+        "en": "The guest image has no nftables.",
+    },
+    "Pick an image that ships it: none is installed here.": {
+        "fr": "Choisir une image qui le porte : rien n'est installé ici.",
+        "en": "Pick an image that ships it: none is installed here.",
+    },
+    "Egress rules could not be read.": {
+        "fr": "Les règles de sortie n'ont pas pu être lues.",
+        "en": "Egress rules could not be read.",
+    },
+    "Reading the table needs root on the guest.": {
+        "fr": "Lire la table demande root sur l'invité.",
+        "en": "Reading the table needs root on the guest.",
+    },
+    "The guest answered nothing.": {
+        "fr": "L'invité n'a rien répondu.",
+        "en": "The guest answered nothing.",
+    },
+    "Check the guest is up, then check again.": {
+        "fr": "Vérifier que l'invité est levé, puis recommencer.",
+        "en": "Check the guest is up, then check again.",
+    },
+    "VM backends": {"fr": "Backends de VM", "en": "VM backends"},
+    "Deploy - VM backends (which one this machine uses)": {
+        "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",
+        "en": "🖥  Deploy - VM backends (which one this machine uses)",
+    },
+    "The local deployment path drives libvirt only: choosing another backend makes it refuse, and names the one it found.": {
+        "fr": "Le déploiement local ne pilote que libvirt : choisir un autre"
+        " backend le fait refuser, en nommant celui qu'il a trouvé.",
+        "en": "The local deployment path drives libvirt only: choosing another"
+        " backend makes it refuse, and names the one it found.",
+    },
+    "chosen": {"fr": "choisi", "en": "chosen"},
+    "In use:": {"fr": "Employé :", "en": "In use:"},
+    "never run against the real tool: only unit tests cover it": {
+        "fr": "jamais confronté au vrai outil : seules des épreuves"
+        " unitaires le couvrent",
+        "en": "never run against the real tool: only unit tests cover" " it",
+    },
+    "Automatic (decided by the system)": {
+        "fr": "Automatique (décidé par le système)",
+        "en": "Automatic (decided by the system)",
+    },
+    "libvirt/QEMU - this machine": {
+        "fr": "libvirt/QEMU - cette machine",
+        "en": "libvirt/QEMU - this machine",
+    },
+    "Proxmox VE - a remote host": {
+        "fr": "Proxmox VE - un hôte distant",
+        "en": "Proxmox VE - a remote host",
+    },
+    "Lima - a VM on this machine, lighter than libvirt": {
+        "fr": "Lima - une VM sur cette machine, plus léger que libvirt",
+        "en": "Lima - a VM on this machine, lighter than libvirt",
+    },
+    "Here it drives the same hypervisor as libvirt; it earns its place on"
+    " macOS.": {
+        "fr": "Ici il pilote le même hyperviseur que libvirt ; c'est sur"
+        " macOS qu'il gagne sa place.",
+        "en": "Here it drives the same hypervisor as libvirt; it earns its"
+        " place on macOS.",
+    },
+    "libvirt does not exist here: no /dev/kvm, and no Linux bridges.": {
+        "fr": "libvirt n'existe pas ici : ni /dev/kvm, ni ponts Linux.",
+        "en": "libvirt does not exist here: no /dev/kvm, and no Linux"
+        " bridges.",
+    },
+    "Layers": {"fr": "Couches", "en": "Layers"},
+    "Host key not known yet.": {
+        "fr": "Clé d'hôte pas encore connue.",
+        "en": "Host key not known yet.",
+    },
+    "Record it, then check again.": {
+        "fr": "L'enregistrer, puis revérifier.",
+        "en": "Record it, then check again.",
+    },
+    "No answer.": {"fr": "Aucune réponse.", "en": "No answer."},
+    "Check the address and the SSH access.": {
+        "fr": "Vérifier l'adresse et l'accès SSH.",
+        "en": "Check the address and the SSH access.",
+    },
+    "SSH gets through.": {"fr": "SSH passe.", "en": "SSH gets through."},
+    "ERPLibre is not at that path.": {
+        "fr": "ERPLibre n'est pas à ce chemin.",
+        "en": "ERPLibre is not at that path.",
+    },
+    "Push the files, then install.": {
+        "fr": "Pousser les fichiers, puis installer.",
+        "en": "Push the files, then install.",
+    },
+    "Unexpected verdict.": {
+        "fr": "Verdict inattendu.",
+        "en": "Unexpected verdict.",
+    },
+    "Elevation available.": {
+        "fr": "Élévation disponible.",
+        "en": "Elevation available.",
+    },
+    "Root account.": {"fr": "Compte root.", "en": "Root account."},
+    "No passwordless sudo.": {
+        "fr": "Pas de sudo sans mot de passe.",
+        "en": "No passwordless sudo.",
+    },
+    "Two verbs need it; the nine others do not.": {
+        "fr": "Deux verbes en ont besoin ; les neuf autres, non.",
+        "en": "Two verbs need it; the nine others do not.",
+    },
+    "Remember it on the target? (y/N)": {
+        "fr": "La retenir sur la cible ? (o/N)",
+        "en": "Remember it on the target? (y/N)",
+    },
+    "A make target is required!": {
+        "fr": "Une cible make est obligatoire !",
+        "en": "A make target is required!",
+    },
+    "A domain name is required!": {
+        "fr": "Un nom de domaine est obligatoire !",
+        "en": "A domain name is required!",
+    },
+    "SSH - Choose the target machine": {
+        "fr": "🎯 SSH - Choisir la machine visée",
+        "en": "🎯 SSH - Choose the target machine",
+    },
+    "No backup target is configured.": {
+        "fr": "Aucune cible de sauvegarde n'est configurée.",
+        "en": "No backup target is configured.",
+    },
+    "Create one in:": {
+        "fr": "En créer une dans :",
+        "en": "Create one in:",
+    },
+    "Deployment targets": {
+        "fr": "Cibles de déploiement",
+        "en": "Deployment targets",
+    },
+    "No target selected yet.": {
+        "fr": "Aucune cible retenue pour l'instant.",
+        "en": "No target selected yet.",
+    },
+    "None yet: [a] adds the first one.": {
+        "fr": "Aucune pour l'instant : [a] ajoute la première.",
+        "en": "None yet: [a] adds the first one.",
+    },
+    "Add": {"fr": "Ajouter", "en": "Add"},
+    "Edit": {"fr": "Modifier", "en": "Edit"},
+    "Delete": {"fr": "Supprimer", "en": "Delete"},
+    "Forget the selection": {
+        "fr": "Oublier la sélection",
+        "en": "Forget the selection",
+    },
+    "Selection forgotten.": {
+        "fr": "Sélection oubliée.",
+        "en": "Selection forgotten.",
+    },
+    "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Ask the package manager: it is the one that holds authority "
+    "here, and its signature chain covers the whole index, which is "
+    "stronger than a hand-copied checksum. If it answers that the "
+    "package does not exist, that route is shut — read a checksum "
+    "off a verified release and pin it in RELEASES.": {
+        "fr": "Demander au gestionnaire de paquets : c'est lui qui fait "
+        "autorité ici, et sa chaîne de signatures couvre l'index "
+        "entier, ce qui vaut mieux qu'une somme recopiée à la main. "
+        "S'il répond que le paquet n'existe pas, cette voie est fermée "
+        "— relever une somme sur une version vérifiée et l'épingler "
+        "dans RELEASES.",
+        "en": "Ask the package manager: it is the one that holds authority "
+        "here, and its signature chain covers the whole index, which is "
+        "stronger than a hand-copied checksum. If it answers that the "
+        "package does not exist, that route is shut — read a checksum "
+        "off a verified release and pin it in RELEASES.",
+    },
+    "Nobody runs the scheduler on a restored copy: measured 11 late "
+    "on an untouched source database.": {
+        "fr": "Personne ne fait tourner l'ordonnanceur sur une copie "
+        "restaurée : 11 en retard relevés sur une base source intacte.",
+        "en": "Nobody runs the scheduler on a restored copy: measured 11 late "
+        "on an untouched source database.",
+    },
+    "update_prod_to_dev deletes them on purpose; their absence here "
+    "proves nothing.": {
+        "fr": "update_prod_to_dev les supprime exprès ; leur absence ici ne "
+        "prouve rien.",
+        "en": "update_prod_to_dev deletes them on purpose; their absence here "
+        "proves nothing.",
+    },
+    "invoices became journal entries": {
+        "fr": "les factures sont devenues des écritures comptables",
+        "en": "invoices became journal entries",
+    },
+    "Discuss was renamed": {
+        "fr": "Discussion a été renommé",
+        "en": "Discuss was renamed",
+    },
+    "redirections were reworked": {
+        "fr": "les redirections ont été refondues",
+        "en": "redirections were reworked",
+    },
+    "tags became shared": {
+        "fr": "les étiquettes sont devenues partagées",
+        "en": "tags became shared",
+    },
+    "translations moved into jsonb columns": {
+        "fr": "les traductions sont passées dans des colonnes jsonb",
+        "en": "translations moved into jsonb columns",
+    },
+    "company-dependent values moved into jsonb columns": {
+        "fr": "les valeurs dépendantes de la société sont passées dans des "
+        "colonnes jsonb",
+        "en": "company-dependent values moved into jsonb columns",
+    },
+    "chart templates left the database": {
+        "fr": "les modèles de plan comptable ont quitté la base",
+        "en": "chart templates left the database",
+    },
+    "needaction became notifications": {
+        "fr": "needaction est devenu les notifications",
+        "en": "needaction became notifications",
+    },
+    "inventory adjustments became quants": {
+        "fr": "les ajustements d'inventaire sont devenus des quants",
+        "en": "inventory adjustments became quants",
+    },
+    "tracking of fields that ceased to exist": {
+        "fr": "le suivi de champs qui ont cessé d'exister",
+        "en": "tracking of fields that ceased to exist",
+    },
+    "nothing was deleted.": {
+        "fr": "rien n'a été supprimé.",
+        "en": "nothing was deleted.",
+    },
+    "Deleted:": {"fr": "Supprimées :", "en": "Deleted:"},
+    "still in the file.": {
+        "fr": "toujours dans le fichier.",
+        "en": "still in the file.",
+    },
+    "Entries removed:": {
+        "fr": "Entrées retirées :",
+        "en": "Entries removed:",
+    },
+    "Nothing was removed.": {
+        "fr": "Rien n'a été retiré.",
+        "en": "Nothing was removed.",
+    },
+    "attachment(s): delete them, or keep them?": {
+        "fr": "pièce(s) jointe(s) : les effacer, ou les garder ?",
+        "en": "attachment(s): delete them, or keep them?",
+    },
+    "view(s) stay: no backup covers them.": {
+        "fr": "vue(s) restent : aucune sauvegarde ne les couvre.",
+        "en": "view(s) stay: no backup covers them.",
+    },
+    "Nothing erased: the file was not written.": {
+        "fr": "Rien n'a été effacé : le fichier n'a pas été écrit.",
+        "en": "Nothing erased: the file was not written.",
+    },
+    "the file did not read back, nothing counted": {
+        "fr": "le fichier ne s'est pas relu, rien ne les a comptées",
+        "en": "the file did not read back, nothing counted",
+    },
+    "This file is not JSON:": {
+        "fr": "Ce fichier n'est pas du JSON :",
+        "en": "This file is not JSON:",
+    },
+    "Words must be a list or an object:": {
+        "fr": "Les mots doivent être une liste ou un objet :",
+        "en": "Words must be a list or an object:",
+    },
+    "This file declares no word:": {
+        "fr": "Ce fichier ne déclare aucun mot :",
+        "en": "This file declares no word:",
+    },
+    "JSON file of replacement words": {
+        "fr": "fichier JSON de mots de remplacement",
+        "en": "JSON file of replacement words",
+    },
+    "JSON file of words (empty for the built-in): ": {
+        "fr": "Fichier JSON de mots (vide pour ceux d'origine) : ",
+        "en": "JSON file of words (empty for the built-in): ",
+    },
+    "mail_purge_failed": {
+        "fr": "le cache n'a pas été effacé :",
+        "en": "the cache was not erased:",
+    },
+    "The lock was not regenerated; nothing replaced.": {
+        "fr": "Le lock n'a pas été régénéré ; rien n'a été remplacé.",
+        "en": "The lock was not regenerated; nothing replaced.",
+    },
+    "No version in .erplibre-version; nothing replaced.": {
+        "fr": "Aucune version dans .erplibre-version ; rien remplacé.",
+        "en": "No version in .erplibre-version; nothing replaced.",
+    },
+    "Reference lock updated:": {
+        "fr": "Lock de référence mis à jour :",
+        "en": "Reference lock updated:",
+    },
+    "Outbound mirrors": {
+        "fr": "Miroirs sortants",
+        "en": "Outbound mirrors",
+    },
+    "Forge - Declare which way a repository mirrors": {
+        "fr": "Forge - Déclarer dans quel sens un dépôt se miroite",
+        "en": "Forge - Declare which way a repository mirrors",
+    },
+    "Forge - Lay the outbound mirror on the forge": {
+        "fr": "Forge - Poser le miroir sortant sur la forge",
+        "en": "Forge - Lay the outbound mirror on the forge",
+    },
+    "Forge - Show a repository's outbound mirrors": {
+        "fr": "Forge - Montrer les miroirs sortants d'un dépôt",
+        "en": "Forge - Show a repository's outbound mirrors",
+    },
+    "inbound: it lives upstream, and the forge follows it": {
+        "fr": "entrant : il vit chez un amont, et la forge le suit",
+        "en": "inbound: it lives upstream, and the forge follows it",
+    },
+    "outbound: it lives here, and goes out to be seen": {
+        "fr": "sortant : il vit ici, et part se montrer",
+        "en": "outbound: it lives here, and goes out to be seen",
+    },
+    "The manifest derives:": {
+        "fr": "Le manifeste dérive :",
+        "en": "The manifest derives:",
+    },
+    "This site declares:": {
+        "fr": "Ce site déclare :",
+        "en": "This site declares:",
+    },
+    "This site declares nothing.": {
+        "fr": "Ce site ne déclare rien.",
+        "en": "This site declares nothing.",
+    },
+    "follow the manifest (remove the declaration)": {
+        "fr": "suivre le manifeste (retirer la déclaration)",
+        "en": "follow the manifest (remove the declaration)",
+    },
+    "follows the manifest again": {
+        "fr": "suit de nouveau le manifeste",
+        "en": "follows the manifest again",
+    },
+    "Repository number (empty to cancel): ": {
+        "fr": "Numéro du dépôt (vide pour annuler) : ",
+        "en": "Repository number (empty to cancel): ",
+    },
+    "not declared outbound; nothing laid.": {
+        "fr": "non déclaré sortant ; rien n'a été posé.",
+        "en": "not declared outbound; nothing laid.",
+    },
+    "Declare it first with the entry above.": {
+        "fr": "Le déclarer d'abord avec l'entrée au-dessus.",
+        "en": "Declare it first with the entry above.",
+    },
+    "Upstream address to push to: ": {
+        "fr": "Adresse de l'amont vers lequel pousser : ",
+        "en": "Upstream address to push to: ",
+    },
+    "Account on the upstream: ": {
+        "fr": "Compte chez l'amont : ",
+        "en": "Account on the upstream: ",
+    },
+    "Upstream token (not echoed): ": {
+        "fr": "Jeton de l'amont (non affiché) : ",
+        "en": "Upstream token (not echoed): ",
+    },
+    "Empty: nothing laid.": {
+        "fr": "Vide : rien n'a été posé.",
+        "en": "Empty: nothing laid.",
+    },
+    "a mirror already pushes there.": {
+        "fr": "un miroir pousse déjà vers là.",
+        "en": "a mirror already pushes there.",
+    },
+    "The forge pushes this repository nowhere.": {
+        "fr": "La forge ne pousse ce dépôt nulle part.",
+        "en": "The forge pushes this repository nowhere.",
+    },
+    "never pushed": {"fr": "jamais poussé", "en": "never pushed"},
+    "Posture": {"fr": "Posture", "en": "Posture"},
+    "Verify a VM's egress posture, layer by layer": {
+        "fr": "Vérifier la posture de sortie d'une VM, couche par couche",
+        "en": "Verify a VM's egress posture, layer by layer",
+    },
+    "Lima - Verify an instance's egress posture": {
+        "fr": "Lima - Vérifier la posture de sortie d'une instance",
+        "en": "Lima - Verify an instance's egress posture",
+    },
+    "%s guard(s) pinned to the source text — read them again": {
+        "fr": "%s garde(s) épinglé(s) au texte du source — à relire",
+        "en": "%s guard(s) pinned to the source text — read them again",
+    },
+    "does a guard measure a property, or the spelling of the code": {
+        "fr": "un garde mesure-t-il une propriété, ou l'orthographe du code",
+        "en": "does a guard measure a property, or the spelling of the code",
+    },
+    "read %s times here, ignored %s": {
+        "fr": "lu %s fois ici, ignoré %s",
+        "en": "read %s times here, ignored %s",
+    },
+    "%s verdict(s) dropped where this file reads them — read again": {
+        "fr": "%s verdict(s) jeté(s) là où ce fichier les lit — à relire",
+        "en": "%s verdict(s) dropped where this file reads them — read again",
+    },
+    "a verdict dropped where the same file reads it": {
+        "fr": "un verdict jeté là où le même fichier le lit",
+        "en": "a verdict dropped where the same file reads it",
+    },
+    "Could not read the networks this host uses.": {
+        "fr": "Impossible de relever les réseaux que cet hôte utilise.",
+        "en": "Could not read the networks this host uses.",
+    },
+    "egress rules did not load": {
+        "fr": "les règles de sortie ne se sont pas chargées",
+        "en": "egress rules did not load",
+    },
+    "Not installed: these are not confined.": {
+        "fr": "Rien n'est installé dessus : elles ne sont pas confinées.",
+        "en": "Not installed: these are not confined.",
+    },
+    "Role of this profile": {
+        "fr": "Rôle de ce profil",
+        "en": "Role of this profile",
+    },
+    "workshop: one works here, and what is laid here can be redone": {
+        "fr": "atelier : on y travaille, et ce qu'on y pose peut se refaire",
+        "en": "workshop: one works here, and what is laid here can be redone",
+    },
+    "authority: the one you start again from when the station burns": {
+        "fr": "autorité : celle dont on repart quand la station brûle",
+        "en": "authority: the one you start again from when the station"
+        " burns",
+    },
+    "AUTHORITY": {"fr": "AUTORITÉ", "en": "AUTHORITY"},
+    "Another profile is already the authority:": {
+        "fr": "Un autre profil est déjà l'autorité :",
+        "en": "Another profile is already the authority:",
+    },
+    "Not a deployment target:": {
+        "fr": "Ce n'est pas une cible de déploiement :",
+        "en": "Not a deployment target:",
+    },
+    "What the target is for": {
+        "fr": "Ce à quoi la cible sert",
+        "en": "What the target is for",
+    },
+    "ERPLibre is installed and served there": {
+        "fr": "ERPLibre y est installé et servi",
+        "en": "ERPLibre is installed and served there",
+    },
+    "it RECEIVES the backup archives": {
+        "fr": "elle REÇOIT les archives de sauvegarde",
+        "en": "it RECEIVES the backup archives",
+    },
+    "Target name (lowercase, digits, - or _)": {
+        "fr": "Nom de la cible (minuscules, chiffres, - ou _)",
+        "en": "Target name (lowercase, digits, - or _)",
+    },
+    "Address: user@host, or a ~/.ssh/config alias": {
+        "fr": "Adresse : compte@hôte, ou un alias de ~/.ssh/config",
+        "en": "Address: user@host, or a ~/.ssh/config alias",
+    },
+    "Jump host (empty: connect directly)": {
+        "fr": "Machine de rebond (vide : connexion directe)",
+        "en": "Jump host (empty: connect directly)",
+    },
+    "SSH port (empty: let ssh decide)": {
+        "fr": "Port SSH (vide : laisser ssh décider)",
+        "en": "SSH port (empty: let ssh decide)",
+    },
+    "Private key path (empty: ~/.ssh/config decides)": {
+        "fr": "Chemin de la clé privée (vide : ~/.ssh/config décide)",
+        "en": "Private key path (empty: ~/.ssh/config decides)",
+    },
+    "Remote path where ERPLibre lives": {
+        "fr": "Chemin distant où vit ERPLibre",
+        "en": "Remote path where ERPLibre lives",
+    },
+    "Domain served over HTTPS (empty: not served)": {
+        "fr": "Domaine servi en HTTPS (vide : pas servi)",
+        "en": "Domain served over HTTPS (empty: not served)",
+    },
+    "Admin email for the certificate": {
+        "fr": "Courriel d'administration pour le certificat",
+        "en": "Admin email for the certificate",
+    },
+    "Target refused: ": {"fr": "Cible refusée : ", "en": "Target refused: "},
+    "Target saved: ": {
+        "fr": "Cible enregistrée : ",
+        "en": "Target saved: ",
+    },
+    "It becomes the selected target.": {
+        "fr": "Elle devient la cible retenue.",
+        "en": "It becomes the selected target.",
+    },
+    "Delete target": {"fr": "Supprimer la cible", "en": "Delete target"},
+    "Target deleted.": {"fr": "Cible supprimée.", "en": "Target deleted."},
+    "Not deletable here: this target comes from a shared configuration"
+    " file.": {
+        "fr": "Pas supprimable ici : cette cible vient d'un fichier de"
+        " configuration partagé.",
+        "en": "Not deletable here: this target comes from a shared"
+        " configuration file.",
     },
     "Make target to run remotely: ": {
         "fr": "Cible make à exécuter à distance : ",
@@ -1137,7 +1816,6 @@ TRANSLATIONS = {
         "fr": "L'hôte SSH est requis!",
         "en": "SSH host is required!",
     },
-    # Language selection
     "Choose language / Choisir la langue": {
         "fr": "Choisir la langue / Choose language",
         "en": "Choose language / Choisir la langue",
@@ -1162,7 +1840,6 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
-    # GPT code section
     "GPT code - AI assistant tools": {
         "fr": "🤖 GPT code - Outils d'assistant IA",
         "en": "🤖 GPT code - AI assistant tools",
@@ -1210,7 +1887,6 @@ TRANSLATIONS = {
         "fr": "Déployer les commandes Claude Code!",
         "en": "Deploy Claude Code commands!",
     },
-    # Claude Code plugins
     "Claude Code plugins - marketplaces and ERPLibre list": {
         "fr": "🧩 Plugins Claude Code - marketplaces et liste ERPLibre",
         "en": "🧩 Claude Code plugins - marketplaces and ERPLibre list",
@@ -1255,9 +1931,6 @@ TRANSLATIONS = {
         "fr": "Ajouter un marketplace",
         "en": "Add a marketplace",
     },
-    # Sert la section « Maintenance » des deux menus qui en portent une :
-    # la traduction est la même, et une clé répétée écrase la précédente en
-    # silence.
     "Maintenance": {
         "fr": "Maintenance",
         "en": "Maintenance",
@@ -1362,7 +2035,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
-    # NTFY section
     "Deploy - Install NTFY notification server": {
         "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
         "en": "🔔 Deploy - Install NTFY notification server",
@@ -1395,7 +2067,6 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
-    # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
         "en": "📦 QEMU cache - Download mirror for local VMs",
@@ -2144,7 +2815,6 @@ TRANSLATIONS = {
         "fr": "📦 Cache de téléchargement : mesurer, puis couper l'amont",
         "en": "📦 Download cache: measure, then cut the upstream",
     },
-    # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
         "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
         "en": "💻 QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
@@ -2213,9 +2883,9 @@ TRANSLATIONS = {
         "fr": "IBM Z — émulé, lent sur x86 ; Ubuntu uniquement",
         "en": "IBM Z — emulated, slow on x86; Ubuntu only",
     },
-    "IBM Z — emulated, slow; Ubuntu only": {
-        "fr": "IBM Z — émulé, lent ; Ubuntu uniquement",
-        "en": "IBM Z — emulated, slow; Ubuntu only",
+    "IBM Z — emulated, slow": {
+        "fr": "IBM Z — émulé, lent",
+        "en": "IBM Z — emulated, slow",
     },
     "ARM 64-bit — emulated, slow": {
         "fr": "ARM 64 bits — émulé, lent",
@@ -3283,7 +3953,6 @@ TRANSLATIONS = {
         "fr": "virt-viewer manque ici ; installation.",
         "en": "virt-viewer is missing here; installing it.",
     },
-    # Là où « aucun gestionnaire » est vrai ET sans issue.
     "NixOS: nix-shell -p <package> for one shell, or declare it in"
     " /etc/nixos/configuration.nix": {
         "fr": (
@@ -4138,6 +4807,10 @@ TRANSLATIONS = {
         "fr": "Changer l'état d'une ou plusieurs VM",
         "en": "Change the state of one or more VMs",
     },
+    "Detail of one VM (uptime, CPU, memory)": {
+        "fr": "Détail d'une VM (uptime, CPU, mémoire)",
+        "en": "Detail of one VM (uptime, CPU, memory)",
+    },
     "Enter": {
         "fr": "Entrée",
         "en": "Enter",
@@ -4509,7 +5182,6 @@ TRANSLATIONS = {
         "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
         "en": "Nested QEMU depth: plan only (dry-run)",
     },
-    # ERPLibre installé sur NixOS, de bout en bout.
     "ERPLibre on NixOS: plan only (dry-run)": {
         "fr": "ERPLibre sur NixOS : le plan seulement (à blanc)",
         "en": "ERPLibre on NixOS: plan only (dry-run)",
@@ -4678,7 +5350,6 @@ TRANSLATIONS = {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",
     },
-    # --- Écran de déploiement Proxmox VE (formulaire TUI) ---
     "Deploy one or more ERPLibre VMs on Proxmox VE!": {
         "fr": "Déployer une ou plusieurs VM ERPLibre sur Proxmox VE !",
         "en": "Deploy one or more ERPLibre VMs on Proxmox VE!",
@@ -5286,10 +5957,6 @@ TRANSLATIONS = {
         "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
         "en": "Confirm deletion? (y/N, default: no): ",
     },
-    "Deletion done.": {
-        "fr": "Effacement terminé.",
-        "en": "Deletion done.",
-    },
     "Clean up QEMU (orphan files)": {
         "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
         "en": "🧹 Clean up QEMU (orphan files)",
@@ -5362,9 +6029,6 @@ TRANSLATIONS = {
         "fr": "Aucune VM créée pour l'instant.",
         "en": "No VM created yet.",
     },
-    # « models » manquait alors que ses trois voisines de la même ligne
-    # étaient traduites : le rapport de qualité de migration sortait
-    # « 42 modules · 812 models · 1 204 vues ».
     "models": {
         "fr": "modèles",
         "en": "models",
@@ -5525,6 +6189,86 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "authority declared:": {
+        "fr": "autorité déclarée :",
+        "en": "authority declared:",
+    },
+    "outbound mirrors declared:": {
+        "fr": "miroirs sortants déclarés :",
+        "en": "outbound mirrors declared:",
+    },
+    "The code carries the role and refuses two authorities; this": {
+        "fr": "Le code porte le rôle et refuse deux autorités ; ce",
+        "en": "The code carries the role and refuses two authorities; this",
+    },
+    " site declares none.": {
+        "fr": " site n'en déclare aucune.",
+        "en": " site declares none.",
+    },
+    "The code derives the direction and drives the push mirror;": {
+        "fr": "Le code dérive le sens et pilote le miroir sortant ;",
+        "en": "The code derives the direction and drives the push mirror;",
+    },
+    " this site declares no outbound one.": {
+        "fr": " ce site n'en déclare aucun.",
+        "en": " this site declares no outbound one.",
+    },
+    "attachment(s) whose content leaves no copy:": {
+        "fr": "pièce(s) dont le contenu part sans copie :",
+        "en": "attachment(s) whose content leaves no copy:",
+    },
+    "file(s) the plan does not cover, left in place:": {
+        "fr": "fichier(s) hors du plan, laissés en place :",
+        "en": "file(s) the plan does not cover, left in place:",
+    },
+    "Nested directory removed (it was empty).": {
+        "fr": "Dossier imbriqué retiré (il était vide).",
+        "en": "Nested directory removed (it was empty).",
+    },
+    "Locale": {
+        "fr": "Locale",
+        "en": "Locale",
+    },
+    "left alone:": {
+        "fr": "laissée(s) telle(s) quelle(s) :",
+        "en": "left alone:",
+    },
+    "file(s) shown": {
+        "fr": "fichier(s) montré(s)",
+        "en": "file(s) shown",
+    },
+    "row(s) to delete": {
+        "fr": "ligne(s) à supprimer",
+        "en": "row(s) to delete",
+    },
+    "Could not read the neutralization flag.": {
+        "fr": "Le drapeau de neutralisation n'a pas pu être lu.",
+        "en": "Could not read the neutralization flag.",
+    },
+    "does not carry the neutralization flag, so there is": {
+        "fr": "ne porte pas le drapeau de neutralisation, donc il n'y a",
+        "en": "does not carry the neutralization flag, so there is",
+    },
+    "no test user to sign in with.": {
+        "fr": "aucun utilisateur de test avec qui se connecter.",
+        "en": "no test user to sign in with.",
+    },
+    "This name says neutralized, and it is not.": {
+        "fr": "Ce nom annonce une neutralisation qui n'a pas eu lieu.",
+        "en": "This name says neutralized, and it is not.",
+    },
+    "This VM gets NO egress rule:": {
+        "fr": "Cette VM n'aura AUCUNE règle de sortie :",
+        "en": "This VM gets NO egress rule:",
+    },
+    "It runs with free egress, despite its posture.": {
+        "fr": "Elle tourne en sortie libre, malgré sa posture.",
+        "en": "It runs with free egress, despite its posture.",
+    },
+    "margin for what will be installed": {
+        "fr": "marge pour ce qui sera installé",
+        "en": "margin for what will be installed",
+    },
     "Total RAM (all running):": {
         "fr": "RAM totale (toutes actives) :",
         "en": "Total RAM (all running):",
@@ -5568,8 +6312,6 @@ TRANSLATIONS = {
         "fr": "Existantes, laissées intactes :",
         "en": "Existing, left untouched:",
     },
-    # Renommée : la case commande TOUTE installation — ERPLibre, Odoo, mais
-    # aussi l'hyperviseur Proxmox VE, qui n'installe ni l'un ni l'autre.
     "Install:": {
         "fr": "Installation :",
         "en": "Install:",
@@ -5790,13 +6532,10 @@ TRANSLATIONS = {
             " (y/N, default: no): "
         ),
     },
-    # Récupération de fichiers dans le disque d'une VM (libguestfs)
-    # Outils d'assistance posés dans une VM au déploiement.
     "AI coding tools": {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
-    # Ce qu'il faut savoir de l'image d'une VM, dit avant de la créer.
     "%s: image rebuilt by a third party, not published by the distribution": {
         "fr": (
             "%s : image reconstruite par un tiers, non publiée par la"
@@ -5811,7 +6550,6 @@ TRANSLATIONS = {
         "fr": "release épinglée sur %s, sha256 figée dans le dépôt",
         "en": "release pinned to %s, sha256 fixed in the repository",
     },
-    # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
     "sudo password: asked when the deployment starts": {
         "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",
         "en": "sudo password: asked when the deployment starts, for",
@@ -5853,8 +6591,6 @@ TRANSLATIONS = {
         "fr": "rtk, starship, un agent, git et Claude prêts",
         "en": "rtk, starship, one agent, git and Claude ready",
     },
-    # Nix posé dans une VM qui n'est pas NixOS, et l'installateur qui porte
-    # NixOS sur une autre machine.
     "nix + nixos-anywhere": {
         "fr": "nix + nixos-anywhere",
         "en": "nix + nixos-anywhere",
@@ -6023,6 +6759,17 @@ TRANSLATIONS = {
         "fr": "compte système, service systemd, compte administrateur",
         "en": "system account, systemd service, admin account",
     },
+    "admin password drawn into /etc/forgejo/admin-password": {
+        "fr": (
+            "mot de passe admin tiré au sort dans"
+            " /etc/forgejo/admin-password"
+        ),
+        "en": "admin password drawn into /etc/forgejo/admin-password",
+    },
+    "registration closed, private-range mirrors refused": {
+        "fr": "inscription fermée, miroirs en plage privée refusés",
+        "en": "registration closed, private-range mirrors refused",
+    },
     "posed by script/forgejo/install_forgejo.sh": {
         "fr": "posé par script/forgejo/install_forgejo.sh",
         "en": "posed by script/forgejo/install_forgejo.sh",
@@ -6107,8 +6854,6 @@ TRANSLATIONS = {
         "fr": "Pour défiger, la VM arrêtée :",
         "en": "To unpin, VM stopped:",
     },
-    # Une VM dont libvirt a figé le device vidéo sur une variante sans GL
-    # tourne sans 3D, même avec « accel3d=yes » dans sa définition.
     "frozen on": {
         "fr": "figée sur",
         "en": "frozen on",
@@ -6252,7 +6997,6 @@ TRANSLATIONS = {
         "fr": "🔌 Accès aux VM",
         "en": "🔌 VM access",
     },
-    # Menu QEMU — section « Réseau »
     "VM network": {
         "fr": "🌐 Réseau",
         "en": "🌐 Network",
@@ -7417,7 +8161,6 @@ TRANSLATIONS = {
         "fr": "🧰 QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
         "en": "🧰 QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
     },
-    # QEMU - statistics screen
     "Statistics (installs, durations, VMs)": {
         "fr": "📊 Statistiques (installations, durées, VM)",
         "en": "📊 Statistics (installs, durations, VMs)",
@@ -7459,7 +8202,6 @@ TRANSLATIONS = {
     "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
-    # Database migration - resume menu
     "Migration in progress": {
         "fr": "Migration en cours",
         "en": "Migration in progress",
@@ -7538,11 +8280,6 @@ TRANSLATIONS = {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",
     },
-    # --- Menu Execute › Analyse ---
-    # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
-    # comme « Data » / « Database » : l'entrée de menu porte l'émoji,
-    # l'étiquette du fil d'Ariane est nue — _todo_telemetry_tui traduit le
-    # dernier segment du chemin, et un émoji y détonnerait.
     "Analyse - Odoo database analysis": {
         "fr": "🔬 Analyse - Analyse de base de données Odoo",
         "en": "🔬 Analyse - Odoo database analysis",
@@ -7596,10 +8333,6 @@ TRANSLATIONS = {
         "fr": "Analyser une base, sans jamais y écrire !",
         "en": "Analyse a database, without ever writing to it!",
     },
-    # Les icônes du sous-menu Analyse. Elles sont réservées d'avance pour la
-    # famille entière — 🧱 index, 🎈 ballonnement, 📎 pièces jointes,
-    # 🔗 ir_model_data — pour qu'ajouter un outil ne demande pas d'en
-    # rechercher une libre, et que deux outils voisins ne se ressemblent pas.
     "Structure": {"fr": "🗄  Structure", "en": "🗄  Structure"},
     "Tables and database size": {
         "fr": "📏 Tables et poids de la base",
@@ -8718,10 +9451,6 @@ TRANSLATIONS = {
         "fr": "Choix inconnu, rien n'a été réinitialisé.",
         "en": "Unknown choice, nothing was reset.",
     },
-    "Delete these leftovers, or keep them?": {
-        "fr": "Effacer ces restes, ou les garder ?",
-        "en": "Delete these leftovers, or keep them?",
-    },
     "Enter = keep": {
         "fr": "Entrée = garder",
         "en": "Enter = keep",
@@ -9342,7 +10071,6 @@ TRANSLATIONS = {
         "fr": "l'outil lui-même a échoué",
         "en": "the tool itself failed",
     },
-    # Contexte fourni à Claude
     "Show the context given to Claude": {
         "fr": "🧠 Afficher le contexte fourni à Claude",
         "en": "🧠 Show the context given to Claude",
@@ -9375,7 +10103,6 @@ TRANSLATIONS = {
         "fr": "absent",
         "en": "missing",
     },
-    # Garde-fou du message de commit
     "the subject must start with a tag: %s": {
         "fr": "le sujet doit commencer par un tag : %s",
         "en": "the subject must start with a tag: %s",
@@ -9623,9 +10350,6 @@ TRANSLATIONS = {
         "fr": "Qualité de la migration, palier par palier",
         "en": "Migration quality, step by step",
     },
-    # --- Écran de qualité : Verdicts, Validation, Revue ---
-    # --- Journal d'étape et bascule de version ---
-    # --- Dérive du référentiel comptable ---
     "Did the last step add to the accounting data?": {
         "fr": "Le dernier palier a-t-il gonflé le référentiel comptable ?",
         "en": "Did the last step add to the accounting data?",
@@ -9818,8 +10542,6 @@ TRANSLATIONS = {
         "fr": "lancer le test quand même ?",
         "en": "run the test anyway?",
     },
-    # --- Trous dans les manifestes Google Repo ---
-    # --- Type de vue « tree » resté dans un module ---
     "Is any module still on a pre-18 view type?": {
         "fr": "Un module est-il resté sur un type de vue d'avant 18 ?",
         "en": "Is any module still on a pre-18 view type?",
@@ -9916,8 +10638,6 @@ TRANSLATIONS = {
         "fr": "le code de sortie ne les compte pas.",
         "en": "the exit code ignores them.",
     },
-    # Les six questions de la revue : t() les reçoit par
-    # variable, un scan des littéraux ne les voyait pas.
     "Did the migration reach the end?": {
         "fr": "La migration est-elle allée jusqu'au bout ?",
         "en": "Did the migration reach the end?",
@@ -11112,7 +11832,6 @@ TRANSLATIONS = {
         "fr": "Choisissez une étape, Entrée rejoue à partir de là.",
         "en": "Choose a step, Enter replays from there.",
     },
-    # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
         "en": "Customised views",
@@ -11220,10 +11939,6 @@ TRANSLATIONS = {
         "fr": "Comparer avec la source du module ? (O/n) : ",
         "en": "Compare with the module source? (Y/n): ",
     },
-    # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
-    # conseillé en options de ligne de commande est devenu des entrées :
-    # dire « utilisez -v » à quelqu'un qui est dans un menu, c'est lui
-    # demander d'en sortir pour obtenir ce que le menu pouvait offrir.
     "Browse the differences (TUI)": {
         "fr": "🖥  Naviguer dans les écarts (plein écran)",
         "en": "🖥  Browse the differences (TUI)",
@@ -11310,7 +12025,6 @@ TRANSLATIONS = {
         "fr": "Cette sauvegarde ne contient aucun dump.sql : ",
         "en": "This backup holds no dump.sql: ",
     },
-    # --- script/analyse : champs et modèles hors module ---
     "Nothing declares these in a file, so no module will "
     "recreate them. What a version upgrade keeps is what "
     "someone carried over.": {
@@ -11386,7 +12100,6 @@ TRANSLATIONS = {
         "fr": "À reporter à la main",
         "en": "To carry over by hand",
     },
-    # --- script/analyse : comparaison et navigation des écarts ---
     "Differences only": {
         "fr": "Écarts seuls",
         "en": "Differences only",
@@ -11496,7 +12209,6 @@ TRANSLATIONS = {
         "fr": "Pour rendre à cette vue ce que déclare son module :",
         "en": "To restore this view to what its module declares:",
     },
-    # --- script/analyse : erreurs du socle ---
     "Invalid database name: ": {
         "fr": "Nom de base invalide : ",
         "en": "Invalid database name: ",
@@ -11539,7 +12251,6 @@ TRANSLATIONS = {
         "fr": "Poids dans le dump",
         "en": "Weight in the dump",
     },
-    # --- script/analyse : poids du schéma ---
     "Schema analysis": {
         "fr": "Analyse du schéma",
         "en": "Schema analysis",
@@ -11637,7 +12348,6 @@ TRANSLATIONS = {
         "fr": "chemin d'un fichier de configuration Odoo",
         "en": "path to an Odoo config file",
     },
-    # Courriel
     "mail_menu": {
         "fr": "📧 Courriel - Lire et envoyer du courriel",
         "en": "📧 Mail - Read and send email",
@@ -11739,8 +12449,6 @@ TRANSLATIONS = {
         "fr": "Aucun coffre disponible : installez pykeepass ou déverrouillez un trousseau système.",
         "en": "No vault available: install pykeepass or unlock a system keyring.",
     },
-    # Coffre KeePass, côté infrastructure partagée (`kdbx_manager`) : ces
-    # messages servent à TOUT le CLI, pas seulement au courriel.
     "kdbx_vault_is": {
         "fr": "Coffre KeePass :",
         "en": "KeePass vault:",
@@ -11929,12 +12637,6 @@ TRANSLATIONS = {
         "en": "Drag to resize",
     },
     "mail_fullscreen_binding": {"fr": "Plein écran", "en": "Full screen"},
-    # -- Libellés des raccourcis de MailApp (suffixe _binding) -------------
-    # Ce sont les descriptions des `Binding` de `MailApp` : elles s'affichent
-    # au pied d'écran ET, depuis la tâche 26, dans la fenêtre d'aide (`h`),
-    # qui les lit directement dans `MailApp.BINDINGS`. Le français est repris
-    # MOT POUR MOT de ce qui était écrit en dur avant cette tâche — le pied
-    # d'écran d'un utilisateur francophone ne change pas.
     "mail_quit_binding": {"fr": "Quitter", "en": "Quit"},
     "mail_sync_current_binding": {"fr": "Sync", "en": "Sync"},
     "mail_sync_all_binding": {"fr": "Sync tout", "en": "Sync all"},
@@ -11954,10 +12656,6 @@ TRANSLATIONS = {
         "fr": "Nouveau compte",
         "en": "New account",
     },
-    # -- Fenêtre d'aide (touche h) -----------------------------------------
-    # La liste des touches n'est PAS ici : elle est engendrée depuis
-    # `MailApp.BINDINGS` (voir `HelpScreen`), avec les libellés ci-dessus.
-    # Seul ce qu'une liste de touches ne peut pas dire est rédigé ici.
     "mail_help_binding": {"fr": "Aide", "en": "Help"},
     "mail_help_close": {"fr": "Fermer", "en": "Close"},
     "mail_help_title": {
@@ -12025,23 +12723,6 @@ TRANSLATIONS = {
         "fr": "Échap ferme cette fenêtre.",
         "en": "Esc closes this window.",
     },
-    # -- Exceptions internes au paquet courriel (préfixe mail_err_) --------
-    # Label traduit, données dynamiques (chemins, texte serveur, valeurs de
-    # config) concaténées crues : jamais de traduction d'un message serveur
-    # ou d'un chemin de fichier.
-    #
-    # Quelques messages ont la donnée dynamique AU MILIEU de la phrase : ils
-    # sont donc assemblés à partir de deux clés (voire trois), dans un ordre
-    # FIXE codé au site d'appel plutôt que par une seule clé avec un
-    # emplacement — mail_err_unknown_security + mail_err_expected,
-    # mail_err_key_wrong_length + mail_err_octets_unit,
-    # mail_err_mode_prefix + mail_err_mode_requires_key(_no_vault),
-    # mail_err_imap_connection_prefix / mail_err_smtp_connection_prefix +
-    # mail_err_connection_refused_suffix, et mail_err_keyring_plaintext +
-    # mail_err_keyring_plaintext_hint. L'ordre des mots vit donc dans le
-    # code, pas dans les chaînes traduisibles : une langue à l'ordre des
-    # mots différent devra remplacer ces paires par une convention à
-    # emplacement (ex. `.format()`), pas par une simple concaténation.
     "mail_err_envelope_too_short": {
         "fr": "enveloppe trop courte",
         "en": "envelope too short",
@@ -12088,10 +12769,6 @@ TRANSLATIONS = {
         "fr": "référence de secret invalide :",
         "en": "invalid secret reference:",
     },
-    # Notes par fournisseur. Affichées à l'ajout d'un compte ET juste avant
-    # de redemander un mot de passe après un refus : elles doivent donner
-    # l'adresse EXACTE, pas un chemin de menu — Google et Apple déplacent
-    # régulièrement ces pages, et Google cache la sienne.
     "mail_preset_note_gmail": {
         "fr": (
             "Générez-le sur https://myaccount.google.com/apppasswords"
@@ -12276,7 +12953,6 @@ TRANSLATIONS = {
         "en": "no recipient: nothing was sent",
     },
     "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
-    # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
         "fr": "IDE Python, projet ERPLibre pré-configuré",
         "en": "Python IDE, ERPLibre project pre-configured",
@@ -12737,6 +13413,14 @@ TRANSLATIONS = {
         "fr": "Identifiant : ",
         "en": "User login: ",
     },
+    "No analysis reads a live instance yet.": {
+        "fr": "Aucune analyse ne lit encore une instance vivante.",
+        "en": "No analysis reads a live instance yet.",
+    },
+    "Connect anyway, to check the credentials? (y/N): ": {
+        "fr": "Se connecter quand même, pour vérifier les accès (o/N) ? ",
+        "en": "Connect anyway, to check the credentials? (y/N): ",
+    },
     "Instance URL (ex. https://example.com): ": {
         "fr": "URL de l'instance (ex. https://exemple.com) : ",
         "en": "Instance URL (ex. https://example.com): ",
@@ -12776,6 +13460,34 @@ TRANSLATIONS = {
     "Neutralize the database (Y/n)? ": {
         "fr": "Neutraliser la base (O/n) ? ",
         "en": "Neutralize the database (Y/n)? ",
+    },
+    "Image name (no .zip): ": {
+        "fr": "Nom de l'image (sans .zip) : ",
+        "en": "Image name (no .zip): ",
+    },
+    "Image not found: ": {
+        "fr": "Image introuvable : ",
+        "en": "Image not found: ",
+    },
+    "Would you like to update all addons (y/N)? ": {
+        "fr": "Mettre à jour tous les modules (o/N) ? ",
+        "en": "Would you like to update all addons (y/N)? ",
+    },
+    "Nothing is destroyed without reading first.": {
+        "fr": "Rien n'est détruit sans avoir lu d'abord.",
+        "en": "Nothing is destroyed without reading first.",
+    },
+    "Drill database: destroying it is safe.": {
+        "fr": "Base d'exercice : la détruire ne coûte rien.",
+        "en": "Drill database: destroying it is safe.",
+    },
+    "This database will be ERASED: ": {
+        "fr": "Cette base va être EFFACÉE : ",
+        "en": "This database will be ERASED: ",
+    },
+    "Retype its name to confirm: ": {
+        "fr": "Retaper son nom pour confirmer : ",
+        "en": "Retype its name to confirm: ",
     },
     "The restore failed.": {
         "fr": "La restauration a échoué.",
@@ -13249,7 +13961,6 @@ TRANSLATIONS = {
         "fr": "intactes :",
         "en": "alone:",
     },
-    # VPN (script/todo/vpn_menu.py, script/vpn/)
     "VPN & tunnels": {
         "fr": "🔐 VPN et tunnels",
         "en": "🔐 VPN & tunnels",
@@ -13653,7 +14364,6 @@ TRANSLATIONS = {
         "fr": "Le mot de passe MAÎTRE du coffre est écrit en clair dans la configuration. Le retirer et le saisir à la demande.",
         "en": "The vault MASTER password is stored in the configuration in clear text. Remove it and type it on demand.",
     },
-    # VPN — pilotes de la phase 2 et 3 (WireGuard, OpenVPN, OpenConnect, sshuttle)
     "never mounted against a real server: only unit tests cover it": {
         "fr": (
             "jamais monté contre un vrai serveur : seuls les tests"
@@ -13805,7 +14515,6 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
-    # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
         "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
         "en": "🤖 AI question - Ask a model, local or remote",
@@ -14064,9 +14773,6 @@ TRANSLATIONS = {
         "fr": "Aucun serveur sur %s (%s, %s, %ss).",
         "en": "No server on %s (%s, %s, %ss).",
     },
-    # « host » et « port » sont déjà déclarées plus haut dans ce fichier, avec
-    # ce français : les redéclarer ici les écraserait en silence. L'accord des
-    # nombres les lit telles quelles.
     "model": {
         "fr": "modèle",
         "en": "model",
@@ -14162,10 +14868,6 @@ TRANSLATIONS = {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
     },
-    # Les noms et descriptions des gpts livrés (script/todo/assistant/gpt/).
-    # L'anglais EST la clé, comme partout : un gpt non traduit
-    # s'affiche en anglais au lieu de rien. L'emoji vit dans la
-    # valeur, jamais dans la clé.
     "Unit test failure - the cause, and what to read next": {
         "fr": "🧪 Échec de test unitaire - la cause, et quoi lire ensuite",
         "en": "Unit test failure - the cause, and what to read next",
@@ -14214,7 +14916,6 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
-    # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {
         "fr": "🤖 Claude Code - sessions locales",
         "en": "🤖 Claude Code - local sessions",
@@ -14275,8 +14976,6 @@ TRANSLATIONS = {
         "fr": "lecture seule : Read, Glob, Grep",
         "en": "read-only: Read, Glob, Grep",
     },
-    # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
-    # script/todo/assistant/context.py, capabilities.py)
     "No front-matter: a gpt opens with ---": {
         "fr": "Pas d'en-tête : un gpt s'ouvre par ---",
         "en": "No front-matter: a gpt opens with ---",
@@ -14461,10 +15160,6 @@ TRANSLATIONS = {
         "fr": "gardé",
         "en": "kept",
     },
-    # « models », « still waiting for » et « Type an address » servent aussi
-    # ici et sont définies plus haut : les redéfinir écraserait la première
-    # sans rien lever.
-    # Transform data - fichiers externes
     "Transform data - Transform your data": {
         "fr": "🪄 Transform data - Transformer vos données",
         "en": "🪄 Transform data - Transform your data",
@@ -15145,7 +15840,6 @@ TRANSLATIONS = {
         "fr": "Pas assez de place pour écrire.",
         "en": "Not enough room to write.",
     },
-    # Transform data - correctifs de fuite
     "A source value survives in the copy; nothing was written: ": {
         "fr": "Une valeur de la source subsiste dans la copie ; rien n'a été écrit : ",
         "en": "A source value survives in the copy; nothing was written: ",
@@ -15221,6 +15915,942 @@ TRANSLATIONS = {
     "This target cannot hold the source's shape: ": {
         "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
+    },
+    "Done": {
+        "fr": "Fait",
+        "en": "Done",
+    },
+    "Failed": {
+        "fr": "Échoué",
+        "en": "Failed",
+    },
+    "Refused": {
+        "fr": "Refusé",
+        "en": "Refused",
+    },
+    "Dependency absent - skipped": {
+        "fr": "Dépendance absente - sauté",
+        "en": "Dependency absent - skipped",
+    },
+    "Not implemented by this backend": {
+        "fr": "Non implémenté par ce backend",
+        "en": "Not implemented by this backend",
+    },
+    "Unexpected exit code": {
+        "fr": "Code de sortie inattendu",
+        "en": "Unexpected exit code",
+    },
+    "Capabilities": {
+        "fr": "Capacités",
+        "en": "Capabilities",
+    },
+    "present": {
+        "fr": "présent",
+        "en": "present",
+    },
+    "Remedy:": {
+        "fr": "Remède :",
+        "en": "Remedy:",
+    },
+    "Nothing was probed": {
+        "fr": "Rien n'a été sondé",
+        "en": "Nothing was probed",
+    },
+    "This menu is not available on {os}": {
+        "fr": "Ce menu n'est pas disponible sur {os}",
+        "en": "This menu is not available on {os}",
+    },
+    "Load the kvm module, or join the kvm group": {
+        "fr": "Charger le module kvm, ou entrer dans le groupe kvm",
+        "en": "Load the kvm module, or join the kvm group",
+    },
+    "Configure the vault path": {
+        "fr": "Configurer le chemin du coffre",
+        "en": "Configure the vault path",
+    },
+    "Devstack": {
+        "fr": "Devstack",
+        "en": "Devstack",
+    },
+    "Devstack - development and test stack": {
+        "fr": "🧱 Devstack - pile de développement et de test",
+        "en": "🧱 Devstack - development and test stack",
+    },
+    "Host OS:": {
+        "fr": "OS de l'hôte :",
+        "en": "Host OS:",
+    },
+    "Host doctor - what can this machine do?": {
+        "fr": "🩺 Docteur de l'hôte - qu'est-ce que cette machine sait faire ?",
+        "en": "🩺 Host doctor - what can this machine do?",
+    },
+    "Probe failed:": {
+        "fr": "La sonde a échoué :",
+        "en": "Probe failed:",
+    },
+    "A dry run touches no secret": {
+        "fr": "Un essai à blanc ne touche à aucun secret",
+        "en": "A dry run touches no secret",
+    },
+    # Carnet d'adresses (script/todo/egress_book_menu.py)
+    "Deploy - Site address book (what a confined VM reaches)": {
+        "fr": "📓 Deploy - Carnet d'adresses du site (ce qu'une VM bornée atteint)",
+        "en": "📓 Deploy - Site address book (what a confined VM reaches)",
+    },
+    "Site address book: what a confined VM may reach": {
+        "fr": "Carnet d'adresses du site : ce qu'une VM bornée a le droit de joindre",
+        "en": "Site address book: what a confined VM may reach",
+    },
+    "State of": {
+        "fr": "État de",
+        "en": "State of",
+    },
+    "What state an instance is in, for its intended use.": {
+        "fr": "Dans quel état est une instance, pour l'usage qu'on en attend.",
+        "en": "What state an instance is in, for its intended use.",
+    },
+    "a development copy": {
+        "fr": "une copie de développement",
+        "en": "a development copy",
+    },
+    "a live instance": {
+        "fr": "une instance en production",
+        "en": "a live instance",
+    },
+    "read as": {
+        "fr": "lue comme",
+        "en": "read as",
+    },
+    "No Proxmox host.": {
+        "fr": "Aucun hôte Proxmox.",
+        "en": "No Proxmox host.",
+    },
+    "Step failed": {
+        "fr": "Étape en échec",
+        "en": "Step failed",
+    },
+    "…": {
+        "fr": "…",
+        "en": "…",
+    },
+    "SSH": {
+        "fr": "SSH",
+        "en": "SSH",
+    },
+    "A copy can charge real cards.": {
+        "fr": "Une copie peut débiter de vraies cartes.",
+        "en": "A copy can charge real cards.",
+    },
+    "A copy that can send reaches the customer's real contacts.": {
+        "fr": "Une copie qui peut émettre atteint les vrais contacts du client.",
+        "en": "A copy that can send reaches the customer's real contacts.",
+    },
+    "A copy that still runs them sends mail and posts payments.": {
+        "fr": "Une copie qui les exécute encore envoie du courriel et passe des paiements.",
+        "en": "A copy that still runs them sends mail and posts payments.",
+    },
+    "A fixed threshold misses them — a ten-minute job one hour late matters, a monthly one does not.": {
+        "fr": "Un seuil fixe les manque : une tâche de dix minutes en retard d'une heure compte, une tâche mensuelle non.",
+        "en": "A fixed threshold misses them — a ten-minute job one hour late matters, a monthly one does not.",
+    },
+    "A production marked as neutralised has had its scheduled actions and outgoing mail disabled.": {
+        "fr": "Une production marquée neutralisée a vu ses actions planifiées et son courriel sortant désactivés.",
+        "en": "A production marked as neutralised has had its scheduled actions and outgoing mail disabled.",
+    },
+    "Backup configurations recorded": {
+        "fr": "Configurations de sauvegarde enregistrées",
+        "en": "Backup configurations recorded",
+    },
+    "Backups": {
+        "fr": "Sauvegardes",
+        "en": "Backups",
+    },
+    "Everyone can change everything, and no rule is ever exercised.": {
+        "fr": "Tout le monde peut tout changer, et aucune règle n'est jamais éprouvée.",
+        "en": "Everyone can change everything, and no rule is ever exercised.",
+    },
+    "Internal users who are ALL system administrators": {
+        "fr": "Utilisateurs internes TOUS administrateurs système",
+        "en": "Internal users who are ALL system administrators",
+    },
+    "Mail domain that does not match the base URL": {
+        "fr": "Domaine de courriel qui ne correspond pas à l'URL de base",
+        "en": "Mail domain that does not match the base URL",
+    },
+    "Mail servers declared at all": {
+        "fr": "Serveurs de courriel déclarés, tous confondus",
+        "en": "Mail servers declared at all",
+    },
+    "Mail servers that could actually send": {
+        "fr": "Serveurs de courriel capables d'émettre réellement",
+        "en": "Mail servers that could actually send",
+    },
+    "Messages stuck in the outgoing queue": {
+        "fr": "Messages bloqués dans la file sortante",
+        "en": "Messages stuck in the outgoing queue",
+    },
+    "Neutralisation": {
+        "fr": "Neutralisation",
+        "en": "Neutralisation",
+    },
+    "No ordinary user exists to test visibility with — any access-rights check run here proves nothing.": {
+        "fr": "Aucun utilisateur ordinaire n'existe pour éprouver la visibilité : un contrôle de droits d'accès lancé ici ne prouve rien.",
+        "en": "No ordinary user exists to test visibility with — any access-rights check run here proves nothing.",
+    },
+    "Nothing at all runs on a schedule.": {
+        "fr": "Rien du tout ne tourne à l'horaire.",
+        "en": "Nothing at all runs on a schedule.",
+    },
+    "Odoo does not consider this database neutralised; modules that neutralise themselves never ran.": {
+        "fr": "Odoo ne considère pas cette base comme neutralisée ; les modules qui se neutralisent eux-mêmes n'ont jamais tourné.",
+        "en": "Odoo does not consider this database neutralised; modules that neutralise themselves never ran.",
+    },
+    "Payment providers neither disabled nor in test": {
+        "fr": "Fournisseurs de paiement ni désactivés ni en mode test",
+        "en": "Payment providers neither disabled nor in test",
+    },
+    "Portal links, invoice QR codes and reply addresses point somewhere else than the instance itself.": {
+        "fr": "Les liens du portail, les codes QR de facture et les adresses de réponse pointent ailleurs que l'instance elle-même.",
+        "en": "Portal links, invoice QR codes and reply addresses point somewhere else than the instance itself.",
+    },
+    "Queues": {
+        "fr": "Files",
+        "en": "Queues",
+    },
+    "Scheduled actions active": {
+        "fr": "Actions planifiées actives",
+        "en": "Scheduled actions active",
+    },
+    "Scheduled actions late by more than one cycle": {
+        "fr": "Actions planifiées en retard de plus d'un cycle",
+        "en": "Scheduled actions late by more than one cycle",
+    },
+    "Scheduler": {
+        "fr": "Planificateur",
+        "en": "Scheduler",
+    },
+    "The backup scheduler runs and backs up nothing.": {
+        "fr": "Le planificateur de sauvegarde tourne et ne sauvegarde rien.",
+        "en": "The backup scheduler runs and backs up nothing.",
+    },
+    "Users": {
+        "fr": "Utilisateurs",
+        "en": "Users",
+    },
+    "Visible to the customer, invisible to the operator.": {
+        "fr": "Visible du client, invisible de l'exploitant.",
+        "en": "Visible to the customer, invisible to the operator.",
+    },
+    "With NO server, Odoo falls back to smtp_server from the config file — which is why Odoo's own neutralize.sql INSERTS a blocking one instead of deleting them all.": {
+        "fr": "SANS aucun serveur, Odoo se rabat sur smtp_server du fichier de configuration — c'est pourquoi le neutralize.sql d'Odoo en INSÈRE un bloquant au lieu de tous les supprimer.",
+        "en": "With NO server, Odoo falls back to smtp_server from the config file — which is why Odoo's own neutralize.sql INSERTS a blocking one instead of deleting them all.",
+    },
+    "With no server at all, Odoo silently uses the smtp_server from the config file.": {
+        "fr": "Sans aucun serveur, Odoo emploie en silence le smtp_server du fichier de configuration.",
+        "en": "With no server at all, Odoo silently uses the smtp_server from the config file.",
+    },
+    "database.is_neutralized": {
+        "fr": "database.is_neutralized",
+        "en": "database.is_neutralized",
+    },
+    "Restore FAILED: the disk is inconsistent.": {
+        "fr": "Restauration ÉCHOUÉE : le disque est incohérent.",
+        "en": "Restore FAILED: the disk is inconsistent.",
+    },
+    "Intact copy:": {
+        "fr": "Copie intacte :",
+        "en": "Intact copy:",
+    },
+    "Do not start this VM; restore by hand.": {
+        "fr": "Ne pas démarrer cette VM ; restaurer à la main.",
+        "en": "Do not start this VM; restore by hand.",
+    },
+    "Original disk restored from backup.": {
+        "fr": "Disque d'origine restauré depuis la sauvegarde.",
+        "en": "Original disk restored from backup.",
+    },
+    "The disk is inconsistent: not offering to start.": {
+        "fr": "Le disque est incohérent : le démarrage n'est pas proposé.",
+        "en": "The disk is inconsistent: not offering to start.",
+    },
+    "Set it in:": {
+        "fr": "La poser dans :",
+        "en": "Set it in:",
+    },
+    "Integration": {
+        "fr": "Intégration",
+        "en": "Integration",
+    },
+    "State of the integration - segment by segment": {
+        "fr": "État de l'intégration - segment par segment",
+        "en": "State of the integration - segment by segment",
+    },
+    "Devstack integration, segment by segment": {
+        "fr": "Intégration de devstack, segment par segment",
+        "en": "Devstack integration, segment by segment",
+    },
+    "backends confronted with the real tool:": {
+        "fr": "backends confrontés au vrai outil :",
+        "en": "backends confronted with the real tool:",
+    },
+    "NAT: nothing is confined, and that is the point.": {
+        "fr": "NAT : rien n'est confiné, et c'est le principe.",
+        "en": "NAT: nothing is confined, and that is the point.",
+    },
+    "No AI gateway. The « ai-gateway » role exists in the address book, and nothing opens it yet.": {
+        "fr": "Aucune porte IA. Le rôle « ai-gateway » existe dans le carnet d'adresses, et rien ne l'ouvre encore.",
+        "en": "No AI gateway. The « ai-gateway » role exists in the address book, and nothing opens it yet.",
+    },
+    "postures that write, load and arm rules:": {
+        "fr": "postures qui écrivent, chargent et arment des règles :",
+        "en": "postures that write, load and arm rules:",
+    },
+    "forge profiles declared:": {
+        "fr": "profils de forge déclarés :",
+        "en": "forge profiles declared:",
+    },
+    "The code drives Forgejo and Gitea; this site declares no profile yet.": {
+        "fr": "Le code pilote Forgejo et Gitea ; ce site ne déclare encore aucun profil.",
+        "en": "The code drives Forgejo and Gitea; this site declares no profile yet.",
+    },
+    "No second authority and no mirror remote.": {
+        "fr": "Aucune seconde autorité, aucun dépôt miroir.",
+        "en": "No second authority and no mirror remote.",
+    },
+    "The vault is KeePassXC; no OpenBao, and no hardware enclave.": {
+        "fr": "Le coffre est KeePassXC ; pas d'OpenBao, pas d'enclave matérielle.",
+        "en": "The vault is KeePassXC; no OpenBao, and no hardware enclave.",
+    },
+    "off-site targets declared:": {
+        "fr": "cibles hors-site déclarées :",
+        "en": "off-site targets declared:",
+    },
+    "The code ships and verifies the fingerprint there; this site declares no target yet.": {
+        "fr": "Le code expédie et vérifie l'empreinte là-bas ; ce site ne déclare encore aucune cible.",
+        "en": "The code ships and verifies the fingerprint there; this site declares no target yet.",
+    },
+    "The drill guard refuses to purge anything that is not a drill database, and names what it refused.": {
+        "fr": "Le garde d'exercice refuse de purger ce qui n'est pas une base d'exercice, et nomme ce qu'il a refusé.",
+        "en": "The drill guard refuses to purge anything that is not a drill database, and names what it refused.",
+    },
+    "served profile:": {
+        "fr": "profil servi :",
+        "en": "served profile:",
+    },
+    "egress cut, port forward laid": {
+        "fr": "sortie coupée, renvoi de port posé",
+        "en": "egress cut, port forward laid",
+    },
+    "No profile promises a web interface.": {
+        "fr": "Aucun profil ne promet d'interface web.",
+        "en": "No profile promises a web interface.",
+    },
+    "carried": {
+        "fr": "portés",
+        "en": "carried",
+    },
+    "to set up here": {
+        "fr": "à régler ici",
+        "en": "to set up here",
+    },
+    "« to set up here » is not a gap in the code:": {
+        "fr": "« à régler ici » n'est pas un manque du code :",
+        "en": "« to set up here » is not a gap in the code:",
+    },
+    "the repository knows how, this site has not declared it.": {
+        "fr": "le dépôt sait faire, ce site ne l'a pas déclaré.",
+        "en": "the repository knows how, this site has not declared it.",
+    },
+    "Book - Show the book": {
+        "fr": "📖 Carnet - Voir le carnet",
+        "en": "📖 Book - Show the book",
+    },
+    "Book - Set a role's addresses": {
+        "fr": "📝 Carnet - Poser les adresses d'un rôle",
+        "en": "📝 Book - Set a role's addresses",
+    },
+    "Book - Forget a role": {
+        "fr": "🗑 Carnet - Oublier un rôle",
+        "en": "🗑 Book - Forget a role",
+    },
+    "unblocks:": {
+        "fr": "débloque :",
+        "en": "unblocks:",
+    },
+    "Post the missing addresses now?": {
+        "fr": "Poser les adresses manquantes maintenant ?",
+        "en": "Post the missing addresses now?",
+    },
+    "Does this site have a": {
+        "fr": "Ce site a-t-il un",
+        "en": "Does this site have a",
+    },
+    "q to stop": {
+        "fr": "q pour arrêter",
+        "en": "q to stop",
+    },
+    "Left aside:": {
+        "fr": "Laissé de côté :",
+        "en": "Left aside:",
+    },
+    "still blocks:": {
+        "fr": "bloque toujours :",
+        "en": "still blocks:",
+    },
+    "After posting:": {
+        "fr": "Après avoir posé :",
+        "en": "After posting:",
+    },
+    "Book - What each profile still needs": {
+        "fr": "🧭 Carnet - Ce qui manque encore à chaque profil",
+        "en": "🧭 Book - What each profile still needs",
+    },
+    "The book is empty.": {
+        "fr": "Le carnet est vide.",
+        "en": "The book is empty.",
+    },
+    "A confined profile refuses to deploy without it.": {
+        "fr": "Un profil qui confine refuse de se déployer sans lui.",
+        "en": "A confined profile refuses to deploy without it.",
+    },
+    "no address": {
+        "fr": "aucune adresse",
+        "en": "no address",
+    },
+    "comes from the team book: forgetting here will not remove it": {
+        "fr": "vient du carnet de l'équipe : l'oublier ici ne le retirera pas",
+        "en": "comes from the team book: forgetting here will not remove it",
+    },
+    "These addresses live in the team book and will stay open:": {
+        "fr": "Ces adresses vivent dans le carnet de l'équipe et resteront ouvertes :",
+        "en": "These addresses live in the team book and will stay open:",
+    },
+    "Networks, comma separated. An address alone means /32.": {
+        "fr": "Réseaux, séparés par des virgules. Une adresse seule vaut /32.",
+        "en": "Networks, comma separated. An address alone means /32.",
+    },
+    "A HOSTNAME is refused: resolving it would freeze the address.": {
+        "fr": "Un NOM d'hôte est refusé : le résoudre figerait l'adresse.",
+        "en": "A HOSTNAME is refused: resolving it would freeze the address.",
+    },
+    "Networks: ": {
+        "fr": "Réseaux : ",
+        "en": "Networks: ",
+    },
+    "Ports, comma separated (empty: the repository knows): ": {
+        "fr": "Ports, séparés par des virgules (vide : le dépôt les connaît) : ",
+        "en": "Ports, comma separated (empty: the repository knows): ",
+    },
+    "Role number (empty to cancel): ": {
+        "fr": "Numéro du rôle (vide pour renoncer) : ",
+        "en": "Role number (empty to cancel): ",
+    },
+    "Nothing typed: the book is unchanged.": {
+        "fr": "Rien de tapé : le carnet est inchangé.",
+        "en": "Nothing typed: the book is unchanged.",
+    },
+    "Written for": {
+        "fr": "Écrit pour",
+        "en": "Written for",
+    },
+    "Forget": {
+        "fr": "Oublier",
+        "en": "Forget",
+    },
+    "Forgotten from this machine:": {
+        "fr": "Oublié de cette machine :",
+        "en": "Forgotten from this machine:",
+    },
+    "Not in this machine book, nothing changed:": {
+        "fr": "Absent du carnet de cette machine, rien de changé :",
+        "en": "Not in this machine book, nothing changed:",
+    },
+    "refuses to deploy, missing": {
+        "fr": "refuse de se déployer, il manque",
+        "en": "refuses to deploy, missing",
+    },
+    # Profils de VM (script/todo/vm_profiles.py)
+    "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.": {
+        "fr": "Ce chemin ne pose les règles qu'une fois la machine joignable : elle sort donc librement pendant tout son premier démarrage — des minutes, pas des secondes.",
+        "en": "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.",
+    },
+    "This profile expects an install that lays down Odoo.": {
+        "fr": "Ce profil attend une installation qui pose Odoo.",
+        "en": "This profile expects an install that lays down Odoo.",
+    },
+    "The install serves what the profile promises.": {
+        "fr": "L'installation sert ce que le profil promet.",
+        "en": "The install serves what the profile promises.",
+    },
+    "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.": {
+        "fr": "Le nom de ce profil promet une interface servie, et l'installation choisie ne pose aucun Odoo. La machine ne servirait rien, sous un nom qui dit le contraire.",
+        "en": "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.",
+    },
+    "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.": {
+        "fr": "Aucun fichier de règles n'est produit : cette posture déclare une politique que rien n'installe. Elle se comporte exactement comme une sortie libre.",
+        "en": "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.",
+    },
+    "A failed reload of the rules on a later boot is not reported.": {
+        "fr": "Un rechargement des règles qui échoue à un démarrage ultérieur n'est pas signalé.",
+        "en": "A failed reload of the rules on a later boot is not reported.",
+    },
+    "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.": {
+        "fr": "Le trafic des conteneurs n'est pas prouvé attrapé : il traverse FORWARD, qu'aucune confrontation n'a encore mesuré.",
+        "en": "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.",
+    },
+    "Unknown posture: this profile deploys nothing.": {
+        "fr": "Posture inconnue : ce profil ne déploie rien.",
+        "en": "Unknown posture: this profile deploys nothing.",
+    },
+    "Nothing is confined, and that is the point.": {
+        "fr": "Rien n'est confiné, et c'est le principe.",
+        "en": "Nothing is confined, and that is the point.",
+    },
+    "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.": {
+        "fr": "INTENTION SEULEMENT : cette posture déclare une politique qu'aucune règle n'installe. Elle se comporte comme une sortie libre.",
+        "en": "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.",
+    },
+    "Rules are written, loaded and armed in the guest.": {
+        "fr": "Des règles sont écrites, chargées et armées dans l'invité.",
+        "en": "Rules are written, loaded and armed in the guest.",
+    },
+    # Lima (script/todo/lima_menu.py)
+    "ERPLibre": {
+        "fr": "ERPLibre",
+        "en": "ERPLibre",
+    },
+    "Lima - Install ERPLibre in an instance": {
+        "fr": "📦 Lima - Installer ERPLibre dans une instance",
+        "en": "📦 Lima - Install ERPLibre in an instance",
+    },
+    "ERPLibre branch: ": {
+        "fr": "Branche ERPLibre : ",
+        "en": "ERPLibre branch: ",
+    },
+    "Production layout (/opt/erplibre, systemd)? (o/N): ": {
+        "fr": "Disposition de production (/opt/erplibre, systemd) ? (o/N) : ",
+        "en": "Production layout (/opt/erplibre, systemd)? (o/N): ",
+    },
+    "Start the install? (o/N): ": {
+        "fr": "Lancer l'installation ? (o/N) : ",
+        "en": "Start the install? (o/N): ",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "Install directory:": {
+        "fr": "Répertoire d'installation :",
+        "en": "Install directory:",
+    },
+    "Remote script:": {
+        "fr": "Script distant :",
+        "en": "Remote script:",
+    },
+    "Enters by:": {
+        "fr": "Entre par :",
+        "en": "Enters by:",
+    },
+    "Install started. Manifest:": {
+        "fr": "Installation lancée. Manifeste :",
+        "en": "Install started. Manifest:",
+    },
+    "Follow it from": {
+        "fr": "La suivre depuis",
+        "en": "Follow it from",
+    },
+    "Lima - instances (macOS, Linux)": {
+        "fr": "🍋 Lima - instances (macOS, Linux)",
+        "en": "🍋 Lima - instances (macOS, Linux)",
+    },
+    "Lima: VMs on macOS and Linux, by name": {
+        "fr": "Lima : des VM sur macOS et Linux, par leur nom",
+        "en": "Lima: VMs on macOS and Linux, by name",
+    },
+    "The tool": {
+        "fr": "L'outil",
+        "en": "The tool",
+    },
+    "Instances": {
+        "fr": "Instances",
+        "en": "Instances",
+    },
+    "Lima - How this host gets the tool": {
+        "fr": "📥 Lima - Par où cet hôte obtient l'outil",
+        "en": "📥 Lima - How this host gets the tool",
+    },
+    "Lima - List the instances": {
+        "fr": "📋 Lima - Lister les instances",
+        "en": "📋 Lima - List the instances",
+    },
+    "Lima - Create and start an instance": {
+        "fr": "✨ Lima - Créer et démarrer une instance",
+        "en": "✨ Lima - Create and start an instance",
+    },
+    "Lima - Start an instance": {
+        "fr": "🟢 Lima - Démarrer une instance",
+        "en": "🟢 Lima - Start an instance",
+    },
+    "Lima - Stop an instance": {
+        "fr": "🔴 Lima - Arrêter une instance",
+        "en": "🔴 Lima - Stop an instance",
+    },
+    "Lima - Delete an instance": {
+        "fr": "🗑 Lima - Supprimer une instance",
+        "en": "🗑 Lima - Delete an instance",
+    },
+    "Lima - Open a shell in an instance": {
+        "fr": "🐚 Lima - Ouvrir un shell dans une instance",
+        "en": "🐚 Lima - Open a shell in an instance",
+    },
+    "Instance name": {
+        "fr": "Nom d'instance",
+        "en": "Instance name",
+    },
+    "Instance name: ": {
+        "fr": "Nom de l'instance : ",
+        "en": "Instance name: ",
+    },
+    "Instance number (empty to cancel): ": {
+        "fr": "Numéro de l'instance (vide pour renoncer) : ",
+        "en": "Instance number (empty to cancel): ",
+    },
+    "Config file:": {
+        "fr": "Fichier de configuration :",
+        "en": "Config file:",
+    },
+    "Config removed:": {
+        "fr": "Configuration retirée :",
+        "en": "Config removed:",
+    },
+    "is not installed.": {
+        "fr": "n'est pas installé.",
+        "en": "is not installed.",
+    },
+    "Run:": {
+        "fr": "Jouer :",
+        "en": "Run:",
+    },
+    "Archive:": {
+        "fr": "Archive :",
+        "en": "Archive:",
+    },
+    "SHA-256:": {
+        "fr": "SHA-256 :",
+        "en": "SHA-256:",
+    },
+    "No instance yet.": {
+        "fr": "Aucune instance.",
+        "en": "No instance yet.",
+    },
+    "No instance matches.": {
+        "fr": "Aucune instance ne correspond.",
+        "en": "No instance matches.",
+    },
+    "Not held for this posture:": {
+        "fr": "Non tenu pour cette posture :",
+        "en": "Not held for this posture:",
+    },
+    "Lima cannot hold this posture:": {
+        "fr": "Lima ne peut pas tenir cette posture :",
+        "en": "Lima cannot hold this posture:",
+    },
+    "User-mode networking always gives egress.": {
+        "fr": "Le réseau en mode utilisateur donne toujours la sortie.",
+        "en": "User-mode networking always gives egress.",
+    },
+    "Not held by this config:": {
+        "fr": "Non tenu par cette configuration :",
+        "en": "Not held by this config:",
+    },
+    "Write and start? (o/N): ": {
+        "fr": "Écrire et démarrer ? (o/N) : ",
+        "en": "Write and start? (o/N): ",
+    },
+    "Type the instance name to confirm (empty to cancel): ": {
+        "fr": "Retapez le nom de l'instance pour confirmer (vide pour annuler) : ",
+        "en": "Type the instance name to confirm (empty to cancel): ",
+    },
+    "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.": {
+        "fr": "Le gestionnaire de paquets le fournit. Sa chaîne de signature porte sur l'index entier, ce qui est plus fort qu'une somme recopiée à la main.",
+        "en": "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.",
+    },
+    "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.": {
+        "fr": "Une version épinglée correspond. La télécharger, puis vérifier la somme AVANT d'exécuter quoi que ce soit de l'archive.",
+        "en": "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.",
+    },
+    "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Le gestionnaire de paquets de cet hôte n'est pas installé. L'installer, ou relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Aucun gestionnaire de paquets connu pour cet hôte, et aucune version épinglée. Les deux routes sont fermées : relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.": {
+        "fr": "La version demandée n'est pas épinglée. « latest » désigne une chose différente à chaque appel, donc il n'y a rien à vérifier.",
+        "en": "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.",
+    },
+    "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.": {
+        "fr": "Cette version ne porte aucune somme dans RELEASES. Une somme se relève sur une publication, elle ne s'invente jamais.",
+        "en": "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.",
+    },
+    "No archive is published for this system and architecture.": {
+        "fr": "Aucune archive n'est publiée pour ce système et cette architecture.",
+        "en": "No archive is published for this system and architecture.",
+    },
+    "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.": {
+        "fr": "La somme ne correspond PAS. N'exécuter rien de cette archive : c'est le dernier moment où rien n'a encore été exécuté.",
+        "en": "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.",
+    },
+    "The archive is not where it was expected.": {
+        "fr": "L'archive n'est pas où on l'attendait.",
+        "en": "The archive is not where it was expected.",
+    },
+    # Forge Forgejo/Gitea (script/todo/forge_menu.py)
+    "Forge - Mirror the manifest from its upstreams": {
+        "fr": "Forge - Miroiter le manifeste depuis ses amonts",
+        "en": "Forge - Mirror the manifest from its upstreams",
+    },
+    "to mirror.": {
+        "fr": "à miroiter.",
+        "en": "to mirror.",
+    },
+    "mirrored.": {
+        "fr": "miroités.",
+        "en": "mirrored.",
+    },
+    "No upstream for:": {
+        "fr": "Aucun amont pour :",
+        "en": "No upstream for:",
+    },
+    "Mirror these repositories? (o/N): ": {
+        "fr": "Miroiter ces dépôts ? (o/N) : ",
+        "en": "Mirror these repositories? (o/N): ",
+    },
+    "Forge - Create the repositories the manifest declares": {
+        "fr": "Forge - Créer les dépôts que le manifeste déclare",
+        "en": "Forge - Create the repositories the manifest declares",
+    },
+    "The manifest declares no project.": {
+        "fr": "Le manifeste ne déclare aucun projet.",
+        "en": "The manifest declares no project.",
+    },
+    "No synced manifest at": {
+        "fr": "Aucun manifeste synchronisé à",
+        "en": "No synced manifest at",
+    },
+    "Run repo sync, or give a manifest path below.": {
+        "fr": "Lancer repo sync, ou donner un chemin de manifeste ci-dessous.",
+        "en": "Run repo sync, or give a manifest path below.",
+    },
+    "Manifest path (empty to cancel): ": {
+        "fr": "Chemin du manifeste (vide pour renoncer) : ",
+        "en": "Manifest path (empty to cancel): ",
+    },
+    "No such file:": {
+        "fr": "Fichier introuvable :",
+        "en": "No such file:",
+    },
+    "Unreadable manifest:": {
+        "fr": "Manifeste illisible :",
+        "en": "Unreadable manifest:",
+    },
+    "already there,": {
+        "fr": "déjà là,",
+        "en": "already there,",
+    },
+    "to create.": {
+        "fr": "à créer.",
+        "en": "to create.",
+    },
+    "created.": {
+        "fr": "créés.",
+        "en": "created.",
+    },
+    "Same forge name for:": {
+        "fr": "Même nom de forge pour :",
+        "en": "Same forge name for:",
+    },
+    "Create these repositories? (o/N): ": {
+        "fr": "Créer ces dépôts ? (o/N) : ",
+        "en": "Create these repositories? (o/N): ",
+    },
+    "Forge (Forgejo/Gitea)": {
+        "fr": "Forge (Forgejo/Gitea)",
+        "en": "Forge (Forgejo/Gitea)",
+    },
+    "Forge (Forgejo/Gitea): profiles, token, repos": {
+        "fr": "Forge (Forgejo/Gitea) : profils, jeton, dépôts",
+        "en": "Forge (Forgejo/Gitea): profiles, token, repos",
+    },
+    "Profiles & token": {
+        "fr": "Profils et jeton",
+        "en": "Profiles & token",
+    },
+    "The forge itself": {
+        "fr": "La forge elle-même",
+        "en": "The forge itself",
+    },
+    "Forge - List the profiles": {
+        "fr": "Forge - Lister les profils",
+        "en": "Forge - List the profiles",
+    },
+    "Forge - Add or edit a profile": {
+        "fr": "Forge - Créer ou modifier un profil",
+        "en": "Forge - Add or edit a profile",
+    },
+    "Forge - Store the API token": {
+        "fr": "Forge - Déposer le jeton d'API",
+        "en": "Forge - Store the API token",
+    },
+    "Forge - Delete a profile": {
+        "fr": "Forge - Supprimer un profil",
+        "en": "Forge - Delete a profile",
+    },
+    "Forge - Check the connection": {
+        "fr": "Forge - Vérifier la connexion",
+        "en": "Forge - Check the connection",
+    },
+    "Forge - List the repositories": {
+        "fr": "Forge - Lister les dépôts",
+        "en": "Forge - List the repositories",
+    },
+    "No forge profile yet: create one first.": {
+        "fr": "Aucun profil de forge : en créer un d'abord.",
+        "en": "No forge profile yet: create one first.",
+    },
+    "Profile name: ": {
+        "fr": "Nom du profil : ",
+        "en": "Profile name: ",
+    },
+    "Profile number (empty to cancel): ": {
+        "fr": "Numéro du profil (vide pour renoncer) : ",
+        "en": "Profile number (empty to cancel): ",
+    },
+    "Forge URL: ": {
+        "fr": "Adresse de la forge : ",
+        "en": "Forge URL: ",
+    },
+    "Owning account or organisation: ": {
+        "fr": "Compte ou organisation propriétaire : ",
+        "en": "Owning account or organisation: ",
+    },
+    "Verify the TLS certificate": {
+        "fr": "Vérifier le certificat TLS",
+        "en": "Verify the TLS certificate",
+    },
+    "Allow http to a remote address": {
+        "fr": "Autoriser http vers une adresse distante",
+        "en": "Allow http to a remote address",
+    },
+    "Profile saved:": {
+        "fr": "Profil enregistré :",
+        "en": "Profile saved:",
+    },
+    "Profile deleted:": {
+        "fr": "Profil supprimé :",
+        "en": "Profile deleted:",
+    },
+    "Not in the private file, nothing deleted:": {
+        "fr": "Absent du fichier privé, rien de supprimé :",
+        "en": "Not in the private file, nothing deleted:",
+    },
+    "Unknown profile:": {
+        "fr": "Profil inconnu :",
+        "en": "Unknown profile:",
+    },
+    "TLS verification is OFF for this profile.": {
+        "fr": "La vérification TLS est COUPÉE pour ce profil.",
+        "en": "TLS verification is OFF for this profile.",
+    },
+    "API token (not echoed): ": {
+        "fr": "Jeton d'API (saisie non affichée) : ",
+        "en": "API token (not echoed): ",
+    },
+    "Empty: nothing stored.": {
+        "fr": "Vide : rien de déposé.",
+        "en": "Empty: nothing stored.",
+    },
+    "Token stored for": {
+        "fr": "Jeton déposé pour",
+        "en": "Token stored for",
+    },
+    "TLS UNVERIFIED": {
+        "fr": "TLS NON VÉRIFIÉ",
+        "en": "TLS UNVERIFIED",
+    },
+    "PLAINTEXT": {
+        "fr": "EN CLAIR",
+        "en": "PLAINTEXT",
+    },
+    "token stored": {
+        "fr": "jeton déposé",
+        "en": "token stored",
+    },
+    "no token": {
+        "fr": "aucun jeton",
+        "en": "no token",
+    },
+    "The forge said:": {
+        "fr": "La forge a répondu :",
+        "en": "The forge said:",
+    },
+    "Connected as:": {
+        "fr": "Connecté en tant que :",
+        "en": "Connected as:",
+    },
+    "repositories": {
+        "fr": "dépôts",
+        "en": "repositories",
+    },
+    "private": {
+        "fr": "privé",
+        "en": "private",
+    },
+    "PUBLIC": {
+        "fr": "PUBLIC",
+        "en": "PUBLIC",
+    },
+    "Forge reached.": {
+        "fr": "Forge jointe.",
+        "en": "Forge reached.",
+    },
+    "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.": {
+        "fr": "Aucun jeton d'API pour ce profil. En déposer un par « Déposer le jeton d'API » ; il se crée dans la forge sous Paramètres > Applications.",
+        "en": "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.",
+    },
+    "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.": {
+        "fr": "La forge a refusé le jeton. Vérifier qu'il n'a pas expiré, et qu'il porte les portées que l'opération demande.",
+        "en": "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.",
+    },
+    "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.": {
+        "fr": "La forge refuse une cible en plage privée. C'est son réglage ALLOW_LOCALNETWORKS, PAS le jeton : en régénérer un n'y change rien. Poser FORGEJO_ALLOW_LOCALNETWORKS=1 et réinstaller, ou modifier [migrations] dans /etc/forgejo/app.ini.",
+        "en": "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.",
+    },
+    "Nothing at that address on the forge.": {
+        "fr": "Rien à cette adresse sur la forge.",
+        "en": "Nothing at that address on the forge.",
+    },
+    "It already exists on the forge.": {
+        "fr": "Cela existe déjà sur la forge.",
+        "en": "It already exists on the forge.",
+    },
+    "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.": {
+        "fr": "Le certificat n'est pas approuvé. Approuver l'autorité sur cette machine ; couper la vérification dans le profil envoie le jeton à qui répond à la place de la forge.",
+        "en": "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.",
+    },
+    "No answer from the forge. Check the address, the port, and that the service is running.": {
+        "fr": "Aucune réponse de la forge. Vérifier l'adresse, le port, et que le service tourne.",
+        "en": "No answer from the forge. Check the address, the port, and that the service is running.",
+    },
+    "The forge refused the call.": {
+        "fr": "La forge a refusé l'appel.",
+        "en": "The forge refused the call.",
     },
 }
 

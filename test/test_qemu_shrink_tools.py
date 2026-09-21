@@ -22,10 +22,11 @@ import os
 import sys
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+from script.todo import qemu_manage  # noqa: E402
 from script.todo import todo_install  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -104,11 +105,26 @@ class TestPackageTable(ShrinkToolsBase):
                     f"{family} : aucun paquet connu pour « {binaire} »",
                 )
 
-    def test_the_overrides_cover_exactly_the_known_families(self):
-        """Une famille connue de todo_install sans surcharge ici proposerait
-        « gdisk » à un Arch, qui ne l'a pas."""
-        self.assertEqual(set(TODO._SHRINK_PKG_FAMILY), set(FAMILIES))
-        self.assertEqual(set(todo_install.FAMILIES), set(FAMILIES))
+    def test_the_overrides_cover_every_system_family(self):
+        """Une famille système sans surcharge ici proposerait « gdisk » à
+        un Arch, qui ne l'a pas."""
+        systeme = {
+            f
+            for f in todo_install.FAMILIES
+            if f not in todo_install.USER_LEVEL
+        }
+        self.assertEqual(set(TODO._SHRINK_PKG_FAMILY), systeme)
+        self.assertEqual(systeme, set(FAMILIES))
+
+    def test_a_user_level_family_is_deliberately_absent(self):
+        """L'omission est AFFIRMÉE, pas laissée en creux. Ces deux outils
+        découpent un qcow2 que libvirt monte en local, et cette pile
+        n'existe pas là où le gestionnaire est celui d'un utilisateur — y
+        nommer un paquet laisserait croire que le rétrécissement s'y fait."""
+        self.assertTrue(todo_install.USER_LEVEL)
+        for famille in todo_install.USER_LEVEL:
+            with self.subTest(famille=famille):
+                self.assertNotIn(famille, TODO._SHRINK_PKG_FAMILY)
 
     def test_sgdisk_is_the_one_that_changes_name(self):
         """Le cas qui a motivé la table, gardé explicitement."""
@@ -193,6 +209,179 @@ class TestGivingUp(ShrinkToolsBase):
         self.assertIn("100", out)
 
 
+class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
+    """« e2fsck -f -y » RÉPARE : il écrit, et « -y » répond oui à tout.
+
+    Deux abandons qui viennent APRÈS lui déclaraient pourtant
+    « changed=False ». Or ce drapeau décide du sort de la sauvegarde : à
+    faux, elle est SUPPRIMÉE comme inutile. Le disque restait donc tel que
+    fsck l'avait laissé, et la seule copie d'avant partait avec.
+
+    Les trois abandons qui précèdent le fsck gardent « False » à juste
+    titre : là, rien n'a touché le disque, et garder une sauvegarde
+    inutile encombrerait le répertoire d'images à chaque essai.
+    """
+
+    RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    @classmethod
+    def corps(cls):
+        import ast
+
+        chemin = os.path.join(cls.RACINE, "script", "todo", "qemu_manage.py")
+        source = open(chemin, encoding="utf-8").read()
+        for noeud in ast.walk(ast.parse(source)):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "_qemu_safe_shrink"
+            ):
+                return source.splitlines(), noeud
+        raise AssertionError("_qemu_safe_shrink introuvable")
+
+    def premier_fsck(self, lignes, fonction):
+        """La ligne du PREMIER fsck de la fonction.
+
+        DÉRIVÉE, et c'est la correction d'un piège. Le contrôle positif
+        d'en dessous bornait son intervalle par un numéro de ligne ÉCRIT EN
+        DUR : une modification quelconque plus haut dans le fichier
+        décalait la fonction sous cette borne, l'intervalle devenait vide,
+        et le test rougissait sur un changement qui ne le concernait pas.
+        Un garde qui rougit à tort est un garde qu'on apprend à désarmer.
+        """
+        fscks = [
+            n
+            for n in range(fonction.lineno, fonction.end_lineno + 1)
+            if '"e2fsck"' in lignes[n - 1] and "subprocess" in lignes[n - 1]
+        ]
+        self.assertTrue(fscks, "le fsck a disparu de la réduction")
+        return min(fscks)
+
+    def test_no_abandon_after_the_fsck_claims_nothing_changed(self):
+        """Le contrôle porte sur la POSITION, que rien d'autre ne tient :
+        déplacer un abandon sous le fsck ne casse aucune autre épreuve."""
+        import re
+
+        lignes, fonction = self.corps()
+        fautifs = [
+            n
+            for n in range(
+                self.premier_fsck(lignes, fonction), fonction.end_lineno + 1
+            )
+            if re.search(r"changed=False", lignes[n - 1])
+        ]
+        self.assertEqual([], fautifs)
+
+    def test_the_abandons_before_the_fsck_still_drop_the_backup(self):
+        """Contrôle positif : tout passer à « True » ferait garder une
+        sauvegarde inutile à chaque essai qui n'a rien touché."""
+        import re
+
+        lignes, fonction = self.corps()
+        avant = [
+            n
+            for n in range(
+                fonction.lineno, self.premier_fsck(lignes, fonction)
+            )
+            if re.search(r"changed=False", lignes[n - 1])
+        ]
+        self.assertTrue(avant, "plus aucun abandon ne rend la sauvegarde")
+
+
+class TestLaRestaurationQuiEchoue(unittest.TestCase):
+    """La réparation était ANNONCÉE et n'était jamais vérifiée.
+
+    Une réduction qui casse à mi-parcours laisse un disque à moitié
+    réduit, donc incohérent. L'écran disait « Restauration du disque
+    d'origine depuis la sauvegarde… », puis lançait un « mv » dont
+    PERSONNE ne lisait le code de retour, et rendait la même valeur qu'en
+    cas de succès. L'appelant, ne pouvant distinguer les deux, enchaînait
+    sur « Start the VM now? ».
+
+    Quelqu'un qui répond oui démarre un disque cassé. Et la seule copie
+    saine — la sauvegarde restée à côté — n'est jamais nommée.
+
+    Le « mv » est un renommage dans le même répertoire : il ne peut pas
+    manquer de place. Ce qui le fait échouer, c'est un jeton sudo expiré
+    en cours d'opération — un e2fsck suivi d'un resize2fs sur un gros
+    disque dépasse les quinze minutes par défaut — ou un remontage en
+    lecture seule après l'erreur d'E/S qui a fait échouer la réduction.
+    """
+
+    def menu(self):
+        todo = TODO.__new__(TODO)
+        todo._is_yes = lambda rep: (rep or "").strip().lower() in ("o", "y")
+        return todo
+
+    def revert(self, code_mv, changed=True, bak="/d/vm.qcow2.bak"):
+        todo = self.menu()
+        lances = []
+
+        def faux_run(argv, **_k):
+            lances.append(argv)
+
+            class R:
+                returncode = code_mv
+
+            return R()
+
+        with patch.object(qemu_manage.subprocess, "run", faux_run):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                rendu = todo._qemu_shrink_revert(bak, "/d/vm.qcow2", changed)
+        return todo, rendu, tampon.getvalue(), lances
+
+    def test_a_successful_restore_says_so(self):
+        """L'écran annonce la restauration puis se tait : sans un mot de
+        fin, rien ne distingue une restauration faite d'une interrompue."""
+        _t, rendu, ecran, lances = self.revert(0)
+        self.assertFalse(rendu)
+        self.assertTrue(any("mv" in a for a in lances))
+        self.assertIn(t("Original disk restored from backup."), ecran)
+
+    def test_a_failed_restore_is_named_and_names_the_backup(self):
+        """C'est la seule copie saine : ne pas la nommer laisse la
+        détruire au prochain nettoyage."""
+        _t, _r, ecran, _l = self.revert(1)
+        self.assertIn("✗", ecran)
+        self.assertIn("/d/vm.qcow2.bak", ecran)
+
+    def test_a_failed_restore_forbids_the_offer_to_start(self):
+        """L'ENCHAÎNEMENT est le défaut : l'écran proposait de démarrer
+        un disque qu'il venait de ne pas réparer."""
+        todo, _r, _e, _l = self.revert(1)
+        # `input` EST BOUCHONNÉ, et il doit rester INTACT : une épreuve
+        # qui ne le bouchonne pas attend sur l'entrée standard — elle
+        # rougit là où stdin est fermé, et FIGE dans un terminal. C'est
+        # aussi ce qui prouve le contrat : la question n'est pas posée.
+        saisie = MagicMock(return_value="")
+        with patch("builtins.input", saisie):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-essai", was_shut_down=True)
+        saisie.assert_not_called()
+        self.assertNotIn("Start the VM now?", tampon.getvalue())
+        self.assertIn("✗", tampon.getvalue())
+
+    def test_a_successful_restore_still_offers_to_start(self):
+        """Contrôle positif : refuser toujours ferait perdre le service
+        d'une VM qu'on a éteinte pour l'opération."""
+        todo, _r, _e, _l = self.revert(0)
+        saisies = iter(["n"])
+        with patch("builtins.input", lambda *_a: next(saisies)):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-essai", was_shut_down=True)
+        self.assertIn(
+            t("The VM was shut down for the resize."), tampon.getvalue()
+        )
+
+    def test_nothing_was_changed_so_nothing_is_restored(self):
+        """Le disque est intact : le toucher serait le seul vrai risque."""
+        _t, _r, ecran, lances = self.revert(0, changed=False)
+        self.assertEqual([], [a for a in lances if "mv" in a])
+        self.assertNotIn("✗", ecran)
+
+
 class TestBackupSpace(unittest.TestCase):
     """La sauvegarde avant réduction, et la place qu'elle demande.
 
@@ -266,6 +455,91 @@ class TestBackupSpace(unittest.TestCase):
         """Une place égale au besoin n'en laisse aucune : refusé."""
         _, retenu = self._decision(12 * self.GIB, 12 * self.GIB, "")
         self.assertFalse(retenu)
+
+
+class TestLeVerdictNeSurvitPasASonOperation(unittest.TestCase):
+    """« Le disque est incohérent » est un verdict SUR UNE OPÉRATION.
+
+    Il est posé quand la restauration depuis la sauvegarde échoue, et il vit
+    sur l'objet TODO, qui dure toute la session interactive. Rien ne le
+    remettait à faux — contrairement à son voisin `_shrink_backup`, remis à
+    None au début de chaque réduction. Une réduction ULTÉRIEURE qui RÉUSSIT,
+    sur une autre VM, se voyait donc refuser le redémarrage et proposer la
+    suppression de sa sauvegarde : la pire combinaison, sur un disque sain.
+    """
+
+    def menu(self):
+        todo = TODO.__new__(TODO)
+        todo.execute = _Exec()
+        return todo
+
+    def test_the_verdict_refuses_the_start_while_it_stands(self):
+        """Contrôle du mécanisme : sans lui, les autres ne prouvent rien."""
+        todo = self.menu()
+        todo._shrink_disk_unsafe = True
+        tampon = io.StringIO()
+        with patch("builtins.input") as saisie:
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-a", True)
+        saisie.assert_not_called()
+        self.assertIn("✗", tampon.getvalue())
+
+    @staticmethod
+    def _voisines(corps, gauche, droite):
+        """Les deux affectations sont-elles CONSÉCUTIVES dans ce corps ?
+
+        La question est structurelle, et non une distance en lignes : un
+        écart toléré en nombre de lignes est un chiffre magique, qui se
+        met à mentir dès qu'un commentaire s'allonge entre les deux.
+        """
+        import ast
+
+        def vise(noeud, nom):
+            return isinstance(noeud, ast.Assign) and any(
+                isinstance(c, ast.Attribute) and c.attr == nom
+                for c in noeud.targets
+            )
+
+        for noeud in ast.walk(corps):
+            suite = getattr(noeud, "body", None)
+            if not isinstance(suite, list):
+                continue
+            for rang in range(len(suite) - 1):
+                paire = (suite[rang], suite[rang + 1])
+                if any(
+                    vise(paire[0], a) and vise(paire[1], b)
+                    for a, b in ((gauche, droite), (droite, gauche))
+                ):
+                    return True
+        return False
+
+    def test_a_new_shrink_clears_it_beside_its_sibling(self):
+        """La remise à zéro vit AVEC celle de la sauvegarde.
+
+        Les deux sont l'état d'UNE opération, remis au même instant et pour
+        la même raison ; les séparer, c'est rouvrir la porte — l'un a été
+        oublié pendant que l'autre était fait.
+        """
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(TODO._qemu_safe_shrink).lstrip())
+        self.assertTrue(
+            self._voisines(arbre, "_shrink_disk_unsafe", "_shrink_backup"),
+            "le verdict n'est pas remis à zéro à côté de sa sauvegarde",
+        )
+
+    def test_the_start_is_offered_again_once_it_is_cleared(self):
+        """Le geste qui compte : une réduction saine ne doit pas payer
+        l'échec d'une autre."""
+        todo = self.menu()
+        todo._shrink_disk_unsafe = True
+        todo._shrink_disk_unsafe = False
+        tampon = io.StringIO()
+        with patch("builtins.input", return_value="n") as saisie:
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-a", True)
+        saisie.assert_called()
 
 
 if __name__ == "__main__":

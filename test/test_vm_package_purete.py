@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Le paquet des backends de VM ne connaît ni menu, ni écran, ni terminal.
+
+Chaque module portait déjà sa propre garde, ce qui laisse un trou : le
+module SUIVANT n'en a pas tant que personne n'y pense. Cette épreuve porte
+sur le PAQUET, donc sur ce qui n'est pas encore écrit.
+
+Ce qu'elle protège n'est pas une élégance. Un backend qui importerait un
+module de menu deviendrait inéprouvable sans terminal, et le premier
+consommateur d'un deuxième écran en ferait une copie plutôt que de tirer
+sur ce fil.
+"""
+
+import ast
+import os
+import sys
+import unittest
+
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(RACINE)
+
+PAQUET = os.path.join(RACINE, "script", "vm")
+
+# Ce que le paquet a le droit d'importer, en plus de la bibliothèque
+# standard. Vide : il ne dépend de rien du dépôt, pas même des postures —
+# c'est l'appelant qui rapproche les deux.
+DEPENDANCES_PERMISES = ()
+
+
+def modules():
+    return sorted(
+        os.path.join(PAQUET, nom)
+        for nom in os.listdir(PAQUET)
+        if nom.endswith(".py")
+    )
+
+
+def racines_importees(chemin):
+    with open(chemin, encoding="utf-8") as handle:
+        arbre = ast.parse(handle.read())
+    vues = set()
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, ast.Import):
+            vues.update(alias.name for alias in noeud.names)
+        elif isinstance(noeud, ast.ImportFrom) and noeud.module:
+            vues.add(noeud.module)
+    return vues
+
+
+class TestLeModeDEmploiSuitLePaquet(unittest.TestCase):
+    """Un backend ajouté sans être documenté est un backend qu'on découvre
+    à l'usage.
+
+    Le README du paquet nomme les trois et dit lequel a tourné contre une
+    vraie machine. Ajouter le quatrième sans y toucher laisserait croire
+    que la liste est complète — et surtout laisserait croire qu'il est
+    éprouvé, ce que le drapeau existe précisément pour empêcher.
+
+    Le contrôle porte sur la SOURCE bilingue et sur CHAQUE langue : une
+    ligne retirée d'une seule moitié laisserait l'autre complète, et un
+    contrôle sur le texte entier ne verrait rien.
+    """
+
+    @staticmethod
+    def moities():
+        chemin = os.path.join(PAQUET, "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            texte = fichier.read()
+        anglais, _sep, francais = texte.partition("<!-- [fr] -->")
+        return anglais, francais
+
+    def test_every_backend_is_named_on_the_line_that_lists_them(self):
+        """Sur LA LIGNE, et non quelque part dans la page : un backend
+        retiré de la table se retrouve nommé ailleurs dans le texte, et un
+        contrôle sur la page entière ne verrait rien."""
+        from script.vm import backend
+
+        for moitie in self.moities():
+            lignes = [
+                ligne
+                for ligne in moitie.splitlines()
+                if ligne.strip().startswith("| `backend`")
+            ]
+            self.assertEqual(1, len(lignes), moitie[:40])
+            for nom in backend.BACKENDS:
+                with self.subTest(backend=nom, langue=moitie[:30]):
+                    self.assertIn(f"`{nom}`", lignes[0])
+
+    def test_every_unproven_backend_is_named_as_such(self):
+        """Le taire ferait lire « trois backends » là où deux auraient
+        tourné et le troisième n'aurait que des épreuves unitaires.
+
+        L'épreuve suit la TABLE plutôt que de nommer un backend : celui qui
+        est non éprouvé change, et une épreuve qui en nomme un devient
+        muette le jour où il est confronté — juste au moment où un autre
+        arrive et aurait besoin d'elle. Vide, elle passe sans rien
+        affirmer, ce qui est le bon comportement quand tout a tourné.
+        """
+        from script.vm import backend
+
+        non_eprouves = [
+            n for n in backend.BACKENDS if not backend.is_proven(n)
+        ]
+        for moitie in self.moities():
+            for nom in non_eprouves:
+                with self.subTest(langue=moitie[:30], backend=nom):
+                    self.assertIn(nom, moitie)
+
+    # Les phrases qui énoncent un ÉTAT — « ce backend n'a pas été
+    # confronté » — et non un principe. Le README a le droit d'expliquer ce
+    # que « non éprouvé » veut dire ; un module n'a pas le droit d'affirmer
+    # qu'il l'est encore quand la table dit l'inverse.
+    ETATS_PERIMABLES = (
+        "N'A ÉTÉ CONFRONTÉ",
+        "se déclare non éprouvé",
+        "jamais confronté",
+        "never run against the tool",
+    )
+
+    def test_no_module_claims_to_be_unconfronted_once_the_table_says_it_is(
+        self,
+    ):
+        """Lever la mention dans la table ne relit pas les docstrings.
+
+        C'est arrivé : la table est passée à « éprouvé », les README ont
+        suivi, et deux docstrings ont continué d'annoncer « rien ici n'a
+        été confronté » — dont un dans les épreuves elles-mêmes. Rien ne
+        les relisait, et une prose périmée se lit comme une prose.
+
+        La garde se DÉSARME d'elle-même : tant qu'un backend est non
+        éprouvé, la phrase est légitime quelque part et l'épreuve se tait.
+        """
+        from script.vm import backend
+
+        if [n for n in backend.BACKENDS if not backend.is_proven(n)]:
+            self.skipTest("un backend est non éprouvé : la phrase est due")
+        fautives = []
+        for chemin in self._sources_a_relire():
+            with open(chemin, encoding="utf-8") as fichier:
+                for numero, ligne in enumerate(fichier, 1):
+                    for etat in self.ETATS_PERIMABLES:
+                        if etat in ligne and not self._cite(ligne, etat):
+                            court = os.path.relpath(chemin, RACINE)
+                            fautives.append(
+                                f"{court}:{numero}: {ligne.strip()[:70]}"
+                            )
+        self.assertEqual([], fautives)
+
+    @classmethod
+    def _sources_a_relire(cls):
+        """Le paquet et ses épreuves, SAUF ce fichier.
+
+        Il porte la table des phrases : s'inclure ferait échouer la garde
+        sur elle-même, à tout jamais et sans rapport avec le dépôt.
+        """
+        moi = os.path.abspath(__file__)
+        dossier = os.path.join(RACINE, "test")
+        epreuves = [
+            os.path.join(dossier, nom)
+            for nom in os.listdir(dossier)
+            if nom.startswith(("test_vm_", "test_lima"))
+        ]
+        return [c for c in modules() + epreuves if os.path.abspath(c) != moi]
+
+    @staticmethod
+    def _cite(ligne, etat):
+        """La ligne PARLE-t-elle de la phrase au lieu de l'affirmer ?
+
+        Un commentaire qui explique pourquoi une mention a été retirée la
+        recopie forcément, entre guillemets. Le distinguer d'une
+        affirmation est ce qui sépare une garde utilisable d'une garde
+        qu'on apprend à ignorer.
+        """
+        avant = ligne[: ligne.index(etat)]
+        return avant.rstrip().endswith(("«", "« ", '"', "'"))
+
+    def test_the_confrontation_script_it_names_exists(self):
+        """Le mode d'emploi renvoie à un script pour lever la mention.
+
+        Un nom qui ne désigne plus rien envoie chercher un fichier absent,
+        et la seule sortie annoncée devient une impasse.
+        """
+        for moitie in self.moities():
+            with self.subTest(langue=moitie[:30]):
+                self.assertIn("lima_confront.py", moitie)
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(RACINE, "long_test", "lima_confront.py")
+            )
+        )
+
+    def test_every_handle_field_is_documented(self):
+        from script.vm import backend
+
+        for moitie in self.moities():
+            for champ in backend.VmHandle._fields:
+                with self.subTest(champ=champ, langue=moitie[:30]):
+                    self.assertIn(f"`{champ}`", moitie)
+
+
+class TestLePaquetNeDependDeRien(unittest.TestCase):
+    def test_there_is_something_to_check(self):
+        """Sur un paquet vide, toutes les épreuves d'à côté passent."""
+        self.assertGreaterEqual(len(modules()), 4)
+
+    def test_no_module_imports_outside_the_standard_library(self):
+        for chemin in modules():
+            with self.subTest(module=os.path.basename(chemin)):
+                for nom in racines_importees(chemin):
+                    racine = nom.split(".")[0]
+                    if nom.startswith("script.vm"):
+                        continue
+                    if nom in DEPENDANCES_PERMISES:
+                        continue
+                    self.assertIn(
+                        racine,
+                        sys.stdlib_module_names,
+                        f"{os.path.basename(chemin)} importe « {nom} »",
+                    )
+
+    def test_no_module_reaches_into_the_menu_layer(self):
+        """Le nommer À PART de la garde générale : c'est l'import qui
+        arriverait en premier, et celui dont la conséquence est la pire —
+        un backend qu'on ne peut plus éprouver sans terminal."""
+        for chemin in modules():
+            with self.subTest(module=os.path.basename(chemin)):
+                for nom in racines_importees(chemin):
+                    self.assertFalse(
+                        nom.startswith("script.todo"),
+                        f"{os.path.basename(chemin)} importe « {nom} »",
+                    )
+
+    def test_no_module_prints_or_prompts(self):
+        """Un backend qui parle décide de la langue et du flux à la place
+        de l'écran, et deux écrans ne peuvent plus le rendre autrement."""
+        for chemin in modules():
+            with self.subTest(module=os.path.basename(chemin)):
+                with open(chemin, encoding="utf-8") as handle:
+                    arbre = ast.parse(handle.read())
+                appels = [
+                    noeud.func.id
+                    for noeud in ast.walk(arbre)
+                    if isinstance(noeud, ast.Call)
+                    and isinstance(noeud.func, ast.Name)
+                ]
+                for interdit in ("print", "input"):
+                    self.assertNotIn(interdit, appels)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -258,7 +258,7 @@ the subject you just wrote, and no others. When one file carries two subjects,
 ```bash
 git status --porcelain
 git add script/module/thing.py test/test_thing.py
-git -c user.name="Your Name" -c user.email="your@email.com" commit -F - <<'MSG'
+git -c user.name="Your Name" -c user.email="your@example.com" commit -F - <<'MSG'
 [TAG] scope: description
 
 Explain WHY here.

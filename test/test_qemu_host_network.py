@@ -32,6 +32,7 @@ Ce que ces tests gardent :
 
 import importlib.util
 import io
+import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -125,6 +126,44 @@ class LaLecture(unittest.TestCase):
         de déplacer un réseau."""
         self.assertEqual("", DQ.cidr_from_network_xml(""))
         self.assertEqual("", DQ.cidr_from_network_xml("<network/>"))
+
+
+class LUniqueLecteurDuBlocIp(unittest.TestCase):
+    """Le motif « <ip address=… netmask=…> » n'a qu'un seul lecteur.
+
+    Il en existait deux copies, et une correction n'en atteignait qu'une.
+    Ces épreuves tiennent l'unicité ET l'accord des deux appelants.
+    """
+
+    def test_it_reads_the_address_and_the_netmask(self):
+        self.assertEqual(
+            ("192.168.122.1", "255.255.255.0"),
+            DQ.ip_netmask_from_network_xml(XML_DEFAUT),
+        )
+
+    def test_a_xml_without_an_ip_block_answers_empty(self):
+        for xml in ("", "<network/>", "<network><name>x</name></network>"):
+            with self.subTest(xml=xml):
+                self.assertEqual(("", ""), DQ.ip_netmask_from_network_xml(xml))
+
+    def test_the_pattern_is_written_once(self):
+        """Deux copies dérivent : c'est ce qui est arrivé."""
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "qemu"
+            / "deploy_qemu.py"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(1, source.count("<ip address='"))
+
+    def test_both_callers_agree_with_the_shared_reader(self):
+        """Contrôle positif : le lecteur sert, il n'est pas décoratif."""
+        adresse, masque = DQ.ip_netmask_from_network_xml(XML_DEFAUT)
+        self.assertTrue(adresse and masque)
+        self.assertIn(
+            adresse.rsplit(".", 1)[0],
+            DQ.cidr_from_network_xml(XML_DEFAUT),
+        )
 
 
 class LaCollision(unittest.TestCase):
@@ -438,6 +477,101 @@ class LOrdreDesGestes(unittest.TestCase):
             verbes.index("net-destroy"), verbes.index("net-define")
         )
         self.assertIn("rendre l'accès au réseau", texte)
+
+
+class LOrdreDuDeploiement(unittest.TestCase):
+    """Le déplacement du réseau doit précéder tout ce qui en dépend.
+
+    CE QUI EST GRAVÉ NE SE RENÉGOCIE PLUS. `static_net_plan` lit le XML du
+    réseau pour en tirer une passerelle, un masque et une adresse fixe libre ;
+    `build_installer_initrd` les écrit DANS UN FICHIER initrd. Si
+    `ensure_network` passe après, il peut redéfinir le réseau sur un autre
+    /24 — c'est sa raison d'être — et l'installateur pose alors une adresse
+    que plus aucun segment ne route.
+
+    IL N'Y A AUCUN REPLI : cet initrd ne porte que netcfg-static, jamais
+    netcfg-dhcp. La question se pose sur une console série qu'aucun écran ne
+    montre, et l'installation reste pendue jusqu'au délai.
+
+    Même cause, second effet : « net-dhcp-leases » ne rend rien d'un réseau
+    défini mais éteint. Interrogé avant le démarrage, l'ensemble des adresses
+    déjà prises est vide, et le tirage se croit libre de toute la plage.
+
+    L'ÉPREUVE PORTE SUR L'ORDRE, qui EST la propriété. Rejouer un
+    déploiement entier pour le constater demanderait un banc plus gros que
+    ce qu'il garde.
+    """
+
+    @staticmethod
+    def rangs():
+        """Le numéro de ligne du premier appel de chaque verbe, dans main."""
+        import ast
+
+        chemin = RACINE / "script" / "qemu" / "deploy_qemu.py"
+        with io.open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == "main":
+                vus = {}
+                for appel in ast.walk(noeud):
+                    if not isinstance(appel, ast.Call):
+                        continue
+                    nom = getattr(appel.func, "id", "") or getattr(
+                        appel.func, "attr", ""
+                    )
+                    if nom and nom not in vus:
+                        vus[nom] = appel.lineno
+                    elif nom:
+                        vus[nom] = min(vus[nom], appel.lineno)
+                return vus
+        raise AssertionError("main introuvable dans deploy_qemu.py")
+
+    def test_the_network_is_settled_before_the_address_is_chosen(self):
+        rangs = self.rangs()
+        self.assertIn("ensure_network", rangs, "plus personne ne le range")
+        self.assertIn("static_net_plan", rangs)
+        self.assertLess(
+            rangs["ensure_network"],
+            rangs["static_net_plan"],
+            "l'adresse est choisie dans un réseau qui peut encore déménager",
+        )
+
+    def test_the_network_is_settled_before_the_initrd_is_burned(self):
+        rangs = self.rangs()
+        self.assertLess(
+            rangs["ensure_network"],
+            rangs["build_installer_initrd"],
+            "l'initrd est gravé avant que le réseau soit arrêté",
+        )
+
+    def test_it_is_settled_once_and_not_twice(self):
+        """Contrôle positif : deux appels laisseraient le second rattraper
+        le premier à l'œil, et le défaut se rejouerait entre les deux.
+
+        L'APPEL DANS `main`, et non un motif de texte sur tout le fichier.
+        Compter « ensure_network(network_name( » épinglait une ÉCRITURE :
+        calculer le nom dans une variable avant l'appel — ce qui se lit
+        mieux — l'aurait fait rougir sur une amélioration, et une
+        occurrence en commentaire l'aurait fait rougir sans code.
+        """
+        import ast
+
+        chemin = RACINE / "script" / "qemu" / "deploy_qemu.py"
+        with io.open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        principale = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        appels = [
+            n
+            for n in ast.walk(principale)
+            if isinstance(n, ast.Call)
+            and (getattr(n.func, "id", "") or getattr(n.func, "attr", ""))
+            == "ensure_network"
+        ]
+        self.assertEqual(1, len(appels), [n.lineno for n in appels])
 
 
 if __name__ == "__main__":

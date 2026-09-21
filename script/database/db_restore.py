@@ -128,9 +128,8 @@ def probe_master_password(arg_base, mot):
     Seule l'action `drop` consulte le mot de passe, et elle le fait
     AVANT de regarder la base : `check_super` d'abord, `db_exists`
     ensuite. Sur un nom qui n'existe pas, elle ne touche donc rien et
-    répond quand même. Mesuré sur la machine d'essai : mauvais mot de
-    passe → code 1 et `AccessDenied` dans la trace ; bon mot de passe →
-    code 0, silence, et les huit bases toujours là.
+    répond quand même — code 1 et `AccessDenied` sur un mauvais mot de
+    passe, code 0 et silence sur le bon.
 
     Le secret passe par l'environnement, jamais par argv :
     /proc/<pid>/cmdline est lisible par tout utilisateur de la machine.
@@ -198,7 +197,7 @@ def verify_filestore(database, image):
     casserait des chaînes qui marchent, pour un défaut qui se répare
     d'une commande.
     """
-    chemin = os.path.join("image_db", f"{image}.zip")
+    chemin = image_path(image)
     if not os.path.isfile(chemin):
         return
     try:
@@ -216,9 +215,10 @@ def offer_tidy(check_filestore, rapport):
     """Proposer de ranger TOUT DE SUITE, là où le défaut naît.
 
     C'est le seul endroit qui vaille. Le nichage se produit une fois, à
-    la restauration, puis le clone le recopie tel quel : mesuré, les six
-    bases de la chaîne portaient les mêmes 1168 fichiers. Ranger ici,
-    c'est ranger une fois ; ranger plus tard, c'est six fois.
+    la restauration, puis le clone le recopie tel quel : toutes les bases
+    d'une chaîne portent donc le même défaut, fichier pour fichier. Ranger
+    ici, c'est ranger une fois ; ranger plus tard, c'est autant de fois
+    qu'il y a de clones.
 
     Rien ne se fait sans réponse humaine, et rien du tout hors d'un
     terminal : ce script tourne aussi sans personne devant, et une
@@ -241,8 +241,55 @@ def offer_tidy(check_filestore, rapport):
         shutil.move(source, cible)
     for source, _cible in doublons:
         os.remove(source)
-    shutil.rmtree(check_filestore.nested_dir(rapport), ignore_errors=True)
     print(f"✅ {len(remonter)} remontés, {len(doublons)} doublons supprimés.")
+    # ON NOMME, ON N'EFFACE PAS — même raison que l'écran du menu, dont ce
+    # bloc est le jumeau : le plan ne couvre qu'une forme, et retirer le nid
+    # d'un bloc emportait ce qu'il n'avait ni compté ni montré.
+    dossier = check_filestore.nested_dir(rapport)
+    restes = check_filestore.tidy_nested_leftovers(dossier)
+    if restes:
+        print(f"⚠  {len(restes)} fichier(s) hors du plan, laissés en place :")
+        for chemin in restes[:10]:
+            print(f"     {chemin}")
+        print(f"   Dossier : {dossier}")
+    elif check_filestore.drop_empty_tree(dossier):
+        print("   Dossier imbriqué retiré (il était vide).")
+
+
+def image_path(image):
+    """Le chemin du zip d'une image, composé ICI et nulle part ailleurs.
+
+    Recopié chez chaque consommateur, il devient une divergence
+    silencieuse le jour où le répertoire change de nom.
+    """
+    return os.path.join("image_db", f"{image}.zip")
+
+
+def missing_image(config, lst_db_cache, exists=os.path.isfile):
+    """Le chemin du zip qui manquera, ou "" si rien ne manque.
+
+    ELLE EST INTERROGÉE AVANT LE DROP, et c'est tout le sujet. La
+    destruction précédait la restauration et rien ne regardait le zip :
+    un « --image » mal tapé supprimait la base, puis échouait sur un
+    fichier absent, et il ne restait rien. Le contrôle du filestore lit
+    bien ce chemin, mais APRÈS la restauration — il arrive trop tard pour
+    empêcher quoi que ce soit.
+
+    L'IMAGE N'EST EXIGÉE QUE SI ELLE VA SERVIR. « --only_drop » ne
+    restaure rien, et un clone depuis un cache déjà restauré n'ouvre pas
+    le zip : l'exiger dans ces deux cas refuserait des chaînes qui
+    marchent, et une garde qui refuse à tort finit désactivée.
+
+    `exists` est injectable : c'est ce qui rend la décision vérifiable
+    sans poser un fichier sur le disque.
+    """
+    if config.only_drop:
+        return ""
+    cache = f"_cache_{config.image}"
+    if not config.ignore_cache and cache in lst_db_cache:
+        return ""
+    chemin = image_path(config.image)
+    return "" if exists(chemin) else chemin
 
 
 def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
@@ -338,9 +385,16 @@ def main():
 
     if config.database:
         cache_database = f"_cache_{config.image}"
+        absente = missing_image(config, lst_db_cache)
+        if absente:
+            _logger.error(f"Image not found: {absente} — nothing was dropped.")
+            sys.exit(1)
         # Drop db
         if config.database in lst_db:
-            _logger.info(f"## Drop {config.database} ##")
+            # DIT, et non journalisé. `logging` part au niveau que réclame
+            # LOGLEVEL : sous « WARNING », la seule trace d'une destruction
+            # disparaissait. Ce qui détruit se dit toujours.
+            print(f"## Drop {config.database} ##")
             arg = f"{arg_base} --drop --database {config.database}"
             out = redact_secrets(check_output(arg.split(" ")).decode())
             print(out)

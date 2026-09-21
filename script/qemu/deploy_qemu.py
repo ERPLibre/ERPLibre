@@ -209,10 +209,13 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
 # diffèrent de l'architecture de l'hôte.
 NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
-# Distros publiant des images cloud par architecture (vérifié juillet 2026) :
-# - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
-# - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
-#   aarch64 sur geo.mirror.pkgbuild.com).
+# Ce que chaque architecture sert. La table AU-DESSOUS fait autorité ; ce
+# commentaire dit seulement ce qui s'en déduit mal.
+#
+# Arch Linux ne publie d'image cloud ni pour s390x ni pour aarch64, et
+# n'apparaît donc dans aucune des deux listes. Debian est servi sur s390x
+# SANS image cloud, par l'installateur — voir uses_installer() et le
+# commentaire de son entrée.
 S390X_DISTROS: tuple[str, ...] = (
     "ubuntu",
     "almalinux",
@@ -554,7 +557,7 @@ def image_candidates(
             ]
         # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
         # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
-        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
+        # y sont côte à côte dans ce seul index.
         return [
             f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
             f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
@@ -1387,9 +1390,9 @@ def ensure_tools(
     manque, puis vérifie la connexion à l'hyperviseur.
 
     `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
-    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
-    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
-    n'était jamais installé -> « Failed to start network default ». Les
+    Sur Arch, libvirt peut être là sans dnsmasq, posé par une installation qui
+    ne le listait pas : daemon_missing() rend alors False, dnsmasq n'est jamais
+    installé, et le réseau meurt sur « Failed to start network default ». Les
     gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
     """
     missing = missing_tools()
@@ -1929,10 +1932,10 @@ def kvm_available() -> bool:
 
     « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
     VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
-    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
-    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
-    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
-    que rien ne le signale.
+    Sur un hôte lui-même invité KVM, une VM s390x sur hôte s390x sort en
+    « <domain type='qemu'> », soit de l'émulation intégrale — et un démarrage
+    de 7 min 30 au lieu de quelques dizaines de secondes, sans que rien ne le
+    signale.
 
     /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
     que si on est root : libvirt, lui, tourne en root et se moque de notre
@@ -2686,12 +2689,12 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
-# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
-# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
-# d'où le « --now », qui démarre.
+# N'apparaît que sur une VM déployée AVEC un bureau. GNOME installé, gdm3
+# installé, cible graphique par défaut… et la console reste pourtant en mode
+# texte : graphical.target est déjà atteinte quand le paquet arrive, et une
+# cible active ne rattrape pas un service ajouté après coup. « enable » seul
+# n'y change rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement
+# un alias — d'où le « --now », qui démarre.
 DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
         "systemctl status display-manager",
@@ -3194,6 +3197,26 @@ def write_files_lines(
 # « erplibre/etc-motd » sans entrée « erplibre » ferait échouer le dépliage de
 # l'initrd ENTIER, donc l'installation. Les fichiers restent à la racine.
 INSTALLER_GUIDE_PREFIX = "erplibre-"
+
+# Où le fichier de règles de sortie se pose dans l'invité, et son mode.
+# RECOPIÉS depuis le module qui rend ces règles, et non importés : ce
+# fichier se charge seul, sans le dépôt sur le chemin d'import, et il
+# n'importe que la bibliothèque standard. Une épreuve les tient égaux à leur
+# source, ce qui remplace l'import qu'on ne peut pas faire.
+#
+# Le chemin est PLAT sous /etc : le late_command recopie avec une commande
+# qui ne crée pas les parents et tolère son propre échec, si bien qu'un
+# chemin à deux niveaux se poserait par cloud-init et manquerait par
+# l'installateur.
+EGRESS_GUEST_PATH = "/etc/erplibre-egress.nft"
+EGRESS_GUEST_MODE = "0600"
+
+# L'unité qui RECHARGE les règles à chaque démarrage. Sans elle, seul le
+# premier amorçage les charge par cloud-init — et la voie de l'installateur,
+# qui n'a pas de première commande du tout, ne les chargeait jamais.
+EGRESS_UNIT_NAME = "erplibre-egress.service"
+EGRESS_UNIT_PATH = f"/etc/systemd/system/{EGRESS_UNIT_NAME}"
+EGRESS_UNIT_MODE = "0644"
 
 
 def installer_guide_name(path: str) -> str:
@@ -3775,6 +3798,19 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
             "",
         )
     ]
+    # Les règles de sortie, quand un déploiement en a rendu. Posées comme le
+    # guide : par la même voie, donc présentes dès le PREMIER boot et sur les
+    # deux chemins d'amorce, sans mécanisme neuf.
+    # `.strip()` et non la vérité de la chaîne : un contenu fait d'espaces
+    # se chargerait sans rien appliquer, et la machine se lirait comme
+    # confinée. Le composeur du dépôt refuse ce cas ; le refuser ici aussi
+    # est ce qui tient les deux chemins égaux, faute de pouvoir l'importer.
+    regles = getattr(args, "egress_rules", "")
+    if regles.strip():
+        files.append((EGRESS_GUEST_PATH, EGRESS_GUEST_MODE, regles, ""))
+    unite = getattr(args, "egress_unit_text", "")
+    if unite.strip():
+        files.append((EGRESS_UNIT_PATH, EGRESS_UNIT_MODE, unite, ""))
     if args.no_git_identity:
         return files
     # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par
@@ -3956,6 +3992,21 @@ def build_cloud_config(
         "  - systemctl restart qemu-guest-agent 2>/dev/null"
         " || systemctl restart qemu-ga 2>/dev/null || true",
     ]
+    # Le chargement des règles vient EN DERNIER, et c'est la seule ligne de
+    # runcmd sans repli. Le code de sortie d'un script est celui de sa
+    # dernière commande : placée là, sa panne devient celle du script, alors
+    # qu'ailleurs elle se perdrait dans les « || true » qui suivent. Sans
+    # repli parce qu'un confinement qui ne se charge pas doit se voir : le
+    # masquer laisserait déployer une machine qui promet ce qu'elle ne tient
+    # pas.
+    if getattr(args, "egress_rules", ""):
+        charge = f"nft -f {EGRESS_GUEST_PATH}"
+        if getattr(args, "egress_unit_text", ""):
+            # Armer ET charger, liés : armer sans charger laisse la machine
+            # sortir jusqu'au premier redémarrage, charger sans armer la
+            # laisse sortir à partir du deuxième.
+            charge = f"systemctl enable {EGRESS_UNIT_NAME} && {charge}"
+        lines.append(f"  - {charge}")
     return "\n".join(lines) + "\n"
 
 
@@ -4105,11 +4156,11 @@ def _ip_taken(ip: str) -> bool:
     """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
 
     Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
-    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
-    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
-    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
-    journal ne le disait qu'à demi-mot : « git is already the newest
-    version », impossible sur un système que d-i vient de poser.
+    machine éteinte au moment du choix, ou dont sshd est filtré. Une adresse
+    attribuée à une VM neuve peut appartenir déjà à une machine en service :
+    l'installation ERPLibre se déroule alors SUR CETTE DERNIÈRE, et le journal
+    ne le dit qu'à demi-mot — « git is already the newest version », impossible
+    sur un système que d-i vient de poser.
 
     On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
     ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
@@ -4166,10 +4217,9 @@ def static_net_plan(
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
-    if not m:
+    gateway, netmask = ip_netmask_from_network_xml(xml)
+    if not gateway:
         return None
-    gateway, netmask = m.group(1), m.group(2)
     base = gateway.rsplit(".", 1)[0]
     taken = {gateway}
     lease_cmd = ["virsh", "-c", LIBVIRT_URI, "net-dhcp-leases", net]
@@ -4185,8 +4235,8 @@ def static_net_plan(
     # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
     # en partant du haut » donne la MÊME adresse à deux VM déployées en
     # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
-    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
-    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # donc aucune ne voit l'autre. Les deux prennent .250 et se disputent
+    # l'adresse, une seule survivant.
     # Le nom, lui, diffère toujours, et le tirage reste stable d'un
     # redéploiement à l'autre.
     start = zlib.crc32(name.encode()) % 50
@@ -4302,8 +4352,20 @@ def build_preseed(
         "d-i partman/confirm boolean true",
         "d-i partman/confirm_nooverwrite boolean true",
         "tasksel tasksel/first multiselect ssh-server",
+        # L'ANALYSEUR VIENT AVEC LES RÈGLES. Cette voie POSE le fichier de
+        # règles et l'unité qui les recharge à chaque démarrage, et c'est la
+        # SEULE des quatre où le système installé n'apporte pas nftables :
+        # les images cloud des autres distributions le portent d'origine.
+        # Sans lui, l'unité échoue à chaque amorçage, la machine revient
+        # DEBOUT et sort librement — en portant un fichier de règles, ce qui
+        # donne l'apparence du contraire.
+        #
+        # Posé INCONDITIONNELLEMENT, et non quand la spec demande une
+        # posture : le preseed est écrit une fois pour l'image, et une VM
+        # dont on resserre la posture plus tard trouverait sinon un système
+        # sans de quoi la tenir.
         "d-i pkgsel/include string openssh-server sudo python3"
-        " qemu-guest-agent ca-certificates",
+        " qemu-guest-agent ca-certificates nftables",
         "d-i pkgsel/upgrade select none",
         "popularity-contest popularity-contest/participate boolean false",
         "d-i finish-install/reboot_in_progress note",
@@ -4357,6 +4419,13 @@ def build_preseed(
     # nul. Sans ce « true », un chmod qui échoue bloque l'installation sur un
     # écran que personne ne regarde — c'est déjà la garde de
     # partman/early_command, quelques lignes plus haut.
+    # Cette voie n'a AUCUNE première commande : l'unité est donc ce qui
+    # charge les règles, au premier démarrage du système installé comme aux
+    # suivants. Le « || true » est la contrainte de ce chemin, pas un choix
+    # — mais un armement raté se voit quand même : la relecture d'après
+    # déploiement ne trouve pas la table et la machine est écartée.
+    if getattr(args, "egress_unit_text", ""):
+        post.append(f"in-target systemctl enable {EGRESS_UNIT_NAME} || true")
     post.append("true")
     # Diagnostic réseau, écrit sur la console AVANT que netcfg ne décide.
     # netcfg n'essaie aucun DHCP sur s390x et tombe droit sur l'adressage
@@ -4368,11 +4437,11 @@ def build_preseed(
     early = [
         # LE correctif, pas un diagnostic : on ALLUME la carte.
         #
-        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
-        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
-        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
-        # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
-        # pas, saute le DHCP et demande une adresse statique.
+        # Dans l'installateur, « enc1: <BROADCAST,MULTICAST> … qdisc
+        # noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel obtient
+        # un bail en deux secondes. Le réseau n'est pas en cause :
+        # netcfg teste l'état du lien AVANT d'essayer, ne le voit pas,
+        # saute le DHCP et demande une adresse statique.
         #
         # Sur s390x c'est le udeb s390-netdevice qui active le périphérique.
         # En preseedant sa question pour qu'il ne s'affiche plus, on
@@ -4487,6 +4556,12 @@ def create_blank_disk(
         ["qemu-img", "create", "-f", "qcow2", str(disk), size],
         privileged=True,
     )
+
+
+# Ce que « --network » vaut sans rien demander. Nommé plutôt qu'écrit dans
+# l'analyseur d'arguments : un écran qui veut SONDER ce réseau a besoin de
+# la même valeur, et la recopier la ferait diverger au premier changement.
+DEFAULT_NETWORK = "network=default,model=virtio"
 
 
 def network_name(network_arg: str) -> str | None:
@@ -4630,6 +4705,20 @@ def network_bridge(name: str, use_sudo: bool) -> str:
     return bridge_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
 
 
+def ip_netmask_from_network_xml(xml: str) -> tuple:
+    """(adresse portée par l'hôte, masque) d'un XML de réseau libvirt.
+
+    Rend ('', '') si le XML ne déclare pas de bloc <ip>. Unique lecteur de ce
+    motif : il en existait deux copies, et une correction n'en atteignait
+    qu'une. Le masque est écrit en quatre octets et non en longueur de
+    préfixe — ipaddress accepte les deux, le reste du code n'en voit qu'une.
+    """
+    trouve = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
+    if not trouve:
+        return "", ""
+    return trouve.group(1), trouve.group(2)
+
+
 def cidr_from_network_xml(xml: str) -> str:
     """Le réseau déclaré par un XML de réseau libvirt, ou ''.
 
@@ -4637,13 +4726,11 @@ def cidr_from_network_xml(xml: str) -> str:
     longueur de préfixe : ipaddress accepte les deux formes, le reste du code
     n'en manipule qu'une.
     """
-    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
-    if not m:
+    adresse, masque = ip_netmask_from_network_xml(xml)
+    if not adresse:
         return ""
     try:
-        return str(
-            ipaddress.ip_network(f"{m.group(1)}/{m.group(2)}", strict=False)
-        )
+        return str(ipaddress.ip_network(f"{adresse}/{masque}", strict=False))
     except ValueError:
         return ""
 
@@ -5356,7 +5443,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     g_vm.add_argument(
         "--network",
-        default="network=default,model=virtio",
+        default=DEFAULT_NETWORK,
         help="Argument --network de virt-install.",
     )
     g_vm.add_argument(
@@ -5472,6 +5559,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="PKG",
         help="Paquet APT additionnel (répétable).",
+    )
+    g_cloud.add_argument(
+        "--egress-unit",
+        metavar="FICHIER",
+        help=(
+            "Unité systemd déjà RENDUE qui recharge les règles de sortie à"
+            " chaque démarrage. Posée et armée sur les deux voies d'amorce."
+        ),
+    )
+    g_cloud.add_argument(
+        "--egress-file",
+        metavar="FICHIER",
+        help=(
+            "Fichier de règles de sortie déjà RENDU, à poser dans l'invité"
+            " et à charger au premier démarrage. Le rendu se fait ailleurs :"
+            " ce script pose ce qu'on lui donne, il ne connaît pas les"
+            " postures."
+        ),
     )
     g_cloud.add_argument(
         "--no-upgrade",
@@ -5646,6 +5751,24 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
     return keys
 
 
+def load_posed_file(path: str, label: str) -> str:
+    """Le texte d'un fichier à embarquer, ou l'arrêt si on ne peut pas.
+
+    Un fichier vide est refusé comme un fichier absent : posé, il donnerait
+    des règles qui n'appliquent rien ou une unité qui ne charge rien, et la
+    machine se lirait comme confinée alors que rien ne la borne.
+    """
+    if not path:
+        return ""
+    fichier = Path(path).expanduser()
+    if not fichier.exists():
+        sys.exit(f"{label} introuvable : {fichier}")
+    texte = fichier.read_text()
+    if not texte.strip():
+        sys.exit(f"{label} vide : {fichier}")
+    return texte
+
+
 def main() -> None:
     # Sortie ligne par ligne même quand stdout est un tube (menu todo) : sinon
     # les en-têtes restent bufferisés et le déploiement paraît « gelé ».
@@ -5782,6 +5905,12 @@ def main() -> None:
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
+    args.egress_rules = load_posed_file(
+        getattr(args, "egress_file", ""), "Règles de sortie"
+    )
+    args.egress_unit_text = load_posed_file(
+        getattr(args, "egress_unit", ""), "Unité de rechargement"
+    )
     if not pw_hash and not ssh_keys:
         print(
             "ATTENTION : ni mot de passe ni clé SSH -> connexion impossible à la VM.\n"
@@ -5806,6 +5935,20 @@ def main() -> None:
                 f"({host_arch()}) — le boot et l'installation seront "
                 "nettement plus lents que l'architecture native."
             )
+
+    # LE RÉSEAU EST RENDU SÛR AVANT TOUT CE QUI EN DÉPEND. Il DÉMÉNAGE sur
+    # un autre /24 quand il recouvre ce que l'hôte route déjà, et l'adresse
+    # fixe de l'installateur est gravée dans l'initrd — où elle ne se
+    # renégocie plus. Choisie avant le déplacement, elle désigne un segment
+    # que plus rien ne route, et cet initrd ne porte que netcfg-static : il
+    # n'a aucun repli DHCP, et la question se pose sur une console série que
+    # personne ne regarde.
+    #
+    # Le démarrer ici rend de plus ses baux LISIBLES : « net-dhcp-leases »
+    # ne rend rien d'un réseau défini mais éteint, et le tirage se croit
+    # alors libre de toute la plage — jusqu'à redonner l'adresse d'une VM
+    # qui vit déjà.
+    ensure_network(network_name(args.network), runner)
 
     installer: tuple[Path, Path] | None = None
     if uses_installer(args.distro, args.arch):
@@ -5896,7 +6039,6 @@ def main() -> None:
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
-    ensure_network(network_name(args.network), runner)
     # Avant la création, et non après : la VM télécharge dès cloud-init.
     # Une famille sans magasin de certificats ne peut pas apprendre
     # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter

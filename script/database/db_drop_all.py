@@ -4,8 +4,18 @@
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
+
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ),
+)
+
+from script.database import drill_guard  # noqa: E402
 
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
@@ -40,8 +50,34 @@ def get_config():
         "--database",
         help="Specify database to delete, separate by coma",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Effacer même ce que le contrôle refuse. À n'employer que sur"
+            " une base dont on sait, autrement, qu'elle est jetable."
+        ),
+    )
     args = parser.parse_args()
     return args
+
+
+def _verdict(db_name, force=False):
+    """Le verdict du contrôle, ou le passage en force ASSUMÉ et DIT.
+
+    Le passage en force n'est pas un raccourci : il est nommé sur la sortie,
+    parce qu'une destruction qu'on s'autorise sans preuve doit rester
+    lisible dans le journal de ce qui s'est passé.
+    """
+    if force:
+        print(f"  ⚠ {db_name} : contrôle passé en force")
+        return drill_guard.DRILL
+    try:
+        return drill_guard.inspect(db_name).verdict
+    except Exception as souci:
+        # Ce qu'on n'a pas pu lire n'est pas jetable. Un contrôle qui tombe
+        # ne doit pas ouvrir la porte qu'il est là pour tenir.
+        return f"{drill_guard.UNREADABLE} ({souci})"
 
 
 def main():
@@ -59,7 +95,10 @@ def main():
     cmd_all = "parallel :::"
     cmd_end = ""
     lst_db_name = []
+    refusees = []
     for db_name in lst_db:
+        if not db_name:
+            continue
         if config.test_only and not (
             db_name in ("test",)
             or db_name.startswith("test_")
@@ -69,24 +108,46 @@ def main():
         if lst_database_to_delete and db_name not in lst_database_to_delete:
             continue
 
+        # LE NOM NE DONNE PAS LE FEU VERT. Le filtre ci-dessus RESTREINT ce
+        # qu'on regarde ; il n'autorise rien. Ce qui autorise, c'est ce que
+        # la base dit d'elle-même — et sans argument, ce script effaçait
+        # tout ce que l'instance porte, sans une seule question.
+        verdict = _verdict(db_name, force=config.force)
+        if verdict != drill_guard.DRILL:
+            refusees.append((db_name, verdict))
+            continue
+
         cmd_end += f' "./odoo_bin.sh db --drop --database {db_name}"'
         lst_db_name.append(db_name)
-    if cmd_end:
-        code, sortie = execute_shell(cmd_all + cmd_end)
-        if code:
-            # Une destruction qui annonce un succès qu'elle n'a pas obtenu
-            # est pire que celle qui échoue : l'opérateur passe à la suite en
-            # croyant ses bases parties. Le cas s'atteint dès que « parallel »
-            # manque du PATH — le shell rend 127 et pas une base n'est
-            # touchée, pendant que la liste s'affiche.
-            print("Database NOT deleted :", file=sys.stderr)
-            if sortie:
-                print(sortie, file=sys.stderr)
-            return code
-        print("Database deleted :")
-        for db_name in lst_db_name:
-            print(db_name)
-    return 0
+
+    if refusees:
+        print("Refusé — ces bases ne se prouvent pas jetables :")
+        for db_name, verdict in refusees:
+            print(f"  {db_name} : {verdict}")
+    if not cmd_end:
+        print("Aucune base effacée.")
+        return 1 if refusees else 0
+
+    status, sortie = execute_shell(cmd_all + cmd_end)
+    if status:
+        # « Database deleted » était imprimé quel que soit le résultat :
+        # le script annonçait avoir détruit ce qu'il n'avait peut-être pas
+        # détruit. Le cas s'atteint dès que « parallel » manque du PATH — le
+        # shell rend 127 et pas une base n'est touchée, pendant que la liste
+        # s'affiche.
+        #
+        # LE CODE DU SHELL REMONTE TEL QUEL, et l'échec part sur la sortie
+        # d'erreur. Aplati à 1, il ne distingue plus « outil absent » de
+        # « base occupée » ; mêlé à la sortie standard, il se perd dans ce
+        # qu'un appelant lit pour obtenir la liste des bases effacées.
+        print("Database NOT deleted :", file=sys.stderr)
+        if sortie:
+            print(sortie[-2000:], file=sys.stderr)
+        return status
+    print("Database deleted :")
+    for db_name in lst_db_name:
+        print(db_name)
+    return 1 if refusees else 0
 
 
 if __name__ == "__main__":

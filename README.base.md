@@ -388,6 +388,7 @@ time make test_full_fast
 | [DISCOVER](doc/DISCOVER.md) | Learn and explore ERPLibre |
 | [DEVELOPMENT](doc/DEVELOPMENT.md) | Development environment setup |
 | [PRODUCTION](doc/PRODUCTION.md) | Production server deployment |
+| [DEPLOY_SSH](doc/DEPLOY_SSH.md) | Deploying over SSH: the named target |
 | [RUN](doc/RUN.md) | Execution modes and use cases |
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Odoo module code generation |
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
@@ -406,6 +407,7 @@ time make test_full_fast
 | [DISCOVER](doc/DISCOVER.md) | Découvrir et explorer ERPLibre |
 | [DEVELOPMENT](doc/DEVELOPMENT.md) | Configuration de l'environnement de développement |
 | [PRODUCTION](doc/PRODUCTION.md) | Déploiement du serveur de production |
+| [DEPLOY_SSH](doc/DEPLOY_SSH.md) | Déployer par SSH : la cible nommée |
 | [RUN](doc/RUN.md) | Modes d'exécution et cas d'utilisation |
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Génération de code de modules Odoo |
 | [MIGRATION](doc/MIGRATION.md) | Migration de base de données entre versions |

@@ -137,22 +137,24 @@ class TestExtractBody(unittest.TestCase):
 class TestShortAddr(unittest.TestCase):
     def test_display_name_wins(self):
         self.assertEqual(
-            short_addr("Alice Tremblay <a@y.ca>"), "Alice Tremblay"
+            short_addr("Alice Tremblay <a@example.com>"), "Alice Tremblay"
         )
 
     def test_bare_address(self):
-        self.assertEqual(short_addr("a@y.ca"), "a@y.ca")
+        self.assertEqual(short_addr("a@example.com"), "a@example.com")
 
     def test_quoted_display_name(self):
         self.assertEqual(
-            short_addr('"Tremblay, Alice" <a@y.ca>'), "Tremblay, Alice"
+            short_addr('"Tremblay, Alice" <a@example.com>'), "Tremblay, Alice"
         )
 
     def test_empty(self):
         self.assertEqual(short_addr(""), "")
 
     def test_first_of_several(self):
-        self.assertEqual(short_addr("a@y.ca, b@y.ca"), "a@y.ca")
+        self.assertEqual(
+            short_addr("a@example.com, b@example.com"), "a@example.com"
+        )
 
 
 class TestTruncate(unittest.TestCase):
@@ -253,11 +255,11 @@ class TestIsUnread(unittest.TestCase):
 class TestFilterMessages(unittest.TestCase):
     def setUp(self):
         self.metas = [
-            meta(1, subject="Devis révisé", frm="Alice <a@y.ca>"),
+            meta(1, subject="Devis révisé", frm="Alice <a@example.com>"),
             meta(
                 2,
                 subject="CR réunion",
-                frm="Bob <b@y.ca>",
+                frm="Bob <b@example.com>",
                 snippet="ordre du jour",
             ),
         ]

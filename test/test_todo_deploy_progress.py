@@ -3,11 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La vue de progression d'un déploiement : en direct, et on peut y entrer.
 
-Rapporté sur un déploiement Proxmox : « les logs ne sont pas live, ils sont
-apparus à la toute fin » et « il manque les boutons comme s pour se connecter
-en ssh ». Les deux étaient vrais de cette vue — elle exécutait chaque travail
-avec `subprocess.run`, qui ne rend sa sortie qu'à la fin, et ses touches se
-limitaient à copier et quitter.
+Deux manques que cette vue comble. Un travail lancé par `subprocess.run` ne
+rend sa sortie qu'à la fin : les journaux n'apparaissent alors qu'une fois
+tout terminé, jamais en direct. Et des touches limitées à copier et quitter
+ne mènent nulle part — rien pour ouvrir un ssh sur la machine déployée.
 
 Une VM sur Proxmox demande le téléchargement d'une image de 325 Mio puis
 l'import de son disque : plusieurs minutes d'un bloc vide.
@@ -144,8 +143,8 @@ class TestLaToucheSsh(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestCeQuiSuit(unittest.TestCase):
-    """Rapporté : on attendait devant une fenêtre « terminée » sans savoir
-    que l'installation d'ERPLibre démarre en la quittant."""
+    """Une fenêtre « terminée » ne dit pas que l'installation d'ERPLibre
+    démarre en la quittant : on attend devant sans le savoir."""
 
     def _sommaire(self, suite, attendre=3.0):
         # Un travail qui DURE : sinon il finit avant le premier relevé, et le

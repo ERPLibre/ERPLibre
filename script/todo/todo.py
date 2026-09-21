@@ -26,10 +26,23 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
+from script.remote import deploy_target, host_memory
+from script.todo import (
+    deploy_target_menu,
+    dev_tools,
+    host_os,
+    ssh_config,
+    todo_install,
+    todo_prefs,
+)
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.deploy_target_menu import DeployTargetMenuMixin
+from script.todo.devstack_menu import DevstackMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
 from script.todo.kdbx_manager import KdbxManager
+from script.todo.lima_menu import LimaMenuMixin
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -43,6 +56,7 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
+from script.todo.vm_backend_menu import VmBackendMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -88,10 +102,6 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
-
 
 class TODO(
     # L'ordre est celui de la lecture, pas de la résolution : aucun nom n'est
@@ -110,6 +120,12 @@ class TODO(
     TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
+    ForgeMenuMixin,
+    LimaMenuMixin,
+    EgressBookMenuMixin,
+    DevstackMenuMixin,
+    DeployTargetMenuMixin,
+    VmBackendMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -117,7 +133,9 @@ class TODO(
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
         self.kdbx_manager = KdbxManager(self.config_file)
-        self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
+        self.db_manager = DatabaseManager(
+            self.execute, self.fill_help_info, self._monitoring_image_name
+        )
 
     def _ask_language(self):
         if not lang_is_configured():
@@ -251,11 +269,12 @@ class TODO(
 
 ── {t("Deployment, network & security")} ──
 [13] {t("Deploy - Deploy ERPLibre locally")}
-[14] {t("Network - Network tools")}
-[15] {t("Security - Dependency security audit")}
+[14] {t("Devstack - development and test stack")}
+[15] {t("Network - Network tools")}
+[16] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[16] {t("Language - Change language / Changer la langue")}
+[17] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -316,14 +335,18 @@ class TODO(
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_devstack()
                 if status is not False:
                     return
             elif status == "15":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "16":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "17":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -590,8 +613,11 @@ class TODO(
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
+        "debug_ide": "Debug IDE",
         "prompt_execute_config": "Config",
+        "generate_config_from_preconfiguration": "Preconfiguration",
         "prompt_execute_database": "Database",
+        "execute_odoo_upgrade": "Odoo upgrade",
         "prompt_execute_analyse": "Analyse",
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
@@ -605,6 +631,7 @@ class TODO(
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
+        "rtk_install": "rtk",
         "prompt_execute_update": "Update",
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
@@ -618,13 +645,34 @@ class TODO(
         "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
-        "prompt_execute_vpn": "VPN",
+        "_analyse_follow_up": "Go further",
+        "prompt_execute_egress_book": "Address book",
+        "prompt_execute_forge": "Forge",
+        "prompt_execute_lima": "Lima",
+        "prompt_execute_longtest": "Long test",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
         "prompt_execute_test": "Test",
-        "prompt_execute_longtest": "Long test",
+        "prompt_execute_vpn": "VPN",
+        "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
     }
+
+    @classmethod
+    def menu_path(cls, *fonctions) -> str:
+        """« TODO › Execute › Deploy › QEMU/KVM », depuis des noms de menus.
+
+        LE FIL D'ARIANE NE SERT PAS ICI. Il se dérive de la pile d'appels
+        et dit donc OÙ L'ON EST ; un message qui envoie ailleurs parle
+        d'un endroit où personne ne se trouve, et n'a pas de pile à lire.
+
+        Il compose alors depuis la MÊME table, et lève sur un menu qu'elle
+        ne connaît pas : un menu renommé casse ici, à l'épreuve, et non à
+        l'écran devant quelqu'un qui cherchera le chemin indiqué. Trois
+        messages l'écrivaient à la main — l'un oubliait un niveau, deux
+        traduisaient un libellé que le fil n'affiche pas traduit.
+        """
+        return " › ".join(cls._MENU_LABELS[nom] for nom in fonctions)
 
     def _menu_header(self):
         """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
@@ -724,6 +772,18 @@ class TODO(
                 ("cli", "Classic questions (line by line)"),
             ),
         ),
+        # « Non éprouvé » est dit EN TOUTES LETTRES et non par une étoile :
+        # dans cet écran, l'étoile marque déjà la valeur courante, et une
+        # seconde étoile s'y lirait « c'est celle-là qui est active ».
+        "vm_backend": (
+            "VM backend",
+            (
+                ("auto", "Automatic (decided by the system)"),
+                ("libvirt", "libvirt/QEMU - this machine"),
+                ("pve", "Proxmox VE - a remote host"),
+                ("lima", "Lima - a VM on this machine, lighter than libvirt"),
+            ),
+        ),
     }
 
     def _pref_label(self, key):
@@ -778,6 +838,12 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('VM backend')}  "
+                        f"({self._pref_label('vm_backend')})"
+                    )
+                },
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -794,8 +860,22 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
+                self._pref_edit("vm_backend")
+            elif status == "6":
+                verdict, combien = todo_prefs.reset()
+                if verdict == todo_prefs.ECHEC_ECRITURE:
+                    print(
+                        f"✗ {t('Nothing erased: the file was not written.')}"
+                    )
+                elif verdict == todo_prefs.EFFACE_SANS_COMPTE:
+                    # « (0) » aurait dit « il n'y avait rien » sur un
+                    # fichier plein qu'on vient de remplacer.
+                    print(
+                        f"✅ {t('Preferences reset')} —"
+                        f" {t('the file did not read back, nothing counted')}"
+                    )
+                else:
+                    print(f"✅ {t('Preferences reset')} ({combien})")
             else:
                 print(t("Command not found !"))
 
@@ -820,6 +900,33 @@ class TODO(
             help_info += f"[{n}] " + desc + "\n"
         help_info += help_end
         return help_info
+
+    def _menu_dispatch_extra(self, choices, status):
+        """Joue l'entrée que « status » désigne parmi celles qu'aucun « elif »
+        codé en dur ne traite, et rend True si elle a été jouée.
+
+        Prend la liste affichée et le numéro tapé. Les sections ne consomment
+        pas de numéro : le rang se calcule sur les entrées réelles, comme
+        fill_help_info les numérote — sans ce filtre, une greffe posée après
+        une deuxième section joue la commande d'à côté. Une entrée qui porte
+        « method » appelle cette méthode de la classe ; les autres passent par
+        execute_from_configuration. Rend False sur un numéro hors borne ou non
+        numérique, à charge de l'appelant de le dire.
+        """
+        try:
+            rang = int(status)
+        except ValueError:
+            return False
+        reelles = [c for c in choices if not c.get("section")]
+        if not 0 < rang <= len(reelles):
+            return False
+        entree = reelles[rang - 1]
+        methode = entree.get("method")
+        if methode:
+            getattr(self, methode)()
+        else:
+            self.execute_from_configuration(entree)
+        return True
 
     def prompt_execute_instance(self):
         # TODO proposer le déploiement à distance
@@ -993,6 +1100,58 @@ class TODO(
                 )
             },
         ]
+        # NEUVIÈME, déclarée par « method ». Posée plus haut, elle
+        # décalerait les huit rangs que les « elif » codent en dur — et une
+        # épreuve cherche les chaînes littérales des rangs 6 et 7, qu'une
+        # renumérotation pourtant correcte ferait disparaître.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - VM backends (which one this machine uses)"
+                ),
+                "method": "_deploy_vm_backends",
+            }
+        )
+        # DIXIÈME, déclarée par « method » comme la neuvième, et pour la
+        # même raison : les rangs codés en dur s'arrêtent à huit.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - Site address book (what a confined VM reaches)"
+                ),
+                "method": "prompt_execute_egress_book",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Lima - instances (macOS, Linux)"),
+                "method": "prompt_execute_lima",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - verify this station, layer by layer"
+                ),
+                "method": "_qemu_verify_station",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - verify a deployed VM, layer by layer"
+                ),
+                "method": "_qemu_verify_vm",
+            }
+        )
+        # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
+        # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
+        # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,
+        # étendre Deploy demande de modifier ce fichier et de décaler la
+        # chaîne à la main.
+        config_entries = self.config_file.get_config("deploy_from_makefile")
+        if config_entries:
+            choices.extend(config_entries)
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -1018,12 +1177,13 @@ class TODO(
                 self.prompt_execute_qemu_cache()
             elif status == "9":
                 self.prompt_execute_vpn()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     def prompt_execute_deploy_ssh(self):
         """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
         print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
+        self._deploy_ssh_show_target()
         choices = [
             {"prompt_description": t("SSH - Check connection")},
             {"prompt_description": t("SSH - Sync files (rsync)")},
@@ -1036,6 +1196,13 @@ class TODO(
             {"prompt_description": t("SSH - Run make target")},
             {"prompt_description": t("SSH - Install systemd service")},
             {"prompt_description": t("SSH - Configure nginx + SSL")},
+            # DOUZIÈME, et déclarée par « method » : posée ailleurs, elle
+            # décalerait les onze rangs que les « elif » ci-dessous codent en
+            # dur, et « voir les journaux » redémarrerait Odoo.
+            {
+                "prompt_description": t("SSH - Choose the target machine"),
+                "method": "_deploy_ssh_targets",
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1066,24 +1233,18 @@ class TODO(
                 self._deploy_ssh_install_systemd()
             elif status == "11":
                 self._deploy_ssh_install_nginx()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     @staticmethod
     def _native_arch():
-        """Architecture native de l'hôte, en jeton de deploy_qemu.py
-        (amd64/arm64/s390x). Défaut amd64 si indéterminée."""
-        try:
-            machine = os.uname().machine
-        except (AttributeError, OSError):
-            machine = ""
-        return {
-            "x86_64": "amd64",
-            "amd64": "amd64",
-            "aarch64": "arm64",
-            "arm64": "arm64",
-            "s390x": "s390x",
-        }.get(machine, "amd64")
+        """Architecture native de l'hôte, en jeton amd64/arm64/s390x.
+
+        Reste une méthode : une dizaine d'appelants la lisent sur la classe,
+        et des tests la remplacent pour figer l'architecture. Le calcul, lui,
+        vit dans host_os — il en existait deux copies identiques.
+        """
+        return host_os.arch_token()
 
     @staticmethod
     def _port_in_use(port):
@@ -1493,6 +1654,66 @@ class TODO(
         flush()
         return "".join(out)
 
+    # Ce qu'on fait de la clé d'hôte, une politique par ligne écrite.
+    _SSH_HOST_KEY_LINES = {
+        # Machines jetables dont l'IP se réutilise entre deux VM : vérifier
+        # refuserait une machine neuve à chaque fois, et known_hosts se
+        # remplirait d'entrées mortes. Ne protège de rien, et l'assume.
+        "throwaway": (
+            "    StrictHostKeyChecking no\n"
+            "    UserKnownHostsFile /dev/null\n"
+        ),
+        # La première connexion est acceptée et RETENUE : un changement
+        # ultérieur est alors refusé, ce que « no » ne fait jamais.
+        "accept-new": "    StrictHostKeyChecking accept-new\n",
+        # Rien n'est accepté qui ne soit déjà connu.
+        "strict": "    StrictHostKeyChecking yes\n",
+    }
+
+    # Les redirections, par genre. Le genre choisit la directive ; la
+    # spécification est recopiée telle quelle, après contrôle.
+    _SSH_FORWARD_DIRECTIVES = {
+        "local": "LocalForward",
+        "remote": "RemoteForward",
+        "dynamic": "DynamicForward",
+    }
+
+    @classmethod
+    def _genre_de_redirection(cls, genre):
+        """La directive OpenSSH d'un genre de redirection, ou une erreur.
+
+        Refuser un genre inconnu ICI plutôt que d'écrire une ligne que ssh
+        rejettera : il refuse alors le FICHIER entier, donc toutes les
+        machines, pour une seule entrée mal formée.
+        """
+        directive = cls._SSH_FORWARD_DIRECTIVES.get(genre)
+        if directive is None:
+            connus = ", ".join(cls._SSH_FORWARD_DIRECTIVES)
+            raise ValueError(
+                f"forwards : genre « {genre} » inconnu. Connus : {connus}."
+            )
+        return directive
+
+    @staticmethod
+    def _ssh_config_value(valeur, champ):
+        """Une valeur destinée à une ligne de ~/.ssh/config, ou une erreur.
+
+        Dans ce fichier, une LIGNE est une directive : il n'y a ni
+        guillemets ni échappement qui protégeraient. Un saut de ligne dans
+        une valeur y ajoute donc une directive que ssh appliquera à l'hôte
+        en cours — un ProxyCommand, une autre identité, n'importe laquelle —
+        et le bloc lu ensuite ne ressemblera plus à ce qui a été écrit.
+
+        Le contrôle est ici parce que c'est le SEUL endroit qui écrit : cinq
+        appelants y mènent, et le poser chez chacun en laisserait un dehors.
+        """
+        texte = "" if valeur is None else str(valeur)
+        if "\n" in texte or "\r" in texte:
+            raise ValueError(
+                f"{champ} : une valeur de ~/.ssh/config tient sur une ligne."
+            )
+        return texte
+
     def _write_ssh_config_entry(
         self,
         host,
@@ -1501,6 +1722,9 @@ class TODO(
         proxy_jump=None,
         identity_file=None,
         also_drop=(),
+        host_keys=None,
+        forward_agent=None,
+        forwards=(),
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
@@ -1519,8 +1743,36 @@ class TODO(
 
         `identity_file` : clé PRIVÉE à présenter. Sans elle, ssh propose
         toutes les identités de l'agent et un parc un peu fourni déclenche
-        « Too many authentication failures » avant d'arriver à la bonne."""
+        « Too many authentication failures » avant d'arriver à la bonne.
+
+        `host_keys`, `forward_agent` et `forwards` viennent d'une POSTURE.
+        Laissés à None, le bloc est identique au caractère près à celui qui
+        s'écrivait avant qu'ils existent : une machine déployée sans posture
+        ne doit pas changer de configuration parce que la notion est
+        apparue.
+
+        `forward_agent` À FAUX écrit un refus, il n'omet pas la ligne.
+        OpenSSH ne transfère pas l'agent par défaut, donc omettre suffirait
+        techniquement — mais le fichier ne dirait alors pas la différence
+        entre « on l'a interdit » et « personne n'y a pensé », et c'est
+        justement la ligne qu'on relira le jour où on se le demandera."""
         names = [host] if isinstance(host, str) else list(host)
+        controle = self._ssh_config_value
+        names = [controle(n, "Host") for n in names]
+        also_drop = [controle(n, "Host") for n in also_drop]
+        user = controle(user, "User")
+        ip = controle(ip, "HostName")
+        proxy_jump = controle(proxy_jump, "ProxyJump")
+        identity_file = controle(identity_file, "IdentityFile")
+        if host_keys is not None and host_keys not in self._SSH_HOST_KEY_LINES:
+            connues = ", ".join(self._SSH_HOST_KEY_LINES)
+            raise ValueError(
+                f"host_keys : « {host_keys} » inconnu. Connus : {connues}."
+            )
+        redirections = [
+            (self._genre_de_redirection(genre), controle(spec, "Forward"))
+            for genre, spec in forwards
+        ]
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
@@ -1546,9 +1798,11 @@ class TODO(
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
             f"    User {user}\n"
-            # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
-            f"    StrictHostKeyChecking no\n"
-            f"    UserKnownHostsFile /dev/null\n"
+            # Sans posture, « throwaway » : c'est ce qui s'écrivait avant
+            # que la notion existe, et des IP DHCP réutilisées entre VM
+            # feraient sinon échouer la connexion sur un changement de clé
+            # qui n'en est pas un.
+            + self._SSH_HOST_KEY_LINES[host_keys or "throwaway"]
         )
         if identity_file:
             # IdentitiesOnly : sans lui, IdentityFile s'AJOUTE aux clés de
@@ -1560,6 +1814,10 @@ class TODO(
             )
         if proxy_jump:
             block += f"    ProxyJump {proxy_jump}\n"
+        if forward_agent is not None:
+            block += f"    ForwardAgent {'yes' if forward_agent else 'no'}\n"
+        for directive, spec in redirections:
+            block += f"    {directive} {spec}\n"
         content = (existing + "\n\n" + block) if existing else block
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
@@ -2091,8 +2349,9 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel : le montage échoue, la seconde moitié du nom étant un
-    # domaine libvirt et non un alias SSH du rebond.
+    # monter tel quel. Le montage échoue alors sur « read: Connection reset by
+    # peer », la seconde moitié du nom étant un domaine libvirt et non un alias
+    # SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -2402,186 +2661,204 @@ class TODO(
         print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
-        """Prompt for SSH connection parameters. Returns dict or None on cancel."""
-        host = click.prompt(
-            t("Remote host (user@hostname or hostname): "), prompt_suffix=""
-        ).strip()
-        if not host:
-            print(t("SSH host is required!"))
+        """Les SSH_* de la cible retenue, ou None si personne n'en choisit.
+
+        Plus une seule invite ici. Les cinq questions que CHAQUE verbe
+        reposait — adresse, compte, port, clé, chemin — vivent maintenant
+        dans une fiche écrite une fois, et onze commandes cessent de
+        redemander ce qu'on vient de leur dire.
+
+        Sans cible retenue, l'écran de choix s'ouvre : c'est la seule
+        question qui reste, et elle ne se pose qu'une fois. Y renoncer rend
+        None, exactement comme une adresse laissée vide, de sorte que la
+        garde des onze appelants n'a pas à changer.
+        """
+        cible = deploy_target.selected()
+        if cible is None:
+            self._deploy_ssh_targets()
+            cible = deploy_target.selected()
+        if cible is None:
             return None
-        user = (
-            click.prompt(
-                t("SSH user (default: erplibre): "), prompt_suffix=""
-            ).strip()
-            or "erplibre"
-        )
-        port = (
-            click.prompt(
-                t("SSH port (default: 22): "), prompt_suffix=""
-            ).strip()
-            or "22"
-        )
-        key = click.prompt(
-            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): "),
-            prompt_suffix="",
-        ).strip()
-        path = (
-            click.prompt(
-                t("Remote path (default: ~/erplibre_deploy_2): "),
-                prompt_suffix="",
-            ).strip()
-            or "~/erplibre_deploy_2"
-        )
-        return {
-            "SSH_HOST": host,
-            "SSH_USER": user,
-            "SSH_PORT": port,
-            "SSH_KEY": key,
-            "SSH_PATH": path,
-        }
+        return deploy_target.make_vars(cible, resolve=self._ssh_config_resolve)
+
+    @classmethod
+    def _ssh_config_resolve(cls, host):
+        """Ce que ~/.ssh/config déclare pour cet alias, à l'usage de make.
+
+        make recompose « compte@hôte » et ne lit pas ce fichier : sans cette
+        relecture, un alias déclarant « User root » se ferait joindre sous le
+        compte par défaut, et la commande échouerait sur des droits au lieu
+        de dire qu'elle s'est trompée de compte.
+
+        Le port n'y figure pas, et c'est voulu : le Makefile ne le pose plus
+        d'office, donc ssh applique lui-même celui de l'alias.
+        """
+        return {"user": cls._ssh_config_user(host)}
 
     def _build_ssh_make_cmd(self, target, params, extra=None):
-        """Build a make SSH command string from params dict."""
+        """Ligne « make » complète, chaque valeur citée pour le shell.
+
+        Les guillemets posés à la main ne protègent que d'une espace : une
+        valeur portant elle-même un guillemet, un point-virgule ou un accent
+        grave refermait la citation et le reste devenait des commandes. Le
+        danger grandit à mesure que ces valeurs cessent d'être retapées à
+        chaque fois pour être relues d'un fichier.
+
+        La citation est SIMPLE, ce qui laisse le tilde intact : c'est le
+        shell distant qui sait où est le compte visé, pas celui d'ici.
+        """
         parts = [f"make {target}"]
-        for k, v in params.items():
-            if v:
-                parts.append(f'{k}="{v}"')
-        if extra:
-            for k, v in extra.items():
-                if v:
-                    parts.append(f'{k}="{v}"')
+        for source in (params, extra or {}):
+            for cle, valeur in source.items():
+                if valeur:
+                    parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
 
-    def _deploy_ssh_check(self):
+    def _deploy_ssh_show_target(self):
+        """Nomme la cible retenue en tête d'écran, ou dit qu'il n'y en a pas.
+
+        Onze entrées agissent sur une machine distante, dont cinq
+        l'installent ou la redémarrent : lire à qui l'on parle AVANT de
+        choisir est ce qui évite de le découvrir après.
+        """
+        retenue = deploy_target.selected()
+        if retenue:
+            libelle = host_memory.label(
+                deploy_target.fiche(retenue), deploy_target_menu.PRODUIT
+            )
+            print(f"   🎯 {libelle}")
+        else:
+            print(f"   {t('No target selected yet.')}")
+
+    def _deploy_ssh_verb(self, cible_make, demander=None):
+        """Joue un verbe de déploiement sur l'hôte, et dit ce qu'il lance.
+
+        Les onze verbes ne diffèrent que par leur cible « make » et, pour
+        deux d'entre eux, par une question de plus. Onze copies du même corps
+        se corrigent une par une, et la onzième s'oublie : la citation des
+        valeurs, l'annonce avant exécution et la garde sur l'abandon vivent
+        donc à un seul endroit.
+
+        `demander` est posée APRÈS la connexion, dans l'ordre où l'écran les
+        enchaîne. Elle rend les variables de plus, ou None pour renoncer.
+        """
         params = self._get_ssh_params()
         if not params:
             return
-        cmd = self._build_ssh_make_cmd("ssh_check", params)
+        extra = {}
+        if demander is not None:
+            extra = demander()
+            if extra is None:
+                return
+        cmd = self._build_ssh_make_cmd(cible_make, params, extra=extra)
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(
             cmd, source_erplibre=False, single_source_erplibre=True
         )
+
+    def _deploy_ssh_check(self):
+        # Ne passe plus par make : « ssh_check » faisait écho à une phrase
+        # qu'il composait lui-même, ce qui prouve que ssh a abouti et rien
+        # d'autre — ni que le produit est là, ni à quelle version, ni si le
+        # compte peut s'élever. Ces trois réponses décident de ce que les dix
+        # autres verbes peuvent faire.
+        self._deploy_ssh_probe()
 
     def _deploy_ssh_push(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_push", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_push")
 
     def _deploy_ssh_install(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install")
 
     def _deploy_ssh_run(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_run", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_run")
 
     def _deploy_ssh_stop(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_stop", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_stop")
 
     def _deploy_ssh_restart(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_restart", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_restart")
 
     def _deploy_ssh_status(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_status", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_status")
 
     def _deploy_ssh_logs(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_logs", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_logs")
 
     def _deploy_ssh_make(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        target = click.prompt(
+        self._deploy_ssh_verb("ssh_make", demander=self._ask_make_target)
+
+    def _ask_make_target(self):
+        cible = click.prompt(
             t("Make target to run remotely: "), prompt_suffix=""
         ).strip()
-        if not target:
-            print(t("SSH host is required!"))
-            return
-        cmd = self._build_ssh_make_cmd(
-            "ssh_make", params, extra={"SSH_TARGET": target}
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        if not cible:
+            print(t("A make target is required!"))
+            return None
+        return {"SSH_TARGET": cible}
 
     def _deploy_ssh_install_systemd(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install_systemd", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install_systemd")
 
     def _deploy_ssh_install_nginx(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        domain = click.prompt(
-            t("Domain name (e.g.: example.com): "), prompt_suffix=""
-        ).strip()
+        self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)
+
+    def _ask_domain(self):
+        """Le domaine et le courriel : lus sur la cible, demandés sinon.
+
+        Un renouvellement de certificat cesse d'être une nouvelle saisie —
+        c'est la même machine et le même domaine, et la cible les porte déjà.
+        Ce qui est saisi est refusé ICI s'il est mal formé, plutôt qu'au bout
+        d'une connexion ssh par certbot, qui dira mal pourquoi.
+        """
+        retenue = deploy_target.selected() or {}
+        domain = retenue.get("domain") or ""
+        email = retenue.get("admin_email") or ""
         if not domain:
-            print(t("SSH host is required!"))
+            domain = click.prompt(
+                t("Domain name (e.g.: example.com): "), prompt_suffix=""
+            ).strip()
+        if not domain:
+            print(t("A domain name is required!"))
+            return None
+        if not email:
+            email = click.prompt(
+                t("Admin email for SSL certificate: "), prompt_suffix=""
+            ).strip()
+        try:
+            propre = deploy_target.validate_service(domain, email)
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return None
+        self._remember_service(retenue, propre)
+        return {
+            "SSH_DOMAIN": propre["domain"],
+            "SSH_ADMIN_EMAIL": propre["admin_email"],
+        }
+
+    def _remember_service(self, retenue, propre):
+        """Propose d'écrire sur la cible ce qu'on vient de saisir.
+
+        PROPOSE, et n'écrit pas d'office : un certificat posé une fois pour
+        essai n'a pas à s'inscrire sur la fiche. Ne demande rien quand la
+        cible porte déjà ces valeurs — la question serait sans objet.
+        """
+        if not retenue.get("name"):
             return
-        email = click.prompt(
-            t("Admin email for SSL certificate: "), prompt_suffix=""
-        ).strip()
-        cmd = self._build_ssh_make_cmd(
-            "ssh_install_nginx",
-            params,
-            extra={"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email},
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        if (retenue.get("domain") or "") == propre["domain"] and (
+            retenue.get("admin_email") or ""
+        ) == propre["admin_email"]:
+            return
+        if not self._is_yes(
+            input(f"{t('Remember it on the target? (y/N)')} : ")
+        ):
+            return
+        try:
+            deploy_target.save(dict(retenue, **propre))
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return
+        print(f"✓ {t('Target saved: ')}{retenue['name']}")
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
@@ -2684,6 +2961,12 @@ class TODO(
         # rang dépend du nombre d'entrées venues de todo.json, donc « method »
         # porte la destination dans l'entrée elle-même — un numéro codé en dur
         # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
+        choices.append(
+            {
+                "prompt_description": t("Forge (Forgejo/Gitea)"),
+                "method": "prompt_execute_forge",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Install Starship on Shell"),
@@ -4031,6 +4314,12 @@ class TODO(
         from script.todo import auto_ask
 
         lignes = rapport["groups"]["dead_field"]
+        # LE NOMBRE DE LA QUESTION EST CELUI DU DELETE. Le résumé
+        # ci-dessous compte des FICHIERS — il est dédoublonné par
+        # « store_fname » — et la suppression porte sur des LIGNES. Demander
+        # l'accord sur le premier pour effacer le second obtenait un « oui »
+        # sur un chiffre que rien ne reliait au geste.
+        ids = filestore.purge_dead_ids(rapport)
         sql = filestore.purge_dead_sql(rapport)
         if not sql:
             print(f"ℹ️  {t('Nothing to purge.')}")
@@ -4038,8 +4327,16 @@ class TODO(
         print()
         for texte in filestore.summarise(lignes):
             print(f"   {texte}")
+        if len(ids) != len(lignes):
+            # L'ÉCART SE DIT. Sans cette ligne, le résumé et la question
+            # portent deux nombres différents sans que rien n'explique
+            # lequel décide.
+            print(
+                f"   {len(lignes)} {t('file(s) shown')} →"
+                f" {len(ids)} {t('row(s) to delete')}"
+            )
         question = (
-            f"💬 {t('Delete these')} {len(lignes)}"
+            f"💬 {t('Delete these')} {len(ids)}"
             f" {t('attachment row(s) for good?')} (y/N) : "
         )
         if auto_ask.ask(question, default="n").strip().lower() not in (
@@ -4091,6 +4388,7 @@ class TODO(
         ).strip().lower() not in ("y", "yes", "o"):
             print(f"ℹ️  {t('Nothing was moved.')}")
             return False
+        dossier = filestore.nested_dir(rapport)
         deplaces, effaces = 0, 0
         for source, cible in remonter:
             os.makedirs(os.path.dirname(cible), exist_ok=True)
@@ -4099,13 +4397,29 @@ class TODO(
         for source, _cible in doublons:
             os.remove(source)
             effaces += 1
-        dossier = filestore.nested_dir(rapport)
-        if dossier:
-            shutil.rmtree(dossier, ignore_errors=True)
         print(
             f"✅ {deplaces} {t('moved up')}, {effaces}"
             f" {t('duplicate(s) removed')}."
         )
+        # ON NOMME, ON N'EFFACE PAS. Le plan ne connaît qu'une forme — un
+        # répertoire de deux caractères, puis des fichiers. Un fichier posé
+        # à la racine du nid, ou un niveau de plus, lui est invisible :
+        # jamais compté, jamais montré, jamais consenti. Le retirer d'un
+        # bloc les emportait, et « ignore_errors » taisait ce qui résistait
+        # pendant que la ligne de succès s'imprimait quand même.
+        restes = filestore.tidy_nested_leftovers(dossier)
+        if restes:
+            print(
+                f"⚠  {len(restes)}"
+                f" {t('file(s) the plan does not cover, left in place:')}"
+            )
+            for chemin in restes[:10]:
+                print(f"     {chemin}")
+            if len(restes) > 10:
+                print(f"     … {len(restes) - 10} {t('more')}")
+            print(f"   {t('Directory:')} {dossier}")
+        elif filestore.drop_empty_tree(dossier):
+            print(f"   {t('Nested directory removed (it was empty).')}")
         return True
 
     def _analyse_offer_install(self, database, rapport):
@@ -4657,7 +4971,7 @@ class TODO(
         if self._is_yes(input(f"💬 {t('Keep the digit count? (y/N): ')}")):
             extra.append("--keep-digits")
         mots = input(
-            f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
+            f"💬 {t('JSON file of words (empty for the built-in): ')}"
         ).strip()
         if mots:
             if not os.path.isfile(os.path.expanduser(mots)):
@@ -4741,6 +5055,24 @@ class TODO(
 
         from script.analyse import monitoring
 
+        # CE QUI N'EST PAS TENU, DIT AVANT LE SECRET. L'écran de choix
+        # refusait déjà chaque analyse avec sa raison — mais APRÈS avoir
+        # fait saisir une clé d'API de production, c'est-à-dire trop tard
+        # pour renoncer. Aucune analyse ne lit une session RPC, et ce
+        # n'est pas un oubli : elles descendent dans des tables qu'aucune
+        # session n'expose, et la dernière écrit.
+        if not monitoring.available(monitoring.KIND_LIVE):
+            print(f"\u26a0  {t('No analysis reads a live instance yet.')}")
+            for analyse in monitoring.unavailable(monitoring.KIND_LIVE):
+                print(f"   \u2716 {t(analyse['title'])}")
+                print(f"     {t(analyse['why_not'])}")
+            print()
+            if not self._is_yes(
+                input(t("Connect anyway, to check the credentials? (y/N): "))
+            ):
+                return None
+            print()
+
         base_url = input(t("Instance URL (ex. https://example.com): ")).strip()
         if not base_url:
             return None
@@ -4804,6 +5136,18 @@ class TODO(
                 f"⚠  {t('Not neutralized: this copy can send mail and run')}"
                 f" {t('its crons from this machine.')}"
             )
+
+        # LA MÊME PORTE QUE L'AUTRE CHEMIN INTERACTIF, et elle vit dans une
+        # seule fonction : restaurer DÉTRUIT la base cible, dont le nom est
+        # du texte libre. Ce chemin-ci ne la consultait pas, et une base de
+        # production disparaissait sur une faute de frappe dans le nom par
+        # défaut — pendant que le chemin jumeau refusait la même base.
+        #
+        # APRÈS le suffixe de neutralisation : c'est le nom que db_restore
+        # efface. Garder celui qu'on a tapé protégerait une base que rien
+        # ne touche et laisserait tomber celle qu'on écrase.
+        if not self.db_manager._may_destroy(database):
+            return None
 
         status, _ = self.execute.exec_command_live(
             f"python3 ./script/database/db_restore.py -d {database} "
@@ -5077,11 +5421,51 @@ class TODO(
         if not in_path:
             self.rtk_report_path_warning()
 
-        config_path = os.path.expanduser("~/.config/rtk/config.toml")
-        if os.path.exists(config_path):
+        if self.rtk_global_hook_active():
             print(t("Global auto-rewrite hook: active"))
         else:
             print(t("Global auto-rewrite hook: inactive"))
+
+    # Là où « rtk init --global » écrit : les réglages de l'ASSISTANT, et
+    # non ceux de rtk. Son aide le dit — « add to global assistant config
+    # directory ».
+    RTK_HOOK_SETTINGS = "~/.claude/settings.json"
+    RTK_HOOK_COMMANDE = "rtk hook"
+
+    @classmethod
+    def rtk_global_hook_active(cls, chemin: str = "") -> bool:
+        """Le crochet est-il posé dans les réglages de l'assistant ?
+
+        PAS « ~/.config/rtk/config.toml » : celui-là est la configuration
+        de rtk LUI-MÊME, écrite dès qu'il tourne une fois. Le témoin y
+        répondait donc « actif » à qui n'avait jamais lancé
+        « init --global », et l'écran conseillait de ne rien faire.
+
+        Le fichier est lu en JSON et parcouru : chercher « rtk » dans le
+        texte brut répondrait oui sur un réglage qui le NOMME sans
+        l'appeler — un commentaire, un chemin, une variable.
+        """
+        chemin = os.path.expanduser(chemin or cls.RTK_HOOK_SETTINGS)
+        try:
+            with open(chemin, encoding="utf-8") as fichier:
+                reglages = json.load(fichier)
+        except (OSError, ValueError):
+            return False
+
+        def commandes(noeud):
+            if isinstance(noeud, dict):
+                for valeur in noeud.values():
+                    yield from commandes(valeur)
+            elif isinstance(noeud, list):
+                for valeur in noeud:
+                    yield from commandes(valeur)
+            elif isinstance(noeud, str):
+                yield noeud
+
+        return any(
+            c.strip().startswith(cls.RTK_HOOK_COMMANDE)
+            for c in commandes(reglages)
+        )
 
     def prompt_execute_config(self):
         print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
@@ -5499,6 +5883,11 @@ class TODO(
 
     def generate_config_from_database(self):
         database_name = self.db_manager.select_database()
+        # Même refus, même piège : composé tel quel, « False » devient le
+        # nom de base passé au générateur de configuration.
+        if not database_name:
+            print(t("No database selected."))
+            return False
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -5650,22 +6039,28 @@ class TODO(
                 source_erplibre=False,
             )
 
+        # Le lock de TRAVAIL part avant : c'est son absence qui force une
+        # résolution neuve. Il est ignoré par git, donc rien de suivi n'est
+        # en jeu.
         poetry_lock = "./poetry.lock"
         try:
             os.remove(poetry_lock)
-        except Exception as e:
+        except OSError:
             pass
         odoo_long_version = ""
         if os.path.exists("./.erplibre-version"):
             with open("./.erplibre-version") as f:
-                odoo_long_version = f.read()
+                # DÉPOUILLÉ : la fin de ligne du fichier se retrouvait au
+                # MILIEU du chemin composé en dessous, qui ne désignait
+                # alors aucun fichier existant.
+                odoo_long_version = f.read().strip()
         path_file_odoo_lock = f"./requirement/poetry.{odoo_long_version}.lock"
-        if odoo_long_version:
-            try:
-                os.remove(path_file_odoo_lock)
-            except Exception as e:
-                pass
 
+        # LE LOCK DE RÉFÉRENCE N'EST PLUS EFFACÉ D'ABORD. Il est SUIVI par
+        # git, et la commande censée le reconstituer ne venait qu'APRÈS :
+        # elle échoue — résolution impossible, réseau coupé, poetry absent —
+        # et le dépôt reste amputé d'un fichier que personne n'a demandé à
+        # supprimer, sans qu'un mot le dise. On écrase à la fin, ou rien.
         status = self.execute.exec_command_live(
             f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
             f"./script/poetry/poetry_update.py -f",
@@ -5674,12 +6069,26 @@ class TODO(
             single_source_odoo=True,
             source_odoo=odoo_long_version,
         )
-
-        if os.path.exists(poetry_lock):
-            shutil.copy2(poetry_lock, path_file_odoo_lock)
+        if status or not os.path.exists(poetry_lock):
+            print(f"❌ {t('The lock was not regenerated; nothing replaced.')}")
+            return
+        if not odoo_long_version:
+            # Sans version, le chemin composé serait « poetry..lock » : un
+            # fichier qui ne correspond à aucune version supportée.
+            print(
+                f"❌ {t('No version in .erplibre-version; nothing replaced.')}"
+            )
+            return
+        shutil.copy2(poetry_lock, path_file_odoo_lock)
+        print(f"✅ {t('Reference lock updated:')} {path_file_odoo_lock}")
 
     def callback_execute_custom_database(self, config):
         database_name = self.db_manager.select_database()
+        # Même refus, troisième porte. Passé tel quel, le faux traverse
+        # jusqu'à la commande, qui cherche une base nommée « False ».
+        if not database_name:
+            print(t("No database selected."))
+            return
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):
@@ -5846,6 +6255,13 @@ class TODO(
         status = self.execute.exec_command_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
+        # L'ÉTAT SUIT LE LANCEMENT, et non l'intention. Le champ existait,
+        # son lecteur aussi, et rien ne l'écrivait : « Mobile context »
+        # annonçait « inactive » sur tout poste, pour toujours. Le code de
+        # sortie était déjà capturé ici et n'était jamais relu.
+        from script.version import erplibre_state
+
+        erplibre_state.set_mobile_active(not status)
 
 
 if __name__ == "__main__":

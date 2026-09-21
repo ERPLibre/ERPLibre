@@ -493,10 +493,9 @@ class TestCreerUnPont(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLInterpretePython(unittest.TestCase):
-    """L'écran Proxmox n'offrait pas le choix, donc envoyait toujours
-    « automatique » — et comme mise n'est jamais installé d'office, c'était
-    pyenv, qui COMPILE Python. Rapporté sur une VM Arch : « il utilise le
-    tar.xz pour le compiler »."""
+    """Sans ce choix, l'écran Proxmox envoie toujours « automatique » — et
+    comme mise n'est jamais installé d'office, c'est pyenv, qui COMPILE
+    Python depuis le tar.xz."""
 
     def _ecran(self, gestes=None, mise_arches=("amd64", "arm64")):
         from script.todo.proxmox_deploy_form import run_proxmox_form
@@ -1483,17 +1482,16 @@ class TestUnParcMixte(unittest.TestCase):
 
 
 class TestLaVmCloneLeDepotDistant(unittest.TestCase):
-    """« Le problème est revenu » — alors qu'il était corrigé.
+    """Un correctif commité ici et non poussé reste invisible à la VM.
 
     La VM ne reçoit pas le checkout d'ici : elle CLONE la branche depuis le
     dépôt DISTANT. Tout ce qui tourne dedans — install_proxmox.sh, les
-    scripts d'installation, le Makefile — vient donc de là. Un correctif
-    commité ici et non poussé lui est invisible.
+    scripts d'installation, le Makefile — vient donc de là.
 
-    Vécu deux fois de suite : la correction de /etc/hosts était dans le
-    checkout depuis la veille, absente du distant, et chaque VM déployée
-    ensuite recevait l'ancien script. Il a fallu comparer les deux versions à
-    la main pour le voir. Rien ne le disait."""
+    Le défaut se lit comme une régression : un correctif présent dans le
+    checkout et absent du distant laisse chaque VM déployée ensuite recevoir
+    l'ancien script, et rien ne le signale — seule la comparaison des deux
+    versions le montre."""
 
     def _todo(self, sortie, code=0):
         import sys
@@ -1543,10 +1541,49 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
         self.assertIn("8", texte, "et ce qui n'est pas montré, dit")
         self.assertIn("git push", texte)
 
-    def test_both_screens_say_it_before_deploying(self):
-        # L'avertissement ne vaut que là où on peut encore renoncer.
-        import inspect
+    @staticmethod
+    def _atteint(depart, cible, profondeur=2):
+        """La fonction `depart` atteint-elle `cible`, directement ou par une
+        aide qu'elle appelle sur `self` ?
 
+        L'INDIRECTION EST SUIVIE parce que la factorisation est le geste
+        évident ici : les deux écrans impriment le même bloc à quelques
+        lignes près. Une garde qui exige le nom de l'appel rougirait le
+        jour où l'on range le geste derrière une aide partagée — sur une
+        amélioration, donc, et c'est la forme qui est tombée ailleurs dans
+        ce dépôt.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from script.todo.todo import TODO
+
+        def appels(fn):
+            arbre = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            return {
+                getattr(n.func, "attr", "") or getattr(n.func, "id", "")
+                for n in ast.walk(arbre)
+                if isinstance(n, ast.Call)
+            }
+
+        vus, a_voir = set(), [(depart, profondeur)]
+        while a_voir:
+            fn, reste = a_voir.pop()
+            noms = appels(fn)
+            if cible in noms:
+                return True
+            if reste <= 0:
+                continue
+            for nom in noms - vus:
+                vus.add(nom)
+                aide = getattr(TODO, nom, None)
+                if callable(aide) and hasattr(aide, "__code__"):
+                    a_voir.append((aide, reste - 1))
+        return False
+
+    def test_both_screens_say_it_before_deploying(self):
+        """L'avertissement ne vaut que là où on peut encore renoncer."""
         from script.todo.proxmox_menu import ProxmoxMenuMixin
         from script.todo.qemu_deploy import QemuDeployMixin
 
@@ -1555,13 +1592,27 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
             QemuDeployMixin._qemu_print_recap,
         ):
             with self.subTest(fonction=fn.__name__):
-                self.assertIn("_qemu_branch_gap_lines", inspect.getsource(fn))
+                self.assertTrue(
+                    self._atteint(fn, "_qemu_branch_gap_lines"),
+                    f"{fn.__name__} n'atteint plus l'avertissement",
+                )
+
+    def test_the_reach_check_can_say_no(self):
+        """Contrôle du banc : une recherche qui répond toujours oui
+        rendrait l'épreuve ci-dessus verte quoi qu'il arrive."""
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        self.assertFalse(
+            self._atteint(
+                QemuDeployMixin._qemu_print_recap, "_jamais_appele_nulle_part"
+            )
+        )
 
 
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
     """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
 
-    Résultat rapporté : la strophe posée dans /etc/network/interfaces, le
+    Résultat : la strophe posée dans /etc/network/interfaces, le
     pont absent, et six lignes d'iptables qui ne parlent pas de redémarrage.
     L'avertissement sur le noyau existait — mais à la CONFIRMATION de l'hôte,
     et l'hôte est ensuite mémorisé : on revient des jours plus tard créer un
@@ -1781,7 +1832,7 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         self.assertFalse(vole)
 
     def test_a_fleet_gets_one_single_convention(self):
-        # Le défaut rapporté : trois VM du même déploiement, deux nommées
+        # Le défaut : trois VM du même déploiement, deux nommées
         # d'une façon et la troisième d'une autre.
         noms = [
             self._choisit(n, locaux=("erplibre-ubuntu-2604",))[0][0]
@@ -1975,10 +2026,9 @@ class TestLAncienNomSEnVa(unittest.TestCase):
         """Retirer sans réécrire est un appel légitime : les machines
         n'existent plus.
 
-        Constaté dans le vrai ~/.ssh/config de l'utilisateur : l'appel écrivait
-        « Host » NU, suivi d'un « HostName » vide, puis mourait sur un
-        IndexError en annonçant l'ajout. Le bloc sans nom s'applique à rien et
-        brouille la lecture du fichier."""
+        Sans la garde, l'appel écrit « Host » NU, suivi d'un « HostName »
+        vide, puis meurt sur un IndexError en annonçant l'ajout. Le bloc sans
+        nom s'applique à rien et brouille la lecture du fichier."""
         import os
 
         self.todo._write_ssh_config_entry(
@@ -2051,12 +2101,12 @@ class TestLAncienNomSEnVa(unittest.TestCase):
 
 
 class TestLeGuideDeConnexion(unittest.TestCase):
-    """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
+    """Une VM Proxmox ne reçoit AUCUN guide de connexion, quelle que soit
+    sa distribution, là où la voie libvirt en pose un.
 
-    Rapporté sur Arch : « pas l'écran de connexion, avec le guide qui dit de
-    prendre pacman, comme sur ubuntu ». La voie libvirt livre /etc/motd par le
-    « write_files » de cloud-init ; « qm set » n'offre pas cela. Le contenu
-    vient de la MÊME source (`guide_files`) et part par ssh.
+    La voie libvirt livre /etc/motd par le « write_files » de cloud-init ;
+    « qm set » n'offre pas cela. Le contenu vient de la MÊME source
+    (`guide_files`) et part par ssh.
     """
 
     def _ecrit(self, vm=None, install=None, distro="arch"):
@@ -2084,13 +2134,15 @@ class TestLeGuideDeConnexion(unittest.TestCase):
         import io
 
         with contextlib.redirect_stdout(io.StringIO()):
-            ok = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
-        vus["ok"] = ok
+            refus = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
+        # "" = rien n'empêche d'installer. Voir la docstring de la méthode :
+        # elle rend la RAISON de refuser, pas un succès.
+        vus["refus"] = refus
         return vus
 
     def test_the_guide_goes_to_etc_motd_through_the_alias(self):
         vus = self._ecrit()
-        self.assertTrue(vus["ok"])
+        self.assertEqual("", vus["refus"])
         # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
         self.assertEqual(vus["cible"], "hote+vm-a")
         self.assertIn("/etc/motd", vus["remote"])
@@ -2136,8 +2188,12 @@ class TestLeGuideDeConnexion(unittest.TestCase):
             "install_cmd": "",
         }
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            ok = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
-        self.assertFalse(ok)
+            refus = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
+        # DIT, MAIS PAS REFUSÉ. Cette spec ne demande aucune posture : le
+        # lot qui cède ne coûte qu'un guide, et un guide manquant n'est pas
+        # une promesse rompue. Le refus est éprouvé sous une posture, là où
+        # il change ce qui s'installe.
+        self.assertEqual("", refus)
         self.assertIn("⚠", sortie.getvalue())
 
 

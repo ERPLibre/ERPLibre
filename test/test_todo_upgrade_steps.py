@@ -35,8 +35,8 @@ class TestUpdateAllStatus(StatusCase):
         return TodoUpgrade.step_status(dct, 2)
 
     def test_an_old_log_knows_only_the_early_flag(self):
-        # Le cas signalé : un journal écrit avant le correctif. L'étape a bien
-        # eu lieu, il ne faut pas la dire « non démarrée ».
+        # Un journal écrit avant le correctif : l'étape a bien eu lieu, il
+        # ne faut pas la dire « non démarrée ».
         icon, detail = self.status({"state_1_update_all": True})
         self.assertEqual(icon, "✅")
         self.assertIn("early", detail)
@@ -134,8 +134,8 @@ class TestRewindReallyReplays(StatusCase):
             return TodoUpgrade.rewind_progression(self.journal(), step)
 
     def test_going_back_to_step_2_runs_the_update_again(self):
-        # LE défaut signalé : « il continue en ignorant l'étape que j'ai
-        # choisie ». Trois heures de mise à jour silencieusement sautées.
+        # Sans ce rejeu, le pilote continue en ignorant l'étape choisie,
+        # et des heures de mise à jour sont silencieusement sautées.
         self.assertTrue(
             TodoUpgrade.needs_update_all(self.rewind(2)),
             "rembobiner à l'étape 2 doit rejouer la mise à jour",
@@ -284,7 +284,8 @@ class TestRewindDropsTheAnswersToo(StatusCase):
             return TodoUpgrade.rewind_progression(self.journal(), step)
 
     def test_the_step_4_answers_go_when_step_4_is_replayed(self):
-        # LE défaut signalé : l'étape rejouée marchait, les suivantes non.
+        # Rembobiner retire aussi les réponses des étapes SUIVANTES :
+        # sinon le rejeu repart sur des choix périmés.
         kept = self.rewind(2)
         for key in (
             "config_state_4_install_module",

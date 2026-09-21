@@ -15,6 +15,14 @@ Les messages sont traduits. Les assertions qui citent du texte fixent donc la
 langue à « fr » pour la durée du module : sinon elles dépendraient de EL_LANG,
 et un poste en anglais les ferait toutes échouer.
 """
+
+# Ces épreuves doivent PORTER une donnée détectée : c'est tout ce
+# qu'elles prouvent. Les valeurs sont inventées et déclarées ici.
+# hygiene-exemple: 172.20.99.152
+# hygiene-exemple: 172.20.99.5
+# hygiene-exemple: a@b.ca
+# hygiene-exemple: a@y.ca
+
 import os
 import subprocess
 import sys
@@ -26,6 +34,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "script", "git")
 )
 
+from script import lib_identifiant as identifiant  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 # Relevée AVANT d'épingler : c'est la langue que lira un hook lancé en
@@ -214,7 +223,7 @@ class TestLeCorps(unittest.TestCase):
 
     def test_un_chemin_de_compte(self):
         problemes = check(
-            _message("Le venv vit dans /home/garance/git/erplibre/.")
+            _message("Le venv vit dans /home/compte/git/erplibre/.")
         )
         self.assertEqual(1, len(problemes))
         self.assertIn("chemin de compte", problemes[0])
@@ -226,32 +235,34 @@ class TestLeCorps(unittest.TestCase):
 
     def test_une_ligne_checked_reste_du_corps(self):
         """« Checked: » ressemble à un trailer : il ne doit pas s'y soustraire."""
-        self.assertTrue(check(_message("Checked: 10.10.10.152 répond.")))
+        self.assertTrue(check(_message("Checked: 172.20.99.152 répond.")))
 
-    def test_la_liste_privee_absente_ne_refuse_rien(self):
-        origine = commit_msg_lib.NOMS_INTERDITS
-        commit_msg_lib.NOMS_INTERDITS = os.path.join(
-            os.path.dirname(origine), "absent_de_ce_depot.txt"
-        )
-        try:
-            self.assertEqual([], check(_message("Migration de acmecorp.")))
-        finally:
-            commit_msg_lib.NOMS_INTERDITS = origine
+    def _liste(self, contenu):
+        """Pose la liste privée PAR LA VARIABLE, qui est la seule couture
+        offerte à qui ne range pas ce fichier là où le dépôt l'attend.
 
-    def test_la_liste_privee_refuse_le_nom_quelle_porte(self):
-        origine = commit_msg_lib.NOMS_INTERDITS
+        Écrire dans la constante du module éprouvait un chemin que
+        personne n'emprunte : c'est ainsi que ce garde-fou a pu ignorer la
+        variable pendant que l'autre l'honorait.
+        """
         with tempfile.NamedTemporaryFile(
             "w", suffix=".txt", delete=False, encoding="utf-8"
         ) as fh:
-            fh.write("# un commentaire\n\nacmecorp\n")
-            commit_msg_lib.NOMS_INTERDITS = fh.name
-        try:
-            problemes = check(_message("Migration de AcmeCorp, six paliers."))
-            self.assertEqual(1, len(problemes))
-            self.assertIn("nom refusé", problemes[0])
-        finally:
-            os.unlink(commit_msg_lib.NOMS_INTERDITS)
-            commit_msg_lib.NOMS_INTERDITS = origine
+            fh.write(contenu)
+        self.addCleanup(os.unlink, fh.name)
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = fh.name
+
+    def test_la_liste_privee_absente_ne_refuse_rien(self):
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        self.assertEqual([], check(_message("Migration de acmecorp.")))
+
+    def test_la_liste_privee_refuse_le_nom_quelle_porte(self):
+        self._liste("# un commentaire\n\nacmecorp\n")
+        problemes = check(_message("Migration de AcmeCorp, six paliers."))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("nom refusé", problemes[0])
 
     def test_un_merge_nest_pas_juge(self):
         """git écrit le corps d'un merge : le refuser refuserait le merge."""
@@ -282,19 +293,10 @@ class TestLeCorps(unittest.TestCase):
 
     def test_un_nom_prive_dans_un_trailer_est_refuse(self):
         """Un « Refs: » publie autant qu'une phrase du corps."""
-        origine = commit_msg_lib.NOMS_INTERDITS
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as fh:
-            fh.write("acmecorp\n")
-            commit_msg_lib.NOMS_INTERDITS = fh.name
-        try:
-            problemes = check(_message("Une raison.\n\nRefs: acmecorp-42"))
-            self.assertEqual(1, len(problemes))
-            self.assertIn("nom refusé", problemes[0])
-        finally:
-            os.unlink(commit_msg_lib.NOMS_INTERDITS)
-            commit_msg_lib.NOMS_INTERDITS = origine
+        self._liste("acmecorp\n")
+        problemes = check(_message("Une raison.\n\nRefs: acmecorp-42"))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("nom refusé", problemes[0])
 
     def test_body_of_rend_les_trailers_sur_demande(self):
         message = _message("Une raison.\n\nAssisted-by: Un modèle")
@@ -323,14 +325,14 @@ class TestLesDeuxLangues(unittest.TestCase):
         self.assertIn("KEYWORDS", probleme)
 
     def test_les_identifiants_se_disent_en_anglais(self):
-        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        corps = "[FIX] portée : sujet\n\nUne raison, 172.20.99.5 et a@b.ca.\n"
         problemes = " ".join(self._en(corps))
         self.assertIn("IP address", problemes)
         self.assertIn("e-mail address", problemes)
 
     def test_les_deux_langues_signalent_AUTANT_de_problemes(self):
         """Traduire ne doit ni ajouter ni perdre un refus."""
-        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        corps = "[FIX] portée : sujet\n\nUne raison, 172.20.99.5 et a@b.ca.\n"
         todo_i18n._current_lang = "fr"
         fr = len(check(corps))
         self.assertEqual(fr, len(self._en(corps)))

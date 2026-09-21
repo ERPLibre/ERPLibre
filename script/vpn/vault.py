@@ -26,9 +26,9 @@ from __future__ import annotations
 
 import getpass
 import os
-import stat
 
 from script.todo.todo_i18n import t
+from script.vault.store import protect as store_protect
 
 try:
     from pykeepass import PyKeePass, create_database
@@ -190,24 +190,13 @@ class VpnVault:
     def protect(self, path=None) -> bool:
         """Remet le coffre en 0600. Rend True s'il fallait le resserrer.
 
-        À appeler après CHAQUE écriture, et pas seulement à la création :
-        `PyKeePass.save()` réécrit le fichier et lui redonne le mode du
-        umask — 0664 sur Ubuntu. Un chmod fait une fois à la création ne
-        survit donc pas au premier enregistrement, et un coffre de mots de
-        passe devient lisible par toute la machine sans que personne ne
-        touche à rien.
+        La mécanique vit dans `script.vault.store`, qui est le module de
+        coffre du dépôt : deux copies du même chmod divergeraient au
+        premier correctif, et celui-ci protège un fichier de mots de passe.
+        Ce qui reste ici est le CHEMIN — la seule chose que le magasin
+        générique ne connaît pas d'un profil VPN.
         """
-        path = os.path.expanduser(path or self.vault_path())
-        if not path:
-            return False
-        try:
-            current = stat.S_IMODE(os.stat(path).st_mode)
-        except OSError:
-            return False
-        if not current & 0o077:
-            return False
-        os.chmod(path, 0o600)
-        return True
+        return store_protect(path or self.vault_path())
 
     def _open(self):
         """Coffre ouvert, ou VaultError. Passe par KdbxManager pour ne

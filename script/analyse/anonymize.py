@@ -9,8 +9,8 @@ nombres tirés au hasard, écrits par des UPDATE SQL. Ce qui rend la chose
 délicate n'est pas le remplacement, c'est de savoir CE QU'ON N'A PAS LE
 DROIT DE TOUCHER.
 
-Quatre pièges, tous mesurés sur une base réelle
------------------------------------------------
+Quatre pièges, avec leur ampleur sur une base de production
+-----------------------------------------------------------
 1. « Tous les champs string » n'existe pas. 505 champs `selection` sont
    stockés en varchar : `res.partner.lang`, `sale.order.invoice_status`.
    Y écrire un mot au hasard casse l'ORM, pas la confidentialité. On ne
@@ -22,8 +22,8 @@ Quatre pièges, tous mesurés sur une base réelle
    relation.
 3. 194 champs texte sont en `jsonb` depuis Odoo 17, un objet par langue.
    Écrire une chaîne par-dessus détruit la colonne ; on reconstruit
-   l'objet, clé par clé. C'est le piège qui a déjà coûté un /contact
-   réparé en anglais et resté cassé en français.
+   l'objet, clé par clé. Sans cela, une page rendue depuis ce champ se
+   répare dans une langue et reste cassée dans les autres.
 4. 301 contraintes d'unicité. Deux lignes qui reçoivent le même mot font
    échouer tout l'UPDATE. Sur une colonne unique, l'identifiant est
    collé au mot.
@@ -44,6 +44,7 @@ Rien n'est écrit sans `--apply` ET `--confirm <nom de la base>`.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -378,10 +379,9 @@ def ident(nom):
 
     Odoo laisse nommer un champ `user`, `order` ou `group` : ce sont des
     mots réservés de PostgreSQL, et un identifiant nu fait échouer
-    l'analyse syntaxique — donc, transaction unique oblige, TOUTE
-    l'anonymisation. Mesuré en liste noire sur une base réelle :
-    « syntax error at or near "user" ». Les citer coûte deux caractères
-    et ferme la question pour tous les noms à venir.
+    l'analyse syntaxique sur « syntax error at or near "user" » — donc,
+    transaction unique oblige, TOUTE l'anonymisation. Les citer coûte
+    deux caractères et ferme la question pour tous les noms à venir.
     """
     return '"' + str(nom).replace('"', '""') + '"'
 
@@ -499,9 +499,9 @@ def expression_nombre(champ):
     """Le SQL qui remplace un nombre, DANS l'étendue de la colonne.
 
     0 à 1000 était l'intention, et c'est faux pour tout nombre qui porte
-    un sens borné. Mesuré : `resource.calendar.attendance.hour_from` est
-    un `float` qui vaut une heure de la journée — 8,00 à 13,00 dans la
-    base d'origine. Un tirage à 957 fait lever Odoo :
+    un sens borné : `resource.calendar.attendance.hour_from` est un
+    `float` qui vaut une heure de la journée, et un tirage à 957 y fait
+    lever Odoo :
 
         time(int(integral), ...)  →  ValueError: hour must be in 0..23
             resource/models/utils.py:45
@@ -630,10 +630,10 @@ def inspect(database, config_path=None):
                 "pg_type": parts[3],
                 "unique": parts[4] == "1",
                 "checked": parts[5] == "1",
-                # varchar(n) : n, sinon None. Mesuré sur une base réelle,
-                # 13 colonnes sont bornées — dont des codes à 1, 2 et 3
-                # caractères. Y écrire « jonquille » fait échouer tout
-                # l'UPDATE, et donc toute l'anonymisation.
+                # varchar(n) : n, sinon None. Une poignée de colonnes
+                # sont bornées court — des codes à 1, 2 et 3 caractères.
+                # Y écrire « jonquille » fait échouer tout l'UPDATE, et
+                # donc toute l'anonymisation.
                 "max_len": int(parts[6]) if parts[6].isdigit() else None,
             }
         )
@@ -889,19 +889,36 @@ def render(etapes, applique=False, verbeux=False):
 
 
 def charger_mots(chemin):
-    """Lire un fichier Python qui déclare MOTS.
+    """Les mots de remplacement, lus d'un fichier JSON. None si aucun.
 
-    Une liste — les mêmes mots partout — ou un dictionnaire par nom de
-    champ avec un repli `*`. Aucun réseau, aucun modèle : des mots.
+    Une LISTE — les mêmes mots partout — ou un OBJET par nom de champ, avec
+    un repli « * ». Aucun réseau, aucun modèle : des mots.
+
+    JSON ET NON PYTHON. Le fichier était compilé puis EXÉCUTÉ : « --words »
+    donnait à qui le fournit l'exécution de code arbitraire avec les droits
+    de l'outil, sur une base qui porte des données personnelles. La promesse
+    de la ligne au-dessus était alors intenable — le fichier pouvait
+    importer ce qu'il voulait, et aucune lecture du moteur ne l'aurait vu.
+    JSON ne déclare que des données ; il n'appelle rien.
+
+    Un fichier Python est REFUSÉ en le disant, plutôt que lu à moitié : la
+    conversion est une liste entre crochets, et la taire ferait chercher une
+    panne de lecture là où il n'y a qu'un format à changer.
     """
     if not chemin:
         return None
-    espace = {}
     with open(chemin, "r", encoding="utf-8") as handle:
-        exec(compile(handle.read(), chemin, "exec"), espace)  # noqa: S102
-    mots = espace.get("MOTS")
+        contenu = handle.read()
+    try:
+        mots = json.loads(contenu)
+    except ValueError as souci:
+        raise ValueError(
+            f"{t('This file is not JSON:')} {chemin} — {souci}"
+        ) from souci
+    if not isinstance(mots, (list, dict)):
+        raise ValueError(f"{t('Words must be a list or an object:')} {chemin}")
     if not mots:
-        raise ValueError(f"{t('This file declares no MOTS:')} {chemin}")
+        raise ValueError(f"{t('This file declares no word:')} {chemin}")
     return mots
 
 
@@ -926,11 +943,10 @@ def ecrire(database, etapes, config_path=None, timeout=900):
     sql = "\n".join(e["sql"] for e in etapes if e.get("sql"))
 
     # PAR FICHIER, jamais par `-c`. Linux plafonne un seul argument à
-    # MAX_ARG_STRLEN — 32 pages, soit 131 072 octets. Mesuré sur une base
-    # réelle : le mode hybride tient dans 58 Ko et passait, la liste noire
-    # produit 342 Ko sur 410 modèles et rendait « OSError: [Errno 7]
-    # Argument list too long ». Le mode qui couvre le plus est justement
-    # celui qui cassait.
+    # MAX_ARG_STRLEN — 32 pages, soit 131 072 octets. Le SQL de la liste
+    # noire dépasse ce plafond dès quelques centaines de modèles, et `-c`
+    # rend alors « OSError: [Errno 7] Argument list too long ». Le mode
+    # qui couvre le plus est justement celui qui casse.
     #
     # `-f` plutôt que l'entrée standard : `--single-transaction` n'est
     # documenté qu'avec `-c` ou `-f`, et c'est lui qui garantit le tout
@@ -990,7 +1006,7 @@ def main(argv=None):
     parser.add_argument(
         "--exclude", default="", help=t("comma separated, removed from it")
     )
-    parser.add_argument("--words", help=t("python file declaring MOTS"))
+    parser.add_argument("--words", help=t("JSON file of replacement words"))
     parser.add_argument("--include-logins", action="store_true")
     parser.add_argument(
         "--keep-digits",

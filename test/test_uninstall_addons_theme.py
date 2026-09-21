@@ -11,16 +11,17 @@ et ses trois voisines. Le chemin de retrait d'Odoo, `_theme_remove()`, défait
 les deux — et son premier geste est `_reset_default_config()`, celui qui écrit
 ces définitions.
 
-Un `--uninstall` nu saute tout cela. Mesuré sur une migration réelle 12 → 13 :
-le bundle `web.assets_frontend` s'arrête sur « Undefined variable:
-$o-theme-font-number ». La variable venait des fichiers `option_font_body_*`
-d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinissait encore, et le
-retirer a mis à nu un SCSS personnalisé figé depuis 2020.
+Un `--uninstall` nu saute tout cela : au palier 12 → 13, le bundle
+`web.assets_frontend` s'arrête sur « Undefined variable:
+$o-theme-font-number ». La variable vient des fichiers `option_font_body_*`
+d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinit encore, et le
+retirer met à nu tout SCSS personnalisé qui s'appuyait dessus.
 
 Ces tests portent sur ce que le script fait, pas sur son texte.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -30,6 +31,9 @@ SCRIPT = os.path.join(REPO, "script", "addons", "uninstall_addons_theme.sh")
 
 sys.path.insert(0, os.path.join(REPO, "script", "addons"))
 import theme_leftover  # noqa: E402
+
+sys.path.insert(0, REPO)
+from script.todo import todo_i18n  # noqa: E402
 
 
 class TestTheScriptShape(unittest.TestCase):
@@ -237,6 +241,65 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         self.assertIn("name <> 'theme_default'", source)
 
 
+class TestCeQueLaSauvegardeNePrendPas(unittest.TestCase):
+    """DEUX RAISONS DE NE RIEN COPIER, et elles n'appellent pas la même suite.
+
+    Un fichier DÉJÀ disparu est exactement le reste qu'on vient nettoyer :
+    il n'y a rien à copier, et refuser là bloquerait le cas le plus courant
+    et le plus légitime.
+
+    Un contenu qui vit EN BASE sans fichier, lui, part sans copie. Odoo
+    range une pièce jointe soit dans le filestore, soit dans « db_datas » —
+    une installation sans filestore, ou une pièce marquée d'un autre
+    emplacement. La sauter en silence puis l'effacer détruisait un contenu
+    dont rien ne portait trace.
+
+    L'écran imprimait « sauvées : 1 » puis « 2 effacées », deux nombres à
+    trois lignes d'écart que rien ne reliait.
+    """
+
+    def relever(self, sans_fichier, octets_en_base):
+        """Rend (sauvegardées, sans copie) sur un banc sans PostgreSQL."""
+        import tempfile
+
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        os.makedirs(os.path.join(base, "ab"), exist_ok=True)
+        with open(os.path.join(base, "ab", "sha"), "wb") as fh:
+            fh.write(b"contenu")
+
+        def faux_psql(db, sql, **kw):
+            if "store_fname" in sql:
+                return [""] if f"id = {sans_fichier}" in sql else ["ab/sha"]
+            if "db_datas" in sql:
+                return [str(octets_en_base)]
+            return []
+
+        vrai = theme_leftover.run_psql
+        theme_leftover.run_psql = faux_psql
+        self.addCleanup(setattr, theme_leftover, "run_psql", vrai)
+        vrai_dir = os.getcwd()
+        travail = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, travail, ignore_errors=True)
+        os.chdir(travail)
+        self.addCleanup(os.chdir, vrai_dir)
+        return theme_leftover.backup_attachments(
+            "db", "th", ["1|a.scss|x", "2|b.scss|x"], filestore=base
+        )
+
+    def test_a_content_living_in_the_database_is_named(self):
+        saved, sans_copie = self.relever(sans_fichier=2, octets_en_base=4096)
+        self.assertEqual(1, len(saved))
+        self.assertEqual(["2"], sans_copie)
+
+    def test_a_file_already_gone_is_not_named(self):
+        """Contrôle positif : le nommer ferait crier sur le cas le plus
+        courant — c'est exactement le reste qu'on vient nettoyer."""
+        saved, sans_copie = self.relever(sans_fichier=2, octets_en_base=0)
+        self.assertEqual(1, len(saved))
+        self.assertEqual([], sans_copie)
+
+
 class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
     """Signaler sans offrir le geste oblige à le composer soi-même.
 
@@ -260,9 +323,15 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
         self.deleted = []
         self.original_backup = theme_leftover.backup_attachments
         self.original_delete = theme_leftover.delete_attachments
-        theme_leftover.backup_attachments = (
-            lambda db, th, rows, fs=None: self.saved.append(rows) or ["/tmp/x"]
-        )
+        # Le couple (sauvegardées, sans copie) : la seconde moitié nomme
+        # les pièces dont le contenu part sans qu'aucune copie en soit
+        # prise. Un banc qui ne rendrait qu'une liste cacherait justement
+        # ce que l'appelant doit dire avant d'effacer.
+        self.sans_copie = []
+        theme_leftover.backup_attachments = lambda db, th, rows, fs=None: (
+            self.saved.append(rows),
+            (["/tmp/x"], list(self.sans_copie)),
+        )[1]
         theme_leftover.delete_attachments = (
             lambda db, rows, cfg="./config.conf": (
                 self.deleted.append(rows),
@@ -277,6 +346,23 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
         )
         self.addCleanup(
             setattr, theme_leftover, "delete_attachments", self.original_delete
+        )
+
+    def test_it_names_what_leaves_without_a_copy(self):
+        """L'écran imprimait « sauvées : 1 » puis « 2 effacées », deux
+        nombres à trois lignes d'écart que rien ne reliait. Une pièce dont
+        le contenu vit en base part sans copie : elle se dit AVANT."""
+        self.sans_copie = ["4457"]
+        _fait, sortie = self.run_prompt("d")
+        self.assertIn("4457", sortie)
+
+    def test_it_says_nothing_when_every_content_is_copied(self):
+        """Contrôle positif : le dire toujours noierait le seul cas où
+        l'avertissement corrige une attente."""
+        _fait, sortie = self.run_prompt("d")
+        self.assertNotIn(
+            theme_leftover.t("attachment(s) whose content leaves no copy:"),
+            sortie,
         )
 
     def run_prompt(self, answer, rows=None):
@@ -332,7 +418,7 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
     Le script se termine par theme_leftover.py, qui pose une question. Lancé
     par l'exécuteur qui CAPTURE la sortie, son stdout est un tube : Python
     bufferise par blocs et l'invite reste invisible pendant que le processus
-    attend. Vécu — on croit à un blocage, on tape Entrée plusieurs fois, la
+    attend. On croit alors à un blocage, on tape Entrée plusieurs fois, la
     première frappe répond à l'aveugle et les suivantes vont à la question
     d'après.
 
@@ -403,11 +489,10 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
 class TestTheIdentifiersSentToOdoo(unittest.TestCase):
     """browse() veut des ENTIERS ; psql rend des chaînes.
 
-    Mesuré sur une vraie base : browse(['4457']) fait échouer Odoo sur
-    « la recherche en base n'a pas les identifiants (('4457',)) et a des
-    identifiants supplémentaires ((4457,)) ». Il compare des chaînes à des
-    entiers, ne retrouve rien, et refuse. L'effacement n'a rien retiré —
-    heureusement, la sauvegarde était déjà faite.
+    browse(['4457']) fait échouer Odoo sur « la recherche en base n'a pas
+    les identifiants (('4457',)) et a des identifiants supplémentaires
+    ((4457,)) » : il compare des chaînes à des entiers, ne retrouve rien, et
+    refuse. L'effacement ne retire alors rien.
     """
 
     def test_the_script_browses_integers(self):
@@ -485,6 +570,65 @@ class TestExitCodes(unittest.TestCase):
             cwd=REPO,
         )
         self.assertEqual(done.returncode, 2, done.stdout)
+
+
+class TestLaQuestionNommeCeQuElleDetruit(unittest.TestCase):
+    """L'écran des restes liste DEUX ensembles sous un même titre.
+
+    Pièces jointes, et vues dont la clé nomme encore le thème. La question
+    portait sur « ces restes » ; seules les pièces jointes partaient, et les
+    vues restaient sans qu'un mot le dise. Un accord donné sur un ensemble
+    plus large que celui qu'on touche n'est pas un accord — dans un sens
+    comme dans l'autre.
+
+    Les vues RESTENT, et c'est le parti du dépôt : leur contenu peut être la
+    seule trace d'une personnalisation, et aucune sauvegarde ne les couvre.
+    """
+
+    PIECES = ["1|/theme_x/a.css|2026-01-01", "2|/theme_x/b.css|2026-01-01"]
+    VUES = ["7|theme_x.page|1", "8|theme_x.footer|1"]
+
+    def jouer(self, views, reponse="k"):
+        """Pose la question sans rien effacer, et rend (question, écran)."""
+        import contextlib
+        import io
+
+        vues = {}
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            theme_leftover.prompt(
+                "base",
+                "theme_x",
+                list(self.PIECES),
+                list(views),
+                "/dev/null",
+                ask=lambda invite="": vues.setdefault("invite", invite)
+                or reponse,
+            )
+        return vues.get("invite", ""), tampon.getvalue()
+
+    def test_the_question_counts_the_attachments_it_deletes(self):
+        invite, _ecran = self.jouer(self.VUES)
+        self.assertIn(str(len(self.PIECES)), invite)
+
+    def test_the_question_never_claims_the_views(self):
+        """« ces restes » couvrait les deux listes de l'écran."""
+        invite, _ecran = self.jouer(self.VUES)
+        self.assertNotIn("leftover", invite.lower())
+        self.assertNotIn("reste", invite.lower())
+
+    def test_the_views_that_stay_are_counted_before_the_question(self):
+        """Dit après, l'accord aurait déjà été donné."""
+        _invite, ecran = self.jouer(self.VUES)
+        self.assertIn(str(len(self.VUES)), ecran)
+
+    def test_without_views_nothing_is_claimed_to_stay(self):
+        """Contrôle : une phrase imprimée toujours passerait le test d'à
+        côté sans rien garder."""
+        _invite, ecran = self.jouer([])
+        self.assertNotIn(
+            todo_i18n.t("view(s) stay: no backup covers them."), ecran
+        )
 
 
 if __name__ == "__main__":

@@ -2037,11 +2037,17 @@ class SeleniumLib(object):
         print()
 
 
-def get_args(parser):
-    args = parser.parse_args()
+def compute_args(args):
+    """Réconcilie les options de CETTE couche, comme chaque couche le fait.
+
+    Elle possède les deux drapeaux de pilote, et ils s'excluent : demander
+    Chrome doit éteindre Firefox. La réconciliation vivait dans une
+    fonction que les points d'entrée contournaient, si bien que les deux
+    drapeaux restaient vrais — et `install_addon`, propre à Firefox,
+    partait sur un pilote Chrome.
+    """
     if args.use_chrome_driver:
         args.use_firefox_driver = False
-    return args
 
 
 def fill_parser(parser):
@@ -2085,14 +2091,6 @@ def fill_parser(parser):
     group_browser.add_argument(
         "--use_network",
         help="Specify the address, example: http://localhost:4444",
-    )
-    group_browser.add_argument(
-        "--use_download_path_default",
-        action="store_true",
-        help="Actually, the download path is a temporary directory. "
-        "This will enable default path to /home/seluser/Downloads, "
-        "need this with Selenium Grid by network. "
-        "Will delete all file into /home/seluser/Downloads at startup.",
     )
     group_browser.add_argument(
         "--window_size",

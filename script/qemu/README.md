@@ -87,6 +87,30 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
+## Confining a machine created directly
+
+**This script poses what it is GIVEN; it does not know postures.** Called
+without egress rules, the machine it creates has **free egress** — whatever
+you had in mind. That is not an oversight: the rules are rendered elsewhere,
+and the menu is what usually renders them.
+
+The golden rule — the couple *(posture, real data)* — is enforced at the
+menu's single crossing point. **A machine created directly bypasses it**, so
+it must not carry real data.
+
+Rules can be rendered and handed over. The posture package writes them, the
+engine lays and arms them at first boot:
+
+```bash
+python3 -c "from script.posture import registry, rules, plan; \
+  open('/tmp/egress.nft','w').write( \
+    rules.render_egress(registry.get_posture('connected'), ())); \
+  open('/tmp/egress.service','w').write(plan.unit_text())"
+
+sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+    --egress-file /tmp/egress.nft --egress-unit /tmp/egress.service
+```
+
 Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 
 | Distro | Versions | amd64 | arm64 | s390x |
@@ -277,20 +301,20 @@ family — and its disk cost is added to the plan before anything is created.
 
 ## Main options
 
-- `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,
-  `rocky`, `opensuse`, `arch`, `nixos` or `proxmox`. NixOS is the one
-  image no distribution publishes: it is rebuilt by a third party, so the
-  release is pinned and its sha256 verified at every download, and the
-  origin is printed before anything is created.
+- `--distro` — any distro of the catalogue, `ubuntu` by default. The
+  catalogue is what `--list-images` prints; naming a fixed subset here
+  would go stale the day one is added, and it has.
+  NixOS is the one image no distribution publishes: it is rebuilt
+  by a third party, and the catalogue says so.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
 - `--download-only` — download the image then exit (no VM).
 - `--name` — VM name (required for deployment).
 - `--memory`, `--vcpus`, `--disk-size` — VM sizing. When omitted, `--memory`
-  and `--disk-size` default to the **minimum required by the chosen version**
-  (libosinfo values, see `--list-images`: Ubuntu 24.04+ → 3072 MB/20G, Debian
-  → 1024 MB/10G, Fedora → 2048 MB/15G); `--vcpus` defaults to 2.
+  and `--disk-size` default to the **minimum required by the chosen
+  version** — run `--list-images` for the figures, which the catalogue
+  carries and this page does not repeat; `--vcpus` defaults to 2.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentication.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.

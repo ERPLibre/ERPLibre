@@ -963,12 +963,94 @@ class TestTheInventoryItself(Base):
     def test_the_cow_copies_are_collected(self):
         self.assertEqual(self.inspecter()["cow"], ["site.vue"])
 
-    def test_a_cow_copy_without_a_key_is_still_named(self):
-        # Une copie sans clé existe quand même ; la taire ferait un
-        # inventaire qui ment sur son propre compte.
-        import inspect
+    # LA STRUCTURE DE LA PROJECTION, ET NON SON ORTHOGRAPHE. Ce garde
+    # cherchait le fragment « 'id:' || id::text » dans le source. Il
+    # rougissait sur tout changement de préfixe — un renommage sans
+    # conséquence — et restait VERT sur l'inversion des deux bras du
+    # coalesce, qui nomme alors chaque copie par son identifiant et casse
+    # tout l'appariement d'un palier à l'autre.
+    @staticmethod
+    def _arguments(expression):
+        """Les arguments de premier niveau d'un `coalesce(...)`, ou [].
 
-        self.assertIn("'id:' || id::text", inspect.getsource(quality.inspect))
+        Découpe sur les virgules NON parenthésées : un argument peut
+        lui-même être un appel.
+        """
+        depart = expression.lower().find("coalesce(")
+        if depart < 0:
+            return []
+        reste = expression[depart + len("coalesce(") :]
+        args, courant, profondeur = [], "", 0
+        for caractere in reste:
+            if caractere == "(":
+                profondeur += 1
+            elif caractere == ")":
+                if profondeur == 0:
+                    break
+                profondeur -= 1
+            elif caractere == "," and profondeur == 0:
+                args.append(courant.strip())
+                courant = ""
+                continue
+            courant += caractere
+        args.append(courant.strip())
+        return [a for a in args if a]
+
+    def test_a_cow_copy_without_a_key_is_still_named(self):
+        """Une copie sans clé existe quand même ; la taire ferait un
+        inventaire qui ment sur son propre compte. Et la nommer par son
+        identifiant QUAND ELLE A UNE CLÉ casse l'appariement entre paliers,
+        puisque les identifiants changent et pas les clés.
+        """
+        vus = []
+        original = quality.run_psql
+        self.addCleanup(setattr, quality, "run_psql", original)
+        quality.run_psql = lambda db, sql: (
+            vus.append(sql) or self.repondre(sql)
+        )
+        for nom, remplacant in (
+            ("missing_files", lambda db, lst: []),
+            ("table_counts", lambda db: {}),
+        ):
+            avant = getattr(quality, nom)
+            setattr(quality, nom, remplacant)
+            self.addCleanup(setattr, quality, nom, avant)
+        quality.inspect("db")
+        # DEUX requêtes portent cette clause ; celle qui NOMME les copies
+        # est celle qui les ordonne par leur nom.
+        requetes = [
+            q
+            for q in vus
+            if "website_id IS NOT NULL" in q and "ORDER BY 1" in q
+        ]
+        self.assertEqual(1, len(requetes), "la requête des copies COW")
+        args = self._arguments(requetes[0])
+        self.assertGreaterEqual(
+            len(args), 2, "la projection doit avoir un repli"
+        )
+        self.assertEqual("key", args[0], "la CLÉ d'abord, le repli ensuite")
+
+    def test_the_reader_sees_an_inverted_coalesce(self):
+        """Contrôle du détecteur : c'est l'inversion que le garde d'avant
+        laissait passer, et elle est la seule qui casse l'appariement."""
+        inverse = (
+            "SELECT coalesce('id:' || id::text, key) FROM ir_ui_view"
+            " WHERE website_id IS NOT NULL"
+        )
+        self.assertNotEqual("key", self._arguments(inverse)[0])
+
+    def test_the_reader_sees_a_projection_with_no_fallback(self):
+        bare = "SELECT key FROM ir_ui_view WHERE website_id IS NOT NULL"
+        self.assertEqual([], self._arguments(bare))
+
+    def test_the_reader_accepts_another_prefix(self):
+        """Changer le préfixe est un renommage sans conséquence : le garde
+        d'avant rougissait dessus, ce qui apprend à le désarmer."""
+        autre = (
+            "SELECT coalesce(key, 'vue:' || id::text) FROM ir_ui_view"
+            " WHERE website_id IS NOT NULL"
+        )
+        self.assertEqual("key", self._arguments(autre)[0])
 
 
 class TestTheDetailButton(Base):
@@ -982,9 +1064,24 @@ class TestTheDetailButton(Base):
         self.assertIn("d", touches)
 
     def test_the_cycle_visits_every_category_and_comes_back(self):
-        suite = (None,) + quality.DETAILS
-        self.assertEqual(len(suite), 6)
-        self.assertEqual(suite[len(suite) % len(suite)], None)
+        """Le parcours, JOUÉ — et non décrit.
+
+        L'épreuve calculait `suite[len(suite) % len(suite)]`, c'est-à-dire
+        `suite[0]`, et comparait à None : vraie pour toute liste non vide,
+        et sur sa propre variable locale. Le cycle réel vivait dans une
+        méthode du TUI qu'aucune épreuve n'atteignait ; sauter la dernière
+        catégorie n'aurait rien fait rougir.
+        """
+        vus, courant = [], None
+        for _ in range(len(quality.DETAILS) + 1):
+            courant = qtui.next_mode(courant)
+            vus.append(courant)
+        self.assertEqual(list(quality.DETAILS) + [None], vus)
+
+    def test_the_cycle_recovers_from_a_mode_it_does_not_know(self):
+        """Un mode retiré de DETAILS entre deux versions laisserait sinon
+        `index()` lever au premier appui sur la touche."""
+        self.assertEqual(quality.DETAILS[0], qtui.next_mode("inconnu"))
 
     def test_ONE_mode_not_two_flags(self):
         """« fichiers absents » et « liste des modèles » ne peuvent pas
@@ -1069,7 +1166,7 @@ class TestTheFullScreen(Base):
         self.assertEqual(debut, ["step", "step", "overall"])
 
     def test_the_overall_closes_the_steps(self):
-        # On descend la liste comme on a vécu la migration ; « qu'en
+        # On descend la liste comme on vit la migration ; « qu'en
         # reste-t-il » se pose une fois le chemin vu. Ce qui suit — les
         # verdicts, où les lire, quoi vérifier — répond à « et après ».
         lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
@@ -1303,9 +1400,8 @@ class TestTheOpenUpgradeOverlay(unittest.TestCase):
         )
 
     def test_a_field_whose_model_vanished_is_not_counted_again(self):
-        # 544 champs pour un seul modèle disparu, mesuré sur un vrai
-        # palier : listés un par un, ils cachaient les vingt vraies
-        # trouvailles.
+        # Un seul modèle disparu entraîne des centaines de champs :
+        # listés un par un, ils cachent les quelques vraies trouvailles.
         d = self.pose(
             modeles=["account.unreconcile"],
             champs=["account.unreconcile.name"],
@@ -1378,14 +1474,13 @@ class TestGroupingByFieldName(unittest.TestCase):
 class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
     """Un champ sans colonne n'a rien perdu — et il noyait le rapport.
 
-    Mesuré sur une chaîne 12 → 18 : le seau « NON déclarés par
-    OpenUpgrade » comptait 565 champs au palier 16 → 17, dont 397
-    `__last_update` — un champ magique qu'Odoo 17 cesse d'inscrire et
-    qui n'a jamais eu de colonne. Un chiffre de tête qui fait peur pour
-    rien fait ignorer le rapport entier.
+    Le seau « NON déclarés par OpenUpgrade » se remplit de champs
+    magiques comme `__last_update`, qu'Odoo 17 cesse d'inscrire et qui
+    n'a jamais eu de colonne. Un chiffre de tête qui fait peur pour rien
+    fait ignorer le rapport entier.
 
-    Après la règle : 565 → 57, et les 508 autres sont NOMMÉS sous
-    « sans donnée propre », en une ligne par nom de champ.
+    La règle les sort du compte et les NOMME sous « sans donnée propre »,
+    en une ligne par nom de champ.
     """
 
     def declare(self, perdus, stockes, origines=None):
@@ -1427,9 +1522,9 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
 
     def test_it_comes_before_the_not_analysed_bucket(self):
         # « sans donnée propre » est une raison plus forte que « hors du
-        # champ d'OpenUpgrade ». Mesuré : le placement avant fait tomber
-        # `not_analysed` de 181 à 47 au palier 16 → 17, sans changer
-        # `undeclared` — le seau résiduel se réduit au risque réel.
+        # champ d'OpenUpgrade ». Le placement avant fait tomber
+        # `not_analysed` sans changer `undeclared` — le seau résiduel se
+        # réduit au risque réel.
         res = self.declare(
             ["oca_module.model.champ"],
             set(),
@@ -1540,10 +1635,10 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
 class TestWhyAnAttachmentWentAway(Base):
     """« 409 pièces jointes perdues » n'en recouvrait presque aucune.
 
-    Mesuré sur une chaîne 12 → 18 : des 516 lignes parties au palier 18,
-    452 avaient perdu leur CHAMP PORTEUR aux paliers 13 et 14 — elles
-    étaient déjà illisibles, Odoo lève un KeyError en les contrôlant. Ce
-    ne sont pas des données, ce sont des débris, et la 18 les ramasse.
+    L'essentiel des lignes parties au dernier palier a perdu son CHAMP
+    PORTEUR bien plus tôt dans la chaîne — elles sont déjà illisibles,
+    Odoo lève un KeyError en les contrôlant. Ce ne sont pas des données,
+    ce sont des débris, et le dernier palier les ramasse.
 
     On ne DÉCLARE pas cette perte dans SEMANTIC_MAP : cette carte nomme
     une TABLE, et la cause n'est pas la table, ce sont ces lignes-là.
@@ -2343,6 +2438,22 @@ class TestKeepingWhatARunWrote(Base):
 class TestSwitchingTheCheckoutFirst(Base):
     """Lancer un outil sur une base d'un autre palier ÉCRIT dedans."""
 
+    # Le palier du checkout se lit dans « .odoo-version », un fichier
+    # PRODUIT et non versionné : il manque sur un clone où la préparation
+    # n'a pas tourné, et checkout_version() rend alors None. Fixer les
+    # deux paliers ici tient ces tests sur la logique de bascule plutôt
+    # que sur l'état de la machine. Les deux valeurs sont des paliers de
+    # la chaîne que dct() décrit, sans quoi version_of() ne les situe pas.
+    COURANTE = 18
+    AUTRE = 16
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(
+            setattr, quality, "checkout_version", quality.checkout_version
+        )
+        quality.checkout_version = lambda *args, **kwargs: self.COURANTE
+
     def dct(self):
         return {
             "config_database_name": "base",
@@ -2351,16 +2462,21 @@ class TestSwitchingTheCheckoutFirst(Base):
         }
 
     def test_the_same_version_needs_no_switch(self):
-        courante = quality.checkout_version()
         self.assertIsNone(
-            qtui.switch_needed("base_upgrade_%d" % courante, self.dct())
+            qtui.switch_needed("base_upgrade_%d" % self.COURANTE, self.dct())
         )
 
     def test_another_tier_names_its_make_target(self):
-        courante = quality.checkout_version()
-        autre = 16 if courante != 16 else 15
-        besoin = qtui.switch_needed("base_upgrade_%d" % autre, self.dct())
-        self.assertEqual((autre, "switch_odoo_%d" % autre), besoin)
+        besoin = qtui.switch_needed("base_upgrade_%d" % self.AUTRE, self.dct())
+        self.assertEqual((self.AUTRE, "switch_odoo_%d" % self.AUTRE), besoin)
+
+    def test_an_unknown_checkout_proposes_nothing(self):
+        # Sans « .odoo-version », le palier du checkout est inconnu :
+        # proposer une bascule reviendrait à en deviner la cible.
+        quality.checkout_version = lambda *args, **kwargs: None
+        self.assertIsNone(
+            qtui.switch_needed("base_upgrade_%d" % self.AUTRE, self.dct())
+        )
 
     def test_a_database_outside_the_chain_asks_for_nothing(self):
         # On ne sait pas à quel palier elle est : proposer une bascule au
@@ -2507,6 +2623,35 @@ class TestRunningATestFromTheScreen(Base):
         self.assertIsNone(code)
         self.assertTrue(tourné)
         self.assertIn("No such file", sortie)
+
+
+class TestChaquePourquoiDeLaCarteEstTraduit(unittest.TestCase):
+    """La colonne « pourquoi » de SEMANTIC_MAP passe par `t(connu["why"])`.
+
+    La clé vient d'un enregistrement, pas du source : le garde général du
+    dépôt ne la voit pas. Les dix valeurs distinctes des dix-neuf entrées
+    s'affichaient donc en anglais sous des lignes françaises, dans le diff
+    de tables — l'écran qu'on regarde justement quand une migration
+    inquiète.
+
+    Les autres champs — table, into, kind — nomment des objets de la base
+    et ne se traduisent pas : « account_move » est le même mot partout.
+    """
+
+    def test_every_why_is_in_the_table(self):
+        absents = [
+            f"{entree.get('table')} : « {entree['why']} »"
+            for entree in quality.SEMANTIC_MAP
+            if entree.get("why")
+            and entree["why"] not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absents)
+
+    def test_the_map_actually_carries_reasons(self):
+        """Une carte vidée passerait le test précédent sans rien garder."""
+        self.assertGreater(
+            len([e for e in quality.SEMANTIC_MAP if e.get("why")]), 10
+        )
 
 
 if __name__ == "__main__":

@@ -47,8 +47,9 @@ class _MenuCase(unittest.TestCase):
 
 class TestTunnelMenuChoices(_MenuCase):
     def test_the_hypervisor_console_is_reachable_at_all(self):
-        """Le défaut vécu : « _qemu_console_tunnel() takes 1 positional
-        argument but 3 were given ». Le choix 3 doit aboutir, pas lever."""
+        """Une signature qui ne correspond pas à son appel lève au lieu
+        d'ouvrir : « takes 1 positional argument but 3 were given ». Le
+        choix 3 doit aboutir."""
         out = self._play(["1", "3"])
         self.assertIn("5900", out)
         self.assertIn("hyperviseur", out)
@@ -244,15 +245,25 @@ class TestEnsureVirtViewer(unittest.TestCase):
         partage avec les autres installations du CLI."""
         from script.todo import todo_install
 
-        self.assertEqual(
-            ["apt-get", "dnf", "pacman", "zypper"],
-            list(todo_install.FAMILIES),
-        )
-        for famille in todo_install.FAMILIES:
+        systeme = [
+            f
+            for f in todo_install.FAMILIES
+            if f not in todo_install.USER_LEVEL
+        ]
+        self.assertEqual(["apt-get", "dnf", "pacman", "zypper"], systeme)
+        for famille in systeme:
             self.assertIn(
                 "virt-viewer",
                 todo_install.install_command(["virt-viewer"], famille=famille),
             )
+
+    def test_the_graphical_console_belongs_to_the_local_stack(self):
+        """Elle affiche l'écran d'une VM que libvirt tient EN LOCAL. Là où
+        cette pile n'existe pas, le menu se retire — donc la console n'a pas
+        à y déclarer un paquet."""
+        from script.todo import todo_install
+
+        self.assertTrue(todo_install.USER_LEVEL)
 
 
 class TestTunnelMenuTargets(_MenuCase):

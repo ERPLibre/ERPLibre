@@ -107,7 +107,7 @@ git fetch REMOTE --unshallow
 ### Amend several commits in Git to change author
 
 ```bash
-git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@mail.com>' --no-edit"
+git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@example.com>' --no-edit"
 ```
 
 ### Cherry-pick a merged commit with conflict
