@@ -339,23 +339,80 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
         )
         self.assertEqual(f"  - {plan.load_command()}", lignes[-1])
 
-    def test_the_script_still_imports_nothing_from_the_repository(self):
-        """Il se charge seul, sans le dépôt sur le chemin d'import : un
-        « from script.… » le casserait quand il est lancé en direct, et
-        seulement là — donc jamais sous le menu, qui est où on l'essaie."""
+    def test_no_repository_import_sits_at_module_level(self):
+        """Un « from script.… » en tête CASSE le chargement direct, et
+        seulement là — donc jamais sous le menu, qui est où on l'essaie.
+
+        Dans une FONCTION, le même import est une option : il ne coûte
+        rien tant qu'il retombe. C'est pourquoi la garde distingue les
+        deux, au lieu de refuser le mot partout — refuser partout a fait
+        rougir une reprise d'amont qui, elle, retombait bien.
+        """
         import ast
 
         chemin = RACINE / "script/qemu/deploy_qemu.py"
         arbre = ast.parse(chemin.read_text(encoding="utf-8"))
         noms = set()
-        for noeud in ast.walk(arbre):
+        for noeud in arbre.body:
             if isinstance(noeud, ast.Import):
                 noms.update(alias.name for alias in noeud.names)
             elif isinstance(noeud, ast.ImportFrom) and noeud.module:
                 noms.add(noeud.module)
         self.assertTrue(noms, "aucun import lu : rien n'est prouvé")
-        du_depot = [nom for nom in noms if nom.split(".")[0] == "script"]
-        self.assertEqual([], du_depot)
+        self.assertEqual(
+            [], [nom for nom in noms if nom.split(".")[0] == "script"]
+        )
+
+    def test_every_repository_import_inside_a_function_falls_back(self):
+        """Un import du dépôt sous une fonction doit vivre sous un « try »
+        qui rattrape : sans lui, la VM lève au lieu de se replier."""
+        import ast
+
+        chemin = RACINE / "script/qemu/deploy_qemu.py"
+        arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+        rattrapes = set()
+        for essai in ast.walk(arbre):
+            if isinstance(essai, ast.Try) and essai.handlers:
+                for n in ast.walk(essai):
+                    if isinstance(n, ast.ImportFrom) and n.module:
+                        rattrapes.add(id(n))
+        nus = [
+            n.module
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.ImportFrom)
+            and n.module
+            and n.module.split(".")[0] == "script"
+            and id(n) not in rattrapes
+        ]
+        self.assertEqual([], nus)
+
+    def test_the_script_loads_without_the_repository_on_the_path(self):
+        """L'ÉPREUVE QUI COMPTE, et la seule qui tienne quoi qu'on écrive :
+        le fichier se charge et rend sa langue, lancé de nulle part, sans
+        le dépôt importable."""
+        import subprocess
+        import sys
+        import tempfile
+
+        geste = (
+            "import importlib.util, argparse, sys;"
+            "sys.path = [p for p in sys.path if p not in ('', '.')];"
+            "s = importlib.util.spec_from_file_location('dq', %r);"
+            "m = importlib.util.module_from_spec(s);"
+            "s.loader.exec_module(m);"
+            "print(m.langue_des_messages(argparse.Namespace()))"
+        ) % str(RACINE / "script/qemu/deploy_qemu.py")
+        with tempfile.TemporaryDirectory() as ailleurs:
+            fini = subprocess.run(
+                [sys.executable, "-c", geste],
+                cwd=ailleurs,
+                env={"PATH": os.environ.get("PATH", ""), "HOME": ailleurs},
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        self.assertEqual(0, fini.returncode, fini.stderr[-600:])
+        self.assertIn(fini.stdout.strip(), ("fr", "en"))
 
 
 class TestLeModeDEmploiNeRecopiePasLeCatalogue(unittest.TestCase):
