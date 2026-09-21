@@ -11,11 +11,11 @@ et ses trois voisines. Le chemin de retrait d'Odoo, `_theme_remove()`, défait
 les deux — et son premier geste est `_reset_default_config()`, celui qui écrit
 ces définitions.
 
-Un `--uninstall` nu saute tout cela. Mesuré sur une migration réelle 12 → 13 :
-le bundle `web.assets_frontend` s'arrête sur « Undefined variable:
-$o-theme-font-number ». La variable venait des fichiers `option_font_body_*`
-d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinissait encore, et le
-retirer a mis à nu un SCSS personnalisé figé depuis 2020.
+Un `--uninstall` nu saute tout cela : au palier 12 → 13, le bundle
+`web.assets_frontend` s'arrête sur « Undefined variable:
+$o-theme-font-number ». La variable vient des fichiers `option_font_body_*`
+d'Odoo 12, supprimés en 13.0 ; seul le thème la redéfinit encore, et le
+retirer met à nu tout SCSS personnalisé qui s'appuyait dessus.
 
 Ces tests portent sur ce que le script fait, pas sur son texte.
 """
@@ -332,7 +332,7 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
     Le script se termine par theme_leftover.py, qui pose une question. Lancé
     par l'exécuteur qui CAPTURE la sortie, son stdout est un tube : Python
     bufferise par blocs et l'invite reste invisible pendant que le processus
-    attend. Vécu — on croit à un blocage, on tape Entrée plusieurs fois, la
+    attend. On croit alors à un blocage, on tape Entrée plusieurs fois, la
     première frappe répond à l'aveugle et les suivantes vont à la question
     d'après.
 
@@ -403,11 +403,10 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
 class TestTheIdentifiersSentToOdoo(unittest.TestCase):
     """browse() veut des ENTIERS ; psql rend des chaînes.
 
-    Mesuré sur une vraie base : browse(['4457']) fait échouer Odoo sur
-    « la recherche en base n'a pas les identifiants (('4457',)) et a des
-    identifiants supplémentaires ((4457,)) ». Il compare des chaînes à des
-    entiers, ne retrouve rien, et refuse. L'effacement n'a rien retiré —
-    heureusement, la sauvegarde était déjà faite.
+    browse(['4457']) fait échouer Odoo sur « la recherche en base n'a pas
+    les identifiants (('4457',)) et a des identifiants supplémentaires
+    ((4457,)) » : il compare des chaînes à des entiers, ne retrouve rien, et
+    refuse. L'effacement ne retire alors rien.
     """
 
     def test_the_script_browses_integers(self):

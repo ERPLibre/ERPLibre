@@ -340,7 +340,8 @@ class Runner:
         """Copie `path` en `.erplibre.bak` s'il n'y en a pas encore.
 
         Une seule fois : la sauvegarde doit garder l'état ORIGINAL, pas
-        celui d'avant-hier. On touche à l'ipsec.conf de quelqu'un.
+        celui qu'une exécution précédente a déjà modifié. On touche à
+        l'ipsec.conf de quelqu'un.
         """
         backup = f"{path}.erplibre.bak"
         source, target = shlex.quote(path), shlex.quote(backup)

@@ -231,9 +231,9 @@ def find_copy_by_key(views, key):
     """(copie COW, jumelle module) pour cette clé, ou (None, None).
 
     La détection différentielle ne voit qu'une copie dont un ENFANT casse.
-    Une copie périmée sans enfant lui échappe — mesuré : la copie de
-    `website_crm.contactus_form` était plus petite d'un tiers que sa
-    jumelle, et c'est elle qui rendait /contactus en 500. Demander sa
+    Une copie périmée sans enfant lui échappe : celle de
+    `website_crm.contactus_form`, plus petite d'un tiers que sa jumelle, rend
+    /contactus en 500 sans qu'aucun enfant ne casse. Demander sa
     réinitialisation par clé doit donc marcher même hors détection.
     """
     copy = twin = None
@@ -473,10 +473,10 @@ def main():
         done += 1
         print(f"✅ {t('reset')} id={cow_view['id']} ({cow_view['key']})")
         print(f"   {t('previous arch saved to')} {path}")
-    # Une clé demandée qui ne correspond à rien N'EST PAS un succès. Elle
-    # l'était : la commande tournait, ne faisait rien, et se taisait. On a
-    # donc cru une copie réinitialisée alors que /contactus rendait encore
-    # 500 — mesuré sur une vraie migration.
+    # Une clé demandée qui ne correspond à rien N'EST PAS un succès : une
+    # commande qui tourne, ne fait rien et se tait laisse croire la copie
+    # réinitialisée alors que la page qu'elle devait réparer rend encore
+    # 500.
     for key in sorted(wanted - honoured - {"all"}):
         copy, twin = find_copy_by_key(views, key)
         if copy is None:

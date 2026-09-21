@@ -22,9 +22,10 @@ import os
 import sys
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.argv = ["todo.py"]
+from script.todo import qemu_manage  # noqa: E402
 from script.todo import todo_install  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -208,6 +209,101 @@ class TestGivingUp(ShrinkToolsBase):
         self.assertEqual(len(ran), 1)
         self.assertEqual(left, ["sgdisk"])
         self.assertIn("100", out)
+
+
+class TestLaRestaurationQuiEchoue(unittest.TestCase):
+    """La réparation était ANNONCÉE et n'était jamais vérifiée.
+
+    Une réduction qui casse à mi-parcours laisse un disque à moitié
+    réduit, donc incohérent. L'écran disait « Restauration du disque
+    d'origine depuis la sauvegarde… », puis lançait un « mv » dont
+    PERSONNE ne lisait le code de retour, et rendait la même valeur qu'en
+    cas de succès. L'appelant, ne pouvant distinguer les deux, enchaînait
+    sur « Start the VM now? ».
+
+    Quelqu'un qui répond oui démarre un disque cassé. Et la seule copie
+    saine — la sauvegarde restée à côté — n'est jamais nommée.
+
+    Le « mv » est un renommage dans le même répertoire : il ne peut pas
+    manquer de place. Ce qui le fait échouer, c'est un jeton sudo expiré
+    en cours d'opération — un e2fsck suivi d'un resize2fs sur un gros
+    disque dépasse les quinze minutes par défaut — ou un remontage en
+    lecture seule après l'erreur d'E/S qui a fait échouer la réduction.
+    """
+
+    def menu(self):
+        todo = TODO.__new__(TODO)
+        todo._is_yes = lambda rep: (rep or "").strip().lower() in ("o", "y")
+        return todo
+
+    def revert(self, code_mv, changed=True, bak="/d/vm.qcow2.bak"):
+        todo = self.menu()
+        lances = []
+
+        def faux_run(argv, **_k):
+            lances.append(argv)
+
+            class R:
+                returncode = code_mv
+
+            return R()
+
+        with patch.object(qemu_manage.subprocess, "run", faux_run):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                rendu = todo._qemu_shrink_revert(bak, "/d/vm.qcow2", changed)
+        return todo, rendu, tampon.getvalue(), lances
+
+    def test_a_successful_restore_says_so(self):
+        """L'écran annonce la restauration puis se tait : sans un mot de
+        fin, rien ne distingue une restauration faite d'une interrompue."""
+        _t, rendu, ecran, lances = self.revert(0)
+        self.assertFalse(rendu)
+        self.assertTrue(any("mv" in a for a in lances))
+        self.assertIn(t("Original disk restored from backup."), ecran)
+
+    def test_a_failed_restore_is_named_and_names_the_backup(self):
+        """C'est la seule copie saine : ne pas la nommer laisse la
+        détruire au prochain nettoyage."""
+        _t, _r, ecran, _l = self.revert(1)
+        self.assertIn("✗", ecran)
+        self.assertIn("/d/vm.qcow2.bak", ecran)
+
+    def test_a_failed_restore_forbids_the_offer_to_start(self):
+        """L'ENCHAÎNEMENT est le défaut : l'écran proposait de démarrer
+        un disque qu'il venait de ne pas réparer."""
+        todo, _r, _e, _l = self.revert(1)
+        # `input` EST BOUCHONNÉ, et il doit rester INTACT : une épreuve
+        # qui ne le bouchonne pas attend sur l'entrée standard — elle
+        # rougit là où stdin est fermé, et FIGE dans un terminal. C'est
+        # aussi ce qui prouve le contrat : la question n'est pas posée.
+        saisie = MagicMock(return_value="")
+        with patch("builtins.input", saisie):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-essai", was_shut_down=True)
+        saisie.assert_not_called()
+        self.assertNotIn("Start the VM now?", tampon.getvalue())
+        self.assertIn("✗", tampon.getvalue())
+
+    def test_a_successful_restore_still_offers_to_start(self):
+        """Contrôle positif : refuser toujours ferait perdre le service
+        d'une VM qu'on a éteinte pour l'opération."""
+        todo, _r, _e, _l = self.revert(0)
+        saisies = iter(["n"])
+        with patch("builtins.input", lambda *_a: next(saisies)):
+            tampon = io.StringIO()
+            with redirect_stdout(tampon):
+                todo._qemu_offer_start("vm-essai", was_shut_down=True)
+        self.assertIn(
+            t("The VM was shut down for the resize."), tampon.getvalue()
+        )
+
+    def test_nothing_was_changed_so_nothing_is_restored(self):
+        """Le disque est intact : le toucher serait le seul vrai risque."""
+        _t, _r, ecran, lances = self.revert(0, changed=False)
+        self.assertEqual([], [a for a in lances if "mv" in a])
+        self.assertNotIn("✗", ecran)
 
 
 class TestBackupSpace(unittest.TestCase):

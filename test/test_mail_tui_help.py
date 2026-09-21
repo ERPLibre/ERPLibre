@@ -194,9 +194,9 @@ class TestHelpOpensAndCloses(HelpCase):
         second `h` ne fait rien. AVEC une priorité, elles le sont encore
         (`App._check_bindings` lit alors la chaîne NON tronquée,
         `app.py:3978`), une deuxième aide s'empile, et cet Échap n'en
-        referme qu'une : l'aide resterait à l'écran. Mesuré dans les deux
-        sens — le raisonnement seul s'est déjà trompé une fois sur ce
-        point.
+        referme qu'une : l'aide resterait à l'écran. Ce test éprouve les
+        deux sens plutôt que de s'en remettre au raisonnement, qui se
+        trompe facilement ici.
         """
         from textual.screen import ModalScreen
 
@@ -342,9 +342,9 @@ class TestNoBindingFiresUnderAModalScreen(HelpCase):
     les liaisons SANS priorité (`Screen._modal_binding_chain`,
     `screen.py:449`, lue par `App._check_bindings`, `app.py:3978`). Une
     priorité posée sur n'importe quelle liaison de `MailApp` la ferait donc
-    tourner pendant qu'un modal est à l'écran — mesuré : `z` y pose
-    `fullscreen` sur `#panes` SANS que rien ne bouge (le modal couvre), et
-    la classe est encore là après le renvoi du modal.
+    tourner pendant qu'un modal est à l'écran : `z` y poserait `fullscreen`
+    sur `#panes` SANS que rien ne bouge (le modal couvre), et la classe
+    serait encore là après le renvoi du modal.
 
     Un test par touche ne garderait la classe que jusqu'où va notre patience
     à recopier. Ces deux-ci partent donc de `MailApp.BINDINGS` — la même

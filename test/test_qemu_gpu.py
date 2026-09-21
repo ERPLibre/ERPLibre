@@ -692,8 +692,8 @@ class TestForm(unittest.IsolatedAsyncioTestCase):
 class TestCpuScreensNetwork(unittest.TestCase):
     """Les trois réglages ajoutés, et pourquoi chacun est celui-là.
 
-    Mesuré sur l'hôte avant de les offrir : « heads » atteint QEMU
-    (max_outputs), « vram » NON sur un virtio-gpu — il n'est donc pas proposé.
+    « heads » atteint QEMU (max_outputs) ; « vram » NON sur un virtio-gpu —
+    il n'est donc pas proposé.
     """
 
     def _plan(self, xml, want, node=NODE):

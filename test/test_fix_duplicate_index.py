@@ -6,12 +6,13 @@
 
 `make_index_name` rend `{table}__{colonne}_index` depuis la 17 — deux
 soulignés — là où les versions d'avant écrivaient un seul. Le nouvel
-index est créé, l'ancien reste. Mesuré sur une chaîne 12 → 18 : 1 paire
-en 12, 3 en 16, 370 en 17, 365 en 18.
+index est créé, l'ancien reste. Sur une chaîne 12 → 18, les paires se
+comptent sur les doigts jusqu'à la 16 et par centaines à partir de la 17,
+où elles s'installent pour de bon.
 
 Ce qui compte ici n'est pas de supprimer, c'est de S'ABSTENIR au bon
-endroit. Éprouvé sur une copie de la base réelle : 364 index retirés,
-10 Mo libérés, les 6301 contraintes identiques au nom près, Odoo charge
+endroit. Retirer les doublons d'une base de production libère quelques
+mégaoctets, laisse les contraintes identiques au nom près, Odoo charge
 sans une ligne de journal, et un « -u all » complet n'en recrée aucun.
 """
 

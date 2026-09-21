@@ -206,6 +206,67 @@ class TestFraicheurRam(unittest.TestCase):
         self.assertNotEqual("-", ram_pair(rec, time.time()))
 
 
+class TestChaqueCelluleTientDansSaColonne(unittest.TestCase):
+    """Une cellule plus large que sa colonne pousse le tableau dehors.
+
+    La table des largeurs est CHOISIE au caractère près : son commentaire
+    dit qu'un caractère de plus sur le nom de VM faisait sortir la ligne
+    d'un terminal de 150 colonnes, journal compris. Une cellule qui
+    déborde défait ce calcul, et rien ne le signalait.
+
+    « Écrit/s » rendait huit caractères pour une colonne de sept, entre
+    100 Mo/s et 1 Go/s — un débit d'installation ordinaire sur disque
+    local. Le module avait pourtant déjà écrit le formateur qui serre,
+    et ne s'en servait que pour les paires.
+    """
+
+    # Des valeurs qui BALAIENT les unités, y compris les pires cas :
+    # juste SOUS un changement d'unité, la décimale coûte deux caractères
+    # de plus qu'au-dessus, et c'est là que la colonne déborde.
+    OCTETS = (
+        0,
+        1023,
+        1024,
+        999 * 1024,
+        1024**2,
+        int(12.3 * 1024**2),
+        999 * 1024**2,
+        1024**3,
+        int(1.1 * 1024**3),
+        63 * 1024**3,
+        128 * 1024**3,
+        1024**4,
+    )
+
+    def test_the_rate_cell_fits_its_column(self):
+        largeur = mon.COL_DEFAULT_WIDTHS["wr"]
+        trop = [
+            (v, fmt_rate(v), len(fmt_rate(v)))
+            for v in self.OCTETS
+            if len(fmt_rate(v)) > largeur
+        ]
+        self.assertEqual([], trop)
+
+    def test_the_pair_cells_fit_their_columns(self):
+        for clef in ("ram", "disk"):
+            largeur = mon.COL_DEFAULT_WIDTHS[clef]
+            trop = [
+                (u, t, fmt_pair(u, t), len(fmt_pair(u, t)))
+                for t in self.OCTETS
+                for u in self.OCTETS
+                if u <= t and len(fmt_pair(u, t)) > largeur
+            ]
+            with self.subTest(colonne=clef):
+                self.assertEqual([], trop)
+
+    def test_the_header_still_fits_too(self):
+        """La largeur est TIRÉE par l'en-tête, pas par le contenu : la
+        réduire sous lui ne gagnerait rien et couperait le titre."""
+        self.assertLessEqual(len("Écrit/s"), mon.COL_DEFAULT_WIDTHS["wr"])
+        self.assertLessEqual(len("Disque"), mon.COL_DEFAULT_WIDTHS["disk"])
+        self.assertLessEqual(len("RAM"), mon.COL_DEFAULT_WIDTHS["ram"])
+
+
 class TestFormats(unittest.TestCase):
     def test_the_decimal_goes_away_above_ten_units(self):
         """« 63G » plutôt que « 62.6G » : ces deux caractères décident si
@@ -366,8 +427,8 @@ class TestEcranMonte(unittest.IsolatedAsyncioTestCase):
         self.assertIn("63G/65G", section)
 
     async def test_nothing_scrolls_out_of_a_150_column_terminal(self):
-        """Le vrai garde-fou de la largeur : mesuré sur la table montée, pas
-        calculé à la main."""
+        """Le vrai garde-fou de la largeur : la mesure porte sur la table
+        montée, pas sur un calcul à la main."""
         _c, _s, besoin, visible = await self._monte((150, 24))
         self.assertGreaterEqual(visible, besoin)
 

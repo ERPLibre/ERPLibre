@@ -88,18 +88,108 @@ class TestLeModeDEmploiSuitLePaquet(unittest.TestCase):
                 with self.subTest(backend=nom, langue=moitie[:30]):
                     self.assertIn(f"`{nom}`", lignes[0])
 
-    def test_the_unproven_one_is_named_as_such(self):
-        """Le taire ferait lire « trois backends » là où deux ont tourné
-        et le troisième n'a que des épreuves unitaires."""
+    def test_every_unproven_backend_is_named_as_such(self):
+        """Le taire ferait lire « trois backends » là où deux auraient
+        tourné et le troisième n'aurait que des épreuves unitaires.
+
+        L'épreuve suit la TABLE plutôt que de nommer un backend : celui qui
+        est non éprouvé change, et une épreuve qui en nomme un devient
+        muette le jour où il est confronté — juste au moment où un autre
+        arrive et aurait besoin d'elle. Vide, elle passe sans rien
+        affirmer, ce qui est le bon comportement quand tout a tourné.
+        """
         from script.vm import backend
 
-        self.assertEqual(
-            ["lima"],
-            [n for n in backend.BACKENDS if not backend.is_proven(n)],
-        )
+        non_eprouves = [
+            n for n in backend.BACKENDS if not backend.is_proven(n)
+        ]
+        for moitie in self.moities():
+            for nom in non_eprouves:
+                with self.subTest(langue=moitie[:30], backend=nom):
+                    self.assertIn(nom, moitie)
+
+    # Les phrases qui énoncent un ÉTAT — « ce backend n'a pas été
+    # confronté » — et non un principe. Le README a le droit d'expliquer ce
+    # que « non éprouvé » veut dire ; un module n'a pas le droit d'affirmer
+    # qu'il l'est encore quand la table dit l'inverse.
+    ETATS_PERIMABLES = (
+        "N'A ÉTÉ CONFRONTÉ",
+        "se déclare non éprouvé",
+        "jamais confronté",
+        "never run against the tool",
+    )
+
+    def test_no_module_claims_to_be_unconfronted_once_the_table_says_it_is(
+        self,
+    ):
+        """Lever la mention dans la table ne relit pas les docstrings.
+
+        C'est arrivé : la table est passée à « éprouvé », les README ont
+        suivi, et deux docstrings ont continué d'annoncer « rien ici n'a
+        été confronté » — dont un dans les épreuves elles-mêmes. Rien ne
+        les relisait, et une prose périmée se lit comme une prose.
+
+        La garde se DÉSARME d'elle-même : tant qu'un backend est non
+        éprouvé, la phrase est légitime quelque part et l'épreuve se tait.
+        """
+        from script.vm import backend
+
+        if [n for n in backend.BACKENDS if not backend.is_proven(n)]:
+            self.skipTest("un backend est non éprouvé : la phrase est due")
+        fautives = []
+        for chemin in self._sources_a_relire():
+            with open(chemin, encoding="utf-8") as fichier:
+                for numero, ligne in enumerate(fichier, 1):
+                    for etat in self.ETATS_PERIMABLES:
+                        if etat in ligne and not self._cite(ligne, etat):
+                            court = os.path.relpath(chemin, RACINE)
+                            fautives.append(
+                                f"{court}:{numero}: {ligne.strip()[:70]}"
+                            )
+        self.assertEqual([], fautives)
+
+    @classmethod
+    def _sources_a_relire(cls):
+        """Le paquet et ses épreuves, SAUF ce fichier.
+
+        Il porte la table des phrases : s'inclure ferait échouer la garde
+        sur elle-même, à tout jamais et sans rapport avec le dépôt.
+        """
+        moi = os.path.abspath(__file__)
+        dossier = os.path.join(RACINE, "test")
+        epreuves = [
+            os.path.join(dossier, nom)
+            for nom in os.listdir(dossier)
+            if nom.startswith(("test_vm_", "test_lima"))
+        ]
+        return [c for c in modules() + epreuves if os.path.abspath(c) != moi]
+
+    @staticmethod
+    def _cite(ligne, etat):
+        """La ligne PARLE-t-elle de la phrase au lieu de l'affirmer ?
+
+        Un commentaire qui explique pourquoi une mention a été retirée la
+        recopie forcément, entre guillemets. Le distinguer d'une
+        affirmation est ce qui sépare une garde utilisable d'une garde
+        qu'on apprend à ignorer.
+        """
+        avant = ligne[: ligne.index(etat)]
+        return avant.rstrip().endswith(("«", "« ", '"', "'"))
+
+    def test_the_confrontation_script_it_names_exists(self):
+        """Le mode d'emploi renvoie à un script pour lever la mention.
+
+        Un nom qui ne désigne plus rien envoie chercher un fichier absent,
+        et la seule sortie annoncée devient une impasse.
+        """
         for moitie in self.moities():
             with self.subTest(langue=moitie[:30]):
-                self.assertIn("lima_confront", moitie)
+                self.assertIn("lima_confront.py", moitie)
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(RACINE, "long_test", "lima_confront.py")
+            )
+        )
 
     def test_every_handle_field_is_documented(self):
         from script.vm import backend

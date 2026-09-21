@@ -5,9 +5,8 @@
 """Rendre visibles les documents DMS qu'une migration a rendus muets.
 
 Le symptôme : après le palier 13, les documents DMS « ont disparu ». Ils
-n'ont pas disparu. Mesuré sur une base migrée : 69 fichiers, 16 dossiers,
-23 Mo de `content_binary`, présents à l'identique de la 12 à la 18. Rien
-n'a été perdu.
+n'ont pas disparu : fichiers, dossiers et `content_binary` traversent la 12
+à la 18 à l'identique. Rien n'est perdu.
 
 Ce qui a changé, c'est le MODÈLE DE SÉCURITÉ. En 12, MuK DMS ne filtrait
 que sur la société :

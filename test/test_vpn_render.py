@@ -101,8 +101,8 @@ class RenderedFiles(unittest.TestCase):
     def test_ppp_refuses_no_method_and_requires_nothing(self):
         """Aucun `refuse-*`, et `noauth`.
 
-        Mesuré sur un vrai concentrateur : il demande « <auth pap> », et un
-        `refuse-pap` y répond « ConfNak <auth chap MD5> » — le serveur coupe
+        Le concentrateur demande « <auth pap> », et un `refuse-pap` y
+        répond « ConfNak <auth chap MD5> » — le serveur coupe
         alors sur « peer refused to authenticate », où le « peer » est NOUS.
         `require-mschap-v2`, symétriquement, exigerait que le SERVEUR
         s'authentifie auprès de nous : aucun sens pour un client.

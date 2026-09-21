@@ -320,11 +320,10 @@ class L2tpIpsecDriver(VpnDriver):
             "ipcp-accept-local",
             "ipcp-accept-remote",
             # AUCUN `refuse-*`. La méthode est celle que le concentrateur
-            # demande, et mesuré sur un vrai : « rcvd [LCP ConfReq …
-            # <auth pap> …] », auquel un `refuse-pap` répond
-            # « ConfNak <auth chap MD5> » — le serveur coupe alors la
-            # liaison sur « peer refused to authenticate », et le « peer »
-            # de ce message, c'est NOUS.
+            # demande : « rcvd [LCP ConfReq … <auth pap> …] » au journal,
+            # auquel un `refuse-pap` répond « ConfNak <auth chap MD5> » —
+            # le serveur coupe alors la liaison sur « peer refused to
+            # authenticate », et le « peer » de ce message, c'est NOUS.
             #
             # PAP envoie le mot de passe en clair SUR LA LIAISON PPP, qui
             # voyage dans la session L2TP, elle-même dans l'ESP. C'est le
