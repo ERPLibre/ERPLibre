@@ -86,6 +86,63 @@ jour, part : c'est l'état d'une journée. « Aucun miroir ne réplique tout,
 d'où plusieurs entrées plutôt qu'une » reste : c'est la raison d'être de la
 liste, et elle est vraie demain.
 
+## Gardes
+
+**Un garde mesure une PROPRIÉTÉ, pas l'orthographe du code.** Épinglé à sa
+propre écriture — un fragment d'expression recopié du source — il est vert
+le jour où il devrait être rouge, et rouge le jour d'une amélioration. Le
+second défaut coûte plus cher : un garde qui rougit à tort est un garde
+qu'on apprend à désarmer.
+
+Deux cas pris dans ce dépôt, et ils vont dans les deux sens. Un contrôle
+interdisait l'écriture sur disque en comparant quatre chaînes exactes :
+`open(path, "wb")` y passait — le littéral cherché n'en est pas un préfixe —
+pendant qu'un commentaire nommant l'interdit, comme cette page l'exige, le
+faisait rougir. Un autre épinglait un fragment de SQL : il restait vert sur
+l'inversion des deux bras d'un `coalesce`, qui casse tout l'appariement, et
+rougissait sur un changement de préfixe sans conséquence.
+
+L'épreuve : **muter le code** et regarder. Le défaut d'origine doit rougir,
+et une amélioration ne doit pas. Un contrôle positif — « refuser toujours
+passerait les trois précédents » — vaut autant que le garde lui-même.
+
+Le même hook `pre-commit` liste les gardes épinglés au texte, sans jamais
+bloquer ; l'outil se lance aussi à la main :
+
+```bash
+python3 script/analyse/check_guard_shape.py test/
+python3 script/analyse/check_guard_shape.py --staged
+```
+
+Il laisse les NOMS seuls : `assertIn("run_psql", source)` dit « ce chemin
+passe-t-il par là », ce qui est une propriété réelle — l'arbre syntaxique la
+tiendrait mieux, mais la signaler noierait le signal. Ce qu'il montre est un
+signal à relire, jamais une certitude : l'ordre de deux gestes, par exemple,
+ne se lit qu'ainsi.
+
+## Verdicts
+
+**Un verdict jeté se lit comme un succès.** Une fonction qui rend un code de
+retour, un refus ou un « contenu inconnu » le rend pour qu'on le lise ;
+appelée en instruction nue, sa réponse tombe et l'appelant continue comme si
+tout allait bien. C'est ainsi qu'un écran annonce une suppression qu'un garde
+venait de refuser, ou qu'une installation part sur une machine dont les
+règles de sortie ne se sont pas chargées.
+
+La preuve est DIFFÉRENTIELLE : un appel nu n'est signalé que là où la moitié
+au moins des autres appels du même fichier lisent la réponse. Ce dépôt dit
+donc lui-même ce qui compte, et une fonction qui traite sa propre panne —
+elle interroge, elle rejoue — reste muette sans qu'aucune liste d'exemptions
+ait à vieillir.
+
+```bash
+python3 script/analyse/check_discarded_verdict.py script/
+python3 script/analyse/check_discarded_verdict.py --staged
+```
+
+Un appelant a parfois raison d'ignorer ce que les autres lisent. Qu'il le
+dise, en une ligne, là où il le fait.
+
 ## Git
 - Branches : `develop` (développement), `master` (production)
 - Pas de submodules Git — utilise **Google Repo** pour les addons

@@ -963,12 +963,94 @@ class TestTheInventoryItself(Base):
     def test_the_cow_copies_are_collected(self):
         self.assertEqual(self.inspecter()["cow"], ["site.vue"])
 
-    def test_a_cow_copy_without_a_key_is_still_named(self):
-        # Une copie sans clé existe quand même ; la taire ferait un
-        # inventaire qui ment sur son propre compte.
-        import inspect
+    # LA STRUCTURE DE LA PROJECTION, ET NON SON ORTHOGRAPHE. Ce garde
+    # cherchait le fragment « 'id:' || id::text » dans le source. Il
+    # rougissait sur tout changement de préfixe — un renommage sans
+    # conséquence — et restait VERT sur l'inversion des deux bras du
+    # coalesce, qui nomme alors chaque copie par son identifiant et casse
+    # tout l'appariement d'un palier à l'autre.
+    @staticmethod
+    def _arguments(expression):
+        """Les arguments de premier niveau d'un `coalesce(...)`, ou [].
 
-        self.assertIn("'id:' || id::text", inspect.getsource(quality.inspect))
+        Découpe sur les virgules NON parenthésées : un argument peut
+        lui-même être un appel.
+        """
+        depart = expression.lower().find("coalesce(")
+        if depart < 0:
+            return []
+        reste = expression[depart + len("coalesce(") :]
+        args, courant, profondeur = [], "", 0
+        for caractere in reste:
+            if caractere == "(":
+                profondeur += 1
+            elif caractere == ")":
+                if profondeur == 0:
+                    break
+                profondeur -= 1
+            elif caractere == "," and profondeur == 0:
+                args.append(courant.strip())
+                courant = ""
+                continue
+            courant += caractere
+        args.append(courant.strip())
+        return [a for a in args if a]
+
+    def test_a_cow_copy_without_a_key_is_still_named(self):
+        """Une copie sans clé existe quand même ; la taire ferait un
+        inventaire qui ment sur son propre compte. Et la nommer par son
+        identifiant QUAND ELLE A UNE CLÉ casse l'appariement entre paliers,
+        puisque les identifiants changent et pas les clés.
+        """
+        vus = []
+        original = quality.run_psql
+        self.addCleanup(setattr, quality, "run_psql", original)
+        quality.run_psql = lambda db, sql: (
+            vus.append(sql) or self.repondre(sql)
+        )
+        for nom, remplacant in (
+            ("missing_files", lambda db, lst: []),
+            ("table_counts", lambda db: {}),
+        ):
+            avant = getattr(quality, nom)
+            setattr(quality, nom, remplacant)
+            self.addCleanup(setattr, quality, nom, avant)
+        quality.inspect("db")
+        # DEUX requêtes portent cette clause ; celle qui NOMME les copies
+        # est celle qui les ordonne par leur nom.
+        requetes = [
+            q
+            for q in vus
+            if "website_id IS NOT NULL" in q and "ORDER BY 1" in q
+        ]
+        self.assertEqual(1, len(requetes), "la requête des copies COW")
+        args = self._arguments(requetes[0])
+        self.assertGreaterEqual(
+            len(args), 2, "la projection doit avoir un repli"
+        )
+        self.assertEqual("key", args[0], "la CLÉ d'abord, le repli ensuite")
+
+    def test_the_reader_sees_an_inverted_coalesce(self):
+        """Contrôle du détecteur : c'est l'inversion que le garde d'avant
+        laissait passer, et elle est la seule qui casse l'appariement."""
+        inverse = (
+            "SELECT coalesce('id:' || id::text, key) FROM ir_ui_view"
+            " WHERE website_id IS NOT NULL"
+        )
+        self.assertNotEqual("key", self._arguments(inverse)[0])
+
+    def test_the_reader_sees_a_projection_with_no_fallback(self):
+        bare = "SELECT key FROM ir_ui_view WHERE website_id IS NOT NULL"
+        self.assertEqual([], self._arguments(bare))
+
+    def test_the_reader_accepts_another_prefix(self):
+        """Changer le préfixe est un renommage sans conséquence : le garde
+        d'avant rougissait dessus, ce qui apprend à le désarmer."""
+        autre = (
+            "SELECT coalesce(key, 'vue:' || id::text) FROM ir_ui_view"
+            " WHERE website_id IS NOT NULL"
+        )
+        self.assertEqual("key", self._arguments(autre)[0])
 
 
 class TestTheDetailButton(Base):
@@ -2541,6 +2623,35 @@ class TestRunningATestFromTheScreen(Base):
         self.assertIsNone(code)
         self.assertTrue(tourné)
         self.assertIn("No such file", sortie)
+
+
+class TestChaquePourquoiDeLaCarteEstTraduit(unittest.TestCase):
+    """La colonne « pourquoi » de SEMANTIC_MAP passe par `t(connu["why"])`.
+
+    La clé vient d'un enregistrement, pas du source : le garde général du
+    dépôt ne la voit pas. Les dix valeurs distinctes des dix-neuf entrées
+    s'affichaient donc en anglais sous des lignes françaises, dans le diff
+    de tables — l'écran qu'on regarde justement quand une migration
+    inquiète.
+
+    Les autres champs — table, into, kind — nomment des objets de la base
+    et ne se traduisent pas : « account_move » est le même mot partout.
+    """
+
+    def test_every_why_is_in_the_table(self):
+        absents = [
+            f"{entree.get('table')} : « {entree['why']} »"
+            for entree in quality.SEMANTIC_MAP
+            if entree.get("why")
+            and entree["why"] not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absents)
+
+    def test_the_map_actually_carries_reasons(self):
+        """Une carte vidée passerait le test précédent sans rien garder."""
+        self.assertGreater(
+            len([e for e in quality.SEMANTIC_MAP if e.get("why")]), 10
+        )
 
 
 if __name__ == "__main__":

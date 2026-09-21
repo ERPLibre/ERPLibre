@@ -950,11 +950,32 @@ class ProxmoxMenuMixin:
         de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
         commande qui la configure : « ifup » ne rend pas la main, et plus rien
-        ne répond, ni en ssh ni en ping."""
+        ne répond, ni en ssh ni en ping.
+
+        Rend (réseau, raison) : l'un des deux est toujours vide. LE CODE DE
+        RETOUR DU RELEVÉ EST LU, parce que sa perte fabrique exactement la
+        réponse que cette fonction existe pour éviter. `pve.run` rend
+        (255, « timeout ») à l'expiration et (255, message) sur erreur
+        système ; ce message ne contient aucun réseau, donc `parse_used_nets`
+        n'en trouve AUCUN, donc « rien n'est pris », donc le PREMIER candidat
+        est rendu — celui-là même que l'hôte utilise peut-être déjà.
+
+        Les deux échecs sont NOMMÉS séparément. « Tous les candidats sont
+        pris » et « le relevé n'a pas abouti » mènent au même refus, mais pas
+        au même geste : le premier se corrige en libérant un réseau, le
+        second en cherchant pourquoi la commande distante a cédé."""
         from script.proxmox import proxmox_deploy as pve
 
-        _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
-        return pve.pick_internal_cidr(out)
+        code, out = pve.run(host, pve.USED_NETS_CMD, 40)
+        if code:
+            lignes = pve.strip_ssh_noise(out).strip().splitlines()
+            detail = lignes[-1] if lignes else ""
+            raison = t("Could not read the networks this host uses.")
+            return "", f"{raison} {detail}".strip()
+        cidr = pve.pick_internal_cidr(out)
+        if not cidr:
+            return "", t("No free subnet left for an internal bridge.")
+        return cidr, ""
 
     def _pve_nat_ready(self, host):
         """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
@@ -1025,9 +1046,9 @@ class ProxmoxMenuMixin:
         raison = self._pve_nat_reason(host)
         if raison:
             return "", raison
-        cidr = self._pve_internal_cidr(host)
+        cidr, raison = self._pve_internal_cidr(host)
         if not cidr:
-            return "", t("No free subnet left for an internal bridge.")
+            return "", raison
         uplink = self._pve_uplink()
         for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
@@ -1056,11 +1077,13 @@ class ProxmoxMenuMixin:
         # Le réseau est LU sur l'hôte avant d'être proposé : annoncer le
         # réseau par défaut pour en poser un autre serait mentir sur
         # l'écran même où l'on demande l'accord.
-        cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
+        cidr, raison = (
+            self._pve_internal_cidr(host) if host else (pve.INTERNAL_CIDR, "")
+        )
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
         if not cidr:
-            print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
+            print(f"  ✗ {raison}")
             print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
             return ""
         print(
@@ -1296,7 +1319,7 @@ class ProxmoxMenuMixin:
             # réseau qui sera RÉELLEMENT posé — il dépend de l'hôte.
             "internal_bridge": (
                 pve.INTERNAL_BRIDGE,
-                (self._pve_internal_cidr(host) if not ponts else "")
+                (self._pve_internal_cidr(host)[0] if not ponts else "")
                 or pve.INTERNAL_CIDR,
             ),
             "build_command": build_command,
@@ -1690,6 +1713,21 @@ class ProxmoxMenuMixin:
         with open(chemin, "w", encoding="utf-8") as fh:
             fh.write("\n".join(entete) + "\n")
         return chemin
+
+    @staticmethod
+    def _pve_alias_chaine(host, nom):
+        """« hôte+vm » : l'alias ~/.ssh/config d'une VM de cet hôte.
+
+        UN SEUL ENDROIT LE COMPOSE. La convention était recopiée par chaque
+        appelant — le déploiement qui l'écrit, l'écran qui réécrit le
+        fichier — et un caractère de plus admis d'un côté suffit à ce que
+        l'autre cherche un alias qui n'existe pas. Le nom composé dit où la
+        machine vit, ne peut rien voler à un domaine local, et distingue
+        deux VM homonymes sur deux hôtes.
+        """
+        court = (host.get("target") or "").split("@")[-1]
+        court = re.sub(r"[^A-Za-z0-9._-]", "-", court) or "pve"
+        return f"{court}+{nom}"
 
     def _pve_alias_names(self, nom, chaine, locaux=(), rebond=""):
         """UN seul nom pour l'entrée ~/.ssh/config : « hôte+vm ».
@@ -2344,12 +2382,7 @@ class ProxmoxMenuMixin:
             mod_qemu = None
 
         def alias_chaine(nom):
-            """« hôte+vm », la convention déjà utilisée pour les VM
-            imbriquées : elle dit où la machine vit, et n'entre en conflit
-            avec rien."""
-            hote = (host.get("target") or "").split("@")[-1]
-            hote = re.sub(r"[^A-Za-z0-9._-]", "-", hote) or "pve"
-            return f"{hote}+{nom}"
+            return self._pve_alias_chaine(host, nom)
 
         # {nom de VM: alias à utiliser} — le suivi doit passer par l'alias
         # qu'on a RÉELLEMENT écrit, pas par le nom.
@@ -2829,8 +2862,6 @@ class ProxmoxMenuMixin:
         # Les domaines LOCAUX : un nom partagé avec l'un d'eux ne doit pas lui
         # voler son alias — même règle que le déploiement.
         locaux = set(self._qemu_list_domains())
-        hote_court = (host.get("target") or "").split("@")[-1]
-        hote_court = re.sub(r"[^A-Za-z0-9._-]", "-", hote_court) or "pve"
         for vm in vms:
             ip = self._pve_guest_ip(vm["vmid"], attente=0)
             if not ip:
@@ -2838,7 +2869,7 @@ class ProxmoxMenuMixin:
                 continue
             noms, vole = self._pve_alias_names(
                 vm["name"],
-                f"{hote_court}+{vm['name']}",
+                self._pve_alias_chaine(host, vm["name"]),
                 locaux,
                 host["target"],
             )
@@ -2885,6 +2916,38 @@ class ProxmoxMenuMixin:
         url = f"http://{ip}:8069"
         print(f"→ {navigateur} {url}")
         os.system(f"{navigateur} {shlex.quote(url)}")
+
+    def _pve_verify_egress(self):
+        """La posture d'une VM Proxmox, RELUE dans la VM, quand on le demande.
+
+        LE CHEMIN PROXMOX NE RELISAIT JAMAIS. La voie libvirt sonde une fois
+        au déploiement et autant de fois qu'on le demande ; ici, le seul
+        verdict venait du code de retour du lot qui pose et charge. Un
+        rechargement qui échoue à un démarrage ULTÉRIEUR — l'analyseur
+        retiré, un fichier de règles réécrit — laisse alors la machine
+        debout et sortante, et rien ne le dit.
+
+        La sonde est celle du déploiement, mot pour mot : elle rend toujours
+        0 et répond par un mot, de sorte qu'un transport muet se distingue
+        d'une table absente. Ce qui n'a pas été lu vaut « non lu », jamais
+        « chargé ».
+        """
+        from script.todo import deploy_verify
+        from script.todo import devstack_report as report
+
+        host = self._pve_host()
+        if not host:
+            return
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        alias = self._pve_alias_chaine(host, vm["name"])
+        _code, sortie = self._pve_ssh(alias, posture_plan.probe_command())
+        lu = posture_plan.parse_probe(sortie)
+        couches = list(deploy_verify.egress_layers(lu))
+        print()
+        print(report.render_layers(couches, subject=vm["name"]))
+        return report.aggregate_layers(couches)
 
     def _pve_example(self):
         """Exemple de séquence, sans rien exécuter : de quoi voir ce que
@@ -2978,6 +3041,18 @@ class ProxmoxMenuMixin:
             {"prompt_description": t("Proxmox - example sequence (dry-run)")},
             {"section": t("Host")},
             {"prompt_description": t("Change the Proxmox host")},
+            {"section": t("Posture")},
+            # DÉCLARÉE PAR « method », et posée EN FIN DE LISTE. La chaîne
+            # d'elif au-dessus est numérotée à la main : insérer une entrée
+            # au milieu décalerait toutes les suivantes, et chaque numéro
+            # tapé porterait sur la voisine. Au-delà de la chaîne, le repli
+            # lit la clé et appelle la méthode par son nom.
+            {
+                "prompt_description": t(
+                    "Verify a VM's egress posture, layer by layer"
+                ),
+                "method": "_pve_verify_egress",
+            },
         ]
         # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
         # s'affiche à la suite et se lance par son numéro.

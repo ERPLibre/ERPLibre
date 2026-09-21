@@ -159,6 +159,114 @@ def sens(clone_url: str, amonts=(), surcharge=None) -> str:
     return SORTANT
 
 
+# La section de configuration qui nomme le sens du miroir, dépôt par dépôt.
+# Elle ne contient QUE des corrections : le sens se dérive du manifeste, et
+# ce qui est écrit ici corrige la dérivation là où elle ne peut pas savoir.
+CONFIG_KEY = "forge_mirror"
+
+
+def amonts_du_manifeste(projets, forge_url="") -> tuple:
+    """Les préfixes d'adresse qui désignent un porteur EXTÉRIEUR. PURE.
+
+    DÉRIVÉS, et non déclarés. Tout ce qui n'est pas chez nous est un amont :
+    tenir la liste à la main en ferait une de plus à entretenir, et elle
+    vieillirait sans un mot le jour où le manifeste change de source.
+
+    Le préfixe est « schéma://hôte/ » : c'est le grain auquel `sens` compare,
+    et il survit à une réorganisation des chemins chez l'amont.
+
+    Une `forge_url` vide ne retire rien — un site qui n'a pas dit où vit sa
+    forge ne peut pas décider ce qui lui est extérieur, et supposer le
+    ferait pousser vers l'amont ce qui en vient.
+    """
+    from urllib.parse import urlsplit
+
+    def base(adresse):
+        morceaux = urlsplit((adresse or "").strip())
+        if not morceaux.scheme or not morceaux.netloc:
+            return ""
+        return f"{morceaux.scheme}://{morceaux.netloc}/".lower()
+
+    chez_nous = base(forge_url)
+    vus = []
+    for projet in projets or []:
+        prefixe = base(projet.get("clone_url", ""))
+        if prefixe and prefixe != chez_nous and prefixe not in vus:
+            vus.append(prefixe)
+    return tuple(vus)
+
+
+def surcharges(config=None) -> dict:
+    """{nom de dépôt: sens} que ce site déclare. Jamais None.
+
+    Lue par la FUSION des trois fichiers, comme les profils : une correction
+    peut venir du fichier partagé par l'équipe autant que du fichier privé.
+    Une valeur hors vocabulaire est écartée en silence ICI — `sens` la
+    refuserait de toute façon, et faire échouer la lecture rendrait un écran
+    d'avancement inutilisable sur un fichier corrigé à la main.
+    """
+    from script.config.config_file import ConfigFile
+
+    cfg = config or ConfigFile()
+    try:
+        declare = cfg.get_config(CONFIG_KEY)
+    except Exception:  # noqa: BLE001 - une lecture, pas le sujet
+        return {}
+    if not isinstance(declare, dict):
+        return {}
+    return {
+        str(nom): str(valeur)
+        for nom, valeur in declare.items()
+        if str(valeur or "").strip() in SENS
+    }
+
+
+def declarer(nom: str, sens_voulu: str, config=None) -> dict:
+    """Écrit la surcharge de sens de ce dépôt, et rend la table complète.
+
+    Un `sens_voulu` VIDE retire la surcharge : le sens revient alors à ce
+    que le manifeste dit, ce qui est le défaut et non une absence de
+    réglage. Un sens inconnu est REFUSÉ plutôt que deviné — le vocabulaire
+    est clos, et replier sur « sortant » ferait pousser vers un amont un
+    dépôt qui en vient.
+
+    L'écriture va dans le fichier PRIVÉ, le seul des trois que
+    `set_config_value` touche. La table écrite repart de la FUSION : une
+    correction venue du fichier partagé serait sinon perdue au premier
+    réglage local.
+    """
+    from script.config.config_file import ConfigFile
+    from script.lib_valid import ValidationError
+
+    propre = str(nom or "").strip()
+    if not propre:
+        raise ValidationError("Nom de dépôt vide.")
+    voulu = str(sens_voulu or "").strip()
+    if voulu and voulu not in SENS:
+        raise ValidationError(
+            f"Sens inconnu : « {voulu} ». Connus : {', '.join(SENS)}."
+        )
+    cfg = config or ConfigFile()
+    table = dict(surcharges(cfg))
+    if voulu:
+        table[propre] = voulu
+    else:
+        table.pop(propre, None)
+    cfg.set_config_value([CONFIG_KEY], table)
+    return table
+
+
+def sortants(config=None) -> tuple:
+    """Les dépôts que ce site déclare POUSSER vers un amont, triés.
+
+    Seules les surcharges sortantes comptent : ce sont les seules qu'un site
+    déclare vraiment, puisque le reste se dérive.
+    """
+    return tuple(
+        sorted(n for n, v in surcharges(config).items() if v == SORTANT)
+    )
+
+
 def plan_mirrors(projets, amonts=(), surcharges=None) -> dict:
     """{sens: [noms de forge]} pour un manifeste entier. Fonction PURE.
 

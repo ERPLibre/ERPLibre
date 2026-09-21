@@ -527,6 +527,14 @@ class DatabaseManager:
         self, show_remote_list: bool = True
     ) -> None:
         database_name = self.select_database()
+        # LE REFUS EST UNE RÉPONSE. `select_database` rend FAUX dans trois
+        # cas — PostgreSQL illisible, aucune base, et « 0 » tapé pour
+        # renoncer — et la suite le composait dans la commande :
+        # « --database False ». La question du nom de fichier se posait
+        # d'abord, ce qui fait croire que le choix a été pris.
+        if not database_name:
+            print(t("No database selected."))
+            return
         backup_name = input(
             "\U0001f4ac Backup name (default = name+date.zip) : "
         )
