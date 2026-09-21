@@ -845,7 +845,7 @@ class TestVpnMenuNumbering(MenuCoherence, unittest.TestCase):
         "VPN - Disconnect a profile": "_vpn_disconnect",
         "VPN - Status and diagnosis": "_vpn_diagnose",
         "VPN - Create a profile from a site preset": "_vpn_from_preset",
-        "VPN - Import an AnyConnect profile": "_vpn_import_anyconnect",
+        "VPN - Import an AnyConnect profile (.xml)": "_vpn_import_anyconnect",
         "VPN - Add or edit a profile": "_vpn_edit_profile",
         "VPN - Store secrets": "_vpn_store_secrets",
         "VPN - Show the rendered configuration": "_vpn_show_config",
@@ -1362,6 +1362,7 @@ class TestMenuLabels(unittest.TestCase):
     def test_an_exemption_is_never_also_labelled(self):
         """Exempter ET étiqueter dirait deux choses opposées du même écran."""
         self.assertEqual(self.ECRANS_EXEMPTES & self.labels, set())
+
     def test_no_menu_anywhere_forgets_its_label(self):
         """La garde ne voyait que les menus atteints depuis « Execute ».
 

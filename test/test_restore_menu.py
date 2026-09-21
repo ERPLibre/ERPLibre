@@ -350,7 +350,12 @@ class TestLaPorteTientLES_DEUX_CheminsInteractifs(PorteDeBanc):
 
     def restaurer(self, saisies, bases, exercice=False, listable=True):
         todo = self.porte(bases=bases, listable=listable, exercice=exercice)
-        todo._execute = todo.db_manager._execute
+        # LE MÊME MOCK DES DEUX CÔTÉS. « _monitoring_restore » vit sur TODO
+        # et lance par son propre exécutant ; le garde, lui, interroge le
+        # gestionnaire de bases. Les séparer ferait lire les appels d'un
+        # objet pendant que le code en emploie un autre, et la liste
+        # rendrait vide sans qu'aucune épreuve ne le dise.
+        todo.execute = todo.db_manager._execute
         # Le nom d'image est POSÉ : le calculer déplace un fichier sur le
         # disque, et ce n'est pas ce que cette classe éprouve.
         todo._monitoring_image_name = lambda _chemin: "image"
@@ -359,7 +364,7 @@ class TestLaPorteTientLES_DEUX_CheminsInteractifs(PorteDeBanc):
             todo._monitoring_restore("image.zip")
         return [
             appel[0][0]
-            for appel in todo._execute.exec_command_live.call_args_list
+            for appel in todo.execute.exec_command_live.call_args_list
         ]
 
     def test_a_real_target_is_not_destroyed_without_asking(self):
