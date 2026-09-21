@@ -202,6 +202,9 @@ def main():
     selenium_lib.fill_parser(parser)
     fill_parser(parser)
     args = parser.parse_args()
+    # De la couche la plus BASSE à la sienne : sauter la base laissait la
+    # réconciliation des pilotes sans effet.
+    selenium_lib.compute_args(args)
     compute_args(args)
     # Instance selenium tool
     selenium_tool = selenium_lib.SeleniumLib(args)

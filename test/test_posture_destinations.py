@@ -204,13 +204,20 @@ class TestLesDeuxMoitiesSeRejoignent(unittest.TestCase):
     def test_a_posture_without_a_list_is_refused_by_the_renderer(self):
         """Les deux moitiés se répondent : la liste vide n'explique pas
         pourquoi, le rendu si."""
-        for nom in ("open", "connected"):
-            posture = R.get_posture(nom)
-            with self.subTest(posture=nom):
-                with self.assertRaises(ValidationError):
-                    rules.render_egress(
-                        posture, D.destinations_for(posture, CARNET)
-                    )
+        posture = R.get_posture("open")
+        with self.assertRaises(ValidationError):
+            rules.render_egress(posture, D.destinations_for(posture, CARNET))
+
+    def test_bounded_ports_render_without_a_single_address(self):
+        """Liste vide et rendu quand même : ce n'est pas la même chose que
+        « rien à rendre ». Le carnet du site ne lui est jamais demandé."""
+        posture = R.get_posture("connected")
+        self.assertEqual((), D.destinations_for(posture, CARNET))
+        texte = rules.render_egress(
+            posture, D.destinations_for(posture, CARNET)
+        )
+        self.assertIn("dport", texte)
+        self.assertNotIn("daddr", texte)
 
 
 if __name__ == "__main__":

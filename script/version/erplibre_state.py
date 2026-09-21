@@ -133,11 +133,6 @@ def get_version_installed(odoo_version: str) -> bool:
     return bool(entry.get("installed", False))
 
 
-def get_current_version() -> str | None:
-    """Return the currently active Odoo version, or None."""
-    return read_state().get("current_odoo_version")
-
-
 def get_mobile_active() -> bool:
     """Return True if mobile is recorded as active."""
     return bool(read_state().get("mobile", {}).get("active", False))
@@ -147,8 +142,10 @@ def print_state() -> None:
     """Log a human-readable summary of the current state."""
     state = read_state()
     current = state.get("current_odoo_version") or "unknown"
-    mobile = state.get("mobile", {})
-    mobile_status = "active" if mobile.get("active") else "inactive"
+    # PAR LE LECTEUR, et non par le chemin de clé recopié : l'écrivain et
+    # le lecteur possèdent la forme de ce champ, et une clé redite ici
+    # deviendrait une divergence muette le jour où elle change.
+    mobile_status = "active" if get_mobile_active() else "inactive"
 
     _logger.info(f"Current Odoo version : {current}")
     _logger.info(f"Mobile context       : {mobile_status}")

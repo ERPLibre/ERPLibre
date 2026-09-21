@@ -20,6 +20,73 @@ RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
 from script import posture as P  # noqa: E402
+from script.posture import rules  # noqa: E402
+
+
+class TestLaDocumentationSuitLeRegistre(unittest.TestCase):
+    """Une posture ajoutée sans être documentée est une posture qu'on
+    découvre à l'usage.
+
+    Le README du paquet nomme les quatre et dit ce que chacune tient
+    VRAIMENT. Ajouter la cinquième sans y toucher laisserait un lecteur
+    croire que la table est complète — et une table incomplète se lit comme
+    une table, pas comme un morceau de table.
+
+    Le contrôle porte sur la SOURCE bilingue : les deux fichiers rendus en
+    sont dérivés, et corriger l'un d'eux se perd au prochain rendu.
+    """
+
+    @staticmethod
+    def source():
+        chemin = os.path.join(RACINE, "script", "posture", "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            return fichier.read()
+
+    @classmethod
+    def moities(cls):
+        """(anglais, français) — le contrôle porte sur CHAQUE langue.
+
+        Une ligne retirée d'une seule moitié laisserait l'autre complète, et
+        une vérification sur le texte entier ne verrait rien.
+        """
+        anglais, _sep, francais = cls.source().partition("<!-- [fr] -->")
+        return anglais, francais
+
+    @staticmethod
+    def lignes_de_table(moitie):
+        """Les lignes de la table des postures, qui commencent par « | ` »."""
+        return [
+            ligne
+            for ligne in moitie.splitlines()
+            if ligne.strip().startswith("| `")
+        ]
+
+    def test_the_table_has_exactly_one_row_per_posture(self):
+        """Une table amputée se lit comme une table, pas comme un morceau
+        de table : compter est ce qui distingue les deux."""
+        attendu = len(P.posture_names())
+        for moitie in self.moities():
+            with self.subTest(langue=moitie[:40]):
+                self.assertEqual(attendu, len(self.lignes_de_table(moitie)))
+
+    def test_every_posture_has_its_own_row_in_both_languages(self):
+        for moitie in self.moities():
+            lignes = "\n".join(self.lignes_de_table(moitie))
+            for nom in P.posture_names():
+                with self.subTest(posture=nom):
+                    self.assertIn(f"| `{nom}` |", lignes)
+
+    def test_no_posture_is_named_that_the_registry_dropped(self):
+        """« restricted » a été retirée du registre parce qu'elle donnait
+        l'assurance du contraire de ce qu'elle tenait. La documenter
+        encore la ferait chercher."""
+        self.assertNotIn("`restricted`", self.source())
+
+    def test_every_gap_token_is_named_in_both_languages(self):
+        for moitie in self.moities():
+            for jeton in rules.UNENFORCED_TOKENS:
+                with self.subTest(jeton=jeton, langue=moitie[:40]):
+                    self.assertIn(f"`{jeton}`", moitie)
 
 
 class TestLeVocabulaireEstClos(unittest.TestCase):

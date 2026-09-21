@@ -257,6 +257,17 @@ def _controle_ports(symbol, ports):
     return tuple(sorted(propres))
 
 
+def checked_ports(label, ports) -> tuple:
+    """Les ports d'une posture, contrôlés par la MÊME porte qu'un symbole.
+
+    Une posture qui borne ses ports sans nommer de destination n'a pas de
+    symbole à résoudre, et elle a pourtant des ports à écrire. Elle passe
+    donc ici plutôt que de valider chez elle : deux contrôles finiraient
+    par diverger, et le plus permissif des deux ferait foi.
+    """
+    return _controle_ports(label, ports)
+
+
 def resolve(symbol, networks, ports=()) -> Allowed:
     """Rapproche un symbole des réseaux du site, tout contrôlé.
 

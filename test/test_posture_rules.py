@@ -188,6 +188,97 @@ class TestCeQueLeFichierPorte(unittest.TestCase):
         self.assertIn("paranoid", rendu().splitlines()[1])
 
 
+class TestLesPortsBornesSansDestination(unittest.TestCase):
+    """La troisième forme : borner les PORTS sans nommer de destination.
+
+    Elle ne peut pas passer par la table de symboles, et c'est voulu :
+    `allowlist` refuse « 0.0.0.0/0 » parce qu'une liste qui la porte ne
+    borne aucune destination tout en s'annonçant bornée. Une posture qui
+    borne ses ports n'a donc rien à nommer — le rendu ouvre des ports vers
+    n'importe où, et le fichier le DIT au lieu de mimer une liste blanche.
+    """
+
+    def texte(self):
+        return rules.render_egress(R.get_posture("connected"), ())
+
+    def test_it_wants_rules_now_that_a_shape_exists(self):
+        self.assertTrue(rules.wants_rules(R.get_posture("connected")))
+
+    def test_the_policy_falls_on_the_line_that_declares_the_chain(self):
+        texte = self.texte()
+        self.assertIn("policy drop", texte)
+        self.assertIn("ct state established,related accept", texte)
+        self.assertIn('oif "lo" accept', texte)
+
+    def test_the_declared_ports_are_the_ones_rendered(self):
+        """Ils viennent du REGISTRE : le rendu n'en invente aucun, sinon
+        deux endroits décriraient la même posture."""
+        texte = self.texte()
+        self.assertIn("udp dport { 53, 123 } accept", texte)
+        self.assertIn("tcp dport { 22, 80, 443 } accept", texte)
+
+    def test_it_names_no_destination_at_all(self):
+        """Une adresse dans ce fichier le ferait lire comme une liste
+        blanche, ce que le registre a déjà corrigé une fois."""
+        self.assertNotIn("daddr", self.texte())
+
+    def test_the_ports_reach_the_containers_too(self):
+        """Même traitement que les destinations d'une liste blanche, qui
+        sont émises dans les DEUX chaînes : sans cela un conteneur perd
+        tout réseau en silence, là où la machine garde le sien."""
+        for chaine in ("output", "forward"):
+            with self.subTest(chaine=chaine):
+                lignes = lignes_de_chaine(self.texte(), chaine)
+                self.assertTrue(
+                    [l for l in lignes if "tcp dport" in l], chaine
+                )
+
+    def test_the_header_does_not_promise_a_destination_list(self):
+        """Le fichier se lit SUR la machine, des mois après. Y annoncer une
+        liste qui vit « dans la configuration » enverrait chercher ce que
+        cette posture n'a pas."""
+        texte = self.texte()
+        self.assertNotIn("liste des destinations", texte)
+        self.assertIn("ports", texte.split("table inet")[0])
+
+    def test_the_forward_chain_is_emitted_even_so(self):
+        """Absente, le trafic relayé retombe sur le défaut du noyau, qui
+        accepte : les règles afficheraient complet."""
+        self.assertIn("chain forward {", self.texte())
+
+    def test_the_ports_come_from_the_posture_and_not_from_the_renderer(self):
+        sur_mesure = R.get_posture("connected")._replace(
+            egress_ports=(("tcp", (8443,)),)
+        )
+        texte = rules.render_egress(sur_mesure, ())
+        self.assertIn("tcp dport { 8443 } accept", texte)
+        self.assertNotIn("443,", texte)
+
+    def test_bounding_ports_with_none_declared_is_refused(self):
+        """Le fichier ne porterait que « policy drop » sous un nom qui
+        promet une sortie bornée — donc une coupure déguisée."""
+        muette = R.get_posture("connected")._replace(egress_ports=())
+        with self.assertRaises(ValidationError):
+            rules.render_egress(muette, ())
+
+    def test_a_port_out_of_range_is_refused_by_the_same_gate(self):
+        """Le contrôle vit dans `allowlist`, et une seconde validation
+        dériverait de la première."""
+        fautive = R.get_posture("connected")._replace(
+            egress_ports=(("tcp", (70000,)),)
+        )
+        with self.assertRaises(ValidationError):
+            rules.render_egress(fautive, ())
+
+    def test_bounding_neither_ports_nor_destinations_is_still_refused(self):
+        ni_lun_ni_lautre = R.get_posture("connected")._replace(
+            ports_bounded=False
+        )
+        self.assertFalse(rules.wants_rules(ni_lun_ni_lautre))
+        with self.assertRaises(ValidationError):
+            rules.render_egress(ni_lun_ni_lautre, ())
+
+
 class TestCeQuOnNeRendPas(unittest.TestCase):
     """Refuser plutôt que rendre : un fichier vide se déposerait sur la
     machine et s'y lirait comme une politique."""
@@ -308,12 +399,17 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
             with self.subTest(posture=nom):
                 self.assertEqual((), rules.unenforced(R.get_posture(nom)))
 
-    def test_bounding_ports_only_gets_the_single_token_that_fits(self):
-        """Les autres jetons porteraient sur un rendu qui n'existe pas."""
+    def test_bounding_ports_only_names_what_its_rendering_misses(self):
+        """Elle rend désormais : ses écarts sont ceux d'un jeu posé, et
+        non l'absence de jeu. `no-rendering` porterait un mensonge."""
         self.assertEqual(
-            (rules.NO_RENDERING,),
+            (rules.RELOAD_FAILURE_UNSEEN, rules.CONTAINERS_UNPROVEN),
             rules.unenforced(R.get_posture("connected")),
         )
+
+    def test_bounding_nothing_at_all_still_gets_no_rendering(self):
+        nue = R.get_posture("connected")._replace(ports_bounded=False)
+        self.assertEqual((rules.NO_RENDERING,), rules.unenforced(nue))
 
     def test_the_rendered_posture_names_what_is_still_missing(self):
         manques = rules.unenforced(R.get_posture("paranoid"))
@@ -410,11 +506,13 @@ class TestElleNAppliqueRien(unittest.TestCase):
 
 
 class TestQuellePostureVeutDesRegles(unittest.TestCase):
-    """DEUX RAISONS D'EN VOULOIR, et une seule était consultée.
+    """TROIS RAISONS D'EN VOULOIR, et une seule était consultée.
 
     Une liste bornée en donne une : il y a des adresses à nommer. Une
     sortie COUPÉE en donne une autre, et le rendu la sert depuis toujours —
-    « policy drop », la boucle locale, les connexions établies.
+    « policy drop », la boucle locale, les connexions établies. Des PORTS
+    bornés en donnent une troisième : il y a une politique à poser, même
+    sans une seule adresse à écrire.
 
     LE DÉFAUT QUE CE PRÉDICAT FERME : le chemin de déploiement demandait
     « as-tu une liste bornée à résoudre ». « local-only » n'en a pas — elle
@@ -434,10 +532,15 @@ class TestQuellePostureVeutDesRegles(unittest.TestCase):
         nom de la posture dément."""
         self.assertFalse(rules.wants_rules(R.get_posture("open")))
 
-    def test_unbounded_destinations_do_not(self):
-        """Un fichier de règles la ferait lire comme une liste blanche,
-        alors que la liste porterait la sortie entière."""
-        self.assertFalse(rules.wants_rules(R.get_posture("connected")))
+    def test_bounded_ports_want_them_without_a_single_address(self):
+        """Ce qui les refusait était l'absence de FORME, pas l'absence de
+        politique : sans troisième rendu, un fichier n'aurait pu que mimer
+        une liste blanche portant la sortie entière."""
+        self.assertTrue(rules.wants_rules(R.get_posture("connected")))
+
+    def test_bounding_neither_one_nor_the_other_does_not(self):
+        nue = R.get_posture("connected")._replace(ports_bounded=False)
+        self.assertFalse(rules.wants_rules(nue))
 
     def test_no_posture_wants_nothing(self):
         self.assertFalse(rules.wants_rules(None))
@@ -474,7 +577,13 @@ class TestQuellePostureVeutDesRegles(unittest.TestCase):
 
     def test_it_is_not_the_same_question_as_having_a_bounded_list(self):
         """LES DEUX NE COÏNCIDENT PAS, et c'est tout le sujet : les
-        confondre est ce qui laissait « local-only » sans règles."""
+        confondre est ce qui laissait « local-only » sans règles.
+
+        Elles s'écartent désormais sur deux postures et pour des raisons
+        opposées : « local-only » veut des règles sans avoir d'adresses à
+        résoudre, « connected » veut des règles en n'ayant que des ports.
+        La seconde question — « y a-t-il des adresses à résoudre » — est
+        fausse sur les deux."""
         from script.posture import destinations as D
 
         differentes = [
@@ -483,7 +592,7 @@ class TestQuellePostureVeutDesRegles(unittest.TestCase):
             if rules.wants_rules(R.get_posture(nom))
             != D.has_bounded_list(R.get_posture(nom))
         ]
-        self.assertEqual(["local-only"], differentes)
+        self.assertEqual(["connected", "local-only"], differentes)
 
 
 class TestLAccordEntreLeVouloirEtLeRefus(unittest.TestCase):
@@ -589,10 +698,14 @@ class TestLaFenetreDuPremierDemarrage(unittest.TestCase):
     def test_a_posture_nothing_renders_gains_no_window_either(self):
         """Une fenêtre ne s'ouvre pas sur des règles qu'on ne pose JAMAIS :
         l'y ajouter ferait croire à un confinement tardif là où il n'y en a
-        aucun."""
+        aucun.
+
+        Aucune posture du registre n'est dans ce cas — celle qui y était
+        borne désormais ses ports et rend. Le cas se fabrique donc, et il
+        reste à tenir : le prédicat le décide, pas la table."""
+        nue = R.get_posture("connected")._replace(ports_bounded=False)
         self.assertEqual(
-            (rules.NO_RENDERING,),
-            rules.unenforced(R.get_posture("connected"), after_boot=True),
+            (rules.NO_RENDERING,), rules.unenforced(nue, after_boot=True)
         )
 
     def test_the_late_path_never_loses_a_token_of_the_early_one(self):

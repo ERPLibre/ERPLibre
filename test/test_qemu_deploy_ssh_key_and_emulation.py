@@ -28,6 +28,7 @@ sys.path.insert(0, str(RACINE))
 
 from script.todo import qemu_install_monitor as mon  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
+from script.vm.backend import libvirt_handle  # noqa: E402
 
 # Telle qu'elle paraît dans le script : citée pour le shell.
 MSG_SLOW = shlex.quote(
@@ -182,7 +183,7 @@ class TestWrapper(unittest.TestCase):
 
         with mock.patch.object(mon.subprocess, "Popen", faux_popen):
             mon._launch_one(
-                mon.libvirt_handle("vm-essai", ip="cible"),
+                libvirt_handle("vm-essai", ip="cible"),
                 "true",
                 "/dev/null",
                 **kw,

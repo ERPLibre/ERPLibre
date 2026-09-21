@@ -145,17 +145,25 @@ def collapse_progress(text: str) -> str:
     return "\n".join(sortie)
 
 
-def run(host: dict, remote: str, timeout: int = 120) -> tuple:
+def run(host: dict, remote: str, timeout: int = 120, entree=None) -> tuple:
     """(code, sortie) de `remote` exécuté sur l'hôte. Ne lève jamais.
 
     `host["sudo"]` non vide -> la commande passe par sudo. L'administration
     d'une appliance exige les privilèges, et le compte qu'un accès de parc
     offre ne les a pas.
+
+    `entree` est un flux d'octets branché sur l'entrée standard de la
+    commande distante — c'est ainsi qu'un fichier se dépose là-bas. Il
+    passe par ICI et non par un envoi composé à côté : le privilège, le
+    délai rendu en « (255, timeout) », l'erreur système rendue en 255 et le
+    dépouillement du bruit ssh vivent dans cette fonction, et un second
+    chemin les perdrait tous les quatre.
     """
     remote = wrap_privilege(remote, host.get("sudo") or "")
     try:
         res = subprocess.run(
             ssh_argv(host, remote),
+            stdin=entree,
             capture_output=True,
             text=True,
             timeout=timeout,

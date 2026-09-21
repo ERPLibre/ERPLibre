@@ -7,8 +7,9 @@ installent des systèmes, et durent des heures. Ils vivent ici et **non** dans
 doit rester lançable en quelques secondes, sur n'importe quelle machine, y
 compris sans virtualisation.
 
-Ils se lancent depuis le menu — `TODO › Execute › Test › Tests longs` — ou
-directement.
+Les deux descentes se lancent depuis le menu — `TODO › Execute › Test ›
+Tests longs`. Les deux confrontations se lancent **directement** : le menu
+ne les porte pas, et l'une d'elles coupe le réseau de cette machine.
 
 ## lima_confront.py — le backend que personne n'a jamais lancé
 
@@ -46,6 +47,14 @@ démarrage.
 Il demande le privilège : charger un jeu de règles et lire une table en
 exigent, et `nft -c`, qui ne fait que l'analyse, échoue déjà sans lui. Il rend
 20 là où l'outillage manque.
+
+**Il coupe la sortie de CETTE machine.** Le jeu de règles se charge dans les
+tables de l'hôte — sans espace de noms — en `policy drop` sur output et
+forward, et la seule destination nommée est une adresse de documentation qui
+n'existe pas. Une session ssh tombe avec le reste, y compris celle qui lit la
+sortie. Il demande un `OUI` tapé avant de charger, et une machine **jetable**
+est le seul endroit raisonnable pour le lancer. `--dry-run` rend le fichier et
+ne charge rien.
 
 ```
 ./long_test/egress_confront.py             # les trois questions

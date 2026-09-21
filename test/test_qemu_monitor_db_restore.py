@@ -39,6 +39,7 @@ sys.path.insert(0, str(RACINE / "test"))
 from async_case import AsyncCase  # noqa: E402
 
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend, verbs  # noqa: E402
 
 FAUX_SYSTEMCTL = """#!/bin/sh
 echo "systemctl $*" >> "$LOG"
@@ -396,10 +397,13 @@ class TestLIdentiteDeLaVm(Suivi):
             async with self.app.run_test(size=(150, 40)) as pilote:
                 await self.bouton(pilote, oui=True)
         garde = lance.call_args[1]["guard"]
+        fiche = backend.pve_handle(info, "vm-a")
         self.assertEqual(
-            mon.pve_host_cmd(info, mon.pve_identity_guard(101, "vm-a")),
-            garde,
+            verbs.host_command(fiche, verbs.identity_guard(fiche)), garde
         )
+        # Ce que la comparaison tient : le VMID est relu SUR l'hôte.
+        self.assertIn("root@hote.invalid", garde)
+        self.assertIn("qm config 101", garde)
 
 
 class TestLaGardePasseAvantLeSsh(unittest.TestCase):
