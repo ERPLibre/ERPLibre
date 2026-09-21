@@ -132,6 +132,17 @@ class TestTheExitCodes(unittest.TestCase):
             if not read_only:
                 self.ecritures.append(sql)
                 return []
+            # CHAQUE RELEVÉ A SA RÉPONSE. Le banc rendait le même lot à
+            # toutes les lectures : la version d'Odoo et le type de la
+            # colonne recevaient des lignes de détection, et un lot vide
+            # faisait passer la version pour illisible. Un banc qui ne
+            # distingue pas les questions ne prouve pas ce qu'il croit.
+            if "latest_version" in sql:
+                return [["18.0.1.3"]]
+            if "information_schema" in sql:
+                return [["jsonb"]]
+            if "<tree" in sql:
+                return []
             etat["tour"] += 1
             lot = avant if etat["tour"] == 1 or apres is None else apres
             if lot is None:
@@ -423,11 +434,22 @@ class TestTheVersionGate(unittest.TestCase):
         self.assertIn("3931", sortie)
         self.assertEqual(self.ecritures, [])
 
-    def test_an_unknown_version_stays_on_the_safe_side(self):
-        # Sans version on ne SAIT pas : ne rien toucher.
+    def test_an_unknown_version_touches_nothing_and_says_so(self):
+        """Sans version on ne SAIT pas : ne rien toucher — et ne pas
+        conclure non plus.
+
+        Le code rendu était 0, c'est-à-dire « tout concorde », alors que le
+        contrôle des `<tree>` n'avait PAS eu lieu : un script qui lit le
+        code lisait une base saine. Ne rien écrire reste la bonne conduite ;
+        l'annoncer propre n'en était pas une.
+        """
         self.branche(None)
-        code, _ = self.lance(["-d", "db"])
-        self.assertEqual(code, 0)
+        code, sortie = self.lance(["-d", "db"])
+        self.assertEqual(code, 2)
+        self.assertEqual(self.ecritures, [])
+        self.assertNotIn(
+            todo_i18n.t("Every view agrees with what Odoo expects."), sortie
+        )
 
     def test_apply_writes_once_per_repair(self):
         appels = {"n": 0}
@@ -598,6 +620,108 @@ class TestTranslations(unittest.TestCase):
                     cle in todo_i18n.TRANSLATIONS,
                     f"clé sans traduction : {cle!r}",
                 )
+
+
+class TestUneBaseMuetteNeConclutJamais(unittest.TestCase):
+    """Cinq lectures, cinq occasions de lire « propre » sur du silence.
+
+    `run_psql` rend None quand la commande échoue, et None est FAUX. Avalé,
+    il faisait passer une base muette pour une base sans rien à corriger —
+    y compris à la RELECTURE d'après écriture, c'est-à-dire là où une
+    connexion tombe justement.
+    """
+
+    # Ce que chaque relevé demande, dans l'ordre où il le demande. Le
+    # fragment de SQL sert à reconnaître la question, pas à la valider.
+    RELEVES = (
+        ("WITH RECURSIVE", "les vues fautives"),
+        ("information_schema", "le type de la colonne arch_db"),
+        ("latest_version", "la version d'Odoo"),
+        ("<tree", "les vues qui portent un <tree>"),
+    )
+
+    def setUp(self):
+        self.vrai = fvt.run_psql
+        self.addCleanup(lambda: setattr(fvt, "run_psql", self.vrai))
+        self.ecritures = []
+
+    def banc(self, muet, tour_muet=1):
+        """Un banc qui répond à tout, sauf au relevé `muet`."""
+        vus = {"n": 0}
+
+        def faux(database, sql, read_only=True):
+            if not read_only:
+                self.ecritures.append(sql)
+                return []
+            if muet in sql:
+                vus["n"] += 1
+                if vus["n"] >= tour_muet:
+                    return None
+            if "latest_version" in sql:
+                return [["18.0.1.3"]]
+            if "information_schema" in sql:
+                return [["jsonb"]]
+            if "<tree" in sql:
+                return []
+            return []
+
+        fvt.run_psql = faux
+
+    def lance(self, argv):
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            code = fvt.main(argv)
+        return code, tampon.getvalue()
+
+    def test_any_silent_probe_refuses_to_conclude(self):
+        for fragment, quoi in self.RELEVES:
+            with self.subTest(releve=quoi):
+                self.banc(fragment)
+                code, sortie = self.lance(["-d", "db"])
+                self.assertEqual(code, 2, quoi)
+                self.assertNotIn(
+                    todo_i18n.t("Every view agrees with what Odoo expects."),
+                    sortie,
+                    quoi,
+                )
+
+    def test_a_reread_that_goes_silent_is_not_a_correction(self):
+        """C'est APRÈS l'écriture qu'une connexion tombe, et la relecture
+        d'après écriture est le seul contrôle qui distingue « corrigé » de
+        « on a écrit »."""
+        vus = {"n": 0}
+
+        def faux(database, sql, read_only=True):
+            if not read_only:
+                self.ecritures.append(sql)
+                return []
+            if "latest_version" in sql:
+                return [["18.0.1.3"]]
+            if "information_schema" in sql:
+                return [["jsonb"]]
+            if "<tree" in sql:
+                return []
+            vus["n"] += 1
+            # Le premier relevé trouve une vue ; la relecture se tait.
+            if vus["n"] == 1:
+                return [["3931", "form", "list", "primary", "-", "x"]]
+            return None
+
+        fvt.run_psql = faux
+        code, sortie = self.lance(["-d", "db", "--apply"])
+        self.assertEqual(code, 2)
+        self.assertEqual(1, len(self.ecritures))
+        self.assertNotIn(todo_i18n.t("Corrected."), sortie)
+
+    def test_a_database_that_answers_everything_still_concludes(self):
+        """Contrôle positif : refuser de conclure toujours passerait les
+        deux précédents."""
+        self.banc("jamais-dans-une-requete")
+        code, sortie = self.lance(["-d", "db"])
+        self.assertEqual(code, 0)
+        self.assertIn(
+            todo_i18n.t("Every view agrees with what Odoo expects."), sortie
+        )
 
 
 if __name__ == "__main__":
