@@ -2343,6 +2343,22 @@ class TestKeepingWhatARunWrote(Base):
 class TestSwitchingTheCheckoutFirst(Base):
     """Lancer un outil sur une base d'un autre palier ÉCRIT dedans."""
 
+    # Le palier du checkout se lit dans « .odoo-version », un fichier
+    # PRODUIT et non versionné : il manque sur un clone où la préparation
+    # n'a pas tourné, et checkout_version() rend alors None. Fixer les
+    # deux paliers ici tient ces tests sur la logique de bascule plutôt
+    # que sur l'état de la machine. Les deux valeurs sont des paliers de
+    # la chaîne que dct() décrit, sans quoi version_of() ne les situe pas.
+    COURANTE = 18
+    AUTRE = 16
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(
+            setattr, quality, "checkout_version", quality.checkout_version
+        )
+        quality.checkout_version = lambda *args, **kwargs: self.COURANTE
+
     def dct(self):
         return {
             "config_database_name": "base",
@@ -2351,16 +2367,21 @@ class TestSwitchingTheCheckoutFirst(Base):
         }
 
     def test_the_same_version_needs_no_switch(self):
-        courante = quality.checkout_version()
         self.assertIsNone(
-            qtui.switch_needed("base_upgrade_%d" % courante, self.dct())
+            qtui.switch_needed("base_upgrade_%d" % self.COURANTE, self.dct())
         )
 
     def test_another_tier_names_its_make_target(self):
-        courante = quality.checkout_version()
-        autre = 16 if courante != 16 else 15
-        besoin = qtui.switch_needed("base_upgrade_%d" % autre, self.dct())
-        self.assertEqual((autre, "switch_odoo_%d" % autre), besoin)
+        besoin = qtui.switch_needed("base_upgrade_%d" % self.AUTRE, self.dct())
+        self.assertEqual((self.AUTRE, "switch_odoo_%d" % self.AUTRE), besoin)
+
+    def test_an_unknown_checkout_proposes_nothing(self):
+        # Sans « .odoo-version », le palier du checkout est inconnu :
+        # proposer une bascule reviendrait à en deviner la cible.
+        quality.checkout_version = lambda *args, **kwargs: None
+        self.assertIsNone(
+            qtui.switch_needed("base_upgrade_%d" % self.AUTRE, self.dct())
+        )
 
     def test_a_database_outside_the_chain_asks_for_nothing(self):
         # On ne sait pas à quel palier elle est : proposer une bascule au

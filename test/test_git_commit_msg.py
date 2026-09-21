@@ -15,6 +15,14 @@ Les messages sont traduits. Les assertions qui citent du texte fixent donc la
 langue à « fr » pour la durée du module : sinon elles dépendraient de EL_LANG,
 et un poste en anglais les ferait toutes échouer.
 """
+
+# Ces épreuves doivent PORTER une donnée détectée : c'est tout ce
+# qu'elles prouvent. Les valeurs sont inventées et déclarées ici.
+# hygiene-exemple: 172.20.99.152
+# hygiene-exemple: 172.20.99.5
+# hygiene-exemple: a@b.ca
+# hygiene-exemple: a@y.ca
+
 import os
 import subprocess
 import sys
@@ -226,7 +234,7 @@ class TestLeCorps(unittest.TestCase):
 
     def test_une_ligne_checked_reste_du_corps(self):
         """« Checked: » ressemble à un trailer : il ne doit pas s'y soustraire."""
-        self.assertTrue(check(_message("Checked: 10.10.10.152 répond.")))
+        self.assertTrue(check(_message("Checked: 172.20.99.152 répond.")))
 
     def test_la_liste_privee_absente_ne_refuse_rien(self):
         origine = commit_msg_lib.NOMS_INTERDITS
@@ -323,14 +331,14 @@ class TestLesDeuxLangues(unittest.TestCase):
         self.assertIn("KEYWORDS", probleme)
 
     def test_les_identifiants_se_disent_en_anglais(self):
-        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        corps = "[FIX] portée : sujet\n\nUne raison, 172.20.99.5 et a@b.ca.\n"
         problemes = " ".join(self._en(corps))
         self.assertIn("IP address", problemes)
         self.assertIn("e-mail address", problemes)
 
     def test_les_deux_langues_signalent_AUTANT_de_problemes(self):
         """Traduire ne doit ni ajouter ni perdre un refus."""
-        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        corps = "[FIX] portée : sujet\n\nUne raison, 172.20.99.5 et a@b.ca.\n"
         todo_i18n._current_lang = "fr"
         fr = len(check(corps))
         self.assertEqual(fr, len(self._en(corps)))

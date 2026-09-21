@@ -121,7 +121,7 @@ def extract_body(raw: bytes) -> tuple[str, list[Attachment]]:
 
 
 def short_addr(value: str) -> str:
-    """« Alice Tremblay <a@y.ca> » → « Alice Tremblay ». Sinon l'adresse."""
+    """« Alice Tremblay <a@example.com> » → « Alice Tremblay ». Sinon l'adresse."""
     if not value:
         return ""
     from email.utils import getaddresses

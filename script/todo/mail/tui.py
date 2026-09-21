@@ -437,7 +437,7 @@ def save_attachment(raw: bytes, index: int, directory) -> "pathlib.Path":
 
 
 def parse_recipients(raw: str) -> list[str]:
-    """« a@y.ca; Alice <b@y.ca> » → deux entrées. Virgule ou point-virgule."""
+    """« a@example.com; Alice <b@example.com> » → deux entrées. Virgule ou point-virgule."""
     if not raw:
         return []
     parts = raw.replace(";", ",").split(",")
