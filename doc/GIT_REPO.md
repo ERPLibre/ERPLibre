@@ -31,7 +31,7 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin
 [Guide to setup locally git](https://railsware.com/blog/taming-the-git-daemon-to-quickly-share-git-repository/).
 
 ```bash
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors --verbose &
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
 .venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
@@ -67,7 +67,7 @@ keep specific version:
 ./script/git/git_merge_repo_manifest.py --input "./manifest/default.dev.xml;./default.xml" --output ./manifest/default.staged.xml
 git commit -am "Updated manifest/default.staged.xml"
 
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors --verbose &
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
 .venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.staged.xml

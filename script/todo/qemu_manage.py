@@ -23,6 +23,8 @@ from script.todo.qemu_privilege import (
     virsh_argv,
 )
 from script.todo.todo_i18n import t
+from script.vm import backend as vm_backend
+from script.vm import verbs as vm_verbs
 
 # Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
 # standard ils sont en 0644 dans un répertoire en 0755, donc lisibles sans
@@ -2511,11 +2513,63 @@ class QemuManageMixin:
             return []
         return [n for n in res.stdout.split() if n.strip()]
 
+    def _qemu_confirm_deletion(self, chosen) -> bool:
+        """La confirmation, et elle n'est pas une touche.
+
+        UNE MACHINE : son nom se RETAPE. C'est la règle du dépôt pour ce qui
+        détruit, et la raison est déjà écrite ailleurs — recopier un nom
+        long oblige à regarder ce qu'on détruit, là où « o » se tape par
+        réflexe.
+
+        PLUSIEURS : retaper cinq noms est inutilisable, et le repli est leur
+        NOMBRE. Il ne se donne pas de réflexe puisqu'il faut avoir lu le
+        bloc pour le connaître, et il attrape l'erreur qui compte ici — un
+        ensemble plus large qu'on croyait.
+
+        Le nombre plutôt qu'un mot : un mot appartiendrait à une langue, et
+        l'écran en parle deux.
+        """
+        if len(chosen) == 1:
+            tape = input(
+                t("Type the VM name to confirm (empty to cancel): ")
+            ).strip()
+            return tape == chosen[0]
+        tape = input(
+            f"{t('Type how many VMs are deleted')} ({len(chosen)}): "
+        ).strip()
+        return tape == str(len(chosen))
+
+    def _qemu_list_domains_proved(self):
+        """Les domaines AVEC leur preuve d'identité, en un seul appel.
+
+        Le nom adresse, l'UUID prouve. Les deux se lisent ensemble parce que
+        les deux options de l'inventaire ne s'excluent pas : un appel par
+        machine se verrait devant un menu.
+
+        La preuve se lit AU MOMENT DE L'AFFICHAGE, et c'est là tout son
+        intérêt. Lue juste avant d'effacer, elle se comparerait à elle-même
+        et ne prouverait rien ; lue ici, elle ferme la fenêtre entre ce que
+        l'opérateur a vu et ce qui sera détruit — trois questions plus
+        loin.
+        """
+        try:
+            res = subprocess.run(
+                virsh_argv("list", "--all", "--uuid", "--name"),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ()
+        return vm_backend.parse_uuid_listing(res.stdout)
+
     def _qemu_delete_vm(self):
         """Efface une ou plusieurs VM (arrêt + undefine), disques en option."""
         self._qemu_list_vms()
         print()
-        names = self._qemu_list_domains()
+        domaines = self._qemu_list_domains_proved()
+        preuves = {d.name: d for d in domaines}
+        names = [d.name for d in domaines]
         if not names:
             print(t("No VM found."))
             return
@@ -2539,27 +2593,50 @@ class QemuManageMixin:
             input(t("Also delete disk images (qcow2 + seed ISO)? (y/N): "))
         )
 
-        print(f"\n{t('Will delete:')} {', '.join(chosen)}")
+        # CE QUE LE GARDE N'ATTRAPE PAS. Il compare une preuve : il voit un
+        # nom qui a changé de porteur, jamais un « 3 » tapé pour un « 2 ».
+        # Cet indice-là désigne un domaine RÉEL, correctement identifié, et
+        # la preuve concorde. Seule une saisie voit cette erreur.
+        print(f"\n{t('Will delete:')}")
+        for name in chosen:
+            handle = preuves.get(name)
+            preuve = handle.proof if handle else ""
+            print(f"  {name}  [{preuve or t('no proof')}]")
+            for chemin in self._qemu_vm_own_files(name) if del_disks else []:
+                print(f"      {chemin}")
         if del_disks:
             print(f"  + {t('disk images and seed ISOs')}")
         else:
             print(f"  ({t('disks kept')})")
-        if not self._is_yes(input(t("Confirm deletion? (y/N): "))):
+        if not self._qemu_confirm_deletion(chosen):
             print(t("Cancelled."))
             return
 
         for name in chosen:
-            q = shlex.quote(name)
+            handle = preuves.get(name)
+            # UN MENU QUI VIENT DE LIRE LA LISTE NE DÉSARME PAS. La
+            # bibliothèque, elle, tolère une preuve absente : sur un poste où
+            # l'on n'a pas pu la relever, mieux vaut la prudence d'avant.
+            # Ici, un domaine énuméré porte TOUJOURS son UUID — une preuve
+            # manquante ne décrit pas une station, elle décrit une lecture
+            # cassée, et retomber sur le nom serait un échec OUVERT.
+            if handle is None or not vm_backend.is_armed(handle):
+                print(f"  ⛔ {name} : {t('no identity proof; refused')}")
+                continue
             # Les fichiers AVANT l'undefine : après, plus de XML à lire.
+            # Et ils sont LUS, jamais déduits du nom : une VM renommée garde
+            # le nom de fichier d'avant, et un fichier partagé avec une
+            # voisine ne s'efface pas. Le verbe, lui, déduirait — d'où
+            # « with_disks=False » et la liste d'ici.
             fichiers = self._qemu_vm_own_files(name) if del_disks else []
-            # Éteindre si en cours, puis retirer la définition (+ nvram si
-            # UEFI ; repli sans l'option pour les vieilles versions de virsh).
-            cmd = (
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            # Le verbe porte le garde d'identité : le nom adresse, l'UUID
+            # prouve, et la suite s'arrête avant d'effacer si le nom a changé
+            # de porteur depuis l'affichage.
+            cmd = vm_verbs.delete_command(
+                handle,
+                with_disks=False,
+                sudo=sudo_prefix(),
+                uri=URI,
             )
             if del_disks and fichiers:
                 cmd += "; sudo rm -f " + " ".join(
@@ -2752,7 +2829,11 @@ class QemuManageMixin:
     def _cleanup_ghost_domains(self):
         """VM définies dont plus aucun disque n'existe -> propose undefine."""
         ghosts = []
-        for name in self._qemu_list_domains():
+        # Les preuves se lisent AVEC la liste, avant la question : le
+        # domaine défini pendant que l'opérateur lit l'écran ne doit pas se
+        # faire retirer sa définition sous un nom qu'il vient de prendre.
+        preuves = {d.name: d for d in self._qemu_list_domains_proved()}
+        for name in list(preuves):
             try:
                 res = subprocess.run(
                     virsh_argv("domblklist", name, "--details"),
@@ -2786,13 +2867,17 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for name in ghosts:
-            q = shlex.quote(name)
-            cmd = (
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            handle = preuves.get(name)
+            if handle is None or not vm_backend.is_armed(handle):
+                print(f"  ⛔ {name} : {t('no identity proof; refused')}")
+                continue
+            # Le même verbe gardé que l'effacement : aucun disque ici — un
+            # fantôme n'en a plus, c'est ce qui le définit.
+            cmd = vm_verbs.delete_command(
+                handle,
+                with_disks=False,
+                sudo=sudo_prefix(),
+                uri=URI,
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)

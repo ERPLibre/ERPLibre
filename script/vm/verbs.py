@@ -154,17 +154,38 @@ def delete_command(
     )
 
 
-def _delete_pve(handle, purge: bool) -> str:
-    """« virsh undefine <nom> » aurait effacé le domaine LOCAL homonyme —
-    le même piège que partout ailleurs, avec la pire conséquence."""
+def pve_delete_suite(handle, purge: bool = True) -> str:
+    """La suite à jouer SUR l'hôte Proxmox : garde, arrêt, destruction.
+
+    Une SUITE et non une commande : elle ne porte aucun ssh, parce que deux
+    appelants la mènent à l'hôte par des chemins différents — l'un compose
+    la ligne ssh ici, l'autre a déjà son transport ouvert. Écrite deux fois,
+    elle divergerait, et c'est le chemin recopié qui perdrait le garde.
+
+    UNE SEULE CHAÎNE, ET C'EST LE POINT. Rendue en deux morceaux joués dans
+    deux shells, le « exit 1 » du garde ne fermait que le premier : la
+    destruction partait quand même. Le garde ne vaut que dans le shell qu'il
+    peut arrêter.
+    """
+    if handle is None:
+        raise VerbNotImplemented("pve_delete_suite : aucune identité.")
+    if handle.backend != PVE:
+        raise VerbNotImplemented(
+            f"pve_delete_suite : backend « {handle.backend} » — cette suite"
+            " ne parle qu'à un hôte Proxmox."
+        )
     vmid = int(handle.key)
-    suite = identity_guard(handle)
-    suite += (
+    return identity_guard(handle) + (
         f"qm stop {vmid} --skiplock 1 || true; "
         f"qm destroy {vmid}"
         f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
     )
-    return host_command(handle, suite)
+
+
+def _delete_pve(handle, purge: bool) -> str:
+    """« virsh undefine <nom> » aurait effacé le domaine LOCAL homonyme —
+    le même piège que partout ailleurs, avec la pire conséquence."""
+    return host_command(handle, pve_delete_suite(handle, purge))
 
 
 def _delete_libvirt(handle, with_disks: bool, sudo: str, uri: str) -> str:

@@ -23,6 +23,17 @@ DEFAULT_ERPLIBRE_PATH = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
 DEFAULT_GIT_PATH = os.path.join(os.path.expanduser("~"), ".git-server")
+
+# L'adresse d'écoute par défaut. La boucle locale, parce que le protocole
+# git n'authentifie personne : ce qui atteint le port atteint les dépôts,
+# et un démon lancé pour miroiter un manifeste sur son propre poste n'a
+# aucune raison d'être joignable depuis le réseau.
+DEFAULT_LISTEN = "127.0.0.1"
+
+# Les adresses qui SONT la boucle locale. Un nom d'hôte n'en est pas un
+# membre, « localhost » compris : il se résout où le résolveur le dit, et
+# rien ne garantit qu'il désigne l'interface locale.
+LOOPBACK = ("127.0.0.1", "::1")
 PRODUCTION_GIT_PATH = "/srv/git"
 DEFAULT_MANIFEST = ".repo/local_manifests/erplibre_manifest.xml"
 DEFAULT_REMOTE_NAME = "local"
@@ -101,6 +112,23 @@ Use --production-ready for /srv/git (requires root).
         "--remote-name",
         default=DEFAULT_REMOTE_NAME,
         help=f"Remote name to add (default: {DEFAULT_REMOTE_NAME})",
+    )
+    parser.add_argument(
+        "--listen",
+        default=DEFAULT_LISTEN,
+        help=(
+            f"Address the daemon binds (default: {DEFAULT_LISTEN})."
+            " The git protocol authenticates nobody: whatever reaches the"
+            " port reaches the repositories."
+        ),
+    )
+    parser.add_argument(
+        "--allow-anonymous-push",
+        action="store_true",
+        help=(
+            "Enable receive-pack, hence ANONYMOUS writing: the git protocol"
+            " does not know who pushes, and nothing will record it."
+        ),
     )
     parser.add_argument(
         "--port",
@@ -656,13 +684,27 @@ async def push_to_local(
 # --- Serve (stays synchronous — long-running daemon) ---
 
 
-def print_clone_commands(git_path, projects, port):
+def url_host(listen):
+    """L'adresse telle qu'une URL git l'écrit.
+
+    Une adresse IPv6 se met entre crochets, sans quoi ses deux-points se
+    confondent avec le séparateur de port et l'URL devient illisible.
+
+    L'URL imprimée nomme l'adresse RÉELLEMENT liée, et non « localhost » :
+    le démon se lie à une seule adresse, alors qu'un nom d'hôte se résout
+    où le résolveur le dit. « localhost » rendant ::1 en premier sur un
+    démon lié en IPv4 donne un refus de connexion, que l'URL affichée
+    contredit.
+    """
+    return f"[{listen}]" if ":" in listen else listen
+
+
+def print_clone_commands(git_path, projects, port, listen=DEFAULT_LISTEN):
     """Print git clone commands for all available repos."""
     print("=== Available repos to clone ===")
+    hote = url_host(listen)
     base_url = (
-        f"git://localhost:{port}"
-        if port != DEFAULT_PORT
-        else "git://localhost"
+        f"git://{hote}:{port}" if port != DEFAULT_PORT else f"git://{hote}"
     )
     lines = []
     for project in projects:
@@ -682,21 +724,60 @@ def print_clone_commands(git_path, projects, port):
     print()
 
 
-def serve_git_daemon(git_path, projects, port):
-    """Start git daemon to serve repos."""
-    print_clone_commands(git_path, projects, port)
+def daemon_command(git_path, port, listen=DEFAULT_LISTEN, writable=False):
+    """La ligne du démon git. Rend une CHAÎNE, n'exécute rien.
 
-    cmd = (
-        f"git daemon --reuseaddr"
-        f" --base-path={git_path}"
-        f" --port={port}"
-        f" --export-all"
-        f" --enable=receive-pack"
-        f" {git_path}"
-    )
+    LE PROTOCOLE GIT N'AUTHENTIFIE PERSONNE — ni compte, ni mot de passe, ni
+    trace d'auteur. Tout ce qui atteint le port a les droits que le démon
+    accorde, et c'est ce qui fixe les deux défauts.
+
+    « --listen » est toujours posé, sur la boucle locale. Sans lui le démon
+    se lie à toutes les interfaces, et le dépôt est offert à ce qui atteint
+    la machine. Servir plus loin se demande.
+
+    « --enable=receive-pack » ne l'est que sur demande : il ouvre l'écriture,
+    et faute d'authentification cette écriture est anonyme — un push de
+    n'importe qui, sans auteur à retrouver. L'un ou l'autre élargissement
+    seul est déjà large ; les deux ensemble sont une porte.
+
+    « --export-all » n'ouvre que la LECTURE, et seulement à qui « --listen »
+    laisse entrer. Il rend un miroir de manifeste utilisable sans marquer
+    chaque dépôt un par un.
+    """
+    parts = [
+        "git daemon",
+        "--reuseaddr",
+        f"--listen={listen}",
+        f"--base-path={git_path}",
+        f"--port={port}",
+        "--export-all",
+    ]
+    if writable:
+        parts.append("--enable=receive-pack")
+    parts.append(str(git_path))
+    return " ".join(parts)
+
+
+def serve_git_daemon(
+    git_path, projects, port, listen=DEFAULT_LISTEN, writable=False
+):
+    """Start git daemon to serve repos."""
+    print_clone_commands(git_path, projects, port, listen=listen)
+
+    cmd = daemon_command(git_path, port, listen=listen, writable=writable)
+    if writable:
+        print(
+            "  ⚠ écriture ANONYME activée : le protocole git n'authentifie"
+            " personne, et rien ne dira qui a poussé."
+        )
+    if listen not in LOOPBACK:
+        print(
+            f"  ⚠ écoute sur {listen} : ce qui atteint cette adresse atteint"
+            " les dépôts."
+        )
     print(f"Starting git daemon on port {port}...")
     print(f"  Base path: {git_path}")
-    print(f"  URL: git://localhost:{port}/")
+    print(f"  URL: git://{url_host(listen)}:{port}/")
     print("  Press Ctrl+C to stop")
 
     execute = Execute()
@@ -795,7 +876,13 @@ def main():
     # Serve is synchronous (long-running daemon)
     if config.action in ("serve", "all"):
         print("=== Starting git daemon ===")
-        serve_git_daemon(config.path, projects, config.port)
+        serve_git_daemon(
+            config.path,
+            projects,
+            config.port,
+            listen=config.listen,
+            writable=config.allow_anonymous_push,
+        )
 
 
 if __name__ == "__main__":

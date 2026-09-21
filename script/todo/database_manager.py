@@ -6,8 +6,8 @@ import datetime
 import getpass
 import logging
 import os
-import zipfile
 
+from script.database import backup_verify
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -387,16 +387,21 @@ class DatabaseManager:
             return_status_and_command=True,
             new_env=my_env,
         )
-        try:
-            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
-                manifest_file_1 = zip_ref.open("manifest.json")
-            _logger.info(
-                f"Log file '{default_output_path}' is complete and validated."
-            )
-        except Exception as e:
-            _logger.error(e)
+        # LE FICHIER QUI VIENT D'ÊTRE ÉCRIT, et non celui du défaut : quand
+        # l'opérateur choisit un autre chemin, la relecture portait sur une
+        # sauvegarde d'avant — ou sur rien — et l'écran annonçait quand même
+        # « validée ».
+        #
+        # Et le manifeste ne prouve rien : il manque légitimement aux
+        # sauvegardes produites ailleurs, tandis que le dump, lui, est la
+        # seule pièce indispensable. Le contrôle dit désormais JUSQU'OÙ il
+        # est allé, ce qui n'est pas la même chose que « validée ».
+        constat = backup_verify.verify(output_path)
+        if constat.verdict == backup_verify.SOUND:
+            _logger.info(f"'{output_path}' : {', '.join(constat.checks)}.")
+        else:
             _logger.error(
-                "Failed to read manifest.json from backup file"
-                f" '{default_output_path}'."
+                f"'{output_path}' : {constat.verdict}"
+                f" ({', '.join(constat.checks) or t('nothing checked')})."
             )
         return status, output_path, database_name

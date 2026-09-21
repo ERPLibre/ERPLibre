@@ -13,6 +13,11 @@ fi
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 # Update git-repo : local git daemon serving the repo over git://127.0.0.1:9418.
+# --listen binds the loopback only. Without it the daemon binds every
+# interface, and --export-all then offers every repository under the base
+# path for reading to whatever reaches the port: the git protocol asks for
+# no credential. It goes AFTER --export-all, because the pkill pattern
+# below matches "--base-path=. --export-all" as one contiguous string.
 # Kill any leftover daemon from a previous (interrupted) run first: otherwise the
 # stale server keeps port 9418, the new daemon fails to bind ("Address already in
 # use"), and the cleanup kill below fails on an already-dead PID -> script exit 1.
@@ -23,7 +28,7 @@ if pkill -f "daemon --base-path=. --export-all" 2>/dev/null; then
   sleep 1  # let the kernel release port 9418 before we rebind
 fi
 
-git daemon --base-path=. --export-all --reuseaddr --informative-errors ${DAEMON_VERBOSE} &
+git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors ${DAEMON_VERBOSE} &
 DAEMON_PID=$!
 # Always stop the daemon we started, whatever happens next (success or error),
 # without ever failing the script if it is already gone.

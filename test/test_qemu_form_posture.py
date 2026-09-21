@@ -146,6 +146,28 @@ class TestCeQueLEcranPropose(unittest.TestCase):
     def test_the_screen_opens_on_the_freest_one(self):
         self.assertEqual(R.DEFAULT_POSTURE, self._monte()["defaut"])
 
+    def test_the_real_data_box_comes_out_in_the_values(self):
+        """Le maillon qui manquait au choix de suivi : le widget existe, et
+        sa valeur n'est recopiée nulle part."""
+        from textual.widgets import Checkbox
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+
+        async def scenario():
+            app = run_deploy_form(self.ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                vu["defaut"] = app._form_values()["real_data"]
+                app.query_one("#f_real_data", Checkbox).value = True
+                await pilote.pause()
+                vu["coche"] = app._form_values()["real_data"]
+
+        asyncio.run(scenario())
+        self.assertFalse(vu["defaut"])
+        self.assertTrue(vu["coche"])
+
     def test_what_is_chosen_comes_out_in_the_values(self):
         """Le maillon qui manquait au choix de suivi : le widget existait,
         et sa valeur n'était recopiée nulle part."""

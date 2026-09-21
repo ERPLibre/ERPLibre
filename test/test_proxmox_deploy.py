@@ -395,9 +395,56 @@ class TestLesCommandes(unittest.TestCase):
         self.assertNotIn("rm", args)
 
     def test_destroy_stops_first_and_purges(self):
-        cmds = pve.destroy_cmds(100)
-        self.assertIn("qm stop 100", cmds[0])
-        self.assertIn("--purge 1", cmds[1])
+        cmd = pve.destroy_cmd(100, "vm-essai")
+        self.assertLess(cmd.index("qm stop 100"), cmd.index("qm destroy"))
+        self.assertIn("--purge 1", cmd)
+
+    def test_destroy_refuses_before_it_destroys(self):
+        """Le VMID adresse, le nom prouve : un VMID libéré est RÉATTRIBUÉ,
+        et détruire « le 101 » d'un écran d'il y a trois questions détruit
+        ce qui porte le 101 maintenant — disques et sauvegardes compris."""
+        cmd = pve.destroy_cmd(101, "vm-essai")
+        self.assertLess(cmd.index("REFUS"), cmd.index("qm destroy"))
+        self.assertIn("vm-essai", cmd)
+
+    def test_destroy_is_one_string_and_not_two(self):
+        """Rendues en deux morceaux, elles étaient jouées dans DEUX shells
+        distants : le « exit 1 » du garde ne fermait que le premier, et la
+        destruction partait quand même."""
+        cmd = pve.destroy_cmd(101, "vm-essai")
+        self.assertIsInstance(cmd, str)
+        self.assertLess(cmd.index("exit 1"), cmd.index("qm stop"))
+
+    def test_destroy_without_purge_keeps_the_disks(self):
+        """Contrôle positif : « --purge » était inconditionnel côté menu,
+        et « --destroy-unreferenced-disks » l'était tout à fait."""
+        cmd = pve.destroy_cmd(101, "vm-essai", purge=False)
+        self.assertNotIn("--purge", cmd)
+        self.assertNotIn("--destroy-unreferenced-disks", cmd)
+
+    def test_destroy_does_not_write_the_suite_itself(self):
+        """Deux copies divergent, et c'est celle du menu qui perdrait le
+        garde. Le corps vient du verbe partagé."""
+        import ast
+        import os
+
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        chemin = os.path.join(racine, "script", "proxmox", "proxmox_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "destroy_cmd"
+        ][0]
+        appels = [
+            noeud.func.attr
+            for noeud in ast.walk(corps)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+        ]
+        self.assertIn("pve_delete_suite", appels)
 
     def test_the_image_is_fetched_once_on_the_host(self):
         cmd = pve.image_fetch_cmd("https://x/deb.qcow2", "deb.qcow2")
