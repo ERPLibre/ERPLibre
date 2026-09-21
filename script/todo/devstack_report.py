@@ -218,6 +218,27 @@ def render_capabilities(caps: Sequence[Capability]) -> str:
     return _section(t("Capabilities"), lignes)
 
 
+def render_layers(verdicts: Sequence[LayerVerdict]) -> str:
+    """Le bloc des couches : une ligne chacune, son remède en dessous.
+
+    Une liste VIDE le dit. Une vérification qui n'a rien sondé n'a rien
+    prouvé, et un bloc muet se lirait comme « tout va bien » — c'est le
+    mensonge que `worst_code` refuse déjà de faire sur le code.
+    """
+    if not verdicts:
+        return _section(t("Layers"), [_line("-", t("Nothing was probed"), "")])
+    lignes = []
+    for verdict in verdicts:
+        # Le nom de couche se rend BRUT, comme LAYERS le prescrit : traduit,
+        # il tomberait sur une clé existante dont l'émoji casse la colonne.
+        lignes.append(
+            _line(MARKS[verdict.code], verdict.layer, verdict.detail)
+        )
+        if verdict.code != DS_OK and verdict.remedy:
+            lignes.append(_line(" ", "", f"{t('Remedy:')} {verdict.remedy}"))
+    return _section(t("Layers"), lignes)
+
+
 def diag(text: str, stream: TextIO | None = None) -> None:
     """Écrit un diagnostic sur stderr.
 

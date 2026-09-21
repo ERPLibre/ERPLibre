@@ -69,20 +69,30 @@ class HostMemory:
         todo_prefs.set(self._pref_key, {})
 
     def label(self, host: dict) -> str:
-        """« nom — compte@adresse (par rebond) — PVE 9.2 », en tête de menu.
+        """Le libellé de la fiche, avec le nom court de CETTE appliance."""
+        return label(host, self._version_label)
 
-        Le nom passe DEVANT l'adresse : quand plusieurs fiches coexistent,
-        c'est lui qu'on a choisi et lui qu'on relit pour vérifier qu'on
-        s'adresse à la bonne machine. Une fiche qui n'en porte pas rend la
-        même chaîne qu'avant, au caractère près.
-        """
-        if not host:
-            return ""
-        libelle = host.get("target", "?")
-        if host.get("name"):
-            libelle = f"{host['name']} — {libelle}"
-        if host.get("jump"):
-            libelle += f" ({t('through')} {host['jump']})"
-        if host.get("version") and self._version_label:
-            libelle += f" — {self._version_label} {host['version']}"
-        return libelle
+
+def label(host: dict, version_label: str = "") -> str:
+    """« nom — compte@adresse (par rebond) — PVE 9.2 », en tête de menu.
+
+    Une FONCTION et pas seulement une méthode : un écran qui ne se sert pas
+    des deux étages de mémoire — parce que son choix est un nom relu ailleurs
+    — a quand même besoin d'écrire une fiche, et instancier une mémoire pour
+    sa seule mise en forme ferait croire qu'il en lit une.
+
+    Le nom passe DEVANT l'adresse : quand plusieurs fiches coexistent, c'est
+    lui qu'on a choisi et lui qu'on relit pour vérifier qu'on s'adresse à la
+    bonne machine. Une fiche qui n'en porte pas rend la même chaîne qu'avant,
+    au caractère près.
+    """
+    if not host:
+        return ""
+    libelle = host.get("target", "?")
+    if host.get("name"):
+        libelle = f"{host['name']} — {libelle}"
+    if host.get("jump"):
+        libelle += f" ({t('through')} {host['jump']})"
+    if host.get("version") and version_label:
+        libelle += f" — {version_label} {host['version']}"
+    return libelle

@@ -26,7 +26,9 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.remote import deploy_target, host_memory
 from script.todo import (
+    deploy_target_menu,
     dev_tools,
     host_os,
     ssh_config,
@@ -35,6 +37,7 @@ from script.todo import (
 )
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.deploy_target_menu import DeployTargetMenuMixin
 from script.todo.devstack_menu import DevstackMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -118,6 +121,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     DevstackMenuMixin,
+    DeployTargetMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1073,6 +1077,7 @@ class TODO(
     def prompt_execute_deploy_ssh(self):
         """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
         print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
+        self._deploy_ssh_show_target()
         choices = [
             {"prompt_description": t("SSH - Check connection")},
             {"prompt_description": t("SSH - Sync files (rsync)")},
@@ -1085,6 +1090,13 @@ class TODO(
             {"prompt_description": t("SSH - Run make target")},
             {"prompt_description": t("SSH - Install systemd service")},
             {"prompt_description": t("SSH - Configure nginx + SSL")},
+            # DOUZIÈME, et déclarée par « method » : posée ailleurs, elle
+            # décalerait les onze rangs que les « elif » ci-dessous codent en
+            # dur, et « voir les journaux » redémarrerait Odoo.
+            {
+                "prompt_description": t("SSH - Choose the target machine"),
+                "method": "_deploy_ssh_targets",
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1115,7 +1127,7 @@ class TODO(
                 self._deploy_ssh_install_systemd()
             elif status == "11":
                 self._deploy_ssh_install_nginx()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     @staticmethod
@@ -1536,6 +1548,66 @@ class TODO(
         flush()
         return "".join(out)
 
+    # Ce qu'on fait de la clé d'hôte, une politique par ligne écrite.
+    _SSH_HOST_KEY_LINES = {
+        # Machines jetables dont l'IP se réutilise entre deux VM : vérifier
+        # refuserait une machine neuve à chaque fois, et known_hosts se
+        # remplirait d'entrées mortes. Ne protège de rien, et l'assume.
+        "throwaway": (
+            "    StrictHostKeyChecking no\n"
+            "    UserKnownHostsFile /dev/null\n"
+        ),
+        # La première connexion est acceptée et RETENUE : un changement
+        # ultérieur est alors refusé, ce que « no » ne fait jamais.
+        "accept-new": "    StrictHostKeyChecking accept-new\n",
+        # Rien n'est accepté qui ne soit déjà connu.
+        "strict": "    StrictHostKeyChecking yes\n",
+    }
+
+    # Les redirections, par genre. Le genre choisit la directive ; la
+    # spécification est recopiée telle quelle, après contrôle.
+    _SSH_FORWARD_DIRECTIVES = {
+        "local": "LocalForward",
+        "remote": "RemoteForward",
+        "dynamic": "DynamicForward",
+    }
+
+    @classmethod
+    def _genre_de_redirection(cls, genre):
+        """La directive OpenSSH d'un genre de redirection, ou une erreur.
+
+        Refuser un genre inconnu ICI plutôt que d'écrire une ligne que ssh
+        rejettera : il refuse alors le FICHIER entier, donc toutes les
+        machines, pour une seule entrée mal formée.
+        """
+        directive = cls._SSH_FORWARD_DIRECTIVES.get(genre)
+        if directive is None:
+            connus = ", ".join(cls._SSH_FORWARD_DIRECTIVES)
+            raise ValueError(
+                f"forwards : genre « {genre} » inconnu. Connus : {connus}."
+            )
+        return directive
+
+    @staticmethod
+    def _ssh_config_value(valeur, champ):
+        """Une valeur destinée à une ligne de ~/.ssh/config, ou une erreur.
+
+        Dans ce fichier, une LIGNE est une directive : il n'y a ni
+        guillemets ni échappement qui protégeraient. Un saut de ligne dans
+        une valeur y ajoute donc une directive que ssh appliquera à l'hôte
+        en cours — un ProxyCommand, une autre identité, n'importe laquelle —
+        et le bloc lu ensuite ne ressemblera plus à ce qui a été écrit.
+
+        Le contrôle est ici parce que c'est le SEUL endroit qui écrit : cinq
+        appelants y mènent, et le poser chez chacun en laisserait un dehors.
+        """
+        texte = "" if valeur is None else str(valeur)
+        if "\n" in texte or "\r" in texte:
+            raise ValueError(
+                f"{champ} : une valeur de ~/.ssh/config tient sur une ligne."
+            )
+        return texte
+
     def _write_ssh_config_entry(
         self,
         host,
@@ -1544,6 +1616,9 @@ class TODO(
         proxy_jump=None,
         identity_file=None,
         also_drop=(),
+        host_keys=None,
+        forward_agent=None,
+        forwards=(),
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
@@ -1562,8 +1637,36 @@ class TODO(
 
         `identity_file` : clé PRIVÉE à présenter. Sans elle, ssh propose
         toutes les identités de l'agent et un parc un peu fourni déclenche
-        « Too many authentication failures » avant d'arriver à la bonne."""
+        « Too many authentication failures » avant d'arriver à la bonne.
+
+        `host_keys`, `forward_agent` et `forwards` viennent d'une POSTURE.
+        Laissés à None, le bloc est identique au caractère près à celui qui
+        s'écrivait avant qu'ils existent : une machine déployée sans posture
+        ne doit pas changer de configuration parce que la notion est
+        apparue.
+
+        `forward_agent` À FAUX écrit un refus, il n'omet pas la ligne.
+        OpenSSH ne transfère pas l'agent par défaut, donc omettre suffirait
+        techniquement — mais le fichier ne dirait alors pas la différence
+        entre « on l'a interdit » et « personne n'y a pensé », et c'est
+        justement la ligne qu'on relira le jour où on se le demandera."""
         names = [host] if isinstance(host, str) else list(host)
+        controle = self._ssh_config_value
+        names = [controle(n, "Host") for n in names]
+        also_drop = [controle(n, "Host") for n in also_drop]
+        user = controle(user, "User")
+        ip = controle(ip, "HostName")
+        proxy_jump = controle(proxy_jump, "ProxyJump")
+        identity_file = controle(identity_file, "IdentityFile")
+        if host_keys is not None and host_keys not in self._SSH_HOST_KEY_LINES:
+            connues = ", ".join(self._SSH_HOST_KEY_LINES)
+            raise ValueError(
+                f"host_keys : « {host_keys} » inconnu. Connus : {connues}."
+            )
+        redirections = [
+            (self._genre_de_redirection(genre), controle(spec, "Forward"))
+            for genre, spec in forwards
+        ]
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
@@ -1589,9 +1692,11 @@ class TODO(
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
             f"    User {user}\n"
-            # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
-            f"    StrictHostKeyChecking no\n"
-            f"    UserKnownHostsFile /dev/null\n"
+            # Sans posture, « throwaway » : c'est ce qui s'écrivait avant
+            # que la notion existe, et des IP DHCP réutilisées entre VM
+            # feraient sinon échouer la connexion sur un changement de clé
+            # qui n'en est pas un.
+            + self._SSH_HOST_KEY_LINES[host_keys or "throwaway"]
         )
         if identity_file:
             # IdentitiesOnly : sans lui, IdentityFile s'AJOUTE aux clés de
@@ -1603,6 +1708,10 @@ class TODO(
             )
         if proxy_jump:
             block += f"    ProxyJump {proxy_jump}\n"
+        if forward_agent is not None:
+            block += f"    ForwardAgent {'yes' if forward_agent else 'no'}\n"
+        for directive, spec in redirections:
+            block += f"    {directive} {spec}\n"
         content = (existing + "\n\n" + block) if existing else block
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
@@ -2446,43 +2555,39 @@ class TODO(
         print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
-        """Prompt for SSH connection parameters. Returns dict or None on cancel."""
-        host = click.prompt(
-            t("Remote host (user@hostname or hostname): "), prompt_suffix=""
-        ).strip()
-        if not host:
-            print(t("SSH host is required!"))
+        """Les SSH_* de la cible retenue, ou None si personne n'en choisit.
+
+        Plus une seule invite ici. Les cinq questions que CHAQUE verbe
+        reposait — adresse, compte, port, clé, chemin — vivent maintenant
+        dans une fiche écrite une fois, et onze commandes cessent de
+        redemander ce qu'on vient de leur dire.
+
+        Sans cible retenue, l'écran de choix s'ouvre : c'est la seule
+        question qui reste, et elle ne se pose qu'une fois. Y renoncer rend
+        None, exactement comme une adresse laissée vide, de sorte que la
+        garde des onze appelants n'a pas à changer.
+        """
+        cible = deploy_target.selected()
+        if cible is None:
+            self._deploy_ssh_targets()
+            cible = deploy_target.selected()
+        if cible is None:
             return None
-        user = (
-            click.prompt(
-                t("SSH user (default: erplibre): "), prompt_suffix=""
-            ).strip()
-            or "erplibre"
-        )
-        port = (
-            click.prompt(
-                t("SSH port (default: 22): "), prompt_suffix=""
-            ).strip()
-            or "22"
-        )
-        key = click.prompt(
-            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): "),
-            prompt_suffix="",
-        ).strip()
-        path = (
-            click.prompt(
-                t("Remote path (default: ~/erplibre_deploy_2): "),
-                prompt_suffix="",
-            ).strip()
-            or "~/erplibre_deploy_2"
-        )
-        return {
-            "SSH_HOST": host,
-            "SSH_USER": user,
-            "SSH_PORT": port,
-            "SSH_KEY": key,
-            "SSH_PATH": path,
-        }
+        return deploy_target.make_vars(cible, resolve=self._ssh_config_resolve)
+
+    @classmethod
+    def _ssh_config_resolve(cls, host):
+        """Ce que ~/.ssh/config déclare pour cet alias, à l'usage de make.
+
+        make recompose « compte@hôte » et ne lit pas ce fichier : sans cette
+        relecture, un alias déclarant « User root » se ferait joindre sous le
+        compte par défaut, et la commande échouerait sur des droits au lieu
+        de dire qu'elle s'est trompée de compte.
+
+        Le port n'y figure pas, et c'est voulu : le Makefile ne le pose plus
+        d'office, donc ssh applique lui-même celui de l'alias.
+        """
+        return {"user": cls._ssh_config_user(host)}
 
     def _build_ssh_make_cmd(self, target, params, extra=None):
         """Ligne « make » complète, chaque valeur citée pour le shell.
@@ -2502,6 +2607,22 @@ class TODO(
                 if valeur:
                     parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
+
+    def _deploy_ssh_show_target(self):
+        """Nomme la cible retenue en tête d'écran, ou dit qu'il n'y en a pas.
+
+        Onze entrées agissent sur une machine distante, dont cinq
+        l'installent ou la redémarrent : lire à qui l'on parle AVANT de
+        choisir est ce qui évite de le découvrir après.
+        """
+        retenue = deploy_target.selected()
+        if retenue:
+            libelle = host_memory.label(
+                deploy_target.fiche(retenue), deploy_target_menu.PRODUIT
+            )
+            print(f"   🎯 {libelle}")
+        else:
+            print(f"   {t('No target selected yet.')}")
 
     def _deploy_ssh_verb(self, cible_make, demander=None):
         """Joue un verbe de déploiement sur l'hôte, et dit ce qu'il lance.
@@ -2530,7 +2651,12 @@ class TODO(
         )
 
     def _deploy_ssh_check(self):
-        self._deploy_ssh_verb("ssh_check")
+        # Ne passe plus par make : « ssh_check » faisait écho à une phrase
+        # qu'il composait lui-même, ce qui prouve que ssh a abouti et rien
+        # d'autre — ni que le produit est là, ni à quelle version, ni si le
+        # compte peut s'élever. Ces trois réponses décident de ce que les dix
+        # autres verbes peuvent faire.
+        self._deploy_ssh_probe()
 
     def _deploy_ssh_push(self):
         self._deploy_ssh_verb("ssh_push")
@@ -2561,7 +2687,7 @@ class TODO(
             t("Make target to run remotely: "), prompt_suffix=""
         ).strip()
         if not cible:
-            print(t("SSH host is required!"))
+            print(t("A make target is required!"))
             return None
         return {"SSH_TARGET": cible}
 
@@ -2572,16 +2698,61 @@ class TODO(
         self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)
 
     def _ask_domain(self):
-        domain = click.prompt(
-            t("Domain name (e.g.: example.com): "), prompt_suffix=""
-        ).strip()
+        """Le domaine et le courriel : lus sur la cible, demandés sinon.
+
+        Un renouvellement de certificat cesse d'être une nouvelle saisie —
+        c'est la même machine et le même domaine, et la cible les porte déjà.
+        Ce qui est saisi est refusé ICI s'il est mal formé, plutôt qu'au bout
+        d'une connexion ssh par certbot, qui dira mal pourquoi.
+        """
+        retenue = deploy_target.selected() or {}
+        domain = retenue.get("domain") or ""
+        email = retenue.get("admin_email") or ""
         if not domain:
-            print(t("SSH host is required!"))
+            domain = click.prompt(
+                t("Domain name (e.g.: example.com): "), prompt_suffix=""
+            ).strip()
+        if not domain:
+            print(t("A domain name is required!"))
             return None
-        email = click.prompt(
-            t("Admin email for SSL certificate: "), prompt_suffix=""
-        ).strip()
-        return {"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email}
+        if not email:
+            email = click.prompt(
+                t("Admin email for SSL certificate: "), prompt_suffix=""
+            ).strip()
+        try:
+            propre = deploy_target.validate_service(domain, email)
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return None
+        self._remember_service(retenue, propre)
+        return {
+            "SSH_DOMAIN": propre["domain"],
+            "SSH_ADMIN_EMAIL": propre["admin_email"],
+        }
+
+    def _remember_service(self, retenue, propre):
+        """Propose d'écrire sur la cible ce qu'on vient de saisir.
+
+        PROPOSE, et n'écrit pas d'office : un certificat posé une fois pour
+        essai n'a pas à s'inscrire sur la fiche. Ne demande rien quand la
+        cible porte déjà ces valeurs — la question serait sans objet.
+        """
+        if not retenue.get("name"):
+            return
+        if (retenue.get("domain") or "") == propre["domain"] and (
+            retenue.get("admin_email") or ""
+        ) == propre["admin_email"]:
+            return
+        if not self._is_yes(
+            input(f"{t('Remember it on the target? (y/N)')} : ")
+        ):
+            return
+        try:
+            deploy_target.save(dict(retenue, **propre))
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return
+        print(f"✓ {t('Target saved: ')}{retenue['name']}")
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
