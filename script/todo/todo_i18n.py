@@ -10,7 +10,6 @@ ENV_VAR_FILE = "./env_var.sh"
 _current_lang = None
 
 TRANSLATIONS = {
-    # Main menu
     "Importation success!": {
         "fr": "L'importation est un succès!",
         "en": "Importation success!",
@@ -55,7 +54,6 @@ TRANSLATIONS = {
         "fr": "🔙 Retour",
         "en": "🔙 Back",
     },
-    # Execute submenu
     "Run - Execute and install an instance": {
         "fr": "🏃 Run - Exécuter et installer une instance",
         "en": "🏃 Run - Execute and install an instance",
@@ -371,7 +369,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors du montage sshfs : ",
         "en": "Error mounting sshfs: ",
     },
-    # RTK (Rust Token Killer)
     "Manage RTK (Rust Token Killer) for token optimization!": {
         "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",
         "en": "Manage RTK (Rust Token Killer) for token optimization!",
@@ -451,7 +448,6 @@ TRANSLATIONS = {
         "fr": "cargo - Compilation depuis les sources (Rust requis)",
         "en": "cargo - Build from source (Rust required)",
     },
-    # Prompts and messages
     "Enter your password: ": {
         "fr": "Entrez votre mot de passe : ",
         "en": "Enter your password: ",
@@ -496,7 +492,6 @@ TRANSLATIONS = {
         "fr": "Faites des modifications sur les bases de données!",
         "en": "Make changes to databases!",
     },
-    # Database drop / erase
     "Erase a database": {
         "fr": "🗑  Effacer une base de données",
         "en": "🗑  Erase a database",
@@ -634,7 +629,6 @@ TRANSLATIONS = {
         "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
         "en": "Install with extra modules (CybroOdoo - large, slow)",
     },
-    # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "🧪 Test - Instance de base minimale",
         "en": "🧪 Test - Minimal base instance",
@@ -667,7 +661,6 @@ TRANSLATIONS = {
         "fr": "🎨 Formater le code modifié",
         "en": "🎨 Format modified code",
     },
-    # todo.py hardcoded prompt_descriptions
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",
@@ -771,7 +764,6 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
-    # Test section
     "Test - Test an Odoo module": {
         "fr": "🧪 Test - Tester un module Odoo",
         "en": "🧪 Test - Test an Odoo module",
@@ -864,7 +856,6 @@ TRANSLATIONS = {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
     },
-    # Git section
     "Git - Git and shell tools": {
         "fr": "🌿 Git - Outils Git et Shell",
         "en": "🌿 Git - Git and shell tools",
@@ -921,7 +912,6 @@ TRANSLATIONS = {
         "fr": "Serve - Démarrer le daemon git",
         "en": "Serve - Start git daemon",
     },
-    # Git remote add
     "Add a remote to a local repository": {
         "fr": "🔗 Ajouter un remote vers un dépôt local",
         "en": "🔗 Add a remote to a local repository",
@@ -946,8 +936,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
-    # Git hooks
-    # Starship
     "Install Starship on Shell": {
         "fr": "🚀 Installer Starship sur le shell",
         "en": "🚀 Install Starship on Shell",
@@ -1047,7 +1035,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'installation des hooks : ",
         "en": "Error installing hooks: ",
     },
-    # Git config vim
     "Configure git local editor to vim": {
         "fr": "📝 Configuration git local par vim",
         "en": "📝 Configure git local editor to vim",
@@ -1064,7 +1051,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la configuration : ",
         "en": "Error during configuration: ",
     },
-    # GPT code - Claude automation
     "Add an automation with Claude in todo.py": {
         "fr": "🤖 Ajouter une automatisation avec Claude dans todo.py",
         "en": "🤖 Add an automation with Claude in todo.py",
@@ -1089,7 +1075,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout de l'automatisation : ",
         "en": "Error adding automation: ",
     },
-    # SSH Deploy section
     "Deploy - Deploy ERPLibre via SSH": {
         "fr": "Déploiement - Déployer ERPLibre via SSH",
         "en": "Deploy - Deploy ERPLibre via SSH",
@@ -1178,7 +1163,6 @@ TRANSLATIONS = {
         "fr": "L'hôte SSH est requis!",
         "en": "SSH host is required!",
     },
-    # Language selection
     "Choose language / Choisir la langue": {
         "fr": "Choisir la langue / Choose language",
         "en": "Choose language / Choisir la langue",
@@ -1203,7 +1187,6 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
-    # GPT code section
     "GPT code - AI assistant tools": {
         "fr": "🤖 GPT code - Outils d'assistant IA",
         "en": "🤖 GPT code - AI assistant tools",
@@ -1251,7 +1234,6 @@ TRANSLATIONS = {
         "fr": "Déployer les commandes Claude Code!",
         "en": "Deploy Claude Code commands!",
     },
-    # Claude Code plugins
     "Claude Code plugins - marketplaces and ERPLibre list": {
         "fr": "🧩 Plugins Claude Code - marketplaces et liste ERPLibre",
         "en": "🧩 Claude Code plugins - marketplaces and ERPLibre list",
@@ -1296,9 +1278,6 @@ TRANSLATIONS = {
         "fr": "Ajouter un marketplace",
         "en": "Add a marketplace",
     },
-    # Sert la section « Maintenance » des deux menus qui en portent une :
-    # la traduction est la même, et une clé répétée écrase la précédente en
-    # silence.
     "Maintenance": {
         "fr": "Maintenance",
         "en": "Maintenance",
@@ -1435,7 +1414,6 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
-    # NTFY section
     "Deploy - Install NTFY notification server": {
         "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
         "en": "🔔 Deploy - Install NTFY notification server",
@@ -1468,7 +1446,6 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
-    # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
     "QEMU cache - Download mirror for local VMs": {
         "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
         "en": "📦 QEMU cache - Download mirror for local VMs",
@@ -2217,7 +2194,6 @@ TRANSLATIONS = {
         "fr": "📦 Cache de téléchargement : mesurer, puis couper l'amont",
         "en": "📦 Download cache: measure, then cut the upstream",
     },
-    # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
         "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
         "en": "💻 QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
@@ -3356,7 +3332,6 @@ TRANSLATIONS = {
         "fr": "virt-viewer manque ici ; installation.",
         "en": "virt-viewer is missing here; installing it.",
     },
-    # Là où « aucun gestionnaire » est vrai ET sans issue.
     "NixOS: nix-shell -p <package> for one shell, or declare it in"
     " /etc/nixos/configuration.nix": {
         "fr": (
@@ -4582,7 +4557,6 @@ TRANSLATIONS = {
         "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
         "en": "Nested QEMU depth: plan only (dry-run)",
     },
-    # ERPLibre installé sur NixOS, de bout en bout.
     "ERPLibre on NixOS: plan only (dry-run)": {
         "fr": "ERPLibre sur NixOS : le plan seulement (à blanc)",
         "en": "ERPLibre on NixOS: plan only (dry-run)",
@@ -4751,7 +4725,6 @@ TRANSLATIONS = {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",
     },
-    # --- Écran de déploiement Proxmox VE (formulaire TUI) ---
     "Deploy one or more ERPLibre VMs on Proxmox VE!": {
         "fr": "Déployer une ou plusieurs VM ERPLibre sur Proxmox VE !",
         "en": "Deploy one or more ERPLibre VMs on Proxmox VE!",
@@ -5434,9 +5407,6 @@ TRANSLATIONS = {
         "fr": "Aucune VM créée pour l'instant.",
         "en": "No VM created yet.",
     },
-    # « models » manquait alors que ses trois voisines de la même ligne
-    # étaient traduites : le rapport de qualité de migration sortait
-    # « 42 modules · 812 models · 1 204 vues ».
     "models": {
         "fr": "modèles",
         "en": "models",
@@ -5640,8 +5610,6 @@ TRANSLATIONS = {
         "fr": "Existantes, laissées intactes :",
         "en": "Existing, left untouched:",
     },
-    # Renommée : la case commande TOUTE installation — ERPLibre, Odoo, mais
-    # aussi l'hyperviseur Proxmox VE, qui n'installe ni l'un ni l'autre.
     "Install:": {
         "fr": "Installation :",
         "en": "Install:",
@@ -5862,13 +5830,10 @@ TRANSLATIONS = {
             " (y/N, default: no): "
         ),
     },
-    # Récupération de fichiers dans le disque d'une VM (libguestfs)
-    # Outils d'assistance posés dans une VM au déploiement.
     "AI coding tools": {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
-    # Ce qu'il faut savoir de l'image d'une VM, dit avant de la créer.
     "%s: image rebuilt by a third party, not published by the distribution": {
         "fr": (
             "%s : image reconstruite par un tiers, non publiée par la"
@@ -5883,7 +5848,6 @@ TRANSLATIONS = {
         "fr": "release épinglée sur %s, sha256 figée dans le dépôt",
         "en": "release pinned to %s, sha256 fixed in the repository",
     },
-    # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
     "sudo password: asked when the deployment starts": {
         "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",
         "en": "sudo password: asked when the deployment starts, for",
@@ -5925,8 +5889,6 @@ TRANSLATIONS = {
         "fr": "rtk, starship, un agent, git et Claude prêts",
         "en": "rtk, starship, one agent, git and Claude ready",
     },
-    # Nix posé dans une VM qui n'est pas NixOS, et l'installateur qui porte
-    # NixOS sur une autre machine.
     "nix + nixos-anywhere": {
         "fr": "nix + nixos-anywhere",
         "en": "nix + nixos-anywhere",
@@ -6179,8 +6141,6 @@ TRANSLATIONS = {
         "fr": "Pour défiger, la VM arrêtée :",
         "en": "To unpin, VM stopped:",
     },
-    # Une VM dont libvirt a figé le device vidéo sur une variante sans GL
-    # tourne sans 3D, même avec « accel3d=yes » dans sa définition.
     "frozen on": {
         "fr": "figée sur",
         "en": "frozen on",
@@ -6323,7 +6283,6 @@ TRANSLATIONS = {
         "fr": "🔌 Accès aux VM",
         "en": "🔌 VM access",
     },
-    # Menu QEMU — section « Réseau »
     "VM network": {
         "fr": "🌐 Réseau",
         "en": "🌐 Network",
@@ -7487,7 +7446,6 @@ TRANSLATIONS = {
         "fr": "🧰 QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
         "en": "🧰 QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
     },
-    # QEMU - statistics screen
     "Statistics (installs, durations, VMs)": {
         "fr": "📊 Statistiques (installations, durées, VM)",
         "en": "📊 Statistics (installs, durations, VMs)",
@@ -7529,7 +7487,6 @@ TRANSLATIONS = {
     "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
-    # Database migration - resume menu
     "Migration in progress": {
         "fr": "Migration en cours",
         "en": "Migration in progress",
@@ -7608,11 +7565,6 @@ TRANSLATIONS = {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",
     },
-    # --- Menu Execute › Analyse ---
-    # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
-    # comme « Data » / « Database » : l'entrée de menu porte l'émoji,
-    # l'étiquette du fil d'Ariane est nue — _todo_telemetry_tui traduit le
-    # dernier segment du chemin, et un émoji y détonnerait.
     "Analyse - Odoo database analysis": {
         "fr": "🔬 Analyse - Analyse de base de données Odoo",
         "en": "🔬 Analyse - Odoo database analysis",
@@ -7666,10 +7618,6 @@ TRANSLATIONS = {
         "fr": "Analyser une base, sans jamais y écrire !",
         "en": "Analyse a database, without ever writing to it!",
     },
-    # Les icônes du sous-menu Analyse. Elles sont réservées d'avance pour la
-    # famille entière — 🧱 index, 🎈 ballonnement, 📎 pièces jointes,
-    # 🔗 ir_model_data — pour qu'ajouter un outil ne demande pas d'en
-    # rechercher une libre, et que deux outils voisins ne se ressemblent pas.
     "Structure": {"fr": "🗄  Structure", "en": "🗄  Structure"},
     "Tables and database size": {
         "fr": "📏 Tables et poids de la base",
@@ -9412,7 +9360,6 @@ TRANSLATIONS = {
         "fr": "l'outil lui-même a échoué",
         "en": "the tool itself failed",
     },
-    # Contexte fourni à Claude
     "Show the context given to Claude": {
         "fr": "🧠 Afficher le contexte fourni à Claude",
         "en": "🧠 Show the context given to Claude",
@@ -9445,7 +9392,6 @@ TRANSLATIONS = {
         "fr": "absent",
         "en": "missing",
     },
-    # Garde-fou du message de commit
     "the subject must start with a tag: %s": {
         "fr": "le sujet doit commencer par un tag : %s",
         "en": "the subject must start with a tag: %s",
@@ -9729,9 +9675,6 @@ TRANSLATIONS = {
         "fr": "Qualité de la migration, palier par palier",
         "en": "Migration quality, step by step",
     },
-    # --- Écran de qualité : Verdicts, Validation, Revue ---
-    # --- Journal d'étape et bascule de version ---
-    # --- Dérive du référentiel comptable ---
     "Did the last step add to the accounting data?": {
         "fr": "Le dernier palier a-t-il gonflé le référentiel comptable ?",
         "en": "Did the last step add to the accounting data?",
@@ -9924,8 +9867,6 @@ TRANSLATIONS = {
         "fr": "lancer le test quand même ?",
         "en": "run the test anyway?",
     },
-    # --- Trous dans les manifestes Google Repo ---
-    # --- Type de vue « tree » resté dans un module ---
     "Is any module still on a pre-18 view type?": {
         "fr": "Un module est-il resté sur un type de vue d'avant 18 ?",
         "en": "Is any module still on a pre-18 view type?",
@@ -10022,8 +9963,6 @@ TRANSLATIONS = {
         "fr": "le code de sortie ne les compte pas.",
         "en": "the exit code ignores them.",
     },
-    # Les six questions de la revue : t() les reçoit par
-    # variable, un scan des littéraux ne les voyait pas.
     "Did the migration reach the end?": {
         "fr": "La migration est-elle allée jusqu'au bout ?",
         "en": "Did the migration reach the end?",
@@ -11218,7 +11157,6 @@ TRANSLATIONS = {
         "fr": "Choisissez une étape, Entrée rejoue à partir de là.",
         "en": "Choose a step, Enter replays from there.",
     },
-    # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
         "en": "Customised views",
@@ -11326,10 +11264,6 @@ TRANSLATIONS = {
         "fr": "Comparer avec la source du module ? (O/n) : ",
         "en": "Compare with the module source? (Y/n): ",
     },
-    # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
-    # conseillé en options de ligne de commande est devenu des entrées :
-    # dire « utilisez -v » à quelqu'un qui est dans un menu, c'est lui
-    # demander d'en sortir pour obtenir ce que le menu pouvait offrir.
     "Browse the differences (TUI)": {
         "fr": "🖥  Naviguer dans les écarts (plein écran)",
         "en": "🖥  Browse the differences (TUI)",
@@ -11416,7 +11350,6 @@ TRANSLATIONS = {
         "fr": "Cette sauvegarde ne contient aucun dump.sql : ",
         "en": "This backup holds no dump.sql: ",
     },
-    # --- script/analyse : champs et modèles hors module ---
     "Nothing declares these in a file, so no module will "
     "recreate them. What a version upgrade keeps is what "
     "someone carried over.": {
@@ -11491,7 +11424,6 @@ TRANSLATIONS = {
         "fr": "À reporter à la main",
         "en": "To carry over by hand",
     },
-    # --- script/analyse : comparaison et navigation des écarts ---
     "Differences only": {
         "fr": "Écarts seuls",
         "en": "Differences only",
@@ -11601,7 +11533,6 @@ TRANSLATIONS = {
         "fr": "Pour rendre à cette vue ce que déclare son module :",
         "en": "To restore this view to what its module declares:",
     },
-    # --- script/analyse : erreurs du socle ---
     "Invalid database name: ": {
         "fr": "Nom de base invalide : ",
         "en": "Invalid database name: ",
@@ -11644,7 +11575,6 @@ TRANSLATIONS = {
         "fr": "Poids dans le dump",
         "en": "Weight in the dump",
     },
-    # --- script/analyse : poids du schéma ---
     "Schema analysis": {
         "fr": "Analyse du schéma",
         "en": "Schema analysis",
@@ -11742,7 +11672,6 @@ TRANSLATIONS = {
         "fr": "chemin d'un fichier de configuration Odoo",
         "en": "path to an Odoo config file",
     },
-    # Courriel
     "mail_menu": {
         "fr": "📧 Courriel - Lire et envoyer du courriel",
         "en": "📧 Mail - Read and send email",
@@ -11844,8 +11773,6 @@ TRANSLATIONS = {
         "fr": "Aucun coffre disponible : installez pykeepass ou déverrouillez un trousseau système.",
         "en": "No vault available: install pykeepass or unlock a system keyring.",
     },
-    # Coffre KeePass, côté infrastructure partagée (`kdbx_manager`) : ces
-    # messages servent à TOUT le CLI, pas seulement au courriel.
     "kdbx_vault_is": {
         "fr": "Coffre KeePass :",
         "en": "KeePass vault:",
@@ -12034,12 +11961,6 @@ TRANSLATIONS = {
         "en": "Drag to resize",
     },
     "mail_fullscreen_binding": {"fr": "Plein écran", "en": "Full screen"},
-    # -- Libellés des raccourcis de MailApp (suffixe _binding) -------------
-    # Ce sont les descriptions des `Binding` de `MailApp` : elles s'affichent
-    # au pied d'écran ET, depuis la tâche 26, dans la fenêtre d'aide (`h`),
-    # qui les lit directement dans `MailApp.BINDINGS`. Le français est repris
-    # MOT POUR MOT de ce qui était écrit en dur avant cette tâche — le pied
-    # d'écran d'un utilisateur francophone ne change pas.
     "mail_quit_binding": {"fr": "Quitter", "en": "Quit"},
     "mail_sync_current_binding": {"fr": "Sync", "en": "Sync"},
     "mail_sync_all_binding": {"fr": "Sync tout", "en": "Sync all"},
@@ -12059,10 +11980,6 @@ TRANSLATIONS = {
         "fr": "Nouveau compte",
         "en": "New account",
     },
-    # -- Fenêtre d'aide (touche h) -----------------------------------------
-    # La liste des touches n'est PAS ici : elle est engendrée depuis
-    # `MailApp.BINDINGS` (voir `HelpScreen`), avec les libellés ci-dessus.
-    # Seul ce qu'une liste de touches ne peut pas dire est rédigé ici.
     "mail_help_binding": {"fr": "Aide", "en": "Help"},
     "mail_help_close": {"fr": "Fermer", "en": "Close"},
     "mail_help_title": {
@@ -12130,23 +12047,6 @@ TRANSLATIONS = {
         "fr": "Échap ferme cette fenêtre.",
         "en": "Esc closes this window.",
     },
-    # -- Exceptions internes au paquet courriel (préfixe mail_err_) --------
-    # Label traduit, données dynamiques (chemins, texte serveur, valeurs de
-    # config) concaténées crues : jamais de traduction d'un message serveur
-    # ou d'un chemin de fichier.
-    #
-    # Quelques messages ont la donnée dynamique AU MILIEU de la phrase : ils
-    # sont donc assemblés à partir de deux clés (voire trois), dans un ordre
-    # FIXE codé au site d'appel plutôt que par une seule clé avec un
-    # emplacement — mail_err_unknown_security + mail_err_expected,
-    # mail_err_key_wrong_length + mail_err_octets_unit,
-    # mail_err_mode_prefix + mail_err_mode_requires_key(_no_vault),
-    # mail_err_imap_connection_prefix / mail_err_smtp_connection_prefix +
-    # mail_err_connection_refused_suffix, et mail_err_keyring_plaintext +
-    # mail_err_keyring_plaintext_hint. L'ordre des mots vit donc dans le
-    # code, pas dans les chaînes traduisibles : une langue à l'ordre des
-    # mots différent devra remplacer ces paires par une convention à
-    # emplacement (ex. `.format()`), pas par une simple concaténation.
     "mail_err_envelope_too_short": {
         "fr": "enveloppe trop courte",
         "en": "envelope too short",
@@ -12193,10 +12093,6 @@ TRANSLATIONS = {
         "fr": "référence de secret invalide :",
         "en": "invalid secret reference:",
     },
-    # Notes par fournisseur. Affichées à l'ajout d'un compte ET juste avant
-    # de redemander un mot de passe après un refus : elles doivent donner
-    # l'adresse EXACTE, pas un chemin de menu — Google et Apple déplacent
-    # régulièrement ces pages, et Google cache la sienne.
     "mail_preset_note_gmail": {
         "fr": (
             "Générez-le sur https://myaccount.google.com/apppasswords"
@@ -12380,7 +12276,6 @@ TRANSLATIONS = {
         "en": "no recipient: nothing was sent",
     },
     "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
-    # QEMU — outils de développement des VM graphiques
     "Python IDE, ERPLibre project pre-configured": {
         "fr": "IDE Python, projet ERPLibre pré-configuré",
         "en": "Python IDE, ERPLibre project pre-configured",
@@ -13353,7 +13248,6 @@ TRANSLATIONS = {
         "fr": "intactes :",
         "en": "alone:",
     },
-    # VPN (script/todo/vpn_menu.py, script/vpn/)
     "VPN & tunnels": {
         "fr": "🔐 VPN et tunnels",
         "en": "🔐 VPN & tunnels",
@@ -13757,7 +13651,6 @@ TRANSLATIONS = {
         "fr": "Le mot de passe MAÎTRE du coffre est écrit en clair dans la configuration. Le retirer et le saisir à la demande.",
         "en": "The vault MASTER password is stored in the configuration in clear text. Remove it and type it on demand.",
     },
-    # VPN — pilotes de la phase 2 et 3 (WireGuard, OpenVPN, OpenConnect, sshuttle)
     "never mounted against a real server: only unit tests cover it": {
         "fr": (
             "jamais monté contre un vrai serveur : seuls les tests"
@@ -13909,7 +13802,6 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
-    # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
         "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
         "en": "🤖 AI question - Ask a model, local or remote",
@@ -14168,9 +14060,6 @@ TRANSLATIONS = {
         "fr": "Aucun serveur sur %s (%s, %s, %ss).",
         "en": "No server on %s (%s, %s, %ss).",
     },
-    # « host » et « port » sont déjà déclarées plus haut dans ce fichier, avec
-    # ce français : les redéclarer ici les écraserait en silence. L'accord des
-    # nombres les lit telles quelles.
     "model": {
         "fr": "modèle",
         "en": "model",
@@ -14265,10 +14154,6 @@ TRANSLATIONS = {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
     },
-    # Les noms et descriptions des gpts livrés (script/todo/assistant/gpt/).
-    # L'anglais EST la clé, comme partout : un gpt non traduit
-    # s'affiche en anglais au lieu de rien. L'emoji vit dans la
-    # valeur, jamais dans la clé.
     "Unit test failure - the cause, and what to read next": {
         "fr": "🧪 Échec de test unitaire - la cause, et quoi lire ensuite",
         "en": "Unit test failure - the cause, and what to read next",
@@ -14317,7 +14202,6 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
-    # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {
         "fr": "🤖 Claude Code - sessions locales",
         "en": "🤖 Claude Code - local sessions",
@@ -14378,8 +14262,6 @@ TRANSLATIONS = {
         "fr": "lecture seule : Read, Glob, Grep",
         "en": "read-only: Read, Glob, Grep",
     },
-    # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
-    # script/todo/assistant/context.py, capabilities.py)
     "No front-matter: a gpt opens with ---": {
         "fr": "Pas d'en-tête : un gpt s'ouvre par ---",
         "en": "No front-matter: a gpt opens with ---",
@@ -14564,10 +14446,6 @@ TRANSLATIONS = {
         "fr": "gardé",
         "en": "kept",
     },
-    # « models », « still waiting for » et « Type an address » servent aussi
-    # ici et sont définies plus haut : les redéfinir écraserait la première
-    # sans rien lever.
-    # Transform data - fichiers externes
     "Transform data - Transform your data": {
         "fr": "🪄 Transform data - Transformer vos données",
         "en": "🪄 Transform data - Transform your data",
@@ -15248,7 +15126,6 @@ TRANSLATIONS = {
         "fr": "Pas assez de place pour écrire.",
         "en": "Not enough room to write.",
     },
-    # Transform data - correctifs de fuite
     "A source value survives in the copy; nothing was written: ": {
         "fr": "Une valeur de la source subsiste dans la copie ; rien n'a été écrit : ",
         "en": "A source value survives in the copy; nothing was written: ",
@@ -15324,6 +15201,82 @@ TRANSLATIONS = {
     "This target cannot hold the source's shape: ": {
         "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
+    },
+    "Done": {
+        "fr": "Fait",
+        "en": "Done",
+    },
+    "Failed": {
+        "fr": "Échoué",
+        "en": "Failed",
+    },
+    "Refused": {
+        "fr": "Refusé",
+        "en": "Refused",
+    },
+    "Dependency absent - skipped": {
+        "fr": "Dépendance absente - sauté",
+        "en": "Dependency absent - skipped",
+    },
+    "Not implemented by this backend": {
+        "fr": "Non implémenté par ce backend",
+        "en": "Not implemented by this backend",
+    },
+    "Unexpected exit code": {
+        "fr": "Code de sortie inattendu",
+        "en": "Unexpected exit code",
+    },
+    "Capabilities": {
+        "fr": "Capacités",
+        "en": "Capabilities",
+    },
+    "present": {
+        "fr": "présent",
+        "en": "present",
+    },
+    "Remedy:": {
+        "fr": "Remède :",
+        "en": "Remedy:",
+    },
+    "Nothing was probed": {
+        "fr": "Rien n'a été sondé",
+        "en": "Nothing was probed",
+    },
+    "This menu is not available on {os}": {
+        "fr": "Ce menu n'est pas disponible sur {os}",
+        "en": "This menu is not available on {os}",
+    },
+    "Load the kvm module, or join the kvm group": {
+        "fr": "Charger le module kvm, ou entrer dans le groupe kvm",
+        "en": "Load the kvm module, or join the kvm group",
+    },
+    "Configure the vault path": {
+        "fr": "Configurer le chemin du coffre",
+        "en": "Configure the vault path",
+    },
+    "Devstack": {
+        "fr": "Devstack",
+        "en": "Devstack",
+    },
+    "Devstack - development and test stack": {
+        "fr": "Devstack - pile de développement et de test",
+        "en": "Devstack - development and test stack",
+    },
+    "Host OS:": {
+        "fr": "OS de l'hôte :",
+        "en": "Host OS:",
+    },
+    "Host doctor - what can this machine do?": {
+        "fr": "Docteur de l'hôte - qu'est-ce que cette machine sait faire ?",
+        "en": "Host doctor - what can this machine do?",
+    },
+    "Probe failed:": {
+        "fr": "La sonde a échoué :",
+        "en": "Probe failed:",
+    },
+    "A dry run touches no secret": {
+        "fr": "Un essai à blanc ne touche à aucun secret",
+        "en": "A dry run touches no secret",
     },
 }
 

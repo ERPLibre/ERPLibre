@@ -1,5 +1,5 @@
 <VirtualHost *:80>
-    ServerAdmin USER@EMAIL.ca
+    ServerAdmin USER@EXAMPLE.COM
     ServerName DOMAIN.ca
 
     RewriteEngine On
@@ -8,7 +8,7 @@
 </VirtualHost>
 
 <VirtualHost *:443>
-    ServerAdmin USER@EMAIL.ca
+    ServerAdmin USER@EXAMPLE.COM
     ServerName DOMAIN.ca
 
     SSLEngine on

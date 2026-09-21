@@ -7,6 +7,7 @@ import builtins
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -578,6 +579,21 @@ class TestListeCommandesClaude(unittest.TestCase):
 
     IDENTITE = 'user.name="Nom Inventé" -c user.email="nom@exemple.invalid"'
 
+    @staticmethod
+    def _identite_du_gabarit(gabarit):
+        """L'identité d'exemple, LUE dans le gabarit.
+
+        Ce que ces épreuves tiennent est le redéploiement qui garde
+        l'identité de la copie, pas l'adresse que le gabarit donne en
+        exemple. Recopiée ici, cette adresse les ferait rougir le jour où
+        le gabarit en change — un garde rouge sur une amélioration.
+        """
+        trouve = re.search(
+            r'user\.name="[^"]*" -c user\.email="[^"]*"', gabarit
+        )
+        assert trouve, "le gabarit ne montre plus d'identité git"
+        return trouve.group(0)
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.dossier = self._tmp.name
@@ -588,8 +604,7 @@ class TestListeCommandesClaude(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.gabarit_commit = gabarit
         personnalise = gabarit.replace(
-            'user.name="Your Name" -c user.email="your@email.com"',
-            self.IDENTITE,
+            self._identite_du_gabarit(gabarit), self.IDENTITE
         )
         # /commit à jour hors identité ; /todo_plan_max périmée d'une ligne ;
         # /perso hors ERPLibre ; les autres absentes.
@@ -655,8 +670,7 @@ class TestListeCommandesClaude(unittest.TestCase):
         self._ecrire(
             "commit",
             self.gabarit_commit.replace(
-                'user.name="Your Name" -c user.email="your@email.com"',
-                self.IDENTITE,
+                self._identite_du_gabarit(self.gabarit_commit), self.IDENTITE
             )
             + "vieille ligne\n",
         )
