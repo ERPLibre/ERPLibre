@@ -294,28 +294,98 @@ class TestLApercuMontreLeConfinement(unittest.TestCase):
         self.assertIn("deploy_qemu", vu)
         self.assertNotIn("--egress", vu)
 
-    def test_the_preview_writes_no_file(self):
-        """Il CALCULE les règles et n'en écrit aucune : l'écriture est le
-        seul geste qu'un essai à blanc retient."""
+    # Les deux façons d'obtenir les règles sans en écrire aucune : les
+    # rendre soi-même, ou passer par le calcul que les deux aperçus
+    # partagent. Ce qui est interdit est l'ÉCRIVAIN.
+    CALCULS = ("_qemu_egress_rules", "_qemu_apercu_egress")
+    ECRIVAIN = "_qemu_egress_file"
+
+    @staticmethod
+    def appels_de(nom):
         import ast
 
         chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
         with open(chemin, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
-        corps = [
-            noeud
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.FunctionDef)
-            and noeud.name == "_qemu_print_dry_run"
-        ][0]
-        appels = [
-            noeud.func.attr
-            for noeud in ast.walk(corps)
-            if isinstance(noeud, ast.Call)
-            and isinstance(noeud.func, ast.Attribute)
-        ]
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == nom:
+                return {
+                    n.func.attr
+                    for n in ast.walk(noeud)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                }
+        raise AssertionError(f"{nom} introuvable")
+
+    def test_the_preview_writes_no_file(self):
+        """Il CALCULE les règles et n'en écrit aucune : l'écriture est le
+        seul geste qu'un essai à blanc retient.
+
+        Cette épreuve exigeait un appel NOMMÉ — « _qemu_egress_rules » —
+        et elle est tombée le jour où ce calcul est passé derrière une
+        porte partagée avec l'aperçu du formulaire. La propriété n'avait
+        pas bougé : ce que le nom tenait, c'était sa propre écriture.
+        """
+        appels = self.appels_de("_qemu_print_dry_run")
+        self.assertTrue(
+            appels & set(self.CALCULS),
+            "l'aperçu ne calcule plus les règles du tout",
+        )
+        self.assertNotIn(self.ECRIVAIN, appels)
+
+    def test_the_shared_preview_writes_no_file_either(self):
+        """Contrôle positif : déplacer l'écriture derrière la porte
+        partagée satisferait l'épreuve ci-dessus sans rien tenir."""
+        appels = self.appels_de("_qemu_apercu_egress")
+        self.assertNotIn(self.ECRIVAIN, appels)
         self.assertIn("_qemu_egress_rules", appels)
-        self.assertNotIn("_qemu_egress_file", appels)
+
+
+class TestLesDeuxApercusMontrentLeMemePareFeu(unittest.TestCase):
+    """L'utilisateur choisit sa posture DANS le formulaire, puis lit le
+    panneau pour vérifier ce qui va tourner.
+
+    Ce panneau composait la commande SANS « --egress-file » pour un
+    déploiement qui en posait un. Le risque est INVERSÉ — la machine est
+    plus confinée que l'aperçu ne le dit — mais c'est un trou de
+    VÉRIFICATION, et vérifier est tout ce qu'un aperçu sait faire.
+
+    Les deux aperçus traversent désormais le même calcul, et l'épreuve
+    porte sur leur ACCORD : ni l'un ni l'autre n'a le droit de montrer un
+    pare-feu que l'autre tait.
+    """
+
+    SPEC = {
+        "posture": "local-only",
+        "real_data": False,
+        "vms": [],
+        "install": None,
+        "add_ssh_config": False,
+        "parallelism": 1,
+    }
+
+    def todo(self):
+        todo = TODO.__new__(TODO)
+        todo.config_file = None
+        return todo
+
+    def test_the_form_panel_shows_the_firewall_it_will_pose(self):
+        vu = self.todo()._qemu_preview_command(VM_UNE, self.SPEC, dry=False)
+        self.assertIn("--egress-file", vu)
+        self.assertIn("--egress-unit", vu)
+
+    def test_a_free_posture_shows_no_firewall_at_all(self):
+        """Contrôle positif : l'afficher toujours annoncerait un
+        confinement là où la sortie est libre."""
+        libre = dict(self.SPEC, posture="open")
+        vu = self.todo()._qemu_preview_command(VM_UNE, libre, dry=False)
+        self.assertNotIn("--egress", vu)
+
+    def test_the_panel_names_a_template_and_never_a_real_path(self):
+        """Rien n'est écrit : un fichier créé pour afficher son nom serait
+        retiré avant que quiconque le lise."""
+        vu = self.todo()._qemu_preview_command(VM_UNE, self.SPEC, dry=False)
+        self.assertNotIn("/tmp/", vu)
 
 
 class TestLApercuTientLaPorte(unittest.TestCase):

@@ -405,6 +405,16 @@ class TestLIdentiteDeLaVm(Suivi):
         self.assertIn("root@hote.invalid", garde)
         self.assertIn("qm config 101", garde)
 
+    async def test_a_proxmox_vm_without_a_reachable_host_runs_nothing(self):
+        """Sans hôte à qui parler, le garde ne se compose pas : restaurer
+        sans lui écraserait la base de ce que porte le VMID aujourd'hui."""
+        self.app = self.ouvre(pve={"vmid": 101, "addr": "10.9.9.9"})
+        self.adresse = ""
+        with mock.patch.object(type(self.app), "_run_in_vm") as lance:
+            async with self.app.run_test(size=(150, 40)) as pilote:
+                await self.bouton(pilote, oui=True)
+        lance.assert_not_called()
+
 
 class TestLaGardePasseAvantLeSsh(unittest.TestCase):
     """_run_in_vm : une garde en échec empêche la connexion."""

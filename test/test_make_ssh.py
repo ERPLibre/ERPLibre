@@ -13,7 +13,9 @@ son absence — la machine répond à neuf commandes et refuse les deux autres,
 sans que rien n'explique la différence.
 """
 
+import io
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -21,8 +23,25 @@ import unittest
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
-# Les onze verbes, et ce qu'il faut leur donner en plus de l'hôte pour que
-# leur garde les laisse développer la recette.
+# LE FRAGMENT QUI FAIT AUTORITÉ. La liste des verbes s'y lit ; ce fichier ne
+# dit que ce qu'il faut DONNER à chacun en plus de l'hôte pour que sa garde
+# le laisse développer sa recette — cela, le Makefile ne le sait pas.
+MAKEFILE_SSH = os.path.join(RACINE, "conf", "make.ssh.Makefile")
+
+# Une cible en début de ligne, deux-points compris. « .PHONY » et les
+# recettes indentées ne comptent pas : seules les déclarations de cible.
+CIBLE_SSH = re.compile(r"^(ssh_[a-z0-9_]*)\s*:", re.M)
+
+
+def verbes_du_makefile():
+    """Les verbes que le fragment déclare, lus chez lui."""
+    with io.open(MAKEFILE_SSH, encoding="utf-8") as fichier:
+        return set(CIBLE_SSH.findall(fichier.read()))
+
+
+# Ce qu'il faut donner à chaque verbe. La liste des CLÉS est éprouvée contre
+# le Makefile : écrite à la main et gardée par un compte, elle laissait un
+# verbe neuf sans épreuve — le compte ne tenait que sa propre longueur.
 VERBES = {
     "ssh_check": {},
     "ssh_push": {},
@@ -59,11 +78,30 @@ class MakeDisponible(unittest.TestCase):
             raise unittest.SkipTest("make absent")
 
 
-class TestLesOnzeVerbesExistent(MakeDisponible):
+class TestLesVerbesDuMakefileExistent(MakeDisponible):
+    def test_the_table_is_the_makefile_s_own_verb_list(self):
+        """« TOUS les verbes » se lit dans le Makefile, pas ici.
+
+        Un compte — « onze » — ne dit rien du douzième : il passe au vert
+        le jour où on l'ajoute, et reste vert le jour où on en retire un.
+        Un verbe ajouté au fragment n'était donc éprouvé ni pour le rebond
+        ni pour sa ligne ssh exacte, alors que ce fichier existe pour dire
+        qu'un réglage n'atteignant que la moitié des verbes est pire que
+        son absence.
+        """
+        declares = verbes_du_makefile()
+        self.assertTrue(declares, "plus aucune cible ssh_* n'est lue")
+        self.assertEqual(
+            declares,
+            set(VERBES),
+            "la table diverge du fragment : "
+            f"au Makefile seul {sorted(declares - set(VERBES))}, "
+            f"ici seul {sorted(set(VERBES) - declares)}",
+        )
+
     def test_every_verb_expands_to_something(self):
         """Une faute de frappe dans la liste rendrait toutes les autres
         épreuves vertes sans rien prouver."""
-        self.assertEqual(11, len(VERBES))
         for verbe, extra in VERBES.items():
             with self.subTest(verbe=verbe):
                 self.assertIn("ssh", recette(verbe, **extra))

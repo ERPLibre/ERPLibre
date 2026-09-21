@@ -479,7 +479,19 @@ def exec_address(handle) -> str:
         # moyen : il n'y a aucun bail à relire.
         return handle.key
     if is_hosted(handle):
-        return handle.alias or handle.address
+        entree = handle.alias or handle.address
+        if not entree:
+            # REFUSER plutôt que rendre le vide : l'appelant en fait « ip= »,
+            # et « ssh "compte@$ip" » part alors vers personne pendant les
+            # vingt minutes d'attente prévues pour un boot émulé. Le vide
+            # n'est tenable que là où l'adresse se ré-résout en chemin, ce
+            # qui demande un hyperviseur LOCAL — et une VM portée par un
+            # hôte n'en a pas.
+            raise VerbNotImplemented(
+                "exec_address : aucune adresse ni alias pour entrer dans"
+                " cette VM, et aucun hyperviseur local ne la relira."
+            )
+        return entree
     return handle.address or handle.alias
 
 
