@@ -39,6 +39,7 @@ VERBES = (
     ("ssh_prefix", lambda h: V.ssh_prefix(h)),
     ("exec_prefix", lambda h: V.exec_prefix(h)),
     ("identity_guard", lambda h: V.identity_guard(h)),
+    ("pve_delete_suite", lambda h: V.pve_delete_suite(h)),
     ("web_access", lambda h: " ".join(V.web_access(h).tunnel)),
 )
 
