@@ -343,6 +343,7 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
                 "no-rendering",
                 "reload-failure-unseen",
                 "containers-unproven",
+                "boot-window-open",
             ),
             rules.UNENFORCED_TOKENS,
         )
@@ -406,6 +407,213 @@ class TestElleNAppliqueRien(unittest.TestCase):
         self.assertTrue(importes, "aucun import lu : rien n'est prouvé")
         for interdit in ("subprocess", "os", "shutil"):
             self.assertNotIn(interdit, importes)
+
+
+class TestQuellePostureVeutDesRegles(unittest.TestCase):
+    """DEUX RAISONS D'EN VOULOIR, et une seule était consultée.
+
+    Une liste bornée en donne une : il y a des adresses à nommer. Une
+    sortie COUPÉE en donne une autre, et le rendu la sert depuis toujours —
+    « policy drop », la boucle locale, les connexions établies.
+
+    LE DÉFAUT QUE CE PRÉDICAT FERME : le chemin de déploiement demandait
+    « as-tu une liste bornée à résoudre ». « local-only » n'en a pas — elle
+    ne joint rien, il n'y a rien à nommer — donc il ne posait AUCUNE règle,
+    et la posture qui promet que rien ne sort se déployait avec la sortie
+    entière. Rien ne le disait.
+    """
+
+    def test_a_cut_egress_wants_rules_even_with_nothing_to_name(self):
+        self.assertTrue(rules.wants_rules(R.get_posture("local-only")))
+
+    def test_a_bounded_allowlist_wants_them_too(self):
+        self.assertTrue(rules.wants_rules(R.get_posture("paranoid")))
+
+    def test_an_assumed_open_egress_does_not(self):
+        """Lui rendre un jeu donnerait l'apparence d'un confinement que le
+        nom de la posture dément."""
+        self.assertFalse(rules.wants_rules(R.get_posture("open")))
+
+    def test_unbounded_destinations_do_not(self):
+        """Un fichier de règles la ferait lire comme une liste blanche,
+        alors que la liste porterait la sortie entière."""
+        self.assertFalse(rules.wants_rules(R.get_posture("connected")))
+
+    def test_no_posture_wants_nothing(self):
+        self.assertFalse(rules.wants_rules(None))
+
+    def test_every_posture_gets_an_answer(self):
+        self.assertTrue(
+            R.posture_names(), "aucune posture : rien n'est prouvé"
+        )
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertIsInstance(
+                    rules.wants_rules(R.get_posture(nom)), bool
+                )
+
+    def test_a_fifth_posture_that_contradicts_itself_is_refused(self):
+        """LE GARDE QUI PARAÎT REDONDANT. Aucune des quatre postures n'est
+        à la fois « nat » et bornée, donc le retirer ne change rien
+        aujourd'hui. Mais une cinquième qui le serait promettrait un
+        fichier que le rendu REFUSE — « nat » est son premier refus — et le
+        déploiement échouerait sur la machine, pas devant l'écran.
+
+        La posture est INVENTÉE : elle n'existe nulle part dans le dépôt, et
+        c'est le seul moyen d'exercer un garde que les quatre vraies ne
+        peuvent pas atteindre.
+        """
+        contradictoire = R.get_posture("open")._replace(
+            name="nat-et-bornee-inventee", destinations_bounded=True
+        )
+        self.assertEqual("nat", contradictoire.egress)
+        self.assertFalse(rules.wants_rules(contradictoire))
+        # L'accord : ce que le prédicat refuse, le rendu le refuse aussi.
+        with self.assertRaises(ValidationError):
+            rules.render_egress(contradictoire, ())
+
+    def test_it_is_not_the_same_question_as_having_a_bounded_list(self):
+        """LES DEUX NE COÏNCIDENT PAS, et c'est tout le sujet : les
+        confondre est ce qui laissait « local-only » sans règles."""
+        from script.posture import destinations as D
+
+        differentes = [
+            nom
+            for nom in R.posture_names()
+            if rules.wants_rules(R.get_posture(nom))
+            != D.has_bounded_list(R.get_posture(nom))
+        ]
+        self.assertEqual(["local-only"], differentes)
+
+
+class TestLAccordEntreLeVouloirEtLeRefus(unittest.TestCase):
+    """`wants_rules` est faux EXACTEMENT là où le rendu refuse toujours.
+
+    C'est l'invariant qui empêche les deux de dériver : un refus ajouté
+    dans `_refuse_la_posture` sans toucher au prédicat rendrait une posture
+    « voulante » dont le rendu échoue au déploiement — sur la machine, et
+    non devant l'écran.
+    """
+
+    # Des listes de destinations à essayer. Celle qui est vide sert la
+    # sortie coupée ; l'autre sert la liste blanche.
+    @staticmethod
+    def _listes():
+        return ((), (A.resolve("dns-resolver", "192.0.2.53"),))
+
+    def test_what_does_not_want_rules_never_renders(self):
+        for nom in R.posture_names():
+            posture = R.get_posture(nom)
+            if rules.wants_rules(posture):
+                continue
+            for cibles in self._listes():
+                with self.subTest(posture=nom, cibles=len(cibles)):
+                    with self.assertRaises(ValidationError):
+                        rules.render_egress(posture, cibles)
+
+    def test_what_wants_rules_renders_for_at_least_one_list(self):
+        """Sinon le prédicat promettrait un fichier que le rendu refuse, et
+        le déploiement échouerait sur la machine."""
+        voulantes = [
+            nom
+            for nom in R.posture_names()
+            if rules.wants_rules(R.get_posture(nom))
+        ]
+        self.assertTrue(
+            voulantes, "aucune posture voulante : rien n'est prouvé"
+        )
+        for nom in voulantes:
+            posture = R.get_posture(nom)
+            rendus = []
+            for cibles in self._listes():
+                try:
+                    rendus.append(rules.render_egress(posture, cibles))
+                except ValidationError:
+                    continue
+            with self.subTest(posture=nom):
+                self.assertTrue(rendus, nom)
+
+    def test_the_cut_egress_rendering_drops_by_default(self):
+        """Ce que valent ces 548 octets : sans « policy drop », le fichier
+        se déposerait et ne couperait rien."""
+        texte = rules.render_egress(R.get_posture("local-only"), ())
+        self.assertIn("policy drop", texte)
+        self.assertIn('oif "lo" accept', texte)
+        self.assertIn("ct state established,related accept", texte)
+
+    def test_the_cut_egress_rendering_names_no_destination(self):
+        """Une adresse nommée dans un fichier qui coupe tout dirait le
+        contraire de ce qu'il fait."""
+        texte = rules.render_egress(R.get_posture("local-only"), ())
+        self.assertNotIn("192.0.2", texte)
+        self.assertNotIn("dport", texte)
+
+
+class TestLaFenetreDuPremierDemarrage(unittest.TestCase):
+    """Elle appartient au CHEMIN de livraison, pas à la posture.
+
+    Là où l'amorce écrit les règles avant le premier boot, il n'y a pas de
+    fenêtre. Là où elles arrivent par un canal qui exige que la machine
+    RÉPONDE déjà — donc après son démarrage — la machine sort librement
+    pendant plusieurs minutes.
+
+    Le drapeau `egress_enforced` ne peut pas en tenir compte : il est
+    per-posture, et deux chemins livrent la même. D'où un paramètre, et un
+    défaut qui laisse l'équivalence existante intacte.
+    """
+
+    def test_the_default_path_opens_no_window(self):
+        """L'équivalence avec `egress_enforced` porte sur ce chemin-là :
+        la changer par défaut casserait le contrat du drapeau."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn(
+                    rules.BOOT_WINDOW_OPEN,
+                    rules.unenforced(R.get_posture(nom)),
+                )
+
+    def test_a_late_path_opens_one_where_rules_are_posed(self):
+        for nom in ("paranoid", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertIn(
+                    rules.BOOT_WINDOW_OPEN,
+                    rules.unenforced(R.get_posture(nom), after_boot=True),
+                )
+
+    def test_free_egress_has_no_window_to_open(self):
+        """Rien n'est à poser, donc rien n'arrive en retard."""
+        self.assertEqual(
+            (), rules.unenforced(R.get_posture("open"), after_boot=True)
+        )
+
+    def test_a_posture_nothing_renders_gains_no_window_either(self):
+        """Une fenêtre ne s'ouvre pas sur des règles qu'on ne pose JAMAIS :
+        l'y ajouter ferait croire à un confinement tardif là où il n'y en a
+        aucun."""
+        self.assertEqual(
+            (rules.NO_RENDERING,),
+            rules.unenforced(R.get_posture("connected"), after_boot=True),
+        )
+
+    def test_the_late_path_never_loses_a_token_of_the_early_one(self):
+        """Le chemin tardif AJOUTE une faiblesse, il n'en retire aucune."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                posture = R.get_posture(nom)
+                tot = set(rules.unenforced(posture))
+                tard = set(rules.unenforced(posture, after_boot=True))
+                self.assertTrue(tot <= tard, (tot, tard))
+
+    def test_no_posture_is_absent_from_the_answer(self):
+        self.assertEqual((), rules.unenforced(None, after_boot=True))
+
+    def test_every_token_it_can_return_is_in_the_vocabulary(self):
+        for nom in R.posture_names():
+            for tardif in (False, True):
+                jetons = rules.unenforced(R.get_posture(nom), tardif)
+                with self.subTest(posture=nom, tardif=tardif):
+                    for jeton in jetons:
+                        self.assertIn(jeton, rules.UNENFORCED_TOKENS)
 
 
 if __name__ == "__main__":

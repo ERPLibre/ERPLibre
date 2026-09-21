@@ -292,7 +292,7 @@ def verify_filestore(database, image):
     casserait des chaînes qui marchent, pour un défaut qui se répare
     d'une commande.
     """
-    chemin = os.path.join("image_db", f"{image}.zip")
+    chemin = image_path(image)
     if not os.path.isfile(chemin):
         return
     try:
@@ -407,7 +407,7 @@ def restore_env(image):
     ne suffit pas non plus, un avertissement le dit et l'extraction va
     là où il reste le plus de place.
     """
-    chemin = os.path.join("image_db", f"{image}.zip")
+    chemin = image_path(image)
     if not os.path.exists(chemin):
         return None
     with zipfile.ZipFile(chemin) as archive:
@@ -454,6 +454,42 @@ def restore_env(image):
     env = dict(os.environ)
     env["TMPDIR"] = repli
     return env
+
+
+def image_path(image):
+    """Le chemin du zip d'une image, composé ICI et nulle part ailleurs.
+
+    Recopié chez chaque consommateur, il devient une divergence
+    silencieuse le jour où le répertoire change de nom.
+    """
+    return os.path.join("image_db", f"{image}.zip")
+
+
+def missing_image(config, lst_db_cache, exists=os.path.isfile):
+    """Le chemin du zip qui manquera, ou "" si rien ne manque.
+
+    ELLE EST INTERROGÉE AVANT LE DROP, et c'est tout le sujet. La
+    destruction précédait la restauration et rien ne regardait le zip :
+    un « --image » mal tapé supprimait la base, puis échouait sur un
+    fichier absent, et il ne restait rien. Le contrôle du filestore lit
+    bien ce chemin, mais APRÈS la restauration — il arrive trop tard pour
+    empêcher quoi que ce soit.
+
+    L'IMAGE N'EST EXIGÉE QUE SI ELLE VA SERVIR. « --only_drop » ne
+    restaure rien, et un clone depuis un cache déjà restauré n'ouvre pas
+    le zip : l'exiger dans ces deux cas refuserait des chaînes qui
+    marchent, et une garde qui refuse à tort finit désactivée.
+
+    `exists` est injectable : c'est ce qui rend la décision vérifiable
+    sans poser un fichier sur le disque.
+    """
+    if config.only_drop:
+        return ""
+    cache = f"_cache_{config.image}"
+    if not config.ignore_cache and cache in lst_db_cache:
+        return ""
+    chemin = image_path(config.image)
+    return "" if exists(chemin) else chemin
 
 
 def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
@@ -550,6 +586,10 @@ def main():
 
     if config.database:
         cache_database = f"_cache_{config.image}"
+        absente = missing_image(config, lst_db_cache)
+        if absente:
+            _logger.error(f"Image not found: {absente} — nothing was dropped.")
+            sys.exit(1)
         if (
             not config.only_drop
             and not config.ignore_cache
@@ -558,7 +598,10 @@ def main():
             check_cache_source(cache_database)
         # Drop db
         if config.database in lst_db:
-            _logger.info(f"## Drop {config.database} ##")
+            # DIT, et non journalisé. `logging` part au niveau que réclame
+            # LOGLEVEL : sous « WARNING », la seule trace d'une destruction
+            # disparaissait. Ce qui détruit se dit toujours.
+            print(f"## Drop {config.database} ##")
             drop_database(arg_base, config.database)
         if config.only_drop:
             return

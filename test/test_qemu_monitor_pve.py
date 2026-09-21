@@ -13,12 +13,25 @@ Le relevé prend la forme exacte de celui de virsh, pour que le calcul du
 débit, de la RAM et des colonnes ne sache pas d'où vient la mesure.
 """
 
+import os
 import sys
 import unittest
 from unittest import mock
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 sys.argv = ["todo.py"]
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend as vm_backend  # noqa: E402
+from script.vm import verbs as vm_verbs  # noqa: E402
+
+# Une fiche d'hôte Proxmox de banc : les préfixes d'exécution viennent du
+# backend, comme en production, et non d'un littéral écrit dans ce fichier.
+FICHE_PVE_DE_BANC = vm_backend.pve_handle(
+    {"vmid": "101", "target": "hote-de-banc", "addr": "192.0.2.20"},
+    "vm-de-banc",
+    alias="alias-de-banc",
+)
 
 # Sortie RÉELLE relevée sur l'hôte d'essai (une VM, stockage en fichiers :
 # Proxmox y rapporte « disk: 0 », d'où le « du » qui suit).
@@ -264,7 +277,19 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
         shell = (
             f"CPT={cpt.name}\n{faux_ssh}\n"
             f"ip=10.0.0.1; rc={rc}; "
-            + mon._reboot_steps(log.name, "-pve", tours=tours)
+            + mon._reboot_steps(
+                log.name,
+                "-pve",
+                # LES PRÉFIXES VIENNENT DU BACKEND, comme en production :
+                # les écrire ici ferait éprouver la forme du banc et non
+                # celle que l'enveloppe compose.
+                vm_verbs.exec_prefix(FICHE_PVE_DE_BANC, mon.SSH_OPTS_BATCH),
+                vm_verbs.exec_prefix(
+                    FICHE_PVE_DE_BANC,
+                    f"{mon.SSH_OPTS_BATCH} -o BatchMode=yes",
+                ),
+                tours=tours,
+            )
             + f'echo "{mon.EXIT_MARKER} $rc" >> {log.name}'
         )
         subprocess.run(
@@ -340,7 +365,50 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
         import inspect
 
         src = inspect.getsource(mon._launch_one)
-        self.assertIn("_reboot_steps(log_q, reboot) if reboot else", src)
+        self.assertIn("_reboot_steps(log_q, reboot,", src)
+        self.assertIn("if reboot", src)
+
+    def test_the_reboot_no_longer_names_ssh_itself(self):
+        """Il composait « ssh compte@$ip » DEUX fois : une VM qui ne
+        s'atteint pas par ssh y recevait une commande visant un hôte ssh
+        nommé comme elle, et le « || true » de l'ordre avalait l'échec."""
+        import inspect
+
+        from code_literals import literals_matching
+
+        # Par les LITTÉRAUX et non par le texte : la docstring explique
+        # pourquoi on n'attend pas que « ssh revienne », et la compter
+        # ferait tomber l'épreuve sur de la prose.
+        source = inspect.getsource(mon._reboot_steps)
+        for aiguille in ("erplibre@", "ssh "):
+            with self.subTest(aiguille=aiguille):
+                trouves = literals_matching(source, aiguille)
+                self.assertEqual([], trouves, trouves)
+
+    def test_the_bench_sees_the_literals_it_must_reject(self):
+        """Contrôle du banc : un outil qui rendrait toujours vide passerait
+        l'épreuve précédente sans avoir rien lu."""
+        from code_literals import literals_matching
+
+        self.assertEqual(
+            ["ssh erplibre@$ip"],
+            literals_matching(
+                'def f():\n    return "ssh erplibre@$ip"\n', "ssh "
+            ),
+        )
+
+    def test_it_renders_for_a_backend_without_ssh(self):
+        """Contrôle positif du paramétrage : la même fonction doit rendre
+        la forme de l'instance, sans quoi le préfixe est ignoré."""
+        fiche = vm_backend.lima_handle("essai-de-banc")
+        texte = mon._reboot_steps(
+            "/tmp/journal-de-banc.log",
+            "-pve",
+            vm_verbs.exec_prefix(fiche, mon.SSH_OPTS_BATCH),
+            vm_verbs.exec_prefix(fiche, mon.SSH_OPTS_BATCH),
+        )
+        self.assertIn("limactl shell essai-de-banc", texte)
+        self.assertNotIn("ssh ", texte)
 
 
 class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):

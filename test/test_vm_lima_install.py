@@ -194,5 +194,211 @@ class TestElleNeTelechargeRien(unittest.TestCase):
             self.assertNotIn(interdit, racines)
 
 
+class TestParOuLOutilSAcquiert(unittest.TestCase):
+    """Deux routes, et l'ordre entre elles est une décision.
+
+    LE GESTIONNAIRE D'ABORD. Sa chaîne de signature porte sur l'index
+    entier, et la somme de chaque paquet en découle sans qu'une main la
+    recopie. Un sha256 transcrit à l'œil dans une table est plus faible, et
+    il vieillit ; la table reste pour les systèmes qui ne publient pas
+    l'outil.
+
+    Rien ici ne touche la machine : `which` est un paramètre, donc la
+    décision se relit pour un système qui n'est pas le sien.
+    """
+
+    @staticmethod
+    def rien(_nom):
+        return None
+
+    @staticmethod
+    def seulement(*presents):
+        return lambda nom: f"/usr/bin/{nom}" if nom in presents else None
+
+    def test_the_manager_wins_when_it_is_there(self):
+        route = I.route("macos", "arm64", which=self.seulement("brew"))
+        self.assertEqual(I.MANAGER, route.kind)
+        self.assertIn("lima", route.command)
+        self.assertEqual("brew", route.manager)
+
+    def test_each_known_host_names_its_own_manager(self):
+        attendus = {
+            "macos": "brew",
+            "arch": "pacman",
+            "debian": "apt-get",
+            "proxmox": "apt-get",
+        }
+        self.assertTrue(attendus)
+        for hote, gestionnaire in attendus.items():
+            with self.subTest(hote=hote):
+                route = I.route(
+                    hote, "amd64", which=self.seulement(gestionnaire)
+                )
+                self.assertEqual(I.MANAGER, route.kind)
+                self.assertEqual(gestionnaire, route.manager)
+
+    def test_a_missing_manager_is_named_and_not_confused(self):
+        """« Installer brew » et « relever une somme » ne se font ni au
+        même endroit ni par la même personne."""
+        route = I.route("macos", "arm64", which=self.rien)
+        self.assertEqual(I.MANAGER_ABSENT, route.kind)
+        self.assertEqual("brew", route.manager)
+
+    def test_a_host_with_no_manager_and_no_pin_says_both_are_shut(self):
+        route = I.route("unknown", "arm64", which=self.rien)
+        self.assertEqual(I.NO_ROUTE, route.kind)
+
+    def test_the_pinned_table_still_serves_when_it_is_filled(self):
+        """LE CONTRÔLE POSITIF de la seconde route. La table est vide dans
+        le dépôt — délibérément — donc sans ce cas, rien ne prouverait
+        qu'elle est encore consultée."""
+        somme = "a" * 64
+        with patch.dict(
+            I.RELEASES, {"1.2.3": {("Linux", "x86_64"): somme}}, clear=False
+        ):
+            route = I.route(
+                "debian", "amd64", version="1.2.3", which=self.rien
+            )
+        self.assertEqual(I.OK, route.kind)
+        self.assertEqual(somme, route.release.sha256)
+        self.assertIn("1.2.3", route.release.url)
+
+    def test_the_manager_is_preferred_even_when_the_pin_would_work(self):
+        """L'ordre est le sujet : la table pourrait répondre, et pourtant
+        c'est le gestionnaire qui gagne."""
+        with patch.dict(
+            I.RELEASES, {"1.2.3": {("Darwin", "arm64"): "b" * 64}}
+        ):
+            route = I.route(
+                "macos", "arm64", version="1.2.3", which=self.seulement("brew")
+            )
+        self.assertEqual(I.MANAGER, route.kind)
+
+    def test_exactly_one_of_the_two_fields_is_filled(self):
+        """Un champ polymorphe ferait traiter une commande comme une
+        archive : l'une se joue, l'autre se télécharge puis se vérifie."""
+        gestionnaire = I.route("macos", "arm64", which=self.seulement("brew"))
+        self.assertTrue(gestionnaire.command)
+        self.assertIsNone(gestionnaire.release)
+        with patch.dict(I.RELEASES, {"1.2.3": {("Linux", "arm64"): "c" * 64}}):
+            epingle = I.route(
+                "arch", "arm64", version="1.2.3", which=self.rien
+            )
+        self.assertEqual("", epingle.command)
+        self.assertIsNotNone(epingle.release)
+
+    def test_a_linux_host_reaches_the_pinned_table_at_all(self):
+        """LE DÉFAUT que cette épreuve a trouvé : `host_os` distingue les
+        distributions, une archive ne connaît que « Linux ». Passer le
+        jeton d'hôte tel quel rendait « cible inconnue » sur TOUT hôte
+        Linux, donc le repli était mort sans un mot."""
+        for hote in ("debian", "arch", "proxmox"):
+            with self.subTest(hote=hote):
+                with patch.dict(
+                    I.RELEASES, {"9.9.9": {("Linux", "x86_64"): "d" * 64}}
+                ):
+                    route = I.route(
+                        hote, "amd64", version="9.9.9", which=self.rien
+                    )
+                self.assertEqual(I.OK, route.kind)
+                self.assertIn("Linux", route.release.url)
+
+    def test_a_macos_host_reaches_the_darwin_archive(self):
+        with patch.dict(
+            I.RELEASES, {"9.9.9": {("Darwin", "arm64"): "e" * 64}}
+        ):
+            route = I.route(
+                "macos", "aarch64", version="9.9.9", which=self.rien
+            )
+        self.assertEqual(I.OK, route.kind)
+        self.assertIn("Darwin", route.release.url)
+        self.assertIn("arm64", route.release.url)
+
+    def test_an_unrecognised_host_is_not_guessed_to_be_linux(self):
+        """Deviner ferait télécharger une archive Linux sur ce qui n'en est
+        peut-être pas un."""
+        with patch.dict(
+            I.RELEASES, {"9.9.9": {("Linux", "x86_64"): "f" * 64}}
+        ):
+            route = I.route(
+                "unknown", "amd64", version="9.9.9", which=self.rien
+            )
+        self.assertEqual(I.NO_ROUTE, route.kind)
+
+    def test_every_verdict_is_in_the_closed_vocabulary(self):
+        self.assertTrue(I.REFUSALS, "vocabulaire vidé : rien n'est prouvé")
+        cas = (
+            ("macos", "arm64", "", self.seulement("brew")),
+            ("macos", "arm64", "", self.rien),
+            ("unknown", "arm64", "", self.rien),
+            ("unknown", "arm64", "latest", self.rien),
+            ("unknown", "sparc", "1.2.3", self.rien),
+        )
+        for hote, arch, version, which in cas:
+            with self.subTest(hote=hote, version=version):
+                self.assertIn(
+                    I.route(hote, arch, version=version, which=which).kind,
+                    I.REFUSALS,
+                )
+
+    def test_the_host_token_case_does_not_decide(self):
+        route = I.route("MacOS", "arm64", which=self.seulement("brew"))
+        self.assertEqual(I.MANAGER, route.kind)
+
+    def test_it_probes_nothing_by_itself_in_the_tests(self):
+        """Le banc doit VRAIMENT injecter : un `which` non transmis
+        interrogerait la machine, et l'épreuve dirait autre chose selon le
+        poste qui la lance."""
+        vus = []
+
+        def espion(nom):
+            vus.append(nom)
+            return None
+
+        I.route("macos", "arm64", which=espion)
+        self.assertEqual(["brew"], vus)
+
+
+class TestLaTableDesGestionnairesNAffirmePasTrop(unittest.TestCase):
+    """Elle dit QUEL gestionnaire fait autorité, pas que Lima y soit.
+
+    Une note écrite ici sur le contenu d'un dépôt de paquets vieillirait
+    mal ; le gestionnaire répond pour lui-même, et « no available formula »
+    est une réponse claire.
+    """
+
+    def test_every_command_names_the_tool_it_installs(self):
+        self.assertTrue(I.MANAGERS)
+        for hote, (_gestionnaire, commande) in I.MANAGERS.items():
+            with self.subTest(hote=hote):
+                self.assertIn("lima", commande)
+
+    def test_every_command_starts_with_its_own_manager(self):
+        """Une commande qui appelle un autre binaire que celui qu'on a
+        cherché s'exécuterait sur une machine où il manque."""
+        for hote, (gestionnaire, commande) in I.MANAGERS.items():
+            with self.subTest(hote=hote):
+                mots = commande.split()
+                self.assertIn(gestionnaire, mots[:2], commande)
+
+    def test_no_command_asks_for_the_latest_of_anything(self):
+        """La route du gestionnaire est signée ; elle n'a pas besoin d'un
+        « latest » qui, lui, ne se vérifie pas."""
+        for hote, (_g, commande) in I.MANAGERS.items():
+            with self.subTest(hote=hote):
+                self.assertNotIn("latest", commande)
+                self.assertNotIn("curl", commande)
+                self.assertNotIn("|", commande)
+
+    def test_the_host_tokens_are_those_of_host_os(self):
+        """Une clé qui n'est pas un jeton d'hôte ne serait jamais trouvée,
+        et la route du gestionnaire serait morte sans un mot."""
+        from script.todo import host_os
+
+        for hote in I.MANAGERS:
+            with self.subTest(hote=hote):
+                self.assertIn(hote, host_os.HOSTS)
+
+
 if __name__ == "__main__":
     unittest.main()

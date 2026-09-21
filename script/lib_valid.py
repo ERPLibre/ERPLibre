@@ -89,8 +89,36 @@ def port(record, key, label):
     return integer(record, key, label, 1, 65535)
 
 
+# Ce qu'un booléen ÉCRIT vaut. Une configuration se tape à la main et se
+# recopie d'un exemple : la chaîne « false » y arrive tout naturellement, et
+# `bool("false")` vaut VRAI. Un drapeau qui protège quelque chose se retrouve
+# alors levé par celui qui croyait l'abaisser, sans un mot.
+ECRITS_FAUX = ("", "0", "false", "no", "off", "non", "faux")
+ECRITS_VRAIS = ("1", "true", "yes", "on", "oui", "vrai")
+
+
 def flag(record, key):
-    record[key] = bool(record.get(key))
+    """Normalise un booléen de configuration en un vrai bool.
+
+    Une chaîne HORS des deux listes est refusée plutôt que devinée : « nope »
+    n'a pas de sens évident, et le deviner ferait dépendre une posture de
+    sécurité d'une faute de frappe. Les valeurs non textuelles gardent leur
+    véracité Python — un 0, une liste vide, un None disent tous « non ».
+    """
+    valeur = record.get(key)
+    if isinstance(valeur, str):
+        depouille = valeur.strip().lower()
+        if depouille in ECRITS_FAUX:
+            valeur = False
+        elif depouille in ECRITS_VRAIS:
+            valeur = True
+        else:
+            raise ValidationError(
+                f"{key} : « {valeur} » n'est ni vrai ni faux. Attendu l'un de"
+                f" {', '.join(ECRITS_VRAIS)} ou"
+                f" {', '.join(e for e in ECRITS_FAUX if e)}."
+            )
+    record[key] = bool(valeur)
     return record[key]
 
 
