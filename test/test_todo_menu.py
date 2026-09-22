@@ -797,6 +797,12 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
             "_qemu_verify_station"
         ),
         "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
+        # Déclarée par « method », après les vérifications et avant la
+        # greffe de todo.json : son rang n'entre pas dans le calcul des
+        # « elif ». Cette table apparie libellé et méthode ; le rang
+        # affiché des entrées « method », lui, est tenu par
+        # test_setops_menu.TestDepuisDeploy.
+        "Set-OPS - Sovereign ecosystem": "prompt_execute_setops",
     }
 
 
@@ -882,6 +888,24 @@ class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
         "Lima - Open a shell in an instance": "_lima_shell",
         "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
         "Lima - Verify an instance's egress posture": "_lima_verify_egress",
+    }
+
+
+class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu Set-OPS : une section, une entrée, par « method ».
+
+    Toute entrée y porte sa destination dans « method », la seule forme
+    dont le rang ne dépend pas de ce qui est posé plus haut.
+    """
+
+    SOURCE = TODO_DIR / "setops_menu.py"
+    ENTRY = "def prompt_execute_setops(self):"
+    END = "def _setops_state(self):"
+    # Le plancher se FRANCHIT : une seule entrée demande 0.
+    MINIMUM = 0
+
+    EXPECTED = {
+        "Set-OPS - State of the integration": "_setops_state",
     }
 
 
