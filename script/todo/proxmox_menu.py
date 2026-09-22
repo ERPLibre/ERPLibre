@@ -3284,19 +3284,8 @@ class ProxmoxMenuMixin:
             elif status == "18":
                 self._pve_forget_host()
                 self._pve_pick_host()
-            else:
-                introuvable = True
-                try:
-                    numero = int(status)
-                    # Les sections ne comptent pas dans la numérotation.
-                    reelles = [c for c in choices if not c.get("section")]
-                    if 0 < numero <= len(reelles):
-                        introuvable = False
-                        self.execute_from_configuration(reelles[numero - 1])
-                except ValueError:
-                    pass
-                if introuvable:
-                    print(t("Command not found !"))
+            elif not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.

@@ -442,8 +442,11 @@ class TestLaParitéProxmox(unittest.TestCase):
 
     def test_the_menu_reads_its_extra_commands_from_todo_json(self):
         self.assertIn('get_config("proxmox_from_makefile")', self.src)
-        # Et le dispatch sait les lancer, sections non comptées.
-        self.assertIn("execute_from_configuration", self.src)
+        # Et le dispatch sait les lancer : le repli partagé ou sa copie.
+        # Qu'il les JOUE, numéro tapé, test_menu_method_fallback le prouve.
+        self.assertTrue(
+            any(r in self.src for r in TestLaGreffeEstJouable.REPLIS)
+        )
 
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
@@ -1116,39 +1119,71 @@ class TestLaGreffeEstJouable(unittest.TestCase):
     appel du menu les laisse toutes vertes, et c'est le câblage qui compte.
     """
 
+    # Les menus qui greffent une clé de todo.json sans suffixe
+    # « _from_makefile » (« instance », « function ») se reconnaissent à
+    # la forme qui ajoute la greffe à leurs choix.
     GREFFE = re.compile(
         r"choices\.extend\(|choices = self\.config_file\.get_config\("
     )
     # Deux façons de jouer une entrée greffée : le repli partagé, ou la copie
-    # que six menus portent encore en propre. L'épreuve tient sur la CAPACITÉ,
-    # pas sur le moyen — router les six est un commit à part.
+    # que des menus de todo.py portent encore en propre. L'épreuve tient sur
+    # la CAPACITÉ, pas sur le moyen : router ces menus est un commit à part.
     REPLIS = ("_menu_dispatch_extra", "execute_from_configuration")
 
-    def menus_greffes(self, chemin):
-        """(nom, corps) de chaque prompt_execute_* qui lit todo.json."""
-        source = chemin.read_text(encoding="utf-8")
-        arbre = ast.parse(source)
+    @staticmethod
+    def lit_une_greffe(noeud):
+        """`noeud` est-il un appel `get_config("…_from_makefile")` ?"""
+        return (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "get_config"
+            and bool(noeud.args)
+            and isinstance(noeud.args[0], ast.Constant)
+            and isinstance(noeud.args[0].value, str)
+            and noeud.args[0].value.endswith("_from_makefile")
+        )
+
+    def greffes(self, source):
+        """(nom, corps) de chaque fonction de `source` qui greffe todo.json
+        à ses choix : un prompt_execute_* de forme reconnue par GREFFE, ou
+        toute fonction qui lit une clé « …_from_makefile », quelle que soit
+        la forme qui ajoute la greffe."""
         trouves = []
-        for noeud in ast.walk(arbre):
-            if not isinstance(noeud, ast.FunctionDef):
-                continue
-            if not noeud.name.startswith("prompt_execute"):
+        for noeud in ast.walk(ast.parse(source)):
+            if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             corps = ast.get_source_segment(source, noeud) or ""
-            if self.GREFFE.search(corps):
+            reconnue = noeud.name.startswith(
+                "prompt_execute"
+            ) and self.GREFFE.search(corps)
+            if reconnue or any(
+                self.lit_une_greffe(n) for n in ast.walk(noeud)
+            ):
                 trouves.append((noeud.name, corps))
         return trouves
 
-    def test_every_grafted_menu_routes_its_fallback(self):
-        greffes = []
-        for chemin in (TODO_DIR / "todo.py", TODO_DIR / "qemu_menu.py"):
-            greffes += self.menus_greffes(chemin)
-        self.assertTrue(greffes, "aucune greffe trouvée : rien n'est prouvé")
-        sans_repli = [
+    def sans_repli(self, source):
+        """Les fonctions de `source` qui greffent sans pouvoir jouer."""
+        return [
             nom
-            for nom, corps in greffes
+            for nom, corps in self.greffes(source)
             if not any(repli in corps for repli in self.REPLIS)
         ]
+
+    def test_every_grafted_menu_routes_its_fallback(self):
+        """Tout script/todo/*.py est balayé, fonction par fonction : un menu
+        neuf qui greffe todo.json entre dans l'épreuve sans qu'on l'y
+        inscrive, même posé dans un fichier qui porte déjà d'autres
+        greffes."""
+        greffes = []
+        sans_repli = []
+        for chemin in sorted(TODO_DIR.glob("*.py")):
+            source = chemin.read_text(encoding="utf-8")
+            greffes += self.greffes(source)
+            sans_repli += [
+                f"{chemin.name}:{nom}" for nom in self.sans_repli(source)
+            ]
+        self.assertTrue(greffes, "aucune greffe trouvée : rien n'est prouvé")
         self.assertEqual(
             [],
             sans_repli,
@@ -1157,18 +1192,39 @@ class TestLaGreffeEstJouable(unittest.TestCase):
         )
 
     def test_the_scan_would_notice_a_menu_without_the_fallback(self):
-        """Contrôle positif : sans lui, un scanner qui ne trouve aucun menu
-        greffé passerait l'épreuve ci-dessus en n'ayant rien regardé."""
-        faux = (
-            "def prompt_execute_banc(self):\n"
-            "    choices = self.config_file.get_config('banc')\n"
-            "    return choices\n"
-        )
-        arbre = ast.parse(faux)
-        corps = ast.get_source_segment(faux, arbre.body[0])
-        self.assertTrue(self.GREFFE.search(corps))
-        for repli in self.REPLIS:
-            self.assertNotIn(repli, corps)
+        """Contrôle positif : chaque forme de greffe, sans repli, est
+        signalée, et la même, routée par le repli, ne l'est pas. Sans lui,
+        un scanner qui ne trouve rien passerait l'épreuve ci-dessus en
+        n'ayant rien regardé."""
+        formes = {
+            "affectation": "    choices = self.config_file.get_config('b')\n",
+            "extend": (
+                "    choices.extend(\n"
+                "        self.config_file.get_config('b_from_makefile')\n"
+                "    )\n"
+            ),
+            "+=": (
+                "    choices += self.config_file.get_config("
+                "'b_from_makefile')\n"
+            ),
+        }
+        for nom, greffe in formes.items():
+            menu = (
+                "def prompt_execute_banc_staurotide(self, status):\n"
+                "    choices = []\n" + greffe
+            )
+            with self.subTest(forme=nom):
+                self.assertEqual(
+                    ["prompt_execute_banc_staurotide"],
+                    self.sans_repli(menu + "    return choices\n"),
+                )
+                self.assertEqual(
+                    [],
+                    self.sans_repli(
+                        menu
+                        + "    self._menu_dispatch_extra(choices, status)\n"
+                    ),
+                )
 
 
 class TestMenuDispatchExtra(unittest.TestCase):
