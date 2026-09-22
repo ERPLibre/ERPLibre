@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="alliance-boreale" fetch="https://forge.alliance-boreale.ca/Alliance-Boreale/" />
+
+    <!-- Set-OPS : moteur de construction d'infrastructure (plan déclaratif,
+         Ansible, Proxmox), piloté par todo.py. Fusionné SUR DEMANDE
+         seulement, par l'option « with_setops » de
+         script/git/git_merge_repo_manifest.py, que passe
+         ./script/manifest/update_manifest_local_setops.sh. Aucune liste de
+         conf/ fusionnée par défaut ne le nomme, et la fusion ne le reprend
+         d'elle-même que si .repo/project.list porte déjà son chemin.
+
+         Chemin sous private/repo/, et non sous script/ : le moteur cherche
+         ses écosystèmes et ses sites parmi ses dossiers FRÈRES ; ses clés
+         vivent hors de tout dépôt, sous ~/.config ($XDG_CONFIG_HOME).
+         private/repo/ est ignoré par le .gitignore d'ERPLibre, si bien que
+         ces frères, qui portent des données de client, n'entrent jamais
+         dans un commit.
+
+         Révision = SHA complet : deux postes synchronisés rapatrient le
+         même code, et la faire avancer est un geste délibéré (nouveau SHA
+         ici, relu, commité). « upstream » nomme la branche qui porte ce
+         SHA : « repo sync -c » ne rapatrie qu'elle tant qu'elle le
+         contient, et toutes les branches sinon, comme sans « upstream ». Ce
+         doit être un nom de branche : repo cherche refs/heads/<upstream>,
+         et un SHA à cette place fait échouer la synchronisation. Aucune
+         « clone-depth » : en profondeur 1, rapatrier un SHA qui n'est plus
+         la pointe exige une forge qui l'accepte.
+
+         Une fois rapatrié, le moteur fait partie de l'espace de travail :
+         « repo forall », donc « make repo_do_stash », le parcourent comme
+         les autres projets. Un sync qui l'écarte — « repo init -g » sans
+         « setops », branche sans ce manifeste — supprime son arbre s'il
+         est propre, fichiers ignorés compris : toute liste de groupes du
+         dépôt nomme donc « setops ». -->
+    <project
+        name="Set-OPS-Public.git"
+        path="private/repo/Set-OPS-Public"
+        remote="alliance-boreale"
+        revision="d4614926238a671ea30789a75e33aabd7235fa2c"
+        upstream="main"
+        groups="setops"
+    />
+</manifest>
