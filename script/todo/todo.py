@@ -147,6 +147,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.setops_menu import SetopsMenuMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -217,6 +218,7 @@ class TODO(
     LimaMenuMixin,
     EgressBookMenuMixin,
     DevstackMenuMixin,
+    SetopsMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
 ):
@@ -731,6 +733,7 @@ class TODO(
         "prompt_execute_test": "Test",
         "prompt_execute_vpn": "VPN",
         "prompt_execute_devstack": "Devstack",
+        "prompt_execute_setops": "Set-OPS",
         "prompt_configuration": "Configuration",
     }
 
@@ -1224,6 +1227,17 @@ class TODO(
                     "Deploy - verify a deployed VM, layer by layer"
                 ),
                 "method": "_qemu_verify_vm",
+            }
+        )
+        # Déclarée par « method » comme les cinq qui la précèdent : son rang
+        # n'entre pas dans le calcul des « elif », et la greffe de todo.json
+        # qui suit s'affiche après elle.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)"
+                ),
+                "method": "prompt_execute_setops",
             }
         )
         # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée

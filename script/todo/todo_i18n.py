@@ -17016,6 +17016,272 @@ TRANSLATIONS = {
         "fr": "La forge a refusé l'appel.",
         "en": "The forge refused the call.",
     },
+    # Set-OPS — entrée du menu Deploy (script/todo/todo.py), sous-menu et
+    # écran (script/todo/setops_menu.py)
+    "Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)": {
+        "fr": "🏗️ Set-OPS - Écosystème souverain (plan, Ansible, Proxmox)",
+        "en": "🏗️ Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)",
+    },
+    "Set-OPS - State of the integration, line by line": {
+        "fr": "🔎 Set-OPS - État de l'intégration, ligne par ligne",
+        "en": "🔎 Set-OPS - State of the integration, line by line",
+    },
+    "Set-OPS integration, line by line": {
+        "fr": "🏗️ Intégration de Set-OPS, ligne par ligne",
+        "en": "🏗️ Set-OPS integration, line by line",
+    },
+    "Each « to set up here » line names the gesture that settles it; this screen launches nothing.": {
+        "fr": (
+            "Chaque ligne « à régler ici » nomme le geste qui la règle ;"
+            " cet écran ne lance rien."
+        ),
+        "en": (
+            "Each « to set up here » line names the gesture that settles"
+            " it; this screen launches nothing."
+        ),
+    },
+    # Set-OPS — état de l'intégration (script/setops/state.py)
+    "Platform": {
+        "fr": "Plateforme",
+        "en": "Platform",
+    },
+    "Engine manifest": {
+        "fr": "Manifeste du moteur",
+        "en": "Engine manifest",
+    },
+    "Private location": {
+        "fr": "Emplacement privé",
+        "en": "Private location",
+    },
+    "Google Repo": {
+        "fr": "Google Repo",
+        "en": "Google Repo",
+    },
+    "Engine": {
+        "fr": "Moteur",
+        "en": "Engine",
+    },
+    "Ansible environment": {
+        "fr": "Environnement Ansible",
+        "en": "Ansible environment",
+    },
+    "Mounted ecosystem": {
+        "fr": "Écosystème monté",
+        "en": "Mounted ecosystem",
+    },
+    "Mounted site": {
+        "fr": "Site monté",
+        "en": "Mounted site",
+    },
+    "Ecosystem vault key": {
+        "fr": "Clé de voûte de l'écosystème",
+        "en": "Ecosystem vault key",
+    },
+    "Station tools": {
+        "fr": "Outils du poste",
+        "en": "Station tools",
+    },
+    "{os}: the engine assumes bash and the GNU tools": {
+        "fr": "{os} : le moteur suppose bash et l'outillage GNU",
+        "en": "{os}: the engine assumes bash and the GNU tools",
+    },
+    "{path} pinned at {sha}": {
+        "fr": "{path} épinglé à {sha}",
+        "en": "{path} pinned at {sha}",
+    },
+    "no Set-OPS manifest declared": {
+        "fr": "aucun manifeste Set-OPS déclaré",
+        "en": "no Set-OPS manifest declared",
+    },
+    "revision « {rev} » is not a pinned commit": {
+        "fr": "la révision « {rev} » n'est pas un commit épinglé",
+        "en": "revision « {rev} » is not a pinned commit",
+    },
+    "{parent} is ignored by git: ecosystems placed next to the engine stay private": {
+        "fr": (
+            "{parent} est ignoré par git : les écosystèmes posés à côté du"
+            " moteur restent privés"
+        ),
+        "en": (
+            "{parent} is ignored by git: ecosystems placed next to the"
+            " engine stay private"
+        ),
+    },
+    "{parent} is NOT ignored by git: an ecosystem placed next to the engine would be committed": {
+        "fr": (
+            "{parent} n'est PAS ignoré par git : un écosystème posé à côté"
+            " du moteur serait commité"
+        ),
+        "en": (
+            "{parent} is NOT ignored by git: an ecosystem placed next to"
+            " the engine would be committed"
+        ),
+    },
+    "cannot tell whether {parent} is ignored by git": {
+        "fr": "impossible de savoir si {parent} est ignoré par git",
+        "en": "cannot tell whether {parent} is ignored by git",
+    },
+    "repo and .repo/ present": {
+        "fr": "repo et .repo/ présents",
+        "en": "repo and .repo/ present",
+    },
+    "repo missing: {cmd}": {
+        "fr": "repo absent : {cmd}",
+        "en": "repo missing: {cmd}",
+    },
+    ".repo/ not initialized: {cmd} initializes it": {
+        "fr": ".repo/ non initialisé : {cmd} l'initialise",
+        "en": ".repo/ not initialized: {cmd} initializes it",
+    },
+    "managed by Google Repo, at the pin, clean tree": {
+        "fr": "géré par Google Repo, à l'épingle, arbre propre",
+        "en": "managed by Google Repo, at the pin, clean tree",
+    },
+    "absent: {cmd}": {
+        "fr": "absent : {cmd}",
+        "en": "absent: {cmd}",
+    },
+    "manual clone: move it aside ({cmd}), then fetch it through the manifest": {
+        "fr": (
+            "clone manuel : le mettre de côté ({cmd}), puis le rapatrier par"
+            " le manifeste"
+        ),
+        "en": "manual clone: move it aside ({cmd}), then fetch it through the manifest",
+    },
+    "{path} is not a readable folder: move it aside ({cmd}), then fetch it through the manifest": {
+        "fr": (
+            "{path} n'est pas un dossier lisible : le mettre de côté ({cmd}),"
+            " puis rapatrier le moteur par le manifeste"
+        ),
+        "en": (
+            "{path} is not a readable folder: move it aside ({cmd}), then"
+            " fetch it through the manifest"
+        ),
+    },
+    "cannot tell whether Google Repo manages {path}": {
+        "fr": "impossible de savoir si Google Repo gère {path}",
+        "en": "cannot tell whether Google Repo manages {path}",
+    },
+    "{n} commit(s) ahead of the pin": {
+        "fr": "{n} commit(s) en avance sur l'épingle",
+        "en": "{n} commit(s) ahead of the pin",
+    },
+    "{n} commit(s) behind the pin: resynchronize": {
+        "fr": "{n} commit(s) en retard sur l'épingle : resynchroniser",
+        "en": "{n} commit(s) behind the pin: resynchronize",
+    },
+    "HEAD does not descend from the pin": {
+        "fr": "HEAD ne descend pas de l'épingle",
+        "en": "HEAD does not descend from the pin",
+    },
+    "the pin is unknown to this clone: resynchronize": {
+        "fr": "l'épingle est inconnue de ce clone : resynchroniser",
+        "en": "the pin is unknown to this clone: resynchronize",
+    },
+    "cannot tell where HEAD stands against the pin": {
+        "fr": "impossible de savoir où HEAD se tient face à l'épingle",
+        "en": "cannot tell where HEAD stands against the pin",
+    },
+    "{n} modified file(s): some engine targets rewrite tracked files": {
+        "fr": (
+            "{n} fichier(s) modifié(s) : certaines cibles du moteur"
+            " réécrivent des fichiers suivis"
+        ),
+        "en": "{n} modified file(s): some engine targets rewrite tracked files",
+    },
+    "git cannot read the engine": {
+        "fr": "git ne sait pas lire le moteur",
+        "en": "git cannot read the engine",
+    },
+    "{venv}: ansible-core {version}, within {spec}": {
+        "fr": "{venv} : ansible-core {version}, dans {spec}",
+        "en": "{venv}: ansible-core {version}, within {spec}",
+    },
+    "{venv}: ansible-core {version}, outside {spec}": {
+        "fr": "{venv} : ansible-core {version}, hors de {spec}",
+        "en": "{venv}: ansible-core {version}, outside {spec}",
+    },
+    "{venv}: the ansible-core version is unreadable": {
+        "fr": "{venv} : la version d'ansible-core est illisible",
+        "en": "{venv}: the ansible-core version is unreadable",
+    },
+    "{venv} absent: the repository does not set it up yet": {
+        "fr": "{venv} absent : le dépôt ne sait pas encore le poser",
+        "en": "{venv} absent: the repository does not set it up yet",
+    },
+    "the engine's ansible-core range is unreadable": {
+        "fr": "la plage ansible-core du moteur est illisible",
+        "en": "the engine's ansible-core range is unreadable",
+    },
+    "{name}: plan present": {
+        "fr": "{name} : plan présent",
+        "en": "{name}: plan present",
+    },
+    "no ecosystem mounted: {cmd}": {
+        "fr": "aucun écosystème monté : {cmd}",
+        "en": "no ecosystem mounted: {cmd}",
+    },
+    "{name} has no plan/serveurs.yml": {
+        "fr": "{name} n'a pas de plan/serveurs.yml",
+        "en": "{name} has no plan/serveurs.yml",
+    },
+    "« instance » is a real folder, not a link: the engine refuses to switch": {
+        "fr": (
+            "« instance » est un vrai dossier, pas un lien : le moteur refuse"
+            " de basculer"
+        ),
+        "en": "« instance » is a real folder, not a link: the engine refuses to switch",
+    },
+    "no site mounted: {cmd}": {
+        "fr": "aucun site monté : {cmd}",
+        "en": "no site mounted: {cmd}",
+    },
+    "key present": {
+        "fr": "clé présente",
+        "en": "key present",
+    },
+    "missing: {cmd} names it": {
+        "fr": "absente : {cmd} la nomme",
+        "en": "missing: {cmd} names it",
+    },
+    "unreadable verdict (code {code})": {
+        "fr": "verdict illisible (code {code})",
+        "en": "unreadable verdict (code {code})",
+    },
+    "first: {segment}": {
+        "fr": "d'abord : {segment}",
+        "en": "first: {segment}",
+    },
+    "all present": {
+        "fr": "tous présents",
+        "en": "all present",
+    },
+    "missing: {tools}": {
+        "fr": "absents : {tools}",
+        "en": "missing: {tools}",
+    },
+    "optional, absent: {tools}": {
+        "fr": "facultatifs absents : {tools}",
+        "en": "optional, absent: {tools}",
+    },
+    "; ": {
+        "fr": " ; ",
+        "en": "; ",
+    },
+    ".repo/ not initialized: set aside what occupies the engine's path ({mv}), then {cmd} initializes it": {
+        "fr": (
+            ".repo/ non initialisé : mettre de côté ce qui occupe le chemin"
+            " du moteur ({mv}), puis {cmd} l'initialise"
+        ),
+        "en": (
+            ".repo/ not initialized: set aside what occupies the engine's"
+            " path ({mv}), then {cmd} initializes it"
+        ),
+    },
+    "underlay.yml leads to no file: {cmd}": {
+        "fr": "underlay.yml ne mène à aucun fichier : {cmd}",
+        "en": "underlay.yml leads to no file: {cmd}",
+    },
 }
 
 
