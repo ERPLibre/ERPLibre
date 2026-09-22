@@ -3053,12 +3053,22 @@ class QemuManageMixin:
         distantes = set()
         try:
             hote = self._pve_host(ask=False)
-            if hote:
-                distantes = {
-                    v["name"] for v in self._pve_vms() if v.get("name")
-                }
         except Exception:
-            pass
+            hote = None
+        if hote:
+            # Liste illisible : la preuve « VM de l'hôte » manque, et toute
+            # entrée qui ne tient qu'à elle semblerait morte. On ne juge pas
+            # sans elle.
+            vms = self._pve_vms()
+            if vms is None:
+                print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+                tel_quel = t(
+                    "~/.ssh/config left as is: an entry may lead to a VM"
+                    " of the host."
+                )
+                print(f"  {tel_quel}")
+                return
+            distantes = {v["name"] for v in vms if v.get("name")}
         gardes, orphelines = ssh_orphans(
             parse_ssh_blocks(content),
             lambda h: self._ssh_entry_alive(

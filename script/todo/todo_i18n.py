@@ -5588,6 +5588,66 @@ TRANSLATIONS = {
         "fr": "Les libérer ?",
         "en": "Free them?",
     },
+    # Proxmox : une liste de VM illisible n'est pas une liste vide
+    # (script/todo/proxmox_menu.py, script/todo/qemu_manage.py)
+    "Unreadable VM list: « qm list » failed.": {
+        "fr": "Liste des VM illisible : « qm list » a échoué.",
+        "en": "Unreadable VM list: « qm list » failed.",
+    },
+    "Unreadable cluster VM list.": {
+        "fr": "Liste des VM de la grappe illisible.",
+        "en": "Unreadable cluster VM list.",
+    },
+    "Unreadable volume list.": {
+        "fr": "Liste des volumes illisible.",
+        "en": "Unreadable volume list.",
+    },
+    "Without it, no volume can be shown to be orphaned: nothing is offered.": {
+        "fr": "Sans elle, aucun volume ne se prouve orphelin : rien n'est proposé.",
+        "en": "Without it, no volume can be shown to be orphaned: nothing is offered.",
+    },
+    "Without it the next free VMID is unknown: nothing is created.": {
+        "fr": "Sans elle, le prochain VMID libre est inconnu : rien n'est créé.",
+        "en": "Without it the next free VMID is unknown: nothing is created.",
+    },
+    "~/.ssh/config left as is: an entry may lead to a VM of the host.": {
+        "fr": (
+            "~/.ssh/config laissé tel quel : une entrée peut mener à une VM"
+            " de l'hôte."
+        ),
+        "en": "~/.ssh/config left as is: an entry may lead to a VM of the host.",
+    },
+    "Volumes freed:": {
+        "fr": "Volumes libérés :",
+        "en": "Volumes freed:",
+    },
+    "Not freed:": {
+        "fr": "Non libérés :",
+        "en": "Not freed:",
+    },
+    "VMs destroyed:": {
+        "fr": "VM détruites :",
+        "en": "VMs destroyed:",
+    },
+    "VMs not destroyed:": {
+        "fr": "VM non détruites :",
+        "en": "VMs not destroyed:",
+    },
+    "exit code 0, unreadable output": {
+        "fr": "code de retour 0, sortie illisible",
+        "en": "exit code 0, unreadable output",
+    },
+    "Outcome unknown (timeout):": {
+        "fr": "Issue inconnue (délai dépassé) :",
+        "en": "Outcome unknown (timeout):",
+    },
+    "The command may still be running on the host: check with « {cmd} ».": {
+        "fr": (
+            "La commande tourne peut-être encore sur l'hôte : vérifier par"
+            " « {cmd} »."
+        ),
+        "en": "The command may still be running on the host: check with « {cmd} ».",
+    },
     "no address, skipped": {
         "fr": "pas d'adresse, ignorée",
         "en": "no address, skipped",
