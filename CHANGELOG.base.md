@@ -239,6 +239,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The same cleanup offers only VM disks (content `images`), never a backup, an ISO or a template. The VMID column of a backup names the VM it saved, so a destroyed VM made its backup look like an orphan disk
 - An unreadable VM list is no longer taken for an empty one anywhere in the Proxmox menu. Taken for empty, it made every disk orphaned, every VMID free and every `~/.ssh/config` entry dead: listing, choosing a VM, deploying and the `~/.ssh/config` cleanup now refuse and say that `qm list` failed, and so does the state read back after a start or a stop, which showed nothing
 - Every VM destruction and every `pvesm free` of the Proxmox menu is read: a VM is announced destroyed, or a volume freed, only when its command returned 0, and the others are listed. A command whose 300-second delay runs out is filed under « Outcome unknown (timeout) », with the command that shows where the host stands (`qm list`, `pvesm list <storage>`): it may still be running there, so it counts neither as done nor as failed, and « Volumes freed » leaves it out. A VM refused for lack of a name — no proof of identity — is listed among the VMs not destroyed
+- Typing the number of a Proxmox or QEMU/KVM menu entry declared by `method` calls that method. The Proxmox entry « Verify a VM's egress posture, layer by layer », and any entry `todo.json` grafts with a `method`, redisplayed the menu without a word
 
 <!-- [fr] -->
 
@@ -304,6 +305,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le même nettoyage n'offre que des disques de VM (contenu `images`), jamais une sauvegarde, un ISO ou un gabarit. La colonne VMID d'une sauvegarde nomme la VM sauvegardée, si bien qu'une VM détruite faisait passer sa sauvegarde pour un disque orphelin
 - Une liste de VM illisible n'est plus prise pour vide nulle part dans le menu Proxmox. Prise pour vide, elle rendait tout disque orphelin, tout VMID libre et toute entrée de `~/.ssh/config` morte : la liste, le choix d'une VM, le déploiement et le nettoyage de `~/.ssh/config` refusent désormais en disant que `qm list` a échoué, et l'état relu après un démarrage ou un arrêt, qui ne montrait rien, le dit aussi
 - Chaque destruction de VM et chaque `pvesm free` du menu Proxmox est lu : une VM n'est annoncée détruite, ou un volume libéré, que si sa commande a rendu 0, et les autres sont listés. Une commande dont le délai de 300 secondes expire est rangée sous « Issue inconnue (délai dépassé) », avec la commande qui dit où en est l'hôte (`qm list`, `pvesm list <stockage>`) : elle peut y tourner encore, elle ne compte donc ni comme faite ni comme échouée, et « Volumes libérés » ne la compte pas. Une VM refusée faute de nom — sans preuve d'identité — figure parmi les VM non détruites
+- Taper le numéro d'une entrée des menus Proxmox ou QEMU/KVM déclarée par `method` appelle cette méthode. L'entrée Proxmox « Vérifier la posture de sortie d'une VM, couche par couche », et toute entrée que `todo.json` greffe avec une `method`, réaffichaient le menu sans un mot
 
 <!-- [en] -->
 ## Removed
