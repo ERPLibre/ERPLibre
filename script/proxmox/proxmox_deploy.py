@@ -60,6 +60,19 @@ from script.remote.appliance_ssh import (  # noqa: E402,F401
 )
 
 
+def timed_out(code: int, out: str) -> bool:
+    """`run` a-t-il rendu « délai dépassé » ? L'issue est alors INCONNUE.
+
+    Le délai expiré, le client ssh est tué, pas la commande distante : sans
+    terminal, elle continue sur l'hôte ou s'interrompt à mi-course. Ni
+    succès ni échec ne se déduit de cette réponse. Le code 255 seul ne la
+    distingue pas — ssh injoignable et les erreurs de « qm » ou de « pvesm »
+    rendent 255 aussi — : c'est la sortie que `run` pose alors qui la
+    marque.
+    """
+    return code == 255 and (out or "").strip() == "timeout"
+
+
 # --------------------------------------------------------------------------- #
 # Lecture des sorties de l'hôte — fonctions pures
 # --------------------------------------------------------------------------- #
@@ -1098,20 +1111,85 @@ def orphan_disks_cmd() -> str:
     Proxmox ne les efface pas tout seul : un « qm destroy » sans « --purge »,
     ou une création interrompue, en laisse. On les LISTE, on n'efface rien
     sans demander.
+
+    « --content images » sur chaque stockage : un stockage répertoire porte
+    aussi des sauvegardes, des ISO et des gabarits, et « pvesm list » les
+    rend tous. La colonne VMID d'une sauvegarde est celle de la VM
+    sauvegardée ; une VM détruite y ferait passer sa sauvegarde pour un
+    disque orphelin.
+
+    L'erreur standard reste : le transport la colle APRÈS la sortie, où
+    `parse_orphans`, qui ne garde que les lignes « images », ne la lit pas,
+    et c'est elle qui dit pourquoi un stockage refuse. Le code rendu est
+    celui du dernier « pvesm list », ou celui de « pvesm status » quand
+    celui-ci échoue : la boucle tournerait sinon à vide, et rendrait 0. Un
+    stockage en panne avant le dernier ne retire de la liste que ses propres
+    volumes, qui ne sont donc jamais offerts.
     """
     return (
-        "for s in $(pvesm status --content images | awk 'NR>1 {print $1}'); "
-        'do pvesm list "$s" 2>/dev/null; done'
+        "stockages=$(pvesm status --content images) || exit; "
+        "for s in $(printf '%s\\n' \"$stockages\" | awk 'NR>1 {print $1}'); "
+        'do pvesm list "$s" --content images; done'
     )
 
 
+def cluster_vms_cmd() -> str:
+    """Les VM de TOUTE la grappe, en JSON — la référence de l'orphelinat.
+
+    « qm list » ne voit que les VM du nœud où il tourne, alors qu'un
+    stockage partagé porte aussi les disques des VM des autres nœuds.
+    « --type vm » rend les VM QEMU, les conteneurs LXC et les gabarits :
+    tous ont des volumes. Un nœud seul répond aussi, en grappe d'un nœud.
+
+    L'erreur standard reste : le transport la colle APRÈS la sortie, où
+    `parse_cluster_vmids` ne lit plus, et c'est elle qui dit pourquoi un
+    « pvesh » refuse — trop ancien pour « --output-format », droits
+    insuffisants. Le code de retour reste à lire par l'appelant.
+    """
+    return "pvesh get /cluster/resources --type vm --output-format json"
+
+
+def parse_cluster_vmids(text: str):
+    """Ensemble des VMID de la grappe, ou None si la sortie ne se lit pas.
+
+    Fermé par défaut : un document qui n'est pas une liste, ou une seule
+    entrée sans VMID entier, rend None — jamais un ensemble partiel, qui
+    ferait passer pour orphelins les disques des VM omises. Une liste vide
+    est une réponse : une grappe sans aucune VM.
+
+    Seul le PREMIER document est lu : le transport colle l'erreur standard
+    après la sortie, et une bannière sshd, un avertissement du client ssh
+    ou de sudo y suivent le document sans le rendre illisible. Un document
+    tronqué, ou précédé d'autre chose, rend None.
+    """
+    try:
+        entrees, _fin = json.JSONDecoder().raw_decode((text or "").lstrip())
+    except ValueError:
+        return None
+    if not isinstance(entrees, list):
+        return None
+    vmids = set()
+    for entree in entrees:
+        vmid = entree.get("vmid") if isinstance(entree, dict) else None
+        if isinstance(vmid, bool) or not isinstance(vmid, int):
+            return None
+        vmids.add(vmid)
+    return vmids
+
+
 def parse_orphans(text: str, vmids) -> list:
-    """[(volid, taille)] des volumes dont le VMID n'existe plus."""
+    """[(volid, taille)] des disques de VM dont le VMID n'existe plus.
+
+    Seul le type « images » est retenu, quelle que soit la commande qui a
+    produit `text` : ce que rend cette fonction part à « pvesm free », et
+    une sauvegarde, un ISO ou un gabarit n'y vont jamais. Une ligne dont
+    les colonnes ne tombent pas à leur place est écartée de même.
+    """
     connus = {str(v) for v in vmids or ()}
     out = []
     for ligne in (text or "").splitlines():
         parts = ligne.split()
-        if len(parts) < 5 or parts[0] == "Volid":
+        if len(parts) < 5 or parts[2] != "images":
             continue
         volid, vmid = parts[0], parts[-1]
         if vmid.isdigit() and vmid not in connus:
