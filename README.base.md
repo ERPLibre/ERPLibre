@@ -254,18 +254,27 @@ make
 
 <!-- [en] -->
 
-`make` starts TODO, which relaunches itself in `.venv.erplibre`. When that
-environment is missing, TODO offers to run `./script/install/install_erplibre.sh`
-(in a terminal) or prints that command. The install builds the environment
+`make` and `./install.sh` start TODO through the interpreter that can read it:
+`.venv.erplibre` when it carries the right version, otherwise the system
+`python3` when it is recent enough, otherwise the install itself — a system
+older than `conf/python-erplibre-version` cannot parse the code, so it goes
+straight to the install rather than stopping on a syntax error. When the
+environment is missing but the system Python suffices, TODO offers to run
+`./script/install/install_erplibre.sh` (in a terminal) or prints that command. The install builds the environment
 through `EL_PYTHON_PROVIDER` (mise or pyenv); an existing `.venv.erplibre` on
 another Python version is DELETED and rebuilt, and whatever was installed in it
 by hand goes with it.
 
 <!-- [fr] -->
 
-`make` lance TODO, qui se relance dans `.venv.erplibre`. Si cet environnement
-manque, TODO propose de lancer `./script/install/install_erplibre.sh` (dans un
-terminal) ou affiche cette commande. L'installation bâtit l'environnement par
+`make` et `./install.sh` lancent TODO par l'interpréteur capable de le lire :
+`.venv.erplibre` quand il porte la bonne version, sinon le `python3` du système
+s'il est assez récent, sinon l'installation elle-même — un système plus ancien
+que `conf/python-erplibre-version` ne sait pas analyser le code, donc on va
+droit à l'installation plutôt que de s'arrêter sur une erreur de syntaxe. Quand
+l'environnement manque mais que le Python du système suffit, TODO propose de
+lancer `./script/install/install_erplibre.sh` (dans un terminal) ou affiche
+cette commande. L'installation bâtit l'environnement par
 `EL_PYTHON_PROVIDER` (mise ou pyenv) ; un `.venv.erplibre` existant sur une
 autre version de Python est SUPPRIMÉ puis rebâti, et ce qu'on y avait posé à la
 main part avec lui.

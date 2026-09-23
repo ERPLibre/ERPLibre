@@ -80,7 +80,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
 - The tooling virtual environment `.venv.erplibre` runs Python 3.14.7, independently of the Odoo one (3.12.10 for Odoo 18.0). `install_erplibre.sh` builds it through `install_venv.sh` and `EL_PYTHON_PROVIDER` instead of the system `python3`
 - A virtual environment on an incompatible Python — `.venv.erplibre`, or Odoo's during `make install_odoo_*` — is DELETED and rebuilt; whatever was installed in it by hand goes with it. A directory without `pyvenv.cfg` is never deleted
-- `make` and `make todo` relaunch TODO in `.venv.erplibre`. When it is missing, TODO offers to run `install_erplibre.sh` in a terminal, or prints the command
+- `make` and `make todo` go through `install.sh`, which picks an interpreter able to READ the code before running it: `.venv.erplibre` on the right version, else a recent enough system `python3`, else the install. A system older than `conf/python-erplibre-version` would otherwise stop on a syntax error raised before any guard could name the command to type. TODO then relaunches itself in `.venv.erplibre`, or offers to run `install_erplibre.sh` in a terminal
 - The production Docker image builds `.venv.erplibre` on Odoo's Python and stops when that Python cannot parse `script/`
 - `make format_script` formats `script/` for `py313`, the newest target black 24.8.0 knows and one the 3.14.7 of the tooling runs; `black.sh` keeps `py37` for the addons, which Odoo 12 still needs
 
