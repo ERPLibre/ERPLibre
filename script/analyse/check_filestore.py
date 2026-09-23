@@ -8,11 +8,10 @@
 utile est ailleurs : combien sont PERDUS, et combien dorment quelque part
 sur la machine en attendant qu'on les remette ?
 
-Mesuré sur une migration réelle : sur 266 absents, 262 étaient des images
-engendrées par des modules — dont 235 drapeaux de pays dont le champ
-n'existe même plus en 18 — et QUATRE étaient de vrais documents. Ces
-quatre-là sont la réponse. Les 262 autres sont du bruit qu'il ne faut pas
-confondre avec eux.
+Sur une migration, 262 de ces 266 absents sont des images engendrées par
+des modules — dont 235 drapeaux de pays, dont le champ n'existe même plus
+en 18 — et QUATRE sont de vrais documents. Ces quatre-là sont la réponse.
+Les 262 autres sont du bruit qu'il ne faut pas confondre avec eux.
 
 Où l'outil cherche
 ------------------
@@ -22,9 +21,9 @@ Où l'outil cherche
 2. Les `filestore/` NICHÉS. `shutil.move(src, dst)` d'Odoo renomme quand
    la destination n'existe pas et IMBRIQUE quand elle existe : une base
    restaurée deux fois sous le même nom se retrouve avec
-   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais. Mesuré :
-   1168 fichiers, 133 Mo, recopiés à l'identique dans les sept bases de
-   la chaîne par le clone.
+   `filestore/<base>/filestore/xx/sha`, qu'Odoo ne lira jamais — et le
+   clone recopie ensuite ce nid à l'identique dans chaque base de la
+   chaîne.
 3. Les sauvegardes `.zip`. Leur répertoire central se lit sans tout
    décompresser.
 
@@ -47,6 +46,7 @@ Codes de sortie : 0 rien d'irrécupérable, 1 des trouvailles, 2 échec.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -304,9 +304,9 @@ def verify_restore(database, zip_path, config_path=None):
     destination n'existe pas et IMBRIQUE quand elle existe. Un dossier
     `filestore/<base>/` laissé par une restauration précédente suffit
     donc à envoyer toute la sauvegarde dans
-    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Mesuré :
-    1168 fichiers, 133 Mo, recopiés ensuite dans les six bases de la
-    chaîne par le clone, sans que rien ne le signale.
+    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Le clone
+    recopie ensuite ce nid dans chaque base de la chaîne, sans que rien
+    ne le signale.
     """
     attendus = set(scan_zip(zip_path))
     racine = filestore_root(config_path)
@@ -592,6 +592,22 @@ def summarise(groupe):
     ]
 
 
+def purge_dead_ids(rapport) -> list:
+    """Les identifiants que la purge efface, triés et dédoublonnés.
+
+    UN SEUL ENDROIT LES COMPTE. L'écran demandait l'accord sur la taille
+    d'un GROUPE, qui compte des fichiers, tandis que le DELETE portait sur
+    ces identifiants-là, qui comptent des lignes. Les deux nombres
+    diffèrent par construction : `dead_ids` reçoit aussi les pièces dont le
+    fichier est présent mais le champ mort — elles n'entrent dans aucun
+    groupe — et il est rempli AVANT la déduplication par « store_fname ».
+
+    Un accord humain obtenu sur le petit nombre autorisait l'effacement du
+    grand, et rien dans la question ne le laissait voir.
+    """
+    return sorted(set(rapport.get("dead_ids") or []))
+
+
 def purge_dead_sql(rapport):
     """Le SQL qui efface les lignes dont le champ n'existe plus, ou "".
 
@@ -600,7 +616,7 @@ def purge_dead_sql(rapport):
     porte, et rejouer ce raisonnement en SQL laisserait la porte ouverte
     à effacer autre chose que ce qui a été montré.
     """
-    ids = sorted(set(rapport.get("dead_ids") or []))
+    ids = purge_dead_ids(rapport)
     if not ids:
         return ""
     liste = ", ".join(str(i) for i in ids)
@@ -656,6 +672,44 @@ def tidy_nested_plan(rapport):
                 (complet, os.path.join(rapport["root"], deux, nom))
             )
     return remonter, doublons
+
+
+def tidy_nested_leftovers(dossier) -> list:
+    """Ce qui reste sous le nid et que le plan ne couvre PAS.
+
+    `tidy_nested_plan` ne connaît qu'une forme : un répertoire de deux
+    caractères, puis des fichiers. Tout le reste — un fichier posé à la
+    racine du nid, un niveau de plus, un nid dans le nid — lui est
+    invisible. Il n'est donc ni compté, ni montré, ni consenti.
+
+    ON NOMME, ON N'EFFACE PAS : retirer le nid d'un bloc emportait ces
+    fichiers-là, et « ignore_errors » faisait taire ce qui résistait
+    pendant que la ligne de succès s'imprimait. Les chemins sont rendus
+    RELATIFS au nid : c'est ce qu'on lit à l'écran, et un chemin absolu y
+    porterait le compte de qui l'a lancé.
+    """
+    if not dossier or not os.path.isdir(dossier):
+        return []
+    restes = []
+    for racine, _dossiers, fichiers in os.walk(dossier):
+        for nom in sorted(fichiers):
+            restes.append(os.path.relpath(os.path.join(racine, nom), dossier))
+    return sorted(restes)
+
+
+def drop_empty_tree(dossier) -> bool:
+    """Retire le nid s'il ne porte plus AUCUN fichier. Vrai s'il est parti.
+
+    Sans « ignore_errors » : un répertoire qui résiste est une nouvelle, et
+    la taire ferait imprimer la ligne de succès sur un rangement qui n'a
+    pas eu lieu.
+    """
+    if not dossier or not os.path.isdir(dossier):
+        return False
+    if tidy_nested_leftovers(dossier):
+        return False
+    shutil.rmtree(dossier)
+    return True
 
 
 def main(argv=None):

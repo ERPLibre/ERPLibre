@@ -6,20 +6,22 @@
 
 Personnaliser un site écrit du SCSS dans `ir_attachment`. Cette copie est
 figée le jour où elle est écrite et continue d'employer les variables de
-CETTE version. Un module peut les renommer d'un palier à l'autre : mesuré,
-`website/.../primary_variables.scss` déclarait `$o-theme-font-number` en 12.0
-et a remplacé tout le mécanisme en 13.0. Une personnalisation de 2020
-demandait encore l'ancien nom, et le bundle s'arrêtait dessus.
+CETTE version. Un module peut les renommer d'un palier à l'autre :
+`website/.../primary_variables.scss` déclare `$o-theme-font-number` en 12.0
+et remplace tout le mécanisme en 13.0. Une personnalisation écrite avant le
+palier demande encore l'ancien nom, et le bundle s'arrête dessus.
 
 Ce qui rend un tel détecteur utilisable n'est pas de trouver — c'est de ne
-pas crier à tort. Sur le seul fichier mesuré, la première version rapportait
-dix noms dont six n'étaient pas des manques : paramètres de mixin, variables
-de boucle, arguments nommés d'`@include`. Ces tests portent surtout là-dessus.
+pas crier à tort : sur un seul fichier, la majorité de ce qu'une première
+version rapporte n'est pas un manque, mais des paramètres de mixin, des
+variables de boucle et des arguments nommés d'`@include`. Ces tests portent
+surtout là-dessus.
 """
 
 import os
 import sys
 import unittest
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "script", "odoo", "migration"))
@@ -35,8 +37,8 @@ class TestWhatCountsAsAUse(unittest.TestCase):
         self.assertNotIn("color", scss.used_names("$color: red;"))
 
     def test_a_named_include_argument_is_not_a_use(self):
-        # LE faux positif mesuré : « @include o-position-absolute(
-        # $right: 50%) » se lisait comme l'usage d'un $right inexistant.
+        # LE faux positif à éviter : « @include o-position-absolute(
+        # $right: 50%) » se lit sinon comme l'usage d'un $right inexistant.
         source = "@include o-position-absolute($right: 50%, $left: 50%);"
         self.assertEqual(scss.used_names(source), set())
 
@@ -322,11 +324,10 @@ class TestTheMigrationRunsIt(unittest.TestCase):
 class TestTheFixCannotRunTooEarly(unittest.TestCase):
     """Corriger exige la version d'ARRIVÉE, pas celle de départ.
 
-    Mesuré sur une vraie migration : la question a été posée avant le palier,
-    alors que le checkout était encore sur odoo12.0. Répondre « a » a lancé
-    reset_asset dans un shell Odoo 12, qui ne connaît pas `web_editor.assets`
-    — KeyError, rien de modifié, et la migration a continué jusqu'à casser au
-    palier suivant.
+    Posée avant le palier, alors que le checkout est encore sur odoo12.0,
+    la question lance `reset_asset` dans un shell Odoo 12, qui ne connaît pas
+    `web_editor.assets` — KeyError, rien de modifié, et la migration continue
+    jusqu'à casser au palier suivant.
 
     Prédire tôt reste juste. C'est corriger tôt qui ne l'est pas.
     """
@@ -427,12 +428,59 @@ class TestTheMigrationAsksAtTheRightMoment(unittest.TestCase):
 
 
 class TestThePromptStaysOutOfAPipe(unittest.TestCase):
-    def test_it_only_asks_in_front_of_a_terminal(self):
-        # Une invite dans un tube bloquerait l'appelant sur une question que
-        # personne ne voit.
-        with open(scss.__file__) as handle:
-            source = handle.read()
-        self.assertIn("sys.stdin.isatty()", source)
+    """Une invite dans un tube bloque l'appelant sur une question que
+    personne ne voit.
+
+    Cette épreuve cherchait « sys.stdin.isatty() » dans le FICHIER. La
+    chaîne vit dans la définition de la porte : retirer la PORTE — l'appel
+    qui la franchit — la laissait donc verte, alors que c'est l'appel qui
+    protège, jamais la définition.
+
+    Deux choses sont tenues ici : ce que la porte décide, et qu'elle soit
+    bien sur le chemin.
+    """
+
+    def porte(self, entree, sortie):
+        import sys as systeme
+
+        with mock.patch.object(
+            systeme, "stdin", mock.Mock(isatty=lambda: entree)
+        ), mock.patch.object(
+            systeme, "stdout", mock.Mock(isatty=lambda: sortie)
+        ):
+            return scss.can_ask()
+
+    def test_it_asks_in_front_of_a_terminal(self):
+        self.assertTrue(self.porte(True, True))
+
+    def test_it_stays_quiet_without_a_way_to_read_the_answer(self):
+        self.assertFalse(self.porte(False, True))
+
+    def test_it_stays_quiet_without_a_way_to_show_the_question(self):
+        """DEUX CHOSES, PAS UNE. Une invite qui part dans un tube reste en
+        tampon, invisible, pendant que le processus attend : on croit à un
+        blocage et l'on tape Entrée à l'aveugle."""
+        self.assertFalse(self.porte(True, False))
+
+    def test_the_prompt_is_behind_that_gate(self):
+        """La définition ne protège rien — c'est l'APPEL qui protège. En
+        le retirant, l'ancienne épreuve restait verte."""
+        import ast
+
+        with open(scss.__file__, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+        principale = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        )
+        appels = {
+            getattr(n.func, "id", "") or getattr(n.func, "attr", "")
+            for n in ast.walk(principale)
+            if isinstance(n, ast.Call)
+        }
+        self.assertIn("can_ask", appels)
+        self.assertIn("prompt", appels)
 
 
 if __name__ == "__main__":

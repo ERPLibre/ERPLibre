@@ -264,6 +264,60 @@ class ExtrasMixin:
                 )
             yield Static("", id="toolwarn")
 
+    # Les widgets que la case « AI coding tools » découvre.
+    _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
+
+    def compose_ai_tools(self):
+        """L'agent de code et l'identité git que reçoit la VM.
+
+        DANS LE SOCLE, parce qu'ils décrivent l'INVITÉ : ils valent mot pour
+        mot sur les deux hyperviseurs. Posés dans un seul écran, l'autre
+        déployait la case « AI coding tools » cochée sans jamais demander ni
+        l'agent ni l'identité — la VM prenait l'agent par défaut et
+        n'obtenait aucun git configuré, sans qu'un mot soit dit.
+
+        Révélés par la case des outils : sans elle, ni l'agent ni l'identité
+        n'ont d'objet, et trois widgets de plus encombrent un écran déjà
+        dense. Le nom et le courriel sont pré-remplis avec l'identité de
+        l'HÔTE — c'est ce que la VM reçoit aujourd'hui, et un champ vide la
+        ferait croire absente.
+        """
+        from textual.widgets import Input, Select, Static
+
+        defauts = self._extras["defaults"]
+        yield Static(
+            f"  {t('AI coding tools')}", id="t_ai", classes="grouptitle"
+        )
+        yield Select(
+            [("Claude Code", "claude"), ("opencode", "opencode")],
+            value=defauts.get("ai_agent") or "claude",
+            allow_blank=False,
+            id="f_ai_agent",
+        )
+        yield Input(
+            value=defauts.get("git_name", ""),
+            placeholder=t("Name for git"),
+            id="f_git_name",
+        )
+        yield Input(
+            value=defauts.get("git_email", ""),
+            placeholder=t("Email for git"),
+            id="f_git_email",
+        )
+
+    def _sync_ai(self) -> None:
+        """Montre ou cache le bloc IA selon la case des outils.
+
+        Cacher plutôt que griser : un champ grisé occupe la place et se lit
+        comme un réglage qu'on aurait le droit de changer."""
+        from textual.widgets import Checkbox
+
+        case = self.query("#f_tool_aidev")
+        vu = bool(case) and bool(case.first(Checkbox).value)
+        for sel in self._AI_WIDGETS:
+            for widget in self.query(sel):
+                widget.display = vu
+
     def compose_timezone(self):
         """Une liste plutôt qu'une saisie : un nom IANA mal orthographié
         n'est pas refusé par cloud-init, il est IGNORÉ — la VM reste en UTC et
@@ -287,6 +341,33 @@ class ExtrasMixin:
             placeholder=t("Timezone for the VMs"),
             id="f_tz",
             classes="freeval",
+        )
+
+    # La locale par défaut, et le seul choix qui ne coûte rien. Les autres
+    # déclenchent un locale-gen DANS l'invité — 36 s sur s390x, payées à
+    # chaque déploiement pour un confort dont une VM jetable n'a pas besoin.
+    LOCALE_DEFAUT = "C.UTF-8"
+
+    def compose_locale(self):
+        """La locale des VM.
+
+        DANS LE SOCLE parce qu'elle décrit l'INVITÉ. Les deux écrans ne la
+        posaient pas du tout : leur spec n'en portait aucune, « --locale »
+        ne partait donc jamais, et le déploiement retombait sur SON défaut —
+        « fr_CA.UTF-8 », qui n'est pas celui d'ici. Chaque VM née d'un écran
+        payait un locale-gen que la voie par invites évite depuis toujours.
+
+        Une saisie et non une liste : il y en a des milliers, et celle qu'on
+        veut s'écrit d'un trait. Vide, le déploiement garde son défaut —
+        c'est le comportement d'avant, et rien ne le retire à qui le veut.
+        """
+        from textual.widgets import Input, Static
+
+        yield Static(t("Locale"), classes="grouptitle")
+        yield Input(
+            value=self._extras["defaults"].get("locale", self.LOCALE_DEFAUT),
+            placeholder=t("Locale for the VMs"),
+            id="f_locale",
         )
 
     def compose_python(self):
@@ -527,9 +608,9 @@ class ExtrasMixin:
 
         Ce que ces trois partagent, et qui n'est pas évident : poser
         « value= » au montage fait émettre un Changed que Textual délivre
-        APRÈS coup, et un verrou temporel ne l'attrape pas — mesuré, les
-        champs de chaque VM se retrouvaient surchargés dès l'affichage et le
-        profil x1..x4 devenait inopérant. On compare donc à ce que le modèle
+        APRÈS coup, et un verrou temporel ne l'attrape pas : les champs de
+        chaque VM se retrouvent surchargés dès l'affichage, et le profil
+        x1..x4 devient inopérant. On compare donc à ce que le modèle
         dit DÉJÀ : une valeur identique n'est pas une saisie, c'est l'écho.
 
         Cas limite assumé : choisir explicitement la valeur que le profil
@@ -749,4 +830,20 @@ class ExtrasMixin:
             "vm_tools": self._vm_tools(),
             "python_provider": self._python_provider(),
             "app_store": self._app_store(),
+            "locale": self._saisie("#f_locale"),
+            "ai_agent": self._ai_agent(),
+            "git_name": self._saisie("#f_git_name"),
+            "git_email": self._saisie("#f_git_email"),
         }
+
+    def _ai_agent(self) -> str:
+        """L'agent choisi, ou rien — et non un défaut recopié ici : le
+        déploiement en a un, et deux défauts se répondent mal."""
+        widget = self._widget("#f_ai_agent")
+        return "" if widget is None else (widget.value or "")
+
+    def _saisie(self, selecteur) -> str:
+        """Le texte d'un champ, espaces retirés, ou rien s'il n'est pas de
+        cet écran. Vide, l'identité git de l'hôte est reprise plus bas."""
+        widget = self._widget(selecteur)
+        return widget.value.strip() if widget is not None else ""

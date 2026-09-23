@@ -38,8 +38,41 @@ from unittest import mock
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script/proxmox/install_proxmox.sh"
 
+DISQUE_BOUCHON_COURT = "vdz"
+DISQUE_BOUCHON = f"/dev/{DISQUE_BOUCHON_COURT}"
+
+# Les commandes que la cible garantit et que la station de test peut ne pas
+# avoir. Le script s'installe SUR Debian, où « hostname » est de priorité
+# requise ; ailleurs il manque, et comme fix_hosts le lit dans une
+# substitution — exécutée même en dry-run, la valeur étant nécessaire — le
+# script sort en 127 dès la première section et TOUT ce qui suit n'est
+# jamais rendu. Un bouchon par test l'emporte sur celui-ci.
+STUBS_DEFAUT = {
+    "hostname": (
+        'case "$1" in\n'
+        "  -s) echo pve-test ;;\n"
+        "  -f) echo pve-test.local ;;\n"
+        "  *) echo pve-test ;;\n"
+        "esac"
+    ),
+    # preseed_debconf s'ouvre sur « command -v debconf-set-selections ||
+    # return 0 » : absente, la fonction se retire en silence et les deux
+    # préréponses qui empêchent apt de rester pendu ne sont jamais rendues.
+    "debconf-set-selections": "cat > /dev/null",
+    # boot_disk() lit le disque d'amorçage RÉEL de la station. Le fixer
+    # tient la préréponse grub-pc sur la logique du script plutôt que sur
+    # le partitionnement de qui lance les tests : « / » sur LVM, sur btrfs
+    # ou dans un conteneur rend un pkname vide, et la préréponse disparaît.
+    # Le nom est inventé, et absent du reste du dépôt : s'il n'apparaît pas
+    # dans la sortie, c'est que le bouchon n'a pas servi.
+    "findmnt": f"echo {DISQUE_BOUCHON}3",
+    "lsblk": f"echo {DISQUE_BOUCHON_COURT}",
+}
+
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+
+TODO_DIR = pathlib.Path(RACINE) / "script" / "todo"
 from script.todo.todo_i18n import t  # noqa: E402
 
 
@@ -53,6 +86,12 @@ def _deploy():
 
 
 DQ = _deploy()
+
+# Proxmox VE 9 est bâtie sur Debian 13 : c'est ce qui autorise sa ligne de
+# catalogue à recopier le nom de code et l'identifiant libosinfo de
+# celle-ci. Le lien est nommé ici pour que les épreuves l'épinglent à la
+# TABLE plutôt qu'au littéral qu'elle contient aujourd'hui.
+DEBIAN_SOUS_PVE9 = "13"
 
 # Somme publiée par l'amont sur « Install Proxmox VE on Debian 13 Trixie », et
 # recopiée ici EXPRÈS : deux copies indépendantes, c'est ce qui donne son sens
@@ -104,8 +143,25 @@ class TestCatalogue(unittest.TestCase):
 
     def test_it_reuses_debians_osinfo(self):
         """Le système EST une Debian : libosinfo n'a pas d'entrée Proxmox, et
-        en inventer une ferait échouer virt-install."""
-        self.assertEqual("debian13", DQ.PROXMOX_VERSIONS["9"][1])
+        en inventer une ferait échouer virt-install.
+
+        Épinglé à la TABLE DEBIAN et non à un littéral : ce qui est copié se
+        vérifie contre son autorité, sans quoi l'épreuve reste verte le jour
+        où l'autorité change et où la copie, elle, ne bouge pas.
+        """
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][1],
+            DQ.PROXMOX_VERSIONS["9"][1],
+        )
+
+    def test_it_reuses_debians_code_name(self):
+        """Le nom de code choisit l'image téléchargée : divergent, il en
+        vise une qui n'existe pas, et le déploiement s'arrête au premier
+        téléchargement."""
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][0],
+            DQ.PROXMOX_VERSIONS["9"][0],
+        )
 
     def test_it_is_named_after_proxmox_not_after_the_key(self):
         self.assertEqual("Proxmox VE 9", DQ.distro_label("proxmox", "9"))
@@ -115,7 +171,14 @@ class TestCatalogue(unittest.TestCase):
 
 
 class TestLesDeuxCatalogues(unittest.TestCase):
-    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent."""
+    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent.
+
+    S'ACCORDER PORTE SUR TOUT CE QUI EST RECOPIÉ, et la copie porte les
+    versions et la version par défaut autant que les noms. Comparer les
+    seuls noms laissait passer une version ajoutée d'un côté — l'écran ne
+    la propose pas — et un défaut déplacé — l'écran en propose une autre
+    que celle que le déploiement retiendra.
+    """
 
     def test_the_menu_offers_every_distro_of_the_catalogue(self):
         menu = set(TODO._QEMU_DISTROS)
@@ -126,6 +189,140 @@ class TestLesDeuxCatalogues(unittest.TestCase):
             "les deux catalogues divergent : "
             f"menu seul {menu - catalogue}, deploy seul {catalogue - menu}",
         )
+
+    def test_the_menu_offers_every_version_of_each_distro(self):
+        """Une version ajoutée à la table et pas au menu n'est proposée
+        nulle part : elle existe pour le déploiement et pour personne."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    list(DQ.DISTROS[distro][0]),
+                    list(TODO._QEMU_DISTROS[distro][0]),
+                )
+
+    def test_the_menu_preselects_the_version_the_deploy_would_take(self):
+        """Le défaut du menu est ce qu'on obtient en tapant Entrée. Décalé
+        de celui de la table, l'écran annonce une version et le
+        déploiement en pose une autre, sans qu'un mot soit dit."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    DQ.DISTROS[distro][1], TODO._QEMU_DISTROS[distro][1]
+                )
+
+    def test_the_package_families_match_the_authoritative_table(self):
+        """Le filtre d'outils est une COPIE de plus, et elle avait dérivé.
+
+        Une famille absente rend "" et le filtre écarte alors tout outil
+        qui en exige une : une VM Proxmox — qui EST une Debian — perdait
+        les deux outils réclamant « apt ». Ne déclarer aucune distribution
+        les gardait, donc le filtre punissait la précision.
+        """
+        self.assertEqual(
+            DQ.DISTRO_PKG,
+            TODO._QEMU_DISTRO_FAMILY,
+            "la table des familles diverge de l'autorité : "
+            f"autorité seule "
+            f"{set(DQ.DISTRO_PKG) - set(TODO._QEMU_DISTRO_FAMILY)}, "
+            f"copie seule "
+            f"{set(TODO._QEMU_DISTRO_FAMILY) - set(DQ.DISTRO_PKG)}",
+        )
+
+    def test_naming_a_distro_never_gives_fewer_tools_than_naming_none(self):
+        """LE RENVERSEMENT EST LE SIGNE. Ne rien dire ne doit pas offrir
+        plus que dire juste — c'est ainsi qu'une famille manquante se
+        voit, quelle que soit la distribution qui la perd."""
+        tous = tuple(TODO._QEMU_VM_TOOLS)
+        muet = len(TODO._qemu_tools_for(tous, "amd64", "gnome", distro=""))
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                nomme = len(
+                    TODO._qemu_tools_for(tous, "amd64", "gnome", distro=distro)
+                )
+                self.assertLessEqual(
+                    nomme,
+                    muet,
+                    "nommer une distribution ne peut pas en ajouter",
+                )
+
+    def test_a_proxmox_vm_gets_the_apt_tools(self):
+        """Contrôle positif : la borne par famille doit continuer d'écarter
+        ce qu'une distribution ne sait pas installer."""
+        tous = tuple(TODO._QEMU_VM_TOOLS)
+        apt = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="debian"
+            )
+        }
+        pve = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="proxmox"
+            )
+        }
+        dnf = {
+            c
+            for c, *_r in TODO._qemu_tools_for(
+                tous, "amd64", "gnome", distro="fedora"
+            )
+        }
+        self.assertEqual(apt, pve)
+        self.assertNotEqual(apt, dnf)
+
+    def test_the_fallback_tuples_match_the_authoritative_table(self):
+        """Le repli du menu est une COPIE, et une copie ne suit pas.
+
+        Le commentaire du menu raconte déjà cette panne : les tuples étaient
+        tenus par la seule promesse « cohérent avec deploy_qemu », et Debian
+        a gagné s390x là-bas sans l'obtenir ici — l'écran ne le proposait
+        donc pas. La voie normale lit désormais la table ; le repli, lui,
+        est toujours une copie et sert justement quand plus rien ne peut la
+        lire.
+        """
+        for arch, copie in (
+            ("s390x", TODO._QEMU_S390X_DISTROS),
+            ("arm64", TODO._QEMU_ARM64_DISTROS),
+        ):
+            with self.subTest(arch=arch):
+                self.assertEqual(
+                    set(DQ.ARCH_DISTRO_SUPPORT[arch]),
+                    set(copie),
+                    f"le repli {arch} diverge de la table : "
+                    f"table seule "
+                    f"{set(DQ.ARCH_DISTRO_SUPPORT[arch]) - set(copie)}, "
+                    f"repli seul "
+                    f"{set(copie) - set(DQ.ARCH_DISTRO_SUPPORT[arch])}",
+                )
+
+    def test_no_screen_label_claims_a_single_distro_per_arch(self):
+        """L'écran du choix d'architecture annonçait « Ubuntu only » pour
+        s390x, que la table sert en six distributions.
+
+        Une restriction énoncée EN DUR à côté d'une table qui l'infirme
+        envoie choisir une autre architecture pour une raison fausse. La
+        liste qui suit est déjà filtrée par la table : l'écran n'a pas à
+        la résumer, et ne peut pas le faire sans dériver.
+        """
+        lignes = (
+            (TODO_DIR / "qemu_menu.py")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+        multiples = [
+            a for a, d in DQ.ARCH_DISTRO_SUPPORT.items() if len(d) > 1
+        ]
+        for seule in ("Ubuntu only", "Debian only", "Fedora only"):
+            # La LIGNE fautive, et non la page : un assertNotIn sur le
+            # source entier rend un message de cinquante kilo-octets, que
+            # personne ne lit — donc une garde qui ne renseigne pas.
+            fautives = [
+                f"qemu_menu.py:{n}: {l.strip()}"
+                for n, l in enumerate(lignes, 1)
+                if seule in l
+            ]
+            with self.subTest(mention=seule, arches=multiples):
+                self.assertEqual([], fautives)
 
     def test_the_versions_agree_for_proxmox(self):
         versions, defaut = TODO._QEMU_DISTROS["proxmox"]
@@ -223,7 +420,7 @@ class TestLeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
-            for nom, corps in (stubs or {}).items():
+            for nom, corps in dict(STUBS_DEFAUT, **(stubs or {})).items():
                 (bin_dir / nom).write_text(f"#!/bin/bash\n{corps}\n")
                 (bin_dir / nom).chmod(0o755)
             osrel = pathlib.Path(tmp) / "os-release"
@@ -339,15 +536,17 @@ class TestLeScript(unittest.TestCase):
         """Le piège propre à l'image cloud : elle amorce en EFI, les paquets
         pve tirent grub-pc, et sa post-installation refuse de deviner le
         disque — « You must correct your GRUB install devices before
-        proceeding ». Mesuré : dpkg s'arrête et emporte la transaction."""
+        proceeding » : dpkg s'arrête et emporte la transaction."""
         res = self._lance(["--dry-run"])
         self.assertIn("grub-pc/install_devices", res.stdout)
-        self.assertRegex(res.stdout, r"install_devices multiselect /dev/\w+")
+        self.assertIn(
+            f"install_devices multiselect {DISQUE_BOUCHON}", res.stdout
+        )
 
     def test_apt_waits_for_the_lock_instead_of_giving_up(self):
-        """Sur une VM fraîche, cloud-init tient encore le verrou : mesuré,
-        « held by process 996 (apt-get) », et le script mourait 40 secondes
-        après le démarrage."""
+        """Sur une VM fraîche, cloud-init tient encore le verrou : apt
+        rend « held by process … (apt-get) » et, sans attente, le script
+        meurt dans la minute qui suit le démarrage."""
         texte = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("DPkg::Lock::Timeout", texte)
         res = self._lance(["--dry-run"])

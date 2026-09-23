@@ -26,6 +26,10 @@ from script.todo.todo import TODO  # noqa: E402
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
+# Capacité imposée à l'essai à blanc : « cœurs,RAM_Mo,disque_Go ».
+# Assez large pour que les quatre étages tiennent, quelle que soit la
+# station qui lance la suite.
+CAPACITE_ESSAI = "16,32000,400"
 
 # Le moteur vit dans son propre module depuis qu'il est partagé entre
 # deep_proxmox et deep_qemu. Bouchonner « deep_proxmox.dernier_rapport » ne
@@ -100,7 +104,18 @@ class TestLEssaiABlanc(unittest.TestCase):
             text=True,
             timeout=180,
             cwd=RACINE,
-            env=dict(os.environ, PYTHONPATH=RACINE, HOME=cls.maison),
+            env=dict(
+                os.environ,
+                PYTHONPATH=RACINE,
+                HOME=cls.maison,
+                # Le plan se déduit de ce que la machine offre : une station
+                # étroite rend une descente vide, l'essai à blanc sort en 1,
+                # et les six épreuves de cette classe n'ont plus de plan à
+                # lire. La capacité est donc IMPOSÉE — ce que ces tests
+                # gardent est l'arithmétique du plan, pas le disque libre
+                # de qui les lance. Large de quoi tenir les quatre étages.
+                EL_LONGTEST_CAPACITY=CAPACITE_ESSAI,
+            ),
         )
 
     @classmethod
@@ -239,10 +254,10 @@ class TestLEssaiABlanc(unittest.TestCase):
         """Chaque étage annoncé est plus étroit que son parent, sur les trois
         ressources.
 
-        Deux vCPU à chaque étage imbriqué donnaient un parent aussi étroit que
+        Deux vCPU à chaque étage imbriqué donnent un parent aussi étroit que
         son enfant : cent pour cent de surengagement, et l'hyperviseur à servir
-        par-dessus. Mesuré : l'installation de l'étage 4 dépassait 2 h 50
-        contre 793 s pour l'étage 3."""
+        par-dessus. L'installation de l'étage 4 dépasse alors 2 h 50, contre
+        793 s pour l'étage 3."""
         # Par expression exacte : la ligne « machine : … Mo … Go » du haut
         # contient les mêmes unités et décalait l'index d'un cran.
         import re
@@ -408,12 +423,12 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
 class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
     """Le rapport ne s'écrivait qu'à la FIN de la descente.
 
-    Constaté : une descente de dix étages arrêtée pendant l'installation du
-    quatrième laissait quatre machines réelles, et « --detruire » répondait
-    « aucun rapport de descente : rien à défaire ». Le seul enregistrement du
-    couple (alias du parent, VMID) mourait avec le processus — il fallait
-    retrouver ces VM à la main, c'est-à-dire par leur nom, ce que tout le
-    reste de ce fichier s'applique à ne pas faire.
+    Une descente de dix étages arrêtée pendant l'installation du quatrième
+    laisse quatre machines réelles, et « --detruire » répond « aucun rapport
+    de descente : rien à défaire ». Le seul enregistrement du couple (alias du
+    parent, VMID) meurt avec le processus — il faut alors retrouver ces VM à
+    la main, c'est-à-dire par leur nom, ce que tout le reste de ce fichier
+    s'applique à ne pas faire.
     """
 
     def setUp(self):
@@ -559,9 +574,9 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp.descente_vivante(999999999))
 
     def test_a_shell_that_merely_names_the_script_is_not_a_descent(self):
-        """Constaté sur la machine : un « pgrep -f deep_proxmox.py » posé dans
-        une boucle de surveillance donnait un shell dont la ligne de commande
-        contient le motif, et deux faux positifs sur trois."""
+        """Un « pgrep -f deep_proxmox.py » posé dans une boucle de surveillance
+        donne un shell dont la ligne de commande contient le motif, soit deux
+        faux positifs sur trois."""
         import subprocess
 
         faux = subprocess.Popen(
@@ -1256,11 +1271,10 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
 class TestAucuneEtapeNeRepondNone(unittest.TestCase):
     """Une étape qui rend None dit « non » à l'appelant, sans dire pourquoi.
 
-    Vécu : l'extraction du moteur avait coupé `preparer_systeme` sur le
-    « return False » de sa boucle, sans son « return True » final. La descente
-    affichait « ✗ étage 1 systeme » et pas une ligne de cause — et l'essai à
-    blanc ne pouvait pas le voir, puisqu'il sort avant. Les deux piles étaient
-    cassées, aucun test ne l'a vu."""
+    Une étape coupée sur le « return False » de sa boucle, sans son
+    « return True » final, rend None : la descente affiche « ✗ étage 1
+    systeme » et pas une ligne de cause — et l'essai à blanc ne peut pas le
+    voir, puisqu'il sort avant."""
 
     CROCHETS = (
         "preparer_parent",
@@ -1680,11 +1694,11 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         self.assertNotIn("⚠", texte)
 
     def test_unreachable_levels_go_with_the_root_disk(self):
-        """Mesuré sur un arbre réel : les étages 3 et 4 étaient injoignables
-        — leur parent était éteint — et le compte disait « 2 / 4, il reste des
-        machines ». Or « virsh undefine --remove-all-storage » sur l'étage 1
-        efface le disque où ils VIVENT. L'avertissement était faux dans
-        l'autre sens, et un avertissement faux ne se lit plus."""
+        """Des étages injoignables — leur parent est éteint — font dire au
+        compte « 2 / 4, il reste des machines ». Or « virsh undefine
+        --remove-all-storage » sur l'étage 1 efface le disque où ils VIVENT :
+        l'avertissement est faux dans l'autre sens, et un avertissement faux
+        ne se lit plus."""
         self.dp.FAMILLE.detruire_une = lambda *a, **k: False
         code, texte = self._lancer(etage1_ok=True, une=False)
         self.assertEqual(code, 0)

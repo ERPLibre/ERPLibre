@@ -19,10 +19,10 @@ lecture seule, plutôt que de rejouer quoi que ce soit.
 Pourquoi pas en démarrant Odoo
 ------------------------------
 Six démarrages coûteraient une heure, écriraient dans les bases et
-demanderaient de basculer le checkout à chaque palier. Mesuré : la même
-inspection en SQL prend moins d'une demi-seconde par base, et ne touche à
-rien. Ce qu'on y perd — les modèles abstraits, les champs calculés — ne
-se compare pas d'une version à l'autre de toute façon.
+demanderaient de basculer le checkout à chaque palier. La même inspection
+en SQL prend moins d'une demi-seconde par base, et ne touche à rien. Ce
+qu'on y perd — les modèles abstraits, les champs calculés — ne se compare
+pas d'une version à l'autre de toute façon.
 
 Ce qui compte le plus
 ---------------------
@@ -184,14 +184,14 @@ def version_of(database, dct):
 
 # Ce que la migration écrit dans le journal d'une étape autour d'un test :
 #
-#   [2026-08-26 03:19:44.166204] $ .venv…/python3 ./script/…/smoke.py -d …
-#   [2026-08-26 03:19:59.846406]   -> 1
-#   [2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1
+#   [AAAA-MM-JJ hh:mm:ss.ffffff] $ .venv…/python3 ./script/…/smoke.py -d …
+#   [AAAA-MM-JJ hh:mm:ss.ffffff]   -> 1
+#   [AAAA-MM-JJ hh:mm:ss.ffffff] [test] smoke_public_url -> 1
 #
-# Entre le « $ » et le « -> », RIEN : mesuré sur trois exécutions du même
-# test, la sortie de l'outil n'est pas capturée. Ce qui explique l'échec
-# est donc AVANT, dans ce qu'Odoo écrivait juste avant qu'on le teste —
-# et c'est pour cela que l'extrait remonte, au lieu de descendre.
+# Entre le « $ » et le « -> », RIEN : la sortie de l'outil n'est pas
+# capturée. Ce qui explique l'échec est donc AVANT, dans ce qu'Odoo écrit
+# juste avant le test — et c'est pour cela que l'extrait remonte, au lieu
+# de descendre.
 MARQUEUR_COMMANDE = "] $ "
 MOTIF_HORODATAGE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 
@@ -451,7 +451,7 @@ def table_counts(database):
 
     Construite côté serveur puis exécutée d'un bloc : huit cents requêtes
     séparées coûteraient huit cents allers-retours, là où celle-ci prend
-    quatre dixièmes de seconde — mesuré sur une base de 890 tables.
+    quatre dixièmes de seconde sur une base de 890 tables.
     """
     fabrique = run_psql(
         database,
@@ -545,9 +545,9 @@ def inspect(database):
             dct_origine.setdefault(ligne[0], set()).add(ligne[1])
     etat["field_module"] = {cle: sorted(v) for cle, v in dct_origine.items()}
     # Lesquels PORTENT une donnée. Un champ `store=false` n'a jamais eu
-    # de colonne : sa disparition ne perd rien, et il pesait jusqu'à 90 %
-    # du seau « non déclarés par OpenUpgrade ». Mesuré au palier 16 → 17 :
-    # `__last_update` à lui seul comptait pour 397 des 565.
+    # de colonne : sa disparition ne perd rien, et il pèse jusqu'à 90 %
+    # du seau « non déclarés par OpenUpgrade » — au palier 16 → 17,
+    # `__last_update` compte à lui seul pour 397 des 565.
     #
     # `store` existe de la 12 à la 18 et n'est jamais NULL — vérifié sur
     # les sept bases — donc le renseignement est fiable partout.
@@ -560,10 +560,10 @@ def inspect(database):
     #
     # Une pièce jointe dont `res_field` ne nomme aucun champ vivant est
     # DÉJÀ illisible : Odoo lève un KeyError en la contrôlant. Ce ne sont
-    # pas des données, ce sont des débris. Mesuré sur une chaîne 12 → 18 :
-    # la dette naît aux paliers 13 et 14, reste gelée pendant trois
-    # paliers, et la 18 ramasse 452 lignes d'un coup — qui se lisent
-    # alors comme 452 pertes.
+    # pas des données, ce sont des débris. Sur une chaîne 12 → 18, la
+    # dette naît aux paliers 13 et 14, reste gelée pendant trois paliers,
+    # et la 18 ramasse 452 lignes d'un coup — qui se lisent alors comme
+    # 452 pertes.
     #
     # Ni le nom ni le mimetype ici : `run_psql` découpe par LIGNE et un
     # nom de fichier peut en contenir une.
@@ -1019,9 +1019,9 @@ def overlay_declared(
             champs["model_gone"].append(cle)
             continue
         # AVANT « non analysé » : « sans donnée propre » est une raison
-        # plus forte que « hors du champ d'OpenUpgrade ». Mesuré au
-        # palier 16 → 17, le placement avant fait tomber `not_analysed`
-        # de 181 à 47 sans changer `undeclared` — le seau résiduel se
+        # plus forte que « hors du champ d'OpenUpgrade ». Au palier
+        # 16 → 17, le placement avant fait tomber `not_analysed` de 181
+        # à 47 sans changer `undeclared` — le seau résiduel se
         # réduit alors au risque réel : des champs qui AVAIENT des
         # données, dans des modules dont OpenUpgrade ne peut rien dire.
         #
@@ -1256,11 +1256,10 @@ RENAME_RATIO = 0.75
 def looks_renamed(un, deux):
     """Les deux noms se ressemblent-ils assez pour être le même sujet ?
 
-    Deux garde-fous ont été essayés et rejetés, mesurés sur une vraie
-    migration. Le seul nombre de lignes accouplait
-    `account_account_tag_account_tax_template_rel` à `dms_directory` : les
-    deux comptaient sept lignes. Un mot commun d'au moins cinq lettres
-    accouplait `cleanup_purge_wizard_menu` à
+    Deux garde-fous plus simples ne tiennent pas. Le seul nombre de lignes
+    accouple `account_account_tag_account_tax_template_rel` à
+    `dms_directory` : les deux comptent sept lignes. Un mot commun d'au
+    moins cinq lettres accouple `cleanup_purge_wizard_menu` à
     `cleanup_create_indexes_line` — « cleanup » ne dit rien.
 
     La ressemblance d'ENSEMBLE tranche : `muk_dms_directory` et
@@ -1315,9 +1314,9 @@ SANS_DONNEE_PROPRE = ("id",)
 # Pourquoi une pièce jointe a disparu — DÉDUIT, jamais déclaré.
 #
 # SEMANTIC_MAP ne peut pas porter ceci : elle nomme une TABLE, et la
-# cause n'est pas la table, ce sont ces lignes-là. Mesuré sur une chaîne
-# 12 → 18 : des 516 lignes parties au palier 18, 452 avaient perdu leur
-# champ et 63 leur enregistrement. Une entrée « ir_attachment / pruned »
+# cause n'est pas la table, ce sont ces lignes-là. Sur une chaîne
+# 12 → 18, des 516 lignes parties au palier 18, 452 ont perdu leur champ
+# et 63 leur enregistrement. Une entrée « ir_attachment / pruned »
 # aurait rangé les 516 sous « perte attendue » — et la 517e avec.
 ATTACHMENT_KIND = (
     ("field_debt", "their field was already gone before this step", "dim"),

@@ -9,6 +9,8 @@ from datetime import datetime
 
 import click
 
+from script.todo import host_os
+from script.todo.devstack_report import DS_OK
 from script.todo.todo_i18n import t
 
 
@@ -117,6 +119,7 @@ class QemuMenuMixin:
         "almalinux",
         "rocky",
         "opensuse",
+        "proxmox",
     )
 
     # Alias distro pour l'affichage (jeton générique -> nom courant).
@@ -189,7 +192,11 @@ class QemuMenuMixin:
             if a == native:
                 label += f" — {t('native')} *"
             elif a == "s390x":
-                label += f"  ({t('IBM Z — emulated, slow; Ubuntu only')})"
+                # Sans « Ubuntu seulement » : la table en sert six, et la
+                # liste des distributions qui suit est DÉJÀ filtrée par
+                # elle. Résumer ici une restriction que rien ne dérive
+                # envoie choisir une autre architecture sans raison.
+                label += f"  ({t('IBM Z — emulated, slow')})"
             elif a == "arm64":
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:
@@ -307,6 +314,19 @@ class QemuMenuMixin:
 
     def prompt_execute_qemu(self):
         print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
+        # Ce menu pilote libvirt EN LOCAL, et libvirt n'y existe pas : pas
+        # de /dev/kvm, et son réseau virtuel est bâti sur les ponts Linux et
+        # netfilter, qui n'ont pas d'équivalent. Le menu y était atteignable
+        # et entièrement inerte — il installait des paquets déclarés vides
+        # et ne créait jamais rien.
+        #
+        # Le menu Proxmox, LUI, n'est pas gardé : il parle à un hôte distant
+        # par ssh, et marche donc de partout.
+        if host_os.refuse_host(host_os.MACOS) != DS_OK:
+            print(
+                f"   {t('Deploy › Proxmox VE reaches a remote host from here.')}"
+            )
+            return False
         script_path = self._qemu_script_path()
         if not os.path.isfile(script_path):
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
@@ -426,20 +446,8 @@ class QemuMenuMixin:
                 self._qemu_stats()
             elif status == "20":
                 self._qemu_list_images()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    # Ignore les entrées de section pour mapper le numéro
-                    # affiché sur la bonne commande (config incluse).
-                    real = [c for c in choices if not c.get("section")]
-                    if 0 < int_cmd <= len(real):
-                        cmd_no_found = False
-                        self.execute_from_configuration(real[int_cmd - 1])
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            elif not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
@@ -532,7 +540,7 @@ class QemuMenuMixin:
 
     @staticmethod
     def _qemu_stamp(ts):
-        """Horodatage court « 2026-08-01 »."""
+        """Horodatage court, au format « AAAA-MM-JJ »."""
         try:
             return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
         except (OSError, OverflowError, TypeError, ValueError):

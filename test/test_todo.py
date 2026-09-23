@@ -14,15 +14,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+# Les chemins de configuration viennent de LEUR module, jamais d'un
+# ré-export : todo.py en portait trois copies que rien ne lisait, et dont
+# l'une CONTREDISAIT l'autorité sur l'override privé. Cette épreuve
+# épinglait la copie, donc le contresens.
+from script.config.config_file import (
+    CONFIG_FILE,
+    CONFIG_OVERRIDE_FILE,
+    LOGO_ASCII_FILE,
+)
 from script.todo import todo_i18n
 from script.todo.todo import (
     ANDROID_DIR,
-    CONFIG_FILE,
-    CONFIG_OVERRIDE_FILE,
     ENABLE_CRASH,
     ERROR_LOG_PATH,
     GRADLE_FILE,
-    LOGO_ASCII_FILE,
     MOBILE_HOME_PATH,
     STRINGS_FILE,
     TODO,
@@ -272,7 +278,42 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(CONFIG_FILE, "./script/todo/todo.json")
 
     def test_config_override_path(self):
-        self.assertEqual(CONFIG_OVERRIDE_FILE, "./private/todo/todo.json")
+        """LE CHEMIN QUE LE CHARGEUR LIT. Cette épreuve épinglait celui
+        d'une copie morte — « ./private/todo/todo.json » — que rien
+        n'ouvrait jamais. Qui s'y fiait écrivait un fichier de réglages
+        qu'aucune lecture ne prenait, sans message."""
+        self.assertEqual(
+            CONFIG_OVERRIDE_FILE, "./private/todo/todo_override.json"
+        )
+
+    def test_no_copy_of_these_paths_lives_elsewhere(self):
+        """Ce module est le SEUL à les nommer. Une copie reprise ailleurs
+        ne suit pas, et c'est exactement ainsi que l'une d'elles a fini par
+        désigner un fichier que personne ne lit."""
+        import ast
+        import io as _io
+
+        chemin = Path(__file__).resolve().parents[1] / "script" / "todo"
+        for fichier in sorted(chemin.glob("*.py")):
+            with _io.open(fichier, encoding="utf-8") as fh:
+                arbre = ast.parse(fh.read())
+            poses = {
+                cible.id
+                for noeud in ast.walk(arbre)
+                if isinstance(noeud, ast.Assign)
+                for cible in noeud.targets
+                if isinstance(cible, ast.Name)
+            }
+            with self.subTest(fichier=fichier.name):
+                self.assertEqual(
+                    set(),
+                    poses
+                    & {
+                        "CONFIG_FILE",
+                        "CONFIG_OVERRIDE_FILE",
+                        "LOGO_ASCII_FILE",
+                    },
+                )
 
     def test_logo_path(self):
         self.assertEqual(LOGO_ASCII_FILE, "./script/todo/logo_ascii.txt")
@@ -341,7 +382,7 @@ class TestExecuteUnitTests(unittest.TestCase):
         # Verify it was called - error handling path
 
     def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
+        """Le verdict tombe en DERNIER, là où le lecteur le cherche.
 
         unittest écrit son verdict sur stderr et les tests impriment sur
         stdout ; capturés ensemble, le stdout tamponné se déversait après
@@ -713,36 +754,54 @@ class TestSelectDatabase(unittest.TestCase):
         self.assertFalse(result)
 
 
-class TestRestoreFromDatabase(unittest.TestCase):
-    @patch("builtins.input")
-    def test_restore_by_filename(self, mock_input):
-        todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
-        )
-        # status="1" (by filename), db name default, no neutralize
-        mock_input.side_effect = ["1", "", "n", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
-        self.assertIn("db_restore.py", cmd)
+def _commande_de_restauration(todo):
+    """La commande de restauration, CHERCHÉE et non prise au rang zéro.
 
+    La porte lit d'abord la liste des bases : un rang codé en dur désigne
+    cette lecture, et l'épreuve juge alors une commande qui ne détruit rien.
+    """
+    for appel in todo.db_manager._execute.exec_command_live.call_args_list:
+        if "db_restore.py" in appel[0][0]:
+            return appel[0][0]
+    raise AssertionError("aucune restauration lancée")
+
+
+class TestRestoreFromDatabase(unittest.TestCase):
+    """L'entrée « [1] » demande désormais un NOM d'image, et le zip est
+    cherché avant que la moindre commande soit bâtie : ces deux épreuves
+    posent donc une saisie de plus et simulent le fichier présent. Ce
+    qu'elles tenaient reste tenu ; test/test_restore_menu.py couvre le
+    reste du chemin."""
+
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
     @patch("builtins.input")
-    def test_restore_with_neutralize(self, mock_input):
+    def test_restore_by_filename(self, mock_input, _isfile):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             [],
         )
-        mock_input.side_effect = ["1", "mydb", "y", "n"]
+        # [1], le nom d'image, le nom de base par défaut, pas de
+        # neutralisation, pas de mise à jour des modules
+        mock_input.side_effect = ["1", "backup", "", "n", "n"]
         todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
+        cmd = _commande_de_restauration(todo)
+        self.assertIn("db_restore.py", cmd)
+        self.assertIn("--image backup", cmd)
+
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
+    @patch("builtins.input")
+    def test_restore_with_neutralize(self, mock_input, _isfile):
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
+            0,
+            [],
+        )
+        mock_input.side_effect = ["1", "backup", "mydb", "y", "n"]
+        todo.db_manager.restore_from_database()
+        cmd = _commande_de_restauration(todo)
         self.assertIn("--neutralize", cmd)
         self.assertIn("mydb_neutralize", cmd)
 

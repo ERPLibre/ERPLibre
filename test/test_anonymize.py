@@ -5,11 +5,11 @@
 """Anonymiser : ce qui compte, c'est ce qu'on REFUSE de toucher.
 
 Remplacer des mots est facile. Ce qui casse une base, c'est de croire que
-« tous les champs string » veut dire quelque chose. Mesuré sur une base
-réelle en 18 : 505 champs `selection` sont stockés en varchar
-(`res.partner.lang`, `sale.order.invoice_status`), 2693 many2one sont des
-entiers, 194 textes sont des `jsonb` par langue, et 301 contraintes
-d'unicité attendent une collision.
+« tous les champs string » veut dire quelque chose. Une base 18 porte
+505 champs `selection` stockés en varchar (`res.partner.lang`,
+`sale.order.invoice_status`), 2693 many2one qui sont des entiers, 194
+textes en `jsonb` par langue, et 301 contraintes d'unicité qui attendent
+une collision.
 
 Trois de ces pièges ont été trouvés en LANÇANT l'outil sur une copie
 jetable, pas en le relisant : PostgreSQL refuse d'indexer un
@@ -27,6 +27,7 @@ import ast
 import io
 import math
 import sys
+import os
 import unittest
 from pathlib import Path
 
@@ -117,13 +118,13 @@ class TestWhatIsNeverReplaced(unittest.TestCase):
             self.assertFalse(anon.champ_retenu(champ(nom, "integer")), nom)
 
     def test_a_number_living_in_a_jsonb_is_left_alone(self):
-        """Mesuré : res_partner.credit_limit est un float DANS un jsonb."""
+        """`res_partner.credit_limit` est un float DANS un jsonb."""
         self.assertFalse(
             anon.champ_retenu(champ("credit_limit", "float", "jsonb"))
         )
 
     def test_a_column_under_a_check_constraint_is_left_alone(self):
-        """Mesuré : crm_lead.probability doit rester entre 0 et 100."""
+        """`crm_lead.probability` doit rester entre 0 et 100."""
         self.assertFalse(
             anon.champ_retenu(
                 champ("probability", "float", "numeric", checked=True)
@@ -264,30 +265,103 @@ class TestTheWordList(unittest.TestCase):
 
 
 class TestThereIsNoModelInTheLoop(unittest.TestCase):
-    """« sans passer par un GPT » : vérifié sur le code, pas sur parole."""
+    """« sans passer par un GPT » : vérifié sur le code, pas sur parole.
 
-    def test_the_engine_imports_nothing_that_could_call_out(self):
-        arbre = ast.parse(MOTEUR.read_text(encoding="utf-8"))
-        interdits = {
-            "requests",
-            "urllib",
-            "urllib3",
-            "http",
-            "httpx",
-            "socket",
-            "openai",
-            "anthropic",
-            "xmlrpc",
-            "json",
-        }
+    LA PROPRIÉTÉ, ET NON UNE LISTE DE NOMS. La garde d'avant énumérait des
+    modules et se trompait dans les deux sens. Elle bannissait `json`, qui
+    ne peut rien appeler — donc elle ROUGISSAIT sur le durcissement qui a
+    remplacé l'exécution du fichier « --words » par une lecture JSON. Et
+    elle laissait passer le vrai trou : `charger_mots` compilait puis
+    EXÉCUTAIT ce fichier, qui pouvait donc importer n'importe quoi sans
+    qu'aucun import interdit n'apparaisse dans ce module.
+
+    Deux propriétés la remplacent : aucun module capable d'ouvrir une
+    connexion, et aucune exécution de source.
+
+    CE QUI RESTE HORS DE PORTÉE, et le dire vaut mieux que le laisser
+    croire : `subprocess` est autorisé, parce que le moteur lance `psql`.
+    Une commande externe qui parlerait au réseau passerait donc. Fermer
+    cette porte demanderait de nommer les binaires admis, ce qui est une
+    autre garde, et non celle-ci.
+    """
+
+    # Ce qui sait parler à un réseau. Les sous-modules suivent le paquet :
+    # « urllib.request » est retenu par « urllib ».
+    RESEAU = {
+        "requests",
+        "urllib",
+        "urllib3",
+        "http",
+        "httpx",
+        "aiohttp",
+        "socket",
+        "ssl",
+        "ftplib",
+        "smtplib",
+        "poplib",
+        "imaplib",
+        "telnetlib",
+        "xmlrpc",
+        "webbrowser",
+        "openai",
+        "anthropic",
+    }
+    # Ce qui transforme une donnée en code. C'est par là que le fichier de
+    # mots contournait tout le reste.
+    EXECUTIONS = {"exec", "eval", "compile", "__import__"}
+
+    @staticmethod
+    def _importes(arbre):
+        """Les paquets de premier niveau importés par ce module."""
+        vus = set()
         for noeud in ast.walk(arbre):
-            noms = []
             if isinstance(noeud, ast.Import):
-                noms = [a.name.split(".")[0] for a in noeud.names]
+                vus |= {a.name.split(".")[0] for a in noeud.names}
             elif isinstance(noeud, ast.ImportFrom) and noeud.module:
-                noms = [noeud.module.split(".")[0]]
-            for nom in noms:
-                self.assertNotIn(nom, interdits, nom)
+                vus.add(noeud.module.split(".")[0])
+        return vus
+
+    @staticmethod
+    def _executions(arbre):
+        """Les appels qui transforment une donnée en code, avec leur ligne."""
+        return [
+            (n.lineno, n.func.id)
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id in TestThereIsNoModelInTheLoop.EXECUTIONS
+        ]
+
+    def test_the_engine_imports_nothing_that_could_open_a_connection(self):
+        arbre = ast.parse(MOTEUR.read_text(encoding="utf-8"))
+        self.assertEqual(set(), self._importes(arbre) & self.RESEAU)
+
+    def test_the_engine_never_turns_data_into_code(self):
+        """Le fichier « --words » était compilé puis exécuté : la liste
+        d'imports ci-dessus ne prouvait rien tant que cette porte-là
+        restait ouverte."""
+        arbre = ast.parse(MOTEUR.read_text(encoding="utf-8"))
+        self.assertEqual([], self._executions(arbre))
+
+    def test_a_harmless_module_is_not_banned(self):
+        """Une garde qui rougit sur une AMÉLIORATION coûte plus cher que
+        pas de garde : elle apprend à la désarmer. `json` ne peut rien
+        appeler, et c'est lui qui a fermé la porte."""
+        self.assertNotIn("json", self.RESEAU)
+        self.assertIn(
+            "json",
+            self._importes(ast.parse(MOTEUR.read_text(encoding="utf-8"))),
+        )
+
+    def test_the_two_readers_see_what_they_claim_to_forbid(self):
+        """Un détecteur qui ne détecte rien passe les tests d'à côté sans
+        rien garder."""
+        self.assertTrue(
+            self._importes(ast.parse("import urllib.request")) & self.RESEAU
+        )
+        self.assertTrue(
+            self._executions(ast.parse("exec(compile(t, f, 'exec'), {})"))
+        )
 
     def test_the_write_is_one_transaction(self):
         """Une collision au dixième modèle laisserait une base à moitié
@@ -368,13 +442,12 @@ class TestTheRefusalToWrite(unittest.TestCase):
 
 
 class TestTheSqlNeverTravelsThroughArgv(unittest.TestCase):
-    """La panne signalée : « OSError: [Errno 7] Argument list too long ».
+    """Un argv trop long lève « OSError: [Errno 7] Argument list too long ».
 
     Linux plafonne UN SEUL argument à MAX_ARG_STRLEN — 32 pages, soit
-    131 072 octets. Mesuré sur une base réelle : le mode hybride produit
-    58 Ko de SQL et passait, la liste noire en produit 342 Ko sur 410
-    modèles et cassait. Le mode qui couvre le plus était celui qui
-    échouait, donc celui qu'aucun de mes essais n'exerçait.
+    131 072 octets. Le mode hybride produit 58 Ko de SQL et passe ; la
+    liste noire en produit 342 Ko sur 410 modèles et casse. Le mode qui
+    couvre le plus est donc celui qui échoue.
 
     Le rendu de `render` reste borné, lui ; c'est bien l'exécution qu'il
     faut regarder, et pas seulement le plan.
@@ -469,13 +542,13 @@ class TestTheSqlNeverTravelsThroughArgv(unittest.TestCase):
 class TestABoundedColumnIsNeverOverflowed(unittest.TestCase):
     """`value too long for type character varying(3)`.
 
-    Mesuré sur une base réelle : 13 colonnes texte portent une longueur
-    déclarée, dont des codes à 1, 2 et 3 caractères — `res.country.code`,
-    `account.journal.code`. Y écrire « jonquille » fait échouer l'UPDATE,
-    et comme l'écriture est transactionnelle, TOUTE l'anonymisation.
+    13 colonnes texte portent une longueur déclarée, dont des codes à 1,
+    2 et 3 caractères — `res.country.code`, `account.journal.code`. Y
+    écrire « jonquille » fait échouer l'UPDATE, et comme l'écriture est
+    transactionnelle, TOUTE l'anonymisation.
 
-    Le mode hybride ne touchait aucune de ces colonnes ; la liste noire,
-    si. Le mode qui couvre le plus est celui qui cassait.
+    Le mode hybride ne touche aucune de ces colonnes ; la liste noire, si.
+    Le mode qui couvre le plus est celui qui casse.
     """
 
     def _champ(self, **kw):
@@ -561,11 +634,11 @@ class TestReservedWordsCannotBreakTheStatement(unittest.TestCase):
 class TestACheckDoesNotSilenceTheMainField(unittest.TestCase):
     """La règle « écarter toute colonne sous CHECK » était trop large.
 
-    Mesuré : `res_partner.name` porte
+    `res_partner.name` porte
         CHECK ((type='contact' AND name IS NOT NULL) OR type<>'contact')
-    — une garantie de non-nullité, qu'un mot satisfait. L'écarter rendait
-    une anonymisation qui n'anonymisait pas les noms, en annonçant 255
-    colonnes écrites. Le pire des deux mondes : silencieux et faux.
+    — une garantie de non-nullité, qu'un mot satisfait. L'écarter rend une
+    anonymisation qui n'anonymise pas les noms, en annonçant 255 colonnes
+    écrites. Le pire des deux mondes : silencieux et faux.
 
     Sur un NOMBRE la distinction s'inverse : `credit * debit = 0` et
     `amount >= 0` bornent la valeur, et un tirage à 1000 les viole.
@@ -754,7 +827,7 @@ class TestStructuredCharFieldsSurvive(unittest.TestCase):
             base/models/res_company.py:117, models.py:203 et :221
 
     Y écrire un mot fait lever le serveur au premier chargement de page.
-    Mesuré : sept modèles `_parent_store` dans une base ordinaire —
+    Sept modèles `_parent_store` vivent dans une base ordinaire —
     res.company, product.category, stock.location, hr.department,
     website.menu, account.analytic.plan, helpdesk.ticket.category.
 
@@ -974,10 +1047,9 @@ class TestANumberKeepsItsMeaningfulRange(unittest.TestCase):
 class TestTheProbeDistrustsWhatItReads(unittest.TestCase):
     """Ce que la sonde reçoit repart dans du SQL : elle le vérifie.
 
-    Deux mutations ont survécu au premier tour, et les deux disaient la
-    même chose : j'éprouvais les fonctions de contrôle isolément sans
-    vérifier que la sonde s'en sert. Une garde qu'on n'exerce pas ne
-    garde rien.
+    Éprouver les fonctions de contrôle isolément, sans vérifier que la
+    sonde s'en sert, laisse survivre les mutations qui les contournent :
+    une garde qu'on n'exerce pas ne garde rien.
     """
 
     def _champ(self, nom="hour_from", ttype="float"):
@@ -1814,6 +1886,79 @@ class TestWhichAbstentionGetsNamed(unittest.TestCase):
             with self.subTest(raison=raison):
                 self.assertTrue(anon.abstention_a_nommer(champ, raison))
         self.assertFalse(anon.abstention_a_nommer(champ, anon.REFUS_PLANCHER))
+class TestLeFichierDeMots(unittest.TestCase):
+    """« --words » lit des DONNÉES, jamais du code.
+
+    Le fichier était compilé puis exécuté : le fournir revenait à faire
+    tourner du Python arbitraire avec les droits de l'outil, sur une base
+    qui porte justement les données personnelles qu'il vient anonymiser.
+    """
+
+    def ecrire(self, contenu, suffixe=".json"):
+        import tempfile
+
+        fichier = tempfile.NamedTemporaryFile(
+            "w", suffix=suffixe, delete=False, encoding="utf-8"
+        )
+        fichier.write(contenu)
+        fichier.close()
+        self.addCleanup(os.unlink, fichier.name)
+        return fichier.name
+
+    def test_a_list_of_words_is_read(self):
+        chemin = self.ecrire('["alpha", "beta"]')
+        self.assertEqual(["alpha", "beta"], anon.charger_mots(chemin))
+
+    def test_an_object_by_field_is_read(self):
+        chemin = self.ecrire('{"email": ["a@example.com"], "*": ["x"]}')
+        self.assertEqual(
+            {"email": ["a@example.com"], "*": ["x"]},
+            anon.charger_mots(chemin),
+        )
+
+    def test_no_path_means_the_built_in_words(self):
+        self.assertIsNone(anon.charger_mots(""))
+
+    def test_a_python_file_is_refused_and_named(self):
+        """La conversion est une liste entre crochets ; taire le refus
+        ferait chercher une panne de lecture là où il n'y a qu'un format à
+        changer."""
+        chemin = self.ecrire('MOTS = ["alpha"]\n', suffixe=".py")
+        with self.assertRaises(ValueError) as refus:
+            anon.charger_mots(chemin)
+        self.assertIn(chemin, str(refus.exception))
+
+    def test_a_python_file_that_would_call_out_runs_nothing(self):
+        """LE TROU LUI-MÊME. Exécuté, ce fichier importait ce qu'il voulait
+        sans qu'aucun import interdit n'apparaisse dans le moteur."""
+        import tempfile
+
+        # Un chemin qui n'existe PAS : s'il apparaît, c'est que le fichier
+        # de mots a tourné.
+        temoin = os.path.join(
+            tempfile.gettempdir(), "temoin-mots-jamais-execute"
+        )
+        if os.path.exists(temoin):
+            os.unlink(temoin)
+        self.addCleanup(lambda: os.path.exists(temoin) and os.unlink(temoin))
+        chemin = self.ecrire(
+            f"import pathlib\n"
+            f"pathlib.Path({temoin!r}).write_text('exécuté')\n"
+            f"MOTS = ['alpha']\n",
+            suffixe=".py",
+        )
+        with self.assertRaises(ValueError):
+            anon.charger_mots(chemin)
+        self.assertFalse(
+            os.path.exists(temoin), "le fichier de mots a été EXÉCUTÉ"
+        )
+
+    def test_an_empty_file_is_refused(self):
+        self.assertRaises(ValueError, anon.charger_mots, self.ecrire("[]"))
+
+    def test_a_scalar_is_refused(self):
+        """Un nombre ou une chaîne se lit en JSON sans être des mots."""
+        self.assertRaises(ValueError, anon.charger_mots, self.ecrire('"x"'))
 
 
 if __name__ == "__main__":

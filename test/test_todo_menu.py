@@ -15,7 +15,9 @@ dispatch racontent la même histoire.
 """
 
 import ast
+import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -103,6 +105,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "GPT code": "prompt_execute_gpt_code",
         "Automation": "prompt_execute_function",
         "Deploy": "prompt_execute_deploy",
+        "Devstack": "prompt_execute_devstack",
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Language": "_change_language",
@@ -184,6 +187,12 @@ class MenuCoherence:
         r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
         r'\s*"method": "(\w+)"'
     )
+    # Le point où les entrées de todo.json entrent dans la liste. C'est LUI
+    # qui coupe, et non le premier « get_config » venu : un menu peut lire une
+    # préférence avant de bâtir ses choix, sans que le rang de rien ne bouge.
+    RE_CONFIG_GRAFT = re.compile(
+        r"choices\.extend\(|choices = self\.config_file\.get_config\("
+    )
 
     def setUp(self):
         source = self.SOURCE.read_text(encoding="utf-8")
@@ -250,6 +259,48 @@ class MenuCoherence:
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
 
+    # Un numéro d'entrée écrit EN DUR dans un message d'aide. Rien ne le
+    # relie à la liste : insérer une entrée au-dessus décale la cible, le
+    # message continue de s'afficher, et il envoie désormais ailleurs.
+    # La table est déclarative comme EXPECTED — un renvoi non déclaré est
+    # un échec, sans quoi le prochain échapperait au contrôle.
+    RENVOIS = {}
+    # « \bt( » et non « t( » : sans la frontière, le motif attrape la fin
+    # de « print( » et prend tout message imprimé pour un texte traduit.
+    RE_RENVOI = re.compile(
+        r"""\bt\(\s*\n?\s*["']([^"']*\[(\d+)\][^"']*)["']"""
+    )
+
+    def _entrees_par_numero(self):
+        return {n: label for n, label in self.shown}
+
+    def test_every_hardcoded_entry_number_points_where_it_means(self):
+        source = self.SOURCE.read_text(encoding="utf-8")
+        par_numero = self._entrees_par_numero()
+        vus = set()
+        for message, numero in self.RE_RENVOI.findall(source):
+            numero = int(numero)
+            vus.add((message, numero))
+            self.assertIn(
+                (message, numero),
+                set(self.RENVOIS),
+                f"« {message} » renvoie à [{numero}] et n'est pas déclaré :"
+                " dire vers quelle entrée il pointe",
+            )
+            vise = par_numero.get(numero, "")
+            self.assertTrue(
+                vise.startswith(self.RENVOIS[(message, numero)]),
+                f"« {message} » renvoie à [{numero}], qui est désormais"
+                f" « {vise} » et non « {self.RENVOIS[(message, numero)]} »",
+            )
+
+    def test_no_stale_hardcoded_reference_is_declared(self):
+        """Un renvoi déclaré que le code n'écrit plus laisse croire qu'un
+        message est tenu alors qu'il a disparu."""
+        source = self.SOURCE.read_text(encoding="utf-8")
+        vus = {(m, int(n)) for m, n in self.RE_RENVOI.findall(source)}
+        self.assertEqual(set(), set(self.RENVOIS) - vus)
+
     def test_self_dispatched_entries_name_a_real_method(self):
         """« method » est une chaîne : rien ne la relie au code sans ceci."""
         from script.todo.todo import TODO
@@ -260,13 +311,39 @@ class MenuCoherence:
                 f"« {label} » mène à {method}, qui n'existe pas",
             )
 
+    def test_no_numbered_entry_follows_the_config_entries(self):
+        """Une entrée codée en dur posée APRÈS les entrées de todo.json
+        décale son propre rang du nombre d'entrées de configuration, que ce
+        fichier ne peut pas connaître : son « elif status » atteint alors le
+        voisin, et l'alignement numéro/dispatch reste vert. Le garde exige
+        donc que tout ce qui suit la configuration porte « method », la seule
+        forme dont le rang n'entre pas dans le calcul.
+        """
+        greffe = self.RE_CONFIG_GRAFT.search(self.body)
+        coupe = greffe.start() if greffe else -1
+        if coupe < 0:
+            # Menu sans greffe de configuration : rien à contraindre. Le
+            # contrôle positif plus bas prouve que la règle mord ailleurs.
+            return
+        for found in self.RE_ENTRY.finditer(self.body):
+            if found.start() < coupe or found.group(1) != "prompt_description":
+                continue
+            self.assertIn(
+                found.group(2),
+                self.self_dispatch,
+                f"« {found.group(2)} » suit les entrées de todo.json :"
+                ' déclarez-la par "method", son numéro affiché n\'est pas'
+                " celui que compte ce fichier",
+            )
+
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Deux capacités que le menu QEMU/KVM a et que celui-ci doit avoir.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Changer l'état d'une VM — que l'autre offre dans « Lister les VM » — et
+    accepter les commandes ajoutées par todo.json. Deux menus qui visent le
+    même travail et divergent sur ce qu'ils savent faire obligent à savoir
+    lequel on a ouvert avant de chercher une entrée.
     """
 
     @classmethod
@@ -282,6 +359,80 @@ class TestLaParitéProxmox(unittest.TestCase):
 
         self.assertTrue(callable(CLASSE._pve_change_state))
 
+    def test_the_list_offers_the_detail_of_one_vm(self):
+        """La liste rend cinq colonnes ; « qm status --verbose » en rend
+        bien plus, et c'est le seul endroit du dépôt qui le demande.
+
+        Le bâtisseur existait sans appelant : écrit, jamais câblé, donc
+        invisible à l'usage — un écran ne dit pas ce qu'il ne montre pas.
+        """
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.proxmox import proxmox_deploy as pve
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("_pve_detail", self.src)
+        self.assertTrue(callable(CLASSE._pve_detail))
+        self.assertIn("status_cmd", self.src)
+        self.assertIn("--verbose", pve.status_cmd(1))
+
+    def test_typing_2_in_the_list_really_runs_the_detail(self):
+        """L'entrée est IMPRIMÉE : la garde structurelle ne voit pas qu'elle
+        mène nulle part.
+
+        Une entrée affichée dont la répartition ne reconnaît pas le numéro
+        rend la main sans un mot — l'écran promet alors une action qui
+        n'existe pas. Chercher la méthode dans le source ne voit rien de
+        cela : le numéro peut ne plus lui mener.
+        """
+        import builtins
+        import io as _io
+        import sys
+        from contextlib import redirect_stdout
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        todo = CLASSE.__new__(CLASSE)
+        vms = [
+            {
+                "vmid": 142,
+                "name": "vm-essai",
+                "status": "running",
+                "mem": "2048",
+                "disk": "12G",
+            }
+        ]
+        jouees = []
+        todo._pve_vms = lambda: list(vms)
+        todo._pve_show = lambda cmd, timeout=120, quiet=False: (
+            jouees.append(cmd) or (0, "")
+        )
+        saisies = iter(["2", "1"])
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: next(saisies)
+        try:
+            with redirect_stdout(_io.StringIO()):
+                todo._pve_list()
+        finally:
+            builtins.input = vrai
+        self.assertEqual(["qm status 142 --verbose"], jouees)
+
+    def test_the_detail_reuses_the_list_it_was_called_from(self):
+        """Redemander « qm list » renumérote sur une liste qui peut avoir
+        changé, et le numéro tapé porte alors sur la voisine. L'épreuve
+        tient le PASSAGE de la liste, que rien d'autre ne rend visible."""
+        import inspect
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("vms", inspect.signature(CLASSE._pve_pick_vm).parameters)
+        corps = inspect.getsource(CLASSE._pve_detail)
+        self.assertIn("vms=vms", corps)
+
     def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
         # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
         # coupe le courant. L'ordre des choix est la seule chose qui le dit.
@@ -292,8 +443,11 @@ class TestLaParitéProxmox(unittest.TestCase):
 
     def test_the_menu_reads_its_extra_commands_from_todo_json(self):
         self.assertIn('get_config("proxmox_from_makefile")', self.src)
-        # Et le dispatch sait les lancer, sections non comptées.
-        self.assertIn("execute_from_configuration", self.src)
+        # Et le dispatch sait les lancer : le repli partagé ou sa copie.
+        # Qu'il les JOUE, numéro tapé, test_menu_method_fallback le prouve.
+        self.assertTrue(
+            any(r in self.src for r in TestLaGreffeEstJouable.REPLIS)
+        )
 
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
@@ -471,6 +625,30 @@ class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestDropDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu « Effacer une base », qui n'avait aucune table.
+
+    LE TROU N'ÉTAIT PAS DANS UNE TABLE, IL ÉTAIT DANS LEUR LISTE. Chacune
+    couvre exactement son écran, et les gardes du fichier rendent une
+    entrée manquante impossible à laisser passer — mais seulement sur les
+    écrans déclarés ici. Celui-ci ne l'était pas, et c'est le plus cher de
+    tous : ses DEUX entrées effacent, et les intervertir efface tout là où
+    l'on voulait effacer une seule base.
+    """
+
+    SOURCE = TODO_DIR / "database_manager.py"
+    ENTRY = "def drop_database(self) -> None:"
+    END = "def _drop_all_databases(self) -> None:"
+    # Le plancher se FRANCHIT, il ne s'atteint pas : deux entrées demandent
+    # donc 1. Le poser à 2 rendrait ce garde rouge sur un menu correct.
+    MINIMUM = 1
+
+    EXPECTED = {
+        "Erase ALL databases": "_drop_all_databases",
+        "Erase a single database": "_drop_single_database",
+    }
+
+
 class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Database, qui manie des bases entières.
 
@@ -504,7 +682,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Proxmox : dix-huit entrées, le même piège.
+    """Le menu Proxmox : dix-huit entrées numérotées, le même piège.
 
     Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
     c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
@@ -516,6 +694,16 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     ENTRY = "def prompt_execute_proxmox(self):"
     END = "def _pve_fetch_image(self):"
     MINIMUM = 15
+
+    # Deux messages nomment une entrée par son NUMÉRO. Ils visent juste
+    # aujourd'hui ; ils le resteront tant que ceci tient.
+    RENVOIS = {
+        ("No address yet. Try [6] later.", 6): "Show a VM IP address",
+        (
+            "Use [13] to add a ProxyJump entry, then a tunnel.",
+            13,
+        ): "SSH configuration",
+    }
 
     EXPECTED = {
         "Deploy a VM on the Proxmox host": "_pve_deploy",
@@ -536,6 +724,10 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
+        # DÉCLARÉE PAR « method » et posée en fin de liste : son numéro
+        # dépasse la chaîne d'elif, donc le repli lit la clé. C'est ce qui
+        # permet d'ajouter une entrée sans décaler les dix-huit autres.
+        "Verify a VM's egress posture": "_pve_verify_egress",
     }
 
 
@@ -559,10 +751,587 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Add a remote to a local repository": "_git_add_remote",
         "Install git hooks": "_git_install_hooks",
         "Set merge.conflictStyle": "_git_set_conflict_style",
+        "Forge (Forgejo/Gitea)": "prompt_execute_forge",
         "Install Starship on Shell": "_shell_install_starship",
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",
     }
+
+
+class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Deploy, porte d'entrée de quatre sous-menus.
+
+    Trois de ses huit entrées OUVRENT un menu (SSH, QEMU/KVM, Proxmox VE) et
+    une quatrième un menu de mixin (VPN) : une renumérotation n'y donne pas
+    une commande de travers, elle envoie dans le mauvais écran.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_deploy(self):"
+    END = "def prompt_execute_deploy_ssh(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Clone ERPLibre locally": "_deploy_clone_erplibre",
+        "Configure sshfs": "_configure_sshfs",
+        "SSH port forwarding": "_deploy_port_forward",
+        "SSH (remote host)": "prompt_execute_deploy_ssh",
+        "QEMU/KVM - Deploy an Ubuntu VM": "prompt_execute_qemu",
+        "Proxmox VE - Deploy a VM": "prompt_execute_proxmox",
+        "Deploy - Install NTFY": "_deploy_ntfy_server",
+        "QEMU cache - Download mirror for local VMs": "prompt_execute_qemu_cache",
+        "VPN - Tunnels": "prompt_execute_vpn",
+        # NEUVIÈME, déclarée par « method » : son rang n'entre pas dans le
+        # calcul, et c'est pourquoi les huit qui la précèdent n'ont pas
+        # bougé — dont les rangs 6 et 7, qu'une épreuve Proxmox cherche en
+        # chaînes littérales.
+        "Deploy - VM backends": "_deploy_vm_backends",
+        # ONZIÈME, greffée par « method » juste après le choix des
+        # backends : c'est là qu'on lit ce qu'une machine atteint.
+        "Deploy - Site address book": "prompt_execute_egress_book",
+        # DOUZIÈME, même greffe et même raison.
+        "Lima - instances": "prompt_execute_lima",
+        # DIXIÈME, même greffe et même raison : les rangs codés en dur
+        # s'arrêtent à huit, et une entrée posée plus haut les décalerait.
+        "Deploy - verify this station, layer by layer": (
+            "_qemu_verify_station"
+        ),
+        "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
+        # Déclarée par « method », après les vérifications et avant la
+        # greffe de todo.json : son rang n'entre pas dans le calcul des
+        # « elif ». Cette table apparie libellé et méthode ; le rang
+        # affiché des entrées « method », lui, est tenu par
+        # test_setops_menu.TestDepuisDeploy.
+        "Set-OPS - Sovereign ecosystem": "prompt_execute_setops",
+    }
+
+
+class TestDeploySshMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Deploy › SSH : onze entrées, aucune section, aucun garde.
+
+    Ses cinq dernières AGISSENT sur un hôte distant — installer, redémarrer,
+    poser une unité systemd, réécrire un vhost nginx. Un décalage d'un rang
+    y fait redémarrer Odoo là où on demandait un journal.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_deploy_ssh(self):"
+    END = "def _native_arch():"
+    MINIMUM = 8
+
+    EXPECTED = {
+        "SSH - Check connection": "_deploy_ssh_check",
+        "SSH - Sync files": "_deploy_ssh_push",
+        "SSH - Install ERPLibre": "_deploy_ssh_install",
+        "SSH - Start Odoo": "_deploy_ssh_run",
+        "SSH - Stop Odoo": "_deploy_ssh_stop",
+        "SSH - Restart Odoo": "_deploy_ssh_restart",
+        "SSH - Service status": "_deploy_ssh_status",
+        "SSH - View logs": "_deploy_ssh_logs",
+        "SSH - Run make target": "_deploy_ssh_make",
+        "SSH - Install systemd service": "_deploy_ssh_install_systemd",
+        "SSH - Configure nginx": "_deploy_ssh_install_nginx",
+        # Déclarée par « method » : son rang n'entre pas dans le calcul, et
+        # c'est pourquoi les onze qui la précèdent n'ont pas bougé.
+        "SSH - Choose the target machine": "_deploy_ssh_targets",
+    }
+
+
+class TestVpnMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu VPN : neuf entrées en trois sections, aucun garde.
+
+    Sa septième EFFACE un profil et ses secrets ; ses trois sections font
+    qu'aucun rang ne se lit à l'œil sur la liste.
+    """
+
+    SOURCE = TODO_DIR / "vpn_menu.py"
+    ENTRY = "def prompt_execute_vpn(self):"
+    END = "def _vpn_cli(self, arguments, secrets_env=None):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "VPN - Connect a profile": "_vpn_connect",
+        "VPN - Disconnect a profile": "_vpn_disconnect",
+        "VPN - Status and diagnosis": "_vpn_diagnose",
+        "VPN - Create a profile from a site preset": "_vpn_from_preset",
+        "VPN - Import an AnyConnect profile (.xml)": "_vpn_import_anyconnect",
+        "VPN - Add or edit a profile": "_vpn_edit_profile",
+        "VPN - Store secrets": "_vpn_store_secrets",
+        "VPN - Show the rendered configuration": "_vpn_show_config",
+        "VPN - Delete a profile": "_vpn_delete_profile",
+        "VPN - Install the client packages": "_vpn_install",
+        "VPN - What can this machine do?": "_vpn_check",
+    }
+
+
+class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Lima : huit entrées en trois sections, aucun garde.
+
+    Sa sixième DÉTRUIT une instance et son disque ; sa huitième lance une
+    installation détachée qui dure une demi-heure. Trois sections font
+    qu'aucun rang ne se lit à l'œil sur la liste, et un « elif » oublié
+    ferait lancer l'entrée voisine sous le libellé attendu.
+    """
+
+    SOURCE = TODO_DIR / "lima_menu.py"
+    ENTRY = "def prompt_execute_lima(self):"
+    END = "def _lima_tool(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Lima - How this host gets the tool": "_lima_tool",
+        "Lima - List the instances": "_lima_list",
+        "Lima - Create and start an instance": "_lima_create",
+        "Lima - Start an instance": "_lima_power",
+        "Lima - Stop an instance": "_lima_power",
+        "Lima - Delete an instance": "_lima_delete",
+        "Lima - Open a shell in an instance": "_lima_shell",
+        "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
+        "Lima - Verify an instance's egress posture": "_lima_verify_egress",
+    }
+
+
+class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu Set-OPS : une section, une entrée, par « method ».
+
+    Toute entrée y porte sa destination dans « method », la seule forme
+    dont le rang ne dépend pas de ce qui est posé plus haut.
+    """
+
+    SOURCE = TODO_DIR / "setops_menu.py"
+    ENTRY = "def prompt_execute_setops(self):"
+    END = "def _setops_state(self):"
+    # Le plancher se FRANCHIT : une seule entrée demande 0.
+    MINIMUM = 0
+
+    EXPECTED = {
+        "Set-OPS - State of the integration": "_setops_state",
+    }
+
+
+class TestQemuNetworkSection(unittest.TestCase):
+    """La section « VM network » du menu QEMU/KVM est un point de greffe.
+
+    Une entrée qui s'y ajoute tombe AU MILIEU de la liste : tout ce qui suit
+    se renumérote, et TestQemuMenuNumbering le voit. Ce qu'il ne voit pas,
+    c'est une entrée réseau posée sous une AUTRE section — elle s'affiche
+    alors sous « VM access » ou « Troubleshoot », où personne ne la cherche.
+    Ce test épingle l'appartenance, que le socle ne regarde pas.
+    """
+
+    SECTION = "VM network"
+    MEMBRES = (
+        "Show the libvirt network state",
+        "Recreate the VM subnet (stop, redefine, restart)",
+    )
+
+    def setUp(self):
+        source = (TODO_DIR / "qemu_menu.py").read_text(encoding="utf-8")
+        start = source.index("def prompt_execute_qemu(self):")
+        end = source.index("def _qemu_stats(self):", start)
+        section = None
+        self.par_section = {}
+        for kind, label in MenuCoherence.RE_ENTRY.findall(source[start:end]):
+            if kind == "section":
+                section = label
+                continue
+            self.par_section.setdefault(section, []).append(label)
+
+    def test_the_sections_were_actually_parsed(self):
+        self.assertGreater(len(self.par_section), 3)
+
+    def test_the_network_section_holds_exactly_its_entries(self):
+        self.assertEqual(
+            tuple(self.par_section.get(self.SECTION, ())), self.MEMBRES
+        )
+
+
+# Un menu de banc d'essai : trois entrées, deux sections, aucun rapport avec
+# le dépôt. Les noms sont INVENTÉS — un exemple qui illustre un défaut ne se
+# prend pas dans le code réel, sinon le contrôle fige un vrai libellé.
+BANC_MENU_SAIN = """
+    def prompt_execute_banc(self):
+        choices = [
+            {"section": t("Banc alpha")},
+            {"prompt_description": t("Banc - premiere entree")},
+            {"prompt_description": t("Banc - deuxieme entree")},
+            {"section": t("Banc beta")},
+            {"prompt_description": t("Banc - troisieme entree")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            if status == "0":
+                return False
+            elif status == "1":
+                self._banc_une()
+            elif status == "2":
+                self._banc_deux()
+            elif status == "3":
+                self._banc_trois()
+
+    def _banc_fin(self):
+        pass
+"""
+
+BANC_EXPECTED = {
+    "Banc - premiere entree": "_banc_une",
+    "Banc - deuxieme entree": "_banc_deux",
+    "Banc - troisieme entree": "_banc_trois",
+}
+
+
+def _banc_echecs(source, expected=None):
+    """Fait tourner le socle sur un menu de banc d'essai et rend le NOM des
+    tests qui tombent. Le fichier est écrit dans un répertoire temporaire :
+    le socle lit du texte, il n'a besoin d'aucun module importable."""
+    with tempfile.TemporaryDirectory() as tmp:
+        chemin = Path(tmp) / "banc_menu.py"
+        chemin.write_text(source, encoding="utf-8")
+        classe = type(
+            "BancMenuNumbering",
+            (MenuCoherence, unittest.TestCase),
+            {
+                "SOURCE": chemin,
+                "ENTRY": "def prompt_execute_banc(self):",
+                "END": "def _banc_fin(self):",
+                "MINIMUM": 2,
+                "EXPECTED": dict(
+                    BANC_EXPECTED if expected is None else expected
+                ),
+            },
+        )
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(classe)
+        resultat = unittest.TestResult()
+        suite.run(resultat)
+        return {
+            cas._testMethodName
+            for cas, _ in (resultat.failures + resultat.errors)
+        }
+
+
+class TestLeGardeAttrapeUneMauvaiseInsertion(unittest.TestCase):
+    """Le contrôle positif du garde lui-même.
+
+    Les sous-classes ci-dessus prouvent que rien n'est cassé AUJOURD'HUI.
+    Elles ne prouvent pas que le socle attraperait une faute : un motif qui
+    ne correspond à rien lit zéro entrée et passe au vert sur tout. Chaque
+    test ci-dessous abîme le banc d'une façon précise et exige que le socle
+    tombe, sur le test qu'on croit.
+    """
+
+    def test_the_sane_bench_passes(self):
+        # Sans celui-ci, un banc cassé pour une raison quelconque ferait
+        # passer les cinq autres pour de bonnes nouvelles.
+        self.assertEqual(_banc_echecs(BANC_MENU_SAIN), set())
+
+    def test_a_swapped_dispatch_is_caught(self):
+        abime = BANC_MENU_SAIN.replace(
+            "self._banc_deux()", "self._banc_trois()"
+        ).replace(
+            'elif status == "3":\n                self._banc_trois()',
+            'elif status == "3":\n                self._banc_deux()',
+        )
+        self.assertIn(
+            "test_every_entry_reaches_the_method_it_names",
+            _banc_echecs(abime),
+        )
+
+    def test_an_entry_without_dispatch_is_caught(self):
+        abime = BANC_MENU_SAIN.replace(
+            '{"prompt_description": t("Banc - troisieme entree")},',
+            '{"prompt_description": t("Banc - troisieme entree")},\n'
+            '            {"prompt_description": t("Banc - quatrieme entree")},',
+        )
+        echecs = _banc_echecs(
+            abime,
+            dict(BANC_EXPECTED, **{"Banc - quatrieme entree": "_banc_quatre"}),
+        )
+        self.assertIn("test_the_menu_was_actually_parsed", echecs)
+        self.assertIn(
+            "test_every_shown_entry_has_the_matching_dispatch", echecs
+        )
+
+    def test_an_insertion_in_the_middle_is_caught(self):
+        # La faute exacte que ce fichier existe pour attraper : une entrée
+        # posée avant la dernière, dispatchée au rang qu'elle occupait avant.
+        abime = BANC_MENU_SAIN.replace(
+            '{"prompt_description": t("Banc - deuxieme entree")},',
+            '{"prompt_description": t("Banc - intercalee")},\n'
+            '            {"prompt_description": t("Banc - deuxieme entree")},',
+        ).replace(
+            'elif status == "1":\n                self._banc_une()',
+            'elif status == "1":\n                self._banc_une()\n'
+            '            elif status == "4":\n'
+            "                self._banc_intercalee()",
+        )
+        self.assertIn(
+            "test_every_entry_reaches_the_method_it_names",
+            _banc_echecs(
+                abime,
+                dict(
+                    BANC_EXPECTED,
+                    **{"Banc - intercalee": "_banc_intercalee"},
+                ),
+            ),
+        )
+
+    def test_an_entry_missing_from_expected_is_caught(self):
+        abime = BANC_MENU_SAIN.replace(
+            "Banc - troisieme entree", "Banc - jamais declaree"
+        )
+        self.assertIn(
+            "test_every_entry_reaches_the_method_it_names",
+            _banc_echecs(abime),
+        )
+
+    def test_a_method_naming_nothing_is_caught(self):
+        abime = BANC_MENU_SAIN.replace(
+            '{"prompt_description": t("Banc - troisieme entree")},',
+            "{\n"
+            '                "prompt_description": t('
+            '"Banc - troisieme entree"),\n'
+            '                "method": "_banc_methode_absente",\n'
+            "            },",
+        ).replace(
+            'elif status == "3":\n                self._banc_trois()', ""
+        )
+        self.assertIn(
+            "test_self_dispatched_entries_name_a_real_method",
+            _banc_echecs(
+                abime,
+                dict(
+                    BANC_EXPECTED,
+                    **{"Banc - troisieme entree": "_banc_methode_absente"},
+                ),
+            ),
+        )
+
+    def test_a_numbered_entry_after_the_config_entries_is_caught(self):
+        # Le trou que ce garde bouche : l'entrée codée en dur posée après
+        # la greffe de todo.json garde un alignement numéro/dispatch parfait
+        # dans le source, et s'affiche pourtant deux rangs plus loin.
+        abime = BANC_MENU_SAIN.replace(
+            "        help_info = self.fill_help_info(choices)",
+            "        extra = self.config_file.get_config('banc_from_makefile')"
+            "\n        if extra:\n            choices.extend(extra)\n"
+            "        choices.append(\n"
+            '            {"prompt_description": t("Banc - apres config")}\n'
+            "        )\n"
+            "        help_info = self.fill_help_info(choices)",
+        ).replace(
+            'elif status == "3":\n                self._banc_trois()',
+            'elif status == "3":\n                self._banc_trois()\n'
+            '            elif status == "4":\n'
+            "                self._banc_apres()",
+        )
+        self.assertIn(
+            "test_no_numbered_entry_follows_the_config_entries",
+            _banc_echecs(
+                abime,
+                dict(BANC_EXPECTED, **{"Banc - apres config": "_banc_apres"}),
+            ),
+        )
+
+
+class TestLaGreffeEstJouable(unittest.TestCase):
+    """Une entrée de todo.json affichée mais injouable est décorative.
+
+    Le rang d'une entrée greffée dépasse la chaîne d'« elif » codée en dur du
+    menu : sans le repli, la taper répond « commande introuvable ». Les
+    épreuves de TestMenuDispatchExtra exercent le repli SEUL — retirer son
+    appel du menu les laisse toutes vertes, et c'est le câblage qui compte.
+    """
+
+    # Les menus qui greffent une clé de todo.json sans suffixe
+    # « _from_makefile » (« instance », « function ») se reconnaissent à
+    # la forme qui ajoute la greffe à leurs choix.
+    GREFFE = re.compile(
+        r"choices\.extend\(|choices = self\.config_file\.get_config\("
+    )
+    # Deux façons de jouer une entrée greffée : le repli partagé, ou la copie
+    # que des menus de todo.py portent encore en propre. L'épreuve tient sur
+    # la CAPACITÉ, pas sur le moyen : router ces menus est un commit à part.
+    REPLIS = ("_menu_dispatch_extra", "execute_from_configuration")
+
+    @staticmethod
+    def lit_une_greffe(noeud):
+        """`noeud` est-il un appel `get_config("…_from_makefile")` ?"""
+        return (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "get_config"
+            and bool(noeud.args)
+            and isinstance(noeud.args[0], ast.Constant)
+            and isinstance(noeud.args[0].value, str)
+            and noeud.args[0].value.endswith("_from_makefile")
+        )
+
+    def greffes(self, source):
+        """(nom, corps) de chaque fonction de `source` qui greffe todo.json
+        à ses choix : un prompt_execute_* de forme reconnue par GREFFE, ou
+        toute fonction qui lit une clé « …_from_makefile », quelle que soit
+        la forme qui ajoute la greffe."""
+        trouves = []
+        for noeud in ast.walk(ast.parse(source)):
+            if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            corps = ast.get_source_segment(source, noeud) or ""
+            reconnue = noeud.name.startswith(
+                "prompt_execute"
+            ) and self.GREFFE.search(corps)
+            if reconnue or any(
+                self.lit_une_greffe(n) for n in ast.walk(noeud)
+            ):
+                trouves.append((noeud.name, corps))
+        return trouves
+
+    def sans_repli(self, source):
+        """Les fonctions de `source` qui greffent sans pouvoir jouer."""
+        return [
+            nom
+            for nom, corps in self.greffes(source)
+            if not any(repli in corps for repli in self.REPLIS)
+        ]
+
+    def test_every_grafted_menu_routes_its_fallback(self):
+        """Tout script/todo/*.py est balayé, fonction par fonction : un menu
+        neuf qui greffe todo.json entre dans l'épreuve sans qu'on l'y
+        inscrive, même posé dans un fichier qui porte déjà d'autres
+        greffes."""
+        greffes = []
+        sans_repli = []
+        for chemin in sorted(TODO_DIR.glob("*.py")):
+            source = chemin.read_text(encoding="utf-8")
+            greffes += self.greffes(source)
+            sans_repli += [
+                f"{chemin.name}:{nom}" for nom in self.sans_repli(source)
+            ]
+        self.assertTrue(greffes, "aucune greffe trouvée : rien n'est prouvé")
+        self.assertEqual(
+            [],
+            sans_repli,
+            "ces menus affichent des entrées de todo.json sans pouvoir les"
+            f" jouer : {', '.join(sans_repli)}",
+        )
+
+    def test_the_scan_would_notice_a_menu_without_the_fallback(self):
+        """Contrôle positif : chaque forme de greffe, sans repli, est
+        signalée, et la même, routée par le repli, ne l'est pas. Sans lui,
+        un scanner qui ne trouve rien passerait l'épreuve ci-dessus en
+        n'ayant rien regardé."""
+        formes = {
+            "affectation": "    choices = self.config_file.get_config('b')\n",
+            "extend": (
+                "    choices.extend(\n"
+                "        self.config_file.get_config('b_from_makefile')\n"
+                "    )\n"
+            ),
+            "+=": (
+                "    choices += self.config_file.get_config("
+                "'b_from_makefile')\n"
+            ),
+        }
+        for nom, greffe in formes.items():
+            menu = (
+                "def prompt_execute_banc_staurotide(self, status):\n"
+                "    choices = []\n" + greffe
+            )
+            with self.subTest(forme=nom):
+                self.assertEqual(
+                    ["prompt_execute_banc_staurotide"],
+                    self.sans_repli(menu + "    return choices\n"),
+                )
+                self.assertEqual(
+                    [],
+                    self.sans_repli(
+                        menu
+                        + "    self._menu_dispatch_extra(choices, status)\n"
+                    ),
+                )
+
+
+class TestMenuDispatchExtra(unittest.TestCase):
+    """Le repli des menus : le rang tapé désigne-t-il l'entrée affichée ?
+
+    Rien n'exerçait ce chemin. Il porte pourtant deux pièges : les sections,
+    qui s'affichent sans consommer de numéro, et la clé « method », que
+    execute_from_configuration ne lit pas — une entrée qui la porte
+    s'exécuterait en silence sans rien faire si le repli ne la voyait pas.
+    """
+
+    def setUp(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.todo = TODO()
+        self.joues = []
+        self.todo.execute_from_configuration = self.joues.append
+        self.todo._banc_greffe = lambda: self.joues.append("_banc_greffe")
+        self.choices = [
+            {"section": "Banc alpha"},
+            {"prompt_description": "Banc - une"},
+            {"section": "Banc beta"},
+            {"prompt_description": "Banc - deux"},
+            {"prompt_description": "Banc - trois", "method": "_banc_greffe"},
+        ]
+
+    def test_a_section_does_not_consume_a_number(self):
+        self.assertTrue(self.todo._menu_dispatch_extra(self.choices, "2"))
+        self.assertEqual(self.joues, [{"prompt_description": "Banc - deux"}])
+
+    def test_a_method_entry_calls_its_method(self):
+        self.assertTrue(self.todo._menu_dispatch_extra(self.choices, "3"))
+        self.assertEqual(self.joues, ["_banc_greffe"])
+
+    def test_a_rank_past_the_end_plays_nothing(self):
+        self.assertFalse(self.todo._menu_dispatch_extra(self.choices, "4"))
+        self.assertEqual(self.joues, [])
+
+    def test_zero_plays_nothing(self):
+        self.assertFalse(self.todo._menu_dispatch_extra(self.choices, "0"))
+        self.assertEqual(self.joues, [])
+
+    def test_a_non_numeric_answer_plays_nothing(self):
+        self.assertFalse(self.todo._menu_dispatch_extra(self.choices, "oui"))
+        self.assertEqual(self.joues, [])
+
+
+class TestTodoJsonExtensionPoints(unittest.TestCase):
+    """Les points de greffe déclarés dans todo.json.
+
+    get_config rend None sur une clé absente : un menu qui lit une clé jamais
+    déclarée se tait, et l'extension n'existe que dans le code. Les déclarer
+    VIDES est ce qui les rend trouvables par qui cherche où greffer.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conf = json.loads(
+            (TODO_DIR / "todo.json").read_text(encoding="utf-8")
+        )
+
+    def test_deploy_has_its_extension_key(self):
+        self.assertIsInstance(self.conf.get("deploy_from_makefile"), list)
+
+    def test_the_devstack_section_is_a_mapping(self):
+        self.assertIsInstance(self.conf.get("devstack"), dict)
+
+    def test_every_key_a_menu_reads_is_declared(self):
+        lues = set()
+        for fichier in sorted(TODO_DIR.glob("*.py")):
+            lues |= set(
+                re.findall(
+                    r'get_config\("(\w+_from_makefile)"\)',
+                    fichier.read_text(encoding="utf-8"),
+                )
+            )
+        # Sur un motif qui ne trouve rien, la comparaison suivante est vraie
+        # sans rien prouver.
+        self.assertGreater(len(lues), 3)
+        self.assertEqual(lues - set(self.conf), set())
 
 
 class TestMenuLabels(unittest.TestCase):
@@ -586,13 +1355,10 @@ class TestMenuLabels(unittest.TestCase):
     passagère.
     """
 
-    ECRANS_EXEMPTES = {
-        "_analyse_follow_up",
-        "rtk_install",
-        "generate_config_from_preconfiguration",
-        "debug_ide",
-        "execute_odoo_upgrade",
-    }
+    # VIDE, et c'est le but : la liste était « figée pour que le nombre ne
+    # grandisse pas, pas pour bénir ce qu'elle contient ». Les trois ont
+    # leur étiquette.
+    ECRANS_EXEMPTES: set = set()
 
     def setUp(self):
         source = TODO_PY.read_text(encoding="utf-8")
@@ -676,6 +1442,40 @@ class TestMenuLabels(unittest.TestCase):
     def test_an_exemption_is_never_also_labelled(self):
         """Exempter ET étiqueter dirait deux choses opposées du même écran."""
         self.assertEqual(self.ECRANS_EXEMPTES & self.labels, set())
+
+    def test_no_menu_anywhere_forgets_its_label(self):
+        """La garde ne voyait que les menus atteints depuis « Execute ».
+
+        Elle en connaissait trois sans étiquette ; il y en avait NEUF. Les
+        six autres se rejoignent depuis un autre menu — Deploy, Database —
+        et leur fil d'Ariane était muet sans que rien ne le dise.
+
+        Ce qui fait un menu, et non une action : il liste des choix et
+        boucle sur une saisie. `prompt_uninstall_theme` fait une chose et
+        rend la main ; il n'a rien à situer.
+        """
+        racine = TODO_PY.parent
+        manquants = []
+        for chemin in sorted(racine.rglob("*.py")):
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            lignes = chemin.read_text(encoding="utf-8").splitlines()
+            for noeud in ast.walk(arbre):
+                if not isinstance(noeud, ast.FunctionDef):
+                    continue
+                if not noeud.name.startswith("prompt_"):
+                    continue
+                corps = "\n".join(lignes[noeud.lineno - 1 : noeud.end_lineno])
+                if "fill_help_info" not in corps or "while True" not in corps:
+                    continue
+                if noeud.name not in self.labels:
+                    manquants.append(
+                        f"{chemin.name}:{noeud.lineno} {noeud.name}"
+                    )
+        self.assertEqual([], manquants)
+
+    def test_the_menu_scan_actually_finds_menus(self):
+        """Sur zéro menu trouvé, la garde passe et ne tient rien."""
+        self.assertGreater(len(self.labels), 25)
 
 
 if __name__ == "__main__":

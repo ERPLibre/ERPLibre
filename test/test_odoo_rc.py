@@ -5,16 +5,16 @@
 """Quel fichier de configuration Odoo lit, quand personne ne le dit.
 
 Sans ODOO_RC, Odoo retombe sur `~/.odoorc` — un fichier PERSONNEL que
-rien ne synchronise avec le `config.conf` du dépôt. Mesuré sur une vraie
-migration : un `~/.odoorc` portant un mot de passe maître haché faisait
-échouer « odoo_bin.sh db --drop » par AccessDenied, alors que
-`db_restore.py` venait de lire « admin_passwd = admin » dans config.conf
-et d'en conclure qu'aucun mot de passe n'était nécessaire.
+rien ne synchronise avec le `config.conf` du dépôt. Un `~/.odoorc`
+portant un mot de passe maître haché fait échouer « odoo_bin.sh db
+--drop » par AccessDenied, alors que `db_restore.py` lit
+« admin_passwd = admin » dans config.conf et en conclut qu'aucun mot de
+passe n'est nécessaire.
 
-Les deux avaient raison. Ils ne parlaient pas du même fichier — et rien,
-nulle part, ne les confrontait. Le drop échouait, le clone butait ensuite
-sur « database already exists », et la boucle de reprise faisait passer
-les deux pour un accident. Huit fois par migration.
+Les deux ont raison. Ils ne parlent pas du même fichier — et rien, nulle
+part, ne les confronte. Le drop échoue, le clone bute ensuite sur
+« database already exists », et la boucle de reprise fait passer les deux
+pour un accident, à chaque palier d'une migration.
 """
 
 import io

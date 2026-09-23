@@ -21,9 +21,14 @@ import time
 
 import click
 
+from script.posture import plan as posture_plan
+from script.posture import spec as posture_spec
+from script.remote import appliance_ssh, host_memory, host_probe
 from script.todo import todo_prefs
 from script.todo.qemu_privilege import virsh_argv
+from script.todo import todo_prefs, vm_profiles
 from script.todo.todo_i18n import t
+from script.vm import backend as vm_backend
 
 
 class ProxmoxMenuMixin:
@@ -43,42 +48,35 @@ class ProxmoxMenuMixin:
     # laisse exécuter par un tube, sans être copié d'abord.
     PVE_INSTALL_SCRIPT = "script/proxmox/install_proxmox.sh"
 
+    def _pve_memoire(self):
+        """La mémoire d'hôte de CETTE appliance, créée à la demande."""
+        memoire = getattr(self, "_pve_memoire_cache", None)
+        if memoire is None:
+            memoire = host_memory.HostMemory(self._PVE_PREF_KEY, "PVE")
+            self._pve_memoire_cache = memoire
+        return memoire
+
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
 
-        Mémorisé dans les préférences : le menu compte dix-sept entrées, et
+        Le menu compte dix-sept entrées qui parlent toutes à la même machine :
         redemander l'hôte à chacune serait insupportable. Le choix reste
         affiché en tête du menu, et se change par son entrée dédiée.
         """
-        cache = getattr(self, "_pve_host_cache", None)
-        if cache:
-            return cache
-        garde = todo_prefs.get(self._PVE_PREF_KEY) or {}
-        if garde.get("target"):
-            self._pve_host_cache = garde
-            return garde
+        retenu = self._pve_memoire().get()
+        if retenu:
+            return retenu
         return self._pve_pick_host() if ask else None
 
     def _pve_forget_host(self):
-        self._pve_host_cache = None
-        todo_prefs.set(self._PVE_PREF_KEY, {})
+        self._pve_memoire().forget()
 
     def _pve_remember_host(self, host):
-        self._pve_host_cache = host
-        todo_prefs.set(self._PVE_PREF_KEY, host)
+        self._pve_memoire().remember(host)
 
-    @staticmethod
-    def _pve_label(host):
-        """« root@hyperviseur (par rebond) », pour l'afficher en tête de
-        menu."""
-        if not host:
-            return ""
-        lab = host.get("target", "?")
-        if host.get("jump"):
-            lab += f" ({t('through')} {host['jump']})"
-        if host.get("version"):
-            lab += f" — PVE {host['version']}"
-        return lab
+    def _pve_label(self, host):
+        """« compte@adresse (par rebond) — PVE 9.2 », en tête de menu."""
+        return self._pve_memoire().label(host)
 
     def _pve_pick_host(self):
         """Choisit l'hôte Proxmox : VM locale, adresse, ou ~/.ssh/config."""
@@ -166,45 +164,6 @@ class ProxmoxMenuMixin:
         # L'alias SEUL : ssh y lira l'utilisateur, le port et le ProxyJump.
         return {"target": alias, "jump": ""}
 
-    @staticmethod
-    def _pve_hostkey_missing(sortie):
-        """La sortie de ssh dénonce-t-elle une clé d'hôte inconnue ou changée ?"""
-        bas = (sortie or "").lower()
-        return (
-            "host key verification failed" in bas
-            or "authenticity of host" in bas
-            or "no ed25519 host key is known" in bas
-        )
-
-    @staticmethod
-    def _pve_clean_output(sortie):
-        """Les lignes de la sortie qui APPRENNENT quelque chose.
-
-        « Warning: Permanently added … to the list of known hosts » arrive sur
-        stderr à chaque connexion d'un hôte en UserKnownHostsFile=/dev/null.
-        Affichée comme preuve d'un échec, elle envoyait chercher du côté de la
-        clé d'hôte un problème qui n'avait rien à voir — rapporté.
-        """
-        gardees = []
-        for ligne in (sortie or "").splitlines():
-            nue = ligne.strip()
-            if not nue or nue.startswith("Warning: Permanently added"):
-                continue
-            gardees.append(nue)
-        return gardees
-
-    def _pve_ssh_alive(self, host):
-        """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
-
-        C'est la question qu'il fallait poser AVANT de conclure : une machine
-        qui répond mais n'a pas Proxmox n'est pas « injoignable », et les deux
-        pannes ne se corrigent pas du même côté."""
-        from script.proxmox import proxmox_deploy as pve
-
-        code, out = pve.run(host, "true", timeout=20)
-        lignes = self._pve_clean_output(out)
-        return code == 0, (lignes[0] if lignes else t("no answer"))
-
     def _pve_install_hint(self, host):
         """La commande qui poserait Proxmox VE sur cette machine.
 
@@ -265,67 +224,57 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         print(f"\n  {t('Checking')} {host['target']}…")
-        code, out = pve.run(host, "pveversion", timeout=30)
-        version = pve.parse_pveversion(out)
-        if not version and self._pve_hostkey_missing(out):
+        verdict = host_probe.diagnose(
+            host, "pveversion", pve.parse_pveversion, run=pve.run
+        )
+        if verdict.kind == host_probe.HOSTKEY:
             # Première connexion : ssh refuse un hôte dont il n'a pas la clé.
             # On ne DÉSACTIVE pas la vérification — un hyperviseur n'est pas
             # une VM jetable — on propose de l'enregistrer, une fois.
             if self._pve_add_hostkey(host):
-                code, out = pve.run(host, "pveversion", timeout=30)
-                version = pve.parse_pveversion(out)
-        if not version:
-            # Un seul message confondait deux pannes : « ou il est
-            # injoignable » envoyait vérifier le réseau alors que la machine
-            # répondait, et la seule ligne montrée était l'avertissement de
-            # ssh sur la clé d'hôte. On demande donc à ssh s'il passe.
-            joignable, detail = self._pve_ssh_alive(host)
-            # Ce que « pveversion » a répondu, et non ce que la sonde a dit :
-            # « command not found » est LA preuve utile.
-            dit = self._pve_clean_output(out)
-            if joignable:
-                print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
-                print(
-                    f"    ssh {host['target']} : ok — pveversion : "
-                    f"{dit[0] if dit else t('absent')}"
+                verdict = host_probe.diagnose(
+                    host, "pveversion", pve.parse_pveversion, run=pve.run
                 )
-                print(f"  → {t('Install it:')}")
-                print(f"    {self._pve_install_hint(host)}")
-                print(
-                    f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
-                )
-            else:
-                print(f"  ✗ {t('SSH does not get through:')}")
-                print(f"    {detail}")
-                print(
-                    f"  → {t('Check the address, the SSH access and pveversion.')}"
-                )
+        if verdict.kind == host_probe.PRODUCT_ABSENT:
+            print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
+            print(
+                f"    ssh {host['target']} : ok — pveversion : "
+                f"{verdict.detail or t('absent')}"
+            )
+            print(f"  → {t('Install it:')}")
+            print(f"    {self._pve_install_hint(host)}")
+            print(
+                f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
+            )
             return None
-        # « qm » exige les privilèges. La voie « VM QEMU locale » donne
-        # l'accès d'erplibre, pas de root : il faut donc sudo, et il faut le
-        # VÉRIFIER — un sudo qui réclame un mot de passe bloquerait chaque
-        # commande du menu sur une invite que personne ne voit.
-        prefixe = ""
-        _c, qui = pve.run(host, "id -u", timeout=20)
-        if qui.strip() != "0":
-            code, _o = pve.run(host, "sudo -n true", timeout=20)
-            if code:
-                print(
-                    f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}"
-                )
-                print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
-                return None
-            prefixe = "sudo "
+        if verdict.kind in (host_probe.UNREACHABLE, host_probe.HOSTKEY):
+            print(f"  ✗ {t('SSH does not get through:')}")
+            print(f"    {verdict.detail or t('no answer')}")
+            print(
+                f"  → {t('Check the address, the SSH access and pveversion.')}"
+            )
+            return None
+        if verdict.kind == host_probe.NEEDS_ROOT:
+            # « qm » exige les privilèges. La voie « VM QEMU locale » donne
+            # l'accès d'erplibre, pas de root, et un sudo qui réclame un mot
+            # de passe bloquerait chaque commande sur une invite invisible.
+            print(
+                f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}"
+            )
+            print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
+            return None
+        if verdict.sudo:
             print(f"  ✓ sudo")
-        host = dict(host, version=version, sudo=prefixe)
+        version = verdict.version
+        host = dict(host, version=version, sudo=verdict.sudo)
         print(f"  ✓ Proxmox VE {version}")
         # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
         # bridge ni table NAT — donc aucun pont à créer et aucune VM à
-        # démarrer. Vécu sur l'hôte d'essai, où ifupdown2 répondait
-        # « Another instance of this program is already running » au lieu de
+        # démarrer. Le symptôme n'oriente pas : ifupdown2 répond alors
+        # « Another instance of this program is already running » plutôt que
         # « Operation not supported ». On le dit ici, une fois, plutôt que de
         # laisser chercher.
-        noyau = pve.parse_kernel(out)
+        noyau = pve.parse_kernel(verdict.raw)
         if noyau and "-pve" not in noyau:
             print(f"  ⚠ {t('Still on the distribution kernel:')} {noyau}")
             print(f"  → {t('Reboot the host: no bridge, no NAT until then.')}")
@@ -346,16 +295,8 @@ class ProxmoxMenuMixin:
         if not host:
             return 255, ""
         if not quiet:
-            # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
-            # compris. Sans « -J », la ligne copiée rendait « no route to
-            # host » — et c'est justement quand une étape échoue au milieu
-            # d'une réparation qu'on a besoin de la rejouer à la main.
-            argv = pve.ssh_argv(
-                host, pve.wrap_privilege(remote, host.get("sudo") or "")
-            )
             print(
-                f"\n{t('Will execute:')} "
-                + " ".join(shlex.quote(a) for a in argv)
+                f"\n{t('Will execute:')} {self._pve_replay_line(remote, host)}"
             )
         code, out = pve.run(host, remote, timeout)
         if out.strip() and not quiet:
@@ -363,6 +304,43 @@ class ProxmoxMenuMixin:
         if code and not quiet:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
+
+    def _pve_replay_line(self, remote, host=None):
+        """La ligne ssh que `run` lance pour `remote`, prête à copier.
+
+        La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port compris.
+        Sans « -J », une ligne copiée rend « no route to host » — et c'est
+        quand une étape échoue au milieu d'une réparation qu'on a besoin de
+        la rejouer à la main. `host` absent, l'hôte retenu est relu sans
+        rien demander ; sans hôte retenu, la commande distante seule.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        host = host or self._pve_host(ask=False)
+        if not host:
+            return remote
+        argv = pve.ssh_argv(
+            host, pve.wrap_privilege(remote, host.get("sudo") or "")
+        )
+        return " ".join(shlex.quote(a) for a in argv)
+
+    def _pve_show_failure(self, remote, code, out):
+        """Ce qu'une lecture faite en silence (quiet) n'a pas montré.
+
+        La commande telle qu'envoyée, son code et les dernières lignes de
+        sa sortie, erreur standard comprise : de quoi rejouer à la main un
+        refus qui, sans eux, ne se diagnostique qu'en lisant le source. Un
+        code 0 dit que la commande a abouti et que sa sortie ne se lit pas.
+        Chaque ligne est bornée : un document JSON tient sur une seule.
+        """
+        print(f"  {t('Command:')} {self._pve_replay_line(remote)}")
+        if code:
+            print(f"  ⚠ {t('exit code')} {code}")
+        else:
+            print(f"  ⚠ {t('exit code 0, unreadable output')}")
+        lignes = [l for l in (out or "").splitlines() if l.strip()]
+        for ligne in lignes[-5:]:
+            print(f"    {ligne[:200]}")
 
     # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
     # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
@@ -414,16 +392,41 @@ class ProxmoxMenuMixin:
         return (not manque), " ".join(manque)
 
     def _pve_vms(self):
-        """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
+        """[{vmid, name, status, …}] des VM de l'hôte ; None si « qm list »
+        échoue.
+
+        [] et None ne disent pas la même chose : [] est un hôte sans VM,
+        None une liste qu'on n'a pas. Chaque appelant lit None et refuse
+        d'agir — prise pour vide, elle rend tout disque orphelin, tout
+        VMID libre et toute entrée ~/.ssh/config morte.
+        """
+        return self._pve_vms_read()[0]
+
+    def _pve_vms_read(self):
+        """(vms, lecture) : `vms` comme `_pve_vms`, et `lecture` le triplet
+        (commande, code, sortie) de « qm list », qui dit POURQUOI la liste
+        manque à qui doit le montrer."""
         from script.proxmox import proxmox_deploy as pve
 
-        code, out = self._pve_show("qm list", quiet=True)
-        return pve.parse_qm_list(out) if code == 0 else []
+        remote = "qm list"
+        code, out = self._pve_show(remote, quiet=True)
+        vms = pve.parse_qm_list(out) if code == 0 else None
+        return vms, (remote, code, out)
 
-    def _pve_pick_vm(self, titre="", multiple=False):
+    def _pve_pick_vm(self, titre="", multiple=False, vms=None):
         """Choisit une VM de l'hôte (numéro de la liste, jamais le VMID à
-        retaper). Renvoie un dict, une liste si `multiple`, ou None."""
-        vms = self._pve_vms()
+        retaper). Renvoie un dict, une liste si `multiple`, ou None.
+
+        `vms` réutilise une liste DÉJÀ affichée. Sans lui, l'appelant qui
+        vient d'en montrer une en redemande une seconde : un aller-retour
+        SSH de plus, et surtout une numérotation qui peut ne plus désigner
+        les mêmes machines — une VM créée entre les deux décale tout ce qui
+        la suit, et le numéro tapé porte alors sur la voisine.
+        """
+        vms = self._pve_vms() if vms is None else vms
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return [] if multiple else None
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return [] if multiple else None
@@ -450,6 +453,9 @@ class ProxmoxMenuMixin:
     def _pve_list(self):
         """« qm list », mis en tableau avec le total."""
         vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return
@@ -468,8 +474,26 @@ class ProxmoxMenuMixin:
         # Le pendant du sous-menu de QEMU/KVM : la liste est le bon endroit
         # pour agir sur ce qu'on vient de lire.
         print(f"\n  [1] {t('Change the state of one or more VMs')}")
-        if input(t("Choice (blank = back): ")).strip() == "1":
+        print(f"  [2] {t('Detail of one VM (uptime, CPU, memory)')}")
+        choix = input(t("Choice (blank = back): ")).strip()
+        if choix == "1":
             self._pve_change_state(vms)
+        elif choix == "2":
+            self._pve_detail(vms)
+
+    def _pve_detail(self, vms=None):
+        """Le détail d'UNE machine, là où la liste en résume cinq colonnes.
+
+        Ici plutôt que dans le menu principal : le détail se demande sur une
+        machine qu'on vient de voir, et un choix par numéro de liste évite de
+        retaper un VMID — le retaper est ce qui fait agir sur la voisine.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm(vms=vms)
+        if not vm:
+            return
+        self._pve_show(pve.status_cmd(vm["vmid"]))
 
     def _pve_change_state(self, vms=None):
         """Démarre ou éteint des VM de l'hôte, avec double validation.
@@ -478,9 +502,10 @@ class ProxmoxMenuMixin:
         qui laisse Odoo fermer ses connexions PostgreSQL. « stop » coupe le
         courant — il est offert en second, nommé pour ce qu'il est.
         """
-        from script.proxmox import proxmox_deploy as pve
-
         vms = vms if vms is not None else self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return
@@ -528,9 +553,14 @@ class ProxmoxMenuMixin:
             code, _o = self._pve_show(f"qm {verbe} {vm['vmid']}", timeout=300)
             marque = "✓" if code == 0 else "✗"
             print(f"  {marque} {vm['name']}")
-        # L'état APRÈS : c'est la seule preuve que le geste a porté.
-        _c, out = self._pve_show("qm list", quiet=True)
-        for vm in pve.parse_qm_list(out):
+        # L'état APRÈS : c'est la seule preuve que le geste a porté. Illisible,
+        # il est dit tel, et non montré vide.
+        apres, lecture = self._pve_vms_read()
+        if apres is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            self._pve_show_failure(*lecture)
+            return
+        for vm in apres:
             if any(vm["vmid"] == c["vmid"] for c in choisies):
                 print(f"    {vm['name']:<34} {vm['status']}")
 
@@ -612,23 +642,103 @@ class ProxmoxMenuMixin:
         if not self._is_yes(input(t("Confirm for real? (y/N): "))):
             print(t("Cancelled."))
             return
+        # Chaque code est lu : le garde d'identité, une VM verrouillée ou un
+        # hôte injoignable font échouer la suite, et l'écran ne dit détruite
+        # que la VM dont la suite a rendu 0. Un délai dépassé laisse l'issue
+        # inconnue : la suite peut tourner encore sur l'hôte.
+        detruites, restees, inconnues = [], [], []
         for vm in vms:
-            for cmd in pve.destroy_cmds(vm["vmid"]):
-                self._pve_show(cmd, timeout=300)
+            # Le nom PROUVE : il est en main depuis la liste, et c'est lui
+            # qui empêche de détruire ce qui porte ce VMID maintenant. UN
+            # seul appel, parce que le garde ne vaut que dans le shell qu'il
+            # peut arrêter. Sans nom, rien ne part, et le bilan le compte.
+            nom = (vm.get("name") or "").strip()
+            if not nom:
+                refus = f"{vm['vmid']} : {t('no identity proof; refused')}"
+                print(f"  ⛔ {refus}")
+                restees.append(refus)
+                continue
+            code, sortie = self._pve_show(
+                pve.destroy_cmd(vm["vmid"], nom), timeout=300
+            )
+            ligne = f"{vm['vmid']} ({nom})"
+            if pve.timed_out(code, sortie):
+                inconnues.append(ligne)
+            elif code:
+                restees.append(f"{ligne} : {t('exit code')} {code}")
+            else:
+                detruites.append(ligne)
+        if detruites:
+            print(f"\n  ✓ {t('VMs destroyed:')}")
+            for ligne in detruites:
+                print(f"    {ligne}")
+        if restees:
+            print(f"\n  ✗ {t('VMs not destroyed:')}")
+            for ligne in restees:
+                print(f"    {ligne}")
+        self._pve_report_unknown(inconnues, "qm list")
+
+    def _pve_report_unknown(self, lignes, verification):
+        """Section « issue inconnue » d'un bilan : ce dont le délai a expiré,
+        puis `verification`, la commande qui dit où l'hôte en est. Muette
+        quand `lignes` est vide."""
+        if not lignes:
+            return
+        print(f"\n  ⚠ {t('Outcome unknown (timeout):')}")
+        for ligne in lignes:
+            print(f"    {ligne}")
+        conseil = t(
+            "The command may still be running on the host:"
+            " check with « {cmd} »."
+        )
+        print(f"    {conseil.format(cmd=verification)}")
 
     def _pve_cleanup(self):
-        """Volumes de disque qu'aucune VM ne réclame plus.
+        """Volumes de disque qu'aucune VM de la GRAPPE ne réclame plus.
 
         Proxmox ne les efface pas de lui-même : une création interrompue ou un
         « destroy » sans « --purge » en laisse. On les liste et on demande.
+
+        Les volumes viennent de tous les stockages d'images, partagés
+        compris ; un stockage partagé porte aussi les disques des VM des
+        autres nœuds, que « qm list » ne voit pas. La référence est donc la
+        liste de la grappe, jointe à celle du nœud : une VM connue de l'une
+        OU de l'autre garde ses volumes. Une des deux illisible, rien n'est
+        offert — un volume n'est orphelin que si l'on SAIT qu'aucune VM ne
+        le porte.
+
+        Les volumes sont lus AVANT les VM : une VM créée entre les deux
+        lectures figure dans la seconde, et son disque, absent de la
+        première, n'est jamais pris pour orphelin.
         """
         from script.proxmox import proxmox_deploy as pve
 
+        # Chaque refus montre la lecture qui manque : elles se font toutes
+        # en silence, et un refus muet ne se diagnostique pas.
+        sans_elle = t(
+            "Without it, no volume can be shown to be orphaned:"
+            " nothing is offered."
+        )
         code, out = self._pve_show(pve.orphan_disks_cmd(), quiet=True)
         if code:
-            print(f"\n  ⚠ {t('exit code')} {code}")
+            print(f"\n  ✗ {t('Unreadable volume list.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(pve.orphan_disks_cmd(), code, out)
             return
-        vmids = [v["vmid"] for v in self._pve_vms()]
+        locales, lecture = self._pve_vms_read()
+        if locales is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(*lecture)
+            return
+        code_grappe, sortie = self._pve_show(pve.cluster_vms_cmd(), quiet=True)
+        grappe = pve.parse_cluster_vmids(sortie) if code_grappe == 0 else None
+        if grappe is None:
+            print(f"\n  ✗ {t('Unreadable cluster VM list.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(pve.cluster_vms_cmd(), code_grappe, sortie)
+            return
+        vmids = grappe | {v["vmid"] for v in locales}
         orphelins = pve.parse_orphans(out, vmids)
         if not orphelins:
             print(f"\n  ✓ {t('Nothing orphaned.')}")
@@ -641,8 +751,29 @@ class ProxmoxMenuMixin:
         if not self._is_yes(input(f"{t('Free them?')} (o/N) : ")):
             print(t("Cancelled."))
             return
+        # Chaque code est lu : un volume verrouillé ou un stockage à terre
+        # fait échouer « pvesm free », et un rapport muet laisserait croire
+        # la place rendue. Un délai dépassé n'est ni l'un ni l'autre.
+        echecs, inconnus = [], []
         for volid, _taille in orphelins:
-            self._pve_show(f"pvesm free {shlex.quote(volid)}", timeout=300)
+            code, sortie = self._pve_show(
+                f"pvesm free {shlex.quote(volid)}", timeout=300
+            )
+            if pve.timed_out(code, sortie):
+                inconnus.append(volid)
+            elif code:
+                echecs.append(volid)
+        liberes = len(orphelins) - len(echecs) - len(inconnus)
+        if liberes:
+            print(f"\n  ✓ {t('Volumes freed:')} {liberes}")
+        if echecs:
+            print(f"\n  ✗ {t('Not freed:')}")
+            for volid in echecs:
+                print(f"    {volid}")
+        stockages = sorted({v.split(":", 1)[0] for v in inconnus})
+        self._pve_report_unknown(
+            inconnus, "; ".join(f"pvesm list {s}" for s in stockages)
+        )
 
     def _pve_guest_ip(self, vmid, attente=120):
         """Adresse d'une VM Proxmox : agent invité, sinon voisinage de l'hôte.
@@ -814,15 +945,14 @@ class ProxmoxMenuMixin:
     def _pve_depth_note(self, host, cpu):
         """(cpu borné, lignes à dire). Ce que la profondeur impose.
 
-        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
-        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
-        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
-        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
-        pour sa profondeur.
+        Offrir la capacité entière de l'HÔTE produit, au troisième étage de
+        virtualisation, une VM qui ne démarre pas : le processeur virtuel
+        n'avance plus et rien n'est lu du disque. Le nombre n'est pas absurde
+        pour la machine ; il l'est pour sa profondeur.
 
-        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
-        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
-        l'étage suivant.
+        Un seul levier, le vCPU : le gel tombe au MÊME octet avec 9 Go et
+        avec 2 Go, donc rogner la mémoire ne gagne rien et prive l'étage
+        suivant.
         """
         from script.proxmox import nesting
 
@@ -969,12 +1099,33 @@ class ProxmoxMenuMixin:
         interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
         de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
-        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
-        la VM ne répondait plus, ni en ssh ni en ping."""
+        commande qui la configure : « ifup » ne rend pas la main, et plus rien
+        ne répond, ni en ssh ni en ping.
+
+        Rend (réseau, raison) : l'un des deux est toujours vide. LE CODE DE
+        RETOUR DU RELEVÉ EST LU, parce que sa perte fabrique exactement la
+        réponse que cette fonction existe pour éviter. `pve.run` rend
+        (255, « timeout ») à l'expiration et (255, message) sur erreur
+        système ; ce message ne contient aucun réseau, donc `parse_used_nets`
+        n'en trouve AUCUN, donc « rien n'est pris », donc le PREMIER candidat
+        est rendu — celui-là même que l'hôte utilise peut-être déjà.
+
+        Les deux échecs sont NOMMÉS séparément. « Tous les candidats sont
+        pris » et « le relevé n'a pas abouti » mènent au même refus, mais pas
+        au même geste : le premier se corrige en libérant un réseau, le
+        second en cherchant pourquoi la commande distante a cédé."""
         from script.proxmox import proxmox_deploy as pve
 
-        _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
-        return pve.pick_internal_cidr(out)
+        code, out = pve.run(host, pve.USED_NETS_CMD, 40)
+        if code:
+            lignes = pve.strip_ssh_noise(out).strip().splitlines()
+            detail = lignes[-1] if lignes else ""
+            raison = t("Could not read the networks this host uses.")
+            return "", f"{raison} {detail}".strip()
+        cidr = pve.pick_internal_cidr(out)
+        if not cidr:
+            return "", t("No free subnet left for an internal bridge.")
+        return cidr, ""
 
     def _pve_nat_ready(self, host):
         """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
@@ -1045,9 +1196,9 @@ class ProxmoxMenuMixin:
         raison = self._pve_nat_reason(host)
         if raison:
             return "", raison
-        cidr = self._pve_internal_cidr(host)
+        cidr, raison = self._pve_internal_cidr(host)
         if not cidr:
-            return "", t("No free subnet left for an internal bridge.")
+            return "", raison
         uplink = self._pve_uplink()
         for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
@@ -1076,11 +1227,13 @@ class ProxmoxMenuMixin:
         # Le réseau est LU sur l'hôte avant d'être proposé : annoncer le
         # réseau par défaut pour en poser un autre serait mentir sur
         # l'écran même où l'on demande l'accord.
-        cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
+        cidr, raison = (
+            self._pve_internal_cidr(host) if host else (pve.INTERNAL_CIDR, "")
+        )
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
         if not cidr:
-            print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
+            print(f"  ✗ {raison}")
             print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
             return ""
         print(
@@ -1132,14 +1285,24 @@ class ProxmoxMenuMixin:
         if not host:
             return
         mod = self._qemu_import_module()
-        try:
-            from script.todo.proxmox_deploy_form import run_proxmox_form
+        # PROPOSER D'INSTALLER Textual, comme toutes les autres portes de
+        # cet écran-là dans le dépôt : sans cela, un hôte sans la
+        # bibliothèque tombe dans le repli par questions sans l'avoir
+        # demandé, et le repli est un choix offert, pas un défaut.
+        from script.todo import textual_setup
 
-            ctx = self._pve_form_context(mod, host)
-            spec = run_proxmox_form(ctx)
-        except ImportError as exc:
-            print(f"  ⚠ {t('TUI unavailable')} : {exc}")
-            spec = {}
+        spec = {}
+        if textual_setup.ensure():
+            try:
+                from script.todo.proxmox_deploy_form import run_proxmox_form
+
+                ctx = self._pve_form_context(mod, host)
+                if ctx is None:
+                    return
+                spec = run_proxmox_form(ctx)
+            except ImportError as exc:
+                print(f"  ⚠ {t('TUI unavailable')} : {exc}")
+                spec = {}
         if spec is None:
             print(t("Cancelled."))
             return
@@ -1175,10 +1338,24 @@ class ProxmoxMenuMixin:
         Chaque lecture passe par ssh, et certaines par sudo : une invite de
         mot de passe pendant que Textual affiche casserait l'écran. On paie
         donc tout ici, une fois, terminal encore à nous.
+
+        Rend None, après l'avoir dit, quand la liste des VM est illisible :
+        l'appelant n'ouvre alors ni l'écran ni les questions.
         """
         from script.proxmox import proxmox_deploy as pve
 
         print(f"\n{t('Loading (host, storage, bridges, VMs)...')}")
+        # Les VM d'abord : sans elles, ni le prochain VMID ni les noms pris
+        # ne se savent, et l'écran proposerait une supposition.
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            sans_elle = t(
+                "Without it the next free VMID is unknown:"
+                " nothing is created."
+            )
+            print(f"  {sans_elle}")
+            return None
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1196,7 +1373,6 @@ class ProxmoxMenuMixin:
                 )
             catalog[a] = entries
 
-        vms = self._pve_vms()
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
         stockages = pve.parse_storages(out)
         if not stockages:
@@ -1237,7 +1413,7 @@ class ProxmoxMenuMixin:
             print(f"  {ligne}")
         # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
         # routent mais ne résolvent rien, et « apt update » échoue sans que
-        # rien ne l'explique. Mesuré sur la VM d'essai.
+        # rien ne l'explique.
         _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
         serveurs_dns = pve.parse_nameservers(resolv)
 
@@ -1308,7 +1484,7 @@ class ProxmoxMenuMixin:
             # réseau qui sera RÉELLEMENT posé — il dépend de l'hôte.
             "internal_bridge": (
                 pve.INTERNAL_BRIDGE,
-                (self._pve_internal_cidr(host) if not ponts else "")
+                (self._pve_internal_cidr(host)[0] if not ponts else "")
                 or pve.INTERNAL_CIDR,
             ),
             "build_command": build_command,
@@ -1316,6 +1492,15 @@ class ProxmoxMenuMixin:
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
             "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
+            # LES TROIS CLÉS DE POSTURE, que cet écran n'offrait pas :
+            # une VM Proxmox naissait sans confinement quelle que soit la
+            # demande, alors que le mécanisme existe de bout en bout.
+            #
+            # `after_boot` VRAI : ce chemin pose les règles une fois la
+            # machine joignable, donc elle sort librement pendant tout son
+            # démarrage. L'écran d'à côté écrit avant le premier boot et
+            # n'a pas cet écart — le copier tel quel mentirait ici.
+            **vm_profiles.form_context(after_boot=True),
             # Type de VM, magasin d'applications, outils, fuseau,
             # interpréteur Python : les réglages du système INVITÉ, qui ne
             # regardent pas l'hyperviseur. Cet écran n'en portait que trois —
@@ -1468,6 +1653,46 @@ class ProxmoxMenuMixin:
             pve.image_fetch_cmd(url, image, sha256=somme)
         ] + pve.create_cmds(vm["vmid"], detail)
 
+    def _pve_posture_refused(self, spec) -> bool:
+        """LA RÈGLE D'OR sur cet hôte. Vrai si le déploiement est refusé.
+
+        UNE fonction et non un bloc recopié : les DEUX voies de cet écran
+        la traversent — celle du formulaire et celle des questions, qui
+        bâtit sa propre spec et appelait « qm create » sans passer par ici.
+        Un refus posé d'un seul côté est le mécanisme de la dérive.
+
+        Elle est appelée avant que la machine existe : c'est le seul moment
+        où un refus ne coûte rien, puisque après « qm create » une posture
+        incohérente se corrige en détruisant la VM. Une posture inconnue est
+        refusée elle aussi — replier sur la plus libre déploierait en sortie
+        libre une spec qui demandait du confinement.
+        """
+        verdict = posture_spec.check(spec)
+        if verdict != posture_spec.OK:
+            print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
+            print(
+                f"  {t('Network posture')} :"
+                f" « {posture_spec.posture_name(spec)} », "
+                f"{t('This machine carries real data')} :"
+                f" {posture_spec.real_data(spec)}"
+            )
+            return True
+        # SECOND REFUS, MÊME PORTE. Une posture qui nomme des rôles dont le
+        # site n'a donné aucune adresse ne peut pas être POSÉE. Sur cet hôte
+        # les règles ne s'écrivent qu'une fois la machine debout, si bien que
+        # le manque ne se découvrait qu'après « qm create » — et l'appelant
+        # l'y réduisait à un avertissement. La machine naissait alors en
+        # SORTIE LIBRE sous une posture qui promet l'inverse.
+        #
+        # Le rendu est PUR : il ne touche aucune machine, et les deux autres
+        # backends le tentent déjà avant de créer quoi que ce soit.
+        try:
+            self._qemu_egress_rules(spec)
+        except vm_backend.VmBackendError as manque:
+            print(f"\n  ✗ {t('Deployment refused:')} {manque}")
+            return True
+        return False
+
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
 
@@ -1488,10 +1713,12 @@ class ProxmoxMenuMixin:
         # depuis. Pris avant la première commande, création comprise.
         debut = time.time()
 
+        if self._pve_posture_refused(spec):
+            return
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
-        # téléchargeait 350 Mio d'image pour finir sur « net0: invalid format
-        # - missing key » — vécu sur l'hôte d'essai.
+        # télécharge 350 Mio d'image pour finir sur « net0: invalid format -
+        # missing key ».
         for valeur, message in (
             (spec.get("storage"), t("No storage able to hold a VM disk.")),
             (spec.get("bridge"), t("No bridge on the host.")),
@@ -1538,8 +1765,7 @@ class ProxmoxMenuMixin:
         if not travaux:
             return
         # Le journal AVANT de lancer : la vue de progression se referme et
-        # emporte tout ce qu'elle montrait. Rapporté — « il manque plein
-        # d'informations qu'il y avait avant, où est le fichier de log ? ».
+        # emporte tout ce qu'elle montrait, sans laisser où le relire.
         # L'ancienne voie par questions imprimait chaque commande et sa
         # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
         session = self._pve_log_dir()
@@ -1652,6 +1878,21 @@ class ProxmoxMenuMixin:
         with open(chemin, "w", encoding="utf-8") as fh:
             fh.write("\n".join(entete) + "\n")
         return chemin
+
+    @staticmethod
+    def _pve_alias_chaine(host, nom):
+        """« hôte+vm » : l'alias ~/.ssh/config d'une VM de cet hôte.
+
+        UN SEUL ENDROIT LE COMPOSE. La convention était recopiée par chaque
+        appelant — le déploiement qui l'écrit, l'écran qui réécrit le
+        fichier — et un caractère de plus admis d'un côté suffit à ce que
+        l'autre cherche un alias qui n'existe pas. Le nom composé dit où la
+        machine vit, ne peut rien voler à un domaine local, et distingue
+        deux VM homonymes sur deux hôtes.
+        """
+        court = (host.get("target") or "").split("@")[-1]
+        court = re.sub(r"[^A-Za-z0-9._-]", "-", court) or "pve"
+        return f"{court}+{nom}"
 
     def _pve_alias_names(self, nom, chaine, locaux=(), rebond=""):
         """UN seul nom pour l'entrée ~/.ssh/config : « hôte+vm ».
@@ -2022,13 +2263,25 @@ class ProxmoxMenuMixin:
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
 
+        Rend "" quand rien n'empêche d'installer sur cette VM, et sinon LA
+        RAISON de le refuser, en une phrase destinée à l'écran.
+
         La voie libvirt les livre par le « write_files » de cloud-init ;
-        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
-        quelle que soit sa distribution. Rapporté sur Arch.
+        « qm set » n'offre pas cela, donc une VM Proxmox n'aurait AUCUN
+        guide, quelle que soit sa distribution.
 
         Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
         la source unique, comme sa docstring le promet. Un seul appel, tous les
         fichiers.
+
+        LE LOT EST UN TOUT, ET SON ÉCHEC A DEUX SENS. Les fichiers et le
+        chargement des règles partent dans la même chaîne « && ». Sans
+        posture à tenir, l'échec ne coûte qu'un guide — on le dit, et on
+        continue. Avec une posture, il laisse une VM dont le fichier de
+        règles est peut-être posé et n'a PAS été chargé : elle sort
+        librement tout en donnant l'apparence du contraire. Installer
+        dessus tiendrait pour acquise une promesse que rien n'a vérifiée,
+        et c'est précisément le couple que ce dépôt refuse.
         """
         import types
 
@@ -2036,6 +2289,7 @@ class ProxmoxMenuMixin:
 
         install = spec.get("install") or {}
         cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        regles, unite = self._pve_egress_texts(spec, mod)
         args = types.SimpleNamespace(
             distro=vm.get("distro") or "",
             version=vm.get("version") or "",
@@ -2066,12 +2320,24 @@ class ProxmoxMenuMixin:
             ),
             no_git_identity=False,
             user=spec.get("user") or "erplibre",
+            # LES RÈGLES DE SORTIE, par la même voie que le guide.
+            # `guide_files` les ajoute à sa liste dès que ces deux champs
+            # sont remplis — le chemin libvirt s'en sert depuis toujours,
+            # et celui-ci ne les remplissait jamais. Le mécanisme
+            # n'existait pas ici parce que personne ne le demandait.
+            egress_rules=regles,
+            egress_unit_text=unite,
         )
+        # La raison de refuser, si le lot cède. Composée ICI, à côté de ce
+        # qui a été PROMIS : la recomposer chez l'appelant l'obligerait à
+        # redemander la posture, et une seconde lecture est une occasion de
+        # répondre autre chose.
+        refus = t("egress rules did not load") if regles else ""
         try:
             fichiers = mod.guide_files(args)
         except Exception as exc:  # pragma: no cover - dépend du module
             print(f"  ⚠ {t('guide not written')} : {exc}")
-            return False
+            return refus
         morceaux = []
         for chemin, mode, contenu, proprio in fichiers:
             q = shlex.quote(chemin)
@@ -2081,12 +2347,68 @@ class ProxmoxMenuMixin:
             )
             if proprio:
                 morceaux.append(f"sudo chown {shlex.quote(proprio)}: {q}")
+        # ARMER DANS LE MÊME LOT. `guide_files` ÉCRIT, il ne charge rien :
+        # un fichier de règles posé et jamais chargé laisse la machine
+        # sortir pour toujours, tout en donnant l'apparence du contraire.
+        # Le chemin libvirt arme par le « runcmd » de cloud-init ; ici il
+        # n'y a que ce canal, donc l'armement le suit immédiatement.
+        morceaux.extend(self._pve_egress_arm(regles, unite, mod))
         code, _o = self._pve_ssh(cible, " && ".join(morceaux))
         if code:
             print(f"  ⚠ {t('guide not written')} ({code})")
-            return False
+            return refus
         print(f"  ✓ {t('connection guide written')}")
-        return True
+        if regles:
+            print(f"  ✓ {t('egress rules posed and armed')}")
+        return ""
+
+    def _pve_egress_texts(self, spec, mod):
+        """(règles, unité) que cette spec demande, ou ("", "").
+
+        Le rendu vient du MÊME calcul que le chemin libvirt — une recopie
+        divergerait au premier correctif, et c'est un confinement.
+        """
+        try:
+            regles = self._qemu_egress_rules(spec)
+        except Exception as exc:  # noqa: BLE001
+            # DERNIER RECOURS, et il ne devrait plus servir : le rendu est
+            # tenté à la porte, avant « qm create », comme le font les deux
+            # autres backends. S'il échoue ICI, la machine EXISTE déjà et
+            # n'aura aucune règle — s'arrêter ne la confinerait pas
+            # davantage, on la mène donc jusqu'à son guide.
+            #
+            # LE MESSAGE DIT L'ÉTAT, et non le geste manqué. « Règles non
+            # rendues » se lit comme un détail d'affichage, au milieu d'un
+            # flot de déploiement ; ce qui compte est qu'une posture de
+            # confinement n'est PAS tenue sur une machine qui tourne.
+            print(f"  ✗ {t('This VM gets NO egress rule:')} {exc}")
+            print(f"  ✗ {t('It runs with free egress, despite its posture.')}")
+            return "", ""
+        if not regles:
+            return "", ""
+        # L'unité vient du paquet posture, comme sur le chemin libvirt :
+        # c'est lui qui la possède, et `deploy_qemu` ne fait que la
+        # recevoir en argument.
+        return regles, posture_plan.unit_text()
+
+    @staticmethod
+    def _pve_egress_arm(regles, unite, mod):
+        """Les commandes qui CHARGENT les règles, [] s'il n'y en a pas.
+
+        « enable » et « nft -f » liés : armer sans charger laisse la
+        machine sortir jusqu'au premier redémarrage, charger sans armer la
+        laisse sortir à partir du deuxième. C'est la raison écrite dans le
+        chemin libvirt, et elle vaut mot pour mot ici.
+        """
+        if not regles:
+            return []
+        commandes = []
+        if unite:
+            commandes.append(
+                f"sudo systemctl enable {shlex.quote(mod.EGRESS_UNIT_NAME)}"
+            )
+        commandes.append(f"sudo nft -f {shlex.quote(mod.EGRESS_GUEST_PATH)}")
+        return commandes
 
     @staticmethod
     def _pve_ssh(cible, remote, timeout=60):
@@ -2228,18 +2550,18 @@ class ProxmoxMenuMixin:
             mod_qemu = None
 
         def alias_chaine(nom):
-            """« hôte+vm », la convention déjà utilisée pour les VM
-            imbriquées : elle dit où la machine vit, et n'entre en conflit
-            avec rien."""
-            hote = (host.get("target") or "").split("@")[-1]
-            hote = re.sub(r"[^A-Za-z0-9._-]", "-", hote) or "pve"
-            return f"{hote}+{nom}"
+            return self._pve_alias_chaine(host, nom)
 
         # {nom de VM: alias à utiliser} — le suivi doit passer par l'alias
         # qu'on a RÉELLEMENT écrit, pas par le nom.
         alias = {}
         joignables = []
         ca_cache = self._pve_cache_ca(host)
+        # Les VM jointes dont la posture n'a PAS pris, avec la raison. La
+        # liste est séparée de `joignables` parce que ces machines existent
+        # et doivent figurer au sommaire ; c'est l'installation qu'elles ne
+        # reçoivent pas, pas la mention.
+        non_confinees = []
         for vm in spec["vms"]:
             if vm["name"] not in reussies:
                 continue
@@ -2305,7 +2627,9 @@ class ProxmoxMenuMixin:
             # Le guide AVANT l'installation : il doit être là même si rien ne
             # s'installe, et l'installation ne le touche pas.
             if vm["alias"] and mod_qemu:
-                self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+                refus = self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+                if refus:
+                    non_confinees.append((vm["name"], refus))
             if vm["alias"]:
                 self._pve_set_timezone(vm["alias"], spec)
                 # Après le fuseau et avant l'installation : c'est
@@ -2342,6 +2666,17 @@ class ProxmoxMenuMixin:
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été
         # RÉELLEMENT joint.
         resultat = list(joignables)
+        # LA RÈGLE D'OR, AU DERNIER INSTANT OÙ ELLE PEUT ENCORE TENIR. Une
+        # VM dont les règles de sortie ne se sont pas chargées n'est pas
+        # confinée. Elle reste dans le sommaire — elle EXISTE, et il faut
+        # aller la défaire — mais elle ne reçoit ni installation ni suivi :
+        # les deux se lisent comme une machine en service.
+        for nom, raison in non_confinees:
+            print(f"  ✗ {nom} : {raison}")
+        if non_confinees:
+            print(f"  ✗ {t('Not installed: these are not confined.')}")
+            ecartes = {nom for nom, _ in non_confinees}
+            joignables = [vm for vm in joignables if vm["name"] not in ecartes]
         # Le suivi vient du DÉPLOIEMENT, pas de l'installation — même règle
         # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
         # commandait rien : décochée, le tableau de bord s'ouvrait quand
@@ -2408,6 +2743,12 @@ class ProxmoxMenuMixin:
                 # commande distante : la VM naissait serveur nu, sans outils.
                 prod=bool(spec.get("prod")),
                 desktop=bureau,
+                # L'AGENT CHOISI, et non celui par défaut. Le choix se fait
+                # à l'écran et voyage jusqu'ici dans la spec — il était jeté
+                # à l'appel, et la VM recevait l'agent de repli quelle que
+                # soit la réponse. Rien ne le disait : les deux agents
+                # s'installent sans bruit.
+                ai_agent=spec.get("ai_agent") or "",
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -2450,6 +2791,9 @@ class ProxmoxMenuMixin:
                 vm.get("install_cmd") or commun,
                 bool(spec.get("prod")),
                 desktop=bureaux.get(vm["name"], ""),
+                # Même raison que la voie suivie : le choix est dans la
+                # spec, et il était jeté ici.
+                ai_agent=spec.get("ai_agent") or "",
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -2470,6 +2814,13 @@ class ProxmoxMenuMixin:
         if not host:
             return
         mod = self._qemu_import_module()
+        # LA POSTURE EN TÊTE, et le refus tout de suite : rien de ce qui
+        # suit n'en dépend, et un couple incohérent ferait répondre à tout
+        # le questionnaire avant de l'apprendre. `after_boot` parce que sur
+        # cet hôte les règles n'arrivent qu'une fois la machine debout.
+        posture = self._deploy_ask_posture(after_boot=True)
+        if self._pve_posture_refused(posture):
+            return
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
         arch = "amd64"
@@ -2485,10 +2836,6 @@ class ProxmoxMenuMixin:
             or 2
         )
         disque = input(t("Disk size (default 32G): ")).strip() or "32G"
-
-        code, _v = mod.DISTROS[distro][0][version][:2]
-        url = mod.image_url(distro, code, arch, version)
-        image = mod.default_image_name(distro, code, arch, version)
 
         # Stockage et pont : demandés à l'HÔTE, jamais devinés. « local-lvm »
         # n'existe pas partout, et un pont inventé fait échouer « qm create ».
@@ -2530,7 +2877,16 @@ class ProxmoxMenuMixin:
             pont = pve.INTERNAL_BRIDGE
         # Le VMID D'ABORD : l'adresse d'un pont interne s'en déduit, et
         # l'afficher avant de l'avoir choisi ne pouvait pas marcher.
-        vmid = pve.next_vmid(self._pve_vms())
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            sans_elle = t(
+                "Without it the next free VMID is unknown:"
+                " nothing is created."
+            )
+            print(f"  {sans_elle}")
+            return
+        vmid = pve.next_vmid(vms)
         ipconfig = pve.ipconfig_for(infos_ponts.get(pont, {}), vmid)
         print(
             f"\n  {t('storage')} : {stockage}   ({len(stockages)} {t('offered')})"
@@ -2539,34 +2895,97 @@ class ProxmoxMenuMixin:
         print(f"  {t('address')} {ipconfig}")
         print(f"  VMID    : {vmid}")
 
+        # L'installation est demandée AVANT la création parce qu'elle DÉCIDE
+        # de la taille du disque : « qm create » la fige, et une marge posée
+        # ensuite n'existe pas. C'est aussi ce qui la fait entrer dans
+        # l'aperçu, qui montre alors le disque réellement demandé.
+        install = None
+        if self._is_yes_default_yes(
+            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
+        ):
+            branch = self._qemu_pick_branch()
+            label, cmd = self._qemu_pick_install_profile(distro)
+            print(f"  {label}")
+            install = {"branch": branch, "cmd": cmd, "label": label}
+
+        # LES RÉGLAGES DE L'INVITÉ, par la même invite que la voie libvirt.
+        # Cette voie n'en posait AUCUN : la VM naissait serveur nu, dans le
+        # magasin par défaut, sans outil, et son disque était taillé sans la
+        # marge d'un bureau — que « qm create » fige pour de bon. Le
+        # fragment est posé AVANT la création pour cette raison.
+        # La VM telle qu'on la décrit AVANT les réglages de l'invité :
+        # l'invite partagée renomme la machine selon le type choisi — sans
+        # suffixe, une VM graphique et sa jumelle serveur portent le même
+        # nom — et c'est ce nom-là qui doit voyager ensuite.
+        vm_demande = {"name": nom, "arch": arch, "distro": distro}
+        invite = self._deploy_ask_guest([vm_demande])
+        nom = vm_demande["name"]
+
         cle_locale = self._qemu_default_ssh_key()
-        spec = {
+        # Le DNS de l'hôte, pour les VM en adresse fixe : « --ipconfig0 » ne
+        # porte aucun résolveur, et sans lui la machine route sans rien
+        # résoudre — « apt update » échoue alors sans que rien ne l'explique.
+        _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
+        vm = {
             "name": nom,
-            "memory": memoire,
+            "vmid": vmid,
+            "distro": distro,
+            "version": version,
+            "arch": arch,
+            "ram": memoire,
             "vcpus": vcpus,
             "disk": disque,
-            "storage": stockage,
-            "bridge": pont,
-            "image": image,
-            "uefi": mod.requiert_uefi(distro),
-            "user": "erplibre",
-            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
-            # Le user-data du dépôt, pour TOUTES les distributions : un seul
-            # cloud-init à comprendre, et celui-là est déjà éprouvé.
-            "user_data": self._pve_user_data(mod, distro, nom, cle_locale),
-            "start": True,
+            # Le type de VM vient de l'invite partagée : c'est lui qui
+            # décide du suffixe du nom et de la marge de disque.
+            "desktop": vm_demande.get("desktop") or "",
+            "install_cmd": "",
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
             # resterait muette.
             "ipconfig": ipconfig,
         }
-        somme = mod.pinned_sha256(distro)
-        etapes = [
-            pve.image_fetch_cmd(url, image, sha256=somme)
-        ] + pve.create_cmds(vmid, spec)
+        spec_finale = {
+            "host": host,
+            "storage": stockage,
+            "bridge": pont,
+            "res_label": "",
+            "vms": [vm],
+            "existing": [],
+            "user": "erplibre",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "nameservers": pve.parse_nameservers(resolv),
+            "ssh_key": cle_locale or "",
+            "add_ssh_config": True,
+            "install": install,
+            "monitor": True,
+            # LE FRAGMENT DE L'INVITÉ : fuseau, locale, type de VM,
+            # magasin, outils, interpréteur Python, agent de code et
+            # identité git. Les mêmes clés que l'écran, par les mêmes
+            # questions que la voie libvirt.
+            **invite,
+            # LE FRAGMENT JUSQU'ICI : c'est cette spec que lit le guide, et
+            # le guide qui rend puis arme les règles. Refuser le couple
+            # incohérent sans la transmettre laissait cette voie créer la VM
+            # et n'en poser aucune, quelle que soit la posture choisie.
+            **posture,
+        }
+        # LE CONSTRUCTEUR DE L'ÉCRAN, et non une description jumelle : une
+        # règle ajoutée à « qm create » ne vaut que là où on l'écrit, et
+        # celle-ci est la voie qu'on relit le moins. Deux s'y étaient déjà
+        # perdues — le DNS de l'hôte et la marge de disque d'ERPLibre.
+        etapes = self._pve_vm_commands(mod, vm, spec_finale)
+        # La taille effective, et non celle qui a été tapée : une marge
+        # ajoutée en silence se découvre au premier « df », sur une machine
+        # dont le disque ne se reprend plus sans frais.
+        taille = self._pve_disk_with_margin(vm, spec_finale)
+        if taille != disque:
+            print(
+                f"  {t('disk')}    : {taille}  ({disque} +"
+                f" {t('margin for what will be installed')})"
+            )
         if dry_run:
             print(f"\n── {t('Would run on')} {host['target']} ──")
-            print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
+            print(f"  # {t('SSH key ->')} {spec_finale['sshkey_path']}")
             for cmd in etapes:
                 print(f"  {cmd}")
             return
@@ -2577,10 +2996,8 @@ class ProxmoxMenuMixin:
             return
         if cle_locale and not self._pve_push_key(cle_locale):
             print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
-            spec.pop("sshkey_path", None)
-            etapes = [
-                pve.image_fetch_cmd(url, image, sha256=somme)
-            ] + pve.create_cmds(vmid, spec)
+            spec_finale.pop("sshkey_path", None)
+            etapes = self._pve_vm_commands(mod, vm, spec_finale)
         for cmd in etapes:
             code, _out = self._pve_show(cmd, timeout=1800)
             if code:
@@ -2602,46 +3019,6 @@ class ProxmoxMenuMixin:
         # domaine local homonyme, pas de guide de connexion, pas de bloc
         # « pve » (donc aucune colonne vivante dans le suivi), pas de
         # sommaire. Trouvé par l'audit, jamais à l'usage.
-        install = None
-        if self._is_yes_default_yes(
-            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
-        ):
-            branch = self._qemu_pick_branch()
-            label, cmd = self._qemu_pick_install_profile(distro)
-            print(f"  {label}")
-            install = {"branch": branch, "cmd": cmd, "label": label}
-        spec_finale = {
-            "host": host,
-            "storage": stockage,
-            "bridge": pont,
-            "res_label": "",
-            "vms": [
-                {
-                    "name": nom,
-                    "vmid": vmid,
-                    "distro": distro,
-                    "version": version,
-                    "arch": arch,
-                    "ram": memoire,
-                    "vcpus": vcpus,
-                    "disk": disque,
-                    "desktop": "",
-                    "install_cmd": "",
-                    "ipconfig": ipconfig,
-                }
-            ],
-            "existing": [],
-            "user": "erplibre",
-            "ssh_key": cle_locale or "",
-            "add_ssh_config": True,
-            "install": install,
-            "monitor": True,
-            "python_provider": "",
-            # La voie par questions ne demande pas le fuseau — l'écran le
-            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
-            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
-            "timezone": self._qemu_host_timezone(),
-        }
         joignables = self._pve_after_create(
             host, spec_finale, [nom], cle_locale
         )
@@ -2654,7 +3031,11 @@ class ProxmoxMenuMixin:
         host = self._pve_host()
         if not host:
             return
-        vms = [v for v in self._pve_vms() if v["status"] == "running"]
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
+        vms = [v for v in vms if v["status"] == "running"]
         if not vms:
             print(f"\n{t('No running VM on this Proxmox host.')}")
             return
@@ -2662,8 +3043,6 @@ class ProxmoxMenuMixin:
         # Les domaines LOCAUX : un nom partagé avec l'un d'eux ne doit pas lui
         # voler son alias — même règle que le déploiement.
         locaux = set(self._qemu_list_domains())
-        hote_court = (host.get("target") or "").split("@")[-1]
-        hote_court = re.sub(r"[^A-Za-z0-9._-]", "-", hote_court) or "pve"
         for vm in vms:
             ip = self._pve_guest_ip(vm["vmid"], attente=0)
             if not ip:
@@ -2671,7 +3050,7 @@ class ProxmoxMenuMixin:
                 continue
             noms, vole = self._pve_alias_names(
                 vm["name"],
-                f"{hote_court}+{vm['name']}",
+                self._pve_alias_chaine(host, vm["name"]),
                 locaux,
                 host["target"],
             )
@@ -2718,6 +3097,38 @@ class ProxmoxMenuMixin:
         url = f"http://{ip}:8069"
         print(f"→ {navigateur} {url}")
         os.system(f"{navigateur} {shlex.quote(url)}")
+
+    def _pve_verify_egress(self):
+        """La posture d'une VM Proxmox, RELUE dans la VM, quand on le demande.
+
+        LE CHEMIN PROXMOX NE RELISAIT JAMAIS. La voie libvirt sonde une fois
+        au déploiement et autant de fois qu'on le demande ; ici, le seul
+        verdict venait du code de retour du lot qui pose et charge. Un
+        rechargement qui échoue à un démarrage ULTÉRIEUR — l'analyseur
+        retiré, un fichier de règles réécrit — laisse alors la machine
+        debout et sortante, et rien ne le dit.
+
+        La sonde est celle du déploiement, mot pour mot : elle rend toujours
+        0 et répond par un mot, de sorte qu'un transport muet se distingue
+        d'une table absente. Ce qui n'a pas été lu vaut « non lu », jamais
+        « chargé ».
+        """
+        from script.todo import deploy_verify
+        from script.todo import devstack_report as report
+
+        host = self._pve_host()
+        if not host:
+            return
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        alias = self._pve_alias_chaine(host, vm["name"])
+        _code, sortie = self._pve_ssh(alias, posture_plan.probe_command())
+        lu = posture_plan.parse_probe(sortie)
+        couches = list(deploy_verify.egress_layers(lu))
+        print()
+        print(report.render_layers(couches, subject=vm["name"]))
+        return report.aggregate_layers(couches)
 
     def _pve_example(self):
         """Exemple de séquence, sans rien exécuter : de quoi voir ce que
@@ -2811,6 +3222,18 @@ class ProxmoxMenuMixin:
             {"prompt_description": t("Proxmox - example sequence (dry-run)")},
             {"section": t("Host")},
             {"prompt_description": t("Change the Proxmox host")},
+            {"section": t("Posture")},
+            # DÉCLARÉE PAR « method », et posée EN FIN DE LISTE. La chaîne
+            # d'elif au-dessus est numérotée à la main : insérer une entrée
+            # au milieu décalerait toutes les suivantes, et chaque numéro
+            # tapé porterait sur la voisine. Au-delà de la chaîne, le repli
+            # lit la clé et appelle la méthode par son nom.
+            {
+                "prompt_description": t(
+                    "Verify a VM's egress posture, layer by layer"
+                ),
+                "method": "_pve_verify_egress",
+            },
         ]
         # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
         # s'affiche à la suite et se lance par son numéro.
@@ -2864,19 +3287,8 @@ class ProxmoxMenuMixin:
             elif status == "18":
                 self._pve_forget_host()
                 self._pve_pick_host()
-            else:
-                introuvable = True
-                try:
-                    numero = int(status)
-                    # Les sections ne comptent pas dans la numérotation.
-                    reelles = [c for c in choices if not c.get("section")]
-                    if 0 < numero <= len(reelles):
-                        introuvable = False
-                        self.execute_from_configuration(reelles[numero - 1])
-                except ValueError:
-                    pass
-                if introuvable:
-                    print(t("Command not found !"))
+            elif not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.

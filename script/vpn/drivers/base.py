@@ -39,6 +39,7 @@ import time
 # Les `secret_fields` d'un pilote portent des clés i18n : affichées brutes,
 # elles mettaient de l'anglais au milieu d'une phrase française.
 from script.todo.todo_i18n import t
+from script.vpn.menu_hint import chemin_vpn
 
 # Un seul endroit nomme l'installateur : `vpn.py` l'importe d'ici.
 INSTALL_SCRIPT = "./script/install/install_vpn.sh"
@@ -496,8 +497,8 @@ class VpnDriver:
         if missing_secret:
             labels = ", ".join(t(label) for label in missing_secret)
             report(
-                f"Secrets manquants dans le coffre : {labels}. Les déposer :"
-                " TODO › Execute › Déploiement › VPN › « Déposer les"
+                f"Secrets manquants dans le coffre : {labels}."
+                f" Les déposer : {chemin_vpn()} › « Déposer les"
                 " secrets dans le coffre »."
             )
             ready = False

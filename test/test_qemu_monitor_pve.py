@@ -13,12 +13,54 @@ Le relevé prend la forme exacte de celui de virsh, pour que le calcul du
 débit, de la RAM et des colonnes ne sache pas d'où vient la mesure.
 """
 
+import os
 import sys
 import unittest
 from unittest import mock
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 sys.argv = ["todo.py"]
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend as vm_backend  # noqa: E402
+from script.vm import verbs as vm_verbs  # noqa: E402
+
+
+def suppression(fiche):
+    """La commande que l'écran lance VRAIMENT.
+
+    La poignée vient de l'IDENTITÉ de la fiche, et c'est elle qui choisit
+    le backend. Les relais d'avant construisaient toujours une poignée
+    libvirt : les épreuves gardaient donc un chemin que la production ne
+    prend pas, sur un verbe qui efface des VM et des disques.
+    """
+    return vm_verbs.delete_command(
+        vm_backend.handle_of(fiche),
+        with_disks=True,
+        sudo=mon.sudo_prefix(),
+        uri=mon.URI,
+    )
+
+
+def tunnel_web(info, port=18069, cible=8069):
+    """L'argv du tunnel, ou None — comme l'écran le lit."""
+    return (
+        list(
+            vm_verbs.web_access(
+                vm_backend.pve_handle(dict(info or {})), port, cible
+            ).tunnel
+        )
+        or None
+    )
+
+
+# Une fiche d'hôte Proxmox de banc : les préfixes d'exécution viennent du
+# backend, comme en production, et non d'un littéral écrit dans ce fichier.
+FICHE_PVE_DE_BANC = vm_backend.pve_handle(
+    {"vmid": "101", "target": "hote-de-banc", "addr": "192.0.2.20"},
+    "vm-de-banc",
+    alias="alias-de-banc",
+)
 
 # Sortie RÉELLE relevée sur l'hôte d'essai (une VM, stockage en fichiers :
 # Proxmox y rapporte « disk: 0 », d'où le « du » qui suit).
@@ -45,8 +87,7 @@ class TestLaLecture(unittest.TestCase):
         « status: unknown ». Indexée par nom, elle disparaissait : la VM
         passait pour absente du relevé alors que l'hôte venait de la nommer.
         Trois tours plus tard, 🗑 — état TERMINAL — et le suivi annonçait
-        « 1/1 terminées » au bout de neuf secondes. Vécu sur une VM Arch dans
-        un Proxmox imbriqué."""
+        « 1/1 terminées » au bout de neuf secondes."""
         self.assertEqual(list(self.releves), [100])
         self.assertEqual(self.releves[100]["name"], "pve-suivi")
 
@@ -143,10 +184,9 @@ class TestLAppel(unittest.TestCase):
 class TestPasDePoubelleTropTot(unittest.TestCase):
     """« Effacée » est un état TERMINAL : la ligne gèle sur 🗑 pour de bon.
 
-    Rapporté sur une VM Arch déployée sur Proxmox : poubelle dès le premier
-    tour, alors que la VM venait de naître. Un relevé manquant ne prouve
-    rien — l'hôte peut être occupé, la VM en train de démarrer, le relevé en
-    cache d'avant sa création.
+    Une VM à peine née tombait à la poubelle dès le premier tour. Un relevé
+    manquant ne prouve rien — l'hôte peut être occupé, la VM en train de
+    démarrer, le relevé en cache d'avant sa création.
     """
 
     def setUp(self):
@@ -266,7 +306,19 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
         shell = (
             f"CPT={cpt.name}\n{faux_ssh}\n"
             f"ip=10.0.0.1; rc={rc}; "
-            + mon._reboot_steps(log.name, "-pve", tours=tours)
+            + mon._reboot_steps(
+                log.name,
+                "-pve",
+                # LES PRÉFIXES VIENNENT DU BACKEND, comme en production :
+                # les écrire ici ferait éprouver la forme du banc et non
+                # celle que l'enveloppe compose.
+                vm_verbs.exec_prefix(FICHE_PVE_DE_BANC, mon.SSH_OPTS_BATCH),
+                vm_verbs.exec_prefix(
+                    FICHE_PVE_DE_BANC,
+                    f"{mon.SSH_OPTS_BATCH} -o BatchMode=yes",
+                ),
+                tours=tours,
+            )
             + f'echo "{mon.EXIT_MARKER} $rc" >> {log.name}'
         )
         subprocess.run(
@@ -338,17 +390,91 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
         )
         self.assertEqual(mon.reboot_expected(""), "")
 
+    def enveloppe(self, reboot):
+        """Le script détaché que l'enveloppe composerait, sans rien lancer."""
+        vues = {}
+
+        class FauxPopen:
+            def __init__(self, argv, *_a, **_k):
+                vues["argv"] = argv
+
+        with mock.patch.object(mon.subprocess, "Popen", FauxPopen):
+            mon._launch_one(
+                mon.handle_of({"name": "vm-a", "ip": "192.0.2.10"}),
+                "vrai",
+                "/dev/null",
+                reboot=reboot,
+            )
+        return vues["argv"][-1]
+
     def test_the_wrapper_only_reboots_when_asked(self):
+        """CE QU'ELLE COMPOSE, et non ce qu'elle s'écrit.
+
+        Cette épreuve lisait le source et exigeait « if reboot ». Or
+        « if reboot is not None » LE CONTIENT : une mutation qui inverse le
+        sens — redémarrer même quand personne ne l'a demandé — la laissait
+        verte. Elle épinglait en outre les noms des variables locales dans
+        leur ordre positionnel, si bien que passer aux arguments nommés,
+        qui alignerait l'appel sur la signature réelle, l'aurait fait
+        rougir sur une amélioration.
+
+        La propriété s'observe en neuf lignes, sans VM ni réseau.
+        """
+        self.assertNotIn("systemctl reboot", self.enveloppe(""))
+
+    def test_a_reboot_that_was_asked_for_is_composed(self):
+        """Contrôle positif : ne jamais redémarrer satisferait l'épreuve
+        ci-dessus, et une installation qui pose un NOYAU ne vaut rien
+        avant le redémarrage."""
+        self.assertIn("systemctl reboot", self.enveloppe("-pve"))
+
+    def test_the_reboot_no_longer_names_ssh_itself(self):
+        """Il composait « ssh compte@$ip » DEUX fois : une VM qui ne
+        s'atteint pas par ssh y recevait une commande visant un hôte ssh
+        nommé comme elle, et le « || true » de l'ordre avalait l'échec."""
         import inspect
 
-        src = inspect.getsource(mon._launch_one)
-        self.assertIn("_reboot_steps(log_q, reboot) if reboot else", src)
+        from code_literals import literals_matching
+
+        # Par les LITTÉRAUX et non par le texte : la docstring explique
+        # pourquoi on n'attend pas que « ssh revienne », et la compter
+        # ferait tomber l'épreuve sur de la prose.
+        source = inspect.getsource(mon._reboot_steps)
+        for aiguille in ("erplibre@", "ssh "):
+            with self.subTest(aiguille=aiguille):
+                trouves = literals_matching(source, aiguille)
+                self.assertEqual([], trouves, trouves)
+
+    def test_the_bench_sees_the_literals_it_must_reject(self):
+        """Contrôle du banc : un outil qui rendrait toujours vide passerait
+        l'épreuve précédente sans avoir rien lu."""
+        from code_literals import literals_matching
+
+        self.assertEqual(
+            ["ssh erplibre@$ip"],
+            literals_matching(
+                'def f():\n    return "ssh erplibre@$ip"\n', "ssh "
+            ),
+        )
+
+    def test_it_renders_for_a_backend_without_ssh(self):
+        """Contrôle positif du paramétrage : la même fonction doit rendre
+        la forme de l'instance, sans quoi le préfixe est ignoré."""
+        fiche = vm_backend.lima_handle("essai-de-banc")
+        texte = mon._reboot_steps(
+            "/tmp/journal-de-banc.log",
+            "-pve",
+            vm_verbs.exec_prefix(fiche, mon.SSH_OPTS_BATCH),
+            vm_verbs.exec_prefix(fiche, mon.SSH_OPTS_BATCH),
+        )
+        self.assertIn("limactl shell essai-de-banc", texte)
+        self.assertNotIn("ssh ", texte)
 
 
 class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):
     """pvestatd arrêté, l'hôte rend une entrée SQUELETTIQUE par VM.
 
-    Vécu sur une VM Arch dans un Proxmox imbriqué :
+    L'entrée se réduit alors à :
 
         {"id":"qemu/100","node":"…","status":"unknown","type":"qemu",
          "vmid":100}
@@ -427,9 +553,8 @@ class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):
 
 
 class TestTroisVmSurUnProxmox(unittest.TestCase):
-    """Rapporté à l'usage : sur trois VM d'un même Proxmox, une seule avait
-    ses colonnes vides — et les deux autres montraient les chiffres d'une
-    AUTRE machine.
+    """Sur plusieurs VM d'un même Proxmox, l'une a ses colonnes vides et les
+    autres montrent les chiffres d'une AUTRE machine.
 
     Deux fautes, dont une était le miroir d'un correctif précédent."""
 
@@ -516,10 +641,10 @@ class TestTroisVmSurUnProxmox(unittest.TestCase):
         self.assertFalse(ok)
 
     def test_a_remote_vm_never_borrows_a_local_namesake(self):
-        # « virsh domstats » indexe par NOM, et un nom se partage. Mesuré :
-        # « erplibre-ubuntu-2604 » sur Proxmox affichait 1,5 Gio sur 12 et
-        # 58 Gio de disque — ceux de la machine locale du même nom — quand la
-        # vraie tournait avec 3 Gio et 25.
+        # « virsh domstats » indexe par NOM, et un nom se partage : une VM
+        # distante affichait la mémoire et le disque de la machine LOCALE du
+        # même nom. Des chiffres justes, appartenant à une autre machine —
+        # pire qu'une colonne vide, car rien ne les signale.
         locaux = {
             "erplibre-ubuntu-2604": {
                 "ram_used": 1 << 30,
@@ -560,29 +685,37 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
     machine, à l'instant d'effacer."""
 
     def test_a_proxmox_delete_checks_the_vmid_still_bears_the_name(self):
-        cmd = mon.delete_vm_cmd_pve(
-            {"target": "pve9", "vmid": 101}, name="vm-a"
+        cmd = suppression(
+            {"name": "vm-a", "pve": {"target": "pve9", "vmid": 101}}
         )
         self.assertIn("qm config 101", cmd)
         self.assertIn("exit 1", cmd)
         self.assertIn("qm destroy 101", cmd)
+        # Et elle part vers CET hôte. Sans cette ligne, une fiche d'hôte
+        # perdue en chemin laissait la commande viser une cible VIDE, et
+        # rien ne le disait.
+        self.assertIn("pve9", cmd)
         # Le garde vient AVANT la destruction, sinon il ne garde rien.
         self.assertLess(cmd.index("qm config 101"), cmd.index("qm destroy"))
 
     def test_a_local_delete_checks_the_uuid(self):
-        cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
-        self.assertIn("domuuid vm-a", cmd)
+        """Que le garde REFUSE bien se prouve en l'exécutant, et cette
+        preuve-là vit avec le verbe (test_vm_verbs). Ici on vérifie que le
+        relais produit une commande gardée, sans épingler son rendu."""
+        cmd = suppression({"name": "vm-a", "uuid": "5d55d05a-1e77"})
+        self.assertIn("vm-a", cmd)
         self.assertIn("5d55d05a-1e77", cmd)
+        self.assertIn("domuuid", cmd)
         self.assertLess(cmd.index("domuuid"), cmd.index("destroy vm-a"))
 
     def test_an_old_manifest_without_identity_still_deletes(self):
         # Un manifeste écrit avant ce correctif n'a pas d'UUID. Refuser toute
         # suppression y serait une régression : on retombe sur la protection
         # d'avant, la confirmation à deux mains.
-        cmd = mon.delete_vm_cmd("vm-a", True)
+        cmd = suppression({"name": "vm-a"})
         self.assertNotIn("domuuid", cmd)
         self.assertIn("undefine vm-a", cmd)
-        sans_nom = mon.delete_vm_cmd_pve({"target": "pve9", "vmid": 101})
+        sans_nom = suppression({"pve": {"target": "pve9", "vmid": 101}})
         self.assertNotIn("qm config", sans_nom)
         self.assertIn("qm destroy 101", sans_nom)
 
@@ -595,7 +728,9 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         refusé un nom périmé et laissé passer le bon."""
         import subprocess
 
-        garde = mon.pve_identity_guard(101, "vm-a")
+        garde = vm_verbs.identity_guard(
+            vm_backend.pve_handle({"vmid": 101}, "vm-a")
+        )
         for vu, attendu in (("vm-a", 0), ("autre-vm", 1)):
             res = subprocess.run(
                 [
@@ -726,18 +861,16 @@ class TestQuandLeVertRedescend(unittest.TestCase):
 class TestLaBonneMachine(unittest.TestCase):
     """Le pire défaut de la série : l'installation partie AILLEURS.
 
-    Vécu le 24 août 2026. Une VM déployée sur Proxmox sous le nom
-    « erplibre-ubuntu-2604 » — nom déjà porté par un domaine LOCAL. Le
-    lanceur détaché ré-résout l'adresse de la VM à chaque tour par virsh, qui
-    a répondu avec le domaine local : ERPLibre + Odoo se sont installés sur la
-    MAUVAISE machine, et le journal l'affichait sans que rien n'alerte
-    (« → 192.168.123.118 »).
+    Une VM déployée sur Proxmox sous un nom que porte DÉJÀ un domaine local.
+    Le lanceur détaché ré-résout l'adresse à chaque tour par virsh, qui
+    répond avec le domaine local : ERPLibre + Odoo s'installent sur la
+    MAUVAISE machine, et le journal affiche l'adresse sans que rien n'alerte.
 
     Pour une VM distante, l'alias ~/.ssh/config est la seule vérité : il
     porte le rebond par l'hôte Proxmox.
     """
 
-    def _wrapper(self, **kw):
+    def _wrapper(self, entree):
         """Le script du lanceur, capturé sans rien exécuter."""
         vus = {}
         vrai = mon.subprocess.Popen
@@ -748,33 +881,49 @@ class TestLaBonneMachine(unittest.TestCase):
 
         mon.subprocess.Popen = FauxPopen
         try:
-            mon._launch_one("cible", "echo bonjour", "/dev/null", "vm-a", **kw)
+            mon._launch_one(mon.handle_of(entree), "echo bonjour", "/dev/null")
         finally:
             mon.subprocess.Popen = vrai
         return vus["argv"][-1]
 
+    ENTREE_LOCALE = {"name": "vm-a", "ip": "cible"}
+    ENTREE_DISTANTE = {
+        "name": "vm-a",
+        "ip": "cible",
+        "pve": {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"},
+    }
+
     def test_a_local_vm_still_gets_its_address_refreshed(self):
         # Le bail change en cours de route (cloud-init renomme l'hôte) : la
         # ré-résolution est indispensable pour une VM LOCALE.
-        script = self._wrapper(pve=False)
+        script = self._wrapper(self.ENTREE_LOCALE)
         self.assertIn("virsh", script)
 
-    def test_a_proxmox_vm_is_never_re_resolved(self):
+    def test_a_remote_vm_is_never_re_resolved(self):
         # C'est le correctif : aucun appel à virsh, donc aucun risque de
         # tomber sur un domaine local homonyme.
-        script = self._wrapper(pve=True)
+        script = self._wrapper(self.ENTREE_DISTANTE)
         self.assertNotIn("virsh", script)
 
     def test_the_target_stays_the_alias(self):
-        script = self._wrapper(pve=True)
+        script = self._wrapper(self.ENTREE_DISTANTE)
         self.assertIn("ip=cible", script)
+
+    def test_a_remote_vm_is_entered_by_its_alias_and_not_by_its_service(self):
+        """Son adresse interne n'est routable que depuis l'hôte. Attendre
+        une réponse dessus, c'est attendre vingt minutes pour rien sur une
+        VM parfaitement saine — et les deux adresses vivent dans la même
+        fiche, à un champ près."""
+        script = self._wrapper(self.ENTREE_DISTANTE)
+        self.assertNotIn("10.10.10.151", script)
 
 
 class TestLeDisque(unittest.TestCase):
     """La colonne Disque annonçait un disque PLEIN qui ne l'était pas.
 
-    Rapporté : « 6.0G/6.0G » sur une VM dont l'invité disait « 845M utilisés
-    sur 5.8G ». La mesure venait de « du -sb », qui rend la taille APPARENTE :
+    « 6.0G/6.0G » s'affichait pour une VM dont l'invité disait « 845M
+    utilisés sur 5.8G ». La mesure venait de « du -sb », qui rend la taille
+    APPARENTE :
     un disque raw creux la donne entière. « du -sB1 » compte les blocs
     réellement occupés — 1,2 Go, ce qui correspond.
     """
@@ -808,7 +957,7 @@ class TestOuVaLaCommande(unittest.TestCase):
     qui ne trompent pas.
     """
 
-    LOCALE = {"name": "vm-a", "ip": "192.168.123.118"}
+    LOCALE = {"name": "vm-a", "ip": "198.51.100.118"}
     DISTANTE = {
         "name": "vm-a",
         "ip": "pve1+vm-a",
@@ -823,7 +972,7 @@ class TestOuVaLaCommande(unittest.TestCase):
 
     def test_ssh_to_a_local_vm_uses_its_address(self):
         self.assertIn(
-            "erplibre@192.168.123.118", mon.vm_ssh_prefix(self.LOCALE)
+            "erplibre@198.51.100.118", mon.vm_ssh_prefix(self.LOCALE)
         )
         self.assertNotIn("-J", mon.vm_ssh_prefix(self.LOCALE))
 
@@ -838,8 +987,10 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertIn("erplibre@pve1+vm-a", mon.vm_ssh_prefix(vm))
 
     def test_the_console_of_a_remote_vm_is_qm_terminal(self):
-        cmd = mon.pve_host_cmd(
-            self.DISTANTE["pve"], "qm terminal 101", tty=True
+        cmd = vm_verbs.host_command(
+            vm_backend.pve_handle(dict(self.DISTANTE["pve"])),
+            "qm terminal 101",
+            tty=True,
         )
         self.assertIn("ssh -t", cmd)
         self.assertIn("qm terminal 101", cmd)
@@ -848,7 +999,10 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertNotIn("virsh", cmd)
 
     def test_a_host_without_sudo_is_not_wrapped(self):
-        cmd = mon.pve_host_cmd({"target": "root@pve1", "sudo": ""}, "qm list")
+        cmd = vm_verbs.host_command(
+            vm_backend.pve_handle({"target": "root@pve1", "sudo": ""}),
+            "qm list",
+        )
         self.assertNotIn("sh -c", cmd)
 
 
@@ -904,7 +1058,7 @@ class TestLeWebEtLaSuppression(unittest.TestCase):
     }
 
     def test_the_web_view_tunnels_through_the_host(self):
-        argv = mon.web_tunnel_argv(self.INFO)
+        argv = tunnel_web(self.INFO)
         self.assertEqual(argv[-1], "erplibre-proxmox-9")
         self.assertIn("-L", argv)
         self.assertIn("18069:10.10.10.151:8069", argv)
@@ -913,23 +1067,23 @@ class TestLeWebEtLaSuppression(unittest.TestCase):
         self.assertNotIn("-f", argv)
 
     def test_a_local_vm_needs_no_tunnel(self):
-        self.assertIsNone(mon.web_tunnel_argv(None))
-        self.assertIsNone(mon.web_tunnel_argv({"target": "pve1"}))
+        self.assertIsNone(tunnel_web(None))
+        self.assertIsNone(tunnel_web({"target": "pve1"}))
 
     def test_the_jump_of_the_host_is_chained(self):
-        argv = mon.web_tunnel_argv(dict(self.INFO, jump="rebond"))
+        argv = tunnel_web(dict(self.INFO, jump="rebond"))
         self.assertIn("-J", argv)
         self.assertIn("rebond", argv)
 
     def test_deleting_a_remote_vm_uses_its_vmid(self):
-        cmd = mon.delete_vm_cmd_pve(self.INFO)
+        cmd = suppression({"pve": self.INFO})
         self.assertIn("qm destroy 101", cmd)
         self.assertIn("--purge", cmd)
         # « virsh undefine <nom> » aurait effacé le domaine LOCAL homonyme.
         self.assertNotIn("virsh", cmd)
 
     def test_deleting_a_local_vm_is_unchanged(self):
-        cmd = mon.delete_vm_cmd("vm-a", True)
+        cmd = suppression({"name": "vm-a"})
         self.assertIn("undefine vm-a", cmd)
         self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", cmd)
 
@@ -945,6 +1099,271 @@ class TestLEtat(unittest.TestCase):
         # Absente de la réponse de l'hôte : la VM a vraiment disparu.
         self.assertIsNone(mon.PVE_ETATS.get(None))
         self.assertIsNone(mon.PVE_ETATS.get("n'importe quoi"))
+
+
+class TestUneVmSansPointDEntreeNEmportePasLesAutres(unittest.TestCase):
+    """Un lot d'installations se lance VM par VM, et l'une peut n'être
+    joignable par rien : ni adresse, ni alias, et portée par un hôte, donc
+    aucun hyperviseur local pour relire son bail.
+
+    Refuser d'un bloc laisserait alors sans installation des machines qui,
+    elles, se joignent — et le lot est justement la raison d'être de cet
+    écran. Le refus va dans le journal de CETTE VM, que le tableau de bord
+    affiche déjà.
+    """
+
+    INJOIGNABLE = {"name": "vm-muette", "ip": "", "pve": {"vmid": 101}}
+    JOIGNABLE = {
+        "name": "vm-claire",
+        "ip": "alias-de-banc",
+        "pve": {"vmid": 102, "target": "hote.exemple"},
+    }
+
+    def lancer(self, vms):
+        import tempfile
+        from pathlib import Path
+
+        lances = []
+        vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+
+        def faux_launch(fiche, *_a, **_k):
+            # La PREMIÈRE ligne du vrai lanceur, et rien d'autre : c'est
+            # d'elle que vient le refus, et le reste ouvrirait un « ssh ».
+            vm_verbs.exec_address(fiche)
+            lances.append(fiche.name)
+
+        mon._launch_one = faux_launch
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        mon.session_dir = lambda: Path(tmp.name)
+        try:
+            manifeste = mon.launch_installs(vms, "", "true")
+        finally:
+            mon._launch_one, mon.session_dir = vrai_launch, vrai_dir
+        journaux = {
+            chemin.name: chemin.read_text(encoding="utf-8")
+            for chemin in Path(tmp.name).rglob("*.log")
+        }
+        return lances, journaux, manifeste
+
+    def test_the_reachable_vm_is_still_launched(self):
+        lances, _j, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertEqual(["vm-claire"], lances)
+
+    def test_a_vm_without_an_ssh_line_still_enters_the_manifest(self):
+        """LA LIGNE SSH EST UN CONFORT, pas une condition d'existence.
+
+        Une VM libvirt sans bail traverse le lanceur — son adresse se
+        ré-résout en chemin — puis butait sur la composition de sa ligne
+        ssh, une ligne plus bas et hors du garde. L'exception sortait de
+        la boucle ET de la fonction : AUCUN manifeste n'était écrit, donc
+        la VM joignable du même lot disparaissait avec elle, son
+        installation détachée tournant sans rien pour la retrouver.
+        """
+        import json
+        import tempfile
+        from pathlib import Path
+
+        vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+        mon._launch_one = lambda *_a, **_k: None
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        mon.session_dir = lambda: Path(tmp.name)
+        try:
+            chemin = mon.launch_installs(
+                [
+                    {"name": "sans-bail", "ip": ""},
+                    {"name": "avec-bail", "ip": "192.0.2.10"},
+                ],
+                "",
+                "true",
+            )
+        finally:
+            mon._launch_one, mon.session_dir = vrai_launch, vrai_dir
+        with open(chemin, encoding="utf-8") as fh:
+            vms = {v["name"]: v for v in json.load(fh)["vms"]}
+        self.assertEqual({"sans-bail", "avec-bail"}, set(vms))
+        self.assertEqual("", vms["sans-bail"]["ssh"])
+        self.assertIn("192.0.2.10", vms["avec-bail"]["ssh"])
+
+    def test_the_unreachable_vm_says_so_in_its_own_log(self):
+        """Sans cette ligne, son journal s'arrête sur l'en-tête et se lit
+        comme une installation qui n'a pas encore commencé."""
+        _l, journaux, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertIn("exec_address", journaux["vm-muette.log"])
+        self.assertNotIn("exec_address", journaux["vm-claire.log"])
+
+
+class TestUnePauseDeParcNAbandonnePasLesSuivantes(unittest.TestCase):
+    """Un backend qui ne sait pas mettre en pause refuse — et ce refus
+    n'est ni une panne de sous-processus, ni une raison d'abandonner les
+    VM suivantes du lot.
+
+    L'`except` ne guettait que `OSError` et les pannes de sous-processus.
+    Le refus du verbe sortait donc de la boucle : tout ce qui venait après
+    la première VM refusée restait en marche, et l'écran annonçait
+    pourtant le lot entier mis en pause.
+    """
+
+    def app(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        chemin = Path(tmp.name) / "session.json"
+        chemin.write_text(
+            json.dumps({"branch": "", "started": 0, "vms": []}),
+            encoding="utf-8",
+        )
+        return mon.run_monitor(str(chemin), run_app=False)
+
+    def cibles(self):
+        return [
+            mon.handle_of({"name": "libvirt-a", "ip": "192.0.2.10"}),
+            mon.handle_of({"name": "lima-b", "ip": "lima-b", "lima": True}),
+            mon.handle_of({"name": "libvirt-c", "ip": "192.0.2.11"}),
+        ]
+
+    def jouer(self):
+        lancees = []
+        vrai = mon.subprocess.run
+        mon.subprocess.run = lambda cmd, **_k: lancees.append(cmd)
+        try:
+            manques = self.app()._virsh_bulk("suspend", self.cibles())
+        finally:
+            mon.subprocess.run = vrai
+        return manques, lancees
+
+    def test_the_vms_after_the_refused_one_are_still_acted_on(self):
+        _manques, lancees = self.jouer()
+        self.assertEqual(2, len(lancees), lancees)
+        self.assertTrue(any("libvirt-c" in c for c in lancees), lancees)
+
+    def test_it_names_what_it_could_not_do(self):
+        """Compter le lot entier comme mis en pause laisse croire un parc
+        au repos qui tourne encore."""
+        manques, _lancees = self.jouer()
+        self.assertEqual(["lima-b"], manques)
+
+    def test_a_lot_it_can_serve_entirely_reports_nothing(self):
+        """Contrôle positif : nommer toujours un manque rendrait le
+        message illisible là où tout s'est bien passé."""
+        lancees = []
+        vrai = mon.subprocess.run
+        mon.subprocess.run = lambda cmd, **_k: lancees.append(cmd)
+        try:
+            manques = self.app()._virsh_bulk(
+                "suspend", [self.cibles()[0], self.cibles()[2]]
+            )
+        finally:
+            mon.subprocess.run = vrai
+        self.assertEqual([], manques)
+        self.assertEqual(2, len(lancees))
+
+
+class TestLeSuiviNeMeurtPasSurUnVerbeRefuse(unittest.TestCase):
+    """Une exception levée dans une action Textual DÉMONTE l'application.
+
+    L'écran disparaît, une trace s'imprime, et `run()` revient NORMALEMENT
+    — si bien que le `except` posé autour de lui par le menu ne se
+    déclenche jamais. L'utilisateur se retrouve au shell sans un mot du
+    programme, tandis que l'installation, détachée, continue sans plus
+    rien pour la suivre. Rouvrir le suivi le ramène au même écran, avec la
+    même touche piégée.
+
+    Un backend qui ne sait pas faire le DIT : c'est une nouvelle à
+    afficher, pas une panne du tableau de bord.
+    """
+
+    LIMA = {"name": "lima-b", "ip": "lima-b", "lima": True}
+
+    def app(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        chemin = Path(tmp.name) / "session.json"
+        chemin.write_text(
+            json.dumps({"branch": "", "started": 0, "vms": [self.LIMA]}),
+            encoding="utf-8",
+        )
+        app = mon.run_monitor(str(chemin), run_app=False)
+        self.dits = []
+        app.notify = lambda texte, **_k: self.dits.append(texte)
+        app._selected = self.LIMA["name"]
+        app._vm_by_name = lambda _n: self.LIMA
+        return app
+
+    def test_entering_the_vm_says_so_instead_of_dying(self):
+        app = self.app()
+        app.action_ssh()
+        self.assertTrue(self.dits)
+        self.assertIn("ssh", self.dits[0])
+
+    def test_the_console_says_so_instead_of_dying(self):
+        app = self.app()
+        app.action_console()
+        self.assertTrue(self.dits)
+
+    def test_deleting_is_refused_before_the_confirmation_screen(self):
+        """Proposer puis refuser ferait LIRE, puis ACCORDER, une
+        destruction qui n'aura pas lieu — et l'écran décrivait un geste
+        qui n'est pas celui de cette VM."""
+        app = self.app()
+        ecrans = []
+        app.push_screen = lambda ecran, *_a, **_k: ecrans.append(ecran)
+        app._ask_delete(self.LIMA)
+        self.assertEqual([], ecrans)
+        self.assertTrue(self.dits)
+
+    def test_a_backend_it_serves_still_gets_its_screen(self):
+        """Contrôle positif : tout refuser rendrait la suppression
+        impossible là où elle marche."""
+        app = self.app()
+        ecrans = []
+        app.push_screen = lambda ecran, *_a, **_k: ecrans.append(ecran)
+        app._ask_delete({"name": "libvirt-a", "ip": "192.0.2.10"})
+        self.assertEqual(1, len(ecrans))
+
+
+class TestCeQueLaConfirmationAnnonce(unittest.TestCase):
+    """« Une confirmation doit nommer ce qu'elle détruit, sur la machine où
+    elle le détruit » — la phrase est du fichier, et elle ne tenait que
+    deux backends sur trois.
+
+    L'écran traitait libvirt, puis SUPPOSAIT Proxmox pour tout le reste :
+    une instance Lima s'y voyait annoncer « qm destroy … --purge » sur un
+    hôte Proxmox nommé « ? ».
+    """
+
+    def test_a_lima_instance_is_not_announced_as_a_proxmox_vm(self):
+        lignes = " ".join(
+            mon.delete_lines({"name": "lima-b", "ip": "lima-b", "lima": True})
+        )
+        self.assertNotIn("qm destroy", lignes)
+        self.assertNotIn("Proxmox", lignes)
+
+    def test_a_proxmox_vm_still_gets_its_own_words(self):
+        lignes = " ".join(
+            mon.delete_lines(
+                {
+                    "name": "vm-a",
+                    "ip": "hote+vm-a",
+                    "pve": {"vmid": 101, "target": "hote.exemple"},
+                }
+            )
+        )
+        self.assertIn("qm destroy", lignes)
+
+    def test_a_libvirt_vm_still_gets_its_own_words(self):
+        lignes = " ".join(
+            mon.delete_lines({"name": "vm-a", "ip": "192.0.2.10"})
+        )
+        self.assertIn("qcow2", lignes)
 
 
 if __name__ == "__main__":

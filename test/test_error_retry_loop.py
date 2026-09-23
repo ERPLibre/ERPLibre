@@ -12,8 +12,8 @@ faire. D'où « 3 » par défaut, et le rejeu automatique derrière.
 Mais un défaut qui agit doit savoir s'arrêter, et à deux titres :
 
 - réinitialiser quand il n'y a RIEN à réinitialiser puis reproposer la même
-  chose est une boucle sans fin. Vécu : « Aucune copie COW n'a dérivé »,
-  encore et encore ;
+  chose est une boucle sans fin : « Aucune copie COW n'a dérivé », encore
+  et encore ;
 - une réparation qui ne suffit pas relancerait la commande indéfiniment.
   Trois tentatives, puis on rend la main : une migration lancée en
   auto-exécution tournerait sinon toute la nuit sur le même échec.
@@ -129,8 +129,8 @@ class TestItAlwaysStops(Harness):
     """La propriété qui compte le plus : la boucle se termine."""
 
     def test_nothing_to_reset_does_not_loop_forever(self):
-        # Vécu : « Aucune copie COW n'a dérivé », reproposé sans fin parce
-        # que le défaut restait « 3 ».
+        # « Aucune copie COW n'a dérivé » se repropose sans fin tant que
+        # le défaut reste « 3 ».
         obj = self.upgrade(resets=[False, False, False, False, False])
         self.executer(obj)
         self.assertLessEqual(len(self.lst_reset), 2)

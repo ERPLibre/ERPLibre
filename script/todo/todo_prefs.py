@@ -22,6 +22,12 @@ from pathlib import Path
 # Clés connues et leur valeur par défaut. Une clé absente de ce dictionnaire
 # reste lisible/écrivable, mais n'apparaît pas dans l'écran de configuration.
 DEFAULTS = {
+    # Le backend de VM employé : auto | libvirt | pve | lima. La préférence
+    # est INDICATIVE — elle préselectionne et elle informe, elle ne route
+    # rien : aucun chemin de déploiement ne sait piloter autre chose que
+    # libvirt en local aujourd'hui. « auto » se résout par le système, voir
+    # `script.todo.vm_backend_choice.effective`.
+    "vm_backend": "auto",
     # Interface du déploiement QEMU : "ask" pose la question à chaque fois,
     # "tui" ouvre le formulaire directement, "cli" garde les invites en ligne.
     "qemu_deploy_ui": "ask",
@@ -70,19 +76,47 @@ def _path() -> Path:
     return base / "todo_prefs.json"
 
 
-def load() -> dict:
+# Ce que `reset` a pu constater. Le vocabulaire est CLOS : un état qu'on ne
+# sait pas nommer se refuse plutôt que de se lire comme un succès.
+EFFACE = "efface"
+EFFACE_SANS_COMPTE = "efface-sans-compte"
+ECHEC_ECRITURE = "echec-ecriture"
+
+
+def _lire() -> tuple:
+    """(préférences, lisible).
+
+    `lisible` est FAUX quand le fichier EXISTE et ne se relit pas — un JSON
+    tronqué, une virgule en trop. Ce n'est pas la même chose qu'un fichier
+    absent, et la différence décide de ce qu'on a le droit d'annoncer : les
+    deux rendent {}, mais l'un veut dire « il n'y a rien » et l'autre « le
+    contenu est inconnu ».
+    """
+    chemin = _path()
+    if not chemin.exists():
+        return {}, True
     try:
-        data = json.loads(_path().read_text())
+        data = json.loads(chemin.read_text())
     except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        return {}, False
+    return (data, True) if isinstance(data, dict) else ({}, False)
 
 
-def _save(data: dict) -> None:
+def load() -> dict:
+    return _lire()[0]
+
+
+def _save(data: dict) -> bool:
+    """Écrit, et dit si l'écriture a eu lieu.
+
+    Avalé, l'échec faisait annoncer un compte de clés effacées sur un
+    fichier intact.
+    """
     try:
         _path().write_text(json.dumps(data, ensure_ascii=False, indent=2))
     except OSError:
-        pass
+        return False
+    return True
 
 
 def get(key: str, default=None):
@@ -92,14 +126,30 @@ def get(key: str, default=None):
     return load().get(key, default)
 
 
-def set(key: str, value) -> None:  # noqa: A001 - API voulue : prefs.set(...)
+def set(key: str, value) -> bool:  # noqa: A001 - API voulue : prefs.set(...)
+    """Retient cette préférence. Dit si elle a été ÉCRITE.
+
+    Le verdict de l'écriture était jeté ici alors que `reset` le lisait : une
+    préférence qu'on vient de choisir pouvait ne pas être gardée — disque
+    plein, fichier sans droit d'écriture — et l'écran suivant montrait
+    l'ancienne valeur sans un mot. L'appelant décide si cela l'arrête ; il ne
+    peut plus l'ignorer sans le savoir.
+    """
     data = load()
     data[key] = value
-    _save(data)
+    return _save(data)
 
 
-def reset() -> int:
-    """Efface toutes les préférences. Renvoie le nombre de clés effacées."""
-    count = len(load())
-    _save({})
-    return count
+def reset() -> tuple:
+    """(verdict, nombre). Efface toutes les préférences.
+
+    LE COMPTE VIENT DE LA LECTURE, ET LA LECTURE PEUT AVOIR ÉCHOUÉ. Un
+    fichier tronqué se relit en {} : le compte valait 0 pendant que
+    l'écriture REMPLAÇAIT un fichier plein, et l'écran annonçait « (0) » —
+    « il n'y avait rien » — sur une destruction. Le nombre est REFUSÉ quand
+    il n'est pas connu, plutôt que remplacé par un nombre faux.
+    """
+    data, lisible = _lire()
+    if not _save({}):
+        return ECHEC_ECRITURE, 0
+    return (EFFACE, len(data)) if lisible else (EFFACE_SANS_COMPTE, 0)

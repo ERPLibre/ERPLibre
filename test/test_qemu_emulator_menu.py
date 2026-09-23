@@ -39,7 +39,7 @@ class TestSshOptions(unittest.TestCase):
     def test_local_vm_tolerates_a_recycled_host_key(self):
         """Une IP libvirt est réattribuée d'un déploiement au suivant : la clé
         change sous la même adresse et ssh refuse — « Host key verification
-        failed », vécu dans ce menu même."""
+        failed »."""
         opts = TODO._qemu_ssh_opts("virsh")
         self.assertIn("StrictHostKeyChecking=no", opts)
         self.assertIn("UserKnownHostsFile=/dev/null", opts)
@@ -227,8 +227,8 @@ class TestEmulatorMenu(_MenuCase):
 
     def test_a_running_emulator_is_seen_and_refusing_stops_there(self):
         """Deux émulateurs sur un même AVD, et le second meurt sur « Running
-        multiple emulators with the same AVD » — vécu deux fois. On le dit
-        AVANT, et un refus ne démarre rien."""
+        multiple emulators with the same AVD ». On le dit AVANT, et un refus
+        ne démarre rien."""
         out, calls = self._play(["1", "n"], running=1)
         self.assertIn("pkill -f", out)
         # « [q]emu » : la classe empêche le pkill de se trouver lui-même.
@@ -303,8 +303,8 @@ class TestEmulatorMenu(_MenuCase):
 
     def test_a_vm_without_the_sdk_is_diagnosed_before_anything_else(self):
         """Une VM déployée sans cocher l'outil est le cas NORMAL. Le menu le
-        dit avant même de demander la fenêtre — mesuré sur une VM de migration,
-        où le démarrage détaché rendait 0 et le journal disait « not found ».
+        dit avant même de demander la fenêtre — un démarrage détaché rend 0
+        alors que le journal dit « not found ».
         """
         out, calls = self._play(["1"], probe="NO_SDK\n")
         self.assertIn("SDK", out)
@@ -470,8 +470,8 @@ class TestEmulatorGpuOverride(unittest.TestCase):
 
     Les drapeaux sont figés à l'import de todo.py : la variable doit donc être
     lue AVANT, ce qu'un sous-processus est seul à démontrer. Le défaut reste
-    swangle — mesuré — car un contexte GL qui échoue laisse l'émulateur pendu
-    au lieu de retomber.
+    swangle car un contexte GL qui échoue laisse l'émulateur pendu au lieu de
+    retomber.
     """
 
     def _flags(self, env=None):

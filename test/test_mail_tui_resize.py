@@ -722,8 +722,9 @@ class TestReSettlingDoesNotStarveTheUncustomizedSibling(ResizeCase):
         être re-bornée contre le `#right` qui RESTE après l'agrandissement
         de `#folders`, pas contre celui d'avant.
 
-        Mesuré par le remplissage EXACT de `#right` par ses trois enfants :
-        une taille bornée contre un `#right` périmé les fait déborder, ce
+        Le contrôle porte sur le remplissage EXACT de `#right` par ses trois
+        enfants : une taille bornée contre un `#right` périmé les fait
+        déborder, ce
         qu'aucune assertion de plancher ne verrait — `min-width` maintient
         alors chaque volet au-dessus de son plancher pendant que la somme
         dépasse le conteneur.

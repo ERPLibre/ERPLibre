@@ -7,8 +7,74 @@ installent des systèmes, et durent des heures. Ils vivent ici et **non** dans
 doit rester lançable en quelques secondes, sur n'importe quelle machine, y
 compris sans virtualisation.
 
-Ils se lancent depuis le menu — `TODO › Execute › Test › Tests longs` — ou
-directement.
+Les deux descentes se lancent depuis le menu — `TODO › Execute › Test ›
+Tests longs`. Les deux confrontations se lancent **directement** : le menu
+ne les porte pas, et l'une d'elles coupe le réseau de cette machine.
+
+## lima_confront.py — le backend que personne n'a jamais lancé
+
+Le backend Lima a été écrit sans machine pour l'éprouver. Ses tests unitaires
+tiennent ce qu'il COMPOSE et ce qu'il ANALYSE, pas ce que « limactl » en fait.
+Il se déclare donc non éprouvé, et ce script est ce qui lèvera la mention —
+pas une relecture.
+
+Quatre questions dont aucune ne se déduit du code : sous quelle FORME
+l'inventaire répond, s'il porte de quoi PROUVER une identité, si une suite de
+commandes traverse vraiment le canal d'exec, et si la configuration rendue
+démarre.
+
+Il rend 20 — dépendance absente — là où « limactl » n'est pas installé.
+
+```
+./long_test/lima_confront.py              # les quatre questions
+./long_test/lima_confront.py --dry-run    # ce qui serait fait, rien de fait
+./long_test/lima_confront.py --detruire   # retirer l'instance d'essai
+```
+
+## egress_confront.py — la chaîne forward que personne n'a jamais tentée
+
+Les règles de sortie sont éprouvées sur ce qu'elles COMPOSENT, et le vrai
+`nft` accepte le fichier rendu. Rien de cela ne dit que la chaîne FORWARD
+attrape ce qu'un conteneur émet : un verrou accroché à la sortie de l'hôte
+laisse passer le trafic d'un conteneur, et les règles affichent complet
+pendant que la donnée sort par la fenêtre.
+
+Trois questions : une destination NOMMÉE est-elle joignable depuis un
+conteneur, une destination HORS LISTE est-elle refusée, et ce refus survit-il
+au redémarrage du moteur de conteneurs — qui écrit ses propres règles à son
+démarrage.
+
+**Le terrain est une instance Lima jetable**, et c'est le défaut. Le jeu de
+règles se charge en `policy drop` sur output et forward dans les tables de la
+machine qui l'accueille : sur l'hôte, une session ssh tombe avec le reste, y
+compris celle qui lit la sortie. L'instance porte donc tout, l'hôte ne risque
+rien, et `--detruire` la retire.
+
+`--terrain hote` garde l'ancienne voie, pour une machine dont on a décidé
+qu'elle est jetable. Elle demande un `OUI` tapé avant de charger, et **ce
+refus arrête l'épreuve** : sans règles, les sondes mesurent une machine
+ordinaire et rendent deux fois « passe », ce qui se lit comme une
+confrontation concluante. `--dry-run` rend le fichier et ne charge rien.
+
+**Ce qui la rendait non concluante était l'épreuve, pas la chaîne.** Elle
+visait deux adresses de documentation, et ni l'une ni l'autre ne répond : les
+deux sondes rendaient le même délai épuisé. Deux écouteurs RÉPONDENT
+maintenant, à un adressage près identiques, sur un réseau séparé de celui du
+sondeur pour que le trafic traverse forward. Le verdict est alors une
+DIFFÉRENCE, qui se lit sans interprétation.
+
+Les sorties, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure — un refus de charger, des témoins qui ne répondent pas.
+Confondre `0` et `30` ferait lire « concluant » sur une épreuve qui n'a rien
+confronté.
+
+```
+./long_test/egress_confront.py                  # dans une instance Lima
+./long_test/egress_confront.py --terrain hote   # ICI, et ça coupe la sortie
+./long_test/egress_confront.py --dry-run        # ce qui serait fait
+./long_test/egress_confront.py --detruire       # retirer le terrain
+```
 
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
@@ -257,8 +323,8 @@ hyperviseur qu'on a sous la main coûte cinq minutes *et* un étage
 d'imbrication — donc de la lenteur, puisque c'est justement elle qu'on mesure.
 
 ```
-./long_test/deep_proxmox.py --hote root@10.0.0.5      # un Proxmox existant
-./long_test/deep_qemu.py --hote erplibre@10.0.0.7     # un hôte libvirt existant
+./long_test/deep_proxmox.py --hote root@203.0.113.5      # un Proxmox existant
+./long_test/deep_qemu.py --hote erplibre@203.0.113.7     # un hôte libvirt existant
 ```
 
 Trois choses en découlent, et elles ne sont pas décoratives :

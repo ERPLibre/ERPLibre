@@ -66,6 +66,61 @@ class TestLireCeQueVirshEcrit(unittest.TestCase):
         vu = deep_qemu.parse_domaine("error: failed to get domain")
         self.assertEqual(vu["type"], "")
         self.assertEqual(vu["cpu"], "")
+        self.assertEqual(vu["uuid"], "")
+
+    def test_the_proof_is_read_from_the_same_description(self):
+        """Elle était JETÉE : cette description est lue de toute façon, et
+        un nom de domaine se réemploie là où un UUID naît et meurt avec la
+        machine."""
+        vrai = (
+            "<domain type='kvm' id='3'>\n"
+            "  <name>deep-qemu-2</name>\n"
+            "  <uuid>aaaaaaaa-1111-2222-3333-444444444444</uuid>\n"
+        )
+        self.assertEqual(
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            deep_qemu.parse_domaine(vrai)["uuid"],
+        )
+
+    def test_the_name_is_never_mistaken_for_the_proof(self):
+        """« <name> » est le frère immédiat de « <uuid> » : un motif trop
+        large prendrait l'un pour l'autre."""
+        vrai = "<domain type='kvm'>\n  <name>deep-qemu-2</name>\n"
+        self.assertEqual("", deep_qemu.parse_domaine(vrai)["uuid"])
+
+    def test_the_created_level_records_the_proof_and_not_the_name(self):
+        """La création demande un parent vivant : l'invariant se tient donc
+        sur l'ARBRE. Sans lui, l'identité redevient le nom et la
+        destruction n'a plus rien à comparer — sans qu'aucune épreuve
+        tombe, puisqu'un rapport sans UUID reste défaisable exprès."""
+        import ast
+        import os
+
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "long_test",
+            "deep_qemu.py",
+        )
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "creer_enfant"
+        ]
+        self.assertEqual(1, len(corps), "creer_enfant introuvable")
+        rendus = [
+            noeud
+            for noeud in ast.walk(corps[0])
+            if isinstance(noeud, ast.Return)
+            and isinstance(noeud.value, ast.Tuple)
+            and any(
+                isinstance(n, ast.Constant) and n.value == "uuid"
+                for n in ast.walk(noeud.value)
+            )
+        ]
+        self.assertEqual(1, len(rendus), "l'identité rendue n'est pas l'UUID")
 
 
 class TestUnEtageQuiNeSaitPasHeberger(unittest.TestCase):
@@ -111,10 +166,10 @@ class TestUnEtageQuiNeSaitPasHeberger(unittest.TestCase):
 
 
 class TestLesListesAptAvantToute(unittest.TestCase):
-    """Constaté au premier lancement réel : « --setup-host » a échoué en ZÉRO
-    seconde sur « Unable to locate package qemu-system-x86 », alors que le
-    paquet existe. La VM venait de démarrer, ses listes ne portaient que
-    « bookworm-security », et un apt-get update les a complétées d'un coup.
+    """« --setup-host » échoue en ZÉRO seconde sur « Unable to locate package
+    qemu-system-x86 », alors que le paquet existe : une VM qui vient de
+    démarrer ne porte que « bookworm-security » dans ses listes, et un
+    apt-get update les complète d'un coup.
 
     Le message parlait de paquets introuvables, pas de listes vides : c'est
     exactement le genre de diagnostic qui envoie chercher au mauvais endroit.
@@ -172,9 +227,8 @@ class TestLesListesAptAvantToute(unittest.TestCase):
 class TestChaqueEtageSonSousReseau(unittest.TestCase):
     """Le « default » de libvirt sert 192.168.122.0/24 à TOUS les étages.
 
-    Constaté au premier essai réel : l'étage 2, dont l'adresse était
-    192.168.122.45 — servie par le « default » de son parent — a vu son propre
-    « net-start default » refusé net :
+    Un étage dont l'adresse vient du « default » de son parent voit son
+    propre « net-start default » refusé net :
 
         error: internal error: Network is already in use by interface enp1s0
 
@@ -380,10 +434,9 @@ class TestUneVmEmuleeNestPasUneMesure(unittest.TestCase):
 
 
 class TestLeBailSeFaitAttendre(unittest.TestCase):
-    """Constaté au troisième étage : le domaine était créé, en type='kvm', et
-    « domifaddr » ne rendait rien — l'invité n'avait pas encore demandé son
-    bail. Plus l'étage est profond, plus il démarre lentement, et c'est
-    justement ce qu'on mesure.
+    """Le domaine est créé, en type='kvm', et « domifaddr » ne rend rien :
+    l'invité n'a pas encore demandé son bail. Plus l'étage est profond, plus
+    il démarre lentement, et c'est justement ce qu'on mesure.
 
     `deploy_qemu` attend lui-même l'adresse puis rend 0 quand il ne l'a pas
     trouvée : son code de sortie ne prouve rien ici non plus."""
@@ -448,42 +501,84 @@ class TestLeBailSeFaitAttendre(unittest.TestCase):
 
 
 class TestNeDetruireQueLeSien(unittest.TestCase):
-    """« virsh undefine --remove-all-storage » efface un disque pour de bon."""
+    """« virsh undefine --remove-all-storage » efface un disque pour de bon.
+
+    Le nom ADRESSE, l'UUID PROUVE. Entre l'écriture d'un rapport et son
+    défaisage, une autre machine peut avoir pris ce nom : le nom seul ne
+    dit alors rien de ce qu'on détruit.
+    """
+
+    # Preuves inventées.
+    UUID_A = "aaaaaaaa-1111-2222-3333-444444444444"
+    UUID_B = "bbbbbbbb-1111-2222-3333-444444444444"
 
     def setUp(self):
         self.vrai = deep_qemu.pve.run
         self.addCleanup(setattr, deep_qemu.pve, "run", self.vrai)
         self.lances = []
 
-    def _parent_avec(self, noms):
+    def _parent_avec(self, par_nom):
+        """par_nom : {nom: uuid}. Un uuid vide simule une lecture cassée."""
+
         def faux(hote, remote, timeout=120):
             self.lances.append(remote)
-            if "list --all --name" in remote:
-                return 0, "\n".join(noms) + "\n"
+            if "list --all" in remote:
+                lignes = [
+                    f"{uuid} {nom}".strip() for nom, uuid in par_nom.items()
+                ]
+                return 0, "\n".join(lignes) + "\n"
             return 0, ""
 
         deep_qemu.pve.run = faux
 
+    def _detruire(self, identite, nom="deep-qemu-2"):
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = deep_qemu.detruire_une("p", identite, nom, None)
+        return res, sortie.getvalue()
+
+    def _destructeurs(self):
+        return [c for c in self.lances if "destroy" in c or "undefine" in c]
+
     def test_a_name_that_merely_contains_ours_is_left_alone(self):
-        self._parent_avec(["deep-qemu-lab", "autre"])
-        with contextlib.redirect_stdout(io.StringIO()):
-            res = deep_qemu.detruire_une(
-                "p", "deep-qemu-2", "deep-qemu-2", None
-            )
+        self._parent_avec({"deep-qemu-lab": self.UUID_A, "autre": self.UUID_B})
+        res, _vu = self._detruire(self.UUID_A)
         self.assertTrue(res)  # absente, donc rien à faire
-        self.assertFalse([c for c in self.lances if "undefine" in c])
+        self.assertEqual([], self._destructeurs())
 
     def test_our_own_machine_is_stopped_then_undefined(self):
-        self._parent_avec(["deep-qemu-2"])
-        with contextlib.redirect_stdout(io.StringIO()):
-            res = deep_qemu.detruire_une(
-                "p", "deep-qemu-2", "deep-qemu-2", None
-            )
+        self._parent_avec({"deep-qemu-2": self.UUID_A})
+        res, _vu = self._detruire(self.UUID_A)
         self.assertTrue(res)
-        ordre = [c for c in self.lances if "destroy" in c or "undefine" in c]
+        ordre = self._destructeurs()
         self.assertEqual(len(ordre), 2)
         self.assertIn("destroy", ordre[0])
         self.assertIn("--remove-all-storage", ordre[1])
+
+    def test_a_name_taken_over_since_the_report_is_refused(self):
+        """LE cas que le nom seul ne voyait pas : la machine porte bien ce
+        nom, et ce n'est plus la nôtre."""
+        self._parent_avec({"deep-qemu-2": self.UUID_B})
+        res, vu = self._detruire(self.UUID_A)
+        self.assertFalse(res)
+        self.assertEqual([], self._destructeurs())
+        self.assertIn("rien touché", vu)
+
+    def test_an_older_report_without_a_uuid_stays_undoable(self):
+        """Les rapports écrits avant portent le NOM comme identité : les
+        refuser rendrait indéfaisable ce qu'ils décrivent."""
+        self._parent_avec({"deep-qemu-2": self.UUID_A})
+        res, vu = self._detruire("deep-qemu-2")
+        self.assertTrue(res)
+        self.assertEqual(2, len(self._destructeurs()))
+        self.assertIn("sans UUID", vu)
+
+    def test_the_listing_asks_for_the_proof(self):
+        """Sans « --uuid », il n'y a rien à comparer."""
+        self._parent_avec({"deep-qemu-2": self.UUID_A})
+        self._detruire(self.UUID_A)
+        listes = [c for c in self.lances if "list --all" in c]
+        self.assertTrue(listes)
+        self.assertIn("--uuid", listes[0])
 
     def test_an_unreachable_parent_touches_nothing(self):
         deep_qemu.pve.run = lambda h, r, t=120: (255, "")

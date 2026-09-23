@@ -21,6 +21,8 @@ from script.todo.qemu_privilege import (
     virsh_argv,
 )
 from script.todo.todo_i18n import t
+from script.vm import backend as vm_backend
+from script.vm import verbs as vm_verbs
 
 
 # Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
@@ -120,6 +122,46 @@ def parse_ssh_blocks(content) -> dict:
         if len(mots) >= 2 and mots[0].lower() in ("hostname", "proxyjump"):
             blocs[courant[0]][mots[0].lower()] = mots[1]
     return blocs
+
+
+def ssh_config_without(content, noms):
+    """`content` privé des noms `noms`, par BLOCS. Fonction PURE.
+
+    UNE LIGNE « Host » PEUT EN PORTER PLUSIEURS, et c'est ce que le retrait
+    par expression régulière ne savait pas faire. Bâtie sur « ^Host <nom> »
+    suivi d'une fin de ligne, elle exigeait que le nom soit SEUL : une entrée
+    « Host a b » était donc annoncée orpheline, confirmée, et jamais retirée
+    — l'écran disait « nettoyage fait » sur un fichier intact.
+
+    L'inverse est aussi tenu : retirer le bloc entier parce qu'UN de ses noms
+    est orphelin emporterait les autres, qui mènent peut-être encore quelque
+    part. Un bloc ne disparaît que lorsqu'il ne lui reste aucun nom.
+
+    Les MOTIFS (« * », « ? ») sont conservés quoi qu'il arrive : ce sont des
+    règles et non des machines, `parse_ssh_blocks` ne les nomme pas, donc ils
+    ne peuvent pas être demandés — et un bloc qui n'a que des motifs reste.
+    """
+    a_retirer = set(noms or ())
+    sortie, garde_bloc = [], True
+    for ligne in (content or "").splitlines(keepends=True):
+        entete = re.match(r"^([ \t]*)Host([ \t]+)(.*?)([ \t]*)$", ligne)
+        if entete:
+            declares = entete.group(3).split()
+            restants = [n for n in declares if n not in a_retirer]
+            garde_bloc = bool(restants)
+            if garde_bloc:
+                sortie.append(
+                    f"{entete.group(1)}Host{entete.group(2)}"
+                    f"{' '.join(restants)}\n"
+                )
+            continue
+        # Le CORPS d'un bloc est indenté ; une ligne non indentée et non
+        # vide met fin au bloc, et ce qui suit ne dépend plus de lui.
+        if ligne.strip() and not ligne[:1].isspace():
+            garde_bloc = True
+        if garde_bloc:
+            sortie.append(ligne)
+    return "".join(sortie)
 
 
 def ssh_orphans(blocs, juge, prefixe="erplibre-"):
@@ -1926,6 +1968,14 @@ class QemuManageMixin:
     def _qemu_offer_start(self, name, was_shut_down):
         """Si la VM a été éteinte pour l'opération, le noter et proposer de la
         redémarrer (sinon ne rien demander)."""
+        # LE POINT DE PASSAGE UNIQUE de la proposition : le refus vit ici
+        # et non chez les deux appelants, qui ne peuvent pas savoir qu'une
+        # restauration a échoué plus bas.
+        if getattr(self, "_shrink_disk_unsafe", False):
+            print(
+                f"\n  ✗ {t('The disk is inconsistent: not offering to start.')}"
+            )
+            return
         if not was_shut_down:
             return
         print(f"\nℹ  {t('The VM was shut down for the resize.')}")
@@ -1952,6 +2002,12 @@ class QemuManageMixin:
     # Les deux qui changent de famille en famille : sgdisk vit dans « gdisk »
     # chez Debian et Fedora, dans « gptfdisk » chez Arch et openSUSE, et
     # qemu-nbd porte quatre noms de paquet différents.
+    #
+    # La table ne couvre que les gestionnaires SYSTÈME, et l'omission est
+    # voulue : ces deux outils découpent un qcow2 que libvirt monte en local,
+    # et cette pile n'existe pas là où le gestionnaire est celui d'un
+    # utilisateur. Y nommer un paquet laisserait croire que le rétrécissement
+    # s'y fait.
     _SHRINK_PKG_FAMILY = {
         "apt-get": {"sgdisk": "gdisk", "qemu-nbd": "qemu-utils"},
         "dnf": {"sgdisk": "gdisk", "qemu-nbd": "qemu-img"},
@@ -2060,6 +2116,12 @@ class QemuManageMixin:
         # Sauvegarde OPTIONNELLE (défaut OUI) : permet de restaurer en cas
         # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
         self._shrink_backup = None
+        # LE VERDICT EST PROPRE À CETTE OPÉRATION. Posé par une restauration
+        # qui a échoué, il vit sur l'objet TODO, qui dure toute la session :
+        # sans cette remise à zéro, une réduction ULTÉRIEURE qui réussit se
+        # voyait refuser le redémarrage et proposer la suppression de sa
+        # sauvegarde — la pire combinaison, sur un disque sain.
+        self._shrink_disk_unsafe = False
         bak = None
         if self._qemu_ask_backup(disk):
             bak = f"{disk}.bak"
@@ -2110,11 +2172,17 @@ class QemuManageMixin:
             max_fs_b = target - part_start_b - 4 * self._MiB
             if max_fs_b <= 0:
                 print(t("Target size too small for this layout; aborting."))
-                return self._qemu_shrink_revert(bak, disk, changed=False)
+                # changed=True BIEN QU'ON N'AIT RIEN RÉDUIT : « e2fsck -f -y »
+                # a déjà tourné plus haut, et il RÉPARE — « -y » répond oui à
+                # tout. Déclarer « rien n'a changé » ferait supprimer la
+                # sauvegarde comme inutile, en laissant le disque tel que fsck
+                # l'a rendu et sans plus aucune copie d'avant.
+                return self._qemu_shrink_revert(bak, disk, changed=True)
             min_blocks = self._qemu_fs_min_blocks(part)
             if min_blocks and min_blocks * bs > max_fs_b:
                 print(t("Not enough used-space margin to shrink; aborting."))
-                return self._qemu_shrink_revert(bak, disk, changed=False)
+                # Idem : le fsck a déjà écrit, la sauvegarde reste.
+                return self._qemu_shrink_revert(bak, disk, changed=True)
             fs_target_mib = max_fs_b // self._MiB
             print(
                 f"\n{t('Shrinking guest ext filesystem')} {part} "
@@ -2209,10 +2277,34 @@ class QemuManageMixin:
     def _qemu_shrink_revert(self, bak, disk, changed):
         """Restaure le disque depuis la sauvegarde si on l'a modifié (changed)
         et qu'une sauvegarde existe ; sinon retire la sauvegarde inutile.
-        Renvoie False (la réduction a échoué)."""
+        Renvoie False (la réduction a échoué).
+
+        LE CODE DE RETOUR DU RENOMMAGE EST LU, et c'était le seul de ce
+        chemin à ne pas l'être. Une réduction cassée à mi-parcours laisse
+        un disque incohérent ; si la restauration échoue à son tour, le
+        disque le reste. Rendre la même valeur qu'en cas de succès faisait
+        proposer de DÉMARRER ce disque juste après.
+
+        Ce renommage est dans le même répertoire, donc il ne manque jamais
+        de place. Ce qui le fait échouer : un jeton sudo expiré en cours
+        d'opération — un e2fsck suivi d'un resize2fs sur un gros disque
+        dépasse les quinze minutes par défaut — ou un remontage en lecture
+        seule après l'erreur d'E/S qui a fait échouer la réduction.
+        """
         if changed and bak:
             print(t("Restoring the original disk from backup…"))
-            subprocess.run(["sudo", "mv", "-f", bak, disk], check=False)
+            rendu = subprocess.run(
+                ["sudo", "mv", "-f", bak, disk], check=False
+            )
+            if rendu.returncode:
+                # LA SAUVEGARDE EST NOMMÉE : c'est la seule copie saine, et
+                # ne pas la nommer la laisse détruire au prochain nettoyage.
+                self._shrink_disk_unsafe = True
+                print(f"  ✗ {t('Restore FAILED: the disk is inconsistent.')}")
+                print(f"    {t('Intact copy:')} {bak}")
+                print(f"    {t('Do not start this VM; restore by hand.')}")
+            else:
+                print(f"  ✓ {t('Original disk restored from backup.')}")
         elif changed and not bak:
             print(
                 f"⚠  {t('No backup to restore; run fsck on the disk before use.')}"
@@ -2510,11 +2602,67 @@ class QemuManageMixin:
             return []
         return [n for n in res.stdout.split() if n.strip()]
 
+    def _qemu_confirm_deletion(self, chosen) -> bool:
+        """La confirmation, et elle n'est pas une touche.
+
+        UNE MACHINE : son nom se RETAPE. C'est la règle du dépôt pour ce qui
+        détruit, et la raison est déjà écrite ailleurs — recopier un nom
+        long oblige à regarder ce qu'on détruit, là où « o » se tape par
+        réflexe.
+
+        PLUSIEURS : retaper cinq noms est inutilisable, et le repli est leur
+        NOMBRE. Il ne se donne pas de réflexe puisqu'il faut avoir lu le
+        bloc pour le connaître, et il attrape l'erreur qui compte ici — un
+        ensemble plus large qu'on croyait.
+
+        L'INVITE NE LE DONNE DONC PAS. Elle l'affichait entre parenthèses,
+        à la façon d'un défaut, et il suffisait de le recopier depuis la
+        ligne même qui le demandait : la lecture du bloc, qui EST la
+        protection, devenait facultative. La branche à une machine ne donne
+        pas le nom non plus — c'est la même règle.
+
+        Le nombre plutôt qu'un mot : un mot appartiendrait à une langue, et
+        l'écran en parle deux.
+        """
+        if len(chosen) == 1:
+            tape = input(
+                t("Type the VM name to confirm (empty to cancel): ")
+            ).strip()
+            return tape == chosen[0]
+        tape = input(f"{t('Type how many VMs are deleted')} : ").strip()
+        return tape == str(len(chosen))
+
+    def _qemu_list_domains_proved(self):
+        """Les domaines AVEC leur preuve d'identité, en un seul appel.
+
+        Le nom adresse, l'UUID prouve. Les deux se lisent ensemble parce que
+        les deux options de l'inventaire ne s'excluent pas : un appel par
+        machine se verrait devant un menu.
+
+        La preuve se lit AU MOMENT DE L'AFFICHAGE, et c'est là tout son
+        intérêt. Lue juste avant d'effacer, elle se comparerait à elle-même
+        et ne prouverait rien ; lue ici, elle ferme la fenêtre entre ce que
+        l'opérateur a vu et ce qui sera détruit — trois questions plus
+        loin.
+        """
+        try:
+            res = subprocess.run(
+                virsh_argv("list", "--all", "--uuid", "--name"),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ()
+        return vm_backend.parse_uuid_listing(res.stdout)
+
     def _qemu_delete_vm(self):
         """Efface une ou plusieurs VM (arrêt + undefine), disques en option."""
         self._qemu_list_vms()
         print()
-        names = self._qemu_list_domains()
+        domaines = self._qemu_list_domains_proved()
+        preuves = {d.name: d for d in domaines}
+        names = [d.name for d in domaines]
         if not names:
             print(t("No VM found."))
             return
@@ -2538,27 +2686,70 @@ class QemuManageMixin:
             input(t("Also delete disk images (qcow2 + seed ISO)? (y/N): "))
         )
 
-        print(f"\n{t('Will delete:')} {', '.join(chosen)}")
+        # CE QUE LE GARDE N'ATTRAPE PAS. Il compare une preuve : il voit un
+        # nom qui a changé de porteur, jamais un « 3 » tapé pour un « 2 ».
+        # Cet indice-là désigne un domaine RÉEL, correctement identifié, et
+        # la preuve concorde. Seule une saisie voit cette erreur.
+        # UN SEUL RELEVÉ, pris AVANT que rien ne bouge, et le même pour
+        # l'écran et pour l'effacement. Recalculé dans la boucle, il change
+        # de réponse à mesure que les domaines disparaissent : un fichier de
+        # fond partagé par deux machines est écarté à l'affichage — il a
+        # encore deux porteurs — puis effacé au passage de la seconde, qui
+        # le voit désormais seul. Détruit sans avoir été nommé, alors que le
+        # commentaire d'ici promet l'inverse.
+        #
+        # Il survit donc comme orphelin, et c'est le parti du dépôt : on
+        # nomme, on n'efface pas. Le balayage des disques orphelins le
+        # proposera, avec sa raison.
+        fichiers_par_vm = (
+            {nom: self._qemu_vm_own_files(nom) for nom in chosen}
+            if del_disks
+            else {}
+        )
+        print(f"\n{t('Will delete:')}")
+        for name in chosen:
+            handle = preuves.get(name)
+            preuve = handle.proof if handle else ""
+            print(f"  {name}  [{preuve or t('no proof')}]")
+            for chemin in fichiers_par_vm.get(name, ()):
+                print(f"      {chemin}")
         if del_disks:
             print(f"  + {t('disk images and seed ISOs')}")
         else:
             print(f"  ({t('disks kept')})")
-        if not self._is_yes(input(t("Confirm deletion? (y/N): "))):
+        if not self._qemu_confirm_deletion(chosen):
             print(t("Cancelled."))
             return
 
+        # Ce qui est tombé, et ce que le garde d'identité a refusé. Nommer
+        # les deux : « toutes sauf une » et « toutes » se ressemblent trop
+        # dans une liste pour qu'un compte global les distingue.
+        faites, refusees = [], []
         for name in chosen:
-            q = shlex.quote(name)
-            # Les fichiers AVANT l'undefine : après, plus de XML à lire.
-            fichiers = self._qemu_vm_own_files(name) if del_disks else []
-            # Éteindre si en cours, puis retirer la définition (+ nvram si
-            # UEFI ; repli sans l'option pour les vieilles versions de virsh).
-            cmd = (
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            handle = preuves.get(name)
+            # UN MENU QUI VIENT DE LIRE LA LISTE NE DÉSARME PAS. La
+            # bibliothèque, elle, tolère une preuve absente : sur un poste où
+            # l'on n'a pas pu la relever, mieux vaut la prudence d'avant.
+            # Ici, un domaine énuméré porte TOUJOURS son UUID — une preuve
+            # manquante ne décrit pas une station, elle décrit une lecture
+            # cassée, et retomber sur le nom serait un échec OUVERT.
+            if handle is None or not vm_backend.is_armed(handle):
+                print(f"  ⛔ {name} : {t('no identity proof; refused')}")
+                continue
+            # LE RELEVÉ DE L'ÉCRAN, et pas un second : ce qui est effacé
+            # est exactement ce qui a été nommé. Ils sont LUS, jamais
+            # déduits du nom — une VM renommée garde le nom de fichier
+            # d'avant, et un fichier partagé avec une voisine ne s'efface
+            # pas. Le verbe, lui, déduirait : d'où « with_disks=False ».
+            fichiers = fichiers_par_vm.get(name, [])
+            # Le verbe porte le garde d'identité : le nom adresse, l'UUID
+            # prouve, et la suite s'arrête avant d'effacer si le nom a changé
+            # de porteur depuis l'affichage.
+            cmd = vm_verbs.delete_command(
+                handle,
+                with_disks=False,
+                sudo=sudo_prefix(),
+                uri=URI,
             )
             if del_disks and fichiers:
                 cmd += "; sudo rm -f " + " ".join(
@@ -2569,7 +2760,14 @@ class QemuManageMixin:
                 # la place a été rendue.
                 print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            # LE CODE DE RETOUR EST LU, VM PAR VM. Le garde d'identité vit
+            # DANS la chaîne : si le nom a changé de porteur depuis
+            # l'affichage, la suite s'arrête avant d'effacer et rend un code
+            # non nul. Jeté, ce code faisait annoncer « suppression faite »
+            # sur une VM toujours debout — et sur une machine qu'on croit
+            # détruite, on réutilise le nom, l'adresse et le port.
+            code = self.execute.exec_command_live(cmd, source_erplibre=False)
+            (refusees if code else faites).append(name)
         # Une exception du cache survit à la VM qu'elle nommait, et une MAC
         # libérée se réattribue : l'exception soustrairait alors au cache une
         # machine neuve, sans que personne l'ait demandé et sans que rien ne le
@@ -2578,7 +2776,12 @@ class QemuManageMixin:
         retirees = bypass_menage(self.execute)
         if retirees:
             print(f"  {t('Cache exceptions removed:')} {retirees}")
-        print(f"\n✅ {t('Deletion done.')}")
+        for name in refusees:
+            print(f"  ✗ {name} : {t('nothing was deleted.')}")
+        if faites:
+            print(f"\n✅ {t('Deleted:')} {', '.join(faites)}")
+        if not faites:
+            print(f"\n✗ {t('Nothing was deleted.')}")
 
     @staticmethod
     def _qemu_find_files(directory, pattern):
@@ -2753,7 +2956,11 @@ class QemuManageMixin:
     def _cleanup_ghost_domains(self):
         """VM définies dont plus aucun disque n'existe -> propose undefine."""
         ghosts = []
-        for name in self._qemu_list_domains():
+        # Les preuves se lisent AVEC la liste, avant la question : le
+        # domaine défini pendant que l'opérateur lit l'écran ne doit pas se
+        # faire retirer sa définition sous un nom qu'il vient de prendre.
+        preuves = {d.name: d for d in self._qemu_list_domains_proved()}
+        for name in list(preuves):
             try:
                 res = subprocess.run(
                     virsh_argv("domblklist", name, "--details"),
@@ -2787,13 +2994,17 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for name in ghosts:
-            q = shlex.quote(name)
-            cmd = (
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            handle = preuves.get(name)
+            if handle is None or not vm_backend.is_armed(handle):
+                print(f"  ⛔ {name} : {t('no identity proof; refused')}")
+                continue
+            # Le même verbe gardé que l'effacement : aucun disque ici — un
+            # fantôme n'en a plus, c'est ce qui le définit.
+            cmd = vm_verbs.delete_command(
+                handle,
+                with_disks=False,
+                sudo=sudo_prefix(),
+                uri=URI,
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -2849,12 +3060,22 @@ class QemuManageMixin:
         distantes = set()
         try:
             hote = self._pve_host(ask=False)
-            if hote:
-                distantes = {
-                    v["name"] for v in self._pve_vms() if v.get("name")
-                }
         except Exception:
-            pass
+            hote = None
+        if hote:
+            # Liste illisible : la preuve « VM de l'hôte » manque, et toute
+            # entrée qui ne tient qu'à elle semblerait morte. On ne juge pas
+            # sans elle.
+            vms = self._pve_vms()
+            if vms is None:
+                print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+                tel_quel = t(
+                    "~/.ssh/config left as is: an entry may lead to a VM"
+                    " of the host."
+                )
+                print(f"  {tel_quel}")
+                return
+            distantes = {v["name"] for v in vms if v.get("name")}
         gardes, orphelines = ssh_orphans(
             parse_ssh_blocks(content),
             lambda h: self._ssh_entry_alive(
@@ -2879,18 +3100,25 @@ class QemuManageMixin:
         ):
             print(t("Cancelled."))
             return
-        for h in orphans:
-            pat = re.compile(
-                rf"(?m)^[ \t]*Host[ \t]+{re.escape(h)}[ \t]*\n"
-                r"(?:[ \t]+[^\n]*\n?)*"
-            )
-            content = pat.sub("", content)
+        content = ssh_config_without(content, orphans)
         content = content.strip("\n")
         content = content + "\n" if content else ""
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
         os.chmod(cfg, 0o600)
-        print(f"✅ {t('Cleanup done.')}")
+        # ON RELIT, ET C'EST LE FICHIER QUI RÉPOND. Annoncer d'après ce
+        # qu'on a demandé plutôt que d'après ce qui reste est exactement la
+        # panne d'ici : un nom partagé avec un autre sur la même ligne
+        # restait en place sous un « nettoyage fait ».
+        restants = set(parse_ssh_blocks(content))
+        tetues = [h for h in orphans if h in restants]
+        for h in tetues:
+            print(f"  ✗ {h} : {t('still in the file.')}")
+        partis = len(orphans) - len(tetues)
+        if partis:
+            print(f"✅ {t('Entries removed:')} {partis}")
+        if not partis:
+            print(f"✗ {t('Nothing was removed.')}")
 
     def _cleanup_stale_leases(self):
         """Baux DHCP libvirt dont la MAC n'appartient à aucune VM (best-effort :

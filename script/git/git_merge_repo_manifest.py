@@ -15,6 +15,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
+from script.setops import engine as setops_engine
 from script.version.erplibre_state import get_version_extra
 
 _logger = logging.getLogger(__name__)
@@ -25,6 +26,9 @@ DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
+DEFAULT_PATH_MANIFEST_SETOPS_CONF = os.path.join(
+    "conf", "git_manifest_setops.csv"
+)
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
 )
@@ -71,6 +75,15 @@ def get_config():
         help="Add mobile project manifest",
     )
     parser.add_argument(
+        "--with_setops",
+        action="store_true",
+        help=(
+            "Add Set-OPS engine manifest (manifest/git_manifest_setops.xml)."
+            " Without this flag, it is added only when .repo/project.list"
+            " already lists its path."
+        ),
+    )
+    parser.add_argument(
         "--with_extra",
         action="store_true",
         help=(
@@ -104,6 +117,8 @@ def main():
             config.with_mobile = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             config.with_extra = True
+        if setops_is_managed():
+            config.with_setops = True
 
     input_paths = config.input
     if not input_paths:
@@ -154,6 +169,10 @@ def main():
         if config.with_mobile:
             append_file_path_manifest(
                 input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+            )
+        if config.with_setops:
+            append_file_path_manifest(
+                input_paths, DEFAULT_PATH_MANIFEST_SETOPS_CONF
             )
         if config.with_extra and odoo_version:
             path_extra = os.path.join(
@@ -224,6 +243,25 @@ def main():
         output=config.output,
         default_remote=default_remote_total,
     )
+
+
+def setops_is_managed(racine="."):
+    """Vrai seulement si Google Repo gère déjà le chemin du moteur Set-OPS.
+
+    Le chemin se lit dans le manifeste du moteur, jamais recopié ici. Seule
+    `.repo/project.list` décide : un dossier présent au même chemin peut être
+    un clone manuel, et l'ajouter au manifeste local ferait échouer le
+    prochain `repo sync` sur un chemin occupé. Une déclaration illisible ou
+    un `.repo/` absent n'allument rien.
+
+    À l'inverse, un chemin que la liste porte reste dans la fusion quoi qui
+    l'occupe : le sync suivant supprimerait sinon l'arbre qui s'y trouve,
+    s'il est propre — un clone manuel et ses commits non poussés compris.
+    """
+    decl = setops_engine.declaration(racine)
+    if decl is None:
+        return False
+    return setops_engine.managed_by_repo(racine, decl.path) is True
 
 
 def append_file_path_manifest(input_paths, path_manifest):

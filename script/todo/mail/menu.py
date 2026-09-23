@@ -541,10 +541,24 @@ def _cache_size_and_purge(todo) -> None:
         # exactement le cas où l'utilisateur a besoin qu'il disparaisse.
         print(exc)
         shutil.rmtree(store.root, ignore_errors=True)
+        # ON RELIT. `ignore_errors` avale tout — un montage en lecture
+        # seule, un fichier sans droit d'écriture — et « cache effacé »
+        # s'imprimait sur un cache intact. Le dossier lui-même est la
+        # réponse.
+        if os.path.exists(store.root):
+            print(f"✗ {t('mail_purge_failed')} {store.root}")
+            return
         print(t("mail_purged"))
         return
+    racine = store.root
     try:
         store.purge_all()
     finally:
         store.close()
+    # Même relecture sur la voie nominale : `purge_all` efface ses
+    # sous-dossiers avec le même `ignore_errors`.
+    restants = [c.name for c in racine.iterdir() if c.is_dir()]
+    if restants:
+        print(f"✗ {t('mail_purge_failed')} {', '.join(sorted(restants))}")
+        return
     print(t("mail_purged"))

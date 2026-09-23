@@ -20,10 +20,11 @@ import sys
 import unittest
 
 sys.argv = ["todo.py"]
+from script.todo import qemu_manage  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
-# La forme RÉELLE, relevée sur la machine : le nvram porte un attribut
-# « template », et c'est ce qui l'avait fait manquer d'un premier filtre.
+# La forme que libvirt écrit VRAIMENT : le nvram porte un attribut
+# « template », ce qu'un filtre sur le seul nom de balise laisse passer.
 XML_MIGRATION = """<domain type='kvm'>
   <name>erplibre-ubuntu-2404-MIGRATION</name>
   <os firmware='efi'>
@@ -172,11 +173,18 @@ class TestEffacerUneVm(unittest.TestCase):
         self.assertEqual(todo._qemu_vm_own_files("vm-a"), [])
 
 
-CONFIG_SSH = """Host exo
-    HostName 132.207.112.51
+# Les adresses sont INVENTÉES, prises dans les plages de documentation
+# (RFC 5737) ou privées. Une fixture fige sa valeur pour toujours : celle-ci
+# a d'abord porté l'adresse publique réelle d'une machine tierce, recopiée
+# d'un ~/.ssh/config du parc.
+#
+# La première entrée n'est pas préfixée « erplibre- » exprès : elle tient la
+# place d'un hôte personnel, que le nettoyage ne doit jamais candidater.
+CONFIG_SSH = """Host poste-personnel
+    HostName 203.0.113.51
 
 Host erplibre-ubuntu-2404
-    HostName 192.168.123.170
+    HostName 198.51.100.170
     User erplibre
 
 Host erplibre-partie
@@ -206,7 +214,7 @@ class TestLesEntreesSsh(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
         self.domaines = {"erplibre-ubuntu-2404-MIGRATION"}
-        self.adresses = {"192.168.123.170": "erplibre-ubuntu-2404-MIGRATION"}
+        self.adresses = {"198.51.100.170": "erplibre-ubuntu-2404-MIGRATION"}
 
     def _juge(self, nom, distantes=()):
         return self.todo._ssh_entry_alive(
@@ -250,7 +258,7 @@ class TestLeRebondQuiNExistePlus(unittest.TestCase):
 
     CONFIG = """
 Host erplibre-vivante
-    HostName 192.168.123.170
+    HostName 198.51.100.170
 
 Host erplibre-proxmox-9
     HostName 192.168.123.208
@@ -317,7 +325,7 @@ Host mon-serveur-perso
 
         sans_parent = """
 Host erplibre-vivante
-    HostName 192.168.123.170
+    HostName 198.51.100.170
 
 Host erplibre-proxmox-9+enfant
     HostName 10.10.10.150
@@ -363,9 +371,9 @@ class TestLAdresseDUneVm(unittest.TestCase):
     """« --source arp » remonte les passerelles des ponts : la dernière
     candidate n'est pas la bonne.
 
-    Vécu sur la VM renommée : son bail porte encore l'ancien nom d'hôte, donc
-    aucune correspondance, et le repli sur « la dernière » annonçait
-    192.168.122.1 — la passerelle — au lieu de 192.168.123.170.
+    Une VM renommée garde dans son bail l'ancien nom d'hôte : plus aucune
+    correspondance par le nom, et le repli sur « la dernière candidate »
+    rend alors la passerelle du pont au lieu de l'adresse de la machine.
     """
 
     def _todo(self, par_source):
@@ -377,12 +385,12 @@ class TestLAdresseDUneVm(unittest.TestCase):
     def test_the_lease_wins_over_the_arp_table(self):
         todo = self._todo(
             {
-                "lease": ["192.168.123.170"],
-                "agent": ["192.168.123.170", "192.168.122.1"],
-                "arp": ["192.168.123.170", "192.168.122.1"],
+                "lease": ["198.51.100.170"],
+                "agent": ["198.51.100.170", "192.168.122.1"],
+                "arp": ["198.51.100.170", "192.168.122.1"],
             }
         )
-        self.assertEqual(todo._qemu_vm_ip_now("x"), "192.168.123.170")
+        self.assertEqual(todo._qemu_vm_ip_now("x"), "198.51.100.170")
 
     def test_without_a_lease_the_agent_speaks(self):
         todo = self._todo({"agent": ["10.0.0.5"], "arp": ["192.168.122.1"]})
@@ -431,6 +439,70 @@ class TestLesFichiersOuverts(unittest.TestCase):
         # /var/lib/libvirt/n-existe-pas-du-tout
         for chemin in TODO._qemu_files_in_use():
             self.assertTrue(os.path.exists(chemin), chemin)
+
+
+class TestRetirerUneEntreeSansEmporterSaVoisine(unittest.TestCase):
+    """Une ligne « Host » peut porter PLUSIEURS noms, qui partagent un corps.
+
+    Le retrait était bâti sur « ^Host <nom> » suivi d'une fin de ligne : il
+    exigeait que le nom soit SEUL. Une entrée « Host a b » était donc
+    annoncée orpheline, confirmée, et jamais retirée — sous un « nettoyage
+    fait » sur un fichier intact.
+
+    Et l'inverse compte autant : retirer le bloc entier parce qu'UN de ses
+    noms est orphelin emporterait les autres, qui mènent encore quelque
+    part. On nomme, on n'efface pas.
+    """
+
+    CONFIG = (
+        "Host erplibre-a erplibre-b\n"
+        "    HostName 192.0.2.10\n"
+        "    User erplibre\n"
+        "\n"
+        "Host erplibre-c\n"
+        "    HostName 192.0.2.11\n"
+        "\n"
+        "Host *\n"
+        "    ServerAliveInterval 30\n"
+    )
+
+    def sans(self, *noms):
+        return qemu_manage.ssh_config_without(self.CONFIG, list(noms))
+
+    def noms(self, contenu):
+        return set(qemu_manage.parse_ssh_blocks(contenu))
+
+    def test_a_shared_line_actually_loses_the_name_asked_for(self):
+        """Le défaut lui-même : rien ne partait."""
+        self.assertNotIn("erplibre-a", self.noms(self.sans("erplibre-a")))
+
+    def test_its_neighbour_on_the_same_line_stays(self):
+        reste = self.sans("erplibre-a")
+        self.assertIn("erplibre-b", self.noms(reste))
+        # Le CORPS reste avec elle : une entrée sans HostName ne mène nulle
+        # part, et l'aurait perdue sans le dire.
+        self.assertIn("192.0.2.10", reste)
+
+    def test_the_block_goes_only_when_no_name_is_left(self):
+        reste = self.sans("erplibre-a", "erplibre-b")
+        self.assertNotIn("192.0.2.10", reste)
+        self.assertIn("erplibre-c", self.noms(reste))
+
+    def test_a_lone_entry_still_goes_whole(self):
+        """Contrôle : le cas simple ne doit pas régresser."""
+        reste = self.sans("erplibre-c")
+        self.assertNotIn("192.0.2.11", reste)
+
+    def test_patterns_are_never_touched(self):
+        """« Host * » est une règle, pas une machine : elle porte souvent
+        les options de tout le fichier."""
+        reste = self.sans("erplibre-a", "erplibre-b", "erplibre-c")
+        self.assertIn("Host *", reste)
+        self.assertIn("ServerAliveInterval", reste)
+
+    def test_asking_for_nothing_changes_nothing(self):
+        """Contrôle positif : tout effacer passerait les autres."""
+        self.assertEqual(self.CONFIG, self.sans())
 
 
 if __name__ == "__main__":

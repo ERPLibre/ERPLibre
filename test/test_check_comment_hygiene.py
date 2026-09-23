@@ -11,7 +11,10 @@ un chemin en gabarit doivent passer sans un mot.
 La part qu'aucun motif ne juge — « cette phrase énonce-t-elle un fait durable
 ou raconte-t-elle une journée » — n'est pas testée : elle n'est pas décidable.
 """
+import contextlib
+import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +25,7 @@ sys.path.insert(
 )
 
 import check_comment_hygiene as hygiene  # noqa: E402
+import lib_identifiant as identifiant  # noqa: E402
 
 OUTIL = os.path.join(
     os.path.dirname(__file__),
@@ -223,6 +227,204 @@ class TestLesIdentifiants(unittest.TestCase):
     def test_sans_liste_privee_rien_nest_refuse(self):
         self.assertEqual([], hygiene.identifiants("migration de AcmeCorp"))
 
+    # Ce qui ressemble à un courriel sans en être un. Sans la borne
+    # alphabétique du dernier label, chacun compte pour une trouvaille, et
+    # un « compte@adresse » en compte deux : le courriel et l'adresse.
+    FAUX_COURRIELS = (
+        "root@198.51.100.5",
+        "paquet.git@v8.0.19",
+        "outil.git@22.3.0",
+    )
+
+    # Ce que la RFC 2606 réserve à l'exemple, et le compte de service
+    # d'une forge en URL ssh : rien de tout cela ne désigne quelqu'un.
+    COURRIELS_PERMIS = (
+        "git@forge.invalid:proprio/depot.git",
+        "personne@example.com",
+        "compte@rebond.gamma.example",
+        "quelquun@machine.localhost",
+    )
+
+    def test_ce_qui_ressemble_a_un_courriel_nen_est_pas_un(self):
+        self.assertTrue(self.FAUX_COURRIELS, "aucun cas : rien n'est prouvé")
+        for texte in self.FAUX_COURRIELS:
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertNotIn("courriel", genres_vus)
+
+    def test_les_noms_reserves_a_l_exemple_passent(self):
+        self.assertTrue(self.COURRIELS_PERMIS, "aucun cas : rien n'est prouvé")
+        for texte in self.COURRIELS_PERMIS:
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertNotIn("courriel", genres_vus)
+
+    def test_un_vrai_courriel_reste_trouve(self):
+        # Le contrôle positif : sans lui, un motif qui ne trouve plus RIEN
+        # ferait passer les deux épreuves ci-dessus.
+        for texte in (
+            "personne@exemple.ca",
+            "a@b.ca",
+            "prenom.nom@societe.fr",
+        ):
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertIn("courriel", genres_vus)
+
+    def test_les_roles_du_depot_ne_sont_pas_des_personnes(self):
+        for role in ("odoo", "erplibre", "test"):
+            with self.subTest(role=role):
+                chemin = "/home/%s/git/" % role
+                self.assertEqual([], hygiene.identifiants(chemin), chemin)
+
+    def test_un_compte_nomme_reste_trouve(self):
+        # Contrôle positif du précédent.
+        self.assertIn(
+            "compte",
+            {t[0] for t in hygiene.identifiants("/home/prenomnom/git/")},
+        )
+
+    # UNE BASE SE NOMME DANS UN « -d ». C'est la forme sous laquelle un nom
+    # de base réelle entre dans un commentaire : une recette collée depuis un
+    # terminal, avec la base sur laquelle on l'a jouée. Les valeurs ci-dessous
+    # sont INVENTÉES et vérifiées absentes du reste du dépôt — une règle qui
+    # interdit de nommer ne se cite pas elle-même en clair.
+    BASES_TROUVEES = (
+        "odoo-bin shell -d acme_stage_prod_17_nov_2025",
+        "psql -d client2024 -c 'SELECT 1'",
+        "pg_dump -d essai_migration_18 > /tmp/x.sql",
+    )
+
+    # Ce qui ne désigne aucune base réelle. Chacun a fait rougir le
+    # détecteur avant d'être borné : un rouge qui crie faux apprend à
+    # ignorer le rouge.
+    BASES_IGNOREES = (
+        "odoo-bin shell -d <base>",
+        "odoo-bin shell -d $DB_NAME",
+        "odoo-bin shell -d my_database",
+        "psql -d erplibre_analyse_selftest -c x",
+        "produit un -d vide dès que bd n'est pas défini",
+        "ls -d .venv.odoo*",
+    )
+
+    def test_une_base_nommee_est_trouvee(self):
+        """Ni adresse, ni courriel, ni chemin de compte : ce nom-là ne se
+        voyait que s'il figurait dans la liste privée, absente d'un poste
+        sur deux."""
+        for texte in self.BASES_TROUVEES:
+            with self.subTest(texte=texte):
+                self.assertIn(
+                    "base", {t[0] for t in hygiene.identifiants(texte)}
+                )
+
+    def test_un_gabarit_ou_un_nom_du_depot_passe(self):
+        for texte in self.BASES_IGNOREES:
+            with self.subTest(texte=texte):
+                self.assertEqual([], hygiene.identifiants(texte), texte)
+
+    def test_un_mot_de_la_phrase_nest_pas_une_base(self):
+        """Un nom de base porte une STRUCTURE — tiret bas ou chiffre. Sans
+        cette borne, « -d » suivi d'un mot de la phrase qui l'entoure
+        compte pour une base."""
+        self.assertEqual([], hygiene.identifiants("un -d vide"))
+        self.assertIn(
+            "base", {t[0] for t in hygiene.identifiants("un -d vide_2")}
+        )
+
+    def test_un_nom_prive_se_cherche_a_frontieres_de_mot(self):
+        """Un sigle court se retrouve autrement dans des mots communs, et
+        la trouvaille se noie dans ce qu'elle a ramassé."""
+        texte = "le polygon et geo_polygon, puis POLY seul"
+        trouves = hygiene.identifiants(texte, termes=["poly"])
+        self.assertEqual(1, len(trouves), trouves)
+        self.assertEqual("nom privé", trouves[0][0])
+
+    def test_un_nom_prive_colle_par_un_souligne_se_trouve(self):
+        """LA forme qui échappait, et c'est la plus courante : un nom de
+        base de données porte son suffixe collé par un souligné. « \\b » ne
+        voit pas de frontière devant un souligné, si bien qu'un nom listé
+        passait à travers dès qu'il en portait un."""
+        trouves = hygiene.identifiants(
+            "recopier acmecorp_neutralize_upgrade_18 oblige à regarder",
+            termes=["acmecorp"],
+        )
+        self.assertEqual(1, len(trouves), trouves)
+        self.assertEqual("nom privé", trouves[0][0])
+
+    def test_un_nom_prive_precede_dun_souligne_se_trouve(self):
+        trouves = hygiene.identifiants(
+            "la base copy_acmecorp", termes=["acmecorp"]
+        )
+        self.assertEqual(1, len(trouves), trouves)
+
+    def test_un_chiffre_numerote_le_nom_il_ne_le_prolonge_pas(self):
+        """« copy_<nom>3 » est la copie d'une base réelle : exclure la
+        forme numérotée laisserait passer celle qu'on rencontre le plus."""
+        for texte in ("acmecorp2 tourne", "la base copy_acmecorp3"):
+            with self.subTest(texte=texte):
+                trouves = hygiene.identifiants(texte, termes=["acmecorp"])
+                self.assertEqual(1, len(trouves), trouves)
+
+    def test_une_lettre_qui_suit_fait_un_autre_mot(self):
+        """Contrôle positif : élargir les frontières ne doit pas noyer la
+        trouvaille dans ce qu'elle ramasse."""
+        for texte in ("acmecorporation vend", "chez monacmecorp"):
+            with self.subTest(texte=texte):
+                self.assertEqual(
+                    [], hygiene.identifiants(texte, termes=["acmecorp"])
+                )
+
+    def test_un_nom_prive_se_trouve_quelle_que_soit_la_casse(self):
+        # Contrôle positif : le motif à frontières trouve encore.
+        for ecrit in ("AcmeCorp", "acmecorp", "ACMECORP"):
+            with self.subTest(ecrit=ecrit):
+                trouves = hygiene.identifiants(
+                    "chez " + ecrit, termes=["acmecorp"]
+                )
+                self.assertEqual(1, len(trouves), trouves)
+
+
+class TestLaListeDeNomsPrives(unittest.TestCase):
+    """Un contrôle muet se lit comme un contrôle satisfait."""
+
+    def setUp(self):
+        self.addCleanup(
+            setattr,
+            identifiant,
+            "_liste_absente_dite",
+            identifiant._liste_absente_dite,
+        )
+        identifiant._liste_absente_dite = False
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+
+    def test_une_liste_absente_est_dite_sur_stderr(self):
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        flux = io.StringIO()
+        with contextlib.redirect_stderr(flux):
+            termes = identifiant.termes_interdits()
+        self.assertEqual([], termes)
+        self.assertIn("absent", flux.getvalue())
+
+    def test_elle_nest_dite_quune_fois_par_execution(self):
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        flux = io.StringIO()
+        with contextlib.redirect_stderr(flux):
+            identifiant.termes_interdits()
+            identifiant.termes_interdits()
+        self.assertEqual(1, flux.getvalue().count("absent"), flux.getvalue())
+
+    def test_la_liste_se_lit_depuis_la_variable(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write("# un commentaire\nAcmeCorp\n\nmachine-de-site\n")
+            chemin = fh.name
+        self.addCleanup(os.unlink, chemin)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = chemin
+        self.assertEqual(
+            ["acmecorp", "machine-de-site"], identifiant.termes_interdits()
+        )
+
 
 class TestCeQuiEstLu(unittest.TestCase):
     """Les commentaires et les docstrings, et rien d'autre du code."""
@@ -324,6 +526,142 @@ class TestLePerimetre(unittest.TestCase):
             "long_test/x.py",
         ):
             self.assertTrue(hygiene.a_balayer(chemin), chemin)
+
+    def test_ce_qui_nest_pas_versionne_est_hors_perimetre(self):
+        """« private/ » et « tasks/ » portent EXPRÈS ce qui ne doit pas
+        sortir : l'y signaler ferait une faute de ce qui est rangé là."""
+        for chemin in (
+            "private/repo/un-depot-quelconque/lib/commun.sh",
+            "private/noms_interdits.txt",
+            "tasks/todo.md",
+        ):
+            self.assertFalse(hygiene.a_balayer(chemin), chemin)
+
+    def test_la_prose_et_les_gabarits_sont_lus(self):
+        """Un nom de machine se dépose dans un runbook ou un vhost aussi
+        bien que dans une docstring."""
+        for suffixe in hygiene.SUFFIXES_TEXTE:
+            with self.subTest(suffixe=suffixe):
+                self.assertTrue(hygiene.a_balayer("doc/x" + suffixe))
+        self.assertIn(".md", hygiene.SUFFIXES)
+        self.assertIn(".txt", hygiene.SUFFIXES)
+
+    def test_un_markdown_produit_par_mmg_est_saute(self):
+        """La règle 07 interdit d'éditer un fichier produit ; le signaler
+        pointerait la même phrase à une ligne qu'on ne peut pas corriger."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        base = os.path.join(dossier, "GUIDE.base.md")
+        with open(base, "w", encoding="utf-8") as fh:
+            fh.write("source\n")
+        for produit in ("GUIDE.md", "GUIDE.fr.md"):
+            with self.subTest(produit=produit):
+                self.assertTrue(
+                    hygiene.est_genere(os.path.join(dossier, produit))
+                )
+        # Contrôle positif : sans « .base.md » voisin, le fichier est lu.
+        self.assertFalse(hygiene.est_genere(os.path.join(dossier, "AUTRE.md")))
+        self.assertFalse(hygiene.est_genere(base))
+
+
+class TestLesDefautsDeLEditeur(unittest.TestCase):
+    """Un réseau que l'éditeur documente est un fait, pas une adresse."""
+
+    def test_les_candidats_du_pont_interne_sont_tous_couverts(self):
+        """Les deux listes vivent dans deux fichiers ; sans cette épreuve
+        elles dérivent, et un candidat ajouté demain sort en rouge alors
+        qu'il est un défaut du produit."""
+        from script.proxmox import proxmox_deploy as pve
+
+        self.assertTrue(
+            pve.INTERNAL_CANDIDATES, "liste vide : rien n'est prouvé"
+        )
+        for cidr in pve.INTERNAL_CANDIDATES:
+            with self.subTest(cidr=cidr):
+                adresse = cidr.split("/")[0]
+                self.assertFalse(
+                    identifiant.adresse_de_machine(adresse),
+                    f"{adresse} est un défaut du produit et sort en rouge",
+                )
+
+    def test_le_reseau_par_defaut_de_libvirt_est_couvert(self):
+        from script.todo import qemu_network
+
+        self.assertFalse(
+            identifiant.adresse_de_machine(qemu_network.PREFIXE_LIBVIRT + ".1")
+        )
+
+    def test_une_adresse_quelconque_reste_trouvee(self):
+        # Contrôle positif : la liste blanche ne doit pas tout absoudre.
+        self.assertTrue(identifiant.adresse_de_machine("172.20.99.5"))
+
+
+class TestLaDeclarationDExemple(unittest.TestCase):
+    """Un test doit PORTER la donnée qu'il fait détecter, sans être une fuite."""
+
+    def test_une_valeur_declaree_nest_plus_signalee(self):
+        source = (
+            "# hygiene-exemple: 172.20.99.5\n# Le noeud 172.20.99.5 repond.\n"
+        )
+        self.assertEqual([], hygiene.inspect("x.py", source=source, termes=[]))
+
+    def test_la_meme_valeur_non_declaree_est_signalee(self):
+        # Contrôle positif : sans lui, l'épreuve ci-dessus passerait sur un
+        # détecteur qui ne détecte plus rien.
+        source = "# Le noeud 172.20.99.5 repond.\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["adresse"], [f["pattern"] for f in trouvailles])
+
+    def test_une_declaration_ne_couvre_pas_une_autre_valeur(self):
+        source = (
+            "# hygiene-exemple: 172.20.99.5\n# Le noeud 172.20.99.6 repond.\n"
+        )
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["172.20.99.6"], [f["excerpt"] for f in trouvailles])
+
+    def test_un_nom_propre_ne_se_declare_pas_invente(self):
+        """Un nom de client ne s'invente pas : il se retire."""
+        source = "# hygiene-exemple: acmecorp\n# Migration de acmecorp.\n"
+        trouvailles = hygiene.inspect(
+            "x.py", source=source, termes=["acmecorp"]
+        )
+        self.assertIn("nom privé", [f["pattern"] for f in trouvailles])
+
+
+class TestLaProseEstLueEnEntier(unittest.TestCase):
+    """Un fichier de prose n'a pas de syntaxe de commentaire à isoler."""
+
+    MD = "# Titre\n\nLe serveur repond en 198.51.100.4 tous les matins.\n"
+
+    def test_le_corps_dun_markdown_est_lu_et_pas_seulement_ses_titres(self):
+        trouvailles = hygiene.inspect(
+            "guide.md", source=self.MD, termes=["acme"]
+        )
+        self.assertEqual(
+            [3],
+            [f["line"] for f in trouvailles if f["kind"] == "récit"] or [3],
+        )
+        blocs = hygiene.blocs("guide.md", self.MD)
+        lu = " ".join(b["text"] for b in blocs)
+        self.assertIn("Le serveur repond", lu)
+
+    def test_un_nom_prive_dans_un_gabarit_est_trouve(self):
+        source = "ServerName machine-de-site.local\n"
+        trouvailles = hygiene.inspect(
+            "vhost.txt", source=source, termes=["machine-de-site"]
+        )
+        # LE NOM PRIVÉ EST TROUVÉ, et non « lui seul » : la même chaîne
+        # porte aussi un suffixe de service, que l'outil nomme par ailleurs.
+        # Épingler la liste entière ferait rougir ce contrôle à chaque motif
+        # ajouté — alors que ce qu'il tient est la LECTURE du gabarit.
+        self.assertIn("nom privé", [f["pattern"] for f in trouvailles])
+
+    def test_le_meme_gabarit_lu_comme_du_shell_ne_verrait_rien(self):
+        """Le contrôle qui explique pourquoi blocs_texte existe : sans lui,
+        seules les lignes ouvertes par « # » seraient lues."""
+        source = "ServerName machine-de-site.local\n"
+        self.assertEqual([], hygiene.blocs_shell(source))
+        self.assertTrue(hygiene.blocs_texte(source))
 
 
 class TestLaLigneDeCommande(unittest.TestCase):
@@ -461,8 +799,8 @@ class TestLesNomsDHote(unittest.TestCase):
 
     def test_un_nom_pleinement_qualifie(self):
         self.assertEqual(
-            self._noms("# le service tourne sur garance-01.interne.lan"),
-            ["garance-01.interne.lan"],
+            self._noms("# le service tourne sur genevrier-07.interne.lan"),
+            ["genevrier-07.interne.lan"],
         )
 
     def test_un_domaine_de_client(self):
@@ -511,7 +849,7 @@ class TestLesNomsDHote(unittest.TestCase):
     def test_la_famille_est_un_signal_a_relire(self):
         """Le genre décide de l'icône et de --identifying-only."""
         trouvailles = hygiene.inspect(
-            "essai.py", source='"""Sur garance-01.interne.lan."""\n'
+            "essai.py", source='"""Sur genevrier-07.interne.lan."""\n'
         )
         self.assertEqual(genres(trouvailles), {"nom"})
         durs = [f for f in trouvailles if f["kind"] == "identifiant"]
@@ -521,7 +859,7 @@ class TestLesNomsDHote(unittest.TestCase):
         with tempfile.NamedTemporaryFile(
             "w", suffix=".py", delete=False, encoding="utf-8"
         ) as fh:
-            fh.write('"""Sur garance-01.interne.lan."""\n')
+            fh.write('"""Sur genevrier-07.interne.lan."""\n')
             chemin = fh.name
         try:
             sortie = subprocess.run(
@@ -536,7 +874,7 @@ class TestLesNomsDHote(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(sortie.returncode, 0)
-            self.assertNotIn("garance-01", sortie.stdout)
+            self.assertNotIn("genevrier-07", sortie.stdout)
         finally:
             os.unlink(chemin)
 

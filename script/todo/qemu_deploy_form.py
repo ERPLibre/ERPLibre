@@ -33,6 +33,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo import vm_profiles
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
     CLIP_LIMIT,
@@ -225,6 +226,51 @@ def run_deploy_form(ctx, run_app: bool = True):
             yield Header()
             with Horizontal(id="body"):
                 with VerticalScroll(id="fields"):
+                    # Une LIGNE, et non un choix : ce chemin ne pilote que
+                    # le backend local, et offrir une main qu'on ne peut pas
+                    # jouer vaut moins que de dire laquelle est en jeu. Elle
+                    # se change dans Deploy › Backends de VM.
+                    yield Static(
+                        f"{t('Backend:')} {ctx.get('backend', '')}",
+                        id="t_backend",
+                        classes="grouptitle",
+                    )
+                    # La posture est un CHOIX, là où le backend n'est qu'une
+                    # ligne : celle-ci, ce chemin sait l'honorer. Elle est
+                    # au niveau du déploiement, juste sous la machine, parce
+                    # qu'elle décrit le réseau de la machine et non ce qu'on
+                    # installe dedans.
+                    yield Static(t("Network posture"), classes="grouptitle")
+                    # LES LIBELLÉS, et la valeur reste le nom de posture :
+                    # c'est lui que la spec porte. Le repli sur les noms
+                    # bruts garde l'écran utilisable si un contexte plus
+                    # ancien ne porte pas encore les choix.
+                    choix = ctx.get("posture_choices") or vm_profiles.choices()
+                    yield Select(
+                        choix,
+                        # LE PREMIER CHOIX OFFERT, et non un blanc : un
+                        # Select sans blanc autorisé REFUSE une liste vide
+                        # et une valeur absente. Le repli d'avant était un
+                        # contexte plus ancien — donc une liste vide, donc
+                        # l'écran qui ne monte pas du tout.
+                        value=ctx.get("posture") or choix[0][1],
+                        allow_blank=False,
+                        id="f_posture",
+                    )
+                    # CE QU'ELLE APPLIQUE, sous elle. Un nom sans cette
+                    # ligne vend l'assurance que le registre s'interdit de
+                    # donner : une politique déclarée sans mécanisme se
+                    # comporte comme l'absence de politique.
+                    yield Static("", id="t_posture_effet", classes="hint")
+                    # Sous la posture parce qu'on les lit ensemble, et
+                    # SÉPARÉE d'elle parce qu'aucune des deux ne se déduit
+                    # de l'autre : le déploiement refuse le couple
+                    # incohérent, il ne le devine pas.
+                    yield Checkbox(
+                        t("This machine carries real data"),
+                        value=bool(ctx.get("real_data", False)),
+                        id="f_real_data",
+                    )
                     yield Static(t("Architecture"), classes="grouptitle")
                     with RadioSet(id="f_arch"):
                         for a in arches:
@@ -366,6 +412,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
+                    yield from self.compose_ai_tools()
+                    yield from self.compose_locale()
                     # Offerte seulement là où elle a un effet : sans cache
                     # actif, rien n'intercepte, et une case qui ne change
                     # rien apprend au lecteur une chose fausse.
@@ -375,33 +423,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                             value=defaults.get("cache_bypass", False),
                             id="f_cache_bypass",
                         )
-                    # Révélés par la case « AI coding tools » du bloc des
-                    # outils : sans elle, ni l'agent ni l'identité git n'ont
-                    # d'objet, et trois widgets de plus encombrent un écran
-                    # déjà dense. Le nom et le courriel sont pré-remplis avec
-                    # l'identité de l'HÔTE — c'est ce que la VM reçoit
-                    # aujourd'hui, et un champ vide la ferait croire absente.
-                    yield Static(
-                        f"  {t('AI coding tools')}",
-                        id="t_ai",
-                        classes="grouptitle",
-                    )
-                    yield Select(
-                        [("Claude Code", "claude"), ("opencode", "opencode")],
-                        value=defaults.get("ai_agent") or "claude",
-                        allow_blank=False,
-                        id="f_ai_agent",
-                    )
-                    yield Input(
-                        value=defaults.get("git_name", ""),
-                        placeholder=t("Name for git"),
-                        id="f_git_name",
-                    )
-                    yield Input(
-                        value=defaults.get("git_email", ""),
-                        placeholder=t("Email for git"),
-                        id="f_git_email",
-                    )
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.
@@ -492,8 +513,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     yield Static("", id="totals")
             yield Footer()
 
-        # Les widgets que la case « AI coding tools » découvre.
-        _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
 
         # L'avertissement que la case « Sans connexion internet » découvre.
         _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 8))
@@ -525,24 +544,29 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif not vu and suivi.disabled:
                 suivi.disabled = False
                 suivi.value = getattr(self, "_suivi_avant", True)
-
-        def _sync_ai(self) -> None:
-            """Montre ou cache le bloc IA selon la case des outils.
-
-            Cacher plutôt que griser : un champ grisé occupe la place et se
-            lit comme un réglage qu'on aurait le droit de changer."""
-            case = self.query("#f_tool_aidev")
-            vu = bool(case) and bool(case.first(Checkbox).value)
-            for sel in self._AI_WIDGETS:
-                for widget in self.query(sel):
-                    widget.display = vu
-
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
             self._reload_catalog(first_load=True)
             self._sync_install_deps()
             self._sync_ai()
             self._sync_offline()
+            self._sync_posture()
+
+        def _sync_posture(self) -> None:
+            """Écrit sous le sélecteur ce que la posture choisie APPLIQUE.
+
+            La ligne est composée par `vm_profiles` : ici il ne reste qu'une
+            affectation, parce que ce fichier est du Textual et qu'aucune
+            épreuve unitaire ne le pilote.
+            """
+            try:
+                choisie = self.query_one("#f_posture", Select).value
+                ligne = self.query_one("#t_posture_effet", Static)
+            except Exception:  # pragma: no cover - widget absent
+                return
+            # `ctx` est la FERMETURE : la classe est définie dans
+            # `run_deploy_form`, et le reste du fichier la lit ainsi.
+            ligne.update((ctx.get("posture_screen") or {}).get(choisie, ""))
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -691,9 +715,9 @@ def run_deploy_form(ctx, run_app: bool = True):
 
             Le verrou couvre TOUT le montage : poser « value= » sur un Select
             fait émettre un Changed à Textual, que on_select_changed prenait
-            pour une saisie. Résultat mesuré — les trois champs de CHAQUE VM
-            recevaient une surcharge dès l'affichage, le profil x1..x4 ne
-            pouvait plus rien changer, et toutes les lignes portaient la
+            pour une saisie. Les trois champs de CHAQUE VM reçoivent alors
+            une surcharge dès l'affichage, le profil x1..x4 ne peut plus rien
+            changer, et toutes les lignes portent la
             marque ✎. Il est relâché après le rafraîchissement, une fois ces
             messages consommés."""
             self._syncing = True
@@ -927,6 +951,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._syncing:
                 return
             wid = event.select.id or ""
+            if wid == "f_posture":
+                # Réécrit avant tout le reste : ce que la posture applique
+                # est la seule information de cet écran qui change de sens
+                # d'un choix à l'autre.
+                self._sync_posture()
             row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
             if row and not self._is_current(event.select):
                 # Widget d'une génération périmée : son rang ne désigne plus
@@ -938,9 +967,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     return
                 # Poser « value= » au montage fait émettre un Changed que
                 # Textual délivre APRÈS coup : un verrou temporel ne l'attrape
-                # pas — mesuré, les trois champs de chaque VM se retrouvaient
-                # surchargés dès l'affichage et le profil x1..x4 devenait
-                # inopérant. On compare donc à ce que le modèle dit déjà : une
+                # pas : les trois champs de chaque VM se retrouvent surchargés
+                # dès l'affichage et le profil x1..x4 devient inopérant. On
+                # compare donc à ce que le modèle dit déjà : une
                 # valeur identique n'est pas une saisie, c'est l'écho.
                 #
                 # Cas limite assumé : choisir explicitement la valeur que le
@@ -1096,6 +1125,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                 }
             key = self.query_one("#f_key", Input).value.strip()
             return {
+                # Il vient du CONTEXTE et d'aucun widget : l'écran l'affiche
+                # et ne le choisit pas. La spec le porte quand même, pour que
+                # le point de passage du déploiement puisse refuser ce qu'il
+                # ne sait pas piloter.
+                "backend": ctx.get("backend", ""),
+                # Elle, l'écran la CHOISIT : ce chemin sait la poser.
+                "posture": self.query_one("#f_posture", Select).value,
+                "real_data": self.query_one("#f_real_data", Checkbox).value,
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
@@ -1109,11 +1146,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     and self.query_one("#f_cache_bypass", Checkbox).value
                 ),
                 "offline": offline,
-                "ai_agent": self.query_one("#f_ai_agent", Select).value,
-                "git_name": self.query_one("#f_git_name", Input).value.strip(),
-                "git_email": self.query_one(
-                    "#f_git_email", Input
-                ).value.strip(),
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"
@@ -1237,6 +1269,29 @@ def run_deploy_form(ctx, run_app: bool = True):
                     + t("press F5 again to confirm"),
                     severity="error",
                     timeout=10,
+                )
+                return
+            # LE COUPLE (libellé choisi, installation choisie). Ici, et pas
+            # au déploiement : l'écran SAIT qu'un libellé a été choisi —
+            # c'est lui qui l'a montré — alors qu'un spec ne porte qu'une
+            # posture, que les invites en ligne posent sans libellé. Un
+            # avertissement et non un refus : servir autre chose sur la même
+            # posture reste légitime, et c'est la raison même pour laquelle
+            # le registre sépare les deux.
+            commande = (spec.get("install") or {}).get("cmd", "")
+            verdict = vm_profiles.check_install(
+                vm_profiles.label_of(spec.get("posture", "")), commande
+            )
+            if verdict != vm_profiles.INSTALL_OK and not getattr(
+                self, "_serves_ack", False
+            ):
+                self._serves_ack = True
+                self.notify(
+                    vm_profiles.install_sentence(verdict)
+                    + " — "
+                    + t("press F5 again to confirm"),
+                    severity="warning",
+                    timeout=12,
                 )
                 return
             result["spec"] = spec

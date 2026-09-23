@@ -3,10 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ouverture du coffre KeePass depuis le CLI.
 
-Signalé à l'usage : une mauvaise saisie affichait une trace `construct` de
-quarante lignes, puis `pykeepass.exceptions.CredentialsError`, et tuait le
-CLI — `make: *** Error 1`. L'invite disait par ailleurs `enter_password`,
-la clé i18n brute, sans nommer ce qu'elle demandait.
+Sans garde, une mauvaise saisie affiche une trace `construct` de quarante
+lignes, puis `pykeepass.exceptions.CredentialsError`, et tue le CLI —
+`make: *** Error 1`. L'invite dit par ailleurs `enter_password`, la clé i18n
+brute, sans nommer ce qu'elle demande.
 
 Un mot de passe refusé est le cas NORMAL de cette fonction : elle doit le
 dire, laisser recommencer, et laisser partir.
@@ -18,6 +18,9 @@ from unittest.mock import MagicMock, patch
 
 from pykeepass import create_database
 
+from script.config import config_file
+from script.config.config_file import ConfigFile
+from script.todo import kdbx_manager
 from script.todo.kdbx_manager import KdbxManager
 
 
@@ -50,6 +53,57 @@ class KdbxCase(unittest.TestCase):
         ):
             resultat = self._manager().get_kdbx()
         return resultat, "\n".join(vues)
+
+
+class ConfigSansCoffre(ConfigFile):
+    """Un VRAI ConfigFile qui ne connaît aucun coffre.
+
+    Le reste du fichier bouchonne la configuration par MagicMock, qui rend
+    n'importe quel attribut — y compris un qui n'existe pas. C'est ce qui
+    laissait passer un AttributeError sur le chemin d'erreur.
+    """
+
+    def get_config(self, key_param):
+        return {}
+
+
+class TkQuOnReferme:
+    """Un tkinter qui s'ouvre et que l'opérateur referme sans rien choisir."""
+
+    class Tk:
+        def withdraw(self):
+            pass
+
+
+class DialogueAnnule:
+    @staticmethod
+    def askopenfilename(**_kwargs):
+        return ""
+
+
+class TestAnUnconfiguredVaultSaysWhereToConfigureIt(unittest.TestCase):
+    """Sans chemin configuré ET sans choix, le message est tout ce qui reste."""
+
+    def _sans_coffre(self):
+        with patch.object(kdbx_manager, "tk", TkQuOnReferme), patch.object(
+            kdbx_manager, "filedialog", DialogueAnnule
+        ):
+            with self.assertLogs(kdbx_manager._logger, "ERROR") as journal:
+                rendu = KdbxManager(ConfigSansCoffre()).get_kdbx()
+        return rendu, "\n".join(journal.output)
+
+    def test_it_reports_instead_of_raising(self):
+        rendu, _ = self._sans_coffre()
+        self.assertIsNone(rendu)
+
+    def test_it_names_the_file_that_is_not_versioned(self):
+        _, journal = self._sans_coffre()
+        self.assertIn(config_file.CONFIG_OVERRIDE_PRIVATE_FILE, journal)
+
+    def test_it_does_not_name_the_tracked_file(self):
+        """Y écrire un chemin de coffre le ferait committer."""
+        _, journal = self._sans_coffre()
+        self.assertNotIn(config_file.CONFIG_FILE, journal)
 
 
 class TestWrongPasswordIsToldNotRaised(KdbxCase):

@@ -397,6 +397,40 @@ class TestCacheSizeAndPurge(unittest.TestCase):
 
         self.assertFalse(store.root.exists())
 
+    def test_a_purge_that_could_not_erase_is_never_announced_as_done(self):
+        """`ignore_errors` avale tout — droits, montage en lecture seule —
+        et « cache effacé » s'imprimait sur un cache intact. Le dossier
+        lui-même est la réponse, et on le relit."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo import todo_i18n
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+        store = Store(account)
+        store.root.mkdir(parents=True, exist_ok=True)
+        (store.root / "cache.db").write_bytes(b"pas une base sqlite" * 50)
+
+        tampon = io.StringIO()
+        with patch.object(
+            menu, "_load_accounts", return_value=[account]
+        ), patch.object(
+            menu, "secret_store_for", return_value=MagicMock()
+        ), patch.object(
+            menu.shutil, "rmtree", lambda *a, **k: None
+        ), patch(
+            "builtins.input", side_effect=["1", "o"]
+        ):
+            with redirect_stdout(tampon):
+                menu._cache_size_and_purge(MagicMock())
+
+        affiche = tampon.getvalue()
+        self.assertNotIn(todo_i18n.t("mail_purged"), affiche)
+        self.assertIn(todo_i18n.t("mail_purge_failed"), affiche)
+        self.assertTrue(store.root.exists())
+
 
 class TestEnsureKdbx(unittest.TestCase):
     """`_ensure_kdbx` doit tenir la promesse de la conception (lignes
@@ -657,10 +691,10 @@ class TestRetryPassword(unittest.TestCase):
         return MagicMock()
 
     def test_a_timeout_does_not_blame_the_password(self):
-        """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
+        """Le serveur ne dit RIEN : la commande part, aucune réponse.
         Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        d'application pour un problème qui est ailleurs — « The read
+        operation timed out » ne dit rien de l'authentification."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",

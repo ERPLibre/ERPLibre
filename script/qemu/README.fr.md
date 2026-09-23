@@ -93,6 +93,30 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
+## Confiner une machine créée en direct
+
+**Ce script pose ce qu'on lui DONNE ; il ne connaît pas les postures.**
+Appelé sans règles de sortie, la machine qu'il crée a une **sortie libre** —
+quelle que soit l'intention. Ce n'est pas un oubli : le rendu se fait
+ailleurs, et c'est le menu qui le fait d'ordinaire.
+
+La règle d'or — le couple *(posture, données réelles)* — est tenue au point
+de passage unique du menu. **Une machine créée en direct la contourne**, et
+ne doit donc pas porter de données réelles.
+
+Les règles se rendent et se passent. Le paquet posture les écrit, le moteur
+les pose et les arme au premier démarrage :
+
+```bash
+python3 -c "from script.posture import registry, rules, plan; \
+  open('/tmp/egress.nft','w').write( \
+    rules.render_egress(registry.get_posture('connected'), ())); \
+  open('/tmp/egress.service','w').write(plan.unit_text())"
+
+sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+    --egress-file /tmp/egress.nft --egress-unit /tmp/egress.service
+```
+
 Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 
 | Distro | Versions | amd64 | arm64 | s390x |
@@ -317,11 +341,11 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 
 ## Principales options
 
-- `--distro` — `ubuntu` (défaut), `debian`, `fedora`, `almalinux`,
-  `rocky`, `opensuse`, `arch`, `nixos` ou `proxmox`. NixOS est la seule
-  image qu'aucune distribution ne publie : elle est rebâtie par un tiers,
-  donc la version est épinglée, sa somme sha256 vérifiée à chaque
-  téléchargement, et l'origine dite avant que rien ne soit créé.
+- `--distro` — une distro du catalogue, `ubuntu` par défaut. Le catalogue
+  est ce qu'affiche `--list-images` ; en figer une partie ici vieillit dès
+  qu'une distro s'ajoute, et c'est arrivé.
+  NixOS est la seule image qu'aucune distribution ne publie : elle est
+  rebâtie par un tiers, et le catalogue le dit.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
@@ -330,9 +354,8 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 - `--name` — nom de la VM (requis pour le déploiement).
 - `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
   `--memory` et `--disk-size` prennent le **minimum requis par la version**
-  choisie (valeurs libosinfo, voir `--list-images` : Ubuntu 24.04+ →
-  3072 Mo/20G, Debian → 1024 Mo/10G, Fedora → 2048 Mo/15G) ; `--vcpus`
-  vaut 2 par défaut.
+  choisie — `--list-images` en donne les chiffres, que le catalogue porte et
+  que cette page ne recopie pas ; `--vcpus` vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.

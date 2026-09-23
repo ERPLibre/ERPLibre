@@ -6,9 +6,11 @@ import csv
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from unittest.mock import patch
 
 from script.database.migrate.process_backup_file import process_zip
@@ -77,6 +79,148 @@ class TestProcessZip(unittest.TestCase):
             other = zf.read("other.txt").decode()
         self.assertNotIn("secret", target)
         self.assertIn("secret", other)
+
+
+class TestCeQuUneSortieEnCatastropheLaisse(unittest.TestCase):
+    """`run_cmd` sort par `sys.exit` dès qu'une commande échoue.
+
+    L'étape de nettoyage ne tourne alors jamais, et les bases de travail
+    restent sur l'instance SANS UN MOT. Une base orpheline ne se voit pas :
+    elle occupe un nom que la prochaine génération réutilise, et la
+    création échoue alors sur une collision dont la cause est trois
+    exécutions plus tôt.
+
+    ON NOMME, ON N'EFFACE PAS : la génération vient d'échouer, et ces bases
+    sont l'état dans lequel elle a échoué.
+    """
+
+    @staticmethod
+    def module():
+        import importlib.util
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        chemin = os.path.join(racine, "script", "database", "image_db.py")
+        spec = importlib.util.spec_from_file_location("image_db_banc", chemin)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_every_temporary_database_is_named(self):
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a", "tmp_b"], keep_database=False
+        )
+        texte = "\n".join(lignes)
+        self.assertIn("tmp_a", texte)
+        self.assertIn("tmp_b", texte)
+
+    def test_it_says_how_to_remove_them(self):
+        """Nommer sans dire comment retirer laisse chercher la commande."""
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a"], keep_database=False
+        )
+        self.assertTrue(any("--drop --database tmp_a" in l for l in lignes))
+
+    def test_it_offers_no_removal_when_the_run_asked_to_keep(self):
+        """Proposer d'effacer ce qu'on a demandé de garder se lit comme un
+        écran qui n'a pas suivi."""
+        lignes = self.module().nommer_les_bases_restantes(
+            ["tmp_a"], keep_database=True
+        )
+        self.assertTrue(any("tmp_a" in l for l in lignes))
+        self.assertEqual([], [l for l in lignes if "--drop" in l])
+
+    def test_no_temporary_database_says_nothing_at_all(self):
+        """Une ligne vide après un échec se lit comme un second défaut."""
+        self.assertEqual(
+            [], self.module().nommer_les_bases_restantes([], False)
+        )
+
+    def test_the_crash_path_goes_through_the_naming(self):
+        """Le contrôle porte sur le CHEMIN : sans lui, la fonction peut
+        être juste et n'être appelée par personne — c'est l'état d'où l'on
+        part."""
+        import inspect
+
+        corps = inspect.getsource(self.module().main)
+        self.assertIn("except SystemExit", corps)
+        self.assertIn("nommer_les_bases_restantes", corps)
+        self.assertIn("raise", corps)
+
+
+class TestLAideNOrdonnePasCeQueLeParserRefuse(unittest.TestCase):
+    """L'aide et le parser du même script se contredisaient.
+
+    La description était recopiée du script voisin, qui lit une
+    sauvegarde : elle ordonnait « Use --backup_path or --backup_name »,
+    et le parser rendait « unrecognized arguments » sur les deux. Le même
+    écran donnait l'ordre et le refus.
+
+    Le contrôle porte sur les DEUX scripts : celui qui avait la faute et
+    celui d'où elle venait. Une recopie se refait.
+    """
+
+    SCRIPTS = (
+        "script/database/get_repo_from_module.py",
+        "script/database/get_repo_from_backup.py",
+    )
+
+    @staticmethod
+    def racine():
+        return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    def lancer(self, script, *args):
+        import subprocess
+        import sys
+
+        return subprocess.run(
+            [sys.executable, os.path.join(self.racine(), script)] + list(args),
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=60,
+        )
+
+    def test_every_flag_the_help_names_is_accepted(self):
+        """L'épreuve TAPE le drapeau au lieu de lire la mise en page.
+
+        Comparer le corps de l'aide à la ligne « usage: » se heurte à sa
+        forme — « --help » n'y figure pas, il vit sous « options: ». Le
+        seul contrôle qui ne dépende d'aucune mise en page est de jouer
+        le drapeau et de regarder si l'analyseur le connaît.
+        """
+        import re
+
+        for script in self.SCRIPTS:
+            aide = self.lancer(script, "--help")
+            with self.subTest(script=script, etape="aide"):
+                self.assertEqual(0, aide.returncode)
+            for drapeau in sorted(
+                set(re.findall(r"--[a-z0-9_]+", aide.stdout))
+            ):
+                if drapeau == "--help":
+                    continue
+                vu = self.lancer(script, drapeau)
+                sortie = vu.stdout + vu.stderr
+                with self.subTest(script=script, drapeau=drapeau):
+                    # LE DRAPEAU LUI-MÊME, et non n'importe quel refus :
+                    # le script peut échouer pour une autre raison — un
+                    # fichier absent, une valeur attendue — et c'est hors
+                    # sujet. Lui donner une valeur au hasard fait d'ailleurs
+                    # de « x » un positionnel orphelin sur un drapeau
+                    # booléen, et c'est LUI que l'analyseur nomme alors.
+                    self.assertNotIn(
+                        f"unrecognized arguments: {drapeau}", sortie
+                    )
+
+    def test_the_only_useful_flag_is_required_and_says_so(self):
+        """Sans lui, le script mourait sur « 'NoneType' object has no
+        attribute 'split' » — une trace qui ne dit pas ce qui manque."""
+        vu = self.lancer("script/database/get_repo_from_module.py")
+        self.assertNotEqual(0, vu.returncode)
+        self.assertIn("--module", vu.stdout + vu.stderr)
+        self.assertNotIn("Traceback", vu.stdout + vu.stderr)
 
 
 class TestCompareDatabaseApplicationLogic(unittest.TestCase):
@@ -181,12 +325,20 @@ class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
             )
 
         mod.execute_shell = faux_shell
+        # LE CONTRÔLE D'EXERCICE EST NEUTRALISÉ ICI, et lui seul : sans base
+        # à interroger, il refuse tout, et le script s'arrête AVANT ce que
+        # cette classe tient — l'annonce de ce qui a vraiment été détruit.
+        # Ce que le contrôle refuse et pourquoi s'éprouve dans ses propres
+        # tests, avec une base sous la main.
+        mod._verdict = lambda _db, force=False: mod.drill_guard.DRILL
 
-        class Config:
-            database = ""
-            test_only = True
-
-        mod.get_config = lambda: Config()
+        # LA CONFIG VIENT DE L'ANALYSEUR D'OPTIONS, et non d'une classe qui
+        # recopie ses champs. Une option ajoutée à l'outil manquait au banc,
+        # et ces épreuves levaient AttributeError avant d'atteindre ce
+        # qu'elles tiennent — l'annonce de ce qui a été détruit.
+        with mock.patch.object(sys, "argv", ["db_drop_all.py", "--test_only"]):
+            config = mod.get_config()
+        mod.get_config = lambda: config
         sortie, erreur = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(sortie):
             with contextlib.redirect_stderr(erreur):

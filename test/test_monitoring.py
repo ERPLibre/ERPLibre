@@ -347,15 +347,15 @@ class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
 class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
     """Une liste de prix absente n'est un défaut que si on l'a demandée.
 
-    Mesuré : six utilisateurs étaient membres DIRECTS de
+    Des utilisateurs peuvent être membres DIRECTS de
     `product.group_product_pricelist` — hérité d'un palier de migration —
-    alors que `base.group_user` ne l'impliquait pas. La case des réglages
-    était donc décochée, et la réparation créait quand même une liste.
-    Odoo prévenait ensuite à chaque ouverture des réglages qu'il allait
-    l'archiver.
+    sans que `base.group_user` l'implique. La case des réglages est alors
+    décochée, et un contrôle qui s'en tient à l'appartenance directe
+    signale une liste manquante : la réparation en crée une, qu'Odoo
+    annonce ensuite archiver à chaque ouverture des réglages.
 
     `res.config.settings` lit ce que `base.group_user` IMPLIQUE ; le
-    contrôle pose désormais la même question.
+    contrôle pose la même question.
     """
 
     def _controle(self):
@@ -384,14 +384,13 @@ class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
 class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
     """Une réparation qui n'écoute pas son détecteur fabrique des doublons.
 
-    Mesuré sur une migration de bout en bout : la liste de prix avait
-    traversé les six paliers, PARTAGÉE entre sociétés (company_id vide).
-    `_activate_or_create_pricelists` ne compte pas une liste partagée
-    comme appartenant à la société — elle en a donc créé une seconde,
-    vide, à côté de celle du client.
+    Une liste de prix qui traverse les paliers PARTAGÉE entre sociétés
+    (company_id vide) n'est pas comptée par
+    `_activate_or_create_pricelists` comme appartenant à la société : il
+    en crée une seconde, vide, à côté de celle qui existe déjà.
 
-    Le détecteur `pricelist_missing`, lui, disait déjà « rien ne manque ».
-    Il fallait que la réparation le lui demande.
+    Le détecteur `pricelist_missing`, lui, dit « rien ne manque ». La
+    réparation le lui demande.
     """
 
     def _source(self):
@@ -667,7 +666,9 @@ class TestTheVerdictsSection(unittest.TestCase):
         )
 
     def test_a_plain_name_is_its_own_lineage(self):
-        self.assertEqual("copy_garance3", residue.famille("copy_garance3"))
+        self.assertEqual(
+            "copy_base_temoin3", residue.famille("copy_base_temoin3")
+        )
 
     def test_another_migration_verdicts_are_not_shown(self):
         # Deux migrations partagent le fichier. Attribuer l'échec de

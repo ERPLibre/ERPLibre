@@ -81,10 +81,9 @@ RE_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
 RE_CONTEXT = re.compile(r"\[view_id: (\d+),.*?parent_id: (\d+)\]")
 
 # « Template: website.submenu ». Une QWebException de RENDU ne porte pas le
-# bloc [view_id …] : elle nomme le gabarit. Mesuré au palier 17 — une copie
-# figée appelait `submenu.clean_url()`, méthode renommée `_clean_url()` dans
-# la version, et 34 URL sur 37 rendaient 500 sans que rien ne désigne la vue
-# fautive.
+# bloc [view_id …] : elle nomme le gabarit. Sans cette forme, une copie
+# figée qui appelle une méthode renommée par la version cible rend 500 sans
+# que rien ne désigne la vue fautive.
 RE_TEMPLATE = re.compile(r"^Template:\s*([\w.]+)\s*$", re.M)
 
 # Un port à part : la migration tourne souvent à côté d'une instance vivante,
@@ -134,8 +133,8 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
 
     Pas un tube : Python bufferise par blocs quand sa sortie n'est pas un
     terminal, et un fil de lecture court alors après des lignes qui n'ont
-    pas encore été écrites. Mesuré — 24 lignes vues sur 198, et la trace qui
-    nomme la vue fautive faisait partie des absentes. Un fichier se relit
+    pas encore été écrites. Il n'en voit qu'une fraction, et la trace qui
+    nomme la vue fautive fait partie des absentes. Un fichier se relit
     entièrement, quand on veut.
     """
     # Garder l'exécution PRÉCÉDENTE. Le journal était ouvert en « w » :
@@ -160,19 +159,19 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
             "--log-level=warn",
             # Deux lignes par requête, et elles portent le CHEMIN. Sans
             # elles une trace du journal ne peut être rattachée à rien :
-            # on l'attribuait à la dernière requête, qui n'était pas la
-            # sienne. Mesuré — /my accusé d'une panne appartenant à une
-            # application testée après lui.
+            # elle s'attribue à la dernière requête, qui n'est pas la
+            # sienne, et une URL se voit accuser d'une panne appartenant à
+            # une application testée après elle.
             "--log-handler=werkzeug:INFO",
         ],
         stdout=handle or subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
         text=True,
         # Son propre groupe de processus : « ./run.sh » est un script bash
-        # qui ne transmet rien à son enfant. Un terminate() sur lui tuait le
-        # script et laissait odoo-bin vivant, tenant le port. L'essai suivant
-        # démarrait alors un serveur qui ne pouvait pas se lier, et
-        # interrogeait sans le savoir CELUI D'AVANT — mesuré, deux fois.
+        # qui ne transmet rien à son enfant. Un terminate() sur lui tue le
+        # script et laisse odoo-bin vivant, tenant le port. L'essai suivant
+        # démarre alors un serveur qui ne peut pas se lier, et interroge
+        # sans le savoir CELUI D'AVANT.
         start_new_session=True,
     )
     server.erplibre_log = handle
@@ -277,10 +276,10 @@ def attach_missing_parents(lst_failure, lst_log):
     known = {pid for _u, _s, lst, _f in lst_failure for pid in lst}
     extra = []
     for line in lst_log:
-        # LES DEUX : le parent ET l'enfant. Mesuré sur /contactus — le
-        # parent était identique à sa vue module, et c'est l'ENFANT qui
-        # portait l'arch périmée. Ne proposer que le parent envoyait
-        # réinitialiser une copie qui allait déjà bien.
+        # LES DEUX : le parent ET l'enfant. Le parent peut être identique
+        # à sa vue module, et c'est alors l'ENFANT qui porte l'arch périmée.
+        # Ne proposer que le parent envoie réinitialiser une copie qui va
+        # déjà bien.
         for view_id, parent_id in RE_CONTEXT.findall(line):
             for candidate in (parent_id, view_id):
                 if candidate not in known and candidate not in extra:
@@ -584,9 +583,9 @@ def internal_phase(
     etat = smoke_internal_ui.user_state(database, login, run_psql=run_psql)
     if etat == "absent":
         # `required` dit que la migration a NEUTRALISÉ cette base : le
-        # compte devrait donc y être. Mesuré — il survit jusqu'au palier
-        # 15 puis disparaît, et la passe s'arrêtait sans bruit exactement
-        # là où une migration fait le plus de dégâts.
+        # compte devrait donc y être. Il survit jusqu'au palier 15 puis
+        # disparaît, et la passe s'arrêterait sans bruit exactement là où
+        # une migration fait le plus de dégâts.
         if required:
             return {
                 "skipped": t(
@@ -643,10 +642,9 @@ def run(
     """Démarrer, interroger, arrêter, LIRE, éventuellement corriger, revérifier.
 
     L'ordre porte tout le correctif : un serveur qui écrit dans un fichier
-    bufferise et ne vide qu'en s'arrêtant. Lire avant l'arrêt donnait
-    vingt-quatre lignes de démarrage et zéro trace — donc « aucune vue en
-    cause » sur des pages qui en nommaient une. Mesuré deux fois avant d'être
-    compris.
+    bufferise et ne vide qu'en s'arrêtant. Lire avant l'arrêt ne donne que
+    les lignes de démarrage et zéro trace — donc « aucune vue en cause » sur
+    des pages qui en nomment une.
     """
     import tempfile
 
