@@ -82,7 +82,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A virtual environment on an incompatible Python — `.venv.erplibre`, or Odoo's during `make install_odoo_*` — is DELETED and rebuilt; whatever was installed in it by hand goes with it. A directory without `pyvenv.cfg` is never deleted
 - `make` and `make todo` go through `install.sh`, which picks an interpreter able to READ the code before running it: `.venv.erplibre` on the right version, else a recent enough system `python3`, else the install. A system older than `conf/python-erplibre-version` would otherwise stop on a syntax error raised before any guard could name the command to type. TODO then relaunches itself in `.venv.erplibre`, or offers to run `install_erplibre.sh` in a terminal
 - The production Docker image builds `.venv.erplibre` on Odoo's Python and stops when that Python cannot parse `script/`
-- `make format_script` formats `script/` for `py313`, the newest target black 24.8.0 knows and one the 3.14.7 of the tooling runs; `black.sh` keeps `py37` for the addons, which Odoo 12 still needs
+- `make format` picks the formatter from each file's context: an Odoo module keeps isort and black on `py37`, the series still supported going down that far, while this repository's own tooling goes through ruff, configured once in `.ruff.toml`. ruff follows CPython's versions, where black 24.8.0 stops at `py313`, and its import sorting replaces isort; it is also what the OCA standard uses since it left black
+- The repositories that Google Repo checks out under `script/` are excluded from that formatting, a named path included: reformatting them would write in someone else's history. `target-version` stays at `py310` there, because the git hooks carry `#!/usr/bin/env python3` and a distribution still ships 3.10 — from 3.14 on, ruff would write `except A, B:` without parentheses
 
 ## Fixed
 

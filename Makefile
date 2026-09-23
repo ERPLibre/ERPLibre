@@ -234,17 +234,17 @@ format_code_generator_template:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
-# script/ ne tourne que sous le Python de conf/python-erplibre-version ;
-# black 24.8.0 ne connaît pas de cible au-delà de py313, et ce qu'il écrit là
-# tourne en 3.14. Les addons restent en py37, qu'Odoo 12 exige encore.
+# L'outillage passe par ruff, réglé une fois dans .ruff.toml, qui écarte les
+# dépôts rapatriés sous script/. Les addons gardent black : voir
+# script/maintenance/format_python.sh.
 .PHONY: format_script
 format_script:
-	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
-	EL_BLACK_TARGET=py313 ./script/maintenance/black.sh ./script/
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
+	.venv.erplibre/bin/ruff format ./script/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
-	.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
 
 #########
 #  log  #

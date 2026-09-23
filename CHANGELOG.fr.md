@@ -82,7 +82,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un environnement virtuel sur un Python incompatible — `.venv.erplibre`, ou celui d'Odoo lors d'un `make install_odoo_*` — est SUPPRIMÉ puis rebâti ; ce qu'on y avait posé à la main part avec lui. Un répertoire sans `pyvenv.cfg` n'est jamais effacé
 - `make` et `make todo` passent par `install.sh`, qui choisit un interpréteur capable de LIRE le code avant de le lancer : `.venv.erplibre` s'il porte la bonne version, sinon le `python3` du système s'il est assez récent, sinon l'installation. Un système plus ancien que `conf/python-erplibre-version` s'arrêterait autrement sur une erreur de syntaxe levée avant qu'aucun garde puisse nommer la commande à taper. TODO se relance ensuite dans `.venv.erplibre`, ou propose de lancer `install_erplibre.sh` en terminal
 - L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo et s'arrête quand ce Python ne sait pas lire `script/`
-- `make format_script` formate `script/` en `py313`, la cible la plus récente que connaisse black 24.8.0 et que le 3.14.7 de l'outillage exécute ; `black.sh` garde `py37` pour les addons, qu'Odoo 12 réclame encore
+- `make format` choisit le formateur d'après le contexte de chaque fichier : un module Odoo garde isort et black en `py37`, la série la plus ancienne encore supportée, quand l'outillage de ce dépôt passe par ruff, réglé une fois dans `.ruff.toml`. ruff suit les versions de CPython, là où black 24.8.0 s'arrête à `py313`, et son tri d'imports remplace isort ; c'est aussi ce qu'emploie la norme OCA depuis qu'elle a quitté black
+- Les dépôts que Google Repo rapatrie sous `script/` sont écartés de ce formatage, chemin nommé compris : les reformater écrirait dans l'historique d'autrui. `target-version` y reste à `py310`, parce que les hooks git portent `#!/usr/bin/env python3` et qu'une distribution livre encore 3.10 — à partir de 3.14, ruff écrirait `except A, B:` sans parenthèses
 
 ## Corrigé
 
