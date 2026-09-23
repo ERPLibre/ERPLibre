@@ -23,8 +23,14 @@ VOULUE="$(xargs < conf/python-erplibre-version 2> /dev/null)"
 ATTENDUE="${VOULUE%.*}"
 
 # Majeure.mineure de l'exécutable : elle seule décide de la grammaire acceptée.
+# Rien n'est rendu quand la sortie n'a pas la forme « Python X.Y… » : un
+# interpréteur en panne écrit son diagnostic, et le premier mot venu passerait
+# sinon pour un numéro de version que « sort -V » jugerait assez récent.
 el_mineure() {
-  "$1" -V 2>&1 | awk '{split($2, v, "."); print v[1] "." v[2]}'
+  "$1" -V 2>&1 | awk '$1 == "Python" {
+    split($2, v, ".")
+    if (v[1] ~ /^[0-9]+$/ && v[2] ~ /^[0-9]+$/) print v[1] "." v[2]
+  }'
 }
 
 # Vrai si la version lue atteint au moins celle attendue, comparée en version
@@ -39,6 +45,17 @@ PYTHON_VENV="./${VENV}/bin/python"
 if [ -n "${VENV}" ] && [ -x "${PYTHON_VENV}" ] \
   && el_assez_recent "$(el_mineure "${PYTHON_VENV}")"; then
   exec "${PYTHON_VENV}" ./script/todo/todo.py "$@"
+fi
+
+# Un venv dont l'interpréteur ne rend pas sa version ne démarrera pas
+# davantage TODO : c'est le cas d'un checkout monté depuis une autre machine,
+# dont le venv cherche sa bibliothèque standard là où elle n'est pas. Le dire,
+# et couper la relance de todo.py, qui sinon se remplacerait par ce python mort
+# et rendrait son pavé d'initialisation au lieu d'un message.
+if [ -x "${PYTHON_VENV}" ] && [ -z "$(el_mineure "${PYTHON_VENV}")" ]; then
+  echo "${PYTHON_VENV} ne demarre pas : ce venv a ete bati ailleurs."
+  echo "  Rebatissez-le ici : ./script/install/install_erplibre.sh"
+  export EL_TODO_VENV_RELAUNCHED=1
 fi
 
 if command -v python3 > /dev/null 2>&1 \

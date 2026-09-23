@@ -43,6 +43,23 @@ el_venv_defect() {
   fi
 }
 
+# Un checkout MONTÉ depuis une autre machine porte le venv de cette machine.
+# Son interpréteur ne démarre pas ici — un CPython précompilé cherche sa
+# bibliothèque standard sous le préfixe de sa construction —, ce qui le fait
+# passer pour défectueux. Le détruire effacerait, à travers le réseau,
+# l'installation de la machine à qui il appartient.
+# findmnt vient d'util-linux : absent ailleurs, le contrôle s'abstient plutôt
+# que de refuser à tort.
+el_venv_est_distant() {
+  local fs
+  command -v findmnt > /dev/null 2>&1 || return 1
+  fs="$(findmnt -n -o FSTYPE --target "$1" 2> /dev/null)"
+  case "${fs}" in
+    fuse* | sshfs | nfs* | cifs | smb*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 PYTHON_EXEC="$(el_python_exec "${PYTHON_VERSION}")"
 if [[ -z "${PYTHON_EXEC}" ]] || [[ ! -x "${PYTHON_EXEC}" ]]; then
   echo "Aucun interpreteur Python ${PYTHON_VERSION} n'a pu etre obtenu."
@@ -66,6 +83,13 @@ if [[ -d ${VENV_PATH} ]]; then
     if [[ ! -f "${VENV_PATH}/pyvenv.cfg" ]]; then
       echo "Refus de detruire ${VENV_PATH} : ce n'est pas un venv (${REASON})."
       echo "  Ecartez-le vous-meme, puis relancez."
+      exit 1
+    fi
+    if el_venv_est_distant "${VENV_PATH}"; then
+      echo "Refus de detruire ${VENV_PATH} : il est sur un systeme de"
+      echo "  fichiers monte a distance, donc il appartient a une autre"
+      echo "  machine (${REASON} vu d'ici)."
+      echo "  Installez SUR cette machine-la, pas au travers du montage."
       exit 1
     fi
     echo "DESTRUCTION de ${VENV_PATH} : ${REASON}."
