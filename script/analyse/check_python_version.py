@@ -2,11 +2,13 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Ce source parse-t-il sous le Python plancher de conf/python-erplibre-floor ?
+"""Ce source parse-t-il sous le Python de conf/python-erplibre-version ?
 
-Ni black ni flake8 ne voient une syntaxe plus récente que le plancher : elle
-ne casse qu'à l'import, sous l'ancien interpréteur. Un Python du plancher déjà
-installé compile les fichiers ; l'outil n'installe rien et sort en 0.
+Un fichier dont la syntaxe dépasse cet interpréteur ne casse qu'au chargement,
+et black ne le voit pas : sa cible borne ce qu'il ÉCRIT, jamais ce qu'il
+accepte. L'interpréteur courant compile les fichiers quand sa majeure.mineure
+convient, sinon un Python déjà installé le fait ; l'outil n'installe rien et
+sort en 0.
 """
 
 import argparse
@@ -19,7 +21,7 @@ import sys
 from subprocess import PIPE
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PLANCHER = os.path.join(RACINE, "conf", "python-erplibre-floor")
+VERSION = os.path.join(RACINE, "conf", "python-erplibre-version")
 EXCLU = re.compile(
     r"(^|/)(\.git|\.venv[^/]*|node_modules|\.repo|__pycache__|addons)/"
 )
@@ -31,7 +33,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
     t = str
 
 
-# Lu par l'interpréteur du PLANCHER : n'emploie que sa syntaxe.
+# Lu par l'interpréteur visé : n'emploie que de la syntaxe ancienne.
 SONDE = r"""
 import sys
 for nom in sys.argv[1:]:
@@ -53,19 +55,26 @@ def lance(cmd, **options):
     return fin.stdout if fin.returncode == 0 else ""
 
 
-def plancher():
-    """La première ligne ni vide ni commentée du fichier plancher, ou None."""
-    if not os.path.isfile(PLANCHER):
+def version_voulue():
+    """La première ligne ni vide ni commentée du fichier version, ou None."""
+    if not os.path.isfile(VERSION):
         return None
-    with open(PLANCHER, encoding="utf-8") as fh:
+    with open(VERSION, encoding="utf-8") as fh:
         lignes = [ligne.strip() for ligne in fh]
     return next((x for x in lignes if x and not x.startswith("#")), None)
 
 
 def interpreteur(version):
-    """Un python `version` déjà installé : mise, pyenv, puis le PATH."""
+    """Un python `version` déjà là : celui qui tourne, mise, pyenv, le PATH.
+
+    La majeure.mineure suffit : elle seule décide de la grammaire acceptée.
+    Lancé depuis .venv.erplibre, l'outil se prend donc lui-même et ne cherche
+    nulle part ailleurs."""
+    majeure_mineure = ".".join(version.split(".")[:2])
+    if ".".join(map(str, sys.version_info[:2])) == majeure_mineure:
+        return sys.executable
     if shutil.which("mise"):
-        # MISE_OFFLINE : résoudre « 3.10 » sans interroger le réseau.
+        # MISE_OFFLINE : résoudre la version sans interroger le réseau.
         env = dict(os.environ, MISE_OFFLINE="1")
         commande = ["mise", "where", "python@" + version]
         prefixe = lance(commande, env=env, stderr=subprocess.DEVNULL)
@@ -75,7 +84,9 @@ def interpreteur(version):
     pyenv = os.environ.get("PYENV_ROOT") or os.path.expanduser("~/.pyenv")
     motif = os.path.join(pyenv, "versions", version + "*", "bin", "python")
     trouves = sorted(p for p in glob.glob(motif) if os.access(p, os.X_OK))
-    return trouves[-1] if trouves else shutil.which("python" + version)
+    if trouves:
+        return trouves[-1]
+    return shutil.which("python" + majeure_mineure)
 
 
 def est_python(chemin):
@@ -108,7 +119,7 @@ def fichiers(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description=t("does this source parse under the floor Python")
+        description=t("does this source parse under the repository Python")
     )
     parser.add_argument("paths", nargs="*")
     parser.add_argument(
@@ -119,15 +130,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.staged and not args.paths:
         parser.error(t("give a path, or --staged"))
-    version = plancher()
+    version = version_voulue()
     if not version:
-        avis = t("no floor in conf/python-erplibre-floor: nothing checked")
+        avis = t("no conf/python-erplibre-version: nothing checked")
         print(avis, file=sys.stderr)
         return 0
     chemins = fichiers(args)
     exe = chemins and interpreteur(version)
     if chemins and not exe:
-        avis = t("floor not checked (no Python %s): mise install python@%s")
+        avis = t("not checked (no Python %s): mise install python@%s")
         print(avis % (version, version), file=sys.stderr)
     if not exe:
         return 0
@@ -139,7 +150,7 @@ def main(argv=None):
             print(nom)
         print(f"  🔴 {numero:>5}  {message}")
     if refuses:
-        bilan = t("%s file(s) refused by Python %s, the floor")
+        bilan = t("%s file(s) refused by Python %s")
         print("\n" + bilan % (refuses, version))
     return 0
 

@@ -61,8 +61,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le journal d'installation porte ce que l'hôte a décidé avant de lancer : l'autorité du cache de téléchargement posée ou refusée, l'exception, le miroir. Ces lignes se disaient sur une console qui défile, pendant que le fichier qu'on rouvre après un échec ne portait que le symptôme — sur un invité sans magasin de confiance, un certificat refusé, des centaines de dérivations à construire et six cents lignes d'erreurs, sans un mot sur la cause
 - Une entrée du cache de téléchargement s'oublie depuis le menu, sous « Âge et nettoyage ». Le binaire savait déjà le faire ; le menu n'offrait que les deux purges en gros, dont aucune ne vise un objet — « effacer ce qui n'a plus servi » n'atteint jamais celui que le service rajeunit chaque fois qu'il le rend, et « tout effacer » coûte le cache entier pour un fichier. `--detient` passe d'abord et fait l'aperçu : même ligne, même clé, sans rien modifier
 - `erplibre_go_qemu_cache --recle` range à nouveau les objets d'un cache sous la clé courante, sans rien retélécharger, et fond les copies qu'un miroir portait sous plusieurs chemins. Les objets écrits sous l'ancienne règle de clé restent sur le disque mais deviennent INTROUVABLES, si bien que le service les redemande à l'amont et que la place qu'ils tiennent ne sert plus personne : sur un magasin de 12 764 objets, 5 419 étaient dans ce cas — 9,11 Gio — et la fusion des doublons a rendu environ 3,37 Gio. Le service doit être arrêté, le corps étant renommé avant son méta, et `--dry-run` ne fait que compter ce qui bougerait. Un statut seul n'est pas touché, sa clé portant l'hôte et non le chemin
-- `conf/python-erplibre-floor` énonce le plancher de syntaxe de `script/`, `3.10`, distinct de l'interpréteur de `.venv.erplibre`. Les f-strings qui exigeaient Python 3.12 sont réécrites pour s'analyser sous ce plancher
-- Le hook `pre-commit` lance `check_python_floor.py` sur les fichiers indexés : il signale une syntaxe au-dessus du plancher sans bloquer le commit, et dit quand aucun interpréteur du plancher n'était là pour vérifier
+- Le hook `pre-commit` lance `check_python_version.py` sur les fichiers indexés : il signale le source qui ne parse pas sous le Python de `conf/python-erplibre-version`, sans bloquer le commit, et dit quand aucun interpréteur de cette version n'était là pour vérifier. Ni black ni flake8 ne voient ce défaut — la cible de black borne ce qu'il écrit, jamais ce qu'il accepte
 
 ## Modifié
 
@@ -83,7 +82,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un environnement virtuel sur un Python incompatible — `.venv.erplibre`, ou celui d'Odoo lors d'un `make install_odoo_*` — est SUPPRIMÉ puis rebâti ; ce qu'on y avait posé à la main part avec lui. Un répertoire sans `pyvenv.cfg` n'est jamais effacé
 - `make` et `make todo` relancent TODO dans `.venv.erplibre`. S'il manque, TODO propose de lancer `install_erplibre.sh` en terminal, ou affiche la commande
 - L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo et s'arrête quand ce Python ne sait pas lire `script/`
-- `make format_script` formate `script/` pour le plancher de syntaxe ; `black.sh` garde `py37` pour les addons
+- `make format_script` formate `script/` en `py313`, la cible la plus récente que connaisse black 24.8.0 et que le 3.14.7 de l'outillage exécute ; `black.sh` garde `py37` pour les addons, qu'Odoo 12 réclame encore
 
 ## Corrigé
 

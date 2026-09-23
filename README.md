@@ -45,8 +45,8 @@ Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 The Python in that table is the one of the Odoo virtual environment. The
 tooling virtual environment `.venv.erplibre` (TODO, `repo`, formatters) runs
-its own interpreter, **3.14.7**, set by `conf/python-erplibre-version`. The
-source code keeps a lower syntax floor, `conf/python-erplibre-floor` (**3.10**).
+its own interpreter, **3.14.7**, set by `conf/python-erplibre-version`. Where a
+distribution does not carry it, pyenv compiles it.
 
 
 # Supported platforms

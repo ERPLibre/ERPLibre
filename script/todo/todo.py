@@ -73,7 +73,7 @@ def _relaunch(marker):
 
 
 def _bootstrap():
-    # La relance passe avant le plancher : un python trop vieux avec un venv
+    # La relance passe avant la version : un python trop vieux avec un venv
     # sain doit relancer, pas refuser.
     relaunched = os.environ.get(RELAUNCH_ENV)
     if not relaunched and not _in_venv() and os.access(VENV_PYTHON, os.X_OK):
@@ -81,15 +81,18 @@ def _bootstrap():
             _relaunch("1")
         except OSError:
             pass
-    floor = _read_conf("python-erplibre-floor", "3.10")
+    voulue = _read_conf("python-erplibre-version", "3.14")
     missing = [m for m in REQUIRED_MODULES if not importlib.util.find_spec(m)]
-    if sys.version_info[:2] >= tuple(map(int, floor.split(".")[:2])):
+    if sys.version_info[:2] >= tuple(map(int, voulue.split(".")[:2])):
         if not missing:
             os.environ.pop(RELAUNCH_ENV, None)
             return
         reason = "missing modules: %s" % ", ".join(missing)
     else:
-        reason = "Python %s is older than %s" % (sys.version.split()[0], floor)
+        reason = "Python %s is older than %s" % (
+            sys.version.split()[0],
+            voulue,
+        )
     print("TODO cannot start from %s: %s." % (sys.executable, reason))
     print("Install the tools virtualenv %s with:" % VENV_ERPLIBRE)
     print("\n    %s\n" % INSTALL_CMD)

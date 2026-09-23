@@ -36,12 +36,12 @@ Un seul fichier décide : `script/install/lib_python_provider.sh`. mise n'est
 jamais installé automatiquement — `make install_mise` porte cette décision.
 Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
-## Les deux versions de Python
+## Le Python de l'outillage
 
-- `conf/python-erplibre-version` (3.14.7) : l'interpréteur de `.venv.erplibre`,
-  le venv d'outillage, distinct du venv Odoo (3.12.10 pour Odoo 18.0).
-- `conf/python-erplibre-floor` (3.10) : le plancher de SYNTAXE du code de
-  `script/`. Il ne suit pas l'interpréteur.
+`conf/python-erplibre-version` (3.14.7) donne l'interpréteur de
+`.venv.erplibre`, le venv d'outillage, distinct du venv Odoo (3.12.10 pour
+Odoo 18.0). C'est la seule version que `script/` vise : là où une distribution
+ne la porte pas, pyenv la compile.
 
 `install_erplibre.sh` passe par `install_venv.sh`, donc par
 `EL_PYTHON_PROVIDER`. Un venv dont `bin/python` n'est pas compatible (même
@@ -54,9 +54,9 @@ effacé.
 venv manque, il propose `install_erplibre.sh` en terminal, ou nomme la
 commande.
 
-Le hook `pre-commit` relaie `script/analyse/check_python_floor.py` : il signale
-une syntaxe au-dessus du plancher sans bloquer, et dit quand aucun Python du
-plancher n'était là pour vérifier.
+Le hook `pre-commit` relaie `script/analyse/check_python_version.py` : il
+signale le source qui ne parse pas sous cette version, sans bloquer, et dit
+quand aucun interpréteur de cette version n'était là pour vérifier.
 
 L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo de son
 image de base, et s'arrête si ce Python ne sait pas lire `script/`.

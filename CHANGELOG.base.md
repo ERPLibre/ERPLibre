@@ -81,8 +81,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The install log carries what the host decided before launching: the download cache authority placed or refused, the bypass, the mirror. Those lines were said on a console that scrolls away, while the file reopened after a failure held only the symptom — on a guest with no trust store, a refused certificate, hundreds of derivations to build and six hundred lines of errors, without a word on the cause
 - One entry of the download cache can be forgotten from the menu, under « Age and cleanup ». The binary could already do it; the menu offered only the two bulk purges, neither of which reaches a single object — « erase what has not served » never reaches one the service rejuvenates each time it serves it, and « erase everything » costs the whole cache for one file. `--detient` runs first and is the preview: same line, same key, nothing modified
 - `erplibre_go_qemu_cache --recle` stores a cache's objects again under the current key, without downloading anything, and merges the copies a mirror carried under several paths. Objects written under the former key rule stay on disk but become UNREACHABLE, so the service asks upstream for them again and the space they hold serves no one: on a store of 12 764 objects, 5 419 were in that case — 9.11 GiB — and merging the duplicates returned about 3.37 GiB. The service must be stopped, the body being renamed before its meta, and `--dry-run` only counts what would move. A status-only entry is left alone, its key carrying the host rather than the path
-- `conf/python-erplibre-floor` states the syntax floor of `script/`, `3.10`, distinct from the `.venv.erplibre` interpreter. The f-strings that needed Python 3.12 are rewritten to parse under it
-- The `pre-commit` hook runs `check_python_floor.py` on staged files: it reports a syntax above the floor without blocking the commit, and says when no floor interpreter was there to check
+- The `pre-commit` hook runs `check_python_version.py` on staged files: it reports source that does not parse under the Python of `conf/python-erplibre-version`, without blocking the commit, and says when no such interpreter was there to check. Neither black nor flake8 sees that fault — black's target bounds what it writes, never what it accepts
 
 <!-- [fr] -->
 
@@ -136,8 +135,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le journal d'installation porte ce que l'hôte a décidé avant de lancer : l'autorité du cache de téléchargement posée ou refusée, l'exception, le miroir. Ces lignes se disaient sur une console qui défile, pendant que le fichier qu'on rouvre après un échec ne portait que le symptôme — sur un invité sans magasin de confiance, un certificat refusé, des centaines de dérivations à construire et six cents lignes d'erreurs, sans un mot sur la cause
 - Une entrée du cache de téléchargement s'oublie depuis le menu, sous « Âge et nettoyage ». Le binaire savait déjà le faire ; le menu n'offrait que les deux purges en gros, dont aucune ne vise un objet — « effacer ce qui n'a plus servi » n'atteint jamais celui que le service rajeunit chaque fois qu'il le rend, et « tout effacer » coûte le cache entier pour un fichier. `--detient` passe d'abord et fait l'aperçu : même ligne, même clé, sans rien modifier
 - `erplibre_go_qemu_cache --recle` range à nouveau les objets d'un cache sous la clé courante, sans rien retélécharger, et fond les copies qu'un miroir portait sous plusieurs chemins. Les objets écrits sous l'ancienne règle de clé restent sur le disque mais deviennent INTROUVABLES, si bien que le service les redemande à l'amont et que la place qu'ils tiennent ne sert plus personne : sur un magasin de 12 764 objets, 5 419 étaient dans ce cas — 9,11 Gio — et la fusion des doublons a rendu environ 3,37 Gio. Le service doit être arrêté, le corps étant renommé avant son méta, et `--dry-run` ne fait que compter ce qui bougerait. Un statut seul n'est pas touché, sa clé portant l'hôte et non le chemin
-- `conf/python-erplibre-floor` énonce le plancher de syntaxe de `script/`, `3.10`, distinct de l'interpréteur de `.venv.erplibre`. Les f-strings qui exigeaient Python 3.12 sont réécrites pour s'analyser sous ce plancher
-- Le hook `pre-commit` lance `check_python_floor.py` sur les fichiers indexés : il signale une syntaxe au-dessus du plancher sans bloquer le commit, et dit quand aucun interpréteur du plancher n'était là pour vérifier
+- Le hook `pre-commit` lance `check_python_version.py` sur les fichiers indexés : il signale le source qui ne parse pas sous le Python de `conf/python-erplibre-version`, sans bloquer le commit, et dit quand aucun interpréteur de cette version n'était là pour vérifier. Ni black ni flake8 ne voient ce défaut — la cible de black borne ce qu'il écrit, jamais ce qu'il accepte
 
 <!-- [en] -->
 ## Changed
@@ -162,7 +160,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A virtual environment on an incompatible Python — `.venv.erplibre`, or Odoo's during `make install_odoo_*` — is DELETED and rebuilt; whatever was installed in it by hand goes with it. A directory without `pyvenv.cfg` is never deleted
 - `make` and `make todo` relaunch TODO in `.venv.erplibre`. When it is missing, TODO offers to run `install_erplibre.sh` in a terminal, or prints the command
 - The production Docker image builds `.venv.erplibre` on Odoo's Python and stops when that Python cannot parse `script/`
-- `make format_script` formats `script/` for the syntax floor; `black.sh` keeps `py37` for the addons
+- `make format_script` formats `script/` for `py313`, the newest target black 24.8.0 knows and one the 3.14.7 of the tooling runs; `black.sh` keeps `py37` for the addons, which Odoo 12 still needs
 
 <!-- [fr] -->
 
@@ -183,7 +181,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un environnement virtuel sur un Python incompatible — `.venv.erplibre`, ou celui d'Odoo lors d'un `make install_odoo_*` — est SUPPRIMÉ puis rebâti ; ce qu'on y avait posé à la main part avec lui. Un répertoire sans `pyvenv.cfg` n'est jamais effacé
 - `make` et `make todo` relancent TODO dans `.venv.erplibre`. S'il manque, TODO propose de lancer `install_erplibre.sh` en terminal, ou affiche la commande
 - L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo et s'arrête quand ce Python ne sait pas lire `script/`
-- `make format_script` formate `script/` pour le plancher de syntaxe ; `black.sh` garde `py37` pour les addons
+- `make format_script` formate `script/` en `py313`, la cible la plus récente que connaisse black 24.8.0 et que le 3.14.7 de l'outillage exécute ; `black.sh` garde `py37` pour les addons, qu'Odoo 12 réclame encore
 
 <!-- [en] -->
 ## Fixed

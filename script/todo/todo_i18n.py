@@ -9502,24 +9502,23 @@ TRANSLATIONS = {
         "fr": "donner un chemin, ou --staged",
         "en": "give a path, or --staged",
     },
-    # check_python_floor.py partage « only the files added to the git index »
-    # et « give a path, or --staged » avec check_comment_hygiene.py.
-    "does this source parse under the floor Python": {
-        "fr": "ce source parse-t-il sous le Python plancher",
-        "en": "does this source parse under the floor Python",
+    # check_python_version.py partage « only the files added to the git
+    # index » et « give a path, or --staged » avec check_comment_hygiene.py.
+    "does this source parse under the repository Python": {
+        "fr": "ce source parse-t-il sous le Python du dépôt",
+        "en": "does this source parse under the repository Python",
     },
-    "no floor in conf/python-erplibre-floor: nothing checked": {
-        "fr": "aucun plancher dans conf/python-erplibre-floor : rien vérifié",
-        "en": "no floor in conf/python-erplibre-floor: nothing checked",
+    "no conf/python-erplibre-version: nothing checked": {
+        "fr": "aucun conf/python-erplibre-version : rien vérifié",
+        "en": "no conf/python-erplibre-version: nothing checked",
     },
-    "floor not checked (no Python %s): mise install python@%s": {
-        "fr": "plancher NON vérifié (aucun Python %s ici) :"
-        " mise install python@%s",
-        "en": "floor not checked (no Python %s): mise install python@%s",
+    "not checked (no Python %s): mise install python@%s": {
+        "fr": "NON vérifié (aucun Python %s ici) : mise install python@%s",
+        "en": "not checked (no Python %s): mise install python@%s",
     },
-    "%s file(s) refused by Python %s, the floor": {
-        "fr": "%s fichier(s) refusé(s) par Python %s, le plancher",
-        "en": "%s file(s) refused by Python %s, the floor",
+    "%s file(s) refused by Python %s": {
+        "fr": "%s fichier(s) refusé(s) par Python %s",
+        "en": "%s file(s) refused by Python %s",
     },
     "unknown result": {
         "fr": "résultat inconnu",
@@ -13330,12 +13329,12 @@ TRANSLATIONS = {
         "en": "Which technology?",
     },
     "VPN - Create a profile from a site preset": {
-        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
-        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+        "fr": "\U0001f3db VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001f3db VPN - Create a profile from a site preset",
     },
     "VPN - Import an AnyConnect profile (.xml)": {
-        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
-        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+        "fr": "\U0001f4e5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001f4e5 VPN - Import an AnyConnect profile (.xml)",
     },
     "An AnyConnect profile usually sits in"
     " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {

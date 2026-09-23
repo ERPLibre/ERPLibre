@@ -7,8 +7,8 @@ Il INFORME et ne refuse jamais — le nettoyage se fait au fur et à mesure, sur
 les fichiers qu'on touche déjà, et non en une passe qui réécrirait le dépôt.
 Un hook qui bloquerait sur du style se ferait désinstaller la même semaine.
 
-Il relaie aussi check_python_floor.py, sans bloquer davantage : le source
-indexé qui ne parse plus sous le plancher de conf/python-erplibre-floor.
+Il relaie aussi check_python_version.py, sans bloquer davantage : le source
+indexé qui ne parse pas sous le Python de conf/python-erplibre-version.
 
 Installation :
 
@@ -18,7 +18,7 @@ Il sort toujours en 0. Pour l'interroger à la main, sur un fichier ou un
 répertoire :
 
     python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
-    python3 script/analyse/check_python_floor.py script/todo/todo.py
+    python3 script/analyse/check_python_version.py script/todo/todo.py
 """
 import subprocess
 import sys
@@ -26,7 +26,7 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[3]
 OUTIL = RACINE / "script" / "analyse" / "check_comment_hygiene.py"
-PLANCHER = RACINE / "script" / "analyse" / "check_python_floor.py"
+VERSION = RACINE / "script" / "analyse" / "check_python_version.py"
 
 # Au-delà, le rapport cesse d'être une invitation et devient un mur.
 PLAFOND = 12
@@ -81,13 +81,13 @@ def commentaires() -> int:
     return 0
 
 
-def plancher() -> None:
-    """Relaie les refus du plancher, ou l'avis d'un contrôle absent."""
-    if not PLANCHER.is_file():
+def syntaxe() -> None:
+    """Relaie les refus de syntaxe, ou l'avis d'un contrôle absent."""
+    if not VERSION.is_file():
         return
     try:
         sortie = subprocess.run(
-            [sys.executable, str(PLANCHER), "--staged"],
+            [sys.executable, str(VERSION), "--staged"],
             capture_output=True,
             text=True,
             cwd=str(RACINE),
@@ -101,7 +101,7 @@ def plancher() -> None:
     trop = len(lignes) - PLAFOND
     if trop > 0:
         lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
-    print("\n  ⓘ plancher de syntaxe Python\n", file=sys.stderr)
+    print("\n  ⓘ syntaxe Python du dépôt\n", file=sys.stderr)
     for ligne in lignes:
         print(f"   {ligne}", file=sys.stderr)
     print("\n  Le commit n'est PAS bloqué.\n", file=sys.stderr)
@@ -109,7 +109,7 @@ def plancher() -> None:
 
 def main() -> int:
     commentaires()
-    plancher()
+    syntaxe()
     return 0
 
 
