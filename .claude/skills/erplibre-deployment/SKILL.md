@@ -56,9 +56,14 @@ est HORS SERVICE : une simple différence de version le laisse en place, parce
 que le rebâtir refait une installation Poetry entière. Un répertoire sans
 `pyvenv.cfg` n'est jamais effacé.
 
+`make` / `make todo` hors venv : TODO se relance dans `.venv.erplibre` ; si le
+venv manque, il propose `install_erplibre.sh` en terminal, ou nomme la
+commande.
+
 Le hook `pre-commit` relaie `script/analyse/check_python_version.py` : il
 signale le source qui ne parse pas sous cette version, sans bloquer, et dit
 quand aucun interpréteur de cette version n'était là pour vérifier.
+
 L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo de son
 image de base, et s'arrête si ce Python ne sait pas lire `script/`.
 

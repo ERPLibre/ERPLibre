@@ -5,6 +5,7 @@
 import ast
 import configparser
 import datetime
+import importlib.util
 import inspect
 import json
 import logging
@@ -23,6 +24,98 @@ new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
 sys.path.append(new_path)
+
+
+# Garde d'amorçage, joué seulement quand todo.py est le programme lancé : il
+# relance dans le venv d'outillage, ou refuse avec le geste qui le bâtit, au
+# lieu d'une trace brute à l'import. Il parse sous 3.7 pour parler à un vieux
+# python. Messages en anglais hors t() : todo_i18n n'est pas encore importé.
+RELAUNCH_ENV = "EL_TODO_VENV_RELAUNCHED"
+# Modules tiers que charge l'import de ce fichier et de ses mixins : un seul
+# absent fait lever l'import, ou boucler crash_diagnostic. Ceux qu'un menu
+# n'importe qu'à l'usage n'y figurent pas, ils ne bloquent pas le démarrage.
+REQUIRED_MODULES = (
+    "click colorama dotenv humanize openai pykeepass urwid".split()
+)
+INSTALL_CMD = "./script/install/install_erplibre.sh"
+
+
+def _read_conf(name, fallback):
+    """Rend la première ligne non vide et non commentée de conf/<name>."""
+    try:
+        with open(os.path.join(new_path, "conf", name), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line
+    except (OSError, UnicodeDecodeError):
+        pass
+    sys.stderr.write("conf/%s unreadable, assuming %s\n" % (name, fallback))
+    return fallback
+
+
+VENV_ERPLIBRE = _read_conf("python-erplibre-venv", ".venv.erplibre")
+VENV_DIR = os.path.join(new_path, VENV_ERPLIBRE)
+VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python")
+
+
+def _in_venv():
+    # sys.prefix et non le binaire : <venv>/bin/python est un lien vers sa base.
+    return os.path.realpath(sys.prefix) == os.path.realpath(VENV_DIR)
+
+
+def _relaunch(marker):
+    """Remplace le processus par le python du venv ; OSError si impossible."""
+    env = dict(os.environ)
+    env[RELAUNCH_ENV] = marker
+    argv = [VENV_PYTHON, os.path.abspath(__file__)] + sys.argv[1:]
+    os.execve(VENV_PYTHON, argv, env)
+
+
+def _bootstrap():
+    # La relance passe avant la version : un python trop vieux avec un venv
+    # sain doit relancer, pas refuser.
+    relaunched = os.environ.get(RELAUNCH_ENV)
+    if not relaunched and not _in_venv() and os.access(VENV_PYTHON, os.X_OK):
+        try:
+            _relaunch("1")
+        except OSError:
+            pass
+    voulue = _read_conf("python-erplibre-version", "3.14")
+    missing = [m for m in REQUIRED_MODULES if not importlib.util.find_spec(m)]
+    if sys.version_info[:2] >= tuple(map(int, voulue.split(".")[:2])):
+        if not missing:
+            os.environ.pop(RELAUNCH_ENV, None)
+            return
+        reason = "missing modules: %s" % ", ".join(missing)
+    else:
+        reason = "Python %s is older than %s" % (
+            sys.version.split()[0],
+            voulue,
+        )
+    print("TODO cannot start from %s: %s." % (sys.executable, reason))
+    print("Install the tools virtualenv %s with:" % VENV_ERPLIBRE)
+    print("\n    %s\n" % INSTALL_CMD)
+    # Amorçage de « make » sur un clone neuf : proposer l'installation, une fois.
+    if relaunched != "installed" and os.isatty(0) and os.isatty(1):
+        try:
+            answer = input("Run it now? [y/o/N] ")
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer.strip().lower() in ("y", "yes", "o", "oui"):
+            if subprocess.call([INSTALL_CMD], cwd=new_path) != 0:
+                print("Installation failed, see above.")
+            else:
+                try:
+                    _relaunch("installed")
+                except OSError:
+                    print("Installed, but %s does not start." % VENV_PYTHON)
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    _bootstrap()
+
 
 from script.config import config_file
 from script.execute import execute
@@ -5601,6 +5694,8 @@ class TODO(
                 from pykeepass import PyKeePass
             except ImportError:
                 print("Rerun and exit")
+                if _in_venv():  # la relance tournerait dans ce même venv
+                    sys.exit(1)
                 self.execute.exec_command_live(cmd, source_erplibre=True)
                 sys.exit(1)
             print("No error")

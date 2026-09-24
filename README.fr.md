@@ -126,6 +126,19 @@ make
 ```
 
 
+`make` et `./install.sh` lancent TODO par l'interpréteur capable de le lire :
+`.venv.erplibre` quand il porte la bonne version, sinon le `python3` du système
+s'il est assez récent, sinon l'installation elle-même — un système plus ancien
+que `conf/python-erplibre-version` ne sait pas analyser le code, donc on va
+droit à l'installation plutôt que de s'arrêter sur une erreur de syntaxe. Quand
+l'environnement manque mais que le Python du système suffit, TODO propose de
+lancer `./script/install/install_erplibre.sh` (dans un terminal) ou affiche
+cette commande. L'installation bâtit l'environnement par
+`EL_PYTHON_PROVIDER` (mise ou pyenv) ; un `.venv.erplibre` existant sur une
+autre version de Python est SUPPRIMÉ puis rebâti, et ce qu'on y avait posé à la
+main part avec lui.
+
+
 ### Manuellement
 
 Sous Ubuntu, dépendance minimale :
