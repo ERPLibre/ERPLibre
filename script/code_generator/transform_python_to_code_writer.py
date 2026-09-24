@@ -645,7 +645,9 @@ def add_line(
                                                                         "with"
                                                                         f" cw.indent({4 + nb_space if nb_space else ''}):"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     cw.emit(
                                                                         f'cw.emit("{line}")'
                                                                     )
@@ -723,7 +725,9 @@ def add_line(
                                                                         f"with"
                                                                         f" cw.indent():"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     if (
                                                                         no_indent
                                                                         != init_no_intend
@@ -808,7 +812,9 @@ def add_line(
                                                                         f"with"
                                                                         f" cw.indent():"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     if (
                                                                         nb_indent
                                                                         - 1
@@ -902,7 +908,9 @@ def add_line(
                                                                         f"with"
                                                                         f" cw.indent():"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     if (
                                                                         nb_indent
                                                                         - 1
@@ -1007,7 +1015,9 @@ def add_line(
                                                                         f"with"
                                                                         f" cw.indent():"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     if (
                                                                         nb_indent
                                                                         - 1
@@ -1123,7 +1133,9 @@ def add_line(
                                                                         f"with"
                                                                         f" cw.indent():"
                                                                     )
-                                                                with cw.indent():
+                                                                with (
+                                                                    cw.indent()
+                                                                ):
                                                                     if (
                                                                         nb_indent
                                                                         - 1

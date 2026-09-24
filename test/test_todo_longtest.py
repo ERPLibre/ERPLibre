@@ -1223,11 +1223,14 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         vrai = builtins.input
         self.addCleanup(setattr, builtins, "input", vrai)
         demande = []
-        self.todo._pve_host = lambda ask=True: demande.append(ask) or {
-            "target": "root@10.0.0.5",
-            "jump": "",
-            "version": "9.2.11",
-        }
+        self.todo._pve_host = lambda ask=True: (
+            demande.append(ask)
+            or {
+                "target": "root@10.0.0.5",
+                "jump": "",
+                "version": "9.2.11",
+            }
+        )
         builtins.input = lambda _p="": "2"
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
             args = self.todo._longtest_depart("deep_proxmox.py")
@@ -1702,10 +1705,8 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         """Elles survivaient aux machines : des entrées mortes dont le
         ProxyJump désigne un hôte qui n'existe plus."""
         retires = []
-        moteur.retirer_alias = (
-            lambda rapport, journal=None, nom_base="": retires.append(
-                [e.get("alias") for e in rapport["etages"]]
-            )
+        moteur.retirer_alias = lambda rapport, journal=None, nom_base="": (
+            retires.append([e.get("alias") for e in rapport["etages"]])
         )
         self._lancer(etage1_ok=True)
         self.assertEqual(len(retires), 1)

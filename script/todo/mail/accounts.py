@@ -12,6 +12,7 @@ Les préréglages `gmail`, `outlook` et `icloud` supposent un MOT DE PASSE
 D'APPLICATION : l'authentification simple ne passe plus autrement chez ces
 fournisseurs. C'est la limite assumée de la phase 1 ; la phase 2 apporte OAuth.
 """
+
 from __future__ import annotations
 
 import json

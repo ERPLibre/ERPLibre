@@ -82,9 +82,10 @@ class TestNameRoundTrip(unittest.TestCase):
 
     def test_rolling_release_resolves_back_to_latest(self):
         todo = TODO()
-        with patch.object(
-            TODO, "_qemu_vm_arch", lambda self, name: "amd64"
-        ), patch.object(TODO, "_native_arch", staticmethod(lambda: "amd64")):
+        with (
+            patch.object(TODO, "_qemu_vm_arch", lambda self, name: "amd64"),
+            patch.object(TODO, "_native_arch", staticmethod(lambda: "amd64")),
+        ):
 
             class Catalogue:
                 DISTROS = {"arch": (["latest"], "latest")}

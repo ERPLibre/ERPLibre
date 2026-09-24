@@ -13,7 +13,6 @@ import sys
 import zipfile
 from uuid import uuid4
 
-
 from script.todo import (
     auto_ask,
     migration_status,
@@ -1196,8 +1195,8 @@ class TodoUpgrade:
             target_addons_path = dct_module.get("target_addons_path")
             source_addons_path = dct_module.get("source_addons_path")
             module_name = dct_module.get("module_name")
-            source_version_odoo = f'{dct_module.get("source_version_odoo")}.0'
-            target_version_odoo = f'{dct_module.get("target_version_odoo")}.0'
+            source_version_odoo = f"{dct_module.get('source_version_odoo')}.0"
+            target_version_odoo = f"{dct_module.get('target_version_odoo')}.0"
             source_module_path_to_copy = dct_module.get("source_module_path")
             # Prepare git environment for target
             if target_addons_path not in lst_path_git_clone_migrate:
@@ -1512,7 +1511,7 @@ class TodoUpgrade:
 
         for next_version in range_version:
             print(
-                f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version*10}-{(next_version+1)*10}.html"
+                f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version * 10}-{(next_version + 1) * 10}.html"
             )
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
@@ -2041,8 +2040,7 @@ class TodoUpgrade:
                 print(f"✅ -> {t('Clone done for Odoo')}{next_version}")
             else:
                 print(
-                    f"✅ -> {t('Clone already done for Odoo')}"
-                    f"{next_version}"
+                    f"✅ -> {t('Clone already done for Odoo')}{next_version}"
                 )
 
             option_comment += 1
@@ -2144,8 +2142,7 @@ class TodoUpgrade:
                 )
             else:
                 print(
-                    f"✅ -> {t('Switch already done for Odoo')}"
-                    f"{next_version}"
+                    f"✅ -> {t('Switch already done for Odoo')}{next_version}"
                 )
 
             lst_state_4_module_migrate_code = self.dct_progression.get(
@@ -2526,8 +2523,7 @@ class TodoUpgrade:
                 self.write_config()
 
                 print(
-                    f"✅ -> {t('Module upgrade done for Odoo')}"
-                    f"{next_version}"
+                    f"✅ -> {t('Module upgrade done for Odoo')}{next_version}"
                 )
             else:
                 print(
@@ -4047,8 +4043,7 @@ class TodoUpgrade:
         )
         if lst_detail:
             print(
-                f"✨ {t('Modules to uninstall before Odoo')}"
-                f"{next_version} :"
+                f"✨ {t('Modules to uninstall before Odoo')}{next_version} :"
             )
             self.print_uninstall_reason(lst_detail)
         return list(dict.fromkeys(list(extra) + lst_file))
@@ -4340,9 +4335,7 @@ class TodoUpgrade:
         # Clone a project for next version
         # Get actual branch
         cmd_git_clone_migrate_source = (
-            f"cd {source_addons_path} && "
-            f"git branch --show-current && "
-            f"cd ~-"
+            f"cd {source_addons_path} && git branch --show-current && cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source,
@@ -4408,9 +4401,7 @@ class TodoUpgrade:
         # TODO check config if path is added
         # Get remote branch address
         cmd_remote_address = (
-            f"cd {source_addons_path} "
-            f"&& git remote get-url {remote} "
-            f"&& cd ~-"
+            f"cd {source_addons_path} && git remote get-url {remote} && cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_remote_address,

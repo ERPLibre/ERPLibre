@@ -139,29 +139,23 @@ class RenderedFiles(unittest.TestCase):
         driver = _driver()
         runner = Runner(dry_run=False, quiet=True)
         module = "script.vpn.drivers.l2tp_ipsec"
-        with patch(
-            f"{module}.netlink_family_available", return_value=True
-        ), patch.object(
-            runner, "cmd", return_value=(0, "established successfully")
-        ), patch.object(
-            runner, "write", return_value=0
-        ), patch.object(
-            runner, "block", return_value=False
-        ), patch.object(
-            runner, "mkdir", return_value=0
-        ), patch(
-            "script.vpn.drivers.base.locate", return_value="/usr/bin/x"
-        ), patch(
-            f"{module}.locate", return_value=""
-        ), patch(
-            f"{module}.resolve", return_value="203.0.113.9"
-        ), patch(
-            f"{module}.ppp_interfaces", return_value=set()
-        ), patch(
-            f"{module}.wait_for_new_interface", return_value="ppp0"
-        ), patch(
-            f"{module}.wait_for_interface_address", return_value=[]
-        ) as attente:
+        with (
+            patch(f"{module}.netlink_family_available", return_value=True),
+            patch.object(
+                runner, "cmd", return_value=(0, "established successfully")
+            ),
+            patch.object(runner, "write", return_value=0),
+            patch.object(runner, "block", return_value=False),
+            patch.object(runner, "mkdir", return_value=0),
+            patch("script.vpn.drivers.base.locate", return_value="/usr/bin/x"),
+            patch(f"{module}.locate", return_value=""),
+            patch(f"{module}.resolve", return_value="203.0.113.9"),
+            patch(f"{module}.ppp_interfaces", return_value=set()),
+            patch(f"{module}.wait_for_new_interface", return_value="ppp0"),
+            patch(
+                f"{module}.wait_for_interface_address", return_value=[]
+            ) as attente,
+        ):
             self.assertFalse(driver.up(runner))
         attente.assert_called_once()
         self.assertTrue(
@@ -392,18 +386,20 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
         return runner
 
     TENU = (
-        "UNCONN 0 0 0.0.0.0:1701 0.0.0.0:*"
-        ' users:(("xl2tpd",pid=12314,fd=3))'
+        'UNCONN 0 0 0.0.0.0:1701 0.0.0.0:* users:(("xl2tpd",pid=12314,fd=3))'
     )
 
     def test_it_offers_to_stop_xl2tpd_then_carries_on(self):
         driver = _driver()
         # `ss` dit « tenu », puis « libre » après le correctif.
         runner = self._runner([self.TENU, ""])
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="o"
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o"),
         ):
             self.assertTrue(driver._l2tp_port_is_free(runner))
         self.assertFalse(runner.failures)
@@ -411,10 +407,13 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
     def test_a_refused_fix_leaves_the_failure_standing(self):
         driver = _driver()
         runner = self._runner([self.TENU])
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="n"
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="n"),
         ):
             self.assertFalse(driver._l2tp_port_is_free(runner))
         self.assertTrue(runner.failures)
@@ -424,10 +423,13 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
         c'est réglé."""
         driver = _driver()
         runner = self._runner([self.TENU, self.TENU])
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="o"
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o"),
         ):
             self.assertFalse(driver._l2tp_port_is_free(runner))
         self.assertTrue(runner.failures)
@@ -453,10 +455,13 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
             return 0, ""
 
         runner.cmd = cmd
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="o"
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o"),
         ):
             self.assertTrue(driver._l2tp_port_is_free(runner))
         self.assertFalse(runner.failures)
@@ -480,9 +485,13 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
             return 0, ""
 
         runner.cmd = cmd
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("builtins.input") as demande:
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("builtins.input") as demande,
+        ):
             self.assertFalse(driver._l2tp_port_is_free(runner))
         demande.assert_not_called()
         self.assertTrue(
@@ -499,11 +508,14 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
             ' users:(("un-autre-truc",pid=999,fd=3))'
         )
         runner = self._runner([autre])
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate", return_value="/usr/bin/ss"
-        ), patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="o"
-        ) as demande:
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o") as demande,
+        ):
             self.assertFalse(driver._l2tp_port_is_free(runner))
         demande.assert_not_called()
         self.assertTrue(runner.failures)
@@ -517,9 +529,11 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
         runner = Runner(dry_run=False, quiet=True)
         runner.cmd = lambda *a, **k: (0, "")
         sortie = io.StringIO()
-        with patch("sys.stdin.isatty", return_value=True), patch(
-            "builtins.input", return_value="o"
-        ) as demande, redirect_stdout(sortie):
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o") as demande,
+            redirect_stdout(sortie),
+        ):
             runner.propose("essai", "systemctl stop x", question="Arrêter ?")
         # Rien ne doit être confié au prompt d'`input` : c'est lui qui ne
         # porte pas de fin de ligne.
@@ -531,7 +545,7 @@ class WhenTheToolKnowsTheFixItOffersIt(unittest.TestCase):
         serait pire que le problème qu'il résout."""
         runner = Runner(dry_run=False, quiet=True)
         applique = []
-        runner.cmd = lambda *a, **k: (applique.append(a) or (0, ""))
+        runner.cmd = lambda *a, **k: applique.append(a) or (0, "")
         with patch("sys.stdin.isatty", return_value=False):
             self.assertFalse(
                 runner.propose("essai", "systemctl stop quelque-chose")
@@ -787,15 +801,18 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
     def test_a_kernel_without_any_module_tree_is_not_stale(self):
         """Un noyau compilé sans modules n'a rien à redémarrer : le
         déclarer périmé enverrait redémarrer pour rien."""
-        with patch("os.path.isdir", return_value=False), patch(
-            "os.listdir", return_value=[]
+        with (
+            patch("os.path.isdir", return_value=False),
+            patch("os.listdir", return_value=[]),
         ):
             self.assertEqual(base.stale_kernel(), "")
 
     def test_the_running_tree_gone_while_another_stands_is_stale(self):
-        with patch("os.path.isdir", return_value=False), patch(
-            "os.listdir", return_value=["1.2.3-neuf"]
-        ), patch("platform.release", return_value="1.2.2-vieux"):
+        with (
+            patch("os.path.isdir", return_value=False),
+            patch("os.listdir", return_value=["1.2.3-neuf"]),
+            patch("platform.release", return_value="1.2.2-vieux"),
+        ):
             self.assertEqual(base.stale_kernel(), "1.2.2-vieux")
 
     def test_a_present_tree_is_never_stale(self):
@@ -849,9 +866,11 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
         runner.cmd = lambda label, command, **k: (
             lancees.append(command) or (0, "")
         )
-        with self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"), patch(
-            "sys.stdin.isatty", return_value=True
-        ), patch("builtins.input", return_value="o"):
+        with (
+            self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o"),
+        ):
             self.assertTrue(driver.propose_reboot(runner))
         self.assertEqual(lancees, ["systemctl reboot"])
 
@@ -862,8 +881,9 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
         runner.cmd = lambda label, command, **k: (
             lancees.append(command) or (0, "")
         )
-        with self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"), patch(
-            "sys.stdin.isatty", return_value=False
+        with (
+            self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"),
+            patch("sys.stdin.isatty", return_value=False),
         ):
             self.assertFalse(driver.propose_reboot(runner))
         self.assertEqual(lancees, [])
@@ -871,9 +891,10 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
     def test_nothing_reboots_on_a_dry_run(self):
         driver = _driver()
         runner = _dry_runner(driver)
-        with self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"), patch(
-            "builtins.input"
-        ) as demande:
+        with (
+            self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"),
+            patch("builtins.input") as demande,
+        ):
             self.assertFalse(driver.propose_reboot(runner))
         demande.assert_not_called()
 
@@ -883,9 +904,11 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
         driver = _driver()
         runner = Runner(dry_run=False, quiet=True)
         runner.cmd = lambda label, command, **k: (0, "")
-        with self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"), patch(
-            "sys.stdin.isatty", return_value=True
-        ), patch("builtins.input", return_value="o"):
+        with (
+            self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"),
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="o"),
+        ):
             self.assertFalse(driver.ensure_ready(runner))
         self.assertTrue(runner.failures)
 
@@ -895,8 +918,9 @@ class WhatTheKernelGivesAndWhatOnlyARebootGivesBack(unittest.TestCase):
         configuration de quelqu'un a été touchée pour rien."""
         driver = _driver()
         runner = Runner(dry_run=False, quiet=True)
-        with self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"), patch(
-            "sys.stdin.isatty", return_value=False
+        with (
+            self._kernel(driver, (self.ABSENT,), "1.2.2-vieux"),
+            patch("sys.stdin.isatty", return_value=False),
         ):
             self.assertFalse(driver.up(runner))
         touches = [

@@ -103,20 +103,26 @@ class TestGetLang(unittest.TestCase):
                 os.unlink(f.name)
 
     def test_env_variable_fallback(self):
-        with patch.object(
-            todo_i18n,
-            "ENV_VAR_FILE",
-            "/nonexistent/path",
-        ), patch.dict(os.environ, {"EL_LANG": "en"}):
+        with (
+            patch.object(
+                todo_i18n,
+                "ENV_VAR_FILE",
+                "/nonexistent/path",
+            ),
+            patch.dict(os.environ, {"EL_LANG": "en"}),
+        ):
             result = todo_i18n.get_lang()
         self.assertEqual(result, "en")
 
     def test_default_is_fr(self):
-        with patch.object(
-            todo_i18n,
-            "ENV_VAR_FILE",
-            "/nonexistent/path",
-        ), patch.dict(os.environ, {}, clear=True):
+        with (
+            patch.object(
+                todo_i18n,
+                "ENV_VAR_FILE",
+                "/nonexistent/path",
+            ),
+            patch.dict(os.environ, {}, clear=True),
+        ):
             result = todo_i18n.get_lang()
         self.assertEqual(result, "fr")
 
@@ -127,9 +133,10 @@ class TestGetLang(unittest.TestCase):
             f.write('EL_LANG="de"\n')
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ), patch.dict(os.environ, {}, clear=True):
+                with (
+                    patch.object(todo_i18n, "ENV_VAR_FILE", f.name),
+                    patch.dict(os.environ, {}, clear=True),
+                ):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "fr")
             finally:

@@ -55,8 +55,9 @@ class PropositionEffacement(unittest.TestCase):
 
         self.todo._qemu_orphan_disks = faux_orphans
         self.todo._cleanup_delete_files = effacer
-        with mock.patch("builtins.input", lambda *a: next(it, "")), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch("builtins.input", lambda *a: next(it, "")),
+            mock.patch("builtins.print"),
         ):
             ok = self.todo._qemu_offer_orphan_removal(["vm-a", "vm-b"])
         return ok, self.efface
@@ -80,8 +81,9 @@ class PropositionEffacement(unittest.TestCase):
             for n in names
             if n == "vm-a"
         ]
-        with mock.patch("builtins.input", return_value="n"), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch("builtins.input", return_value="n"),
+            mock.patch("builtins.print"),
         ):
             self.assertFalse(
                 self.todo._qemu_offer_orphan_removal(["vm-a", "vm-b"])
@@ -93,8 +95,9 @@ class PropositionEffacement(unittest.TestCase):
             for n in names
             if n == "vm-a"
         ]
-        with mock.patch("builtins.input", return_value="o"), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch("builtins.input", return_value="o"),
+            mock.patch("builtins.print"),
         ):
             self.assertTrue(self.todo._qemu_offer_orphan_removal(["vm-a"]))
 
@@ -110,8 +113,9 @@ class PropositionEffacement(unittest.TestCase):
             self.todo._cleanup_delete_files = lambda t_, items, p: vus.extend(
                 items
             )
-            with mock.patch("builtins.input", return_value="n"), mock.patch(
-                "builtins.print"
+            with (
+                mock.patch("builtins.input", return_value="n"),
+                mock.patch("builtins.print"),
             ):
                 self.todo._qemu_offer_orphan_removal(["vm-a"])
             self.assertEqual([(4096, chemin)], vus)
@@ -122,8 +126,9 @@ class PropositionEffacement(unittest.TestCase):
         self.todo._cleanup_delete_files = lambda t_, items, p: vus.extend(
             items
         )
-        with mock.patch("builtins.input", return_value="n"), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch("builtins.input", return_value="n"),
+            mock.patch("builtins.print"),
         ):
             self.todo._qemu_offer_orphan_removal(["vm-a"])
         self.assertEqual([(0, "/nulle/part")], vus)

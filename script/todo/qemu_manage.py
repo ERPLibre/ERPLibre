@@ -16,12 +16,13 @@ from script.todo import ssh_config, todo_install
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
+)
+from script.todo.qemu_privilege import (
     sudo_prefix,
     system_path,
     virsh_argv,
 )
 from script.todo.todo_i18n import t
-
 
 # Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
 # standard ils sont en 0644 dans un répertoire en 0755, donc lisibles sans
@@ -1682,10 +1683,7 @@ class QemuManageMixin:
         # Arrêt gracieux trop long : proposer un arrêt forcé.
         if self._is_yes(
             input(
-                t(
-                    "Graceful shutdown timed out. Force off (destroy)? "
-                    "(y/N): "
-                )
+                t("Graceful shutdown timed out. Force off (destroy)? (y/N): ")
             )
         ):
             cmd = (
@@ -2029,10 +2027,7 @@ class QemuManageMixin:
         print(f"⚠  {t('Not enough free space for a full backup.')}")
         return self._is_yes(
             input(
-                t(
-                    "Back up anyway, at the risk of filling the disk?"
-                    " (y/N): "
-                )
+                t("Back up anyway, at the risk of filling the disk? (y/N): ")
             )
         )
 
@@ -2684,9 +2679,7 @@ class QemuManageMixin:
         if proteges:
             print(f"\n{t('Kept (still attached to a VM):')}")
             for size, path, porteur in sorted(proteges, key=lambda o: -o[0]):
-                print(
-                    f"  {self._human_size(size):>9}  {path}" f"  ← {porteur}"
-                )
+                print(f"  {self._human_size(size):>9}  {path}  ← {porteur}")
         if orphans:
             total = sum(o[0] for o in orphans)
             print(f"\n{t('Orphan files:')}")
@@ -3171,9 +3164,8 @@ class QemuManageMixin:
         `timeout` : délai max PAR VM (borne l'attente d'une VM sans IP). Un
         BATTEMENT toutes les 30 s liste les VM encore en attente -> jamais de
         silence prolongé qui donne l'impression d'un blocage."""
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         from concurrent.futures import TimeoutError as _FTimeout
-        from concurrent.futures import as_completed
 
         labels = labels or {}
         print(

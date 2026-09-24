@@ -7,19 +7,19 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from script.version.update_env_version import (
-    Update,
-    remove_dot_path,
-    die,
-    ERPLIBRE_TEMPLATE_VERSION,
-    VENV_TEMPLATE_FILE,
-    MANIFEST_TEMPLATE_FILE,
-    PYPROJECT_TEMPLATE_FILE,
-    POETRY_LOCK_TEMPLATE_FILE,
     ADDONS_TEMPLATE_FILE,
+    ERPLIBRE_TEMPLATE_VERSION,
+    MANIFEST_TEMPLATE_FILE,
     ODOO_TEMPLATE_FILE,
+    POETRY_LOCK_TEMPLATE_FILE,
+    PYPROJECT_TEMPLATE_FILE,
+    VENV_TEMPLATE_FILE,
+    Update,
+    die,
+    remove_dot_path,
 )
 
 
@@ -204,18 +204,23 @@ class TestUpdateDetectVersion(unittest.TestCase):
             f.write("18.0")
         with open(poetry_file, "w") as f:
             f.write("2.1.3")
-        with patch(
-            "script.version.update_env_version.VERSION_PYTHON_FILE",
-            py_file,
-        ), patch(
-            "script.version.update_env_version.VERSION_ODOO_FILE",
-            odoo_file,
-        ), patch(
-            "script.version.update_env_version.VERSION_POETRY_FILE",
-            poetry_file,
-        ), patch(
-            "script.version.update_env_version.INSTALLED_ODOO_VERSION_FILE",
-            os.path.join(tmpdir, "nonexist"),
+        with (
+            patch(
+                "script.version.update_env_version.VERSION_PYTHON_FILE",
+                py_file,
+            ),
+            patch(
+                "script.version.update_env_version.VERSION_ODOO_FILE",
+                odoo_file,
+            ),
+            patch(
+                "script.version.update_env_version.VERSION_POETRY_FILE",
+                poetry_file,
+            ),
+            patch(
+                "script.version.update_env_version.INSTALLED_ODOO_VERSION_FILE",
+                os.path.join(tmpdir, "nonexist"),
+            ),
         ):
             result = update.detect_version()
         self.assertTrue(result)

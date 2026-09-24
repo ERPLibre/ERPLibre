@@ -235,8 +235,7 @@ class DatabaseManager:
             )
 
         commande = (
-            f"python3 ./script/database/db_duplicate.py"
-            f" -s {source} -d {cible}"
+            f"python3 ./script/database/db_duplicate.py -s {source} -d {cible}"
         )
         if neutraliser:
             commande += " --neutralize"
@@ -392,8 +391,7 @@ class DatabaseManager:
             with zipfile.ZipFile(default_output_path, "r") as zip_ref:
                 manifest_file_1 = zip_ref.open("manifest.json")
             _logger.info(
-                f"Log file '{default_output_path}' is complete"
-                " and validated."
+                f"Log file '{default_output_path}' is complete and validated."
             )
         except Exception as e:
             _logger.error(e)

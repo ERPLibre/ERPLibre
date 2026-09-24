@@ -320,10 +320,8 @@ class TestTheDriverUsesIt(unittest.TestCase):
     def test_the_full_screen_path_still_captures_nothing(self):
         # C'est sa raison d'être : un plein écran derrière un tube
         # renonce et retombe sur son rapport texte.
-        import inspect
-
         import ast
-
+        import inspect
         import textwrap
 
         arbre = ast.parse(

@@ -756,8 +756,7 @@ class Descente:
             )
         else:
             self.dire(
-                f"  profondeur atteinte : {atteint}"
-                f" / {self.plan['demandee']}"
+                f"  profondeur atteinte : {atteint} / {self.plan['demandee']}"
             )
             # Deux causes très différentes rendaient le même « 5 / 10 » : la
             # machine trop petite pour dix, ou un étage tombé en route. La
@@ -1099,7 +1098,8 @@ def a_defaire(rapport, nom_base=""):
     etages = [
         e
         for e in (rapport.get("etages") or [])
-        if identite_de(e) and e.get("parent_alias")
+        if identite_de(e)
+        and e.get("parent_alias")
         # « cree » est le seul champ qui dise que la machine est à NOUS. Les
         # deux autres conditions ne protégeaient que par accident : elles
         # tenaient parce que rien ne décrivait un hôte emprunté. Depuis qu'une

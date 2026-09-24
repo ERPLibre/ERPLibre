@@ -530,8 +530,8 @@ class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
 
         app = await self._mounted_app(self._FakeIMAPTransport())
         orig_connect, orig_send = smtp_send_mod.connect, smtp_send_mod.send
-        smtp_send_mod.connect = (
-            lambda account, password: self._FakeSMTPTransport()
+        smtp_send_mod.connect = lambda account, password: (
+            self._FakeSMTPTransport()
         )
 
         def boom(account, msg, transport):
@@ -568,8 +568,8 @@ class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
         imap_transport = self._FakeIMAPTransport()
         app = await self._mounted_app(imap_transport)
         orig_connect, orig_send = smtp_send_mod.connect, smtp_send_mod.send
-        smtp_send_mod.connect = (
-            lambda account, password: self._FakeSMTPTransport()
+        smtp_send_mod.connect = lambda account, password: (
+            self._FakeSMTPTransport()
         )
         smtp_send_mod.send = lambda account, msg, transport: [
             "dest@example.com"
@@ -637,8 +637,8 @@ class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
             return ["dest@example.com"]
 
         orig_connect, orig_send = smtp_send_mod.connect, smtp_send_mod.send
-        smtp_send_mod.connect = (
-            lambda account, password: self._FakeSMTPTransport()
+        smtp_send_mod.connect = lambda account, password: (
+            self._FakeSMTPTransport()
         )
         smtp_send_mod.send = capture_send
         try:
@@ -803,9 +803,10 @@ class TestBrowseFilesButton(TestComposeScreenMounted):
         async with app.run_test() as pilot:
             await pilot.press("c")
             await pilot.pause()
-            with patch.object(
-                type(app), "suspend", fake_suspend
-            ), patch.object(browser_mod, "FileBrowser", FakeFileBrowser):
+            with (
+                patch.object(type(app), "suspend", fake_suspend),
+                patch.object(browser_mod, "FileBrowser", FakeFileBrowser),
+            ):
                 app.screen.query_one("#browse_files", Button).press()
                 await pilot.pause()
 

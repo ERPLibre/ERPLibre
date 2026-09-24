@@ -66,24 +66,21 @@ class SetupHostReboot(unittest.TestCase):
             questions.append(texte)
             return reponse
 
-        with mock.patch.object(DQ, "ensure_tools"), mock.patch.object(
-            DQ, "ensure_libvirt_service"
-        ), mock.patch.object(
-            DQ, "ensure_libvirt_group", return_value=True
-        ), mock.patch.object(
-            DQ, "ensure_ssh_key"
-        ), mock.patch.object(
-            DQ, "ensure_network"
-        ), mock.patch.object(
-            DQ, "kernel_modules_stale", return_value=NOYAU_PERIME
-        ), mock.patch.object(
-            DQ, "libvirt_ready", return_value=True
-        ), mock.patch.object(
-            DQ, "network_state", return_value=(False, True)
-        ), mock.patch.object(
-            DQ, "schedule_reboot", side_effect=lambda r: reboots.append(r)
-        ), mock.patch.object(
-            DQ, "prompt_yes_no", side_effect=question
+        with (
+            mock.patch.object(DQ, "ensure_tools"),
+            mock.patch.object(DQ, "ensure_libvirt_service"),
+            mock.patch.object(DQ, "ensure_libvirt_group", return_value=True),
+            mock.patch.object(DQ, "ensure_ssh_key"),
+            mock.patch.object(DQ, "ensure_network"),
+            mock.patch.object(
+                DQ, "kernel_modules_stale", return_value=NOYAU_PERIME
+            ),
+            mock.patch.object(DQ, "libvirt_ready", return_value=True),
+            mock.patch.object(DQ, "network_state", return_value=(False, True)),
+            mock.patch.object(
+                DQ, "schedule_reboot", side_effect=lambda r: reboots.append(r)
+            ),
+            mock.patch.object(DQ, "prompt_yes_no", side_effect=question),
         ):
             with redirect_stdout(io.StringIO()):
                 try:

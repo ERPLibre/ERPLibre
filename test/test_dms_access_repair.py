@@ -158,8 +158,8 @@ class TestTheVersionGuard(unittest.TestCase):
         self.vraie = database_cleanup.require_matching_version
         self.vrai_shell = database_cleanup.run_shell
         self.appels = []
-        database_cleanup.run_shell = (
-            lambda *a, **k: self.appels.append(a) or {}
+        database_cleanup.run_shell = lambda *a, **k: (
+            self.appels.append(a) or {}
         )
 
     def tearDown(self):

@@ -21,7 +21,7 @@ class TestEditText(unittest.TestCase):
 
     def test_updates_image_after_erplibre(self):
         path = self._write_compose(
-            "services:\n" "  ERPLibre:\n" "    image: old:1.0\n" "    ports:\n"
+            "services:\n  ERPLibre:\n    image: old:1.0\n    ports:\n"
         )
         config = SimpleNamespace(
             docker_compose_file=path,

@@ -187,8 +187,7 @@ class TestWhatItRefusesToTouch(Base):
         self.assertEqual(
             "r",
             self.lire(
-                "SELECT relkind FROM pg_class"
-                " WHERE relname = 'account_root'"
+                "SELECT relkind FROM pg_class WHERE relname = 'account_root'"
             ),
         )
 

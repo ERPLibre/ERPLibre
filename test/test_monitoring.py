@@ -28,8 +28,10 @@ REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, REPO)
 
 from script.analyse import check_migration_residue as residue  # noqa: E402
-from script.analyse import monitoring  # noqa: E402
-from script.analyse import monitoring_tui  # noqa: E402
+from script.analyse import (
+    monitoring,  # noqa: E402
+    monitoring_tui,  # noqa: E402
+)
 
 
 class TestWhatTheProxyRefuses(unittest.TestCase):

@@ -143,13 +143,14 @@ class LExtraction(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.lances = []
         self.todo.execute = mock.MagicMock()
-        self.todo.execute.exec_command_live.side_effect = (
-            lambda cmd, **k: self.lances.append(cmd) or 0
+        self.todo.execute.exec_command_live.side_effect = lambda cmd, **k: (
+            self.lances.append(cmd) or 0
         )
 
     def test_copy_out_names_both_ends(self):
-        with mock.patch.object(qr.os, "makedirs"), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch.object(qr.os, "makedirs"),
+            mock.patch("builtins.print"),
         ):
             ok = self.todo._qemu_recover_copy_out(
                 DISQUE, "/dev/sda3", "/home/erplibre", "/tmp/vm-a-backup"
@@ -163,9 +164,12 @@ class LExtraction(unittest.TestCase):
     def test_an_uncreatable_destination_stops_before_running(self):
         """guestfish s'arrêterait sur une erreur qui ne dit pas laquelle des
         deux extrémités manque."""
-        with mock.patch.object(
-            qr.os, "makedirs", side_effect=OSError("lecture seule")
-        ), mock.patch("builtins.print"):
+        with (
+            mock.patch.object(
+                qr.os, "makedirs", side_effect=OSError("lecture seule")
+            ),
+            mock.patch("builtins.print"),
+        ):
             ok = self.todo._qemu_recover_copy_out(
                 DISQUE, "/dev/sda3", "/home", "/interdit"
             )
@@ -178,8 +182,8 @@ class LesDiagnostics(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.lances = []
         self.todo.execute = mock.MagicMock()
-        self.todo.execute.exec_command_live.side_effect = (
-            lambda cmd, **k: self.lances.append(cmd) or 0
+        self.todo.execute.exec_command_live.side_effect = lambda cmd, **k: (
+            self.lances.append(cmd) or 0
         )
 
     def test_the_four_probes_answer_four_questions(self):
@@ -227,17 +231,21 @@ class LeMenu(unittest.TestCase):
         # Le numéro se DÉDUIT du menu : l'entrée de config est la dernière
         # des entrées numérotées. L'écrire en dur ferait passer le test au
         # premier réarrangement de sections, sans rien prouver.
-        with m.patch("script.todo.qemu_menu.click") as click, m.patch.object(
-            todo, "_qemu_ensure_tools", return_value=True
-        ), m.patch("builtins.print"):
+        with (
+            m.patch("script.todo.qemu_menu.click") as click,
+            m.patch.object(todo, "_qemu_ensure_tools", return_value=True),
+            m.patch("builtins.print"),
+        ):
             click.prompt.side_effect = ["0"]
             todo.prompt_execute_qemu()
             aide = click.prompt.call_args[0][0]
         numeros = re.findall(r"^\[(\d+)\]", aide, re.M)
         dernier = max(int(n) for n in numeros)
-        with m.patch("script.todo.qemu_menu.click") as click, m.patch.object(
-            todo, "_qemu_ensure_tools", return_value=True
-        ), m.patch("builtins.print"):
+        with (
+            m.patch("script.todo.qemu_menu.click") as click,
+            m.patch.object(todo, "_qemu_ensure_tools", return_value=True),
+            m.patch("builtins.print"),
+        ):
             click.prompt.side_effect = [str(dernier), "0"]
             todo.prompt_execute_qemu()
         self.assertEqual(1, len(lancees), lancees)

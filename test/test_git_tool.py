@@ -203,9 +203,7 @@ class TestStrInsert(unittest.TestCase):
 class TestGetProjectConfig(unittest.TestCase):
     def test_reads_github_token(self):
         content = (
-            "#!/bin/bash\n"
-            'EL_GITHUB_TOKEN="my_token_123"\n'
-            'OTHER_VAR="value"\n'
+            '#!/bin/bash\nEL_GITHUB_TOKEN="my_token_123"\nOTHER_VAR="value"\n'
         )
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".sh", delete=False, dir="/tmp"

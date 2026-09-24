@@ -273,8 +273,7 @@ class LeComplementApresClone(unittest.TestCase):
         garde-fou, sans le moindre message."""
         cmd = self._cmd()
         self.assertIn(
-            "git -C $HOME/git/erplibre config core.hooksPath"
-            " script/git/hooks",
+            "git -C $HOME/git/erplibre config core.hooksPath script/git/hooks",
             cmd,
         )
 

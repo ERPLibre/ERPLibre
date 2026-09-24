@@ -10,6 +10,7 @@ de demander l'information, mais doivent appeler exactement le même code une
 fois qu'ils l'ont : sinon les deux copies dérivent. Ce module ne connaît ni
 `input`, ni Textual, ni aucune bibliothèque d'interface.
 """
+
 from __future__ import annotations
 
 import os

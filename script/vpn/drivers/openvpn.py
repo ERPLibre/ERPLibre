@@ -26,6 +26,7 @@ Le tunnel scindé se demande à OpenVPN par `--route-nopull` : ignorer les
 routes poussées, puis poser les nôtres. C'est un gros marteau — il ignore
 aussi le DNS poussé — et le pilote le dit quand il le prend.
 """
+
 from __future__ import annotations
 
 import os

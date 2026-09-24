@@ -54,12 +54,14 @@ class FailureOutput(unittest.TestCase):
             stdout = sortie
             stderr = ""
 
-        with mock.patch(
-            "script.todo.qemu_deploy.subprocess.run", return_value=Res()
-        ), mock.patch.object(
-            self.todo, "_fmt_dur", return_value="1s"
-        ), mock.patch.object(
-            self.todo, "_qemu_save_failure_log", return_value="/tmp/x.log"
+        with (
+            mock.patch(
+                "script.todo.qemu_deploy.subprocess.run", return_value=Res()
+            ),
+            mock.patch.object(self.todo, "_fmt_dur", return_value="1s"),
+            mock.patch.object(
+                self.todo, "_qemu_save_failure_log", return_value="/tmp/x.log"
+            ),
         ):
             buf = io.StringIO()
             with redirect_stdout(buf):

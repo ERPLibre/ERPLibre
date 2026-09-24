@@ -118,14 +118,19 @@ class TestGetOdooVersion(unittest.TestCase):
             with open(odoo_version_file, "w") as f:
                 f.write("18.0")
 
-            with patch(
-                "script.todo.version_manager.VERSION_DATA_FILE", version_file
-            ), patch(
-                "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
-                os.path.join(tmpdir, "nonexistent.txt"),
-            ), patch(
-                "script.todo.version_manager.ODOO_VERSION_FILE",
-                odoo_version_file,
+            with (
+                patch(
+                    "script.todo.version_manager.VERSION_DATA_FILE",
+                    version_file,
+                ),
+                patch(
+                    "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
+                    os.path.join(tmpdir, "nonexistent.txt"),
+                ),
+                patch(
+                    "script.todo.version_manager.ODOO_VERSION_FILE",
+                    odoo_version_file,
+                ),
             ):
                 versions, installed, odoo_current = get_odoo_version()
 
@@ -154,14 +159,19 @@ class TestGetOdooVersion(unittest.TestCase):
             with open(installed_file, "w") as f:
                 f.write("odoo18.0\nodoo16.0\n")
 
-            with patch(
-                "script.todo.version_manager.VERSION_DATA_FILE", version_file
-            ), patch(
-                "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
-                installed_file,
-            ), patch(
-                "script.todo.version_manager.ODOO_VERSION_FILE",
-                os.path.join(tmpdir, "nonexistent"),
+            with (
+                patch(
+                    "script.todo.version_manager.VERSION_DATA_FILE",
+                    version_file,
+                ),
+                patch(
+                    "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
+                    installed_file,
+                ),
+                patch(
+                    "script.todo.version_manager.ODOO_VERSION_FILE",
+                    os.path.join(tmpdir, "nonexistent"),
+                ),
             ):
                 versions, installed, odoo_current = get_odoo_version()
 
@@ -387,12 +397,11 @@ class TestTestMenuDispatch(unittest.TestCase):
 
     def _choose(self, entry):
         todo = TODO()
-        with patch.object(
-            todo, "execute_unit_tests"
-        ) as mock_run, patch.object(todo, "execute_test_module"), patch(
-            "click.prompt", side_effect=[entry, "0"]
-        ), patch(
-            "builtins.print"
+        with (
+            patch.object(todo, "execute_unit_tests") as mock_run,
+            patch.object(todo, "execute_test_module"),
+            patch("click.prompt", side_effect=[entry, "0"]),
+            patch("builtins.print"),
         ):
             todo.prompt_execute_test()
         return mock_run
@@ -457,12 +466,12 @@ class TestSetupClaudeCommit(unittest.TestCase):
 
     def test_existing_file_and_refusal_writes_nothing(self):
         todo = TODO()
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.input", return_value="n"
-        ), patch("builtins.open") as mock_open, patch(
-            "os.makedirs"
-        ) as mock_makedirs, patch(
-            "builtins.print"
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.input", return_value="n"),
+            patch("builtins.open") as mock_open,
+            patch("os.makedirs") as mock_makedirs,
+            patch("builtins.print"),
         ):
             todo._setup_claude_command(
                 "commit", "template_claude_commands_commit.md"
@@ -477,12 +486,12 @@ class TestSetupClaudeCommit(unittest.TestCase):
         """Le pendant : sans lui, la méthode pourrait ne JAMAIS écrire et
         le test ci-dessus resterait vert."""
         todo = TODO()
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.input", return_value="y"
-        ), patch("builtins.open", mock_open(read_data="gabarit")), patch(
-            "os.makedirs"
-        ) as mock_makedirs, patch(
-            "builtins.print"
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.input", return_value="y"),
+            patch("builtins.open", mock_open(read_data="gabarit")),
+            patch("os.makedirs") as mock_makedirs,
+            patch("builtins.print"),
         ):
             todo._setup_claude_command(
                 "commit", "template_claude_commands_commit.md"
@@ -571,8 +580,9 @@ class TestClaudePlugins(unittest.TestCase):
     def test_absent_binary_reports_without_executing(self):
         todo = TODO()
         todo.execute = MagicMock()
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "builtins.print"
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("builtins.print"),
         ):
             self.assertEqual(todo._claude_plugin_exec("list"), 1)
             self.assertEqual(
@@ -614,22 +624,25 @@ class TestClaudePlugins(unittest.TestCase):
 
     def test_refusing_the_preferred_list_installs_nothing(self):
         todo = TODO()
-        with patch("builtins.input", return_value="n"), patch.object(
-            todo, "_claude_plugin_exec"
-        ) as mock_exec, patch("builtins.print"):
+        with (
+            patch("builtins.input", return_value="n"),
+            patch.object(todo, "_claude_plugin_exec") as mock_exec,
+            patch("builtins.print"),
+        ):
             todo._claude_install_preferred_plugins()
         mock_exec.assert_not_called()
 
     def test_accepting_installs_only_what_is_missing(self):
         todo = TODO()
-        with patch("builtins.input", return_value="y"), patch.object(
-            todo, "_claude_plugin_exec"
-        ) as mock_exec, patch.object(
-            todo,
-            "_claude_plugin_is_installed",
-            side_effect=lambda name: name == "pyright-lsp",
-        ), patch(
-            "builtins.print"
+        with (
+            patch("builtins.input", return_value="y"),
+            patch.object(todo, "_claude_plugin_exec") as mock_exec,
+            patch.object(
+                todo,
+                "_claude_plugin_is_installed",
+                side_effect=lambda name: name == "pyright-lsp",
+            ),
+            patch("builtins.print"),
         ):
             todo._claude_install_preferred_plugins()
         called = [call.args[0] for call in mock_exec.call_args_list]
@@ -648,7 +661,7 @@ class TestClaudePlugins(unittest.TestCase):
         todo = TODO()
         with tempfile.TemporaryDirectory() as tmp:
             for name, body in (
-                ("good", '{"plugins":[{"name":"a",' '"description":"d"}]}'),
+                ("good", '{"plugins":[{"name":"a","description":"d"}]}'),
                 ("broken", "{not json"),
             ):
                 folder = os.path.join(tmp, name, ".claude-plugin")
@@ -674,11 +687,13 @@ class TestClaudePlugins(unittest.TestCase):
             ("pyright-lsp", "official", "Python language server"),
             ("mongodb", "official", "Document database"),
         ]
-        with patch.object(
-            todo, "_claude_marketplace_catalog", return_value=catalog
-        ), patch("builtins.input", return_value="python"), patch(
-            "builtins.print"
-        ) as mock_print:
+        with (
+            patch.object(
+                todo, "_claude_marketplace_catalog", return_value=catalog
+            ),
+            patch("builtins.input", return_value="python"),
+            patch("builtins.print") as mock_print,
+        ):
             todo._claude_plugin_search()
         printed = " ".join(
             str(call.args[0]) for call in mock_print.call_args_list

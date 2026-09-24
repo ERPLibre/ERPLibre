@@ -80,24 +80,24 @@ class TestAddAccountRollsBack(unittest.TestCase):
 
         vault = MagicMock()
         vault.available_backends.return_value = ["kdbx"]
-        with patch.object(
-            menu, "secret_store_for", return_value=vault
-        ), patch.object(
-            menu.mail_accounts, "save", side_effect=OSError("disque plein")
-        ), patch.object(
-            menu, "_load_accounts", return_value=[]
-        ), patch(
-            "builtins.input",
-            side_effect=[
-                "perso",
-                "moi@x.ca",
-                "",
-                "4",
-                "imap.x.ca",
-                "smtp.x.ca",
-            ],
-        ), patch(
-            "getpass.getpass", return_value="hunter2"
+        with (
+            patch.object(menu, "secret_store_for", return_value=vault),
+            patch.object(
+                menu.mail_accounts, "save", side_effect=OSError("disque plein")
+            ),
+            patch.object(menu, "_load_accounts", return_value=[]),
+            patch(
+                "builtins.input",
+                side_effect=[
+                    "perso",
+                    "moi@x.ca",
+                    "",
+                    "4",
+                    "imap.x.ca",
+                    "smtp.x.ca",
+                ],
+            ),
+            patch("getpass.getpass", return_value="hunter2"),
         ):
             menu._add_account(MagicMock())
 
@@ -111,24 +111,24 @@ class TestAddAccountRollsBack(unittest.TestCase):
 
         vault = MagicMock()
         vault.available_backends.return_value = ["kdbx"]
-        with patch.object(
-            menu, "secret_store_for", return_value=vault
-        ), patch.object(
-            menu.mail_accounts, "save", side_effect=OSError("disque plein")
-        ), patch.object(
-            menu, "_load_accounts", return_value=[]
-        ), patch(
-            "builtins.input",
-            side_effect=[
-                "perso",
-                "moi@x.ca",
-                "",
-                "4",
-                "imap.x.ca",
-                "smtp.x.ca",
-            ],
-        ), patch(
-            "getpass.getpass", return_value="hunter2"
+        with (
+            patch.object(menu, "secret_store_for", return_value=vault),
+            patch.object(
+                menu.mail_accounts, "save", side_effect=OSError("disque plein")
+            ),
+            patch.object(menu, "_load_accounts", return_value=[]),
+            patch(
+                "builtins.input",
+                side_effect=[
+                    "perso",
+                    "moi@x.ca",
+                    "",
+                    "4",
+                    "imap.x.ca",
+                    "smtp.x.ca",
+                ],
+            ),
+            patch("getpass.getpass", return_value="hunter2"),
         ):
             menu._add_account(MagicMock())  # ne doit pas lever
 
@@ -144,9 +144,13 @@ class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
         import script.todo.mail.menu as menu
 
         todo = MagicMock()
-        with patch.object(menu, "_load_accounts", return_value=[]), patch(
-            "script.todo.mail.tui.open_sessions", return_value=[]
-        ) as mock_open, patch("script.todo.mail.tui.run_tui") as mock_run:
+        with (
+            patch.object(menu, "_load_accounts", return_value=[]),
+            patch(
+                "script.todo.mail.tui.open_sessions", return_value=[]
+            ) as mock_open,
+            patch("script.todo.mail.tui.run_tui") as mock_run,
+        ):
             menu._open_tui(todo)
 
         mock_open.assert_called_once()
@@ -161,13 +165,12 @@ class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
 
         todo = MagicMock()
         secrets = MagicMock()
-        with patch.object(
-            menu, "_load_accounts", return_value=[]
-        ), patch.object(menu, "secret_store_for", return_value=secrets), patch(
-            "script.todo.mail.tui.open_sessions", return_value=[]
-        ), patch(
-            "script.todo.mail.tui.run_tui"
-        ) as mock_run:
+        with (
+            patch.object(menu, "_load_accounts", return_value=[]),
+            patch.object(menu, "secret_store_for", return_value=secrets),
+            patch("script.todo.mail.tui.open_sessions", return_value=[]),
+            patch("script.todo.mail.tui.run_tui") as mock_run,
+        ):
             menu._open_tui(todo)
 
         _, kwargs = mock_run.call_args
@@ -205,13 +208,13 @@ class TestSyncNowSurfacesResync(unittest.TestCase):
                 pass
 
         buf = io.StringIO()
-        with patch.object(
-            menu, "_load_accounts", return_value=[account]
-        ), patch(
-            "script.todo.mail.tui.open_sessions",
-            return_value=[FakeSession()],
-        ), redirect_stdout(
-            buf
+        with (
+            patch.object(menu, "_load_accounts", return_value=[account]),
+            patch(
+                "script.todo.mail.tui.open_sessions",
+                return_value=[FakeSession()],
+            ),
+            redirect_stdout(buf),
         ):
             menu._sync_now(MagicMock())
 
@@ -369,10 +372,10 @@ class TestCacheSizeAndPurge(unittest.TestCase):
             ref, value
         )
 
-        with patch.object(
-            menu, "_load_accounts", return_value=[account]
-        ), patch.object(menu, "secret_store_for", return_value=secrets), patch(
-            "builtins.input", side_effect=["1", "o"]
+        with (
+            patch.object(menu, "_load_accounts", return_value=[account]),
+            patch.object(menu, "secret_store_for", return_value=secrets),
+            patch("builtins.input", side_effect=["1", "o"]),
         ):
             menu._cache_size_and_purge(MagicMock())  # ne doit pas lever
 
@@ -386,12 +389,10 @@ class TestCacheSizeAndPurge(unittest.TestCase):
         store.root.mkdir(parents=True, exist_ok=True)
         (store.root / "cache.db").write_bytes(b"pas une base sqlite" * 50)
 
-        with patch.object(
-            menu, "_load_accounts", return_value=[account]
-        ), patch.object(
-            menu, "secret_store_for", return_value=MagicMock()
-        ), patch(
-            "builtins.input", side_effect=["1", "o"]
+        with (
+            patch.object(menu, "_load_accounts", return_value=[account]),
+            patch.object(menu, "secret_store_for", return_value=MagicMock()),
+            patch("builtins.input", side_effect=["1", "o"]),
         ):
             menu._cache_size_and_purge(MagicMock())  # ne doit pas lever
 
@@ -469,9 +470,10 @@ class TestEnsureKdbx(unittest.TestCase):
         import script.todo.mail.menu as menu
 
         kdbx_path = os.path.join(self.tmp.name, "new.kdbx")
-        with mock_patch(
-            "builtins.input", side_effect=["1", kdbx_path]
-        ), mock_patch("getpass.getpass", side_effect=["hunter2", "hunter2"]):
+        with (
+            mock_patch("builtins.input", side_effect=["1", kdbx_path]),
+            mock_patch("getpass.getpass", side_effect=["hunter2", "hunter2"]),
+        ):
             result = menu._ensure_kdbx(self.todo)
         self.assertTrue(result)
         self.assertTrue(os.path.isfile(kdbx_path))
@@ -486,10 +488,11 @@ class TestEnsureKdbx(unittest.TestCase):
         import script.todo.mail.menu as menu
 
         kdbx_path = os.path.join(self.tmp.name, "new.kdbx")
-        with mock_patch(
-            "builtins.input", side_effect=["1", kdbx_path]
-        ), mock_patch(
-            "getpass.getpass", side_effect=["hunter2", "somethingelse"]
+        with (
+            mock_patch("builtins.input", side_effect=["1", kdbx_path]),
+            mock_patch(
+                "getpass.getpass", side_effect=["hunter2", "somethingelse"]
+            ),
         ):
             result = menu._ensure_kdbx(self.todo)
         self.assertFalse(result)
@@ -537,9 +540,10 @@ class TestEnsureKdbx(unittest.TestCase):
 
         import script.todo.mail.menu as menu
 
-        with mock_patch.object(
-            menu.mail_accounts, "save"
-        ) as mock_save, mock_patch("builtins.input", side_effect=["0"]):
+        with (
+            mock_patch.object(menu.mail_accounts, "save") as mock_save,
+            mock_patch("builtins.input", side_effect=["0"]),
+        ):
             menu._add_account(self.todo)
         mock_save.assert_not_called()
         # Le squelette du vrai `todo.json` donne "" (pas None) tant que
@@ -609,14 +613,11 @@ class TestTodoWiring(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_assistant_llm"
-        ) as mock_question, patch(
-            "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch(
-            "click.prompt", side_effect=["1", "0"]
-        ), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch.object(TODO, "prompt_assistant_llm") as mock_question,
+            patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
+            patch("click.prompt", side_effect=["1", "0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_assistant()
 
@@ -631,14 +632,11 @@ class TestTodoWiring(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_assistant_llm"
-        ) as mock_question, patch(
-            "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch(
-            "script.todo.todo_telemetry.record"
-        ), patch(
-            "click.prompt", side_effect=["2", "0"]
+        with (
+            patch.object(TODO, "prompt_assistant_llm") as mock_question,
+            patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
+            patch("script.todo.todo_telemetry.record"),
+            patch("click.prompt", side_effect=["2", "0"]),
         ):
             todo.prompt_assistant()
 
@@ -674,10 +672,13 @@ class TestRetryPassword(unittest.TestCase):
         from script.todo.mail.menu import retry_password
 
         vues = []
-        with patch(
-            "getpass.getpass", side_effect=lambda p="": vues.append(p) or ""
-        ), patch("script.todo.mail.menu.secret_store_for"), patch(
-            "builtins.print"
+        with (
+            patch(
+                "getpass.getpass",
+                side_effect=lambda p="": vues.append(p) or "",
+            ),
+            patch("script.todo.mail.menu.secret_store_for"),
+            patch("builtins.print"),
         ):
             retry_password(
                 self._todo(),
@@ -742,11 +743,13 @@ class TestRetryPassword(unittest.TestCase):
 
         compte = account_from_preset("essai", "a@x.ca", preset_key)
         vues = []
-        with patch("getpass.getpass", return_value=""), patch(
-            "script.todo.mail.menu.secret_store_for"
-        ), patch(
-            "builtins.print",
-            side_effect=lambda *a: vues.append(" ".join(map(str, a))),
+        with (
+            patch("getpass.getpass", return_value=""),
+            patch("script.todo.mail.menu.secret_store_for"),
+            patch(
+                "builtins.print",
+                side_effect=lambda *a: vues.append(" ".join(map(str, a))),
+            ),
         ):
             retry_password(
                 self._todo(),
@@ -782,9 +785,10 @@ class TestRetryPassword(unittest.TestCase):
             def logout(self):
                 pass
 
-        with patch("getpass.getpass", return_value="bon"), patch(
-            "script.todo.mail.menu.secret_store_for"
-        ) as store:
+        with (
+            patch("getpass.getpass", return_value="bon"),
+            patch("script.todo.mail.menu.secret_store_for") as store,
+        ):
             store.return_value.set.side_effect = self.vault.__setitem__
             ok = retry_password(
                 self._todo(),
@@ -802,9 +806,10 @@ class TestRetryPassword(unittest.TestCase):
         def refuse(account, password):
             raise OSError("530 refus")
 
-        with patch("getpass.getpass", return_value="faux"), patch(
-            "script.todo.mail.menu.secret_store_for"
-        ) as store:
+        with (
+            patch("getpass.getpass", return_value="faux"),
+            patch("script.todo.mail.menu.secret_store_for") as store,
+        ):
             store.return_value.set.side_effect = self.vault.__setitem__
             ok = retry_password(
                 self._todo(), self.account, attempts=2, connect_fn=refuse

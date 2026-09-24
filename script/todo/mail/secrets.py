@@ -16,6 +16,7 @@ Référence de secret : "<coffre>:<chemin>"
     kdbx:ERPLibre/Mail/perso/cache-key    -> ... entrée cache-key
     keyring:perso                         -> service "erplibre-mail", user perso
 """
+
 from __future__ import annotations
 
 import logging

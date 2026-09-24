@@ -33,6 +33,7 @@ d'où une échelle qui teste `is_loopback` d'abord, `is_private` ensuite. Et
 ne résout pas se lit comme `global`, la lecture pessimiste, jamais comme
 satisfait.
 """
+
 from __future__ import annotations
 
 import ipaddress

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-import xmlrpc.client
 import sys
+import xmlrpc.client
+
 import click
 
 

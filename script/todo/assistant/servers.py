@@ -26,6 +26,7 @@ dernier contact, ni rapport de balayage, ni résultat négatif. La liste de qui
 a répondu parmi les 254 adresses d'un /24 décrit des machines que personne
 n'a désignées, là où un serveur retenu en désigne une seule, volontairement.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace

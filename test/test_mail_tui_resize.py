@@ -9,6 +9,7 @@ réellement posé sur les widgets, la persistance, la non-perturbation des
 autres dispositions — n'a de sens que sur l'application montée pour de
 vrai.
 """
+
 import os
 import tempfile
 import unittest

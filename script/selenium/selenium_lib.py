@@ -1116,8 +1116,10 @@ class SeleniumLib(object):
         self.driver.refresh()
         if wait_ready:
             WebDriverWait(self.driver, 15).until(
-                lambda d: d.execute_script("return document.readyState")
-                == "complete"
+                lambda d: (
+                    d.execute_script("return document.readyState")
+                    == "complete"
+                )
             )
 
     def check_bot_chat_and_close(self):
@@ -1824,10 +1826,13 @@ class SeleniumLib(object):
                 )
             )
             WebDriverWait(driver, 10).until(
-                lambda d: picker.find_element(
-                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_header_part"
-                ).text
-                != header_txt
+                lambda d: (
+                    picker.find_element(
+                        By.CSS_SELECTOR,
+                        ".o_datetime_picker_header .o_header_part",
+                    ).text
+                    != header_txt
+                )
             )
         else:
             raise RuntimeError(

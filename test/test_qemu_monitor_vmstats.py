@@ -319,16 +319,20 @@ class TestEcranMonte(unittest.IsolatedAsyncioTestCase):
     async def _monte(self, taille=(150, 24)):
         from textual.widgets import DataTable, Static
 
-        with mock.patch.object(
-            mon, "read_domstats", lambda: self.stats
-        ), mock.patch.object(
-            mon, "arm_balloon", lambda names: None
-        ), mock.patch.object(
-            mon,
-            "virsh_domstates",
-            lambda: {MIGRATION: "running", "erplibre-ubuntu-2604": "running"},
-        ), mock.patch.object(
-            mon, "_port_open", lambda ip, port=8069, timeout=0.5: False
+        with (
+            mock.patch.object(mon, "read_domstats", lambda: self.stats),
+            mock.patch.object(mon, "arm_balloon", lambda names: None),
+            mock.patch.object(
+                mon,
+                "virsh_domstates",
+                lambda: {
+                    MIGRATION: "running",
+                    "erplibre-ubuntu-2604": "running",
+                },
+            ),
+            mock.patch.object(
+                mon, "_port_open", lambda ip, port=8069, timeout=0.5: False
+            ),
         ):
             app = mon.run_monitor(str(self.manifest), run_app=False)
             async with app.run_test(size=taille) as pilot:

@@ -10,6 +10,7 @@ reproduit exactement la plainte qui justifie son existence (« j'ai une
 erreur, mais aucun log »). Chaque état — absent, vide, illisible, aucune
 erreur de session — doit se dire en toutes lettres.
 """
+
 import os
 import tempfile
 import unittest

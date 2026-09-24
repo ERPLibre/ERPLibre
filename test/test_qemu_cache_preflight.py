@@ -983,9 +983,10 @@ class TestLeComblement(SansSysteme):
     def combler(self, confirmer=True):
         sortie = io.StringIO()
         faux = Faux()
-        with mock.patch(
-            "click.confirm", return_value=confirmer
-        ) as confirme, contextlib.redirect_stdout(sortie):
+        with (
+            mock.patch("click.confirm", return_value=confirmer) as confirme,
+            contextlib.redirect_stdout(sortie),
+        ):
             faux._cache_combler()
         return sortie.getvalue(), confirme, faux
 
@@ -1383,23 +1384,29 @@ class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
         binaire.write_text("")
         sortie = io.StringIO()
         faux = Faux()
-        with mock.patch.object(menu, "CACHE_BIN", str(binaire)), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_amont_coupe",
-            classmethod(lambda cls: coupe),
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_guet_actif",
-            classmethod(lambda cls: guet),
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
-            return_value=[],
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_compte_issues",
-            return_value={},
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_bypass_lire",
-            return_value=[],
-        ), contextlib.redirect_stdout(
-            sortie
+        with (
+            mock.patch.object(menu, "CACHE_BIN", str(binaire)),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_amont_coupe",
+                classmethod(lambda cls: coupe),
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_guet_actif",
+                classmethod(lambda cls: guet),
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
+                return_value=[],
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_compte_issues",
+                return_value={},
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_bypass_lire",
+                return_value=[],
+            ),
+            contextlib.redirect_stdout(sortie),
         ):
             faux._cache_diagnostic()
         return sortie.getvalue()
@@ -1488,13 +1495,17 @@ class TestLeRemplissageDesMiroirs(SansSysteme):
     def test_le_menu_lance_cette_commande(self):
         maison = self.dossier / "maison"
         vraie = os.path.expanduser
-        with mock.patch.object(
-            menu, "CACHE_UNITE", self.unite_de_linstallateur()
-        ), mock.patch(
-            "os.path.expanduser",
-            lambda p: str(maison) + p[1:] if p.startswith("~") else vraie(p),
-        ), mock.patch(
-            "click.confirm", return_value=True
+        with (
+            mock.patch.object(
+                menu, "CACHE_UNITE", self.unite_de_linstallateur()
+            ),
+            mock.patch(
+                "os.path.expanduser",
+                lambda p: (
+                    str(maison) + p[1:] if p.startswith("~") else vraie(p)
+                ),
+            ),
+            mock.patch("click.confirm", return_value=True),
         ):
             faux = Faux()
             with contextlib.redirect_stdout(io.StringIO()):
@@ -1572,16 +1583,22 @@ class TestLAvertissementAvantLaCoupure(SansSysteme):
         # ce qu'elle nomme. Un verdict laissé libre lit la machine qui
         # exécute les tests — son magasin, ses miroirs — et le résultat
         # change alors d'un poste à l'autre.
-        with mock.patch.object(
-            cache_offline, "suites_absentes", lambda vms: absentes
-        ), mock.patch.object(
-            cache_offline, "manques_hors_ligne", lambda vms: manques
-        ), mock.patch.object(
-            cache_offline, "composants_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "paquets_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "miroirs_absents", lambda *a, **k: []
+        with (
+            mock.patch.object(
+                cache_offline, "suites_absentes", lambda vms: absentes
+            ),
+            mock.patch.object(
+                cache_offline, "manques_hors_ligne", lambda vms: manques
+            ),
+            mock.patch.object(
+                cache_offline, "composants_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "paquets_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "miroirs_absents", lambda *a, **k: []
+            ),
         ):
             asyncio.run(scenario())
         return vu

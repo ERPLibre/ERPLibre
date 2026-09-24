@@ -20,6 +20,7 @@ utilisateur de la machine, `/proc/<pid>/environ` par le seul propriétaire du
 processus. Un mot de passe en argument est visible de tous pendant toute la
 durée de la commande.
 """
+
 from __future__ import annotations
 
 import shlex

@@ -10,6 +10,7 @@ Comme `test_mail_compose.py` : `on_mount` lit `todo_prefs`, qui crée
 `~/.erplibre/mail/accounts.json` par les mêmes fonctions que le CLI. `$HOME`
 est donc détourné vers un dossier jetable pour tout le module.
 """
+
 import os
 import tempfile
 import unittest
@@ -352,9 +353,9 @@ class TestVaultScreenFirst(TuiAccountCase):
             vault_path = os.path.join(self.cache_dir.name, "new.kdbx")
             app.screen.query_one("#vault_path", Input).value = vault_path
             app.screen.query_one("#vault_password", Input).value = "hunter2"
-            app.screen.query_one("#vault_password_confirm", Input).value = (
-                "hunter2"
-            )
+            app.screen.query_one(
+                "#vault_password_confirm", Input
+            ).value = "hunter2"
 
             await pilot.click("#vault_create")
             await pilot.pause()
@@ -380,9 +381,9 @@ class TestVaultScreenFirst(TuiAccountCase):
             vault_path = os.path.join(self.cache_dir.name, "new.kdbx")
             app.screen.query_one("#vault_path", Input).value = vault_path
             app.screen.query_one("#vault_password", Input).value = "hunter2"
-            app.screen.query_one("#vault_password_confirm", Input).value = (
-                "autrechose"
-            )
+            app.screen.query_one(
+                "#vault_password_confirm", Input
+            ).value = "autrechose"
 
             await pilot.click("#vault_create")
             await pilot.pause()
@@ -421,9 +422,9 @@ class TestVaultScreenSurvivesDiskErrors(TuiAccountCase):
             vault_path = os.path.join(self.cache_dir.name, "new.kdbx")
             app.screen.query_one("#vault_path", Input).value = vault_path
             app.screen.query_one("#vault_password", Input).value = "hunter2"
-            app.screen.query_one("#vault_password_confirm", Input).value = (
-                "hunter2"
-            )
+            app.screen.query_one(
+                "#vault_password_confirm", Input
+            ).value = "hunter2"
 
             with patch(
                 "script.todo.mail.account_setup.create_vault",
@@ -459,9 +460,9 @@ class TestVaultScreenSurvivesDiskErrors(TuiAccountCase):
             vault_path = os.path.join(self.cache_dir.name, "new.kdbx")
             app.screen.query_one("#vault_path", Input).value = vault_path
             app.screen.query_one("#vault_password", Input).value = "hunter2"
-            app.screen.query_one("#vault_password_confirm", Input).value = (
-                "hunter2"
-            )
+            app.screen.query_one(
+                "#vault_password_confirm", Input
+            ).value = "hunter2"
 
             # `create_vault` (donc `create_kdbx`) tourne pour de vrai — le
             # fichier existe. Seule l'OUVERTURE qui suit échoue.
@@ -811,9 +812,9 @@ class TestPasswordClearedBeforeDismiss(TuiAccountCase):
             vault_path = os.path.join(self.cache_dir.name, "new.kdbx")
             screen.query_one("#vault_path", Input).value = vault_path
             screen.query_one("#vault_password", Input).value = "hunter2"
-            screen.query_one("#vault_password_confirm", Input).value = (
-                "hunter2"
-            )
+            screen.query_one(
+                "#vault_password_confirm", Input
+            ).value = "hunter2"
 
             orig_dismiss = type(screen).dismiss
 

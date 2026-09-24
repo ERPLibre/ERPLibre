@@ -24,6 +24,7 @@ Où vivent les fichiers, pour tous les pilotes :
                                      sans sudo : `status` en a besoin, et il
                                      tourne dans un autre processus que `up`.
 """
+
 from __future__ import annotations
 
 import ipaddress

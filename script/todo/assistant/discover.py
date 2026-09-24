@@ -41,6 +41,7 @@ D'où l'ordre des passes : une passe de CONNEXION SEULE sur tout le réseau
 d'abord, puis le budget coûteux des GET de reconnaissance dépensé sur la
 poignée d'hôtes qui ont accepté. `sweep` fait la première, et rien d'autre.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -50,9 +51,8 @@ import shlex
 import socket
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as PoolTimeout
-from concurrent.futures import as_completed
 from dataclasses import dataclass
 
 from script.todo.assistant import fingerprint

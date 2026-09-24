@@ -182,13 +182,18 @@ class TestKeyringBranch(unittest.TestCase):
 
     def test_set_and_get_through_keyring(self):
         vault = {}
-        with patch(
-            "script.todo.mail.secrets.keyring_is_safe", return_value=True
-        ), patch(
-            "keyring.set_password",
-            side_effect=lambda s, u, p: vault.__setitem__((s, u), p),
-        ), patch(
-            "keyring.get_password", side_effect=lambda s, u: vault.get((s, u))
+        with (
+            patch(
+                "script.todo.mail.secrets.keyring_is_safe", return_value=True
+            ),
+            patch(
+                "keyring.set_password",
+                side_effect=lambda s, u, p: vault.__setitem__((s, u), p),
+            ),
+            patch(
+                "keyring.get_password",
+                side_effect=lambda s, u: vault.get((s, u)),
+            ),
         ):
             self.store.set("keyring:perso", "hunter2")
             self.assertEqual(self.store.get("keyring:perso"), "hunter2")
@@ -196,9 +201,12 @@ class TestKeyringBranch(unittest.TestCase):
     def test_refuses_unsafe_backend(self):
         # `keyring.get_keyring` est patché AUSSI : le message d'erreur passe par
         # keyring_backend_name(), qui interrogerait sinon le vrai trousseau.
-        with patch(
-            "script.todo.mail.secrets.keyring_is_safe", return_value=False
-        ), patch("keyring.get_keyring", return_value=MagicMock()):
+        with (
+            patch(
+                "script.todo.mail.secrets.keyring_is_safe", return_value=False
+            ),
+            patch("keyring.get_keyring", return_value=MagicMock()),
+        ):
             with self.assertRaises(SecretError) as ctx:
                 self.store.set("keyring:perso", "hunter2")
         # Traduit : on compare à la clé i18n elle-même, pas au mot français,

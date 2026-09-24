@@ -12,6 +12,7 @@ ci-dessous fait tourner le VRAI chemin (`_sync`, ou l'écran de composition
 via `ctrl+s`) plutôt que d'appeler `refresh_current_folder()` directement :
 un test qui ne franchit pas ce seuil ne prouverait rien sur le bug observé.
 """
+
 import os
 import tempfile
 import unittest
@@ -347,8 +348,8 @@ class TestSendRefreshesTheOpenFolder(RefreshCase):
 
         app = await self._mounted_app(sessions=[session])
         orig_connect, orig_send = smtp_send_mod.connect, smtp_send_mod.send
-        smtp_send_mod.connect = (
-            lambda account, password: self._FakeSMTPTransport()
+        smtp_send_mod.connect = lambda account, password: (
+            self._FakeSMTPTransport()
         )
         smtp_send_mod.send = lambda account, msg, transport: [
             "dest@example.com"

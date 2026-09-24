@@ -191,15 +191,17 @@ class _MenuCase(unittest.TestCase):
             return _run_ok()
 
         it = iter(answers)
-        with mock.patch("subprocess.run", side_effect=fake_run), mock.patch(
-            "builtins.input", lambda *a: next(it)
-        ), mock.patch.object(
-            TODO, "_port_in_use", staticmethod(lambda p: port_taken)
-        ), mock.patch(
-            "script.todo.todo.time.sleep", lambda *a: None
-        ), mock.patch(
-            "sys.stdout", new_callable=__import__("io").StringIO
-        ) as out:
+        with (
+            mock.patch("subprocess.run", side_effect=fake_run),
+            mock.patch("builtins.input", lambda *a: next(it)),
+            mock.patch.object(
+                TODO, "_port_in_use", staticmethod(lambda p: port_taken)
+            ),
+            mock.patch("script.todo.todo.time.sleep", lambda *a: None),
+            mock.patch(
+                "sys.stdout", new_callable=__import__("io").StringIO
+            ) as out,
+        ):
             self.todo._qemu_emulator_menu()
         return out.getvalue(), self.calls
 
@@ -365,15 +367,17 @@ class TestScrcpyTunnel(unittest.TestCase):
             return _run_ok(returncode=rc, stderr="refus")
 
         it = iter(answers)
-        with mock.patch("subprocess.run", side_effect=fake_run), mock.patch(
-            "builtins.input", lambda *a: next(it)
-        ), mock.patch.object(
-            TODO, "_port_in_use", staticmethod(lambda p: port_taken)
-        ), mock.patch.dict(
-            "os.environ", {"USER": "poste"}
-        ), mock.patch(
-            "sys.stdout", new_callable=__import__("io").StringIO
-        ) as out:
+        with (
+            mock.patch("subprocess.run", side_effect=fake_run),
+            mock.patch("builtins.input", lambda *a: next(it)),
+            mock.patch.object(
+                TODO, "_port_in_use", staticmethod(lambda p: port_taken)
+            ),
+            mock.patch.dict("os.environ", {"USER": "poste"}),
+            mock.patch(
+                "sys.stdout", new_callable=__import__("io").StringIO
+            ) as out,
+        ):
             self.todo._qemu_scrcpy_tunnel(name, src, started=started)
         return out.getvalue(), self.calls
 

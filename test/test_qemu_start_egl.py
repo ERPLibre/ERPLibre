@@ -39,8 +39,7 @@ SORTIE_EGL = (
     "qemu-system-x86_64: egl: render node init failed"
 )
 SORTIE_AUTRE = (
-    "error: Failed to start domain: internal error:"
-    " qemu unexpectedly closed"
+    "error: Failed to start domain: internal error: qemu unexpectedly closed"
 )
 
 ETAT = {
@@ -80,8 +79,8 @@ class LeRetrait(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.lances = []
         self.todo.execute = mock.MagicMock()
-        self.todo.execute.exec_command_live.side_effect = (
-            lambda cmd, **k: self.lances.append(cmd) or 0
+        self.todo.execute.exec_command_live.side_effect = lambda cmd, **k: (
+            self.lances.append(cmd) or 0
         )
         self.todo._qemu_dumpxml = lambda n, **k: "<domain/>"
         self.todo._qemu_autostart = lambda n: True
@@ -208,14 +207,16 @@ class LeDiagnostic(unittest.TestCase):
 
             return R()
 
-        with mock.patch.object(
-            __import__("script.todo.qemu_manage", fromlist=["x"]).subprocess,
-            "run",
-            side_effect=faux_run,
-        ), mock.patch.object(
-            os.path, "expanduser", return_value=tmp
-        ), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch.object(
+                __import__(
+                    "script.todo.qemu_manage", fromlist=["x"]
+                ).subprocess,
+                "run",
+                side_effect=faux_run,
+            ),
+            mock.patch.object(os.path, "expanduser", return_value=tmp),
+            mock.patch("builtins.print"),
         ):
             self.todo._qemu_diagnostics()
         return sorted(os.listdir(tmp))
@@ -317,16 +318,16 @@ class LeDiagnostic(unittest.TestCase):
         import subprocess as sp
 
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(
-                __import__(
-                    "script.todo.qemu_manage", fromlist=["x"]
-                ).subprocess,
-                "run",
-                side_effect=sp.TimeoutExpired("x", 30),
-            ), mock.patch.object(
-                os.path, "expanduser", return_value=tmp
-            ), mock.patch(
-                "builtins.print"
+            with (
+                mock.patch.object(
+                    __import__(
+                        "script.todo.qemu_manage", fromlist=["x"]
+                    ).subprocess,
+                    "run",
+                    side_effect=sp.TimeoutExpired("x", 30),
+                ),
+                mock.patch.object(os.path, "expanduser", return_value=tmp),
+                mock.patch("builtins.print"),
             ):
                 self.todo._qemu_diagnostics()
             contenu = Path(tmp, os.listdir(tmp)[0]).read_text(encoding="utf-8")
@@ -341,8 +342,8 @@ class LesOutilsDuRapport(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.lances = []
         self.todo.execute = mock.MagicMock()
-        self.todo.execute.exec_command_live.side_effect = (
-            lambda cmd, **k: self.lances.append(cmd) or 0
+        self.todo.execute.exec_command_live.side_effect = lambda cmd, **k: (
+            self.lances.append(cmd) or 0
         )
 
     def _proposer(self, presents, reponse="o"):
@@ -358,10 +359,10 @@ class LesOutilsDuRapport(unittest.TestCase):
         def faux_which(binaire):
             return "/usr/bin/x" if binaire in connus else None
 
-        with mock.patch.object(
-            qm.shutil, "which", side_effect=faux_which
-        ), mock.patch("builtins.input", return_value=reponse), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch.object(qm.shutil, "which", side_effect=faux_which),
+            mock.patch("builtins.input", return_value=reponse),
+            mock.patch("builtins.print"),
         ):
             return self.todo._qemu_diag_offer_tools()
 
@@ -382,17 +383,21 @@ class LesOutilsDuRapport(unittest.TestCase):
         droits : la commande entière, sudo compris, précède la question."""
         connus = {"pacman"}
         vus = []
-        with mock.patch.object(
-            qm.shutil,
-            "which",
-            side_effect=lambda b: "/usr/bin/x" if b in connus else None,
-        ), mock.patch(
-            "builtins.input",
-            side_effect=lambda p="": (vus.append(("?", p)), "n")[1],
-        ), mock.patch(
-            "builtins.print",
-            side_effect=lambda *a, **k: vus.append(
-                ("!", " ".join(str(x) for x in a))
+        with (
+            mock.patch.object(
+                qm.shutil,
+                "which",
+                side_effect=lambda b: "/usr/bin/x" if b in connus else None,
+            ),
+            mock.patch(
+                "builtins.input",
+                side_effect=lambda p="": (vus.append(("?", p)), "n")[1],
+            ),
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(
+                    ("!", " ".join(str(x) for x in a))
+                ),
             ),
         ):
             self.todo._qemu_diag_offer_tools()
@@ -409,12 +414,14 @@ class LesOutilsDuRapport(unittest.TestCase):
         """Un lancement scripté n'a personne pour répondre : l'invite y lève
         EOFError, et le rapport — déjà écrit — ne doit pas tomber avec."""
         connus = {"pacman"}
-        with mock.patch.object(
-            qm.shutil,
-            "which",
-            side_effect=lambda b: "/usr/bin/x" if b in connus else None,
-        ), mock.patch("builtins.input", side_effect=EOFError), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch.object(
+                qm.shutil,
+                "which",
+                side_effect=lambda b: "/usr/bin/x" if b in connus else None,
+            ),
+            mock.patch("builtins.input", side_effect=EOFError),
+            mock.patch("builtins.print"),
         ):
             self.assertFalse(self.todo._qemu_diag_offer_tools())
         self.assertEqual([], self.lances)
@@ -438,14 +445,16 @@ class LeConseilAcl(unittest.TestCase):
 
     def _conseil(self, nodes, acl):
         vus = []
-        with mock.patch.object(
-            self.todo, "_qemu_nvidia_nodes", return_value=nodes
-        ), mock.patch.object(
-            self.todo, "_qemu_acl_active", return_value=acl
-        ), mock.patch(
-            "builtins.print",
-            side_effect=lambda *a, **k: vus.append(
-                " ".join(str(x) for x in a)
+        with (
+            mock.patch.object(
+                self.todo, "_qemu_nvidia_nodes", return_value=nodes
+            ),
+            mock.patch.object(self.todo, "_qemu_acl_active", return_value=acl),
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(
+                    " ".join(str(x) for x in a)
+                ),
             ),
         ):
             parle = self.todo._qemu_nvidia_acl_advice()
@@ -550,9 +559,9 @@ class LaSondeVideo(unittest.TestCase):
 
     def _sonder(self, device, argv0=None, extra=()):
         """Sortie de la sonde devant un /proc bâti pour l'occasion."""
-        from script.todo.qemu_manage import _DIAG_VIDEO_PY
-
         import subprocess
+
+        from script.todo.qemu_manage import _DIAG_VIDEO_PY
 
         with tempfile.TemporaryDirectory() as tmp:
             proc = Path(tmp) / "proc" / "4242"
@@ -664,16 +673,20 @@ class La3DParVM(unittest.TestCase):
         }
         todo = TODO.__new__(TODO)
         vus = []
-        with mock.patch.object(
-            TODO, "_qemu_list_domains", lambda s: list(faux)
-        ), mock.patch.object(
-            TODO,
-            "_qemu_dumpxml",
-            staticmethod(lambda n, inactive=True: faux[n]),
-        ), mock.patch(
-            "builtins.print",
-            side_effect=lambda *a, **k: vus.append(
-                " ".join(str(x) for x in a)
+        with (
+            mock.patch.object(
+                TODO, "_qemu_list_domains", lambda s: list(faux)
+            ),
+            mock.patch.object(
+                TODO,
+                "_qemu_dumpxml",
+                staticmethod(lambda n, inactive=True: faux[n]),
+            ),
+            mock.patch(
+                "builtins.print",
+                side_effect=lambda *a, **k: vus.append(
+                    " ".join(str(x) for x in a)
+                ),
             ),
         ):
             todo._qemu_vm_3d_report()

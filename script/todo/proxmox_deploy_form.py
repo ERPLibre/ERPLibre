@@ -23,6 +23,7 @@ Le formulaire ne touche à rien : il rend une spec. C'est l'appelant
 import os
 import re
 
+from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_lib import (
     CSS_BASE,
     FREE,
@@ -40,7 +41,6 @@ from script.todo.deploy_form_lib import (
     res_row_widgets,
     t,
 )
-from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_plan import PlanMixin, preview_screen
 
 # Aucun disque orphelin à craindre : les disques d'un Proxmox distant vivent
@@ -833,9 +833,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.profile = choix
                 sur_mesure = choix == "custom"
                 for champ in RES_FIELDS:
-                    self.query_one(RES_FIELDS[champ][0], Select).disabled = (
-                        not sur_mesure
-                    )
+                    self.query_one(
+                        RES_FIELDS[champ][0], Select
+                    ).disabled = not sur_mesure
                     if not sur_mesure:
                         self._show_free(champ, False)
                 # Un réglage commun reprend la main sur les VM non figées :

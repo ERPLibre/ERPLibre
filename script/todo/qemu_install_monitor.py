@@ -11,6 +11,7 @@ quitter le dashboard n'arrête rien, on peut le rouvrir pour ré-attacher.
 - launch_installs(...) : lance les process détachés + écrit un manifeste JSON.
 - run_monitor(manifest_path) : ouvre le dashboard Textual sur un manifeste.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -3282,9 +3283,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
-                os.system(
-                    f"{vm_ssh_prefix(vm)} " f"{shlex.quote(cmd)} || true"
-                )
+                os.system(f"{vm_ssh_prefix(vm)} {shlex.quote(cmd)} || true")
                 input("\nEntrée pour revenir au suivi… ")
 
         def _run_update(self, vm, parts) -> None:

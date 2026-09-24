@@ -214,9 +214,12 @@ class UneImageGardeeQuiAVieilli(unittest.TestCase):
                 Path(dest).write_bytes(pose)
 
             sorti = False
-            with mock.patch.object(
-                DQ.urllib.request, "urlopen", lambda *a, **k: Reponse()
-            ), mock.patch.object(DQ, "download_image", faux_telechargement):
+            with (
+                mock.patch.object(
+                    DQ.urllib.request, "urlopen", lambda *a, **k: Reponse()
+                ),
+                mock.patch.object(DQ, "download_image", faux_telechargement),
+            ):
                 try:
                     DQ.verify_sha256(self.URL, image, False, "ubuntu", urls)
                 except SystemExit:

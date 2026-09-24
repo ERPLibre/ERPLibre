@@ -19,6 +19,7 @@ Toute valeur est VALIDÉE avant d'être écrite : elle finira dans un fichier de
 configuration et dans une ligne de commande lancée par sudo. Un nom d'hôte
 avec une espace ou un point-virgule n'y arrivera pas.
 """
+
 from __future__ import annotations
 
 import json

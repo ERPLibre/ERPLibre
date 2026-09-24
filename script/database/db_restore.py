@@ -273,8 +273,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         )
     else:
         _logger.info(
-            f"## Clone cache {cache_database} to database"
-            f" {config.database} ##"
+            f"## Clone cache {cache_database} to database {config.database} ##"
         )
         arg = (
             f"{arg_base} --clone --from_database"

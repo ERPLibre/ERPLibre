@@ -15,6 +15,7 @@ Les messages sont traduits. Les assertions qui citent du texte fixent donc la
 langue à « fr » pour la durée du module : sinon elles dépendraient de EL_LANG,
 et un poste en anglais les ferait toutes échouer.
 """
+
 import os
 import subprocess
 import sys

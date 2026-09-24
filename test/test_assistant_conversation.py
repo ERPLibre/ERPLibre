@@ -25,6 +25,7 @@ Rien ici n'ouvre de socket sortante, ne lance de vrai `claude`, ni ne lit la
 configuration de la machine : le serveur est lié à la boucle locale sur un
 port choisi par le système, et le lanceur de sous-processus est injecté.
 """
+
 import json
 import os
 import sys

@@ -15,6 +15,7 @@ coordonnée ÉCRAN absolue (`widget=None`), pas la barre elle-même, parce que
 la barre se déplace pendant le glissement (son voisin redimensionné la
 pousse) — cibler à nouveau la barre par sélecteur dériverait.
 """
+
 import os
 import tempfile
 import unittest

@@ -16,6 +16,7 @@ ligne, rien de plus. Un alias déclaré dans un fichier inclus reste donc
 invisible aux trois lecteurs, alors même que `ssh -G` le résoudrait — la
 source est incomplète sans être fausse.
 """
+
 from __future__ import annotations
 
 import re

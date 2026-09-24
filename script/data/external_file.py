@@ -19,7 +19,7 @@ Les formats en pur stdlib — CSV, JSON, XML, et la détection de macros qui
 n'est qu'un `zipfile.namelist()` — tournent sous l'interpréteur du CLI.
 Excel et Access exigent un venv dédié. Le module doit donc s'importer sous
 les deux : AUCUN import de bibliothèque tierce au niveau du module, chacun
-vit dans la fonction qui en a besoin. 
+vit dans la fonction qui en a besoin.
 
 Le canal de sortie
 ------------------
@@ -57,8 +57,7 @@ ERREURS = {
     "format_inconnu": "Format not recognised: ",
     "illisible_ici": "Recognised format, unreadable here"
     " — re-save it as .xlsx.",
-    "protege": "Protected by a password, or not a workbook"
-    " — unreadable here.",
+    "protege": "Protected by a password, or not a workbook — unreadable here.",
     "vide": "Empty file.",
     "droits": "Not readable: check the permissions.",
     "pas_un_fichier": "Not an ordinary file.",
@@ -66,12 +65,11 @@ ERREURS = {
     " nothing was written.",
     "repertoire_non_vide": "The destination directory exists"
     " and is not empty.",
-    "aucune_feuille": "The selection matches no sheet;"
-    " nothing was written.",
+    "aucune_feuille": "The selection matches no sheet; nothing was written.",
     "tout_exclu": "Nothing was anonymised: every region was excluded.",
     "rien_a_faire": "Nothing to anonymise in this file.",
     "place": "Not enough room to write.",
-    "conversion_impossible": "This target cannot hold the source's" " shape: ",
+    "conversion_impossible": "This target cannot hold the source's shape: ",
     "table_source": "The mapping table would overwrite the source"
     " or the copy; nothing was written.",
     "table_illisible": "The mapping table is unreadable,"

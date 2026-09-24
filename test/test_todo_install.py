@@ -43,30 +43,35 @@ class TestFamilyDetection(unittest.TestCase):
     def test_the_distribution_id_decides_before_the_path(self):
         """Une machine peut porter deux gestionnaires ; l'ID dit lequel
         possède le système."""
-        with patch(
-            "builtins.open", mock_open(read_data='ID="debian"\n')
-        ), patch(
-            "script.todo.todo_install.shutil.which", _only("apt-get", "dnf")
+        with (
+            patch("builtins.open", mock_open(read_data='ID="debian"\n')),
+            patch(
+                "script.todo.todo_install.shutil.which",
+                _only("apt-get", "dnf"),
+            ),
         ):
             self.assertEqual(todo_install.family(), "apt-get")
 
     def test_the_path_decides_when_the_id_is_unknown(self):
-        with patch(
-            "builtins.open", mock_open(read_data='ID="nonesuch"\n')
-        ), patch("script.todo.todo_install.shutil.which", _only("zypper")):
+        with (
+            patch("builtins.open", mock_open(read_data='ID="nonesuch"\n')),
+            patch("script.todo.todo_install.shutil.which", _only("zypper")),
+        ):
             self.assertEqual(todo_install.family(), "zypper")
 
     def test_an_id_whose_manager_is_absent_falls_back(self):
         """Un conteneur Debian minimal sans apt-get ne doit pas mener à une
         commande apt-get qui n'existe pas."""
-        with patch(
-            "builtins.open", mock_open(read_data='ID="debian"\n')
-        ), patch("script.todo.todo_install.shutil.which", _only("dnf")):
+        with (
+            patch("builtins.open", mock_open(read_data='ID="debian"\n')),
+            patch("script.todo.todo_install.shutil.which", _only("dnf")),
+        ):
             self.assertEqual(todo_install.family(), "dnf")
 
     def test_no_manager_is_none_not_a_guess(self):
-        with patch("builtins.open", mock_open(read_data="")), patch(
-            "script.todo.todo_install.shutil.which", _only()
+        with (
+            patch("builtins.open", mock_open(read_data="")),
+            patch("script.todo.todo_install.shutil.which", _only()),
         ):
             self.assertIsNone(todo_install.family())
             self.assertIsNone(todo_install.install_command(["p"]))
@@ -84,11 +89,12 @@ class TestFamilyDetection(unittest.TestCase):
             ("opensuse-tumbleweed", "zypper"),
             ("arch", "pacman"),
         ):
-            with patch(
-                "builtins.open", mock_open(read_data=f'ID="{os_id}"\n')
-            ), patch(
-                "script.todo.todo_install.shutil.which",
-                _only(*todo_install.FAMILIES),
+            with (
+                patch("builtins.open", mock_open(read_data=f'ID="{os_id}"\n')),
+                patch(
+                    "script.todo.todo_install.shutil.which",
+                    _only(*todo_install.FAMILIES),
+                ),
             ):
                 self.assertEqual(todo_install.family(), attendu, os_id)
 

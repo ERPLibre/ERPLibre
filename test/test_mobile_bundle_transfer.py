@@ -226,8 +226,8 @@ class TestTheThreshold(unittest.TestCase):
 
 class TestTheCommandLine(unittest.TestCase):
     def test_it_says_the_counts_and_returns_zero(self):
-        import io
         import contextlib
+        import io
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
@@ -248,8 +248,8 @@ class TestTheCommandLine(unittest.TestCase):
     def test_a_failure_is_one_line_not_a_traceback(self):
         """Le message part dans un journal d'installation : une trace Python y
         serait illisible, et la cause noyée."""
-        import io
         import contextlib
+        import io
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)

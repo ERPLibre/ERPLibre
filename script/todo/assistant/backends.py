@@ -29,6 +29,7 @@ l'identique : un seul client `openai` les couvre toutes, pointé sur ce que
 `servers.base_url()` rend. C'est aussi ce client qu'un test injecte pour
 parler à un vrai serveur de boucle locale plutôt qu'à un double.
 """
+
 from __future__ import annotations
 
 import json

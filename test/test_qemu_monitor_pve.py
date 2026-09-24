@@ -872,8 +872,7 @@ class TestLaColonneOdoo(unittest.TestCase):
 
     def test_the_answer_is_read_per_address(self):
         sortie = (
-            "[]\n---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\n"
-            "ODOO 10.10.10.151\n"
+            "[]\n---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\nODOO 10.10.10.151\n"
         )
         self.assertEqual(mon.parse_odoo_probe(sortie), {"10.10.10.151"})
 

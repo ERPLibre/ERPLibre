@@ -25,6 +25,7 @@ Deux pièges, appris sur l'hôte :
 - « --add-device --graphics type=egl-headless » n'est PAS idempotent : appelé
   deux fois, il pose deux affichages. D'où la lecture de l'état AVANT le plan.
 """
+
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET

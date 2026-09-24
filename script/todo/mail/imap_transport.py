@@ -12,6 +12,7 @@ sur un cas limite ou l'autre.
 `BODY.PEEK` et non `BODY` : lire un message dans le TUI ne doit pas le marquer
 lu sur le serveur à l'insu de l'utilisateur.
 """
+
 from __future__ import annotations
 
 import email

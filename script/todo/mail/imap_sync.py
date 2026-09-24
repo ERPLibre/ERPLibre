@@ -15,6 +15,7 @@ plus rien dire, et garder l'ancien cache produirait des messages faux.
 Les corps ne descendent JAMAIS pendant une passe : une boîte de 20 000
 messages doit se synchroniser en secondes, pas en gigaoctets.
 """
+
 from __future__ import annotations
 
 import logging

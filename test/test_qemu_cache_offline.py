@@ -450,20 +450,24 @@ class TestLeDiagnosticVoitLaCoupure(unittest.TestCase):
         menu = self._menu(self.TABLE_POSEE)
         faux = menu.__new__(menu)
         faux._cache_actif = lambda: True
-        with mock.patch("os.path.isfile", return_value=True), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
-            return_value=[],
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
-            "._cache_compte_issues",
-            return_value={},
-        ), mock.patch(
-            "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
-            "._cache_bypass_lire",
-            return_value=[],
-        ), contextlib.redirect_stdout(
-            _io.StringIO()
-        ) as sortie:
+        with (
+            mock.patch("os.path.isfile", return_value=True),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
+                return_value=[],
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
+                "._cache_compte_issues",
+                return_value={},
+            ),
+            mock.patch(
+                "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
+                "._cache_bypass_lire",
+                return_value=[],
+            ),
+            contextlib.redirect_stdout(_io.StringIO()) as sortie,
+        ):
             faux._cache_diagnostic()
         ecrit = sortie.getvalue()
         self.assertIn(
@@ -853,13 +857,13 @@ class TestLaLeveeConfieeAuGuet(_SansSysteme, unittest.TestCase):
         todo._qemu_shell = shell
         todo._qemu_import_module = lambda: None
         todo._qemu_erplibre_remote_cmd = lambda *a, **kw: "true"
-        with mock.patch.object(
-            mon, "launch_installs", lance
-        ), mock.patch.object(
-            mon, "run_monitor", lambda m: vu["ordre"].append("tableau")
-        ), contextlib.redirect_stdout(
-            io.StringIO()
-        ) as sortie:
+        with (
+            mock.patch.object(mon, "launch_installs", lance),
+            mock.patch.object(
+                mon, "run_monitor", lambda m: vu["ordre"].append("tableau")
+            ),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
             todo._qemu_install_erplibre_monitored(
                 ["vm-a"],
                 "develop",
@@ -908,8 +912,8 @@ class TestLaLeveeConfieeAuGuet(_SansSysteme, unittest.TestCase):
                 todo = _todo()
                 todo._qemu_shell = hote.shell
                 vus = []
-                todo._qemu_install_erplibre_monitored = (
-                    lambda *a, **kw: vus.append(kw)
+                todo._qemu_install_erplibre_monitored = lambda *a, **kw: (
+                    vus.append(kw)
                 )
                 todo._qemu_resolve_ips = lambda names, labels=None: {}
                 with contextlib.redirect_stdout(io.StringIO()):
@@ -1225,9 +1229,10 @@ class TestLecartHorsLigne(_SansSysteme, unittest.TestCase):
             "parallelism": 1,
             "offline": hors_ligne,
         }
-        with mock.patch(
-            "subprocess.run", self._git(**git)
-        ), contextlib.redirect_stdout(io.StringIO()) as sortie:
+        with (
+            mock.patch("subprocess.run", self._git(**git)),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
             todo._qemu_print_recap(spec, [])
         return sortie.getvalue()
 
@@ -1791,12 +1796,10 @@ class TestLeDebutDuDeploiementDansLaSession(_SansSysteme, unittest.TestCase):
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        with mock.patch.object(
-            mon, "session_dir", lambda: Path(tmp.name)
-        ), mock.patch.object(
-            mon, "_launch_one", lambda *a, **k: None
-        ), mock.patch.object(
-            mon, "local_uuid", lambda nom: ""
+        with (
+            mock.patch.object(mon, "session_dir", lambda: Path(tmp.name)),
+            mock.patch.object(mon, "_launch_one", lambda *a, **k: None),
+            mock.patch.object(mon, "local_uuid", lambda nom: ""),
         ):
             chemin = mon.launch_installs(
                 [dict(self.VM)], "develop", "true", **kw
@@ -1846,12 +1849,10 @@ class TestLeDebutDuDeploiementDansLaSession(_SansSysteme, unittest.TestCase):
         todo._qemu_shell = lambda cmd, timeout=60: 1
         todo._qemu_import_module = lambda: None
         todo._qemu_erplibre_remote_cmd = lambda *a, **k: "true"
-        with mock.patch.object(
-            mon, "launch_installs", lance
-        ), mock.patch.object(
-            mon, "run_monitor", lambda m: None
-        ), contextlib.redirect_stdout(
-            io.StringIO()
+        with (
+            mock.patch.object(mon, "launch_installs", lance),
+            mock.patch.object(mon, "run_monitor", lambda m: None),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
             todo._qemu_install_erplibre_monitored(
                 ["vm-a"], "develop", {"vm-a": "192.0.2.10"}, **kw

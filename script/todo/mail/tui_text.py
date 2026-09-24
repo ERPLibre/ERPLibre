@@ -12,6 +12,7 @@ charset menteur, pièce jointe sans nom. Aucune de ces fonctions ne lève ; au
 pire elles rendent une chaîne vide. Un message illisible doit s'afficher mal,
 pas faire tomber la boîte de réception.
 """
+
 from __future__ import annotations
 
 import datetime

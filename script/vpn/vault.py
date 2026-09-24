@@ -22,6 +22,7 @@ tout seul : `ensure_vault` demande, et une réponse vide fait renoncer. Un
 outil qui crée silencieusement un fichier de mots de passe dans un répertoire
 qu'on n'a pas choisi est un outil qu'on n'ose plus lancer.
 """
+
 from __future__ import annotations
 
 import getpass

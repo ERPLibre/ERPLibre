@@ -38,8 +38,9 @@ class _MenuCase(unittest.TestCase):
     def _play(self, answers):
         it = iter(answers)
         buf = io.StringIO()
-        with mock.patch("builtins.input", lambda *a: next(it)), mock.patch(
-            "sys.stdout", buf
+        with (
+            mock.patch("builtins.input", lambda *a: next(it)),
+            mock.patch("sys.stdout", buf),
         ):
             self.todo._qemu_tunnel_menu()
         return buf.getvalue()
@@ -168,8 +169,9 @@ class TestVirtViewer(_MenuCase):
         self._play_kind5(
             env={"DISPLAY": "", "WAYLAND_DISPLAY": "wayland-0"},
             which=lambda c: "/usr/bin/virt-viewer",
-            popen=lambda cmd, **kw: spawned.setdefault("cmd", cmd)
-            and mock.Mock(),
+            popen=lambda cmd, **kw: (
+                spawned.setdefault("cmd", cmd) and mock.Mock()
+            ),
         )
         self.assertIn("virt-viewer", spawned.get("cmd", []))
 
@@ -198,8 +200,8 @@ class TestEnsureVirtViewer(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.ran = []
         self.todo.execute = mock.Mock()
-        self.todo.execute.exec_command_live = (
-            lambda cmd, **kw: self.ran.append(cmd)
+        self.todo.execute.exec_command_live = lambda cmd, **kw: (
+            self.ran.append(cmd)
         )
 
     def test_present_means_nothing_to_do(self):
@@ -215,27 +217,32 @@ class TestEnsureVirtViewer(unittest.TestCase):
                 return seen["virt-viewer"].pop(0)
             return "/usr/bin/dnf" if cmd == "dnf" else None
 
-        with mock.patch("shutil.which", which), mock.patch(
-            "sys.stdout", io.StringIO()
+        with (
+            mock.patch("shutil.which", which),
+            mock.patch("sys.stdout", io.StringIO()),
         ):
             self.assertTrue(self.todo._qemu_ensure_virt_viewer())
         self.assertEqual(1, len(self.ran))
         self.assertIn("dnf install -y virt-viewer", self.ran[0])
 
     def test_no_manager_is_said_not_guessed(self):
-        with mock.patch("shutil.which", lambda c: None), mock.patch(
-            "sys.stdout", io.StringIO()
-        ) as out:
+        with (
+            mock.patch("shutil.which", lambda c: None),
+            mock.patch("sys.stdout", io.StringIO()) as out,
+        ):
             self.assertFalse(self.todo._qemu_ensure_virt_viewer())
         self.assertIn("paquets", out.getvalue().lower() + "paquets")
         self.assertEqual([], self.ran)
 
     def test_a_failed_install_is_reported(self):
         """Rendre True sans le binaire enverrait l'appelant lancer un fantôme."""
-        with mock.patch(
-            "shutil.which",
-            lambda c: "/usr/bin/apt-get" if c == "apt-get" else None,
-        ), mock.patch("sys.stdout", io.StringIO()):
+        with (
+            mock.patch(
+                "shutil.which",
+                lambda c: "/usr/bin/apt-get" if c == "apt-get" else None,
+            ),
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
             self.assertFalse(self.todo._qemu_ensure_virt_viewer())
         self.assertEqual(1, len(self.ran))
 

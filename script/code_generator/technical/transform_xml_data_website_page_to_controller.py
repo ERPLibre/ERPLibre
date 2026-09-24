@@ -116,7 +116,7 @@ def main():
         )
         module_name = get_module_name(config.source)
         method_name = (
-            f'get_{"_".join(url.replace("-", "_").strip("/").split("/"))}'
+            f"get_{'_'.join(url.replace('-', '_').strip('/').split('/'))}"
         )
 
         #         template = f"""

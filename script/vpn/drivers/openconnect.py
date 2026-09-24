@@ -109,6 +109,7 @@ toutes deux à un moment où l'humain peut agir : le menu l'annonce avant la
 saisie du secret, et le montage compare les longueurs si ce qui est déposé
 la dépasse. Zéro = aucune limite.
 """
+
 from __future__ import annotations
 
 import json
