@@ -126,10 +126,7 @@ class TestExtractBody(unittest.TestCase):
     def test_survives_unknown_8bit(self):
         """Étiquette réelle observée en usage, pas seulement un charset
         inventé (voir `script/todo/mail/charset.py`)."""
-        raw = (
-            b"Content-Type: text/plain; charset=unknown-8bit\r\n\r\n"
-            b"Bonjour"
-        )
+        raw = b"Content-Type: text/plain; charset=unknown-8bit\r\n\r\nBonjour"
         text, _ = extract_body(raw)
         self.assertIn("Bonjour", text)
 

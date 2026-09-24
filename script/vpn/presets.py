@@ -35,6 +35,7 @@ une liste d'erreurs que l'appelant AFFICHE. Un préréglage fautif rendrait
 autrement tous les autres inatteignables, et la panne se lirait « aucun
 préréglage » alors qu'il y en a dix.
 """
+
 from __future__ import annotations
 
 import json

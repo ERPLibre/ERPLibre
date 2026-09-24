@@ -11,6 +11,7 @@ la clé i18n brute, sans nommer ce qu'elle demandait.
 Un mot de passe refusé est le cas NORMAL de cette fonction : elle doit le
 dire, laisser recommencer, et laisser partir.
 """
+
 import os
 import tempfile
 import unittest
@@ -40,13 +41,16 @@ class KdbxCase(unittest.TestCase):
     def _saisies(self, *reponses):
         """Renvoie (résultat, texte affiché) pour une suite de saisies."""
         vues = []
-        with patch("getpass.getpass", side_effect=list(reponses)), patch(
-            "builtins.print",
-            # `**k` : un bouchon de `print` doit accepter la signature de
-            # `print`. Sans lui, ajouter un `flush=True` dans le code
-            # testé faisait échouer six tests sur une différence qui n'a
-            # rien à voir avec ce qu'ils vérifient.
-            side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+        with (
+            patch("getpass.getpass", side_effect=list(reponses)),
+            patch(
+                "builtins.print",
+                # `**k` : un bouchon de `print` doit accepter la signature de
+                # `print`. Sans lui, ajouter un `flush=True` dans le code
+                # testé faisait échouer six tests sur une différence qui n'a
+                # rien à voir avec ce qu'ils vérifient.
+                side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
+            ),
         ):
             resultat = self._manager().get_kdbx()
         return resultat, "\n".join(vues)
@@ -86,9 +90,13 @@ class TestGivingUpIsPossible(KdbxCase):
 
     def test_giving_up_asks_only_once(self):
         appels = []
-        with patch(
-            "getpass.getpass", side_effect=lambda **k: appels.append(1) or ""
-        ), patch("builtins.print"):
+        with (
+            patch(
+                "getpass.getpass",
+                side_effect=lambda **k: appels.append(1) or "",
+            ),
+            patch("builtins.print"),
+        ):
             self._manager().get_kdbx()
         self.assertEqual(len(appels), 1)
 

@@ -14,6 +14,7 @@ refusé ICI, pas découvert par `sh`.
 Chaque fonction NORMALISE en place (`profile[key]` reçoit la valeur propre)
 et lève `ProfileError` avec un message destiné à l'humain.
 """
+
 from __future__ import annotations
 
 import ipaddress

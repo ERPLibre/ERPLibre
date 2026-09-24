@@ -15,6 +15,7 @@ en progression. La décision est donc écrite une seule fois.
 `ctx` vient de `TodoUpgrade.resume_context()` : pure donnée, aucun accès à la
 base ni au disque depuis l'affichage.
 """
+
 from __future__ import annotations
 
 try:

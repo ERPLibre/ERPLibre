@@ -317,11 +317,14 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
 
         @contextlib.contextmanager
         def isole():
-            with mock.patch.object(
-                QC.os.path,
-                "expanduser",
-                lambda p: d if "longtest" in p else p,
-            ), mock.patch.object(QC, "machines_vivantes", return_value=[]):
+            with (
+                mock.patch.object(
+                    QC.os.path,
+                    "expanduser",
+                    lambda p: d if "longtest" in p else p,
+                ),
+                mock.patch.object(QC, "machines_vivantes", return_value=[]),
+            ):
                 yield
 
         return d, isole()
@@ -512,10 +515,13 @@ class TestUnPrefixeParMode(unittest.TestCase):
         """Les rapports sont bornés : une machine plus ancienne que la fenêtre
         ne serait jamais défaite et bloquerait tous les essais suivants."""
         vivantes = "el-cache-test-9\nel-offline-test-9\nel-no-cache-test-9\n"
-        with unittest.mock.patch.object(
-            QC, "executer", return_value=(0, vivantes)
-        ), unittest.mock.patch.object(
-            QC.os.path, "expanduser", return_value="/inexistant"
+        with (
+            unittest.mock.patch.object(
+                QC, "executer", return_value=(0, vivantes)
+            ),
+            unittest.mock.patch.object(
+                QC.os.path, "expanduser", return_value="/inexistant"
+            ),
         ):
             machines, _ = QC.machines_a_defaire()
         self.assertEqual(
@@ -577,9 +583,12 @@ class TestLeGainSeCalculeParCondition(unittest.TestCase):
         import io as _io
 
         tampon = _io.StringIO()
-        with unittest.mock.patch.object(
-            QC, "rapports_recents", return_value=rapports
-        ), contextlib.redirect_stdout(tampon):
+        with (
+            unittest.mock.patch.object(
+                QC, "rapports_recents", return_value=rapports
+            ),
+            contextlib.redirect_stdout(tampon),
+        ):
             QC.rapport_comparatif()
         return tampon.getvalue()
 

@@ -18,6 +18,7 @@ ce module.
 Découpage voulu : TOUT ce qui construit une commande ou lit une sortie est une
 fonction PURE, vérifiable sans hôte Proxmox. Seul `run()` parle au réseau.
 """
+
 from __future__ import annotations
 
 import ipaddress

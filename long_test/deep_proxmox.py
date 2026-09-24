@@ -39,16 +39,12 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
 
-from script.proxmox import proxmox_deploy as pve  # noqa: E402
-
 import descente  # noqa: E402
 from descente import (  # noqa: E402,F401
     DELAIS,
-    mener,
-    _lance_une_descente,
     Famille,
+    _lance_une_descente,
     a_defaire,
-    alias_etage as _alias_etage,
     autre_descente,
     capacite_hote,
     cle_publique,
@@ -58,10 +54,18 @@ from descente import (  # noqa: E402,F401
     detruire_etage1,
     dire,
     identite_de,
+    mener,
     module_qemu,
-    nom_etage as _nom_etage,
     retirer_alias,
 )
+from descente import (
+    alias_etage as _alias_etage,
+)
+from descente import (
+    nom_etage as _nom_etage,
+)
+
+from script.proxmox import proxmox_deploy as pve  # noqa: E402
 
 # L'image des étages imbriqués. Debian parce que install_proxmox.sh s'installe
 # SUR une Debian — Proxmox ne publie pas d'image cloud.

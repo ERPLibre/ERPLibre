@@ -37,6 +37,7 @@ Où vivent les fichiers, et pourquoi :
     /etc/ipsec.conf, /etc/ipsec.secrets   un bloc marqué, retiré au « down ».
     /etc/strongswan.d/erplibre-vpn.conf   le réglage install_routes.
 """
+
 from __future__ import annotations
 
 import os

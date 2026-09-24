@@ -40,6 +40,7 @@ Rien ici ne sort de la machine : on se lie à 127.0.0.1 sur le port 0 (l'OS
 choisit), jamais sur un port fixe qui entrerait en collision avec ce qui
 écoute déjà. Aucun trousseau, aucun `~/.erplibre`, aucun identifiant réel.
 """
+
 from __future__ import annotations
 
 import atexit

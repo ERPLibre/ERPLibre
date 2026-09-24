@@ -21,6 +21,7 @@ l'ordre d'écriture : un chargeur se juge sur ce qu'il refuse.
 Aucun test ne lit le disque de la machine : les racines sont des répertoires
 temporaires, et le répertoire personnel est détourné là où il compte.
 """
+
 from __future__ import annotations
 
 import os

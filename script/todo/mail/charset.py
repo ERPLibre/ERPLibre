@@ -16,6 +16,7 @@ Cette fonction a été réinventée quatre fois dans ce paquet
 un charset non fiable ne doit jamais faire tomber l'affichage ou la
 synchronisation d'un message entier.
 """
+
 from __future__ import annotations
 
 

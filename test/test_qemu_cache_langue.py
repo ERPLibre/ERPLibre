@@ -57,9 +57,12 @@ class TestCeQueLeMenuLit(unittest.TestCase):
             vu["cmd"] = cmd
             return "objets      : 3\ndépôts git  : 12 en miroir, 4.2 Gio\n"
 
-        with mock.patch.object(
-            menu.QemuCacheMenuMixin, "_cache_lire", staticmethod(faux_lire)
-        ), mock.patch.object(menu, "get_lang", return_value="en"):
+        with (
+            mock.patch.object(
+                menu.QemuCacheMenuMixin, "_cache_lire", staticmethod(faux_lire)
+            ),
+            mock.patch.object(menu, "get_lang", return_value="en"),
+        ):
             rendu = menu.QemuCacheMenuMixin._cache_miroir_occupation()
         self.assertIn("--lang fr", vu["cmd"])
         self.assertEqual(rendu, ("12", "4.2 Gio"))

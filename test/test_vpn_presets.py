@@ -626,7 +626,7 @@ class DelegatedSso(unittest.TestCase):
             OpenconnectDriver, "ensure_ready", return_value=True
         ):
             with patch(
-                "script.vpn.drivers.openconnect." "wait_for_interface_address",
+                "script.vpn.drivers.openconnect.wait_for_interface_address",
                 side_effect=slowly,
             ) as waited:
                 with redirect_stdout(io.StringIO()):
@@ -649,7 +649,7 @@ class DelegatedSso(unittest.TestCase):
             OpenconnectDriver, "ensure_ready", return_value=True
         ):
             with patch(
-                "script.vpn.drivers.openconnect." "wait_for_interface_address",
+                "script.vpn.drivers.openconnect.wait_for_interface_address",
                 return_value=[],
             ):
                 with patch(

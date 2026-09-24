@@ -21,6 +21,7 @@ Deux différences qui changent le code, et pas seulement les commandes :
   ouvrir la session SSH par root, avec les clés de root — c'est-à-dire aucune.
   D'où `sudo=False`, et un fichier de pid dans le home plutôt que dans /run.
 """
+
 from __future__ import annotations
 
 import os

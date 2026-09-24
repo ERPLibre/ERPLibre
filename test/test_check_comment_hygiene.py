@@ -11,6 +11,7 @@ un chemin en gabarit doivent passer sans un mot.
 La part qu'aucun motif ne juge — « cette phrase énonce-t-elle un fait durable
 ou raconte-t-elle une journée » — n'est pas testée : elle n'est pas décidable.
 """
+
 import os
 import subprocess
 import sys

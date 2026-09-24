@@ -104,12 +104,16 @@ class TestLExceptionEstPoseeAvant(unittest.TestCase):
     def test_la_mac_entre_dans_le_reseau_avant_la_creation(self):
         args = args_neufs()
         runner = FauxRunner({"is-active": (0, "")})
-        with mock.patch.object(
-            deploy_qemu.os.path, "isfile", return_value=True
-        ), mock.patch.object(
-            deploy_qemu.shutil, "which", return_value="/usr/bin/nft"
-        ), mock.patch.object(
-            deploy_qemu, "macs_deja_prises", return_value=set()
+        with (
+            mock.patch.object(
+                deploy_qemu.os.path, "isfile", return_value=True
+            ),
+            mock.patch.object(
+                deploy_qemu.shutil, "which", return_value="/usr/bin/nft"
+            ),
+            mock.patch.object(
+                deploy_qemu, "macs_deja_prises", return_value=set()
+            ),
         ):
             mac = deploy_qemu.cache_bypass_apply(args, runner)
         self.assertTrue(mac, "aucune MAC retenue")
@@ -124,12 +128,16 @@ class TestLExceptionEstPoseeAvant(unittest.TestCase):
         args = args_neufs()
         args.lang = "en"
         runner = FauxRunner({"is-active": (0, "")})
-        with mock.patch.object(
-            deploy_qemu.os.path, "isfile", return_value=True
-        ), mock.patch.object(
-            deploy_qemu.shutil, "which", return_value="/usr/bin/nft"
-        ), mock.patch.object(
-            deploy_qemu, "macs_deja_prises", return_value=set()
+        with (
+            mock.patch.object(
+                deploy_qemu.os.path, "isfile", return_value=True
+            ),
+            mock.patch.object(
+                deploy_qemu.shutil, "which", return_value="/usr/bin/nft"
+            ),
+            mock.patch.object(
+                deploy_qemu, "macs_deja_prises", return_value=set()
+            ),
         ):
             deploy_qemu.cache_bypass_apply(args, runner)
         pose = [c for c in runner.commandes if "--bypass-add" in " ".join(c)]
@@ -167,12 +175,14 @@ class TestLExceptionEstPoseeAvant(unittest.TestCase):
         reposant la chaîne, et seul un redémarrage la repose."""
         args = args_neufs()
         runner = FauxRunner({"is-active": (0, "")})
-        with mock.patch.object(
-            deploy_qemu.os.path, "isfile", return_value=True
-        ), mock.patch.object(
-            deploy_qemu.shutil, "which", return_value=None
-        ), mock.patch.object(
-            deploy_qemu, "macs_deja_prises", return_value=set()
+        with (
+            mock.patch.object(
+                deploy_qemu.os.path, "isfile", return_value=True
+            ),
+            mock.patch.object(deploy_qemu.shutil, "which", return_value=None),
+            mock.patch.object(
+                deploy_qemu, "macs_deja_prises", return_value=set()
+            ),
         ):
             deploy_qemu.cache_bypass_apply(args, runner)
         dit = [" ".join(c) for c in runner.commandes]
@@ -270,12 +280,13 @@ class TestLeMenageDesExceptions(unittest.TestCase):
         from script.todo import qemu_cache_menu as menu
 
         execute = mock.MagicMock()
-        with mock.patch.object(
-            menu.os.path, "isfile", return_value=True
-        ), mock.patch.object(
-            menu.QemuCacheMenuMixin,
-            "_cache_bypass_orphelines",
-            return_value=[("52:54:00:00:00:04", "partie")],
+        with (
+            mock.patch.object(menu.os.path, "isfile", return_value=True),
+            mock.patch.object(
+                menu.QemuCacheMenuMixin,
+                "_cache_bypass_orphelines",
+                return_value=[("52:54:00:00:00:04", "partie")],
+            ),
         ):
             self.assertEqual(menu.bypass_menage(execute), 1)
         cmd = execute.exec_command_live.call_args.args[0]
@@ -296,9 +307,10 @@ class TestLeMenageDesExceptions(unittest.TestCase):
         from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
 
         sortie = "52:54:00:aa:bb:cc vm-une\n52:54:00:11:22:33\n\n"
-        with mock.patch.object(
-            M, "_cache_lire", return_value=sortie
-        ), mock.patch("os.path.isfile", return_value=True):
+        with (
+            mock.patch.object(M, "_cache_lire", return_value=sortie),
+            mock.patch("os.path.isfile", return_value=True),
+        ):
             self.assertEqual(
                 M._cache_bypass_lire(),
                 [("52:54:00:aa:bb:cc", "vm-une"), ("52:54:00:11:22:33", "")],

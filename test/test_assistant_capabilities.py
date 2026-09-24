@@ -25,6 +25,7 @@ lisent aussi les tests de transport : deux tables se seraient contredites sans
 que rien ne le montre. `/api/show` n'y est pas et se définit ici, parce que la
 découverte n'émet que des GET et qu'elle n'a donc jamais eu à le connaître.
 """
+
 import ipaddress
 import os
 import sys

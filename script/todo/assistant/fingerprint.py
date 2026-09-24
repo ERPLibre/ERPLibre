@@ -31,6 +31,7 @@ un 503 « starting » ou « Loading model » est vivant et identifié, un 401 es
 un accord de reconnaissance et jamais une invitation à saisir une clé, et un
 corps tronqué vaut ce qui en est arrivé.
 """
+
 from __future__ import annotations
 
 import functools

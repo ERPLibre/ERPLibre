@@ -11,6 +11,7 @@ que de rendre du charabia.
     clair    b"P0" + donnees
     chiffre  b"E1" + nonce(12) + AES-256-GCM(chiffre || tag)
 """
+
 from __future__ import annotations
 
 import os

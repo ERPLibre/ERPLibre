@@ -37,14 +37,16 @@ class TestRtkLocate(unittest.TestCase):
             self.assertEqual(TODO().rtk_locate(), ("/usr/bin/rtk", True))
 
     def test_found_outside_path(self):
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=True
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=True),
         ):
             self.assertEqual(TODO().rtk_locate(), (FALLBACK, False))
 
     def test_absent(self):
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=False
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=False),
         ):
             self.assertEqual(TODO().rtk_locate(), (None, False))
 
@@ -56,8 +58,9 @@ class TestRtkExec(unittest.TestCase):
         todo = TODO()
         todo.execute = MagicMock()
         todo.execute.exec_command_live.return_value = 0
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=True
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=True),
         ):
             todo.rtk_exec("gain")
         command = todo.execute.exec_command_live.call_args[0][0]
@@ -67,8 +70,9 @@ class TestRtkExec(unittest.TestCase):
     def test_absent_runs_nothing(self):
         todo = TODO()
         todo.execute = MagicMock()
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=False
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=False),
         ):
             with redirect_stdout(io.StringIO()):
                 status = todo.rtk_exec("gain")
@@ -110,8 +114,9 @@ class TestRtkReportInstall(unittest.TestCase):
         todo = TODO()
         todo.execute = MagicMock()
         todo.execute.exec_command_live.return_value = (0, ["rtk 0.47.0"])
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=True
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=True),
         ):
             output = self.report(todo, 0)
         self.assertIn("✅", output)
@@ -120,8 +125,9 @@ class TestRtkReportInstall(unittest.TestCase):
     def test_success_without_binary_is_not_a_success(self):
         todo = TODO()
         todo.execute = MagicMock()
-        with patch("script.todo.todo.shutil.which", return_value=None), patch(
-            "script.todo.todo.os.access", return_value=False
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch("script.todo.todo.os.access", return_value=False),
         ):
             output = self.report(todo, 0)
         self.assertIn("❌", output)

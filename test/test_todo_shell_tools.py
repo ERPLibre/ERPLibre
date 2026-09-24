@@ -87,9 +87,11 @@ class TestRcTarget(ShellFixture):
 
     def choisit(self, shell_env="/bin/bash", reponse=None):
         entree = refuse_input if reponse is None else (lambda *a: reponse)
-        with patch.dict(os.environ, {"SHELL": shell_env}), patch(
-            "builtins.input", entree
-        ), redirect_stdout(io.StringIO()):
+        with (
+            patch.dict(os.environ, {"SHELL": shell_env}),
+            patch("builtins.input", entree),
+            redirect_stdout(io.StringIO()),
+        ):
             return self.todo._shell_rc_target()
 
     def test_no_file_means_bash_without_asking(self):
@@ -191,9 +193,11 @@ class TestHookStarship(ShellFixture):
 
     def hook(self, shell_env="/bin/bash"):
         out = io.StringIO()
-        with patch.dict(os.environ, {"SHELL": shell_env}), patch(
-            "builtins.input", refuse_input
-        ), redirect_stdout(out):
+        with (
+            patch.dict(os.environ, {"SHELL": shell_env}),
+            patch("builtins.input", refuse_input),
+            redirect_stdout(out),
+        ):
             self.todo._shell_hook_starship()
         return out.getvalue()
 
@@ -246,11 +250,14 @@ class TestInstallStarship(unittest.TestCase):
     def test_an_installed_binary_goes_straight_to_the_shell(self):
         todo = TODO()
         todo.execute = MagicMock()
-        with patch(
-            "script.todo.todo.shutil.which", return_value="/usr/bin/starship"
-        ), patch.object(TODO, "_shell_hook_starship") as hook, patch.object(
-            TODO, "_shell_install_starship_binary"
-        ) as poser:
+        with (
+            patch(
+                "script.todo.todo.shutil.which",
+                return_value="/usr/bin/starship",
+            ),
+            patch.object(TODO, "_shell_hook_starship") as hook,
+            patch.object(TODO, "_shell_install_starship_binary") as poser,
+        ):
             todo._shell_install_starship()
         poser.assert_not_called()
         hook.assert_called_once()
@@ -259,12 +266,11 @@ class TestInstallStarship(unittest.TestCase):
         todo = TODO()
         todo.execute = MagicMock()
         out = io.StringIO()
-        with patch(
-            "script.todo.todo.shutil.which", return_value=None
-        ), patch.object(TODO, "_shell_hook_starship") as hook, patch.object(
-            TODO, "_shell_install_starship_binary"
-        ), redirect_stdout(
-            out
+        with (
+            patch("script.todo.todo.shutil.which", return_value=None),
+            patch.object(TODO, "_shell_hook_starship") as hook,
+            patch.object(TODO, "_shell_install_starship_binary"),
+            redirect_stdout(out),
         ):
             todo._shell_install_starship()
         hook.assert_not_called()
@@ -275,12 +281,15 @@ class TestInstallStarship(unittest.TestCase):
         todo = TODO()
         todo.execute = MagicMock()
         appels = []
-        with patch(
-            "script.todo.todo.todo_install.install_command",
-            return_value=["sudo", "pacman", "-S", "starship"],
-        ), patch(
-            "script.todo.todo.todo_install.ask_and_install",
-            side_effect=lambda *a, **k: appels.append(a[1]) or None,
+        with (
+            patch(
+                "script.todo.todo.todo_install.install_command",
+                return_value=["sudo", "pacman", "-S", "starship"],
+            ),
+            patch(
+                "script.todo.todo.todo_install.ask_and_install",
+                side_effect=lambda *a, **k: appels.append(a[1]) or None,
+            ),
         ):
             todo._shell_install_starship_binary()
         self.assertEqual(len(appels), 1)
@@ -289,13 +298,16 @@ class TestInstallStarship(unittest.TestCase):
         todo = TODO()
         todo.execute = MagicMock()
         appels = []
-        with patch(
-            "script.todo.todo.todo_install.install_command", return_value=None
-        ), patch(
-            "script.todo.todo.todo_install.ask_and_install",
-            side_effect=lambda *a, **k: appels.append(a[1]) or 0,
-        ), redirect_stdout(
-            io.StringIO()
+        with (
+            patch(
+                "script.todo.todo.todo_install.install_command",
+                return_value=None,
+            ),
+            patch(
+                "script.todo.todo.todo_install.ask_and_install",
+                side_effect=lambda *a, **k: appels.append(a[1]) or 0,
+            ),
+            redirect_stdout(io.StringIO()),
         ):
             todo._shell_install_starship_binary()
         self.assertEqual(appels, [TODO._STARSHIP_UPSTREAM])
@@ -333,9 +345,11 @@ class TestUpstreamTools(ShellFixture):
     def installe(self, outil, status=0):
         self.todo.execute.exec_command_live.return_value = status
         out = io.StringIO()
-        with patch.dict(os.environ, {"SHELL": "/bin/bash"}), patch(
-            "builtins.input", refuse_input
-        ), redirect_stdout(out):
+        with (
+            patch.dict(os.environ, {"SHELL": "/bin/bash"}),
+            patch("builtins.input", refuse_input),
+            redirect_stdout(out),
+        ):
             self.todo._shell_install_upstream_tool(outil)
         return out.getvalue()
 

@@ -25,6 +25,7 @@ Les valeurs de `COMMANDS` SONT les clés i18n : `t()` rend une clé absente
 inchangée, donc une commande non traduite s'affiche en anglais correct. La
 traduction se fait à l'affichage, dans le menu.
 """
+
 from __future__ import annotations
 
 import re

@@ -1824,8 +1824,7 @@ class ProxmoxMenuMixin:
             return False
         if fini.returncode:
             print(
-                f"  ⚠ {t('download cache bypass not set')}"
-                f" ({fini.returncode})"
+                f"  ⚠ {t('download cache bypass not set')} ({fini.returncode})"
             )
             return False
         self._pve_note(
@@ -1889,8 +1888,7 @@ class ProxmoxMenuMixin:
             # certificate in certificate chain » — plus tard, dans la VM,
             # loin d'ici. C'est pourquoi il est nommé.
             cle = (
-                "no trust store for this distribution, its downloads "
-                "will fail"
+                "no trust store for this distribution, its downloads will fail"
             )
             self._pve_note(vm, f"  ⚠ {t(cle)} : {vm.get('distro') or '?'}")
             return False
@@ -2009,8 +2007,7 @@ class ProxmoxMenuMixin:
         groupes = list(getattr(mod, "GPU_GROUPS", ()) or ("render", "video"))
         gestes = [f"sudo groupadd -f {g}" for g in groupes]
         gestes.append(
-            f"sudo usermod -aG {','.join(groupes)}"
-            f" {shlex.quote(utilisateur)}"
+            f"sudo usermod -aG {','.join(groupes)} {shlex.quote(utilisateur)}"
         )
         code, _o = self._pve_ssh(cible, " && ".join(gestes), timeout=60)
         if code:

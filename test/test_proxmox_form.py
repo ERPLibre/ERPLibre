@@ -659,16 +659,22 @@ class TestLePreVolDuCacheSurProxmox(unittest.TestCase):
                 app.action_deploy()
                 vu["second"] = getattr(app, "result", None)
 
-        with mock.patch.object(
-            cache_offline, "suites_absentes", return_value=list(absentes)
-        ), mock.patch.object(
-            cache_offline, "composants_absents", return_value=[]
-        ), mock.patch.object(
-            cache_offline, "manques_hors_ligne", return_value=[]
-        ), mock.patch.object(
-            cache_offline, "paquets_absents", return_value=[]
-        ), mock.patch.object(
-            cache_offline, "miroirs_absents", return_value=[]
+        with (
+            mock.patch.object(
+                cache_offline, "suites_absentes", return_value=list(absentes)
+            ),
+            mock.patch.object(
+                cache_offline, "composants_absents", return_value=[]
+            ),
+            mock.patch.object(
+                cache_offline, "manques_hors_ligne", return_value=[]
+            ),
+            mock.patch.object(
+                cache_offline, "paquets_absents", return_value=[]
+            ),
+            mock.patch.object(
+                cache_offline, "miroirs_absents", return_value=[]
+            ),
         ):
             asyncio.run(scenario())
         return vu
@@ -1109,8 +1115,8 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
         ctx["gpu_manque"] = manque
         vu = {"recu": None, "notes": []}
         if moyen:
-            ctx["installer_gpu"] = (
-                lambda paquets: vu.update(recu=paquets) or True
+            ctx["installer_gpu"] = lambda paquets: (
+                vu.update(recu=paquets) or True
             )
             ctx["sonder_gpu"] = lambda: apres
 
@@ -1865,9 +1871,7 @@ class TestNeRienPerdreDansSshConfig(unittest.TestCase):
         """« Host prod-db vm-a » perdait le prod-db de l'utilisateur : le bloc
         partait en entier dès qu'UN de ses noms était repris."""
         avant = (
-            "Host prod-db vm-a\n"
-            "    HostName db.interne\n"
-            "    ProxyJump pve9\n"
+            "Host prod-db vm-a\n    HostName db.interne\n    ProxyJump pve9\n"
         )
         apres = self.retirer(avant, ["vm-a"])
         self.assertIn("Host prod-db\n", apres)

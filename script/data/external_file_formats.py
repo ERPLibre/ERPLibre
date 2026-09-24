@@ -2864,8 +2864,7 @@ def _avertissements(rapport, options):
     hors = rapport.get("hors_cellules") or {}
     if rapport.get("format") == "xlsx":
         dits.append(
-            "Cached formula results are dropped;"
-            " the sheet recomputes on open."
+            "Cached formula results are dropped; the sheet recomputes on open."
         )
         dits.append("Document properties were cleared on the copy.")
     if hors.get("croises") or hors.get("graphiques"):
@@ -2884,8 +2883,7 @@ def _avertissements(rapport, options):
         )
     if hors.get("liens_externes"):
         dits.append(
-            "External links were dropped; formulas that used them"
-            " show #REF!."
+            "External links were dropped; formulas that used them show #REF!."
         )
     survivent = _noms_de_feuille_survivent(rapport, options)
     if hors.get("plages_nommees") and survivent:

@@ -25,6 +25,7 @@ attend `{}` supprimerait le repli textuel en silence.
 partir du JSON de `--report` déjà en main : aucune entrée-sortie et aucun
 sous-processus depuis l'affichage.
 """
+
 from __future__ import annotations
 
 try:
@@ -256,9 +257,9 @@ def run_transform_form(ctx, run_app: bool = True):
     # TOUS les imports textual ICI : le CLI importe ce module pour ses
     # fonctions pures, et les libellés des BINDINGS ne doivent être
     # évalués qu'à l'appel, après le choix de la langue.
+    from rich.text import Text
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
-    from rich.text import Text
     from textual.widgets import DataTable, Footer, Header, OptionList, Static
     from textual.widgets.option_list import Option
 

@@ -13,6 +13,7 @@ télémétrie de navigation) et non dans un fichier versionné.
 Tout est best-effort : une préférence illisible ou un disque plein ne doivent
 JAMAIS empêcher le CLI de démarrer.
 """
+
 from __future__ import annotations
 
 import json

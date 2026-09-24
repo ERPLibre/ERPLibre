@@ -419,7 +419,7 @@ class GitTool:
                 #     '"${EL_CONFIG_FILE}"\n'
                 # )
                 str_repo = (
-                    f'    printf "{update_repo}," >> ' '"${EL_CONFIG_FILE}"\n'
+                    f'    printf "{update_repo}," >> "${{EL_CONFIG_FILE}}"\n'
                 )
                 # Ignore repo if not starting by addons
                 # if update_repo.startswith("addons"):

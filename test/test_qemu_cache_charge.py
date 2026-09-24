@@ -276,18 +276,22 @@ class TestLeRapportSeClotSurUnEchec(unittest.TestCase):
         with tempfile.TemporaryDirectory() as rep:
             fichier = str(Path(rep) / "rapport.json")
             rapport = {"_fichier": fichier, "vms": []}
-            with mock.patch.object(QC, "dire"), mock.patch.object(
-                QC, "noter_uuid"
-            ), mock.patch.object(
-                QC,
-                "deployer",
-                return_value="" if echoue == "deployer" else "10.0.0.1",
-            ), mock.patch.object(
-                QC, "attendre_ssh", return_value=echoue != "attendre_ssh"
-            ), mock.patch.object(
-                QC,
-                "poser_les_paquets",
-                return_value=echoue != "poser_les_paquets",
+            with (
+                mock.patch.object(QC, "dire"),
+                mock.patch.object(QC, "noter_uuid"),
+                mock.patch.object(
+                    QC,
+                    "deployer",
+                    return_value="" if echoue == "deployer" else "10.0.0.1",
+                ),
+                mock.patch.object(
+                    QC, "attendre_ssh", return_value=echoue != "attendre_ssh"
+                ),
+                mock.patch.object(
+                    QC,
+                    "poser_les_paquets",
+                    return_value=echoue != "poser_les_paquets",
+                ),
             ):
                 code = QC._boucle(args, rapport, None, "", 0)
             with open(fichier, encoding="utf-8") as fh:
@@ -347,22 +351,24 @@ class TestLaContreEpreuveNommeSonEtape(unittest.TestCase):
         with tempfile.TemporaryDirectory() as rep:
             fichier = str(Path(rep) / "rapport.json")
             rapport = {"_fichier": fichier, "vms": []}
-            with mock.patch.object(QC, "dire"), mock.patch.object(
-                QC, "noter_uuid"
-            ), mock.patch.object(QC, "eteindre"), mock.patch.object(
-                QC, "verdict", return_value=True
-            ), mock.patch.object(
-                QC, "couper_lamont", return_value=True
-            ), mock.patch.object(
-                QC, "rebrancher_lamont", create=True
-            ), mock.patch.object(
-                QC, "deployer", side_effect=selon("deployer", "10.0.0.1")
-            ), mock.patch.object(
-                QC, "attendre_ssh", side_effect=selon("attendre_ssh", True)
-            ), mock.patch.object(
-                QC,
-                "poser_les_paquets",
-                side_effect=selon("poser_les_paquets", True),
+            with (
+                mock.patch.object(QC, "dire"),
+                mock.patch.object(QC, "noter_uuid"),
+                mock.patch.object(QC, "eteindre"),
+                mock.patch.object(QC, "verdict", return_value=True),
+                mock.patch.object(QC, "couper_lamont", return_value=True),
+                mock.patch.object(QC, "rebrancher_lamont", create=True),
+                mock.patch.object(
+                    QC, "deployer", side_effect=selon("deployer", "10.0.0.1")
+                ),
+                mock.patch.object(
+                    QC, "attendre_ssh", side_effect=selon("attendre_ssh", True)
+                ),
+                mock.patch.object(
+                    QC,
+                    "poser_les_paquets",
+                    side_effect=selon("poser_les_paquets", True),
+                ),
             ):
                 code = QC._boucle(args, rapport, None, "", 0)
             with open(fichier, encoding="utf-8") as fh:
@@ -389,8 +395,9 @@ class TestLaTroisiemeVmNaitHorsLigne(unittest.TestCase):
     def commande(self, **kw):
         from unittest import mock
 
-        with mock.patch.object(QC, "dire") as dit, mock.patch.object(
-            QC, "cle_publique", return_value="/tmp/cle.pub"
+        with (
+            mock.patch.object(QC, "dire") as dit,
+            mock.patch.object(QC, "cle_publique", return_value="/tmp/cle.pub"),
         ):
             QC.deployer("vm", None, dry_run=True, **kw)
         return " ".join(str(a) for c in dit.call_args_list for a in c.args)
@@ -440,14 +447,14 @@ class TestPlusieursSystemes(unittest.TestCase):
             appels.append((a.distro, a.version))
             return (codes.pop(0) if codes else 0), ""
 
-        with mock.patch.object(
-            QC, "une_campagne", side_effect=campagne
-        ), mock.patch.object(
-            QC,
-            "detruire",
-            side_effect=lambda *x, **k: appels.append("détruire"),
-        ), mock.patch(
-            "builtins.print"
+        with (
+            mock.patch.object(QC, "une_campagne", side_effect=campagne),
+            mock.patch.object(
+                QC,
+                "detruire",
+                side_effect=lambda *x, **k: appels.append("détruire"),
+            ),
+            mock.patch("builtins.print"),
         ):
             code = QC.main(argv)
         return code, appels
@@ -517,22 +524,24 @@ class TestUneVmMesureeEstEteinte(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as rep:
             rapport = {"_fichier": str(Path(rep) / "r.json"), "vms": []}
-            with mock.patch.object(QC, "dire"), mock.patch.object(
-                QC, "noter_uuid"
-            ), mock.patch.object(
-                QC, "deployer", return_value="10.0.0.1"
-            ), mock.patch.object(
-                QC, "attendre_ssh", return_value=True
-            ), mock.patch.object(
-                QC,
-                "poser_les_paquets",
-                side_effect=lambda *a, **k: ordre.append("paquets") or True,
-            ), mock.patch.object(
-                QC,
-                "eteindre",
-                side_effect=lambda nom, *a, **k: ordre.append(nom),
-            ), mock.patch.object(
-                QC, "verdict", return_value=True
+            with (
+                mock.patch.object(QC, "dire"),
+                mock.patch.object(QC, "noter_uuid"),
+                mock.patch.object(QC, "deployer", return_value="10.0.0.1"),
+                mock.patch.object(QC, "attendre_ssh", return_value=True),
+                mock.patch.object(
+                    QC,
+                    "poser_les_paquets",
+                    side_effect=lambda *a, **k: (
+                        ordre.append("paquets") or True
+                    ),
+                ),
+                mock.patch.object(
+                    QC,
+                    "eteindre",
+                    side_effect=lambda nom, *a, **k: ordre.append(nom),
+                ),
+                mock.patch.object(QC, "verdict", return_value=True),
             ):
                 QC._boucle(args, rapport, None, "", 0)
         base = QC.base_des_noms(args)
@@ -552,9 +561,10 @@ class TestUneVmMesureeEstEteinte(unittest.TestCase):
     def test_a_blanc_rien_n_est_lance(self):
         from unittest import mock
 
-        with mock.patch.object(QC, "dire"), mock.patch.object(
-            QC, "executer"
-        ) as ex:
+        with (
+            mock.patch.object(QC, "dire"),
+            mock.patch.object(QC, "executer") as ex,
+        ):
             QC.eteindre("vm-essai", None, dry_run=True)
         ex.assert_not_called()
 

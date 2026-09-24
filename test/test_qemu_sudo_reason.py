@@ -187,9 +187,12 @@ class LeRenduDuMenu(unittest.TestCase):
         todo = TODO.__new__(TODO)
         module = mock.MagicMock()
         module.sudo_facts.return_value = faits
-        with mock.patch.object(
-            TODO, "_qemu_import_module", return_value=module
-        ), mock.patch.object(os, "geteuid", return_value=euid):
+        with (
+            mock.patch.object(
+                TODO, "_qemu_import_module", return_value=module
+            ),
+            mock.patch.object(os, "geteuid", return_value=euid),
+        ):
             return todo._qemu_sudo_lines()
 
     def test_root_is_told_nothing(self):
@@ -227,9 +230,12 @@ class LeRenduDuMenu(unittest.TestCase):
         """Le récapitulatif ne doit pas tomber parce qu'un module ne se charge
         pas : c'est la page qu'on relit avant de créer des disques."""
         todo = TODO.__new__(TODO)
-        with mock.patch.object(
-            TODO, "_qemu_import_module", side_effect=OSError("absent")
-        ), mock.patch.object(os, "geteuid", return_value=1000):
+        with (
+            mock.patch.object(
+                TODO, "_qemu_import_module", side_effect=OSError("absent")
+            ),
+            mock.patch.object(os, "geteuid", return_value=1000),
+        ):
             self.assertEqual([], todo._qemu_sudo_lines())
 
     def test_every_sentence_is_translated(self):

@@ -307,7 +307,7 @@ def main():
     if not base_image_name or base_image_name == image_name_to_generate:
         with_demo = dct_config_image.get("with_demo")
         # Create a new one
-        cmd = f"./odoo_bin.sh db --create --database" f" {bd_temp_name}"
+        cmd = f"./odoo_bin.sh db --create --database {bd_temp_name}"
         if with_demo:
             cmd += " --demo"
     else:

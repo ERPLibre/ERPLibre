@@ -19,6 +19,7 @@ de l'utilisateur et son mot de passe maître est saisi par lui. Chaque étape
 privilégiée appelle `sudo` séparément, et `--dry-run` les montre toutes sans
 en exécuter aucune.
 """
+
 from __future__ import annotations
 
 import argparse

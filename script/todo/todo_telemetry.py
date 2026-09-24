@@ -10,6 +10,7 @@ DIAGRAMME arborescent des fonctionnalités dans un TUI Textual, trié par usage.
   dédupe les ré-affichages consécutifs pour ne compter que les TRANSITIONS.
 - run_tui() : ouvre l'arbre de navigation (compteurs par menu).
 """
+
 from __future__ import annotations
 
 import ast

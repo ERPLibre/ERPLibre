@@ -584,7 +584,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             typed.clear()
             with patch(
                 "getpass.getpass",
-                lambda prompt="": (typed.append(prompt) or ""),
+                lambda prompt="": typed.append(prompt) or "",
             ):
                 with redirect_stdout(io.StringIO()):
                     self.todo._vpn_store_secrets()

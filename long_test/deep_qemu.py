@@ -42,15 +42,11 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
 
-from script.proxmox import nesting  # noqa: E402
-from script.proxmox import proxmox_deploy as pve  # noqa: E402
-
 import descente  # noqa: E402
 from descente import (  # noqa: E402,F401
     DELAIS,
     Famille,
     a_defaire,
-    alias_etage as _alias_etage,
     autre_descente,
     capacite_hote,
     cle_publique,
@@ -62,9 +58,17 @@ from descente import (  # noqa: E402,F401
     identite_de,
     mener,
     module_qemu,
-    nom_etage as _nom_etage,
     retirer_alias,
 )
+from descente import (
+    alias_etage as _alias_etage,
+)
+from descente import (
+    nom_etage as _nom_etage,
+)
+
+from script.proxmox import nesting  # noqa: E402
+from script.proxmox import proxmox_deploy as pve  # noqa: E402
 
 # Une Debian nue : c'est elle qui recevra libvirt et qemu-kvm.
 DISTRO = "debian"

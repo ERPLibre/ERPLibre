@@ -17,6 +17,7 @@ le rendra.
 Compté en CARACTÈRES et non en octets : « préchauffer » pèse 11 caractères et
 12 octets, et une limite en octets refuserait des sujets français conformes.
 """
+
 import re
 import sys
 from pathlib import Path

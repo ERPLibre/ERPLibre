@@ -260,8 +260,8 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
         self.deleted = []
         self.original_backup = theme_leftover.backup_attachments
         self.original_delete = theme_leftover.delete_attachments
-        theme_leftover.backup_attachments = (
-            lambda db, th, rows, fs=None: self.saved.append(rows) or ["/tmp/x"]
+        theme_leftover.backup_attachments = lambda db, th, rows, fs=None: (
+            self.saved.append(rows) or ["/tmp/x"]
         )
         theme_leftover.delete_attachments = (
             lambda db, rows, cfg="./config.conf": (
@@ -421,8 +421,8 @@ class TestTheIdentifiersSentToOdoo(unittest.TestCase):
         # autour d'un identifiant et Odoo refuse tout le lot.
         pushed = {}
         original = theme_leftover.subprocess.run
-        theme_leftover.subprocess.run = (
-            lambda *a, **kw: pushed.update(script=kw.get("input", ""))
+        theme_leftover.subprocess.run = lambda *a, **kw: (
+            pushed.update(script=kw.get("input", ""))
             or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
         )
         self.addCleanup(setattr, theme_leftover.subprocess, "run", original)

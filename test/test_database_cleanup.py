@@ -449,9 +449,8 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
     def test_the_relay_shows_the_elapsed_time(self):
         # Ce qui distingue « ça avance lentement » de « ça ne bouge plus ».
         import io
-        from contextlib import redirect_stdout
-
         import time as _time
+        from contextlib import redirect_stdout
 
         echo = cleanup.make_echo(_time.monotonic() - 42)
         out = io.StringIO()

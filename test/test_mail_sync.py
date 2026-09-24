@@ -237,8 +237,8 @@ class TestNoselectContainers(SyncCase):
         transport = FakeImapTransport()
         transport.add("[Gmail]/Sent Mail", 1, subject="Envoyé")
         reels = transport.list_folders()
-        transport.list_folders = (
-            lambda: [FolderInfo(name="[Gmail]", selectable=False)] + reels
+        transport.list_folders = lambda: (
+            [FolderInfo(name="[Gmail]", selectable=False)] + reels
         )
         # Le serveur RÉPONDRAIT NO : si le moteur tente quand même, le
         # test doit le voir échouer, pas passer par chance.

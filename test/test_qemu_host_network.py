@@ -327,23 +327,25 @@ class LOrdreDesGestes(unittest.TestCase):
         suite_cidr = list(cidrs)
         etats = [etat_initial, (actif_apres, etat_initial[1])]
 
-        with mock.patch.object(
-            DQ,
-            "network_cidr",
-            side_effect=lambda *a: (
-                suite_cidr.pop(0) if len(suite_cidr) > 1 else suite_cidr[0]
+        with (
+            mock.patch.object(
+                DQ,
+                "network_cidr",
+                side_effect=lambda *a: (
+                    suite_cidr.pop(0) if len(suite_cidr) > 1 else suite_cidr[0]
+                ),
             ),
-        ), mock.patch.object(
-            DQ, "host_networks", return_value=reseaux(*hote)
-        ), mock.patch.object(
-            DQ, "libvirt_networks_cidrs", return_value=[]
-        ), mock.patch.object(
-            DQ, "virsh_out", return_value=XML_DEFAUT
-        ), mock.patch.object(
-            DQ,
-            "network_state",
-            side_effect=lambda *a: (
-                etats.pop(0) if len(etats) > 1 else etats[0]
+            mock.patch.object(
+                DQ, "host_networks", return_value=reseaux(*hote)
+            ),
+            mock.patch.object(DQ, "libvirt_networks_cidrs", return_value=[]),
+            mock.patch.object(DQ, "virsh_out", return_value=XML_DEFAUT),
+            mock.patch.object(
+                DQ,
+                "network_state",
+                side_effect=lambda *a: (
+                    etats.pop(0) if len(etats) > 1 else etats[0]
+                ),
             ),
         ):
             with redirect_stdout(io.StringIO()) as sortie:

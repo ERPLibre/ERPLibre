@@ -17,6 +17,7 @@ compris, en « tout le trafic », l'astuce de marquage (fwmark) qui garde
 l'endpoint joignable. On ne double donc PAS son travail : un `ip route` de
 plus ici entrerait en conflit avec le sien.
 """
+
 from __future__ import annotations
 
 import shlex

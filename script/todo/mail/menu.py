@@ -7,6 +7,7 @@ Ce module est le SEUL point de contact entre le paquet `mail` et le CLI :
 `todo.py` importe `prompt_execute_mail` et rien d'autre. Le sens de la
 dépendance est volontaire — `mail` ne doit jamais importer `todo`.
 """
+
 from __future__ import annotations
 
 import getpass

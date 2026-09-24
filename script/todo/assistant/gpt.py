@@ -38,6 +38,7 @@ d'où deux restrictions sur elle : `hosting` y est forcé à `loopback`, et un
 gpt qui y déclarerait une COMMANDE est refusé. Un fichier qu'on n'a pas relu
 n'est pas une donnée, c'est de la configuration exécutable.
 """
+
 from __future__ import annotations
 
 import os

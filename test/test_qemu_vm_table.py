@@ -14,8 +14,8 @@ deux VM réelles, et la largeur de la ligne — un tableau qui déborde de 80
 colonnes se replie et devient illisible.
 """
 
-import io
 import contextlib
+import io
 import subprocess
 import sys
 import unittest

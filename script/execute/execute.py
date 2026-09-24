@@ -101,7 +101,7 @@ class Execute:
                 f"gnome-terminal -- bash -c 'source"
                 f" ./{VENV_ERPLIBRE}/bin/activate;%s'"
             )
-            self.cmd_source_default = "gnome-terminal -- bash -c '" f"%s'"
+            self.cmd_source_default = f"gnome-terminal -- bash -c '%s'"
         else:
             exec_path_tell = shutil.which("osascript")
             if exec_path_tell:
@@ -280,7 +280,7 @@ class Execute:
             process.wait()
             exit_code = process.returncode
             if process.returncode != 0 and not quiet:
-                print("Command returned error code:" f" {process.returncode}")
+                print(f"Command returned error code: {process.returncode}")
 
         # An exception MUST report a failure. exit_code stays None otherwise,
         # and None is falsy: callers testing « if not status: » would mark the

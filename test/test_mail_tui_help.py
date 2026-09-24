@@ -15,6 +15,7 @@ Comme `test_mail_tui_splitter.py` : ce qui compte se mesure sur
 l'application montée pour de vrai, et sur ce qui est RÉELLEMENT rendu
 (`Compositor.render_strips`), jamais sur un attribut interne de l'écran.
 """
+
 import os
 import re
 import tempfile

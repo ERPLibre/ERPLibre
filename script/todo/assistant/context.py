@@ -35,6 +35,7 @@ d'ordinaire. La moitié « noms » du filtre est donc inerte par défaut, et
 `gate` le dit au lieu de laisser croire à un contrôle complet : une
 destination tierce est REFUSÉE tant que cette liste est vide.
 """
+
 from __future__ import annotations
 
 import os

@@ -26,6 +26,7 @@ Les valeurs y sont inventées — versions, noms de modèles, empreintes de
 compilation. Un relevé pris sur une machine réelle figerait dans le dépôt le
 nom d'un modèle et d'un hôte que personne n'a choisi d'y mettre.
 """
+
 from __future__ import annotations
 
 import http.server
@@ -163,8 +164,7 @@ FIXTURES: dict[str, dict[str, tuple[int, bytes]]] = {
     "open_webui": {
         "/api/config": (
             200,
-            b'{"name":"Open WebUI","version":"0.0.0",'
-            b'"deployment_id":"0000"}',
+            b'{"name":"Open WebUI","version":"0.0.0","deployment_id":"0000"}',
         ),
         "/api/version": (200, b'{"version":"0.0.0"}'),
     },

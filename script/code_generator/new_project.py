@@ -382,7 +382,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_demo}"
+            cmd = f"./odoo_bin.sh db --drop --database {bd_name_demo}"
             _logger.info(cmd)
             os.system(cmd)
 
@@ -463,7 +463,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_template}"
+            cmd = f"./odoo_bin.sh db --drop --database {bd_name_template}"
             _logger.info(cmd)
             os.system(cmd)
 
@@ -531,7 +531,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_generator}"
+            cmd = f"./odoo_bin.sh db --drop --database {bd_name_generator}"
             _logger.info(cmd)
             os.system(cmd)
 

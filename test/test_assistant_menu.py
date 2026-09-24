@@ -18,6 +18,7 @@ vérifiée ici même — le paquet, lui, doit rester importable seul.
 `_menu_header()` enregistre une télémétrie dans `~/.erplibre` : tout test qui
 appelle une méthode de menu la neutralise, sinon il écrit pour de vrai.
 """
+
 from __future__ import annotations
 
 import ast
@@ -97,10 +98,11 @@ class Cablage(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "prompt_assistant_llm") as mock_llm, patch(
-            "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch("click.prompt", side_effect=["1", "0"]), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch.object(TODO, "prompt_assistant_llm") as mock_llm,
+            patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
+            patch("click.prompt", side_effect=["1", "0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_assistant()
         mock_llm.assert_called_once_with()
@@ -110,10 +112,11 @@ class Cablage(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "prompt_assistant_llm") as mock_llm, patch(
-            "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch("click.prompt", side_effect=["2", "0"]), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch.object(TODO, "prompt_assistant_llm") as mock_llm,
+            patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
+            patch("click.prompt", side_effect=["2", "0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_assistant()
         mock_mail.assert_called_once()
@@ -128,12 +131,13 @@ class Cablage(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch(
-            "script.todo.assistant.fingerprint.collect", return_value={}
-        ), patch("script.todo.assistant.servers.load", return_value=[]), patch(
-            "click.prompt", side_effect=["0"]
-        ), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch(
+                "script.todo.assistant.fingerprint.collect", return_value={}
+            ),
+            patch("script.todo.assistant.servers.load", return_value=[]),
+            patch("click.prompt", side_effect=["0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_assistant_llm()
 
@@ -244,16 +248,20 @@ class Balayage(unittest.TestCase):
 
         todo = self._todo()
         vus = {}
-        with patch.object(
-            llm_disc, "local_networks", return_value=[]
-        ), patch.object(llm_disc, "run_ip", return_value=""), patch.object(
-            todo, "_qemu_host_addresses", staticmethod(lambda: set())
-        ), patch.object(
-            todo,
-            "_llm_probe_and_keep",
-            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
-        ), patch(
-            "click.prompt", side_effect=["198.51.100.0/24", "o"]
+        with (
+            patch.object(llm_disc, "local_networks", return_value=[]),
+            patch.object(llm_disc, "run_ip", return_value=""),
+            patch.object(
+                todo, "_qemu_host_addresses", staticmethod(lambda: set())
+            ),
+            patch.object(
+                todo,
+                "_llm_probe_and_keep",
+                lambda adresses, **kw: vus.update(
+                    {"n": len(adresses), "kw": kw}
+                ),
+            ),
+            patch("click.prompt", side_effect=["198.51.100.0/24", "o"]),
         ):
             todo._llm_search_cidr()
         self.assertEqual(vus.get("n"), 254)
@@ -269,16 +277,19 @@ class Balayage(unittest.TestCase):
         todo = self._todo()
         vus = {}
         voisinage = "198.51.100.1 dev lien0 lladdr aa:bb:cc:dd:ee:01 REACHABLE"
-        with patch.object(
-            llm_disc, "run_ip", return_value=voisinage
-        ), patch.object(
-            todo, "_qemu_host_addresses", staticmethod(lambda: set())
-        ), patch.object(
-            todo,
-            "_llm_probe_and_keep",
-            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
-        ), patch(
-            "click.prompt", side_effect=["o"]
+        with (
+            patch.object(llm_disc, "run_ip", return_value=voisinage),
+            patch.object(
+                todo, "_qemu_host_addresses", staticmethod(lambda: set())
+            ),
+            patch.object(
+                todo,
+                "_llm_probe_and_keep",
+                lambda adresses, **kw: vus.update(
+                    {"n": len(adresses), "kw": kw}
+                ),
+            ),
+            patch("click.prompt", side_effect=["o"]),
         ):
             todo._llm_sweep_cidr("198.51.100.0/24")
         self.assertEqual(vus.get("n"), 254)
@@ -290,16 +301,19 @@ class Balayage(unittest.TestCase):
         todo = self._todo()
         vus = {}
         voisinage = "198.51.100.1 dev lien0 lladdr aa:bb:cc:dd:ee:01 REACHABLE"
-        with patch.object(
-            llm_disc, "run_ip", return_value=voisinage
-        ), patch.object(
-            todo, "_qemu_host_addresses", staticmethod(lambda: set())
-        ), patch.object(
-            todo,
-            "_llm_probe_and_keep",
-            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
-        ), patch(
-            "click.prompt", side_effect=["v"]
+        with (
+            patch.object(llm_disc, "run_ip", return_value=voisinage),
+            patch.object(
+                todo, "_qemu_host_addresses", staticmethod(lambda: set())
+            ),
+            patch.object(
+                todo,
+                "_llm_probe_and_keep",
+                lambda adresses, **kw: vus.update(
+                    {"n": len(adresses), "kw": kw}
+                ),
+            ),
+            patch("click.prompt", side_effect=["v"]),
         ):
             todo._llm_sweep_cidr("198.51.100.0/24")
         self.assertEqual(vus.get("n"), 1)
@@ -315,8 +329,9 @@ class Balayage(unittest.TestCase):
 
         todo = self._todo()
         sortie = io.StringIO()
-        with patch.object(llm_disc, "sweep", return_value=[]), redirect_stdout(
-            sortie
+        with (
+            patch.object(llm_disc, "sweep", return_value=[]),
+            redirect_stdout(sortie),
         ):
             todo._llm_probe_and_keep(
                 ["198.51.100.1"], cible="198.51.100.0/24", restreint=True
@@ -332,8 +347,9 @@ class Balayage(unittest.TestCase):
 
         todo = self._todo()
         sortie = io.StringIO()
-        with patch.object(llm_disc, "sweep", return_value=[]), redirect_stdout(
-            sortie
+        with (
+            patch.object(llm_disc, "sweep", return_value=[]),
+            redirect_stdout(sortie),
         ):
             todo._llm_probe_and_keep(["198.51.100.1"], cible="198.51.100.0/24")
         self.assertNotIn(
@@ -345,12 +361,15 @@ class Balayage(unittest.TestCase):
 
         todo = self._todo()
         appels = []
-        with patch.object(
-            todo, "_qemu_host_addresses", staticmethod(lambda: set())
-        ), patch.object(llm_disc, "run_ip", return_value=""), patch.object(
-            todo, "_llm_probe_and_keep", lambda *a, **k: appels.append(a)
-        ), patch(
-            "click.prompt", side_effect=[]
+        with (
+            patch.object(
+                todo, "_qemu_host_addresses", staticmethod(lambda: set())
+            ),
+            patch.object(llm_disc, "run_ip", return_value=""),
+            patch.object(
+                todo, "_llm_probe_and_keep", lambda *a, **k: appels.append(a)
+            ),
+            patch("click.prompt", side_effect=[]),
         ):
             todo._llm_sweep_cidr("10.0.0.0/8")
         self.assertEqual(appels, [])
@@ -445,14 +464,13 @@ class SessionsClaudeCode(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_claude_sessions"
-        ) as mock_sessions, patch.object(
-            TODO, "prompt_execute_claude_plugins"
-        ) as mock_plugins, patch(
-            "click.prompt", side_effect=["6", "0"]
-        ), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch.object(TODO, "prompt_claude_sessions") as mock_sessions,
+            patch.object(
+                TODO, "prompt_execute_claude_plugins"
+            ) as mock_plugins,
+            patch("click.prompt", side_effect=["6", "0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_execute_gpt_code()
         mock_sessions.assert_called_once_with()
@@ -463,10 +481,12 @@ class SessionsClaudeCode(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch(
-            "script.todo.assistant.claude_sessions.fleet", return_value=[]
-        ), patch("click.prompt", side_effect=["0"]), patch(
-            "script.todo.todo_telemetry.record"
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet", return_value=[]
+            ),
+            patch("click.prompt", side_effect=["0"]),
+            patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_claude_sessions()
 
@@ -491,9 +511,11 @@ class SessionsClaudeCode(unittest.TestCase):
 
         todo = TODO()
         sortie = io.StringIO()
-        with patch("shutil.which", return_value="/usr/bin/claude"), patch(
-            "click.prompt", side_effect=["0"]
-        ), redirect_stdout(sortie):
+        with (
+            patch("shutil.which", return_value="/usr/bin/claude"),
+            patch("click.prompt", side_effect=["0"]),
+            redirect_stdout(sortie),
+        ):
             todo._claude_reprendre([])
         self.assertIn(t("No session on this machine."), sortie.getvalue())
 

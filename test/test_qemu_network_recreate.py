@@ -142,14 +142,11 @@ def lancer(
     runner.dry_run = False
     runner.use_sudo = False
     runner.run.side_effect = parc.run
-    with mock.patch.object(
-        NQ.DQ, "virsh_out", side_effect=parc.virsh_out
-    ), mock.patch.object(
-        NQ.DQ, "host_networks", return_value=reseaux(*hote)
-    ), mock.patch.object(
-        NQ.DQ, "libvirt_networks_cidrs", return_value=[]
-    ), mock.patch.object(
-        NQ.DQ, "network_state", return_value=etat_reseau
+    with (
+        mock.patch.object(NQ.DQ, "virsh_out", side_effect=parc.virsh_out),
+        mock.patch.object(NQ.DQ, "host_networks", return_value=reseaux(*hote)),
+        mock.patch.object(NQ.DQ, "libvirt_networks_cidrs", return_value=[]),
+        mock.patch.object(NQ.DQ, "network_state", return_value=etat_reseau),
     ):
         with redirect_stdout(io.StringIO()) as sortie:
             code = NQ.recreer(args or Args(), runner)

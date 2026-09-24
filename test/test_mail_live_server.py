@@ -17,6 +17,7 @@ tout le fichier se saute proprement. Pour les lancer volontairement :
     .venv.erplibre/bin/python -m unittest discover -s test \\
         -p test_mail_live_server.py -v
 """
+
 import email.utils
 import threading
 import unittest

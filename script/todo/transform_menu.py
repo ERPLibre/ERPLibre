@@ -473,8 +473,7 @@ class TransformMenuMixin:
                 )
                 if trouve is None:
                     manque = t(
-                        "The selection matches no sheet;"
-                        " nothing was written."
+                        "The selection matches no sheet; nothing was written."
                     )
                     print(f"❌ {manque} {demandee}")
                     return None
@@ -685,8 +684,7 @@ class TransformMenuMixin:
         )
         if apercu.get("hors_portee"):
             print(
-                f"   {apercu['hors_portee']}"
-                f" {t('cell(s) left out of scope')}"
+                f"   {apercu['hors_portee']} {t('cell(s) left out of scope')}"
             )
         ecartees = apercu.get("colonnes_ecartees") or []
         if ecartees:
@@ -788,8 +786,7 @@ class TransformMenuMixin:
                 )
             )
         avis = t(
-            "The file name is not anonymised;"
-            " the default does not reuse it."
+            "The file name is not anonymised; the default does not reuse it."
         )
         print(f"   ⚠ {avis}")
         reponse = self._transform_ask(
@@ -870,10 +867,7 @@ class TransformMenuMixin:
             print(f"      {cible}")
         attendu = os.path.basename(existants[0])
         reponse = input(
-            t(
-                "This file already exists. Type its name in full to"
-                " overwrite: "
-            )
+            t("This file already exists. Type its name in full to overwrite: ")
         ).strip()
         if reponse != attendu:
             print(f"❌ {t('Name does not match, nothing was written.')}")
@@ -997,8 +991,7 @@ class TransformMenuMixin:
             print(f"   {t('Left intact')} : {detail}")
         if bilan.get("hors_portee"):
             print(
-                f"   {bilan['hors_portee']}"
-                f" {t('cell(s) left out of scope')}"
+                f"   {bilan['hors_portee']} {t('cell(s) left out of scope')}"
             )
         hors = bilan.get("hors_cellules") or {}
         # `isinstance(True, int)` vaut True : sans exclure les booléens, le

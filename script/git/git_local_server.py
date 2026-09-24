@@ -81,9 +81,7 @@ Use --production-ready for /srv/git (requires root).
         "-p",
         "--path",
         default=None,
-        help=(
-            "Path for git server bare repos" f" (default: {DEFAULT_GIT_PATH})"
-        ),
+        help=(f"Path for git server bare repos (default: {DEFAULT_GIT_PATH})"),
     )
     parser.add_argument(
         "--production-ready",
@@ -97,12 +95,12 @@ Use --production-ready for /srv/git (requires root).
         "-m",
         "--manifest",
         default=DEFAULT_MANIFEST,
-        help="Manifest XML file" f" (default: {DEFAULT_MANIFEST})",
+        help=f"Manifest XML file (default: {DEFAULT_MANIFEST})",
     )
     parser.add_argument(
         "--remote-name",
         default=DEFAULT_REMOTE_NAME,
-        help="Remote name to add" f" (default: {DEFAULT_REMOTE_NAME})",
+        help=f"Remote name to add (default: {DEFAULT_REMOTE_NAME})",
     )
     parser.add_argument(
         "--port",
@@ -150,9 +148,7 @@ Use --production-ready for /srv/git (requires root).
         "--jobs",
         type=int,
         default=DEFAULT_JOBS,
-        help=(
-            "Parallel jobs for init/remote/push" f" (default: {DEFAULT_JOBS})"
-        ),
+        help=(f"Parallel jobs for init/remote/push (default: {DEFAULT_JOBS})"),
     )
     parser.add_argument(
         "-v",
@@ -367,8 +363,7 @@ async def _add_single_remote(
             )
             if rc != 0:
                 _logger.warning(
-                    f"  set-url failed for"
-                    f" {project['path']}: {err.strip()}"
+                    f"  set-url failed for {project['path']}: {err.strip()}"
                 )
                 return "error"
             _logger.info(f"  Updated: {project['path']}")
@@ -385,7 +380,7 @@ async def _add_single_remote(
             )
             if rc != 0:
                 _logger.warning(
-                    f"  add failed for" f" {project['path']}: {err.strip()}"
+                    f"  add failed for {project['path']}: {err.strip()}"
                 )
                 return "error"
             _logger.info(f"  Added: {project['path']}")
@@ -428,7 +423,7 @@ async def add_remotes(
     added = results.count("added")
     updated = results.count("updated")
     errors = results.count("error")
-    print(f"Remotes: {added} added, {updated} updated," f" {errors} errors")
+    print(f"Remotes: {added} added, {updated} updated, {errors} errors")
 
 
 # --- Async workers for push ---
@@ -568,7 +563,7 @@ async def _push_single_repo(
                         "receive.shallowUpdate",
                         "true",
                     )
-                _logger.info(f"  Shallow push for" f" {project['path']}")
+                _logger.info(f"  Shallow push for {project['path']}")
 
         # Handle detached HEAD: checkout manifest branch
         did_checkout = False
@@ -611,9 +606,7 @@ async def _push_single_repo(
             _, err, rc = await _run_git(*cmd, timeout=120)
             if rc != 0:
                 _logger.warning(
-                    f"  Push failed for"
-                    f" {project['path']}:"
-                    f" {err.strip()}"
+                    f"  Push failed for {project['path']}: {err.strip()}"
                 )
                 return "error", did_checkout
             else:
@@ -656,8 +649,7 @@ async def push_to_local(
     errors = sum(1 for s, _ in results if s == "error")
     checkouts = sum(1 for _, c in results if c)
     print(
-        f"Push: {pushed} pushed, {checkouts} branch"
-        f" checkouts, {errors} errors"
+        f"Push: {pushed} pushed, {checkouts} branch checkouts, {errors} errors"
     )
 
 
@@ -682,9 +674,7 @@ def print_clone_commands(git_path, projects, port):
             clone_path = project["path"]
             if clone_path == ".":
                 clone_path = "erplibre"
-            lines.append(
-                f"  git clone {base_url}/{repo_name}" f" {clone_path}"
-            )
+            lines.append(f"  git clone {base_url}/{repo_name} {clone_path}")
     lines.sort()
     for line in lines:
         print(line)

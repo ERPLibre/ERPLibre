@@ -184,8 +184,9 @@ class TestLInstallationNeSannonceQueSiElleAEuLieu(unittest.TestCase):
         todo = TODO.__new__(TODO)
         todo.execute = mock.Mock()
         todo.execute.exec_command_live = mock.Mock(return_value=code)
-        with mock.patch("builtins.input", return_value=""), mock.patch.object(
-            click, "confirm", return_value=True
+        with (
+            mock.patch("builtins.input", return_value=""),
+            mock.patch.object(click, "confirm", return_value=True),
         ):
             with contextlib.redirect_stdout(io.StringIO()) as sortie:
                 todo._deploy_qemu_cache()
@@ -564,8 +565,7 @@ class TestLaSectionReseau(unittest.TestCase):
         self.assertIs(
             vu["defaut"],
             False,
-            "cochée d'avance, elle couperait l'amont sans qu'on l'ait"
-            " demandé",
+            "cochée d'avance, elle couperait l'amont sans qu'on l'ait demandé",
         )
         self.assertIs(vu["spec"], True)
 
@@ -759,16 +759,24 @@ class TestLaSectionReseau(unittest.TestCase):
         # nomme la suite absente, et elle seule. Un verdict laissé libre lit
         # la machine qui exécute les tests — son magasin, ses miroirs — et
         # l'épreuve passerait alors pour une raison qui n'est pas la sienne.
-        with mock.patch.object(
-            cache_offline, "suites_absentes", lambda vms: [("ubuntu", "26.04")]
-        ), mock.patch.object(
-            cache_offline, "composants_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "manques_hors_ligne", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "paquets_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "miroirs_absents", lambda *a, **k: []
+        with (
+            mock.patch.object(
+                cache_offline,
+                "suites_absentes",
+                lambda vms: [("ubuntu", "26.04")],
+            ),
+            mock.patch.object(
+                cache_offline, "composants_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "manques_hors_ligne", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "paquets_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "miroirs_absents", lambda *a, **k: []
+            ),
         ):
             asyncio.run(scenario())
         self.assertIsNone(
@@ -804,16 +812,22 @@ class TestLaSectionReseau(unittest.TestCase):
         # qu'un cache pourvu ne retarde personne. En laisser un libre le fait
         # lire la machine qui exécute les tests — son magasin, ses miroirs,
         # son journal — et l'épreuve échoue selon le poste.
-        with mock.patch.object(
-            cache_offline, "suites_absentes", lambda vms: []
-        ), mock.patch.object(
-            cache_offline, "composants_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "manques_hors_ligne", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "paquets_absents", lambda *a, **k: []
-        ), mock.patch.object(
-            cache_offline, "miroirs_absents", lambda *a, **k: []
+        with (
+            mock.patch.object(
+                cache_offline, "suites_absentes", lambda vms: []
+            ),
+            mock.patch.object(
+                cache_offline, "composants_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "manques_hors_ligne", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "paquets_absents", lambda *a, **k: []
+            ),
+            mock.patch.object(
+                cache_offline, "miroirs_absents", lambda *a, **k: []
+            ),
         ):
             asyncio.run(scenario())
         self.assertIsNotNone(

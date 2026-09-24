@@ -25,8 +25,8 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 sys.argv = ["todo.py"]
-from script.todo.todo import TODO  # noqa: E402
 from script.todo import todo_install  # noqa: E402
+from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
 FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
@@ -83,9 +83,11 @@ class ShrinkToolsBase(unittest.TestCase):
         # `shutil` est UN seul objet module partagé : patcher son « which »
         # par n'importe quel importateur le patche pour todo_install aussi,
         # qui est le vrai lecteur du PATH depuis le refactor.
-        with patch("script.todo.qemu_manage.shutil.which", which), patch(
-            "builtins.input", demande
-        ), redirect_stdout(buf):
+        with (
+            patch("script.todo.qemu_manage.shutil.which", which),
+            patch("builtins.input", demande),
+            redirect_stdout(buf),
+        ):
             left = self.todo._qemu_install_shrink_tools(list(missing))
         return self.todo.execute.ran, left, buf.getvalue()
 
@@ -213,9 +215,10 @@ class TestBackupSpace(unittest.TestCase):
         disque de 60 Go apparents mais 8 Go alloués ne demande que 8 Go."""
         faux = os.stat_result((0o644, 0, 0, 1, 0, 0, 60 * self.GIB, 0, 0, 0))
         # st_blocks n'est pas dans le tuple : on le pose à part.
-        with patch("script.todo.qemu_manage.os.stat") as stat, patch(
-            "script.todo.qemu_manage.shutil.disk_usage"
-        ) as du:
+        with (
+            patch("script.todo.qemu_manage.os.stat") as stat,
+            patch("script.todo.qemu_manage.shutil.disk_usage") as du,
+        ):
             stat.return_value = type(
                 "S", (), {"st_blocks": 8 * self.GIB // 512}
             )()
@@ -238,11 +241,15 @@ class TestBackupSpace(unittest.TestCase):
             vu.append(invite)
             return answer
 
-        with patch.object(
-            TODO,
-            "_qemu_backup_need_and_free",
-            staticmethod(lambda d: (besoin, libre)),
-        ), patch("builtins.input", demande), redirect_stdout(io.StringIO()):
+        with (
+            patch.object(
+                TODO,
+                "_qemu_backup_need_and_free",
+                staticmethod(lambda d: (besoin, libre)),
+            ),
+            patch("builtins.input", demande),
+            redirect_stdout(io.StringIO()),
+        ):
             retenu = self.todo._qemu_ask_backup("/x/d.qcow2")
         return vu[-1], retenu
 

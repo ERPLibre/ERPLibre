@@ -309,15 +309,14 @@ class TestFlux(unittest.TestCase):
             return vrai_rmdir(path)
 
         out = io.StringIO()
-        with mock.patch(
-            "builtins.input", lambda *a: next(reponses, "")
-        ), mock.patch(
-            "os.path.expanduser",
-            lambda p: chemin if p.endswith("config") else p,
-        ), mock.patch(
-            "os.makedirs", makedirs
-        ), mock.patch(
-            "os.rmdir", rmdir
+        with (
+            mock.patch("builtins.input", lambda *a: next(reponses, "")),
+            mock.patch(
+                "os.path.expanduser",
+                lambda p: chemin if p.endswith("config") else p,
+            ),
+            mock.patch("os.makedirs", makedirs),
+            mock.patch("os.rmdir", rmdir),
         ):
             with contextlib.redirect_stdout(out):
                 todo._configure_sshfs()

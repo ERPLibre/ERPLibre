@@ -18,6 +18,7 @@ Le formulaire ne lance AUCUNE commande privilégiée ni réseau : tout appel
 Textual. Les données coûteuses (domaines existants, branches distantes) sont
 préchargées par l'appelant et arrivent dans `ctx`.
 """
+
 from __future__ import annotations
 
 import os

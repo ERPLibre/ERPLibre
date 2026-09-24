@@ -13,6 +13,7 @@ des personnes — expéditeur, destinataires, sujet, extrait, Message-ID — est
 scellé. Le Message-ID a en plus un haché salé par la clé, pour qu'on puisse
 recoller les fils de discussion sans le lire.
 """
+
 from __future__ import annotations
 
 import base64

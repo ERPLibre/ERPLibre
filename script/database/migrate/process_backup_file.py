@@ -12,15 +12,14 @@ def process_zip(
 ):
     # Ouvrir le zip d'entrée en lecture
     try:
-        with zipfile.ZipFile(path_backup_zip, "r") as zin, zipfile.ZipFile(
-            path_output_zip, "w"
-        ) as zout:
-
+        with (
+            zipfile.ZipFile(path_backup_zip, "r") as zin,
+            zipfile.ZipFile(path_output_zip, "w") as zout,
+        ):
             # Parcourir tous les fichiers du zip
             for item in zin.infolist():
                 data = zin.read(item.filename)
                 if item.filename == file_to_modify:
-
                     try:
                         # On suppose un fichier texte en UTF-8
                         text = data.decode("utf-8")

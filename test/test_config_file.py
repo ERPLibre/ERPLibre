@@ -94,24 +94,32 @@ class TestGetConfig(unittest.TestCase):
         base_path = self._write_json(
             "base.json", {"instance": [{"name": "test"}]}
         )
-        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            os.path.join(self.tmpdir, "nonexistent1.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            os.path.join(self.tmpdir, "nonexistent2.json"),
+        with (
+            patch("script.config.config_file.CONFIG_FILE", base_path),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                os.path.join(self.tmpdir, "nonexistent1.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                os.path.join(self.tmpdir, "nonexistent2.json"),
+            ),
         ):
             result = self.cfg.get_config("instance")
         self.assertEqual(result, [{"name": "test"}])
 
     def test_get_config_returns_none_for_missing_key(self):
         base_path = self._write_json("base.json", {"a": 1})
-        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            os.path.join(self.tmpdir, "nonexistent1.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            os.path.join(self.tmpdir, "nonexistent2.json"),
+        with (
+            patch("script.config.config_file.CONFIG_FILE", base_path),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                os.path.join(self.tmpdir, "nonexistent1.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                os.path.join(self.tmpdir, "nonexistent2.json"),
+            ),
         ):
             result = self.cfg.get_config("missing")
         self.assertIsNone(result)
@@ -125,12 +133,16 @@ class TestGetConfig(unittest.TestCase):
             "override.json",
             {"instance": [{"name": "override"}]},
         )
-        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            override_path,
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            os.path.join(self.tmpdir, "nonexistent.json"),
+        with (
+            patch("script.config.config_file.CONFIG_FILE", base_path),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                override_path,
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                os.path.join(self.tmpdir, "nonexistent.json"),
+            ),
         ):
             result = self.cfg.get_config("instance")
         # Lists with extend: base + override
@@ -148,12 +160,16 @@ class TestGetConfig(unittest.TestCase):
             "private.json",
             {"data": {"key": "private_val"}},
         )
-        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            os.path.join(self.tmpdir, "nonexistent.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            private_path,
+        with (
+            patch("script.config.config_file.CONFIG_FILE", base_path),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                os.path.join(self.tmpdir, "nonexistent.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                private_path,
+            ),
         ):
             result = self.cfg.get_config("data")
         self.assertEqual(result, {"key": "private_val"})
@@ -171,12 +187,16 @@ class TestGetConfig(unittest.TestCase):
             "private.json",
             {"items": [3], "meta": {"a": "private"}},
         )
-        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            override_path,
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            private_path,
+        with (
+            patch("script.config.config_file.CONFIG_FILE", base_path),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                override_path,
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                private_path,
+            ),
         ):
             result_items = self.cfg.get_config("items")
             result_meta = self.cfg.get_config("meta")
@@ -188,15 +208,19 @@ class TestGetConfig(unittest.TestCase):
         self.assertEqual(result_meta, {"a": "private", "b": "override"})
 
     def test_no_config_files_exist(self):
-        with patch(
-            "script.config.config_file.CONFIG_FILE",
-            os.path.join(self.tmpdir, "nope1.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            os.path.join(self.tmpdir, "nope2.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
-            os.path.join(self.tmpdir, "nope3.json"),
+        with (
+            patch(
+                "script.config.config_file.CONFIG_FILE",
+                os.path.join(self.tmpdir, "nope1.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                os.path.join(self.tmpdir, "nope2.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+                os.path.join(self.tmpdir, "nope3.json"),
+            ),
         ):
             result = self.cfg.get_config("anything")
         self.assertIsNone(result)
@@ -284,12 +308,15 @@ class TestSetConfigValue(unittest.TestCase):
 
     def test_round_trips_through_get_config_value(self):
         self.cfg.set_config_value(["kdbx", "path"], "/round/trip.kdbx")
-        with patch(
-            "script.config.config_file.CONFIG_FILE",
-            os.path.join(self.tmp.name, "nonexistent_base.json"),
-        ), patch(
-            "script.config.config_file.CONFIG_OVERRIDE_FILE",
-            os.path.join(self.tmp.name, "nonexistent_override.json"),
+        with (
+            patch(
+                "script.config.config_file.CONFIG_FILE",
+                os.path.join(self.tmp.name, "nonexistent_base.json"),
+            ),
+            patch(
+                "script.config.config_file.CONFIG_OVERRIDE_FILE",
+                os.path.join(self.tmp.name, "nonexistent_override.json"),
+            ),
         ):
             result = self.cfg.get_config_value(["kdbx", "path"])
         self.assertEqual(result, "/round/trip.kdbx")

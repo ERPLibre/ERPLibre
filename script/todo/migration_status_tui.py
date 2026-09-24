@@ -142,7 +142,7 @@ def pane_text(dct, row, colour=False, show_log=True):
     if scan["errors"]:
         lignes.append("")
         lignes.append(
-            f"── {t('errors in the log')} :" f" {status.severe_count(scan)} ──"
+            f"── {t('errors in the log')} : {status.severe_count(scan)} ──"
         )
         for item in scan["errors"][:15]:
             lignes.append(

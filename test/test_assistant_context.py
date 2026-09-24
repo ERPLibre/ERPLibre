@@ -22,6 +22,7 @@ valeurs identifiantes des cas sont INVENTÉES — une règle qui interdit de
 nommer ne se cite pas elle-même en clair, et un test fige pour toujours ce
 qu'il porte.
 """
+
 from __future__ import annotations
 
 import os

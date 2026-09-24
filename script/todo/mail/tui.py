@@ -11,6 +11,7 @@ Une session = un compte ouvert. Elle survit à une panne réseau : le cache
 s'ouvre d'abord, la connexion est tentée ensuite, et son échec ne fait que
 poser un drapeau `online = False`. Une boîte hors ligne reste lisible.
 """
+
 from __future__ import annotations
 
 import logging
@@ -549,10 +550,9 @@ def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     n'annule rien. Le message est déjà parti ; le signaler comme un échec
     pousserait l'utilisateur à l'envoyer deux fois.
     """
-    from script.todo.mail.smtp_send import SmtpError
+    from script.todo.mail.smtp_send import SmtpError, without_bcc
     from script.todo.mail.smtp_send import connect as smtp_connect
     from script.todo.mail.smtp_send import send as smtp_send_fn
-    from script.todo.mail.smtp_send import without_bcc
 
     if not session.online:
         raise SmtpError(t("mail_offline_cannot_send"))
@@ -706,9 +706,8 @@ def run_tui(
         return
 
     from script.todo import todo_prefs
-    from script.todo.mail import account_setup
+    from script.todo.mail import account_setup, tui_text
     from script.todo.mail import accounts as mail_accounts
-    from script.todo.mail import tui_text
     from script.todo.mail.accounts import PRESETS
     from script.todo.mail.secrets import SecretStore
 

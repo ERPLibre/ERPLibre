@@ -11,6 +11,7 @@ d'être caché tout en restant destinataire d'enveloppe.
 `date` et `msgid` sont injectables pour que les tests soient déterministes ;
 en production on laisse la stdlib les produire.
 """
+
 from __future__ import annotations
 
 import mimetypes

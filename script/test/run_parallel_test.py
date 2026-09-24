@@ -556,7 +556,7 @@ async def test_exec(
                             new_hook_line = (
                                 hook_line[: first_index + len(f_key)]
                                 + f'"{s_first_path}"\n'
-                                + f'{nb_space_indentation * " "}template_dir ='
+                                + f"{nb_space_indentation * ' '}template_dir ="
                                 f' "{s_first_path}/" + MODULE_NAME\n\n'
                                 + hook_line[index_end_string:]
                             )

@@ -48,7 +48,9 @@ PyObject *sonde(long v) { return PyInt_FromLong(v); }
 
 def _drapeau():
     """Le -D tel qu'il est écrit dans le script — source unique."""
-    m = re.search(r"export CPPFLAGS=\"[^\"]*?(-DPyInt_FromLong[^\" ]*)\"", SOURCE)
+    m = re.search(
+        r"export CPPFLAGS=\"[^\"]*?(-DPyInt_FromLong[^\" ]*)\"", SOURCE
+    )
     return m.group(1) if m else ""
 
 
@@ -65,7 +67,14 @@ def _compile(source, drapeaux):
         fichier = Path(tmp, "sonde.cpp")
         fichier.write_text(source, encoding="utf-8")
         res = subprocess.run(
-            [_compilateur(), "-fsyntax-only", *drapeaux, "-I", inc, str(fichier)],
+            [
+                _compilateur(),
+                "-fsyntax-only",
+                *drapeaux,
+                "-I",
+                inc,
+                str(fichier),
+            ],
             capture_output=True,
             text=True,
             timeout=120,
@@ -81,13 +90,13 @@ class TestLeDrapeauDansLeScript(unittest.TestCase):
         """Posé après, il n'atteindrait rien : c'est « poetry install » qui
         lance les compilations."""
         export = SOURCE.index("export CPPFLAGS=")
-        install = SOURCE.index('install --no-root ${POETRY_VERBOSE}')
+        install = SOURCE.index("install --no-root ${POETRY_VERBOSE}")
         self.assertLess(export, install)
 
     def test_it_appends_instead_of_replacing(self):
         """Écraser CPPFLAGS jetterait ce que l'appelant y avait mis — sur
         s390x et openSUSE, des chemins d'en-têtes y passent."""
-        self.assertIn('${CPPFLAGS:+${CPPFLAGS} }', SOURCE)
+        self.assertIn("${CPPFLAGS:+${CPPFLAGS} }", SOURCE)
 
     def test_it_is_cppflags_and_not_cflags(self):
         """Le piège qui a fait échouer le premier correctif : le fichier fautif
@@ -145,9 +154,7 @@ class TestLeDrapeauCompile(unittest.TestCase):
         """Un hôte dont le SWIG écrit encore l'alias verrait, sinon, un
         avertissement de redéfinition par fichier compilé. En -Werror, ce
         serait un échec."""
-        ok, sortie = _compile(
-            SWIG_42 + APPEL_SWIG_43, ["-Werror", _drapeau()]
-        )
+        ok, sortie = _compile(SWIG_42 + APPEL_SWIG_43, ["-Werror", _drapeau()])
         if ok is None:
             self.skipTest(sortie)
         self.assertTrue(ok, sortie[-400:])

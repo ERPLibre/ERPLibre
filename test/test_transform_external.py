@@ -2553,7 +2553,7 @@ class TestRapportDeLEnTete(unittest.TestCase):
         "acai,830,2019-01-03,B2\n"
         "adobe,940,2019-01-04,C3\n"
     )
-    SANS = "ZK204817,501,100.5\n" "ZK204818,502,101.5\n" "ZK204819,503,102.5\n"
+    SANS = "ZK204817,501,100.5\nZK204818,502,101.5\nZK204819,503,102.5\n"
 
     def test_l_empan_est_une_LISTE_serialisable(self):
         """Un set ne passe pas `json.dump`, et ce rapport traverse un
@@ -6545,18 +6545,19 @@ def _injecter_parties_de_copie(chemin):
     parties = {
         "xl/pivotCache/pivotCacheRecords1.xml": (
             '<?xml version="1.0"?><pivotCacheRecords count="1">'
-            f"<r><s v=\"{TOUS_MARQUEURS['pivot_cache']}\"/></r>"
+            f'<r><s v="{TOUS_MARQUEURS["pivot_cache"]}"/></r>'
             "</pivotCacheRecords>"
         ),
         "xl/externalLinks/externalLink1.xml": (
             '<?xml version="1.0"?><externalLink><externalBook>'
-            f"<sheetNames><sheetName val=\"{TOUS_MARQUEURS['lien_externe']}\"/>"
+            f'<sheetNames><sheetName val="{TOUS_MARQUEURS["lien_externe"]}"/>'
             "</sheetNames></externalBook></externalLink>"
         ),
     }
-    with zipfile.ZipFile(chemin) as entree, zipfile.ZipFile(
-        temporaire, "w", zipfile.ZIP_DEFLATED
-    ) as sortie:
+    with (
+        zipfile.ZipFile(chemin) as entree,
+        zipfile.ZipFile(temporaire, "w", zipfile.ZIP_DEFLATED) as sortie,
+    ):
         for item in entree.infolist():
             # Les membres NON XML passent en octets : décoder
             # xl/media/image1.png lèverait UnicodeDecodeError.
@@ -6581,9 +6582,10 @@ def _injecter_cache(chemin):
         + "</v></pt></strCache></strRef></cat>"
     )
     injecte = False
-    with zipfile.ZipFile(chemin) as entree, zipfile.ZipFile(
-        temporaire, "w", zipfile.ZIP_DEFLATED
-    ) as sortie:
+    with (
+        zipfile.ZipFile(chemin) as entree,
+        zipfile.ZipFile(temporaire, "w", zipfile.ZIP_DEFLATED) as sortie,
+    ):
         for item in entree.infolist():
             octets = entree.read(item.filename)
             # Le classeur porte plusieurs graphiques : viser le PREMIER qui
@@ -7124,8 +7126,8 @@ class TestLaBandeDuCalibreNeSElargitPas(unittest.TestCase):
                 valeur = 10 ** (largeur - 1) + 7
                 vues = []
                 rng = random.Random(0)
-                rng.randint = (
-                    lambda bas, haut: vues.append((bas, haut)) or haut
+                rng.randint = lambda bas, haut: (
+                    vues.append((bas, haut)) or haut
                 )
                 sortie = noyau.nouveau_nombre(
                     valeur,

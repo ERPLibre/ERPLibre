@@ -13,6 +13,7 @@ autre session sans risquer de la perturber.
 réimplémenter une seconde fois la lecture des clés « state_* », qui
 divergerait de l'écran de reprise.
 """
+
 from __future__ import annotations
 
 import datetime

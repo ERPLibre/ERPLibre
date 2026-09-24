@@ -14,6 +14,7 @@ veut-on l'installer maintenant ?
 Module à part, et non une méthode de `TODO` : `todo_upgrade` en a besoin
 aussi, et il est importé PAR `todo` — le mettre là créerait un cycle.
 """
+
 from __future__ import annotations
 
 import importlib

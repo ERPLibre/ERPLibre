@@ -91,13 +91,11 @@ class Repli(unittest.TestCase):
                     return (code, sortie)
                 return None
 
-        with mock.patch.object(
-            DQ, "host_arch", return_value="amd64"
-        ), mock.patch.object(
-            DQ, "kvm_available", return_value=True
-        ), mock.patch.object(
-            DQ, "os"
-        ) as faux_os:
+        with (
+            mock.patch.object(DQ, "host_arch", return_value="amd64"),
+            mock.patch.object(DQ, "kvm_available", return_value=True),
+            mock.patch.object(DQ, "os") as faux_os,
+        ):
             faux_os.getuid.return_value = 1000
             faux_os.makedirs.return_value = None
             buf = io.StringIO()
@@ -168,13 +166,11 @@ class Repli(unittest.TestCase):
                 lances.append(list(cmd))
                 return resultat if capture else None
 
-        with mock.patch.object(
-            DQ, "host_arch", return_value="amd64"
-        ), mock.patch.object(
-            DQ, "kvm_available", return_value=True
-        ), mock.patch.object(
-            DQ, "os"
-        ) as faux_os:
+        with (
+            mock.patch.object(DQ, "host_arch", return_value="amd64"),
+            mock.patch.object(DQ, "kvm_available", return_value=True),
+            mock.patch.object(DQ, "os") as faux_os,
+        ):
             faux_os.getuid.return_value = 1000
             with redirect_stdout(io.StringIO()):
                 DQ.virt_install(

@@ -572,8 +572,8 @@ class TestTheToolIsCalledWithTheRightContract(unittest.TestCase):
 
     def test_nothing_to_fix_asks_nothing(self):
         demandes = []
-        self.obj.ask = (
-            lambda prompt, default="": demandes.append(prompt) or "y"
+        self.obj.ask = lambda prompt, default="": (
+            demandes.append(prompt) or "y"
         )
         self.obj.todo_upgrade_execute = lambda cmd, **kw: (0, cmd)
         with redirect_stdout(io.StringIO()):

@@ -32,6 +32,7 @@ fichiers vus dans le parc déclarent
 `xmlns="http://schemas.xmlsoap.org/encoding/"`, et un site peut en
 distribuer un sans. Les balises sont donc cherchées sur leur nom local.
 """
+
 from __future__ import annotations
 
 import re

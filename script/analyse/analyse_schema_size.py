@@ -396,8 +396,7 @@ def _table_block(lst_row, exact, source="database"):
             )
         return lines
     lines = [
-        f"  {'table':<34}{'total':>10}{'heap':>10}{'index':>10}"
-        f"{t('rows'):>14}"
+        f"  {'table':<34}{'total':>10}{'heap':>10}{'index':>10}{t('rows'):>14}"
     ]
     for row in lst_row:
         count = row["exact_rows"] if exact else row["est_rows"]

@@ -11,6 +11,7 @@ Le reste — la classe CSS réellement posée sur `#panes`, la persistance dans
 — n'a de sens que sur l'application montée pour de vrai, comme
 `test_mail_tui_refresh.py`.
 """
+
 import os
 import tempfile
 import unittest

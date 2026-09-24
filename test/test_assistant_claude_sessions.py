@@ -27,6 +27,7 @@ Aucun test ne lance `claude`, ne lit le registre de la machine, ni n'ouvre une
 transcription réelle : le lanceur, le registre, l'état des processus et la
 lecture d'en-tête sont tous injectés.
 """
+
 from __future__ import annotations
 
 import json
@@ -160,7 +161,7 @@ class LeListageDesVivantes(unittest.TestCase):
     def _live(self, agents=AGENTS, registre=None, demarrage=DEMARRAGE):
         return CS.live(
             run=lambda argv: agents,
-            read_registry=lambda: (REGISTRE if registre is None else registre),
+            read_registry=lambda: REGISTRE if registre is None else registre,
             read_stat=lambda pid: stat_avec(demarrage),
         )
 

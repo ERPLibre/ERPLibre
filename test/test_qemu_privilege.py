@@ -45,43 +45,55 @@ class Sondage(unittest.TestCase):
         return mock.patch.object(qp.subprocess, "run", return_value=Res())
 
     def test_reachable_means_no_sudo(self):
-        with mock.patch.object(
-            qp.shutil, "which", return_value="/usr/bin/virsh"
-        ), mock.patch.object(qp.os, "geteuid", return_value=1000), self._sonde(
-            0
+        with (
+            mock.patch.object(
+                qp.shutil, "which", return_value="/usr/bin/virsh"
+            ),
+            mock.patch.object(qp.os, "geteuid", return_value=1000),
+            self._sonde(0),
         ):
             self.assertFalse(qp.needs_sudo())
             self.assertEqual(qp.sudo_prefix(), "")
 
     def test_unreachable_means_sudo(self):
-        with mock.patch.object(
-            qp.shutil, "which", return_value="/usr/bin/virsh"
-        ), mock.patch.object(qp.os, "geteuid", return_value=1000), self._sonde(
-            1
+        with (
+            mock.patch.object(
+                qp.shutil, "which", return_value="/usr/bin/virsh"
+            ),
+            mock.patch.object(qp.os, "geteuid", return_value=1000),
+            self._sonde(1),
         ):
             self.assertTrue(qp.needs_sudo())
             self.assertEqual(qp.sudo_prefix(), "sudo ")
 
     def test_root_never_needs_sudo(self):
-        with mock.patch.object(
-            qp.shutil, "which", return_value="/usr/bin/virsh"
-        ), mock.patch.object(qp.os, "geteuid", return_value=0), self._sonde(1):
+        with (
+            mock.patch.object(
+                qp.shutil, "which", return_value="/usr/bin/virsh"
+            ),
+            mock.patch.object(qp.os, "geteuid", return_value=0),
+            self._sonde(1),
+        ):
             self.assertFalse(qp.needs_sudo())
 
     def test_without_virsh_no_password_prompt(self):
         """Demander un mot de passe pour lancer une commande introuvable ne
         mène nulle part : l'échec doit être « command not found »."""
-        with mock.patch.object(
-            qp.shutil, "which", return_value=None
-        ), mock.patch.object(qp.os, "geteuid", return_value=1000):
+        with (
+            mock.patch.object(qp.shutil, "which", return_value=None),
+            mock.patch.object(qp.os, "geteuid", return_value=1000),
+        ):
             self.assertFalse(qp.needs_sudo())
 
     def test_the_probe_runs_once(self):
         """Chaque entrée de menu la demande : un virsh par commande se
         verrait."""
-        with mock.patch.object(
-            qp.shutil, "which", return_value="/usr/bin/virsh"
-        ), mock.patch.object(qp.os, "geteuid", return_value=1000):
+        with (
+            mock.patch.object(
+                qp.shutil, "which", return_value="/usr/bin/virsh"
+            ),
+            mock.patch.object(qp.os, "geteuid", return_value=1000),
+        ):
             with self._sonde(0) as run:
                 for _ in range(5):
                     qp.needs_sudo()
@@ -90,12 +102,14 @@ class Sondage(unittest.TestCase):
     def test_a_dead_probe_falls_back_on_sudo(self):
         """Un virsh qui n'arrive pas au bout ne prouve pas l'accès : mieux
         vaut une invite de mot de passe qu'une commande refusée."""
-        with mock.patch.object(
-            qp.shutil, "which", return_value="/usr/bin/virsh"
-        ), mock.patch.object(
-            qp.os, "geteuid", return_value=1000
-        ), mock.patch.object(
-            qp.subprocess, "run", side_effect=OSError("boom")
+        with (
+            mock.patch.object(
+                qp.shutil, "which", return_value="/usr/bin/virsh"
+            ),
+            mock.patch.object(qp.os, "geteuid", return_value=1000),
+            mock.patch.object(
+                qp.subprocess, "run", side_effect=OSError("boom")
+            ),
         ):
             self.assertTrue(qp.needs_sudo())
 
@@ -109,9 +123,12 @@ class AvertissementAvantInstallation(unittest.TestCase):
         qp.reset_cache()
 
     def _rendu(self, joignable, declare, actif):
-        with mock.patch.object(
-            qp, "libvirt_reachable", return_value=joignable
-        ), mock.patch.object(qp, "group_state", return_value=(declare, actif)):
+        with (
+            mock.patch.object(qp, "libvirt_reachable", return_value=joignable),
+            mock.patch.object(
+                qp, "group_state", return_value=(declare, actif)
+            ),
+        ):
             buf = io.StringIO()
             with redirect_stdout(buf):
                 self.todo._qemu_warn_libvirt_access()

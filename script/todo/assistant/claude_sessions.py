@@ -35,6 +35,7 @@ deux dépôts voisins s'y confondent.
 machine se compte en dizaines de mégaoctets ; seules les premières lignes sont
 lues, et le listage se garde de les relire à chaque affichage.
 """
+
 from __future__ import annotations
 
 import json

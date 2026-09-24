@@ -45,8 +45,10 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.todo.assistant import discover  # noqa: E402
-from script.todo.assistant import fingerprint  # noqa: E402
+from script.todo.assistant import (
+    discover,  # noqa: E402
+    fingerprint,  # noqa: E402
+)
 
 # Deux réseaux des blocs réservés à la documentation : ils ne peuvent
 # désigner aucune machine réelle.

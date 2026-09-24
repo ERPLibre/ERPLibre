@@ -415,8 +415,8 @@ class TestMenuGlue(unittest.TestCase):
         todo._qemu_net_choices = lambda: ["network:default"]
         todo.launched = []
         todo.execute = mock.Mock()
-        todo.execute.exec_command_live = (
-            lambda cmd, **kw: todo.launched.append(cmd)
+        todo.execute.exec_command_live = lambda cmd, **kw: (
+            todo.launched.append(cmd)
         )
         return todo
 
@@ -458,14 +458,19 @@ class TestMenuGlue(unittest.TestCase):
                 todo._qemu_hw_form = lambda rows, node, nets=None: {
                     "vm-a": {"vcpus": 4, "ram": 8192, "gpu": True}
                 }
-                with mock.patch(
-                    "script.todo.qemu_privilege.libvirt_reachable",
-                    return_value=joignable,
-                ), mock.patch(
-                    "script.todo.qemu_privilege.os.geteuid", return_value=1000
-                ), mock.patch(
-                    "script.todo.qemu_privilege.shutil.which",
-                    return_value="/usr/bin/virsh",
+                with (
+                    mock.patch(
+                        "script.todo.qemu_privilege.libvirt_reachable",
+                        return_value=joignable,
+                    ),
+                    mock.patch(
+                        "script.todo.qemu_privilege.os.geteuid",
+                        return_value=1000,
+                    ),
+                    mock.patch(
+                        "script.todo.qemu_privilege.shutil.which",
+                        return_value="/usr/bin/virsh",
+                    ),
                 ):
                     self._run(todo, ["vm-a"], ["o"])
                 self.assertTrue(todo.launched)
