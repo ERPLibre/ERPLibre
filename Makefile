@@ -188,8 +188,10 @@ format:
 
 .PHONY: format_all
 format_all:
-	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
+	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_test" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
+# Les dépôts d'addons sont nommés, jamais leur chemin : il dépend du manifeste,
+# et chaque version d'Odoo n'en rapatrie qu'une partie. Voir format_addons.sh.
 .PHONY: format_code_generator
 format_code_generator:
 	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
@@ -224,6 +226,14 @@ format_code_generator_template:
 format_script:
 	.venv.erplibre/bin/ruff check --select I --fix ./script/
 	.venv.erplibre/bin/ruff format ./script/
+
+# Les tests suivent la norme de l'outillage : ils tournent dans le même venv,
+# et rien ne les formatait — seul « make format » les touchait, et seulement
+# s'ils étaient modifiés.
+.PHONY: format_test
+format_test:
+	.venv.erplibre/bin/ruff check --select I --fix ./test/ ./long_test/
+	.venv.erplibre/bin/ruff format ./test/ ./long_test/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
