@@ -36,6 +36,10 @@ Un seul fichier décide : `script/install/lib_python_provider.sh`. mise n'est
 jamais installé automatiquement — `make install_mise` porte cette décision.
 Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
+Le hook `pre-commit` relaie `script/analyse/check_python_version.py` : il
+signale le source qui ne parse pas sous cette version, sans bloquer, et dit
+quand aucun interpréteur de cette version n'était là pour vérifier.
+
 ## Paquets Python
 
 `EL_PIP_PROVIDER` (dans `env_var.sh`) vaut `auto`, `uv` ou `pip`. `auto` prend

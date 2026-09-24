@@ -9502,6 +9502,24 @@ TRANSLATIONS = {
         "fr": "donner un chemin, ou --staged",
         "en": "give a path, or --staged",
     },
+    # check_python_version.py partage « only the files added to the git
+    # index » et « give a path, or --staged » avec check_comment_hygiene.py.
+    "does this source parse under the repository Python": {
+        "fr": "ce source parse-t-il sous le Python du dépôt",
+        "en": "does this source parse under the repository Python",
+    },
+    "no conf/python-erplibre-version: nothing checked": {
+        "fr": "aucun conf/python-erplibre-version : rien vérifié",
+        "en": "no conf/python-erplibre-version: nothing checked",
+    },
+    "not checked (no Python %s): mise install python@%s": {
+        "fr": "NON vérifié (aucun Python %s ici) : mise install python@%s",
+        "en": "not checked (no Python %s): mise install python@%s",
+    },
+    "%s file(s) refused by Python %s": {
+        "fr": "%s fichier(s) refusé(s) par Python %s",
+        "en": "%s file(s) refused by Python %s",
+    },
     "unknown result": {
         "fr": "résultat inconnu",
         "en": "unknown result",
