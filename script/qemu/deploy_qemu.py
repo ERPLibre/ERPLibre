@@ -43,6 +43,7 @@ Exemples
 
     sudo ./script/qemu/deploy_qemu.py /var/lib/libvirt/images/iso/noble.img --name test-vm --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,7 +101,6 @@ UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
 }
 DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "11": ("bullseye", "debian11", 1024, "20G"),
     "12": ("bookworm", "debian12", 1024, "20G"),
     "13": ("trixie", "debian13", 1024, "20G"),
 }
@@ -238,8 +238,7 @@ S390X_DISTROS: tuple[str, ...] = (
 # miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
     # Debian sur s390x passe par debian-installer, dont les images sont
-    # publiées pour bookworm et trixie — vérifié. bullseye est écartée : elle
-    # est en fin de vie et son installateur n'a pas été éprouvé ici.
+    # publiées pour bookworm et trixie — vérifié.
     "s390x": {"fedora": ("43",), "debian": ("12", "13")},
 }
 
@@ -596,9 +595,7 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(
-                index, timeout=30
-            ) as resp:  # noqa: S310
+            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -1128,8 +1125,7 @@ def ensure_libvirt_service(runner: Runner) -> None:
         return
     if shutil.which("systemctl"):
         print(
-            "  Démarrage du démon libvirt"
-            " (systemctl enable --now libvirtd)…"
+            "  Démarrage du démon libvirt (systemctl enable --now libvirtd)…"
         )
         runner.run(
             ["systemctl", "enable", "--now", "libvirtd"],
@@ -1547,16 +1543,26 @@ class TelechargementTronque(OSError):
 
 def _download_one(url: str, tmp: Path, timeout: int, depuis: int = 0) -> None:
     """Télécharge url -> tmp en streaming, avec timeout et barre de %.
-    Lève une exception en cas d'échec réseau (miroir suivant à essayer)."""
+
+    `depuis` reprend un .part laissé par une coupure. Lève une exception en
+    cas d'échec réseau (miroir suivant à essayer)."""
     is_tty = sys.stdout.isatty()
     last_pct = -1
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "erplibre-qemu-deploy"}
-    )
+    entetes = {"User-Agent": "erplibre-qemu-deploy"}
+    if depuis > 0:
+        entetes["Range"] = f"bytes={depuis}-"
+    req = urllib.request.Request(url, headers=entetes)
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        # Un serveur qui IGNORE le Range rend 200 et le fichier ENTIER : on
+        # repart alors de zéro, sans quoi les octets déjà là seraient doublés
+        # et l'image illisible.
+        reprise = depuis > 0 and getattr(resp, "status", 200) == 206
+        done = depuis if reprise else 0
         total = int(resp.headers.get("Content-Length", 0) or 0)
-        done = 0
-        with open(tmp, "wb") as fh:
+        if total > 0:
+            # En reprise, l'en-tête ne compte que ce qui RESTE.
+            total += done
+        with open(tmp, "ab" if reprise else "wb") as fh:
             while True:
                 chunk = resp.read(1 << 16)
                 if not chunk:

@@ -33,14 +33,12 @@ if [[ -r /etc/os-release ]]; then
   # Sous-shell : « source » importerait NAME, PRETTY_NAME et le reste dans
   # un script qui n'en veut pas.
   UBUNTU_VERSION=$(. /etc/os-release && echo "${VERSION_ID}")
-  DEBIAN_VERSION=$(. /etc/os-release && echo "${VERSION_CODENAME}")
   OS=$(. /etc/os-release && echo "${ID}")
   # lsb_release rend « Ubuntu » et « Debian » ; os-release rend « ubuntu » et
   # « debian ». Les comparaisons plus bas attendent la première forme.
   OS="${OS^}"
 else
   UBUNTU_VERSION=$(lsb_release -rs)
-  DEBIAN_VERSION=$(lsb_release -cs)
   OS=$(lsb_release -si)
 fi
 
@@ -73,15 +71,9 @@ elif [[ "${OS}" == "Linuxmint" ]]; then
   # gdebi etait appele sans fichier. Mint 22.x repose sur noble : meme .deb.
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
-  if [ "bullseye" == "${DEBIAN_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bullseye_amd64.deb
-  else
-    # bookworm (12), trixie (13) et au-delà : wkhtmltopdf ne publie pas de
-    # build au-delà de « bookworm » -> on prend bookworm (le plus récent).
-    # Le build « bullseye » (Debian 11) échouait à s'installer sur trixie
-    # (gdebi : dépendances incompatibles).
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
-  fi
+  # bookworm (12), trixie (13) et au-delà : wkhtmltopdf ne publie pas de build
+  # au-delà de « bookworm » -> on prend bookworm, le plus récent.
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 elif [[ "${OS}" == *"Ubuntu"* ]]; then
   echo "Your version of Ubuntu is not supported, only support 24.04, 25.10 and 26.04"
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
