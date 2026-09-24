@@ -3284,6 +3284,18 @@ CACHE_TRUST = {
 # disparaît alors que la VM garde sa variable.
 CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
 
+# Les faisceaux connus, essayés dans cet ordre quand celui de la famille
+# manque. Une image ne porte pas toujours le chemin canonique de sa
+# distribution : sur une Fedora récente, « /etc/pki/tls/certs/ca-bundle.crt »
+# peut ne pas exister alors que le faisceau extrait, lui, est là. Or une
+# variable qui vise un fichier ABSENT fait échouer pip sur « Could not find a
+# suitable TLS CA certificate bundle » — tout casse, au lieu de rien.
+CA_BUNDLE_CANDIDATS = (
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/ssl/ca-bundle.pem",
+)
+
 # Ce qu'une VM déployée l'amont du cache coupé reçoit en plus. L'audit de npm
 # interroge un service distant qu'aucun cache ne peut rejouer : hors ligne il
 # échoue à chaque installation sans rien vérifier. La variable reste dans la
@@ -3641,10 +3653,15 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
         return nix_trust_commands()
     _, commande, faisceau = CACHE_TRUST[famille]
     commandes = [f"{commande} || true"]
+    # Le faisceau de la famille d'abord, les autres connus ensuite : aucun
+    # trouvé, aucune variable écrite, et pip garde alors son propre jeu de
+    # certificats plutôt que de refuser tout téléchargement.
+    candidats = " ".join(dict.fromkeys((faisceau,) + CA_BUNDLE_CANDIDATS))
     for var in CACHE_ENV_VARS:
         commandes.append(
-            f"sh -c 'grep -q ^{var}= /etc/environment"
-            f" || echo {var}={faisceau} >> /etc/environment'"
+            f'sh -c \'for f in {candidats}; do [ -r "$f" ] || continue;'
+            f" grep -q ^{var}= /etc/environment"
+            f" || echo {var}=$f >> /etc/environment; break; done'"
         )
     gardees = list(CACHE_ENV_VARS)
     if getattr(args, "offline", False):
