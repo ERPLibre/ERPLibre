@@ -32,6 +32,7 @@ Le dépôt n'a ni pager, ni progression sur place : la sortie s'ajoute ligne à
 ligne. Une réponse longue se ferme sur une ligne de pied, jamais sur un
 défilement piloté.
 """
+
 from __future__ import annotations
 
 import os
@@ -386,8 +387,7 @@ class AssistantMenuMixin:
             choices = [
                 {
                     "prompt_description": (
-                        f"{t('Here (127.0.0.1)')}"
-                        f"  ({t('11 ports, instant')})"
+                        f"{t('Here (127.0.0.1)')}  ({t('11 ports, instant')})"
                     )
                 },
                 {
@@ -805,9 +805,8 @@ class AssistantMenuMixin:
             f"  {t('Look somewhere else')} · {t('Type an address')}"
             f" · {t('Carry on with the OpenAI API (key from the vault)')}"
         )
-        print(
-            f"  💡 {t('A local server: \"ollama serve\" listens on 11434.')}"
-        )
+        astuce = t('A local server: "ollama serve" listens on 11434.')
+        print(f"  💡 {astuce}")
 
     def _llm_server_card(self):
         """Ce que le serveur en usage annonce savoir faire.
@@ -1051,8 +1050,7 @@ class AssistantMenuMixin:
         if session is None:
             return
         commande = (
-            f"{shlex.quote(chemin)} --resume"
-            f" {shlex.quote(session.session_id)}"
+            f"{shlex.quote(chemin)} --resume {shlex.quote(session.session_id)}"
         )
         if not getattr(self.execute, "cmd_source_default", ""):
             print(t("No terminal can be opened here. Paste this command:"))
@@ -1097,8 +1095,7 @@ class AssistantMenuMixin:
             1 for _, verdict, _ in self._llm_apparier(gpts) if verdict == "ok"
         )
         return (
-            f"{t('gpt tools')}  ({len(gpts)},"
-            f" {compatibles} {t('compatible')})"
+            f"{t('gpt tools')}  ({len(gpts)}, {compatibles} {t('compatible')})"
         )
 
     def _llm_apparier(self, gpts):
