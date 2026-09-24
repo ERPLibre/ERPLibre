@@ -9,9 +9,6 @@ ODOO_VERSION=$(cat .odoo-version | xargs)
 PYTHON_VERSION=$(cat .python-odoo-version | xargs)
 POETRY_VERSION=$(cat .poetry-version | xargs)
 
-IS_DEBIAN_BOOKWORM=true
-IS_DEBIAN_BULLSEYE=true
-# or IS_DEBIAN_BUSTER
 ARGS=""
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
@@ -37,20 +34,12 @@ for arg in "$@"; do
   elif [ "$arg" == "--odoo_16" ]; then
     output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
   elif [ "$arg" == "--odoo_15" ]; then
-    IS_DEBIAN_BOOKWORM=false
-    IS_DEBIAN_BULLSEYE=false
     output_version=$(python ./script/version/get_version.py --odoo_version 15.0)
   elif [ "$arg" == "--odoo_14" ]; then
-    IS_DEBIAN_BOOKWORM=false
-    IS_DEBIAN_BULLSEYE=false
     output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
   elif [ "$arg" == "--odoo_13" ]; then
-    IS_DEBIAN_BOOKWORM=false
-    IS_DEBIAN_BULLSEYE=false
     output_version=$(python ./script/version/get_version.py --odoo_version 13.0)
   elif [ "$arg" == "--odoo_12" ]; then
-    IS_DEBIAN_BOOKWORM=false
-    IS_DEBIAN_BULLSEYE=false
     output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
   fi
 done
@@ -100,13 +89,18 @@ cd docker
 
 ARGS="${ARGS} --build-arg WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg WORKING_HASH=$(git rev-parse --verify HEAD)"
 
-if [ "$IS_DEBIAN_BOOKWORM" == true ]; then
-  ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
-elif [ "$IS_DEBIAN_BOOKWORM" != true ]; then
-  ARGS="${ARGS} --build-arg DEBIAN_NAME=bullseye --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=cecbf5a6abbd68d324a7cd6c51ec843d71e98951"
-elif [ "$IS_DEBIAN_BULLSEYE" != true ]; then
-  ARGS="${ARGS} --build-arg DEBIAN_NAME=buster --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=d9f259a67e05e1c221d48b504453645e6c491fab"
-fi
+# UNE seule base, bookworm, pour toutes les versions d'Odoo.
+#
+# La base est « python:<version>-slim-<nom> » : le Python vient de l'image
+# officielle, jamais de Debian. Changer de nom de version ne change donc pas
+# l'interpréteur, et les variantes bookworm existent jusqu'à 3.7.17 — vérifié
+# sur le registre. Rien n'obligeait les vieux Odoo à rester sur bullseye, dont
+# le dépôt de sécurité est aujourd'hui démantelé.
+#
+# Le build de wkhtmltopdf suit la version : celui de bullseye réclame
+# libssl1.1, absente de bookworm ; celui de bookworm réclame libssl3, et ses
+# quinze dépendances y sont toutes — vérifié dans l'index.
+ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
 set -e
 
 # Build base
