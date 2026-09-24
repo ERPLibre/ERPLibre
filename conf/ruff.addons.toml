@@ -1,0 +1,53 @@
+# Norme OCA pour les MODULES ODOO, calquée sur le gabarit
+# oca-addons-repo-template — celui que porte tout dépôt d'addons de la
+# communauté, et qu'on lit dans odoo18.0/OCA_OpenUpgrade/.ruff.toml.
+#
+# OCA a quitté black : ruff-format formate, et ruff remplace d'un coup isort,
+# flake8 et pyupgrade. L'outillage d'ERPLibre suit sa propre norme, plus
+# étroite — voir .ruff.toml à la racine, et format_python.sh qui aiguille.
+#
+# Un dépôt d'addons qui porte SON PROPRE .ruff.toml gagne sur ce fichier :
+# format_addons.sh le laisse décider chez lui.
+
+# La série Odoo décide, comme chez OCA, qui fixe une cible par branche. Cette
+# valeur n'est qu'un repli : format_addons.sh passe celle de
+# .python-odoo-version, la seule qui dise ce qui EXÉCUTE ces modules.
+target-version = "py310"
+# 88, la largeur d'OCA, et non les 79 de l'outillage.
+line-length = 88
+
+[lint]
+extend-select = [
+  "B",     # bugbear
+  "C90",   # complexité
+  "E501",  # ligne trop longue
+  "I",     # tri des imports
+  "UP",    # pyupgrade
+]
+
+[lint.per-file-ignores]
+# Un __init__.py d'addon liste ses modules : ni inutilisés, ni à trier.
+"__init__.py" = ["F401", "I001"]
+# Un manifeste est un dictionnaire nu, que bugbear prend pour une expression
+# sans effet.
+"__manifest__.py" = ["B018"]
+
+[lint.isort]
+# Ce qu'isort ne sait pas faire : « odoo » et « odoo.addons » sont deux
+# sections à elles seules, avant le code du module.
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "odoo",
+  "odoo-addons",
+  "first-party",
+  "local-folder",
+]
+
+[lint.isort.sections]
+"odoo" = ["odoo"]
+"odoo-addons" = ["odoo.addons"]
+
+[lint.mccabe]
+max-complexity = 16

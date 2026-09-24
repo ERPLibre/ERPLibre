@@ -208,34 +208,25 @@ format_all:
 # et chaque version d'Odoo n'en rapatrie qu'une partie. Voir format_addons.sh.
 .PHONY: format_code_generator
 format_code_generator:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
-	./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
+	./script/maintenance/format_addons.sh --xml TechnoLibre_odoo-code-generator
 
 .PHONY: format_erplibre_addons
 format_erplibre_addons:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
-	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
-	./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
-	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
-	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
+	./script/maintenance/format_addons.sh --xml ERPLibre_erplibre_addons
+	./script/maintenance/format_addons.sh ERPLibre_erplibre_theme_addons
 
 .PHONY: format_supported_addons
 format_supported_addons:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
-	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
-	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
-	./script/maintenance/black.sh ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
-	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
+	./script/maintenance/format_addons.sh MathBenTech_erplibre-family-management \
+		MathBenTech_odoo-business-spending-management-quebec-canada
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
-	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
+	./script/maintenance/format_addons.sh TechnoLibre_odoo-code-generator-template
 
+# L'outillage passe par ruff, réglé une fois dans .ruff.toml, qui écarte les
+# dépôts rapatriés sous script/. Les addons gardent black : voir
+# script/maintenance/format_python.sh.
 .PHONY: format_script
 format_script:
 	.venv.erplibre/bin/ruff check --select I --fix ./script/
