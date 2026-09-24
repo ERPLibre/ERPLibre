@@ -13,6 +13,7 @@ import getpass
 import logging
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import click
@@ -76,11 +77,10 @@ def _configure_mail_logging() -> None:
     # pose un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
     # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
     # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
-    # terminal que Textual possède pendant tout le TUI, silencieusement.
-    # Constaté pour de vrai : la suite complète l'a fait fuir dans la sortie
-    # pointillée d'`unittest` dès qu'un fichier de test important déjà
-    # `script.todo.todo` tournait avant les tests courriel dans le même
-    # processus.
+    # terminal que Textual possède pendant tout le TUI, silencieusement. La
+    # fuite se voit aussi hors du TUI : sous `unittest`, les lignes du paquet
+    # se mêlent à la sortie pointillée dès qu'un test importe `todo` avant
+    # les tests courriel dans le même processus.
     logger.propagate = False
     _LOG_CONFIGURED = True
 
@@ -128,6 +128,7 @@ def prompt_execute_mail(todo) -> None:
 [2] {t("mail_accounts_menu")}
 [3] {t("mail_sync_now")}
 [4] {t("mail_cache_menu")}
+[5] {t("mail_stats_menu")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -141,8 +142,71 @@ def prompt_execute_mail(todo) -> None:
             _sync_now(todo)
         elif status == "4":
             prompt_mail_cache(todo)
+        elif status == "5":
+            _show_stats(todo)
         else:
             print(t("Command not found !"))
+
+
+def _show_stats(todo, *, base=None) -> None:
+    """Les statistiques de chaque compte, en texte, sans ouvrir le TUI.
+
+    Rien ne part sur le réseau : la commande répond hors ligne, et un compte
+    dont le cache est illisible est signalé sans empêcher les autres.
+
+    Le coffre n'est ouvert que pour les comptes dont le cache est CHIFFRÉ,
+    et une seule fois pour tous : un cache scellé ne se lit pas sans sa clé,
+    tandis qu'un parc en clair ne doit pas payer une saisie de mot de passe
+    pour afficher des chiffres qu'il rend sans elle.
+    """
+    from script.todo.mail import stats
+    from script.todo.mail.store import Store, resolve_mode
+
+    comptes = _load_accounts()
+    if not comptes:
+        print(t("mail_no_account"))
+        return
+    coffre = None
+    for compte in comptes:
+        mode = resolve_mode(compte)
+        if mode != "clear" and coffre is None:
+            coffre = secret_store_for(todo)
+        print(f"\n=== {compte.name} ===")
+        magasin = Store(
+            compte,
+            mode=mode,
+            secrets=coffre if mode != "clear" else None,
+            base=base,
+        )
+        try:
+            magasin.open()
+            rapport = stats.build_report(magasin)
+        except Exception as exc:
+            print(f"  {t('mail_stats_error')} {exc}")
+            continue
+        finally:
+            try:
+                magasin.close()
+            except Exception:
+                pass
+        print(
+            f"  {t('mail_stats_total')} {rapport.total}"
+            f"   {t('mail_stats_unseen')} {rapport.unseen}"
+            f" ({rapport.unseen_share:.0%})"
+        )
+        for etiquette, nombre, barre in rapport.volume[-14:]:
+            print(f"  {etiquette}  {nombre:>5}  {barre}")
+        print(f"  {t('mail_stats_senders')}")
+        for adresse, nombre in rapport.senders[:5]:
+            print(f"    {nombre:>5}  {adresse}")
+        if rapport.reply_count:
+            print(
+                f"  {t('mail_stats_reply')} "
+                f"{stats.humain(rapport.reply_median)}"
+                f" ({rapport.reply_count})"
+            )
+        else:
+            print(f"  {t('mail_stats_reply_none')}")
 
 
 def _open_tui(todo) -> None:
@@ -150,7 +214,7 @@ def _open_tui(todo) -> None:
 
     accounts = _load_accounts()
     secrets = secret_store_for(todo)
-    sessions = open_sessions(accounts, secrets)
+    sessions = open_sessions(accounts, secrets, config_get=_config_get(todo))
     try:
         # Un TUI sans aucun compte n'est plus une impasse : `config_file` et
         # `secrets` lui permettent d'en créer un depuis l'écran d'ajout.
@@ -164,31 +228,89 @@ def _open_tui(todo) -> None:
             session.close()
 
 
+def _config_get(todo):
+    """L'accès en lecture à la configuration TODO, ou rien.
+
+    Les réglages OAuth de celui qui déploie y vivent. Un `todo` sans
+    fichier de configuration — les tests en passent — retombe sur les
+    variables d'environnement plutôt que de lever.
+    """
+    config = getattr(todo, "config_file", None)
+    lire = getattr(config, "get_config_value", None)
+    return lire if callable(lire) else None
+
+
 def _sync_now(todo) -> None:
-    from script.todo.mail.tui import open_sessions
+    from script.todo.mail.tui import (
+        SYNC_PARALLELE,
+        flush_outbox,
+        open_sessions,
+    )
 
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return
-    sessions = open_sessions(accounts, secret_store_for(todo))
-    try:
-        for session in sessions:
-            if not session.online:
-                print(f"{session.account.name} : {session.error}")
-                continue
-            report = session.sync()
-            print(
-                f"{session.account.name} : {report.new_messages}"
-                f" {t('mail_new_messages')}"
-            )
-            for error in report.errors:
-                print(f"  {error}")
-            if report.purged:
-                print(
-                    f"  {t('mail_folders_resynced')}"
-                    f" {', '.join(report.purged)}"
+    sessions = open_sessions(
+        accounts,
+        secret_store_for(todo),
+        config_get=_config_get(todo),
+    )
+
+    def une(session) -> str:
+        """Une passe pour un compte, rendue en texte. Ne lève jamais : un
+        compte qui échoue ne doit pas emporter ceux qui avancent avec lui."""
+        if not session.online:
+            return f"{session.account.name} : {session.error}"
+        lignes = []
+        # La file part AVANT la relecture, comme dans le TUI : une commande
+        # qui promet de synchroniser doit envoyer ce qui attend, sinon un
+        # message écrit hors ligne dort jusqu'à la prochaine ouverture du
+        # client — le seul endroit d'où la file partait.
+        try:
+            partis, _, echoues = flush_outbox(session)
+            if partis or echoues:
+                ligne = (
+                    f"{session.account.name} :"
+                    f" {t('mail_outbox_flushed')} {partis}"
                 )
+                if echoues:
+                    ligne += f" — {t('mail_outbox_failed')} {echoues}"
+                lignes.append(ligne)
+        except Exception as exc:
+            lignes.append(f"{session.account.name} : {exc}")
+        try:
+            report = session.sync()
+        except Exception as exc:
+            lignes.append(f"{session.account.name} : {exc}")
+            return "\n".join(lignes)
+        lignes.append(
+            f"{session.account.name} : {report.new_messages}"
+            f" {t('mail_new_messages')}"
+        )
+        lignes += [f"  {e}" for e in report.errors]
+        if report.purged:
+            lignes.append(
+                f"  {t('mail_folders_resynced')}"
+                f" {', '.join(report.purged)}"
+            )
+        return "\n".join(lignes)
+
+    try:
+        # Chaque compte a son socket et son cache verrouillé : les faire
+        # avancer ensemble transforme une attente réseau en série en une
+        # seule attente. Le rendu reste groupé PAR COMPTE — un entrelacement
+        # de lignes venues de plusieurs comptes serait illisible.
+        vivantes = list(sessions)
+        if len(vivantes) <= 1:
+            for session in vivantes:
+                print(une(session))
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(SYNC_PARALLELE, len(vivantes))
+            ) as pool:
+                for texte in pool.map(une, vivantes):
+                    print(texte)
     finally:
         for session in sessions:
             session.close()
@@ -202,6 +324,8 @@ def prompt_mail_accounts(todo) -> None:
 [3] {t("mail_account_delete")}
 [4] {t("mail_account_template")}
 [5] {t("mail_account_test")}
+[6] {t("mail_account_token")}
+[7] {t("mail_account_signature")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -217,6 +341,10 @@ def prompt_mail_accounts(todo) -> None:
             _write_template()
         elif status == "5":
             _test_account(todo)
+        elif status == "6":
+            _set_oauth_token(todo)
+        elif status == "7":
+            _set_signature()
         else:
             print(t("Command not found !"))
 
@@ -326,15 +454,25 @@ def _add_account(todo) -> None:
     attendu_app = bool(PRESETS[preset_key]["app_password"])
     if attendu_app:
         print(t("mail_app_password_note"))
-        print(f"  {t(PRESETS[preset_key]['note_key'])}")
+    # La note, elle, se dit TOUJOURS : c'est le seul endroit où un
+    # fournisseur explique ce qu'il attend, et celui qui n'accepte plus de
+    # mot de passe du tout est justement celui qu'il faut prévenir.
+    print(f"  {t(PRESETS[preset_key]['note_key'])}")
 
-    password = getpass.getpass(
-        t("mail_ask_app_password" if attendu_app else "mail_ask_password")
-    )
+    account.auth = _demander_authentification(preset_key)
+    if account.auth == "oauth":
+        secret = _obtenir_jeton(todo, account)
+        if not secret:
+            print(t("mail_nothing_written"))
+            return
+    else:
+        secret = getpass.getpass(
+            t("mail_ask_app_password" if attendu_app else "mail_ask_password")
+        )
     existing = [a for a in _load_accounts() if a.name != account.name]
     try:
         account_setup.save_new_account(
-            store, existing + [account], account, password
+            store, existing + [account], account, secret
         )
     except (SecretError, AccountError, OSError) as exc:
         # Une exception qui remonte ici tuerait le menu ; `save_new_account`
@@ -342,6 +480,128 @@ def _add_account(todo) -> None:
         print(exc)
         return
     print(t("mail_account_saved"))
+
+
+def _demander_authentification(preset_key: str) -> str:
+    """« login » ou « oauth », selon ce que le fournisseur accepte encore.
+
+    La question n'est posée que lorsqu'il y a un CHOIX. Un fournisseur sans
+    OAuth ne doit pas se voir proposer une voie qui n'existe pas ; un
+    fournisseur qui n'accepte plus de mot de passe ne doit pas se voir
+    proposer une impasse.
+    """
+    preset = PRESETS.get(preset_key, {})
+    if not preset.get("oauth"):
+        return "login"
+    if not preset.get("app_password"):
+        print(t("mail_oauth_only_here"))
+        return "oauth"
+    print(f"  [1] {t('mail_auth_choice_password')}")
+    print(f"  [2] {t('mail_auth_choice_oauth')}")
+    return (
+        "oauth" if input(t("mail_ask_auth_kind")).strip() == "2" else "login"
+    )
+
+
+def _set_oauth_token(todo) -> None:
+    """Remplace le jeton de rafraîchissement d'un compte.
+
+    Un jeton révoqué — le propriétaire a retiré l'autorisation, ou le
+    fournisseur l'a expirée — se remplace sans refaire le compte. Une saisie
+    vide n'écrit RIEN : effacer le jeton en place couperait la
+    synchronisation d'un compte qui marchait.
+    """
+    account, _ = _pick_account()
+    if account is None:
+        return
+    if getattr(account, "auth", "login") != "oauth":
+        print(t("mail_account_is_not_oauth"))
+        return
+    jeton = _obtenir_jeton(todo, account)
+    if not jeton:
+        print(t("mail_nothing_written"))
+        return
+    try:
+        secret_store_for(todo).set(account.refresh_token_ref(), jeton)
+    except SecretError as exc:
+        print(exc)
+        return
+    print(t("mail_token_saved"))
+
+
+def _set_signature() -> None:
+    """Change la signature d'un compte, lue ligne à ligne.
+
+    Une signature tient rarement sur une ligne : la saisie s'arrête à une
+    ligne VIDE plutôt qu'au premier retour, ce qui permet d'en écrire
+    plusieurs. La signature en place est affichée d'abord — la remplacer à
+    l'aveugle ferait perdre celle qu'on avait.
+
+    Une saisie vide EFFACE, et c'est voulu : sans quoi une signature posée
+    par erreur ne se retirerait qu'en éditant le fichier à la main. Le
+    menu le dit avant de lire.
+    """
+    account, accounts = _pick_account()
+    if account is None:
+        return
+    actuelle = getattr(account, "signature", "") or ""
+    if actuelle:
+        print(t("mail_signature_current"))
+        print(actuelle)
+    print(t("mail_signature_prompt"))
+    lignes = []
+    while True:
+        try:
+            ligne = input()
+        except EOFError:
+            break
+        if not ligne.strip():
+            break
+        lignes.append(ligne)
+    account.signature = "\n".join(lignes)
+    try:
+        mail_accounts.save(accounts)
+    except AccountError as exc:
+        print(exc)
+        return
+    print(
+        t("mail_signature_cleared")
+        if not account.signature
+        else t("mail_signature_saved")
+    )
+
+
+def _obtenir_jeton(todo, account) -> str:
+    """Le jeton de rafraîchissement : par le navigateur, ou collé.
+
+    Le parcours d'autorisation n'est proposé que lorsqu'un identifiant
+    client est configuré — sans lui, la page du fournisseur répondrait
+    « invalid_client », et l'utilisateur chercherait la panne chez lui.
+    Rend la chaîne vide quand rien n'a été obtenu ; l'appelant n'écrit
+    alors rien plutôt que d'effacer le jeton en place.
+    """
+    from script.todo.mail import oauth
+
+    try:
+        identifiant = oauth.settings_for(account, _config_get(todo))[
+            "client_id"
+        ]
+    except oauth.OAuthError:
+        identifiant = ""
+
+    if identifiant:
+        print(f"  [1] {t('mail_oauth_choice_browser')}")
+        print(f"  [2] {t('mail_oauth_choice_paste')}")
+        if input(t("mail_ask_oauth_way")).strip() != "2":
+            print(t("mail_oauth_opening_browser"))
+            try:
+                return oauth.authorize(
+                    account, config_get=_config_get(todo)
+                ).refresh_token
+            except oauth.OAuthError as exc:
+                print(exc)
+                return ""
+    return getpass.getpass(t("mail_ask_refresh_token"))
 
 
 def _pick_account(prompt_key="mail_ask_account"):
@@ -432,9 +692,11 @@ def retry_password(
     # fois qu'on le redemande.
     preset = PRESETS.get(account.preset, {})
     attendu_app = bool(preset.get("app_password"))
-    if attendu_app and _looks_like_auth_failure(cause):
-        print(t("mail_app_password_note"))
-        print(f"  {t(preset['note_key'])}")
+    if _looks_like_auth_failure(cause):
+        if attendu_app:
+            print(t("mail_app_password_note"))
+        if preset.get("note_key"):
+            print(f"  {t(preset['note_key'])}")
     # L'invite elle-même nomme ce qu'on attend. « Mot de passe : » invitait
     # à saisir CELUI DU COMPTE, que ces fournisseurs refusent — la note
     # au-dessus se lit une fois, l'invite se relit à chaque tentative.

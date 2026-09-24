@@ -13,12 +13,57 @@ poser un drapeau `online = False`. Une boîte hors ligne reste lisible.
 """
 from __future__ import annotations
 
+import imaplib
 import logging
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from script.todo.mail.imap_sync import Syncer
 from script.todo.mail.store import Store, sweep_orphan_ephemeral
+
+# Comptes synchronisés de front. Un fil par compte transforme des attentes
+# réseau en série en une seule attente ; au-delà d'une poignée, les
+# fournisseurs refusent les connexions simultanées et le gain disparaît.
+# Ce qui signe un lien IMAP mort, par opposition à un serveur qui répond
+# non. `imaplib` laisse remonter les pannes de socket telles quelles :
+# `TimeoutError` est un `OSError`, et `IMAP4.abort` est ce qu'il lève quand
+# le dialogue est rompu en cours de commande. Aucune de ces trois ne se
+# répare en insistant sur le même lien ; toutes se réparent en en ouvrant
+# un autre.
+LIEN_MORT = (OSError, imaplib.IMAP4.abort)
+
+SYNC_PARALLELE = 4
+# Liens simultanés vers UN MÊME compte, pour que ses dossiers se
+# synchronisent ensemble. Un `imaplib` n'a qu'un dossier sélectionné à la
+# fois : sans second lien, une boîte de trente dossiers les parcourt un par
+# un. Trois, pas plus : les fournisseurs plafonnent les connexions
+# simultanées d'un compte, et ce plafond est partagé avec les autres
+# clients de la personne — téléphone, client de bureau — qui gardent le
+# leur ouvert en permanence.
+SYNC_DOSSIERS_PARALLELE = 3
+
+# Messages chargés d'un coup dans la liste. Le dossier arrive par pages :
+# tout charger construirait autant de lignes qu'il y a de messages, à
+# chaque ouverture et à chaque frappe de recherche.
+PAGE = 500
+# Lignes avant le bas où la page suivante part. Attendre la dernière ferait
+# marquer un arrêt au défilement, le temps que le cache réponde.
+MARGE_PAGE = 20
+
+# Le mot à taper pour détruire un dossier. SANS ACCENT : il doit se taper
+# sur n'importe quelle disposition de clavier, y compris celle d'un poste
+# qu'on emprunte. Une question fermée se valide par réflexe ; un mot
+# recopié oblige à lire ce qu'on détruit.
+MOT_SUPPRESSION = "supprimer"
+
+# La PORTÉE d'une recherche, dans l'ordre où `p` les fait défiler. Le
+# dossier ouvert d'abord : c'est la seule portée qui réponde sans
+# déchiffrer d'autres dossiers en mode chiffré, donc la seule qui puisse
+# suivre la frappe.
+_PORTEES = ("folder", "account", "all")
 
 try:
     from script.todo.todo_i18n import t
@@ -247,20 +292,109 @@ class Session:
         syncer: Syncer | None,
         error: str = "",
         password: str = "",
+        secrets=None,
+        config_get=None,
+        connect_fn=None,
     ):
         self.account = account
         self.store = store
         self.syncer = syncer
         self.error = error
         self.password = password
+        # Gardés pour pouvoir REDEMANDER le secret : un jeton d'accès vit
+        # une heure, et une session peut durer plus longtemps.
+        self.secrets = secrets
+        self.config_get = config_get
+        self.connect_fn = connect_fn
+
+    def current_secret(self) -> str:
+        """Le secret à présenter MAINTENANT, rafraîchi s'il a vieilli.
+
+        Le secret capté à l'ouverture cesse de valoir en cours de session
+        pour un compte OAuth. Tout ce qui rouvre une connexion — un envoi
+        SMTP, une reprise après refus — passe donc par ici plutôt que de
+        rejouer ce qui a été lu au démarrage.
+
+        Sans coffre, rend ce qu'on a : les sessions montées à la main n'en
+        ont pas, et lever ici les casserait toutes. Un échec de
+        rafraîchissement rend de même — l'appelant verra le refus du
+        serveur, qui dit la même chose sans faire tomber l'écran.
+        """
+        if getattr(self.account, "auth", "login") != "oauth":
+            return self.password
+        if self.secrets is None:
+            return self.password
+        from script.todo.mail.oauth import OAuthError, secret_for
+
+        try:
+            self.password = secret_for(
+                self.account, self.secrets, config_get=self.config_get
+            )
+        except OAuthError as exc:
+            _logger.info("rafraîchissement du jeton refusé : %s", exc)
+        return self.password
 
     @property
     def online(self) -> bool:
         return self.syncer is not None
 
     def sync(self, progress=None):
+        """Une passe, avec UNE reprise si le lien ne vaut plus rien.
+
+        Deux façons pour un lien de cesser de servir, et les deux se
+        réparent pareil — en en ouvrant un autre :
+
+        Le SECRET a expiré. Le lien IMAP est ouvert au démarrage et gardé ;
+        un jeton d'accès, lui, meurt au bout d'une heure.
+
+        La SOCKET est morte. Une lecture qui dépasse le délai marque l'objet
+        socket de Python pour de bon : toute lecture suivante lève aussitôt
+        « cannot read from timed out object », sans rien demander au
+        serveur. Un seul LIST lent — Gmail en fait sur une boîte chargée —
+        condamnait alors le compte pour toute la durée du client, chaque
+        passe échouant en quelques millisecondes sur un lien déjà mort.
+        Relancer le client était le seul remède, et rien ne le disait.
+
+        Une seule reprise. Une erreur de PROTOCOLE (`ImapError` : le serveur
+        a répondu, et c'était non) n'en déclenche aucune — rouvrir n'y
+        changerait rien, et réessayer sans fin ferait tourner le client
+        indéfiniment.
+        """
         if self.syncer is None:
             return None
+        from script.todo.mail.imap_transport import ImapAuthError
+
+        try:
+            return self.syncer.sync(progress=progress)
+        except ImapAuthError:
+            if (
+                getattr(self.account, "auth", "login") != "oauth"
+                or self.secrets is None
+                or self.connect_fn is None
+            ):
+                raise
+            raison = "jeton refusé"
+        except LIEN_MORT as exc:
+            if self.connect_fn is None:
+                raise
+            raison = f"lien mort ({exc})"
+        _logger.info(
+            "%s en cours de session : réouverture de %s",
+            raison,
+            self.account.name,
+        )
+        try:
+            self.syncer.transport.logout()
+        except Exception:
+            # Le lien est déjà mort : ce qui compte est celui qui le
+            # remplace, pas la politesse de la fermeture.
+            pass
+        # Le transport est remplacé, le `Syncer` reste : il ne porte que le
+        # cache et le lien, et le reconstruire obligerait cette méthode à
+        # savoir comment on en fabrique un.
+        self.syncer.transport = self.connect_fn(
+            self.account, self.current_secret()
+        )
         return self.syncer.sync(progress=progress)
 
     def close(self) -> None:
@@ -276,7 +410,9 @@ class Session:
                 self.store.close()
 
 
-def open_session(account, secrets, base=None, connect_fn=None) -> Session:
+def open_session(
+    account, secrets, base=None, connect_fn=None, config_get=None
+) -> Session:
     """Ouvre le cache d'UN compte, puis tente le réseau — voir
     `open_sessions` pour l'ordre et sa justification, identique ici.
 
@@ -300,17 +436,47 @@ def open_session(account, secrets, base=None, connect_fn=None) -> Session:
 
     syncer, error, password = None, "", ""
     try:
-        password = secrets.get(account.secret_ref) or ""
+        # Le secret dépend du genre du compte : mot de passe, ou jeton
+        # d'accès rafraîchi au besoin. Le rafraîchissement a lieu ICI, dans
+        # le fil principal et avant toute passe — `SecretStore.set` réécrit
+        # le coffre entier, et deux fils de synchronisation qui y
+        # écriraient ensemble le corrompraient.
+        from script.todo.mail.oauth import secret_for
+
+        password = secret_for(account, secrets, config_get=config_get)
         if not password:
             raise ValueError(t("mail_no_password_stored"))
-        syncer = Syncer(store, connect_fn(account, password))
+        syncer = Syncer(
+            store,
+            connect_fn(account, password),
+            parallele=SYNC_DOSSIERS_PARALLELE,
+        )
     except Exception as exc:
         error = str(exc)
-    return Session(account, store, syncer, error, password)
+    session = Session(
+        account,
+        store,
+        syncer,
+        error,
+        password,
+        secrets=secrets,
+        config_get=config_get,
+        connect_fn=connect_fn,
+    )
+    if syncer is not None:
+        # Le secret DÉJÀ obtenu, pas un rafraîchissement : cette fabrique
+        # est appelée depuis le fil de synchronisation, et plusieurs
+        # comptes y avancent ensemble. `SecretStore.set` réécrit le coffre
+        # entier — deux fils qui le rafraîchiraient en même temps le
+        # corrompraient. Un jeton périmé fait échouer l'ouverture du lien
+        # supplémentaire, son lot revient au lien principal, et c'est lui
+        # qui déclenche l'unique reprise de `Session.sync`.
+        syncer.open_transport = lambda: connect_fn(account, session.password)
+    return session
 
 
 def open_sessions(
-    accounts, secrets, base=None, connect_fn=None
+    accounts, secrets, base=None, connect_fn=None, config_get=None
 ) -> list[Session]:
     """Ouvre le cache de chaque compte actif, puis tente le réseau.
 
@@ -322,7 +488,13 @@ def open_sessions(
 
     sweep_orphan_ephemeral()
     sessions = [
-        open_session(account, secrets, base=base, connect_fn=connect_fn)
+        open_session(
+            account,
+            secrets,
+            base=base,
+            connect_fn=connect_fn,
+            config_get=config_get,
+        )
         for account in accounts
         if account.enabled
     ]
@@ -437,7 +609,12 @@ def save_attachment(raw: bytes, index: int, directory) -> "pathlib.Path":
 
 
 def parse_recipients(raw: str) -> list[str]:
-    """« a@y.ca; Alice <b@y.ca> » → deux entrées. Virgule ou point-virgule."""
+    """Un champ de destinataires → une entrée par destinataire.
+
+    La virgule et le point-virgule séparent tous deux, et les deux formes
+    d'un en-tête RFC 5322 sont acceptées : l'adresse nue et « Libellé
+    <adresse> », dont le libellé est conservé tel quel.
+    """
     if not raw:
         return []
     parts = raw.replace(";", ",").split(",")
@@ -542,6 +719,55 @@ def resolve_sent_folder(session) -> str:
     return session.account.sent_folder
 
 
+def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
+    """Envoie ce qui attend. Rend (partis, retenus, échoués).
+
+    Appelée à chaque passe de synchronisation : le retour du réseau est
+    exactement le moment où la file doit se vider, sans que personne ait à
+    y penser. Un message RETENU est sauté — c'est le sens de la retenue,
+    et seul un geste la lève.
+
+    Ne lève jamais : un envoi qui échoue reste en file avec son erreur, et
+    n'empêche pas les suivants de partir.
+    """
+    from script.todo.mail.smtp_send import connect as smtp_connect
+    from script.todo.mail.smtp_send import send as smtp_send_fn
+
+    if not session.online:
+        return (0, 0, 0)
+    send_fn = send_fn or smtp_send_fn
+    connect_fn = connect_fn or smtp_connect
+    partis = retenus = echoues = 0
+    for entree in session.store.outbox():
+        if entree["held"]:
+            retenus += 1
+            continue
+        brut = session.store.queued_raw(entree["id"])
+        if brut is None:
+            session.store.drop_queued(entree["id"])
+            continue
+        transport = None
+        try:
+            import email
+
+            message = email.message_from_bytes(brut)
+            transport = connect_fn(session.account, session.current_secret())
+            send_fn(session.account, message, transport)
+        except Exception as exc:
+            session.store.record_send_failure(entree["id"], str(exc))
+            echoues += 1
+            continue
+        finally:
+            if transport is not None:
+                try:
+                    transport.quit()
+                except Exception:
+                    pass
+        session.store.drop_queued(entree["id"])
+        partis += 1
+    return (partis, retenus, echoues)
+
+
 def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     """Envoie, puis dépose une copie dans Envoyés. Rend le texte de statut.
 
@@ -551,17 +777,26 @@ def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     """
     from script.todo.mail.smtp_send import SmtpError
     from script.todo.mail.smtp_send import connect as smtp_connect
+    from script.todo.mail.smtp_send import recipients
     from script.todo.mail.smtp_send import send as smtp_send_fn
     from script.todo.mail.smtp_send import without_bcc
 
     if not session.online:
-        raise SmtpError(t("mail_offline_cannot_send"))
+        # Mise en file plutôt qu'un refus : le message est écrit, le perdre
+        # parce que le réseau manque serait le pire des trois résultats
+        # possibles. Il part au retour, sauf s'il est retenu.
+        session.store.queue_message(
+            msg.as_bytes(),
+            ", ".join(recipients(msg)),
+            msg.get("Subject", ""),
+        )
+        return t("mail_queued")
 
     send_fn = send_fn or smtp_send_fn
     transport = None
     if send_fn is smtp_send_fn:
         connect_fn = connect_fn or smtp_connect
-        transport = connect_fn(session.account, session.password)
+        transport = connect_fn(session.account, session.current_secret())
     try:
         served = send_fn(session.account, msg, transport)
     finally:
@@ -615,8 +850,8 @@ def read_log_tail(
     Rend `(lignes, message)` : `message` est vide quand `lignes` est
     utilisable, sinon il dit POURQUOI elle ne l'est pas — absent, vide,
     illisible. Une fenêtre qui s'ouvre en silence sur une liste vide
-    reproduirait exactement la plainte que cette fonction existe pour
-    résoudre : « j'ai une erreur, mais aucun log ».
+    reproduit le défaut que cette fonction corrige : une erreur signalée
+    quelque part, et aucun journal pour la lire.
     """
     if not path.exists():
         return [], t("mail_log_missing")
@@ -708,7 +943,7 @@ def run_tui(
     from script.todo import todo_prefs
     from script.todo.mail import account_setup
     from script.todo.mail import accounts as mail_accounts
-    from script.todo.mail import tui_text
+    from script.todo.mail import stats, tui_text
     from script.todo.mail.accounts import PRESETS
     from script.todo.mail.secrets import SecretStore
 
@@ -838,6 +1073,12 @@ def run_tui(
     class MailApp(App):
         CSS = """
         #panes { height: 1fr; }
+        /* La gouttière est RÉSERVÉE en permanence : sans elle la barre
+           apparaît et disparaît selon le nombre de messages, la largeur du
+           tableau change sous le curseur, et rien n'indique qu'une liste
+           courte l'est vraiment. */
+        #list { scrollbar-gutter: stable; }
+        #folders { scrollbar-gutter: stable; }
         #preview { padding: 0 1; }
         #status { height: 1; background: $panel; }
         #search_row { display: none; height: auto; }
@@ -934,8 +1175,8 @@ def run_tui(
             # `priority=True`, et `_modal_binding_chain` sinon,
             # `app.py:3978`) — `h` ouvrirait
             # alors l'aide PAR-DESSUS l'écran d'écriture, le coffre, ou
-            # l'aide elle-même. Mesuré dans les deux sens sur Textual 8.2.8
-            # avant d'écrire ceci.
+            # l'aide elle-même. Le comportement diffère selon la présence
+            # de `priority` sur Textual 8.2.8.
             Binding("h", "show_help", t("mail_help_binding")),
             Binding("q", "quit", t("mail_quit_binding")),
             Binding("r", "sync_current", t("mail_sync_current_binding")),
@@ -971,8 +1212,20 @@ def run_tui(
                 show=False,
             ),
             Binding("slash", "focus_search", t("mail_search_binding")),
+            Binding("S", "search_server", t("mail_search_server_binding")),
+            Binding("d", "trash_message", t("mail_trash_binding")),
+            Binding("m", "move_message", t("mail_move_binding")),
+            Binding("D", "empty_trash", t("mail_empty_trash_binding")),
+            Binding("p", "cycle_scope", t("mail_scope_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
+            Binding("asterisk", "toggle_flagged", t("mail_flagged_binding")),
+            Binding("M", "mark_all_seen", t("mail_all_seen_binding")),
+            # `x` et NON `space` : `Tree` — l'arbre des dossiers, qui a le
+            # focus au démarrage — lie déjà l'espace au repli d'un nœud et
+            # le consomme avant les liaisons de l'application. `x` est
+            # aussi la touche que les clients web emploient pour cocher.
+            Binding("x", "toggle_selection", t("mail_select_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
             Binding("c", "compose", t("mail_compose_binding")),
             Binding("a", "reply", t("mail_reply_binding")),
@@ -980,6 +1233,10 @@ def run_tui(
             Binding("f", "forward", t("mail_forward_binding")),
             Binding("n", "add_account", t("mail_add_account_binding")),
             Binding("l", "show_log", t("mail_log_binding")),
+            Binding("i", "show_stats", t("mail_stats_binding")),
+            Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
+            Binding("F", "manage_folders", t("mail_folder_binding")),
+            Binding("o", "show_outbox", t("mail_outbox_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -1004,6 +1261,12 @@ def run_tui(
             self.current_ref: MailboxRef | None = None
             self.metas = []
             self.query = ""
+            self.search_scope = "folder"
+            # Les messages cochés, par leur clé de ligne. Un dictionnaire et
+            # non un ensemble : le message lui-même doit survivre au
+            # rechargement de la liste, sans quoi cocher puis synchroniser
+            # perdrait ce qu'on avait désigné.
+            self.selection = {}
             # Lue ici, PAS dans `on_mount` : `compose()` a besoin de la
             # classe CSS de disposition dès le premier rendu, avant que
             # `on_mount` ne tourne. `resolve_layout` protège contre une
@@ -1156,9 +1419,197 @@ def run_tui(
             session = self.session_for(ref.account_name)
             state = session.store.folder_state(ref.folder_name)
             self.metas = (
-                session.store.list_messages(state["id"]) if state else []
+                session.store.list_messages(state["id"], limit=PAGE)
+                if state
+                else []
             )
             self.refresh_list()
+
+        def charger_la_suite(self) -> bool:
+            """Ajoute la page suivante du dossier ouvert. Vrai si elle est
+            venue.
+
+            Le dossier n'est pas chargé d'un coup : une boîte de trente
+            mille messages construirait trente mille lignes à chaque
+            ouverture et à chaque frappe de recherche, là où l'écran répond
+            aujourd'hui tout de suite. Il arrive donc par pages, et c'est le
+            curseur qui approche du bas qui appelle la suivante — sans quoi
+            la liste s'arrêterait à la première page sans le dire, ce qui se
+            lit comme un cache incomplet.
+            """
+            if self.current_ref is None or self.query:
+                # Avec une requête, la liste n'est plus le dossier mais le
+                # résultat, qui a son propre plafond.
+                return False
+            session = self.session_for(self.current_ref.account_name)
+            if session is None:
+                return False
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            if not etat:
+                return False
+            suite = session.store.list_messages(
+                etat["id"], limit=PAGE, offset=len(self.metas)
+            )
+            if not suite:
+                return False
+            self.metas.extend(suite)
+            return True
+
+        def reste_a_charger(self) -> int:
+            """Ce que le CACHE tient encore et que la liste ne montre pas.
+
+            Le compte du cache, pas le `total` du dossier : celui-ci vient
+            du serveur et compte des messages dont le cache n'a parfois
+            aucun.
+            """
+            if self.current_ref is None:
+                return 0
+            session = self.session_for(self.current_ref.account_name)
+            if session is None:
+                return 0
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            if not etat:
+                return 0
+            try:
+                return max(
+                    0,
+                    session.store.count_messages(etat["id"]) - len(self.metas),
+                )
+            except Exception:
+                return 0
+
+        def action_cycle_list_mode(self) -> None:
+            self.list_mode = tui_text.next_list_mode(
+                getattr(self, "list_mode", "flat")
+            )
+            self.set_status(t(f"mail_list_mode_{self.list_mode}"))
+            self.refresh_list()
+
+        def visible_metas(self) -> list:
+            """Les messages à afficher : le dossier, ou le résultat.
+
+            Sans requête, la page chargée. Avec une requête, le CACHE
+            ENTIER — `filter_messages` ne voyait que les 500 messages de la
+            page courante et rendait « aucun résultat » sur une boîte qui
+            en contenait des milliers, sans jamais dire qu'elle n'avait pas
+            regardé plus loin.
+            """
+            if not self.query:
+                return list(self.metas)
+            if not getattr(self, "recherche_complete", True):
+                return tui_text.filter_messages(self.metas, self.query)
+            if self.current_ref is None:
+                return tui_text.filter_messages(self.metas, self.query)
+            try:
+                return self._resultats()
+            except Exception:
+                # Un cache verrouillé ou un index absent ne doit pas vider
+                # la liste : on retombe sur ce qui est chargé.
+                return tui_text.filter_messages(self.metas, self.query)
+
+        def _resultats(self) -> list:
+            """Le résultat de la recherche, selon la portée choisie.
+
+            Chaque message rapporte D'OÙ il vient. Sans cette provenance,
+            une ligne venue d'un autre dossier ne serait plus qu'un UID, et
+            un UID ne désigne rien tout seul : le même nombre nomme un
+            autre message dans chaque dossier.
+            """
+            portee = getattr(self, "search_scope", "folder")
+            if portee == "all":
+                return self._resultats_partout()
+            session = self.session_for(self.current_ref.account_name)
+            folder_id = None
+            if portee == "folder":
+                etat = session.store.folder_state(self.current_ref.folder_name)
+                folder_id = (etat or {}).get("id")
+                if folder_id is None:
+                    return tui_text.filter_messages(self.metas, self.query)
+            return self._signer(
+                session.store.search(self.query, folder_id=folder_id),
+                session,
+            )
+
+        def _resultats_partout(self) -> list:
+            """Tous les comptes, du plus récent au plus ancien.
+
+            Le plafond s'applique à la liste ASSEMBLÉE : sans lui, dix
+            comptes rendraient dix fois le plafond d'un seul, et la fenêtre
+            afficherait une liste qu'aucune touche ne parcourt.
+            """
+            trouves: list = []
+            for session in self.sessions:
+                try:
+                    trouves.extend(
+                        self._signer(session.store.search(self.query), session)
+                    )
+                except Exception:
+                    # Le cache d'un compte peut être fermé ou verrouillé :
+                    # les autres comptes répondent quand même.
+                    _logger.exception(
+                        "recherche dans %s", session.account.name
+                    )
+            trouves.sort(key=lambda m: m.date, reverse=True)
+            return trouves[:500]
+
+        @staticmethod
+        def _signer(metas: list, session) -> list:
+            """Pose le compte sur des résultats que le cache, qui n'en
+            connaît qu'un, ne peut pas signer lui-même."""
+            for meta in metas:
+                meta.account = session.account.name
+            return metas
+
+        def meta_origin(self, meta):
+            """(session, dossier) d'où vient ce message.
+
+            Un message de la liste ordinaire ne porte pas de provenance :
+            il vient du dossier ouvert. Un résultat de recherche élargie,
+            lui, la porte — et c'est elle qui doit servir, sinon l'écran
+            lirait le corps du message qui porte le même UID dans le
+            dossier courant, et les touches de rangement agiraient dessus.
+            """
+            defaut_compte = (
+                self.current_ref.account_name if self.current_ref else ""
+            )
+            defaut_dossier = (
+                self.current_ref.folder_name if self.current_ref else ""
+            )
+            session = self.session_for(
+                getattr(meta, "account", "") or defaut_compte
+            )
+            return session, (getattr(meta, "folder", "") or defaut_dossier)
+
+        def action_cycle_scope(self) -> None:
+            """`p` : dossier ouvert → compte entier → tous les comptes.
+
+            La portée est un choix EXPLICITE. Élargir d'office ferait
+            déchiffrer, en mode chiffré, des dossiers que personne n'a
+            demandés, à chaque frappe.
+            """
+            suivante = _PORTEES[
+                (_PORTEES.index(getattr(self, "search_scope", "folder")) + 1)
+                % len(_PORTEES)
+            ]
+            self.search_scope = suivante
+            self.set_status(t(f"mail_scope_{suivante}"))
+            self.recherche_complete = True
+            self.refresh_list()
+
+        def lignes_a_afficher(self) -> list:
+            """(message, niveau d'indentation) pour le mode courant.
+
+            Le niveau vaut 0 partout sauf en mode fil : la colonne du sujet
+            le porte, ce qui évite une colonne de plus dans une largeur
+            déjà comptée.
+            """
+            metas = self.visible_metas()
+            mode = getattr(self, "list_mode", "flat")
+            if mode == "threads":
+                return tui_text.group_threads(metas)
+            if mode == "unread":
+                return [(m, 0) for m in tui_text.only_unread(metas)]
+            return [(m, 0) for m in metas]
 
         def refresh_list(self) -> None:
             import time
@@ -1166,16 +1617,63 @@ def run_tui(
             table = self.query_one("#list", DataTable)
             table.clear()
             now = int(time.time())
-            for meta in tui_text.filter_messages(self.metas, self.query):
+            for meta, niveau in self.lignes_a_afficher():
                 table.add_row(
-                    "●" if tui_text.is_unread(meta.flags) else " ",
+                    self._marques(meta),
                     tui_text.truncate(tui_text.short_addr(meta.frm), 22),
                     tui_text.truncate(
-                        meta.subject or t("mail_no_subject"), 48
+                        ("  ↳ " * niveau)
+                        + self._provenance(meta)
+                        + (meta.subject or t("mail_no_subject")),
+                        48,
                     ),
                     tui_text.format_date(meta.date, now),
-                    key=str(meta.uid),
+                    key=self._cle(meta),
                 )
+
+        def _marques(self, meta) -> str:
+            """La colonne d'état : non-lu, suivi, ou les deux.
+
+            Deux caractères et non un : un message peut être non lu ET
+            suivi, et faire choisir une seule marque en perdrait une.
+            """
+            return (
+                ("✓" if self._cle(meta) in self.selection else " ")
+                + ("●" if tui_text.is_unread(meta.flags) else " ")
+                + ("★" if tui_text.is_flagged(meta.flags) else " ")
+            )
+
+        def _provenance(self, meta) -> str:
+            """« [Archives] » devant le sujet d'un résultat venu d'ailleurs.
+
+            Rien devant un message du dossier ouvert : le répéter sur
+            chaque ligne d'une liste ordinaire mangerait la largeur du
+            sujet sans rien apprendre.
+            """
+            dossier = getattr(meta, "folder", "")
+            compte = getattr(meta, "account", "")
+            courant = self.current_ref
+            if not dossier or (
+                courant
+                and dossier == courant.folder_name
+                and (not compte or compte == courant.account_name)
+            ):
+                return ""
+            if compte and courant and compte != courant.account_name:
+                return f"[{compte}/{dossier}] "
+            return f"[{dossier}] "
+
+        @staticmethod
+        def _cle(meta) -> str:
+            """La clé d'une ligne du tableau, unique dans TOUTE la liste.
+
+            L'UID seul ne l'est pas : le même nombre nomme un message
+            différent dans chaque dossier, et une recherche élargie les
+            met côte à côte. `DataTable` refuse deux fois la même clé.
+            """
+            compte = getattr(meta, "account", "")
+            dossier = getattr(meta, "folder", "")
+            return f"{compte}\x1f{dossier}\x1f{meta.uid}"
 
         def refresh_current_folder(self) -> None:
             """Recharge les messages du dossier affiché depuis le cache et
@@ -1198,19 +1696,25 @@ def run_tui(
             # Capturé AVANT de recharger `self.metas` : `current_meta()` lit
             # encore l'ancienne liste et la position actuelle du curseur.
             current = self.current_meta()
-            current_uid = current.uid if current is not None else None
+            current_cle = self._cle(current) if current is not None else None
             state = session.store.folder_state(self.current_ref.folder_name)
+            # AUTANT de messages qu'il y en avait : une passe de
+            # synchronisation ne doit pas rendre à la liste la taille d'une
+            # page, sous un curseur qui était descendu bien plus bas.
+            combien = max(PAGE, len(self.metas))
             self.metas = (
-                session.store.list_messages(state["id"]) if state else []
+                session.store.list_messages(state["id"], limit=combien)
+                if state
+                else []
             )
             self.refresh_list()
-            if current_uid is None:
+            if current_cle is None:
                 return
             from textual.widgets.data_table import RowDoesNotExist
 
             table = self.query_one("#list", DataTable)
             try:
-                row_index = table.get_row_index(str(current_uid))
+                row_index = table.get_row_index(current_cle)
             except RowDoesNotExist:
                 # Le message qui avait le focus a disparu du dossier (purge
                 # de synchronisation, suppression ailleurs) : `refresh_list`
@@ -1220,14 +1724,68 @@ def run_tui(
                 return
             table.move_cursor(row=row_index)
 
+        def action_toggle_selection(self) -> None:
+            """`x` : coche ou décoche le message sous le curseur.
+
+            Le curseur descend d'une ligne ensuite : cocher se fait en
+            rafale, et remonter d'une ligne après chaque coche serait le
+            geste le plus fatigant de l'écran.
+            """
+            meta = self.current_meta()
+            if meta is None:
+                return
+            cle = self._cle(meta)
+            if cle in self.selection:
+                del self.selection[cle]
+            else:
+                self.selection[cle] = meta
+            table = self.query_one("#list", DataTable)
+            ligne = table.cursor_row
+            self.refresh_list()
+            if ligne is not None and ligne + 1 < table.row_count:
+                table.move_cursor(row=ligne + 1)
+            elif ligne is not None and ligne < table.row_count:
+                table.move_cursor(row=ligne)
+            self.set_status(
+                f"{t('mail_select_count')} {len(self.selection)}"
+                if self.selection
+                else t("mail_select_none")
+            )
+
+        def cibles(self) -> list:
+            """Ce sur quoi la prochaine touche agit : les cochés, ou celui
+            sous le curseur.
+
+            Une sélection vide ne veut pas dire « rien » mais « ce qui est
+            désigné » : sans cela, chaque touche exigerait de cocher
+            d'abord, et le geste à un seul message coûterait une frappe de
+            plus qu'avant.
+            """
+            if self.selection:
+                return list(self.selection.values())
+            meta = self.current_meta()
+            return [meta] if meta is not None else []
+
+        def _vider_selection(self) -> None:
+            """À la fin d'un lot : ce qui a été traité n'est plus désigné.
+
+            Le garder ferait agir la touche suivante sur des messages déjà
+            partis ailleurs — et sur un déplacement, sur des UID qui ne
+            valent plus rien dans leur dossier d'origine.
+            """
+            self.selection = {}
+
         def current_meta(self):
             table = self.query_one("#list", DataTable)
             if table.cursor_row is None or not self.metas:
                 return None
-            shown = tui_text.filter_messages(self.metas, self.query)
+            # Le MÊME ordre que l'affichage : en mode fil, `visible_metas`
+            # seul rendrait le message d'une autre ligne que celle où le
+            # curseur se trouve.
+            shown = self.lignes_a_afficher()
             if table.cursor_row >= len(shown):
                 return None
-            return shown[table.cursor_row]
+            return shown[table.cursor_row][0]
 
         # -- événements -------------------------------------------------
 
@@ -1239,7 +1797,30 @@ def run_tui(
                 self.select_ref(data)
 
         def on_data_table_row_highlighted(self, event) -> None:
+            self._charger_si_au_bas(event.cursor_row)
             self.show_preview()
+
+        def _charger_si_au_bas(self, ligne: int) -> None:
+            """Charge la page suivante quand le curseur en approche.
+
+            À quelques lignes du bas, PAS sur la dernière : la page arrive
+            alors avant qu'on la demande, et le défilement ne marque pas
+            d'arrêt.
+            """
+            if self.query or ligne is None:
+                return
+            if ligne < len(self.lignes_a_afficher()) - MARGE_PAGE:
+                return
+            if not self.charger_la_suite():
+                return
+            table = self.query_one("#list", DataTable)
+            position = table.cursor_row
+            self.refresh_list()
+            # `refresh_list` vide le tableau, donc le curseur : sans cette
+            # remise en place, charger la suite ramènerait en tête de liste
+            # celui qui descendait.
+            if position is not None and position < table.row_count:
+                table.move_cursor(row=position)
 
         def on_input_changed(self, event) -> None:
             if event.input.id != "search" or event.value == self.query:
@@ -1249,7 +1830,34 @@ def run_tui(
                 # pour rien dès que le champ change de valeur.
                 return
             self.query = event.value
+            # Sans index, chaque frappe déchiffrerait toute la boîte : plus
+            # de quatre secondes par lettre sur une grande boîte, sur le fil
+            # de l'interface. On s'en tient alors à ce qui est chargé, et
+            # Entrée lance la recherche complète.
+            self.recherche_complete = self.search_is_live()
             self.refresh_list()
+            if not self.recherche_complete and event.value:
+                self.set_status(t("mail_search_press_enter"))
+
+        def on_input_submitted(self, event) -> None:
+            if event.input.id != "search":
+                return
+            self.recherche_complete = True
+            self.refresh_list()
+
+        def search_is_live(self) -> bool:
+            """Vrai si la recherche peut suivre la frappe.
+
+            L'index répond en millisecondes ; le balayage déchiffré coûte
+            des secondes et ne peut pas se rejouer à chaque lettre.
+            """
+            if self.current_ref is None:
+                return True
+            try:
+                session = self.session_for(self.current_ref.account_name)
+                return session.store.search_is_indexed()
+            except Exception:
+                return False
 
         def show_preview(self) -> None:
             meta = self.current_meta()
@@ -1257,7 +1865,10 @@ def run_tui(
             if meta is None or self.current_ref is None:
                 preview.update("")
                 return
-            session = self.session_for(self.current_ref.account_name)
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                preview.update("")
+                return
             # `Text`, PAS une chaîne de balisage : expéditeur, sujet et
             # corps viennent du message, donc de n'importe qui. Un jeton de
             # suivi contenant « [...] » — vu sur un vrai courriel — était
@@ -1279,13 +1890,9 @@ def run_tui(
                 return
             try:
                 raw = (
-                    session.syncer.fetch_body(
-                        self.current_ref.folder_name, meta.uid
-                    )
+                    session.syncer.fetch_body(dossier, meta.uid)
                     if session.online
-                    else session.store.read_body(
-                        self.current_ref.folder_name, meta.uid
-                    )
+                    else session.store.read_body(dossier, meta.uid)
                 )
             except Exception as exc:
                 preview.update(header + Text(f"{t('mail_body_error')} {exc}"))
@@ -1375,14 +1982,13 @@ def run_tui(
         def _pane_total(self, slot: str, parent) -> int:
             """L'espace que `slot` et son unique voisin `1fr` se partagent
             RÉELLEMENT — jamais `parent.region` telle quelle : la barre de
-            partage (tâche 25) insérée ENTRE eux a une taille FIXE
-            (`_SPLITTER_SIZE`) qui n'appartient à NI L'UN NI L'AUTRE. La
-            compter dans le total partageable laisserait le voisin
-            `sibling_minimum - (taille de la barre)` au plafond plutôt que
-            `sibling_minimum` — la même erreur d'une cellule que la bordure
-            (tâche 24), sous une autre forme. Mesurée sur le widget RÉEL de
-            la barre, jamais recopiée depuis la CSS : une seule source de
-            vérité pour sa taille.
+            partage insérée ENTRE eux a une taille FIXE (`_SPLITTER_SIZE`)
+            qui n'appartient à NI L'UN NI L'AUTRE. La compter dans le total
+            partageable laisserait le voisin `sibling_minimum - (taille de
+            la barre)` au plafond plutôt que `sibling_minimum` — la même
+            erreur d'une cellule que la bordure, sous une autre forme. La
+            taille est lue sur le widget RÉEL de la barre, jamais recopiée
+            depuis la CSS : une seule source de vérité.
 
             Généralise à « un seul voisin FIXE et CONNU » (la barre), pas à
             un nombre arbitraire d'enfants supplémentaires : si `#panes`/
@@ -1757,6 +2363,424 @@ def run_tui(
                 self._store_pane_size(slot, None)
             self.set_status(t("mail_pane_reset_done"))
 
+        def action_move_message(self) -> None:
+            """`m` : ouvre la liste des dossiers et range le message choisi.
+
+            La liste ne propose PAS le dossier courant : s'y déplacer ne
+            ferait rien, et le proposer laisse croire le contraire.
+            """
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
+                return
+            session, source = self.meta_origin(metas[0])
+            if session is None or not session.online:
+                self.set_status(t("mail_trash_offline"))
+                return
+
+            def ranger(choix):
+                if not choix:
+                    return
+                destination, cible = choix
+                self.set_status(t("mail_move_across_working"))
+                self._vider_selection()
+                self.run_worker(
+                    lambda: self._ranger_lot(metas, destination, cible),
+                    thread=True,
+                )
+
+            self.push_screen(
+                MoveScreen(session, source, self.sessions), ranger
+            )
+
+        def _ranger_lot(self, metas, destination, cible) -> None:
+            """Range un lot dans `destination`/`cible`, chaque message
+            depuis SON dossier.
+
+            Les messages d'un même dossier partent ensemble — un COPY, un
+            retrait — plutôt qu'un aller-retour par message. Une recherche
+            élargie en mêle de plusieurs dossiers et même de plusieurs
+            comptes : le regroupement est donc fait ici, et non supposé.
+            """
+            groupes = {}
+            for meta in metas:
+                session, dossier = self.meta_origin(meta)
+                if session is None:
+                    continue
+                groupes.setdefault((id(session), dossier), (session, []))
+                groupes[(id(session), dossier)][1].append(meta)
+            faits, erreur, vide_partout = 0, None, True
+            for (_, dossier), (session, lot) in groupes.items():
+                if session is destination:
+                    try:
+                        with self._sync_lock:
+                            session.syncer.transport.select(dossier)
+                            vide = session.syncer.transport.move(
+                                [m.uid for m in lot], cible
+                            )
+                    except Exception as exc:
+                        _logger.exception("rangement vers %s", cible)
+                        erreur = erreur or exc
+                        continue
+                    vide_partout = vide_partout and vide
+                    etat = session.store.folder_state(dossier) or {}
+                    if etat.get("id") is not None:
+                        for meta in lot:
+                            session.store.forget_message(etat["id"], meta.uid)
+                    faits += len(lot)
+                    continue
+                # Vers un AUTRE compte : aucun COPY ne relie deux serveurs,
+                # chaque message est déposé puis confirmé un par un.
+                for meta in lot:
+                    fait, souci = self._deplacer_ailleurs(
+                        session, dossier, meta, destination, cible, seul=False
+                    )
+                    erreur = erreur or souci
+                    if fait:
+                        faits += 1
+                    else:
+                        vide_partout = False
+            self.call_from_thread(
+                self._lot_range, cible, faits, len(metas), erreur, vide_partout
+            )
+
+        def _lot_range(
+            self, cible, faits, demandes, erreur, vide_partout
+        ) -> None:
+            if erreur is not None:
+                self.set_status(str(erreur))
+            elif faits < demandes:
+                self.set_status(
+                    f"{t('mail_trash_done')} {cible} — {faits}/{demandes}"
+                )
+            elif not vide_partout:
+                self.set_status(
+                    f"{t('mail_trash_done')} {cible}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {cible} ({faits})")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
+        def action_trash_message(self) -> None:
+            """`d` : déplace le message vers la corbeille du compte.
+
+            Rien n'est détruit ici — une corbeille se vide ailleurs, et
+            c'est ce qui rend le geste réparable. Le cache n'est mis à jour
+            qu'APRÈS l'accord du serveur : le devancer ferait revenir à la
+            passe suivante un message disparu de l'écran.
+            """
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
+                return
+            session, source = self.meta_origin(metas[0])
+            if session is None or not session.online:
+                self.set_status(t("mail_trash_offline"))
+                return
+            corbeille = self._corbeille(session)
+            if corbeille is None:
+                # Inventer un nom créerait chez le fournisseur un dossier
+                # que personne n'a demandé.
+                self.set_status(t("mail_trash_no_folder"))
+                return
+            # Un lot peut mêler des dossiers : ceux qui sont DÉJÀ dans la
+            # corbeille du compte sont écartés plutôt que de faire échouer
+            # le geste entier.
+            restants = [
+                m
+                for m in metas
+                if self.meta_origin(m)[1] != corbeille
+                or self.meta_origin(m)[0] is not session
+            ]
+            if not restants:
+                self.set_status(t("mail_trash_already_there"))
+                return
+            self._vider_selection()
+            self.run_worker(
+                lambda: self._ranger_lot(restants, session, corbeille),
+                thread=True,
+            )
+
+        @staticmethod
+        def _corbeille(session) -> str | None:
+            """Le dossier que le SERVEUR désigne comme corbeille, ou rien.
+
+            Le rôle vient de l'annonce du fournisseur, jamais d'un nom
+            deviné : inventer « Trash » créerait chez lui un dossier que
+            personne n'a demandé, et le vrai resterait plein.
+            """
+            return next(
+                (
+                    f["name"]
+                    for f in session.store.folders()
+                    if f["role"] == "trash"
+                ),
+                None,
+            )
+
+        def action_empty_trash(self) -> None:
+            """`D` : détruit définitivement le contenu de la corbeille.
+
+            Le seul geste du client qui ne se répare pas, et le seul qui
+            exige de TAPER un mot plutôt que d'appuyer sur une touche — la
+            confirmation d'un geste irréversible ne doit pas pouvoir
+            s'obtenir par la frappe de trop.
+            """
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_empty_trash_offline"))
+                return
+            corbeille = self._corbeille(session)
+            if corbeille is None:
+                self.set_status(t("mail_empty_trash_no_folder"))
+                return
+            # PAS de refus anticipé sur le compte du cache : il retarde
+            # toujours sur la corbeille, que `d` remplit côté serveur sans
+            # rien y ajouter localement. Un « déjà vide » tiré de là
+            # refuserait le geste juste après avoir jeté un message. Le
+            # nombre affiché se donne donc pour ce qu'il est, et le seul
+            # qui compte — celui du serveur — est annoncé à la fin.
+            etat = session.store.folder_state(corbeille) or {}
+
+            def vider(confirme):
+                if not confirme:
+                    return
+                self.set_status(t("mail_empty_trash_working"))
+                self.run_worker(
+                    lambda: self._vider(session, corbeille),
+                    thread=True,
+                )
+
+            self.push_screen(
+                EmptyTrashScreen(corbeille, etat.get("total") or 0), vider
+            )
+
+        def _vider(self, session, corbeille) -> None:
+            """Le fil de travail de `D`.
+
+            Le cache n'est purgé qu'APRÈS l'accord du serveur, et le nombre
+            annoncé est celui que le SERVEUR a retiré, pas celui que le
+            cache croyait détenir.
+            """
+            try:
+                with self._sync_lock:
+                    nombre = session.syncer.transport.empty_folder(corbeille)
+            except Exception as exc:
+                _logger.exception("vidage de %s", corbeille)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            session.store.purge_folder(corbeille)
+            self.call_from_thread(self._vide, nombre)
+
+        def _vide(self, nombre: int) -> None:
+            self.set_status(
+                f"{t('mail_empty_trash_done')} {nombre}"
+                if nombre
+                else t("mail_empty_trash_already")
+            )
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
+        def _deplacer_ailleurs(
+            self, session, source, meta, destination, cible, seul=True
+        ) -> tuple:
+            """Le fil de travail d'un déplacement entre DEUX comptes.
+
+            Rien ne relie deux serveurs : le message est relu en entier,
+            DÉPOSÉ chez l'autre, puis seulement retiré d'ici. Un retrait
+            qui précéderait le dépôt perdrait le message pour de bon —
+            aucun serveur ne le rendrait, et il ne passerait par aucune
+            corbeille.
+
+            Le dépôt accepté ne suffit pas : on redemande au serveur s'il
+            contient bien ce Message-ID. Sans cette confirmation la source
+            RESTE, et l'écran le dit — un message en double se corrige, un
+            message disparu, non. Un message sans Message-ID n'est donc
+            jamais retiré de sa source : il n'y a rien à quoi le
+            reconnaître là-bas.
+            """
+            try:
+                with self._sync_lock:
+                    raw = session.syncer.fetch_body(source, meta.uid)
+                    drapeaux = [d for d in (meta.flags or "").split() if d]
+                    destination.syncer.transport.append(
+                        cible, raw, drapeaux, meta.date
+                    )
+                    arrive = destination.syncer.transport.contient_message_id(
+                        cible, meta.msgid
+                    )
+                    vide = False
+                    if arrive:
+                        session.syncer.transport.select(source)
+                        vide = session.syncer.transport.discard([meta.uid])
+            except Exception as exc:
+                _logger.exception(
+                    "déplacement vers %s/%s", destination.account.name, cible
+                )
+                if seul:
+                    self.call_from_thread(self.set_status, str(exc))
+                return False, exc
+            if arrive:
+                etat = session.store.folder_state(source) or {}
+                if etat.get("id") is not None:
+                    session.store.forget_message(etat["id"], meta.uid)
+            try:
+                # Le message est chez l'autre compte : sans cette relecture
+                # il n'y apparaîtrait qu'à la prochaine passe complète.
+                destination.syncer.sync_one(cible)
+            except Exception:
+                _logger.exception("relecture de %s", cible)
+            if not seul:
+                # Dans un lot, c'est l'appelant qui parle à l'écran : cent
+                # messages ne doivent pas écrire cent fois dans la barre
+                # d'état, chacun effaçant le précédent. La CAUSE remonte
+                # quand même — « 0 sur 1 » sans le refus du serveur ne dit
+                # pas quoi corriger.
+                return bool(arrive and vide), None
+            self.call_from_thread(
+                self._deplace_ailleurs, destination, cible, arrive, vide
+            )
+            return bool(arrive and vide), None
+
+        def _deplace_ailleurs(
+            self, destination, cible, arrive: bool, vide: bool
+        ) -> None:
+            nom = f"{destination.account.name} — {cible}"
+            if not arrive:
+                self.set_status(f"{t('mail_move_across_unconfirmed')} {nom}")
+            elif not vide:
+                self.set_status(
+                    f"{t('mail_trash_done')} {nom}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {nom}")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
+        def _deplace_ailleurs(
+            self, destination, cible, arrive: bool, vide: bool
+        ) -> None:
+            nom = f"{destination.account.name} — {cible}"
+            if not arrive:
+                self.set_status(f"{t('mail_move_across_unconfirmed')} {nom}")
+            elif not vide:
+                self.set_status(
+                    f"{t('mail_trash_done')} {nom}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {nom}")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
+        def _deplace(self, cible: str, vide: bool) -> None:
+            message = f"{t('mail_trash_done')} {cible}"
+            if not vide:
+                # Sans UIDPLUS, la source garde le message barré : un autre
+                # client le montrera, et le taire ferait passer ça pour un
+                # bogue.
+                message += f" — {t('mail_trash_source_kept')}"
+            self.set_status(message)
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
+        def action_search_server(self) -> None:
+            """Pose au SERVEUR la question que `/` pose au cache.
+
+            Un geste à part, jamais automatique : étendre à chaque frappe
+            ferait payer un aller-retour réseau à une recherche qui répond
+            déjà. Le travail part dans un fil — une requête réseau sur le
+            fil de l'interface gèlerait la fenêtre — et chaque refus se DIT,
+            une touche silencieuse se lisant comme une touche cassée.
+            """
+            if not self.query:
+                self.set_status(t("mail_search_server_no_term"))
+                return
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_search_server_offline"))
+                return
+            self.set_status(t("mail_search_server_asking"))
+            cibles = self._cibles_serveur(session)
+            terme = self.query
+            self.run_worker(
+                lambda: self._chercher_serveur(cibles, terme),
+                thread=True,
+            )
+
+        def _cibles_serveur(self, session) -> list:
+            """Les (session, dossier) où poser la question, selon la portée.
+
+            La même portée que la recherche locale : une touche qui cherche
+            dans le dossier ouvert et une autre qui interroge le serveur
+            sur tout le compte rendraient deux listes qu'on croirait
+            comparables.
+
+            Les comptes hors ligne sont écartés ici plutôt que d'échouer un
+            par un dans le fil de travail.
+            """
+            portee = getattr(self, "search_scope", "folder")
+            if portee == "folder":
+                return [(session, self.current_ref.folder_name)]
+            sessions = self.sessions if portee == "all" else [session]
+            cibles = []
+            for autre in sessions:
+                if not autre.online:
+                    continue
+                cibles.extend(
+                    (autre, dossier["name"])
+                    for dossier in autre.store.folders()
+                )
+            return cibles
+
+        def _chercher_serveur(self, cibles, terme) -> None:
+            """Le fil de travail : SELECT, SEARCH, puis les en-têtes manquants.
+
+            Sous `_sync_lock` : `imaplib` n'est pas sûr entre fils, et une
+            passe de synchronisation peut tourner en même temps sur la MÊME
+            connexion.
+
+            Un dossier qui refuse — non sélectionnable, disparu depuis la
+            dernière passe — n'arrête pas les autres : sur un compte entier,
+            un seul dossier fâché rendrait la touche inutilisable. Le compte
+            des refusés est rendu pour que l'écran puisse le dire.
+            """
+            ramenes, refuses, derniere = 0, 0, None
+            for session, dossier in cibles:
+                try:
+                    with self._sync_lock:
+                        session.syncer.transport.select(dossier)
+                        uids = session.syncer.transport.search(terme)
+                        ramenes += session.syncer.fetch_uids(dossier, uids)
+                except Exception as exc:
+                    _logger.exception("recherche serveur sur %s", dossier)
+                    refuses += 1
+                    derniere = exc
+            if cibles and refuses == len(cibles):
+                # Tout a refusé : l'erreur elle-même en dit plus qu'un
+                # décompte.
+                self.call_from_thread(self.set_status, str(derniere))
+                return
+            self.call_from_thread(self._serveur_a_repondu, ramenes, refuses)
+
+        def _serveur_a_repondu(self, ramenes: int, refuses: int = 0) -> None:
+            if ramenes:
+                message = f"{t('mail_search_server_found')} {ramenes}"
+            else:
+                message = t("mail_search_server_nothing")
+            if refuses:
+                message += f" — {refuses} {t('mail_search_server_skipped')}"
+            self.set_status(message)
+            # Ce que le serveur a ramené est DANS le cache : relire le
+            # dossier le fait apparaître, sans rien retaper.
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
         def action_focus_search(self) -> None:
             self.query_one("#search_row").add_class("visible")
             self.query_one("#search", Input).focus()
@@ -1780,28 +2804,132 @@ def run_tui(
         def action_mark_unseen(self) -> None:
             self._set_flag("\\Seen", add=False)
 
-        def _set_flag(self, flag: str, add: bool) -> None:
-            meta = self.current_meta()
-            if meta is None or self.current_ref is None:
+        def action_toggle_flagged(self) -> None:
+            """`*` : pose ou retire le drapeau « suivi ».
+
+            Une bascule et non deux touches : contrairement à lu/non lu, où
+            l'on veut souvent forcer l'état d'un message déjà dans l'autre,
+            le suivi se met et s'enlève sur le même message.
+
+            Sur un lot, le sens de la bascule est celui du GROUPE : on ne
+            retire que si tout est déjà suivi. Basculer chacun de son côté
+            rendrait le résultat imprévisible — un lot mi-suivi
+            s'inverserait sans que rien ne dise dans quel état il finit.
+            """
+            metas = self.cibles()
+            if not metas:
                 return
-            session = self.session_for(self.current_ref.account_name)
-            state = session.store.folder_state(self.current_ref.folder_name)
-            flags = set(meta.flags.split()) if meta.flags else set()
-            flags.add(flag) if add else flags.discard(flag)
-            session.store.update_flags(
-                state["id"], meta.uid, " ".join(sorted(flags))
-            )
-            if session.online:
+            tous = all(tui_text.is_flagged(m.flags) for m in metas)
+            self._set_flag("\\Flagged", add=not tous)
+
+        def _set_flag(self, flag: str, add: bool) -> None:
+            """Pose ou retire `flag` sur ce que `cibles()` désigne.
+
+            Le cache d'abord, le serveur ensuite, et un refus du serveur se
+            DIT sans défaire le cache : un drapeau est la seule chose que
+            la passe suivante corrige d'elle-même, en relisant l'état du
+            serveur. C'est ce qui distingue ce chemin du rangement, où le
+            cache ne doit jamais devancer.
+            """
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
+                return
+            erreur = None
+            for meta in metas:
+                session, dossier = self.meta_origin(meta)
+                if session is None:
+                    continue
+                state = session.store.folder_state(dossier)
+                if not state:
+                    continue
+                flags = set(meta.flags.split()) if meta.flags else set()
+                flags.add(flag) if add else flags.discard(flag)
+                session.store.update_flags(
+                    state["id"], meta.uid, " ".join(sorted(flags))
+                )
+                if not session.online:
+                    continue
                 try:
-                    session.syncer.transport.select(
-                        self.current_ref.folder_name
-                    )
+                    session.syncer.transport.select(dossier)
                     session.syncer.transport.store_flags(
                         meta.uid, [flag] if add else [], [] if add else [flag]
                     )
                 except Exception as exc:
-                    self.set_status(f"{t('mail_flag_error')} {exc}")
+                    # Le premier refus suffit à le dire : un lot de cent
+                    # messages sur un serveur fâché en afficherait cent.
+                    erreur = erreur or exc
+            if erreur is not None:
+                self.set_status(f"{t('mail_flag_error')} {erreur}")
+            self._vider_selection()
             self.select_ref(self.current_ref)
+
+        def action_mark_all_seen(self) -> None:
+            """`M` : marque lu TOUT le dossier ouvert.
+
+            Exige d'être en ligne, et ce n'est pas une facilité : une passe
+            de synchronisation relit les drapeaux depuis le serveur, donc
+            un marquage posé hors ligne serait défait à la passe suivante.
+            Le dire vaut mieux que le laisser s'effacer tout seul.
+
+            Demande confirmation — le geste ne détruit rien, mais rien ne le
+            défait commodément : « rendre non lus ceux qui l'étaient »
+            n'existe pas, la liste de départ étant perdue.
+            """
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_all_seen_offline"))
+                return
+            dossier = self.current_ref.folder_name
+            etat = session.store.folder_state(dossier) or {}
+            if etat.get("id") is None:
+                return
+            non_lus = session.store.count_unseen(etat["id"])
+            if not non_lus:
+                self.set_status(t("mail_all_seen_nothing"))
+                return
+
+            def confirme(oui):
+                if not oui:
+                    return
+                self.run_worker(
+                    lambda: self._tout_lire(session, dossier, etat["id"]),
+                    thread=True,
+                )
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"{t('mail_all_seen_ask')} {non_lus}"
+                    f" ({self.current_ref.display})"
+                ),
+                confirme,
+            )
+
+        def _tout_lire(self, session, dossier, folder_id) -> None:
+            """Le fil de travail de `M` : le serveur d'abord, le cache
+            ensuite.
+
+            L'ordre habituel de ce client : un cache qui devancerait un
+            serveur ayant refusé afficherait un dossier lu qui reviendrait
+            non lu à la passe suivante.
+            """
+            try:
+                with self._sync_lock:
+                    session.syncer.transport.select(dossier)
+                    session.syncer.transport.store_flags_all(["\\Seen"], [])
+            except Exception as exc:
+                _logger.exception("tout marquer lu dans %s", dossier)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            combien = session.store.mark_all_seen(folder_id)
+            self.call_from_thread(self._tout_lu, combien)
+
+        def _tout_lu(self, combien: int) -> None:
+            self.set_status(f"{t('mail_all_seen_done')} {combien}")
+            self.reload_folders()
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def action_sync_current(self) -> None:
             self.run_worker(self.sync_current_worker, thread=True)
@@ -1811,8 +2939,7 @@ def run_tui(
 
         def set_status(self, text: str) -> None:
             # Plusieurs appelants y glissent le message d'une exception.
-            # Mesuré : les crochets NUS passent (« [ALERT] »,
-            # « [NONEXISTENT] », « [Gmail] » s'affichent tels quels) ; ce
+            # Un crochet NU traverse le balisage sans dommage ; ce
             # qui lève `MarkupError`, c'est un crochet contenant un « = »,
             # donc ressemblant à une balise avec valeur — une URL de suivi
             # dans un message d'erreur suffit. Le statut disparaîtrait au
@@ -1844,73 +2971,95 @@ def run_tui(
             self._sync(self.sessions)
 
         def _sync(self, sessions) -> None:
-            # Sérialise TOUTE la passe, pas seulement l'appel réseau : deux
-            # `run_worker(thread=True)` (auto-refresh et `r`/`R` manuel)
-            # partageraient sinon le même socket imaplib, qui n'est pas
-            # thread-safe.
+            # Sérialise la PASSE, pas les comptes : deux passes concurrentes
+            # (rafraîchissement automatique et `r`/`R`) partageraient le
+            # socket imaplib d'un même compte, qui n'est pas sûr à
+            # plusieurs fils. Deux comptes DIFFÉRENTS ont chacun leur socket
+            # et leur cache verrouillé : ceux-là peuvent avancer ensemble.
             with self._sync_lock:
-                for session in sessions:
-                    if session is None or not session.online:
-                        continue
-                    self.set_status(
-                        f"{t('mail_syncing')} {session.account.name}…"
-                    )
-                    try:
-                        report = session.sync()
-                    except Exception as exc:
-                        _logger.exception(
-                            "sync de %s a échoué", session.account.name
-                        )
-                        self.set_status(f"{session.account.name} : {exc}")
-                        # Le statut ci-dessus est ÉPHÉMÈRE (le prochain
-                        # message l'efface) : `LogScreen` (touche `l`)
-                        # existe précisément pour regarder APRÈS coup, donc
-                        # la panne la plus grave — la synchronisation
-                        # entière qui a levé, pas seulement un dossier —
-                        # doit y rester lisible, dans la même forme que les
-                        # entrées de `report.errors` ci-dessous.
-                        self.session_errors[session.account.name] = [str(exc)]
-                        continue
-                    # La DERNIÈRE passe l'emporte, même vide : un compte qui
-                    # se remet à synchroniser proprement ne doit pas garder
-                    # affichée, dans `LogScreen`, une erreur qui ne décrit
-                    # plus l'état courant.
-                    self.session_errors[session.account.name] = list(
-                        report.errors
-                    )
-                    message = (
-                        f"{session.account.name} : {report.new_messages}"
-                        f" {t('mail_new_messages')}"
-                    )
-                    if report.errors:
-                        # Le premier message d'erreur EN ENTIER, pas
-                        # seulement leur compte : un « 1 erreur » n'a jamais
-                        # dit à personne ce qui a échoué. Le journal (voir
-                        # `imap_sync.Syncer.sync`) garde les autres au cas où
-                        # il y en aurait plus d'un.
-                        message += f" — {report.errors[0]}"
-                        extra = len(report.errors) - 1
-                        if extra:
-                            message += f" (+{extra} {t('mail_errors')})"
-                    if report.purged:
-                        message += (
-                            f" — {t('mail_folders_resynced')}"
-                            f" {', '.join(report.purged)}"
-                        )
-                    self.set_status(message)
+                vivantes = [s for s in sessions if s is not None and s.online]
+                if not vivantes:
+                    pass
+                elif len(vivantes) == 1:
+                    self._sync_une(vivantes[0])
+                else:
+                    self.set_status(f"{t('mail_syncing')} {len(vivantes)}…")
+                    with ThreadPoolExecutor(
+                        max_workers=min(SYNC_PARALLELE, len(vivantes))
+                    ) as pool:
+                        # Plafonné : un compte par fil est utile, trente
+                        # connexions simultanées se font refuser par les
+                        # fournisseurs et n'accélèrent rien.
+                        for futur in as_completed(
+                            [pool.submit(self._sync_une, s) for s in vivantes]
+                        ):
+                            futur.result()
                 if self._thread_id_differs():
                     self.call_from_thread(self.reload_folders)
                 else:
                     self.reload_folders()
 
+        def _sync_une(self, session) -> None:
+            """Une passe pour UN compte. Ne lève jamais : un compte qui
+            échoue ne doit pas emporter ceux qui avancent en parallèle."""
+            self.set_status(f"{t('mail_syncing')} {session.account.name}…")
+            # La file part AVANT la relecture : le retour du réseau est
+            # exactement le moment où elle doit se vider, et un message
+            # envoyé apparaît alors dans la passe qui suit.
+            try:
+                partis, _, echoues = flush_outbox(session)
+                if partis or echoues:
+                    self.set_status(
+                        f"{t('mail_outbox_flushed')} {partis}"
+                        + (
+                            f" — {t('mail_outbox_failed')} {echoues}"
+                            if echoues
+                            else ""
+                        )
+                    )
+            except Exception:
+                _logger.exception("vidange de la file a échoué")
+            try:
+                report = session.sync()
+            except Exception as exc:
+                _logger.exception("sync de %s a échoué", session.account.name)
+                self.set_status(f"{session.account.name} : {exc}")
+                # Le statut est ÉPHÉMÈRE : `LogScreen` (touche `l`) existe
+                # pour regarder après coup, donc la panne la plus grave —
+                # la passe entière qui a levé — y reste lisible, dans la
+                # même forme que les entrées de `report.errors`.
+                self.session_errors[session.account.name] = [str(exc)]
+                return
+            # La DERNIÈRE passe l'emporte, même vide : un compte qui se
+            # remet à synchroniser proprement ne doit pas garder affichée
+            # une erreur qui ne décrit plus l'état courant.
+            self.session_errors[session.account.name] = list(report.errors)
+            message = (
+                f"{session.account.name} : {report.new_messages}"
+                f" {t('mail_new_messages')}"
+            )
+            if report.errors:
+                # Le premier message EN ENTIER, pas seulement leur compte :
+                # un « 1 erreur » n'a jamais dit ce qui a échoué.
+                message += f" — {report.errors[0]}"
+                extra = len(report.errors) - 1
+                if extra:
+                    message += f" (+{extra} {t('mail_errors')})"
+            if report.purged:
+                message += (
+                    f" — {t('mail_folders_resynced')}"
+                    f" {', '.join(report.purged)}"
+                )
+            self.set_status(message)
+
         def action_save_attachment(self) -> None:
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return
-            session = self.session_for(self.current_ref.account_name)
-            raw = session.store.read_body(
-                self.current_ref.folder_name, meta.uid
-            )
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                return
+            raw = session.store.read_body(dossier, meta.uid)
             if raw is None:
                 self.set_status(t("mail_body_needs_network"))
                 return
@@ -1918,17 +3067,56 @@ def run_tui(
             if not attachments:
                 self.set_status(t("mail_no_attachment"))
                 return
+            if len(attachments) == 1:
+                # Une seule : poser la question serait une frappe pour
+                # rien, et la réponse était déjà connue.
+                self._enregistrer(raw, attachments[0].index)
+                return
+            self.push_screen(
+                AttachmentScreen(attachments),
+                lambda index: (
+                    None if index is None else self._enregistrer(raw, index)
+                ),
+            )
+
+        def _enregistrer(self, raw: bytes, index: int) -> None:
             try:
-                target = save_attachment(raw, 0, "~/Téléchargements")
+                target = save_attachment(raw, index, "~/Téléchargements")
             except Exception as exc:
                 self.set_status(f"{t('mail_save_failed')} {exc}")
                 return
             self.set_status(f"{t('mail_saved_to')} {target}")
 
+        @staticmethod
+        def _avec_signature(session, corps: str) -> str:
+            """`corps`, suivi de la signature du compte s'il en a une.
+
+            Le délimiteur est « -- » suivi d'une ESPACE puis d'un saut de
+            ligne, forme que les clients reconnaissent pour replier ou
+            griser une signature. L'espace en fin de ligne n'est pas une
+            coquille : sans elle, ce n'est plus un délimiteur mais deux
+            tirets ordinaires.
+
+            Elle arrive dans le formulaire, donc visible et modifiable
+            avant l'envoi — plutôt qu'ajoutée au dernier moment, où
+            personne ne l'aurait relue.
+            """
+            signature = (
+                getattr(session.account, "signature", "") or ""
+            ).strip("\n")
+            if not signature:
+                return corps
+            return f"{corps}\n\n-- \n{signature}"
+
         def action_compose(self) -> None:
             session = self._session_or_first()
             if session:
-                self.push_screen(ComposeScreen(session), self._after_compose)
+                self.push_screen(
+                    ComposeScreen(
+                        session, {"body": self._avec_signature(session, "")}
+                    ),
+                    self._after_compose,
+                )
 
         def action_reply(self) -> None:
             self._open_reply(reply_all=False)
@@ -1948,14 +3136,12 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return None, None
-            session = self.session_for(self.current_ref.account_name)
-            raw = session.store.read_body(
-                self.current_ref.folder_name, meta.uid
-            )
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                return None, None
+            raw = session.store.read_body(dossier, meta.uid)
             if raw is None and session.online:
-                raw = session.syncer.fetch_body(
-                    self.current_ref.folder_name, meta.uid
-                )
+                raw = session.syncer.fetch_body(dossier, meta.uid)
             if raw is None:
                 return session, None
             import email
@@ -1982,7 +3168,9 @@ def run_tui(
                         "to": draft["To"] or "",
                         "cc": draft["Cc"] or "",
                         "subject": draft["Subject"] or "",
-                        "body": draft.get_content(),
+                        "body": self._avec_signature(
+                            session, draft.get_content()
+                        ),
                         "in_reply_to": draft["In-Reply-To"],
                         "references": draft["References"],
                     },
@@ -2037,13 +3225,57 @@ def run_tui(
         def action_show_help(self) -> None:
             self.push_screen(HelpScreen())
 
+        def action_show_outbox(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            self.push_screen(
+                OutboxScreen(self.session_for(self.current_ref.account_name))
+            )
+
+        def action_manage_folders(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if not session.online:
+                # Créer ou détruire un dossier passe par le serveur : hors
+                # ligne, l'écran ne pourrait qu'échouer à chaque geste.
+                self.set_status(t("mail_folder_needs_network"))
+                return
+            self.push_screen(FolderScreen(session))
+
+        def action_show_stats(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            session = self.session_for(self.current_ref.account_name)
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            self.push_screen(
+                StatsScreen(
+                    session.store,
+                    folder_id=(etat or {}).get("id"),
+                    folder_name=self.current_ref.display,
+                )
+            )
+
+        def _config_get(self):
+            """La lecture de la configuration TODO, ou rien.
+
+            Un TUI monté sans fichier de configuration — les tests en
+            montent — retombe sur les variables d'environnement plutôt que
+            de lever.
+            """
+            lire = getattr(self.config_file, "get_config_value", None)
+            return lire if callable(lire) else None
+
         def action_add_account(self) -> None:
             if self.config_file is None or self.secret_store is None:
                 self.set_status(t("mail_account_add_unavailable"))
                 return
             if account_setup.kdbx_is_configured(self.config_file):
                 self.push_screen(
-                    AccountScreen(self.secret_store),
+                    AccountScreen(self.secret_store, self._config_get()),
                     self._after_account_added,
                 )
             else:
@@ -2056,7 +3288,8 @@ def run_tui(
                 return
             self.secret_store = store
             self.push_screen(
-                AccountScreen(self.secret_store), self._after_account_added
+                AccountScreen(self.secret_store, self._config_get()),
+                self._after_account_added,
             )
 
         def _after_account_added(self, account) -> None:
@@ -2089,10 +3322,10 @@ def run_tui(
         de la session en cours — sans quitter le client pour les lire dans
         `~/.erplibre/mail.log`.
 
-        Une fenêtre qui s'ouvre VIDE reproduirait exactement la plainte qui
-        justifie son existence (« j'ai une erreur, mais aucun log ») :
-        chaque état — journal absent, vide, illisible, aucune erreur de
-        session — se dit en toutes lettres, jamais en silence.
+        Une fenêtre qui s'ouvre VIDE reproduit le défaut qu'elle corrige —
+        une erreur signalée, aucun journal pour la lire : chaque état —
+        journal absent, vide, illisible, aucune erreur de session — se dit
+        en toutes lettres, jamais en silence.
         """
 
         BINDINGS = [
@@ -2141,6 +3374,818 @@ def run_tui(
         def action_close_log(self) -> None:
             self.dismiss()
 
+    class OutboxScreen(ModalScreen):
+        """Touche `o` : ce qui attend de partir.
+
+        Chaque ligne porte à sa GAUCHE un bouton qui retient le message ou
+        le relâche. Un message retenu ne part jamais seul : seul ce bouton
+        lève la retenue, jamais un délai qui expire.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_outbox", t("mail_outbox_close")),
+        ]
+
+        CSS = """
+        #outbox_list { height: 1fr; border: solid $panel; }
+        #outbox_hint { height: auto; padding: 0 1; color: $text-muted; }
+        .outbox_row { height: auto; }
+        .outbox_row Button { width: 12; }
+        .outbox_row Static { width: 1fr; padding: 0 1; }
+        """
+
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+
+        def compose(self):
+            with Vertical():
+                yield Static("", id="outbox_hint")
+                yield VerticalScroll(id="outbox_list")
+
+        def on_mount(self) -> None:
+            self.reload_outbox()
+
+        def reload_outbox(self) -> None:
+            zone = self.query_one("#outbox_list", VerticalScroll)
+            zone.remove_children()
+            try:
+                entrees = self.session.store.outbox()
+            except Exception as exc:
+                self.query_one("#outbox_hint", Static).update(
+                    Text(f"{t('mail_outbox_error')} {exc}")
+                )
+                return
+            self.query_one("#outbox_hint", Static).update(
+                Text(
+                    t("mail_outbox_empty")
+                    if not entrees
+                    else f"{t('mail_outbox_count')} {len(entrees)}"
+                )
+            )
+            for entree in entrees:
+                zone.mount(self._ligne(entree))
+
+        def _ligne(self, entree):
+            libelle = (
+                t("mail_outbox_release")
+                if entree["held"]
+                else t("mail_outbox_hold")
+            )
+            ligne = Horizontal(classes="outbox_row")
+            bouton = Button(libelle, id=f"hold_{entree['id']}")
+            # `Text` et non du balisage : destinataire et sujet viennent du
+            # message, donc de qui l'a écrit.
+            texte = Text()
+            texte.append(entree["subject"] or t("mail_no_subject"))
+            texte.append(f"\n{entree['to']}", style="dim")
+            if entree["last_error"]:
+                texte.append(
+                    f"\n{t('mail_outbox_last_error')} {entree['last_error']}"
+                    f" ({entree['attempts']})",
+                    style="dim",
+                )
+            ligne.compose_add_child(bouton)
+            ligne.compose_add_child(Static(texte))
+            return ligne
+
+        def on_button_pressed(self, event) -> None:
+            ident = str(event.button.id or "")
+            if not ident.startswith("hold_"):
+                return
+            queue_id = int(ident.removeprefix("hold_"))
+            entrees = {e["id"]: e for e in self.session.store.outbox()}
+            entree = entrees.get(queue_id)
+            if entree is None:
+                self.reload_outbox()
+                return
+            self.session.store.set_held(queue_id, not entree["held"])
+            self.reload_outbox()
+
+        def action_close_outbox(self) -> None:
+            self.dismiss(None)
+
+    class MoveScreen(ModalScreen):
+        """Les dossiers où ranger le message : ceux du compte, puis ceux
+        des autres.
+
+        Le compte du message vient en premier, sans être nommé — c'est le
+        cas courant, et préfixer chaque ligne du nom du compte ouvert
+        mangerait la largeur sans rien apprendre. Les dossiers d'un autre
+        compte portent le sien : un déplacement qui change de compte n'est
+        pas le même geste, et se lit.
+
+        Distincte de `FolderScreen` (`F`), qui CRÉE et DÉTRUIT : mêler un
+        choix anodin à des gestes destructeurs met la suppression d'un
+        dossier à une touche d'un rangement quotidien.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_move_close")),
+            Binding("enter", "choose", t("mail_move_choose")),
+        ]
+
+        CSS = """
+        #move_list { height: 1fr; border: solid $panel; }
+        #move_hint { height: auto; padding: 0 1; color: $text-muted; }
+        """
+
+        def __init__(self, session, source: str, sessions=None):
+            super().__init__()
+            self.session = session
+            self.source = source
+            # Le compte du message d'abord : c'est là que la plupart des
+            # rangements vont, et le curseur y est déjà.
+            self.sessions = [session] + [
+                autre
+                for autre in (sessions or [])
+                if autre is not session and autre.online
+            ]
+            # (session, dossier) — un nom de dossier ne suffit plus à
+            # désigner une cible dès que plusieurs comptes sont listés.
+            self.cibles: list = []
+
+        def compose(self):
+            with Vertical():
+                yield Static(Text(t("mail_move_hint")), id="move_hint")
+                yield DataTable(id="move_list")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#move_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(t("mail_folder_name"), t("mail_stats_total"))
+            for session in self.sessions:
+                try:
+                    dossiers = session.store.folders()
+                except Exception as exc:
+                    # Le cache d'un compte peut être fermé ou verrouillé :
+                    # les autres comptes restent proposables.
+                    _logger.exception("dossiers de %s", session.account.name)
+                    self.query_one("#move_hint", Static).update(
+                        Text(f"{t('mail_folder_error')} {exc}")
+                    )
+                    continue
+                ici = session is self.session
+                for dossier in dossiers:
+                    if ici and dossier["name"] == self.source:
+                        continue
+                    nom = dossier["display"] or dossier["name"]
+                    table.add_row(
+                        nom if ici else f"{session.account.name} — {nom}",
+                        str(dossier["total"] or 0),
+                        key=f"{session.account.name}\x1f{dossier['name']}",
+                    )
+                    self.cibles.append((session, dossier["name"]))
+            table.focus()
+
+        @property
+        def dossiers(self) -> list:
+            """Les dossiers proposés, par leur seul nom.
+
+            Gardée pour ce qui ne s'intéresse qu'au contenu du compte
+            ouvert ; le choix, lui, passe par `cibles`, un nom de dossier
+            ne désignant rien à lui seul dès qu'il y a plusieurs comptes.
+            """
+            return [nom for _, nom in self.cibles]
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
+        def action_choose(self) -> None:
+            table = self.query_one("#move_list", DataTable)
+            if table.cursor_row is None or table.cursor_row >= len(
+                self.cibles
+            ):
+                return
+            self.dismiss(self.cibles[table.cursor_row])
+
+        def on_data_table_row_selected(self, event) -> None:
+            self.action_choose()
+
+    class AttachmentScreen(ModalScreen):
+        """Laquelle des pièces jointes enregistrer.
+
+        `w` n'en connaissait qu'une : la première. Les autres restaient
+        inatteignables depuis le client, sans que rien ne dise qu'elles
+        existaient — le nombre s'affiche pourtant dans l'aperçu.
+
+        Ne s'ouvre qu'à partir de deux : poser la question pour une seule
+        serait une frappe de plus dont la réponse est connue d'avance.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_attachment_close")),
+            Binding("enter", "choose", t("mail_attachment_choose")),
+        ]
+
+        CSS = """
+        #attach_list { height: 1fr; border: solid $panel; }
+        #attach_hint { height: auto; padding: 0 1; color: $text-muted; }
+        """
+
+        def __init__(self, attachments):
+            super().__init__()
+            self.attachments = list(attachments)
+
+        def compose(self):
+            with Vertical():
+                yield Static(Text(t("mail_attachment_hint")), id="attach_hint")
+                yield DataTable(id="attach_list")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#attach_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(
+                t("mail_attachment_name"),
+                t("mail_attachment_type"),
+                t("mail_attachment_size"),
+            )
+            for piece in self.attachments:
+                table.add_row(
+                    # Le nom vient du message, donc de n'importe qui : il
+                    # est tronqué pour l'affichage, et c'est
+                    # `save_attachment` qui le rend sûr à l'écriture.
+                    tui_text.truncate(piece.filename or "?", 48),
+                    piece.content_type or "?",
+                    tui_text.format_size(piece.size),
+                    key=str(piece.index),
+                )
+            table.focus()
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
+        def action_choose(self) -> None:
+            table = self.query_one("#attach_list", DataTable)
+            if table.cursor_row is None or table.cursor_row >= len(
+                self.attachments
+            ):
+                return
+            self.dismiss(self.attachments[table.cursor_row].index)
+
+        def on_data_table_row_selected(self, event) -> None:
+            self.action_choose()
+
+    class ConfirmScreen(ModalScreen):
+        """Une question fermée : `Entrée` accepte, `Échap` renonce.
+
+        Distincte de `EmptyTrashScreen`, qui fait TAPER un mot : celle-ci
+        garde un geste qui ne détruit rien mais que rien ne défait
+        commodément. Exiger un mot pour ça userait la vigilance qu'on veut
+        garder intacte là où elle compte vraiment.
+        """
+
+        BINDINGS = [
+            Binding("escape", "refuse", t("mail_confirm_no")),
+            Binding("enter", "accepte", t("mail_confirm_yes")),
+        ]
+
+        CSS = """
+        #confirm_text { height: auto; padding: 1; }
+        """
+
+        def __init__(self, question: str):
+            super().__init__()
+            self.question = question
+
+        def compose(self):
+            with Vertical():
+                yield Static(
+                    Text(f"{self.question}\n\n{t('mail_confirm_hint')}"),
+                    id="confirm_text",
+                )
+
+        def action_refuse(self) -> None:
+            self.dismiss(False)
+
+        def action_accepte(self) -> None:
+            self.dismiss(True)
+
+    class EmptyTrashScreen(ModalScreen):
+        """La confirmation d'un geste qui ne se répare pas.
+
+        Elle exige de TAPER un mot, comme la suppression d'un dossier :
+        c'est la seule forme de confirmation qu'une frappe de trop ne peut
+        pas donner par accident. Elle nomme aussi ce qui va disparaître —
+        une confirmation qui ne dit pas sur quoi elle porte n'en est pas
+        une.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_empty_trash_close")),
+        ]
+
+        CSS = """
+        #empty_hint { height: auto; padding: 1; }
+        """
+
+        def __init__(self, corbeille: str, total: int):
+            super().__init__()
+            self.corbeille = corbeille
+            self.total = total
+
+        def compose(self):
+            with Vertical():
+                yield Static(
+                    Text(
+                        f"« {self.corbeille} » — {self.total}"
+                        f" {t('mail_empty_trash_count')}\n\n"
+                        f"{t('mail_empty_trash_ask')} {MOT_SUPPRESSION}"
+                    ),
+                    id="empty_hint",
+                )
+                yield Input(id="empty_input")
+
+        def on_mount(self) -> None:
+            self.query_one("#empty_input", Input).focus()
+
+        def action_cancel(self) -> None:
+            self.dismiss(False)
+
+        def on_input_submitted(self, event) -> None:
+            self.dismiss(
+                (event.value or "").strip().lower() == MOT_SUPPRESSION
+            )
+
+    class FolderScreen(ModalScreen):
+        """Touche `F` : créer, renommer et supprimer un dossier.
+
+        La suppression détruit le dossier ET son contenu sur le SERVEUR,
+        sans corbeille : IMAP n'en a pas pour les dossiers. Elle exige donc
+        de taper un mot, pas de confirmer.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_folders", t("mail_folder_close")),
+            Binding("n", "start_create", t("mail_folder_create")),
+            Binding("r", "start_rename", t("mail_folder_rename")),
+            Binding("d", "start_delete", t("mail_folder_delete")),
+        ]
+
+        CSS = """
+        #folder_list { height: 1fr; border: solid $panel; }
+        #folder_hint { height: auto; padding: 0 1; color: $text-muted; }
+        #folder_input { display: none; }
+        #folder_input.visible { display: block; }
+        """
+
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+            self.action = None
+
+        def compose(self):
+            with Vertical():
+                yield Static("", id="folder_hint")
+                yield DataTable(id="folder_list")
+                yield Input(id="folder_input")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#folder_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(t("mail_folder_name"), t("mail_stats_total"))
+            self.reload_folders()
+            self.query_one("#folder_hint", Static).update(
+                Text(t("mail_folder_hint"))
+            )
+
+        def reload_folders(self) -> None:
+            table = self.query_one("#folder_list", DataTable)
+            table.clear()
+            try:
+                dossiers = self.session.store.folders()
+            except Exception as exc:
+                self.query_one("#folder_hint", Static).update(
+                    Text(f"{t('mail_folder_error')} {exc}")
+                )
+                return
+            for dossier in dossiers:
+                table.add_row(
+                    dossier["display"] or dossier["name"],
+                    str(dossier["total"] or 0),
+                    key=dossier["name"],
+                )
+            self.dossiers = [d["name"] for d in dossiers]
+
+        def selection(self):
+            table = self.query_one("#folder_list", DataTable)
+            noms = getattr(self, "dossiers", [])
+            if table.cursor_row is None or table.cursor_row >= len(noms):
+                return None
+            return noms[table.cursor_row]
+
+        def _demander(self, action, invite, valeur="") -> None:
+            self.action = action
+            champ = self.query_one("#folder_input", Input)
+            champ.value = valeur
+            champ.placeholder = invite
+            champ.add_class("visible")
+            champ.focus()
+            self.query_one("#folder_hint", Static).update(Text(invite))
+
+        def action_start_create(self) -> None:
+            self._demander("create", t("mail_folder_ask_new"))
+
+        def action_start_rename(self) -> None:
+            courant = self.selection()
+            if courant is None:
+                return
+            self._demander("rename", t("mail_folder_ask_rename"), courant)
+
+        def action_start_delete(self) -> None:
+            courant = self.selection()
+            if courant is None:
+                return
+            self._demander(
+                "delete",
+                f"{t('mail_folder_ask_delete')} « {courant} » — "
+                f"{MOT_SUPPRESSION}",
+            )
+
+        def on_input_submitted(self, event) -> None:
+            saisie = (event.value or "").strip()
+            action, self.action = self.action, None
+            champ = self.query_one("#folder_input", Input)
+            champ.remove_class("visible")
+            champ.value = ""
+            if not action or not saisie:
+                return
+            try:
+                self._appliquer(action, saisie)
+            except Exception as exc:
+                self.query_one("#folder_hint", Static).update(
+                    Text(f"{t('mail_folder_error')} {exc}")
+                )
+                return
+            self.reload_folders()
+            self.query_one("#folder_hint", Static).update(
+                Text(t("mail_folder_done"))
+            )
+
+        def _appliquer(self, action, saisie) -> None:
+            """Le serveur D'ABORD, le cache ensuite.
+
+            Si le serveur refuse, le cache ne doit pas décrire un état qui
+            n'existe nulle part — un dossier absent de l'arbre distant et
+            présent dans le nôtre ne se resynchronise jamais.
+            """
+            transport = self.session.syncer.transport
+            if action == "create":
+                transport.create_folder(saisie)
+                self.session.store.upsert_folder(saisie, saisie, None)
+            elif action == "rename":
+                courant = self.selection()
+                if courant is None or courant == saisie:
+                    return
+                transport.rename_folder(courant, saisie)
+                self.session.store.rename_folder(courant, saisie)
+            elif action == "delete":
+                if saisie.lower() != MOT_SUPPRESSION:
+                    raise ValueError(t("mail_folder_not_confirmed"))
+                courant = self.selection()
+                if courant is None:
+                    return
+                transport.delete_folder(courant)
+                self.session.store.forget_folder(courant)
+
+        def action_close_folders(self) -> None:
+            self.dismiss(None)
+
+    class StatsScreen(ModalScreen):
+        """Touche `i` : ce que le cache sait déjà dire du compte ouvert.
+
+        Aucune requête réseau : tout vient du cache, donc l'écran répond
+        hors ligne et instantanément. `d`, `w` et `m` changent le pas de
+        l'histogramme ; `f` restreint au dossier ouvert ou l'élargit à tout
+        le compte.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_stats", t("mail_stats_close")),
+            Binding("d", "bucket_day", t("mail_stats_by_day")),
+            Binding("w", "bucket_week", t("mail_stats_by_week")),
+            Binding("m", "bucket_month", t("mail_stats_by_month")),
+            Binding("f", "toggle_folder", t("mail_stats_folder_filter")),
+            Binding("enter", "load_details", t("mail_stats_details")),
+        ]
+
+        CSS = """
+        /* `auto` et NON `1fr` sur le contenu : `1fr` le contraint à la
+           hauteur de la fenêtre, la hauteur virtuelle du conteneur devient
+           égale à la hauteur visible, et il n'y a plus rien à faire
+           défiler — le texte est tronqué, pas débordant. Le conteneur, lui,
+           prend la place restante. */
+        #stats_scroll { height: 1fr; border: solid $panel; }
+        #stats_body { height: auto; padding: 0 1; }
+        #stats_head { height: auto; padding: 0 1; color: $text-muted; }
+        #stats_choix { height: auto; padding: 0 1; }
+        #stats_choix Select { width: 1fr; }
+        """
+
+        def __init__(self, store, folder_id=None, folder_name=""):
+            super().__init__()
+            self.store = store
+            self.folder_id = folder_id
+            self.folder_name = folder_name
+            # `None` : le pas se choisit d'après l'étendue de la boîte au
+            # premier affichage. Une fois qu'une touche l'a fixé, il reste.
+            self.bucket = None
+            self.restreint = False
+            self.details = None
+            self.calcul_en_cours = False
+            # 0 = pas de borne. Exprimé en jours, converti en date au
+            # moment de la requête : une borne calculée à l'ouverture
+            # vieillirait sur un écran laissé ouvert.
+            self.periode_jours = 0
+
+        # (valeur, clé i18n). L'ordre est celui de la liste déroulante.
+        PAS = (
+            ("day", "mail_stats_by_day"),
+            ("week", "mail_stats_by_week"),
+            ("month", "mail_stats_by_month"),
+            ("year", "mail_stats_by_year"),
+        )
+        # (valeur, clé i18n, jours). Des chaînes et non des entiers : un
+        # `Select` refuse une valeur fausse au sens booléen, et « toute la
+        # période » vaudrait naturellement 0.
+        PERIODES = (
+            ("all", "mail_stats_period_all", 0),
+            ("year", "mail_stats_period_year", 365),
+            ("5years", "mail_stats_period_5years", 1825),
+            ("month", "mail_stats_period_month", 30),
+        )
+
+        def compose(self):
+            with Vertical():
+                with Horizontal(id="stats_choix"):
+                    yield Select(
+                        [(t(cle), valeur) for valeur, cle in self.PAS],
+                        # `Select.NULL`, PAS `Select.BLANK` : dans Textual
+                        # 8 cette dernière vaut littéralement `False`, que
+                        # le widget refuse comme valeur. Aucune sélection au
+                        # départ — le pas se déduit de l'étendue de la boîte
+                        # et la liste s'aligne dessus au premier affichage.
+                        value=Select.NULL,
+                        prompt=t("mail_stats_step"),
+                        id="stats_pas",
+                    )
+                    yield Select(
+                        [(t(cle), valeur) for valeur, cle, _ in self.PERIODES],
+                        value="all",
+                        allow_blank=False,
+                        id="stats_periode",
+                    )
+                    yield Select(
+                        [
+                            (t("mail_stats_all_folders"), "all"),
+                            (
+                                self.folder_name or t("mail_stats_folder"),
+                                "folder",
+                            ),
+                        ],
+                        value="all",
+                        allow_blank=False,
+                        id="stats_portee",
+                    )
+                yield Static("", id="stats_head")
+                yield VerticalScroll(
+                    Static("", id="stats_body"), id="stats_scroll"
+                )
+
+        def on_mount(self) -> None:
+            self.refresh_stats()
+            # Le focus va au conteneur défilable, pas à la première liste :
+            # les flèches font alors défiler dès l'ouverture, et `enter`
+            # atteint la liaison de l'écran au lieu de déplier une liste.
+            self.query_one("#stats_scroll").focus()
+
+        def refresh_stats(self) -> None:
+            """La vue d'ensemble, et elle seule.
+
+            Uniquement du SQL : ni correspondants ni délais de réponse. Les
+            premiers ouvrent chaque colonne scellée, les seconds joignent la
+            table avec elle-même ; sur une grande boîte ils coûtent des
+            secondes, et les payer avant le premier affichage fige l'écran
+            au moment précis où l'utilisateur attend une réponse.
+            """
+            cible = self.folder_id if self.restreint else None
+            depuis = self._depuis()
+            try:
+                apercu = stats.build_overview(
+                    self.store,
+                    bucket=self.bucket,
+                    folder_id=cible,
+                    since=depuis,
+                )
+            except Exception as exc:
+                self.query_one("#stats_body", Static).update(
+                    Text(f"{t('mail_stats_error')} {exc}")
+                )
+                return
+            self.bucket = apercu.bucket
+            portee = (
+                self.folder_name
+                if self.restreint and self.folder_name
+                else t("mail_stats_all_folders")
+            )
+            self.query_one("#stats_head", Static).update(
+                Text(
+                    f"{t('mail_stats_scope')} {portee}"
+                    f"   ·   {t(f'mail_stats_by_{self.bucket}')}"
+                )
+            )
+            self.query_one("#stats_body", Static).update(self._rendu(apercu))
+
+        def _rendu(self, apercu) -> "Text":
+            """Le rapport en texte enrichi.
+
+            `Text` et non du balisage : les adresses viennent des messages,
+            donc de n'importe qui, et un crochet dans une adresse serait lu
+            comme une balise.
+            """
+            sortie = Text()
+
+            def titre(cle):
+                sortie.append(f"\n{t(cle)}\n", style="bold")
+
+            sortie.append(
+                f"{t('mail_stats_total')} {apercu.total}"
+                f"   {tui_text.format_size(apercu.total_size)}"
+                f"   {t('mail_stats_unseen')} {apercu.unseen}"
+                f" ({apercu.unseen_share:.0%})\n"
+            )
+            if apercu.undated:
+                sortie.append(
+                    f"{t('mail_stats_undated')} {apercu.undated}\n",
+                    style="dim",
+                )
+
+            titre("mail_stats_volume")
+            if apercu.tronque:
+                # Le total porte sur TOUT ; seule la liste est coupée. Le
+                # taire ferait un histogramme qui ne se recoupe pas avec le
+                # nombre affiché juste au-dessus.
+                sortie.append(
+                    f"  {t('mail_stats_truncated')} {apercu.tronque}\n",
+                    style="dim",
+                )
+            for etiquette, nombre, barre in apercu.volume:
+                sortie.append(f"  {etiquette}  {nombre:>5}  {barre}\n")
+
+            titre("mail_stats_folders")
+            for dossier in apercu.folders:
+                sortie.append(
+                    f"  {dossier['display']}  {dossier['count']}"
+                    f"  ({dossier['unseen']} {t('mail_stats_unseen')})"
+                    f"  {tui_text.format_size(dossier['size'])}\n"
+                )
+
+            sortie.append_text(self._rendu_details())
+            return sortie
+
+        def _rendu_details(self) -> "Text":
+            """Les correspondants et les délais, ou l'invitation à les
+            calculer. Ils balaient toute la boîte : on ne les impose pas à
+            qui vient seulement regarder le volume."""
+            sortie = Text()
+            if self.calcul_en_cours:
+                sortie.append(f"\n{t('mail_stats_computing')}\n", style="dim")
+                return sortie
+            if self.details is None:
+                sortie.append(
+                    f"\n{t('mail_stats_details_hint')}\n", style="dim"
+                )
+                return sortie
+
+            sortie.append(f"\n{t('mail_stats_senders')}\n", style="bold")
+            for adresse, nombre in self.details.senders:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+            sortie.append(f"\n{t('mail_stats_recipients')}\n", style="bold")
+            for adresse, nombre in self.details.recipients:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+            sortie.append(f"\n{t('mail_stats_reply')}\n", style="bold")
+            if self.details.reply_count:
+                sortie.append(
+                    f"  {t('mail_stats_reply_median')} "
+                    f"{stats.humain(self.details.reply_median)}"
+                    f"  ({self.details.reply_count})\n"
+                )
+            else:
+                sortie.append(f"  {t('mail_stats_reply_none')}\n", style="dim")
+            return sortie
+
+        def action_load_details(self) -> None:
+            """Lance le balayage dans un fil de travail.
+
+            Sur le fil de l'interface, ces secondes gèleraient la fenêtre —
+            y compris Échap, donc sans moyen d'en sortir.
+            """
+            if self.calcul_en_cours:
+                return
+            self.calcul_en_cours = True
+            self.refresh_stats()
+            self.run_worker(self._calculer_details, thread=True)
+
+        def _depuis(self):
+            """Le début de la période choisie, ou `None` pour « tout ».
+
+            Un seul endroit la calcule : la vue d'ensemble et le balayage
+            des détails s'affichent sous le MÊME en-tête de période, et
+            deux calculs séparés finiraient par diverger.
+            """
+            if not self.periode_jours:
+                return None
+            return time.time() - self.periode_jours * 86400
+
+        def _calculer_details(self) -> None:
+            cible = self.folder_id if self.restreint else None
+
+            def progression(faits, total):
+                self.app.call_from_thread(self._dire_progression, faits, total)
+
+            try:
+                details = stats.build_details(
+                    self.store,
+                    folder_id=cible,
+                    progress=progression,
+                    since=self._depuis(),
+                )
+            except Exception as exc:
+                self.app.call_from_thread(self._details_en_erreur, exc)
+                return
+            self.app.call_from_thread(self._details_prets, details)
+
+        def _dire_progression(self, faits, total) -> None:
+            part = f"{faits}/{total}" if total else str(faits)
+            self.query_one("#stats_head", Static).update(
+                Text(f"{t('mail_stats_computing')} {part}")
+            )
+
+        def _details_prets(self, details) -> None:
+            self.details = details
+            self.calcul_en_cours = False
+            self.refresh_stats()
+
+        def _details_en_erreur(self, exc) -> None:
+            self.calcul_en_cours = False
+            self.details = None
+            self.query_one("#stats_head", Static).update(
+                Text(f"{t('mail_stats_error')} {exc}")
+            )
+
+        def on_select_changed(self, event) -> None:
+            """Les listes déroulantes et les touches mènent au même état.
+
+            Deux chemins vers un seul réglage : sans cette remise à jour de
+            `self.bucket`, la liste afficherait un pas et l'écran en
+            montrerait un autre.
+            """
+            if event.value is Select.NULL:
+                return
+            if event.select.id == "stats_pas":
+                self.bucket = event.value
+            elif event.select.id == "stats_periode":
+                self.periode_jours = next(
+                    jours
+                    for valeur, _, jours in self.PERIODES
+                    if valeur == event.value
+                )
+            elif event.select.id == "stats_portee":
+                self.restreint = event.value == "folder"
+            # Toute la sélection change : les détails portaient sur l'autre.
+            self.details = None
+            self.refresh_stats()
+
+        def _set_bucket(self, bucket) -> None:
+            self.bucket = bucket
+            # La liste doit suivre la touche, sinon elle annonce un pas que
+            # l'écran n'utilise pas.
+            self.query_one("#stats_pas", Select).value = bucket
+            self.refresh_stats()
+
+        def action_bucket_day(self) -> None:
+            self._set_bucket("day")
+
+        def action_bucket_week(self) -> None:
+            self._set_bucket("week")
+
+        def action_bucket_month(self) -> None:
+            self._set_bucket("month")
+
+        def action_toggle_folder(self) -> None:
+            self.restreint = not self.restreint
+            self.query_one("#stats_portee", Select).value = (
+                "folder" if self.restreint else "all"
+            )
+            # Les détails portaient sur l'autre portée : les garder
+            # afficherait des correspondants qui ne sont plus ceux du
+            # filtre annoncé juste au-dessus.
+            self.details = None
+            self.refresh_stats()
+
+        def action_close_stats(self) -> None:
+            self.dismiss(None)
+
     class HelpScreen(ModalScreen):
         """Touche `h` : les raccourcis du client, et le peu qu'une liste de
         touches ne peut pas dire.
@@ -2186,6 +4231,7 @@ def run_tui(
         #help_title { padding: 0 1; }
         #help_body { height: 1fr; padding: 0 1; }
         #help_notes { padding-top: 1; }
+        #help_close { padding: 1 1 0 1; }
         """
 
         def compose(self):
@@ -2202,6 +4248,17 @@ def run_tui(
                     yield Static(
                         self._notes_text(), id="help_notes", markup=False
                     )
+                # HORS du bloc qui défile : la phrase qui dit comment
+                # SORTIR ne doit pas pouvoir passer sous le pli. La liste
+                # des raccourcis, au-dessus d'elle, dépasse 45 lignes — la
+                # hauteur d'un grand terminal — et grandit à chaque touche
+                # ajoutée ; une sortie qu'il faut aller chercher en
+                # défilant n'en est pas une.
+                yield Static(
+                    t("mail_help_close_hint"),
+                    id="help_close",
+                    markup=False,
+                )
 
         def _shortcuts_table(self):
             """Le tableau touche → description, construit depuis
@@ -2246,7 +4303,6 @@ def run_tui(
                     "mail_help_layouts",
                     "mail_help_sync",
                     "mail_help_files",
-                    "mail_help_close_hint",
                 )
             )
 
@@ -2349,9 +4405,8 @@ def run_tui(
             # qu'App.run() redirige pendant tout le cycle de vie de
             # l'appli (`redirect_stdout(self._capture_stdout)`), et PAS le
             # vrai terminal — `Screen.get_cols_rows()` plante alors sur un
-            # descripteur -1. Constaté par un test manuel (voir le
-            # rapport) ; importer ici, une fois le terminal rendu par
-            # `suspend()`, fige le bon `sys.stdout` à la place.
+            # descripteur -1. Importer ici, une fois le terminal rendu
+            # par `suspend()`, fige le bon `sys.stdout` à la place.
             files_input = self.query_one("#files", Input)
             initial = self._browse_start_dir(files_input.value)
             chosen: dict = {}
@@ -2558,12 +4613,24 @@ def run_tui(
             Binding("escape", "cancel", "Annuler"),
         ]
 
-        def __init__(self, secret_store):
+        CSS = """
+        /* Le formulaire défile : onze champs et deux boutons dépassent un
+        terminal de 24 lignes, et le bouton d'enregistrement est justement
+        le dernier — hors de l'écran, il devient introuvable à la souris.
+        `height: auto` sur le contenu et `1fr` sur le conteneur : sans ça,
+        le contenu se replie à la taille de la fenêtre et rien ne défile. */
+        #account_form { height: 1fr; }
+        """
+
+        def __init__(self, secret_store, config_get=None):
             super().__init__()
             self.secret_store = secret_store
+            # Les réglages OAuth de celui qui déploie : sans eux, le
+            # parcours d'autorisation ne peut pas être proposé.
+            self.config_get = config_get
 
         def compose(self):
-            with Vertical(id="account_form"):
+            with VerticalScroll(id="account_form"):
                 yield Static(t("mail_account_add"))
                 yield Input(placeholder=t("mail_ask_name"), id="acc_name")
                 yield Input(placeholder=t("mail_ask_email"), id="acc_email")
@@ -2579,11 +4646,32 @@ def run_tui(
                 )
                 yield Input(placeholder=t("mail_ask_imap_host"), id="acc_imap")
                 yield Input(placeholder=t("mail_ask_smtp_host"), id="acc_smtp")
+                # Désactivée tant qu'un préréglage n'est pas choisi : le
+                # genre d'authentification n'est une QUESTION que chez un
+                # fournisseur qui accepte les deux.
+                yield Select(
+                    [
+                        (t("mail_auth_choice_password"), "login"),
+                        (t("mail_auth_choice_oauth"), "oauth"),
+                    ],
+                    id="acc_auth",
+                    value="login",
+                    allow_blank=False,
+                    disabled=True,
+                )
                 yield Input(
                     placeholder=t("mail_ask_password"),
                     password=True,
                     id="acc_password",
                 )
+                bouton = Button(
+                    t("mail_oauth_choice_browser"), id="acc_authorize"
+                )
+                # Caché, pas désactivé : un bouton grisé invite à chercher
+                # ce qui l'activerait, alors qu'il n'y a rien à faire sans
+                # identifiant client.
+                bouton.display = False
+                yield bouton
                 yield Static("", id="account_status")
                 yield Button(t("mail_account_save"), id="acc_save")
 
@@ -2593,10 +4681,56 @@ def run_tui(
         def on_button_pressed(self, event) -> None:
             if event.button.id == "acc_save":
                 self.action_save()
+            elif event.button.id == "acc_authorize":
+                self.action_authorize()
+
+        def action_authorize(self) -> None:
+            """Mène le parcours d'autorisation dans un fil de travail.
+
+            Sur le fil de l'interface, l'attente de la redirection gèlerait
+            la fenêtre — y compris Échap, donc sans moyen d'abandonner.
+            """
+            self.query_one("#account_status", Static).update(
+                t("mail_oauth_opening_browser")
+            )
+            self.run_worker(self._autoriser, thread=True)
+
+        def _autoriser(self) -> None:
+            from script.todo.mail import oauth
+
+            preset_key = self.query_one("#acc_preset", Select).value
+            compte = SimpleNamespace(
+                preset=preset_key,
+                email=self.query_one("#acc_email", Input).value.strip(),
+                auth="oauth",
+            )
+            try:
+                jeu = oauth.authorize(compte, config_get=self.config_get)
+            except Exception as exc:
+                # Large À DESSEIN : une exception qui s'échappe d'un fil de
+                # travail atterrit dans `App._handle_exception`, dont la
+                # trace affiche les variables locales — et l'une d'elles
+                # porterait le secret.
+                self.app.call_from_thread(self._autorisation_ratee, str(exc))
+                return
+            self.app.call_from_thread(self._autorisation_reussie, jeu)
+
+        def _autorisation_reussie(self, jeu) -> None:
+            self.query_one("#acc_password", Input).value = jeu.refresh_token
+            self.query_one("#account_status", Static).update(
+                t("mail_token_saved")
+            )
+
+        def _autorisation_ratee(self, message: str) -> None:
+            self.query_one("#account_status", Static).update(Text(message))
 
         def on_select_changed(self, event) -> None:
+            if event.select.id == "acc_auth":
+                self._accorder_champ_secret(event.value)
+                return
             if event.select.id != "acc_preset":
                 return
+            self._accorder_authentification(event.value)
             imap_input = self.query_one("#acc_imap", Input)
             smtp_input = self.query_one("#acc_smtp", Input)
             preset_key = event.value
@@ -2611,6 +4745,65 @@ def run_tui(
                 smtp_input.value = preset["smtp"]["host"]
                 imap_input.disabled = True
                 smtp_input.disabled = True
+
+        def _accorder_authentification(self, preset_key) -> None:
+            """Accorde la liste d'authentification au préréglage choisi.
+
+            La liste n'est active que lorsqu'il y a un CHOIX : un
+            fournisseur sans OAuth ne doit pas se voir proposer une voie qui
+            n'existe pas, et celui qui n'accepte plus de mot de passe ne
+            doit pas se voir proposer une impasse.
+            """
+            preset = PRESETS.get(preset_key, {})
+            auth = self.query_one("#acc_auth", Select)
+            if not preset.get("oauth"):
+                auth.value = "login"
+                auth.disabled = True
+            elif not preset.get("app_password"):
+                auth.value = "oauth"
+                auth.disabled = True
+            else:
+                auth.disabled = False
+            self._accorder_champ_secret(auth.value)
+
+        def _accorder_bouton(self, preset_key, auth) -> None:
+            """Le bouton n'apparaît que s'il a une page à ouvrir.
+
+            Il faut un compte OAuth, un fournisseur qui en offre, et un
+            identifiant client configuré : sans lui, la page répondrait
+            « invalid_client » et la panne se chercherait chez le
+            fournisseur.
+            """
+            from script.todo.mail import oauth
+
+            possible = False
+            if auth == "oauth":
+                compte = SimpleNamespace(preset=preset_key, auth="oauth")
+                try:
+                    possible = bool(
+                        oauth.settings_for(compte, self.config_get)[
+                            "client_id"
+                        ]
+                    )
+                except oauth.OAuthError:
+                    possible = False
+            self.query_one("#acc_authorize", Button).display = possible
+
+        def _accorder_champ_secret(self, auth) -> None:
+            """Le champ du secret dit ce qu'on y attend.
+
+            « Mot de passe » devant un champ qui veut un jeton fait coller
+            un mot de passe, que le serveur refusera sans dire pourquoi.
+            """
+            champ = self.query_one("#acc_password", Input)
+            champ.placeholder = t(
+                "mail_ask_refresh_token"
+                if auth == "oauth"
+                else "mail_ask_password"
+            )
+            self._accorder_bouton(
+                self.query_one("#acc_preset", Select).value, auth
+            )
 
         def action_save(self) -> None:
             status = self.query_one("#account_status", Static)
@@ -2647,6 +4840,7 @@ def run_tui(
                 email_addr = self.query_one("#acc_email", Input).value.strip()
                 display = self.query_one("#acc_display", Input).value.strip()
                 preset_key = self.query_one("#acc_preset", Select).value
+                auth = self.query_one("#acc_auth", Select).value
                 password = self.query_one("#acc_password", Input).value
 
                 if not name or not email_addr or not password:
@@ -2664,6 +4858,7 @@ def run_tui(
                     preset_key,
                     display_name=display,
                     vault=vault,
+                    auth=auth,
                 )
 
                 if preset_key == "generic":

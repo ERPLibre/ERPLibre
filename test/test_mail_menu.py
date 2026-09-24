@@ -12,6 +12,7 @@ from pathlib import Path
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.menu import cache_summary
 from script.todo.mail.store import Store
+from script.todo.todo_i18n import t
 
 
 class TestCacheSummary(unittest.TestCase):
@@ -216,6 +217,170 @@ class TestSyncNowSurfacesResync(unittest.TestCase):
             menu._sync_now(MagicMock())
 
         self.assertIn("INBOX", buf.getvalue())
+
+
+class TestStatsReadAnEncryptedCache(unittest.TestCase):
+    """L'entrée [5] ouvrait le cache SANS coffre.
+
+    En mode clair cela marche, et c'est ce qui rendait le défaut discret :
+    un compte chiffré n'a pas de clé sous la main, `open()` refuse, et
+    l'entrée n'affichait qu'une erreur là où elle promet des chiffres.
+    """
+
+    class FauxCoffre:
+        """Le minimum dont `Store` se sert : un get et un set."""
+
+        def __init__(self):
+            self.contenu = {}
+
+        def get(self, ref):
+            return self.contenu.get(ref)
+
+        def set(self, ref, valeur):
+            self.contenu[ref] = valeur
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.coffre = self.FauxCoffre()
+        self.account = account_from_preset("perso", "a@x.ca", "generic")
+        self.account.cache_mode = "encrypted"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _remplir(self):
+        from script.todo.mail.store import MessageMeta
+
+        store = Store(self.account, secrets=self.coffre, base=self.base)
+        store.open()
+        fid = store.upsert_folder("INBOX")
+        store.upsert_messages(
+            fid,
+            [
+                MessageMeta(
+                    uid=1,
+                    date=1700000000,
+                    size=10,
+                    flags="",
+                    msgid="<1@x>",
+                    frm="a@y.ca",
+                    to="moi@x.ca",
+                    subject="Devis",
+                    snippet="x",
+                )
+            ],
+        )
+        store.close()
+
+    def _lancer(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        buf = io.StringIO()
+        with patch.object(
+            menu, "_load_accounts", return_value=[self.account]
+        ), patch.object(
+            menu, "secret_store_for", return_value=self.coffre
+        ), redirect_stdout(
+            buf
+        ):
+            menu._show_stats(MagicMock(), base=self.base)
+        return buf.getvalue()
+
+    def test_the_figures_come_out_instead_of_an_error(self):
+        self._remplir()
+        sortie = self._lancer()
+        self.assertNotIn(t("mail_stats_error"), sortie)
+        self.assertIn("1", sortie)
+
+    def test_a_clear_account_still_asks_no_vault(self):
+        """Le remède ne doit pas coûter une saisie de mot de passe aux
+        comptes en clair, qui n'en ont jamais eu besoin."""
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        self.account.cache_mode = "clear"
+        with patch.object(
+            menu, "_load_accounts", return_value=[self.account]
+        ), patch.object(menu, "secret_store_for") as coffre:
+            menu._show_stats(MagicMock(), base=self.base)
+        coffre.assert_not_called()
+
+
+class TestSyncNowEmptiesTheOutbox(unittest.TestCase):
+    """« Synchroniser maintenant » doit vider la file d'attente.
+
+    Sans cela, un message écrit hors ligne attend qu'on ouvre le TUI —
+    seul endroit d'où la file partait —, alors que la commande dont le nom
+    promet une synchronisation vient de s'exécuter sans rien envoyer.
+    """
+
+    def _lancer(self, flush):
+        import io
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+
+        class FakeSession:
+            def __init__(self):
+                self.account = account
+                self.online = True
+                self.error = ""
+
+            def sync(self):
+                return SimpleNamespace(new_messages=0, errors=[], purged=[])
+
+            def close(self):
+                pass
+
+        buf = io.StringIO()
+        with patch.object(
+            menu, "_load_accounts", return_value=[account]
+        ), patch(
+            "script.todo.mail.tui.open_sessions",
+            return_value=[FakeSession()],
+        ), patch(
+            "script.todo.mail.tui.flush_outbox", side_effect=flush
+        ), redirect_stdout(
+            buf
+        ):
+            menu._sync_now(MagicMock())
+        return buf.getvalue()
+
+    def test_the_queue_leaves_on_this_command_too(self):
+        appels = []
+        sortie = self._lancer(lambda s: appels.append(s) or (2, 0, 0))
+        self.assertEqual(len(appels), 1)
+        self.assertIn("2", sortie)
+
+    def test_a_queue_that_refuses_to_leave_is_said_not_swallowed(self):
+        sortie = self._lancer(lambda s: (0, 0, 3))
+        self.assertIn("3", sortie)
+
+    def test_a_flush_that_raises_does_not_lose_the_sync(self):
+        """La vidange précède la relecture : si elle explose, la passe qui
+        suit doit quand même avoir lieu."""
+
+        def casse(session):
+            raise OSError("smtp muet")
+
+        sortie = self._lancer(casse)
+        self.assertIn("perso", sortie)
+
+    def test_nothing_is_printed_when_the_queue_was_empty(self):
+        """Une ligne « file : 0 envoyés » à chaque synchronisation apprend
+        à ne plus lire les lignes de la file."""
+        sortie = self._lancer(lambda s: (0, 0, 0))
+        self.assertNotIn(t("mail_outbox_flushed"), sortie)
 
 
 class TestMailLogFile(unittest.TestCase):
@@ -646,6 +811,223 @@ class TestTodoWiring(unittest.TestCase):
         mock_question.assert_not_called()
 
 
+class TestAddingAnOAuthAccount(unittest.TestCase):
+    """Un compte dont le fournisseur n'accepte plus de mot de passe doit
+    pouvoir s'ajouter quand même : c'est ce que l'entrée de menu permet.
+
+    Le jeton est demandé comme un mot de passe l'était — sans écho — et
+    range sous SA référence, jamais sur celle du mot de passe.
+    """
+
+    def _ajouter(self, preset, saisies, secret):
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        coffre = MagicMock()
+        coffre.available_backends.return_value = ["kdbx"]
+        # Un `MagicMock` rend un objet VRAI à toute lecture : le client y
+        # verrait un identifiant client configuré, et proposerait le
+        # parcours navigateur que ces tests ne jouent pas.
+        todo = MagicMock()
+        todo.config_file.get_config_value.return_value = None
+        sauvegardes = []
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_ensure_kdbx", return_value=True), patch.object(
+            menu, "_load_accounts", return_value=[]
+        ), patch.object(
+            menu.mail_accounts,
+            "save",
+            side_effect=lambda comptes: sauvegardes.append(comptes),
+        ), patch(
+            "builtins.input", side_effect=saisies
+        ), patch(
+            "getpass.getpass", return_value=secret
+        ), patch(
+            "builtins.print"
+        ):
+            menu._add_account(todo)
+        return coffre, (sauvegardes[0][0] if sauvegardes else None)
+
+    def _numero(self, cle):
+        from script.todo.mail.accounts import PRESETS
+
+        return str(list(PRESETS).index(cle) + 1)
+
+    def test_a_microsoft_account_is_created_as_an_oauth_account(self):
+        """Le préréglage n'a plus de mot de passe possible : proposer le
+        choix serait proposer une impasse."""
+        coffre, compte = self._ajouter(
+            "outlook",
+            ["perso", "moi@x.ca", "", self._numero("outlook")],
+            "jeton-collé",
+        )
+        self.assertEqual(compte.auth, "oauth")
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_a_gmail_account_may_choose_between_the_two(self):
+        """Gmail accepte encore les deux : la question se pose, et la
+        réponse par défaut reste le mot de passe d'application."""
+        coffre, compte = self._ajouter(
+            "gmail",
+            ["perso", "moi@x.ca", "", self._numero("gmail"), "2"],
+            "jeton-collé",
+        )
+        self.assertEqual(compte.auth, "oauth")
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_the_default_answer_keeps_the_app_password(self):
+        coffre, compte = self._ajouter(
+            "gmail",
+            ["perso", "moi@x.ca", "", self._numero("gmail"), ""],
+            "mot-de-passe",
+        )
+        self.assertEqual(compte.auth, "login")
+        coffre.set.assert_called_once_with(compte.secret_ref, "mot-de-passe")
+
+    def test_a_provider_without_oauth_is_never_asked_the_question(self):
+        """iCloud n'en offre pas : poser la question ferait choisir une
+        voie qui n'existe pas."""
+        coffre, compte = self._ajouter(
+            "icloud",
+            ["perso", "moi@x.ca", "", self._numero("icloud")],
+            "mot-de-passe",
+        )
+        self.assertEqual(compte.auth, "login")
+        coffre.set.assert_called_once_with(compte.secret_ref, "mot-de-passe")
+
+
+class TestReplacingAToken(unittest.TestCase):
+    """Un jeton révoqué se remplace sans refaire le compte."""
+
+    def _compte(self):
+        return account_from_preset("perso", "a@x.ca", "gmail", auth="oauth")
+
+    def _lancer(self, secret="jeton-neuf"):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        compte = self._compte()
+        coffre = MagicMock()
+        todo = MagicMock()
+        todo.config_file.get_config_value.return_value = None
+        buf = io.StringIO()
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_load_accounts", return_value=[compte]), patch(
+            "builtins.input", side_effect=["1"]
+        ), patch(
+            "getpass.getpass", return_value=secret
+        ), redirect_stdout(
+            buf
+        ):
+            menu._set_oauth_token(todo)
+        return compte, coffre, buf.getvalue()
+
+    def test_the_token_replaces_the_old_one_under_its_own_reference(self):
+        compte, coffre, _ = self._lancer()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-neuf"
+        )
+
+    def test_an_empty_entry_writes_nothing(self):
+        """Abandonner ne doit pas effacer le jeton en place : sans lui, le
+        compte cesse de se synchroniser."""
+        _, coffre, _ = self._lancer(secret="")
+        coffre.set.assert_not_called()
+
+
+class TestAuthorisingInTheBrowser(unittest.TestCase):
+    """Quand un identifiant client est configuré, le client peut mener le
+    parcours lui-même — coller un jeton n'est plus la seule voie.
+
+    Sans identifiant, la question ne se pose pas : proposer un parcours qui
+    afficherait « invalid_client » ferait chercher la panne chez le
+    fournisseur.
+    """
+
+    def _compte(self):
+        return account_from_preset("perso", "a@x.ca", "gmail", auth="oauth")
+
+    def _lancer(self, client_id, saisies, autoriser=None):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo.mail.oauth import TokenSet
+
+        compte = self._compte()
+        coffre = MagicMock()
+        todo = MagicMock()
+        todo.config_file.get_config_value.side_effect = lambda cles: (
+            client_id if tuple(cles)[-1] == "client_id" else None
+        )
+        defaut = lambda *a, **k: TokenSet(  # noqa: E731
+            refresh_token="r-du-navigateur", access_token="a", expires_at=9e9
+        )
+        buf = io.StringIO()
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_load_accounts", return_value=[compte]), patch(
+            "script.todo.mail.oauth.authorize",
+            side_effect=autoriser or defaut,
+        ) as mock_auth, patch(
+            "builtins.input", side_effect=saisies
+        ), patch(
+            "getpass.getpass", return_value="jeton-collé"
+        ), redirect_stdout(
+            buf
+        ):
+            menu._set_oauth_token(todo)
+        return compte, coffre, mock_auth, buf.getvalue()
+
+    def test_the_browser_flow_stores_what_it_brings_back(self):
+        compte, coffre, mock_auth, _ = self._lancer("un-client", ["1", "1"])
+        mock_auth.assert_called_once()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "r-du-navigateur"
+        )
+
+    def test_pasting_stays_available(self):
+        compte, coffre, mock_auth, _ = self._lancer("un-client", ["1", "2"])
+        mock_auth.assert_not_called()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_without_a_client_id_the_question_is_not_asked(self):
+        """Une seule saisie consommée : le choix du compte. Poser la
+        question ferait offrir une voie qui ne peut pas aboutir."""
+        compte, coffre, mock_auth, _ = self._lancer(None, ["1"])
+        mock_auth.assert_not_called()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_a_failed_authorisation_writes_nothing(self):
+        """Le compte garde le jeton qu'il avait : un parcours abandonné ne
+        doit pas couper un compte qui marchait."""
+        from script.todo.mail.oauth import OAuthError
+
+        def echoue(*a, **k):
+            raise OAuthError("autorisation refusée")
+
+        _, coffre, _, sortie = self._lancer(
+            "un-client", ["1", "1"], autoriser=echoue
+        )
+        coffre.set.assert_not_called()
+        self.assertIn("refusée", sortie)
+
+
 class TestRetryPassword(unittest.TestCase):
     def setUp(self):
         self.account = account_from_preset("perso", "a@x.ca", "generic")
@@ -659,8 +1041,8 @@ class TestRetryPassword(unittest.TestCase):
     def test_a_timeout_does_not_blame_the_password(self):
         """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
         Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        d'application pour un problème qui est ailleurs : un délai d'attente
+        dépassé n'est pas un refus d'authentification."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",
@@ -724,6 +1106,23 @@ class TestRetryPassword(unittest.TestCase):
             "gmail", cause="b'[NO] something we have never seen before'"
         )
         self.assertIn("mot de passe d'application", lignes)
+
+    def test_a_microsoft_refusal_says_why_it_will_keep_refusing(self):
+        """Microsoft n'accepte plus aucun mot de passe sur IMAP. Redemander
+        le mot de passe sans le dire fait retaper un secret correct à
+        quelqu'un qui croira s'être trompé, autant de fois qu'on le lui
+        redemande. La note ne dépendait que du drapeau « mot de passe
+        d'application », que ce fournisseur n'a justement plus."""
+        lignes = self._lignes_affichees(
+            "outlook", cause="b'[AUTHENTICATIONFAILED] Invalid credentials'"
+        )
+        self.assertIn("OAuth", lignes)
+
+    def test_a_provider_without_an_app_password_keeps_its_note(self):
+        """Le contrôle : la note du préréglage générique existe aussi, et
+        la restriction retirée ne doit pas l'avoir noyée pour autant."""
+        lignes = self._lignes_affichees("generic")
+        self.assertNotIn("mot de passe d'application", lignes)
 
     def test_an_explicit_refusal_still_blames_the_password(self):
         """Le contrôle symétrique : restreindre l'affichage ne doit pas

@@ -11643,15 +11643,15 @@ TRANSLATIONS = {
         "en": "📧 Mail - Read and send email",
     },
     "mail_open_tui": {
-        "fr": "Ouvrir le client courriel (TUI)",
-        "en": "Open the mail client (TUI)",
+        "fr": "📬 Ouvrir le client courriel (TUI)",
+        "en": "📬 Open the mail client (TUI)",
     },
-    "mail_accounts_menu": {"fr": "Comptes", "en": "Accounts"},
+    "mail_accounts_menu": {"fr": "👤 Comptes", "en": "👤 Accounts"},
     "mail_sync_now": {
-        "fr": "Synchroniser maintenant",
-        "en": "Synchronise now",
+        "fr": "🔄 Synchroniser maintenant",
+        "en": "🔄 Synchronise now",
     },
-    "mail_cache_menu": {"fr": "Cache", "en": "Cache"},
+    "mail_cache_menu": {"fr": "💾 Cache", "en": "💾 Cache"},
     "mail_account_list": {"fr": "Lister les comptes", "en": "List accounts"},
     "mail_account_add": {"fr": "Ajouter un compte", "en": "Add an account"},
     "mail_account_delete": {
@@ -11757,6 +11757,160 @@ TRANSLATIONS = {
         "fr": "Coffre non ouvert : on abandonne.",
         "en": "Vault not opened: giving up.",
     },
+    # Écran de statistiques (phase 3).
+    "mail_search_press_enter": {
+        "fr": "cache chiffré : Entrée pour chercher dans toute la boîte",
+        "en": "encrypted cache: press Enter to search the whole mailbox",
+    },
+    "mail_queued": {
+        "fr": "hors ligne : message mis en attente, il partira au retour",
+        "en": "offline: message queued, it will leave when the network is back",
+    },
+    "mail_outbox_binding": {"fr": "File d'envoi", "en": "Outbox"},
+    "mail_outbox_close": {"fr": "Fermer", "en": "Close"},
+    "mail_outbox_empty": {
+        "fr": "Rien en attente.",
+        "en": "Nothing waiting.",
+    },
+    "mail_outbox_count": {"fr": "En attente :", "en": "Waiting:"},
+    "mail_outbox_hold": {"fr": "Retenir", "en": "Hold"},
+    "mail_outbox_release": {"fr": "Relâcher", "en": "Release"},
+    "mail_outbox_last_error": {
+        "fr": "dernier échec :",
+        "en": "last failure:",
+    },
+    "mail_outbox_error": {
+        "fr": "file illisible :",
+        "en": "outbox unreadable:",
+    },
+    "mail_outbox_flushed": {"fr": "File : envoyés", "en": "Outbox: sent"},
+    "mail_outbox_failed": {"fr": "échecs", "en": "failures"},
+    "mail_folder_binding": {"fr": "Dossiers", "en": "Folders"},
+    "mail_folder_close": {"fr": "Fermer", "en": "Close"},
+    "mail_folder_create": {"fr": "Créer", "en": "Create"},
+    "mail_folder_rename": {"fr": "Renommer", "en": "Rename"},
+    "mail_folder_delete": {"fr": "Supprimer", "en": "Delete"},
+    "mail_folder_name": {"fr": "Dossier", "en": "Folder"},
+    "mail_folder_hint": {
+        "fr": "n créer · r renommer · d supprimer · Échap fermer",
+        "en": "n create · r rename · d delete · Esc close",
+    },
+    "mail_folder_ask_new": {
+        "fr": "Nom du nouveau dossier, puis Entrée",
+        "en": "Name of the new folder, then Enter",
+    },
+    "mail_folder_ask_rename": {
+        "fr": "Nouveau nom, puis Entrée",
+        "en": "New name, then Enter",
+    },
+    "mail_folder_ask_delete": {
+        "fr": "DÉTRUIT sur le serveur, sans corbeille. Tapez le mot pour",
+        "en": "DESTROYED on the server, no trash. Type the word for",
+    },
+    "mail_folder_not_confirmed": {
+        "fr": "mot de confirmation incorrect : rien n'a été supprimé",
+        "en": "wrong confirmation word: nothing was deleted",
+    },
+    "mail_folder_done": {"fr": "Fait.", "en": "Done."},
+    "mail_folder_error": {"fr": "échec :", "en": "failed:"},
+    "mail_folder_needs_network": {
+        "fr": "gestion des dossiers : le compte doit être en ligne",
+        "en": "folder management: the account must be online",
+    },
+    "mail_list_mode_binding": {"fr": "Vue liste", "en": "List view"},
+    "mail_list_mode_flat": {
+        "fr": "Liste : à plat, par date",
+        "en": "List: flat, by date",
+    },
+    "mail_list_mode_threads": {
+        "fr": "Liste : par fil de discussion",
+        "en": "List: by thread",
+    },
+    "mail_list_mode_unread": {
+        "fr": "Liste : non lus seulement",
+        "en": "List: unread only",
+    },
+    "mail_stats_binding": {"fr": "Statistiques", "en": "Statistics"},
+    "mail_stats_close": {"fr": "Fermer", "en": "Close"},
+    "mail_stats_by_day": {"fr": "par jour", "en": "by day"},
+    "mail_stats_by_week": {"fr": "par semaine", "en": "by week"},
+    "mail_stats_by_month": {"fr": "par mois", "en": "by month"},
+    "mail_stats_by_year": {"fr": "par année", "en": "by year"},
+    "mail_stats_step": {"fr": "Pas", "en": "Step"},
+    "mail_stats_folder": {"fr": "Dossier ouvert", "en": "Open folder"},
+    "mail_stats_period_all": {
+        "fr": "Depuis toujours",
+        "en": "All time",
+    },
+    "mail_stats_period_year": {
+        "fr": "12 derniers mois",
+        "en": "Last 12 months",
+    },
+    "mail_stats_period_5years": {
+        "fr": "5 dernières années",
+        "en": "Last 5 years",
+    },
+    "mail_stats_period_month": {
+        "fr": "30 derniers jours",
+        "en": "Last 30 days",
+    },
+    "mail_stats_folder_filter": {
+        "fr": "Dossier courant / tout",
+        "en": "Current folder / all",
+    },
+    "mail_stats_scope": {"fr": "Portée :", "en": "Scope:"},
+    "mail_stats_all_folders": {
+        "fr": "tous les dossiers",
+        "en": "all folders",
+    },
+    "mail_stats_total": {"fr": "Messages :", "en": "Messages:"},
+    "mail_stats_unseen": {"fr": "non lus", "en": "unread"},
+    "mail_stats_undated": {
+        "fr": "Sans date lisible, exclus de l'histogramme :",
+        "en": "With no readable date, excluded from the histogram:",
+    },
+    "mail_stats_volume": {"fr": "Volume", "en": "Volume"},
+    "mail_stats_folders": {"fr": "Par dossier", "en": "By folder"},
+    "mail_stats_senders": {"fr": "Expéditeurs", "en": "Senders"},
+    "mail_stats_recipients": {"fr": "Destinataires", "en": "Recipients"},
+    "mail_stats_reply": {"fr": "Délai de réponse", "en": "Reply delay"},
+    "mail_stats_reply_median": {"fr": "médiane", "en": "median"},
+    "mail_stats_reply_none": {
+        "fr": "aucune réponse reliée — Courriel › Cache › Taille et purge"
+        " pour resynchroniser les messages reçus avant cette version",
+        "en": "no reply linked — Mail › Cache › Size and purge to"
+        " resynchronise messages received before this version",
+    },
+    "mail_stats_details": {
+        "fr": "Détails (balaie toute la boîte)",
+        "en": "Details (scans the whole mailbox)",
+    },
+    "mail_stats_details_hint": {
+        "fr": "Entrée : calculer les correspondants et les délais de"
+        " réponse — un balayage complet de la boîte.",
+        "en": "Enter: compute correspondents and reply delays — a full"
+        " scan of the mailbox.",
+    },
+    "mail_stats_computing": {
+        "fr": "Calcul en cours…",
+        "en": "Computing…",
+    },
+    "mail_stats_truncated": {
+        "fr": "tranches plus anciennes non affichées :",
+        "en": "older slices not shown:",
+    },
+    "mail_stats_error": {
+        "fr": "statistiques indisponibles :",
+        "en": "statistics unavailable:",
+    },
+    "mail_stats_no_account": {
+        "fr": "aucun compte sélectionné",
+        "en": "no account selected",
+    },
+    "mail_stats_menu": {
+        "fr": "📊 Statistiques",
+        "en": "📊 Statistics",
+    },
     "mail_kdbx_none_configured": {
         "fr": "Aucun fichier kdbx n'est configuré.",
         "en": "No kdbx file is configured.",
@@ -11852,10 +12006,6 @@ TRANSLATIONS = {
     "mail_folders_resynced": {
         "fr": "dossiers resynchronisés (UIDVALIDITY changé) :",
         "en": "folders resynchronised (UIDVALIDITY changed):",
-    },
-    "mail_offline_cannot_send": {
-        "fr": "Compte hors ligne : envoi impossible.",
-        "en": "Account offline: cannot send.",
     },
     "mail_sent_to": {"fr": "Envoyé à", "en": "Sent to"},
     "mail_sent_not_filed": {
@@ -12104,18 +12254,417 @@ TRANSLATIONS = {
             " must be on, otherwise the page is empty."
         ),
     },
-    "mail_preset_note_outlook": {
+    "mail_err_token_response_unreadable": {
+        "fr": "réponse du point de jeton illisible :",
+        "en": "unreadable answer from the token endpoint:",
+    },
+    "mail_err_token_response_no_token": {
+        "fr": "le point de jeton a répondu sans jeton d'accès",
+        "en": "the token endpoint answered without an access token",
+    },
+    "mail_err_token_revoked": {
         "fr": (
-            "Générez-le sur https://account.microsoft.com/security."
-            " Microsoft ferme l'authentification simple sur les comptes"
-            " grand public : sans mot de passe d'application, il faudra"
-            " OAuth (phase 2, non implémentée)."
+            "autorisation révoquée : le compte doit être autorisé de"
+            " nouveau —"
+        ),
+        "en": "authorisation revoked: the account must be authorised again —",
+    },
+    "mail_err_token_endpoint_refused": {
+        "fr": "le point de jeton a refusé l'échange :",
+        "en": "the token endpoint refused the exchange:",
+    },
+    "mail_err_token_endpoint_unreachable": {
+        "fr": "point de jeton injoignable :",
+        "en": "token endpoint unreachable:",
+    },
+    "mail_oauth_choice_browser": {
+        "fr": "Autoriser dans le navigateur",
+        "en": "Authorise in the browser",
+    },
+    "mail_oauth_choice_paste": {
+        "fr": "Coller un jeton obtenu ailleurs",
+        "en": "Paste a token obtained elsewhere",
+    },
+    "mail_ask_oauth_way": {
+        "fr": "Comment obtenir le jeton [1] : ",
+        "en": "How to obtain the token [1]: ",
+    },
+    "mail_oauth_opening_browser": {
+        "fr": (
+            "Ouverture de la page d'autorisation. Revenez ici une fois le"
+            " compte autorisé."
         ),
         "en": (
-            "Generate one at https://account.microsoft.com/security."
-            " Microsoft is closing basic authentication on consumer"
-            " accounts: without an app password this needs OAuth (phase 2,"
-            " not implemented)."
+            "Opening the authorisation page. Come back here once the"
+            " account is authorised."
+        ),
+    },
+    "mail_ask_refresh_token": {
+        "fr": "Jeton de rafraîchissement OAuth : ",
+        "en": "OAuth refresh token: ",
+    },
+    "mail_ask_auth_kind": {
+        "fr": "Authentification [1] : ",
+        "en": "Authentication [1]: ",
+    },
+    "mail_auth_choice_password": {
+        "fr": "Mot de passe d'application",
+        "en": "App password",
+    },
+    "mail_auth_choice_oauth": {
+        "fr": "Jeton OAuth (obtenu ailleurs)",
+        "en": "OAuth token (obtained elsewhere)",
+    },
+    "mail_oauth_only_here": {
+        "fr": (
+            "Ce fournisseur n'accepte plus que OAuth : un jeton de"
+            " rafraîchissement est demandé."
+        ),
+        "en": (
+            "This provider accepts OAuth only: a refresh token is asked"
+            " for."
+        ),
+    },
+    "mail_account_token": {
+        "fr": "Remplacer le jeton OAuth d'un compte",
+        "en": "Replace an account's OAuth token",
+    },
+    "mail_account_is_not_oauth": {
+        "fr": "Ce compte s'authentifie par mot de passe, pas par jeton.",
+        "en": "This account authenticates by password, not by token.",
+    },
+    "mail_nothing_written": {
+        "fr": "Rien n'a été écrit.",
+        "en": "Nothing was written.",
+    },
+    "mail_token_saved": {
+        "fr": "Jeton enregistré.",
+        "en": "Token saved.",
+    },
+    "mail_oauth_page_ok": {
+        "fr": "Compte autorisé. Vous pouvez fermer cette page.",
+        "en": "Account authorised. You can close this page.",
+    },
+    "mail_oauth_page_ko": {
+        "fr": "Autorisation refusée. Vous pouvez fermer cette page.",
+        "en": "Authorisation refused. You can close this page.",
+    },
+    "mail_err_authorization_timeout": {
+        "fr": "aucune réponse du navigateur : autorisation abandonnée",
+        "en": "no answer from the browser: authorisation abandoned",
+    },
+    "mail_err_authorization_state": {
+        "fr": (
+            "la redirection ne correspond pas à la demande : autorisation"
+            " refusée"
+        ),
+        "en": (
+            "the redirection does not match the request: authorisation"
+            " refused"
+        ),
+    },
+    "mail_err_authorization_refused": {
+        "fr": "autorisation refusée par le fournisseur :",
+        "en": "authorisation refused by the provider:",
+    },
+    "mail_err_authorization_no_code": {
+        "fr": "la redirection n'apporte aucun code d'autorisation",
+        "en": "the redirection carries no authorisation code",
+    },
+    "mail_err_provider_without_oauth": {
+        "fr": "ce fournisseur n'offre pas OAuth :",
+        "en": "this provider offers no OAuth:",
+    },
+    "mail_err_no_refresh_token": {
+        "fr": "aucun jeton de rafraîchissement pour ce compte",
+        "en": "no refresh token for this account",
+    },
+    "mail_err_no_client_id": {
+        "fr": (
+            "aucun client_id configuré : ce dépôt n'en livre aucun, réglez"
+            " celui de votre propre enregistrement OAuth"
+        ),
+        "en": (
+            "no client_id configured: this repository ships none, set the"
+            " one from your own OAuth registration"
+        ),
+    },
+    "mail_move_binding": {
+        "fr": "Ranger dans un dossier",
+        "en": "File into a folder",
+    },
+    "mail_move_close": {"fr": "Renoncer", "en": "Cancel"},
+    "mail_move_choose": {"fr": "Ranger ici", "en": "File here"},
+    "mail_move_hint": {
+        "fr": "Choisissez le dossier, Entrée pour ranger, Échap pour renoncer.",
+        "en": "Pick the folder, Enter to file, Escape to cancel.",
+    },
+    "mail_trash_binding": {
+        "fr": "Jeter à la corbeille",
+        "en": "Move to the trash",
+    },
+    "mail_trash_offline": {
+        "fr": "Compte hors ligne : le message n'a pas bougé.",
+        "en": "Account offline: the message has not moved.",
+    },
+    "mail_trash_no_folder": {
+        "fr": ("Ce compte n'annonce pas de corbeille : rien n'a été déplacé."),
+        "en": "This account announces no trash folder: nothing was moved.",
+    },
+    "mail_trash_already_there": {
+        "fr": "Ce message est déjà dans la corbeille.",
+        "en": "This message is already in the trash.",
+    },
+    "mail_trash_done": {
+        "fr": "Déplacé vers",
+        "en": "Moved to",
+    },
+    "mail_trash_source_kept": {
+        "fr": (
+            "le serveur n'a pas pu vider la source : le message y reste"
+            " barré"
+        ),
+        "en": (
+            "the server could not clear the source: the message stays"
+            " there, struck through"
+        ),
+    },
+    "mail_scope_binding": {
+        "fr": "Portée de la recherche",
+        "en": "Search scope",
+    },
+    "mail_scope_folder": {
+        "fr": "Recherche : le dossier ouvert.",
+        "en": "Search: the open folder.",
+    },
+    "mail_scope_account": {
+        "fr": "Recherche : tous les dossiers du compte.",
+        "en": "Search: every folder of the account.",
+    },
+    "mail_scope_all": {
+        "fr": "Recherche : tous les dossiers de tous les comptes.",
+        "en": "Search: every folder of every account.",
+    },
+    "mail_search_server_skipped": {
+        "fr": "dossiers sans réponse",
+        "en": "folders gave no answer",
+    },
+    "mail_search_server_binding": {
+        "fr": "Chercher sur le serveur",
+        "en": "Search the server",
+    },
+    "mail_search_server_no_term": {
+        "fr": "Tapez d'abord une recherche avec « / ».",
+        "en": 'Type a search with "/" first.',
+    },
+    "mail_search_server_offline": {
+        "fr": "Compte hors ligne : le serveur n'est pas joignable.",
+        "en": "Account offline: the server cannot be reached.",
+    },
+    "mail_search_server_asking": {
+        "fr": "Recherche sur le serveur…",
+        "en": "Searching the server…",
+    },
+    "mail_search_server_found": {
+        "fr": "Ramenés du serveur :",
+        "en": "Brought back from the server:",
+    },
+    "mail_search_server_nothing": {
+        "fr": "Le serveur n'a rien de plus pour cette recherche.",
+        "en": "The server has nothing more for this search.",
+    },
+    "mail_err_move_failed": {
+        "fr": "le déplacement a échoué :",
+        "en": "the move failed:",
+    },
+    "mail_account_signature": {
+        "fr": "✍ Signature d'un compte",
+        "en": "✍ Signature of an account",
+    },
+    "mail_signature_current": {
+        "fr": "Signature actuelle :",
+        "en": "Current signature:",
+    },
+    "mail_signature_prompt": {
+        "fr": (
+            "Nouvelle signature, ligne par ligne. Une ligne vide termine ;"
+            " ne rien écrire efface la signature."
+        ),
+        "en": (
+            "New signature, line by line. An empty line ends it; writing"
+            " nothing clears the signature."
+        ),
+    },
+    "mail_signature_saved": {
+        "fr": "Signature enregistrée.",
+        "en": "Signature saved.",
+    },
+    "mail_signature_cleared": {
+        "fr": "Signature effacée.",
+        "en": "Signature cleared.",
+    },
+    "mail_select_binding": {
+        "fr": "Cocher / décocher",
+        "en": "Select / unselect",
+    },
+    "mail_select_count": {
+        "fr": "Messages cochés :",
+        "en": "Messages selected:",
+    },
+    "mail_select_none": {
+        "fr": "Plus aucun message coché.",
+        "en": "No message selected any more.",
+    },
+    "mail_all_seen_binding": {
+        "fr": "Tout marquer lu",
+        "en": "Mark all read",
+    },
+    "mail_all_seen_ask": {
+        "fr": "Marquer lus tous les messages non lus de ce dossier :",
+        "en": "Mark every unread message of this folder as read:",
+    },
+    "mail_all_seen_offline": {
+        "fr": (
+            "Compte hors ligne : un marquage posé ici serait défait à la"
+            " prochaine synchronisation."
+        ),
+        "en": (
+            "Account offline: a mark set here would be undone by the next"
+            " synchronisation."
+        ),
+    },
+    "mail_all_seen_nothing": {
+        "fr": "Ce dossier n'a aucun message non lu.",
+        "en": "This folder has no unread message.",
+    },
+    "mail_all_seen_done": {
+        "fr": "Marqués lus :",
+        "en": "Marked read:",
+    },
+    "mail_confirm_hint": {
+        "fr": "Entrée pour confirmer, Échap pour renoncer.",
+        "en": "Enter to confirm, Escape to give up.",
+    },
+    "mail_confirm_yes": {"fr": "Confirmer", "en": "Confirm"},
+    "mail_confirm_no": {"fr": "Renoncer", "en": "Give up"},
+    "mail_flagged_binding": {
+        "fr": "Suivi (étoile)",
+        "en": "Flag (star)",
+    },
+    "mail_attachment_hint": {
+        "fr": "Quelle pièce jointe enregistrer ? Entrée choisit, Échap renonce.",
+        "en": "Which attachment to save? Enter chooses, Escape gives up.",
+    },
+    "mail_attachment_close": {"fr": "Renoncer", "en": "Give up"},
+    "mail_attachment_choose": {"fr": "Enregistrer", "en": "Save"},
+    "mail_attachment_name": {"fr": "Nom", "en": "Name"},
+    "mail_attachment_type": {"fr": "Type", "en": "Type"},
+    "mail_attachment_size": {"fr": "Taille", "en": "Size"},
+    "mail_move_across_working": {
+        "fr": "Dépôt chez l'autre compte…",
+        "en": "Depositing in the other account…",
+    },
+    "mail_move_across_unconfirmed": {
+        "fr": ("Dépôt non confirmé : le message reste ici. Cible visée :"),
+        "en": (
+            "Deposit not confirmed: the message stays here. Intended"
+            " target:"
+        ),
+    },
+    "mail_err_empty_failed": {
+        "fr": "le vidage a échoué :",
+        "en": "emptying failed:",
+    },
+    "mail_empty_trash_binding": {
+        "fr": "Vider la corbeille",
+        "en": "Empty the trash",
+    },
+    "mail_empty_trash_offline": {
+        "fr": "Compte hors ligne : la corbeille n'a pas été touchée.",
+        "en": "Account offline: the trash was left untouched.",
+    },
+    "mail_empty_trash_no_folder": {
+        "fr": "Ce compte n'annonce pas de corbeille : il n'y a rien à vider.",
+        "en": "This account announces no trash folder: nothing to empty.",
+    },
+    "mail_empty_trash_already": {
+        "fr": "La corbeille est déjà vide.",
+        "en": "The trash is already empty.",
+    },
+    "mail_empty_trash_ask": {
+        "fr": (
+            "Détruire définitivement le contenu de la corbeille. Rien ne le"
+            " récupérera. Pour confirmer, tapez"
+        ),
+        "en": (
+            "Permanently destroy the contents of the trash. Nothing will"
+            " bring it back. To confirm, type"
+        ),
+    },
+    "mail_empty_trash_count": {
+        "fr": "messages selon le cache",
+        "en": "messages according to the cache",
+    },
+    "mail_empty_trash_close": {
+        "fr": "Renoncer",
+        "en": "Give up",
+    },
+    "mail_empty_trash_working": {
+        "fr": "Vidage de la corbeille…",
+        "en": "Emptying the trash…",
+    },
+    "mail_empty_trash_done": {
+        "fr": "Détruits définitivement :",
+        "en": "Permanently destroyed:",
+    },
+    "mail_err_server_search_failed": {
+        "fr": "le serveur a refusé la recherche :",
+        "en": "the server refused the search:",
+    },
+    "mail_err_token_refused": {
+        "fr": "jeton refusé par",
+        "en": "token refused by",
+    },
+    "mail_err_unknown_auth": {
+        "fr": "authentification inconnue :",
+        "en": "unknown authentication:",
+    },
+    "mail_err_accounts_from_the_future": {
+        "fr": (
+            "a été écrit par une version plus récente du client ; mettez-le"
+            " à jour plutôt que de perdre ce que ce fichier contient —"
+            " version"
+        ),
+        "en": (
+            "was written by a newer version of the client; update it rather"
+            " than losing what the file holds — version"
+        ),
+    },
+    "mail_preset_note_outlook": {
+        "fr": (
+            "Microsoft n'accepte plus aucun mot de passe sur IMAP, mot de"
+            " passe d'application compris, ni sur Outlook.com ni sur"
+            " Microsoft 365. Un compte Microsoft exige OAuth, que ce client"
+            " ne sait pas encore faire : ce préréglage échouera à la"
+            " connexion."
+        ),
+        "en": (
+            "Microsoft no longer accepts any password over IMAP, app"
+            " passwords included, on Outlook.com or on Microsoft 365. A"
+            " Microsoft account needs OAuth, which this client cannot do"
+            " yet: this preset will fail to connect."
+        ),
+    },
+    "mail_preset_note_microsoft365": {
+        "fr": (
+            "Boîte d'organisation. Microsoft n'accepte plus aucun mot de"
+            " passe sur IMAP : ce compte exige OAuth, et son administrateur"
+            " doit parfois consentir pour l'application."
+        ),
+        "en": (
+            "An organisation mailbox. Microsoft no longer accepts any"
+            " password over IMAP: this account needs OAuth, and its"
+            " administrator sometimes has to consent for the application."
         ),
     },
     "mail_preset_note_icloud": {

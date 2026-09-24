@@ -53,11 +53,11 @@ import warnings
 from dataclasses import dataclass, field
 from io import BytesIO
 
-from twisted.cred import checkers, portal
+from twisted.cred import checkers, error, portal
 from twisted.internet import protocol
 from twisted.internet.threads import blockingCallFromThread
 from twisted.mail import imap4
-from zope.interface import implementer
+from zope.interface import Interface, implementer
 
 from script.todo.mail.accounts import Account, ServerConf
 
@@ -66,6 +66,11 @@ SERVER_STOP_TIMEOUT = 10
 
 USER = "moi"
 PASSWORD = "secret"
+# Le jeton d'accès que le bac à sable accepte en XOAUTH2. Il ne vaut QUE
+# pour XOAUTH2, et `PASSWORD` ne vaut QUE pour LOGIN : un client qui
+# confondrait les deux secrets se ferait refuser ici comme il le serait par
+# un vrai serveur.
+ACCESS_TOKEN = "jeton-d-acces-du-bac-a-sable"
 
 # Tous les bacs à sable actuellement à l'écoute. Sert de preuve de non-fuite :
 # à la fin d'un test l'ensemble doit être revenu à ce qu'il était (voir
@@ -308,14 +313,120 @@ class SandboxMessage:
         raise TypeError("le bac à sable ne sert pas de sous-partie")
 
 
-@implementer(imap4.IMailbox, imap4.IMailboxInfo)
+@implementer(imap4.IMailbox, imap4.IMailboxInfo, imap4.ISearchableMailbox)
 class SandboxMailbox:
     def __init__(self, name: str, uidvalidity: int = 42):
         self.name = name
         self.uidvalidity = uidvalidity
         self.messages: list[SandboxMessage] = []
         self.listeners: list = []
-        self.appended: list[tuple[bytes, tuple]] = []
+        # (octets, drapeaux, date interne) tels que le SERVEUR les a reçus.
+        # La date en fait partie : un client qui l'oublie fait horodater le
+        # dépôt à maintenant, ce qui ne se voit nulle part ailleurs.
+        self.appended: list[tuple[bytes, tuple, object]] = []
+
+    # -- recherche --------------------------------------------------------
+
+    # Les clés que ce bac à sable connaît, et ce sur quoi chacune porte.
+    # `None` veut dire « le message entier », en-têtes compris.
+    CLES_RECHERCHE = {
+        b"TEXT": None,
+        b"BODY": b"",
+        b"SUBJECT": b"subject",
+        b"FROM": b"from",
+        b"TO": b"to",
+        b"CC": b"cc",
+    }
+
+    def search(self, query, uid=0):
+        """Répond à SEARCH pour les clés que le client emploie.
+
+        `UID` en fait partie, et ce n'est pas un détail : la passe de
+        synchronisation demande `UID <n>:*` à chaque dossier. Déclarer la
+        boîte cherchable prend en charge TOUTES les recherches, celle-là
+        comprise — la refuser couperait la synchronisation entière.
+
+        Twisted délègue la recherche à la boîte quand celle-ci se déclare
+        `ISearchableMailbox`, et ne le fait lui-même que sinon — or son
+        chemin de repli compare des `bytes` à des `str` : il ne trouve
+        jamais rien, et lève sur `SUBJECT`. Un bac à sable qui répond « rien
+        » à toute recherche ferait passer un client qui n'envoie rien.
+
+        La comparaison est une sous-chaîne insensible à la casse sur les
+        octets du message, ce que fait un serveur ordinaire. Une clé
+        inconnue LÈVE plutôt que de ne rien trouver : un test qui enverrait
+        une requête que ce bac à sable ne sait pas lire doit le dire.
+
+        Rend TOUJOURS des numéros de séquence, jamais des UID, même quand
+        `uid` vaut 1 : Twisted convertit lui-même le résultat par
+        `getUID()`. Rendre des UID les convertirait une seconde fois —
+        invisible tant que numéros et UID coïncident, ce qu'une seule
+        suppression suffit à défaire.
+        """
+        if not query:
+            return []
+        cle = bytes(query[0]).upper()
+        if cle == b"UID":
+            return self._search_uid(bytes(query[1]), uid)
+        if cle == b"HEADER":
+            return self._search_header(
+                bytes(query[1]).lower(), bytes(query[2]).lower()
+            )
+        if cle not in self.CLES_RECHERCHE:
+            raise imap4.IllegalQueryError(query)
+        terme = bytes(query[1]).lower() if len(query) > 1 else b""
+        champ = self.CLES_RECHERCHE[cle]
+        return [
+            index
+            for index, message in enumerate(self.messages, start=1)
+            if terme in self._portion(message, champ).lower()
+        ]
+
+    def _search_header(self, champ: bytes, terme: bytes) -> list:
+        """`HEADER <champ> <valeur>` : les messages dont cet en-tête
+        contient `valeur`.
+
+        Le client s'en sert pour CONFIRMER qu'un message déposé par APPEND
+        est bien arrivé, en cherchant son Message-ID. Un bac à sable qui
+        répondrait « rien » à cette clé ferait croire à un dépôt perdu ;
+        un qui répondrait « tout » ferait détruire une source qui ne doit
+        pas l'être.
+        """
+        return [
+            index
+            for index, message in enumerate(self.messages, start=1)
+            if terme in self._portion(message, champ).lower()
+        ]
+
+    def _search_uid(self, plage: bytes, uid: int) -> list:
+        """Les messages dont l'UID tombe dans `plage` (`2:*`, `1,4`, ...).
+
+        `parseIdList` connaît la grammaire des ensembles IMAP ; la réécrire
+        ici ferait diverger le bac à sable de ce qu'un serveur accepte.
+        `last` lui dit à quoi `*` correspond — sans ce repère, une plage
+        ouverte ne contiendrait rien.
+        """
+        dernier = self.messages[-1].getUID() if self.messages else 0
+        ensemble = imap4.parseIdList(plage, dernier)
+        return [
+            index
+            for index, message in enumerate(self.messages, start=1)
+            if message.getUID() in ensemble
+        ]
+
+    def _portion(self, message, champ) -> bytes:
+        """Les octets sur lesquels une clé porte."""
+        brut = message.raw
+        if champ is None:
+            return brut
+        entete, _, corps = brut.partition(b"\r\n\r\n")
+        if champ == b"":
+            return corps
+        for ligne in entete.split(b"\r\n"):
+            nom, _, valeur = ligne.partition(b":")
+            if nom.strip().lower() == champ:
+                return valeur
+        return b""
 
     # -- écriture par le test -------------------------------------------
 
@@ -377,7 +488,7 @@ class SandboxMailbox:
         from twisted.internet import defer
 
         raw = body.read() if hasattr(body, "read") else body
-        self.appended.append((raw, tuple(flags)))
+        self.appended.append((raw, tuple(flags), date))
         self.deliver(raw, flags)
         return defer.succeed(len(self.messages))
 
@@ -409,7 +520,41 @@ class SandboxMailbox:
         return out
 
     def expunge(self) -> list:
-        return []
+        """Retire les messages marqués `\\Deleted`. Rend leurs numéros.
+
+        Rendre une liste vide sans rien retirer — ce que faisait ce bac à
+        sable — fait passer au vert un client qui déplace un message sans
+        jamais le faire disparaître de sa source : le test ne verrait que le
+        `OK` du serveur, jamais le message resté là.
+
+        Les NUMÉROS de séquence, pas les UID : c'est ce que la réponse
+        `* n EXPUNGE` porte, et ils sont rendus du plus grand au plus petit
+        pour qu'une renumérotation en cours de route ne décale pas ceux qui
+        restent à annoncer.
+        """
+        retires = []
+        for numero in range(len(self.messages), 0, -1):
+            message = self.messages[numero - 1]
+            if "\\Deleted" in message.flags:
+                del self.messages[numero - 1]
+                retires.append(numero)
+        return retires
+
+    def uid_expunge(self, plage: bytes) -> list:
+        """Retire les messages marqués supprimés DONT l'UID est dans `plage`.
+
+        C'est toute la différence avec `expunge()` : celui-ci balaie le
+        dossier entier, celui-là ne touche qu'à ce que le client nomme.
+        """
+        dernier = self.messages[-1].getUID() if self.messages else 0
+        ensemble = imap4.parseIdList(plage, dernier)
+        retires = []
+        for numero in range(len(self.messages), 0, -1):
+            message = self.messages[numero - 1]
+            if "\\Deleted" in message.flags and message.getUID() in ensemble:
+                del self.messages[numero - 1]
+                retires.append(numero)
+        return retires
 
     def destroy(self) -> None:
         pass
@@ -455,6 +600,74 @@ class SandboxIMAPAccount:
         return True
 
 
+class ISandboxToken(Interface):
+    """Des identifiants portés par un jeton, et non par un mot de passe.
+
+    Une interface À PART, et non `IUsernamePassword` : le portail choisit
+    son vérificateur d'après l'interface fournie, et réutiliser celle du mot
+    de passe ferait accepter un jeton là où un mot de passe est attendu — et
+    l'inverse. Le bac à sable doit pouvoir refuser exactement ce qu'un vrai
+    serveur refuse.
+    """
+
+    def check(token):
+        """Vrai si le jeton est celui du bac à sable."""
+
+
+@implementer(ISandboxToken)
+class XOAUTH2Credentials:
+    """Ce qu'un client envoie après `AUTHENTICATE XOAUTH2`.
+
+    Un seul aller-retour : le défi est VIDE, le client répond d'un coup
+    `user=<compte>\x01auth=Bearer <jeton>\x01\x01`, et il n'y a pas de
+    second défi. Annoncer autre chose ferait attendre le client pour rien.
+    """
+
+    def __init__(self):
+        self.username = b""
+        self.token = b""
+
+    def getChallenge(self) -> bytes:
+        return b""
+
+    def setResponse(self, response: bytes) -> None:
+        champs = dict(
+            morceau.split(b"=", 1)
+            for morceau in response.split(b"\x01")
+            if b"=" in morceau
+        )
+        self.username = champs.get(b"user", b"")
+        porteur = champs.get(b"auth", b"")
+        prefixe = b"Bearer "
+        self.token = (
+            porteur[len(prefixe) :] if porteur.startswith(prefixe) else b""
+        )
+
+    def moreChallenges(self) -> bool:
+        return False
+
+    def check(self, token) -> bool:
+        return bool(self.token) and self.token == token
+
+
+@implementer(checkers.ICredentialsChecker)
+class _TokenChecker:
+    """Accepte le jeton du bac à sable, et lui seul."""
+
+    credentialInterfaces = (ISandboxToken,)
+
+    def __init__(self, username: bytes, token: bytes):
+        self.username = username
+        self.token = token
+
+    def requestAvatarId(self, credentials):
+        if credentials.username == self.username and credentials.check(
+            self.token
+        ):
+            return self.username
+        raise error.UnauthorizedLogin()
+
+
 @implementer(portal.IRealm)
 class _SandboxRealm:
     def __init__(self, account: SandboxIMAPAccount):
@@ -475,6 +688,52 @@ class SandboxIMAP4Server(imap4.IMAP4Server):
         # NON un portal : celui-ci s'affecte après coup.
         super().__init__()
         self.sandbox = sandbox
+
+    def capabilities(self):
+        """Ajoute UIDPLUS à ce que Twisted annonce.
+
+        Sans cette annonce, un client prudent ne peut pas retirer un message
+        précis : il ne lui reste que l'EXPUNGE nu, qui emporte TOUS les
+        messages marqués supprimés du dossier — y compris ceux qu'un autre
+        client a marqués. Les vrais serveurs courants l'annoncent ; un bac à
+        sable qui ne l'annonce pas ferait tester le seul mauvais chemin.
+        """
+        cap = super().capabilities()
+        if self.sandbox.uidplus:
+            cap[b"UIDPLUS"] = None
+        return cap
+
+    def do_UID(self, tag, command, line):
+        """Accepte `UID EXPUNGE`, que Twisted refuse d'emblée.
+
+        Sa liste de commandes UID est fermée (COPY, FETCH, STORE, SEARCH) et
+        lève sur tout le reste. UIDPLUS (RFC 4315) ajoute EXPUNGE, et c'est
+        ce que le client emploie pour ne retirer QUE ce qu'il a déplacé.
+        """
+        if command.upper() == b"EXPUNGE" and self.sandbox.uidplus:
+            return self.do_EXPUNGE(tag, uid=1, line=line)
+        return super().do_UID(tag, command, line)
+
+    def do_EXPUNGE(self, tag, uid=0, line=b""):
+        """EXPUNGE, et sa forme UIDPLUS qui nomme ce qu'elle retire."""
+        if not uid:
+            return super().do_EXPUNGE(tag)
+        plage = line.strip()
+        retires = self.mbox.uid_expunge(plage)
+        for numero in retires:
+            self.sendUntaggedResponse(b"%d EXPUNGE" % (numero,))
+        self.sendPositiveResponse(tag, b"UID EXPUNGE completed")
+
+    # Twisted relie chaque commande à la FONCTION, dans une table de classe
+    # (`select_UID = (do_UID, arg_atom, arg_line)`). Redéfinir la méthode ne
+    # suffit donc pas : la table continue de pointer vers celle du parent, et
+    # le serveur répond « Illegal syntax ». Ces deux lignes refont l'entrée.
+    select_UID = (
+        do_UID,
+        imap4.IMAP4Server.arg_atom,
+        imap4.IMAP4Server.arg_line,
+    )
+    select_EXPUNGE = (do_EXPUNGE,)
 
     def connectionMade(self):
         self.sandbox.connections.add(self)
@@ -536,6 +795,11 @@ class _SandboxFactory(protocol.Factory):
         server = SandboxIMAP4Server(self.sandbox)
         server.factory = self
         server.portal = self.sandbox.portal
+        # `challengers` est ce que le serveur ANNONCE dans sa capacité
+        # `AUTH=…` et ce qu'il accepte ensuite. Twisted n'en connaît aucun
+        # par défaut : sans cette ligne, `AUTHENTICATE XOAUTH2` répond
+        # « method unsupported » et le client retombe sur LOGIN.
+        server.challengers = {b"XOAUTH2": XOAUTH2Credentials}
         return server
 
 
@@ -555,7 +819,10 @@ class ImapSandbox:
     `addCleanup`, qui s'exécute même quand le test échoue.
     """
 
-    def __init__(self):
+    def __init__(self, uidplus: bool = True):
+        # Les serveurs courants annoncent UIDPLUS ; `uidplus=False` sert à
+        # éprouver le repli du client sur un serveur qui ne l'a pas.
+        self.uidplus = uidplus
         self.account = SandboxIMAPAccount()
         self.faults: list[Fault] = []
         self.connections: set = set()
@@ -565,6 +832,9 @@ class ImapSandbox:
         checker.addUser(USER.encode(), PASSWORD.encode())
         self.portal = portal.Portal(_SandboxRealm(self.account))
         self.portal.registerChecker(checker)
+        self.portal.registerChecker(
+            _TokenChecker(USER.encode(), ACCESS_TOKEN.encode())
+        )
 
     # -- déclaration du contenu -----------------------------------------
 
@@ -634,6 +904,42 @@ class _CaptureHandler:
     def __init__(self):
         self.messages: list[SentMessage] = []
 
+    async def auth_XOAUTH2(self, server, args):
+        """`AUTH XOAUTH2 <base64>`, en un seul aller.
+
+        `aiosmtpd` ne connaît que PLAIN et LOGIN ; il découvre les autres
+        mécanismes par les méthodes `auth_*` du gestionnaire. Sans celle-ci,
+        le serveur répond « 504 unrecognized authentication type » et le
+        client retombe sur un mot de passe.
+        """
+        from base64 import b64decode
+
+        from aiosmtpd.smtp import AuthResult
+
+        if len(args) < 2:
+            reponse = await server.challenge_auth("")
+            if not isinstance(reponse, (bytes, bytearray)):
+                return AuthResult(success=False)
+            brut = bytes(reponse)
+        else:
+            try:
+                brut = b64decode(args[1].encode(), validate=True)
+            except Exception:
+                await server.push("501 5.5.2 Can't decode base64")
+                return AuthResult(success=False, handled=True)
+        champs = dict(
+            morceau.split(b"=", 1)
+            for morceau in brut.split(b"\x01")
+            if b"=" in morceau
+        )
+        porteur = champs.get(b"auth", b"")
+        attendu = b"Bearer " + ACCESS_TOKEN.encode()
+        if champs.get(b"user") == USER.encode() and porteur == attendu:
+            return AuthResult(success=True, auth_data=brut)
+        # `handled=False` laisse `aiosmtpd` répondre lui-même : un refus
+        # muet fait attendre le client jusqu'au délai de la socket.
+        return AuthResult(success=False, handled=False)
+
     async def handle_DATA(self, server, session, envelope):
         self.messages.append(
             SentMessage(
@@ -679,11 +985,11 @@ class SmtpSandbox:
             )
             if ok:
                 return AuthResult(success=True, auth_data=auth_data)
-            # `handled` vaut True PAR DÉFAUT, et veut dire « j'ai déjà répondu
-            # au client moi-même ». Un simple `AuthResult(success=False)`
-            # laisse donc `aiosmtpd` muet : le client attend une réponse qui
-            # ne vient jamais et le test se bloque jusqu'au délai de la
-            # socket, sans rien dire de la cause.
+            # `handled` vaut True PAR DÉFAUT : il annonce que le
+            # gestionnaire a DÉJÀ répondu au client lui-même. Un simple
+            # `AuthResult(success=False)` laisse donc `aiosmtpd` muet : le
+            # client attend une réponse qui ne vient jamais, et le test se
+            # bloque jusqu'au délai de la socket sans rien dire de la cause.
             return AuthResult(success=False, handled=False)
 
         class _Port0Controller(Controller):
@@ -797,8 +1103,8 @@ class MailSandboxCase(unittest.TestCase):
     oubliée ou un fil coincé empoisonneraient toute la suite.
     """
 
-    def imap_server(self) -> ImapSandbox:
-        sandbox = ImapSandbox()
+    def imap_server(self, **kwargs) -> ImapSandbox:
+        sandbox = ImapSandbox(**kwargs)
         self.addCleanup(sandbox.stop)
         return sandbox.start()
 

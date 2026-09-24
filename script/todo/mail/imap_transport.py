@@ -24,7 +24,7 @@ from script.todo.mail.charset import decode_bytes
 from script.todo.mail.imap_sync import FolderInfo, HeaderInfo, SelectInfo
 from script.todo.todo_i18n import t
 
-HEADER_FIELDS = "FROM TO SUBJECT DATE MESSAGE-ID"
+HEADER_FIELDS = "FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES"
 
 SPECIAL_USE = {
     "\\Sent": "sent",
@@ -39,6 +39,15 @@ _UID_RE = re.compile(rb"UID\s+(\d+)")
 _SIZE_RE = re.compile(rb"RFC822\.SIZE\s+(\d+)")
 _FLAGS_RE = re.compile(rb"FLAGS\s+\(([^)]*)\)")
 _LIST_RE = re.compile(rb'^\(([^)]*)\)\s+("[^"]*"|NIL)\s+(.*)$')
+
+
+class ImapAuthError(Exception):
+    """Le serveur a REFUSÉ le secret. Distinct d'une panne réseau.
+
+    Un refus se répare en rafraîchissant le jeton ou en redemandant le mot
+    de passe ; un serveur muet, non. Les confondre ferait rafraîchir un
+    jeton valide à chaque coupure de réseau, et boucler.
+    """
 
 
 class ImapError(Exception):
@@ -163,6 +172,15 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
             # Une date est une commodité d'affichage : aucune valeur
             # d'en-tête ne justifie de perdre le message.
             stamp = 0
+
+        # `str()` comme pour la date : un en-tête porteur d'octets 8 bits
+        # revient en `Header`, sur lequel `.strip()` lèverait — et la
+        # synchronisation du dossier ENTIER tomberait, comme elle l'a déjà
+        # fait pour une seule date illisible.
+        def entete(nom: str) -> str:
+            valeur = msg.get(nom)
+            return str(valeur).strip() if valeur else ""
+
         out.append(
             HeaderInfo(
                 uid=int(uid_match.group(1)),
@@ -177,6 +195,8 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
                 frm=decode_header_value(msg.get("From")),
                 to=decode_header_value(msg.get("To")),
                 subject=decode_header_value(msg.get("Subject")),
+                in_reply_to=entete("In-Reply-To"),
+                references=entete("References"),
             )
         )
     return out
@@ -227,6 +247,45 @@ class ImaplibTransport:
         # boîte est plus courte : on refiltre côté client.
         return [int(u) for u in raw if int(u) >= since_uid]
 
+    def search(self, query: str, limit: int = 500) -> list[int]:
+        """Les UID que LE SERVEUR trouve dans le dossier sélectionné.
+
+        Une seule clé, `TEXT` : elle couvre les en-têtes et le corps, donc
+        un sur-ensemble de ce que la recherche locale compare.
+
+        Le critère part en OCTETS, terme encodé en UTF-8 dans la chaîne
+        citée. `imaplib` encode ses arguments `str` en ASCII : un terme
+        accentué lèverait `UnicodeEncodeError` avant d'atteindre le serveur.
+        `CHARSET UTF-8` n'accompagne que les termes qui en ont besoin — un
+        serveur ancien peut répondre BAD à un jeu de caractères qu'il ne
+        connaît pas, et l'ASCII n'en demande aucun.
+
+        Les plus récents d'abord, comme la recherche locale, et le même
+        plafond.
+        """
+        terme = (query or "").strip()
+        if not terme:
+            # Chercher la chaîne vide rendrait toute la boîte, ce qui n'est
+            # pas une recherche — et coûterait un aller-retour pour rien.
+            return []
+        # Un guillemet non échappé couperait la chaîne IMAP en deux et
+        # ferait lire la suite comme une autre clé de recherche.
+        citation = terme.replace("\\", "\\\\").replace('"', '\\"')
+        critere = f'TEXT "{citation}"'.encode("utf-8")
+        entete = ("CHARSET", "UTF-8") if not terme.isascii() else (None,)
+        try:
+            data = self._ok(
+                self.client.uid("SEARCH", *entete, critere), "SEARCH"
+            )
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(
+                f"{t('mail_err_server_search_failed')} {exc}"
+            ) from exc
+        uids = [int(u) for u in (data[0] or b"").split()]
+        return sorted(uids, reverse=True)[:limit]
+
     def fetch_headers(self, uids: list[int]) -> list[HeaderInfo]:
         if not uids:
             return []
@@ -275,6 +334,106 @@ class ImaplibTransport:
                 return item[1]
         raise ImapError(f"{t('mail_err_no_body_for_uid')} {uid}")
 
+    def move(self, uids: list[int], target: str) -> bool:
+        """Déplace des messages vers `target`, dans l'ordre qui protège.
+
+        IMAP n'a pas de verbe « déplacer » que tous les serveurs
+        connaissent : le chemin portable est COPY, puis `\\Deleted` sur la
+        source, puis EXPUNGE.
+
+        L'ORDRE n'est pas négociable. La copie d'abord : son échec arrête
+        tout, et le message reste où il est. L'inverse — marquer supprimé
+        puis découvrir que la copie ne passe pas — donnerait le pire
+        résultat possible, un message retiré de sa source sans être arrivé
+        nulle part.
+
+        Le retrait de la source passe par `UID EXPUNGE`, qui NOMME ce qu'il
+        retire. L'EXPUNGE nu emporterait tous les messages marqués supprimés
+        du dossier, y compris ceux qu'un autre client a marqués ailleurs :
+        un client de courriel n'a pas le droit de détruire ce qu'il n'a pas
+        déplacé. Un serveur sans UIDPLUS ne permet pas ce geste — le message
+        reste alors dans la source, marqué supprimé, et la fonction rend
+        `False` pour que l'appelant puisse le dire.
+        """
+        if not uids:
+            return True
+        liste = ",".join(str(u) for u in uids)
+        try:
+            self._ok(self.client.uid("COPY", liste, target), "COPY")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_move_failed')} {exc}") from exc
+        return self.discard(uids)
+
+    def discard(self, uids: list[int]) -> bool:
+        """Retire du dossier sélectionné les messages NOMMÉS, et dit s'il a
+        pu le faire.
+
+        Le second temps de tout déplacement : la copie est arrivée quelque
+        part, la source n'a plus lieu d'être. Séparé de `move` parce qu'un
+        déplacement entre DEUX comptes ne peut pas copier — il dépose chez
+        l'autre par APPEND, puis appelle ceci.
+
+        `UID EXPUNGE` nomme ce qu'il retire. Sans UIDPLUS il ne reste que
+        l'EXPUNGE nu, qui emporterait aussi ce qu'un autre client a marqué
+        ailleurs dans ce dossier : la fonction s'en abstient, laisse les
+        messages barrés sur place, et rend `False` pour que l'appelant
+        puisse le dire.
+        """
+        if not uids:
+            return True
+        liste = ",".join(str(u) for u in uids)
+        try:
+            self._ok(
+                self.client.uid("STORE", liste, "+FLAGS", "(\\Deleted)"),
+                "STORE +FLAGS",
+            )
+            if "UIDPLUS" not in self.client.capabilities:
+                return False
+            self._ok(self.client.uid("EXPUNGE", liste), "UID EXPUNGE")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_move_failed')} {exc}") from exc
+        return True
+
+    def empty_folder(self, folder: str) -> int:
+        """Détruit DÉFINITIVEMENT tout le contenu de `folder`, et rend le
+        nombre de messages retirés.
+
+        C'est le seul geste du client qui ne se répare pas : IMAP n'a pas de
+        corbeille pour ce qui sort d'une corbeille. L'appelant demande
+        confirmation ; cette méthode, elle, ne discute pas.
+
+        `move` refuse l'EXPUNGE nu parce qu'il emporterait des messages
+        qu'elle n'a pas nommés. Ici la question ne se pose pas : le dossier
+        est vidé ENTIER, donc tout ce qui y porte `\\Deleted` est soit ce
+        que cette méthode vient de marquer, soit ce qu'un autre client a
+        marqué dans ce même dossier — que le geste détruit de toute façon.
+        Un message livré après le relevé des UID n'est, lui, pas marqué, et
+        survit.
+        """
+        self.select(folder)
+        uids = self.search_uids(1)
+        if not uids:
+            return 0
+        liste = ",".join(str(u) for u in uids)
+        try:
+            self._ok(
+                self.client.uid("STORE", liste, "+FLAGS", "(\\Deleted)"),
+                "STORE +FLAGS",
+            )
+            if "UIDPLUS" in self.client.capabilities:
+                self._ok(self.client.uid("EXPUNGE", liste), "UID EXPUNGE")
+            else:
+                self._ok(self.client.expunge(), "EXPUNGE")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_empty_failed')} {exc}") from exc
+        return len(uids)
+
     def store_flags(self, uid: int, add: list[str], remove: list[str]) -> None:
         if add:
             self._ok(
@@ -291,13 +450,121 @@ class ImaplibTransport:
                 "STORE -FLAGS",
             )
 
-    def append(self, folder: str, raw: bytes, flags: list[str]) -> None:
+    def store_flags_all(self, add: list[str], remove: list[str]) -> None:
+        """Pose ou retire des drapeaux sur TOUT le dossier sélectionné.
+
+        `1:*` en UID : la plage ouverte évite d'énumérer des dizaines de
+        milliers d'identifiants dans une commande, qu'un serveur peut
+        refuser pour sa seule longueur.
+        """
+        if add:
+            self._ok(
+                self.client.uid(
+                    "STORE", "1:*", "+FLAGS", f"({' '.join(add)})"
+                ),
+                "STORE +FLAGS 1:*",
+            )
+        if remove:
+            self._ok(
+                self.client.uid(
+                    "STORE", "1:*", "-FLAGS", f"({' '.join(remove)})"
+                ),
+                "STORE -FLAGS 1:*",
+            )
+
+    def create_folder(self, name: str) -> None:
+        self._ok(self.client.create(f'"{name}"'), f"CREATE {name}")
+
+    def rename_folder(self, ancien: str, nouveau: str) -> None:
         self._ok(
-            self.client.append(
-                f'"{folder}"', f"({' '.join(flags)})", None, raw
-            ),
-            f"APPEND {folder}",
+            self.client.rename(f'"{ancien}"', f'"{nouveau}"'),
+            f"RENAME {ancien}",
         )
+
+    def delete_folder(self, name: str) -> None:
+        """Détruit le dossier ET son contenu sur le SERVEUR.
+
+        IMAP n'a pas de corbeille pour les dossiers : ce qui part ici ne se
+        récupère que depuis une sauvegarde du serveur. L'appelant demande
+        confirmation ; cette méthode, elle, ne discute pas.
+        """
+        self._ok(self.client.delete(f'"{name}"'), f"DELETE {name}")
+
+    def append(
+        self, folder: str, raw: bytes, flags: list[str], date=None
+    ) -> None:
+        """Dépose un message dans `folder`.
+
+        `date` est la date INTERNE, celle que le serveur donne au message
+        déposé. Sans elle il l'horodate à maintenant, et un message venu
+        d'un autre compte remonterait en tête de la boîte comme s'il
+        arrivait à l'instant.
+
+        Un APPEND accepté ne prouve pas à lui seul que le message est
+        rangé là où on croit : c'est `contient_message_id` qui le
+        confirme, et c'est lui qu'interroge tout ce qui détruit ensuite la
+        source.
+
+        Toute panne du lien sort en `ImapError`, comme un refus du
+        serveur : l'appelant n'a qu'un genre d'échec à connaître.
+        """
+        try:
+            self._ok(
+                self.client.append(
+                    f'"{folder}"',
+                    f"({' '.join(flags)})",
+                    self._date_interne(date),
+                    raw,
+                ),
+                f"APPEND {folder}",
+            )
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"APPEND {folder} : {exc}") from exc
+
+    @staticmethod
+    def _date_interne(date):
+        """L'horodatage IMAP d'une date en secondes, ou rien.
+
+        `imaplib` accepte plusieurs formes ; celle qu'il fabrique lui-même
+        est la seule dont la mise en forme est sûre sur toutes les
+        locales.
+        """
+        if date is None:
+            return None
+        import imaplib
+
+        try:
+            return imaplib.Time2Internaldate(date)
+        except Exception:
+            # Une date aberrante ne doit pas empêcher le dépôt : le serveur
+            # horodatera à maintenant, ce qui est faux mais pas perdu.
+            return None
+
+    def contient_message_id(self, folder: str, msgid: str) -> bool:
+        """Vrai si `folder` contient déjà un message portant ce Message-ID.
+
+        Sert à CONFIRMER un dépôt quand le serveur n'a pas nommé ce qu'il
+        rangeait. La clé est `HEADER Message-ID`, pas `TEXT` : `TEXT`
+        trouverait aussi une réponse qui cite ce Message-ID dans son
+        `In-Reply-To`, et confirmer un dépôt qui n'a pas eu lieu ferait
+        détruire la source.
+
+        Un Message-ID vide ne prouve rien et rend `False` : c'est ce que
+        doit faire une vérification qui n'a rien à vérifier.
+        """
+        if not msgid:
+            return False
+        self.select(folder)
+        critere = msgid.encode("utf-8")
+        data = self._ok(
+            self.client.uid(
+                "SEARCH", None, b'HEADER Message-ID "' + critere + b'"'
+            ),
+            "SEARCH HEADER",
+        )
+        return bool((data[0] or b"").split())
 
     def logout(self) -> None:
         """Fermer proprement est souhaitable, pas indispensable : on n'échoue
@@ -309,19 +576,68 @@ class ImaplibTransport:
             pass
 
 
-def connect(account, password: str) -> ImaplibTransport:
-    """Ouvre une connexion TLS et se connecte. Lève `ImapError` sur refus."""
+def xoauth2_chain(user: str, token: str) -> bytes:
+    """La chaîne SASL de XOAUTH2, telle que les serveurs l'attendent.
+
+    Le format est imposé : `user=<compte>^Aauth=Bearer <jeton>^A^A`, où
+    `^A` est l'octet 0x01. Une seule fonction pour IMAP et SMTP — deux
+    copies finiraient par diverger d'un octet, et le refus qui s'ensuit ne
+    dit jamais lequel.
+    """
+    return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()
+
+
+def _delai_lecture() -> int:
+    """Le délai d'une lecture IMAP, en secondes.
+
+    Il borne CHAQUE lecture, pas la passe : un LIST qui dépasse marque la
+    socket comme morte pour Python, et toute lecture suivante échoue
+    aussitôt sans rien demander au serveur. Réglable parce que 30 secondes
+    suffisent partout sauf sur les boîtes les plus chargées.
+
+    Une préférence illisible ne doit pas empêcher de se connecter : toute
+    valeur qui n'est pas un entier positif retombe sur le défaut.
+    """
+    defaut = 30
+    try:
+        from script.todo import todo_prefs
+
+        valeur = int(todo_prefs.get("mail_timeout_sec", defaut))
+    except Exception:
+        return defaut
+    return valeur if valeur > 0 else defaut
+
+
+def connect(account, secret: str) -> ImaplibTransport:
+    """Ouvre une connexion TLS et s'authentifie. Lève `ImapError` sur refus.
+
+    `secret` est un mot de passe ou un jeton d'accès selon `account.auth` :
+    l'appelant n'a pas à choisir de fonction, il passe le secret que le
+    coffre lui a rendu.
+    """
     import imaplib
 
     conf = account.imap
+    delai = _delai_lecture()
     try:
         if conf.security == "ssl":
-            client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=30)
+            client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=delai)
         else:
-            client = imaplib.IMAP4(conf.host, conf.port, timeout=30)
+            client = imaplib.IMAP4(conf.host, conf.port, timeout=delai)
             if conf.security == "starttls":
                 client.starttls()
-        client.login(conf.user, password)
+        if getattr(account, "auth", "login") == "oauth":
+            chaine = xoauth2_chain(conf.user, secret)
+            try:
+                client.authenticate("XOAUTH2", lambda _: chaine)
+            except imaplib.IMAP4.error as exc:
+                # Le serveur a parlé, et c'était un refus. Le distinguer
+                # ici, pendant qu'on sait encore que la socket était bonne.
+                raise ImapAuthError(
+                    f"{t('mail_err_token_refused')} {conf.host} : {exc}"
+                ) from exc
+        else:
+            client.login(conf.user, secret)
     except UnicodeEncodeError as exc:
         # `imaplib` encode la commande LOGIN en ASCII : un mot de passe
         # accentué n'atteint même pas le serveur. Ce cas sort AVANT le
@@ -329,6 +645,11 @@ def connect(account, password: str) -> ImaplibTransport:
         # n'a rien refusé, et l'ancien message « ordinal not in range(128) »
         # accusait le serveur d'un refus qu'il n'a jamais prononcé.
         raise ImapError(t("mail_err_password_not_ascii")) from exc
+    except ImapAuthError:
+        # Déjà qualifié : le rattrapage général en ferait une panne de
+        # connexion, et l'appelant cesserait de savoir qu'il peut
+        # rafraîchir son jeton.
+        raise
     except Exception as exc:
         # Toute panne réseau ou d'authentification devient une seule erreur
         # de haut niveau, pour un message utile à l'utilisateur.

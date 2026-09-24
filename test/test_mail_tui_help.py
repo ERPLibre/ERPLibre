@@ -28,14 +28,20 @@ from script.todo.mail.tui import Session
 
 
 def collapse(text: str) -> str:
-    """Le texte, espaces (et retours à la ligne) réduits à un seul espace.
+    """Le texte, espaces (et retours à la ligne) réduits à un seul espace,
+    barre de défilement retirée.
 
     Une description longue se replie sur plusieurs lignes DANS sa colonne :
     la chercher telle quelle dans le rendu échouerait alors sur un simple
     repli, pas sur une vraie absence. Rich replie aux limites de mots, donc
     cette normalisation la reconstitue.
+
+    La barre de défilement est DESSINÉE dans les mêmes cellules que le
+    texte, en caractères de bloc : une phrase qui passe à sa hauteur se
+    retrouve coupée par un « ▆ » au milieu d'un mot. Les retirer compare ce
+    qui est écrit, pas où la barre se trouvait ce jour-là.
     """
-    return re.sub(r"\s+", " ", text)
+    return re.sub(r"\s+", " ", re.sub(r"[\u2580-\u259f]", "", text))
 
 
 class HelpCase(unittest.IsolatedAsyncioTestCase):
@@ -538,7 +544,9 @@ class TestHelpFitsASmallWindow(HelpCase):
             # déjà — il ne prouverait plus rien du défilement.
             self.assertGreater(body.max_scroll_y, 0)
             first_screen = collapse(" ".join(self.screen_lines(app)))
-            self.assertNotIn(collapse(t("mail_help_close_hint")), first_screen)
+            # La phrase qui dit comment SORTIR est posée hors du bloc qui
+            # défile : elle est là dès l'ouverture, et y reste.
+            self.assertIn(collapse(t("mail_help_close_hint")), first_screen)
 
             seen = first_screen
             for _ in range(40):
@@ -554,7 +562,8 @@ class TestHelpFitsASmallWindow(HelpCase):
                     seen,
                     f"« {binding.description} » reste inatteignable",
                 )
-            self.assertIn(collapse(t("mail_help_close_hint")), seen)
+            derniere = collapse(" ".join(self.screen_lines(app)))
+            self.assertIn(collapse(t("mail_help_close_hint")), derniere)
 
 
 class TestBindingDescriptionsAreTranslated(HelpCase):
