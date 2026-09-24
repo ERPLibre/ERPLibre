@@ -3,7 +3,9 @@ ARG ERPLIBRE_IMAGE_NAME=1.6.0
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
 ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
-ARG ODOO_VERSION=16.0
+# ODOO_VERSION est herite de la base en ENV, et un ENV l'emporte toujours sur
+# un ARG de meme nom : le redeclarer ici poserait une valeur inerte que
+# l'image contredit sans le dire.
 ARG POETRY_VERSION=1.8.3
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH

@@ -18,6 +18,19 @@ ERPLIBRE_DOCKER_PROD="technolibre/erplibre"
 
 output_version=""
 
+# get_version.py ne lit qu'un JSON : n'importe quel python3 le fait tourner.
+# « python » nu n'existe pas sur Debian sans python-is-python3, et l'appel
+# muet laissait output_version VIDE : la construction repartait alors sur les
+# versions du checkout, donc une image d'Odoo 18 publiee sous le nom de celle
+# qu'on avait demandee. L'echec s'arrete ici plutot que de se taire.
+EL_PY=""
+for candidat in "./.venv.erplibre/bin/python" python3 python; do
+  if command -v "${candidat}" >/dev/null 2>&1; then
+    EL_PY="${candidat}"
+    break
+  fi
+done
+
 for arg in "$@"; do
   if [ "$arg" == "--no-cache" ]; then
     ARGS="${ARGS} --no-cache"
@@ -27,20 +40,17 @@ for arg in "$@"; do
     IS_RELEASE_ALPHA=true
   elif [ "$arg" == "--release_beta" ]; then
     IS_RELEASE_BETA=true
-  elif [ "$arg" == "--odoo_18" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 18.0)
-  elif [ "$arg" == "--odoo_17" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 17.0)
-  elif [ "$arg" == "--odoo_16" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
-  elif [ "$arg" == "--odoo_15" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 15.0)
-  elif [ "$arg" == "--odoo_14" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
-  elif [ "$arg" == "--odoo_13" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 13.0)
-  elif [ "$arg" == "--odoo_12" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
+  elif [[ "$arg" == --odoo_* ]]; then
+    # « --odoo_15 » designe la version 15.0 du catalogue.
+    odoo_demande="${arg#--odoo_}.0"
+    if [ -z "${EL_PY}" ]; then
+      echo -e "${Red}Error${Color_Off} aucun python pour lire conf/supported_version_erplibre.json"
+      exit 1
+    fi
+    if ! output_version=$("${EL_PY}" ./script/version/get_version.py --odoo_version "${odoo_demande}") || [ -z "${output_version}" ]; then
+      echo -e "${Red}Error${Color_Off} version Odoo inconnue : ${odoo_demande}"
+      exit 1
+    fi
   fi
 done
 

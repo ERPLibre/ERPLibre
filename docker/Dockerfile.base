@@ -17,7 +17,14 @@ ENV LANG="C.UTF-8" \
     PYENV_SHELL="bash"
 
 ENV ODOO_PREFIX /ERPLibre
-ENV ODOO_VERSION 18.0
+
+# La version d'Odoo vient de la construction. ODOO_EXEC_BIN la fige dans
+# l'image et l'entrypoint lance ce chemin tel quel : sans ce ARG, le
+# « --build-arg ODOO_VERSION » du script n'est consomme par personne et toute
+# image, quelle que soit la version demandee, pointe sur odoo18.0 -- un chemin
+# absent d'une image d'Odoo 15, donc un conteneur qui ne demarre pas.
+ARG ODOO_VERSION=18.0
+ENV ODOO_VERSION=${ODOO_VERSION}
 ENV ODOO_EXEC_BIN "${ODOO_PREFIX}/odoo${ODOO_VERSION}/odoo/odoo-bin"
 
 ARG URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
