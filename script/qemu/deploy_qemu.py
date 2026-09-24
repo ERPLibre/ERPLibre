@@ -43,6 +43,7 @@ Exemples
 
     sudo ./script/qemu/deploy_qemu.py /var/lib/libvirt/images/iso/noble.img --name test-vm --memory 8192 --vcpus 8 --disk-size 120G --ask-password --force
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,7 +101,6 @@ UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
 }
 DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "11": ("bullseye", "debian11", 1024, "20G"),
     "12": ("bookworm", "debian12", 1024, "20G"),
     "13": ("trixie", "debian13", 1024, "20G"),
 }
@@ -238,8 +238,7 @@ S390X_DISTROS: tuple[str, ...] = (
 # miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
     # Debian sur s390x passe par debian-installer, dont les images sont
-    # publiées pour bookworm et trixie — vérifié. bullseye est écartée : elle
-    # est en fin de vie et son installateur n'a pas été éprouvé ici.
+    # publiées pour bookworm et trixie — vérifié.
     "s390x": {"fedora": ("43",), "debian": ("12", "13")},
 }
 
@@ -596,9 +595,7 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(
-                index, timeout=30
-            ) as resp:  # noqa: S310
+            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -1128,8 +1125,7 @@ def ensure_libvirt_service(runner: Runner) -> None:
         return
     if shutil.which("systemctl"):
         print(
-            "  Démarrage du démon libvirt"
-            " (systemctl enable --now libvirtd)…"
+            "  Démarrage du démon libvirt (systemctl enable --now libvirtd)…"
         )
         runner.run(
             ["systemctl", "enable", "--now", "libvirtd"],
@@ -1531,18 +1527,42 @@ def ensure_emulator(
 DOWNLOAD_TIMEOUT = 30
 
 
-def _download_one(url: str, tmp: Path, timeout: int) -> None:
+# Reprises d'un transfert COUPÉ, sur le même miroir, avant d'en changer.
+# Une image de VM pèse un demi-gigaoctet : une coupure y est bien plus
+# probable que sur une page, et repartir de zéro à chaque fois peut ne jamais
+# aboutir. Trois essais, puis le miroir suivant.
+REPRISES_MAX = 3
+
+
+class TelechargementTronque(OSError):
+    """Le serveur a annoncé une taille, et la connexion a coupé avant.
+
+    Distinguée d'une erreur réseau ordinaire parce qu'elle se REPREND : les
+    octets déjà écrits restent bons, et un « Range » demande la suite."""
+
+
+def _download_one(url: str, tmp: Path, timeout: int, depuis: int = 0) -> None:
     """Télécharge url -> tmp en streaming, avec timeout et barre de %.
-    Lève une exception en cas d'échec réseau (miroir suivant à essayer)."""
+
+    `depuis` reprend un .part laissé par une coupure. Lève une exception en
+    cas d'échec réseau (miroir suivant à essayer)."""
     is_tty = sys.stdout.isatty()
     last_pct = -1
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "erplibre-qemu-deploy"}
-    )
+    entetes = {"User-Agent": "erplibre-qemu-deploy"}
+    if depuis > 0:
+        entetes["Range"] = f"bytes={depuis}-"
+    req = urllib.request.Request(url, headers=entetes)
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        # Un serveur qui IGNORE le Range rend 200 et le fichier ENTIER : on
+        # repart alors de zéro, sans quoi les octets déjà là seraient doublés
+        # et l'image illisible.
+        reprise = depuis > 0 and getattr(resp, "status", 200) == 206
+        done = depuis if reprise else 0
         total = int(resp.headers.get("Content-Length", 0) or 0)
-        done = 0
-        with open(tmp, "wb") as fh:
+        if total > 0:
+            # En reprise, l'en-tête ne compte que ce qui RESTE.
+            total += done
+        with open(tmp, "ab" if reprise else "wb") as fh:
             while True:
                 chunk = resp.read(1 << 16)
                 if not chunk:
@@ -1568,7 +1588,7 @@ def _download_one(url: str, tmp: Path, timeout: int) -> None:
     # il était validé comme « complet » -> qcow2 valide mais VIDE (juste
     # l'en-tête) -> VM qui ne boote pas, et cache empoisonné réutilisé ensuite.
     if total > 0 and done < total:
-        raise OSError(
+        raise TelechargementTronque(
             f"téléchargement incomplet : {done}/{total} octets reçus "
             "(connexion interrompue)"
         )
@@ -1607,19 +1627,38 @@ def download_image(
     for i, url in enumerate(urls, 1):
         tag = "" if len(urls) == 1 else f" (miroir {i}/{len(urls)})"
         print(f"  Téléchargement{tag} : {url}", flush=True)
-        try:
-            _download_one(url, tmp, timeout)
-            tmp.replace(dest)
-            return
-        except urllib.error.HTTPError as exc:  # image absente sur ce miroir
-            tmp.unlink(missing_ok=True)
-            had_404 = had_404 or exc.code == 404
-            print(f"\n  Échec : HTTP {exc.code}", flush=True)
-            errors.append(f"{url} -> HTTP {exc.code}")
-        except Exception as exc:  # réseau/timeout : miroir suivant
-            tmp.unlink(missing_ok=True)
-            print(f"\n  Échec : {exc}", flush=True)
-            errors.append(f"{url} -> {exc}")
+        # Une coupure se REPREND sur le même miroir avant d'en changer :
+        # les octets déjà écrits restent bons, et le .part survit entre deux
+        # essais. Tout autre échec — 404, timeout, réseau — passe au miroir
+        # suivant sans insister.
+        for essai in range(1, REPRISES_MAX + 1):
+            depuis = tmp.stat().st_size if tmp.exists() else 0
+            try:
+                _download_one(url, tmp, timeout, depuis if essai > 1 else 0)
+                tmp.replace(dest)
+                return
+            except TelechargementTronque as exc:
+                if essai < REPRISES_MAX:
+                    recus = tmp.stat().st_size if tmp.exists() else 0
+                    print(
+                        f"\n  Coupé à {recus} octets, reprise"
+                        f" {essai}/{REPRISES_MAX - 1}...",
+                        flush=True,
+                    )
+                    continue
+                tmp.unlink(missing_ok=True)
+                print(f"\n  Échec : {exc}", flush=True)
+                errors.append(f"{url} -> {exc}")
+            except urllib.error.HTTPError as exc:  # absente de ce miroir
+                tmp.unlink(missing_ok=True)
+                had_404 = had_404 or exc.code == 404
+                print(f"\n  Échec : HTTP {exc.code}", flush=True)
+                errors.append(f"{url} -> HTTP {exc.code}")
+            except Exception as exc:  # réseau/timeout : miroir suivant
+                tmp.unlink(missing_ok=True)
+                print(f"\n  Échec : {exc}", flush=True)
+                errors.append(f"{url} -> {exc}")
+            break
     hint = (
         "\n  Image introuvable (404) : cette version est probablement EOL et"
         " a été retirée du miroir. Choisissez une version LTS encore"
@@ -3251,6 +3290,18 @@ CACHE_TRUST = {
 # disparaît alors que la VM garde sa variable.
 CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
 
+# Les faisceaux connus, essayés dans cet ordre quand celui de la famille
+# manque. Une image ne porte pas toujours le chemin canonique de sa
+# distribution : sur une Fedora récente, « /etc/pki/tls/certs/ca-bundle.crt »
+# peut ne pas exister alors que le faisceau extrait, lui, est là. Or une
+# variable qui vise un fichier ABSENT fait échouer pip sur « Could not find a
+# suitable TLS CA certificate bundle » — tout casse, au lieu de rien.
+CA_BUNDLE_CANDIDATS = (
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/ssl/ca-bundle.pem",
+)
+
 # Ce qu'une VM déployée l'amont du cache coupé reçoit en plus. L'audit de npm
 # interroge un service distant qu'aucun cache ne peut rejouer : hors ligne il
 # échoue à chaque installation sans rien vérifier. La variable reste dans la
@@ -3608,10 +3659,15 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
         return nix_trust_commands()
     _, commande, faisceau = CACHE_TRUST[famille]
     commandes = [f"{commande} || true"]
+    # Le faisceau de la famille d'abord, les autres connus ensuite : aucun
+    # trouvé, aucune variable écrite, et pip garde alors son propre jeu de
+    # certificats plutôt que de refuser tout téléchargement.
+    candidats = " ".join(dict.fromkeys((faisceau,) + CA_BUNDLE_CANDIDATS))
     for var in CACHE_ENV_VARS:
         commandes.append(
-            f"sh -c 'grep -q ^{var}= /etc/environment"
-            f" || echo {var}={faisceau} >> /etc/environment'"
+            f'sh -c \'for f in {candidats}; do [ -r "$f" ] || continue;'
+            f" grep -q ^{var}= /etc/environment"
+            f" || echo {var}=$f >> /etc/environment; break; done'"
         )
     gardees = list(CACHE_ENV_VARS)
     if getattr(args, "offline", False):

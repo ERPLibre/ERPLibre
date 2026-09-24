@@ -46,18 +46,33 @@ def get_modified_files():
 
         lst_lines = [(".", lines_local)]
 
+        lines_project = []
         if lst_cmd_git_status_repo:
             print(" ".join(lst_cmd_git_status_repo))
 
+            # Google Repo est FACULTATIF ici : il n'ajoute que les dépôts
+            # rapatriés. Son échec laissait pourtant tomber la liste locale
+            # déjà obtenue, et « make format » rendait 0 sans avoir formaté
+            # une ligne. Il est donc joué sans check, et ce qu'il a écrit est
+            # RELAYÉ : capturée puis jetée, sa sortie d'erreur emportait la
+            # seule explication — le hashbang de bin/repo est relatif, si bien
+            # qu'un lancement hors de la racine échoue sans dire pourquoi.
             result = subprocess.run(
                 lst_cmd_git_status_repo,
                 capture_output=True,
                 text=True,
-                check=True,
             )
-            lines_project = result.stdout.strip().split("\n\n")
-        else:
-            lines_project = []
+            if result.returncode:
+                print(
+                    f"repo forall a rendu {result.returncode} : les depots"
+                    " rapatries sont ignores, les fichiers locaux sont"
+                    " formates quand meme."
+                )
+                for flux in (result.stderr, result.stdout):
+                    if flux and flux.strip():
+                        print(f"  {flux.strip()}")
+            else:
+                lines_project = result.stdout.strip().split("\n\n")
 
         if os.path.isfile(".odoo-version"):
             with open(".odoo-version") as txt:
@@ -163,3 +178,9 @@ if __name__ == "__main__":
         if status != 0:
             print(output)
         sys.exit(status)
+    elif files is None:
+        # get_modified_files a échoué sur le dépôt lui-même : rendre 0
+        # laisserait croire que tout est formaté.
+        sys.exit(1)
+    else:
+        print("Aucun fichier modifie a formater.")

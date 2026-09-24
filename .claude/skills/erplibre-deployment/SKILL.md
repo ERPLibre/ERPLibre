@@ -36,6 +36,37 @@ Un seul fichier décide : `script/install/lib_python_provider.sh`. mise n'est
 jamais installé automatiquement — `make install_mise` porte cette décision.
 Pas de binaire mise pour s390x à ce jour : cette architecture reste sur pyenv.
 
+## Le Python de l'outillage
+
+`conf/python-erplibre-version` (3.14.7) donne l'interpréteur de
+`.venv.erplibre`, le venv d'outillage, distinct du venv Odoo (3.12.10 pour
+Odoo 18.0). C'est la seule version que `script/` vise : là où une distribution
+ne la porte pas, pyenv la compile.
+
+Le PATCH ne borne que le venv d'Odoo, dont le pyproject exige
+`>=3.12.10,<3.13`. Pour l'outillage, la majeure.mineure suffit : exiger le
+patch écarterait le Python d'une distribution d'un cran en retard — NixOS 25.11
+livre 3.14.2 — et ferait compiler CPython pour rien.
+
+`install_erplibre.sh` passe par `install_venv.sh`, donc par
+`EL_PYTHON_PROVIDER`. Un venv dont `bin/python` n'est pas compatible (même
+majeure.mineure, patch au moins égal) est DÉTRUIT puis rebâti : ce qui y avait
+été posé à la main part avec lui. Le venv d'Odoo, lui, n'est rebâti que s'il
+est HORS SERVICE : une simple différence de version le laisse en place, parce
+que le rebâtir refait une installation Poetry entière. Un répertoire sans
+`pyvenv.cfg` n'est jamais effacé.
+
+`make` / `make todo` hors venv : TODO se relance dans `.venv.erplibre` ; si le
+venv manque, il propose `install_erplibre.sh` en terminal, ou nomme la
+commande.
+
+Le hook `pre-commit` relaie `script/analyse/check_python_version.py` : il
+signale le source qui ne parse pas sous cette version, sans bloquer, et dit
+quand aucun interpréteur de cette version n'était là pour vérifier.
+
+L'image Docker de production bâtit `.venv.erplibre` sur le Python d'Odoo de son
+image de base, et s'arrête si ce Python ne sait pas lire `script/`.
+
 ## Paquets Python
 
 `EL_PIP_PROVIDER` (dans `env_var.sh`) vaut `auto`, `uv` ou `pip`. `auto` prend

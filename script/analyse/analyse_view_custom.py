@@ -502,8 +502,8 @@ def collect(
             # et ce qu'il rapporte est fiable. « all » compare toute vue ayant
             # un arch_fs, ce qui trouve la dérive qu'aucun drapeau ne signale —
             # une vue réécrite en SQL direct — mais au prix d'un plancher de
-            # bruit MESURÉ : sur une base 18.0 fraîchement installée, 160 des
-            # 974 vues à arch_fs diffèrent déjà. read_arch_from_file rend le
+            # bruit : sur une base 18.0 fraîchement installée, 160 des 974
+            # vues à arch_fs diffèrent déjà. read_arch_from_file rend le
             # XML brut du fichier, alors que la base porte l'arch APRÈS
             # traitement au chargement : un attribut « groups » est consommé,
             # un <xpath position="attributes"> est appliqué. En « all », un
@@ -707,7 +707,7 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None, hints=True):
         f"🔬 {t('Customised views')} — {data['database']} (Odoo {version}"
         f"{', ' + t('from a backup') if data.get('source') == 'backup' else ''})",
         "",
-        f"  {t("Views"):<38}: {data['n_views']}",
+        f"  {t('Views'):<38}: {data['n_views']}",
     ]
     for name in CATEGORIES:
         if counts.get(name):

@@ -506,10 +506,12 @@ class QemuInstallMixin:
             # ERREUR, alors que son étape finale écrit encore l'autorité, les
             # variables et le sudoers : attendre l'unité, faute de quoi elles
             # arrivent après cette session, qui vivra sans elles.
-            + attente_cloud_final() + "; "
+            + attente_cloud_final()
+            + "; "
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
-            + cache_env_reload() + "; "
+            + cache_env_reload()
+            + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
             # est écrit par cloud-init lui aussi : mesuré sur une VM, la
             # session ssh est acceptée une seconde avant qu'il existe, donc
@@ -599,31 +601,28 @@ class QemuInstallMixin:
 
     # Miroirs openSUSE préférés, du plus proche au dernier recours. Le
     # redirecteur officiel n'est PAS géographique pour cette distribution :
-    # mesuré depuis Montréal sur les métadonnées oss s390x (15 Mo),
-    # download.opensuse.org met 23,8 s — il sert depuis l'Europe — contre
-    # 2,7 s pour mirrors.rit.edu. Les trois familles dnf, elles, choisissent
-    # déjà un miroir canadien toutes seules ; rien à faire de ce côté.
+    # download.opensuse.org sert depuis l'Europe, là où un miroir
+    # nord-américain répond en une fraction du temps sur les mêmes
+    # métadonnées. Les trois familles dnf, elles, choisissent déjà un miroir
+    # proche toutes seules ; rien à faire de ce côté.
     #
     # Chaque miroir est SONDÉ sur le chemin de l'architecture ET du produit
     # courants, puis le premier qui répond gagne. C'est nécessaire : aucun ne
-    # réplique tout. Relevé le 2026-08-12 —
-    #   csclub    Leap oui, Tumbleweed non (404)
-    #   rit.edu   zsystems oui ; injoignable ce jour-là (curl 7)
-    #   leaseweb  Tumbleweed x86_64 et Leap oui, ports zsystems non
-    # D'où plusieurs entrées plutôt qu'une : avec la seule rit.edu, sa panne
-    # renvoyait tout le monde sur download.opensuse.org, servi d'Europe.
-    # Ordonnées par proximité de Montréal. Aucun sondage concluant : on garde
-    # les dépôts de l'image, donc le comportement d'avant.
+    # réplique tout — l'un sert Leap mais pas Tumbleweed, l'autre les ports
+    # zsystems mais pas x86_64. D'où plusieurs entrées plutôt qu'une : avec un
+    # seul miroir, sa panne renvoie tout le monde sur le redirecteur, servi
+    # d'Europe. Aucun sondage concluant : on garde les dépôts de l'image,
+    # donc le comportement d'avant.
     _QEMU_ZYPPER_MIRRORS = (
         "https://mirror.csclub.uwaterloo.ca/opensuse",
         "https://mirrors.rit.edu/opensuse",
         "https://mirror.us.leaseweb.net/opensuse",
     )
 
-    # Miroirs Arch canadiens, du plus rapide au suivant. Mesuré depuis
-    # Montréal sur extra.db : quantum5 2,0 s, xenyth 7,1 s, contre 8,0 s pour
-    # geo.mirror.pkgbuild.com — le miroir « géographique » officiel n'est donc
-    # pas le meilleur ici. Arch n'est proposé qu'en amd64 dans le catalogue,
+    # Miroirs Arch canadiens, du plus rapide au suivant. Le miroir
+    # « géographique » officiel, geo.mirror.pkgbuild.com, n'est pas le plus
+    # rapide depuis l'Amérique du Nord : d'où une liste explicite plutôt que
+    # lui. Arch n'est proposé qu'en amd64 dans le catalogue,
     # et ces deux-là ne servent que x86_64 (Arch Linux ARM a ses propres
     # miroirs) : la garde d'architecture le dit quand même.
     _QEMU_PACMAN_MIRRORS = (
@@ -1219,13 +1218,13 @@ class QemuInstallMixin:
     # couvre les quatre gestionnaires (Arch l'a dans extra, Debian et Ubuntu ne
     # l'ont qu'en snap — coupé ici —, Fedora et openSUSE pas du tout).
     #
-    # La ligne COMMUNITY, et non le produit unifié. Mesuré dans une VM :
-    # « code=PCC&latest » sert maintenant pycharm-2025.3, le build unifié, qui
+    # La ligne COMMUNITY, et non le produit unifié.
+    # « code=PCC&latest » sert le build unifié, qui
     # s'arrête sur sa licence — son journal dit « NoValidIdeLicense » puis
     # « Get licenses: request requires authentication », et le projet ne
     # s'ouvre jamais. Aucune ouverture, donc aucun .idea, donc rien à
-    # configurer ensuite. Community ne demande aucun compte, et elle est
-    # toujours publiée et corrigée : 2025.2.6.2 date du 2026-07-29.
+    # configurer ensuite. Community ne demande aucun compte, et elle reste
+    # publiée et corrigée.
     #
     # Aucun numéro figé ici : on prend la plus récente archive
     # « pycharm-community- » du flux officiel des versions, pour
@@ -1248,7 +1247,7 @@ class QemuInstallMixin:
     # INDÉPENDANTS, l'un ne se déduit pas de l'autre, et le flux updates.xml de
     # Google ne publie ni l'un ni l'autre. On lit donc l'URL sur la page
     # officielle, qui la porte en clair, et on retombe sur celle-ci si la page
-    # change de forme. Relevée et vérifiée (HTTP 200) le 2026-08-17.
+    # change de forme. Ce repli est une URL figée : elle vieillit.
     _QEMU_ANDROID_URL = (
         "https://dl.google.com/dl/android/studio/ide-zips/2026.1.3.8/"
         "android-studio-quail3-patch1-linux.tar.gz"
@@ -1310,6 +1309,12 @@ class QemuInstallMixin:
         Tout le bloc est gardé : un IDE qui ne s'installe pas ne doit pas faire
         échouer l'installation d'ERPLibre, qui elle a duré une heure."""
         el_dir = self._qemu_install_dir(prod)
+        # Hors de la f-string : une expression sur deux lignes dans ses
+        # accolades ne parse qu'à partir de 3.12 (PEP 701).
+        idea_note = t(
+            "open the project once and close PyCharm; the .idea "
+            "it writes is what the install configures"
+        )
         return (
             f'echo "== {t("Installing PyCharm (long)")} =="; '
             "{ "
@@ -1378,8 +1383,7 @@ class QemuInstallMixin:
             # PyCharm n'a évidemment jamais ouvert le dépôt.
             + f'echo "   {t("PyCharm installed:")} /opt/pycharm '
             f'({t("command")} pycharm, {t("project")} {el_dir})"; '
-            f'echo "   {t("open the project once and close PyCharm; the .idea "
-                          "it writes is what the install configures")}"; '
+            f'echo "   {idea_note}"; '
             f'}} || echo "   ⚠ {t("PyCharm not installed (see above)")}"; '
         )
 
@@ -1676,8 +1680,9 @@ class QemuInstallMixin:
     # Aucune n'est empaquetée par une distribution : on passe donc par le site.
     #
     # L'archive dépend de la version de GNOME Shell, et ce n'est pas une
-    # précaution de principe : mesuré le 2026-08-17, le même point d'entrée
-    # sert gTile v59 pour GNOME 46, v62 pour GNOME 48 et v52 pour GNOME 3.38.
+    # précaution de principe : le même point d'entrée sert une archive
+    # différente selon la version — gTile v59 pour GNOME 46, v62 pour
+    # GNOME 48, v52 pour GNOME 3.38.
     # Une URL figée poserait donc, tôt ou tard, une archive faite pour une
     # autre version.
     #
@@ -2097,8 +2102,8 @@ class QemuInstallMixin:
             # peut rendre 0 sans avoir rien produit.
             # DEUX emplacements, et il faut les deux. Avec une ABI injectée,
             # AGP écrit dans « intermediates/apk/debug » et non dans
-            # « outputs/apk/debug » : mesuré, une compilation RÉUSSIE était
-            # rapportée « aucun APK produit » parce que je ne regardais que le
+            # « outputs/apk/debug » : une compilation RÉUSSIE se rapporte
+            # « aucun APK produit » dès que le contrôle ne regarde que le
             # second. Un contrôle qui cherche au mauvais endroit ne vaut pas
             # mieux que pas de contrôle.
             f"apk=$(ls {el_dir}/mobile/erplibre_home_mobile/android/app/build"

@@ -53,6 +53,10 @@ INSTALLED_ODOO_VERSION_FILE = ".repo/installed_odoo_version.txt"
 VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
+# Le Python de l'OUTILLAGE, distinct de celui d'Odoo depuis que .venv.erplibre
+# ne partage plus son interpréteur : il ne participe à aucun identifiant de
+# version, il n'est là que pour être dit.
+VERSION_PYTHON_ERPLIBRE_FILE = os.path.join("conf", "python-erplibre-version")
 ADDONS_PATH = os.path.join("addons")
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
 VENV_TEMPLATE_FILE = ".venv.%s"
@@ -232,7 +236,14 @@ class Update:
         self.mobile_active = os.path.isdir(MOBILE_PATH)
 
         # Show actual version
-        _logger.info(f"Python version: {self.python_version}")
+        # « d'Odoo » nommé : le venv d'outillage tourne sur une AUTRE version,
+        # et un libellé nu laissait croire que le dépôt n'en a qu'une.
+        _logger.info(f"Python version (Odoo): {self.python_version}")
+        if os.path.exists(VERSION_PYTHON_ERPLIBRE_FILE):
+            with open(VERSION_PYTHON_ERPLIBRE_FILE) as txt:
+                _logger.info(
+                    f"Python version (outillage): {txt.read().strip()}"
+                )
         _logger.info(f"Odoo version: {self.odoo_version}")
         _logger.info(f"Poetry version: {poetry_version}")
         _logger.info(
@@ -482,7 +493,9 @@ class Update:
                         )
                     else:
                         with_extra = get_version_extra(self.new_version_odoo)
-                manifest_script = "./script/manifest/update_manifest_local_dev.sh"
+                manifest_script = (
+                    "./script/manifest/update_manifest_local_dev.sh"
+                )
                 if with_extra:
                     manifest_script += " --with_extra"
                 status = os.system(manifest_script)
@@ -603,15 +616,16 @@ class Update:
             existing = [p.strip() for p in value.split(",") if p.strip()]
             missing = [p for p in extra_paths if p not in existing]
             if missing:
-                lines[i] = "addons_path = " + ",".join(existing + missing) + "\n"
+                lines[i] = (
+                    "addons_path = " + ",".join(existing + missing) + "\n"
+                )
                 changed = True
             break
         if changed:
             with open(config_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
             _logger.info(
-                "Added extra addons to config.conf: "
-                + ", ".join(extra_paths)
+                "Added extra addons to config.conf: " + ", ".join(extra_paths)
             )
         else:
             _logger.info("Extra addons already present in config.conf.")
@@ -857,17 +871,17 @@ def main():
         update.add_extra_to_config_conf()
 
     return exit_code
-        # TODO ignore this if installation fail
+    # TODO ignore this if installation fail
 
-        # TODO this cause an error at first execution, need to source ./.venv.erplibre/bin/activate and rerun
-        # subprocess.run(['source', './.venv.erplibre/bin/activate'], shell=True)
-        # subprocess.run(['make', 'config_gen_all'])
-        # status = os.system(f"make config_gen_all")
-        #
-        # if not status:
-        #     print("Please run:")
-        #     print("source ./.venv.erplibre/bin/activate")
-        #     print("make config_gen_all")
+    # TODO this cause an error at first execution, need to source ./.venv.erplibre/bin/activate and rerun
+    # subprocess.run(['source', './.venv.erplibre/bin/activate'], shell=True)
+    # subprocess.run(['make', 'config_gen_all'])
+    # status = os.system(f"make config_gen_all")
+    #
+    # if not status:
+    #     print("Please run:")
+    #     print("source ./.venv.erplibre/bin/activate")
+    #     print("make config_gen_all")
 
 
 def die(cond, message, code=1):

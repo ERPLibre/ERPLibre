@@ -55,22 +55,29 @@ el_python_is_version() {
   [ "${got}" = "${want}" ]
 }
 
-# Vrai si l'exécutable CONVIENT : même majeure.mineure, et patch au moins
-# égal au demandé. C'est exactement ce qu'exige le pyproject — « >=3.12.10,
-# <3.13 » — et non l'égalité stricte que testait el_python_is_version.
+# Vrai si l'exécutable CONVIENT. Deux exigences, selon ce qui borne l'appelant.
 #
-# La distinction n'est pas théorique. Tumbleweed s390x livre python312 en
-# 3.12.13 : parfaitement utilisable, mais rejeté par l'égalité, ce qui forçait
-# pyenv à COMPILER CPython — et gcc 15.2 s'y arrête sur une erreur interne
-# dans Parser/parser.c, un fichier généré de quarante mille lignes.
+#   patch    même majeure.mineure, et patch au moins égal. C'est ce que le
+#            pyproject d'Odoo demande — « >=3.12.10,<3.13 » —, et Poetry
+#            refuserait un patch inférieur.
+#   mineure  même majeure.mineure, quel que soit le patch. RIEN n'épingle le
+#            patch du venv d'OUTILLAGE : l'exiger écarte le Python des
+#            distributions dès qu'il est d'un patch en retard — NixOS 25.11
+#            livre 3.14.2 quand conf/ demande 3.14.7 — et force pyenv à
+#            COMPILER CPython pour une différence qui ne gêne personne.
+#
+# L'égalité stricte, elle, rejetterait aussi un patch plus RÉCENT : c'est
+# el_python_is_version, et elle ne sert qu'aux fournisseurs qui posent une
+# version nommée.
 el_python_is_compatible() {
-  local exe="$1" want="$2" got
+  local exe="$1" want="$2" exigence="${3:-patch}" got
   [ -x "${exe}" ] || return 1
   got="$("${exe}" -c 'import platform;print(platform.python_version())' \
     2> /dev/null)"
   [ -n "${got}" ] || return 1
   # Même majeure.mineure : 3.13 ne convient pas à un pyproject borné à <3.13.
   [ "${got%.*}" = "${want%.*}" ] || return 1
+  [ "${exigence}" = "mineure" ] && return 0
   # Patch au moins égal, comparé en version et non en chaîne (3.12.9 < 3.12.10).
   [ "$(printf '%s\n%s\n' "${want}" "${got}" | sort -V | head -1)" = "${want}" ]
 }
@@ -81,7 +88,7 @@ el_python_is_compatible() {
 # prend des dizaines de minutes quand il aboutit. Le nom suit la convention de
 # toutes les distributions, « python3.12 ».
 el_distro_python_exec() {
-  local want="$1" exe
+  local want="$1" exigence="${2:-patch}" exe
   # Des chemins SYSTEME, jamais « command -v » : dans un venv activé celui-ci
   # rend le python DU VENV, et l'on bâtirait un venv depuis un venv. Le PATH
   # d'une session interactive n'a rien à faire dans cette décision.
@@ -94,7 +101,7 @@ el_distro_python_exec() {
   # pas, et la boucle passe a la suite sans rien couter.
   for exe in "/run/current-system/sw/bin/python${want%.*}" \
     "/usr/bin/python${want%.*}" "/usr/local/bin/python${want%.*}"; do
-    if el_python_is_compatible "${exe}" "${want}"; then
+    if el_python_is_compatible "${exe}" "${want}" "${exigence}"; then
       echo "${exe}"
       return 0
     fi
@@ -175,10 +182,31 @@ el_pyenv_install() {
   echo "${exe}"
 }
 
+# Annonce la compilation pyenv AVANT de la subir, et le geste qui l'évite :
+# poser mise, ou lire ce que mise reproche quand il est déjà là. Muet si pyenv
+# porte déjà la version, puisque rien ne sera compilé.
+el_warn_pyenv_fallback() {
+  local version="$1"
+  [ -d "$(el_pyenv_root)/versions/${version}" ] && return 0
+  if command -v mise > /dev/null 2>&1; then
+    echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv," >&2
+    echo "  qui COMPILE CPython. Pour lire ce que mise reproche :" >&2
+    echo "    mise install python@${version}   (reseau requis)" >&2
+  else
+    echo "mise est absent : pyenv va etre pose, puis COMPILER CPython" >&2
+    echo "  ${version} -- quelques minutes, bien plus sous emulation, et il" >&2
+    echo "  lui faut une douzaine de -dev (openssl, zlib, readline, sqlite," >&2
+    echo "  bzip2, xz, tk). Pour l'eviter : Ctrl+C, puis" >&2
+    echo "    make install_mise" >&2
+    echo "  qui pose un CPython precompile en quelques secondes, et relancez." >&2
+  fi
+}
+
 # API publique : imprime le chemin absolu d'un interpréteur de cette version,
 # ou rien (et rend non nul) si aucun fournisseur n'y parvient.
 el_python_exec() {
-  local version="$1" provider="${EL_PYTHON_PROVIDER:-auto}" exe
+  local version="$1" exigence="${2:-patch}"
+  local provider="${EL_PYTHON_PROVIDER:-auto}" exe
 
   # 1) Déjà présent ? On ne réinstalle rien et on ne touche pas au réseau.
   #    C'est ce qui rend le changement sans effet pour une installation
@@ -205,7 +233,7 @@ el_python_exec() {
   #    Uniquement en mode « auto » : demander mise ou pyenv explicitement doit
   #    être respecté, sinon le réglage ne veut plus rien dire.
   if [ "${provider}" = "auto" ] \
-    && exe="$(el_distro_python_exec "${version}")"; then
+    && exe="$(el_distro_python_exec "${version}" "${exigence}")"; then
     echo "Python $("${exe}" -V 2>&1 | awk '{print $2}') de la distribution :" \
       "aucune compilation." >&2
     echo "${exe}"
@@ -220,8 +248,7 @@ el_python_exec() {
       return 0
     fi
     [ "${provider}" = "mise" ] && return 1
-    command -v mise > /dev/null 2>&1 \
-      && echo "mise n'a pas pu fournir Python ${version} : repli sur pyenv." >&2
+    el_warn_pyenv_fallback "${version}"
   fi
   el_pyenv_install "${version}"
 }

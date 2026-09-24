@@ -44,6 +44,12 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 
 Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
+Le Python de ce tableau est celui de l'environnement virtuel Odoo.
+L'environnement virtuel d'outillage `.venv.erplibre` (TODO, `repo`, formateurs)
+tourne sur son propre interpréteur, **3.14.7**, fixé par
+`conf/python-erplibre-version`. Là où une distribution ne le porte pas, pyenv
+le compile.
+
 
 # Plateformes supportées
 
@@ -118,6 +124,19 @@ Suivez les instructions du script suivant, il essaiera de détecter votre enviro
 ```bash
 make
 ```
+
+
+`make` et `./install.sh` lancent TODO par l'interpréteur capable de le lire :
+`.venv.erplibre` quand il porte la bonne version, sinon le `python3` du système
+s'il est assez récent, sinon l'installation elle-même — un système plus ancien
+que `conf/python-erplibre-version` ne sait pas analyser le code, donc on va
+droit à l'installation plutôt que de s'arrêter sur une erreur de syntaxe. Quand
+l'environnement manque mais que le Python du système suffit, TODO propose de
+lancer `./script/install/install_erplibre.sh` (dans un terminal) ou affiche
+cette commande. L'installation bâtit l'environnement par
+`EL_PYTHON_PROVIDER` (mise ou pyenv) ; un `.venv.erplibre` existant sur une
+autre version de Python est SUPPRIMÉ puis rebâti, et ce qu'on y avait posé à la
+main part avec lui.
 
 
 ### Manuellement

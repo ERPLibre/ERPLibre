@@ -1,0 +1,37 @@
+# Formatage et tri des imports de l'OUTILLAGE ERPLibre — script/, test/,
+# long_test/ et les scripts de la racine.
+#
+# ruff et non black : black 24.8.0 ne connaît aucune cible au-delà de py313,
+# quand l'outillage tourne sur conf/python-erplibre-version, et son tri
+# d'imports remplace isort sans second outil. C'est aussi ce que la norme OCA
+# emploie depuis qu'elle a quitté black.
+#
+# Les modules Odoo n'obéissent PAS à ce fichier : chaque dépôt d'addons porte
+# sa propre norme. script/maintenance/format_python.sh aiguille entre les deux.
+#
+# target-version borne ce que le formateur ÉCRIT, et non ce qui exécute le
+# code. py310 et non la version du venv : PEP 758 autorise depuis 3.14
+# « except A, B: » sans parenthèses, et ruff l'écrirait — or les hooks de
+# script/git/hooks portent « #!/usr/bin/env python3 » et tournent donc sur le
+# Python du système, qu'une distribution livre encore en 3.10.
+target-version = "py310"
+# 79, la largeur que le dépôt tient déjà. La norme OCA en retient 88, déclarée
+# dans les dépôts d'addons qui la suivent.
+line-length = 79
+
+# Des dépôts SÉPARÉS, rapatriés par Google Repo : ils portent leur propre
+# configuration, et les reformater écrirait dans l'historique d'autrui.
+# force-exclude : sans lui, l'exclusion ne vaut que pour les fichiers que ruff
+# DÉCOUVRE, et un chemin nommé en argument y échappe — or format_python.sh
+# passe les fichiers un par un.
+force-exclude = true
+extend-exclude = [
+  "addons",
+  "odoo*",
+  "script/OCA_maintainer-tools",
+  "script/OCA_odoo-module-migrator",
+]
+
+[lint]
+# Le tri des imports seul : le lint du dépôt reste décrit par .flake8.
+select = ["I"]

@@ -160,7 +160,8 @@ class QemuDeployMixin:
             chain.append(f"{{ {after_cmd} }}")
         install_chain = " && ".join(chain)
         return (
-            "set -e; " + self._qemu_cloud_init_wait()
+            "set -e; "
+            + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
             + no_auto_upgrade
@@ -187,17 +188,6 @@ class QemuDeployMixin:
             # retarderait le démarrage sans laisser de trace dans le suivi.
             f"PKGS='curl git make{self._qemu_editor_suffix()}'; "
             "if command -v apt-get >/dev/null 2>&1; then "
-            # Au 1er boot, cloud-init (install qemu-guest-agent) et/ou
-            # apt-daily.service tiennent le verrou apt. IMPORTANT :
-            # « DPkg::Lock::Timeout » NE couvre PAS le verrou
-            # /var/lib/apt/lists/lock -> « apt-get update » échouait AUSSITÔT
-            # (« Could not get lock … lists/lock ») -> lists vides -> « Unable
-            # to locate package git ». On RÉESSAIE donc update jusqu'à ce que
-            # le verrou se libère (et les lists soient peuplées), borné à ~5 min.
-            # Bornée par le TEMPS : trente essais valent cinq minutes quand
-            # chacun échoue en une seconde sur un verrou, mais des heures
-            # quand le cache répond 504 sur chaque index et qu'un essai dure
-            # des minutes.
             "fin=$(( $(date +%s) + 300 )); "
             "until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
             '[ "$(date +%s)" -ge "$fin" ] && break; '
@@ -276,7 +266,7 @@ class QemuDeployMixin:
             # peu : l'installation choisit ensuite le Python d'Odoo, que le
             # module déclare et que le profil du système porte, cherché avant
             # celui de l'utilisateur.
-            + "elif command -v nix-env >/dev/null 2>&1; then "
+             + "elif command -v nix-env >/dev/null 2>&1; then "
             "nix-env -f '<nixpkgs>' -iA git gnumake curl python3"
             f"{self._qemu_editor_suffix()}; "
             # Le PATH de cette commande distante a été figé à l'ouverture du
@@ -585,9 +575,7 @@ class QemuDeployMixin:
             "-o ConnectTimeout=15"
         )
         cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
-        print(
-            f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} " f"({branch})"
-        )
+        print(f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} ({branch})")
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 

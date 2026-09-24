@@ -129,6 +129,8 @@ install_uv:
 		echo "Ajoutez ce repertoire au PATH, ou installez uv globalement."; \
 	fi
 
+# Telecharge puis execute : dans « curl | sh », le statut est celui de sh,
+# qui rend 0 sur une entree vide et masque un telechargement rate.
 .PHONY: install_mise
 install_mise:
 	@if command -v mise >/dev/null 2>&1; then \
@@ -139,7 +141,19 @@ install_mise:
 		echo "mise ne publie pas de binaire s390x : on reste sur pyenv."; \
 	else \
 		echo "Installation de mise depuis https://mise.run"; \
-		curl -fsSL https://mise.run | sh; \
+		installateur="$$(mktemp)" || exit 1; \
+		if ! curl -fsSL -o "$$installateur" https://mise.run; then \
+			rm -f "$$installateur"; \
+			echo "Telechargement de l installateur mise impossible" \
+				"(reseau ou cache) : mise n est pas pose." >&2; \
+			exit 1; \
+		fi; \
+		if ! sh "$$installateur"; then \
+			rm -f "$$installateur"; \
+			echo "L installateur de mise a echoue (voir ci-dessus)." >&2; \
+			exit 1; \
+		fi; \
+		rm -f "$$installateur"; \
 		echo "Ajoutez ~/.local/bin a votre PATH, puis relancez l installation."; \
 	fi
 
@@ -188,46 +202,47 @@ format:
 
 .PHONY: format_all
 format_all:
-	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
+	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_test" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
+# Les dépôts d'addons sont nommés, jamais leur chemin : il dépend du manifeste,
+# et chaque version d'Odoo n'en rapatrie qu'une partie. Voir format_addons.sh.
 .PHONY: format_code_generator
 format_code_generator:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
-	./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
+	./script/maintenance/format_addons.sh --xml TechnoLibre_odoo-code-generator
 
 .PHONY: format_erplibre_addons
 format_erplibre_addons:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
-	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
-	./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
-	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
-	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
+	./script/maintenance/format_addons.sh --xml ERPLibre_erplibre_addons
+	./script/maintenance/format_addons.sh ERPLibre_erplibre_theme_addons
 
 .PHONY: format_supported_addons
 format_supported_addons:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
-	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
-	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
-	./script/maintenance/black.sh ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
-	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
+	./script/maintenance/format_addons.sh MathBenTech_erplibre-family-management \
+		MathBenTech_odoo-business-spending-management-quebec-canada
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
-	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
-	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
+	./script/maintenance/format_addons.sh TechnoLibre_odoo-code-generator-template
 
+# L'outillage passe par ruff, réglé une fois dans .ruff.toml, qui écarte les
+# dépôts rapatriés sous script/. Les addons gardent black : voir
+# script/maintenance/format_python.sh.
 .PHONY: format_script
 format_script:
-	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
-	./script/maintenance/black.sh ./script/
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
+	.venv.erplibre/bin/ruff format ./script/
+
+# Les tests suivent la norme de l'outillage : ils tournent dans le même venv,
+# et rien ne les formatait — seul « make format » les touchait, et seulement
+# s'ils étaient modifiés.
+.PHONY: format_test
+format_test:
+	.venv.erplibre/bin/ruff check --select I --fix ./test/ ./long_test/
+	.venv.erplibre/bin/ruff format ./test/ ./long_test/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
-	.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
 
 #########
 #  log  #

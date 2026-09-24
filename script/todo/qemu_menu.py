@@ -37,7 +37,7 @@ class QemuMenuMixin:
     # deploy_qemu.py ; ceci ne sert qu'au sélecteur interactif.
     _QEMU_DISTROS = {
         "ubuntu": (["24.04", "25.10", "26.04"], "24.04"),
-        "debian": (["11", "12", "13"], "12"),
+        "debian": (["12", "13"], "12"),
         "fedora": (["41", "42", "43", "44"], "42"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),

@@ -666,11 +666,11 @@ class TestLeMenu(unittest.TestCase):
     def test_the_dispatch_follows_the_list(self):
         src = open("script/todo/todo.py", encoding="utf-8").read()
         self.assertIn(
-            'elif status == "6":\n                self.prompt_execute_proxmox()',
+            'elif status == "7":\n                self.prompt_execute_proxmox()',
             src,
         )
         self.assertIn(
-            'elif status == "7":\n                self._deploy_ntfy_server()',
+            'elif status == "8":\n                self._deploy_ntfy_server()',
             src,
         )
 

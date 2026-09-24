@@ -153,10 +153,31 @@ class LeModule(unittest.TestCase):
             with self.subTest(lib=lib):
                 self.assertIn(lib, self.src)
 
-    def test_the_python_matches_what_the_repository_wants(self):
-        voulu = (RACINE / ".python-odoo-version").read_text().strip()
-        majeur, mineur = voulu.split(".")[:2]
-        self.assertIn(f"python{majeur}{mineur}", self.src)
+    def test_no_python_version_is_written_by_hand(self):
+        """Une version écrite ici dériverait des fichiers du dépôt au premier
+        changement — et déclarer le seul Python d'Odoo laissait pyenv bâtir
+        celui de l'outillage, dont la compilation s'arrête sur
+        « Modules/_cursesmodule.o »."""
+        self.assertNotRegex(self.src, r"python3\d\d")
+        self.assertIn("@EL_PY_ODOO_PKG@", self.src)
+        self.assertIn("@EL_PY_TOOLS_PKG@", self.src)
+
+    def test_both_pythons_of_the_repository_are_declared(self):
+        """Le module les reçoit du script, qui les lit dans les deux fichiers
+        de version."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn(".python-odoo-version", script)
+        self.assertIn("conf/python-erplibre-version", script)
+
+    def test_the_second_package_is_empty_when_both_agree(self):
+        """Nommer deux fois le même paquet ferait entrer en collision deux
+        chemins identiques dans le profil."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        self.assertRegex(
+            script,
+            r'EL_PY_TOOLS_PKG\}"?\s*=\s*"?\$\{EL_PY_ODOO_PKG'
+            r'|\[ "\$\{EL_PY_TOOLS_PKG\}" = "\$\{EL_PY_ODOO_PKG\}" \]',
+        )
 
     def test_the_database_role_is_substituted(self):
         """Le nom du compte varie d'un déploiement à l'autre ; l'écrire en dur
@@ -335,7 +356,7 @@ class LeServiceEstDeclare(unittest.TestCase):
         """Une unité ne reçoit pas le PATH d'une session. run.sh lance des
         scripts dont le shebang est « env bash » : env est dans le PATH par
         défaut, bash non, et run.sh s'arrête avant Odoo."""
-        self.assertIn("path = with pkgs; [ bash python312 ];", self.src)
+        self.assertIn("path = with pkgs; [ bash @EL_PY_ODOO_PKG@ ];", self.src)
 
     def test_the_repository_is_not_guessed(self):
         """Le service lance le dépôt QUI A POSÉ le module. Écrire

@@ -236,6 +236,10 @@ Si ces dernières étapes pour configurer votre environnement de développement 
 
 ## Installation manuelle
 
+Cet interpréteur système ne sert qu'à atteindre `make` (Python 3.10 ou plus).
+`.venv.erplibre` est bâti sur sa propre version, `conf/python-erplibre-version`,
+par `EL_PYTHON_PROVIDER` (mise ou pyenv).
+
 ### Installer Python 3.10.14
 Vous pouvez supprimer les fichiers restants dans votre répertoire personnel concernant l'installation de Python une fois les étapes complétées avec succès.
 

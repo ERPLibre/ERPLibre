@@ -13,10 +13,10 @@ from pathlib import Path
 #
 # Lancé seul, systemd doit EXÉCUTER le fichier, et l'échoue en « 203/EXEC »
 # dans quatre cas au moins : bit x absent, shebang qui ne résout pas, /home
-# monté noexec, SELinux refusant l'execve. Vécu sur openSUSE s390x — le
-# processus mourait en 3 ms, sans jamais entrer dans le script, ce qui rend le
-# diagnostic très pénible : aucune sortie, et un code qui ressemble à une
-# erreur d'application.
+# monté noexec, SELinux refusant l'execve. L'échec est alors MUET : le
+# processus meurt avant d'entrer dans le script, sans une ligne de sortie, et
+# 203 ressemble à une erreur d'application — le diagnostic part donc dans la
+# mauvaise direction.
 #
 # Passé à bash, run.sh n'est plus qu'une DONNÉE lue : les quatre causes
 # disparaissent ensemble, y compris noexec et SELinux, qui ne portent que sur
@@ -116,10 +116,9 @@ def main():
         args.config_name
         or f"erplibre_{el_user}_{os.path.basename(os.getcwd())}"
     )
-    exec_param = (
-        " "
-        + f" {w_cmd("-d", args.database or "")} {w_cmd("-p", args.port or "")}".strip()
-    )
+    db_param = w_cmd("-d", args.database or "")
+    port_param = w_cmd("-p", args.port or "")
+    exec_param = " " + f" {db_param} {port_param}".strip()
 
     # Render the systemd service file content
     unit_content = UNIT_TEMPLATE.format(
