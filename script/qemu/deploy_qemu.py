@@ -1531,7 +1531,21 @@ def ensure_emulator(
 DOWNLOAD_TIMEOUT = 30
 
 
-def _download_one(url: str, tmp: Path, timeout: int) -> None:
+# Reprises d'un transfert COUPÉ, sur le même miroir, avant d'en changer.
+# Une image de VM pèse un demi-gigaoctet : une coupure y est bien plus
+# probable que sur une page, et repartir de zéro à chaque fois peut ne jamais
+# aboutir. Trois essais, puis le miroir suivant.
+REPRISES_MAX = 3
+
+
+class TelechargementTronque(OSError):
+    """Le serveur a annoncé une taille, et la connexion a coupé avant.
+
+    Distinguée d'une erreur réseau ordinaire parce qu'elle se REPREND : les
+    octets déjà écrits restent bons, et un « Range » demande la suite."""
+
+
+def _download_one(url: str, tmp: Path, timeout: int, depuis: int = 0) -> None:
     """Télécharge url -> tmp en streaming, avec timeout et barre de %.
     Lève une exception en cas d'échec réseau (miroir suivant à essayer)."""
     is_tty = sys.stdout.isatty()
@@ -1568,7 +1582,7 @@ def _download_one(url: str, tmp: Path, timeout: int) -> None:
     # il était validé comme « complet » -> qcow2 valide mais VIDE (juste
     # l'en-tête) -> VM qui ne boote pas, et cache empoisonné réutilisé ensuite.
     if total > 0 and done < total:
-        raise OSError(
+        raise TelechargementTronque(
             f"téléchargement incomplet : {done}/{total} octets reçus "
             "(connexion interrompue)"
         )
@@ -1607,19 +1621,38 @@ def download_image(
     for i, url in enumerate(urls, 1):
         tag = "" if len(urls) == 1 else f" (miroir {i}/{len(urls)})"
         print(f"  Téléchargement{tag} : {url}", flush=True)
-        try:
-            _download_one(url, tmp, timeout)
-            tmp.replace(dest)
-            return
-        except urllib.error.HTTPError as exc:  # image absente sur ce miroir
-            tmp.unlink(missing_ok=True)
-            had_404 = had_404 or exc.code == 404
-            print(f"\n  Échec : HTTP {exc.code}", flush=True)
-            errors.append(f"{url} -> HTTP {exc.code}")
-        except Exception as exc:  # réseau/timeout : miroir suivant
-            tmp.unlink(missing_ok=True)
-            print(f"\n  Échec : {exc}", flush=True)
-            errors.append(f"{url} -> {exc}")
+        # Une coupure se REPREND sur le même miroir avant d'en changer :
+        # les octets déjà écrits restent bons, et le .part survit entre deux
+        # essais. Tout autre échec — 404, timeout, réseau — passe au miroir
+        # suivant sans insister.
+        for essai in range(1, REPRISES_MAX + 1):
+            depuis = tmp.stat().st_size if tmp.exists() else 0
+            try:
+                _download_one(url, tmp, timeout, depuis if essai > 1 else 0)
+                tmp.replace(dest)
+                return
+            except TelechargementTronque as exc:
+                if essai < REPRISES_MAX:
+                    recus = tmp.stat().st_size if tmp.exists() else 0
+                    print(
+                        f"\n  Coupé à {recus} octets, reprise"
+                        f" {essai}/{REPRISES_MAX - 1}...",
+                        flush=True,
+                    )
+                    continue
+                tmp.unlink(missing_ok=True)
+                print(f"\n  Échec : {exc}", flush=True)
+                errors.append(f"{url} -> {exc}")
+            except urllib.error.HTTPError as exc:  # absente de ce miroir
+                tmp.unlink(missing_ok=True)
+                had_404 = had_404 or exc.code == 404
+                print(f"\n  Échec : HTTP {exc.code}", flush=True)
+                errors.append(f"{url} -> HTTP {exc.code}")
+            except Exception as exc:  # réseau/timeout : miroir suivant
+                tmp.unlink(missing_ok=True)
+                print(f"\n  Échec : {exc}", flush=True)
+                errors.append(f"{url} -> {exc}")
+            break
     hint = (
         "\n  Image introuvable (404) : cette version est probablement EOL et"
         " a été retirée du miroir. Choisissez une version LTS encore"
