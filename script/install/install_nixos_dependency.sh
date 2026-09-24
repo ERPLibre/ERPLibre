@@ -37,6 +37,21 @@ EL_CA_BUNDLE=/var/lib/erplibre/ca-bundle.crt
 [ -r "${EL_CA_BUNDLE}" ] || EL_CA_BUNDLE=""
 EL_LOCALE=${EL_LOCALE:-$(lire_seed locale)}
 EL_TZ=${EL_TZ:-$(lire_seed timezone)}
+# « 3.12.10 » donne « python312 », le nom du paquet nixpkgs. Les deux versions
+# du dépôt sont déclarées : celle d'Odoo et celle de l'outillage. Le second est
+# VIDE quand elles coïncident, un même paquet nommé deux fois entrant en
+# collision dans le profil.
+el_nix_python_pkg() {
+  local v
+  v="$(xargs < "$1" 2> /dev/null)"
+  [ -n "${v}" ] || return 0
+  echo "python$(echo "${v}" | cut -d. -f1)$(echo "${v}" | cut -d. -f2)"
+}
+EL_PY_ODOO_PKG="$(el_nix_python_pkg .python-odoo-version)"
+EL_PY_ODOO_PKG="${EL_PY_ODOO_PKG:-python312}"
+EL_PY_TOOLS_PKG="$(el_nix_python_pkg conf/python-erplibre-version)"
+[ "${EL_PY_TOOLS_PKG}" = "${EL_PY_ODOO_PKG}" ] && EL_PY_TOOLS_PKG=""
+
 MODULE_SRC="conf/nixos/erplibre.nix"
 MODULE_DST="/etc/nixos/erplibre.nix"
 CONFIG="/etc/nixos/configuration.nix"
@@ -57,9 +72,12 @@ echo -e "\n---- Module ERPLibre pour NixOS ----"
 sed -e "s/@EL_USER@/${EL_USER}/g" -e "s#@EL_DIR@#${EL_DIR}#g" \
   -e "s/@EL_LOCALE@/${EL_LOCALE}/g" -e "s#@EL_TZ@#${EL_TZ}#g" \
   -e "s#@EL_CA_BUNDLE@#${EL_CA_BUNDLE}#g" \
+  -e "s/@EL_PY_ODOO_PKG@/${EL_PY_ODOO_PKG}/g" \
+  -e "s/@EL_PY_TOOLS_PKG@/${EL_PY_TOOLS_PKG}/g" \
   "${MODULE_SRC}" | sudo tee "${MODULE_DST}" > /dev/null
 echo "  posé : ${MODULE_DST} (compte ${EL_USER}, dépôt ${EL_DIR})"
 echo "  autorité du cache : ${EL_CA_BUNDLE:-aucune}"
+echo "  Python : ${EL_PY_ODOO_PKG} (Odoo)${EL_PY_TOOLS_PKG:+, ${EL_PY_TOOLS_PKG} (outillage)}"
 echo "  régional : locale « ${EL_LOCALE:-non demandée} »," \
   "fuseau « ${EL_TZ:-non demandé} »"
 

@@ -129,6 +129,8 @@ install_uv:
 		echo "Ajoutez ce repertoire au PATH, ou installez uv globalement."; \
 	fi
 
+# Telecharge puis execute : dans « curl | sh », le statut est celui de sh,
+# qui rend 0 sur une entree vide et masque un telechargement rate.
 .PHONY: install_mise
 install_mise:
 	@if command -v mise >/dev/null 2>&1; then \
@@ -139,7 +141,19 @@ install_mise:
 		echo "mise ne publie pas de binaire s390x : on reste sur pyenv."; \
 	else \
 		echo "Installation de mise depuis https://mise.run"; \
-		curl -fsSL https://mise.run | sh; \
+		installateur="$$(mktemp)" || exit 1; \
+		if ! curl -fsSL -o "$$installateur" https://mise.run; then \
+			rm -f "$$installateur"; \
+			echo "Telechargement de l installateur mise impossible" \
+				"(reseau ou cache) : mise n est pas pose." >&2; \
+			exit 1; \
+		fi; \
+		if ! sh "$$installateur"; then \
+			rm -f "$$installateur"; \
+			echo "L installateur de mise a echoue (voir ci-dessus)." >&2; \
+			exit 1; \
+		fi; \
+		rm -f "$$installateur"; \
 		echo "Ajoutez ~/.local/bin a votre PATH, puis relancez l installation."; \
 	fi
 

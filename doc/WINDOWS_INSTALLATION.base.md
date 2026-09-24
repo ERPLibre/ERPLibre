@@ -439,6 +439,10 @@ If these last steps to set up your development environment were unsuccessful, fo
 
 ## Manual Installation
 
+This system interpreter only needs to reach `make` (Python 3.10 or later).
+`.venv.erplibre` is built on its own version, `conf/python-erplibre-version`,
+through `EL_PYTHON_PROVIDER` (mise or pyenv).
+
 ### Install Python 3.10.14
 You can delete the files that are left over in your home directory regarding the python installation when the steps have been completed succesfully.
 
@@ -446,6 +450,10 @@ You can delete the files that are left over in your home directory regarding the
 Si ces dernières étapes pour configurer votre environnement de développement n'ont pas fonctionné, suivez les étapes "Manuelles" suivantes pour configurer votre environnement.
 
 ## Installation manuelle
+
+Cet interpréteur système ne sert qu'à atteindre `make` (Python 3.10 ou plus).
+`.venv.erplibre` est bâti sur sa propre version, `conf/python-erplibre-version`,
+par `EL_PYTHON_PROVIDER` (mise ou pyenv).
 
 ### Installer Python 3.10.14
 Vous pouvez supprimer les fichiers restants dans votre répertoire personnel concernant l'installation de Python une fois les étapes complétées avec succès.

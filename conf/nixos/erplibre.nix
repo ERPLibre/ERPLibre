@@ -83,17 +83,26 @@
   };
 
   # ── Les outils ───────────────────────────────────────────────────────────
-  # python3.12 : la version qu'attend ERPLibre (.python-odoo-version). envfs
-  # la rend visible en /usr/bin/python3.12, où lib_python_provider.sh la
-  # cherche — ni mise ni pyenv n'ont alors à télécharger quoi que ce soit.
+  # Les DEUX Python du dépôt, substitués depuis ses fichiers de version :
+  # celui d'Odoo (.python-odoo-version) et celui de l'outillage
+  # (conf/python-erplibre-version), qui ne sont plus la même version. envfs
+  # les rend visibles en /usr/bin/python3.X, où lib_python_provider.sh les
+  # cherche — ni mise ni pyenv n'ont alors rien à compiler. Déclarer le seul
+  # Python d'Odoo laissait pyenv bâtir l'autre, et la compilation de CPython
+  # s'arrête ici sur « Modules/_cursesmodule.o ».
+  #
+  # Le second marqueur est VIDE quand les deux versions coïncident : nommer
+  # deux fois le même paquet ferait entrer en collision deux chemins
+  # identiques dans le profil.
   #
   # Les sorties « .dev » portent les en-têtes : sans elles, une roue absente
   # du dépôt amont devrait se compiler et ne trouverait ni libpq-fe.h ni
   # openssl/ssl.h. Elles ne servent qu'à ce cas, et ne coûtent que du disque.
   environment.systemPackages = with pkgs; [
-    python312
-    python312Packages.pip
-    python312Packages.virtualenv
+    @EL_PY_ODOO_PKG@
+    @EL_PY_ODOO_PKG@Packages.pip
+    @EL_PY_ODOO_PKG@Packages.virtualenv
+    @EL_PY_TOOLS_PKG@
     uv
     nodejs_22
     postgresql
@@ -336,7 +345,7 @@
     # venv, donc avec le python du système. Son échec est silencieux
     # (« 2>/dev/null ») : sans elle, la première page ouverte attendrait le
     # chargement du registre sans que rien ne le dise.
-    path = with pkgs; [ bash python312 ];
+    path = with pkgs; [ bash @EL_PY_ODOO_PKG@ ];
     # L'unité est déclarée par le module, donc démarrée par la
     # reconstruction — qui a lieu PENDANT « make install_os », alors que la
     # source d'Odoo n'arrive qu'à « make install_odoo_18 ». Sans condition,
