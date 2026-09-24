@@ -178,17 +178,17 @@ class TestEntreeDuCache(unittest.TestCase):
     def test_entree_dispatchee(self):
         self.assertRegex(
             self.corps,
-            r'elif status == "8":\s*\n\s*self\.prompt_execute_qemu_cache\(\)',
+            r'elif status == "9":\s*\n\s*self\.prompt_execute_qemu_cache\(\)',
             "l'entrée 8 ne mène pas au sous-menu du cache",
         )
 
-    def test_vpn_decale_en_neuf(self):
-        """L'entrée insérée pousse le VPN : sans quoi deux entrées se
-        partagent le numéro 8 et la seconde est inatteignable."""
+    def test_vpn_reste_le_dernier(self):
+        """Toute entrée insérée avant lui le pousse : sans quoi deux entrées
+        partagent un numéro, et la seconde est inatteignable."""
         self.assertRegex(
             self.corps,
-            r'elif status == "9":\s*\n\s*self\.prompt_execute_vpn\(\)',
-            "le VPN n'a pas été décalé en 9",
+            r'elif status == "10":\s*\n\s*self\.prompt_execute_vpn\(\)',
+            "le VPN n'est plus la dernière entrée du menu",
         )
 
     def test_numeros_sans_trou_ni_doublon(self):
@@ -749,9 +749,10 @@ class TestLAssistantDesTests(unittest.TestCase):
         # « click.confirm » et « longtest_menu.click.confirm » sont le MÊME
         # objet : un seul mock les couvre, et c'est ce qui rend le compte
         # d'appels lisible — une question en tout, pas une par essai.
-        with mock.patch(
-            "click.prompt", side_effect=lambda *a, **k: next(it)
-        ), mock.patch("click.confirm", return_value=True) as confirme:
+        with (
+            mock.patch("click.prompt", side_effect=lambda *a, **k: next(it)),
+            mock.patch("click.confirm", return_value=True) as confirme,
+        ):
             Faux()._cache_assistant()
         return lancees, confirme
 
@@ -1118,9 +1119,10 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
 
         faux = menu.QemuCacheMenuMixin.__new__(menu.QemuCacheMenuMixin)
         faux.execute = mock.MagicMock()
-        with mock.patch.object(
-            menu.cache_offline, "reglage", return_value=""
-        ), contextlib.redirect_stdout(io.StringIO()):
+        with (
+            mock.patch.object(menu.cache_offline, "reglage", return_value=""),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             for a_blanc in (True, False):
                 faux._cache_nettoyage_lancer(a_blanc=a_blanc)
         faux.execute.exec_command_live.assert_not_called()

@@ -139,7 +139,6 @@ from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
-VENV_ERPLIBRE = ".venv.erplibre"
 ENABLE_CRASH = False
 CRASH_E = None
 # Support mobile ERPLibre
@@ -480,13 +479,11 @@ class TODO(
                 )
         # TODO detect last version supported
         # cmd_intern = "./script/install/install_erplibre.sh"
-        # TODO maybe update q to only install erplibre from install_locally
-        # TODO problem installing with q, the script depend on odoo
         key_i = 0
         commands_begin = {
             "q": (
                 "q",
-                "q: ERPLibre only with system python without Odoo",
+                "q: ERPLibre only without Odoo, with the required Python",
                 "./script/install/install_erplibre.sh",
             ),
             "w": (
@@ -1057,6 +1054,7 @@ class TODO(
                     "SSH port forwarding (open Odoo in the browser)"
                 )
             },
+            {"prompt_description": t("Configure a SOCKS proxy over SSH")},
             {"section": t("Remote & services")},
             {"prompt_description": t("SSH (remote host)...")},
             {
@@ -1100,16 +1098,18 @@ class TODO(
             elif status == "3":
                 self._deploy_port_forward()
             elif status == "4":
-                self.prompt_execute_deploy_ssh()
+                self._deploy_socks_proxy()
             elif status == "5":
-                self.prompt_execute_qemu()
+                self.prompt_execute_deploy_ssh()
             elif status == "6":
-                self.prompt_execute_proxmox()
+                self.prompt_execute_qemu()
             elif status == "7":
-                self._deploy_ntfy_server()
+                self.prompt_execute_proxmox()
             elif status == "8":
-                self.prompt_execute_qemu_cache()
+                self._deploy_ntfy_server()
             elif status == "9":
+                self.prompt_execute_qemu_cache()
+            elif status == "10":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
@@ -1648,8 +1648,7 @@ class TODO(
             # l'agent au lieu de les remplacer, et le serveur coupe après
             # 5 essais infructueux.
             block += (
-                f"    IdentityFile {identity_file}\n"
-                f"    IdentitiesOnly yes\n"
+                f"    IdentityFile {identity_file}\n    IdentitiesOnly yes\n"
             )
         if proxy_jump:
             block += f"    ProxyJump {proxy_jump}\n"
@@ -1810,15 +1809,11 @@ class TODO(
             print(f"{t('Directory already exists: ')}{target_path}")
             return
         print(t("Cloning ERPLibre..."))
-        cmd = (
-            "git clone"
-            " https://github.com/erplibre/erplibre"
-            f" {target_path}"
-        )
+        cmd = f"git clone https://github.com/erplibre/erplibre {target_path}"
         print(f"{t('Will execute:')} {cmd}")
         try:
             self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
+            print(f"{t('ERPLibre cloned successfully to: ')}{target_path}")
         except Exception as e:
             print(f"{t('Error cloning ERPLibre: ')}{e}")
 
@@ -2385,19 +2380,24 @@ class TODO(
             )
         print(f"  → {t('Update ~/.ssh/config, or check the server is up.')}")
 
-    def _configure_sshfs(self):
+    def _ask_ssh_target(self):
+        """Demande OÙ se connecter, à la main ou depuis ~/.ssh/config.
+
+        Rend (cible, utilisateur, hôte, nom, depuis_config), ou None si l'on
+        renonce. La CIBLE est ce qu'on passe à ssh : l'alias quand il vient du
+        fichier de configuration, pour que son User et son ProxyJump
+        s'appliquent — un « user@hôte » écrit à la main les perdrait, et une VM
+        imbriquée sans route directe deviendrait injoignable.
+
+        DEPUIS_CONFIG distingue les deux, que le nom seul ne sépare pas :
+        l'appelant n'interroge ~/.ssh/config que pour une adresse qui en vient.
+        """
         import getpass
-        import re
-        from datetime import datetime
 
         print(f"\n{t('SSH address input method')}")
         print(f"[1] {t('Manual entry')}")
         print(f"[2] {t('From ~/.ssh/config')}")
         choice = input(t("Your choice (1/2): ")).strip()
-
-        user = None
-        hostname = None
-        ssh_name = None
 
         if choice == "2":
             ssh_config_path = os.path.expanduser("~/.ssh/config")
@@ -2405,7 +2405,7 @@ class TODO(
 
             if not hosts:
                 print(t("No SSH hosts found in ~/.ssh/config"))
-                return
+                return None
 
             print()
             for i, (host, info) in enumerate(hosts, 1):
@@ -2417,36 +2417,98 @@ class TODO(
                 if u:
                     desc += f" [{u}]"
                 print(f"[{i}] {desc}")
-
             sel = input(t("Select SSH host number: ")).strip()
             try:
                 idx = int(sel) - 1
                 if idx < 0 or idx >= len(hosts):
                     print(t("Invalid selection!"))
-                    return
+                    return None
             except ValueError:
                 print(t("Invalid selection!"))
-                return
+                return None
 
             host_name, host_info = hosts[idx]
             hostname = host_info.get("hostname", host_name)
             user = host_info.get("user", getpass.getuser())
-            ssh_name = host_name
-            target = f"{host_name}:/"
+            return host_name, user, hostname, host_name, True
+
+        ssh_host = input(t("SSH host (e.g.: user@192.168.1.100): ")).strip()
+        if not ssh_host:
+            print(t("SSH host is required!"))
+            return None
+        if "@" in ssh_host:
+            user, hostname = ssh_host.split("@", 1)
         else:
-            ssh_host = input(
-                t("SSH host (e.g.: user@192.168.1.100): ")
-            ).strip()
-            if not ssh_host:
-                print(t("SSH host is required!"))
+            hostname = ssh_host
+            user = getpass.getuser()
+        return f"{user}@{hostname}", user, hostname, hostname, False
+
+    def _deploy_socks_proxy(self):
+        """Ouvre un proxy SOCKS qui fait sortir le navigateur PAR la machine
+        distante.
+
+        « -D » n'ouvre pas un tunnel vers UN service, comme « -L », mais un
+        relais SOCKS : le navigateur y envoie n'importe quelle destination, et
+        c'est la machine distante qui l'atteint. De quoi lire une interface
+        qui n'écoute que sur sa boucle locale, ou joindre un hôte de son
+        réseau sans route depuis ici.
+
+        « -N » n'ouvre aucun shell — rien à exécuter là-bas —, et « -C »
+        comprime, ce qui se sent sur une liaison lente.
+        """
+        print(f"\n🧦 {t('SOCKS proxy over SSH')}")
+        choisi = self._ask_ssh_target()
+        if not choisi:
+            return
+        cible = choisi[0]
+
+        raw = input(f"{t('SOCKS port (default:')} 1080): ").strip()
+        port = raw if raw.isdigit() else "1080"
+
+        if not self._port_is_free(port):
+            print(f"  ⚠ {t('Local port already in use:')} {port}")
+            if not self._is_yes(input(t("Try anyway? (y/N): "))):
                 return
-            if "@" in ssh_host:
-                user, hostname = ssh_host.split("@", 1)
-            else:
-                hostname = ssh_host
-                user = getpass.getuser()
-            ssh_name = hostname
-            target = f"{user}@{hostname}:/"
+
+        cmd = f"ssh -D {port} -N -C {shlex.quote(cible)}"
+        print(f"\n  {t('Will execute:')} {cmd}")
+        # Le mode d'emploi passe AVANT : la commande ne rend la main qu'au
+        # Ctrl+C, et c'est pendant qu'elle tourne qu'on règle le navigateur.
+        self._print_socks_help(port)
+        print(f"  {t('Ctrl+C closes the tunnel.')}\n")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        except KeyboardInterrupt:
+            pass
+        print(f"\n  {t('Tunnel closed.')}")
+
+    @staticmethod
+    def _print_socks_help(port):
+        """Le réglage du navigateur, qu'aucune commande ne fait à sa place."""
+        # Les deux libellés qui portent des guillemets sortent de la
+        # f-string : les y laisser en réutiliserait le délimiteur, ce que
+        # Python n'accepte qu'à partir de 3.12.
+        choix = t('then choose "Manual proxy configuration":')
+        dns = t('Tick "Proxy DNS when using SOCKS v5"')
+        print(f"\n  ── {t('Firefox configuration')} ──")
+        print(f"  {t('Settings, then Network Settings and Settings...,')}")
+        print(f"  {choix}\n")
+        print(f"    {t('SOCKS host:')} 127.0.0.1, {t('port')} {port}")
+        print(f"    {t('Tick SOCKS v5')}")
+        print(f"    {dns}")
+        print(f"\n  {t('Domain names are then resolved on the remote side,')}")
+        print(f"  {t('which reaches internal names such as localhost, or')}")
+        print(f"  {t('hosts of the remote network.')}\n")
+
+    def _configure_sshfs(self):
+        import re
+        from datetime import datetime
+
+        choisi = self._ask_ssh_target()
+        if not choisi:
+            return
+        cible, user, hostname, ssh_name, depuis_config = choisi
+        target = f"{cible}:/"
 
         safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", ssh_name)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2462,7 +2524,7 @@ class TODO(
         # et lui qu'on peut interroger en cas d'échec. Une saisie manuelle est
         # rendue telle quelle — si elle contient un « + », c'est un chaînage
         # demandé exprès.
-        alias = ssh_name if choice == "2" else ""
+        alias = ssh_name if depuis_config else ""
         if alias:
             cmd, bypassed = self._sshfs_command(alias, mount_point)
         else:
@@ -2491,7 +2553,7 @@ class TODO(
             return
         print(f"{t('Mounted on: ')}{mount_point}")
         print("mount | grep sshfs")
-        print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
+        print(f"{t('To unmount: ')}fusermount -u {mount_point}")
         print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
@@ -3204,9 +3266,7 @@ class TODO(
 
     def _deploy_git_server(self, production_ready=False, action="all"):
         print(t("Starting git server deployment..."))
-        cmd = (
-            "python3 ./script/git/git_local_server.py -v" f" --action {action}"
-        )
+        cmd = f"python3 ./script/git/git_local_server.py -v --action {action}"
         if production_ready:
             cmd += " --production-ready"
         self.execute.exec_command_live(
@@ -3275,8 +3335,7 @@ class TODO(
             },
             {
                 "prompt_description": t(
-                    "Todo Generate Code - Code by the OCA rules at high"
-                    " effort"
+                    "Todo Generate Code - Code by the OCA rules at high effort"
                 )
             },
             {"prompt_description": t("Show installed custom commands")},
@@ -3343,7 +3402,7 @@ class TODO(
             name = f[:-3]  # remove .md
             print(f"  /{name:<30} {date_str}")
         print("-" * 50)
-        print(f"{t('Total:')}" f" {len(files)}")
+        print(f"{t('Total:')} {len(files)}")
 
     def _claude_context_root(self):
         """La racine du dépôt, deux niveaux au-dessus de ce fichier."""
@@ -3462,8 +3521,7 @@ class TODO(
 
         chemin_hooks = self._git_hooks_path(racine)
         print(
-            f"{t('Git hooks'):<22}"
-            f" {chemin_hooks or t('hook not installed')}"
+            f"{t('Git hooks'):<22} {chemin_hooks or t('hook not installed')}"
         )
         if chemin_hooks:
             absolu = os.path.join(racine, chemin_hooks)
@@ -5358,8 +5416,7 @@ class TODO(
         # Step 2: Install modules
         print(f"\n--- {t('Installing modules')}: {modules_to_install} ---")
         cmd_install = (
-            f"./script/addons/install_addons.sh"
-            f" {db_name} {modules_to_install}"
+            f"./script/addons/install_addons.sh {db_name} {modules_to_install}"
         )
         self.execute.exec_command_live(
             cmd_install,
@@ -5487,9 +5544,7 @@ class TODO(
         env_input = ""
         while env_input not in environments and env_input != "0":
             if env_input:
-                print(
-                    f"{t('Error, cannot understand value')}" f" '{env_input}'"
-                )
+                print(f"{t('Error, cannot understand value')} '{env_input}'")
             env_input = input(str_input).strip()
 
         if env_input == "0":

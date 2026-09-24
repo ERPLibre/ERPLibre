@@ -286,6 +286,55 @@ TRANSLATIONS = {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",
     },
+    # Proxy SOCKS sur SSH (menu Déploiement › Local)
+    "Configure a SOCKS proxy over SSH": {
+        "fr": "🧦 Configurer Proxy vers SSH",
+        "en": "🧦 Configure a SOCKS proxy over SSH",
+    },
+    "SOCKS proxy over SSH": {
+        "fr": "Proxy SOCKS par SSH",
+        "en": "SOCKS proxy over SSH",
+    },
+    "SOCKS port (default:": {
+        "fr": "Port SOCKS (défaut :",
+        "en": "SOCKS port (default:",
+    },
+    "Firefox configuration": {
+        "fr": "Configuration dans Firefox",
+        "en": "Firefox configuration",
+    },
+    "Settings, then Network Settings and Settings...,": {
+        "fr": "Paramètres, puis Paramètres réseau et Paramètres…,",
+        "en": "Settings, then Network Settings and Settings...,",
+    },
+    'then choose "Manual proxy configuration":': {
+        "fr": "puis choisir « Configuration manuelle du proxy » :",
+        "en": 'then choose "Manual proxy configuration":',
+    },
+    "SOCKS host:": {
+        "fr": "Hôte SOCKS :",
+        "en": "SOCKS host:",
+    },
+    "Tick SOCKS v5": {
+        "fr": "Cocher SOCKS v5",
+        "en": "Tick SOCKS v5",
+    },
+    'Tick "Proxy DNS when using SOCKS v5"': {
+        "fr": "Cocher « Utiliser un DNS distant lorsque SOCKS v5 est actif »",
+        "en": 'Tick "Proxy DNS when using SOCKS v5"',
+    },
+    "Domain names are then resolved on the remote side,": {
+        "fr": "Les noms de domaine sont alors résolus côté machine distante,",
+        "en": "Domain names are then resolved on the remote side,",
+    },
+    "which reaches internal names such as localhost, or": {
+        "fr": "ce qui atteint des noms internes comme localhost, ou des",
+        "en": "which reaches internal names such as localhost, or",
+    },
+    "hosts of the remote network.": {
+        "fr": "hôtes du réseau de cette machine.",
+        "en": "hosts of the remote network.",
+    },
     "Manual entry": {
         "fr": "Saisie manuelle",
         "en": "Manual entry",
@@ -5231,8 +5280,7 @@ TRANSLATIONS = {
         "fr": "Choix (numéro ou nom, vide = amd64) :",
         "en": "Choice (number or name, blank = amd64):",
     },
-    "s390x is emulated (TCG): boot and install are much "
-    "slower than x86.": {
+    "s390x is emulated (TCG): boot and install are much slower than x86.": {
         "fr": "s390x est émulé (TCG) : le boot et l'installation sont bien "
         "plus lents que x86.",
         "en": "s390x is emulated (TCG): boot and install are much "
@@ -6227,8 +6275,7 @@ TRANSLATIONS = {
     },
     "The VM cannot boot while 3D stays in its definition.": {
         "fr": (
-            "La VM ne démarrera pas tant que la 3D reste dans sa"
-            " définition."
+            "La VM ne démarrera pas tant que la 3D reste dans sa définition."
         ),
         "en": "The VM cannot boot while 3D stays in its definition.",
     },
@@ -7293,8 +7340,7 @@ TRANSLATIONS = {
         "fr": "cache de téléchargement : MAC de l'hôte introuvable",
         "en": "download cache: host MAC not found",
     },
-    "no trust store for this distribution, its downloads "
-    "will fail": {
+    "no trust store for this distribution, its downloads will fail": {
         "fr": (
             "pas de magasin de confiance pour cette distribution, ses "
             "téléchargements échoueront"
@@ -11350,8 +11396,7 @@ TRANSLATIONS = {
         "these before anything else.",
     },
     "Use -v to list them all, --json for the raw data.": {
-        "fr": "Utilisez -v pour tout afficher, --json pour la donnée "
-        "brute.",
+        "fr": "Utilisez -v pour tout afficher, --json pour la donnée brute.",
         "en": "Use -v to list them all, --json for the raw data.",
     },
     "List the fields and models added outside a module — "
@@ -12184,8 +12229,7 @@ TRANSLATIONS = {
             " (backend"
         ),
         "en": (
-            "the system keyring would store the password in plaintext"
-            " (backend"
+            "the system keyring would store the password in plaintext (backend"
         ),
     },
     "mail_err_keyring_plaintext_hint": {
@@ -13329,12 +13373,12 @@ TRANSLATIONS = {
         "en": "Which technology?",
     },
     "VPN - Create a profile from a site preset": {
-        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
-        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+        "fr": "\U0001f3db VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001f3db VPN - Create a profile from a site preset",
     },
     "VPN - Import an AnyConnect profile (.xml)": {
-        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
-        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+        "fr": "\U0001f4e5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001f4e5 VPN - Import an AnyConnect profile (.xml)",
     },
     "An AnyConnect profile usually sits in"
     " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {
@@ -14127,8 +14171,7 @@ TRANSLATIONS = {
     },
     "Sweeping the network reaches machines you did not name.": {
         "fr": (
-            "Balayer le réseau atteint des machines que tu n'as pas"
-            " nommées."
+            "Balayer le réseau atteint des machines que tu n'as pas nommées."
         ),
         "en": "Sweeping the network reaches machines you did not name.",
     },
