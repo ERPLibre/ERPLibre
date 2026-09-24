@@ -222,12 +222,12 @@ format_code_generator_template:
 
 .PHONY: format_script
 format_script:
-	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
-	./script/maintenance/black.sh ./script/
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
+	.venv.erplibre/bin/ruff format ./script/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
-	.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
+	.venv.erplibre/bin/ruff check --select I --fix ./script/
 
 #########
 #  log  #

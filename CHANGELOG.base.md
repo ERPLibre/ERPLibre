@@ -154,6 +154,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 - Verifying a downloaded image no longer needs `--verify`: it runs by default for every distribution that publishes a sum, and `--no-verify` is what skips it — to be kept for offline runs, where a substituted image would otherwise pass unremarked
 - `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
+- `make format` picks the formatter from each file's context: an Odoo module keeps isort and black on `py37`, the series still supported going down that far, while this repository's own tooling goes through ruff, configured once in `.ruff.toml`. ruff follows CPython's versions, where black 24.8.0 stops at `py313`, and its import sorting replaces isort; it is also what the OCA standard uses since it left black
+- The repositories that Google Repo checks out under `script/` are excluded from that formatting, a named path included: reformatting them would write in someone else's history. `target-version` stays at `py310` there, because the git hooks carry `#!/usr/bin/env python3` and a distribution still ships 3.10 — from 3.14 on, ruff would write `except A, B:` without parentheses
 
 <!-- [fr] -->
 
@@ -170,6 +172,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une VM déployée l'amont du cache coupé — formulaire QEMU, Proxmox VE, ou `deploy_qemu.py --offline` — a l'audit de sécurité de npm désactivé (`NPM_CONFIG_AUDIT=false`) : il interroge un service qu'aucun cache ne rejoue, et échouait à chaque installation hors ligne. Une VM en ligne garde son audit
 - Vérifier une image téléchargée ne demande plus `--verify` : c'est le défaut pour toute distribution qui publie une somme, et `--no-verify` est ce qui la saute — à réserver aux essais hors ligne, où une image substituée passerait autrement sans un mot
 - `--bios` est refusé sur une image sans secteur d'amorçage BIOS, et dit pourquoi. Forcé là, il donnait une VM « running » à console muette — la panne même que ce drapeau évite ailleurs
+- `make format` choisit le formateur d'après le contexte de chaque fichier : un module Odoo garde isort et black en `py37`, la série la plus ancienne encore supportée, quand l'outillage de ce dépôt passe par ruff, réglé une fois dans `.ruff.toml`. ruff suit les versions de CPython, là où black 24.8.0 s'arrête à `py313`, et son tri d'imports remplace isort ; c'est aussi ce qu'emploie la norme OCA depuis qu'elle a quitté black
+- Les dépôts que Google Repo rapatrie sous `script/` sont écartés de ce formatage, chemin nommé compris : les reformater écrirait dans l'historique d'autrui. `target-version` y reste à `py310`, parce que les hooks git portent `#!/usr/bin/env python3` et qu'une distribution livre encore 3.10 — à partir de 3.14, ruff écrirait `except A, B:` sans parenthèses
 
 <!-- [en] -->
 ## Fixed

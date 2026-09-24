@@ -77,6 +77,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 - Verifying a downloaded image no longer needs `--verify`: it runs by default for every distribution that publishes a sum, and `--no-verify` is what skips it — to be kept for offline runs, where a substituted image would otherwise pass unremarked
 - `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
+- `make format` picks the formatter from each file's context: an Odoo module keeps isort and black on `py37`, the series still supported going down that far, while this repository's own tooling goes through ruff, configured once in `.ruff.toml`. ruff follows CPython's versions, where black 24.8.0 stops at `py313`, and its import sorting replaces isort; it is also what the OCA standard uses since it left black
+- The repositories that Google Repo checks out under `script/` are excluded from that formatting, a named path included: reformatting them would write in someone else's history. `target-version` stays at `py310` there, because the git hooks carry `#!/usr/bin/env python3` and a distribution still ships 3.10 — from 3.14 on, ruff would write `except A, B:` without parentheses
 
 ## Fixed
 

@@ -16,6 +16,9 @@ selenium
 uvloop
 python-randomword-fr
 isort
+# Formatage et tri des imports de l'outillage : il suit les versions de
+# CPython, là où black 24.8.0 s'arrête à py313. Voir .ruff.toml.
+ruff
 pykeepass
 cryptography
 keyring
