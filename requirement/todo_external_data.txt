@@ -20,7 +20,7 @@ defusedxml==0.7.1
 # toujours vide : les images disparaissent de la copie sans que rien ne
 # puisse les compter ni l'annoncer. Il les rend VISIBLES au moteur, qui
 # les efface ensuite.
-Pillow==12.2.0
+Pillow==12.3.0
 # 1404 mots français, hors réseau, un seul fichier. Le dictionnaire de la
 # règle du texte ; import « randomwordfr », pas le nom du paquet. Déjà
 # dans requirement/erplibre_require-ments.txt, donc .venv.erplibre l'a —
