@@ -42,6 +42,20 @@ el_assez_recent() {
       = "${ATTENDUE}" ]
 }
 
+# Vrai sur une réponse affirmative lue au terminal, en français ou en anglais :
+# o, oui, y, yes, sans égard à la casse. Le défaut est NON : une frappe sur
+# Entrée ne lance pas une installation qui peut détruire un venv. Sans
+# terminal sur l'entrée, rien ne peut consentir, et la réponse est non.
+el_confirmer() {
+  [ -t 0 ] || return 1
+  printf '%s [o/N] ' "$1"
+  read -r reponse || return 1
+  case "$(printf '%s' "${reponse}" | tr '[:upper:]' '[:lower:]')" in
+    o | oui | y | yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 PYTHON_VENV="./${VENV}/bin/python"
 if [ -n "${VENV}" ] && [ -x "${PYTHON_VENV}" ] \
   && el_assez_recent "$(el_mineure "${PYTHON_VENV}")"; then
@@ -64,7 +78,17 @@ if command -v python3 > /dev/null 2>&1 \
   exec ./script/todo/todo.py "$@"
 fi
 
+SYSTEME="$(el_mineure python3)"
 echo "Python ${VOULUE:-du depot} est requis pour lire le code de TODO ;"
-echo "  ce systeme livre $(el_mineure python3 2> /dev/null || echo 'aucun python3')."
-echo "  Installation du venv d'outillage, qui le pose :"
+echo "  ce systeme livre ${SYSTEME:-aucun python3 utilisable}."
+echo "  L'installation du venv d'outillage le pose :"
+echo "  ./script/install/install_erplibre.sh"
+if [ -d "./${VENV}" ]; then
+  echo "  ${VENV} existant sera SUPPRIME puis rebati, avec ce qui y a ete"
+  echo "  pose a la main."
+fi
+if ! el_confirmer "Lancer l'installation ?"; then
+  echo "Installation non lancee : TODO ne demarre pas."
+  exit 1
+fi
 exec ./script/todo/source_todo.sh "$@"

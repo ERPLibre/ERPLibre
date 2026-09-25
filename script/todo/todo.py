@@ -5,6 +5,7 @@
 import ast
 import configparser
 import datetime
+import difflib
 import importlib.util
 import inspect
 import json
@@ -214,9 +215,9 @@ class TODO(
     def _ask_language(self):
         if not lang_is_configured():
             print()
-            print("Choisir la langue / Choose language:")
-            print("[1] Francais")
-            print("[2] English")
+            print("🌍 Choisir la langue / Choose language:")
+            print("[1] 🇫🇷 Français")
+            print("[2] 🇬🇧 English")
             choice = ""
             while choice not in ("1", "2"):
                 choice = input("Select / Choisir : ").strip()
@@ -227,9 +228,9 @@ class TODO(
 
     def _change_language(self):
         print()
-        print(t("Choose language / Choisir la langue") + ":")
-        print(f"[1] {t('French')}")
-        print(f"[2] {t('English')}")
+        print("🌍 " + t("Choose language / Choisir la langue") + ":")
+        print(f"[1] 🇫🇷 {t('French')}")
+        print(f"[2] 🇬🇧 {t('English')}")
         print(f"[0] {t('Back')}")
         choice = ""
         while choice not in ("0", "1", "2"):
@@ -252,9 +253,8 @@ class TODO(
 [1] {t("Execute")}
 [2] {t("Install")}
 [3] {t("Assistant")}
-[4] {t("Fork - Open TODO in a new tab")}
-[5] {t("Navigation telemetry (TUI)")}
-[6] {t("Configuration")}
+[4] {t("Navigation telemetry (TUI)")}
+[5] {t("Configuration")}
 [0] 🚪 {t("Quit")}
 """
         while True:
@@ -280,15 +280,8 @@ class TODO(
             elif status == "3":
                 self.prompt_assistant()
             elif status == "4":
-                # cmd = (
-                #     f"gnome-terminal --tab -- bash -c 'source"
-                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
-                # )
-                cmd = "make todo"
-                self.execute.exec_command_live(cmd, source_erplibre=True)
-            elif status == "5":
                 self._todo_telemetry_tui()
-            elif status == "6":
+            elif status == "5":
                 self.prompt_configuration()
             # elif status == "3" or status == "install":
             #     print("install")
@@ -345,9 +338,6 @@ class TODO(
 [13] {t("Deploy - Deploy ERPLibre locally")}
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
-
-── {t("Preferences")} ──
-[16] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -413,10 +403,6 @@ class TODO(
                     return
             elif status == "15":
                 status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "16":
-                status = self._change_language()
                 if status is not False:
                     return
             else:
@@ -868,6 +854,7 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {"prompt_description": t("Fork - Open TODO in a new tab")},
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -884,6 +871,10 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self.execute.exec_command_live(
+                    "make todo", source_erplibre=True
+                )
+            elif status == "6":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:
@@ -3380,29 +3371,172 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def _list_claude_commands(self):
-        commands_dir = os.path.expanduser("~/.claude/commands")
-        if not os.path.isdir(commands_dir):
-            print(t("No custom commands found in ~/.claude/commands/"))
-            return
-        files = sorted(
-            f for f in os.listdir(commands_dir) if f.endswith(".md")
+    # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
+    # chacune est la copie. La liste et l'écran de contexte en dérivent l'état
+    # de chaque copie ; le menu nomme les siens en littéraux, que les tests
+    # relient à `conf/`.
+    _CLAUDE_COMMAND_TEMPLATES = {
+        "commit": "template_claude_commands_commit.md",
+        "git_prepare_merge": "template_claude_commands_git_prepare_merge.md",
+        "todo_add_command": "template_claude_commands_todo_add_command.md",
+        "todo_generate_code": "template_claude_commands_todo_generate_code.md",
+        "todo_plan_max": "template_claude_commands_todo_plan_max.md",
+    }
+    _CLAUDE_COMMANDS_DIR = "~/.claude/commands"
+
+    # La ligne où le déploiement de /commit substitue le nom et le courriel.
+    _IDENTITE_GIT = re.compile(
+        r'user\.name="(?P<nom>[^"]*)" -c user\.email="(?P<courriel>[^"]*)"'
+    )
+
+    def _claude_template_path(self, gabarit):
+        """Le chemin d'un gabarit de commande dans `conf/`."""
+        return os.path.join(self._claude_context_root(), "conf", gabarit)
+
+    @staticmethod
+    def _lignes_stables(chemin):
+        """Les lignes d'un fichier, hors celles qui portent l'identité git.
+
+        Le déploiement de /commit y substitue le nom et le courriel : les
+        comparer déclarerait périmée toute copie personnalisée.
+        """
+        with open(chemin, encoding="utf-8", errors="replace") as fh:
+            return [x for x in fh if "user.name=" not in x]
+
+    def _claude_command_diff(self, deployed, template):
+        """Le diff unifié de la copie déployée vers le gabarit.
+
+        Rend une liste de lignes, vide quand les deux concordent hors
+        identité git. Les lignes « + » sont ce qu'un redéploiement apporte,
+        les lignes « - » ce qu'il retire.
+        """
+        return list(
+            difflib.unified_diff(
+                self._lignes_stables(deployed),
+                self._lignes_stables(template),
+                fromfile=t("installed copy"),
+                tofile=t("template"),
+            )
         )
-        if not files:
-            print(t("No custom commands found in ~/.claude/commands/"))
-            return
-        print(t("Claude Code custom commands:"))
-        print("-" * 50)
-        for f in files:
-            filepath = os.path.join(commands_dir, f)
-            mtime = os.path.getmtime(filepath)
-            date_str = datetime.datetime.fromtimestamp(mtime).strftime(
+
+    @staticmethod
+    def _compte_diff(diff):
+        """(ajoutées, retirées) d'un diff unifié, en-têtes exclus."""
+        plus = sum(
+            1 for x in diff if x.startswith("+") and not x.startswith("+++")
+        )
+        moins = sum(
+            1 for x in diff if x.startswith("-") and not x.startswith("---")
+        )
+        return plus, moins
+
+    def _redeploy_claude_command(self, command_name, template_filename):
+        """Réécrit une copie déployée depuis son gabarit, SANS question.
+
+        L'identité git que la copie portait est reportée dans la nouvelle :
+        une mise à jour ne redemande ni le nom ni le courriel. Rend True si
+        le fichier est écrit.
+        """
+        dest_file = os.path.join(
+            os.path.expanduser(self._CLAUDE_COMMANDS_DIR),
+            f"{command_name}.md",
+        )
+        try:
+            with open(
+                self._claude_template_path(template_filename),
+                encoding="utf-8",
+            ) as fh:
+                content = fh.read()
+            with open(dest_file, encoding="utf-8", errors="replace") as fh:
+                identite = self._IDENTITE_GIT.search(fh.read())
+            if identite:
+                content = content.replace(
+                    "Your Name", identite.group("nom")
+                ).replace("your@email.com", identite.group("courriel"))
+            with open(dest_file, "w", encoding="utf-8") as fh:
+                fh.write(content)
+        except OSError as e:
+            print(f"{t('Error creating file: ')}{e}")
+            return False
+        print(f"{t('File created successfully: ')}{dest_file}")
+        return True
+
+    def _list_claude_commands(self):
+        """Les commandes `/…` : installées ou non, à jour ou à redéployer.
+
+        Chaque gabarit d'ERPLibre est comparé à sa copie de
+        ~/.claude/commands ; une commande installée qui n'en vient pas est
+        listée à part. Propose ensuite le diff des copies périmées, puis leur
+        redéploiement, chaque fois sur un oui explicite.
+        """
+        commands_dir = os.path.expanduser(self._CLAUDE_COMMANDS_DIR)
+        installees = set()
+        if os.path.isdir(commands_dir):
+            installees = {
+                f[:-3] for f in os.listdir(commands_dir) if f.endswith(".md")
+            }
+
+        def date_de(nom):
+            mtime = os.path.getmtime(os.path.join(commands_dir, f"{nom}.md"))
+            return datetime.datetime.fromtimestamp(mtime).strftime(
                 "%Y-%m-%d %H:%M"
             )
-            name = f[:-3]  # remove .md
-            print(f"  /{name:<30} {date_str}")
-        print("-" * 50)
-        print(f"{t('Total:')} {len(files)}")
+
+        largeur = 70
+        print(t("Claude Code custom commands:"))
+        print("-" * largeur)
+        perimees, absentes = [], []
+        for nom, gabarit in sorted(self._CLAUDE_COMMAND_TEMPLATES.items()):
+            modele = self._claude_template_path(gabarit)
+            if nom not in installees:
+                absentes.append(nom)
+                etat = t("command not installed")
+                print(f"  /{nom:<26} {'-':<16}  {etat}")
+                continue
+            copie = os.path.join(commands_dir, f"{nom}.md")
+            if not os.path.isfile(modele):
+                etat = t("not in the repository")
+            else:
+                diff = self._claude_command_diff(copie, modele)
+                if diff:
+                    perimees.append((nom, diff))
+                    plus, moins = self._compte_diff(diff)
+                    etat = f"{t('redeploy needed')} (+{plus} -{moins})"
+                else:
+                    etat = t("up to date")
+            print(f"  /{nom:<26} {date_de(nom):<16}  {etat}")
+
+        autres = sorted(installees - set(self._CLAUDE_COMMAND_TEMPLATES))
+        for nom in autres:
+            etat = t("not from ERPLibre")
+            print(f"  /{nom:<26} {date_de(nom):<16}  {etat}")
+        print("-" * largeur)
+        print(
+            t("Total: %s installed, %s to redeploy, %s not installed")
+            % (len(installees), len(perimees), len(absentes))
+        )
+        if absentes:
+            print(t("A command not installed is deployed from this menu."))
+
+        if not perimees:
+            return
+        print()
+        if self._is_yes(input(t("Show the differences? [o/N] "))):
+            for nom, diff in perimees:
+                print(f"\n/{nom}")
+                for ligne in diff:
+                    print(ligne.rstrip("\n"))
+        print()
+        question = t("Redeploy the %s outdated command(s)? [o/N] ") % len(
+            perimees
+        )
+        if not self._is_yes(input(question)):
+            print(t("Nothing to do."))
+            return
+        for nom, _ in perimees:
+            self._redeploy_claude_command(
+                nom, self._CLAUDE_COMMAND_TEMPLATES[nom]
+            )
 
     def _claude_context_root(self):
         """La racine du dépôt, deux niveaux au-dessus de ce fichier."""
@@ -3429,13 +3563,8 @@ class TODO(
             return t("not in the repository")
         if not os.path.isfile(deployed):
             return t("missing")
-
-        def stables(chemin):
-            with open(chemin, encoding="utf-8", errors="replace") as fh:
-                return [x for x in fh if "user.name=" not in x]
-
         try:
-            if stables(deployed) == stables(template):
+            if not self._claude_command_diff(deployed, template):
                 return t("up to date")
         except OSError:
             return t("missing")
@@ -3501,17 +3630,7 @@ class TODO(
             print(f"{t('Skills'):<22} .claude/skills/  {t('missing')}")
 
         print(f"{t('Deployed commands'):<22} ~/.claude/commands/")
-        gabarits = {
-            "commit": "template_claude_commands_commit.md",
-            "git_prepare_merge": (
-                "template_claude_commands_git_prepare_merge.md"
-            ),
-            "todo_add_command": "template_claude_commands_todo_add_command.md",
-            "todo_generate_code": (
-                "template_claude_commands_todo_generate_code.md"
-            ),
-            "todo_plan_max": "template_claude_commands_todo_plan_max.md",
-        }
+        gabarits = self._CLAUDE_COMMAND_TEMPLATES
         for nom, gabarit in sorted(gabarits.items()):
             etat = self._claude_command_state(
                 os.path.expanduser(f"~/.claude/commands/{nom}.md"),

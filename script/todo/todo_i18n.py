@@ -100,10 +100,6 @@ TRANSLATIONS = {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
-    "Language - Change language / Changer la langue": {
-        "fr": "🌍 Langue - Changer la langue / Change language",
-        "en": "🌍 Language - Change language / Changer la langue",
-    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "🚀 Déploiement - Déployer ERPLibre localement",
@@ -184,10 +180,6 @@ TRANSLATIONS = {
     "Deployment, network & security": {
         "fr": "🌐 Déploiement, réseau & sécurité",
         "en": "🌐 Deployment, network & security",
-    },
-    "Preferences": {
-        "fr": "🎨 Préférences",
-        "en": "🎨 Preferences",
     },
     "Deployment": {
         "fr": "🚀 Déploiement",
@@ -1192,7 +1184,7 @@ TRANSLATIONS = {
         "en": "Choose language / Choisir la langue",
     },
     "French": {
-        "fr": "Francais",
+        "fr": "Français",
         "en": "French",
     },
     "English": {
@@ -1386,6 +1378,38 @@ TRANSLATIONS = {
     "No custom commands found in ~/.claude/commands/": {
         "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
         "en": "No custom commands found in ~/.claude/commands/",
+    },
+    "command not installed": {
+        "fr": "non installée",
+        "en": "not installed",
+    },
+    "not from ERPLibre": {
+        "fr": "hors ERPLibre",
+        "en": "not from ERPLibre",
+    },
+    "installed copy": {
+        "fr": "copie installée",
+        "en": "installed copy",
+    },
+    "template": {
+        "fr": "gabarit",
+        "en": "template",
+    },
+    "Total: %s installed, %s to redeploy, %s not installed": {
+        "fr": "Total : %s installées, %s à redéployer, %s non installées",
+        "en": "Total: %s installed, %s to redeploy, %s not installed",
+    },
+    "A command not installed is deployed from this menu.": {
+        "fr": "Une commande non installée se déploie depuis ce menu.",
+        "en": "A command not installed is deployed from this menu.",
+    },
+    "Show the differences? [o/N] ": {
+        "fr": "Afficher les différences ? [o/N] ",
+        "en": "Show the differences? [y/N] ",
+    },
+    "Redeploy the %s outdated command(s)? [o/N] ": {
+        "fr": "Redéployer les %s commande(s) périmée(s) ? [o/N] ",
+        "en": "Redeploy the %s outdated command(s)? [y/N] ",
     },
     "Claude Code custom commands:": {
         "fr": "Commandes personnalisées Claude Code :",
@@ -9445,6 +9469,24 @@ TRANSLATIONS = {
         "     preuve : elle va dans le corps. Le sujet nomme la cause.",
         "en": "the subject opens on a quotation. A screen message is\n"
         "     evidence: it belongs in the body. The subject names the cause.",
+    },
+    "the marker is « --- EN --- ». The subject and the body under it\n"
+    "     are in English; « --- FR --- » opens the French translation.": {
+        "fr": "le marqueur est « --- EN --- ». Le sujet et le corps qui le suit\n"
+        "     sont en anglais ; « --- FR --- » ouvre la traduction française.",
+        "en": "the marker is « --- EN --- ». The subject and the body under it\n"
+        "     are in English; « --- FR --- » opens the French translation.",
+    },
+    "the French section must open on the translated subject,\n"
+    "     under the same tag: %s": {
+        "fr": "la section française doit s'ouvrir sur le sujet traduit,\n"
+        "     sous le même tag : %s",
+        "en": "the French section must open on the translated subject,\n"
+        "     under the same tag: %s",
+    },
+    "French subject: %s": {
+        "fr": "sujet français : %s",
+        "en": "French subject: %s",
     },
     "the body is %s lines for one language, %s at most.\n"
     "     The body says why it was necessary, then stops.\n"

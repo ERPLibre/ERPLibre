@@ -8,7 +8,13 @@ d'emploi dans `conf/template_claude_commands_commit.md`. Ce module en vérifie
 la part MÉCANIQUE, sur deux plans :
 
 - le sujet : le tag, la longueur, l'ouverture sur une citation ;
-- le corps : sa longueur par langue, et la donnée identifiante.
+- le corps : sa longueur par langue, et la donnée identifiante ;
+- l'ordre des langues : le sujet et le corps qui le suit sont en anglais,
+  « --- FR --- » ouvre la traduction, et celle-ci commence par le sujet
+  traduit, sous le même tag.
+
+Que le sujet soit VRAIMENT en anglais ne se vérifie pas : seul l'ordre des
+moitiés et la présence du titre traduit le sont.
 
 Le reste — « ce sujet dit-il sur quoi porte le code », « ce corps raconte-t-il
 l'enquête plutôt que le fonctionnement » — est un jugement, et aucun hook ne
@@ -64,6 +70,8 @@ GENERATED = ("Merge ", "Revert ", "fixup!", "squash!", "amend!")
 QUOTES = ("«", '"', "'", "`", "“", "‘")
 
 # Le marqueur nomme la langue de ce qui SUIT : il sépare les deux moitiés.
+# Seul « --- FR --- » est admis, l'anglais venant toujours en premier ; « EN »
+# est reconnu pour être refusé avec un message, et non ignoré.
 MARKER = re.compile(r"^---\s*(FR|EN)\s*---\s*$", re.MULTILINE)
 
 # `git commit --cleanup=scissors` laisse le diff en clair sous cette ligne :
@@ -133,14 +141,26 @@ def _moities(body: str) -> list:
     return [part for part in MARKER.split(body) if part not in ("FR", "EN")]
 
 
+def _tag_of(subject: str):
+    """Le tag qui ouvre le sujet, sans crochets ; None s'il n'y en a pas."""
+    for candidate in TAGS:
+        if subject.startswith(f"[{candidate}]"):
+            return candidate
+    return None
+
+
+def _titre_traduit(moitie: str) -> str:
+    """La première ligne non vide d'une moitié traduite : son titre."""
+    for ligne in moitie.split("\n"):
+        if ligne.strip():
+            return ligne.strip()
+    return ""
+
+
 def _check_subject(subject: str) -> list:
     problems = []
 
-    tag = None
-    for candidate in TAGS:
-        if subject.startswith(f"[{candidate}]"):
-            tag = candidate
-            break
+    tag = _tag_of(subject)
     if tag is None:
         problems.append(
             t("the subject must start with a tag: %s")
@@ -179,8 +199,12 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
     """
     problems = []
 
-    for moitie in _moities(sans_trailers):
+    for rang, moitie in enumerate(_moities(sans_trailers)):
         pleines = [ligne for ligne in moitie.split("\n") if ligne.strip()]
+        # Le titre traduit est le sujet de sa langue : il ne pèse pas sur le
+        # budget du corps, pas plus que le sujet anglais.
+        if rang and pleines and _tag_of(pleines[0].strip()):
+            pleines = pleines[1:]
         if len(pleines) > MAX_BODY:
             problems.append(
                 t(
@@ -243,11 +267,45 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
     return problems
 
 
+def _check_langues(subject: str, sans_trailers: str) -> list:
+    """L'anglais d'abord, puis « --- FR --- » et le sujet traduit.
+
+    Un message sans marqueur n'est pas bilingue et n'est pas jugé ici.
+    """
+    marqueurs = MARKER.findall(sans_trailers)
+    if not marqueurs:
+        return []
+    if "EN" in marqueurs:
+        return [
+            t(
+                "the marker is « --- EN --- ». The subject and the body under it\n"
+                "     are in English; « --- FR --- » opens the French translation."
+            )
+        ]
+    tag = _tag_of(subject)
+    titre = _titre_traduit(_moities(sans_trailers)[-1])
+    if tag is None or not titre.startswith(f"[{tag}]"):
+        return [
+            t(
+                "the French section must open on the translated subject,\n"
+                "     under the same tag: %s"
+            )
+            % ("[%s] …" % (tag or "TAG"))
+        ]
+    return [
+        t("French subject: %s") % probleme
+        for probleme in _check_subject(titre)
+    ]
+
+
 def check(message: str) -> list:
     """Rend la liste des problèmes. Vide si le message passe."""
     subject = subject_of(message)
     if not subject or subject.startswith(GENERATED):
         return []
-    return _check_subject(subject) + _check_body(
-        body_of(message), body_of(message, trailers=True)
+    sans_trailers = body_of(message)
+    return (
+        _check_subject(subject)
+        + _check_langues(subject, sans_trailers)
+        + _check_body(sans_trailers, body_of(message, trailers=True))
     )

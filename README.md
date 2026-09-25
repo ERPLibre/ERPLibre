@@ -127,8 +127,10 @@ make
 `make` and `./install.sh` start TODO through the interpreter that can read it:
 `.venv.erplibre` when it carries the right version, otherwise the system
 `python3` when it is recent enough, otherwise the install itself — a system
-older than `conf/python-erplibre-version` cannot parse the code, so it goes
-straight to the install rather than stopping on a syntax error. When the
+older than `conf/python-erplibre-version` cannot parse the code, so it offers
+the install rather than stopping on a syntax error. The install runs only on a
+yes typed in a terminal (`o`, `oui`, `y` or `yes`); Enter alone, or no
+terminal, means no. When the
 environment is missing but the system Python suffices, TODO offers to run
 `./script/install/install_erplibre.sh` (in a terminal) or prints that command. The install builds the environment
 through `EL_PYTHON_PROVIDER` (mise or pyenv); an existing `.venv.erplibre` on

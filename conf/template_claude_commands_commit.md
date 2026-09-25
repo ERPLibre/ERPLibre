@@ -77,7 +77,7 @@ The first five cover every one of the last 400 commits. Reach for `[REM]`,
 ### Format
 
 ```
-[TAG] scope: short description in imperative mood
+[TAG] scope: short description in imperative mood, in English
 
 Explain WHY the change was made — the diff already shows what. Name the
 failure mode, and what was measured rather than assumed, in words a
@@ -87,10 +87,17 @@ Wrap at 80 characters.
 
 --- FR ---
 
+[TAG] portée : le sujet, traduit en français
+
 The same body, translated.
 
 Assisted-by: {MODEL}
 ```
+
+The subject line is in ENGLISH, and the English body follows it: together
+they are the English section. `--- FR ---` then opens the French section,
+which starts with the subject translated, under the same tag, and goes on
+with the translated body.
 
 ### The subject line
 
@@ -108,9 +115,9 @@ built on them reads well and tells the next reader nothing:
 
 | Instead of | Write |
 |-----------|-------|
-| `[FIX] nettoyage : les enfants s'en vont avec leur rebond` | `[FIX] nettoyage : les entrées ssh qui rebondissent par une VM effacée` |
-| `[FIX] proxmox : « il manque le stockage » était le symptôme, pas la cause` | `[FIX] proxmox : signaler pmxcfs à terre, et non « aucun stockage »` |
-| `[FIX] migration: un module fautif n'emporte plus tout le lot` | `[FIX] migration: isoler l'échec d'un module dans la désinstallation` |
+| `[FIX] cleanup: the children leave with their bounce` | `[FIX] cleanup: ssh entries that bounce through a deleted VM` |
+| `[FIX] proxmox: "storage is missing" was the symptom, not the cause` | `[FIX] proxmox: report pmxcfs down, not "no storage"` |
+| `[FIX] migration: a faulty module no longer takes the whole batch` | `[FIX] migration: isolate a module's failure during uninstall` |
 
 The scope is not the subject. `proxmox` says WHERE; the words after the colon
 must say WHAT. A subject that works with its scope removed is usually the
@@ -130,8 +137,8 @@ one — write **keywords that summarise**. A comma-separated list of the nouns
 that matter says more in the space than half a sentence does:
 
 ```
-[FIX] proxmox : pmxcfs à terre, pvesm muet, diagnostic à la source
-[ADD] migration : copies de site, index doublés, réglages perdus
+[FIX] proxmox: pmxcfs down, pvesm silent, diagnosis at the source
+[ADD] migration: site copies, doubled indexes, lost settings
 ```
 
 That form is a fallback, not a default. Prefer the sentence when it fits.
@@ -139,7 +146,10 @@ That form is a fallback, not a default. Prefer the sentence when it fits.
 **The guard rail.** `script/git/hooks/commit-msg` refuses a subject with no
 tag, one over 72 characters, and one opening on a quotation. It reads the body
 too: over ten lines for one language, an IP address, an e-mail, and a
-`/home/<account>/` path. Install the hook with `git config core.hooksPath script/git/hooks`; `git commit
+`/home/<account>/` path. And the order of the languages: a `--- EN ---`
+marker, or a French section that does not open on the translated subject
+under the same tag. Whether the subject is really in English stays yours to
+check. Install the hook with `git config core.hooksPath script/git/hooks`; `git commit
 --no-verify` passes a legitimate exception. It checks only what is mechanical
 — whether the subject says what the code is about, and whether the body tells
 the story instead of the mechanism, stay judgements, and the tests above are
@@ -187,12 +197,15 @@ goes.
 
 ### Bilingual body
 
-Every AI-assisted commit carries its body twice. Write it first in whichever
-language you were thinking in, then the marker, then the translation.
+Every AI-assisted commit carries its subject and its body twice, English
+first: the subject and the body under it are in English, then `--- FR ---`,
+then the subject translated into French under the same tag, then the body
+translated. The order never varies — `--- EN ---` is refused — so a reader of
+`git log --oneline` always gets English, and a French reader finds the French
+title where the French section starts.
 
-The marker names the language of what FOLLOWS it: `--- FR ---` after an
-English body, `--- EN ---` after a French one. One marker per commit, never
-both.
+The translated subject obeys the same rules as the subject: 72 characters,
+no opening quotation. It does not count against the body's line budget.
 
 Translate, do not re-summarise: a reader of either language must get the same
 reasoning, the same measured figures and the same caveats.
@@ -259,11 +272,13 @@ the subject you just wrote, and no others. When one file carries two subjects,
 git status --porcelain
 git add script/module/thing.py test/test_thing.py
 git -c user.name="Your Name" -c user.email="your@email.com" commit -F - <<'MSG'
-[TAG] scope: description
+[TAG] scope: description in English
 
 Explain WHY here.
 
 --- FR ---
+
+[TAG] portée : la description en français
 
 The same body, translated.
 
