@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 from collections import OrderedDict, defaultdict
 from pathlib import Path
@@ -627,9 +628,14 @@ def call_poetry_lock(config):
     """
     :return: True if success
     """
-    venv_dir = f".venv.{config.set_version_erplibre}"
-    status = os.system(f"./{venv_dir}/bin/poetry lock")
-    return status == 0
+    venv_dir = os.path.abspath(f".venv.{config.set_version_erplibre}")
+    # poetry works in the active venv when there is one: the caller's
+    # VIRTUAL_ENV (often .venv.erplibre) would hand it a Python outside the
+    # pyproject bounds, so the Odoo venv is activated for this call.
+    env = dict(os.environ, VIRTUAL_ENV=venv_dir)
+    env["PATH"] = os.pathsep.join([f"{venv_dir}/bin", env.get("PATH", "")])
+    status = subprocess.run([f"{venv_dir}/bin/poetry", "lock"], env=env)
+    return status.returncode == 0
 
 
 def call_poetry_add_build_dependency():

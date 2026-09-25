@@ -22,6 +22,10 @@ if [[ ${#DEPS[@]} -eq 0 ]]; then
     exit 0
 fi
 
+# poetry travaille dans le venv actif s'il y en a un : sans cette activation,
+# un shell sous .venv.erplibre lui imposerait un Python hors des bornes du
+# pyproject (InvalidCurrentPythonVersionError).
+source "${VENV}/bin/activate"
 "${VENV}/bin/poetry" add -vv "${DEPS[@]}"
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
