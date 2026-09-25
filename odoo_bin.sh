@@ -15,6 +15,17 @@ ODOO_PATH="$(pwd)/odoo$(< .odoo-version)"
 export PYTHONPATH="${ODOO_PATH}:$PYTHONPATH"
 #echo $PYTHONPATH
 
+# « db » est la commande du fork ERPLibre d'Odoo, que reconnaît son option
+# --restore_image. Un Odoo amont n'en a pas (10, 11) ou en a une d'une autre
+# interface (19, 20) : l'appel va alors à erplibre_db, qui prend les mêmes
+# options, dans script/odoo/cli_addons. odoo-bin ne découvre la commande d'un
+# addon que si --addons-path la précède.
+if [[ "${1:-}" == "db" ]] \
+  && ! grep -q "restore_image" "${ODOO_PATH}/odoo/odoo/cli/db.py" 2> /dev/null; then
+  shift
+  set -- "--addons-path=$(pwd)/script/odoo/cli_addons" erplibre_db "$@"
+fi
+
 if [ "$ODOO_MODE_COVERAGE" = "true" ]; then
   coverage run -p ./odoo$(< .odoo-version)/odoo/odoo-bin "$@"
 else
