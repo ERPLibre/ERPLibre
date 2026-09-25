@@ -141,7 +141,9 @@ josepy==1.14.0
 paramiko==3.5.1
 
 # Force version for security update
-pyyaml==6.0
+# Odoo 11 charge encore des données .yml par yaml.load() sans Loader, que
+# PyYAML 6 a rendu obligatoire : la 5.4.1 est la dernière qui l'accepte.
+pyyaml==5.4.1
 lxml==4.9.1
 cryptography==39.0.1
 psutil==5.9.0

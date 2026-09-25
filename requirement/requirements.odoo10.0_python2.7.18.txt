@@ -23,6 +23,18 @@ cachetools==3.1.1
 py3o.template==0.9.13
 regex==2020.10.28
 py-Asterisk==0.5.18
+sqlalchemy==1.4.54
+checksumdir==1.1.7
+pyopenssl==21.0.0
+acme==1.11.0
+cryptography==3.3.2
+dnspython==1.16.0
+josepy==1.6.0
+openupgradelib==2.0.0
+# Le JavaScript que livre web_widget_bokeh_chart est le 0.12.7 : le Python
+# doit lui correspondre, et la 1.x exigerait Pillow >= 4, contre le 3.4.1
+# d'Odoo 10.
+bokeh==0.12.7
 # API v5, celle qu'emploie mail_sendgrid ; la 6 exige Werkzeug >= 0.11.15.
 sendgrid==5.6.0
 # requests 2.20.0, épinglé par Odoo 10, borne chardet sous 3.1 et urllib3
