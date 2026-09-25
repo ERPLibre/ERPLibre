@@ -15375,12 +15375,12 @@ TRANSLATIONS = {
         "en": "🎼 Compose - start, stop, logs, processes",
     },
     "Enter the ERPLibre container": {
-        "fr": "Entrer dans le conteneur ERPLibre",
-        "en": "Enter the ERPLibre container",
+        "fr": "🐚 Entrer dans le conteneur ERPLibre",
+        "en": "🐚 Enter the ERPLibre container",
     },
     "Databases of the ERPLibre container": {
-        "fr": "Bases de données du conteneur ERPLibre",
-        "en": "Databases of the ERPLibre container",
+        "fr": "💾 Bases de données du conteneur ERPLibre",
+        "en": "💾 Databases of the ERPLibre container",
     },
     "Remove unused images, containers and volumes": {
         "fr": "🧹 Effacer images, conteneurs et volumes inutilisés",
@@ -15389,10 +15389,6 @@ TRANSLATIONS = {
     "No container engine answers here.": {
         "fr": "Aucun moteur de conteneurs ne répond ici.",
         "en": "No container engine answers here.",
-    },
-    "See [1] Diagnostic, then [2] or [3] to install.": {
-        "fr": "Voir [1] Diagnostic, puis [2] ou [3] pour installer.",
-        "en": "See [1] Diagnostic, then [2] or [3] to install.",
     },
     "Available engines:": {
         "fr": "Moteurs disponibles :",
@@ -15454,25 +15450,9 @@ TRANSLATIONS = {
         "fr": "Docker pose un démon que root possède.",
         "en": "Docker runs a daemon owned by root.",
     },
-    "group docker - equivalent to root on this host": {
-        "fr": "groupe docker - équivaut à root sur cet hôte",
-        "en": "group docker - equivalent to root on this host",
-    },
-    "rootless - one daemon per account, no group": {
-        "fr": "sans privilège - un démon par compte, sans groupe",
-        "en": "rootless - one daemon per account, no group",
-    },
     "Mode": {
         "fr": "Mode",
         "en": "Mode",
-    },
-    "No Debian or Arch repository ships the": {
-        "fr": "Aucun dépôt Debian ni Arch ne porte l'outil",
-        "en": "No Debian or Arch repository ships the",
-    },
-    "rootless tool: --amont takes the vendor packages.": {
-        "fr": "sans privilège : --amont prend les paquets de l'éditeur.",
-        "en": "rootless tool: --amont takes the vendor packages.",
     },
     "Use vendor packages? (Y/N): ": {
         "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
@@ -15503,20 +15483,20 @@ TRANSLATIONS = {
         "en": "Rebuild without cache? (Y/N): ",
     },
     "Start in the background": {
-        "fr": "Démarrer en arrière-plan",
-        "en": "Start in the background",
+        "fr": "🟢 Démarrer en arrière-plan",
+        "en": "🟢 Start in the background",
     },
     "Stop": {
-        "fr": "Arrêter",
-        "en": "Stop",
+        "fr": "🔴 Arrêter",
+        "en": "🔴 Stop",
     },
     "Follow the logs": {
-        "fr": "Suivre les journaux",
-        "en": "Follow the logs",
+        "fr": "📜 Suivre les journaux",
+        "en": "📜 Follow the logs",
     },
     "Processes": {
-        "fr": "Processus",
-        "en": "Processes",
+        "fr": "📊 Processus",
+        "en": "📊 Processes",
     },
     "These scripts call the docker command by name.": {
         "fr": "Ces scripts appellent la commande docker par son nom.",
@@ -15539,20 +15519,20 @@ TRANSLATIONS = {
         "en": "🔧 ERPLibre container - shell, databases, tests, status",
     },
     "Regenerate odoo.conf (addons paths)": {
-        "fr": "Régénérer odoo.conf (chemins des addons)",
-        "en": "Regenerate odoo.conf (addons paths)",
+        "fr": "📝 Régénérer odoo.conf (chemins des addons)",
+        "en": "📝 Regenerate odoo.conf (addons paths)",
     },
     "Run the tests": {
-        "fr": "Lancer les tests",
-        "en": "Run the tests",
+        "fr": "🧪 Lancer les tests",
+        "en": "🧪 Run the tests",
     },
     "Status of the git repositories": {
-        "fr": "Statut des dépôts git",
-        "en": "Status of the git repositories",
+        "fr": "🌿 Statut des dépôts git",
+        "en": "🌿 Status of the git repositories",
     },
     "Copy a file into the container": {
-        "fr": "Copier un fichier dans le conteneur",
-        "en": "Copy a file into the container",
+        "fr": "📤 Copier un fichier dans le conteneur",
+        "en": "📤 Copy a file into the container",
     },
     "File to copy": {
         "fr": "Fichier à copier",
@@ -15565,6 +15545,150 @@ TRANSLATIONS = {
     "No such file:": {
         "fr": "Fichier introuvable :",
         "en": "No such file:",
+    },
+    "Service - start, stop, enable at boot, journal": {
+        "fr": "🚦 Service - démarrer, arrêter, activer au démarrage, journal",
+        "en": "Service - start, stop, enable at boot, journal",
+    },
+    "without sudo": {
+        "fr": "sans sudo",
+        "en": "without sudo",
+    },
+    "Installed engines:": {
+        "fr": "Moteurs installés :",
+        "en": "Installed engines:",
+    },
+    "No container engine is installed here.": {
+        "fr": "Aucun moteur de conteneurs n'est installé ici.",
+        "en": "No container engine is installed here.",
+    },
+    "See [1] Diagnostic, then [3] or [4] to install.": {
+        "fr": "Voir [1] Diagnostic, puis [3] ou [4] pour installer.",
+        "en": "See [1] Diagnostic, then [3] or [4] to install.",
+    },
+    "account session": {
+        "fr": "session du compte",
+        "en": "account session",
+    },
+    "whole host": {
+        "fr": "tout l'hôte",
+        "en": "whole host",
+    },
+    "Start": {
+        "fr": "🟢 Démarrer",
+        "en": "🟢 Start",
+    },
+    "Restart": {
+        "fr": "🔄 Redémarrer",
+        "en": "🔄 Restart",
+    },
+    "Enable at boot": {
+        "fr": "🔌 Activer au démarrage",
+        "en": "🔌 Enable at boot",
+    },
+    "Disable at boot": {
+        "fr": "🚫 Désactiver au démarrage",
+        "en": "🚫 Disable at boot",
+    },
+    "Status and journal": {
+        "fr": "📋 État et journal",
+        "en": "📋 Status and journal",
+    },
+    "A per-account unit needs linger to start": {
+        "fr": "Une unité par compte exige le linger pour démarrer",
+        "en": "A per-account unit needs linger to start",
+    },
+    "without a login:": {
+        "fr": "sans connexion :",
+        "en": "without a login:",
+    },
+    "Add to the account environment:": {
+        "fr": "À poser dans l'environnement du compte :",
+        "en": "Add to the account environment:",
+    },
+    "Two ways to reach it without typing sudo:": {
+        "fr": "Deux façons de l'atteindre sans taper sudo :",
+        "en": "Two ways to reach it without typing sudo:",
+    },
+    "docker group - ONE shared daemon, still root": {
+        "fr": "groupe docker - UN démon partagé, toujours root",
+        "en": "docker group - ONE shared daemon, still root",
+    },
+    "Being in the group opens its socket, which": {
+        "fr": "Être dans le groupe ouvre sa socket, qui monte",
+        "en": "Being in the group opens its socket, which",
+    },
+    "mounts any host path: it equals being root.": {
+        "fr": "n'importe quel chemin de l'hôte : cela vaut root.",
+        "en": "mounts any host path: it equals being root.",
+    },
+    "rootless - ONE daemon per account, no group": {
+        "fr": "rootless (sans privilège) - UN démon par compte",
+        "en": "rootless - ONE daemon per account, no group",
+    },
+    "It runs inside your session, so nothing of it": {
+        "fr": "Il tourne dans ta session, donc rien de lui n'est",
+        "en": "It runs inside your session, so nothing of it",
+    },
+    "is root. Ports under 1024 stay closed to it.": {
+        "fr": "root. Les ports sous 1024 lui restent fermés.",
+        "en": "is root. Ports under 1024 stay closed to it.",
+    },
+    "in the docker group, but not in this session: log in again": {
+        "fr": "dans le groupe docker, mais pas dans cette session : se reconnecter",
+        "en": "in the docker group, but not in this session: log in again",
+    },
+    "not in the docker group - sudo, or install it again": {
+        "fr": "pas dans le groupe docker - sudo, ou relancer l'installation",
+        "en": "not in the docker group - sudo, or install it again",
+    },
+    "not enough rights on the engine socket": {
+        "fr": "droits insuffisants sur la socket du moteur",
+        "en": "not enough rights on the engine socket",
+    },
+    "the running kernel lost its module tree: reboot to load any module": {
+        "fr": "le noyau en cours a perdu son arbre de modules : redémarrer pour qu'un module puisse se charger",
+        "en": "the running kernel lost its module tree: reboot to load any module",
+    },
+    "the service is stopped - see [2] Service": {
+        "fr": "le service est arrêté - voir [2] Service",
+        "en": "the service is stopped - see [2] Service",
+    },
+    "no answer, and systemd does not know this unit": {
+        "fr": "aucune réponse, et systemd ne connaît pas cette unité",
+        "en": "no answer, and systemd does not know this unit",
+    },
+    "the unit runs but the socket does not answer": {
+        "fr": "l'unité tourne mais la socket ne répond pas",
+        "en": "the unit runs but the socket does not answer",
+    },
+    "the engine did not answer within the delay": {
+        "fr": "le moteur n'a pas répondu dans le délai",
+        "en": "the engine did not answer within the delay",
+    },
+    "Where Docker Inc. packages, rootless mode": {
+        "fr": "Là où Docker Inc. empaquette, le mode sans privilège",
+        "en": "Where Docker Inc. packages, rootless mode",
+    },
+    "needs ITS packages; elsewhere the installer": {
+        "fr": "exige SES paquets ; ailleurs l'installateur prend",
+        "en": "needs ITS packages; elsewhere the installer",
+    },
+    "takes the route its distribution offers.": {
+        "fr": "la voie qu'offre la distribution.",
+        "en": "takes the route its distribution offers.",
+    },
+    "The docker engine does not answer here.": {
+        "fr": "Le moteur docker ne répond pas ici.",
+        "en": "The docker engine does not answer here.",
+    },
+    "See [1] Diagnostic, then [2] Service.": {
+        "fr": "Voir [1] Diagnostic, puis [2] Service.",
+        "en": "See [1] Diagnostic, then [2] Service.",
+    },
+    "The unit refused. Its state, then its journal:": {
+        "fr": "L'unité a refusé. Son état, puis son journal :",
+        "en": "The unit refused. Its state, then its journal:",
     },
 }
 
