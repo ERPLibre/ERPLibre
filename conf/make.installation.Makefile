@@ -141,6 +141,20 @@ switch_odoo_11_update:
 	./script/version/update_env_version.py --erplibre_version odoo11.0_python3.7.17 --switch --switch_update
 	./script/make.sh config_gen_all
 
+.PHONY: install_odoo_10
+install_odoo_10:
+	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --install_dev
+
+.PHONY: switch_odoo_10
+switch_odoo_10:
+	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --switch
+	./script/make.sh config_gen_all
+
+.PHONY: switch_odoo_10_update
+switch_odoo_10_update:
+	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --switch --switch_update
+	./script/make.sh config_gen_all
+
 ####################
 # INSTALL WITH EXTRA (CybroOdoo)
 ####################
@@ -184,6 +198,7 @@ install_odoo_all_version:
 	./script/make.sh install_odoo_13
 	./script/make.sh install_odoo_12
 	./script/make.sh install_odoo_11
+	./script/make.sh install_odoo_10
 
 .PHONY: install_odoo_all_version_dev
 install_odoo_all_version_dev:
