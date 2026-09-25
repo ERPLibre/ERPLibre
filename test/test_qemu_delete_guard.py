@@ -73,18 +73,35 @@ def todo_avec(inventaire=INVENTAIRE, reponses=(), fichiers=()):
     return todo
 
 
-def jouer(todo, reponses):
-    """Joue l'écran d'effacement avec une file de réponses, sans terminal."""
+def jouer(todo, reponses, menage=None):
+    """Joue l'écran d'effacement avec une file de réponses, sans terminal.
+
+    Le ménage des exceptions de cache est REMPLACÉ. Posé sur la station, il
+    lit la liste des dérogations et ajoute une commande par orpheline : les
+    épreuves qui comptent les commandes compteraient alors autre chose selon
+    ce que la machine qui les joue a d'installé. `menage` reçoit, à chaque
+    appel, le nombre de commandes DÉJÀ jouées — ce qui situe le ménage par
+    rapport aux effacements.
+    """
     import builtins
     import io
     from contextlib import redirect_stdout
+
+    vus = menage if menage is not None else []
+
+    def faux_menage(_execute):
+        vus.append(len(todo.execute.vues))
+        return 0
 
     file = list(reponses)
     vrai_input = builtins.input
     builtins.input = lambda *_a, **_k: file.pop(0) if file else ""
     tampon = io.StringIO()
     try:
-        with redirect_stdout(tampon):
+        with (
+            redirect_stdout(tampon),
+            mock.patch("script.todo.qemu_manage.bypass_menage", faux_menage),
+        ):
             todo._qemu_delete_vm()
     finally:
         builtins.input = vrai_input
@@ -225,6 +242,45 @@ class TestUnMenuNeDesarmePas(unittest.TestCase):
         self.assertIn("machine-b", todo.execute.vues[0])
 
 
+class TestLeMenageDuCacheSuitLEffacement(unittest.TestCase):
+    """Une exception de cache survit à la VM qu'elle nommait, et une MAC
+    libérée se réattribue : l'exception soustrairait alors au cache une
+    machine neuve que personne n'a exceptée.
+
+    Le ménage passe donc ICI, seul endroit qui sait que la VM vient de
+    disparaître, et APRÈS les effacements : passé avant, il jugerait
+    orpheline l'exception d'une machine encore debout.
+    """
+
+    def test_the_cleanup_runs_once_after_every_deletion(self):
+        todo = todo_avec()
+        vus = []
+        jouer(todo, ["all", "n", "2"], menage=vus)
+        self.assertEqual(2, len(todo.execute.vues), todo.execute.vues)
+        # Le relevé est le nombre de commandes déjà jouées : « 2 » situe le
+        # ménage après les deux effacements, « 0 » le situerait avant.
+        self.assertEqual([2], vus)
+
+    def test_the_cleanup_still_runs_when_the_guard_refused_everything(self):
+        """Une exception orpheline peut dater d'un effacement précédent :
+        n'avoir rien effacé aujourd'hui ne dit pas qu'il n'y a rien à
+        retirer."""
+        todo = todo_avec("machine-sans-preuve\n")
+        vus = []
+        jouer(todo, ["1", "n", "machine-sans-preuve"], menage=vus)
+        self.assertEqual([], todo.execute.vues)
+        self.assertEqual([0], vus)
+
+    def test_cancelling_cleans_nothing(self):
+        """Rien n'a été décidé : toucher aux exceptions serait un effet que
+        l'écran n'a pas annoncé."""
+        todo = todo_avec()
+        vus = []
+        jouer(todo, ["1", "n", "un-nom-qui-ne-confirme-rien"], menage=vus)
+        self.assertEqual([], todo.execute.vues)
+        self.assertEqual([], vus)
+
+
 class TestLesDisquesRestentLus(unittest.TestCase):
     """Le verbe DÉDUIRAIT les chemins du nom. Une VM renommée garde le nom
     de fichier d'avant, et un fichier partagé avec une voisine ne s'efface
@@ -311,9 +367,10 @@ class TestLesDomainesFantomes(unittest.TestCase):
         builtins.input = lambda *_a, **_k: file.pop(0) if file else ""
         tampon = tampon_io.StringIO()
         try:
-            with patch(
-                "script.todo.qemu_manage.subprocess.run", faux_run
-            ), redirect_stdout(tampon):
+            with (
+                patch("script.todo.qemu_manage.subprocess.run", faux_run),
+                redirect_stdout(tampon),
+            ):
                 todo._cleanup_ghost_domains()
         finally:
             builtins.input = vrai
