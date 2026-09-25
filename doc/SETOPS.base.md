@@ -399,6 +399,33 @@ Every screen opens with the mounted ecosystem, read on the link without
 launching anything, and shows each command before running it. Reading runs
 with `CONFIRMER=false`, writing with `CONFIRMER=true`, on the line itself.
 
+## Sharing a cluster with the engine
+
+Both tools work on the same Proxmox cluster, and each keeps only its own
+objects. TODO's Proxmox menu therefore asks who a guest belongs to before
+acting on it.
+
+**It only asks when the engine is here.** Without Set-OPS on the station, no
+object has another master and nothing is refused. With the engine present but
+its plan unreadable, everything is refused: ownership is not proven.
+
+The severity follows what the mistake costs. Reading — the list, an address, a
+console, a test — never asks. **Resizing a disk** asks for the VM name to be
+retyped. **Deleting** is refused outright and names the ecosystem that
+administers the guest; the engine is the way through. **Freeing orphan disks**
+never offers a volume whose VMID a plan claims: between two materialisations,
+the disk exists while the cluster no longer carries the machine.
+
+**Creating is defended too.** The VMID TODO proposes skips the ones a plan
+declares, and nothing is created while the plan cannot be read.
+
+`VMID collisions between the cluster and a Set-OPS plan` reports the costly
+finding: a VMID the plan declares that a foreign VM already holds. A fleet
+does not rename around it — the index changes and everything is regenerated:
+back up, raze, change the index, deploy, restore. Budget about two hours,
+which is why the screen exists and why it is worth running before a
+deployment.
+
 <!-- [fr] -->
 Le clone mis de côté garde ce qui vit DANS le dossier du moteur : le lien
 `instance` et `underlay.yml`. L'écran d'état nomme alors les gestes qui
@@ -594,4 +621,32 @@ application — est imprimée par le moteur lui-même.
 Chaque écran s'ouvre sur l'écosystème monté, lu sur le lien sans rien lancer,
 et montre chaque commande avant de la jouer. Ce qui lit part avec
 `CONFIRMER=false`, ce qui écrit avec `CONFIRMER=true`, sur la ligne même.
+
+## Partager une grappe avec le moteur
+
+Les deux outils travaillent sur la même grappe Proxmox, et chacun ne garde que
+ses objets. Le menu Proxmox de todo demande donc à qui appartient un invité
+avant d'agir dessus.
+
+**Il ne le demande que si le moteur est là.** Sans Set-OPS sur le poste, aucun
+objet n'a d'autre maître et rien n'est refusé. Avec le moteur présent mais son
+plan illisible, tout est refusé : l'appartenance ne se prouve pas.
+
+Le palier suit ce que l'erreur coûte. Lire — la liste, une adresse, une
+console, un essai — ne demande jamais rien. **Redimensionner un disque** fait
+retaper le nom de la VM. **Effacer** est refusé net et nomme l'écosystème qui
+administre l'invité ; c'est par le moteur qu'il faut passer. **Libérer les
+disques orphelins** ne propose jamais un volume dont un plan réclame le VMID :
+entre deux matérialisations, le disque existe alors que la grappe ne porte
+plus la machine.
+
+**Créer est défendu aussi.** Le VMID que todo propose saute ceux qu'un plan
+déclare, et rien n'est créé tant que le plan ne se lit pas.
+
+`Collisions de VMID entre la grappe et un plan Set-OPS` rapporte le constat
+qui coûte : un VMID que le plan déclare et qu'une VM étrangère occupe déjà.
+Une flotte ne se renomme pas pour le contourner — on change l'index et on
+régénère : sauvegarder, raser, changer l'index, déployer, restaurer. Compter
+environ deux heures, ce qui est la raison d'être de cet écran et de son
+passage avant un déploiement.
 

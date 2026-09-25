@@ -809,6 +809,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         # dépasse la chaîne d'elif, donc le repli lit la clé. C'est ce qui
         # permet d'ajouter une entrée sans décaler les dix-huit autres.
         "Verify a VM's egress posture": "_pve_verify_egress",
+        "VMID collisions between the cluster": "_pve_collisions",
     }
 
 

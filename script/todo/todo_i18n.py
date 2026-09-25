@@ -17193,6 +17193,119 @@ TRANSLATIONS = {
         "fr": "git ne sait pas lire le moteur",
         "en": "git cannot read the engine",
     },
+    "the Set-OPS plan could not be read": {
+        "fr": "le plan Set-OPS n'a pas pu être lu",
+        "en": "the Set-OPS plan could not be read",
+    },
+    "a VMID chosen blind may be one the fleet claims.": {
+        "fr": "un VMID choisi à l'aveugle peut être celui que la flotte"
+        " réclame.",
+        "en": "a VMID chosen blind may be one the fleet claims.",
+    },
+    "Nothing is created.": {
+        "fr": "Rien n'est créé.",
+        "en": "Nothing is created.",
+    },
+    "VMID collisions between the cluster and a Set-OPS plan": {
+        "fr": "🧨 Collisions de VMID entre la grappe et un plan Set-OPS",
+        "en": "🧨 VMID collisions between the cluster and a Set-OPS plan",
+    },
+    "Set-OPS is not set up here; nothing to compare.": {
+        "fr": "Set-OPS n'est pas posé ici ; rien à comparer.",
+        "en": "Set-OPS is not set up here; nothing to compare.",
+    },
+    "the plan": {
+        "fr": "le plan",
+        "en": "the plan",
+    },
+    "the cluster VM list": {
+        "fr": "la liste des VM de la grappe",
+        "en": "the cluster VM list",
+    },
+    "{side} could not be read; no verdict": {
+        "fr": "impossible de lire {side} ; aucun verdict",
+        "en": "{side} could not be read; no verdict",
+    },
+    "no collision: {n} planned VMID(s) checked against the cluster": {
+        "fr": "aucune collision : {n} VMID du plan comparés à la grappe",
+        "en": "no collision: {n} planned VMID(s) checked against the cluster",
+    },
+    "{n} collision(s):": {
+        "fr": "{n} collision(s) :",
+        "en": "{n} collision(s):",
+    },
+    "planned for": {
+        "fr": "prévu pour",
+        "en": "planned for",
+    },
+    "held by": {
+        "fr": "occupé par",
+        "en": "held by",
+    },
+    "unnamed": {
+        "fr": "sans nom",
+        "en": "unnamed",
+    },
+    "no pool": {
+        "fr": "hors pool",
+        "en": "no pool",
+    },
+    "A fleet does not rename around a taken VMID.": {
+        "fr": "Une flotte ne se renomme pas pour contourner un VMID pris.",
+        "en": "A fleet does not rename around a taken VMID.",
+    },
+    "Change the fleet index and regenerate:": {
+        "fr": "Changer l'index de la flotte et régénérer :",
+        "en": "Change the fleet index and regenerate:",
+    },
+    "back up": {
+        "fr": "sauvegarder",
+        "en": "back up",
+    },
+    "raze": {
+        "fr": "raser",
+        "en": "raze",
+    },
+    "change the index": {
+        "fr": "changer l'index",
+        "en": "change the index",
+    },
+    "deploy": {
+        "fr": "déployer",
+        "en": "deploy",
+    },
+    "restore": {
+        "fr": "restaurer",
+        "en": "restore",
+    },
+    "Budget about two hours.": {
+        "fr": "Compter environ deux heures.",
+        "en": "Budget about two hours.",
+    },
+    "ownership could not be read": {
+        "fr": "l'appartenance n'a pas pu être lue",
+        "en": "ownership could not be read",
+    },
+    "administered by Set-OPS ({owner})": {
+        "fr": "administrée par Set-OPS ({owner})",
+        "en": "administered by Set-OPS ({owner})",
+    },
+    "its VMID has the shape Set-OPS derives": {
+        "fr": "son VMID a la forme que Set-OPS dérive",
+        "en": "its VMID has the shape Set-OPS derives",
+    },
+    "Set-OPS is its master; use the engine instead.": {
+        "fr": "Set-OPS en est le maître ; passer par le moteur.",
+        "en": "Set-OPS is its master; use the engine instead.",
+    },
+    "no name to confirm with; refused": {
+        "fr": "aucun nom pour confirmer ; refusé",
+        "en": "no name to confirm with; refused",
+    },
+    "Retype « {name} » to go on anyway: ": {
+        "fr": "Retaper « {name} » pour passer outre : ",
+        "en": "Retype « {name} » to go on anyway: ",
+    },
     "Ecosystems": {
         "fr": "Écosystèmes",
         "en": "Ecosystems",

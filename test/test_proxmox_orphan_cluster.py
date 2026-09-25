@@ -51,6 +51,7 @@ sys.path.append(RACINE)
 sys.argv = ["todo.py"]
 
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.setops import coexistence  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -61,6 +62,13 @@ VOL_LOCALE = "stock-partage-essai:vm-201-disk-0"
 VOL_VOISINE = "stock-partage-essai:vm-305-disk-0"
 VOL_ORPHELIN = "stock-partage-essai:vm-907-disk-0"
 VOL_ORPHELIN_2 = "stock-partage-essai:vm-908-disk-0"
+
+# Un plan Set-OPS qui RÉCLAME le VMID du volume autrement orphelin. Le nom
+# de pool est inventé et n'existe nulle part ailleurs dans le dépôt.
+DEVIS_QUI_RECLAME_907 = coexistence.lit_devis(
+    '{"pools": [{"pool": "OPS-Fictif-Dolomie",'
+    ' "membres": [{"nom": "backup-01", "vmid": 907}]}]}'
+)
 VOLUMES = (
     "Volid                              Format  Type          Size VMID\n"
     f"{VOL_LOCALE}  raw     images  8589934592 201\n"
@@ -166,6 +174,15 @@ def menu(hote):
     todo = TODO.__new__(TODO)
     todo._pve_show = hote
     todo._pve_host = lambda ask=True: {"target": "root@hote-essai-pve"}
+    # La garde de coexistence est DÉSARMÉE ici : posée, elle lancerait le
+    # moteur de ce poste pour lire le plan des écosystèmes, et ces épreuves
+    # rendraient alors un verdict qui dépend de la machine qui les joue.
+    # Ce qu'elle fait s'éprouve à côté, sur un relevé posé.
+    todo._pve_maitrise = lambda: (False, None, None)
+    # Et la lecture du plan seule, que le nettoyage interroge sans passer
+    # par la précédente : sans ce bouchon, ces épreuves lancent le moteur de
+    # la machine qui les joue.
+    todo._pve_devis = lambda: (False, None)
     return todo
 
 
@@ -215,8 +232,9 @@ def executer(commande, faux):
 def par_le_transport(ssh, remote="qm list", delai=30):
     """(code, sortie) du VRAI `run` pour `remote`, contre un faux « ssh »
     écrit ici, qui ne joue pas `remote` : c'est le transport qu'on éprouve."""
-    with faux_path({"ssh": ssh}) as chemin, mock.patch.dict(
-        os.environ, {"PATH": chemin}
+    with (
+        faux_path({"ssh": ssh}) as chemin,
+        mock.patch.dict(os.environ, {"PATH": chemin}),
     ):
         return pve.run({"target": "root@hote-essai-pve"}, remote, delai)
 
@@ -353,6 +371,38 @@ class TestNeLibererQueCeQuiSeProuveOrphelin(unittest.TestCase):
         _r, ecran, questions = jouer(menu(hote)._pve_cleanup)
         self.assertEqual(1, len(questions))
         self.assertIn(VOL_ORPHELIN, ecran)
+        self.assertEqual([VOL_ORPHELIN], hote.liberes)
+
+    def test_a_vmid_a_setops_plan_declares_keeps_its_disks(self):
+        """Entre deux matérialisations — une flotte rasée qu'on redéploie,
+        une VM en migration — le disque existe sans que la grappe porte
+        encore la machine. Libéré, il emporte des données que le moteur
+        croit à lui."""
+        hote = Hote()
+        todo = menu(hote)
+        todo._pve_devis = lambda: (True, DEVIS_QUI_RECLAME_907)
+        _r, ecran, questions = jouer(todo._pve_cleanup)
+        self.assertEqual([], hote.liberes)
+        self.assertNotIn(VOL_ORPHELIN, ecran)
+        self.assertEqual([], questions, "rien n'aurait dû être proposé")
+
+    def test_an_unreadable_setops_plan_frees_nothing(self):
+        """Sans le plan, « orphelin » ne se prouve plus : c'est le même
+        parti que pour une liste de grappe illisible."""
+        hote = Hote()
+        todo = menu(hote)
+        todo._pve_devis = lambda: (True, None)
+        _r, ecran, _q = jouer(todo._pve_cleanup)
+        self.assertEqual([], hote.liberes)
+        self.assertIn(t("the Set-OPS plan could not be read"), ecran)
+
+    def test_without_the_engine_a_true_orphan_is_still_freed(self):
+        """Contrôle positif de la garde neuve : armée pour rien, elle
+        fermerait le nettoyage de tous ceux qui n'utilisent pas Set-OPS."""
+        hote = Hote()
+        todo = menu(hote)
+        todo._pve_devis = lambda: (False, None)
+        jouer(todo._pve_cleanup)
         self.assertEqual([VOL_ORPHELIN], hote.liberes)
 
     def test_a_banner_after_the_cluster_list_still_offers_the_orphan(self):
@@ -774,9 +824,10 @@ class TestChaqueDestructionEstLue(unittest.TestCase):
     def detruire(self, hote, selection, todo=None):
         reponses = iter([selection, "o", "o"])
         tampon = io.StringIO()
-        with mock.patch(
-            "builtins.input", lambda _invite="": next(reponses)
-        ), redirect_stdout(tampon):
+        with (
+            mock.patch("builtins.input", lambda _invite="": next(reponses)),
+            redirect_stdout(tampon),
+        ):
             (todo or menu(hote))._pve_delete()
         self.assertTrue(hote.detruites, "aucune destruction n'est partie")
         return tampon.getvalue().rsplit("<<DESTRUCTION>>", 1)[-1]
@@ -941,11 +992,11 @@ list)
     done
     echo "{ENTETE_PVESM}"
     if [ "$stockage" = "{STOCK_MIXTE}" ]; then
-        echo "{LIGNES_MIXTES['images']}"
+        echo "{LIGNES_MIXTES["images"]}"
         [ "$contenu" = images ] && exit 0
-        echo "{LIGNES_MIXTES['backup']}"
-        echo "{LIGNES_MIXTES['iso']}"
-        echo "{LIGNES_MIXTES['vztmpl']}"
+        echo "{LIGNES_MIXTES["backup"]}"
+        echo "{LIGNES_MIXTES["iso"]}"
+        echo "{LIGNES_MIXTES["vztmpl"]}"
     else
         echo "{DISQUE_BLOC}  raw  images  1024 908"
     fi
@@ -1179,9 +1230,10 @@ class TestIllisibleNEstPasVide(unittest.TestCase):
         la seule lecture de « qm list » est l'état d'APRÈS le geste."""
         reponses = iter(["1", "1", "o"])
         tampon = io.StringIO()
-        with mock.patch(
-            "builtins.input", lambda _invite="": next(reponses)
-        ), redirect_stdout(tampon):
+        with (
+            mock.patch("builtins.input", lambda _invite="": next(reponses)),
+            redirect_stdout(tampon),
+        ):
             menu(hote)._pve_change_state(vms=pve.parse_qm_list(QM_LIST))
         self.assertIn("qm start 201", hote.recues)
         return tampon.getvalue()
@@ -1288,11 +1340,12 @@ class TestAucuneCreationSurUnVmidDevine(unittest.TestCase):
         todo._qemu_import_module = lambda: object()
         vus = []
         todo._pve_deploy_prompts = lambda *_a: vus.append("questions")
-        with mock.patch.object(
-            textual_setup, "ensure", return_value=True
-        ), mock.patch(
-            "script.todo.proxmox_deploy_form.run_proxmox_form",
-            side_effect=lambda ctx: vus.append("écran") or {},
+        with (
+            mock.patch.object(textual_setup, "ensure", return_value=True),
+            mock.patch(
+                "script.todo.proxmox_deploy_form.run_proxmox_form",
+                side_effect=lambda ctx: vus.append("écran") or {},
+            ),
         ):
             _r, ecran, questions = jouer(todo._pve_deploy)
         self.assertEqual([], vus)

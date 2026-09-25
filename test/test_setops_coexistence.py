@@ -26,6 +26,7 @@ sys.path.append(
 )
 
 from script.setops import coexistence as C  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 # La forme exacte que rend « make devis-proxmox-pools JSON=1 » : la recette
 # écho la commande AVANT le document, et la lecture doit le supporter.
@@ -243,6 +244,241 @@ class TestCeQuUnPlanReclame(unittest.TestCase):
         """« Libre » et « lecture impossible » mènent à deux gestes
         opposés : créer, ou refuser."""
         self.assertIsNone(C.vmid_revendique(142, None))
+
+
+class CasDeChoisisseur(unittest.TestCase):
+    """Le choisisseur de VM du menu Proxmox, la grappe et le plan POSÉS.
+
+    Rien n'est lancé : `_pve_maitrise` est remplacé par un relevé, et tout
+    sous-processus ferait échouer l'épreuve. C'est ce qui permet d'éprouver
+    des états qu'on ne peut pas provoquer sur ce poste.
+    """
+
+    LISTE = [
+        {"vmid": DECLARE, "name": "infra-pki-01", "status": "running"},
+        {"vmid": 142, "name": "ma-vm-fictive", "status": "running"},
+    ]
+
+    def setUp(self):
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+        self.todo._pve_vms = lambda: list(self.LISTE)
+        self.armer(C.lit_devis(DEVIS), (invite(DECLARE, "infra-pki-01"),))
+
+    def armer(self, devis, invites, armee=True):
+        self.todo._pve_maitrise = lambda: (armee, devis, invites)
+
+    def choisir(self, saisies, **kw):
+        """Tape `saisies` au choisisseur ; rend (choix, écran)."""
+        import builtins
+        import io as _io
+        from contextlib import redirect_stdout
+
+        file = list(saisies)
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: file.pop(0) if file else ""
+        vu = _io.StringIO()
+        try:
+            with redirect_stdout(vu):
+                choix = self.todo._pve_pick_vm(**kw)
+        finally:
+            builtins.input = vrai
+        return choix, vu.getvalue()
+
+
+class TestLeChoisisseurGarde(CasDeChoisisseur):
+    def test_a_read_only_gesture_touches_a_managed_guest(self):
+        """Ouvrir une console sur une VM du moteur ne casse rien : la
+        gradation existe pour que la garde reste crédible."""
+        choix, _vu = self.choisir(["1"], garde=C.AUCUNE)
+        self.assertEqual(DECLARE, choix["vmid"])
+
+    def test_a_destructive_gesture_is_refused_and_names_the_master(self):
+        choix, vu = self.choisir(["1"], garde=C.REFUS)
+        self.assertIsNone(choix)
+        self.assertIn(POOL, vu)
+
+    def test_a_modifying_gesture_goes_on_once_the_name_is_retyped(self):
+        choix, _vu = self.choisir(["1", "infra-pki-01"], garde=C.RETAPER)
+        self.assertEqual(DECLARE, choix["vmid"])
+
+    def test_a_wrong_retype_stops_the_modifying_gesture(self):
+        choix, _vu = self.choisir(["1", "pas-le-bon-nom"], garde=C.RETAPER)
+        self.assertIsNone(choix)
+
+    def test_a_free_guest_is_never_in_the_way(self):
+        for garde in (C.AUCUNE, C.RETAPER, C.REFUS):
+            with self.subTest(garde=garde):
+                choix, _vu = self.choisir(["2"], garde=garde)
+                self.assertEqual(142, choix["vmid"])
+
+    def test_the_default_is_the_strictest(self):
+        """Un geste qui ne se déclare pas hérite du refus, jamais du
+        silence : c'est ce qui rattrape celui qu'on ajoutera sans y penser.
+        """
+        choix, _vu = self.choisir(["1"])
+        self.assertIsNone(choix)
+
+    def test_only_the_managed_ones_are_dropped_from_a_multiple_pick(self):
+        """Un invité du moteur ne doit pas fermer le geste sur ses voisins,
+        sans quoi l'opérateur retire la garde pour avancer."""
+        choix, _vu = self.choisir(["1 2"], multiple=True, garde=C.REFUS)
+        self.assertEqual([142], [v["vmid"] for v in choix])
+
+    def test_an_unreadable_cluster_refuses_even_a_free_looking_guest(self):
+        """Sans preuve d'appartenance, aucun geste : c'est le même parti que
+        « ne libérer que ce qui se prouve orphelin »."""
+        self.armer(C.lit_devis(DEVIS), None)
+        choix, vu = self.choisir(["2"], garde=C.REFUS)
+        self.assertIsNone(choix)
+        self.assertIn(t("ownership could not be read"), vu)
+
+    def test_an_unreadable_plan_refuses_too(self):
+        self.armer(None, (invite(142, "ma-vm-fictive"),))
+        choix, _vu = self.choisir(["2"], garde=C.REFUS)
+        self.assertIsNone(choix)
+
+    def test_without_the_engine_the_guard_does_not_arm(self):
+        """Sans Set-OPS sur le poste, aucun objet n'a d'autre maître :
+        refuser serait refuser pour personne, et fermerait le menu Proxmox
+        de tous ceux qui n'utilisent pas le moteur."""
+        self.armer(None, None, armee=False)
+        choix, _vu = self.choisir(["1"], garde=C.REFUS)
+        self.assertEqual(DECLARE, choix["vmid"])
+
+
+class TestChaqueGesteDeclareSaSeverite(unittest.TestCase):
+    """Un appelant qui se tait hérite du refus — mais il doit se déclarer.
+
+    Le défaut strict protège ; cette épreuve empêche de s'y reposer. Elle
+    compte les appels, pour qu'un geste NEUF entre dedans sans qu'on l'y
+    inscrive.
+    """
+
+    SOURCE = os.path.join(
+        os.path.dirname(__file__), "..", "script", "todo", "proxmox_menu.py"
+    )
+
+    def appels(self):
+        import re
+
+        with open(self.SOURCE, encoding="utf-8") as fichier:
+            texte = fichier.read()
+        return re.findall(r"self\._pve_pick_vm\(([^)]*)\)", texte)
+
+    def test_the_scan_found_the_call_sites(self):
+        self.assertGreaterEqual(len(self.appels()), 5)
+
+    def test_every_call_site_states_what_it_will_do(self):
+        muets = [a for a in self.appels() if "garde=" not in a]
+        self.assertEqual(
+            [],
+            muets,
+            "ces appels ne disent pas ce qu'ils feront de la VM :"
+            " déclarez « garde= »",
+        )
+
+    def test_every_severity_named_is_one_of_the_closed_vocabulary(self):
+        import re
+
+        nommees = [
+            nom
+            for appel in self.appels()
+            for nom in re.findall(r"garde=coexistence\.(\w+)", appel)
+        ]
+        self.assertTrue(nommees)
+        for nom in nommees:
+            with self.subTest(garde=nom):
+                self.assertIn(getattr(C, nom, None), C.GARDES)
+
+
+class TestLEcranDeCollision(CasDeChoisisseur):
+    """L'écran qui annonce les deux heures : ce qu'il dit, et quand."""
+
+    def ecran(self):
+        import io as _io
+        from contextlib import redirect_stdout
+
+        vu = _io.StringIO()
+        with redirect_stdout(vu):
+            self.todo._pve_collisions()
+        return vu.getvalue()
+
+    def test_a_collision_names_both_sides_and_the_remedy(self):
+        """Nommer le seul VMID ne suffit pas : il faut dire ce que le plan y
+        prévoyait ET ce qui l'occupe, sinon on cherche laquelle déplacer."""
+        self.armer(
+            C.lit_devis(DEVIS),
+            (invite(AUTRE_DECLARE, "vieille-fictive", "Prod.Ancien"),),
+        )
+        vu = self.ecran()
+        self.assertIn(str(AUTRE_DECLARE), vu)
+        self.assertIn("backup-01", vu)
+        self.assertIn("vieille-fictive", vu)
+        self.assertIn(t("Change the fleet index and regenerate:"), vu)
+        self.assertIn(t("Budget about two hours."), vu)
+
+    def test_no_collision_says_how_many_were_checked(self):
+        """« Aucune collision » sans portée se lit comme un contrôle qui
+        n'a rien regardé."""
+        self.armer(
+            C.lit_devis(DEVIS), (invite(DECLARE, "infra-pki-01", POOL),)
+        )
+        vu = self.ecran()
+        self.assertIn("2", vu)
+        self.assertNotIn(t("Budget about two hours."), vu)
+
+    def test_an_unreadable_side_gives_no_verdict_and_names_which(self):
+        """Dire « aucune collision » sur un côté illisible rassurerait à
+        tort, et c'est le verdict le plus cher à se tromper."""
+        self.armer(C.lit_devis(DEVIS), None)
+        vu = self.ecran()
+        self.assertIn(t("the cluster VM list"), vu)
+        self.assertNotIn(t("Budget about two hours."), vu)
+        self.armer(None, (invite(142),))
+        self.assertIn(t("the plan"), self.ecran())
+
+    def test_without_the_engine_the_screen_says_there_is_nothing_to_compare(
+        self,
+    ):
+        self.armer(None, None, armee=False)
+        self.assertIn(
+            t("Set-OPS is not set up here; nothing to compare."), self.ecran()
+        )
+
+
+class TestLeDeploiementDefensif(CasDeChoisisseur):
+    """Créer une VM sur un VMID que le plan réclame coûte des heures."""
+
+    def test_an_unreadable_plan_creates_nothing(self):
+        """Choisir un VMID à l'aveugle est un PARI sur ce que la flotte ne
+        réclamera pas ; perdu, il ne se répare pas en renommant."""
+        import io as _io
+        from contextlib import redirect_stdout
+
+        self.todo._pve_reserves = lambda: (True, None)
+        vu = _io.StringIO()
+        with redirect_stdout(vu):
+            self.todo._pve_dire_plan_illisible()
+        self.assertIn(t("Nothing is created."), vu.getvalue())
+
+    def test_the_reservations_come_from_the_plan(self):
+        self.todo._pve_devis = lambda: (True, C.lit_devis(DEVIS))
+        armee, reserves = self.todo._pve_reserves()
+        self.assertTrue(armee)
+        self.assertEqual({DECLARE, AUTRE_DECLARE}, set(reserves))
+
+    def test_without_the_engine_nothing_is_reserved(self):
+        self.todo._pve_devis = lambda: (False, None)
+        self.assertEqual((False, frozenset()), self.todo._pve_reserves())
+
+    def test_an_unreadable_plan_reserves_the_unknown_and_not_nothing(self):
+        """« Rien de réservé » et « réserve inconnue » mènent à deux gestes
+        opposés : créer, ou refuser."""
+        self.todo._pve_devis = lambda: (True, None)
+        self.assertEqual((True, None), self.todo._pve_reserves())
 
 
 if __name__ == "__main__":

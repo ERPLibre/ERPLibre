@@ -292,3 +292,30 @@ first application — is printed by the engine itself.
 Every screen opens with the mounted ecosystem, read on the link without
 launching anything, and shows each command before running it. Reading runs
 with `CONFIRMER=false`, writing with `CONFIRMER=true`, on the line itself.
+
+## Sharing a cluster with the engine
+
+Both tools work on the same Proxmox cluster, and each keeps only its own
+objects. TODO's Proxmox menu therefore asks who a guest belongs to before
+acting on it.
+
+**It only asks when the engine is here.** Without Set-OPS on the station, no
+object has another master and nothing is refused. With the engine present but
+its plan unreadable, everything is refused: ownership is not proven.
+
+The severity follows what the mistake costs. Reading — the list, an address, a
+console, a test — never asks. **Resizing a disk** asks for the VM name to be
+retyped. **Deleting** is refused outright and names the ecosystem that
+administers the guest; the engine is the way through. **Freeing orphan disks**
+never offers a volume whose VMID a plan claims: between two materialisations,
+the disk exists while the cluster no longer carries the machine.
+
+**Creating is defended too.** The VMID TODO proposes skips the ones a plan
+declares, and nothing is created while the plan cannot be read.
+
+`VMID collisions between the cluster and a Set-OPS plan` reports the costly
+finding: a VMID the plan declares that a foreign VM already holds. A fleet
+does not rename around it — the index changes and everything is regenerated:
+back up, raze, change the index, deploy, restore. Budget about two hours,
+which is why the screen exists and why it is worth running before a
+deployment.
