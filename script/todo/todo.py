@@ -732,9 +732,6 @@ class TODO(
         "prompt_execute_vpn": "VPN",
         "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
-        "generate_config_from_preconfiguration": "Preconfiguration",
-        "execute_odoo_upgrade": "Upgrade",
-        "debug_ide": "Debug",
     }
 
     @classmethod
