@@ -2,6 +2,7 @@
 <manifest>
     <remote name="odoo" fetch="https://github.com/odoo/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
+    <remote name="ERPLibre_origin_MathBenTech" fetch="https://github.com/ERPLibre/" />
     <project
         name="odoo.git"
         path="odoo11.0/odoo"
@@ -212,6 +213,13 @@
         path="odoo11.0/addons/OCA_ddmrp"
         remote="OCA"
         groups="addons,odoo11.0"
+    />
+    <project
+        name="development.git"
+        revision="11.0"
+        path="odoo11.0/addons/MathBenTech_development"
+        remote="ERPLibre_origin_MathBenTech"
+        groups="addons,base,odoo11.0"
     />
     <project
         name="dms.git"
