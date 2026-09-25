@@ -105,6 +105,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Deploy": "prompt_execute_deploy",
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
+        "Docker / Podman": "prompt_execute_container",
         "Language": "_change_language",
     }
 

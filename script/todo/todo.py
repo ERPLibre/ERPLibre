@@ -122,6 +122,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo.assistant_menu import AssistantMenuMixin
+from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -203,6 +204,7 @@ class TODO(
     TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
+    ContainerMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -338,6 +340,7 @@ class TODO(
 [13] {t("Deploy - Deploy ERPLibre locally")}
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
+[16] {t("Docker / Podman - Container engines")}
 [0] {t("Back")}
 """
         while True:
@@ -403,6 +406,10 @@ class TODO(
                     return
             elif status == "15":
                 status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "16":
+                status = self.prompt_execute_container()
                 if status is not False:
                     return
             else:
@@ -697,6 +704,9 @@ class TODO(
         "prompt_execute_vpn": "VPN",
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
+        "prompt_execute_container": "Docker / Podman",
+        "_container_compose": "Compose",
+        "_container_erplibre": "ERPLibre container",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
