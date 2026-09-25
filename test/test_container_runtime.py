@@ -324,10 +324,6 @@ class TestInstallateur(unittest.TestCase):
         self.assertIn("--amont", INSTALLATEUR)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestSelection(unittest.TestCase):
     """Sur un écran qui efface, une faute de frappe ne doit jamais retenir en
     silence le sous-ensemble qu'elle n'a pas abîmé."""
@@ -444,3 +440,7 @@ class TestProjets(unittest.TestCase):
             {"moteur": "docker", "sans_sudo": True}, "p", lanceur=lanceur
         )
         self.assertEqual(["p_data"], ressources["volume"])
+
+
+if __name__ == "__main__":
+    unittest.main()
