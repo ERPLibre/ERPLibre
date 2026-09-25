@@ -237,6 +237,176 @@ class TestInventaire(Banc):
         self.assertEqual([], todo.execute.commandes)
 
 
+class TestNettoyageImages(Banc):
+    FICHE = {"moteur": "docker", "sans_sudo": True}
+    IMAGES = [
+        {
+            "id": "a1",
+            "depot": "d/x",
+            "etiquette": "1",
+            "taille": "2GB",
+            "age": "1 day",
+        },
+        {
+            "id": "a2",
+            "depot": "<none>",
+            "etiquette": "<none>",
+            "taille": "1GB",
+            "age": "2 days",
+        },
+        {
+            "id": "a3",
+            "depot": "d/y",
+            "etiquette": "2",
+            "taille": "3GB",
+            "age": "3 days",
+        },
+    ]
+
+    def _banc(self, code=0):
+        todo = self.todo(self.FICHE, code=code)
+        return todo
+
+    def _jouer(self, todo, selection, reponse):
+        with mock.patch.object(
+            container_menu.container_runtime,
+            "lister_images",
+            return_value=self.IMAGES,
+        ):
+            with self.reponses(entrees=[reponse], prompts=[selection]) as s:
+                todo._container_nettoyer_images()
+        return s.getvalue()
+
+    def test_les_images_choisies_partent_par_leur_nom(self):
+        todo = self._banc()
+        self._jouer(todo, "1 2", "o")
+        self.assertEqual(
+            ["docker rmi d/x:1", "docker rmi a2"], todo.execute.commandes
+        )
+
+    def test_jamais_de_force(self):
+        """Une image qu'un conteneur emploie doit être refusée."""
+        todo = self._banc()
+        self._jouer(todo, "*", "o")
+        for cmd in todo.execute.commandes:
+            with self.subTest(cmd=cmd):
+                self.assertNotIn("-f", cmd.split())
+                self.assertNotIn("--force", cmd)
+
+    def test_une_selection_fautive_n_efface_rien_et_le_dit(self):
+        """« 1 x » ne retient pas « 1 » : la saisie entière tombe, et la
+        question de confirmation n'est même pas posée."""
+        todo = self._banc()
+        rendu = self._jouer(todo, "1 x", "o")
+        self.assertEqual([], todo.execute.commandes)
+        self.assertIn(
+            todo_i18n.t("Invalid selection: nothing removed."), rendu
+        )
+        self.assertNotIn(todo_i18n.t("Will remove:"), rendu)
+
+    def test_un_refus_de_confirmation_n_efface_rien(self):
+        todo = self._banc()
+        self._jouer(todo, "1", "n")
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_un_refus_du_moteur_est_nomme(self):
+        """Sans le compte rendu, seule la dernière sortie du moteur reste à
+        l'écran, et un refus passe pour une réussite."""
+        todo = self._banc(code=1)
+        rendu = self._jouer(todo, "3", "o")
+        refus = [
+            ligne
+            for ligne in rendu.splitlines()
+            if ligne.startswith(todo_i18n.t("Refused:"))
+        ]
+        self.assertEqual(1, len(refus))
+        self.assertIn("d/y:2", refus[0])
+        self.assertIn(f"{todo_i18n.t('Removed:')} 0/1", rendu)
+
+
+class TestNettoyageProjets(Banc):
+    FICHE = {"moteur": "docker", "sans_sudo": True}
+    PROJETS = {
+        "p": {
+            "dossier": "/d",
+            "conteneurs": [
+                {"nom": "p-web-1", "image": "img/web:1", "etat": "running"},
+                {"nom": "p-db-1", "image": "img/db:2", "etat": "running"},
+            ],
+            "images": ["img/web:1", "img/db:2"],
+        },
+    }
+    RESSOURCES = {"volume": ["p_db-data"], "network": ["p_default"]}
+
+    def _jouer(self, todo, selection, reponse):
+        with (
+            mock.patch.object(
+                container_menu.container_runtime,
+                "lister_projets",
+                return_value=self.PROJETS,
+            ),
+            mock.patch.object(
+                container_menu.container_runtime,
+                "ressources_projet",
+                return_value=self.RESSOURCES,
+            ),
+        ):
+            with self.reponses(entrees=[reponse], prompts=[selection]) as s:
+                todo._container_nettoyer_projets()
+        return s.getvalue()
+
+    def test_l_ordre_conteneurs_reseaux_volumes_images(self):
+        """Le moteur refuse d'effacer ce qu'un conteneur tient encore."""
+        todo = self.todo(self.FICHE)
+        self._jouer(todo, "1", "o")
+        self.assertEqual(
+            [
+                "docker rm -f p-web-1",
+                "docker rm -f p-db-1",
+                "docker network rm p_default",
+                "docker volume rm p_db-data",
+                "docker rmi img/web:1",
+                "docker rmi img/db:2",
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_les_volumes_sont_annonces_avant_la_question(self):
+        """Ils portent la base, et ne reviennent pas."""
+        todo = self.todo(self.FICHE)
+        rendu = self._jouer(todo, "1", "n")
+        self.assertIn("p_db-data", rendu)
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_les_images_ne_sont_jamais_forcees(self):
+        """Une image qu'un AUTRE projet emploie doit être refusée."""
+        todo = self.todo(self.FICHE)
+        self._jouer(todo, "1", "o")
+        for cmd in todo.execute.commandes:
+            if " rmi " in cmd:
+                with self.subTest(cmd=cmd):
+                    self.assertNotIn("-f", cmd.split())
+
+    def test_une_selection_hors_liste_n_efface_rien(self):
+        todo = self.todo(self.FICHE)
+        self._jouer(todo, "2", "o")
+        self.assertEqual([], todo.execute.commandes)
+
+
+class TestNettoyageGlobal(Banc):
+    def test_il_dit_ce_qui_reste(self):
+        """« Tout » s'arrête à ce qui tourne : prune ne touche pas un
+        conteneur en marche."""
+        todo = self.todo({"moteur": "docker", "sans_sudo": True})
+        with self.reponses(entrees=["n"]) as sortie:
+            todo._container_nettoyage()
+        self.assertEqual([], todo.execute.commandes)
+        self.assertIn(
+            todo_i18n.t("Running containers, and what they use, are kept."),
+            sortie.getvalue(),
+        )
+
+
 class TestConstructionOdoo(Banc):
     def _banc(self, code=0):
         todo = self.todo(code=code)

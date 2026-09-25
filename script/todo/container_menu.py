@@ -95,6 +95,18 @@ class ContainerMenuMixin:
             {"prompt_description": t("Images")},
             {"prompt_description": t("Containers")},
             {"prompt_description": t("Networks")},
+            {"section": t("Cleanup")},
+            {
+                "prompt_description": t(
+                    "Remove unused images, containers and volumes"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "By workspace - a compose project and what it holds"
+                )
+            },
+            {"prompt_description": t("Images one by one")},
             {"section": t("ERPLibre images")},
             {"prompt_description": t("Build an image for an Odoo version")},
             {
@@ -105,11 +117,6 @@ class ContainerMenuMixin:
             {
                 "prompt_description": t(
                     "ERPLibre container - shell, databases, tests, status"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Remove unused images, containers and volumes"
                 )
             },
         ]
@@ -135,13 +142,17 @@ class ContainerMenuMixin:
             elif status == "7":
                 self._container_reseaux()
             elif status == "8":
-                self._container_build_odoo()
-            elif status == "9":
-                self._container_compose()
-            elif status == "10":
-                self._container_erplibre()
-            elif status == "11":
                 self._container_nettoyage()
+            elif status == "9":
+                self._container_nettoyer_projets()
+            elif status == "10":
+                self._container_nettoyer_images()
+            elif status == "11":
+                self._container_build_odoo()
+            elif status == "12":
+                self._container_compose()
+            elif status == "13":
+                self._container_erplibre()
             else:
                 print(t("Command not found !"))
 
@@ -704,6 +715,10 @@ class ContainerMenuMixin:
             return
         print(f"\n⚠ {t('This REMOVES unused images, containers, networks')}")
         print(f"  {t('and VOLUMES - a volume holds the database.')}")
+        # « Tout » s'arrête à ce qui tourne : prune ne touche ni un conteneur
+        # en marche ni ce qu'il emploie. Pour effacer un projet VIVANT, c'est
+        # l'entrée par espace de travail.
+        print(f"  {t('Running containers, and what they use, are kept.')}")
         cmd = container_runtime.commande(
             fiche, ["system", "prune", "-a", "--volumes"]
         )
@@ -712,3 +727,153 @@ class ContainerMenuMixin:
             print(t("Nothing to do."))
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
+
+    def _container_lire_selection(self, total):
+        """Les rangs saisis, ou None.
+
+        Une saisie vide annule sans rien dire. Une saisie fautive le DIT, et
+        n'efface rien : lire_selection refuse la saisie entière dès qu'une
+        partie en est fausse.
+        """
+        texte = click.prompt(
+            t("Numbers (1 3, 2-5, * for all, empty to cancel)"),
+            default="",
+            show_default=False,
+        )
+        if not texte.strip():
+            print(t("Nothing to do."))
+            return None
+        rangs = container_runtime.lire_selection(texte, total)
+        if rangs is None:
+            print(f"⚠ {t('Invalid selection: nothing removed.')}")
+        return rangs
+
+    def _container_bilan(self, total, echecs, raison):
+        """Ce qui est parti et ce qui a été refusé, avec la raison probable.
+
+        Sans ce compte rendu, seule la dernière sortie du moteur reste à
+        l'écran, et un refus au milieu passe pour une réussite.
+        """
+        print(f"\n{t('Removed:')} {total - len(echecs)}/{total}")
+        if echecs:
+            print(f"{t('Refused:')} {', '.join(echecs)}")
+            print(f"  {raison}")
+
+    def _container_nettoyer_images(self):
+        """Effacer des images choisies à la pièce, par leur rang.
+
+        « rmi » sans --force : une image qu'un conteneur emploie encore est
+        refusée par le moteur, et ce refus est le bon — le conteneur en
+        dépend. Le compte rendu le nomme au lieu de le taire.
+        """
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        images = container_runtime.lister_images(fiche)
+        if not images:
+            print(t("No image."))
+            return
+        print()
+        for rang, image in enumerate(images, 1):
+            nom = container_runtime.reference_image(image)
+            print(f"  [{rang:>2}] {nom}  {image['taille']}  ({image['age']})")
+        rangs = self._container_lire_selection(len(images))
+        if not rangs:
+            return
+        choisies = [images[r] for r in rangs]
+        print(f"\n⚠ {t('Will remove:')}")
+        for image in choisies:
+            print(f"    {container_runtime.reference_image(image)}")
+        if not self._is_yes(input(f"💬 {t('Remove? (Y/N): ')}")):
+            print(t("Nothing to do."))
+            return
+        echecs = []
+        for image in choisies:
+            ref = container_runtime.reference_image(image)
+            cmd = container_runtime.commande(fiche, ["rmi", ref])
+            if self.execute.exec_command_live(
+                shlex.join(cmd), source_erplibre=False
+            ):
+                echecs.append(ref)
+        self._container_bilan(
+            len(choisies), echecs, t("A container still uses a refused image.")
+        )
+
+    def _container_nettoyer_projets(self):
+        """Effacer un espace de travail : un projet compose et tout ce qu'il
+        tient — conteneurs, réseaux, volumes, images.
+
+        Les volumes portent les bases de données et ne reviennent pas : ils
+        sont nommés à part, avant la question, et non noyés dans la liste.
+
+        L'ordre compte : les conteneurs d'abord, sans quoi le moteur refuse
+        d'effacer les réseaux, les volumes et les images qu'ils tiennent
+        encore. Les images viennent en dernier et sans --force : une image
+        qu'un AUTRE projet emploie est refusée, et doit l'être.
+        """
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        projets = container_runtime.lister_projets(fiche)
+        if not projets:
+            print(t("No workspace (compose project) here."))
+            return
+        noms = sorted(projets)
+        print()
+        for rang, nom in enumerate(noms, 1):
+            projet = projets[nom]
+            etats = ", ".join(
+                sorted({c["etat"] for c in projet["conteneurs"]})
+            )
+            print(f"  [{rang:>2}] {nom}  —  {projet['dossier'] or '?'}")
+            print(
+                f"       {len(projet['conteneurs'])} {t('containers')}"
+                f" ({etats})"
+            )
+        rangs = self._container_lire_selection(len(noms))
+        if not rangs:
+            return
+
+        plan = []
+        for rang in rangs:
+            nom = noms[rang]
+            ressources = container_runtime.ressources_projet(fiche, nom)
+            plan.append((nom, projets[nom], ressources))
+        print(f"\n⚠ {t('Will remove:')}")
+        volumes = []
+        for nom, projet, ressources in plan:
+            print(f"  {nom}")
+            for etiquette, valeurs in (
+                ("containers", [c["nom"] for c in projet["conteneurs"]]),
+                ("networks", ressources["network"]),
+                ("volumes", ressources["volume"]),
+                ("images", projet["images"]),
+            ):
+                print(f"    {t(etiquette)} : {', '.join(valeurs) or '-'}")
+            volumes += ressources["volume"]
+        if volumes:
+            print(
+                f"\n⚠ {t('Volumes hold the databases: they do not come back.')}"
+            )
+        if not self._is_yes(input(f"💬 {t('Remove? (Y/N): ')}")):
+            print(t("Nothing to do."))
+            return
+
+        etapes = []
+        for _nom, projet, ressources in plan:
+            etapes += [["rm", "-f", c["nom"]] for c in projet["conteneurs"]]
+            etapes += [["network", "rm", r] for r in ressources["network"]]
+            etapes += [["volume", "rm", v] for v in ressources["volume"]]
+            etapes += [["rmi", i] for i in projet["images"]]
+        echecs = []
+        for args in etapes:
+            cmd = container_runtime.commande(fiche, args)
+            if self.execute.exec_command_live(
+                shlex.join(cmd), source_erplibre=False
+            ):
+                echecs.append(" ".join(args))
+        self._container_bilan(
+            len(etapes),
+            echecs,
+            t("An image another workspace still uses is kept."),
+        )
