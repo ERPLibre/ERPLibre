@@ -92,6 +92,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - La liste des commandes Claude Code de `TODO › Execute › GPT code › Claude configs` compare chaque gabarit d'ERPLibre de `conf/` à sa copie de `~/.claude/commands/` : une commande non installée est affichée, une copie périmée est marquée de son compte de lignes ajoutées et retirées, et une commande venue d'ailleurs est signalée comme telle. Sur un oui, elle affiche le diff, puis redéploie les copies périmées en gardant le nom et le courriel git que portait `/commit`
 - Un message de commit s'ouvre sur un sujet et un corps en anglais ; `--- FR ---` ouvre ensuite la section française, qui commence par le sujet traduit sous le même tag. Le hook `commit-msg` refuse un marqueur `--- EN ---` et une section française sans ce titre, et juge ce titre comme un sujet. `/commit` et `/git_prepare_merge` suivent le même ordre
 - Menus de TODO : la langue se règle seulement depuis Configuration, l'entrée en double dans Execute disparaît, et Fork quitte le menu principal pour Configuration. Le menu principal numérote désormais Télémétrie 4 et Configuration 5. Le choix de la langue montre un drapeau par langue
+- Dépendances d'Odoo 18 rafraîchies. `openai` est épinglé en 2.x, dont la 3.x exige un `idna` qu'Odoo 18 interdit ; `fsspec` est épinglé à côté de `s3fs`, qui l'exige à sa propre version exacte, si bien que les deux se montent ensemble ; `meteostat` revient en 1.x, toute 2.x plafonnant `pytz` sous 2024. PyMuPDF reste écarté sur s390x, désormais déclaré dans les requirements pour qu'une régénération le garde. Les montées majeures de `ujson` 6, `plotly` 7, `python-slugify` 9 et `sqlalchemy` 2.1 ne sont pas encore testées
+- Dependabot ignore les versions majeures de `meteostat`
 
 ## Corrigé
 
@@ -157,6 +159,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les variables de certificat du cache ne désignent un faisceau que s'il existe. Une Fedora récente n'a pas `/etc/pki/tls/certs/ca-bundle.crt`, et viser un chemin absent faisait refuser à pip TOUT téléchargement, y compris ce qui n'a rien à voir avec le cache. Aucun trouvé n'écrit aucune variable, et pip garde son propre jeu de certificats
 - `make version` nomme les deux Python, celui d'Odoo et celui de l'outillage. Un libellé nu laissait croire que le dépôt n'en a qu'un, et le chiffre affiché n'était pas celui du venv dans lequel on travaille
 - `make` ne lance plus un `.venv.erplibre` bâti sur une autre machine, comme un checkout monté par le réseau, qui mourait sur « No module named 'encodings' ». `install.sh` lit la version de l'interpréteur en exécutant du code : `python -V` répond avant le chargement de la bibliothèque standard, et se portait donc garant d'un interpréteur incapable de démarrer. Un tel venv est désormais signalé comme bâti ailleurs, avec la commande qui le rebâtit
+- Dependabot n'ouvre plus de demandes de fusion sur les requirements figés d'Odoo 12 à 17 : ses mises à jour de sécurité lisent `requirement/` comme un répertoire à part, que les exclusions ne couvraient pas
+- `poetry_update.py` s'arrête sur un `pyproject.toml` absent en nommant la commande qui le crée, `make switch_odoo_XX` pour la version active, et propose de la lancer puis de se relancer quand il tourne dans un terminal
+- `poetry_update.py` fait tourner Poetry dans le venv Odoo même depuis un shell sous `.venv.erplibre`, dont le Python le faisait échouer sur « InvalidCurrentPythonVersionError »
 
 ## Retiré
 
@@ -166,6 +171,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Une clé d'API et un jeton Bearer sont caviardés eux aussi avant qu'une commande soit affichée, journalisée ou réimprimée : `OPENAI_API_KEY=` partait en clair, et un jeton d'en-tête échappait par construction, ne portant ni nom d'option ni nom de variable
 - En suivant une redirection, le cache ne transmet plus les identifiants du client (Authorization, Cookie, Proxy-Authorization) à un autre hôte
+- Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
 
 
 ## [1.8.0] - 2026-09-04
