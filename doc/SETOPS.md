@@ -265,3 +265,30 @@ than trusting the venv it just built.
 An out-of-range venv is offered for rebuilding, after the screen names what
 it found and shows what it would erase. Reinstalling over it would leave the
 wrong INTERPRETER, and that is the case that breaks.
+
+## Ecosystems
+
+An ecosystem is a sibling repository of the engine, and the engine works on
+ONE at a time: the `instance` link names it, and every gesture applies to it.
+Three screens drive the engine's own targets.
+
+`Set-OPS - Ecosystems discovered beside the engine` lists what the engine
+finds, with the mounted one marked. The engine returns a refusal when two
+FEDERATED ecosystems claim the same index — same VLANs, same VMIDs on the
+trunk. The list is shown anyway, with the engine's own words: hiding it would
+take away what explains the refusal.
+
+`Set-OPS - Switch the active ecosystem` asks for a NUMBER in the list, never
+for the name. A name typed again is a name typed wrong, and the engine then
+refuses on a missing folder without saying whether the typing or the
+ecosystem is at fault.
+
+`Set-OPS - Create an ecosystem from a template` asks for a name, a template
+chosen among those the engine offers, and an index. The free index is
+PROPOSED, read from the federated ones already taken; the engine validates
+what it receives and refuses a collision. What follows — identity, vault,
+first application — is printed by the engine itself.
+
+Every screen opens with the mounted ecosystem, read on the link without
+launching anything, and shows each command before running it. Reading runs
+with `CONFIRMER=false`, writing with `CONFIRMER=true`, on the line itself.

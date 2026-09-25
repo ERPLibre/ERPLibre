@@ -17193,6 +17193,102 @@ TRANSLATIONS = {
         "fr": "git ne sait pas lire le moteur",
         "en": "git cannot read the engine",
     },
+    "Ecosystems": {
+        "fr": "Écosystèmes",
+        "en": "Ecosystems",
+    },
+    "Set-OPS - Ecosystems discovered beside the engine": {
+        "fr": "🌐 Set-OPS - Écosystèmes découverts à côté du moteur",
+        "en": "🌐 Set-OPS - Ecosystems discovered beside the engine",
+    },
+    "Set-OPS - Switch the active ecosystem": {
+        "fr": "🔀 Set-OPS - Basculer l'écosystème actif",
+        "en": "🔀 Set-OPS - Switch the active ecosystem",
+    },
+    "Set-OPS - Create an ecosystem from a template": {
+        "fr": "➕ Set-OPS - Créer un écosystème depuis un modèle",
+        "en": "➕ Set-OPS - Create an ecosystem from a template",
+    },
+    "Active ecosystem": {
+        "fr": "Écosystème actif",
+        "en": "Active ecosystem",
+    },
+    "none mounted": {
+        "fr": "aucun monté",
+        "en": "none mounted",
+    },
+    "unreadable answer; replay the line above by hand": {
+        "fr": "réponse illisible ; rejouer la ligne ci-dessus à la main",
+        "en": "unreadable answer; replay the line above by hand",
+    },
+    "the engine refused (code {code}); its own words:": {
+        "fr": "le moteur a refusé (code {code}) ; ses propres mots :",
+        "en": "the engine refused (code {code}); its own words:",
+    },
+    "the engine refused (code {code}).": {
+        "fr": "le moteur a refusé (code {code}).",
+        "en": "the engine refused (code {code}).",
+    },
+    "no ecosystem beside the engine yet": {
+        "fr": "aucun écosystème à côté du moteur pour l'instant",
+        "en": "no ecosystem beside the engine yet",
+    },
+    "production": {
+        "fr": "production",
+        "en": "production",
+    },
+    "not production": {
+        "fr": "hors production",
+        "en": "not production",
+    },
+    "federated": {
+        "fr": "fédéré",
+        "en": "federated",
+    },
+    "local": {
+        "fr": "local",
+        "en": "local",
+    },
+    "Which one? (number, empty to cancel): ": {
+        "fr": "Lequel ? (numéro, vide pour annuler) : ",
+        "en": "Which one? (number, empty to cancel): ",
+    },
+    "Done.": {
+        "fr": "Fait.",
+        "en": "Done.",
+    },
+    "the gesture could not run at all": {
+        "fr": "le geste n'a pas pu tourner du tout",
+        "en": "the gesture could not run at all",
+    },
+    "the engine offers no template": {
+        "fr": "le moteur ne propose aucun modèle",
+        "en": "the engine offers no template",
+    },
+    "Name of the new ecosystem: ": {
+        "fr": "Nom du nouvel écosystème : ",
+        "en": "Name of the new ecosystem: ",
+    },
+    "Templates the engine offers:": {
+        "fr": "Modèles que le moteur propose :",
+        "en": "Templates the engine offers:",
+    },
+    "Which template? (number): ": {
+        "fr": "Quel modèle ? (numéro) : ",
+        "en": "Which template? (number): ",
+    },
+    "Federated indexes already taken": {
+        "fr": "Index fédérés déjà pris",
+        "en": "Federated indexes already taken",
+    },
+    "no free index left in range": {
+        "fr": "aucun index libre dans les bornes",
+        "en": "no free index left in range",
+    },
+    "Index? (empty for {free}): ": {
+        "fr": "Index ? (vide pour {free}) : ",
+        "en": "Index? (empty for {free}): ",
+    },
     "Set-OPS - Ansible environment (set it up)": {
         "fr": "⚙️ Set-OPS - Environnement Ansible (le poser)",
         "en": "⚙️ Set-OPS - Ansible environment (set it up)",

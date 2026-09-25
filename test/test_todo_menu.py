@@ -17,9 +17,14 @@ dispatch racontent la même histoire.
 import ast
 import json
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from script.setops import state  # noqa: E402
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -180,6 +185,20 @@ class MenuCoherence:
     RE_ENTRY = re.compile(
         r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
     )
+    # Une entrée dont le libellé vient d'une CONSTANTE, et non d'un littéral.
+    # Sans cette forme, `RE_ENTRY` ne la voyait pas : elle n'était ni
+    # numérotée, ni exigée dans EXPECTED — le contrôle la sautait en silence.
+    RE_ENTRY_CONSTANTE = re.compile(
+        r'"(section|prompt_description)": t\(\s*\n?\s*'
+        r"([A-Za-z_][\w]*\.[A-Z][\w]*)\s*\)"
+    )
+    # Toute occurrence, quelle que soit la forme du libellé : c'est ELLE qui
+    # dit combien d'entrées le menu porte, et donc combien les deux formes
+    # ci-dessus doivent en retrouver.
+    RE_ENTRY_BRUTE = re.compile(r'"(section|prompt_description)":')
+    # Les constantes qu'un menu peut nommer. Une constante absente d'ici fait
+    # ÉCHOUER la lecture plutôt que de disparaître du compte.
+    CONSTANTES = {}
     # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
     # une entrée expliquée devenait invisible pour ce test, qui annonçait alors
     # « 18 affichées, 17 dispatchées » sans qu'aucune entrée ne manque. Un test
@@ -197,6 +216,13 @@ class MenuCoherence:
         r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
         r'\s*"method": "(\w+)"'
     )
+    # La même chose, libellé porté par une constante. Sans elle, l'entrée
+    # passait pour numérotée alors qu'aucun numéro ne la dispatche.
+    RE_SELF_DISPATCH_CONSTANTE = re.compile(
+        r'"prompt_description": t\(\s*\n?\s*'
+        r"([A-Za-z_][\w]*\.[A-Z][\w]*)\s*\)\s*,?\s*\n"
+        r'\s*"method": "(\w+)"'
+    )
     # Le point où les entrées de todo.json entrent dans la liste. C'est LUI
     # qui coupe, et non le premier « get_config » venu : un menu peut lire une
     # préférence avant de bâtir ses choix, sans que le rang de rien ne bouge.
@@ -210,9 +236,12 @@ class MenuCoherence:
         end = source.index(self.END, start)
         self.body = source[start:end]
         self.self_dispatch = dict(self.RE_SELF_DISPATCH.findall(self.body))
+        for nom, methode in self.RE_SELF_DISPATCH_CONSTANTE.findall(self.body):
+            self.assertIn(nom, self.CONSTANTES, nom)
+            self.self_dispatch[self.CONSTANTES[nom]] = methode
         num = 0
         self.shown = []
-        for kind, label in self.RE_ENTRY.findall(self.body):
+        for kind, label in self._entrees():
             if kind == "prompt_description":
                 num += 1
                 self.shown.append((num, label))
@@ -224,6 +253,36 @@ class MenuCoherence:
         self.dispatch = [
             (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
         ]
+
+    def _entrees(self):
+        """(genre, libellé) de chaque entrée du menu, dans l'ordre du source.
+
+        Les deux formes de libellé — un littéral, une constante nommée — sont
+        lues à leur position. Une TROISIÈME forme ferait ÉCHOUER la lecture :
+        un contrôle qui saute ce qu'il ne comprend pas est vert le jour où il
+        devrait être rouge, et c'est ainsi qu'une entrée est restée hors du
+        compte pendant toute une livraison.
+        """
+        vues = []
+        for prise in self.RE_ENTRY.finditer(self.body):
+            vues.append((prise.start(), prise.group(1), prise.group(2)))
+        for prise in self.RE_ENTRY_CONSTANTE.finditer(self.body):
+            nom = prise.group(2)
+            self.assertIn(
+                nom,
+                self.CONSTANTES,
+                f"« {nom} » nomme un libellé que ce contrôle ne sait pas"
+                " résoudre : déclarez-le dans CONSTANTES",
+            )
+            vues.append((prise.start(), prise.group(1), self.CONSTANTES[nom]))
+        attendues = len(self.RE_ENTRY_BRUTE.findall(self.body))
+        self.assertEqual(
+            attendues,
+            len(vues),
+            f"{attendues} entrées dans le menu, {len(vues)} lues : une forme"
+            " de libellé échappe à ce contrôle",
+        )
+        return [(genre, label) for _pos, genre, label in sorted(vues)]
 
     def test_the_menu_was_actually_parsed(self):
         """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
@@ -927,8 +986,13 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
     # Le plancher se FRANCHIT : une seule entrée demande 0.
     MINIMUM = 0
 
+    CONSTANTES = {"state.GESTE_ANSIBLE": state.GESTE_ANSIBLE}
     EXPECTED = {
         "Set-OPS - State of the integration": "_setops_state",
+        "Set-OPS - Ansible environment": "_setops_ansible_env",
+        "Set-OPS - Ecosystems discovered": "_setops_ecosystems",
+        "Set-OPS - Switch the active ecosystem": "_setops_ecosystem_use",
+        "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",
     }
 
 

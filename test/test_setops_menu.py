@@ -13,6 +13,7 @@ d'écosystème, de site et d'entrées greffées sont inventés et n'existent
 nulle part ailleurs dans le dépôt.
 """
 
+import builtins
 import io
 import os
 import re
@@ -28,7 +29,7 @@ sys.path.append(RACINE_DEPOT)
 
 sys.argv = ["todo.py"]
 
-from script.setops import engine, state  # noqa: E402
+from script.setops import engine, runner, state  # noqa: E402
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -189,6 +190,211 @@ class TestLeSousMenuSetops(CasDeMenu):
         rendu, _ = self._menu(["0"])
         self.assertIs(False, rendu)
         self.assertEqual([], self.joues)
+
+
+class CasDEcosysteme(CasDeMenu):
+    """Les écrans d'écosystème, le moteur remplacé à la couture.
+
+    `_setops_lancer` est LE point où le menu parle au moteur : le bouchonner
+    isole la logique de l'écran sans rien lancer, et garde la trace de ce qui
+    serait parti — cible, variables, confirmation.
+    """
+
+    TABLEAU = (
+        "  INSTANCE               INDEX  VLAN        FEDERE  PROD \n"
+        "  OPS-Fictif-Dolomie         7  1071-1079   oui     ?    \n"
+        "* OPS-Fictif-Ankerite       12  —           LOCAL   non  \n"
+        "\n* = instance active (symlink 'instance').\n"
+    )
+    MODELES = (
+        "  socle\n  integral\n\n"
+        "Index fédérés déjà pris : [7] (choisir un index libre).\n"
+    )
+
+    def setUp(self):
+        super().setUp()
+        self.lances = []
+        self.reponses = {}
+        self.todo._setops_moteur = lambda: "/moteur-fictif"
+        self.todo._setops_lancer = self._lancer
+
+    def _lancer(
+        self, moteur, cible, variables=(), confirmer=False, capture=True
+    ):
+        self.lances.append((cible, tuple(variables), confirmer))
+        return self.reponses.get(cible, runner.Verdict(0, ""))
+
+    def _ecran(self, methode, saisies=()):
+        """Joue `methode`, les questions recevant `saisies` dans l'ordre."""
+        file = list(saisies)
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: file.pop(0) if file else ""
+        vu = io.StringIO()
+        try:
+            with redirect_stdout(vu):
+                getattr(self.todo, methode)()
+        finally:
+            builtins.input = vrai
+        return vu.getvalue()
+
+    def cibles(self):
+        return [cible for cible, _v, _c in self.lances]
+
+
+class TestLeBandeau(CasDEcosysteme):
+    """Tous les gestes du moteur portent sur l'écosystème monté : l'écran
+    qui agit doit dire lequel, sans qu'on ait à le demander."""
+
+    ECRANS = (
+        "_setops_ecosystems",
+        "_setops_ecosystem_use",
+        "_setops_ecosystem_create",
+    )
+
+    def test_every_acting_screen_says_which_ecosystem_is_mounted(self):
+        for methode in self.ECRANS:
+            with self.subTest(ecran=methode):
+                self.todo._setops_bandeau = lambda _m: print("BANDEAU-BANC")
+                self.assertIn("BANDEAU-BANC", self._ecran(methode))
+
+    def test_the_banner_names_the_mounted_one(self):
+        with patch.object(
+            state.ecosystems, "monte", lambda _m: "OPS-Fictif-Dolomie"
+        ):
+            vu = self._ecran("_setops_ecosystems")
+        self.assertIn("OPS-Fictif-Dolomie", vu)
+
+    def test_the_banner_says_so_when_nothing_is_mounted(self):
+        with patch.object(state.ecosystems, "monte", lambda _m: ""):
+            vu = self._ecran("_setops_ecosystems")
+        self.assertIn(todo_i18n.t("none mounted"), vu)
+
+
+class TestLaListeDesEcosystemes(CasDEcosysteme):
+    def test_the_rows_are_numbered_and_the_mounted_one_marked(self):
+        self.reponses["instances"] = runner.Verdict(0, self.TABLEAU)
+        vu = self._ecran("_setops_ecosystems")
+        self.assertIn("[1] OPS-Fictif-Dolomie", vu)
+        self.assertIn("* [2] OPS-Fictif-Ankerite", vu)
+
+    def test_no_ecosystem_says_so_rather_than_showing_an_empty_list(self):
+        self.reponses["instances"] = runner.Verdict(
+            0, "Aucune instance decouverte (depots freres).\n"
+        )
+        vu = self._ecran("_setops_ecosystems")
+        self.assertIn(todo_i18n.t("no ecosystem beside the engine yet"), vu)
+
+    def test_an_unreadable_answer_is_said_and_shown_raw(self):
+        """Refuser sans montrer laisserait l'opérateur sans rien : la ligne
+        est déjà affichée, la réponse du moteur doit l'être aussi."""
+        self.reponses["instances"] = runner.Verdict(
+            0, "quelque chose d'autre\n"
+        )
+        vu = self._ecran("_setops_ecosystems")
+        self.assertIn(
+            todo_i18n.t("unreadable answer; replay the line above by hand"), vu
+        )
+        self.assertIn("quelque chose d'autre", vu)
+
+    def test_a_refusal_shows_the_table_and_the_engine_s_words(self):
+        """Le moteur rend 2 sur une collision d'index : cacher la liste
+        priverait de ce qui explique le refus."""
+        self.reponses["instances"] = runner.Verdict(
+            2, self.TABLEAU + "\n⚠  COLLISION d'index entre instances\n"
+        )
+        vu = self._ecran("_setops_ecosystems")
+        self.assertIn("COLLISION", vu)
+        self.assertIn("[1] OPS-Fictif-Dolomie", vu)
+
+
+class TestLaBascule(CasDEcosysteme):
+    def setUp(self):
+        super().setUp()
+        self.reponses["instances"] = runner.Verdict(0, self.TABLEAU)
+
+    def test_the_number_typed_decides_which_name_is_sent(self):
+        """Le nom n'est jamais retapé : retapé de travers, il désigne un
+        dossier absent et le moteur refuse sans qu'on sache pourquoi."""
+        self._ecran("_setops_ecosystem_use", ["2"])
+        self.assertEqual(
+            ("instance-utiliser", (("NOM", "OPS-Fictif-Ankerite"),), True),
+            self.lances[-1],
+        )
+
+    def test_an_empty_answer_switches_nothing(self):
+        self._ecran("_setops_ecosystem_use", [""])
+        self.assertEqual(["instances"], self.cibles())
+
+    def test_a_number_past_the_list_switches_nothing(self):
+        self._ecran("_setops_ecosystem_use", ["9"])
+        self.assertEqual(["instances"], self.cibles())
+
+    def test_the_switch_is_confirmed_and_the_listing_is_not(self):
+        """La confirmation distingue le geste qui ÉCRIT de celui qui lit."""
+        self._ecran("_setops_ecosystem_use", ["1"])
+        confirme = {cible: c for cible, _v, c in self.lances}
+        self.assertEqual(
+            {"instances": False, "instance-utiliser": True}, confirme
+        )
+
+    def test_a_refusal_is_reported_and_not_swallowed(self):
+        self.reponses["instance-utiliser"] = runner.Verdict(2, "Refus: …\n")
+        vu = self._ecran("_setops_ecosystem_use", ["1"])
+        self.assertIn("Refus", vu)
+        self.assertNotIn(todo_i18n.t("Done."), vu)
+
+    def test_a_gesture_that_could_not_run_is_not_a_success(self):
+        self.reponses["instance-utiliser"] = runner.Verdict(None, "")
+        vu = self._ecran("_setops_ecosystem_use", ["1"])
+        self.assertIn(todo_i18n.t("the gesture could not run at all"), vu)
+
+
+class TestLaCreation(CasDEcosysteme):
+    def setUp(self):
+        super().setUp()
+        self.reponses["instance-modeles"] = runner.Verdict(0, self.MODELES)
+
+    def test_the_three_values_reach_the_line(self):
+        self._ecran(
+            "_setops_ecosystem_create", ["OPS-Fictif-Siderite", "2", "5"]
+        )
+        self.assertEqual(
+            (
+                "instance-creer",
+                (
+                    ("NOM", "OPS-Fictif-Siderite"),
+                    ("MODELE", "integral"),
+                    ("INDEX", "5"),
+                ),
+                True,
+            ),
+            self.lances[-1],
+        )
+
+    def test_an_empty_index_takes_the_free_one_proposed(self):
+        """Proposer épargne de chercher un trou ; le moteur valide quand
+        même ce qu'il reçoit."""
+        self._ecran(
+            "_setops_ecosystem_create", ["OPS-Fictif-Siderite", "1", ""]
+        )
+        variables = dict(self.lances[-1][1])
+        self.assertEqual("0", variables["INDEX"])
+
+    def test_an_empty_name_creates_nothing(self):
+        self._ecran("_setops_ecosystem_create", [""])
+        self.assertEqual(["instance-modeles"], self.cibles())
+
+    def test_a_template_number_past_the_list_creates_nothing(self):
+        self._ecran("_setops_ecosystem_create", ["OPS-Fictif-Siderite", "9"])
+        self.assertEqual(["instance-modeles"], self.cibles())
+
+    def test_an_unreadable_template_list_creates_nothing(self):
+        self.reponses["instance-modeles"] = runner.Verdict(0, "autre chose\n")
+        vu = self._ecran("_setops_ecosystem_create", ["x", "1", ""])
+        self.assertEqual(["instance-modeles"], self.cibles())
+        self.assertIn(
+            todo_i18n.t("unreadable answer; replay the line above by hand"), vu
+        )
 
 
 class TestDepuisDeploy(CasDeMenu):

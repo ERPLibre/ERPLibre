@@ -44,7 +44,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
-from script.setops import ansible_env, engine
+from script.setops import ansible_env, ecosystems, engine
 from script.todo.state_screen import A_REGLER, ABSENT, PORTE, Ligne
 from script.todo.todo_i18n import t
 
@@ -698,7 +698,7 @@ def _instance(moteur) -> tuple:
         if os.path.islink(lien):
             cible = os.path.realpath(lien)
             plan = os.path.isfile(os.path.join(cible, "plan", "serveurs.yml"))
-            return False, os.path.basename(cible), plan
+            return False, ecosystems.monte(moteur), plan
         return os.path.isdir(lien), "", False
     except (OSError, ValueError):
         return False, "", False

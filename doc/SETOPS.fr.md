@@ -272,3 +272,30 @@ travers lui plutôt que de croire le venv qu'elle vient de poser.
 Un venv hors plage est proposé à la reprise, après que l'écran a nommé ce
 qu'il a trouvé et montré ce qu'il effacerait. Réinstaller par-dessus
 laisserait le mauvais INTERPRÉTEUR, et c'est ce cas-là qui casse.
+
+## Les écosystèmes
+
+Un écosystème est un dépôt frère du moteur, et le moteur travaille sur UN
+seul à la fois : le lien `instance` le désigne, et tous les gestes portent
+sur lui. Trois écrans pilotent les cibles du moteur.
+
+`Set-OPS - Écosystèmes découverts à côté du moteur` liste ce que le moteur
+trouve, le monté marqué. Le moteur refuse quand deux écosystèmes FÉDÉRÉS
+réclament le même index — mêmes VLAN, mêmes VMID sur le trunk. La liste est
+montrée quand même, avec les mots du moteur : la cacher priverait de ce qui
+explique le refus.
+
+`Set-OPS - Basculer l'écosystème actif` demande un NUMÉRO dans la liste,
+jamais le nom. Un nom retapé est un nom retapé de travers, et le moteur
+refuse alors sur un dossier absent sans dire si c'est la frappe ou
+l'écosystème qui manque.
+
+`Set-OPS - Créer un écosystème depuis un modèle` demande un nom, un modèle
+choisi parmi ceux que le moteur propose, et un index. L'index libre est
+PROPOSÉ, lu dans les index fédérés déjà pris ; le moteur valide ce qu'il
+reçoit et refuse une collision. La suite — identité, voûte, première
+application — est imprimée par le moteur lui-même.
+
+Chaque écran s'ouvre sur l'écosystème monté, lu sur le lien sans rien lancer,
+et montre chaque commande avant de la jouer. Ce qui lit part avec
+`CONFIRMER=false`, ce qui écrit avec `CONFIRMER=true`, sur la ligne même.

@@ -372,6 +372,33 @@ An out-of-range venv is offered for rebuilding, after the screen names what
 it found and shows what it would erase. Reinstalling over it would leave the
 wrong INTERPRETER, and that is the case that breaks.
 
+## Ecosystems
+
+An ecosystem is a sibling repository of the engine, and the engine works on
+ONE at a time: the `instance` link names it, and every gesture applies to it.
+Three screens drive the engine's own targets.
+
+`Set-OPS - Ecosystems discovered beside the engine` lists what the engine
+finds, with the mounted one marked. The engine returns a refusal when two
+FEDERATED ecosystems claim the same index — same VLANs, same VMIDs on the
+trunk. The list is shown anyway, with the engine's own words: hiding it would
+take away what explains the refusal.
+
+`Set-OPS - Switch the active ecosystem` asks for a NUMBER in the list, never
+for the name. A name typed again is a name typed wrong, and the engine then
+refuses on a missing folder without saying whether the typing or the
+ecosystem is at fault.
+
+`Set-OPS - Create an ecosystem from a template` asks for a name, a template
+chosen among those the engine offers, and an index. The free index is
+PROPOSED, read from the federated ones already taken; the engine validates
+what it receives and refuses a collision. What follows — identity, vault,
+first application — is printed by the engine itself.
+
+Every screen opens with the mounted ecosystem, read on the link without
+launching anything, and shows each command before running it. Reading runs
+with `CONFIRMER=false`, writing with `CONFIRMER=true`, on the line itself.
+
 <!-- [fr] -->
 Le clone mis de côté garde ce qui vit DANS le dossier du moteur : le lien
 `instance` et `underlay.yml`. L'écran d'état nomme alors les gestes qui
@@ -540,4 +567,31 @@ travers lui plutôt que de croire le venv qu'elle vient de poser.
 Un venv hors plage est proposé à la reprise, après que l'écran a nommé ce
 qu'il a trouvé et montré ce qu'il effacerait. Réinstaller par-dessus
 laisserait le mauvais INTERPRÉTEUR, et c'est ce cas-là qui casse.
+
+## Les écosystèmes
+
+Un écosystème est un dépôt frère du moteur, et le moteur travaille sur UN
+seul à la fois : le lien `instance` le désigne, et tous les gestes portent
+sur lui. Trois écrans pilotent les cibles du moteur.
+
+`Set-OPS - Écosystèmes découverts à côté du moteur` liste ce que le moteur
+trouve, le monté marqué. Le moteur refuse quand deux écosystèmes FÉDÉRÉS
+réclament le même index — mêmes VLAN, mêmes VMID sur le trunk. La liste est
+montrée quand même, avec les mots du moteur : la cacher priverait de ce qui
+explique le refus.
+
+`Set-OPS - Basculer l'écosystème actif` demande un NUMÉRO dans la liste,
+jamais le nom. Un nom retapé est un nom retapé de travers, et le moteur
+refuse alors sur un dossier absent sans dire si c'est la frappe ou
+l'écosystème qui manque.
+
+`Set-OPS - Créer un écosystème depuis un modèle` demande un nom, un modèle
+choisi parmi ceux que le moteur propose, et un index. L'index libre est
+PROPOSÉ, lu dans les index fédérés déjà pris ; le moteur valide ce qu'il
+reçoit et refuse une collision. La suite — identité, voûte, première
+application — est imprimée par le moteur lui-même.
+
+Chaque écran s'ouvre sur l'écosystème monté, lu sur le lien sans rien lancer,
+et montre chaque commande avant de la jouer. Ce qui lit part avec
+`CONFIRMER=false`, ce qui écrit avec `CONFIRMER=true`, sur la ligne même.
 

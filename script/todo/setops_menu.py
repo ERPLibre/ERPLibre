@@ -20,7 +20,7 @@ import shlex
 
 import click
 
-from script.setops import ansible_env, engine, state
+from script.setops import ansible_env, ecosystems, engine, runner, state
 from script.todo import state_screen
 from script.todo.todo_i18n import t
 
@@ -48,6 +48,25 @@ class SetopsMenuMixin:
             {
                 "prompt_description": t(state.GESTE_ANSIBLE),
                 "method": "_setops_ansible_env",
+            },
+            {"section": t("Ecosystems")},
+            {
+                "prompt_description": t(
+                    "Set-OPS - Ecosystems discovered beside the engine"
+                ),
+                "method": "_setops_ecosystems",
+            },
+            {
+                "prompt_description": t(
+                    "Set-OPS - Switch the active ecosystem"
+                ),
+                "method": "_setops_ecosystem_use",
+            },
+            {
+                "prompt_description": t(
+                    "Set-OPS - Create an ecosystem from a template"
+                ),
+                "method": "_setops_ecosystem_create",
             },
         ]
         help_info = self.fill_help_info(choices)
@@ -91,17 +110,10 @@ class SetopsMenuMixin:
         nomme plus la cause.
         """
         print(f"\n🤖 {t('Set-OPS - Ansible environment (set it up)')}")
-        decl = engine.declaration(RACINE)
-        moteur = (
-            os.path.join(RACINE, decl.path)
-            if decl is not None and decl.path
-            else ""
-        )
-        if not moteur or not os.path.isdir(moteur):
-            print(
-                f"  ✗ {t('the engine is not here yet; see the state screen')}"
-            )
+        moteur = self._setops_moteur()
+        if not moteur:
             return
+        self._setops_bandeau(moteur)
         plage = ansible_env.plage_ansible(moteur)
         if ansible_env.specifieur(plage) is None:
             refus = t("the engine's ansible-core range is unreadable")
@@ -115,7 +127,7 @@ class SetopsMenuMixin:
             else None
         )
         conforme = ansible_env.dans_la_plage(posee, plage) is True
-        print(f"  {t('Engine')}: {decl.path}")
+        print(f"  {t('Engine')}: {os.path.relpath(moteur, RACINE)}")
         print(f"  {t('Range')}: {plage}")
         if conforme:
             print(
@@ -211,3 +223,238 @@ class SetopsMenuMixin:
     @staticmethod
     def _setops_constat(ok, texte):
         print(f"    {'✓' if ok else '✗'} {texte}")
+
+    # --- Écosystèmes -------------------------------------------------------
+
+    def _setops_moteur(self):
+        """Le chemin du moteur, ou « » après avoir dit qu'il manque.
+
+        Chaque écran qui pilote le moteur commence par là : sans lui, la
+        commande partirait vers un dossier absent et rendrait une erreur de
+        `make` que personne ne sait lire.
+        """
+        decl = engine.declaration(RACINE)
+        chemin = (
+            os.path.join(RACINE, decl.path)
+            if decl is not None and decl.path
+            else ""
+        )
+        if not chemin or not os.path.isdir(chemin):
+            manque = t("the engine is not here yet; see the state screen")
+            print(f"  ✗ {manque}")
+            return ""
+        return chemin
+
+    def _setops_bandeau(self, moteur):
+        """L'écosystème actif, en tête de chaque écran qui agit.
+
+        Lu sur le lien, sans lancer personne : un bandeau qui coûterait un
+        sous-processus par écran se ferait retirer au premier ralentissement,
+        et c'est justement celui qu'on ne doit pas perdre — tous les gestes
+        du moteur portent sur l'écosystème monté.
+        """
+        nom = ecosystems.monte(moteur)
+        print(f"  {t('Active ecosystem')}: {nom or t('none mounted')}")
+
+    def _setops_lancer(
+        self, moteur, cible, variables=(), confirmer=False, capture=True
+    ):
+        """Montre la commande, la joue, rend son `Verdict`.
+
+        L'affichage vient AVANT le lancement : ce qui est montré est ce qui
+        part, et la ligne se rejoue à la main sans todo.
+
+        LE CHEMIN DU MOTEUR EST RELATIF À LA RACINE, et le geste part AVEC
+        cette racine pour dossier courant. Un chemin absolu allongerait la
+        ligne d'un chemin de compte et ne se recopierait pas d'un poste à
+        l'autre ; relatif sans fixer le dossier, il dépendrait d'où todo a
+        été lancé.
+        """
+        argv = runner.cible(
+            os.path.relpath(moteur, RACINE), cible, variables, confirmer
+        )
+        print(f"\n▶ {runner.cite(argv)}")
+        return runner.jouer(
+            argv,
+            env=ansible_env.environnement(RACINE, moteur, runner.base()),
+            cwd=RACINE,
+            capture=capture,
+        )
+
+    def _setops_liste(self, moteur):
+        """Les écosystèmes découverts, ou None en ayant dit pourquoi.
+
+        Le tableau est lu MÊME sur un code non nul : le moteur rend 2 sur une
+        collision d'index, et cacher alors la liste priverait l'opérateur de
+        ce qui explique le refus.
+        """
+        vu = self._setops_lancer(moteur, "instances")
+        lus = ecosystems.lit_instances(vu.sortie)
+        if lus is None:
+            illisible = t("unreadable answer; replay the line above by hand")
+            print(f"  ✗ {illisible}")
+            if vu.sortie.strip():
+                for ligne in vu.sortie.splitlines():
+                    print(f"    {ligne}")
+            return None
+        if not vu.reussi:
+            refus = t("the engine refused (code {code}); its own words:")
+            print(f"  ⚠ {refus.format(code=vu.code)}")
+            for ligne in vu.sortie.splitlines():
+                print(f"    {ligne}")
+        return lus
+
+    @staticmethod
+    def _setops_montrer(ecosystemes):
+        """Les écosystèmes, numérotés, le monté marqué."""
+        for rang, vu in enumerate(ecosystemes, 1):
+            marque = "*" if vu.actif else " "
+            etat = (
+                t("production")
+                if vu.production
+                else (t("not production") if vu.production is False else "?")
+            )
+            portee = t("federated") if vu.federe else t("local")
+            print(
+                f"  {marque} [{rang}] {vu.nom}  "
+                f"index {vu.index}  VLAN {vu.vlans}  {portee}  {etat}"
+            )
+
+    def _setops_ecosystems(self):
+        """Les écosystèmes que le moteur découvre à côté de lui."""
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print(f"\n🤖 {t('Set-OPS - Ecosystems discovered beside the engine')}")
+        self._setops_bandeau(moteur)
+        lus = self._setops_liste(moteur)
+        if lus is None:
+            return
+        if not lus:
+            print(f"  {t('no ecosystem beside the engine yet')}")
+            return
+        self._setops_montrer(lus)
+
+    def _setops_ecosystem_use(self):
+        """Bascule l'écosystème actif, sur un nom CHOISI dans la liste.
+
+        Le nom se choisit par son numéro, jamais en le retapant : un nom
+        retapé de travers désigne un dossier absent, et le moteur refuse
+        alors sans qu'on sache si c'est la frappe ou l'écosystème qui manque.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print(f"\n🤖 {t('Set-OPS - Switch the active ecosystem')}")
+        self._setops_bandeau(moteur)
+        lus = self._setops_liste(moteur)
+        if not lus:
+            if lus is not None:
+                print(f"  {t('no ecosystem beside the engine yet')}")
+            return
+        self._setops_montrer(lus)
+        choisi = self._setops_choisir(lus)
+        if choisi is None:
+            print(t("Cancelled."))
+            return
+        vu = self._setops_lancer(
+            moteur, "instance-utiliser", [("NOM", choisi.nom)], confirmer=True
+        )
+        self._setops_dire(vu)
+
+    @staticmethod
+    def _setops_choisir(ecosystemes):
+        """L'écosystème dont le numéro est tapé, ou None."""
+        brut = input(t("Which one? (number, empty to cancel): ")).strip()
+        if not brut.isdigit():
+            return None
+        rang = int(brut)
+        if not 0 < rang <= len(ecosystemes):
+            return None
+        return ecosystemes[rang - 1]
+
+    @staticmethod
+    def _setops_dire(verdict):
+        """Le compte rendu d'un geste : son code EST lu, et sa sortie aussi."""
+        for ligne in verdict.sortie.splitlines():
+            print(f"    {ligne}")
+        if verdict.reussi:
+            print(f"  ✅ {t('Done.')}")
+        elif verdict.code is None:
+            print(f"  ✗ {t('the gesture could not run at all')}")
+        else:
+            print(
+                f"  ✗ {t('the engine refused (code {code}).').format(code=verdict.code)}"
+            )
+
+    def _setops_ecosystem_create(self):
+        """Crée un écosystème depuis un modèle du moteur.
+
+        Les trois valeurs sont EXIGÉES avant de montrer la ligne : le moteur
+        refuse sans elles, et un refus après coup donne l'impression que le
+        geste a été tenté.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print(f"\n🤖 {t('Set-OPS - Create an ecosystem from a template')}")
+        self._setops_bandeau(moteur)
+        vu = self._setops_lancer(moteur, "instance-modeles")
+        lu = ecosystems.lit_modeles(vu.sortie) if vu.reussi else None
+        if lu is None:
+            illisible = t("unreadable answer; replay the line above by hand")
+            print(f"  ✗ {illisible}")
+            return
+        modeles, pris = lu
+        if not modeles:
+            print(f"  ✗ {t('the engine offers no template')}")
+            return
+        nom = input(t("Name of the new ecosystem: ")).strip()
+        if not nom:
+            print(t("Cancelled."))
+            return
+        modele = self._setops_choisir_modele(modeles)
+        if modele is None:
+            print(t("Cancelled."))
+            return
+        index = self._setops_choisir_index(pris)
+        if index is None:
+            print(t("Cancelled."))
+            return
+        vu = self._setops_lancer(
+            moteur,
+            "instance-creer",
+            [("NOM", nom), ("MODELE", modele), ("INDEX", str(index))],
+            confirmer=True,
+        )
+        self._setops_dire(vu)
+
+    @staticmethod
+    def _setops_choisir_modele(modeles):
+        """Le modèle dont le numéro est tapé, ou None."""
+        print(f"\n  {t('Templates the engine offers:')}")
+        for rang, nom in enumerate(modeles, 1):
+            print(f"    [{rang}] {nom}")
+        brut = input(t("Which template? (number): ")).strip()
+        if not brut.isdigit() or not 0 < int(brut) <= len(modeles):
+            return None
+        return modeles[int(brut) - 1]
+
+    @staticmethod
+    def _setops_choisir_index(pris):
+        """L'index tapé, ou celui proposé si la réponse est vide, ou None.
+
+        La proposition épargne de chercher un trou dans la liste ; le moteur
+        valide lui-même ce qu'il reçoit et refuse une collision fédérée.
+        """
+        libre = ecosystems.index_libre(pris)
+        deja = ", ".join(str(i) for i in sorted(pris)) or t("none")
+        print(f"\n  {t('Federated indexes already taken')}: {deja}")
+        if libre is None:
+            print(f"  ✗ {t('no free index left in range')}")
+            return None
+        question = t("Index? (empty for {free}): ").format(free=libre)
+        brut = input(question).strip()
+        if not brut:
+            return libre
+        return int(brut) if brut.isdigit() else None

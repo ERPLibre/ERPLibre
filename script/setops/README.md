@@ -1,7 +1,7 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Four modules, one split: **the survey touches the system, the decision
+Five modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -184,3 +184,29 @@ one way only.
   `Verdict`
   whose `code` is `None` when the process could not run at all — that is a
   verdict, not the absence of one.
+
+## `ecosystems` — reading what the engine prints, never guessing
+
+The engine offers no `--json`: `instances`, `instance-courante` and
+`instance-modeles` print a table and sentences meant for a human. This layer
+reads them, and **refuses rather than guesses**. An unexpected shape returns
+`None`, never a partial list: the name read is used to SWITCH the active
+ecosystem, and a name cut wrong switches to something else.
+
+`()` and `None` are two different pieces of news — "nothing to mount, create
+one" and "the engine answered something this version does not know how to
+read". A caller given `None` says so and names the line to replay by hand.
+
+- `lit_instances(sortie)`: the discovered ecosystems. The first column holds
+  the mounted marker and is read by POSITION; the rest by its blanks, five
+  fields exactly;
+- `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
+  segment — what `instance-utiliser` expects back;
+- `lit_modeles(sortie)`: the templates and the federated indexes already
+  taken; the sentence carrying them is what says the output is the one we
+  think we are reading;
+- `index_libre(pris, mini, maxi)`: the smallest free index. A PROPOSAL only:
+  the engine validates what it receives and refuses a federated collision;
+- `monte(moteur)`: the mounted name, read on the link, launching nothing —
+  it heads every screen that acts. A BROKEN link keeps its name, so a screen
+  can say "mounted on X, which is gone" rather than "nothing".

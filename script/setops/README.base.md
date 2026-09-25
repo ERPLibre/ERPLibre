@@ -6,7 +6,7 @@
 <!-- [en] -->
 # Set-OPS — the declared engine and the state of the integration
 
-Four modules, one split: **the survey touches the system, the decision
+Five modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -190,10 +190,36 @@ one way only.
   whose `code` is `None` when the process could not run at all — that is a
   verdict, not the absence of one.
 
+## `ecosystems` — reading what the engine prints, never guessing
+
+The engine offers no `--json`: `instances`, `instance-courante` and
+`instance-modeles` print a table and sentences meant for a human. This layer
+reads them, and **refuses rather than guesses**. An unexpected shape returns
+`None`, never a partial list: the name read is used to SWITCH the active
+ecosystem, and a name cut wrong switches to something else.
+
+`()` and `None` are two different pieces of news — "nothing to mount, create
+one" and "the engine answered something this version does not know how to
+read". A caller given `None` says so and names the line to replay by hand.
+
+- `lit_instances(sortie)`: the discovered ecosystems. The first column holds
+  the mounted marker and is read by POSITION; the rest by its blanks, five
+  fields exactly;
+- `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
+  segment — what `instance-utiliser` expects back;
+- `lit_modeles(sortie)`: the templates and the federated indexes already
+  taken; the sentence carrying them is what says the output is the one we
+  think we are reading;
+- `index_libre(pris, mini, maxi)`: the smallest free index. A PROPOSAL only:
+  the engine validates what it receives and refuses a federated collision;
+- `monte(moteur)`: the mounted name, read on the link, launching nothing —
+  it heads every screen that acts. A BROKEN link keeps its name, so a screen
+  can say "mounted on X, which is gone" rather than "nothing".
+
 <!-- [fr] -->
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Quatre modules, un partage : **le relevé touche le système, la décision ne le
+Cinq modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -378,4 +404,31 @@ un sens.
   `Verdict` dont
   le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
   verdict, pas l'absence de verdict.
+
+## `ecosystems` — lire ce que le moteur imprime, sans jamais deviner
+
+Le moteur n'offre pas de `--json` : `instances`, `instance-courante` et
+`instance-modeles` impriment un tableau et des phrases, faits pour un humain.
+Cette couche les lit, et **refuse plutôt que de deviner**. Une forme
+inattendue rend `None`, jamais une liste partielle : le nom lu sert à
+BASCULER l'écosystème actif, et un nom mal découpé bascule vers autre chose.
+
+`()` et `None` sont deux nouvelles différentes — « rien à monter, en créer
+un » et « le moteur a répondu autre chose que ce que cette version sait
+lire ». Un appelant qui reçoit `None` le dit et nomme la ligne à rejouer à la
+main.
+
+- `lit_instances(sortie)` : les écosystèmes découverts. La première colonne
+  porte le marqueur du monté et se lit par sa POSITION ; le reste par ses
+  blancs, cinq champs exactement ;
+- `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
+  segment — ce que `instance-utiliser` attend en retour ;
+- `lit_modeles(sortie)` : les modèles et les index fédérés déjà pris ; la
+  phrase qui les porte est ce qui dit que la sortie est bien celle-là ;
+- `index_libre(pris, mini, maxi)` : le plus petit index libre. Une PROPOSITION
+  seulement : le moteur valide ce qu'il reçoit et refuse une collision
+  fédérée ;
+- `monte(moteur)` : le nom monté, lu sur le lien, sans rien lancer — il ouvre
+  chaque écran qui agit. Un lien BRISÉ garde son nom, pour qu'un écran puisse
+  dire « monté sur X, qui n'existe plus » plutôt que « rien ».
 

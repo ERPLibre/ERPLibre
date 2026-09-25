@@ -1,7 +1,7 @@
 
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Quatre modules, un partage : **le relevé touche le système, la décision ne le
+Cinq modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -186,3 +186,30 @@ un sens.
   `Verdict` dont
   le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
   verdict, pas l'absence de verdict.
+
+## `ecosystems` — lire ce que le moteur imprime, sans jamais deviner
+
+Le moteur n'offre pas de `--json` : `instances`, `instance-courante` et
+`instance-modeles` impriment un tableau et des phrases, faits pour un humain.
+Cette couche les lit, et **refuse plutôt que de deviner**. Une forme
+inattendue rend `None`, jamais une liste partielle : le nom lu sert à
+BASCULER l'écosystème actif, et un nom mal découpé bascule vers autre chose.
+
+`()` et `None` sont deux nouvelles différentes — « rien à monter, en créer
+un » et « le moteur a répondu autre chose que ce que cette version sait
+lire ». Un appelant qui reçoit `None` le dit et nomme la ligne à rejouer à la
+main.
+
+- `lit_instances(sortie)` : les écosystèmes découverts. La première colonne
+  porte le marqueur du monté et se lit par sa POSITION ; le reste par ses
+  blancs, cinq champs exactement ;
+- `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
+  segment — ce que `instance-utiliser` attend en retour ;
+- `lit_modeles(sortie)` : les modèles et les index fédérés déjà pris ; la
+  phrase qui les porte est ce qui dit que la sortie est bien celle-là ;
+- `index_libre(pris, mini, maxi)` : le plus petit index libre. Une PROPOSITION
+  seulement : le moteur valide ce qu'il reçoit et refuse une collision
+  fédérée ;
+- `monte(moteur)` : le nom monté, lu sur le lien, sans rien lancer — il ouvre
+  chaque écran qui agit. Un lien BRISÉ garde son nom, pour qu'un écran puisse
+  dire « monté sur X, qui n'existe plus » plutôt que « rien ».
