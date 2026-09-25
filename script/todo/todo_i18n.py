@@ -11189,6 +11189,26 @@ TRANSLATIONS = {
         " contient.",
         "en": "at the version bump itself, showing what each one holds.",
     },
+    "OpenUpgrade is not declared for": {
+        "fr": "OpenUpgrade n'est pas déclaré pour",
+        "en": "OpenUpgrade is not declared for",
+    },
+    "the migration will stop before that step.": {
+        "fr": "la migration s'arrêtera avant cette étape.",
+        "en": "the migration will stop before that step.",
+    },
+    "OpenUpgrade is missing for Odoo": {
+        "fr": "OpenUpgrade est absent pour Odoo",
+        "en": "OpenUpgrade is missing for Odoo",
+    },
+    "Declare its branch in": {
+        "fr": "Déclarez sa branche dans",
+        "en": "Declare its branch in",
+    },
+    "once OCA publishes it, sync, then rerun": {
+        "fr": "dès qu'OCA la publie, synchronisez, puis relancez",
+        "en": "once OCA publishes it, sync, then rerun",
+    },
     "Press to continue": {
         "fr": "Appuyez pour continuer",
         "en": "Press to continue",

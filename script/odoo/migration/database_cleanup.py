@@ -81,8 +81,13 @@ STEP = "ERPLIBRE_CLEANUP_STEP"
 START = "ERPLIBRE_CLEANUP_START"
 END = "ERPLIBRE_CLEANUP_END"
 
-SHELL_SCRIPT = """
+SHELL_SCRIPT = """# -*- coding: utf-8 -*-
+# Exécuté par « odoo-bin shell » de la version active, Odoo 10 compris : la
+# syntaxe reste celle de Python 2.7 — ni f-string, ni print(..., flush=).
+from __future__ import print_function
+
 import json
+import sys
 
 try:
     from odoo.exceptions import UserError
@@ -98,16 +103,24 @@ t_all = "%(all_label)s"
 report = {"rounds": [], "missing": [], "failed": []}
 
 
+def texte(exc, limite):
+    try:
+        return str(exc)[:limite]
+    except Exception:
+        return repr(exc)[:limite]
+
+
 def note(label, name, exc):
-    report["failed"].append([label, name, str(exc)[:200]])
+    report["failed"].append([label, name, texte(exc, 200)])
 
 
 def step(label, name, index=0, total=0):
     # Dire ce qu'on fait PENDANT qu'on le fait. Sans cela l'outil se taisait
     # jusqu'au rapport final : mesuré, dix-sept minutes de silence complet
     # sur une base de 5984 modules, impossible à distinguer d'un blocage.
-    detail = f" {index}/{total}" if total else ""
-    print(f"%(step)s {label}{detail} {name}", flush=True)
+    detail = " %%d/%%d" %% (index, total) if total else ""
+    print("%(step)s %%s%%s %%s" %% (label, detail, name))
+    sys.stdout.flush()
 
 
 def recover():
@@ -200,7 +213,7 @@ try:
                             ok += 1
                         except Exception as exc:
                             recover()
-                            errors.append([name, str(exc)[:160]])
+                            errors.append([name, texte(exc, 160)])
             purged_this_round += ok
             this_round.append({"kind": label, "purged": ok,
                                "errors": errors, "would": would})
