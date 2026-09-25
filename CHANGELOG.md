@@ -94,6 +94,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO menus: the language is set only from Configuration, the duplicate entry in Execute is gone, and Fork moves from the main menu to Configuration. The main menu now numbers Telemetry 4 and Configuration 5. The language chooser shows a flag per language
 - Odoo 18 dependencies refreshed. `openai` is pinned to 2.x, whose 3.x requires an `idna` that Odoo 18 forbids; `fsspec` is pinned beside `s3fs`, which demands it at its own exact version, so the two move together; `meteostat` returns to 1.x, every 2.x capping `pytz` below 2024. PyMuPDF stays excluded on s390x, now declared in the requirements so a regeneration keeps it. Major bumps of `ujson` 6, `plotly` 7, `python-slugify` 9 and `sqlalchemy` 2.1 are not yet tested
 - Dependabot ignores the major versions of `meteostat`
+- Odoo 18 moves to pandas 3.0.6, cryptography 50 with pyopenssl 26.4, Pillow 12.3 and botocore/boto3 1.43.49 with aiobotocore 3.9.0 — the only aiobotocore whose botocore range holds 1.43.49. The seven modules that import pandas run their pandas calls unchanged; `freq='d'` in a Cybro attendance dashboard now warns and will break with pandas 4
+- Dependabot groups `aiobotocore`, `botocore` and `boto3` into one pull request, since each aiobotocore accepts only a narrow botocore range; security fixes still arrive on their own
 
 ## Fixed
 
