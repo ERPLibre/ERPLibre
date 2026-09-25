@@ -1,0 +1,108 @@
+[build-system]
+requires = [ "poetry>=1.8.3",]
+build-backend = "poetry.masonry.api"
+
+[tool.poetry]
+name = "ERPLibre"
+version = "1.8.0"
+description = "Easy way to configure Odoo community"
+license = "AGPL-3.0-or-later"
+authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]
+
+[tool.poetry.dependencies]
+python = ">=3.14.7,<3.15"
+aiobotocore = "3.1.2"
+asn1crypto = "1.5.1"
+babel = "2.17.0"
+beautifulsoup4 = "4.13.5"
+boto3 = "1.42.42"
+botocore = "1.42.42"
+cbor2 = "5.6.2"
+chardet = "5.2.0"
+cryptography = "46.0.5"
+cython = "^3.3.0"
+docutils = "0.20.1"
+faker = "39.0.0"
+filetype = "^1.2.0"
+freezegun = "1.5.1"
+gatt = "^0.2.7"
+geoip2 = "2.9.0"
+gevent = "24.11.1"
+google-auth = "^2.58.1"
+greenlet = "3.3.2"
+h11 = "0.16.0"
+idna = "3.6"
+img2pdf = "^0.6.3"
+isort = "7.0.0"
+jinja2 = "3.1.2"
+libsass = "0.22.0"
+lxml = "6.0.2"
+lxml-html-clean = "<0.4.5"
+markupsafe = "2.1.5"
+msgraphfs = "^0.5"
+num2words = "0.5.13"
+ofxparse = "0.21"
+openpyxl = "3.1.2"
+orjson = "^3.12.0"
+pandas = "2.3.3"
+paramiko = "^5.0.0"
+passlib = "1.7.4"
+pdfminer-six = "20260107"
+phonenumbers = "^9.0.40"
+pillow = "12.2.0"
+polib = "1.1.1"
+pre-commit = "^4.6.2"
+psutil = "5.9.8"
+psycopg2 = "2.9.10"
+pydevd-odoo = "^1.2.2"
+pyftpdlib = "^2.2.0"
+pyopenssl = "26.0.0"
+pypdf = "5.4.0"
+pyserial = "3.5"
+python-dateutil = "2.8.2"
+python-ldap = "3.4.4"
+python-magic = "0.4.27"
+python-slugify = "^9.1.1"
+python-stdnum = "2.2"
+pyusb = "1.2.1"
+qrcode = "7.4.2"
+reportlab = "4.1.0"
+requests = "2.31.0"
+rjsmin = "1.2.0"
+s3fs = "2026.9.0"
+sentry-sdk = "2.63.0"
+setuptools = "80.10.2"
+urllib3 = "2.0.7"
+vobject = "0.9.9"
+websocket-client = "1.9.0"
+werkzeug = "3.0.1"
+xlrd = "2.0.1"
+xlsxwriter = "3.1.9"
+zeep = "4.3.1"
+[[tool.poetry.dependencies.factur-x]]
+version = ">=4.2"
+markers = "platform_machine != \"s390x\""
+
+[[tool.poetry.dependencies.factur-x]]
+version = "<4"
+markers = "platform_machine == \"s390x\""
+
+[tool.poetry.dependencies.black]
+git = "https://github.com/psf/black.git"
+rev = "24.8.0"
+
+[tool.poetry.dependencies.flanker]
+git = "https://github.com/mathben/flanker.git"
+rev = "update_imghdr_python3"
+
+[tool.poetry.dependencies.fsspec]
+extras = [ "s3",]
+version = "^2026.9.0"
+
+[tool.poetry.dependencies.pysaml2]
+git = "https://github.com/prauscher/pysaml2.git"
+rev = "replace-pyopenssl"
+
+[tool.poetry.dependencies.webdav4]
+extras = [ "fsspec",]
+version = "^0.11.0"
