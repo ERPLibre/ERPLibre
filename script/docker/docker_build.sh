@@ -88,12 +88,21 @@ ERPLIBRE_VERSION_MAIN="odoo${ODOO_VERSION}_python${PYTHON_VERSION}"
 # un message qui ne nomme ni le commit manquant ni le geste qui manque.
 EL_BRANCHE=$(git rev-parse --abbrev-ref HEAD)
 EL_HASH=$(git rev-parse --verify HEAD)
-EL_DEPOT=$(awk '$1 == "ENV" && $2 == "REPO_MANIFEST_URL" { print $3 }' \
-  docker/Dockerfile.prod.pkg)
+# Les deux ecritures de ENV : « ENV cle valeur », le format herite dont
+# buildkit se plaint, et « ENV cle=valeur ». Lire les deux evite que passer de
+# l'une a l'autre vide cette variable -- et un EL_DEPOT vide ne faisait pas
+# echouer la verification, il la SAUTAIT.
+EL_DEPOT=$(sed -n \
+  's/^ENV[[:space:]]\+REPO_MANIFEST_URL[[:space:]=]\+"\?\([^"[:space:]]\+\)"\?.*/\1/p' \
+  docker/Dockerfile.prod.pkg | head -1)
 
 verifier_commit_publie() {
   local sortie rc distant
-  [ -n "${EL_DEPOT}" ] || return 0
+  if [ -z "${EL_DEPOT}" ]; then
+    echo -e "${Red}Error${Color_Off} REPO_MANIFEST_URL illisible dans docker/Dockerfile.prod.pkg"
+    echo "  Sans elle, rien ne verifie que le commit bati est publie."
+    exit 1
+  fi
   sortie=$(git ls-remote --heads "${EL_DEPOT}" "${EL_BRANCHE}" 2>/dev/null)
   rc=$?
   if [ ${rc} -ne 0 ]; then
