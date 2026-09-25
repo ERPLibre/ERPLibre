@@ -94,8 +94,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Menus de TODO : la langue se règle seulement depuis Configuration, l'entrée en double dans Execute disparaît, et Fork quitte le menu principal pour Configuration. Le menu principal numérote désormais Télémétrie 4 et Configuration 5. Le choix de la langue montre un drapeau par langue
 - Dépendances d'Odoo 18 rafraîchies. `openai` est épinglé en 2.x, dont la 3.x exige un `idna` qu'Odoo 18 interdit ; `fsspec` est épinglé à côté de `s3fs`, qui l'exige à sa propre version exacte, si bien que les deux se montent ensemble ; `meteostat` revient en 1.x, toute 2.x plafonnant `pytz` sous 2024. PyMuPDF reste écarté sur s390x, désormais déclaré dans les requirements pour qu'une régénération le garde. Les montées majeures de `ujson` 6, `plotly` 7, `python-slugify` 9 et `sqlalchemy` 2.1 ne sont pas encore testées
 - Dependabot ignore les versions majeures de `meteostat`
-- Odoo 18 passe à pandas 3.0.6, cryptography 50 avec pyopenssl 26.4, Pillow 12.3 et botocore/boto3 1.43.49 avec aiobotocore 3.9.0 — le seul aiobotocore dont la plage de botocore contient 1.43.49. Les sept modules qui importent pandas exécutent leurs appels pandas sans changement ; `freq='d'` dans un tableau de bord de présence Cybro avertit désormais et cassera avec pandas 4
+- Odoo 18 passe à pandas 3.0.6, cryptography 50 avec pyopenssl 26.4, Pillow 12.3 et botocore/boto3 1.43.75 avec aiobotocore 3.9.1, le plus haut botocore que sa plage étroite accepte. Les sept modules qui importent pandas exécutent leurs appels pandas sans changement ; `freq='d'` dans un tableau de bord de présence Cybro avertit désormais et cassera avec pandas 4
 - Dependabot réunit `aiobotocore`, `botocore` et `boto3` dans une seule demande de fusion, chaque aiobotocore n'acceptant qu'une plage étroite de botocore ; les correctifs de sécurité arrivent toujours seuls
+- `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
+- factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
 
 ## Corrigé
 
@@ -164,6 +166,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot n'ouvre plus de demandes de fusion sur les requirements figés d'Odoo 12 à 17 : ses mises à jour de sécurité lisent `requirement/` comme un répertoire à part, que les exclusions ne couvraient pas
 - `poetry_update.py` s'arrête sur un `pyproject.toml` absent en nommant la commande qui le crée, `make switch_odoo_XX` pour la version active, et propose de la lancer puis de se relancer quand il tourne dans un terminal
 - `poetry_update.py` fait tourner Poetry dans le venv Odoo même depuis un shell sous `.venv.erplibre`, dont le Python le faisait échouer sur « InvalidCurrentPythonVersionError »
+- `poetry_update.py` écarte les requirements et manifestes sous un répertoire `doc`, `docs`, `example` ou `examples` : un fichier d'exemple déclarant un `>=` lâche ne déplace plus une dépendance pour tout l'environnement
 
 ## Retiré
 
@@ -174,6 +177,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une clé d'API et un jeton Bearer sont caviardés eux aussi avant qu'une commande soit affichée, journalisée ou réimprimée : `OPENAI_API_KEY=` partait en clair, et un jeton d'en-tête échappait par construction, ne portant ni nom d'option ni nom de variable
 - En suivant une redirection, le cache ne transmet plus les identifiants du client (Authorization, Cookie, Proxy-Authorization) à un autre hôte
 - Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
+- Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
 
 
 ## [1.8.0] - 2026-09-04

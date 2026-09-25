@@ -94,8 +94,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO menus: the language is set only from Configuration, the duplicate entry in Execute is gone, and Fork moves from the main menu to Configuration. The main menu now numbers Telemetry 4 and Configuration 5. The language chooser shows a flag per language
 - Odoo 18 dependencies refreshed. `openai` is pinned to 2.x, whose 3.x requires an `idna` that Odoo 18 forbids; `fsspec` is pinned beside `s3fs`, which demands it at its own exact version, so the two move together; `meteostat` returns to 1.x, every 2.x capping `pytz` below 2024. PyMuPDF stays excluded on s390x, now declared in the requirements so a regeneration keeps it. Major bumps of `ujson` 6, `plotly` 7, `python-slugify` 9 and `sqlalchemy` 2.1 are not yet tested
 - Dependabot ignores the major versions of `meteostat`
-- Odoo 18 moves to pandas 3.0.6, cryptography 50 with pyopenssl 26.4, Pillow 12.3 and botocore/boto3 1.43.49 with aiobotocore 3.9.0 — the only aiobotocore whose botocore range holds 1.43.49. The seven modules that import pandas run their pandas calls unchanged; `freq='d'` in a Cybro attendance dashboard now warns and will break with pandas 4
+- Odoo 18 moves to pandas 3.0.6, cryptography 50 with pyopenssl 26.4, Pillow 12.3 and botocore/boto3 1.43.75 with aiobotocore 3.9.1, the highest botocore its narrow range accepts. The seven modules that import pandas run their pandas calls unchanged; `freq='d'` in a Cybro attendance dashboard now warns and will break with pandas 4
 - Dependabot groups `aiobotocore`, `botocore` and `boto3` into one pull request, since each aiobotocore accepts only a narrow botocore range; security fixes still arrive on their own
+- `TODO › Transform data` reads Excel with openpyxl 3.1.5 and xlsxwriter 3.2.9; the leak test that guards openpyxl's exact pin passes on them
+- factur-x requires 6.8 outside s390x, the version already locked, so a regeneration can no longer fall back to an untested 4.x or 5.x
 
 ## Fixed
 
@@ -164,6 +166,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot no longer opens pull requests against the frozen requirements of Odoo 12 to 17: its security updates scan `requirement/` as its own directory, which the exclusions did not cover
 - `poetry_update.py` stops on a missing `pyproject.toml` with the command that creates it, `make switch_odoo_XX` for the active version, and offers to run it then restart when launched from a terminal
 - `poetry_update.py` runs Poetry in the Odoo venv even from a shell under `.venv.erplibre`, whose Python made it fail on « InvalidCurrentPythonVersionError »
+- `poetry_update.py` skips requirements and manifests under a `doc`, `docs`, `example` or `examples` directory: an example file declaring a loose `>=` no longer moves a dependency for the whole environment
 
 ## Removed
 
@@ -174,6 +177,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - An API key and a bearer token are redacted too before a command is displayed, logged or reprinted: `OPENAI_API_KEY=` went out in the clear, and a header token escaped by construction, carrying neither an option name nor a variable name
 - Following a redirect, the cache no longer forwards the client's credentials (Authorization, Cookie, Proxy-Authorization) to another host
 - Odoo 18 installs `idna` 3.20 instead of the 3.6 its own requirements pin, which is affected by CVE-2024-3651
+- Odoo 18 installs `requests` 2.32.4 instead of the 2.31.0 its own requirements pin, which is affected by CVE-2024-35195 and CVE-2024-47081
 
 
 ## [1.8.0] - 2026-09-04
