@@ -116,3 +116,45 @@ BEGIN
     DROP VIEW public.account_root;
     RAISE NOTICE 'vue morte account_root supprimee (Odoo 18 ne la recree pas)';
 END $$;
+
+-- Les crons nés avant Odoo 11 n'ont pas l'xmlid de leur action serveur.
+-- Depuis la 11, ir.cron hérite (_inherits) d'ir.actions.server, et charger
+-- un cron depuis le XML crée aussi « <xmlid>_ir_actions_server » pour
+-- l'action parente. La migration vers 11 relie un cron existant à une
+-- action sans créer cet xmlid, et la 18 le cite : le menu
+-- `stock.menu_procurement_compute` pointe sur
+-- `stock.ir_cron_scheduler_action_ir_actions_server`, et le chargement
+-- casse sur « External ID not found in the system ».
+--
+-- L'xmlid manquant est créé sur l'action du cron, avec le noupdate du
+-- cron, comme le ferait le chargement XML. Rejouable : un xmlid présent
+-- n'est jamais touché.
+DO $$
+DECLARE
+    combien integer;
+BEGIN
+    IF to_regclass('ir_cron') IS NULL
+            OR to_regclass('ir_model_data') IS NULL THEN
+        RETURN;
+    END IF;
+    INSERT INTO ir_model_data (
+        module, name, model, res_id, noupdate,
+        create_uid, write_uid, create_date, write_date
+    )
+    SELECT d.module, d.name || '_ir_actions_server', 'ir.actions.server',
+           c.ir_actions_server_id, d.noupdate,
+           1, 1, now() AT TIME ZONE 'UTC', now() AT TIME ZONE 'UTC'
+    FROM ir_model_data d
+    JOIN ir_cron c ON c.id = d.res_id
+    WHERE d.model = 'ir.cron'
+      AND c.ir_actions_server_id IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM ir_model_data p
+          WHERE p.module = d.module
+            AND p.name = d.name || '_ir_actions_server'
+      );
+    GET DIAGNOSTICS combien = ROW_COUNT;
+    IF combien > 0 THEN
+        RAISE NOTICE '% xmlid(s) d''action serveur de cron cree(s)', combien;
+    END IF;
+END $$;
