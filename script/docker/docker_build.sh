@@ -82,6 +82,47 @@ ERPLIBRE_DOCKER_BASE_VERSION="${ERPLIBRE_DOCKER_BASE}:${ERPLIBRE_VERSION}"
 ERPLIBRE_DOCKER_PROD_VERSION="${ERPLIBRE_DOCKER_PROD}:${ERPLIBRE_VERSION}"
 ERPLIBRE_VERSION_MAIN="odoo${ODOO_VERSION}_python${PYTHON_VERSION}"
 
+# Le conteneur CLONE le depot public et se place sur ce commit. Un commit qui
+# n'y est pas encore n'existe pas pour lui : la construction s'arrete deux
+# minutes plus tard, apres le clone, sur « fatal: reference is not a tree » --
+# un message qui ne nomme ni le commit manquant ni le geste qui manque.
+EL_BRANCHE=$(git rev-parse --abbrev-ref HEAD)
+EL_HASH=$(git rev-parse --verify HEAD)
+EL_DEPOT=$(awk '$1 == "ENV" && $2 == "REPO_MANIFEST_URL" { print $3 }' \
+  docker/Dockerfile.prod.pkg)
+
+verifier_commit_publie() {
+  local sortie rc distant
+  [ -n "${EL_DEPOT}" ] || return 0
+  sortie=$(git ls-remote --heads "${EL_DEPOT}" "${EL_BRANCHE}" 2>/dev/null)
+  rc=$?
+  if [ ${rc} -ne 0 ]; then
+    # Hors ligne : on ne refuse pas sur une ignorance.
+    echo "Depot injoignable, verification du commit publie sautee."
+    return 0
+  fi
+  distant=$(echo "${sortie}" | cut -f1)
+  if [ -z "${distant}" ]; then
+    echo -e "${Red}Error${Color_Off} la branche ${EL_BRANCHE} n'est pas sur ${EL_DEPOT}"
+    echo "  L'image la clone par son nom : la publier d'abord."
+    echo "  git push -u origin ${EL_BRANCHE}"
+    exit 1
+  fi
+  [ "${distant}" = "${EL_HASH}" ] && return 0
+  # La tete distante est un objet LOCAL des que la branche locale est en
+  # avance, le seul cas qui nous occupe : l'ancetre se verifie alors sans
+  # reseau. Quand elle ne l'est pas, on ne sait pas, et on laisse passer.
+  if git cat-file -e "${distant}^{commit}" 2>/dev/null; then
+    if ! git merge-base --is-ancestor "${EL_HASH}" "${distant}"; then
+      echo -e "${Red}Error${Color_Off} le commit ${EL_HASH} n'est pas publie"
+      echo "  L'image clone ${EL_DEPOT} et se place sur ce commit."
+      echo "  git push origin ${EL_BRANCHE}"
+      exit 1
+    fi
+  fi
+}
+verifier_commit_publie
+
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
@@ -97,7 +138,7 @@ fi
 
 cd docker
 
-ARGS="${ARGS} --build-arg WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg WORKING_HASH=$(git rev-parse --verify HEAD)"
+ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
 
 # UNE seule base, bookworm, pour toutes les versions d'Odoo.
 #

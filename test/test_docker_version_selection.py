@@ -91,6 +91,47 @@ class TestDrapeauInconnu(unittest.TestCase):
         self.assertIn(".venv.erplibre/bin/python", TEXTE)
 
 
+class TestCommitPublie(unittest.TestCase):
+    """Le conteneur CLONE le dépôt public et se place sur le commit qu'on lui
+    passe. Un commit encore local n'y existe pas, et la construction s'arrête
+    APRÈS le clone sur « fatal: reference is not a tree » — un message qui ne
+    nomme ni le commit manquant ni le geste qui manque."""
+
+    def test_la_verification_precede_la_construction(self):
+        self.assertIn("verifier_commit_publie", TEXTE)
+        self.assertLess(
+            TEXTE.index("verifier_commit_publie\n"),
+            TEXTE.index("docker build"),
+        )
+
+    def test_elle_interroge_le_depot_que_l_image_clone(self):
+        """Le dépôt est lu dans le Dockerfile : une seconde source de vérité
+        divergerait sans que rien ne le dise."""
+        self.assertIn("REPO_MANIFEST_URL", TEXTE)
+        self.assertIn("Dockerfile.prod.pkg", TEXTE)
+        self.assertIn("git ls-remote", TEXTE)
+
+    def test_elle_nomme_le_geste_qui_manque(self):
+        self.assertIn("git push", TEXTE)
+
+    def test_hors_ligne_elle_ne_refuse_pas(self):
+        """On ne refuse pas sur une ignorance : un dépôt injoignable ne prouve
+        rien sur le commit."""
+        bloc = TEXTE[
+            TEXTE.index("verifier_commit_publie() {") : TEXTE.index(
+                "\nverifier_commit_publie\n"
+            )
+        ]
+        injoignable = bloc.index("Depot injoignable")
+        premier_refus = bloc.index("exit 1")
+        self.assertLess(injoignable, premier_refus)
+
+    def test_le_commit_passe_a_l_image_est_celui_qu_elle_verifie(self):
+        """Vérifier une valeur et en passer une autre ne garderait rien."""
+        self.assertIn("--build-arg WORKING_HASH=${EL_HASH}", TEXTE)
+        self.assertIn("--build-arg WORKING_BRANCH=${EL_BRANCHE}", TEXTE)
+
+
 class TestArgumentsDeConstruction(unittest.TestCase):
     def test_tout_build_arg_trouve_un_arg(self):
         poses = set(re.findall(r"--build-arg (\w+)=", TEXTE))
