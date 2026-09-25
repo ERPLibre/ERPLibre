@@ -159,7 +159,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
     arches = ctx["arches"]
     catalog = ctx["catalog"]
     noms_pris = ctx["names"]
-    vmids_pris = ctx["vmids"]
+    # LES VMID QU'UN PLAN SET-OPS RÉSERVE COMPTENT COMME PRIS. Ils n'existent
+    # pas encore sur l'hôte, donc `qm list` les ignore ; poser une VM là où la
+    # flotte veut la sienne ne se verrait qu'au déploiement du moteur, et on
+    # n'en sort pas en renommant — on change l'index et on régénère.
+    vmids_pris = list(ctx["vmids"]) + list(ctx.get("vmid_reserves") or ())
     # Ordre et défaut partagés avec le formulaire QEMU/KVM : la liste vient
     # de « git ls-remote », alphabétique, et commençait donc par une branche
     # de dependabot — proposée par défaut. Rapporté.

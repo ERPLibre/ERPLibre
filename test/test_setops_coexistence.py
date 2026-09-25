@@ -104,6 +104,78 @@ class TestLaLectureDuDevis(unittest.TestCase):
         self.assertEqual({}, lu.proprietaire)
 
 
+class TestCeQuiNaPasDeMaitre(unittest.TestCase):
+    """Deux pools sur un VMID, ou un VMID impossible : refuser, pas choisir.
+
+    Écraser la première revendication ferait nommer le mauvais dépôt à
+    l'écran de refus, et ferait accuser la VM légitime du premier pool
+    d'occuper un VMID « prévu » pour le second.
+    """
+
+    DOUBLE = (
+        '{"pools": ['
+        '{"pool": "OPS-Fictif-Alfa", "membres":'
+        ' [{"nom": "alfa-01", "vmid": 100910101}]},'
+        '{"pool": "OPS-Fictif-Bravo", "membres":'
+        ' [{"nom": "bravo-01", "vmid": 100910101}]}]}'
+    )
+
+    def test_two_pools_claiming_one_vmid_have_no_master(self):
+        self.assertIsNone(C.lit_devis(self.DOUBLE))
+
+    def test_the_same_vmid_twice_in_one_pool_is_refused_too(self):
+        """Le moteur porte ce contrôle dans son « --verifier », qui rend
+        AVANT d'imprimer le JSON : la lecture d'ici ne le voit jamais."""
+        self.assertIsNone(
+            C.lit_devis(
+                '{"pools": [{"pool": "p", "membres":'
+                ' [{"nom": "a", "vmid": 7}, {"nom": "b", "vmid": 7}]}]}'
+            )
+        )
+
+    def test_a_vmid_that_cannot_exist_is_refused(self):
+        """-1 est la sentinelle que l'appelant fabrique pour « VMID
+        illisible » : la laisser entrer ferait rendre GERE à un inconnu."""
+        for vmid in (0, -1, -5):
+            with self.subTest(vmid=vmid):
+                self.assertIsNone(
+                    C.lit_devis(
+                        '{"pools": [{"pool": "p", "membres":'
+                        ' [{"nom": "x", "vmid": %d}]}]}' % vmid
+                    )
+                )
+
+    def test_a_plain_plan_is_still_read(self):
+        """Contrôle positif : refuser tout passerait les trois refus."""
+        self.assertIsNotNone(C.lit_devis(DEVIS))
+
+
+class TestLeGenomeDuSite(unittest.TestCase):
+    """Les machines du site — cache, forge, AC, noms, dépôt, gabarit doré —
+    ne dérivent d'aucun index, et le devis ne nomme leur pool que si un
+    underlay est monté. Leur marqueur doit donc valoir sans lui."""
+
+    def test_the_site_pool_is_a_master_even_when_the_plan_ignores_it(self):
+        devis = C.lit_devis(DEVIS)
+        self.assertNotIn(C.POOL_SITE, devis.pools)
+        self.assertEqual(
+            (C.GERE, C.POOL_SITE),
+            C.etat(invite(9000, "gabarit-dore", C.POOL_SITE), devis),
+        )
+
+    def test_a_golden_template_vmid_derives_from_nothing(self):
+        """Son VMID n'a pas la forme dérivée : sans le pool, rien ne le
+        rattrape et le geste destructeur partirait."""
+        self.assertFalse(C.vmid_derive(9000))
+
+    def test_without_a_plan_the_site_pool_is_still_unknown(self):
+        """Le raccourci ne contourne pas le « fermé par défaut » : sans
+        devis, on ne sait rien de personne."""
+        self.assertEqual(
+            (C.INCONNU, ""), C.etat(invite(9000, "x", C.POOL_SITE), None)
+        )
+
+
 class TestLaFormeDuVmid(unittest.TestCase):
     """Neuf chiffres : VLAN sur quatre, hôte sur trois, rang sur deux."""
 
@@ -204,6 +276,17 @@ class TestLaCollisionDeVmid(unittest.TestCase):
 
     def test_a_guest_outside_the_plan_never_collides(self):
         self.assertEqual((), C.collisions([invite(142, "ma-vm")], self.devis))
+
+    def test_a_foreign_homonym_on_a_declared_vmid_still_collides(self):
+        """L'homonymie est VOULUE : le même nom court désigne la même
+        fonction chez deux locataires. Un nom qui concorde ne prouve donc
+        rien dès que l'occupant porte un pool — et le rattrapage large
+        avalait ici le constat le plus cher."""
+        vus = C.collisions(
+            [invite(DECLARE, "infra-pki-01", "Prod.Ancien")], self.devis
+        )
+        self.assertEqual(1, len(vus), vus)
+        self.assertEqual("Prod.Ancien", vus[0].pool_occupant)
 
     def test_a_same_named_guest_on_an_undeclared_vmid_is_not_a_collision(self):
         """Le VMID décide : deux tenants portent volontairement le même nom
@@ -349,35 +432,58 @@ class TestLeChoisisseurGarde(CasDeChoisisseur):
         self.assertEqual(DECLARE, choix["vmid"])
 
 
-class TestChaqueGesteDeclareSaSeverite(unittest.TestCase):
-    """Un appelant qui se tait hérite du refus — mais il doit se déclarer.
+class TestChaqueGesteTraverseLaGarde(unittest.TestCase):
+    """Tout geste qui bâtit une commande depuis une VM passe par la garde.
 
-    Le défaut strict protège ; cette épreuve empêche de s'y reposer. Elle
-    compte les appels, pour qu'un geste NEUF entre dedans sans qu'on l'y
-    inscrive.
+    LA PROPRIÉTÉ, PAS L'ORTHOGRAPHE. Chercher le littéral
+    « self._pve_pick_vm( » laissait invisible tout geste qui choisit ses VM
+    autrement — et il y en avait un, avec sa propre sélection « all », qui
+    coupait le courant d'un invité de flotte sans que rien ne le dise.
+
+    On balaie donc les méthodes qui LISENT un vmid ET envoient une commande,
+    et on exige que chacune traverse l'une des trois portes : le choisisseur
+    avec sa sévérité, le filtre de coexistence, ou la lecture des réserves
+    pour les gestes qui raisonnent sur des VMID plutôt que sur des VM.
     """
 
     SOURCE = os.path.join(
         os.path.dirname(__file__), "..", "script", "todo", "proxmox_menu.py"
     )
+    PORTES = ("_pve_permis(", "_pve_reserves(", "garde=")
 
-    def appels(self):
-        import re
+    def gestes(self):
+        """{nom: source} des méthodes qui bâtissent une commande sur un
+        vmid."""
+        import ast
 
         with open(self.SOURCE, encoding="utf-8") as fichier:
             texte = fichier.read()
-        return re.findall(r"self\._pve_pick_vm\(([^)]*)\)", texte)
+        trouves = {}
+        for noeud in ast.walk(ast.parse(texte)):
+            if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            corps = ast.get_source_segment(texte, noeud) or ""
+            lit = '["vmid"]' in corps or '.get("vmid")' in corps
+            if lit and "self._pve_show(" in corps:
+                trouves[noeud.name] = corps
+        return trouves
 
-    def test_the_scan_found_the_call_sites(self):
-        self.assertGreaterEqual(len(self.appels()), 5)
+    def test_the_scan_found_the_gestures(self):
+        """Un balayage qui ne trouve rien passerait l'épreuve suivante sans
+        avoir regardé quoi que ce soit."""
+        self.assertGreaterEqual(len(self.gestes()), 4)
 
-    def test_every_call_site_states_what_it_will_do(self):
-        muets = [a for a in self.appels() if "garde=" not in a]
+    def test_every_such_gesture_goes_through_one_of_the_doors(self):
+        muets = [
+            nom
+            for nom, corps in self.gestes().items()
+            if not any(porte in corps for porte in self.PORTES)
+        ]
         self.assertEqual(
             [],
             muets,
-            "ces appels ne disent pas ce qu'ils feront de la VM :"
-            " déclarez « garde= »",
+            "ces gestes bâtissent une commande sur une VM sans passer par"
+            " la garde de coexistence",
         )
 
     def test_every_severity_named_is_one_of_the_closed_vocabulary(self):
@@ -385,13 +491,49 @@ class TestChaqueGesteDeclareSaSeverite(unittest.TestCase):
 
         nommees = [
             nom
-            for appel in self.appels()
-            for nom in re.findall(r"garde=coexistence\.(\w+)", appel)
+            for corps in self.gestes().values()
+            for nom in re.findall(r"garde=coexistence\.(\w+)", corps)
         ]
         self.assertTrue(nommees)
         for nom in nommees:
             with self.subTest(garde=nom):
                 self.assertIn(getattr(C, nom, None), C.GARDES)
+
+
+class TestLeCourantCoupeEstLePlusStrict(CasDeChoisisseur):
+    """« stop » coupe le courant : il ne se rattrape pas en retapant un nom,
+    contrairement à « start » et « shutdown ». Le palier se MESURE en jouant
+    le geste, pas en lisant comment il est écrit."""
+
+    def severite(self, choix_du_verbe):
+        """La sévérité que `_pve_change_state` demande pour ce verbe."""
+        import builtins
+        import io as _io
+        from contextlib import redirect_stdout
+
+        vues = []
+        self.todo._pve_vms = lambda: [
+            {"vmid": 142, "name": "ma-vm-fictive", "status": "running"}
+        ]
+        self.todo._pve_permis = lambda choisis, garde: vues.append(garde) or []
+        saisies = iter(["1", choix_du_verbe])
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: next(saisies, "")
+        try:
+            with redirect_stdout(_io.StringIO()):
+                self.todo._pve_change_state()
+        finally:
+            builtins.input = vrai
+        self.assertEqual(1, len(vues), vues)
+        return vues[0]
+
+    def test_pulling_the_plug_is_refused(self):
+        self.assertEqual(C.REFUS, self.severite("3"))
+
+    def test_starting_and_shutting_down_ask_for_the_name(self):
+        for choix, geste in (("1", "start"), ("2", "shutdown")):
+            with self.subTest(geste=geste):
+                self.assertEqual(C.RETAPER, self.severite(choix))
 
 
 class TestLEcranDeCollision(CasDeChoisisseur):

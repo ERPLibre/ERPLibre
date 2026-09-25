@@ -133,7 +133,18 @@ def lit_devis(sortie):
             if not isinstance(membre, dict):
                 return None
             vmid = membre.get("vmid")
-            if isinstance(vmid, bool) or not isinstance(vmid, int):
+            # Borne alignée sur `vmid_derive` : un VMID nul ou négatif
+            # n'existe pas sur Proxmox, et -1 est la sentinelle que
+            # l'appelant fabrique pour « VMID illisible ».
+            if isinstance(vmid, bool) or not isinstance(vmid, int) or vmid < 1:
+                return None
+            # DEUX POOLS SUR UN VMID N'ONT PAS DE MAÎTRE. Écraser le premier
+            # ferait nommer le mauvais dépôt à l'écran de refus, et ferait
+            # accuser la VM légitime du premier pool d'occuper un VMID
+            # « prévu » pour le second. Le moteur porte ce contrôle dans son
+            # « --verifier », qui rend AVANT d'imprimer le JSON : la lecture
+            # d'ici ne le voit donc jamais.
+            if vmid in proprietaire:
                 return None
             declare = membre.get("nom")
             proprietaire[vmid] = (
@@ -159,6 +170,13 @@ def etat(invite, devis):
     if devis is None or invite is None:
         return INCONNU, ""
     pool = (invite.pool or "").strip()
+    # LE POOL DU SITE SE RECONNAÎT SANS LE DEVIS. Il ne dérive d'aucun index
+    # et son nom ne change pas d'un hébergeur à l'autre ; le devis, lui, ne
+    # le nomme que si un underlay est monté. Sans ce raccourci, les machines
+    # du génome — cache, forge, AC, noms, dépôt, gabarit doré — reviennent
+    # LIBRES, et leur VMID ne dérive de rien qui les rattrape.
+    if pool == POOL_SITE:
+        return GERE, POOL_SITE
     revendique = devis.proprietaire.get(invite.vmid)
     if revendique:
         return GERE, revendique[0]
@@ -219,7 +237,17 @@ def collisions(invites, devis):
         occupant = (invite.pool or "").strip()
         if occupant == pool_declare:
             continue
-        if nom_declare and (invite.nom or "").strip() == nom_declare:
+        # LE RATTRAPAGE NE VISE QUE LA VM SANS POOL. L'homonymie est
+        # VOULUE — le même nom court désigne la même fonction chez deux
+        # locataires —, donc un nom qui concorde ne prouve rien dès que
+        # l'occupant porte un pool. Appliqué largement, il avale le constat
+        # le plus cher : une étrangère homonyme passerait pour la machine du
+        # plan, et l'écran annoncerait « aucune collision ».
+        if (
+            not occupant
+            and nom_declare
+            and (invite.nom or "").strip() == nom_declare
+        ):
             continue
         trouvees.append(
             Collision(

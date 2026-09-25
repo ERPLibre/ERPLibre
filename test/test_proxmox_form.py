@@ -55,6 +55,19 @@ class TestVmid(unittest.TestCase):
     """Proxmox refuse un VMID déjà pris, et il le dit APRÈS avoir téléchargé
     l'image : le choix se fait donc avant, d'après ce que l'hôte déclare."""
 
+    def test_a_vmid_a_setops_plan_reserves_is_skipped_like_a_taken_one(self):
+        """Une réserve n'existe pas encore sur l'hôte, donc « qm list » ne la
+        voit pas. Poser une VM là où la flotte veut la sienne ne se verrait
+        qu'au déploiement du moteur, et on n'en sort pas en renommant."""
+        from script.todo.proxmox_deploy_form import assign_vmids
+
+        lignes = [{"state": "new", "vm": {}}]
+        assign_vmids(lignes, [100, 101], 100, None)
+        self.assertEqual(102, lignes[0]["vm"]["vmid"])
+        lignes = [{"state": "new", "vm": {}}]
+        assign_vmids(lignes, [100, 101, 102, 103], 100, None)
+        self.assertEqual(104, lignes[0]["vm"]["vmid"])
+
     def test_taken_ids_are_skipped(self):
         rows = [rangee("a"), rangee("b")]
         assign_vmids(rows, [100, 101, 103], 100, lambda v: "ip=dhcp")

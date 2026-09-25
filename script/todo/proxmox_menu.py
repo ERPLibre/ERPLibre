@@ -758,6 +758,18 @@ class ProxmoxMenuMixin:
         if not verbe:
             print(t("Cancelled."))
             return
+        # LA GARDE DE COEXISTENCE PASSE ICI AUSSI. Cet écran a sa propre
+        # sélection — « all » compris — et ne traverse pas le choisisseur :
+        # sans cette ligne, couper le courant d'un invité que Set-OPS
+        # administre se fait sans que rien ne le dise. Le palier suit le
+        # geste : « stop » coupe le courant, les deux autres se rattrapent.
+        choisies = self._pve_permis(
+            choisies,
+            coexistence.REFUS if verbe == "stop" else coexistence.RETAPER,
+        )
+        if not choisies:
+            print(t("Nothing selected."))
+            return
         print(
             f"\n  {verbe} : "
             + ", ".join(f"{vm['name']} ({vm['vmid']})" for vm in choisies)
@@ -1694,8 +1706,9 @@ class ProxmoxMenuMixin:
             "names": [v["name"] for v in vms if v.get("name")],
             "vmids": [v["vmid"] for v in vms],
             "next_vmid": pve.next_vmid(vms, reserves=reserves or ()),
-            # Les VMID qu'un plan Set-OPS réserve, pour que l'écran refuse
-            # aussi celui qu'on TAPE — le proposé, lui, les saute déjà.
+            # Les VMID qu'un plan Set-OPS réserve. L'écran les compte parmi
+            # les PRIS : le rang de départ qu'on tape les enjambe comme il
+            # enjambe un VMID déjà posé sur l'hôte.
             "vmid_reserves": sorted(reserves or ()),
             "storages": [s["name"] for s in stockages if s.get("actif")],
             "storage": pve.pick_storage(stockages),
