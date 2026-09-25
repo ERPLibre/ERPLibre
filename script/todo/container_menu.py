@@ -762,9 +762,17 @@ class ContainerMenuMixin:
     def _container_nettoyer_images(self):
         """Effacer des images choisies à la pièce, par leur rang.
 
-        « rmi » sans --force : une image qu'un conteneur emploie encore est
-        refusée par le moteur, et ce refus est le bon — le conteneur en
-        dépend. Le compte rendu le nomme au lieu de le taire.
+        Une image qu'un conteneur tient — même arrêté — est refusée par
+        « rmi ». Le conflit se décide AVANT d'effacer quoi que ce soit : le
+        découvrir en route laisse un effacement à moitié fait, et prive la
+        décision de ce qu'elle doit savoir — quels conteneurs, dans quel
+        état, de quel projet.
+
+        Trois issues à un conflit, qui ne libèrent pas la même chose :
+        effacer les conteneurs puis l'image rend l'espace ; forcer ne retire
+        que le NOM, l'image restant sur le disque avec toute sa taille tant
+        qu'un conteneur la tient ; et le moteur refuse de forcer quand l'un
+        d'eux tourne. Garder est le défaut : dans le doute, rien ne part.
         """
         fiche = self._container_fiche()
         if not fiche:
@@ -773,31 +781,98 @@ class ContainerMenuMixin:
         if not images:
             print(t("No image."))
             return
+        usages = container_runtime.conteneurs_par_image(fiche, images)
         print()
         for rang, image in enumerate(images, 1):
             nom = container_runtime.reference_image(image)
-            print(f"  [{rang:>2}] {nom}  {image['taille']}  ({image['age']})")
+            ligne = f"  [{rang:>2}] {nom}  {image['taille']}  ({image['age']})"
+            tenants = usages.get(image["id"])
+            if tenants:
+                noms = ", ".join(c["nom"] for c in tenants)
+                ligne += f"  ⛓ {noms}"
+            print(ligne)
         rangs = self._container_lire_selection(len(images))
         if not rangs:
             return
-        choisies = [images[r] for r in rangs]
+
+        plan = []
+        for rang in rangs:
+            image = images[rang]
+            tenants = usages.get(image["id"], [])
+            action = "effacer"
+            if tenants:
+                action = self._container_decider_conflit(image, tenants)
+            if action != "garder":
+                plan.append((image, action, tenants))
+        if not plan:
+            print(t("Nothing to do."))
+            return
+
         print(f"\n⚠ {t('Will remove:')}")
-        for image in choisies:
-            print(f"    {container_runtime.reference_image(image)}")
+        for image, action, tenants in plan:
+            ligne = f"    {container_runtime.reference_image(image)}"
+            if action == "vider":
+                noms = ", ".join(c["nom"] for c in tenants)
+                ligne += f"  ← {t('after its containers:')} {noms}"
+            elif action == "forcer":
+                ligne += f"  ← {t('forced: the name only, the space stays')}"
+            print(ligne)
         if not self._is_yes(input(f"💬 {t('Remove? (Y/N): ')}")):
             print(t("Nothing to do."))
             return
+
         echecs = []
-        for image in choisies:
+        for image, action, tenants in plan:
             ref = container_runtime.reference_image(image)
-            cmd = container_runtime.commande(fiche, ["rmi", ref])
+            if action == "vider":
+                # Les conteneurs d'abord : tant qu'un seul tient l'image,
+                # « rmi » la refuse.
+                for conteneur in tenants:
+                    cmd = container_runtime.commande(
+                        fiche, ["rm", "-f", conteneur["nom"]]
+                    )
+                    self.execute.exec_command_live(
+                        shlex.join(cmd), source_erplibre=False
+                    )
+            args = ["rmi", "-f", ref] if action == "forcer" else ["rmi", ref]
+            cmd = container_runtime.commande(fiche, args)
             if self.execute.exec_command_live(
                 shlex.join(cmd), source_erplibre=False
             ):
                 echecs.append(ref)
         self._container_bilan(
-            len(choisies), echecs, t("A container still uses a refused image.")
+            len(plan), echecs, t("A container still uses a refused image.")
         )
+
+    def _container_decider_conflit(self, image, tenants):
+        """Ce qu'on fait d'une image que des conteneurs tiennent.
+
+        Rend « garder », « vider » ou « forcer ». La question montre CE QUI
+        tient l'image — nom, état, projet compose — parce que c'est cela qui
+        décide : un conteneur arrêté d'un projet se recrée au prochain
+        « compose up », un conteneur isolé en marche est peut-être du travail
+        en cours.
+
+        Forcer n'est proposé que si aucun conteneur ne tourne : le moteur le
+        refuserait, et offrir un choix voué à l'échec n'aide personne.
+        """
+        print(f"\n⚠ {container_runtime.reference_image(image)}")
+        print(f"  {t('is held by these containers:')}")
+        for conteneur in tenants:
+            projet = ""
+            if conteneur["projet"]:
+                projet = f"  — {t('project')} {conteneur['projet']}"
+            print(f"    {conteneur['nom']}  ({conteneur['etat']}){projet}")
+        options = [
+            t("Keep the image"),
+            t("Remove these containers, then the image - frees the space"),
+        ]
+        if any(c["etat"] == "running" for c in tenants):
+            print(f"  {t('A container runs: the engine refuses to force.')}")
+        else:
+            options.append(t("Force - removes the name only; the space stays"))
+        rang = self._container_choix_numerote(t("Decision:"), options)
+        return {1: "vider", 2: "forcer"}.get(rang, "garder")
 
     def _container_nettoyer_projets(self):
         """Effacer un espace de travail : un projet compose et tout ce qu'il
