@@ -39,15 +39,23 @@ RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     python -m venv .venv.$ERPLIBRE_VERSION
 
-# Le venv des outils prend le python de l'image, celui d'Odoo : le RUN
-# s'arrete ici si ce python ne sait pas lire la syntaxe de script/.
+# Le venv des outils prend le python de l'image, celui d'Odoo.
+#
+# Ses requis sont ceux de l'IMAGE et non ceux de l'hote : le fichier complet
+# vise un venv en 3.14 et porte des bornes qu'un Python 3.7 ou 3.8 ne peut pas
+# satisfaire, ce qui interdisait toute image d'Odoo 12 a 15.
+#
+# Le garde porte sur ce que l'image LANCE, et non sur tout script/ : compiler
+# l'arbre entier alarmait sur des fichiers que l'image n'ouvre jamais. Importer
+# les points d'entree suit le vrai graphe d'imports, donc un requis manquant
+# comme une syntaxe trop recente s'arretent ici, avec le nom du coupable.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    { python -m compileall -q script/ || \
-      { echo "Le python de l'image ($(python -V 2>&1)) ne lit pas script/ : prendre une version Odoo plus recente." ; exit 1 ; } ; } && \
     python -m venv .venv.erplibre && \
     source ./.venv.erplibre/bin/activate && \
-    pip3 install -r requirement/erplibre_require-ments.txt
+    pip3 install -r requirement/erplibre_require-ments-docker.txt && \
+    { python -c "import script.version.update_env_version, script.git.git_merge_repo_manifest" || \
+      { echo "Le python de l'image ($(python -V 2>&1)) ne fait pas tourner l'outillage : prendre une version Odoo plus recente." ; exit 1 ; } ; }
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
