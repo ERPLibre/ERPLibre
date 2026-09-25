@@ -23,14 +23,15 @@ VOULUE="$(xargs < conf/python-erplibre-version 2> /dev/null)"
 ATTENDUE="${VOULUE%.*}"
 
 # Majeure.mineure de l'exécutable : elle seule décide de la grammaire acceptée.
-# Rien n'est rendu quand la sortie n'a pas la forme « Python X.Y… » : un
-# interpréteur en panne écrit son diagnostic, et le premier mot venu passerait
-# sinon pour un numéro de version que « sort -V » jugerait assez récent.
+# La version est lue par du code exécuté, et non par « -V » : celui-ci répond
+# avant le chargement de la bibliothèque standard, si bien qu'un interpréteur
+# qui ne la trouve pas rend sa version puis meurt au premier vrai lancement.
+# Rien n'est rendu quand la sortie n'a pas la forme X.Y : un interpréteur en
+# panne écrit son diagnostic, et le premier mot venu passerait sinon pour un
+# numéro de version que « sort -V » jugerait assez récent.
 el_mineure() {
-  "$1" -V 2>&1 | awk '$1 == "Python" {
-    split($2, v, ".")
-    if (v[1] ~ /^[0-9]+$/ && v[2] ~ /^[0-9]+$/) print v[1] "." v[2]
-  }'
+  "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2> /dev/null \
+    | awk '/^[0-9]+\.[0-9]+$/ { print; exit }'
 }
 
 # Vrai si la version lue atteint au moins celle attendue, comparée en version
