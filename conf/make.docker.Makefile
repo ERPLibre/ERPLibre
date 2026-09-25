@@ -105,6 +105,14 @@ docker_build_odoo_12:
 docker_build_odoo_12_clean:
 	./script/docker/docker_build.sh --odoo_12 --no-cache
 
+.PHONY: docker_build_odoo_11
+docker_build_odoo_11:
+	./script/docker/docker_build.sh --odoo_11
+
+.PHONY: docker_build_odoo_11_clean
+docker_build_odoo_11_clean:
+	./script/docker/docker_build.sh --odoo_11 --no-cache
+
 # build docker release
 .PHONY: docker_build_release
 docker_build_release:
