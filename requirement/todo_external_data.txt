@@ -10,7 +10,7 @@
 # conditional_formatting._cf_rules, qui n'ont pas d'équivalent public en
 # 3.1.2. Le test de fuite de test_transform_external.py est ce qui
 # surveille cette borne à la montée de version.
-openpyxl==3.1.2
+openpyxl==3.1.5
 xlsxwriter==3.1.9
 xlrd==2.0.1
 access-parser==0.0.6
