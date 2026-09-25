@@ -42,6 +42,7 @@ ssh_push:
 		--exclude='odoo16.0/' \
 		--exclude='odoo17.0/' \
 		--exclude='odoo18.0/' \
+		--exclude='odoo19.0/' \
 		--exclude='.git/' \
 		--exclude='private/' \
 		--exclude='*.pyc' \
