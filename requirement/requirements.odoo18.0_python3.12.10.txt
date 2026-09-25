@@ -96,7 +96,7 @@ boto3==1.43.49
 # en amont, GraalVM Native Image ne ciblant pas s390x.
 # La 3.x n'exige que lxml et pypdf. On y retombe là où saxonche n'existe pas,
 # au prix de la validation Schematron.
-factur-x>=4.2 ; platform_machine != 's390x'
+factur-x>=6.8 ; platform_machine != 's390x'
 factur-x<4 ; platform_machine == 's390x'
 
 # PyMuPDF (OCA_edi) : MuPDF ne se construit pas sur s390x. On l'y écarte, au

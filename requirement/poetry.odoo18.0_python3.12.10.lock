@@ -9565,4 +9565,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12.10,<3.13"
-content-hash = "0d5f25bb32481ba8b3c917b42bbab385dba2d5f1b0142c05d69665e1febb7a93"
+content-hash = "621f0b10ca2a376f1eba4545d51dff7c1c84718f6d29af463963f9a196c5201c"

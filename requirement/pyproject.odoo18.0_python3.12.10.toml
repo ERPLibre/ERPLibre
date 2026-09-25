@@ -208,7 +208,7 @@ xmltodict = "0.13.0"
 zeep = "4.2.1"
 zklib = "^0.1.1"
 [[tool.poetry.dependencies.factur-x]]
-version = ">=4.2"
+version = ">=6.8"
 markers = "platform_machine != \"s390x\""
 
 [[tool.poetry.dependencies.factur-x]]
