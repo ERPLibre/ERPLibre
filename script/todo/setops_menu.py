@@ -151,7 +151,7 @@ class SetopsMenuMixin:
 
         for rang, etape in enumerate(pas, 1):
             print(f"\n▶ {rang}/{len(pas)} {ansible_env.montre(etape)}")
-            code = ansible_env.jouer(etape, RACINE)
+            code = ansible_env.poser(etape, RACINE)
             if code:
                 echec = t("step {n} failed (code {code}); stopping").format(
                     n=rang, code=code

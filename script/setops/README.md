@@ -1,7 +1,7 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Three modules, one split: **the survey touches the system, the decision
+Four modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -144,6 +144,43 @@ What the station offers, and what setting up costs:
 - `version_posee(racine, paquet)`, `version_collection(moteur, nom)` and
   `mineur_du_path(racine, moteur)`: what is really there. The last one asks
   a BARE `python3`, which is what the engine's guard does;
-- `jouer(etape, racine, env)`: runs one gesture and returns its code; output
-  is not captured, since a setup takes minutes.
+- `poser(etape, racine, env)`: plays one step and returns its code; output
+  is not captured, since a setup takes minutes. The launch itself goes
+  through `runner`, below — one way to run a gesture, and only one.
 
+
+## `runner` — one way to run a gesture, and only one
+
+Three rules, each repairing a precise way of getting it wrong.
+
+**The environment is built from scratch**, never inherited. Inherited, it
+carries three things that decide in the operator's place: a `CONFIRMER=true`
+left over from an earlier gesture, which the engine's appliers read as an
+order to write instead of simulate; the parent make's overrides
+(`MAKEFLAGS`, `MAKELEVEL`), since TODO launches itself through `make todo`;
+and the `ANSIBLE_*` or `SETOPS_*` the engine lets win over its own defaults
+— including the one naming the cluster a destructive gesture would hit.
+
+**The command carries its `CONFIRMER`**, in plain sight, on the line that is
+shown. A variable passed to `make` on the command line reaches the called
+script's environment AND beats the inherited one: the line shown is the line
+that decides.
+
+**The verdict is read**, code AND output. Several engine gestures return 0
+having found a drift, so the code alone does not do.
+
+This layer knows nothing of Ansible: the environment of an engine gesture is
+composed by the caller, `environnement(racine, moteur, base)` over `base(source)`.
+That way there is one process runner in the package, and the dependency goes
+one way only.
+
+- `base(source)`: the whitelist alone, PATH stripped of ERPLibre's venv;
+- `sans_venv_erplibre(path)`: that stripping, judged on whole path
+  SEGMENTS — judging on substrings would cut a neighbouring folder;
+- `cible(moteur, nom, variables, confirmer)`: the argv of a `make` target,
+  `CONFIRMER` always written, last;
+- `cite(argv)`: the line to show, derived from the argv;
+- `jouer(argv, env, cwd, capture, delai, fusionner)`: runs and returns a
+  `Verdict`
+  whose `code` is `None` when the process could not run at all — that is a
+  verdict, not the absence of one.

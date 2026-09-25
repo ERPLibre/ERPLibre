@@ -26,7 +26,6 @@ import os
 import re
 import shlex
 import shutil
-import subprocess
 from typing import NamedTuple
 
 import yaml
@@ -34,6 +33,8 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
+
+from script.setops import runner
 
 # Le venv Ansible dédié, sous la racine d'ERPLibre. Son nom commence par
 # « .venv », motif déjà ignoré par git.
@@ -259,31 +260,6 @@ def collections_epinglees(moteur):
 # ---------------------------------------------------------------------------
 
 
-def _lancer(argv, env=None, cwd=None, capture=True):
-    """Lance `argv` dans `cwd`, entrée fermée, borné par `DELAI_SONDE`.
-
-    Rend le CompletedProcess, ou None quand le processus n'a pas pu tourner
-    jusqu'au bout (introuvable, délai dépassé, argument invalide).
-    """
-    sortie = subprocess.PIPE if capture else subprocess.DEVNULL
-    try:
-        return subprocess.run(
-            argv,
-            env=env,
-            cwd=cwd,
-            stdin=subprocess.DEVNULL,
-            stdout=sortie,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=DELAI_SONDE,
-            check=False,
-        )
-    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
-        return None
-
-
 def _mise_ou(mineur=MINEUR_CIBLE):
     """Le dossier où `mise` a posé `mineur`, ou None.
 
@@ -293,10 +269,14 @@ def _mise_ou(mineur=MINEUR_CIBLE):
     """
     if shutil.which("mise") is None:
         return None
-    fait = _lancer(("mise", "where", f"python@{mineur}"))
-    if fait is None or fait.returncode != 0:
+    vu = runner.jouer(
+        ("mise", "where", f"python@{mineur}"),
+        delai=DELAI_SONDE,
+        fusionner=False,
+    )
+    if not vu.reussi:
         return None
-    dossier = fait.stdout.strip()
+    dossier = vu.sortie.strip()
     return dossier if dossier and os.path.isdir(dossier) else None
 
 
@@ -420,17 +400,19 @@ def version_posee(racine, paquet):
     réponse ; toute autre sortie est illisible.
     """
     venv = chemin_venv(racine)
-    fait = _lancer(
+    vu = runner.jouer(
         (
             os.path.join(venv, "bin", "python"),
             "-c",
             SONDE_VERSION.format(paquet=paquet),
         ),
         cwd=venv,
+        delai=DELAI_SONDE,
+        fusionner=False,
     )
-    if fait is None or fait.returncode != 0:
+    if not vu.reussi:
         return None
-    lues = fait.stdout.strip().splitlines()
+    lues = vu.sortie.strip().splitlines()
     if len(lues) != 1 or not lues[0].strip():
         return None
     return lues[0].strip()
@@ -464,17 +446,15 @@ def mineur_du_path(racine, moteur):
     rendu — deux champs, l'un disant « 3.14 » et l'autre « conforme », se
     contrediraient sans que rien ne l'empêche.
     """
-    fait = _lancer(
-        (
-            "python3",
-            "-c",
-            SONDE_MINEUR,
-        ),
-        env=environnement(racine, moteur),
+    vu = runner.jouer(
+        ("python3", "-c", SONDE_MINEUR),
+        env=environnement(racine, moteur, runner.base()),
+        delai=DELAI_SONDE,
+        fusionner=False,
     )
-    if fait is None or fait.returncode != 0:
+    if not vu.reussi:
         return None
-    lu = fait.stdout.strip()
+    lu = vu.sortie.strip()
     return lu or None
 
 
@@ -504,7 +484,7 @@ def _supprimer_venv(racine):
     return 0
 
 
-def jouer(etape, racine, env=None):
+def poser(etape, racine, env=None):
     """Joue `etape` et rend son code de retour ; 0 vaut réussite.
 
     La sortie n'est PAS capturée : une pose dure des minutes, et un
@@ -516,14 +496,5 @@ def jouer(etape, racine, env=None):
         return _supprimer_venv(racine)
     if etape.argv is None:
         return 1
-    try:
-        fait = subprocess.run(
-            etape.argv,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            timeout=DELAI_POSE,
-            check=False,
-        )
-    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
-        return 1
-    return fait.returncode
+    vu = runner.jouer(etape.argv, env=env, capture=False, delai=DELAI_POSE)
+    return 1 if vu.code is None else vu.code

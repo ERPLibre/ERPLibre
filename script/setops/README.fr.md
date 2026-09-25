@@ -1,7 +1,7 @@
 
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Trois modules, un partage : **le relevé touche le système, la décision ne le
+Quatre modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -146,6 +146,43 @@ Ce que le poste offre, et ce que la pose coûte :
 - `version_posee(racine, paquet)`, `version_collection(moteur, nom)` et
   `mineur_du_path(racine, moteur)` : ce qui est réellement là. La dernière
   interroge un `python3` NU, ce que fait la garde du moteur ;
-- `jouer(etape, racine, env)` : joue un geste et rend son code ; la sortie
-  n'est pas capturée, une pose durant des minutes.
+- `poser(etape, racine, env)` : joue une étape et rend son code ; la sortie
+  n'est pas capturée, une pose durant des minutes. Le lancement lui-même
+  passe par `runner`, en dessous — une seule façon de lancer un geste.
 
+## `runner` — une seule façon de lancer un geste
+
+Trois règles, et chacune répare une façon précise de se tromper.
+
+**L'environnement est construit à neuf**, jamais hérité. Hérité, il porte
+trois choses qui décident à la place de l'opérateur : un `CONFIRMER=true`
+resté d'un geste précédent, que les applicateurs du moteur lisent comme un
+ordre d'écrire au lieu de simuler ; les surcharges du make parent
+(`MAKEFLAGS`, `MAKELEVEL`), puisque TODO se lance lui-même par `make todo` ;
+et les `ANSIBLE_*` ou `SETOPS_*` que le moteur laisse gagner sur ses propres
+défauts — dont celui qui désigne la grappe qu'un geste destructeur viserait.
+
+**La commande porte son `CONFIRMER`**, en clair, sur la ligne qu'on affiche.
+Une variable passée à `make` sur la ligne de commande arrive dans
+l'environnement du script appelé ET l'emporte sur celle qui serait héritée :
+la ligne montrée est la ligne qui décide.
+
+**Le verdict se lit**, code ET sortie. Plusieurs gestes du moteur rendent 0
+en ayant trouvé un écart : le code seul ne suffit pas.
+
+Cette couche ignore Ansible : l'environnement d'un geste du moteur se compose
+chez l'appelant, `environnement(racine, moteur, base)` par-dessus `base(source)`.
+Il n'y a ainsi qu'un lanceur dans le paquet, et la dépendance ne va que dans
+un sens.
+
+- `base(source)` : la liste blanche seule, PATH débarrassé du venv
+  d'ERPLibre ;
+- `sans_venv_erplibre(path)` : ce retrait, jugé sur des SEGMENTS de chemin
+  entiers — juger par sous-chaîne couperait un dossier voisin ;
+- `cible(moteur, nom, variables, confirmer)` : l'argv d'une cible `make`,
+  `CONFIRMER` toujours écrit, en dernier ;
+- `cite(argv)` : la ligne à montrer, dérivée de l'argv ;
+- `jouer(argv, env, cwd, capture, delai, fusionner)` : joue et rend un
+  `Verdict` dont
+  le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
+  verdict, pas l'absence de verdict.

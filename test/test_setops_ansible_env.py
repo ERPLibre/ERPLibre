@@ -346,15 +346,15 @@ class TestLeLanceur(CasDeBanc):
         """Une étape qui lève arrêterait le menu sur une trace ; elle rend
         un code, que l'appelant lit."""
         etape = A.Etape(argv=("/nulle-part-fictif/rien",))
-        self.assertNotEqual(0, A.jouer(etape, self.racine))
+        self.assertNotEqual(0, A.poser(etape, self.racine))
 
     def test_a_step_without_argv_and_without_action_fails(self):
-        self.assertNotEqual(0, A.jouer(A.Etape(argv=None), self.racine))
+        self.assertNotEqual(0, A.poser(A.Etape(argv=None), self.racine))
 
     def test_the_removal_step_goes_through_the_guard(self):
         self.poser_venv()
         etape = A.Etape(argv=None, libelle="rm", action=A.SUPPRIMER)
-        self.assertEqual(0, A.jouer(etape, self.racine))
+        self.assertEqual(0, A.poser(etape, self.racine))
         self.assertFalse(os.path.exists(self.venv))
 
 
