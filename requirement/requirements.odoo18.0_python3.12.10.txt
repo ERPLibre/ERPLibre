@@ -78,7 +78,7 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 #git+https://github.com/pymssql/pymssql.git
 
 pandas==2.3.3
-pillow==12.2.0
+pillow==12.3.0
 # s3fs exige fsspec à sa propre version exacte, alors qu'OCA_storage amène
 # « fsspec[s3] » sans borne : laissé libre, fsspec prendrait la dernière version
 # publiée et casserait la résolution à chaque sortie. Les deux sont épinglés à
