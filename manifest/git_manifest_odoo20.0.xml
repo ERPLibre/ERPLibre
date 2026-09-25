@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="odoo" fetch="https://github.com/odoo/" />
+    <remote name="OCA" fetch="https://github.com/OCA/" />
+    <project
+        name="odoo.git"
+        path="odoo20.0/odoo"
+        remote="odoo"
+        clone-depth="10"
+        revision="20.0"
+        groups="odoo,odoo20.0"
+    />
+    <project
+        name="partner-contact.git"
+        revision="20.0"
+        path="odoo20.0/addons/OCA_partner-contact"
+        remote="OCA"
+        groups="addons,odoo20.0"
+    />
+    <project
+        name="storage.git"
+        revision="20.0"
+        path="odoo20.0/addons/OCA_storage"
+        remote="OCA"
+        groups="addons,odoo20.0"
+    />
+</manifest>
