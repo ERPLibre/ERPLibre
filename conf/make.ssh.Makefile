@@ -35,6 +35,7 @@ ssh_push:
 	rsync -avz --delete \
 		--exclude='.venv.*/' \
 		--exclude='addons/' \
+		--exclude='odoo11.0/' \
 		--exclude='odoo12.0/' \
 		--exclude='odoo13.0/' \
 		--exclude='odoo14.0/' \
