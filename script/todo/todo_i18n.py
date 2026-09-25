@@ -1192,7 +1192,7 @@ TRANSLATIONS = {
         "en": "Choose language / Choisir la langue",
     },
     "French": {
-        "fr": "Francais",
+        "fr": "Français",
         "en": "French",
     },
     "English": {

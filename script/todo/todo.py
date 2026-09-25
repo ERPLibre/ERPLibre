@@ -215,9 +215,9 @@ class TODO(
     def _ask_language(self):
         if not lang_is_configured():
             print()
-            print("Choisir la langue / Choose language:")
-            print("[1] Francais")
-            print("[2] English")
+            print("🌍 Choisir la langue / Choose language:")
+            print("[1] 🇫🇷 Français")
+            print("[2] 🇬🇧 English")
             choice = ""
             while choice not in ("1", "2"):
                 choice = input("Select / Choisir : ").strip()
@@ -228,9 +228,9 @@ class TODO(
 
     def _change_language(self):
         print()
-        print(t("Choose language / Choisir la langue") + ":")
-        print(f"[1] {t('French')}")
-        print(f"[2] {t('English')}")
+        print("🌍 " + t("Choose language / Choisir la langue") + ":")
+        print(f"[1] 🇫🇷 {t('French')}")
+        print(f"[2] 🇬🇧 {t('English')}")
         print(f"[0] {t('Back')}")
         choice = ""
         while choice not in ("0", "1", "2"):
