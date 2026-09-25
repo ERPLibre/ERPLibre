@@ -13399,6 +13399,42 @@ TRANSLATIONS = {
         "fr": "Ctrl+C arrête le mandataire.",
         "en": "Ctrl+C stops the proxy.",
     },
+    "Local TLS certificates for testing (HTTPS)": {
+        "fr": "🔐 Certificats TLS locaux pour les tests (HTTPS)",
+        "en": "🔐 Local TLS certificates for testing (HTTPS)",
+    },
+    "Protocol:": {
+        "fr": "Protocole :",
+        "en": "Protocol:",
+    },
+    "local certificate": {
+        "fr": "certificat local",
+        "en": "local certificate",
+    },
+    "No local certificate yet: issuing one.": {
+        "fr": "Aucun certificat local : émission d'un certificat.",
+        "en": "No local certificate yet: issuing one.",
+    },
+    "Authority to import in the browser:": {
+        "fr": "Autorité à importer dans le navigateur :",
+        "en": "Authority to import in the browser:",
+    },
+    "Server certificate:": {
+        "fr": "Certificat serveur :",
+        "en": "Server certificate:",
+    },
+    "Names covered:": {
+        "fr": "Noms couverts :",
+        "en": "Names covered:",
+    },
+    "Other names or addresses, comma separated (Enter: none): ": {
+        "fr": "Autres noms ou adresses, séparés par des virgules (Entrée : aucun) : ",
+        "en": "Other names or addresses, comma separated (Enter: none): ",
+    },
+    "Import the authority once (Firefox: Settings › Certificates › Authorities › Import); a new server certificate needs no new import.": {
+        "fr": "Importer l'autorité une seule fois (Firefox : Paramètres › Certificats › Autorités › Importer) ; un nouveau certificat serveur n'exige aucun nouvel import.",
+        "en": "Import the authority once (Firefox: Settings › Certificates › Authorities › Import); a new server certificate needs no new import.",
+    },
     "VPN tunnels: connect, profiles, vault secrets": {
         "fr": "Tunnels VPN : connexion, profils, secrets du coffre",
         "en": "VPN tunnels: connect, profiles, vault secrets",
