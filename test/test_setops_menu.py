@@ -218,27 +218,52 @@ class TestDepuisDeploy(CasDeMenu):
         self._taper(list(GREFFES), libelle)
         self.assertEqual(["setops"], self.joues)
 
-    # Le rang AFFICHÉ de chaque entrée déclarée par « method » : une entrée
-    # neuve se pose après les autres, si bien qu'aucune ne change de numéro,
-    # et les greffes de todo.json viennent après toutes.
-    RANGS = {
-        "10": "_deploy_vm_backends",
-        "11": "prompt_execute_egress_book",
-        "12": "prompt_execute_lima",
-        "13": "_qemu_verify_station",
-        "14": "_qemu_verify_vm",
-        "15": "prompt_execute_setops",
+    # Chaque entrée déclarée par « method », et la méthode qu'elle atteint.
+    # Le numéro n'est PAS écrit ici : il se lit dans le menu, sans quoi une
+    # entrée posée plus haut par l'amont ferait rougir ce contrôle alors que
+    # rien n'est cassé — et c'est justement ce qu'il doit prouver.
+    ENTREES = {
+        "Deploy - VM backends (which one this machine uses)": (
+            "_deploy_vm_backends"
+        ),
+        "Deploy - Site address book (what a confined VM reaches)": (
+            "prompt_execute_egress_book"
+        ),
+        "Lima - instances (macOS, Linux)": "prompt_execute_lima",
+        "Deploy - verify this station, layer by layer": (
+            "_qemu_verify_station"
+        ),
+        "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
+        ENTREE_SETOPS: "prompt_execute_setops",
     }
 
-    def test_no_existing_entry_changes_its_number(self):
+    def test_each_entry_reaches_its_own_method(self):
         for greffes in ([], GREFFES):
-            for rang, methode in self.RANGS.items():
-                with self.subTest(greffes=len(greffes), rang=rang):
+            for cle, methode in self.ENTREES.items():
+                with self.subTest(greffes=len(greffes), entree=cle):
                     joues = []
-                    for nom in self.RANGS.values():
+                    for nom in self.ENTREES.values():
                         setattr(self.todo, nom, lambda n=nom: joues.append(n))
-                    self._deploy(list(greffes), [rang, "0"])
+                    self._taper(list(greffes), todo_i18n.t(cle))
                     self.assertEqual([methode], joues)
+
+    def test_setops_comes_last_so_no_entry_moves(self):
+        """Ce qui garantit qu'aucune entrée n'a changé de numéro : la neuve
+        est posée APRÈS toutes les autres. Seules les greffes de todo.json
+        la suivent, ce que `test_a_graft_from_todo_json_does_not_move_it`
+        tient de son côté."""
+        vus = []
+
+        def saisie(texte, *_a, **_k):
+            vus.extend(re.findall(r"^\[(\d+)\] ", texte, re.M))
+            return "0"
+
+        self._deploy([], saisie)
+        dernier = max(int(n) for n in vus if n != "0")
+        self.assertEqual(
+            str(dernier),
+            self._rang_affiche([], todo_i18n.t(ENTREE_SETOPS)),
+        )
 
     def test_the_grafted_entries_still_run_under_their_number(self):
         for entree in GREFFES:
