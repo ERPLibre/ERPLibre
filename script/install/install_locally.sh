@@ -198,13 +198,22 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # guillemets (setuptools, shlex, le shell d'un Makefile). Un chemin qui
     # porte une espace est donc entouré de guillemets simples ; sans espace,
     # il reste nu, pour l'outil qui ne retirerait pas les guillemets.
-    swig_compat="${PWD}/script/install/swig_compat.h"
-    case "${swig_compat}" in
-        *[[:space:]]*) swig_compat="'${swig_compat}'" ;;
-    esac
-    export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
+    #
+    # Jamais en Python 2 : PyInt_FromLong y est une vraie fonction, et l'alias
+    # la remplacerait par PyLong_FromLong — des entiers rendus en « long »
+    # par toute extension C compilée ici.
+    if [[ "${EL_PYTHON_ODOO_VERSION}" != 2.* ]]; then
+        swig_compat="${PWD}/script/install/swig_compat.h"
+        case "${swig_compat}" in
+            *[[:space:]]*) swig_compat="'${swig_compat}'" ;;
+        esac
+        export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-include ${swig_compat}"
+    fi
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2 n'a plus « export ».
+    # pyldap 2.4, épinglé par Odoo 10 à 12 : voir lib_ldap_compat.sh.
+    . ./script/install/lib_ldap_compat.sh
+    el_ldap_r_compat "${VENV_ODOO_PATH}/lib/ldap_r_compat"
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
         # Les dépendances que Poetry a amenées dans ce venv, alignées sur le
         # verrou AVANT l'installation : sans quoi Poetry les remplace pendant
