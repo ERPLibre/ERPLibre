@@ -431,17 +431,32 @@ class TestLaParitéProxmox(unittest.TestCase):
 
     def test_the_detail_reuses_the_list_it_was_called_from(self):
         """Redemander « qm list » renumérote sur une liste qui peut avoir
-        changé, et le numéro tapé porte alors sur la voisine. L'épreuve
-        tient le PASSAGE de la liste, que rien d'autre ne rend visible."""
-        import inspect
+        changé, et le numéro tapé porte alors sur la voisine.
+
+        L'épreuve APPELLE le détail avec une liste et regarde ce que le
+        choisisseur reçoit : lire « vms=vms » dans le source rougirait sur
+        un argument renommé et resterait vert sur un passage qui n'arrive
+        pas jusqu'au choisisseur.
+        """
         import sys
 
         sys.argv = ["todo.py"]
         from script.todo.todo import TODO as CLASSE
 
-        self.assertIn("vms", inspect.signature(CLASSE._pve_pick_vm).parameters)
-        corps = inspect.getsource(CLASSE._pve_detail)
-        self.assertIn("vms=vms", corps)
+        liste = [{"vmid": "701", "name": "banc-fictif", "status": "running"}]
+        recus = []
+        todo = CLASSE()
+        # Rendre None arrête le détail avant l'affichage : seul le passage
+        # de la liste est en jeu ici, et rien ne part vers l'hôte.
+        # Tout ce que reçoit le choisisseur, positionnel ou nommé : la
+        # liste doit ARRIVER, et le nom du paramètre peut changer sans que
+        # cette épreuve ait son mot à dire.
+        todo._pve_pick_vm = lambda *a, **kw: (
+            recus.append(list(a) + list(kw.values())) or None
+        )
+        todo._pve_detail(vms=liste)
+        self.assertEqual(1, len(recus), "le choisisseur n'est pas appelé")
+        self.assertIn(liste, recus[0])
 
     def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
         # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
