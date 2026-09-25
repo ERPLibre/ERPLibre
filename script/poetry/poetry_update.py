@@ -8,6 +8,8 @@ import logging
 import os
 import re
 import shutil
+import subprocess
+import sys
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
@@ -626,9 +628,14 @@ def call_poetry_lock(config):
     """
     :return: True if success
     """
-    venv_dir = f".venv.{config.set_version_erplibre}"
-    status = os.system(f"./{venv_dir}/bin/poetry lock")
-    return status == 0
+    venv_dir = os.path.abspath(f".venv.{config.set_version_erplibre}")
+    # poetry works in the active venv when there is one: the caller's
+    # VIRTUAL_ENV (often .venv.erplibre) would hand it a Python outside the
+    # pyproject bounds, so the Odoo venv is activated for this call.
+    env = dict(os.environ, VIRTUAL_ENV=venv_dir)
+    env["PATH"] = os.pathsep.join([f"{venv_dir}/bin", env.get("PATH", "")])
+    status = subprocess.run([f"{venv_dir}/bin/poetry", "lock"], env=env)
+    return status.returncode == 0
 
 
 def call_poetry_add_build_dependency():
@@ -659,6 +666,39 @@ def get_list_ignored():
     return lst_ignore_requirements, ignore_requirement_file
 
 
+def ensure_pyproject_link(config, pyproject_filename):
+    """Stop cleanly when the root pyproject.toml is missing.
+
+    pyproject.toml and poetry.lock at the root are symlinks to the active
+    version's files in requirement/, created by the version switch; they are
+    not versioned. When absent, or dangling, the fix is `make switch_odoo_XX`.
+    On a terminal, offer to run it and restart this script with the same
+    arguments; otherwise print the command and exit with code 1.
+
+    :param config: parsed arguments, set_version_odoo gives the make target
+    :param pyproject_filename: path of the pyproject.toml to open
+    :return: None when the file exists; never returns otherwise
+    """
+    if os.path.isfile(pyproject_filename):
+        return
+    odoo_major = config.set_version_odoo.split(".")[0]
+    make_cmd = f"make switch_odoo_{odoo_major}"
+    print(
+        f"{Fore.RED}ERROR{Style.RESET_ALL} - Missing '{pyproject_filename}':"
+        " the Poetry links of the active version are not created."
+    )
+    print(f"Fix: run '{make_cmd}', then relaunch this script.")
+    if not sys.stdin.isatty():
+        sys.exit(1)
+    answer = input(f"Run '{make_cmd}' and relaunch now? [y/N] ")
+    if answer.strip().lower() not in ("y", "yes", "o", "oui"):
+        sys.exit(1)
+    if os.system(make_cmd) != 0 or not os.path.isfile(pyproject_filename):
+        print(f"{Fore.RED}ERROR{Style.RESET_ALL} - '{make_cmd}' failed.")
+        sys.exit(1)
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def main():
     # repo = Repo(root_path)
     # lst_repo = get_all_repo()
@@ -679,6 +719,7 @@ def main():
 
     if not config.dry:
         pyproject_toml_filename = f"{config.dir}pyproject.toml"
+        ensure_pyproject_link(config, pyproject_toml_filename)
         delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
     if not config.dry:

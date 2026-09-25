@@ -92,6 +92,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The list of Claude Code commands in `TODO › Execute › GPT code › Claude configs` compares each ERPLibre template in `conf/` with its copy in `~/.claude/commands/`: a command not installed is shown, an outdated copy is marked with its count of added and removed lines, and a command that comes from elsewhere is labelled as such. On a yes it prints the diff, then redeploys the outdated copies, keeping the git name and e-mail `/commit` carried
 - A commit message opens on an English subject and an English body; `--- FR ---` then opens the French section, which starts with the subject translated under the same tag. The `commit-msg` hook refuses a `--- EN ---` marker and a French section without that title, and checks the title like a subject. `/commit` and `/git_prepare_merge` follow the same order
 - TODO menus: the language is set only from Configuration, the duplicate entry in Execute is gone, and Fork moves from the main menu to Configuration. The main menu now numbers Telemetry 4 and Configuration 5. The language chooser shows a flag per language
+- Odoo 18 dependencies refreshed. `openai` is pinned to 2.x, whose 3.x requires an `idna` that Odoo 18 forbids; `fsspec` is pinned beside `s3fs`, which demands it at its own exact version, so the two move together; `meteostat` returns to 1.x, every 2.x capping `pytz` below 2024. PyMuPDF stays excluded on s390x, now declared in the requirements so a regeneration keeps it. Major bumps of `ujson` 6, `plotly` 7, `python-slugify` 9 and `sqlalchemy` 2.1 are not yet tested
+- Dependabot ignores the major versions of `meteostat`
 
 ## Fixed
 
@@ -157,6 +159,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The cache's certificate variables name a bundle only when the file exists. A recent Fedora lacks `/etc/pki/tls/certs/ca-bundle.crt`, and pointing pip at a missing path made it refuse EVERY download, including what has nothing to do with the cache. None found writes no variable, and pip keeps its own certificate set
 - `make version` names both Pythons, Odoo's and the tooling's. A bare label suggested the repository had one, and the figure shown was not that of the venv the reader works in
 - `make` no longer launches a `.venv.erplibre` built on another machine, such as a checkout mounted over the network, which died on « No module named 'encodings' ». `install.sh` reads the interpreter's version by running code: `python -V` answers before the standard library loads, so it vouched for an interpreter that could not start. Such a venv is now reported as built elsewhere, with the command that rebuilds it
+- Dependabot no longer opens pull requests against the frozen requirements of Odoo 12 to 17: its security updates scan `requirement/` as its own directory, which the exclusions did not cover
+- `poetry_update.py` stops on a missing `pyproject.toml` with the command that creates it, `make switch_odoo_XX` for the active version, and offers to run it then restart when launched from a terminal
+- `poetry_update.py` runs Poetry in the Odoo venv even from a shell under `.venv.erplibre`, whose Python made it fail on « InvalidCurrentPythonVersionError »
 
 ## Removed
 
@@ -166,6 +171,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - An API key and a bearer token are redacted too before a command is displayed, logged or reprinted: `OPENAI_API_KEY=` went out in the clear, and a header token escaped by construction, carrying neither an option name nor a variable name
 - Following a redirect, the cache no longer forwards the client's credentials (Authorization, Cookie, Proxy-Authorization) to another host
+- Odoo 18 installs `idna` 3.20 instead of the 3.6 its own requirements pin, which is affected by CVE-2024-3651
 
 
 ## [1.8.0] - 2026-09-04
