@@ -2,6 +2,8 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+from __future__ import print_function
+
 import argparse
 import sys
 import time
