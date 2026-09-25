@@ -51,6 +51,49 @@ func TestDepotDeURLRefuse(t *testing.T) {
 	}
 }
 
+// Le schéma vient de la ligne de requête absolue, que le client écrit. Un
+// schéma autre que HTTP(S) ferait lancer « git clone » sur un transport que
+// jamais un client passant par un mandataire HTTP n'emprunte — ssh, avec les
+// clés du compte du service, vers un hôte choisi par le client.
+func TestDepotDeURLRefuseLesSchemasNonHTTP(t *testing.T) {
+	for _, brut := range []string{
+		"ssh://h/o/d.git/info/refs?service=git-upload-pack",
+		"git://h/o/d.git/info/refs?service=git-upload-pack",
+		"file:///srv/o/d.git/info/refs?service=git-upload-pack",
+		"ext::sh%20-c%20id/info/refs",
+	} {
+		u, err := url.Parse(brut)
+		if err != nil {
+			continue
+		}
+		if depot, _, ok := DepotDeURL(u); ok {
+			t.Errorf("%s accepté comme dépôt %q", brut, depot)
+		}
+	}
+	// url.Parse ramène le schéma en minuscules : la casse ne refuse rien.
+	u, _ := url.Parse("HTTP://h/o/d.git/info/refs?service=git-upload-pack")
+	if _, _, ok := DepotDeURL(u); !ok {
+		t.Error("HTTP en majuscules refusé")
+	}
+}
+
+// Le dernier rempart est git lui-même : même une URL qui passerait le tri de
+// DepotDeURL n'emprunte aucun transport hors HTTP(S). Le dépôt local, que git
+// clone sans réseau ni sonde, prouve le refus sans dépendre d'aucun hôte.
+func TestGitNEmprunteQueHTTP(t *testing.T) {
+	nu := depotDEssai(t)
+	g := &GitMirror{Dir: t.TempDir()}
+	err := g.git(context.Background(), "", "ls-remote", "--", "file://"+nu)
+	if err == nil {
+		t.Fatal("ls-remote file:// accepté")
+	}
+	// Le message suit la langue de git ; le transport, lui, y est nommé tel
+	// quel dans toutes les langues.
+	if !strings.Contains(err.Error(), "'file'") {
+		t.Errorf("refus inattendu : %v", err)
+	}
+}
+
 // Le chemin du miroir porte l'HÔTE : deux forges peuvent servir « /odoo/odoo »,
 // et les confondre donnerait à l'une le contenu de l'autre.
 func TestCheminMiroirSepareLesForges(t *testing.T) {
@@ -212,7 +255,9 @@ func TestClonerAuTraversDuMiroir(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			u := &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+			// L'URL que absoluteURL rend au proxy : schéma et hôte compris.
+			u := &url.URL{Scheme: "http", Host: r.Host,
+				Path: r.URL.Path, RawQuery: r.URL.RawQuery}
 			_, reste, ok := DepotDeURL(u)
 			if !ok {
 				http.NotFound(w, r)
@@ -413,7 +458,9 @@ func TestCeQueLeMiroirSertEstCompte(t *testing.T) {
 	var pese int64
 	srv := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			u := &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+			// L'URL que absoluteURL rend au proxy : schéma et hôte compris.
+			u := &url.URL{Scheme: "http", Host: r.Host,
+				Path: r.URL.Path, RawQuery: r.URL.RawQuery}
 			_, reste, ok := DepotDeURL(u)
 			if !ok {
 				http.NotFound(w, r)
