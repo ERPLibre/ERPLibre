@@ -32,6 +32,17 @@ RE_DISPATCH = re.compile(
 )
 
 
+def t_introuvable():
+    """Le « commande introuvable » du menu, dans la langue du processus.
+
+    Lu par t() plutôt qu'écrit en dur : la chaîne porte sa traduction et son
+    icône, et régler la langue ici réécrirait EL_LANG dans env_var.sh.
+    """
+    from script.todo import todo_i18n
+
+    return todo_i18n.t("Command not found !")
+
+
 def prompt_execute_source():
     """Le corps de prompt_execute(), affichage et dispatch compris."""
     source = TODO_PY.read_text(encoding="utf-8")
@@ -441,12 +452,9 @@ class TestLaParitéProxmox(unittest.TestCase):
         )
 
     def test_the_menu_reads_its_extra_commands_from_todo_json(self):
+        # Que le menu les JOUE, numéro tapé, est prouvé par
+        # TestLaGreffeEstJouable, qui balaie tous les menus greffés.
         self.assertIn('get_config("proxmox_from_makefile")', self.src)
-        # Et le dispatch sait les lancer : le repli partagé ou sa copie.
-        # Qu'il les JOUE, numéro tapé, test_menu_method_fallback le prouve.
-        self.assertTrue(
-            any(r in self.src for r in TestLaGreffeEstJouable.REPLIS)
-        )
 
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
@@ -1138,21 +1146,18 @@ class TestLaGreffeEstJouable(unittest.TestCase):
     """Une entrée de todo.json affichée mais injouable est décorative.
 
     Le rang d'une entrée greffée dépasse la chaîne d'« elif » codée en dur du
-    menu : sans le repli, la taper répond « commande introuvable ». Les
-    épreuves de TestMenuDispatchExtra exercent le repli SEUL — retirer son
-    appel du menu les laisse toutes vertes, et c'est le câblage qui compte.
+    menu : sans repli, la taper répond « commande introuvable ». L'épreuve
+    TAPE le numéro que le menu affiche devant la greffe et regarde si elle
+    part.
+
+    Lire le nom d'un repli dans le texte de la fonction ne le dit pas : un
+    menu qui le nomme sans jamais l'atteindre passe pour sain, et un menu qui
+    joue sa greffe autrement rougit pour rien.
     """
 
-    # Les menus qui greffent une clé de todo.json sans suffixe
-    # « _from_makefile » (« instance », « function ») se reconnaissent à
-    # la forme qui ajoute la greffe à leurs choix.
-    GREFFE = re.compile(
-        r"choices\.extend\(|choices = self\.config_file\.get_config\("
-    )
-    # Deux façons de jouer une entrée greffée : le repli partagé, ou la copie
-    # que des menus de todo.py portent encore en propre. L'épreuve tient sur
-    # la CAPACITÉ, pas sur le moyen : router ces menus est un commit à part.
-    REPLIS = ("_menu_dispatch_extra", "execute_from_configuration")
+    # Le libellé de la greffe est inventé et n'apparaît nulle part ailleurs
+    # dans le dépôt : il doit se reconnaître seul dans le texte du menu.
+    LIBELLE = "greffe-fictive-cassiterite"
 
     @staticmethod
     def lit_une_greffe(noeud):
@@ -1167,11 +1172,18 @@ class TestLaGreffeEstJouable(unittest.TestCase):
             and noeud.args[0].value.endswith("_from_makefile")
         )
 
-    def greffes(self, source):
-        """(nom, corps) de chaque fonction de `source` qui greffe todo.json
-        à ses choix : un prompt_execute_* de forme reconnue par GREFFE, ou
-        toute fonction qui lit une clé « …_from_makefile », quelle que soit
-        la forme qui ajoute la greffe."""
+    # Les menus qui greffent une clé de todo.json sans suffixe
+    # « _from_makefile » (« instance », « function ») se reconnaissent à
+    # la forme qui ajoute la greffe à leurs choix.
+    GREFFE = re.compile(
+        r"choices\.extend\(|choices = self\.config_file\.get_config\("
+    )
+
+    def noms_greffes(self, source):
+        """Le nom de chaque fonction de `source` qui greffe todo.json à ses
+        choix : un prompt_execute_* de forme reconnue par GREFFE, ou toute
+        fonction qui lit une clé « …_from_makefile », quelle que soit la
+        forme qui ajoute la greffe."""
         trouves = []
         for noeud in ast.walk(ast.parse(source)):
             if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1183,72 +1195,194 @@ class TestLaGreffeEstJouable(unittest.TestCase):
             if reconnue or any(
                 self.lit_une_greffe(n) for n in ast.walk(noeud)
             ):
-                trouves.append((noeud.name, corps))
+                trouves.append(noeud.name)
         return trouves
 
-    def sans_repli(self, source):
-        """Les fonctions de `source` qui greffent sans pouvoir jouer."""
-        return [
-            nom
-            for nom, corps in self.greffes(source)
-            if not any(repli in corps for repli in self.REPLIS)
-        ]
+    def menus_greffes(self):
+        """« fichier:menu » de chaque menu de script/todo/*.py qui greffe."""
+        trouves = []
+        for chemin in sorted(TODO_DIR.glob("*.py")):
+            source = chemin.read_text(encoding="utf-8")
+            trouves += [
+                (chemin.name, nom) for nom in self.noms_greffes(source)
+            ]
+        return trouves
 
-    def test_every_grafted_menu_routes_its_fallback(self):
+    def joue(self, todo, menu):
+        """Ouvre `menu`, tape le numéro affiché devant la greffe, revient.
+
+        Rend (numéro tapé ou None si la greffe ne s'affiche pas, libellés
+        joués, texte imprimé). Le menu reçoit UNE greffe : son numéro se lit
+        dans le texte affiché, jamais écrit ici, pour qu'une entrée posée
+        plus haut par l'amont ne fasse pas rougir l'épreuve.
+        """
+        import io as _io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        joues = []
+        todo.execute_from_configuration = lambda entree, **_k: joues.append(
+            entree.get("prompt_description")
+        )
+        greffe = [{"prompt_description": self.LIBELLE}]
+        tapes = []
+
+        def saisie(texte, *_a, **_k):
+            if tapes:
+                return "0"
+            vus = [
+                num
+                for num, reste in re.findall(r"^\[(\d+)\] (.*)$", texte, re.M)
+                if reste == self.LIBELLE
+            ]
+            tapes.append(vus[0] if len(vus) == 1 else None)
+            return tapes[0] or "0"
+
+        vu = _io.StringIO()
+        with (
+            patch.object(todo.config_file, "get_config", return_value=greffe),
+            patch("click.prompt", side_effect=saisie),
+            redirect_stdout(vu),
+        ):
+            getattr(todo, menu)()
+        return tapes[0], joues, vu.getvalue()
+
+    @staticmethod
+    def _todo():
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO()
+
+    def test_every_grafted_menu_plays_its_graft(self):
         """Tout script/todo/*.py est balayé, fonction par fonction : un menu
         neuf qui greffe todo.json entre dans l'épreuve sans qu'on l'y
         inscrive, même posé dans un fichier qui porte déjà d'autres
         greffes."""
-        greffes = []
-        sans_repli = []
-        for chemin in sorted(TODO_DIR.glob("*.py")):
-            source = chemin.read_text(encoding="utf-8")
-            greffes += self.greffes(source)
-            sans_repli += [
-                f"{chemin.name}:{nom}" for nom in self.sans_repli(source)
-            ]
-        self.assertTrue(greffes, "aucune greffe trouvée : rien n'est prouvé")
-        self.assertEqual(
-            [],
-            sans_repli,
-            "ces menus affichent des entrées de todo.json sans pouvoir les"
-            f" jouer : {', '.join(sans_repli)}",
-        )
+        menus = self.menus_greffes()
+        self.assertTrue(menus, "aucune greffe trouvée : rien n'est prouvé")
+        for fichier, menu in menus:
+            with self.subTest(menu=f"{fichier}:{menu}"):
+                tape, joues, sortie = self.joue(self._todo(), menu)
+                self.assertIsNotNone(
+                    tape, f"{menu} n'affiche pas la greffe une seule fois"
+                )
+                self.assertEqual(
+                    [self.LIBELLE],
+                    joues,
+                    f"{menu} affiche la greffe en [{tape}] et ne la joue pas",
+                )
+                self.assertNotIn(t_introuvable(), sortie)
 
-    def test_the_scan_would_notice_a_menu_without_the_fallback(self):
-        """Contrôle positif : chaque forme de greffe, sans repli, est
-        signalée, et la même, routée par le repli, ne l'est pas. Sans lui,
-        un scanner qui ne trouve rien passerait l'épreuve ci-dessus en
-        n'ayant rien regardé."""
-        formes = {
-            "affectation": "    choices = self.config_file.get_config('b')\n",
-            "extend": (
-                "    choices.extend(\n"
-                "        self.config_file.get_config('b_from_makefile')\n"
-                "    )\n"
+    def test_the_drive_would_notice_a_menu_that_cannot_play_its_graft(self):
+        """Contrôle positif : la forme qu'avait Update — « int(status) - 1 »
+        puis « 0 < int_cmd » — affiche la greffe en [1] et la rend
+        injoignable. Le pilote doit la voir. Sans ce contrôle, un pilote qui
+        se trompe de numéro ou n'appuie sur rien déclarerait tous les menus
+        jouables en n'ayant rien exercé."""
+        import click
+
+        todo = self._todo()
+
+        def menu_casse():
+            choices = todo.config_file.get_config("banc_from_makefile")
+            help_info = todo.fill_help_info(choices)
+            while True:
+                status = click.prompt(help_info)
+                if status == "0":
+                    return False
+                introuvable = True
+                try:
+                    rang = int(status) - 1
+                    if 0 < rang <= len(choices):
+                        introuvable = False
+                        todo.execute_from_configuration(choices[rang - 1])
+                except ValueError:
+                    pass
+                if introuvable:
+                    print(t_introuvable())
+
+        todo.prompt_execute_banc_staurotide = menu_casse
+        tape, joues, sortie = self.joue(todo, "prompt_execute_banc_staurotide")
+        self.assertEqual("1", tape, "le pilote n'a pas lu le numéro affiché")
+        self.assertEqual([], joues)
+        self.assertIn(t_introuvable(), sortie)
+
+
+class TestLeMenuUpdate(unittest.TestCase):
+    """Les quatre rangs du menu Update mènent-ils où ils s'affichent ?
+
+    Ses deux entrées propres suivent les greffes de todo.json : leur rang
+    dépend du nombre de greffes, qu'aucune branche ne peut donc coder en dur.
+    Elles portent « method » et le repli partagé compte pour elles ; ces
+    épreuves tapent les quatre numéros et regardent ce qui part.
+    """
+
+    # Libellés inventés : ils n'apparaissent nulle part ailleurs dans le
+    # dépôt, et doivent se reconnaître seuls dans le texte du menu.
+    GREFFES = (
+        {"prompt_description": "greffe-fictive-wollastonite"},
+        {"prompt_description": "greffe-fictive-vesuvianite"},
+    )
+
+    def setUp(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.todo = TODO()
+        self.joues = []
+        self.todo.execute_from_configuration = lambda entree, **_k: (
+            self.joues.append(entree.get("prompt_description"))
+        )
+        self.todo._update_odoo_migration = lambda: self.joues.append(
+            "migration"
+        )
+        self.todo.upgrade_poetry = lambda: self.joues.append("poetry")
+
+    def joue(self, tape):
+        """Tape `tape` au menu, puis « 0 » ; rend le texte imprimé."""
+        import io as _io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        saisies = [tape, "0"]
+        vu = _io.StringIO()
+        with (
+            patch.object(
+                self.todo.config_file,
+                "get_config",
+                return_value=list(self.GREFFES),
             ),
-            "+=": (
-                "    choices += self.config_file.get_config("
-                "'b_from_makefile')\n"
+            patch(
+                "click.prompt", side_effect=lambda *_a, **_k: saisies.pop(0)
             ),
+            redirect_stdout(vu),
+        ):
+            self.assertFalse(self.todo.prompt_execute_update())
+        return vu.getvalue()
+
+    def test_each_rank_reaches_what_it_shows(self):
+        attendus = {
+            "1": "greffe-fictive-wollastonite",
+            "2": "greffe-fictive-vesuvianite",
+            "3": "migration",
+            "4": "poetry",
         }
-        for nom, greffe in formes.items():
-            menu = (
-                "def prompt_execute_banc_staurotide(self, status):\n"
-                "    choices = []\n" + greffe
-            )
-            with self.subTest(forme=nom):
-                self.assertEqual(
-                    ["prompt_execute_banc_staurotide"],
-                    self.sans_repli(menu + "    return choices\n"),
-                )
-                self.assertEqual(
-                    [],
-                    self.sans_repli(
-                        menu
-                        + "    self._menu_dispatch_extra(choices, status)\n"
-                    ),
-                )
+        for tape, attendu in attendus.items():
+            with self.subTest(rang=tape):
+                self.joues = []
+                sortie = self.joue(tape)
+                self.assertEqual([attendu], self.joues)
+                self.assertNotIn(t_introuvable(), sortie)
+
+    def test_a_rank_past_the_last_entry_says_so(self):
+        sortie = self.joue("5")
+        self.assertEqual([], self.joues)
+        self.assertIn(t_introuvable(), sortie)
 
 
 class TestMenuDispatchExtra(unittest.TestCase):
