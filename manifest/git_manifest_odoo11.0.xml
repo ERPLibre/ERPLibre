@@ -270,6 +270,13 @@
         groups="addons,odoo11.0"
     />
     <project
+        name="helpdesk.git"
+        revision="11.0"
+        path="odoo11.0/addons/OCA_helpdesk"
+        remote="OCA"
+        groups="addons,odoo11.0"
+    />
+    <project
         name="hr.git"
         revision="11.0"
         path="odoo11.0/addons/OCA_hr"
@@ -403,6 +410,13 @@
         groups="addons,odoo11.0"
     />
     <project
+        name="project.git"
+        revision="11.0"
+        path="odoo11.0/addons/OCA_project"
+        remote="OCA"
+        groups="addons,odoo11.0"
+    />
+    <project
         name="project-reporting.git"
         revision="11.0"
         path="odoo11.0/addons/OCA_project-reporting"
@@ -508,6 +522,20 @@
         groups="addons,odoo11.0"
     />
     <project
+        name="server-tools.git"
+        revision="11.0"
+        path="odoo11.0/addons/OCA_server-tools"
+        remote="OCA"
+        groups="addons,odoo11.0"
+    />
+    <project
+        name="server-ux.git"
+        revision="11.0"
+        path="odoo11.0/addons/OCA_server-ux"
+        remote="OCA"
+        groups="addons,odoo11.0"
+    />
+    <project
         name="social.git"
         revision="11.0"
         path="odoo11.0/addons/OCA_social"
@@ -560,6 +588,13 @@
         name="vertical-travel.git"
         revision="11.0"
         path="odoo11.0/addons/OCA_vertical-travel"
+        remote="OCA"
+        groups="addons,odoo11.0"
+    />
+    <project
+        name="web.git"
+        revision="11.0"
+        path="odoo11.0/addons/OCA_web"
         remote="OCA"
         groups="addons,odoo11.0"
     />

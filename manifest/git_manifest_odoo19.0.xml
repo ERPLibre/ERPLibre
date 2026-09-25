@@ -319,6 +319,13 @@
         groups="addons,odoo19.0"
     />
     <project
+        name="helpdesk.git"
+        revision="19.0"
+        path="odoo19.0/addons/OCA_helpdesk"
+        remote="OCA"
+        groups="addons,odoo19.0"
+    />
+    <project
         name="hr.git"
         revision="19.0"
         path="odoo19.0/addons/OCA_hr"
@@ -515,6 +522,13 @@
         groups="addons,odoo19.0"
     />
     <project
+        name="project.git"
+        revision="19.0"
+        path="odoo19.0/addons/OCA_project"
+        remote="OCA"
+        groups="addons,odoo19.0"
+    />
+    <project
         name="project-reporting.git"
         revision="19.0"
         path="odoo19.0/addons/OCA_project-reporting"
@@ -648,6 +662,20 @@
         groups="addons,odoo19.0"
     />
     <project
+        name="server-tools.git"
+        revision="19.0"
+        path="odoo19.0/addons/OCA_server-tools"
+        remote="OCA"
+        groups="addons,odoo19.0"
+    />
+    <project
+        name="server-ux.git"
+        revision="19.0"
+        path="odoo19.0/addons/OCA_server-ux"
+        remote="OCA"
+        groups="addons,odoo19.0"
+    />
+    <project
         name="shift-planning.git"
         revision="19.0"
         path="odoo19.0/addons/OCA_shift-planning"
@@ -742,6 +770,13 @@
         name="vertical-travel.git"
         revision="19.0"
         path="odoo19.0/addons/OCA_vertical-travel"
+        remote="OCA"
+        groups="addons,odoo19.0"
+    />
+    <project
+        name="web.git"
+        revision="19.0"
+        path="odoo19.0/addons/OCA_web"
         remote="OCA"
         groups="addons,odoo19.0"
     />
