@@ -15782,6 +15782,38 @@ TRANSLATIONS = {
         "fr": "Une image qu'un autre espace de travail emploie encore reste.",
         "en": "An image another workspace still uses is kept.",
     },
+    "is held by these containers:": {
+        "fr": "est tenue par ces conteneurs :",
+        "en": "is held by these containers:",
+    },
+    "Keep the image": {
+        "fr": "La garder",
+        "en": "Keep the image",
+    },
+    "Remove these containers, then the image - frees the space": {
+        "fr": "Effacer ces conteneurs, puis l'image - libère l'espace",
+        "en": "Remove these containers, then the image - frees the space",
+    },
+    "Force - removes the name only; the space stays": {
+        "fr": "Forcer - retire le nom seulement ; l'espace reste",
+        "en": "Force - removes the name only; the space stays",
+    },
+    "A container runs: the engine refuses to force.": {
+        "fr": "Un conteneur tourne : le moteur refuse de forcer.",
+        "en": "A container runs: the engine refuses to force.",
+    },
+    "Decision:": {
+        "fr": "Décision :",
+        "en": "Decision:",
+    },
+    "after its containers:": {
+        "fr": "après ses conteneurs :",
+        "en": "after its containers:",
+    },
+    "forced: the name only, the space stays": {
+        "fr": "forcée : le nom seulement, l'espace reste",
+        "en": "forced: the name only, the space stays",
+    },
 }
 
 

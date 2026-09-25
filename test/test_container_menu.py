@@ -267,13 +267,25 @@ class TestNettoyageImages(Banc):
         todo = self.todo(self.FICHE, code=code)
         return todo
 
-    def _jouer(self, todo, selection, reponse):
-        with mock.patch.object(
-            container_menu.container_runtime,
-            "lister_images",
-            return_value=self.IMAGES,
+    def _jouer(self, todo, selection, reponse, usages=None, decisions=()):
+        """Joue l'écran sans toucher au moteur : la liste des images ET le
+        rattachement aux conteneurs sont simulés — le second interrogerait
+        sinon le vrai moteur de la machine qui lance les tests."""
+        with (
+            mock.patch.object(
+                container_menu.container_runtime,
+                "lister_images",
+                return_value=self.IMAGES,
+            ),
+            mock.patch.object(
+                container_menu.container_runtime,
+                "conteneurs_par_image",
+                return_value=usages or {},
+            ),
         ):
-            with self.reponses(entrees=[reponse], prompts=[selection]) as s:
+            with self.reponses(
+                entrees=[reponse], prompts=[selection, *decisions]
+            ) as s:
                 todo._container_nettoyer_images()
         return s.getvalue()
 
@@ -322,6 +334,106 @@ class TestNettoyageImages(Banc):
         self.assertEqual(1, len(refus))
         self.assertIn("d/y:2", refus[0])
         self.assertIn(f"{todo_i18n.t('Removed:')} 0/1", rendu)
+
+
+class TestConflitImage(TestNettoyageImages):
+    """Une image qu'un conteneur tient se décide AVANT d'effacer : forcer ne
+    retire que son nom, et l'image reste avec toute sa taille."""
+
+    ARRETE = {
+        "a1": [
+            {"nom": "p-web-1", "etat": "exited", "projet": "p"},
+        ]
+    }
+    EN_MARCHE = {
+        "a1": [
+            {"nom": "p-web-1", "etat": "running", "projet": "p"},
+        ]
+    }
+
+    def test_la_liste_montre_qui_tient_chaque_image(self):
+        todo = self._banc()
+        rendu = self._jouer(todo, "", "n", usages=self.ARRETE)
+        ligne = next(l for l in rendu.splitlines() if "d/x:1" in l)
+        self.assertIn("p-web-1", ligne)
+
+    def test_la_question_nomme_le_conteneur_son_etat_et_son_projet(self):
+        todo = self._banc()
+        rendu = self._jouer(
+            todo, "1", "n", usages=self.ARRETE, decisions=["1"]
+        )
+        self.assertIn("p-web-1", rendu)
+        self.assertIn("exited", rendu)
+        self.assertIn(todo_i18n.t("project") + " p", rendu)
+
+    def test_garder_laisse_l_image_et_efface_les_autres(self):
+        todo = self._banc()
+        self._jouer(todo, "1 3", "o", usages=self.ARRETE, decisions=["1"])
+        self.assertEqual(["docker rmi d/y:2"], todo.execute.commandes)
+
+    def test_vider_efface_les_conteneurs_avant_l_image(self):
+        """Tant qu'un seul conteneur tient l'image, « rmi » la refuse."""
+        todo = self._banc()
+        self._jouer(todo, "1", "o", usages=self.ARRETE, decisions=["2"])
+        self.assertEqual(
+            ["docker rm -f p-web-1", "docker rmi d/x:1"],
+            todo.execute.commandes,
+        )
+
+    def test_forcer_retire_le_nom(self):
+        todo = self._banc()
+        self._jouer(todo, "1", "o", usages=self.ARRETE, decisions=["3"])
+        self.assertEqual(["docker rmi -f d/x:1"], todo.execute.commandes)
+
+    def test_un_conteneur_en_marche_retire_le_forcage(self):
+        """Le moteur refuserait : « 3 » n'existe plus, et une saisie hors
+        liste garde l'image."""
+        todo = self._banc()
+        rendu = self._jouer(
+            todo, "1", "o", usages=self.EN_MARCHE, decisions=["3"]
+        )
+        self.assertEqual([], todo.execute.commandes)
+        self.assertNotIn(
+            todo_i18n.t("Force - removes the name only; the space stays"),
+            rendu,
+        )
+
+    def test_un_refus_final_n_efface_pas_meme_les_conteneurs(self):
+        """Les décisions ne sont qu'un plan tant que la confirmation n'est
+        pas donnée."""
+        todo = self._banc()
+        self._jouer(todo, "1", "n", usages=self.ARRETE, decisions=["2"])
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_dans_le_doute_rien_ne_part(self):
+        """Retour, ou toute saisie qui n'est pas un choix, garde l'image."""
+        for decision in ("0", "x", ""):
+            with self.subTest(decision=decision):
+                todo = self._banc()
+                self._jouer(
+                    todo, "1", "o", usages=self.ARRETE, decisions=[decision]
+                )
+                self.assertEqual([], todo.execute.commandes)
+
+
+class TestConteneursParImage(unittest.TestCase):
+    """Un conflit se rattache par l'identifiant de l'image, jamais par le
+    filtre « ancestor », qui ramasse les images bâties par-dessus."""
+
+    def test_seul_le_conteneur_de_cette_image_la_tient(self):
+        from script.todo import container_runtime as cr
+
+        conteneurs = [
+            {"nom": "a", "image_id": "aaaa1111bbbb", "etat": "exited"},
+            {"nom": "b", "image_id": "cccc2222dddd", "etat": "running"},
+        ]
+        images = [{"id": "aaaa1111"}, {"id": "eeee3333"}]
+        with mock.patch.object(
+            cr, "_inspecter_conteneurs", return_value=conteneurs
+        ):
+            usages = cr.conteneurs_par_image({"moteur": "docker"}, images)
+        self.assertEqual({"aaaa1111"}, set(usages))
+        self.assertEqual(["a"], [c["nom"] for c in usages["aaaa1111"]])
 
 
 class TestNettoyageProjets(Banc):
