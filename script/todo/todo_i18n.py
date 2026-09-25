@@ -1387,6 +1387,38 @@ TRANSLATIONS = {
         "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
         "en": "No custom commands found in ~/.claude/commands/",
     },
+    "command not installed": {
+        "fr": "non installée",
+        "en": "not installed",
+    },
+    "not from ERPLibre": {
+        "fr": "hors ERPLibre",
+        "en": "not from ERPLibre",
+    },
+    "installed copy": {
+        "fr": "copie installée",
+        "en": "installed copy",
+    },
+    "template": {
+        "fr": "gabarit",
+        "en": "template",
+    },
+    "Total: %s installed, %s to redeploy, %s not installed": {
+        "fr": "Total : %s installées, %s à redéployer, %s non installées",
+        "en": "Total: %s installed, %s to redeploy, %s not installed",
+    },
+    "A command not installed is deployed from this menu.": {
+        "fr": "Une commande non installée se déploie depuis ce menu.",
+        "en": "A command not installed is deployed from this menu.",
+    },
+    "Show the differences? [o/N] ": {
+        "fr": "Afficher les différences ? [o/N] ",
+        "en": "Show the differences? [y/N] ",
+    },
+    "Redeploy the %s outdated command(s)? [o/N] ": {
+        "fr": "Redéployer les %s commande(s) périmée(s) ? [o/N] ",
+        "en": "Redeploy the %s outdated command(s)? [y/N] ",
+    },
     "Claude Code custom commands:": {
         "fr": "Commandes personnalisées Claude Code :",
         "en": "Claude Code custom commands:",

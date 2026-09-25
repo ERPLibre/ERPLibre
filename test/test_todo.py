@@ -568,6 +568,119 @@ class TestClaudeCommandTemplates(unittest.TestCase):
                 self.assertIn(f"name: {command}\n", text)
 
 
+class TestListeCommandesClaude(unittest.TestCase):
+    """La liste des commandes `/…` compare chaque gabarit à sa copie.
+
+    Elle montre les commandes non installées, les copies périmées avec leur
+    compte de lignes, et celles qui ne viennent pas d'ERPLibre ; elle propose
+    le diff puis le redéploiement, qui garde l'identité git de la copie.
+    """
+
+    IDENTITE = 'user.name="Nom Inventé" -c user.email="nom@exemple.invalid"'
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dossier = self._tmp.name
+        self.todo = TODO()
+        self.todo._CLAUDE_COMMANDS_DIR = self.dossier
+        gabarit = Path(
+            "conf", TODO._CLAUDE_COMMAND_TEMPLATES["commit"]
+        ).read_text(encoding="utf-8")
+        self.gabarit_commit = gabarit
+        personnalise = gabarit.replace(
+            'user.name="Your Name" -c user.email="your@email.com"',
+            self.IDENTITE,
+        )
+        # /commit à jour hors identité ; /todo_plan_max périmée d'une ligne ;
+        # /perso hors ERPLibre ; les autres absentes.
+        self._ecrire("commit", personnalise)
+        plan = Path(
+            "conf", TODO._CLAUDE_COMMAND_TEMPLATES["todo_plan_max"]
+        ).read_text(encoding="utf-8")
+        self._ecrire("todo_plan_max", plan + "ligne ajoutée à la main\n")
+        self._ecrire("perso", "une commande à soi\n")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _ecrire(self, nom, texte):
+        Path(self.dossier, f"{nom}.md").write_text(texte, encoding="utf-8")
+
+    def _lister(self, *reponses):
+        sortie = io.StringIO()
+        with (
+            patch("builtins.input", side_effect=list(reponses)),
+            patch("sys.stdout", sortie),
+        ):
+            self.todo._list_claude_commands()
+        return sortie.getvalue()
+
+    def _ligne(self, sortie, nom):
+        return next(x for x in sortie.splitlines() if f"/{nom} " in x)
+
+    def test_etat_de_chaque_commande(self):
+        sortie = self._lister("n", "n")
+        self.assertIn(
+            todo_i18n.t("up to date"), self._ligne(sortie, "commit")
+        )
+        self.assertIn("(+0 -1)", self._ligne(sortie, "todo_plan_max"))
+        self.assertIn(
+            todo_i18n.t("command not installed"),
+            self._ligne(sortie, "git_prepare_merge"),
+        )
+        self.assertIn(
+            todo_i18n.t("not from ERPLibre"), self._ligne(sortie, "perso")
+        )
+
+    def test_le_diff_montre_ce_que_le_redeploiement_retire(self):
+        sortie = self._lister("o", "n")
+        self.assertIn("-ligne ajoutée à la main", sortie)
+
+    def test_un_refus_n_ecrit_rien(self):
+        avant = Path(self.dossier, "todo_plan_max.md").read_text()
+        self._lister("n", "n")
+        apres = Path(self.dossier, "todo_plan_max.md").read_text()
+        self.assertEqual(avant, apres)
+
+    def test_le_redeploiement_remet_le_gabarit(self):
+        self._lister("n", "o")
+        attendu = Path(
+            "conf", TODO._CLAUDE_COMMAND_TEMPLATES["todo_plan_max"]
+        ).read_text(encoding="utf-8")
+        self.assertEqual(
+            attendu, Path(self.dossier, "todo_plan_max.md").read_text()
+        )
+
+    def test_le_redeploiement_garde_l_identite_git(self):
+        self._ecrire(
+            "commit",
+            self.gabarit_commit.replace(
+                'user.name="Your Name" -c user.email="your@email.com"',
+                self.IDENTITE,
+            )
+            + "vieille ligne\n",
+        )
+        self._lister("n", "o")
+        texte = Path(self.dossier, "commit.md").read_text(encoding="utf-8")
+        self.assertIn(self.IDENTITE, texte)
+        self.assertNotIn("vieille ligne", texte)
+        self.assertNotIn("Your Name", texte)
+
+    def test_tout_a_jour_ne_pose_aucune_question(self):
+        for nom in ("todo_plan_max", "perso"):
+            os.remove(Path(self.dossier, f"{nom}.md"))
+        with patch("builtins.input") as question:
+            with patch("sys.stdout", io.StringIO()):
+                self.todo._list_claude_commands()
+        question.assert_not_called()
+
+    def test_la_table_couvre_les_gabarits_du_menu(self):
+        """Une commande ajoutée au menu sans entrée dans la table resterait
+        invisible à la liste et à l'écran de contexte."""
+        nommes = set(TestClaudeCommandTemplates._deployed_templates())
+        self.assertEqual(nommes, set(TODO._CLAUDE_COMMAND_TEMPLATES.values()))
+
+
 class TestClaudePlugins(unittest.TestCase):
     """Le menu des plugins Claude Code.
 
