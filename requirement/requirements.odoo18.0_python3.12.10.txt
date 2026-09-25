@@ -77,7 +77,7 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 # Fix compilation, until pymssql==2.3.9 is release
 #git+https://github.com/pymssql/pymssql.git
 
-pandas==2.3.3
+pandas==3.0.6
 pillow==12.2.0
 # s3fs exige fsspec à sa propre version exacte, alors qu'OCA_storage amène
 # « fsspec[s3] » sans borne : laissé libre, fsspec prendrait la dernière version
