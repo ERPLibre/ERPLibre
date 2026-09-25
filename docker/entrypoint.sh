@@ -69,6 +69,8 @@ check_config "db_password" "$PASSWORD"
 
 cd /ERPLibre
 source .venv.$(cat ".erplibre-version" | xargs)/bin/activate
+# « python » et non « python3 » ensuite : un venv Python 2 n'a pas de python3,
+# et l'appel tomberait sur l'interpréteur du système, qui n'a pas Odoo.
 
 case "$1" in
   -- | odoo)
@@ -80,12 +82,12 @@ case "$1" in
       if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
         sleep 999999
       fi
-      python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+      python ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
       if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
         # --stop-after-init
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
+        python "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
       else
-        python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
+        python "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
       fi
     fi
     ;;
@@ -94,11 +96,11 @@ case "$1" in
     if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
       sleep 999999
     fi
-    python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+    python ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
     if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
+      python "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
     else
-      python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
+      python "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
     fi
     ;;
   *)

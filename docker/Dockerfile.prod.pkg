@@ -34,11 +34,19 @@ RUN cd ; mkdir -p .bin/ && \
     git config --global --add safe.directory /ERPLibre && \
     git checkout $COMMIT_ERPLIBRE
 
+# Python 2 n'a pas de module venv : le script dédié crée le venv, et le Poetry
+# qui le gère, sur le python3 que la base buster ajoute pour l'outillage.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    python -m venv .venv.$ERPLIBRE_VERSION
+    if python -c 'import sys; sys.exit(sys.version_info[0] != 2)'; then \
+      EL_PY2_HELPER_PYTHON=/usr/bin/python3 ./script/install/install_venv_python2.sh \
+        ".venv.$ERPLIBRE_VERSION" "$(command -v python)" "${POETRY_VERSION}" ; \
+    else \
+      python -m venv .venv.$ERPLIBRE_VERSION ; \
+    fi
 
-# Le venv des outils prend le python de l'image, celui d'Odoo.
+# Le venv des outils prend le python3 de l'image : celui d'Odoo, sauf en
+# Python 2 où c'est celui de la distribution.
 #
 # Ses requis sont ceux de l'IMAGE et non ceux de l'hote : le fichier complet
 # vise un venv en 3.14 et porte des bornes qu'un Python 3.7 ou 3.8 ne peut pas
@@ -50,11 +58,11 @@ RUN cd $ODOO_PREFIX && \
 # comme une syntaxe trop recente s'arretent ici, avec le nom du coupable.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    python -m venv .venv.erplibre && \
+    python3 -m venv .venv.erplibre && \
     source ./.venv.erplibre/bin/activate && \
     pip3 install -r requirement/erplibre_require-ments-docker.txt && \
     { python -c "import script.version.update_env_version, script.git.git_merge_repo_manifest" || \
-      { echo "Le python de l'image ($(python -V 2>&1)) ne fait pas tourner l'outillage : prendre une version Odoo plus recente." ; exit 1 ; } ; }
+      { echo "Le python3 de l'image ($(python3 -V 2>&1)) ne fait pas tourner l'outillage : prendre une version Odoo plus recente." ; exit 1 ; } ; }
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
@@ -84,15 +92,24 @@ RUN apt update && \
 # PyPI ; son typemap CK_RV emploie PyInt_FromLong, et la compilation meurt.
 # La definition est celle de script/install/install_locally.sh, a l'identique :
 # un test garde que les deux copies ne divergent pas.
+#
+# En Python 2, ni l'un ni l'autre : Poetry y est deja pose, en enveloppe, par
+# install_venv_python2.sh, et PyInt_FromLong y est une vraie fonction que
+# l'alias remplacerait.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
     source ./.venv.$(cat ".erplibre-version" | xargs)/bin/activate && \
-    pip3 install --upgrade pip && git branch && ls . -lha && \
-    pip3 install "poetry==${POETRY_VERSION}" && \
-    poetry --version && \
-    CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)" \
-    poetry install --no-root -v
+    git branch && ls . -lha && \
+    if python -c 'import sys; sys.exit(sys.version_info[0] != 2)'; then \
+      poetry --version && poetry install --no-root -v ; \
+    else \
+      pip3 install --upgrade pip && \
+      pip3 install "poetry==${POETRY_VERSION}" && \
+      poetry --version && \
+      CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)" \
+      poetry install --no-root -v ; \
+    fi
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \

@@ -29,17 +29,39 @@ ENV ODOO_EXEC_BIN="${ODOO_PREFIX}/odoo${ODOO_VERSION}/odoo/odoo-bin"
 
 ARG URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 ARG SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2
+ARG DEBIAN_NAME=bookworm
+
+# Buster, la seule base qui porte Python 2.7, donc Odoo 10.
+#
+# Debian l'a archivée : ses paquets ne sont plus servis que par
+# archive.debian.org. Il y manque ce que le reste du fichier suppose :
+#   - python3 et son module venv, pour .venv.erplibre et pour le Poetry
+#     d'un venv Python 2 — l'interpréteur de l'image est le 2.7 ;
+#   - un Node récent : celui de buster est le 10, trop ancien pour les
+#     paquets npm globaux ci-dessous. Le 18 est celui de bookworm ;
+#   - shfmt, absent de ses dépôts.
+RUN if [ "${DEBIAN_NAME}" = "buster" ]; then \
+        echo "deb http://archive.debian.org/debian buster main" > /etc/apt/sources.list \
+        && echo "deb http://archive.debian.org/debian-security buster/updates main" >> /etc/apt/sources.list \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates curl xz-utils python3 python3-venv \
+        && curl -fsSL https://nodejs.org/dist/v18.20.8/node-v18.20.8-linux-x64.tar.xz \
+           | tar -xJ -C /usr/local --strip-components=1 \
+        && rm -rf /var/lib/apt/lists/* ; \
+    fi
 
 # Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf
-RUN apt-get update \
+RUN EL_APT_NODE="npm shfmt" \
+    && if [ "${DEBIAN_NAME}" = "buster" ]; then EL_APT_NODE=""; fi \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
+    ${EL_APT_NODE} \
     ca-certificates \
     curl \
     dirmngr \
     fonts-noto-cjk \
     gnupg \
     libssl-dev \
-    npm \
     xz-utils \
     git \
     tree \
@@ -82,7 +104,6 @@ RUN apt-get update \
     uuid-dev \
     portaudio19-dev \
     libcups2-dev \
-    shfmt \
     xmlsec1 \
     swig \
     && curl -o wkhtmltox.deb -sSL https://${URL_WKHTMLTOX}/ \
@@ -90,10 +111,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
     && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
 
-ARG DEBIAN_NAME=bookworm
+# Le client PostgreSQL le plus récent que publie le dépôt de la version de
+# Debian. Celui d'une version archivée n'est plus servi que par apt-archive,
+# et il s'y arrête là où la version a cessé d'être suivie : 16 pour buster.
+ARG PGDG_URL=http://apt.postgresql.org/pub/repos/apt/
+ARG PG_CLIENT_VERSION=18
 
 # Install latest postgresql-client
-RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ ${DEBIAN_NAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+RUN echo "deb ${PGDG_URL} ${DEBIAN_NAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
 	&& GNUPGHOME="$(mktemp -d)" \
 	&& export GNUPGHOME \
 	&& repokey='B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8' \
@@ -102,7 +127,7 @@ RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ ${DEBIAN_NAME}-pgdg main"
 	&& gpgconf --kill all \
 	&& rm -rf "$GNUPGHOME" \
 	&& apt-get update  \
-	&& apt-get install --no-install-recommends -y postgresql-client-18 libpq-dev \
+	&& apt-get install --no-install-recommends -y postgresql-client-${PG_CLIENT_VERSION} libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install npm dependencies

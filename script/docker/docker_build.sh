@@ -149,7 +149,7 @@ cd docker
 
 ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
 
-# UNE seule base, bookworm, pour toutes les versions d'Odoo.
+# Bookworm pour tout Python 3, buster pour Python 2.
 #
 # La base est « python:<version>-slim-<nom> » : le Python vient de l'image
 # officielle, jamais de Debian. Changer de nom de version ne change donc pas
@@ -157,10 +157,18 @@ ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=
 # sur le registre. Rien n'obligeait les vieux Odoo à rester sur bullseye, dont
 # le dépôt de sécurité est aujourd'hui démantelé.
 #
+# Python 2.7 n'a d'image que sur buster, archivée : son client PostgreSQL
+# vient d'apt-archive, où le plus récent est le 16.
+#
 # Le build de wkhtmltopdf suit la version : celui de bullseye réclame
 # libssl1.1, absente de bookworm ; celui de bookworm réclame libssl3, et ses
-# quinze dépendances y sont toutes — vérifié dans l'index.
-ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
+# quinze dépendances y sont toutes — vérifié dans l'index. La série 0.12.6.1
+# n'a pas de build buster : c'est la 0.12.6-1.
+if [[ "${PYTHON_VERSION}" == 2.* ]]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=buster --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=d9f259a67e05e1c221d48b504453645e6c491fab --build-arg PGDG_URL=http://apt-archive.postgresql.org/pub/repos/apt/ --build-arg PG_CLIENT_VERSION=16"
+else
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
+fi
 set -e
 
 # Build base
