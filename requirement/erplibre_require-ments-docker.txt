@@ -1,0 +1,30 @@
+# Ce que l'IMAGE exige de l'outillage ERPLibre, et rien de plus.
+#
+# Le venv d'outillage de l'image prend le Python de l'image, qui est celui
+# d'Odoo : 3.7.17 pour Odoo 12, 3.8.20 pour Odoo 14. Or
+# erplibre_require-ments.txt vise le venv d'outillage de l'HÔTE, en 3.14, et
+# plusieurs de ses bornes y sont inatteignables — « textual>=8,<9 » exige
+# 3.9, virtualenv 20.36.1 et black 24.8.0 exigent 3.8. Aucune image d'Odoo 12
+# à 15 ne pouvait donc se construire.
+#
+# L'image n'en a pas l'usage : elle ne lance que deux points d'entrée Python,
+# « script/version/update_env_version.py » et
+# « script/git/git_merge_repo_manifest.py », plus « repo », qui n'emploie que
+# la bibliothèque standard. Les six paquets ci-dessous sont la fermeture
+# EXACTE des imports de ces deux points d'entrée, mesurée en installant
+# jusqu'à ce qu'ils s'importent, dans des conteneurs 3.7 et 3.8.
+#
+# Pour la recalculer après avoir touché à ces scripts :
+#   python -c "import script.version.update_env_version, \
+#              script.git.git_merge_repo_manifest"
+# dans un venv nu, en ajoutant ce que l'erreur réclame. Le Dockerfile fait la
+# même vérification à la construction, et s'arrête si elle échoue.
+#
+# Sans borne de version : c'est pip qui choisit la plus récente que le Python
+# de l'image accepte, et elle change d'une version d'Odoo à l'autre.
+GitPython
+xmltodict
+agithub
+colorama
+giturlparse
+retrying
