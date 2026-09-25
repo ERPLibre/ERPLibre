@@ -116,15 +116,36 @@ class TestCommitPublie(unittest.TestCase):
 
     def test_hors_ligne_elle_ne_refuse_pas(self):
         """On ne refuse pas sur une ignorance : un dépôt injoignable ne prouve
-        rien sur le commit."""
-        bloc = TEXTE[
+        rien sur le commit.
+
+        La branche du dépôt injoignable se juge sur ce qu'elle FAIT — rendre
+        la main — et non sur sa place dans le fichier : d'autres refus, pour
+        d'autres causes, peuvent la précéder.
+        """
+        fonction = TEXTE[
             TEXTE.index("verifier_commit_publie() {") : TEXTE.index(
                 "\nverifier_commit_publie\n"
             )
         ]
-        injoignable = bloc.index("Depot injoignable")
-        premier_refus = bloc.index("exit 1")
-        self.assertLess(injoignable, premier_refus)
+        debut = fonction.index("if [ ${rc} -ne 0 ]; then")
+        branche = fonction[debut : fonction.index("\n  fi", debut)]
+        self.assertIn("return 0", branche)
+        self.assertNotIn("exit", branche)
+
+    def test_une_url_illisible_est_bruyante(self):
+        """Un EL_DEPOT vide ne faisait pas échouer la vérification, il la
+        SAUTAIT — le pire des deux."""
+        self.assertIn("REPO_MANIFEST_URL illisible", TEXTE)
+
+    def test_les_deux_ecritures_de_env_sont_lues(self):
+        """« ENV cle valeur » et « ENV cle=valeur » désignent la même chose ;
+        passer de l'une à l'autre ne doit pas vider la variable."""
+        extraction = TEXTE[
+            TEXTE.index("EL_DEPOT=$(") : TEXTE.index(
+                "verifier_commit_publie()"
+            )
+        ]
+        self.assertIn("[[:space:]=]", extraction)
 
     def test_le_commit_passe_a_l_image_est_celui_qu_elle_verifie(self):
         """Vérifier une valeur et en passer une autre ne garderait rien."""

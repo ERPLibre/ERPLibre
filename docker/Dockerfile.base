@@ -8,7 +8,7 @@ FROM  python:${PYTHON_VERSION}-slim-${DEBIAN_NAME}
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 
 # Generate locale C.UTF-8 for postgres and general locale data
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 
 ENV LANG="C.UTF-8" \
     LC_ALL="C.UTF-8" \
@@ -16,7 +16,7 @@ ENV LANG="C.UTF-8" \
     PYENV_ROOT="/opt/pyenv" \
     PYENV_SHELL="bash"
 
-ENV ODOO_PREFIX /ERPLibre
+ENV ODOO_PREFIX=/ERPLibre
 
 # La version d'Odoo vient de la construction. ODOO_EXEC_BIN la fige dans
 # l'image et l'entrypoint lance ce chemin tel quel : sans ce ARG, le
@@ -25,7 +25,7 @@ ENV ODOO_PREFIX /ERPLibre
 # absent d'une image d'Odoo 15, donc un conteneur qui ne demarre pas.
 ARG ODOO_VERSION=18.0
 ENV ODOO_VERSION=${ODOO_VERSION}
-ENV ODOO_EXEC_BIN "${ODOO_PREFIX}/odoo${ODOO_VERSION}/odoo/odoo-bin"
+ENV ODOO_EXEC_BIN="${ODOO_PREFIX}/odoo${ODOO_VERSION}/odoo/odoo-bin"
 
 ARG URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
 ARG SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2
@@ -125,7 +125,7 @@ COPY ./entrypoint.sh /
 RUN  chmod +x /entrypoint.sh
 
 # Set the default config file
-ENV ODOO_RC /etc/odoo/odoo.conf
+ENV ODOO_RC=/etc/odoo/odoo.conf
 COPY ./odoo.conf $ODOO_RC
 RUN chown odoo $ODOO_RC
 
