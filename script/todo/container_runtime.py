@@ -21,7 +21,9 @@ monter n'importe quel chemin de l'hôte dans un conteneur privilégié. Le fait
 est rendu ici pour que l'appelant le DISE, jamais pour qu'il le taise.
 """
 
+import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -354,3 +356,171 @@ def commande(fiche, args):
     if hote:
         prefixe += ["env", f"DOCKER_HOST={hote}"]
     return prefixe + [fiche["moteur"]] + list(args)
+
+
+# ----------------------------------------------------------------------
+# L'inventaire à nettoyer
+
+# Les colonnes d'une image. Un gabarit explicite plutôt que « {{json .}} » :
+# Docker rend alors un objet par ligne et Podman un tableau, alors que ces
+# cinq champs s'écrivent pareil chez les deux.
+FORMAT_IMAGES = (
+    "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"
+)
+
+# L'étiquette qui range un conteneur dans son projet compose. Docker Compose
+# pose la première ; podman-compose pose la seconde.
+ETIQ_PROJET = "com.docker.compose.project"
+ETIQ_PROJET_PODMAN = "io.podman.compose.project"
+ETIQ_DOSSIER = "com.docker.compose.project.working_dir"
+
+# Un identifiant de conteneur. Filtrer sur lui écarte les avertissements que
+# Podman sans privilège écrit sur stderr, que le lanceur mêle à la sortie.
+_ID = re.compile(r"[0-9a-f]{12,64}")
+
+
+def reference_image(image):
+    """Ce qu'on passe à « rmi » pour désigner l'image.
+
+    « dépôt:étiquette » tant qu'elle en a une : effacer par identifiant une
+    image qui porte plusieurs étiquettes échoue sans --force, et --force
+    l'arracherait à tous ses noms d'un coup. Une image sans nom ne se désigne
+    que par son identifiant.
+    """
+    if image["etiquette"] and image["etiquette"] != "<none>":
+        return f"{image['depot']}:{image['etiquette']}"
+    return image["id"]
+
+
+def lister_images(fiche, lanceur=lancer):
+    """Les images du moteur, dans l'ordre qu'il rend, ou [] s'il se tait."""
+    code, sortie = lanceur(
+        commande(fiche, ["images", "--format", FORMAT_IMAGES])
+    )
+    if code != 0:
+        return []
+    images = []
+    for ligne in sortie.splitlines():
+        champs = ligne.split("\t")
+        if len(champs) != 5:
+            continue
+        ident, depot, etiquette, taille, age = (c.strip() for c in champs)
+        images.append(
+            {
+                "id": ident,
+                "depot": depot,
+                "etiquette": etiquette,
+                "taille": taille,
+                "age": age,
+            }
+        )
+    return images
+
+
+def lister_projets(fiche, lanceur=lancer):
+    """Les projets compose, par nom : leur dossier, leurs conteneurs et les
+    images que ceux-ci emploient. {} s'il n'y en a aucun.
+
+    « inspect » plutôt que « ps --format » : les deux moteurs y rendent les
+    étiquettes sous la même forme, un dictionnaire, là où « ps » les rend en
+    chaîne chez Docker et en dictionnaire chez Podman.
+    """
+    code, sortie = lanceur(commande(fiche, ["ps", "-aq"]))
+    ids = _ID.findall(sortie) if code == 0 else []
+    if not ids:
+        return {}
+    code, sortie = lanceur(commande(fiche, ["inspect", *ids]))
+    if code != 0 or "[" not in sortie:
+        return {}
+    try:
+        donnees = json.loads(sortie[sortie.index("[") :])
+    except ValueError:
+        return {}
+    projets = {}
+    for conteneur in donnees:
+        config = conteneur.get("Config") or {}
+        etiquettes = config.get("Labels") or {}
+        nom = etiquettes.get(ETIQ_PROJET) or etiquettes.get(ETIQ_PROJET_PODMAN)
+        if not nom:
+            continue
+        projet = projets.setdefault(
+            nom,
+            {
+                "dossier": etiquettes.get(ETIQ_DOSSIER, ""),
+                "conteneurs": [],
+                "images": [],
+            },
+        )
+        image = config.get("Image") or conteneur.get("ImageName") or ""
+        projet["conteneurs"].append(
+            {
+                "nom": (conteneur.get("Name") or "").lstrip("/"),
+                "image": image,
+                "etat": (conteneur.get("State") or {}).get("Status", ""),
+            }
+        )
+        if image and image not in projet["images"]:
+            projet["images"].append(image)
+    return projets
+
+
+def ressources_projet(fiche, nom, lanceur=lancer):
+    """Les volumes et réseaux étiquetés au nom du projet.
+
+    Ils ne sont reliés au projet QUE par l'étiquette : un volume ne sait pas
+    quel conteneur l'a monté, et c'est pourtant lui qui porte la base.
+    """
+    ressources = {}
+    for genre in ("volume", "network"):
+        noms = []
+        for etiquette in (ETIQ_PROJET, ETIQ_PROJET_PODMAN):
+            code, sortie = lanceur(
+                commande(
+                    fiche,
+                    [
+                        genre,
+                        "ls",
+                        "-q",
+                        "--filter",
+                        f"label={etiquette}={nom}",
+                    ],
+                )
+            )
+            if code != 0:
+                continue
+            for ligne in sortie.splitlines():
+                ligne = ligne.strip()
+                # Un nom de volume ne porte pas d'espace ; un avertissement,
+                # si.
+                if ligne and " " not in ligne and ligne not in noms:
+                    noms.append(ligne)
+        ressources[genre] = noms
+    return ressources
+
+
+def lire_selection(texte, total):
+    """Les rangs choisis, en base 0, triés et sans doublon ; None si la
+    saisie est vide ou fautive.
+
+    Accepte « 1 3 », « 1,3 », « 2-5 », et « * », « tout » ou « all » pour
+    l'ensemble. Une seule partie fautive invalide TOUTE la saisie : sur un
+    écran qui efface, une faute de frappe ne doit jamais retenir en silence
+    le sous-ensemble qu'elle n'a pas abîmé.
+    """
+    texte = texte.strip().lower()
+    if not texte or total < 1:
+        return None
+    if texte in ("*", "tout", "tous", "all"):
+        return list(range(total))
+    rangs = set()
+    for morceau in re.split(r"[\s,;]+", texte):
+        if not morceau:
+            continue
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?", morceau)
+        if not m:
+            return None
+        debut, fin = int(m.group(1)), int(m.group(2) or m.group(1))
+        if debut < 1 or fin > total or debut > fin:
+            return None
+        rangs.update(range(debut - 1, fin))
+    return sorted(rangs) or None

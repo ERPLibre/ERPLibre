@@ -326,3 +326,121 @@ class TestInstallateur(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSelection(unittest.TestCase):
+    """Sur un écran qui efface, une faute de frappe ne doit jamais retenir en
+    silence le sous-ensemble qu'elle n'a pas abîmé."""
+
+    def test_les_formes_acceptees(self):
+        cas = {
+            "1 3": [0, 2],
+            "1,3": [0, 2],
+            "2-4": [1, 2, 3],
+            "1 2-3 5": [0, 1, 2, 4],
+            "*": [0, 1, 2, 3, 4],
+            "tout": [0, 1, 2, 3, 4],
+            "3 1 3": [0, 2],
+        }
+        for texte, attendu in cas.items():
+            with self.subTest(texte=texte):
+                self.assertEqual(attendu, cr.lire_selection(texte, 5))
+
+    def test_une_partie_fautive_invalide_tout(self):
+        for texte in ("1 x", "1,3,9", "0", "4-2", "", "   ", "1-"):
+            with self.subTest(texte=texte):
+                self.assertIsNone(cr.lire_selection(texte, 5))
+
+    def test_une_liste_vide_ne_rend_rien(self):
+        self.assertIsNone(cr.lire_selection("*", 0))
+
+
+class TestImages(unittest.TestCase):
+    def test_une_image_nommee_se_designe_par_son_nom(self):
+        """Effacer par identifiant une image à plusieurs noms échoue sans
+        --force, et --force l'arracherait à tous ses noms."""
+        image = {"id": "abc", "depot": "d/x", "etiquette": "1.0"}
+        self.assertEqual("d/x:1.0", cr.reference_image(image))
+
+    def test_une_image_sans_nom_se_designe_par_son_identifiant(self):
+        image = {"id": "abc", "depot": "<none>", "etiquette": "<none>"}
+        self.assertEqual("abc", cr.reference_image(image))
+
+    def test_les_lignes_etrangeres_sont_ecartees(self):
+        """Podman sans privilège écrit ses avertissements sur stderr, que le
+        lanceur mêle à la sortie."""
+        sortie = (
+            'WARN[0000] "/" is not a shared mount\n'
+            "a1\td/x\t1.0\t2GB\t3 days ago\n"
+            "a2\t<none>\t<none>\t1GB\t4 days ago\n"
+        )
+        lanceur = _lanceur({"images": (0, sortie)})
+        images = cr.lister_images(
+            {"moteur": "podman", "sans_sudo": True}, lanceur=lanceur
+        )
+        self.assertEqual(["a1", "a2"], [i["id"] for i in images])
+
+    def test_un_moteur_qui_refuse_ne_rend_rien(self):
+        lanceur = _lanceur({"images": (1, "permission denied")})
+        self.assertEqual(
+            [],
+            cr.lister_images({"moteur": "docker", "sans_sudo": True}, lanceur),
+        )
+
+
+class TestProjets(unittest.TestCase):
+    INSPECT = """[
+      {"Name": "/p-web-1", "State": {"Status": "running"},
+       "Config": {"Image": "img/web:1",
+                  "Labels": {"com.docker.compose.project": "p",
+                             "com.docker.compose.project.working_dir": "/d"}}},
+      {"Name": "/p-db-1", "State": {"Status": "exited"},
+       "Config": {"Image": "img/db:2",
+                  "Labels": {"com.docker.compose.project": "p"}}},
+      {"Name": "/q-a-1", "State": {"Status": "running"},
+       "Config": {"Image": "img/web:1",
+                  "Labels": {"io.podman.compose.project": "q"}}},
+      {"Name": "/seul", "State": {"Status": "running"},
+       "Config": {"Image": "img/x:1", "Labels": {}}}
+    ]"""
+
+    def _lister(self, prefixe=""):
+        lanceur = _lanceur(
+            {
+                "ps -aq": (0, "WARN bruit\naaaaaaaaaaaa\nbbbbbbbbbbbb\n"),
+                "inspect": (0, prefixe + self.INSPECT),
+            }
+        )
+        return cr.lister_projets(
+            {"moteur": "docker", "sans_sudo": True}, lanceur=lanceur
+        )
+
+    def test_les_conteneurs_se_rangent_sous_leur_projet(self):
+        projets = self._lister()
+        self.assertEqual({"p", "q"}, set(projets))
+        self.assertEqual("/d", projets["p"]["dossier"])
+        self.assertEqual(2, len(projets["p"]["conteneurs"]))
+        self.assertEqual(["img/web:1", "img/db:2"], projets["p"]["images"])
+
+    def test_un_conteneur_hors_projet_n_appartient_a_personne(self):
+        """L'effacer avec un espace de travail serait effacer ce que personne
+        n'a désigné."""
+        noms = [
+            c["nom"] for p in self._lister().values() for c in p["conteneurs"]
+        ]
+        self.assertNotIn("seul", noms)
+
+    def test_l_etiquette_de_podman_compose_est_lue(self):
+        self.assertIn("q", self._lister())
+
+    def test_un_avertissement_avant_le_json_ne_casse_rien(self):
+        self.assertEqual({"p", "q"}, set(self._lister("WARN bruit\n")))
+
+    def test_les_volumes_du_projet_ecartent_les_avertissements(self):
+        lanceur = _lanceur(
+            {"volume ls": (0, "WARN un avertissement\np_data\n")}
+        )
+        ressources = cr.ressources_projet(
+            {"moteur": "docker", "sans_sudo": True}, "p", lanceur=lanceur
+        )
+        self.assertEqual(["p_data"], ressources["volume"])

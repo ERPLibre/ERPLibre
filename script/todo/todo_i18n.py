@@ -15706,6 +15706,82 @@ TRANSLATIONS = {
         "fr": "Tombées :",
         "en": "Failed:",
     },
+    "Cleanup": {
+        "fr": "Nettoyage",
+        "en": "Cleanup",
+    },
+    "By workspace - a compose project and what it holds": {
+        "fr": "📁 Par espace de travail - un projet compose et ce qu'il tient",
+        "en": "By workspace - a compose project and what it holds",
+    },
+    "Images one by one": {
+        "fr": "🎯 Images à la pièce",
+        "en": "Images one by one",
+    },
+    "Numbers (1 3, 2-5, * for all, empty to cancel)": {
+        "fr": "Numéros (1 3, 2-5, * pour tout, vide pour annuler)",
+        "en": "Numbers (1 3, 2-5, * for all, empty to cancel)",
+    },
+    "Invalid selection: nothing removed.": {
+        "fr": "Sélection invalide : rien n'est effacé.",
+        "en": "Invalid selection: nothing removed.",
+    },
+    "No image.": {
+        "fr": "Aucune image.",
+        "en": "No image.",
+    },
+    "No workspace (compose project) here.": {
+        "fr": "Aucun espace de travail (projet compose) ici.",
+        "en": "No workspace (compose project) here.",
+    },
+    "Will remove:": {
+        "fr": "Va effacer :",
+        "en": "Will remove:",
+    },
+    "Remove? (Y/N): ": {
+        "fr": "Effacer ? (O/N) : ",
+        "en": "Remove? (Y/N): ",
+    },
+    "Removed:": {
+        "fr": "Effacés :",
+        "en": "Removed:",
+    },
+    "Refused:": {
+        "fr": "Refusés :",
+        "en": "Refused:",
+    },
+    "containers": {
+        "fr": "conteneurs",
+        "en": "containers",
+    },
+    "networks": {
+        "fr": "réseaux",
+        "en": "networks",
+    },
+    "volumes": {
+        "fr": "volumes",
+        "en": "volumes",
+    },
+    "images": {
+        "fr": "images",
+        "en": "images",
+    },
+    "Volumes hold the databases: they do not come back.": {
+        "fr": "Les volumes portent les bases de données : ils ne reviennent pas.",
+        "en": "Volumes hold the databases: they do not come back.",
+    },
+    "Running containers, and what they use, are kept.": {
+        "fr": "Les conteneurs en marche, et ce qu'ils emploient, restent.",
+        "en": "Running containers, and what they use, are kept.",
+    },
+    "A container still uses a refused image.": {
+        "fr": "Un conteneur emploie encore une image refusée.",
+        "en": "A container still uses a refused image.",
+    },
+    "An image another workspace still uses is kept.": {
+        "fr": "Une image qu'un autre espace de travail emploie encore reste.",
+        "en": "An image another workspace still uses is kept.",
+    },
 }
 
 
