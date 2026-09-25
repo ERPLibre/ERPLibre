@@ -15,6 +15,20 @@ install_dev:
 install_erplibre:
 	./script/install/install_erplibre.sh
 
+.PHONY: install_odoo_20
+install_odoo_20:
+	./script/version/update_env_version.py --erplibre_version odoo20.0_python3.14.7 --install_dev
+
+.PHONY: switch_odoo_20
+switch_odoo_20:
+	./script/version/update_env_version.py --erplibre_version odoo20.0_python3.14.7 --switch
+	./script/make.sh config_gen_all
+
+.PHONY: switch_odoo_20_update
+switch_odoo_20_update:
+	./script/version/update_env_version.py --erplibre_version odoo20.0_python3.14.7 --switch --switch_update
+	./script/make.sh config_gen_all
+
 .PHONY: install_odoo_19
 install_odoo_19:
 	./script/version/update_env_version.py --erplibre_version odoo19.0_python3.12.10 --install_dev
@@ -189,6 +203,7 @@ install_odoo_12_with_extra:
 
 .PHONY: install_odoo_all_version
 install_odoo_all_version:
+	./script/make.sh install_odoo_20
 	./script/make.sh install_odoo_19
 	./script/make.sh install_odoo_18
 	./script/make.sh install_odoo_17

@@ -1,0 +1,25 @@
+dateutil
+keystoneclient
+ldap
+swiftclient
+cv2
+speech_recognition
+PIL
+en_core_web_sm
+googletrans
+infobip-api-python-sdk
+pygount
+dataclasses
+
+pypiwin32
+
+cadquery
+pymysql
+pymssql
+
+# Conflict with pdfminer.six
+pdfminer
+
+# TODO support rename
+mpl_toolkits
+# mpl_toolkits rename to matplotlib
