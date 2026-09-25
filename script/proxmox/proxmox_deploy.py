@@ -599,14 +599,21 @@ def ip_from_neigh(text: str, mac: str) -> str:
     return ""
 
 
-def next_vmid(existing, mini: int = VMID_MIN) -> int:
-    """Premier VMID libre à partir de `mini`.
+def next_vmid(existing, mini: int = VMID_MIN, reserves=()) -> int:
+    """Premier VMID libre à partir de `mini`, `reserves` comprises.
 
     Proxmox refuse un VMID déjà pris, et le message (« CT/VM 100 already
     exists ») arrive APRÈS le téléchargement de l'image : on choisit donc
     avant, d'après ce que l'hôte déclare.
+
+    `reserves` porte les VMID qu'un plan Set-OPS DÉCLARE sans les avoir
+    encore matérialisés. Les ignorer poserait une VM là où la flotte veut la
+    sienne, et la collision ne se verrait qu'au déploiement du moteur — or
+    on n'en sort pas en renommant : on change l'index de la flotte et on
+    régénère, ce qui coûte des heures.
     """
     pris = {int(v["vmid"]) for v in existing or () if str(v["vmid"]).isdigit()}
+    pris |= {int(v) for v in reserves or () if isinstance(v, int)}
     vmid = max(mini, VMID_MIN)
     while vmid in pris:
         vmid += 1
@@ -1176,6 +1183,48 @@ def parse_cluster_vmids(text: str):
             return None
         vmids.add(vmid)
     return vmids
+
+
+def parse_cluster_guests(text: str):
+    """[(vmid, nom, nœud, pool)] de la grappe, ou None si ça ne se lit pas.
+
+    Même document que `parse_cluster_vmids`, et même appel : la liste de
+    grappe porte DÉJÀ le pool de chaque VM, si bien que savoir qui en est le
+    maître ne coûte aucun aller-retour de plus.
+
+    Fermé par défaut, pour la même raison qu'à côté : une entrée sans VMID
+    entier rend None, jamais une liste partielle — une VM omise passerait
+    pour libre. Le nom, le nœud et le pool sont facultatifs et valent « »
+    quand la grappe ne les donne pas ; un VMID, lui, est toujours là.
+    """
+    try:
+        entrees, _fin = json.JSONDecoder().raw_decode((text or "").lstrip())
+    except ValueError:
+        return None
+    if not isinstance(entrees, list):
+        return None
+    lus = []
+    for entree in entrees:
+        if not isinstance(entree, dict):
+            return None
+        vmid = entree.get("vmid")
+        if isinstance(vmid, bool) or not isinstance(vmid, int):
+            return None
+        lus.append(
+            (
+                vmid,
+                _texte(entree.get("name")),
+                _texte(entree.get("node")),
+                _texte(entree.get("pool")),
+            )
+        )
+    return lus
+
+
+def _texte(valeur) -> str:
+    """La valeur si c'est une chaîne, « » sinon : un champ facultatif que la
+    grappe rend sous une autre forme ne doit pas devenir « None »."""
+    return valeur.strip() if isinstance(valeur, str) else ""
 
 
 def parse_orphans(text: str, vmids) -> list:

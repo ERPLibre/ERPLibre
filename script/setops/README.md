@@ -1,7 +1,7 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Five modules, one split: **the survey touches the system, the decision
+Six modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -210,3 +210,37 @@ read". A caller given `None` says so and names the line to replay by hand.
 - `monte(moteur)`: the mounted name, read on the link, launching nothing —
   it heads every screen that acts. A BROKEN link keeps its name, so a screen
   can say "mounted on X, which is gone" rather than "nothing".
+
+## `coexistence` — one object, one master
+
+Both tools work on the same Proxmox cluster and each keeps only ITS objects.
+Without a guard, TODO's Proxmox menu offers a Set-OPS plan's VMs for
+deletion, frees the disks of a VMID the plan claims, and picks a VMID the
+fleet is about to materialise.
+
+**Two markers, read on the cluster and in the plan.** The engine pours each
+VM into a POOL named after its ecosystem repository, and DERIVES a
+nine-digit VMID — VLAN on four, host on three, rank on two. The pool states
+declared ownership; the VMID shape catches a VM taken out of its pool by
+hand. The pool literally named `Set-OPS` on a reference cluster is NOT a
+marker: it groups VMs from before the engine, which the engine never
+touches.
+
+**Closed by default.** When the cluster or the plan cannot be read, the state
+is `INCONNU` and the caller refuses — the same stance as "only free what is
+proven orphaned".
+
+**The collision is the costly finding.** A fleet does not rename around a
+taken VMID: the index changes and everything is regenerated — back up, raze,
+change the index, deploy, restore. Hours. So the finding must land BEFORE a
+deployment, not during one.
+
+- `vmid_derive(vmid)`: does the VMID have the shape the engine derives?
+- `lit_devis(sortie)`: the `Declaration` the pools plan carries, or `None`;
+  the `make` recipe echoes its command, so reading starts at the first brace;
+- `etat(invite, devis)`: (state, master) — may this guest be touched?
+- `vmid_revendique(vmid, devis)`: the pool that DECLARES this VMID, `""` if
+  none, `None` if the plan is unreadable — three answers, not two;
+- `collisions(invites, devis)`: the declared VMIDs a foreign VM already
+  holds. A VM does not collide with itself: the fleet's own carries either
+  its pool or the name the plan gives it.
