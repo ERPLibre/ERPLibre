@@ -157,7 +157,14 @@ if [[ -d ${VENV_PATH} ]]; then
   fi
 fi
 
-if [[ ! -d ${VENV_PATH} ]]; then
+if [[ "${PYTHON_VERSION}" == 2.* ]]; then
+  # Python 2 n'a pas de module venv, et son Poetry vit ailleurs : le script
+  # dédié pose les deux, et l'enveloppe bin/poetry qu'attend install_locally.
+  if ! ./script/install/install_venv_python2.sh "${VENV_PATH}" \
+    "${PYTHON_EXEC}" "$(xargs < .poetry-version)"; then
+    exit 1
+  fi
+elif [[ ! -d ${VENV_PATH} ]]; then
   echo -e "\n---- Create Virtual environment Python ----"
   if ! "${PYTHON_EXEC}" -m venv "${VENV_PATH}"; then
     echo "Virtual environment, error when creating ${VENV_PATH}"
