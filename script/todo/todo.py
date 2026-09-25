@@ -253,9 +253,8 @@ class TODO(
 [1] {t("Execute")}
 [2] {t("Install")}
 [3] {t("Assistant")}
-[4] {t("Fork - Open TODO in a new tab")}
-[5] {t("Navigation telemetry (TUI)")}
-[6] {t("Configuration")}
+[4] {t("Navigation telemetry (TUI)")}
+[5] {t("Configuration")}
 [0] 🚪 {t("Quit")}
 """
         while True:
@@ -281,15 +280,8 @@ class TODO(
             elif status == "3":
                 self.prompt_assistant()
             elif status == "4":
-                # cmd = (
-                #     f"gnome-terminal --tab -- bash -c 'source"
-                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
-                # )
-                cmd = "make todo"
-                self.execute.exec_command_live(cmd, source_erplibre=True)
-            elif status == "5":
                 self._todo_telemetry_tui()
-            elif status == "6":
+            elif status == "5":
                 self.prompt_configuration()
             # elif status == "3" or status == "install":
             #     print("install")
@@ -346,9 +338,6 @@ class TODO(
 [13] {t("Deploy - Deploy ERPLibre locally")}
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
-
-── {t("Preferences")} ──
-[16] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -414,10 +403,6 @@ class TODO(
                     return
             elif status == "15":
                 status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "16":
-                status = self._change_language()
                 if status is not False:
                     return
             else:
@@ -869,6 +854,7 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {"prompt_description": t("Fork - Open TODO in a new tab")},
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -885,6 +871,10 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self.execute.exec_command_live(
+                    "make todo", source_erplibre=True
+                )
+            elif status == "6":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:

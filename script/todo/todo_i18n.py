@@ -100,10 +100,6 @@ TRANSLATIONS = {
         "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
-    "Language - Change language / Changer la langue": {
-        "fr": "🌍 Langue - Changer la langue / Change language",
-        "en": "🌍 Language - Change language / Changer la langue",
-    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "🚀 Déploiement - Déployer ERPLibre localement",
@@ -184,10 +180,6 @@ TRANSLATIONS = {
     "Deployment, network & security": {
         "fr": "🌐 Déploiement, réseau & sécurité",
         "en": "🌐 Deployment, network & security",
-    },
-    "Preferences": {
-        "fr": "🎨 Préférences",
-        "en": "🎨 Preferences",
     },
     "Deployment": {
         "fr": "🚀 Déploiement",
