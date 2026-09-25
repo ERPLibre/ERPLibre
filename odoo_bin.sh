@@ -18,5 +18,6 @@ export PYTHONPATH="${ODOO_PATH}:$PYTHONPATH"
 if [ "$ODOO_MODE_COVERAGE" = "true" ]; then
   coverage run -p ./odoo$(< .odoo-version)/odoo/odoo-bin "$@"
 else
-  python3 ./odoo$(< .odoo-version)/odoo/odoo-bin "$@"
+  # « python » : celui du venv activé, Python 2 compris, qui n'a pas de python3.
+  python ./odoo$(< .odoo-version)/odoo/odoo-bin "$@"
 fi
