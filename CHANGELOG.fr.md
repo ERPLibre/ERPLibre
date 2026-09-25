@@ -98,6 +98,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot réunit `aiobotocore`, `botocore` et `boto3` dans une seule demande de fusion, chaque aiobotocore n'acceptant qu'une plage étroite de botocore ; les correctifs de sécurité arrivent toujours seuls
 - `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
 - factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
+- Le choix d'interface du déploiement QEMU et de la migration Odoo, et ses préférences dans `TODO › Configuration`, marquent le formulaire TUI d'un 📋 et les questions ligne par ligne d'un 💬
 
 ## Corrigé
 
@@ -178,6 +179,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - En suivant une redirection, le cache ne transmet plus les identifiants du client (Authorization, Cookie, Proxy-Authorization) à un autre hôte
 - Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
 - Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
+- Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
 
 
 ## [1.8.0] - 2026-09-04

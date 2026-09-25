@@ -138,8 +138,14 @@ func (g *GitMirror) backend() string {
 // « https://h/o/d.git/info/refs?service=… » rend « https://h/o/d.git » et
 // « /info/refs ». Rend faux quand l'URL n'est pas une négociation : le
 // découpage n'aurait alors aucun sens.
+//
+// Rend faux aussi hors de http et https. Le schéma vient de la ligne de
+// requête, que le client écrit, et un client git ne passe par un mandataire
+// HTTP qu'en HTTP(S) : ssh et git:// ouvrent leur propre connexion. Accepter
+// « ssh://hôte/… » ferait cloner le cache vers un hôte choisi par le client,
+// avec les clés de son compte de service.
 func DepotDeURL(u *url.URL) (string, string, bool) {
-	if u == nil {
+	if u == nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return "", "", false
 	}
 	for _, s := range gitSmartPaths {
@@ -226,7 +232,10 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 		if err := os.MkdirAll(filepath.Dir(chemin), 0o755); err != nil {
 			return "", false
 		}
-		if err := g.git(ctx, "", "clone", "--mirror", depot, chemin); err != nil {
+		// « -- » : le dépôt ne peut plus se lire comme une option de git.
+		if err := g.git(
+			ctx, "", "clone", "--mirror", "--", depot, chemin,
+		); err != nil {
 			// Un clonage à moitié fait laisserait un répertoire que la
 			// prochaine requête prendrait pour un miroir valide.
 			os.RemoveAll(chemin)
@@ -414,10 +423,14 @@ func (g *GitMirror) gitBorne(
 	// Aucune invite : un dépôt privé doit ÉCHOUER et retomber sur le relais,
 	// et non bloquer le service en attendant un mot de passe que personne ne
 	// tapera jamais.
+	// GIT_ALLOW_PROTOCOL borne les transports de git lui-même, clone comme
+	// remote update : le miroir ne sert que des négociations HTTP(S), et aucun
+	// dépôt ne doit l'emmener vers ssh, git:// ou un chemin local.
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_ASKPASS=/bin/true",
 		"GCM_INTERACTIVE=never",
+		"GIT_ALLOW_PROTOCOL=http:https",
 	)
 	sortie, err := cmd.CombinedOutput()
 	if err != nil {

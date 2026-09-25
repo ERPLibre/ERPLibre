@@ -2480,12 +2480,12 @@ TRANSLATIONS = {
         "en": "Ask every time",
     },
     "TUI form": {
-        "fr": "Formulaire TUI",
-        "en": "TUI form",
+        "fr": "📋 Formulaire TUI",
+        "en": "📋 TUI form",
     },
     "Classic questions (line by line)": {
-        "fr": "Questions classiques (ligne par ligne)",
-        "en": "Classic questions (line by line)",
+        "fr": "💬 Questions classiques (ligne par ligne)",
+        "en": "💬 Classic questions (line by line)",
     },
     "CLI output (easy to copy)": {
         "fr": "Sortie CLI (facile à copier)",
