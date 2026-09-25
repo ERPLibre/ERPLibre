@@ -307,6 +307,62 @@ class TestErreurs(BaseProxy):
         self.assertTrue(rep.startswith(b"HTTP/1.1 431"), rep[:40])
 
 
+class TestLectureDeConfig(unittest.TestCase):
+    """Les ports et réglages lus dans un config.conf d'Odoo."""
+
+    def ecrire(self, contenu):
+        import tempfile
+
+        f = tempfile.NamedTemporaryFile(
+            "w", suffix=".conf", delete=False, encoding="utf-8"
+        )
+        f.write(contenu)
+        f.close()
+        self.addCleanup(__import__("os").unlink, f.name)
+        return f.name
+
+    def test_ports_et_reglages_d_odoo_18(self):
+        chemin = self.ecrire(
+            "[options]\nhttp_port = 9069\ngevent_port = 9072\n"
+            "proxy_mode = True\nworkers = 2\n"
+        )
+        self.assertEqual(
+            rp.read_odoo_config(chemin),
+            {
+                "web_port": 9069,
+                "websocket_port": 9072,
+                "proxy_mode": True,
+                "workers": 2,
+            },
+        )
+
+    def test_les_anciens_noms_servent_de_repli(self):
+        # xmlrpc_port et longpolling_port : les anciens noms d'Odoo.
+        chemin = self.ecrire(
+            "[options]\nxmlrpc_port = 7069\nlongpolling_port = 7072\n"
+        )
+        lu = rp.read_odoo_config(chemin)
+        self.assertEqual((lu["web_port"], lu["websocket_port"]), (7069, 7072))
+
+    def test_un_fichier_absent_rend_les_defauts_d_odoo(self):
+        self.assertEqual(
+            rp.read_odoo_config("/nexiste/pas/config.conf"),
+            {
+                "web_port": 8069,
+                "websocket_port": 8072,
+                "proxy_mode": False,
+                "workers": 0,
+            },
+        )
+
+    def test_une_valeur_illisible_garde_le_defaut(self):
+        chemin = self.ecrire(
+            "[options]\nhttp_port = False\nworkers = beaucoup\n"
+        )
+        lu = rp.read_odoo_config(chemin)
+        self.assertEqual((lu["web_port"], lu["workers"]), (8069, 0))
+
+
 class TestLigneDeCommande(unittest.TestCase):
     def test_les_defauts_ecoutent_en_local(self):
         args = rp.get_config([])

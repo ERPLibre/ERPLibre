@@ -13362,6 +13362,43 @@ TRANSLATIONS = {
         "fr": "🚇 VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)",
         "en": "🚇 VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)",
     },
+    # Network — reverse proxy
+    "Odoo reverse proxy (pages and websocket on one port)": {
+        "fr": "🔀 Mandataire inverse Odoo (pages et websocket sur un port)",
+        "en": "🔀 Odoo reverse proxy (pages and websocket on one port)",
+    },
+    "Listen on:": {
+        "fr": "Écoute :",
+        "en": "Listen on:",
+    },
+    "Local only (127.0.0.1)": {
+        "fr": "🏠 Cette machine seulement (127.0.0.1)",
+        "en": "🏠 This machine only (127.0.0.1)",
+    },
+    "Whole network (0.0.0.0)": {
+        "fr": "🌐 Tout le réseau (0.0.0.0)",
+        "en": "🌐 Whole network (0.0.0.0)",
+    },
+    "The proxy is reachable by every machine on the network.": {
+        "fr": "Le mandataire est joignable par toute machine du réseau.",
+        "en": "The proxy is reachable by every machine on the network.",
+    },
+    "Ports read from": {
+        "fr": "Ports lus dans",
+        "en": "Ports read from",
+    },
+    "is missing: Odoo ignores the X-Forwarded-* headers.": {
+        "fr": "manque : Odoo ignore les en-têtes X-Forwarded-*.",
+        "en": "is missing: Odoo ignores the X-Forwarded-* headers.",
+    },
+    "no bus port listens, /websocket will fail.": {
+        "fr": "aucun port de bus n'écoute, /websocket échouera.",
+        "en": "no bus port listens, /websocket will fail.",
+    },
+    "Ctrl+C stops the proxy.": {
+        "fr": "Ctrl+C arrête le mandataire.",
+        "en": "Ctrl+C stops the proxy.",
+    },
     "VPN tunnels: connect, profiles, vault secrets": {
         "fr": "Tunnels VPN : connexion, profils, secrets du coffre",
         "en": "VPN tunnels: connect, profiles, vault secrets",

@@ -24,6 +24,7 @@ la main.
 
 import argparse
 import asyncio
+import configparser
 import sys
 from dataclasses import dataclass
 
@@ -65,6 +66,38 @@ class ProxyConfig:
     websocket_port: int = 8072
     websocket_paths: tuple = DEFAULT_WEBSOCKET_PATHS
     forwarded_proto: str = "http"
+
+
+def read_odoo_config(path):
+    """Les ports et réglages d'Odoo utiles au mandataire.
+
+    Lit la section [options] d'un config.conf. Les anciens noms, xmlrpc_port
+    et longpolling_port, servent de repli ; une option absente
+    ou illisible — un fichier absent compris — garde le défaut d'Odoo.
+
+    :return: {"web_port", "websocket_port", "proxy_mode", "workers"}
+    """
+    cfg = configparser.ConfigParser(interpolation=None)
+    cfg.read(path)
+
+    def entier(noms, defaut):
+        for nom in noms:
+            try:
+                return cfg.getint("options", nom)
+            except (configparser.Error, ValueError):
+                continue
+        return defaut
+
+    try:
+        proxy_mode = cfg.getboolean("options", "proxy_mode")
+    except (configparser.Error, ValueError):
+        proxy_mode = False
+    return {
+        "web_port": entier(("http_port", "xmlrpc_port"), 8069),
+        "websocket_port": entier(("gevent_port", "longpolling_port"), 8072),
+        "proxy_mode": proxy_mode,
+        "workers": entier(("workers",), 0),
+    }
 
 
 def parse_head(head):

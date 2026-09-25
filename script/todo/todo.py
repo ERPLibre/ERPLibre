@@ -5398,6 +5398,11 @@ class TODO(
                     "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Odoo reverse proxy (pages and websocket on one port)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -5412,6 +5417,8 @@ class TODO(
                 self.generate_network_performance_test()
             elif status == "3":
                 self.prompt_execute_vpn()
+            elif status == "4":
+                self.network_reverse_proxy()
             else:
                 print(t("Command not found !"))
 
@@ -5437,6 +5444,47 @@ class TODO(
             cmd,
             source_erplibre=False,
             single_source_erplibre=True,
+        )
+
+    def network_reverse_proxy(self, config_path="./config.conf"):
+        """Lance script/reverse_proxy/main.py avec les ports de config_path.
+
+        Demande l'écoute — la machine seule ou tout le réseau — puis signale
+        les réglages d'Odoo sans lesquels le mandataire ne sert à rien :
+        proxy_mode (Odoo ignore sinon les en-têtes X-Forwarded-*) et workers
+        (à 0, aucun port de bus n'écoute et /websocket échoue). Le
+        mandataire tourne au premier plan ; Ctrl+C le rend au menu.
+        """
+        from script.reverse_proxy.main import read_odoo_config
+
+        odoo = read_odoo_config(config_path)
+        print(f"\n{t('Listen on:')}")
+        print(f"  [1] {t('Local only (127.0.0.1)')} *")
+        print(f"  [2] {t('Whole network (0.0.0.0)')}")
+        choice = input(t("Choice (1-2, default 1): ")).strip()
+        listen = "0.0.0.0" if choice == "2" else "127.0.0.1"
+        if listen == "0.0.0.0":
+            reachable = t(
+                "The proxy is reachable by every machine on the network."
+            )
+            print(f"⚠️  {reachable}")
+        print(
+            f"{t('Ports read from')} {config_path} : web"
+            f" {odoo['web_port']}, bus {odoo['websocket_port']}"
+        )
+        if not odoo["proxy_mode"]:
+            missing = t("is missing: Odoo ignores the X-Forwarded-* headers.")
+            print(f"⚠️  proxy_mode = True {missing}")
+        if odoo["workers"] < 1:
+            no_bus = t("no bus port listens, /websocket will fail.")
+            print(f"⚠️  workers = {odoo['workers']} : {no_bus}")
+        print(t("Ctrl+C stops the proxy."))
+        self.execute.exec_command_live(
+            "./script/reverse_proxy/main.py"
+            f" --listen {listen}"
+            f" --web-port {odoo['web_port']}"
+            f" --websocket-port {odoo['websocket_port']}",
+            source_erplibre=False,
         )
 
     def prompt_execute_security(self):
