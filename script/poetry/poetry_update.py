@@ -113,12 +113,24 @@ def get_lst_manifest_py(config, ignore_dir_startswith: list = None):
     )
 
 
+# A file under one of these directories documents or illustrates, it does not
+# declare what an addon needs: an example requirements.txt with a loose
+# ">=" would otherwise override a pin for the whole environment.
+IGNORED_DIR_NAMES = {"doc", "docs", "example", "examples"}
+
+
 def get_file_from_glob(
     config,
     glob_txt,
     ignore_dir_startswith: list = None,
     force_add_item: list = None,
 ):
+    """Files matching glob_txt under the Odoo tree of the active version.
+
+    A path is skipped when a directory of it is named in IGNORED_DIR_NAMES,
+    compared by exact name, or when it starts with one of
+    ignore_dir_startswith. force_add_item is appended without filtering.
+    """
     lst_v = []
     # TODO take all groups odoo##.# from manifest, will create a dependency
     # Hardcode logic from manifest
@@ -130,6 +142,8 @@ def get_file_from_glob(
         for a in gen_path:
             a_dirname = os.path.dirname(a)
             if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
+                continue
+            if IGNORED_DIR_NAMES.intersection(Path(a_dirname).parts):
                 continue
             if ignore_dir_startswith:
                 ignore_it = False
