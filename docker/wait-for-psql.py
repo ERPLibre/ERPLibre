@@ -1,11 +1,20 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+from __future__ import print_function
+
 import argparse
-import configparser
 import sys
 import time
+
+# Lancé par le python du venv d'Odoo, qui a psycopg2 : Python 2 compris, où
+# le module s'appelle ConfigParser et où les f-strings n'existent pas.
+try:
+    import configparser
+except ImportError:  # Python 2
+    import ConfigParser as configparser
 
 CLES = ("db_host", "db_port", "db_user", "db_password")
 
@@ -16,11 +25,11 @@ def lire_config(chemin):
     config.read(chemin)
     if not config.has_section("options"):
         return {}
-    return {
-        cle: config.get("options", cle)
+    return dict(
+        (cle, config.get("options", cle))
         for cle in CLES
         if config.has_option("options", cle)
-    }
+    )
 
 
 if __name__ == "__main__":
@@ -43,7 +52,7 @@ if __name__ == "__main__":
                 setattr(args, cle, valeur)
     manquantes = [cle for cle in CLES if getattr(args, cle) is None]
     if manquantes:
-        arg_parser.error(f"missing: {', '.join(manquantes)}")
+        arg_parser.error("missing: %s" % ", ".join(manquantes))
 
     # Après les arguments : une connexion incomplète se refuse même là où
     # psycopg2 manque.

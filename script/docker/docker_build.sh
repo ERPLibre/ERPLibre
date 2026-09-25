@@ -85,7 +85,14 @@ fi
 # 3.8 n'existe sur trixie. La base est « python:<version>-slim-<nom> » : le
 # Python vient de l'image officielle, jamais de Debian, et le nom de version
 # ne change que les paquets du système.
-if [ "${ODOO_VERSION%%.*}" -ge 16 ]; then
+#
+# Python 2.7 n'a d'image que sur buster, archivée : son client PostgreSQL
+# vient d'apt-archive, où le plus récent est le 16.
+ARGS_DEBIAN=""
+if [[ "${PYTHON_VERSION}" == 2.* ]]; then
+  DEBIAN_NAME=buster
+  ARGS_DEBIAN="--build-arg PGDG_URL=http://apt-archive.postgresql.org/pub/repos/apt/ --build-arg PG_CLIENT_VERSION=16"
+elif [ "${ODOO_VERSION%%.*}" -ge 16 ]; then
   DEBIAN_NAME=trixie
 else
   DEBIAN_NAME=bookworm
@@ -235,7 +242,7 @@ cd docker
 
 # Chaque Dockerfile reçoit ses seuls arguments : Docker avertit sur un
 # argument que personne ne lit, et l'avertissement noie celui qui compterait.
-ARGS_BASE="--build-arg PYTHON_VERSION=${PYTHON_VERSION} --build-arg DEBIAN_NAME=${DEBIAN_NAME} --build-arg ODOO_VERSION=${ODOO_VERSION}"
+ARGS_BASE="--build-arg PYTHON_VERSION=${PYTHON_VERSION} --build-arg DEBIAN_NAME=${DEBIAN_NAME} --build-arg ODOO_VERSION=${ODOO_VERSION} ${ARGS_DEBIAN}"
 ARGS_PROD="--build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg POETRY_VERSION=${POETRY_VERSION}"
 ARGS_PROD="${ARGS_PROD} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
 # ERPLIBRE_CODE_OWNER=root construit une image dont Odoo ne peut pas réécrire

@@ -49,6 +49,10 @@ fi
 
 cd /ERPLibre
 source .venv.$(cat ".erplibre-version" | xargs)/bin/activate
+# « python » et non « python3 » pour Odoo et wait-for-psql.py : un venv
+# Python 2 n'a pas de python3, et l'appel tomberait sur l'interpréteur du
+# système, qui n'a ni Odoo ni psycopg2. Les scripts d'outillage, qui ne
+# demandent que la bibliothèque standard, gardent python3.
 
 # They reach Odoo and wait-for-psql.py through a private copy of the
 # configuration (0600, in the container's temporary directory), never through
@@ -111,14 +115,14 @@ run_odoo() {
   if [[ "${STOP_BEFORE_INIT}" == "True" ]]; then
     sleep 999999
   fi
-  python3 ./docker/wait-for-psql.py --config "$ODOO_RC" --timeout=30
+  python ./docker/wait-for-psql.py --config "$ODOO_RC" --timeout=30
   run_init_cmd
   local odoo_args=("$@")
   if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
     odoo_args+=(-u all -d "${DB_NAME}")
   fi
   start_warmup "${odoo_args[@]}"
-  exec python3 "$ODOO_EXEC_BIN" "${odoo_args[@]}" -c "$ODOO_RC"
+  exec python "$ODOO_EXEC_BIN" "${odoo_args[@]}" -c "$ODOO_RC"
 }
 
 case "$1" in
