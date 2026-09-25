@@ -18,6 +18,7 @@ simulé. C'est la seule façon de vérifier l'ordre, l'isolement des refus et
 l'arrêt de la boucle sans lancer Odoo sur une vraie base.
 """
 
+import ast
 import os
 import sys
 import unittest
@@ -379,7 +380,25 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
     def test_the_pushed_script_announces_what_it_does(self):
         source = cleanup.build_script(1, False)
         self.assertIn(cleanup.STEP, source)
-        self.assertIn("flush=True", source)
+        self.assertIn("sys.stdout.flush()", source)
+
+    def test_the_pushed_script_stays_python_2(self):
+        """Il est exécuté par le shell de la version active, Odoo 10 et son
+        Python 2.7 compris : une f-string ou un print(..., flush=) y est une
+        erreur de syntaxe, et le nettoyage meurt avant d'avoir commencé."""
+        arbre = ast.parse(cleanup.build_script(1, False))
+        self.assertFalse(
+            [n for n in ast.walk(arbre) if isinstance(n, ast.JoinedStr)]
+        )
+        self.assertFalse(
+            [
+                k
+                for n in ast.walk(arbre)
+                if isinstance(n, ast.Call)
+                for k in n.keywords
+                if k.arg == "flush"
+            ]
+        )
 
     def test_it_announces_each_pass(self):
         source = cleanup.build_script(1, False)

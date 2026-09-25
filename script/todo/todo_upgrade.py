@@ -171,6 +171,25 @@ SUFFIXE_MAX = len("_neutralize_upgrade_18")
 NOM_BASE_MAX = 63 - SUFFIXE_MAX
 
 
+def openupgrade_declared(version, racine="."):
+    """Vrai si le manifeste de développement d'Odoo <version>.0 déclare
+    OpenUpgrade.
+
+    La migration vers <version> exécute OpenUpgrade de cette même branche,
+    cloné en odoo<version>.0/OCA_OpenUpgrade par ce manifeste. Une version
+    qu'OCA n'a pas encore couverte n'y a pas d'entrée : l'étape n'aurait rien
+    à lancer.
+    """
+    chemin = os.path.join(
+        racine, "manifest", f"git_manifest_odoo{version}.0_dev.xml"
+    )
+    try:
+        with open(chemin, encoding="utf-8") as fichier:
+            return f"odoo{version}.0/OCA_OpenUpgrade" in fichier.read()
+    except OSError:
+        return False
+
+
 def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
     """Le nom de base que suggère le fichier de sauvegarde.
 
@@ -1496,6 +1515,17 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
+        lst_sans_openupgrade = [
+            v
+            for v in range(start_version + 1, end_version + 1)
+            if not openupgrade_declared(v)
+        ]
+        if lst_sans_openupgrade:
+            print(
+                f"⚠️ {t('OpenUpgrade is not declared for')}"
+                f" {', '.join(f'{v}.0' for v in lst_sans_openupgrade)} :"
+                f" {t('the migration will stop before that step.')}"
+            )
         lst_module = sorted(
             list(set(json_manifest_file_1.get("modules").keys()))
         )
@@ -1528,12 +1558,12 @@ class TodoUpgrade:
         if not is_state_4_reach_open_upgrade and not self.dct_progression.get(
             "state_0_install_odoo"
         ):
+            # La cible comprise : la dernière étape bascule sur elle par
+            # « make switch_odoo_<cible> », qui suppose son installation.
             lst_diff_version = sorted(
-                list(
-                    set([f"odoo{a}.0" for a in range_version]).difference(
-                        set(lst_version_installed)
-                    )
-                )
+                set(
+                    f"odoo{a}.0" for a in range(start_version, end_version + 1)
+                ).difference(set(lst_version_installed))
             )
             for odoo_version_to_install in lst_diff_version:
                 iter_range_version = odoo_version_to_install.replace(
@@ -2610,6 +2640,20 @@ class TodoUpgrade:
                 path_addons_openupgrade = os.path.join(
                     os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
                 )
+                # Sans OpenUpgrade de cette branche, les commandes ci-dessous
+                # lanceraient un chemin inexistant. L'étape n'est pas
+                # consignée : relancer après l'ajout reprend ici.
+                if not os.path.isdir(path_addons_openupgrade):
+                    print(
+                        f"❌ {t('OpenUpgrade is missing for Odoo')}"
+                        f" {next_version}.0 : '{path_addons_openupgrade}'."
+                    )
+                    print(
+                        f"ℹ {t('Declare its branch in')}"
+                        f" manifest/git_manifest_odoo{next_version}.0_dev.xml"
+                        f" {t('once OCA publishes it, sync, then rerun')}."
+                    )
+                    return
 
                 # Update config with OCA_OpenUpgrade
                 ignore_path = (
@@ -2656,10 +2700,10 @@ class TodoUpgrade:
                 # pas une copie — donc la muter maintenant la fait persister
                 # au premier write_config() venu, y compris celui du chemin
                 # d'échec juste en dessous. L'étape passait alors pour faite
-                # et la reprise SAUTAIT OpenUpgrade : mesuré sur
-                # test_neutralize_upgrade_18, resté en base 17.0.1.3 avec sa
-                # commande 18 déjà consignée. On l'enregistre après la
-                # réussite, où le commentaire dit déjà qu'elle appartient.
+                # et la reprise SAUTAIT OpenUpgrade : une base restait en
+                # 17.0 avec sa commande 18 déjà consignée. On l'enregistre
+                # après la réussite, où le commentaire dit déjà qu'elle
+                # appartient.
 
                 # Record the website COW views before the data migration. The
                 # upgrade silently deletes and recreates copies (measured on
