@@ -24,6 +24,11 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
+# Le début d'une ligne de requirements qui désigne un FICHIER et non un
+# paquet : chemin absolu, relatif, ou URL de fichier.
+CHEMINS_LOCAUX = ("/", "./", "../", "file:")
+
+
 def get_config():
     """Parse command line arguments, extracting the config file name,
     returning the union of config file and command line arguments
@@ -199,6 +204,13 @@ def combine_requirements(config):
             for a in f.readlines():
                 b = a.strip()
                 if not b or b[0] == "#":
+                    continue
+                if b.startswith(CHEMINS_LOCAUX):
+                    # Un chemin vers une roue livrée AVEC le module — la boîte
+                    # IoT d'Odoo 19 en déclare — n'est pas un paquet : aucun
+                    # dépôt ne le sert, Requirement() le refuse faute de nom,
+                    # et un marqueur qui le retiendrait pour ce serveur ne le
+                    # rendrait pas plus installable.
                     continue
                 if " @ " in b:
                     # Support when requirement line is like "package @ git+https://URL"
@@ -382,6 +394,10 @@ def combine_requirements(config):
                 match_version_format = match_version.replace("'", "").replace(
                     '"', ""
                 )
+                # « >=a,<=b » : seule la première clause donne la version qui
+                # ordonne les candidats. La contrainte entière reste dans
+                # « requirement », et iscompatible la lit clause par clause.
+                match_version_format = match_version_format.split(",")[0]
                 result_number = [(match_sign, Version(match_version_format))]
                 # result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
@@ -755,12 +771,21 @@ def main():
             config.force
             and not os.path.islink(poetry_default_lock_path)
             and os.path.isfile(poetry_default_lock_path)
-            and os.path.isfile(poetry_target_lock_path)
         ):
-            # If "./poetry.lock" is not symbolic link, force replace original
-            os.remove(poetry_target_lock_path)
+            # « ./poetry.lock » n'est pas un lien : on le range sous
+            # requirement/ et on le remplace par un lien. Une version NOUVELLE
+            # n'a encore aucun verrou rangé : exiger qu'il existe pour le
+            # remplacer laissait le sien à la racine, hors de portée de la
+            # bascule de version.
+            if os.path.isfile(poetry_target_lock_path):
+                os.remove(poetry_target_lock_path)
             shutil.move(poetry_default_lock_path, poetry_target_lock_path)
             os.symlink(poetry_target_lock_path, poetry_default_lock_path)
+        if not status:
+            # « poetry add » ou « poetry lock » a échoué : aucun verrou n'a été
+            # produit. Sortir en 0 ferait passer l'échec pour une réussite
+            # auprès de make comme de toute chaîne qui teste le code de retour.
+            sys.exit(1)
 
 
 if __name__ == "__main__":
