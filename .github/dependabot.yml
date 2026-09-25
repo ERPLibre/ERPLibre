@@ -17,3 +17,8 @@ updates:
       - "**/*odoo15.0_*"
       - "**/*odoo16.0_*"
       - "**/*odoo17.0_*"
+    ignore:
+      # meteostat 2.x caps pytz below 2024, which would freeze the timezone
+      # data of every Odoo instance; 1.x leaves pytz free.
+      - dependency-name: "meteostat"
+        update-types: ["version-update:semver-major"]
