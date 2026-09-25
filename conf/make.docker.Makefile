@@ -53,6 +53,14 @@ docker_exec_erplibre_repo_show_status:
 	./script/docker/docker_repo_show_status.sh
 
 # build docker
+.PHONY: docker_build_odoo_19
+docker_build_odoo_19:
+	./script/docker/docker_build.sh --odoo_19
+
+.PHONY: docker_build_odoo_19_clean
+docker_build_odoo_19_clean:
+	./script/docker/docker_build.sh --odoo_19 --no-cache
+
 .PHONY: docker_build_odoo_18
 docker_build_odoo_18:
 	./script/docker/docker_build.sh --odoo_18
