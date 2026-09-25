@@ -705,6 +705,7 @@ class TODO(
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
         "prompt_execute_container": "Docker / Podman",
+        "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",
         "prompt_execute_test": "Test",

@@ -44,30 +44,90 @@ def _lanceur(reponses):
 
 
 class TestRaisonDuRefus(unittest.TestCase):
+    """Le refus rend un CODE, jamais une phrase : une phrase choisirait une
+    langue, et le module ne sait pas dans laquelle l'appelant parle."""
+
     def test_le_groupe_existe_mais_pas_dans_cette_session(self):
         with mock.patch.object(
             cr, "declare_dans_le_groupe", return_value=True
         ):
             with mock.patch.object(cr, "dans_le_groupe", return_value=False):
-                raison = cr._raison("docker", "permission denied")
-        self.assertIn("session", raison)
+                code = cr._raison("docker", "permission denied")
+        self.assertEqual("groupe_hors_session", code)
 
     def test_le_compte_n_est_pas_dans_le_groupe(self):
         with mock.patch.object(
             cr, "declare_dans_le_groupe", return_value=False
         ):
-            raison = cr._raison("docker", "permission denied")
-        self.assertIn("groupe docker", raison)
+            code = cr._raison("docker", "permission denied")
+        self.assertEqual("groupe_absent", code)
 
     def test_le_service_est_a_l_arret(self):
-        with mock.patch.object(cr, "service_actif", return_value=False):
-            raison = cr._raison(
-                "docker", "Cannot connect to the Docker daemon"
-            )
-        self.assertIn("arrêt", raison)
+        with mock.patch.object(cr, "noyau_sans_modules", return_value=False):
+            with mock.patch.object(cr, "service_actif", return_value=False):
+                code = cr._raison(
+                    "docker", "Cannot connect to the Docker daemon"
+                )
+        self.assertEqual("service_arrete", code)
+
+    def test_un_noyau_sans_modules_passe_devant_l_etat_du_service(self):
+        """Un démon qui refuse de naître alors que tout est en place n'a que
+        cette cause, et le service paraît simplement arrêté."""
+        with mock.patch.object(cr, "noyau_sans_modules", return_value=True):
+            with mock.patch.object(cr, "service_actif", return_value=False):
+                code = cr._raison("docker", "Cannot connect to the daemon")
+        self.assertEqual("noyau_perime", code)
 
     def test_un_delai_depasse_se_dit(self):
-        self.assertIn("délai", cr._raison("podman", "timeout"))
+        self.assertEqual("delai", cr._raison("podman", "timeout"))
+
+
+class TestNoyauSansModules(unittest.TestCase):
+    def test_il_se_juge_sur_l_arbre_du_noyau_EN_COURS(self):
+        """Mettre le noyau à jour emporte /lib/modules de l'ancien : celui qui
+        tourne garde ses modules chargés et ne peut plus en charger aucun."""
+        with mock.patch.object(cr.os.path, "isdir", return_value=False):
+            self.assertTrue(cr.noyau_sans_modules())
+        with mock.patch.object(cr.os.path, "isdir", return_value=True):
+            self.assertFalse(cr.noyau_sans_modules())
+
+
+class TestSocketSansPrivilege(unittest.TestCase):
+    """Sans DOCKER_HOST, le client s'adresse à la socket du démon de root : un
+    mode sans privilège vivant paraît mort."""
+
+    def test_elle_est_essayee_avant_de_conclure_au_refus(self):
+        lanceur = _lanceur(
+            {
+                "env DOCKER_HOST=unix:///x/docker.sock docker info": (0, "ok"),
+                "docker info": (1, "Cannot connect to the Docker daemon"),
+                "docker --version": (0, "Docker version 29"),
+            }
+        )
+        with mock.patch.object(cr, "binaire", return_value="/usr/bin/docker"):
+            with mock.patch.object(
+                cr, "socket_rootless", return_value="/x/docker.sock"
+            ):
+                with mock.patch.dict(cr.os.environ, {}, clear=True):
+                    fiche = cr.etat("docker", lanceur=lanceur)
+        self.assertTrue(fiche["sans_sudo"])
+        self.assertEqual("unix:///x/docker.sock", fiche["docker_host"])
+
+    def test_la_valeur_retenue_voyage_avec_la_commande(self):
+        fiche = {
+            "moteur": "docker",
+            "sans_sudo": True,
+            "docker_host": "unix:///x/docker.sock",
+        }
+        self.assertEqual(
+            [
+                "env",
+                "DOCKER_HOST=unix:///x/docker.sock",
+                "docker",
+                "images",
+            ],
+            cr.commande(fiche, ["images"]),
+        )
 
 
 class TestEtat(unittest.TestCase):

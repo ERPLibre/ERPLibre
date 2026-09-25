@@ -25,6 +25,7 @@ import json
 import os
 import shlex
 import shutil
+import textwrap
 
 import click
 
@@ -33,6 +34,39 @@ from script.todo.todo_i18n import t
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
 CATALOGUE = "conf/supported_version_erplibre.json"
+
+# Les codes que rend container_runtime, et la phrase à montrer. La phrase vit
+# ICI et non dans le module : lui rend des faits, et une phrase choisit une
+# langue.
+RAISONS = {
+    "groupe_hors_session": (
+        "in the docker group, but not in this session: log in again"
+    ),
+    "groupe_absent": "not in the docker group - sudo, or install it again",
+    "droits_socket": "not enough rights on the engine socket",
+    "noyau_perime": (
+        "the running kernel lost its module tree: reboot to load any module"
+    ),
+    "service_arrete": "the service is stopped - see [2] Service",
+    "systemd_ignore": "no answer, and systemd does not know this unit",
+    "socket_muette": "the unit runs but the socket does not answer",
+    "delai": "the engine did not answer within the delay",
+}
+
+# Les unités systemd de chaque moteur : celle du démon, puis celle de la
+# socket. L'activation au démarrage porte sur la SOCKET — c'est elle qui fait
+# naître le démon à la première connexion — là où démarrer et arrêter portent
+# sur le démon lui-même.
+UNITES = {
+    "docker": ("docker.service", "docker.socket"),
+    "podman": ("podman.service", "podman.socket"),
+}
+
+# L'icône de chaque moteur. Hors de todo_i18n : un nom de produit ne se
+# traduit pas, et son icône pas davantage — les deux langues y mettraient la
+# même chose. Les mêmes que les entrées d'installation du menu, pour qu'une
+# liste et son action se reconnaissent d'un coup d'œil.
+ICONES_MOTEUR = {"docker": "🐳", "podman": "🦭"}
 
 
 class ContainerMenuMixin:
@@ -48,6 +82,11 @@ class ContainerMenuMixin:
             {
                 "prompt_description": t(
                     "Diagnostic - engine, service, socket, access without sudo"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Service - start, stop, enable at boot, journal"
                 )
             },
             {"prompt_description": t("Install Docker")},
@@ -84,28 +123,70 @@ class ContainerMenuMixin:
             elif status == "1":
                 self._container_diagnostic()
             elif status == "2":
-                self._container_install("docker")
+                self._container_service()
             elif status == "3":
-                self._container_install("podman")
+                self._container_install("docker")
             elif status == "4":
-                self._container_inventaire(["images"])
+                self._container_install("podman")
             elif status == "5":
-                self._container_inventaire(["ps", "-a"])
+                self._container_inventaire(["images"])
             elif status == "6":
-                self._container_reseaux()
+                self._container_inventaire(["ps", "-a"])
             elif status == "7":
-                self._container_build_odoo()
+                self._container_reseaux()
             elif status == "8":
-                self._container_compose()
+                self._container_build_odoo()
             elif status == "9":
-                self._container_erplibre()
+                self._container_compose()
             elif status == "10":
+                self._container_erplibre()
+            elif status == "11":
                 self._container_nettoyage()
             else:
                 print(t("Command not found !"))
 
     # ------------------------------------------------------------------
     # Le moteur
+
+    def _container_libelle_moteur(self, nom):
+        """Le nom du moteur précédé de son icône, pour une liste.
+
+        Le libellé est d'AFFICHAGE : le choix rend un rang, et les appelants
+        gardent leur liste de noms nus pour retrouver la fiche. Décorer ce
+        qu'on affiche ne doit jamais décorer ce sur quoi on décide.
+        """
+        icone = ICONES_MOTEUR.get(nom)
+        return f"{icone} {nom}" if icone else nom
+
+    def _container_choix_numerote(self, titre, options, defaut="1"):
+        """Le RANG choisi parmi des options numérotées, ou None.
+
+        Le numéro plutôt que le nom : taper « docker » ou « podman » en entier
+        pour deux entrées coûte plus qu'il ne rapporte, et une faute de frappe
+        retombait en silence sur la première.
+
+        Les rangs hors liste sont refusés explicitement : en Python
+        options[-1] existe, et un « 0 » saisi rendrait la DERNIÈRE entrée —
+        un choix que personne n'a fait, sur un écran qui en efface parfois.
+
+        « 0 » vaut retour, comme dans tout le reste de TODO, et sort sans se
+        plaindre : c'est un geste, pas une faute de frappe.
+        """
+        print(f"\n{titre}")
+        for rang, option in enumerate(options, 1):
+            print(f"  [{rang}] {option}")
+        print(f"  [0] {t('Back')}")
+        reponse = click.prompt(t("Number"), default=defaut).strip()
+        try:
+            rang = int(reponse)
+        except ValueError:
+            rang = -1
+        if rang == 0:
+            return None
+        if not 1 <= rang <= len(options):
+            print(t("Command not found !"))
+            return None
+        return rang - 1
 
     def _container_fiches(self):
         """Les fiches des deux moteurs, relues maintenant."""
@@ -125,7 +206,7 @@ class ContainerMenuMixin:
             for fiche in fiches:
                 if fiche["binaire"] and fiche["raison"]:
                     print(f"  {fiche['moteur']} : {fiche['raison']}")
-            print(f"  {t('See [1] Diagnostic, then [2] or [3] to install.')}")
+            print(f"  {t('See [1] Diagnostic, then [3] or [4] to install.')}")
             return None
         if len(prets) == 1:
             return prets[0]
@@ -133,53 +214,223 @@ class ContainerMenuMixin:
         for fiche in prets:
             if fiche["moteur"] == choisi:
                 return fiche
-        noms = [f["moteur"] for f in prets]
-        print(f"\n{t('Available engines:')} {', '.join(noms)}")
-        reponse = click.prompt(t("Engine to use"), default=noms[0])
-        for fiche in prets:
-            if fiche["moteur"] == reponse.strip().lower():
-                self._container_choix = fiche["moteur"]
-                return fiche
-        self._container_choix = prets[0]["moteur"]
-        return prets[0]
+        rang = self._container_choix_numerote(
+            t("Available engines:"),
+            [self._container_libelle_moteur(f["moteur"]) for f in prets],
+        )
+        if rang is None:
+            return None
+        self._container_choix = prets[rang]["moteur"]
+        return prets[rang]
+
+    # Les libellés du diagnostic, dans l'ordre d'affichage. La largeur de la
+    # colonne se CALCULE sur eux, traduits : un gabarit fixe est juste dans la
+    # langue où il a été écrit et bancal dans l'autre.
+    _CHAMPS = (
+        "binary",
+        "version",
+        "service",
+        "socket",
+        "without sudo",
+        "with sudo",
+        "reason",
+        "mode",
+        "compose",
+    )
 
     def _container_diagnostic(self):
         """L'état des deux moteurs, champ par champ.
 
-        Rien n'est masqué quand un moteur est absent : savoir que Podman
-        n'est pas là fait partie du diagnostic autant que l'état de Docker.
+        Rien n'est masqué quand un moteur est absent : savoir que Podman n'est
+        pas là fait partie du diagnostic autant que l'état de Docker.
         """
+        largeur = max(len(t(champ)) for champ in self._CHAMPS)
+
+        def ligne(champ, valeur):
+            print(f"  {t(champ):<{largeur}} : {valeur}")
+
         for fiche in self._container_fiches():
             print(f"\n{fiche['moteur']}")
             if not fiche["binaire"]:
-                print(f"  {t('binary')}      : {t('absent')}")
+                ligne("binary", t("absent"))
                 continue
-            print(f"  {t('binary')}      : {fiche['binaire']}")
-            print(f"  {t('version')}     : {fiche['version'] or '?'}")
-            service = {True: t("active"), False: t("stopped")}.get(
-                fiche["service"], t("unknown to systemd")
+            ligne("binary", fiche["binaire"])
+            ligne("version", fiche["version"] or "?")
+            # « Service is stopped » plutôt que « stopped » : le second existe
+            # déjà, traduit au féminin pluriel pour des machines.
+            ligne(
+                "service",
+                {True: t("active"), False: t("Service is stopped")}.get(
+                    fiche["service"], t("unknown to systemd")
+                ),
             )
-            print(f"  {t('service')}     : {service}")
             if fiche["socket"]:
-                print(f"  {t('socket')}      : {fiche['socket']}")
+                ligne("socket", fiche["socket"])
             if fiche["sans_sudo"]:
-                print(f"  {t('without sudo')} : {t('yes')}")
-                mode = {True: t("rootless"), False: t("as root")}.get(
-                    fiche["rootless"], "?"
+                ligne("without sudo", t("yes"))
+                ligne(
+                    "mode",
+                    {True: t("rootless"), False: t("as root")}.get(
+                        fiche["rootless"], "?"
+                    ),
                 )
-                print(f"  {t('mode')}        : {mode}")
                 compose = fiche["compose"]
-                print(
-                    f"  {t('compose')}     :"
-                    f" {' '.join(compose) if compose else t('absent')}"
+                ligne(
+                    "compose",
+                    " ".join(compose) if compose else t("absent"),
                 )
             else:
-                print(f"  {t('without sudo')} : {t('no')}")
-                if fiche["raison"]:
-                    print(f"  {t('reason')}      : {fiche['raison']}")
-                avec = t("yes") if fiche["avec_sudo"] else t("no")
-                print(f"  {t('with sudo')}   : {avec}")
+                ligne("without sudo", t("no"))
+                raison = RAISONS.get(fiche["raison"])
+                if raison:
+                    # La raison est une phrase, pas un mot : on la replie sous
+                    # sa colonne plutôt que de laisser le terminal la couper
+                    # n'importe où.
+                    replie = textwrap.wrap(t(raison), 78 - largeur - 5)
+                    ligne("reason", replie[0] if replie else "")
+                    for suite in replie[1:]:
+                        print(f"  {'':<{largeur}}   {suite}")
+                ligne("with sudo", t("yes") if fiche["avec_sudo"] else t("no"))
+            # La socket d'un démon par compte n'est pas celle du défaut : sans
+            # cette ligne dans l'environnement, le client s'adresse à celle de
+            # root et tout paraît mort.
+            if fiche["docker_host"]:
+                print(f"  {t('Add to the account environment:')}")
+                print(f"    export DOCKER_HOST={fiche['docker_host']}")
         print()
+
+    def _container_par_compte(self, moteur, fiche=None):
+        """Les unités de ce moteur sont-elles des unités « utilisateur » ?
+
+        Un moteur sans privilège vit dans la session du compte : ses unités
+        sont à lui, root ne les voit pas, et « sudo systemctl » se plaindrait
+        d'une unité introuvable. Un démon partagé est l'inverse. Le mode que
+        le moteur ANNONCE tranche d'abord ; à défaut, ce qui est sur le disque.
+        """
+        service, socket = UNITES[moteur]
+        if fiche and (fiche.get("docker_host") or fiche.get("rootless")):
+            return True
+        # Une socket dans le répertoire de session prouve un démon par compte,
+        # même muet : les deux jeux d'unités coexistent souvent — le paquet de
+        # la distribution pose celles de l'hôte, celui du mode sans privilège
+        # celles du compte — et l'unité de l'hôte existerait sans rien dire du
+        # moteur que ce compte emploie.
+        if moteur == "docker" and container_runtime.socket_rootless():
+            return True
+        if os.path.exists(f"/usr/lib/systemd/system/{service}"):
+            return False
+        return os.path.exists(f"/usr/lib/systemd/user/{socket}")
+
+    def _container_choisir_moteur(self):
+        """Le moteur dont on veut piloter le service, ou None.
+
+        La question porte sur les moteurs INSTALLÉS et non sur ceux qui
+        répondent : piloter un service est précisément ce qu'on fait quand il
+        ne répond pas.
+        """
+        fiches = {f["moteur"]: f for f in self._container_fiches()}
+        poses = [nom for nom, f in fiches.items() if f["binaire"]]
+        if not poses:
+            print(f"⚠ {t('No container engine is installed here.')}")
+            return None
+        if len(poses) == 1:
+            return fiches[poses[0]]
+        rang = self._container_choix_numerote(
+            t("Installed engines:"),
+            [self._container_libelle_moteur(nom) for nom in poses],
+        )
+        return fiches[poses[rang]] if rang is not None else None
+
+    def _container_service(self):
+        """Démarrer, arrêter ou activer le service d'un moteur, et LIRE son
+        journal.
+
+        Le journal est la moitié utile de cet écran : un démon qui refuse de
+        naître ne dit rien à « docker info », qui ne rapporte que l'absence de
+        socket. La cause — un module de noyau introuvable, une plage d'UID
+        subordonnés manquante — n'est écrite que là.
+        """
+        fiche = self._container_choisir_moteur()
+        if not fiche:
+            return
+        moteur = fiche["moteur"]
+        service, socket = UNITES[moteur]
+        par_compte = self._container_par_compte(moteur, fiche)
+        portee = t("account session") if par_compte else t("whole host")
+        print(f"\n{moteur} — {service} / {socket} ({portee})")
+
+        choices = [
+            {"prompt_description": t("Start")},
+            {"prompt_description": t("Stop")},
+            {"prompt_description": t("Restart")},
+            {"prompt_description": t("Enable at boot")},
+            {"prompt_description": t("Disable at boot")},
+            {"prompt_description": t("Status and journal")},
+        ]
+        help_info = self.fill_help_info(choices)
+        # L'activation porte sur la SOCKET, qui fait naître le démon à la
+        # première connexion ; le reste porte sur le démon.
+        actions = {
+            "1": ("start", service),
+            "2": ("stop", service),
+            "3": ("restart", service),
+            "4": ("enable", socket),
+            "5": ("disable", socket),
+        }
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status in actions:
+                action, unite = actions[status]
+                self._container_systemctl(action, unite, par_compte)
+                if action == "enable" and par_compte:
+                    print(f"  {t('A per-account unit needs linger to start')}")
+                    print(f"  {t('without a login:')} loginctl enable-linger")
+            elif status == "6":
+                self._container_journal(service, par_compte)
+            else:
+                print(t("Command not found !"))
+
+    def _container_systemctl(self, action, unite, par_compte):
+        """Lance systemctl sur l'unité, dans la bonne portée.
+
+        Un échec enchaîne l'état et le journal SANS qu'on les redemande.
+        systemd ne rend qu'un « failed because the control process exited with
+        error code » et renvoie à deux commandes à taper ; la cause — un
+        module de noyau introuvable, une plage d'UID subordonnés manquante —
+        n'est écrite que dans le journal, et c'est tout ce qu'on cherchait.
+        """
+        cmd = ["systemctl"]
+        if par_compte:
+            cmd.append("--user")
+        else:
+            cmd.insert(0, "sudo")
+        code = self.execute.exec_command_live(
+            shlex.join(cmd + [action, unite]), source_erplibre=False
+        )
+        if code:
+            print(f"\n⚠ {t('The unit refused. Its state, then its journal:')}")
+            self._container_journal(unite, par_compte)
+
+    def _container_journal(self, unite, par_compte):
+        """L'état de l'unité, puis son journal — la cause est dans le second.
+
+        « status » montre le code de sortie et s'arrête là ; les lignes que le
+        démon a écrites avant de mourir ne sont que dans le journal.
+        """
+        for cmd in (
+            ["systemctl", "status", unite, "--no-pager"],
+            ["journalctl", "-u", unite, "--no-pager", "-n", "40"],
+        ):
+            if par_compte:
+                cmd.insert(1, "--user")
+            else:
+                cmd = ["sudo"] + cmd
+            self.execute.exec_command_live(
+                shlex.join(cmd), source_erplibre=False
+            )
 
     def _container_install(self, moteur):
         """Propose l'installation du moteur, après avoir montré la commande.
@@ -190,17 +441,21 @@ class ContainerMenuMixin:
         cmd = ["sudo", "bash", "./script/install/install_container.sh", moteur]
         if moteur == "docker":
             print(f"\n{t('Docker runs a daemon owned by root.')}")
+            print(f"  {t('Two ways to reach it without typing sudo:')}")
             print(
-                f"  1) {t('group docker - equivalent to root on this host')}"
+                f"\n  1) {t('docker group - ONE shared daemon, still root')}"
             )
-            print(f"  2) {t('rootless - one daemon per account, no group')}")
-            mode = click.prompt(t("Mode"), default="1").strip()
+            print(f"     {t('Being in the group opens its socket, which')}")
+            print(f"     {t('mounts any host path: it equals being root.')}")
+            print(f"\n  2) {t('rootless - ONE daemon per account, no group')}")
+            print(f"     {t('It runs inside your session, so nothing of it')}")
+            print(f"     {t('is root. Ports under 1024 stay closed to it.')}")
+            mode = click.prompt(t("Mode"), default="2").strip()
             if mode == "2":
                 cmd.append("--rootless")
-                print(f"\n⚠ {t('No Debian or Arch repository ships the')}")
-                print(
-                    f"  {t('rootless tool: --amont takes the vendor packages.')}"
-                )
+                print(f"\n  {t('Where Docker Inc. packages, rootless mode')}")
+                print(f"  {t('needs ITS packages; elsewhere the installer')}")
+                print(f"  {t('takes the route its distribution offers.')}")
                 if self._is_yes(
                     input(f"💬 {t('Use vendor packages? (Y/N): ')}")
                 ):
@@ -267,22 +522,19 @@ class ContainerMenuMixin:
 
     def _container_build_odoo(self):
         """Construit l'image d'une version d'Odoo par docker_build.sh."""
-        if not self._container_exige_docker():
+        prefixe = self._container_exige_docker()
+        if prefixe is None:
             return
         versions = self._container_versions_odoo()
         if not versions:
             print(f"⚠ {t('Unreadable version catalogue:')} {CATALOGUE}")
             return
-        print(f"\n{t('Odoo version:')}")
-        for i, version in enumerate(versions, 1):
-            print(f"  [{i}] {version}")
-        choix = click.prompt(t("Number"), default="1").strip()
-        try:
-            version = versions[int(choix) - 1]
-        except (ValueError, IndexError):
-            print(t("Command not found !"))
+        rang = self._container_choix_numerote(t("Odoo version:"), versions)
+        if rang is None:
             return
-        cmd = f"./script/docker/docker_build.sh --odoo_{version.split('.')[0]}"
+        version = versions[rang]
+        court = version.split(".")[0]
+        cmd = f"{prefixe}./script/docker/docker_build.sh --odoo_{court}"
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             cmd += " --no-cache"
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -325,7 +577,8 @@ class ContainerMenuMixin:
         conteneur d'après le nom du répertoire courant — les lancer depuis
         un autre répertoire ne trouve rien.
         """
-        if not self._container_exige_docker():
+        prefixe = self._container_exige_docker()
+        if prefixe is None:
             return
         choices = [
             {"prompt_description": t("Enter the ERPLibre container")},
@@ -350,14 +603,14 @@ class ContainerMenuMixin:
                 return False
             if status in scripts:
                 self.execute.exec_command_live(
-                    scripts[status], source_erplibre=False
+                    prefixe + scripts[status], source_erplibre=False
                 )
             elif status == "6":
-                self._container_copier_fichier()
+                self._container_copier_fichier(prefixe)
             else:
                 print(t("Command not found !"))
 
-    def _container_copier_fichier(self):
+    def _container_copier_fichier(self, prefixe=""):
         """Copie un fichier de l'hôte vers le conteneur.
 
         Le script exige un fichier qui existe et refuse le reste : la source
@@ -375,22 +628,41 @@ class ContainerMenuMixin:
         cmd = ["./script/docker/docker_copy_file.sh", source]
         if cible:
             cmd.append(cible)
-        self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
+        self.execute.exec_command_live(
+            prefixe + shlex.join(cmd), source_erplibre=False
+        )
 
     def _container_exige_docker(self):
-        """True si la ligne de commande Docker est là.
+        """Le préfixe d'environnement pour les scripts de script/docker/, ou
+        None quand rien ne peut les servir.
 
-        Les scripts de script/docker/ l'appellent par son nom. Podman fournit
-        la même interface, mais seulement si le paquet « podman-docker » pose
-        le lien : sans lui, ces scripts échouent sur un binaire introuvable,
-        et ce n'est pas ce que l'erreur laisse croire.
+        Deux choses leur manquent tour à tour. Le BINAIRE d'abord : ils
+        appellent « docker » par son nom, et Podman ne fournit la même
+        interface que si le paquet « podman-docker » pose le lien. La SOCKET
+        ensuite : ils s'adressent à celle du défaut, où un démon par compte
+        n'est pas — le script s'arrête alors sur « /var/run/docker.sock: no
+        such file or directory », qui accuse le script et non le moteur.
+
+        Rend une chaîne à préfixer, vide quand il n'y a rien à poser : le
+        préfixe voyage avec la commande, là où une variable posée dans ce
+        processus ne survivrait pas au shell qui la lance.
         """
-        if shutil.which("docker"):
-            return True
-        print(f"⚠ {t('These scripts call the docker command by name.')}")
-        if shutil.which("podman"):
-            print(f"  {t('Install podman-docker to provide it.')}")
-        return False
+        if not shutil.which("docker"):
+            print(f"⚠ {t('These scripts call the docker command by name.')}")
+            if shutil.which("podman"):
+                print(f"  {t('Install podman-docker to provide it.')}")
+            return None
+        fiche = None
+        for candidate in self._container_fiches():
+            if candidate["moteur"] == "docker":
+                fiche = candidate
+        if not fiche or not container_runtime.utilisable(fiche):
+            print(f"⚠ {t('The docker engine does not answer here.')}")
+            print(f"  {t('See [1] Diagnostic, then [2] Service.')}")
+            return None
+        if fiche["docker_host"]:
+            return f"DOCKER_HOST={fiche['docker_host']} "
+        return ""
 
     def _container_nettoyage(self):
         """Efface ce qui n'est plus référencé, VOLUMES COMPRIS.

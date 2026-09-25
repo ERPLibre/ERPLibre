@@ -84,14 +84,23 @@ def version(moteur, lanceur=lancer):
     return sortie.strip() or None
 
 
-def repond(moteur, sudo=False, lanceur=lancer):
+def repond(moteur, sudo=False, docker_host=None, lanceur=lancer):
     """(True, "") si le moteur répond, sinon (False, sa plainte).
 
     « info » est la seule sous-commande qui exige le démon ET les droits :
     « --version » réussit sur une machine où rien ne tourne.
+
+    `docker_host` vise une autre socket que celle du défaut, par un préfixe
+    « env » plutôt que par l'environnement du processus : la commande reste
+    une liste que l'appelant peut afficher telle quelle, et c'est celle qu'il
+    devra reproduire.
     """
-    cmd = (["sudo", "-n"] if sudo else []) + [moteur, "info"]
-    code, sortie = lanceur(cmd)
+    cmd = []
+    if sudo:
+        cmd += ["sudo", "-n"]
+    if docker_host:
+        cmd += ["env", f"DOCKER_HOST={docker_host}"]
+    code, sortie = lanceur(cmd + [moteur, "info"])
     if code == 0:
         return True, ""
     return False, sortie.strip()
@@ -150,6 +159,38 @@ def socket_docker():
     return None
 
 
+def noyau_sans_modules():
+    """L'arbre de modules du noyau EN COURS a-t-il disparu ?
+
+    Mettre le noyau à jour remplace /lib/modules/<version> par celui de la
+    nouvelle : le noyau qui tourne garde les modules DÉJÀ chargés et ne peut
+    plus en charger aucun. Docker sans privilège meurt alors en posant ses
+    règles iptables, sur « Extension addrtype revision 0 not supported,
+    missing kernel module? » — un message qui n'accuse ni Docker, ni
+    l'installation, ni le mode sans privilège. Le redémarrage est la seule
+    issue, et c'est ce qu'il faut dire.
+
+    Podman peut continuer de répondre dans cet état : netavark passe par
+    nf_tables, généralement déjà chargé. Les deux moteurs ne tombent donc pas
+    ensemble, ce qui égare encore un peu plus.
+    """
+    return not os.path.isdir("/lib/modules/" + os.uname().release)
+
+
+def socket_rootless():
+    """La socket d'un démon par compte, ou None.
+
+    Elle vit sous le répertoire de session, là où le client Docker ne regarde
+    PAS : sans DOCKER_HOST, il s'adresse à la socket du démon de root. Un mode
+    sans privilège parfaitement installé paraît alors mort.
+    """
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime:
+        return None
+    chemin = os.path.join(runtime, "docker.sock")
+    return chemin if os.path.exists(chemin) else None
+
+
 def service_actif(unite, lanceur=lancer):
     """True/False si systemd répond, None là où il n'y a pas systemd."""
     if not shutil.which("systemctl"):
@@ -195,34 +236,34 @@ def compose(moteur, lanceur=lancer):
 
 
 def _raison(moteur, plainte, lanceur=lancer):
-    """Pourquoi le moteur ne répond pas, en une phrase à afficher.
+    """Pourquoi le moteur ne répond pas, en un CODE et non en une phrase.
 
     La plainte du moteur dit QUOI ; l'état du système dit POURQUOI, et c'est
-    cela que l'opérateur ne peut pas deviner.
+    cela que l'opérateur ne peut pas deviner. Le code laisse la phrase à
+    l'affichage, qui sait dans quelle langue il parle — une phrase rendue ici
+    serait dans celle de qui l'a écrite.
     """
     bas = plainte.lower()
     if "permission denied" in bas or "permission refusée" in bas:
         if moteur == "docker":
             if declare_dans_le_groupe() and not dans_le_groupe():
-                return (
-                    "le compte est dans le groupe docker, mais pas dans"
-                    " cette session : se reconnecter, ou « newgrp docker »"
-                )
+                return "groupe_hors_session"
             if not declare_dans_le_groupe():
-                return (
-                    "le compte n'est pas dans le groupe docker — sudo, ou"
-                    " l'installation qui l'y ajoute"
-                )
-        return "droits insuffisants sur la socket du moteur"
+                return "groupe_absent"
+        return "droits_socket"
     if "cannot connect" in bas or "is the docker daemon running" in bas:
+        # Le noyau d'abord : il explique un démon qui refuse de naître alors
+        # que tout le reste est en place, et rien d'autre ne l'explique.
+        if noyau_sans_modules():
+            return "noyau_perime"
         actif = service_actif(f"{moteur}.service", lanceur=lanceur)
         if actif is False:
-            return f"le service {moteur} est à l'arrêt"
+            return "service_arrete"
         if actif is None:
-            return "le moteur ne répond pas et systemd ne le connaît pas"
-        return "le service tourne mais la socket ne répond pas"
+            return "systemd_ignore"
+        return "socket_muette"
     if "timeout" in bas:
-        return "le moteur n'a pas rendu la main dans le délai"
+        return "delai"
     return ""
 
 
@@ -245,6 +286,7 @@ def etat(moteur, lanceur=lancer):
         "compose": None,
         "service": None,
         "socket": None,
+        "docker_host": None,
     }
     if not chemin:
         return fiche
@@ -253,6 +295,19 @@ def etat(moteur, lanceur=lancer):
     if moteur == "docker":
         fiche["socket"] = socket_docker()
     ok, plainte = repond(moteur, lanceur=lanceur)
+
+    # La socket d'un démon par compte n'est pas celle du défaut : un mode sans
+    # privilège installé et vivant paraît mort tant que DOCKER_HOST ne la
+    # nomme pas. On l'essaie AVANT de conclure au refus, et on rend la valeur
+    # à poser dans l'environnement.
+    if not ok and moteur == "docker" and not os.environ.get("DOCKER_HOST"):
+        socket = socket_rootless()
+        if socket:
+            hote = f"unix://{socket}"
+            ok, plainte = repond(moteur, docker_host=hote, lanceur=lanceur)
+            if ok:
+                fiche["docker_host"] = hote
+
     fiche["sans_sudo"] = ok
     if ok:
         fiche["rootless"] = rootless(moteur, lanceur=lanceur)
@@ -295,4 +350,7 @@ def commande(fiche, args):
     évite que chaque écran refasse le test à sa façon.
     """
     prefixe = [] if fiche["sans_sudo"] else ["sudo"]
+    hote = fiche.get("docker_host")
+    if hote:
+        prefixe += ["env", f"DOCKER_HOST={hote}"]
     return prefixe + [fiche["moteur"]] + list(args)
