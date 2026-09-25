@@ -22,3 +22,9 @@ updates:
       # data of every Odoo instance; 1.x leaves pytz free.
       - dependency-name: "meteostat"
         update-types: ["version-update:semver-major"]
+    groups:
+      # Each aiobotocore accepts only a narrow botocore range, and boto3 pins
+      # botocore: bumped one by one, each pull request breaks the resolution.
+      # Version updates only; a security fix still arrives on its own.
+      aws:
+        patterns: ["aiobotocore", "botocore", "boto3"]
