@@ -417,51 +417,94 @@ def lister_images(fiche, lanceur=lancer):
     return images
 
 
-def lister_projets(fiche, lanceur=lancer):
-    """Les projets compose, par nom : leur dossier, leurs conteneurs et les
-    images que ceux-ci emploient. {} s'il n'y en a aucun.
+def _inspecter_conteneurs(fiche, lanceur=lancer):
+    """Tous les conteneurs, arrêtés compris, en fiches ; [] si aucun.
 
     « inspect » plutôt que « ps --format » : les deux moteurs y rendent les
     étiquettes sous la même forme, un dictionnaire, là où « ps » les rend en
-    chaîne chez Docker et en dictionnaire chez Podman.
+    chaîne chez Docker et en dictionnaire chez Podman. Il rend aussi
+    l'identifiant PLEIN de l'image, seul critère exact d'un conflit.
     """
     code, sortie = lanceur(commande(fiche, ["ps", "-aq"]))
     ids = _ID.findall(sortie) if code == 0 else []
     if not ids:
-        return {}
+        return []
     code, sortie = lanceur(commande(fiche, ["inspect", *ids]))
     if code != 0 or "[" not in sortie:
-        return {}
+        return []
     try:
         donnees = json.loads(sortie[sortie.index("[") :])
     except ValueError:
-        return {}
-    projets = {}
+        return []
+    fiches = []
     for conteneur in donnees:
         config = conteneur.get("Config") or {}
         etiquettes = config.get("Labels") or {}
-        nom = etiquettes.get(ETIQ_PROJET) or etiquettes.get(ETIQ_PROJET_PODMAN)
-        if not nom:
-            continue
-        projet = projets.setdefault(
-            nom,
-            {
-                "dossier": etiquettes.get(ETIQ_DOSSIER, ""),
-                "conteneurs": [],
-                "images": [],
-            },
-        )
-        image = config.get("Image") or conteneur.get("ImageName") or ""
-        projet["conteneurs"].append(
+        fiches.append(
             {
                 "nom": (conteneur.get("Name") or "").lstrip("/"),
-                "image": image,
+                "image": config.get("Image")
+                or conteneur.get("ImageName")
+                or "",
+                # « sha256:abc… » chez Docker, « abc… » chez Podman.
+                "image_id": (conteneur.get("Image") or "").split(":")[-1],
                 "etat": (conteneur.get("State") or {}).get("Status", ""),
+                "projet": etiquettes.get(ETIQ_PROJET)
+                or etiquettes.get(ETIQ_PROJET_PODMAN)
+                or "",
+                "dossier": etiquettes.get(ETIQ_DOSSIER, ""),
             }
         )
+    return fiches
+
+
+def lister_projets(fiche, lanceur=lancer):
+    """Les projets compose, par nom : leur dossier, leurs conteneurs et les
+    images que ceux-ci emploient. {} s'il n'y en a aucun."""
+    projets = {}
+    for conteneur in _inspecter_conteneurs(fiche, lanceur=lanceur):
+        if not conteneur["projet"]:
+            continue
+        projet = projets.setdefault(
+            conteneur["projet"],
+            {"dossier": conteneur["dossier"], "conteneurs": [], "images": []},
+        )
+        projet["conteneurs"].append(
+            {
+                "nom": conteneur["nom"],
+                "image": conteneur["image"],
+                "etat": conteneur["etat"],
+            }
+        )
+        image = conteneur["image"]
         if image and image not in projet["images"]:
             projet["images"].append(image)
     return projets
+
+
+def conteneurs_par_image(fiche, images, lanceur=lancer):
+    """Pour chaque image, les conteneurs qui la TIENNENT : {id: [fiches]}.
+
+    Le rattachement se fait par l'identifiant de l'image, et non par le
+    filtre « ancestor » : celui-ci ramasse aussi les conteneurs d'images
+    bâties PAR-DESSUS, qui n'empêchent pas « rmi » — il annoncerait des
+    conflits qui n'existent pas. « rmi » refuse exactement quand un
+    conteneur, même arrêté, porte cet identifiant.
+
+    Un seul « inspect » pour toutes les images : l'appel coûte le même prix
+    pour une image que pour vingt.
+    """
+    conteneurs = _inspecter_conteneurs(fiche, lanceur=lanceur)
+    usages = {}
+    for image in images:
+        tenants = [
+            c
+            for c in conteneurs
+            if c["image_id"] and c["image_id"].startswith(image["id"])
+        ]
+        if tenants:
+            usages[image["id"]] = tenants
+    return usages
 
 
 def ressources_projet(fiche, nom, lanceur=lancer):
