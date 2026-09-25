@@ -27,6 +27,7 @@ Ce que ces tests gardent :
 """
 
 import importlib.util
+import json
 import os
 import pathlib
 import subprocess
@@ -142,6 +143,25 @@ class TestLeProfil(unittest.TestCase):
         libelle = t("Proxmox VE hypervisor (no Odoo)")
         self.assertIn(libelle, profils)
         self.assertIn("install_proxmox.sh", profils[libelle])
+
+    def test_every_catalogue_version_is_installable(self):
+        """La liste vient du catalogue : une version ajoutée y apparaît, et
+        la version par défaut reste le premier profil, donc le défaut."""
+        catalogue = json.loads(
+            (RACINE / "conf/supported_version_erplibre.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        libelles = [lib for lib, _cmd in self.todo._qemu_install_profiles()]
+        for entree in catalogue.values():
+            majeure = entree["odoo_version"].split(".")[0]
+            with self.subTest(version=majeure):
+                self.assertIn(f"ERPLibre + Odoo {majeure}", libelles)
+        defaut = next(e for e in catalogue.values() if e.get("default"))
+        self.assertEqual(
+            f"ERPLibre + Odoo {defaut['odoo_version'].split('.')[0]}",
+            libelles[0],
+        )
 
     def test_on_a_proxmox_vm_it_comes_first(self):
         """Laisser « Odoo 18 » en défaut ferait poser un ERP sur un
