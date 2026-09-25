@@ -77,6 +77,13 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
+#
+# CPPFLAGS redonne au preprocesseur l'alias Python 2 que SWIG 4.3 a retire.
+# pykcs11 -- tire par endesive, dans les verrous d'Odoo 14, 15 et 17 -- ne
+# livre aucun wrapper pre-genere et laisse Poetry prendre le DERNIER SWIG de
+# PyPI ; son typemap CK_RV emploie PyInt_FromLong, et la compilation meurt.
+# La definition est celle de script/install/install_locally.sh, a l'identique :
+# un test garde que les deux copies ne divergent pas.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
@@ -84,6 +91,7 @@ RUN cd $ODOO_PREFIX && \
     pip3 install --upgrade pip && git branch && ls . -lha && \
     pip3 install "poetry==${POETRY_VERSION}" && \
     poetry --version && \
+    CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)" \
     poetry install --no-root -v
 
 # Install local npm
