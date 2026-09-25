@@ -1,8 +1,8 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Two modules, one split: **the survey touches the system, the decision does
-not.** Neither imports the engine's code: it is read through files and
+Three modules, one split: **the survey touches the system, the decision
+does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
 [../../doc/SETOPS.md](../../doc/SETOPS.md).
@@ -88,3 +88,62 @@ root.
 The lines are printed by `script/todo/state_screen.py`, the render shared
 with the Devstack state screen: two renders would say, sooner or later, two
 different things with the same marks.
+
+## `ansible_env` — what the engine requires, and how to set it up
+
+The engine sets up no controller: its `serveur_ops` role equips a TARGET, not
+the station that drives it. This module sets up the controller's venv,
+`.venv.todo.setops`, READING in the engine everything that can be read — the
+ansible-core range, the pinned Python libraries, the pinned collections. None
+of those values is copied here.
+
+**The Python minor is a constraint, not a taste.** `serveur_ops` requires that
+controller and target share their `major.minor`, and it builds the offline
+wheel cache with the `python3` found on the PATH — not with Ansible's
+interpreter. A controller on 3.14 therefore produces `cp314` wheels that a
+3.13 target refuses. Hence two things this module holds together: the venv is
+built with `MINEUR_CIBLE`, and `environnement(racine, moteur, base)` puts its `bin` FIRST on the
+PATH.
+
+The collections land under the engine, in a folder its own `.gitignore`
+covers: its tree stays clean, and they do not mix with whatever the station
+already carries. The engine's `ansible.cfg` declares no `collections_path`,
+so the environment names it.
+
+Two readings are distinguished on purpose: an empty tuple says "the engine
+pins nothing", `None` says "we cannot tell". Confusing them would let the
+state line be carried on an unreadable file, announcing zero drift — the
+worst verdict, since it reassures.
+
+What the engine declares, read as text:
+
+- `plage_ansible(moteur)`: the `serveur_ops_ansible` requirement, exactly as
+  the engine writes it — it reaches pip unrephrased, so a disagreement shows
+  instead of silently correcting itself;
+- `bibliotheques_epinglees(moteur)` and `collections_epinglees(moteur)`: the
+  (name, version) the engine pins, `None` when the file does not read;
+- `specifieur(texte)`, `version(texte)` and
+  `dans_la_plage(version_texte, plage_texte)`: the readings the state screen
+  and the check share, so both say the same thing about the same version.
+
+What the station offers, and what setting up costs:
+
+- `interprete(mineur)`: a usable Python and where it comes from — the PATH
+  first, a version manager next, nothing at all last;
+- `geste_mise(mineur)`: the command that would install it, NAMED so it can
+  be shown; the menu installs no version manager behind your back;
+- `chemin_venv(racine)`: the venv, as an ABSOLUTE path — the probes run
+  with `cwd` inside it, and a relative argv would resolve under itself;
+- `etapes(racine, moteur, python, plage, refaire)`: the gestures, in order.
+  `refaire` opens with the removal, the only way to change the INTERPRETER
+  of a venv already there;
+- `montre(etape)`: the line to print, DERIVED from the argv — what is shown
+  is what is run;
+- `environnement(racine, moteur, base)`: the venv first on PATH, and the
+  collections named;
+- `version_posee(racine, paquet)`, `version_collection(moteur, nom)` and
+  `mineur_du_path(racine, moteur)`: what is really there. The last one asks
+  a BARE `python3`, which is what the engine's guard does;
+- `jouer(etape, racine, env)`: runs one gesture and returns its code; output
+  is not captured, since a setup takes minutes.
+

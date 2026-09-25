@@ -33,7 +33,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.setops import engine  # noqa: E402
+from script.setops import ansible_env, engine  # noqa: E402
 from script.setops import state as S  # noqa: E402
 from script.todo import devstack_state, state_screen, todo_i18n  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -83,6 +83,11 @@ def regle(**remplace):
         ansible_playbook=True,
         version_ansible="2.18.6",
         plage_ansible=PLAGE,
+        mineur_path=ansible_env.MINEUR_CIBLE,
+        biblios_ecarts=(),
+        collections_ecarts=(),
+        biblios_epinglees=(("proxmoxer", "2.2.0"),),
+        collections_epinglees=(("community.general", "10.3.0"),),
         instance_reelle=False,
         ecosysteme=ECOSYSTEME,
         plan_present=True,
@@ -114,6 +119,11 @@ def vide():
         ansible_playbook=False,
         version_ansible=None,
         plage_ansible=None,
+        mineur_path=None,
+        biblios_ecarts=(),
+        collections_ecarts=(),
+        biblios_epinglees=None,
+        collections_epinglees=None,
         instance_reelle=False,
         ecosysteme="",
         plan_present=False,
@@ -586,10 +596,14 @@ class TestAnsible(CasDeLangue):
                 self.assertEqual(state_screen.A_REGLER, l.etat)
                 self.assertIn(S.VENV, l.detail)
 
-    def test_a_missing_venv_is_absent_and_named(self):
+    def test_a_missing_venv_names_the_gesture_that_sets_it_up(self):
+        """« absent » dirait « le dépôt ne sait pas le faire », ce qui a
+        cessé d'être vrai : la ligne est à RÉGLER, et elle nomme le geste
+        du menu qui la règle."""
         l = ligne(regle(ansible_playbook=False), "Ansible environment")
-        self.assertEqual(state_screen.ABSENT, l.etat)
+        self.assertEqual(state_screen.A_REGLER, l.etat)
         self.assertIn(S.VENV, l.detail)
+        self.assertIn(t(S.GESTE_ANSIBLE), l.detail)
 
 
 class TestEcosysteme(CasDeLangue):
@@ -982,6 +996,9 @@ class TestInconnuJamaisPorte(CasDeLangue):
         "modifies": "Engine",
         "version_ansible": "Ansible environment",
         "plage_ansible": "Ansible environment",
+        "mineur_path": "Ansible environment",
+        "biblios_epinglees": "Ansible environment",
+        "collections_epinglees": "Ansible environment",
         "code_cle": "Ecosystem vault key",
     }
 
@@ -1026,24 +1043,18 @@ class TestLaDecisionNeLitPasLaMachine(CasDeLangue):
 
     def test_lines_are_decided_with_every_probe_forbidden(self):
         interdit = mock.Mock(side_effect=AssertionError("E/S dans lignes"))
-        with mock.patch("builtins.open", interdit), mock.patch(
-            "subprocess.run", interdit
-        ), mock.patch("subprocess.Popen", interdit), mock.patch(
-            "shutil.which", interdit
-        ), mock.patch(
-            "platform.system", interdit
-        ), mock.patch(
-            "os.path.exists", interdit
-        ), mock.patch(
-            "os.path.lexists", interdit
-        ), mock.patch(
-            "os.path.isdir", interdit
-        ), mock.patch(
-            "os.path.isfile", interdit
-        ), mock.patch(
-            "os.path.islink", interdit
-        ), mock.patch(
-            "os.stat", interdit
+        with (
+            mock.patch("builtins.open", interdit),
+            mock.patch("subprocess.run", interdit),
+            mock.patch("subprocess.Popen", interdit),
+            mock.patch("shutil.which", interdit),
+            mock.patch("platform.system", interdit),
+            mock.patch("os.path.exists", interdit),
+            mock.patch("os.path.lexists", interdit),
+            mock.patch("os.path.isdir", interdit),
+            mock.patch("os.path.isfile", interdit),
+            mock.patch("os.path.islink", interdit),
+            mock.patch("os.stat", interdit),
         ):
             for vu in (regle(), vide()):
                 self.assertEqual(10, len(S.lignes(vu)))
@@ -1131,7 +1142,15 @@ class CasDePoste(CasDeLangue):
         self.moteur = os.path.join(r, CHEMIN)
         m = self.moteur
         self.voutes(0)
-        ecrire(os.path.join(m, S.DEFAULTS_ANSIBLE), DEFAUTS)
+        ecrire(os.path.join(m, ansible_env.DEFAULTS_ANSIBLE), DEFAUTS)
+        # Le moteur déclare ses épingles, et n'en porte aucune : la ligne
+        # dit alors « 0 bibliothèques et 0 collections à l'épingle », ce qui
+        # est un état réel. Les épingles elles-mêmes s'éprouvent à côté,
+        # sur la couche qui les lit.
+        ecrire(os.path.join(m, ansible_env.REQUIREMENTS_PY), "# aucune\n")
+        ecrire(
+            os.path.join(m, ansible_env.REQUIREMENTS_YML), "collections: []\n"
+        )
         ecrire(os.path.join(m, ".gitignore"), "instance\nunderlay.yml\n")
         git(m, "init", "-q")
         git(m, "add", "-A")
@@ -1170,6 +1189,16 @@ class CasDePoste(CasDeLangue):
             0o755,
         )
         self.python_du_venv("echo 2.18.6")
+        # `python3` du PATH du geste : la sonde du mineur passe par lui,
+        # et c'est le venv qui doit répondre, pas l'interpréteur du poste.
+        self.python3_du_venv(ansible_env.MINEUR_CIBLE)
+
+    def python3_du_venv(self, mineur):
+        ecrire(
+            os.path.join(self.venv, "bin", "python3"),
+            f"#!/bin/sh\necho {mineur}\n",
+            0o755,
+        )
 
     def cloner_a_la_main(self):
         """Rend au moteur un vrai dossier `.git` : un clone manuel, au
@@ -1204,9 +1233,12 @@ class CasDePoste(CasDeLangue):
 
     def vu(self):
         """Le relevé du faux poste, outils et plateforme posés."""
-        with mock.patch.object(
-            S.shutil, "which", return_value="/chemin/fictif"
-        ), mock.patch.object(S.platform, "system", return_value="Linux"):
+        with (
+            mock.patch.object(
+                S.shutil, "which", return_value="/chemin/fictif"
+            ),
+            mock.patch.object(S.platform, "system", return_value="Linux"),
+        ):
             return S.releve(self.racine)
 
 
@@ -1246,10 +1278,13 @@ class TestLeReleveRefleteLePoste(CasDePoste):
     passerait le poste réglé, et porterait ce qu'il faudrait refuser."""
 
     def test_the_platform_is_asked_to_the_system(self):
-        with mock.patch.object(
-            S.shutil, "which", return_value="/chemin/fictif"
-        ), mock.patch.object(
-            S.platform, "system", return_value="Systeme-Fictif-Dunite"
+        with (
+            mock.patch.object(
+                S.shutil, "which", return_value="/chemin/fictif"
+            ),
+            mock.patch.object(
+                S.platform, "system", return_value="Systeme-Fictif-Dunite"
+            ),
         ):
             vu = S.releve(self.racine)
         self.assertEqual("Systeme-Fictif-Dunite", vu.systeme)
@@ -1891,11 +1926,14 @@ class TestLeReleveDAnsible(CasDePoste):
         }
         for texte, attendu in cas.items():
             with self.subTest(texte=texte):
-                ecrire(os.path.join(self.moteur, S.DEFAULTS_ANSIBLE), texte)
+                ecrire(
+                    os.path.join(self.moteur, ansible_env.DEFAULTS_ANSIBLE),
+                    texte,
+                )
                 self.assertEqual(attendu, self.vu().plage_ansible)
 
     def test_a_missing_defaults_file_is_unknown(self):
-        os.remove(os.path.join(self.moteur, S.DEFAULTS_ANSIBLE))
+        os.remove(os.path.join(self.moteur, ansible_env.DEFAULTS_ANSIBLE))
         self.assertIsNone(self.vu().plage_ansible)
 
 
@@ -1931,6 +1969,10 @@ class TestLeReleveNeLanceQueSesSondes(CasDePoste):
         if argv[:2] == ["git", "-C"] and len(argv) > 3:
             return argv[3] in self.GIT_EN_LECTURE
         if argv[:2] == [os.path.join(self.venv, "bin", "python"), "-c"]:
+            return True
+        # La sonde du mineur lance « python3 » NU, et c'est le propos :
+        # elle mesure ce que verra la garde du moteur, qui fait de même.
+        if argv == ["python3", "-c", ansible_env.SONDE_MINEUR]:
             return True
         return (
             argv[0] == sys.executable

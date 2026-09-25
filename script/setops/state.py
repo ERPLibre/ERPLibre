@@ -44,13 +44,18 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
-from script.setops import engine
+from script.setops import ansible_env, engine
 from script.todo.state_screen import A_REGLER, ABSENT, PORTE, Ligne
 from script.todo.todo_i18n import t
 
-# Le venv Ansible dédié, sous la racine d'ERPLibre. Son nom commence par
-# « .venv », motif déjà ignoré par git.
-VENV = ".venv.todo.setops"
+# Le venv Ansible dédié. Il est DÉCLARÉ par la couche qui le pose ; l'écran
+# le nomme, il ne décide pas de son nom.
+VENV = ansible_env.VENV
+
+# Le geste que la ligne « Environnement Ansible » nomme quand elle est à
+# régler : la MÊME clé que l'entrée du menu, pour que l'écran renvoie à une
+# entrée qui existe. Une épreuve tient les deux ensemble.
+GESTE_ANSIBLE = "Set-OPS - Ansible environment (set it up)"
 
 # Les gestes que les lignes nomment, relatifs à la racine d'ERPLibre.
 INSTALLER_REPO = "./script/install/install_git_repo.sh"
@@ -65,10 +70,6 @@ MANIFESTE_REPO = ".repo/manifest.xml"
 REPERE_SITE = "<site>"
 DOC_SITE = "docs/implanter-un-tenant-sur-un-site.md"
 
-# La plage d'ansible-core se LIT dans le moteur, jamais recopiée ici.
-DEFAULTS_ANSIBLE = "roles/serveur_ops/defaults/main.yml"
-CLE_PLAGE = "serveur_ops_ansible"
-PAQUET_ANSIBLE = "ansible-core"
 
 # Le SHA affiché sur la ligne du manifeste : douze caractères le gardent
 # sans ambiguïté dans un dépôt de la taille du moteur.
@@ -86,10 +87,6 @@ DELAI = 30
 # `XDG_CONFIG_HOME` et `HOME` disent où `voutes.py` cherche les clés.
 ENV_TRANSMIS = ("HOME", "PATH", "LANG", "LC_ALL", "XDG_CONFIG_HOME")
 
-# Le Python du venv dédié dit la version d'ansible-core qu'IL importe.
-SONDE_VERSION = (
-    "import importlib.metadata as m; print(m.version('ansible-core'))"
-)
 
 # Les dix segments. Chaque nom est une clé de traduction ; l'ordre est
 # celui où l'on règle le poste, et non l'état : trier par avancement ferait
@@ -152,10 +149,13 @@ SOURCES = {
     ANSIBLE: (
         VENV
         + "/bin/ansible-playbook, {moteur}/"
-        + DEFAULTS_ANSIBLE
+        + ansible_env.DEFAULTS_ANSIBLE
         + " ("
-        + CLE_PLAGE
-        + ")"
+        + ansible_env.CLE_PLAGE
+        + "), {moteur}/"
+        + ansible_env.REQUIREMENTS_PY
+        + ", {moteur}/"
+        + ansible_env.REQUIREMENTS_YML
     ),
     ECOSYSTEME: "{moteur}/instance",
     SITE: "{moteur}/underlay.yml ({moteur}/" + DOC_SITE + ")",
@@ -226,6 +226,21 @@ class Releve(NamedTuple):
     version_ansible: str | None
     # L'exigence `serveur_ops_ansible` du moteur, telle qu'il l'écrit.
     plage_ansible: str | None
+    # Le major.minor que rend `python3` RÉSOLU PAR LE PATH du geste, et sa
+    # conformité au mineur de la cible. C'est la mesure que fera la garde du
+    # moteur, qui lance `python3` nu : un chemin absolu vers `bin/python`
+    # répondrait encore là où le geste, lui, échouerait.
+    mineur_path: str | None
+    # (nom, épinglée, posée ou None) de chaque bibliothèque et de chaque
+    # collection dont la version posée ne vaut pas celle que le moteur
+    # épingle. Vides quand tout concorde.
+    biblios_ecarts: tuple
+    collections_ecarts: tuple
+    # Ce que le moteur ÉPINGLE, ou None quand son fichier ne se lit pas.
+    # La ligne portée dit ainsi sur quoi elle s'est prononcée, et un fichier
+    # illisible ne se lit plus « zéro écart ».
+    biblios_epinglees: tuple | None
+    collections_epinglees: tuple | None
     # `<moteur>/instance` : un vrai dossier plutôt qu'un lien ; le nom de
     # la cible du lien ("" sans lien) ; `plan/serveurs.yml` sous la cible.
     instance_reelle: bool
@@ -250,38 +265,6 @@ def _cite(texte) -> str:
 def _joindre(constats) -> str:
     """Les constats d'une ligne, joints par le séparateur de la langue."""
     return t("; ").join(constats)
-
-
-def _plage(texte):
-    """La plage de versions de l'exigence `texte`, ou None.
-
-    None pour tout ce qui n'est pas une exigence d'ansible-core bornée :
-    un texte illisible, un autre paquet, une URL, des extras, un marqueur,
-    ou aucune borne — une plage qui accepte tout n'épingle rien.
-    """
-    if not isinstance(texte, str):
-        return None
-    try:
-        exigence = Requirement(texte)
-    except InvalidRequirement:
-        return None
-    if (
-        canonicalize_name(exigence.name) != PAQUET_ANSIBLE
-        or exigence.url
-        or exigence.extras
-        or exigence.marker is not None
-        or not len(exigence.specifier)
-    ):
-        return None
-    return exigence.specifier
-
-
-def _version(texte):
-    """La version PEP 440 écrite dans `texte`, ou None."""
-    try:
-        return Version(texte)
-    except (InvalidVersion, TypeError):
-        return None
 
 
 def _plateforme(vu):
@@ -452,34 +435,69 @@ def _moteur(vu):
 
 
 def _ansible(vu):
-    """Porté seulement pour une version lisible, DANS la plage du moteur.
+    """Porté quand les quatre constats concordent : la version d'ansible-core
+    est dans la plage du moteur, le `python3` du PATH porte le mineur de la
+    cible, et bibliothèques comme collections sont aux versions épinglées.
 
-    La plage se compare par `packaging.specifiers` : une pré-version n'y
-    entre que si la plage en nomme une. La règle est passée explicitement,
-    faute de quoi elle dépendrait de la version de `packaging` installée.
+    L'ORDRE DES CONSTATS EST CELUI OÙ ILS CASSENT. Un venv absent se règle
+    avant un mineur, un mineur avant une collection : dire les quatre d'un
+    coup noierait celui qui bloque.
     """
     if not vu.ansible_playbook:
-        return ABSENT, t(
-            "{venv} absent: the repository does not set it up yet"
-        ).format(venv=VENV)
-    plage = _plage(vu.plage_ansible)
-    if plage is None:
+        return A_REGLER, t("{venv} absent: « {geste} » sets it up").format(
+            venv=VENV, geste=t(GESTE_ANSIBLE)
+        )
+    if ansible_env.specifieur(vu.plage_ansible) is None:
         return ABSENT, t("the engine's ansible-core range is unreadable")
-    version = _version(vu.version_ansible)
-    if version is None:
+    if ansible_env.version(vu.version_ansible) is None:
         return A_REGLER, t(
             "{venv}: the ansible-core version is unreadable"
         ).format(venv=VENV)
-    if plage.contains(version, prereleases=bool(plage.prereleases)):
-        etat = PORTE
-        gabarit = t("{venv}: ansible-core {version}, within {spec}")
-    else:
-        etat = A_REGLER
-        gabarit = t("{venv}: ansible-core {version}, outside {spec}")
-    return etat, gabarit.format(
+    if not ansible_env.dans_la_plage(vu.version_ansible, vu.plage_ansible):
+        return A_REGLER, t(
+            "{venv}: ansible-core {version}, outside {spec}"
+        ).format(
+            venv=VENV,
+            version=vu.version_ansible.strip(),
+            spec=vu.plage_ansible.strip(),
+        )
+    if vu.biblios_epinglees is None or vu.collections_epinglees is None:
+        return ABSENT, t("the engine's pinned requirements are unreadable")
+    constats = []
+    if vu.mineur_path != ansible_env.MINEUR_CIBLE:
+        constats.append(
+            t(
+                "python3 on the gesture PATH is {lu}, the target runs {cible}"
+            ).format(
+                lu=vu.mineur_path or t("unreadable"),
+                cible=ansible_env.MINEUR_CIBLE,
+            )
+        )
+    for etiquette, ecarts in (
+        (t("library"), vu.biblios_ecarts),
+        (t("collection"), vu.collections_ecarts),
+    ):
+        for nom, epinglee, posee in ecarts:
+            constats.append(
+                t("{kind} {name}: {pinned} pinned, {found} installed").format(
+                    kind=etiquette,
+                    name=nom,
+                    pinned=epinglee,
+                    found=posee or t("absent"),
+                )
+            )
+    if constats:
+        return A_REGLER, _joindre(constats)
+    return PORTE, t(
+        "{venv}: ansible-core {version}, within {spec}; python3 {mineur};"
+        " {n} libraries and {m} collections at the pin"
+    ).format(
         venv=VENV,
         version=vu.version_ansible.strip(),
         spec=vu.plage_ansible.strip(),
+        mineur=vu.mineur_path,
+        n=len(vu.biblios_epinglees),
+        m=len(vu.collections_epinglees),
     )
 
 
@@ -669,64 +687,6 @@ def _absent(outil) -> bool:
         return True
 
 
-def _valeur_de_premier_niveau(texte, cle):
-    """La valeur scalaire de `cle` au premier niveau d'un YAML, ou None.
-
-    Lecture ligne à ligne, sans PyYAML : `cle: valeur`, entre guillemets
-    simples ou doubles, ou nue, commentaire final permis. Toute autre forme
-    — bloc, échappement, clé répétée, clé absente — rend None : une forme
-    inattendue refuse au lieu de deviner.
-    """
-    motif = re.compile(
-        re.escape(cle)
-        + r":[ \t]*(?:\"([^\"\\]*)\"|'([^']*)'|([^\s#\"'][^#]*?))"
-        + r"[ \t]*(?:#.*)?"
-    )
-    trouvees = []
-    for ligne in texte.splitlines():
-        if not ligne.startswith(cle + ":"):
-            continue
-        prise = motif.fullmatch(ligne)
-        if prise is None:
-            return None
-        trouvees.append(next(g for g in prise.groups() if g is not None))
-    if len(trouvees) != 1 or not trouvees[0].strip():
-        return None
-    return trouvees[0].strip()
-
-
-def _plage_ansible(moteur):
-    """L'exigence `CLE_PLAGE` des défauts du moteur, ou None."""
-    try:
-        with open(
-            os.path.join(moteur, DEFAULTS_ANSIBLE), encoding="utf-8"
-        ) as f:
-            texte = f.read()
-    except (OSError, UnicodeDecodeError, ValueError):
-        return None
-    return _valeur_de_premier_niveau(texte, CLE_PLAGE)
-
-
-def _version_ansible(venv):
-    """La version d'ansible-core que le Python de `venv` importe, ou None.
-
-    Lancé depuis le venv lui-même : `-c` met le dossier courant en tête de
-    `sys.path`, et la racine d'ERPLibre n'a rien à y faire. Une seule ligne
-    non vide est une réponse ; toute autre sortie est illisible.
-    """
-    fait = _lancer(
-        [os.path.join(venv, "bin", "python"), "-c", SONDE_VERSION],
-        cwd=venv,
-        capture=True,
-    )
-    if fait is None or fait.returncode != 0:
-        return None
-    lignes_lues = fait.stdout.strip().splitlines()
-    if len(lignes_lues) != 1 or not lignes_lues[0].strip():
-        return None
-    return lignes_lues[0].strip()
-
-
 def _instance(moteur) -> tuple:
     """(vrai dossier, nom de la cible, plan présent) de `<moteur>/instance`.
 
@@ -790,6 +750,21 @@ def _code_cle(moteur):
     return None if fait is None else fait.returncode
 
 
+def _ecarts(epingles, lire):
+    """(nom, épinglée, posée) pour chaque épingle que `lire` ne confirme pas.
+
+    `lire` n'est appelée QU'UNE FOIS par nom : chaque lecture est un
+    sous-processus ou un fichier, et la condition ne doit pas en payer une
+    seconde.
+    """
+    vus = []
+    for nom, epinglee in epingles:
+        posee = lire(nom)
+        if posee != epinglee:
+            vus.append((nom, epinglee, posee))
+    return tuple(vus)
+
+
 def releve(racine) -> Releve:
     """L'état du poste et du moteur sous la racine d'ERPLibre `racine`.
 
@@ -814,6 +789,27 @@ def releve(racine) -> Releve:
         reelle, ecosysteme, plan = False, "", False
     venv = os.path.join(racine, VENV)
     playbook = os.path.isfile(os.path.join(venv, "bin", "ansible-playbook"))
+    epingles_py = (
+        ansible_env.bibliotheques_epinglees(moteur) if present else None
+    )
+    epingles_yml = (
+        ansible_env.collections_epinglees(moteur) if present else None
+    )
+    # Les écarts ne se mesurent QUE si les deux côtés existent : sans venv,
+    # « absente » serait vrai de tout et noierait la ligne.
+    if playbook:
+        mineur = ansible_env.mineur_du_path(racine, moteur)
+        biblios = _ecarts(
+            epingles_py or (),
+            lambda nom: ansible_env.version_posee(racine, nom),
+        )
+        collections = _ecarts(
+            epingles_yml or (),
+            lambda nom: ansible_env.version_collection(moteur, nom),
+        )
+    else:
+        mineur = None
+        biblios, collections = (), ()
     outils = OUTILS_COEUR + tuple(o for o, _ in OUTILS_GESTES)
     return Releve(
         systeme=_systeme(),
@@ -834,8 +830,17 @@ def releve(racine) -> Releve:
         ecart=ecart,
         modifies=engine.dirty_count(moteur) if present else None,
         ansible_playbook=playbook,
-        version_ansible=_version_ansible(venv) if playbook else None,
-        plage_ansible=_plage_ansible(moteur) if present else None,
+        version_ansible=(
+            ansible_env.version_posee(racine, ansible_env.PAQUET_ANSIBLE)
+            if playbook
+            else None
+        ),
+        plage_ansible=(ansible_env.plage_ansible(moteur) if present else None),
+        mineur_path=mineur,
+        biblios_ecarts=biblios,
+        collections_ecarts=collections,
+        biblios_epinglees=epingles_py,
+        collections_epinglees=epingles_yml,
         instance_reelle=reelle,
         ecosysteme=ecosysteme,
         plan_present=plan,

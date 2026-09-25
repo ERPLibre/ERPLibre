@@ -12,8 +12,9 @@ sovereign ecosystem from a declarative plan, with Ansible and Proxmox.
 source of truth for its gestures, and every command TODO names can be
 replayed by hand, without TODO.
 
-The menu shows only what exists: today, the state of the integration. The
-engine's gestures are added as they are written.
+The menu shows only what exists: today, the state of the integration and
+the setting up of the Ansible environment. The engine's gestures are added
+as they are written.
 
 ## Getting the engine
 
@@ -31,8 +32,9 @@ Proxmox. **TODO lance le moteur ; il ne le recopie pas.** Le moteur reste la
 seule source de vérité de ses gestes, et toute commande que TODO nomme se
 rejoue à la main, sans TODO.
 
-Le menu n'affiche que ce qui existe : aujourd'hui, l'état de l'intégration.
-Les gestes du moteur s'y ajoutent à mesure qu'ils sont écrits.
+Le menu n'affiche que ce qui existe : aujourd'hui, l'état de l'intégration
+et la pose de l'environnement Ansible. Les gestes du moteur s'y ajoutent à
+mesure qu'ils sont écrits.
 
 ## Obtenir le moteur
 
@@ -227,11 +229,16 @@ customer's data and never enters an ERPLibre commit.
 
 `Set-OPS - State of the integration, line by line` is READ-ONLY: no `make`,
 no network, no write. `git` reads without its optional locks, so it does not
-rewrite the engine's index. Beyond `git`, the screen runs at most two
+rewrite the engine's index. Beyond `git`, the screen runs a few
 bounded subprocesses, in an environment built from scratch:
 
-- the ansible-core version, asked of the dedicated venv's Python, when the
-  venv has its `ansible-playbook`;
+- the ansible-core version, and the version of each library the engine
+  pins, asked of the dedicated venv's Python, when the venv has its
+  `ansible-playbook`;
+- the `major.minor` that `python3` returns on the gesture's PATH. It is
+  asked of a BARE `python3`, because that is exactly what the engine's
+  guard does: a venv called by absolute path would answer where the gesture
+  itself would fail;
 - `scripts/voutes.py etat`, only with an ecosystem mounted AND its
   `plan/serveurs.yml`, the prerequisite of the vault key line. It runs with
   `-B`: nothing is written in the engine, not even the bytecode of its
@@ -330,6 +337,41 @@ Line by line:
   ◐ without one of them. A missing optional tool is listed as a note, with
   the engine targets it blocks.
 
+## The Ansible environment
+
+`Set-OPS - Ansible environment (set it up)` builds the venv that drives the
+engine, `.venv.todo.setops` under ERPLibre's root. **It shows every command
+before asking**, and each one can be replayed by hand.
+
+Everything it installs is READ in the engine: the ansible-core range
+(`serveur_ops_ansible`), the pinned Python libraries
+(`requirements-python.txt`) and the pinned collections (`requirements.yml`).
+No version is written here. The collections land under the engine, in
+`.ansible/collections`, a folder its own `.gitignore` covers: the engine's
+tree stays clean, and they do not mix with whatever the station already
+carries.
+
+**Why a dedicated Python minor.** The engine's `serveur_ops` role requires
+that controller and target share their `major.minor`, and it builds the
+offline wheel cache with the `python3` found on the PATH — not with
+Ansible's interpreter. A controller on 3.14 therefore produces `cp314`
+wheels that a 3.13 target refuses to install, and the guard stops the
+gesture before that. The venv is built with a Python 3.13: the one already
+on the station if there is one, otherwise the one `mise install python@3.13`
+provides. When neither exists, the screen names the command and installs
+nothing behind your back.
+
+**Setting up the venv is not enough, it has to be ACTIVATED.** The guard and
+the wheel download both run a BARE `python3`. The same 3.13 venv, called by
+absolute path on a station whose shell `python3` is 3.14, is refused; with
+its `bin` first on the PATH it passes. Every gesture therefore runs with that
+PATH, and the verification measures what `python3` returns through it rather
+than trusting the venv it just built.
+
+An out-of-range venv is offered for rebuilding, after the screen names what
+it found and shows what it would erase. Reinstalling over it would leave the
+wrong INTERPRETER, and that is the case that breaks.
+
 <!-- [fr] -->
 Le clone mis de côté garde ce qui vit DANS le dossier du moteur : le lien
 `instance` et `underlay.yml`. L'écran d'état nomme alors les gestes qui
@@ -354,10 +396,15 @@ d'un client et n'entre jamais dans un commit d'ERPLibre.
 `Set-OPS - État de l'intégration, ligne par ligne` est en LECTURE SEULE : ni
 `make`, ni réseau, ni écriture. `git` lit sans ses verrous facultatifs, si
 bien qu'il ne réécrit pas l'index du moteur. Au-delà de `git`, l'écran lance
-au plus deux sous-processus bornés, dans un environnement construit à neuf :
+quelques sous-processus bornés, dans un environnement construit à neuf :
 
-- la version d'ansible-core, demandée au Python du venv dédié, quand le
-  venv a son `ansible-playbook` ;
+- la version d'ansible-core, et celle de chaque bibliothèque que le moteur
+  épingle, demandées au Python du venv dédié, quand le venv a son
+  `ansible-playbook` ;
+- le `major.minor` que rend `python3` sur le PATH du geste. Il est demandé
+  à un `python3` NU, parce que c'est exactement ce que fait la garde du
+  moteur : un venv appelé par chemin absolu répondrait là où le geste,
+  lui, échouerait ;
 - `scripts/voutes.py etat`, seulement avec un écosystème monté ET son
   `plan/serveurs.yml`, le préalable de la ligne de la clé de voûte. Il est
   lancé avec `-B` : rien ne s'écrit dans le moteur, pas même le bytecode de
@@ -459,3 +506,38 @@ Ligne par ligne :
 - **Outils du poste** : portés dès que `make`, `git` et `ssh` se trouvent,
   ◐ sans l'un d'eux. Un outil facultatif absent est listé en note, avec les
   cibles du moteur qu'il bloque.
+
+## L'environnement Ansible
+
+`Set-OPS - Environnement Ansible (le poser)` construit le venv qui pilote le
+moteur, `.venv.todo.setops` sous la racine d'ERPLibre. **Il montre chaque
+commande avant de demander**, et chacune se rejoue à la main.
+
+Tout ce qu'il pose est LU dans le moteur : la plage d'ansible-core
+(`serveur_ops_ansible`), les bibliothèques Python épinglées
+(`requirements-python.txt`) et les collections épinglées
+(`requirements.yml`). Aucune version n'est écrite ici. Les collections vont
+sous le moteur, dans `.ansible/collections`, un dossier que son propre
+`.gitignore` couvre : l'arbre du moteur reste propre, et elles ne se mêlent
+pas à ce que le poste porte déjà.
+
+**Pourquoi un mineur de Python dédié.** Le rôle `serveur_ops` du moteur exige
+que contrôleur et cible partagent leur `major.minor`, et il fabrique le cache
+de roues hors ligne avec le `python3` du PATH — pas avec l'interpréteur
+d'Ansible. Un contrôleur en 3.14 produit donc des roues `cp314` qu'une cible
+en 3.13 refuse d'installer, et la garde arrête le geste avant d'en arriver
+là. Le venv est posé dans un Python 3.13 : celui du poste s'il y en a un,
+sinon celui que fournit `mise install python@3.13`. Quand il n'y en a nulle
+part, l'écran nomme la commande et ne pose rien dans votre dos.
+
+**Poser le venv ne suffit pas, il faut l'ACTIVER.** La garde et le
+téléchargement des roues lancent tous deux un `python3` NU. Le même venv en
+3.13, appelé par chemin absolu sur un poste dont le `python3` de shell est en
+3.14, est refusé ; avec son `bin` en tête du PATH, il passe. Chaque geste
+tourne donc avec ce PATH, et la vérification mesure ce que rend `python3` à
+travers lui plutôt que de croire le venv qu'elle vient de poser.
+
+Un venv hors plage est proposé à la reprise, après que l'écran a nommé ce
+qu'il a trouvé et montré ce qu'il effacerait. Réinstaller par-dessus
+laisserait le mauvais INTERPRÉTEUR, et c'est ce cas-là qui casse.
+

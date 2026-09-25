@@ -17193,9 +17193,97 @@ TRANSLATIONS = {
         "fr": "git ne sait pas lire le moteur",
         "en": "git cannot read the engine",
     },
-    "{venv}: ansible-core {version}, within {spec}": {
-        "fr": "{venv} : ansible-core {version}, dans {spec}",
-        "en": "{venv}: ansible-core {version}, within {spec}",
+    "Set-OPS - Ansible environment (set it up)": {
+        "fr": "⚙️ Set-OPS - Environnement Ansible (le poser)",
+        "en": "⚙️ Set-OPS - Ansible environment (set it up)",
+    },
+    "{venv} absent: « {geste} » sets it up": {
+        "fr": "{venv} absent : « {geste} » le pose",
+        "en": "{venv} absent: « {geste} » sets it up",
+    },
+    "{venv}: ansible-core {version}, within {spec}; python3 {mineur};"
+    " {n} libraries and {m} collections at the pin": {
+        "fr": "{venv} : ansible-core {version}, dans {spec} ; python3"
+        " {mineur} ; {n} bibliothèques et {m} collections à l'épingle",
+        "en": "{venv}: ansible-core {version}, within {spec}; python3"
+        " {mineur}; {n} libraries and {m} collections at the pin",
+    },
+    "python3 on the gesture PATH is {lu}, the target runs {cible}": {
+        "fr": "python3 du PATH du geste rend {lu}, la cible tourne en"
+        " {cible}",
+        "en": "python3 on the gesture PATH is {lu}, the target runs {cible}",
+    },
+    "{kind} {name}: {pinned} pinned, {found} installed": {
+        "fr": "{kind} {name} : {pinned} épinglée, {found} posée",
+        "en": "{kind} {name}: {pinned} pinned, {found} installed",
+    },
+    "library": {
+        "fr": "bibliothèque",
+        "en": "library",
+    },
+    "collection": {
+        "fr": "collection",
+        "en": "collection",
+    },
+    "unreadable": {
+        "fr": "illisible",
+        "en": "unreadable",
+    },
+    "the engine is not here yet; see the state screen": {
+        "fr": "le moteur n'est pas encore là ; voir l'écran d'état",
+        "en": "the engine is not here yet; see the state screen",
+    },
+    "Range": {
+        "fr": "Plage",
+        "en": "Range",
+    },
+    "Interpreter": {
+        "fr": "Interpréteur",
+        "en": "Interpreter",
+    },
+    "Already installed": {
+        "fr": "Déjà posé",
+        "en": "Already installed",
+    },
+    "Nothing to do; the state screen says the rest.": {
+        "fr": "Rien à faire ; l'écran d'état dit le reste.",
+        "en": "Nothing to do; the state screen says the rest.",
+    },
+    "ansible-core {version}": {
+        "fr": "ansible-core {version}",
+        "en": "ansible-core {version}",
+    },
+    "no readable ansible-core": {
+        "fr": "aucun ansible-core lisible",
+        "en": "no readable ansible-core",
+    },
+    "What will run:": {
+        "fr": "Ce qui va tourner :",
+        "en": "What will run:",
+    },
+    "Set it up? (y/N): ": {
+        "fr": "Le poser ? (o/N) : ",
+        "en": "Set it up? (y/N): ",
+    },
+    "step {n} failed (code {code}); stopping": {
+        "fr": "l'étape {n} a échoué (code {code}) ; on s'arrête",
+        "en": "step {n} failed (code {code}); stopping",
+    },
+    "no python{minor} on this station": {
+        "fr": "aucun python{minor} sur ce poste",
+        "en": "no python{minor} on this station",
+    },
+    "install python{minor}, or mise, then come back": {
+        "fr": "poser python{minor}, ou mise, puis revenir",
+        "en": "install python{minor}, or mise, then come back",
+    },
+    "Verification:": {
+        "fr": "Vérification :",
+        "en": "Verification:",
+    },
+    "python3 on the gesture PATH: {lu} (target {cible})": {
+        "fr": "python3 du PATH du geste : {lu} (cible {cible})",
+        "en": "python3 on the gesture PATH: {lu} (target {cible})",
     },
     "{venv}: ansible-core {version}, outside {spec}": {
         "fr": "{venv} : ansible-core {version}, hors de {spec}",
@@ -17205,9 +17293,9 @@ TRANSLATIONS = {
         "fr": "{venv} : la version d'ansible-core est illisible",
         "en": "{venv}: the ansible-core version is unreadable",
     },
-    "{venv} absent: the repository does not set it up yet": {
-        "fr": "{venv} absent : le dépôt ne sait pas encore le poser",
-        "en": "{venv} absent: the repository does not set it up yet",
+    "the engine's pinned requirements are unreadable": {
+        "fr": "les épingles du moteur sont illisibles",
+        "en": "the engine's pinned requirements are unreadable",
     },
     "the engine's ansible-core range is unreadable": {
         "fr": "la plage ansible-core du moteur est illisible",

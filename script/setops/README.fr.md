@@ -1,7 +1,7 @@
 
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Deux modules, un partage : **le relevé touche le système, la décision ne le
+Trois modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -90,3 +90,62 @@ ligne nomme sa source, ses chemins relatifs à la racine d'ERPLibre.
 Les lignes s'impriment par `script/todo/state_screen.py`, le rendu commun
 avec l'écran d'état Devstack : deux rendus diraient tôt ou tard deux choses
 différentes avec les mêmes marques.
+
+## `ansible_env` — ce que le moteur exige, et comment le poser
+
+Le moteur ne pose pas de contrôleur : son rôle `serveur_ops` équipe une CIBLE,
+et non le poste qui la pilote. Ce module pose le venv du contrôleur,
+`.venv.todo.setops`, en LISANT dans le moteur tout ce qui s'y lit — la plage
+d'ansible-core, les bibliothèques Python épinglées, les collections
+épinglées. Aucune de ces valeurs n'est recopiée ici.
+
+**Le mineur de Python est une contrainte, pas un goût.** `serveur_ops` exige
+que contrôleur et cible partagent leur `major.minor`, et il fabrique le cache
+de roues hors ligne avec le `python3` du PATH — pas avec l'interpréteur
+d'Ansible. Un contrôleur en 3.14 produit donc des roues `cp314` qu'une cible
+en 3.13 refuse. D'où deux exigences que ce module tient ensemble : le venv est
+posé dans `MINEUR_CIBLE`, et `environnement(racine, moteur, base)` met son `bin` en TÊTE du PATH.
+
+Les collections vont sous le moteur, dans un dossier que son propre
+`.gitignore` couvre : son arbre reste propre, et elles ne se mêlent pas à ce
+que le poste porte déjà. L'`ansible.cfg` du moteur ne déclare aucun
+`collections_path`, donc l'environnement le nomme.
+
+Deux lectures sont distinguées exprès : un tuple vide dit « le moteur
+n'épingle rien », `None` dit « on ne sait pas ». Les confondre ferait porter
+la ligne d'état sur un fichier illisible, en annonçant zéro écart — le pire
+des verdicts, puisqu'il rassure.
+
+Ce que le moteur déclare, lu comme du texte :
+
+- `plage_ansible(moteur)` : l'exigence `serveur_ops_ansible`, telle que le
+  moteur l'écrit — elle part à pip sans être reformulée, pour qu'un désaccord
+  se voie plutôt que de se corriger en silence ;
+- `bibliotheques_epinglees(moteur)` et `collections_epinglees(moteur)` : les
+  (nom, version) que le moteur épingle, `None` quand le fichier ne se lit pas ;
+- `specifieur(texte)`, `version(texte)` et
+  `dans_la_plage(version_texte, plage_texte)` : les lectures que l'écran
+  d'état et la vérification partagent, pour que les deux disent la même
+  chose de la même version.
+
+Ce que le poste offre, et ce que la pose coûte :
+
+- `interprete(mineur)` : un Python utilisable et d'où il vient — le PATH
+  d'abord, un gestionnaire de versions ensuite, rien du tout en dernier ;
+- `geste_mise(mineur)` : la commande qui le poserait, NOMMÉE pour être
+  montrée ; le menu ne pose aucun gestionnaire de versions dans votre dos ;
+- `chemin_venv(racine)` : le venv, en chemin ABSOLU — les sondes tournent
+  avec `cwd` dedans, et un argv relatif s'y résoudrait sous lui-même ;
+- `etapes(racine, moteur, python, plage, refaire)` : les gestes, dans
+  l'ordre. `refaire` ouvre par la suppression, seule façon de changer
+  l'INTERPRÉTEUR d'un venv déjà là ;
+- `montre(etape)` : la ligne à imprimer, DÉRIVÉE de l'argv — ce qui est
+  montré est ce qui est lancé ;
+- `environnement(racine, moteur, base)` : le venv en tête du PATH, et les
+  collections nommées ;
+- `version_posee(racine, paquet)`, `version_collection(moteur, nom)` et
+  `mineur_du_path(racine, moteur)` : ce qui est réellement là. La dernière
+  interroge un `python3` NU, ce que fait la garde du moteur ;
+- `jouer(etape, racine, env)` : joue un geste et rend son code ; la sortie
+  n'est pas capturée, une pose durant des minutes.
+

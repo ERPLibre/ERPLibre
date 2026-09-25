@@ -25,7 +25,12 @@ sys.path.append(RACINE)
 
 sys.argv = ["todo.py"]
 
-from script.setops import engine, state  # noqa: E402
+from script.setops import ansible_env, engine, state  # noqa: E402
+
+# Les modules du paquet, dans l'ordre où le README les présente. Un module
+# neuf entre ici, et ses fonctions publiques doivent alors être nommées dans
+# les deux langues de la page.
+MODULES = (engine, state, ansible_env)
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo_i18n import TRANSLATIONS  # noqa: E402
 
@@ -138,6 +143,11 @@ def releve_du_poste(**champs):
         "site_brise": False,
         "code_cle": None,
         "outils_absents": (),
+        "mineur_path": ansible_env.MINEUR_CIBLE,
+        "biblios_ecarts": (),
+        "collections_ecarts": (),
+        "biblios_epinglees": (),
+        "collections_epinglees": (),
     }
     vu.update(champs)
     return state.Releve(**vu)
@@ -145,8 +155,8 @@ def releve_du_poste(**champs):
 
 class TestLeModeDEmploiDuPaquet(unittest.TestCase):
     def test_every_call_it_writes_has_the_parameters_of_the_code(self):
-        """Une fonction écrite avec ses parenthèses existe dans `engine` ou
-        `state`, et ses paramètres sont ceux de sa signature, dans l'ordre :
+        """Une fonction écrite avec ses parenthèses existe dans l'un des
+        modules du paquet, et ses paramètres sont ceux de sa signature, dans l'ordre :
         un paramètre renommé dans le code et gardé dans la page se lit
         comme un paramètre qui existe."""
         for langue, moitie in moities(PAQUET_README):
@@ -159,8 +169,14 @@ class TestLeModeDEmploiDuPaquet(unittest.TestCase):
                 self.assertTrue(appels, "aucun appel écrit dans la page")
             for nom, params in appels:
                 with self.subTest(langue=langue, appel=nom):
-                    fonction = getattr(engine, nom, None) or getattr(
-                        state, nom, None
+                    fonction = next(
+                        (
+                            trouve
+                            for module in MODULES
+                            for trouve in (getattr(module, nom, None),)
+                            if trouve is not None
+                        ),
+                        None,
                     )
                     self.assertTrue(
                         inspect.isfunction(fonction), f"{nom} n'existe pas"
@@ -171,15 +187,15 @@ class TestLeModeDEmploiDuPaquet(unittest.TestCase):
                     )
 
     def test_every_public_function_is_named(self):
-        """Chaque fonction publique d'`engine` et de `state` est nommée dans
-        chaque langue : une fonction ajoutée au paquet sans sa ligne dans
-        la page n'a pas de rôle écrit."""
-        for module in (engine, state):
+        """Chaque fonction publique du paquet est nommée dans chaque
+        langue : une fonction ajoutée au paquet sans sa ligne dans la page
+        n'a pas de rôle écrit."""
+        for module in MODULES:
             with self.subTest(module=module.__name__):
                 self.assertTrue(publiques(module))
         for langue, moitie in moities(PAQUET_README):
             nommes = {nom for nom, _params in NOM_CITE.findall(moitie)}
-            for module in (engine, state):
+            for module in MODULES:
                 for nom in publiques(module):
                     with self.subTest(langue=langue, fonction=nom):
                         self.assertIn(nom, nommes)

@@ -28,8 +28,7 @@ sys.path.append(RACINE_DEPOT)
 
 sys.argv = ["todo.py"]
 
-from script.setops import engine  # noqa: E402
-from script.setops import state  # noqa: E402
+from script.setops import engine, state  # noqa: E402
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -57,6 +56,11 @@ RELEVE = state.Releve(
     ansible_playbook=False,
     version_ansible=None,
     plage_ansible=None,
+    mineur_path=None,
+    biblios_ecarts=(),
+    collections_ecarts=(),
+    biblios_epinglees=None,
+    collections_epinglees=None,
     instance_reelle=False,
     ecosysteme="Ecosysteme-Fictif-Gneiss",
     plan_present=True,
@@ -109,6 +113,45 @@ class TestLeSousMenuSetops(CasDeMenu):
         with patch("click.prompt", side_effect=invite), redirect_stdout(vu):
             rendu = self.todo.prompt_execute_setops()
         return rendu, vu.getvalue()
+
+    def test_the_gesture_the_state_screen_names_is_reachable_here(self):
+        """L'écran d'état dit « « X » le pose ». Si aucune entrée ne porte
+        ce libellé, il envoie chercher une commande qui n'existe pas.
+
+        Le numéro n'est PAS écrit ici : il se LIT dans le menu, pour qu'une
+        entrée posée plus haut ne fasse pas rougir l'épreuve.
+        """
+        self.todo._setops_ansible_env = lambda: self.joues.append("ansible")
+        libelle = todo_i18n.t(state.GESTE_ANSIBLE)
+        tapes = []
+
+        def saisie(texte, *_a, **_k):
+            if tapes:
+                return "0"
+            vus = [
+                num
+                for num, reste in re.findall(r"^\[(\d+)\] (.*)$", texte, re.M)
+                if reste == libelle
+            ]
+            self.assertEqual(1, len(vus), f"« {libelle} » : {vus}")
+            tapes.append(vus[0])
+            return vus[0]
+
+        with (
+            patch("click.prompt", side_effect=saisie),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertFalse(self.todo.prompt_execute_setops())
+        self.assertEqual(["ansible"], self.joues)
+
+    def test_the_state_line_names_that_same_gesture(self):
+        """Les deux bouts de la couture : l'écran nomme, le menu porte."""
+        vu = RELEVE._replace(ansible_playbook=False)
+        # Le segment affiché est traduit : la ligne se désigne par son
+        # RANG dans la liste des clés, comme l'écran la construit.
+        rendu = state.lignes(vu)
+        ligne = rendu[state.SEGMENTS.index(state.ANSIBLE)]
+        self.assertIn(todo_i18n.t(state.GESTE_ANSIBLE), ligne.detail)
 
     def test_typing_1_runs_the_state_screen(self):
         """L'écran joué, le menu reste ouvert : c'est le « 0 » qui le
@@ -163,10 +206,12 @@ class TestDepuisDeploy(CasDeMenu):
     def _deploy(self, greffes, saisie):
         """Ouvre le menu Deploy, todo.json greffant `greffes` ; `saisie`
         reçoit le texte du menu et rend le numéro tapé, puis « 0 »."""
-        with patch.object(
-            self.todo.config_file, "get_config", return_value=greffes
-        ), patch("click.prompt", side_effect=saisie), redirect_stdout(
-            io.StringIO()
+        with (
+            patch.object(
+                self.todo.config_file, "get_config", return_value=greffes
+            ),
+            patch("click.prompt", side_effect=saisie),
+            redirect_stdout(io.StringIO()),
         ):
             self.assertFalse(self.todo.prompt_execute_deploy())
 
@@ -276,10 +321,11 @@ class TestDepuisDeploy(CasDeMenu):
 class TestLEcranDEtat(CasDeMenu):
     def _ecran(self):
         vu = io.StringIO()
-        with patch.object(state, "releve", return_value=RELEVE), patch(
-            "subprocess.run", side_effect=_interdit
-        ), patch("subprocess.Popen", side_effect=_interdit), redirect_stdout(
-            vu
+        with (
+            patch.object(state, "releve", return_value=RELEVE),
+            patch("subprocess.run", side_effect=_interdit),
+            patch("subprocess.Popen", side_effect=_interdit),
+            redirect_stdout(vu),
         ):
             rendu = self.todo._setops_state()
         self.assertIsNone(rendu)
@@ -330,9 +376,11 @@ class TestLEcranDEtat(CasDeMenu):
         self.addCleanup(os.rmdir, ailleurs)
         self.addCleanup(os.chdir, os.getcwd())
         os.chdir(ailleurs)
-        with patch.object(state, "releve", side_effect=releve), patch(
-            "subprocess.run", side_effect=_interdit
-        ), redirect_stdout(io.StringIO()):
+        with (
+            patch.object(state, "releve", side_effect=releve),
+            patch("subprocess.run", side_effect=_interdit),
+            redirect_stdout(io.StringIO()),
+        ):
             self.todo._setops_state()
         self.assertEqual(1, len(recues))
         self.assertTrue(os.path.samefile(RACINE_DEPOT, recues[0]))
