@@ -178,6 +178,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot groups `aiobotocore`, `botocore` and `boto3` into one pull request, since each aiobotocore accepts only a narrow botocore range; security fixes still arrive on their own
 - `TODO › Transform data` reads Excel with openpyxl 3.1.5 and xlsxwriter 3.2.9; the leak test that guards openpyxl's exact pin passes on them
 - factur-x requires 6.8 outside s390x, the version already locked, so a regeneration can no longer fall back to an untested 4.x or 5.x
+- The interface chooser of the QEMU deployment and of the Odoo migration, and its preferences in `TODO › Configuration`, mark the TUI form with 📋 and the line by line questions with 💬
 
 <!-- [fr] -->
 
@@ -212,6 +213,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot réunit `aiobotocore`, `botocore` et `boto3` dans une seule demande de fusion, chaque aiobotocore n'acceptant qu'une plage étroite de botocore ; les correctifs de sécurité arrivent toujours seuls
 - `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
 - factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
+- Le choix d'interface du déploiement QEMU et de la migration Odoo, et ses préférences dans `TODO › Configuration`, marquent le formulaire TUI d'un 📋 et les questions ligne par ligne d'un 💬
 
 <!-- [en] -->
 ## Fixed
@@ -377,6 +379,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Following a redirect, the cache no longer forwards the client's credentials (Authorization, Cookie, Proxy-Authorization) to another host
 - Odoo 18 installs `idna` 3.20 instead of the 3.6 its own requirements pin, which is affected by CVE-2024-3651
 - Odoo 18 installs `requests` 2.32.4 instead of the 2.31.0 its own requirements pin, which is affected by CVE-2024-35195 and CVE-2024-47081
+- The git mirror of the QEMU cache clones only over `http` and `https`: a client could name an `ssh://` or `git://` repository in its request and make the cache connect, with its service account keys, to a host of its choosing. Repositories fetched over HTTPS are mirrored as before; the binary reports 0.2.17
 
 <!-- [fr] -->
 
@@ -384,6 +387,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - En suivant une redirection, le cache ne transmet plus les identifiants du client (Authorization, Cookie, Proxy-Authorization) à un autre hôte
 - Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
 - Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
+- Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
 
 <!-- [common] -->
 
