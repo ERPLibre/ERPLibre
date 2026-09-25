@@ -746,9 +746,6 @@ class TODO(
         "prompt_execute_lima": "Lima",
         "prompt_execute_egress_book": "Address book",
         "prompt_configuration": "Configuration",
-        "generate_config_from_preconfiguration": "Preconfiguration",
-        "execute_odoo_upgrade": "Upgrade",
-        "debug_ide": "Debug",
     }
 
     @classmethod
