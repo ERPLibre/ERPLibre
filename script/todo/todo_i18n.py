@@ -9446,6 +9446,24 @@ TRANSLATIONS = {
         "en": "the subject opens on a quotation. A screen message is\n"
         "     evidence: it belongs in the body. The subject names the cause.",
     },
+    "the marker is « --- EN --- ». The subject and the body under it\n"
+    "     are in English; « --- FR --- » opens the French translation.": {
+        "fr": "le marqueur est « --- EN --- ». Le sujet et le corps qui le suit\n"
+        "     sont en anglais ; « --- FR --- » ouvre la traduction française.",
+        "en": "the marker is « --- EN --- ». The subject and the body under it\n"
+        "     are in English; « --- FR --- » opens the French translation.",
+    },
+    "the French section must open on the translated subject,\n"
+    "     under the same tag: %s": {
+        "fr": "la section française doit s'ouvrir sur le sujet traduit,\n"
+        "     sous le même tag : %s",
+        "en": "the French section must open on the translated subject,\n"
+        "     under the same tag: %s",
+    },
+    "French subject: %s": {
+        "fr": "sujet français : %s",
+        "en": "French subject: %s",
+    },
     "the body is %s lines for one language, %s at most.\n"
     "     The body says why it was necessary, then stops.\n"
     "     The investigation, the dated measurements and the dead ends go\n"

@@ -117,12 +117,14 @@ The shape, as this repository writes it:
 ```
 Merge branch '<branch>'
 
-[TAG] scope: what the branch delivers, imperative, 72 characters maximum
+[TAG] scope: what the branch delivers, in English, 72 characters maximum
 
 <N> commits. Why the branch existed: the failure mode it removes, the
 figure that bounds it, what was verified and how. Wrap at 80 characters.
 
---- EN ---
+--- FR ---
+
+[TAG] portée : ce que livre la branche, traduit en français
 
 The same body, translated.
 
@@ -143,14 +145,15 @@ commits the branch carries, then say what they add up to. No bullet list, no
 per-commit rundown: `git log <base>..HEAD` already gives that, and a body
 repeating it teaches nothing.
 
-The bilingual rule holds — body, then the marker naming the language of what
-FOLLOWS, then the translation — as does the ban on naming an AI in
+The bilingual rule holds as for a commit — the tagged line and the body in
+English, then `--- FR ---`, then the tagged line translated under the same
+tag, then the translated body — as does the ban on naming an AI in
 `Co-authored-by:`.
 
 **The hook does not check this one.** `script/git/hooks/commit-msg` skips any
 message beginning with `Merge `, along with `Revert `, `fixup!` and `squash!`.
-Length, addresses and account paths pass unchallenged here, so the discipline
-is entirely yours.
+Length, addresses, account paths and the order of the languages pass
+unchallenged here, so the discipline is entirely yours.
 
 ### 3. Hand it over
 

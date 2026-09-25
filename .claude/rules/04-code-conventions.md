@@ -90,9 +90,9 @@ liste, et elle est vraie demain.
 - Branches : `develop` (développement), `master` (production)
 - Pas de submodules Git — utilise **Google Repo** pour les addons
 - Manifests XML dans `manifest/` pour chaque version Odoo
-- Format de commit : `[TYPE] portée : sujet`, sujet à l'impératif, 72
-  caractères au plus. Tags réellement utilisés : `[UPD]`, `[FIX]`, `[ADD]`,
-  `[IMP]`, `[REF]`.
+- Format de commit : `[TYPE] scope: subject`, sujet **en anglais**, à
+  l'impératif, 72 caractères au plus. Tags réellement utilisés : `[UPD]`,
+  `[FIX]`, `[ADD]`, `[IMP]`, `[REF]`.
 - **Nommer les fichiers à l'indexation, jamais `git add -A`** : `private/` et
   `tasks/` ne sont pas suivis EXPRÈS, et un ratissage les commit. Il emporte
   aussi ce qui est en cours ailleurs dans le checkout, sous un sujet qui ne le
@@ -117,14 +117,17 @@ Le sujet résume le commit ENTIER, pas sa plus grosse pièce. S'il lui faut un
 
 Si le travail n'entre décidément pas dans une phrase de 72 caractères, ne pas
 en écrire une amputée : des **mots-clés qui résument**, séparés par des
-virgules, en disent plus dans la même place — `[FIX] proxmox : pmxcfs à terre,
-pvesm muet, diagnostic à la source`. C'est un repli, pas un défaut : la phrase
-reste préférable quand elle tient.
+virgules, en disent plus dans la même place — `[FIX] proxmox: pmxcfs down,
+pvesm silent, diagnosis at the source`. C'est un repli, pas un défaut : la
+phrase reste préférable quand elle tient.
 
 Un garde-fou refuse le mécanique. Sur le sujet : tag absent, plus de 72
 caractères, ouverture sur une citation. Sur le corps : plus de 10 lignes pour
-une langue, une adresse IP, un courriel, un chemin de compte. Ce qui reste un
-jugement — « ce corps raconte-t-il l'enquête » — n'est vérifié par personne.
+une langue, une adresse IP, un courriel, un chemin de compte. Sur l'ordre des
+langues : un marqueur `--- EN ---`, une section française qui ne s'ouvre pas
+sur le sujet traduit sous le même tag. Que le sujet soit bien en anglais
+reste à l'auteur. Ce qui reste un jugement — « ce corps raconte-t-il
+l'enquête » — n'est vérifié par personne.
 
 ```bash
 git config core.hooksPath script/git/hooks   # une fois par clone
@@ -141,8 +144,9 @@ Trois exigences, sans exception — `AI_POLICY.md` en donne la raison :
 - Trailer `Assisted-by: <modèle>`, une ligne par modèle. C'est **binaire** :
   il y a eu IA ou non, aucun seuil à apprécier.
 - **Jamais** d'IA dans `Co-authored-by:` — ce champ est réservé aux humains.
-- Corps **bilingue** : le corps, puis `--- FR ---` (ou `--- EN ---`, le
-  marqueur nomme la langue de ce qui SUIT), puis la traduction.
+- Message **bilingue, l'anglais d'abord** : le sujet et le corps en anglais,
+  puis `--- FR ---`, puis le sujet traduit en français sous le même tag, puis
+  le corps traduit. `--- EN ---` n'existe plus : l'ordre ne varie jamais.
 
 Court et direct : **8 lignes par langue**, 10 est un plafond. Le corps dit
 pourquoi c'était nécessaire, puis s'arrête. Rien de ce que le diff montre

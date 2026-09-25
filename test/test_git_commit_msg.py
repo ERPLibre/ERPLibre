@@ -151,7 +151,55 @@ class TestCeQuiEstRefuse(unittest.TestCase):
 
 
 def _message(corps):
-    return "[FIX] portée : quelque chose\n\n" + corps + "\n"
+    return "[FIX] scope: something\n\n" + corps + "\n"
+
+
+# Le sujet de _message, traduit : ce qui ouvre la section française.
+TITRE_FR = "[FIX] portée : quelque chose"
+
+
+class TestLesLangues(unittest.TestCase):
+    """L'anglais d'abord, puis « --- FR --- » et le sujet traduit."""
+
+    def test_anglais_puis_francais_avec_titre_traduit(self):
+        corps = f"Why, in English.\n\n--- FR ---\n\n{TITRE_FR}\n\nPourquoi."
+        self.assertEqual([], check(_message(corps)))
+
+    def test_un_message_sans_marqueur_nest_pas_juge(self):
+        self.assertEqual([], check(_message("Why, in one language.")))
+
+    @EN_FRANCAIS
+    def test_le_marqueur_en_est_refuse(self):
+        corps = "Pourquoi, en français.\n\n--- EN ---\n\nWhy, in English."
+        problemes = check(_message(corps))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("--- EN ---", problemes[0])
+
+    @EN_FRANCAIS
+    def test_la_section_francaise_sans_titre(self):
+        problemes = check(_message("Why.\n\n--- FR ---\n\nPourquoi."))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("sujet traduit", problemes[0])
+        self.assertIn("[FIX] …", problemes[0])
+
+    def test_le_titre_traduit_porte_le_meme_tag(self):
+        corps = (
+            "Why.\n\n--- FR ---\n\n[ADD] portée : autre chose\n\nPourquoi."
+        )
+        self.assertEqual(1, len(check(_message(corps))))
+
+    @EN_FRANCAIS
+    def test_le_titre_traduit_suit_les_regles_du_sujet(self):
+        titre = "[FIX] portée : " + "é" * MAX
+        corps = f"Why.\n\n--- FR ---\n\n{titre}\n\nPourquoi."
+        problemes = check(_message(corps))
+        self.assertEqual(1, len(problemes))
+        self.assertTrue(problemes[0].startswith("sujet français :"), problemes[0])
+
+    def test_le_titre_traduit_ne_compte_pas_dans_le_corps(self):
+        moitie = "\n".join(f"ligne {n}" for n in range(MAX_BODY))
+        corps = f"{moitie}\n\n--- FR ---\n\n{TITRE_FR}\n{moitie}"
+        self.assertEqual([], check(_message(corps)))
 
 
 class TestLeCorps(unittest.TestCase):
@@ -166,7 +214,7 @@ class TestLeCorps(unittest.TestCase):
 
     def test_dix_lignes_par_langue_passent(self):
         moitie = "\n".join(f"ligne {n}" for n in range(MAX_BODY))
-        corps = f"{moitie}\n\n--- FR ---\n\n{moitie}"
+        corps = f"{moitie}\n\n--- FR ---\n\n{TITRE_FR}\n\n{moitie}"
         self.assertEqual([], check(_message(corps)))
 
     def test_onze_lignes_pour_une_langue_sont_refusees(self):
