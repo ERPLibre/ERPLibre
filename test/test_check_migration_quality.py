@@ -931,9 +931,15 @@ class TestTheInventoryItself(Base):
     qui ne touche jamais le code réel ne garde rien.
     """
 
+    sans_website = False
+
     def repondre(self, sql):
         if "ir_model_fields" in sql:
             return [["res.partner.name"], ["res.partner.email"]]
+        if "website_id" in sql and self.sans_website:
+            return None  # psql : la colonne n'existe pas
+        if sql.startswith("SELECT count(*) FROM ir_ui_view WHERE website_id"):
+            return [["1"]]
         if "website_id IS NOT NULL" in sql:
             return [["site.vue"]]
         if "FROM ir_model " in sql or sql.strip().endswith("ORDER BY model"):
@@ -962,7 +968,17 @@ class TestTheInventoryItself(Base):
         )
 
     def test_the_cow_copies_are_collected(self):
-        self.assertEqual(self.inspecter()["cow"], ["site.vue"])
+        etat = self.inspecter()
+        self.assertEqual(etat["cow"], ["site.vue"])
+        self.assertEqual(etat["view_cow"], 1)
+
+    def test_a_base_without_website_is_still_inspected(self):
+        """website_id vient du module website : son absence ne doit pas faire
+        passer la base pour inexistante."""
+        self.sans_website = True
+        etat = self.inspecter()
+        self.assertTrue(etat["exists"])
+        self.assertEqual((0, []), (etat["view_cow"], etat["cow"]))
 
     def test_a_cow_copy_without_a_key_is_still_named(self):
         # Une copie sans clé existe quand même ; la taire ferait un

@@ -87,6 +87,16 @@ def arch_is_jsonb(database):
     return bool(sortie) and "jsonb" in sortie
 
 
+def has_website_column(database):
+    """ir_ui_view porte-t-elle website_id, qu'ajoute le module website ?"""
+    sortie = run_psql(
+        database,
+        "SELECT column_name FROM information_schema.columns"
+        " WHERE table_name='ir_ui_view' AND column_name='website_id'",
+    )
+    return bool(sortie) and "website_id" in sortie
+
+
 # `arch_db` est un jsonb d'UNE ENTRÉE PAR LANGUE depuis la 17. N'en lire
 # qu'une — et surtout n'en écrire qu'une — laisse la page cassée dans
 # toutes les autres : mesuré sur /contact, réparé en en_US et toujours en
@@ -127,6 +137,9 @@ def cow_copies(database, jsonb):
     est réécrite par la mise à jour du module, celle qui n'en a pas est
     du contenu d'utilisateur et ne l'est jamais.
     """
+    # website_id vient du module website : sans lui, aucune copie.
+    if not has_website_column(database):
+        return []
     return fetch(
         database,
         f"SELECT id, key, {arch_expr(jsonb)} AS arch FROM ir_ui_view"

@@ -80,15 +80,33 @@ LABEL = {
 STEP = "ERPLIBRE_CLEANUP_STEP"
 START = "ERPLIBRE_CLEANUP_START"
 END = "ERPLIBRE_CLEANUP_END"
+# Odoo 9 et 10 exécutent l'entrée standard du shell comme un FICHIER
+# Python 2 (« exec sys.stdin ») : sans cette déclaration en tête, un seul
+# caractère non ASCII y est une erreur de syntaxe.
+CODING = "# -*- coding: utf-8 -*-\n"
 
-SHELL_SCRIPT = """
+SHELL_SCRIPT = """# -*- coding: utf-8 -*-
+# Exécuté par le shell de la version active, Odoo 8 compris : la syntaxe
+# reste celle de Python 2.7 — ni f-string, ni print(..., flush=).
+from __future__ import print_function
+
 import json
+import sys
 
+# openerp d'abord : en Odoo 8 et 9, le répertoire de lancement porte aussi
+# un script odoo.py, qu'« import odoo » prendrait pour le paquet. UserError
+# date d'Odoo 9 ; Odoo 8 lève openerp.exceptions.Warning.
 try:
-    from odoo.exceptions import UserError
+    from openerp.exceptions import UserError
 except Exception:
-    class UserError(Exception):
-        pass
+    try:
+        from openerp.exceptions import Warning as UserError
+    except Exception:
+        try:
+            from odoo.exceptions import UserError
+        except Exception:
+            class UserError(Exception):
+                pass
 
 ORDER = %(order)r
 MAX_ROUND = %(max_round)d
@@ -98,16 +116,24 @@ t_all = "%(all_label)s"
 report = {"rounds": [], "missing": [], "failed": []}
 
 
+def texte(exc, limite):
+    try:
+        return str(exc)[:limite]
+    except Exception:
+        return repr(exc)[:limite]
+
+
 def note(label, name, exc):
-    report["failed"].append([label, name, str(exc)[:200]])
+    report["failed"].append([label, name, texte(exc, 200)])
 
 
 def step(label, name, index=0, total=0):
     # Dire ce qu'on fait PENDANT qu'on le fait. Sans cela l'outil se taisait
     # jusqu'au rapport final : mesuré, dix-sept minutes de silence complet
     # sur une base de 5984 modules, impossible à distinguer d'un blocage.
-    detail = f" {index}/{total}" if total else ""
-    print(f"%(step)s {label}{detail} {name}", flush=True)
+    detail = " %%d/%%d" %% (index, total) if total else ""
+    print("%(step)s %%s%%s %%s" %% (label, detail, name))
+    sys.stdout.flush()
 
 
 def recover():
@@ -200,7 +226,7 @@ try:
                             ok += 1
                         except Exception as exc:
                             recover()
-                            errors.append([name, str(exc)[:160]])
+                            errors.append([name, texte(exc, 160)])
             purged_this_round += ok
             this_round.append({"kind": label, "purged": ok,
                                "errors": errors, "would": would})
@@ -367,11 +393,11 @@ def kill_group(process):
 def run_shell(database, config_path, script, timeout=3600, echo=None):
     """Pousser le script dans « odoo-bin shell » et rendre son rapport.
 
-    On LIT au fil de l'eau plutôt que de tout capturer : ce nettoyage dure
-    des minutes — dix-sept, mesurées, sur une base de 5984 modules — et la
-    version précédente n'affichait rien avant la fin. Un travail qui avance
-    et un blocage se ressemblent alors trait pour trait, et c'est ainsi
-    qu'on interrompt une réparation à moitié faite.
+    On LIT au fil de l'eau plutôt que de tout capturer : sur une base qui
+    porte des milliers de modules, ce nettoyage dure des minutes, et une
+    sortie capturée n'affiche rien avant la fin. Un travail qui avance et
+    un blocage se ressemblent alors trait pour trait, et l'on interrompt
+    une réparation à moitié faite.
 
     Les journaux d'Odoo se mêlent à la sortie, d'où les sentinelles : on ne
     lit comme rapport que ce qui est entre elles. Leur absence est une
@@ -407,6 +433,8 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
     minuteur.daemon = True
     minuteur.start()
     lst_line = []
+    if not script.startswith(CODING):
+        script = CODING + script
     try:
         process.stdin.write(script)
         process.stdin.close()

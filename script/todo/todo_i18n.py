@@ -11528,6 +11528,22 @@ TRANSLATIONS = {
         "fr": "Ajouter un module personnalisé",
         "en": "Add an extra custom one",
     },
+    "kept, uninstalling it would remove": {
+        "fr": "gardé, sa désinstallation emporterait",
+        "en": "kept, uninstalling it would remove",
+    },
+    "kept, its dependents could not be read.": {
+        "fr": "gardé, ses dépendants n'ont pas pu être lus.",
+        "en": "kept, its dependents could not be read.",
+    },
+    "still present in Odoo": {
+        "fr": "encore présents en Odoo",
+        "en": "still present in Odoo",
+    },
+    "OpenUpgrade makes it uninstallable without deleting data.": {
+        "fr": "OpenUpgrade le rend non installable sans rien supprimer.",
+        "en": "OpenUpgrade makes it uninstallable without deleting data.",
+    },
     "List the missing modules to delete,": {
         "fr": "Énumérer les modules manquants à supprimer,",
         "en": "List the missing modules to delete,",
@@ -12187,6 +12203,18 @@ TRANSLATIONS = {
     "Enter = 1": {
         "fr": "Entrée = 1",
         "en": "Enter = 1",
+    },
+    "Could not forget the removed modules:": {
+        "fr": "Impossible d'oublier les modules retirés :",
+        "en": "Could not forget the removed modules:",
+    },
+    "Forgotten, so nothing installs them again:": {
+        "fr": "Oubliés, pour que rien ne les réinstalle :",
+        "en": "Forgotten, so nothing installs them again:",
+    },
+    "Enter = 3": {
+        "fr": "Entrée = 3",
+        "en": "Enter = 3",
     },
     "Enter = all, n = none": {
         "fr": "Entrée = tous, n = aucun",
@@ -13804,6 +13832,14 @@ TRANSLATIONS = {
         "fr": "Les données sont là ; une règle globale les masque entièrement.",
         "en": "The data is there; a global rule hides all of it.",
     },
+    "No witness has the read access right on the model:": {
+        "fr": "Aucun témoin n'a le droit de lecture sur le modèle :",
+        "en": "No witness has the read access right on the model:",
+    },
+    "its access groups hide it, not a rule.": {
+        "fr": "ses groupes d'accès le masquent, pas une règle.",
+        "en": "its access groups hide it, not a rule.",
+    },
     "checked against": {
         "fr": "éprouvés avec",
         "en": "checked against",
@@ -14292,6 +14328,26 @@ TRANSLATIONS = {
         "fr": "au moment du palier lui-même, en montrant ce que chacune"
         " contient.",
         "en": "at the version bump itself, showing what each one holds.",
+    },
+    "OpenUpgrade is not declared for": {
+        "fr": "OpenUpgrade n'est pas déclaré pour",
+        "en": "OpenUpgrade is not declared for",
+    },
+    "the migration will stop before that step.": {
+        "fr": "la migration s'arrêtera avant cette étape.",
+        "en": "the migration will stop before that step.",
+    },
+    "OpenUpgrade is missing for Odoo": {
+        "fr": "OpenUpgrade est absent pour Odoo",
+        "en": "OpenUpgrade is missing for Odoo",
+    },
+    "Declare its branch in": {
+        "fr": "Déclarez sa branche dans",
+        "en": "Declare its branch in",
+    },
+    "once OCA publishes it, sync, then rerun": {
+        "fr": "dès qu'OCA la publie, synchronisez, puis relancez",
+        "en": "once OCA publishes it, sync, then rerun",
     },
     "Press to continue": {
         "fr": "Appuyez pour continuer",
