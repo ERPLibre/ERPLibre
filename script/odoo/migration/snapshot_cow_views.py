@@ -93,6 +93,9 @@ def collect(database):
     and pipes, so no hand-made separator survives it.
     """
     available = existing_columns(database)
+    # website_id vient du module website : sans lui, aucune copie COW.
+    if "website_id" not in available:
+        return []
     lst_column = [name for name in WANTED_COLUMN if name in available]
     select = ", ".join(lst_column) + ", arch_db::text AS arch_db"
     output = run_psql(

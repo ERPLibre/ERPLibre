@@ -18,6 +18,7 @@ simulé. C'est la seule façon de vérifier l'ordre, l'isolement des refus et
 l'arrêt de la boucle sans lancer Odoo sur une vraie base.
 """
 
+import ast
 import os
 import sys
 import unittest
@@ -239,11 +240,10 @@ class TestTheOrder(unittest.TestCase):
 
 class TestOneEntryCannotSinkThePass(unittest.TestCase):
     def test_a_healthy_category_is_purged_in_ONE_call(self):
-        # LE point du correctif. `purge()` d'un module appelle
-        # button_immediate_uninstall(), qui recharge le registre ENTIER —
-        # 5984 modules à relire. En purgeant ligne par ligne j'en faisais
-        # un rechargement PAR MODULE : mesuré, dix secondes chacun,
-        # dix-sept minutes pour neuf modules, sans rien afficher.
+        # `purge()` d'un module appelle button_immediate_uninstall(), qui
+        # recharge le registre ENTIER. Purger ligne par ligne ferait un
+        # rechargement PAR MODULE, chacun de plusieurs secondes sur une
+        # base qui porte des milliers de modules, sans rien afficher.
         journal = []
         lines = [
             FakeLine("a", journal=journal),
@@ -316,9 +316,9 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
 class TestTheReportSurvivesAnything(unittest.TestCase):
     """Sans rapport, on ne sait même pas si la base a été touchée.
 
-    Vécu : `create({})` échouait, l'erreur était notée mais la transaction
-    restait AVORTÉE. La lecture de nom suivante mourait dessus, hors de tout
-    garde, et le script entier s'arrêtait — aucun rapport, juste une trace.
+    Quand `create({})` échoue, l'erreur est notée mais la transaction reste
+    AVORTÉE. Une lecture de nom faite hors de tout garde meurt alors dessus,
+    et le script entier s'arrête — aucun rapport, juste une trace.
     """
 
     def test_reading_the_names_is_inside_the_guard(self):
@@ -368,18 +368,35 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
 class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
     """Dix-sept minutes sans une ligne, et l'on croit à une boucle infinie.
 
-    Vécu, sur test_neutralize_upgrade_16 : l'outil affichait « ⧖ Nettoyage
-    de … » puis PLUS RIEN. Le processus travaillait — zéro verrou en
-    attente, des requêtes qui changeaient à chaque instantané — mais un
-    travail qui avance et un blocage se ressemblent trait pour trait quand
-    aucun des deux ne parle. On interrompt alors une réparation à moitié
+    Un outil qui affiche « ⧖ Nettoyage de … » puis PLUS RIEN peut très bien
+    travailler — aucun verrou en attente, des requêtes qui changent à chaque
+    instantané — mais un travail qui avance et un blocage se ressemblent
+    trait pour trait quand aucun des deux ne parle. On interrompt alors une réparation à moitié
     faite, ce qui est le pire des deux mondes.
     """
 
     def test_the_pushed_script_announces_what_it_does(self):
         source = cleanup.build_script(1, False)
         self.assertIn(cleanup.STEP, source)
-        self.assertIn("flush=True", source)
+        self.assertIn("sys.stdout.flush()", source)
+
+    def test_the_pushed_script_stays_python_2(self):
+        """Il est exécuté par le shell de la version active, Odoo 10 et son
+        Python 2.7 compris : une f-string ou un print(..., flush=) y est une
+        erreur de syntaxe, et le nettoyage meurt avant d'avoir commencé."""
+        arbre = ast.parse(cleanup.build_script(1, False))
+        self.assertFalse(
+            [n for n in ast.walk(arbre) if isinstance(n, ast.JoinedStr)]
+        )
+        self.assertFalse(
+            [
+                k
+                for n in ast.walk(arbre)
+                if isinstance(n, ast.Call)
+                for k in n.keywords
+                if k.arg == "flush"
+            ]
+        )
 
     def test_it_announces_each_pass(self):
         source = cleanup.build_script(1, False)
@@ -499,17 +516,54 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
         )
 
 
+class TestTheScriptDeclaresItsEncoding(unittest.TestCase):
+    """Odoo 9 et 10 lisent l'entrée du shell comme un fichier Python 2.
+
+    Un script non ASCII sans déclaration d'encodage y meurt en erreur de
+    syntaxe avant sa première ligne, et le rapport manque.
+    """
+
+    def pousser(self, script):
+        import io
+
+        class FauxProcessus:
+            def __init__(self):
+                self.stdin = io.StringIO()
+                self.stdin.close = lambda: None
+                self.stdout = iter(
+                    [f"{cleanup.START}\n", "{}\n", f"{cleanup.END}\n"]
+                )
+                self.pid = -1
+
+            def wait(self, timeout=None):
+                return 0
+
+            def poll(self):
+                return 0
+
+        faux = FauxProcessus()
+        original = cleanup.subprocess.Popen
+        cleanup.subprocess.Popen = lambda *a, **kw: faux
+        self.addCleanup(setattr, cleanup.subprocess, "Popen", original)
+        cleanup.run_shell("db", "./config.conf", script)
+        return faux.stdin.getvalue()
+
+    def test_un_script_sans_declaration_la_recoit(self):
+        envoye = self.pousser("print('modèle')\n")
+        self.assertEqual(envoye, "# -*- coding: utf-8 -*-\nprint('modèle')\n")
+
+    def test_une_declaration_presente_n_est_pas_doublee(self):
+        envoye = self.pousser(cleanup.SHELL_SCRIPT)
+        self.assertEqual(envoye, cleanup.SHELL_SCRIPT)
+
+
 class TestTheCascadeThatKilledEverything(unittest.TestCase):
-    """Vécu, sur test_neutralize_upgrade_13 : sept catégories mortes d'une.
+    """Une catégorie en échec ne doit pas emporter les six autres.
 
-       passe 1 : 0 purgés
-    ⚠️ 0 purgés ; 7 n'ont pas pu l'être :
-       - [modules] - : savepoint "10eb6971..." does not exist
-       - [columns] - : current transaction is aborted, commands ignored
-       ... et ainsi de suite jusqu'à la dernière.
-
-    Une seule panne, six victimes. La cause n'était pas dans OCA mais chez
-    nous : on n'a jamais remis la transaction d'aplomb après l'échec.
+    Une entrée qui échoue laisse la transaction avortée ; si rien ne la
+    remet d'aplomb, chaque catégorie suivante meurt sur « savepoint does
+    not exist » ou « current transaction is aborted », et le rapport
+    annonce 0 purgé sur toute la ligne pour une seule panne.
     """
 
     def build(self):

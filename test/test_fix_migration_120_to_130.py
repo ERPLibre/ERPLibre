@@ -201,6 +201,13 @@ class TestItLeavesNothingBehind(Base):
         )
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
+    def test_a_database_without_website_does_not_crash(self):
+        # Des vues, mais pas le module website : website_page manque.
+        self.prepare([('<a href="#a%C3%A9">x</a>', False)])
+        self.sql("DROP TABLE website_page")
+        self.applique()
+        self.assertEqual(self.arch(), '<a href="#a%C3%A9">x</a>')
+
 
 class TestTheFileIsWiredIn(unittest.TestCase):
     def test_the_name_matches_what_the_driver_looks_for(self):

@@ -72,8 +72,23 @@ RE_FIRST_TAG = re.compile(r"<\s*([A-Za-z_][\w.:-]*)")
 SPEC_ROOT_TAG = ("data", "xpath")
 
 
+def has_website_column(database):
+    """True when ir_ui_view carries website_id, which the website module adds.
+
+    Without it the database has no COW copy at all, and every query below
+    would fail on the missing column.
+    """
+    return "website_id" in run_sql(
+        database,
+        "SELECT column_name FROM information_schema.columns"
+        " WHERE table_name='ir_ui_view' AND column_name='website_id'",
+    )
+
+
 def query_cow_views(database):
     """Return [(id, key, mode, website_id, arch)] for every website COW view."""
+    if not has_website_column(database):
+        return []
     sql = (
         "SELECT id, COALESCE(key, ''), mode, website_id,"
         " replace(left(COALESCE(arch_db::text, ''), 400), chr(10), ' ')"
@@ -152,6 +167,8 @@ def find_module_dir(odoo_version, module_name):
     lst_pattern = [
         os.path.join(odoo_version, "odoo", "addons", module_name),
         os.path.join(odoo_version, "odoo", "odoo", "addons", module_name),
+        # Odoo 8 et 9 : paquet openerp.
+        os.path.join(odoo_version, "odoo", "openerp", "addons", module_name),
         os.path.join(odoo_version, "addons", "*", module_name),
     ]
     for pattern in lst_pattern:
@@ -223,6 +240,8 @@ def query_cow_archs(database):
     même pas du XML. Et `arch_db` est un jsonb par langue depuis la 17 :
     une page cassée en fr_CA et saine en en_US, cela existe, on l'a vu.
     """
+    if not has_website_column(database):
+        return []
     jsonb = "jsonb" in run_sql(
         database,
         "SELECT data_type FROM information_schema.columns"

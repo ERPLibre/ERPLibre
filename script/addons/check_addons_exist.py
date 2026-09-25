@@ -108,9 +108,12 @@ def main():
     for module in lst_module:
         for path in lst_addons_path:
             module_path = os.path.join(path, module)
-            manifest_file_path = os.path.join(module_path, "__manifest__.py")
             if os.path.isdir(module_path):
-                if os.path.isfile(manifest_file_path):
+                # Odoo 8 et 9 ne lisent que __openerp__.py.
+                if any(
+                    os.path.isfile(os.path.join(module_path, nom))
+                    for nom in ("__manifest__.py", "__openerp__.py")
+                ):
                     dct_module_exist[module].append(module_path)
                 else:
                     dct_module_exist_empty[module].append(module_path)

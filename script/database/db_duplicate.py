@@ -163,12 +163,19 @@ def script_python(source, cible, neutraliser, config):
     où se connecter ni où sont les addons, et la duplication échoue après
     avoir DÉJÀ créé la base.
     """
+    # openerp d'abord : en Odoo 8 et 9, le chemin ajouté porte aussi un
+    # script odoo.py, qu'« import odoo » prendrait pour le paquet.
     return (
+        "import importlib\n"
         "import sys\n"
         "sys.path.insert(0, %r)\n"
-        "import odoo\n"
+        "try:\n"
+        "    import openerp as odoo\n"
+        "except ImportError:\n"
+        "    import odoo\n"
         "odoo.tools.config.parse_config(['-c', %r])\n"
-        "from odoo.service.db import exp_duplicate_database\n"
+        "exp_duplicate_database = importlib.import_module(\n"
+        "    odoo.__name__ + '.service.db').exp_duplicate_database\n"
         "exp_duplicate_database(%r, %r%s)\n"
         % (
             chemins_odoo()[1],

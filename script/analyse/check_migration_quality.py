@@ -434,8 +434,6 @@ def chain(dct):
 META_SQL = """
 SELECT 'odoo', latest_version FROM ir_module_module WHERE name = 'base'
 UNION ALL SELECT 'view', count(*)::text FROM ir_ui_view
-UNION ALL SELECT 'view_cow', count(*)::text FROM ir_ui_view
-    WHERE website_id IS NOT NULL
 UNION ALL SELECT 'menu', count(*)::text FROM ir_ui_menu
 UNION ALL SELECT 'action', count(*)::text FROM ir_act_window
 UNION ALL SELECT 'attachment', count(*)::text FROM ir_attachment
@@ -496,6 +494,14 @@ def inspect(database):
         return etat
     etat["exists"] = True
     dct_meta = {ligne[0]: ligne[1] for ligne in meta if len(ligne) > 1}
+    # Hors de META_SQL : website_id vient du module website, et une base
+    # qui ne l'a pas ferait échouer toute la requête — donc passer pour
+    # absente. Sans la colonne, il n'y a aucune copie COW.
+    cow = run_psql(
+        database,
+        "SELECT count(*) FROM ir_ui_view WHERE website_id IS NOT NULL",
+    )
+    dct_meta["view_cow"] = cow[0][0] if cow else "0"
     etat["odoo"] = (dct_meta.get("odoo") or "?").rsplit(".", 2)[0]
     for cle in (
         "view",

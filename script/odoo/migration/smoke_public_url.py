@@ -155,6 +155,10 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
             config_path,
             "-d",
             database,
+            # -d ne restreint pas les bases servies quand la configuration
+            # porte un dbfilter — Odoo 10 écrit « .* » par défaut : /web/login
+            # menait alors au sélecteur de bases, sans formulaire à remplir.
+            "--db-filter=^%s$" % re.escape(database),
             "--http-port",
             str(port),
             "--log-level=warn",

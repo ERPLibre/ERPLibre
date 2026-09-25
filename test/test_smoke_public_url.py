@@ -527,5 +527,32 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         )
 
 
+class TestLeServeurNeSertQueLaBaseTestee(unittest.TestCase):
+    """-d ne restreint pas les bases servies quand la configuration porte un
+    dbfilter, et Odoo 10 écrit « .* » par défaut : /web/login menait alors au
+    sélecteur de bases, et le back-office n'était jamais parcouru."""
+
+    def test_le_filtre_ne_laisse_passer_que_cette_base(self):
+        import re
+        import subprocess
+
+        vus = []
+
+        class Faux:
+            def __init__(self, args, **kwargs):
+                vus.append(args)
+
+        original = subprocess.Popen
+        subprocess.Popen = Faux
+        self.addCleanup(setattr, subprocess, "Popen", original)
+        smoke.start_server("ma.base", 8169)
+        filtre = [a for a in vus[0] if a.startswith("--db-filter=")]
+        self.assertEqual(1, len(filtre), vus[0])
+        motif = filtre[0].split("=", 1)[1]
+        self.assertTrue(re.match(motif, "ma.base"))
+        self.assertIsNone(re.match(motif, "maxbase"))
+        self.assertIsNone(re.match(motif, "ma.base_upgrade_11"))
+
+
 if __name__ == "__main__":
     unittest.main()

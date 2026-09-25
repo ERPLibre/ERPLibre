@@ -31,8 +31,8 @@ Deux cas mesurés sur une chaîne 12 → 18 réelle :
                          automatique sur les journaux de trésorerie.
 
 On n'invente rien : on appelle les méthodes d'Odoo, celles-là mêmes que
-le geste manquant aurait appelées. `_load_data` est rejoué avec
-`ignore_duplicates`, donc l'outil se relance sans risque.
+le geste manquant aurait appelées. `_load_data` ne reçoit que les
+modèles absents, donc l'outil se relance sans risque.
 
 Lecture seule par défaut. `--apply` écrit, puis RELIT pour vérifier.
 """
@@ -106,7 +106,13 @@ try:
         rapport["pricelist_absent"] = True
 
     # ── Modèles de rapprochement bancaire ───────────────────────────
-    if "account.reconcile.model" in env:
+    # Le rechargement passe par res.company.chart_template, champ de la
+    # 17 : avant elle, l'AttributeError emportait tout le rapport, liste
+    # de prix comprise. Ces versions n'ont pas ce chemin de réparation.
+    if (
+        "account.reconcile.model" in env
+        and "chart_template" in env["res.company"]._fields
+    ):
         Modele = env["account.reconcile.model"].sudo()
         rapport["reconcile_before"] = Modele.search_count([])
         # Sans journal de trésorerie il n'y a rien à rapprocher : créer
@@ -129,11 +135,26 @@ try:
                     continue
                 # `_load_data` est le chemin d'Odoo : il pose les xmlid
                 # préfixés par la société, donc un rechargement futur du
-                # plan comptable ne fera pas de doublon.
-                Gabarit.with_company(societe)._load_data(
-                    {{"account.reconcile.model": donnees}},
-                    ignore_duplicates=True,
-                )
+                # plan comptable ne fera pas de doublon. Il n'ajoute que
+                # les modèles absents : 17 et 18 le font par
+                # ignore_duplicates ; 19 n'a plus ce paramètre et RÉÉCRIT
+                # un enregistrement dont l'xmlid existe, d'où le tri ici,
+                # qui garde intact un modèle modifié à la main.
+                lie = Gabarit.with_company(societe)
+                code = getattr(lie._load_data, "__code__", None)
+                if code and "ignore_duplicates" in code.co_varnames:
+                    lie._load_data(
+                        {{"account.reconcile.model": donnees}},
+                        ignore_duplicates=True,
+                    )
+                else:
+                    absents = dict(
+                        (cle, valeurs)
+                        for cle, valeurs in donnees.items()
+                        if not lie.ref(cle, raise_if_not_found=False)
+                    )
+                    if absents:
+                        lie._load_data({{"account.reconcile.model": absents}})
             env.cr.commit()
         rapport["reconcile_after"] = Modele.search_count([])
     else:
