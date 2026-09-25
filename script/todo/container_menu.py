@@ -521,7 +521,13 @@ class ContainerMenuMixin:
         return sorted(versions, key=lambda v: float(v), reverse=True)
 
     def _container_build_odoo(self):
-        """Construit l'image d'une version d'Odoo par docker_build.sh."""
+        """Construit l'image d'une ou de TOUTES les versions d'Odoo.
+
+        Le balayage ne s'arrête pas au premier échec : une version qui casse
+        n'apprend rien sur les suivantes, et les relancer une à une coûte des
+        heures. Le compte rendu final nomme ce qui est passé et ce qui est
+        tombé — sans lui, seule la dernière sortie reste à l'écran.
+        """
         prefixe = self._container_exige_docker()
         if prefixe is None:
             return
@@ -529,15 +535,38 @@ class ContainerMenuMixin:
         if not versions:
             print(f"⚠ {t('Unreadable version catalogue:')} {CATALOGUE}")
             return
-        rang = self._container_choix_numerote(t("Odoo version:"), versions)
+        rang = self._container_choix_numerote(
+            t("Odoo version:"), versions + [t("All versions")]
+        )
         if rang is None:
             return
-        version = versions[rang]
-        court = version.split(".")[0]
-        cmd = f"{prefixe}./script/docker/docker_build.sh --odoo_{court}"
+        toutes = rang == len(versions)
+        if toutes:
+            # Une image de production pèse une dizaine de gigaoctets : le dire
+            # AVANT, pendant qu'un disque plein est encore évitable.
+            print(f"\n⚠ {t('Every version: hours of work, tens of GB.')}")
+            if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
+                print(t("Nothing to do."))
+                return
+        cibles = versions if toutes else [versions[rang]]
+        sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
-            cmd += " --no-cache"
-        self.execute.exec_command_live(cmd, source_erplibre=False)
+            sans_cache = " --no-cache"
+
+        echecs = []
+        for version in cibles:
+            court = version.split(".")[0]
+            cmd = (
+                f"{prefixe}./script/docker/docker_build.sh"
+                f" --odoo_{court}{sans_cache}"
+            )
+            if self.execute.exec_command_live(cmd, source_erplibre=False):
+                echecs.append(version)
+        if len(cibles) > 1:
+            passees = [v for v in cibles if v not in echecs]
+            print(f"\n{t('Built:')} {', '.join(passees) or '-'}")
+            if echecs:
+                print(f"{t('Failed:')} {', '.join(echecs)}")
 
     def _container_compose(self):
         """Démarrer, arrêter, suivre ou lister la composition ERPLibre."""

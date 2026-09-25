@@ -237,6 +237,63 @@ class TestInventaire(Banc):
         self.assertEqual([], todo.execute.commandes)
 
 
+class TestConstructionOdoo(Banc):
+    def _banc(self, code=0):
+        todo = self.todo(code=code)
+        todo._container_exige_docker = lambda: ""
+        todo._container_versions_odoo = lambda: ["18.0", "17.0", "12.0"]
+        return todo
+
+    def test_une_version_choisie_ne_lance_qu_elle(self):
+        todo = self._banc()
+        with self.reponses(entrees=["n"], prompts=["3"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            ["./script/docker/docker_build.sh --odoo_12"],
+            todo.execute.commandes,
+        )
+
+    def test_toutes_les_lance_dans_l_ordre_du_catalogue(self):
+        todo = self._banc()
+        with self.reponses(entrees=["o", "n"], prompts=["4"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            [
+                "./script/docker/docker_build.sh --odoo_18",
+                "./script/docker/docker_build.sh --odoo_17",
+                "./script/docker/docker_build.sh --odoo_12",
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_toutes_demande_confirmation_avant_les_heures(self):
+        """Une image de production pèse une dizaine de Go : un refus doit
+        tout arrêter."""
+        todo = self._banc()
+        with self.reponses(entrees=["n"], prompts=["4"]):
+            todo._container_build_odoo()
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_un_echec_n_arrete_pas_le_balayage(self):
+        """Une version qui casse n'apprend rien sur les suivantes, et les
+        relancer une à une coûte des heures."""
+        todo = self._banc(code=1)
+        with self.reponses(entrees=["o", "n"], prompts=["4"]) as sortie:
+            todo._container_build_odoo()
+        self.assertEqual(3, len(todo.execute.commandes))
+        rendu = sortie.getvalue()
+        self.assertIn("18.0", rendu)
+        self.assertIn("12.0", rendu)
+
+    def test_le_sans_cache_ne_se_demande_qu_une_fois(self):
+        todo = self._banc()
+        with self.reponses(entrees=["o", "o"], prompts=["4"]):
+            todo._container_build_odoo()
+        for cmd in todo.execute.commandes:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(cmd.endswith(" --no-cache"))
+
+
 class TestVersionsOdoo(Banc):
     def test_elles_viennent_du_catalogue_la_plus_recente_en_tete(self):
         todo = self.todo()
