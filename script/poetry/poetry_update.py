@@ -24,6 +24,11 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
+# Le début d'une ligne de requirements qui désigne un FICHIER et non un
+# paquet : chemin absolu, relatif, ou URL de fichier.
+CHEMINS_LOCAUX = ("/", "./", "../", "file:")
+
+
 def get_config():
     """Parse command line arguments, extracting the config file name,
     returning the union of config file and command line arguments
@@ -108,9 +113,14 @@ def get_lst_requirements_txt(
 
 
 def get_lst_manifest_py(config, ignore_dir_startswith: list = None):
-    return get_file_from_glob(
-        config, "__manifest__.py", ignore_dir_startswith=ignore_dir_startswith
-    )
+    # Odoo 8 et 9 ne lisent que __openerp__.py ; 10 accepte les deux noms.
+    return [
+        fichier
+        for nom in ("__manifest__.py", "__openerp__.py")
+        for fichier in get_file_from_glob(
+            config, nom, ignore_dir_startswith=ignore_dir_startswith
+        )
+    ]
 
 
 # A file under one of these directories documents or illustrates, it does not
@@ -259,12 +269,25 @@ def combine_requirements(config):
                 b = a.strip()
                 if not b or b[0] == "#":
                     continue
+                if b.startswith(CHEMINS_LOCAUX):
+                    # Un chemin vers une roue livrée AVEC le module — la boîte
+                    # IoT d'Odoo 19 en déclare — n'est pas un paquet : aucun
+                    # dépôt ne le sert, Requirement() le refuse faute de nom,
+                    # et un marqueur qui le retiendrait pour ce serveur ne le
+                    # rendrait pas plus installable.
+                    continue
                 if " @ " in b:
                     # Support when requirement line is like "package @ git+https://URL"
                     b = b.split("@ ")[1]
                 if "#" in b:
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
+                if except_sign not in b:
+                    # « pycountry >= 0.19 » : des espaces autour de
+                    # l'opérateur, que « poetry add » 1.1 refuse d'un
+                    # ValueError. Une ligne à marqueur est réécrite plus bas
+                    # par Requirement, qui les retire déjà.
+                    b = re.sub(r"\s*(===|==|>=|<=|~=|!=|<|>|,)\s*", r"\1", b)
                 comment_depend = ""
                 resolved = resolve_marker(b, config.set_version_python)
                 if resolved is None:
