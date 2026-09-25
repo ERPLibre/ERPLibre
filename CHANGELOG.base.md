@@ -174,6 +174,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - TODO menus: the language is set only from Configuration, the duplicate entry in Execute is gone, and Fork moves from the main menu to Configuration. The main menu now numbers Telemetry 4 and Configuration 5. The language chooser shows a flag per language
 - Odoo 18 dependencies refreshed. `openai` is pinned to 2.x, whose 3.x requires an `idna` that Odoo 18 forbids; `fsspec` is pinned beside `s3fs`, which demands it at its own exact version, so the two move together; `meteostat` returns to 1.x, every 2.x capping `pytz` below 2024. PyMuPDF stays excluded on s390x, now declared in the requirements so a regeneration keeps it. Major bumps of `ujson` 6, `plotly` 7, `python-slugify` 9 and `sqlalchemy` 2.1 are not yet tested
 - Dependabot ignores the major versions of `meteostat`
+- Odoo 18 moves to pandas 3.0.6, cryptography 50 with pyopenssl 26.4, Pillow 12.3 and botocore/boto3 1.43.49 with aiobotocore 3.9.0 — the only aiobotocore whose botocore range holds 1.43.49. The seven modules that import pandas run their pandas calls unchanged; `freq='d'` in a Cybro attendance dashboard now warns and will break with pandas 4
+- Dependabot groups `aiobotocore`, `botocore` and `boto3` into one pull request, since each aiobotocore accepts only a narrow botocore range; security fixes still arrive on their own
 
 <!-- [fr] -->
 
@@ -204,6 +206,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Menus de TODO : la langue se règle seulement depuis Configuration, l'entrée en double dans Execute disparaît, et Fork quitte le menu principal pour Configuration. Le menu principal numérote désormais Télémétrie 4 et Configuration 5. Le choix de la langue montre un drapeau par langue
 - Dépendances d'Odoo 18 rafraîchies. `openai` est épinglé en 2.x, dont la 3.x exige un `idna` qu'Odoo 18 interdit ; `fsspec` est épinglé à côté de `s3fs`, qui l'exige à sa propre version exacte, si bien que les deux se montent ensemble ; `meteostat` revient en 1.x, toute 2.x plafonnant `pytz` sous 2024. PyMuPDF reste écarté sur s390x, désormais déclaré dans les requirements pour qu'une régénération le garde. Les montées majeures de `ujson` 6, `plotly` 7, `python-slugify` 9 et `sqlalchemy` 2.1 ne sont pas encore testées
 - Dependabot ignore les versions majeures de `meteostat`
+- Odoo 18 passe à pandas 3.0.6, cryptography 50 avec pyopenssl 26.4, Pillow 12.3 et botocore/boto3 1.43.49 avec aiobotocore 3.9.0 — le seul aiobotocore dont la plage de botocore contient 1.43.49. Les sept modules qui importent pandas exécutent leurs appels pandas sans changement ; `freq='d'` dans un tableau de bord de présence Cybro avertit désormais et cassera avec pandas 4
+- Dependabot réunit `aiobotocore`, `botocore` et `boto3` dans une seule demande de fusion, chaque aiobotocore n'acceptant qu'une plage étroite de botocore ; les correctifs de sécurité arrivent toujours seuls
 
 <!-- [en] -->
 ## Fixed
