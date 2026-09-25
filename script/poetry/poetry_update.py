@@ -24,6 +24,11 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
+# Le début d'une ligne de requirements qui désigne un FICHIER et non un
+# paquet : chemin absolu, relatif, ou URL de fichier.
+CHEMINS_LOCAUX = ("/", "./", "../", "file:")
+
+
 def get_config():
     """Parse command line arguments, extracting the config file name,
     returning the union of config file and command line arguments
@@ -258,6 +263,13 @@ def combine_requirements(config):
             for a in f.readlines():
                 b = a.strip()
                 if not b or b[0] == "#":
+                    continue
+                if b.startswith(CHEMINS_LOCAUX):
+                    # Un chemin vers une roue livrée AVEC le module — la boîte
+                    # IoT d'Odoo 19 en déclare — n'est pas un paquet : aucun
+                    # dépôt ne le sert, Requirement() le refuse faute de nom,
+                    # et un marqueur qui le retiendrait pour ce serveur ne le
+                    # rendrait pas plus installable.
                     continue
                 if " @ " in b:
                     # Support when requirement line is like "package @ git+https://URL"
