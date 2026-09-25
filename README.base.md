@@ -7,60 +7,192 @@
 
 # ERPLibre
 
-<!-- [en] -->
-
-ERPLibre is a CRM/ERP platform including automated installation, maintenance, and development of open source modules of
-the Odoo community version. It is a "soft-fork" of the Odoo Community Edition (OCE), meaning it aims at contributing
-back upstream.
-It is based on a set of production-ready modules, supported by the Odoo Community Association (OCA) and an
-ecosystem of specialized companies. This solution ensures digital sovereignty in a local environment while integrating
-pre-trained Generative Transformers (GPT), bringing an additional dimension to data management and automation.
-
-<!-- [fr] -->
-
-ERPLibre est une plateforme CRM/ERP incluant l'installation, la maintenance et le développement automatisés de modules
-open source de la version communautaire d'Odoo. C'est un "soft-fork" de l'Odoo Community Edition (OCE), ce qui signifie
-qu'il vise à contribuer en amont.
-Il est basé sur un ensemble de modules prêts pour la production, supportés par l'Odoo Community Association (OCA) et un
-écosystème d'entreprises spécialisées. Cette solution assure la souveraineté numérique dans un environnement local tout
-en intégrant des Transformers Génératifs Pré-entraînés (GPT), apportant une dimension supplémentaire à la gestion des
-données et à l'automatisation.
+[![License: AGPL v3](https://img.shields.io/github/license/ERPLibre/ERPLibre)](LICENSE)
+[![Version](https://img.shields.io/github/v/tag/ERPLibre/ERPLibre?label=version)](https://github.com/ERPLibre/ERPLibre/tags)
+[![Stars](https://img.shields.io/github/stars/ERPLibre/ERPLibre?style=flat)](https://github.com/ERPLibre/ERPLibre/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/graphs/contributors)
+[![Commit activity](https://img.shields.io/github/commit-activity/y/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/pulse)
+[![Last commit](https://img.shields.io/github/last-commit/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/commits)
+[![Mastodon](https://img.shields.io/badge/Mastodon-@erplibre-6364FF?logo=mastodon&logoColor=white)](https://fosstodon.org/@erplibre)
 
 <!-- [en] -->
 
-Follow us on Mastodon : https://fosstodon.org/@erplibre
+**The free, sovereign ERP/CRM that comes with its whole toolbox.**
+
+Odoo Community delivers the software. ERPLibre delivers everything needed to
+run it for years: a one-command install on ten platforms, eleven Odoo versions
+side by side, guided database migration from one version to the next, a module
+generator, deployment to containers, virtual machines or Proxmox, and an AI
+assistant that can run entirely on your own hardware.
+
+Your data stays where you put it. The modules come from the Odoo Community
+Association (OCA) and an ecosystem of specialized companies, pinned and
+reproducible. Every change ERPLibre makes to Odoo or to those modules is meant
+to go back upstream.
 
 <!-- [fr] -->
 
-Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
+**L'ERP/CRM libre et souverain, livré avec toute sa boîte à outils.**
+
+Odoo Community livre le logiciel. ERPLibre livre tout ce qu'il faut pour
+l'exploiter pendant des années : une installation en une commande sur dix
+plateformes, onze versions d'Odoo côte à côte, la migration guidée d'une base
+d'une version à la suivante, un générateur de modules, le déploiement en
+conteneur, en machine virtuelle ou sur Proxmox, et un assistant IA qui peut
+tourner entièrement sur votre propre matériel.
+
+Vos données restent là où vous les mettez. Les modules viennent de l'Odoo
+Community Association (OCA) et d'un écosystème d'entreprises spécialisées,
+figés et reproductibles. Chaque modification qu'ERPLibre apporte à Odoo ou à
+ces modules est destinée à retourner en amont.
+
+<!-- [en] -->
+
+# ERPLibre in numbers
+
+The badges above are live. The table below was measured on version 1.8.0.
+
+<!-- [fr] -->
+
+# ERPLibre en chiffres
+
+Les badges ci-dessus sont en direct. Le tableau ci-dessous a été relevé sur la
+version 1.8.0.
+
+<!-- [en] -->
+
+| | |
+|---|---|
+| **11** Odoo versions | from 10.0 to 20.0, installable side by side |
+| **3,300+** modules | installable on Odoo 18, from **137** Git repositories |
+| **23** organizations | supply those repositories; the OCA alone supplies **109** |
+| **10** platforms | Linux distributions, macOS, Windows — on amd64, arm64 and s390x |
+| **400+** commands | in the interactive TODO menu, in English and French |
+| **6,700+** tests | guard the tooling, from menu numbering to virtual machine installs |
+| **1,500+** commits | since 2020, **845** of them over the last twelve months |
+
+<!-- [fr] -->
+
+| | |
+|---|---|
+| **11** versions d'Odoo | de 10.0 à 20.0, installables côte à côte |
+| **3 300+** modules | installables sur Odoo 18, issus de **137** dépôts Git |
+| **23** organisations | fournissent ces dépôts ; l'OCA en fournit à elle seule **109** |
+| **10** plateformes | distributions Linux, macOS, Windows — en amd64, arm64 et s390x |
+| **400+** commandes | dans le menu interactif TODO, en français et en anglais |
+| **6 700+** tests | gardent l'outillage, de la numérotation des menus à l'installation de machines virtuelles |
+| **1 500+** commits | depuis 2020, dont **845** dans les douze derniers mois |
 
 <!-- [en] -->
 
 # Features
 
-- **Multi-version Odoo support** : run Odoo 12.0, 13.0, 14.0, 15.0, 16.0, 17.0 and 18.0 in the same workspace, with independent Python virtual environments (`.venv.erplibre` and `.venv.odooXX`)
-- **Interactive CLI (TODO.py)** : guided interactive tool for installation, execution, database management, code formatting, mobile compilation, and more. Launch it with `make`
-- **Code generator** : generate Odoo modules automatically with support for views, portal, snippets, inheritance, i18n, and JavaScript
-- **Selenium automation** : web testing and automation with Selenium Grid, video recording, and login automation
-- **Mobile application** : ERPLibre Home Mobile (Owl + Capacitor), compiled and deployed via TODO.py
-- **Docker deployment** : production-ready Docker images with PostgreSQL 18 and PostGIS
-- **Deployment tools** : Nginx, Apache, Cloudflare DDNS, Certbot SSL, systemd services
-- **Database tools** : backup, restore, clone, migration between versions, production-to-dev migration
-- **Performance tools** : request-per-second measurement, parallel test execution, coverage analysis
+### Install anywhere, in one command
+
+`make` detects the system, installs what is missing and opens **TODO**, a
+guided menu that drives everything below — no command to memorize. Ubuntu,
+Debian, Fedora, AlmaLinux, openSUSE, Arch, NixOS (declaratively), macOS and
+Windows, on three architectures. The Docker images, which Podman runs too,
+ship with PostgreSQL 18 and PostGIS.
+
+### Every Odoo version, side by side
+
+Odoo 10.0 to 20.0 each get their own Python and virtual environment, managed
+by mise or pyenv. Switch with `make switch_odoo_18`; the other versions stay
+installed.
+
+### Migrate forward without starting over
+
+A guided database migration climbs one Odoo version at a time with
+OpenUpgrade, keeps its progress, resumes after an interruption and can rewind
+to a previous step. A production database can be neutralized into a safe
+development copy.
+
+### Build modules faster
+
+The code generator produces complete Odoo modules — views, portal, snippets,
+inheritance, i18n, JavaScript — or clones an existing one. Formatting, Git
+hooks, per-module tests with coverage and Selenium automation are one menu
+away.
+
+### Deploy and operate
+
+Deploy locally, in QEMU/KVM virtual machines or on Proxmox VE. Nginx, Apache,
+Certbot SSL, dynamic DNS and systemd services are configured for you. VPN, SSH,
+KeePass secrets and a dependency security audit are built in.
+
+### Understand and transform your data
+
+Back up, restore and clone databases; analyse a database's models, views and
+custom fields; transform and anonymize data before sharing it.
+
+### AI, local first
+
+Ask a local or remote language model from the terminal, discover the model
+servers on your network, and use AI-assisted development tools. Commits made
+with AI are declared, never hidden — see [AI_POLICY](AI_POLICY.md).
+
+### And more
+
+ERPLibre Home Mobile (Owl + Capacitor), a terminal mail client, performance
+measurement and parallel test execution.
 
 <!-- [fr] -->
 
 # Fonctionnalités
 
-- **Support multi-version Odoo** : exécutez Odoo 12.0, 13.0, 14.0, 15.0, 16.0, 17.0 et 18.0 dans le même espace de travail, avec des environnements virtuels Python indépendants (`.venv.erplibre` et `.venv.odooXX`)
-- **CLI interactif (TODO.py)** : outil interactif guidé pour l'installation, l'exécution, la gestion de bases de données, le formatage de code, la compilation mobile, et plus encore. Lancez-le avec `make`
-- **Générateur de code** : générez des modules Odoo automatiquement avec support des vues, portail, snippets, héritage, i18n et JavaScript
-- **Automatisation Selenium** : tests web et automatisation avec Selenium Grid, enregistrement vidéo et automatisation de connexion
-- **Application mobile** : ERPLibre Home Mobile (Owl + Capacitor), compilée et déployée via TODO.py
-- **Déploiement Docker** : images Docker prêtes pour la production avec PostgreSQL 18 et PostGIS
-- **Outils de déploiement** : Nginx, Apache, Cloudflare DDNS, Certbot SSL, services systemd
-- **Outils de base de données** : sauvegarde, restauration, clonage, migration entre versions, migration production vers développement
-- **Outils de performance** : mesure de requêtes par seconde, exécution de tests en parallèle, analyse de couverture
+### Installer partout, en une commande
+
+`make` détecte le système, installe ce qui manque et ouvre **TODO**, un menu
+guidé qui pilote tout ce qui suit — aucune commande à retenir. Ubuntu, Debian,
+Fedora, AlmaLinux, openSUSE, Arch, NixOS (de façon déclarative), macOS et
+Windows, sur trois architectures. Les images Docker, que Podman exécute aussi,
+embarquent PostgreSQL 18 et PostGIS.
+
+### Toutes les versions d'Odoo, côte à côte
+
+Odoo 10.0 à 20.0 ont chacune leur Python et leur environnement virtuel, gérés
+par mise ou pyenv. Changez avec `make switch_odoo_18` ; les autres versions
+restent installées.
+
+### Migrer vers l'avant sans tout recommencer
+
+Une migration de base guidée monte d'une version d'Odoo à la fois avec
+OpenUpgrade, garde sa progression, reprend après une interruption et peut
+revenir à une étape précédente. Une base de production se neutralise en une
+copie de développement sans risque.
+
+### Bâtir des modules plus vite
+
+Le générateur de code produit des modules Odoo complets — vues, portail,
+snippets, héritage, i18n, JavaScript — ou en clone un existant. Formatage,
+hooks Git, tests par module avec couverture et automatisation Selenium sont à
+un menu de distance.
+
+### Déployer et exploiter
+
+Déployez en local, dans des machines virtuelles QEMU/KVM ou sur Proxmox VE.
+Nginx, Apache, SSL Certbot, DNS dynamique et services systemd sont configurés
+pour vous. VPN, SSH, secrets KeePass et audit de sécurité des dépendances sont
+intégrés.
+
+### Comprendre et transformer vos données
+
+Sauvegardez, restaurez et clonez des bases ; analysez les modèles, les vues et
+les champs personnalisés d'une base ; transformez et anonymisez les données
+avant de les partager.
+
+### L'IA, en local d'abord
+
+Interrogez un modèle de langage local ou distant depuis le terminal, découvrez
+les serveurs de modèles de votre réseau et utilisez des outils de
+développement assistés par IA. Les commits faits avec l'IA sont déclarés,
+jamais cachés — voir [AI_POLICY](AI_POLICY.md).
+
+### Et encore
+
+ERPLibre Home Mobile (Owl + Capacitor), un client de courriel en terminal, la
+mesure de performance et l'exécution parallèle des tests.
 
 <!-- [en] -->
 
@@ -74,6 +206,8 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 
 | Odoo version | Python  | Status     |
 |--------------|---------|------------|
+| 20.0         | 3.14.7  | Upstream   |
+| 19.0         | 3.12.10 | Upstream   |
 | 18.0         | 3.12.10 | Active     |
 | 17.0         | 3.10.18 | Inactive   |
 | 16.0         | 3.10.18 | Inactive   |
@@ -81,8 +215,13 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 | 14.0         | 3.8.20  | Deprecated |
 | 13.0         | 3.7.17  | Deprecated |
 | 12.0         | 3.7.17  | Deprecated |
+| 11.0         | 3.7.17  | Upstream, deprecated |
+| 10.0         | 2.7.18  | Upstream, deprecated |
 
 <!-- [en] -->
+
+**Upstream** versions carry the Odoo and OCA repositories only, plus the
+neutralization modules; they serve as migration steps.
 
 Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
@@ -92,6 +231,9 @@ its own interpreter, **3.14.7**, set by `conf/python-erplibre-version`. Where a
 distribution does not carry it, pyenv compiles it.
 
 <!-- [fr] -->
+
+Les versions **Upstream** ne portent que les dépôts d'Odoo et de l'OCA, plus
+les modules de neutralisation ; elles servent d'étapes de migration.
 
 Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
@@ -407,7 +549,7 @@ make run
 
 # Migrate a database between Odoo versions
 
-From a fresh clone, TODO installs every Odoo version from 12 to 18, then opens
+From a fresh clone, TODO installs every Odoo version from 10 to 20, then opens
 the database migration. Each `>` line is a key to type, followed by Enter:
 
 ```text
@@ -416,7 +558,7 @@ cd ERPLibre
 make
 > 2   Install (make also installs ERPLibre locally and on the system)
 > y   Install the system dependencies first (n if already done)
-> w   Install every Odoo version, from 12 to 18
+> w   Install every Odoo version, from 10 to 20
 > 1   Execute
 > 1   Code
 > 7   Update
@@ -441,7 +583,7 @@ The migration itself is described in [MIGRATION](doc/MIGRATION.md).
 
 # Migrer une base de données entre versions d'Odoo
 
-Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 12 à 18,
+Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 10 à 20,
 puis ouvre la migration de base de données. Chaque ligne `>` est une touche à
 taper, suivie d'Entrée :
 
@@ -451,7 +593,7 @@ cd ERPLibre
 make
 > 2   Installer (make installe aussi ERPLibre en local et sur le système)
 > y   Installer d'abord les dépendances système (n si c'est déjà fait)
-> w   Installer toutes les versions d'Odoo, de 12 à 18
+> w   Installer toutes les versions d'Odoo, de 10 à 20
 > 1   Exécuter
 > 1   Code
 > 7   Mise à jour
@@ -528,15 +670,39 @@ time make test_full_fast
 
 <!-- [en] -->
 
-# Contributing
+# Community
 
-See [CONTRIBUTION.md](doc/CONTRIBUTION.md) for guidelines.
+ERPLibre has been built in the open since 2020, in English and French, by
+developers, integrators and users who run it in production. It stands on the
+work of the [Odoo Community Association](https://odoo-community.org), whose
+repositories make up most of its modules, and gives its fixes back upstream.
+
+- **Follow** the project on [Mastodon](https://fosstodon.org/@erplibre).
+- **Ask or report** through [GitHub issues](https://github.com/ERPLibre/ERPLibre/issues).
+- **Contribute** code, translations or documentation: start with
+  [CONTRIBUTION](doc/CONTRIBUTION.md), which also thanks the people and
+  organizations behind the project.
+- **Use AI openly**: [AI_POLICY](AI_POLICY.md) explains how AI-assisted
+  contributions are declared.
 
 <!-- [fr] -->
 
-# Contribution
+# Communauté
 
-Consultez [CONTRIBUTION.md](doc/CONTRIBUTION.md) pour les directives.
+ERPLibre se construit en public depuis 2020, en français et en anglais, par
+des développeurs, des intégrateurs et des utilisateurs qui l'exploitent en
+production. Il repose sur le travail de l'[Odoo Community
+Association](https://odoo-community.org), dont les dépôts forment l'essentiel
+de ses modules, et lui retourne ses correctifs.
+
+- **Suivez** le projet sur [Mastodon](https://fosstodon.org/@erplibre).
+- **Posez une question ou signalez un problème** par les
+  [issues GitHub](https://github.com/ERPLibre/ERPLibre/issues).
+- **Contribuez** du code, des traductions ou de la documentation : commencez
+  par [CONTRIBUTION](doc/CONTRIBUTION.md), qui remercie aussi les personnes et
+  les organisations derrière le projet.
+- **Utilisez l'IA ouvertement** : [AI_POLICY](AI_POLICY.md) explique comment
+  les contributions assistées par IA sont déclarées.
 
 <!-- [en] -->
 

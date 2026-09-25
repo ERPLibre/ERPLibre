@@ -2,30 +2,101 @@
 
 # ERPLibre
 
+[![License: AGPL v3](https://img.shields.io/github/license/ERPLibre/ERPLibre)](LICENSE)
+[![Version](https://img.shields.io/github/v/tag/ERPLibre/ERPLibre?label=version)](https://github.com/ERPLibre/ERPLibre/tags)
+[![Stars](https://img.shields.io/github/stars/ERPLibre/ERPLibre?style=flat)](https://github.com/ERPLibre/ERPLibre/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/graphs/contributors)
+[![Commit activity](https://img.shields.io/github/commit-activity/y/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/pulse)
+[![Last commit](https://img.shields.io/github/last-commit/ERPLibre/ERPLibre)](https://github.com/ERPLibre/ERPLibre/commits)
+[![Mastodon](https://img.shields.io/badge/Mastodon-@erplibre-6364FF?logo=mastodon&logoColor=white)](https://fosstodon.org/@erplibre)
 
-ERPLibre est une plateforme CRM/ERP incluant l'installation, la maintenance et le développement automatisés de modules
-open source de la version communautaire d'Odoo. C'est un "soft-fork" de l'Odoo Community Edition (OCE), ce qui signifie
-qu'il vise à contribuer en amont.
-Il est basé sur un ensemble de modules prêts pour la production, supportés par l'Odoo Community Association (OCA) et un
-écosystème d'entreprises spécialisées. Cette solution assure la souveraineté numérique dans un environnement local tout
-en intégrant des Transformers Génératifs Pré-entraînés (GPT), apportant une dimension supplémentaire à la gestion des
-données et à l'automatisation.
+
+**L'ERP/CRM libre et souverain, livré avec toute sa boîte à outils.**
+
+Odoo Community livre le logiciel. ERPLibre livre tout ce qu'il faut pour
+l'exploiter pendant des années : une installation en une commande sur dix
+plateformes, onze versions d'Odoo côte à côte, la migration guidée d'une base
+d'une version à la suivante, un générateur de modules, le déploiement en
+conteneur, en machine virtuelle ou sur Proxmox, et un assistant IA qui peut
+tourner entièrement sur votre propre matériel.
+
+Vos données restent là où vous les mettez. Les modules viennent de l'Odoo
+Community Association (OCA) et d'un écosystème d'entreprises spécialisées,
+figés et reproductibles. Chaque modification qu'ERPLibre apporte à Odoo ou à
+ces modules est destinée à retourner en amont.
 
 
-Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
+# ERPLibre en chiffres
+
+Les badges ci-dessus sont en direct. Le tableau ci-dessous a été relevé sur la
+version 1.8.0.
+
+
+| | |
+|---|---|
+| **11** versions d'Odoo | de 10.0 à 20.0, installables côte à côte |
+| **3 300+** modules | installables sur Odoo 18, issus de **137** dépôts Git |
+| **23** organisations | fournissent ces dépôts ; l'OCA en fournit à elle seule **109** |
+| **10** plateformes | distributions Linux, macOS, Windows — en amd64, arm64 et s390x |
+| **400+** commandes | dans le menu interactif TODO, en français et en anglais |
+| **6 700+** tests | gardent l'outillage, de la numérotation des menus à l'installation de machines virtuelles |
+| **1 500+** commits | depuis 2020, dont **845** dans les douze derniers mois |
 
 
 # Fonctionnalités
 
-- **Support multi-version Odoo** : exécutez Odoo 12.0, 13.0, 14.0, 15.0, 16.0, 17.0 et 18.0 dans le même espace de travail, avec des environnements virtuels Python indépendants (`.venv.erplibre` et `.venv.odooXX`)
-- **CLI interactif (TODO.py)** : outil interactif guidé pour l'installation, l'exécution, la gestion de bases de données, le formatage de code, la compilation mobile, et plus encore. Lancez-le avec `make`
-- **Générateur de code** : générez des modules Odoo automatiquement avec support des vues, portail, snippets, héritage, i18n et JavaScript
-- **Automatisation Selenium** : tests web et automatisation avec Selenium Grid, enregistrement vidéo et automatisation de connexion
-- **Application mobile** : ERPLibre Home Mobile (Owl + Capacitor), compilée et déployée via TODO.py
-- **Déploiement Docker** : images Docker prêtes pour la production avec PostgreSQL 18 et PostGIS
-- **Outils de déploiement** : Nginx, Apache, Cloudflare DDNS, Certbot SSL, services systemd
-- **Outils de base de données** : sauvegarde, restauration, clonage, migration entre versions, migration production vers développement
-- **Outils de performance** : mesure de requêtes par seconde, exécution de tests en parallèle, analyse de couverture
+### Installer partout, en une commande
+
+`make` détecte le système, installe ce qui manque et ouvre **TODO**, un menu
+guidé qui pilote tout ce qui suit — aucune commande à retenir. Ubuntu, Debian,
+Fedora, AlmaLinux, openSUSE, Arch, NixOS (de façon déclarative), macOS et
+Windows, sur trois architectures. Les images Docker, que Podman exécute aussi,
+embarquent PostgreSQL 18 et PostGIS.
+
+### Toutes les versions d'Odoo, côte à côte
+
+Odoo 10.0 à 20.0 ont chacune leur Python et leur environnement virtuel, gérés
+par mise ou pyenv. Changez avec `make switch_odoo_18` ; les autres versions
+restent installées.
+
+### Migrer vers l'avant sans tout recommencer
+
+Une migration de base guidée monte d'une version d'Odoo à la fois avec
+OpenUpgrade, garde sa progression, reprend après une interruption et peut
+revenir à une étape précédente. Une base de production se neutralise en une
+copie de développement sans risque.
+
+### Bâtir des modules plus vite
+
+Le générateur de code produit des modules Odoo complets — vues, portail,
+snippets, héritage, i18n, JavaScript — ou en clone un existant. Formatage,
+hooks Git, tests par module avec couverture et automatisation Selenium sont à
+un menu de distance.
+
+### Déployer et exploiter
+
+Déployez en local, dans des machines virtuelles QEMU/KVM ou sur Proxmox VE.
+Nginx, Apache, SSL Certbot, DNS dynamique et services systemd sont configurés
+pour vous. VPN, SSH, secrets KeePass et audit de sécurité des dépendances sont
+intégrés.
+
+### Comprendre et transformer vos données
+
+Sauvegardez, restaurez et clonez des bases ; analysez les modèles, les vues et
+les champs personnalisés d'une base ; transformez et anonymisez les données
+avant de les partager.
+
+### L'IA, en local d'abord
+
+Interrogez un modèle de langage local ou distant depuis le terminal, découvrez
+les serveurs de modèles de votre réseau et utilisez des outils de
+développement assistés par IA. Les commits faits avec l'IA sont déclarés,
+jamais cachés — voir [AI_POLICY](AI_POLICY.md).
+
+### Et encore
+
+ERPLibre Home Mobile (Owl + Capacitor), un client de courriel en terminal, la
+mesure de performance et l'exécution parallèle des tests.
 
 
 # Versions Odoo supportées
@@ -33,6 +104,8 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 
 | Odoo version | Python  | Status     |
 |--------------|---------|------------|
+| 20.0         | 3.14.7  | Upstream   |
+| 19.0         | 3.12.10 | Upstream   |
 | 18.0         | 3.12.10 | Active     |
 | 17.0         | 3.10.18 | Inactive   |
 | 16.0         | 3.10.18 | Inactive   |
@@ -40,7 +113,12 @@ Suivez-nous sur Mastodon : https://fosstodon.org/@erplibre
 | 14.0         | 3.8.20  | Deprecated |
 | 13.0         | 3.7.17  | Deprecated |
 | 12.0         | 3.7.17  | Deprecated |
+| 11.0         | 3.7.17  | Upstream, deprecated |
+| 10.0         | 2.7.18  | Upstream, deprecated |
 
+
+Les versions **Upstream** ne portent que les dépôts d'Odoo et de l'OCA, plus
+les modules de neutralisation ; elles servent d'étapes de migration.
 
 Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
@@ -213,7 +291,7 @@ make run
 
 # Migrer une base de données entre versions d'Odoo
 
-Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 12 à 18,
+Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 10 à 20,
 puis ouvre la migration de base de données. Chaque ligne `>` est une touche à
 taper, suivie d'Entrée :
 
@@ -223,7 +301,7 @@ cd ERPLibre
 make
 > 2   Installer (make installe aussi ERPLibre en local et sur le système)
 > y   Installer d'abord les dépendances système (n si c'est déjà fait)
-> w   Installer toutes les versions d'Odoo, de 12 à 18
+> w   Installer toutes les versions d'Odoo, de 10 à 20
 > 1   Exécuter
 > 1   Code
 > 7   Mise à jour
@@ -272,9 +350,22 @@ time make test_full_fast
 | [WINDOWS_INSTALLATION](doc/WINDOWS_INSTALLATION.md) | Installation sous Windows |
 
 
-# Contribution
+# Communauté
 
-Consultez [CONTRIBUTION.md](doc/CONTRIBUTION.md) pour les directives.
+ERPLibre se construit en public depuis 2020, en français et en anglais, par
+des développeurs, des intégrateurs et des utilisateurs qui l'exploitent en
+production. Il repose sur le travail de l'[Odoo Community
+Association](https://odoo-community.org), dont les dépôts forment l'essentiel
+de ses modules, et lui retourne ses correctifs.
+
+- **Suivez** le projet sur [Mastodon](https://fosstodon.org/@erplibre).
+- **Posez une question ou signalez un problème** par les
+  [issues GitHub](https://github.com/ERPLibre/ERPLibre/issues).
+- **Contribuez** du code, des traductions ou de la documentation : commencez
+  par [CONTRIBUTION](doc/CONTRIBUTION.md), qui remercie aussi les personnes et
+  les organisations derrière le projet.
+- **Utilisez l'IA ouvertement** : [AI_POLICY](AI_POLICY.md) explique comment
+  les contributions assistées par IA sont déclarées.
 
 
 # Licence
