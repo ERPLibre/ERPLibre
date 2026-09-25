@@ -211,6 +211,40 @@ make run
 ```
 
 
+# Migrer une base de données entre versions d'Odoo
+
+Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 12 à 18,
+puis ouvre la migration de base de données. Chaque ligne `>` est une touche à
+taper, suivie d'Entrée :
+
+```text
+git clone https://github.com/ERPLibre/ERPLibre.git
+cd ERPLibre
+make
+> 2   Installer (make installe aussi ERPLibre en local et sur le système)
+> y   Installer d'abord les dépendances système (n si c'est déjà fait)
+> w   Installer toutes les versions d'Odoo, de 12 à 18
+> 1   Exécuter
+> 1   Code
+> 7   Mise à jour
+> 2   Mise à jour Odoo - Migration de base de données
+```
+
+À la fin de l'installation, TODO revient au menu principal : `0` y quitte au
+lieu de revenir en arrière. Les numéros sont ceux d'un clone neuf ; une entrée
+ajoutée à `code_from_makefile` ou `update_from_makefile` dans un `todo.json`
+privé les décale.
+
+`test/test_guide_migration.py` rejoue cette séquence, lue dans ce fichier,
+contre les vrais menus. Le lancer après avoir modifié un menu :
+
+```bash
+.venv.erplibre/bin/python -m unittest test.test_guide_migration
+```
+
+La migration elle-même est décrite dans [MIGRATION](doc/MIGRATION.fr.md).
+
+
 # Test
 
 Exécutez les tests ERPLibre avec son générateur de code.
