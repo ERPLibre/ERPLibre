@@ -15325,6 +15325,247 @@ TRANSLATIONS = {
         "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
     },
+    # Container engines - Docker and Podman
+    "Docker / Podman - Container engines": {
+        "fr": "📦 Docker / Podman - Moteurs de conteneurs",
+        "en": "📦 Docker / Podman - Container engines",
+    },
+    "Container engines!": {
+        "fr": "Moteurs de conteneurs !",
+        "en": "Container engines!",
+    },
+    "Engine": {
+        "fr": "Moteur",
+        "en": "Engine",
+    },
+    "Diagnostic - engine, service, socket, access without sudo": {
+        "fr": "🩺 Diagnostic - moteur, service, socket, accès sans sudo",
+        "en": "🩺 Diagnostic - engine, service, socket, access without sudo",
+    },
+    "Install Docker": {
+        "fr": "🐳 Installer Docker",
+        "en": "🐳 Install Docker",
+    },
+    "Install Podman": {
+        "fr": "🦭 Installer Podman",
+        "en": "🦭 Install Podman",
+    },
+    "Images": {
+        "fr": "💿 Images",
+        "en": "💿 Images",
+    },
+    "Containers": {
+        "fr": "📦 Conteneurs",
+        "en": "📦 Containers",
+    },
+    "Networks": {
+        "fr": "🌐 Réseaux",
+        "en": "🌐 Networks",
+    },
+    "ERPLibre images": {
+        "fr": "Images ERPLibre",
+        "en": "ERPLibre images",
+    },
+    "Build an image for an Odoo version": {
+        "fr": "🔨 Construire l'image d'une version d'Odoo",
+        "en": "🔨 Build an image for an Odoo version",
+    },
+    "Compose - start, stop, logs, processes": {
+        "fr": "🎼 Composition - démarrer, arrêter, journaux, processus",
+        "en": "🎼 Compose - start, stop, logs, processes",
+    },
+    "Enter the ERPLibre container": {
+        "fr": "Entrer dans le conteneur ERPLibre",
+        "en": "Enter the ERPLibre container",
+    },
+    "Databases of the ERPLibre container": {
+        "fr": "Bases de données du conteneur ERPLibre",
+        "en": "Databases of the ERPLibre container",
+    },
+    "Remove unused images, containers and volumes": {
+        "fr": "🧹 Effacer images, conteneurs et volumes inutilisés",
+        "en": "🧹 Remove unused images, containers and volumes",
+    },
+    "No container engine answers here.": {
+        "fr": "Aucun moteur de conteneurs ne répond ici.",
+        "en": "No container engine answers here.",
+    },
+    "See [1] Diagnostic, then [2] or [3] to install.": {
+        "fr": "Voir [1] Diagnostic, puis [2] ou [3] pour installer.",
+        "en": "See [1] Diagnostic, then [2] or [3] to install.",
+    },
+    "Available engines:": {
+        "fr": "Moteurs disponibles :",
+        "en": "Available engines:",
+    },
+    "Engine to use": {
+        "fr": "Moteur à employer",
+        "en": "Engine to use",
+    },
+    "binary": {
+        "fr": "binaire",
+        "en": "binary",
+    },
+    "version": {
+        "fr": "version",
+        "en": "version",
+    },
+    "service": {
+        "fr": "service",
+        "en": "service",
+    },
+    "socket": {
+        "fr": "socket",
+        "en": "socket",
+    },
+    "mode": {
+        "fr": "mode",
+        "en": "mode",
+    },
+    "compose": {
+        "fr": "composition",
+        "en": "compose",
+    },
+    "reason": {
+        "fr": "raison",
+        "en": "reason",
+    },
+    "with sudo": {
+        "fr": "avec sudo",
+        "en": "with sudo",
+    },
+    "active": {
+        "fr": "actif",
+        "en": "active",
+    },
+    "unknown to systemd": {
+        "fr": "inconnu de systemd",
+        "en": "unknown to systemd",
+    },
+    "rootless": {
+        "fr": "sans privilège",
+        "en": "rootless",
+    },
+    "as root": {
+        "fr": "en root",
+        "en": "as root",
+    },
+    "Docker runs a daemon owned by root.": {
+        "fr": "Docker pose un démon que root possède.",
+        "en": "Docker runs a daemon owned by root.",
+    },
+    "group docker - equivalent to root on this host": {
+        "fr": "groupe docker - équivaut à root sur cet hôte",
+        "en": "group docker - equivalent to root on this host",
+    },
+    "rootless - one daemon per account, no group": {
+        "fr": "sans privilège - un démon par compte, sans groupe",
+        "en": "rootless - one daemon per account, no group",
+    },
+    "Mode": {
+        "fr": "Mode",
+        "en": "Mode",
+    },
+    "No Debian or Arch repository ships the": {
+        "fr": "Aucun dépôt Debian ni Arch ne porte l'outil",
+        "en": "No Debian or Arch repository ships the",
+    },
+    "rootless tool: --amont takes the vendor packages.": {
+        "fr": "sans privilège : --amont prend les paquets de l'éditeur.",
+        "en": "rootless tool: --amont takes the vendor packages.",
+    },
+    "Use vendor packages? (Y/N): ": {
+        "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
+        "en": "Use vendor packages? (Y/N): ",
+    },
+    "Continue? (Y/N): ": {
+        "fr": "Continuer ? (O/N) : ",
+        "en": "Continue? (Y/N): ",
+    },
+    "Network to inspect (empty to skip)": {
+        "fr": "Réseau à inspecter (vide pour passer)",
+        "en": "Network to inspect (empty to skip)",
+    },
+    "Unreadable version catalogue:": {
+        "fr": "Catalogue de versions illisible :",
+        "en": "Unreadable version catalogue:",
+    },
+    "Odoo version:": {
+        "fr": "Version d'Odoo :",
+        "en": "Odoo version:",
+    },
+    "Number": {
+        "fr": "Numéro",
+        "en": "Number",
+    },
+    "Rebuild without cache? (Y/N): ": {
+        "fr": "Reconstruire sans cache ? (O/N) : ",
+        "en": "Rebuild without cache? (Y/N): ",
+    },
+    "Start in the background": {
+        "fr": "Démarrer en arrière-plan",
+        "en": "Start in the background",
+    },
+    "Stop": {
+        "fr": "Arrêter",
+        "en": "Stop",
+    },
+    "Follow the logs": {
+        "fr": "Suivre les journaux",
+        "en": "Follow the logs",
+    },
+    "Processes": {
+        "fr": "Processus",
+        "en": "Processes",
+    },
+    "These scripts call the docker command by name.": {
+        "fr": "Ces scripts appellent la commande docker par son nom.",
+        "en": "These scripts call the docker command by name.",
+    },
+    "Install podman-docker to provide it.": {
+        "fr": "Installer podman-docker pour la fournir.",
+        "en": "Install podman-docker to provide it.",
+    },
+    "This REMOVES unused images, containers, networks": {
+        "fr": "Ceci EFFACE images, conteneurs et réseaux inutilisés,",
+        "en": "This REMOVES unused images, containers, networks",
+    },
+    "and VOLUMES - a volume holds the database.": {
+        "fr": "et les VOLUMES - un volume porte la base de données.",
+        "en": "and VOLUMES - a volume holds the database.",
+    },
+    "ERPLibre container - shell, databases, tests, status": {
+        "fr": "🔧 Conteneur ERPLibre - shell, bases, tests, statut",
+        "en": "🔧 ERPLibre container - shell, databases, tests, status",
+    },
+    "Regenerate odoo.conf (addons paths)": {
+        "fr": "Régénérer odoo.conf (chemins des addons)",
+        "en": "Regenerate odoo.conf (addons paths)",
+    },
+    "Run the tests": {
+        "fr": "Lancer les tests",
+        "en": "Run the tests",
+    },
+    "Status of the git repositories": {
+        "fr": "Statut des dépôts git",
+        "en": "Status of the git repositories",
+    },
+    "Copy a file into the container": {
+        "fr": "Copier un fichier dans le conteneur",
+        "en": "Copy a file into the container",
+    },
+    "File to copy": {
+        "fr": "Fichier à copier",
+        "en": "File to copy",
+    },
+    "Destination in the container (empty for the default)": {
+        "fr": "Destination dans le conteneur (vide pour le défaut)",
+        "en": "Destination in the container (empty for the default)",
+    },
+    "No such file:": {
+        "fr": "Fichier introuvable :",
+        "en": "No such file:",
+    },
 }
 
 
