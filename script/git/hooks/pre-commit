@@ -32,7 +32,6 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[3]
 ANALYSE = RACINE / "script" / "analyse"
-VERSION = ANALYSE / "check_python_version.py"
 
 # Au-delà, le rapport cesse d'être une invitation et devient un mur. Le
 # plafond est PAR OUTIL : deux rapports tronqués valent mieux qu'un seul
@@ -71,6 +70,22 @@ OUTILS = (
             " l'arbre syntaxique."
         ),
     },
+    {
+        "script": "check_python_version.py",
+        "titre": "syntaxe Python du dépôt",
+        # Celui-ci INFORME toujours en 0 : ce qu'il a à dire se lit à sa
+        # sortie, pas à son code, et il ne connaît pas « --no-color ». Les
+        # deux s'annoncent ici plutôt que dans une seconde mécanique de
+        # lancement : une seule sait lancer, quelles que soient les
+        # conventions de l'outil.
+        "options": ("--staged",),
+        "parle": "sortie",
+        "pied": (
+            "  🔴 Ce source ne se charge pas sous le Python de"
+            " conf/python-erplibre-version.\n     black ne le voit pas : sa"
+            " cible borne ce qu'il ÉCRIT, jamais ce qu'il accepte."
+        ),
+    },
 )
 
 
@@ -81,7 +96,11 @@ def rapport(outil):
         return []
     try:
         sortie = subprocess.run(
-            [sys.executable, str(chemin), "--staged", "--no-color"],
+            [
+                sys.executable,
+                str(chemin),
+                *outil.get("options", ("--staged", "--no-color")),
+            ],
             capture_output=True,
             text=True,
             cwd=str(RACINE),
@@ -89,6 +108,11 @@ def rapport(outil):
         )
     except (OSError, subprocess.SubprocessError):
         return []
+    if outil.get("parle") == "sortie":
+        # Un outil qui informe toujours en 0 : sa sortie fait foi, l'erreur
+        # standard comprise, où il dit ce qu'il n'a pas pu contrôler.
+        texte = (sortie.stdout + sortie.stderr).strip()
+        return plafonne(texte.split("\n")) if texte else []
     if sortie.returncode not in (0, 1):
         # Jamais bloquant, mais jamais muet non plus : un outil cassé qui se
         # tait se confond avec un dépôt propre.
@@ -100,10 +124,14 @@ def rapport(outil):
         return []
     if sortie.returncode != 1 or not sortie.stdout.strip():
         return []
-    lignes = sortie.stdout.rstrip("\n").split("\n")
+    return plafonne(sortie.stdout.rstrip("\n").split("\n"))
+
+
+def plafonne(lignes):
+    """Les lignes, coupées au plafond, en disant combien manquent."""
     trop = len(lignes) - PLAFOND
     if trop > 0:
-        lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
+        return lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
     return lignes
 
 
@@ -123,34 +151,7 @@ def main() -> int:
             "\n  Le commit n'est PAS bloqué. Corrigez ce que vous touchez.\n",
             file=sys.stderr,
         )
-    syntaxe()
     return 0
-
-
-def syntaxe() -> None:
-    """Relaie les refus de syntaxe, ou l'avis d'un contrôle absent."""
-    if not VERSION.is_file():
-        return
-    try:
-        sortie = subprocess.run(
-            [sys.executable, str(VERSION), "--staged"],
-            capture_output=True,
-            text=True,
-            cwd=str(RACINE),
-            timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return
-    lignes = (sortie.stdout + sortie.stderr).strip().split("\n")
-    if not lignes[0]:
-        return
-    trop = len(lignes) - PLAFOND
-    if trop > 0:
-        lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
-    print("\n  ⓘ syntaxe Python du dépôt\n", file=sys.stderr)
-    for ligne in lignes:
-        print(f"   {ligne}", file=sys.stderr)
-    print("\n  Le commit n'est PAS bloqué.\n", file=sys.stderr)
 
 
 if __name__ == "__main__":
