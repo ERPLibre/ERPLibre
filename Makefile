@@ -348,18 +348,18 @@ config_clear:
 .PHONY: config_gen_all
 config_gen_all:
 	echo "config_gen_all"
-	./script/git/git_repo_update_group.py
+	./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py
 	./script/generate_config.sh
 
 # generate config repo image_db
 .PHONY: config_gen_image_db
 config_gen_image_db:
-	./script/git/git_repo_update_group.py --group base,image_db
+	./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py --group base,image_db
 	./script/generate_config.sh
 
 .PHONY: config_gen_migration
 config_gen_migration:
-	./script/git/git_repo_update_group.py --group base,addons,migration
+	./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py --group base,addons,migration
 	./script/generate_config.sh
 
 ##########
