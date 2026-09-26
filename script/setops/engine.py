@@ -414,3 +414,139 @@ def main(argv=None, racine=None, out=None, err=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# Borne d'un geste qui parle au réseau. Plus large que celle d'une lecture
+# locale — une forge répond en secondes, pas en millisecondes — mais bornée :
+# une forge injoignable doit rendre la main, pas faire attendre.
+GIT_RESEAU_DELAI = 120
+
+
+def _git_reseau(dossier, *args, delai=GIT_RESEAU_DELAI):
+    """Comme `_git`, mais pour un geste qui SORT de la machine.
+
+    NE DEMANDE JAMAIS D'IDENTIFIANTS. `GIT_TERMINAL_PROMPT=0` et le mode « lot »
+    de ssh font échouer ce qui aurait posé une question : sans eux, une forge
+    privée en HTTPS suspend l'écran sur une invite que personne n'attend, et un
+    hôte ssh inconnu en fait autant. Un refus se lit ; une attente, non.
+    """
+    try:
+        reel = os.path.realpath(dossier)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env["GIT_CEILING_DIRECTORIES"] = os.path.dirname(reel)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_SSH_COMMAND"] = (
+            "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+        )
+        return subprocess.run(
+            ["git", "-C", reel, *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            timeout=delai,
+            check=False,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def remotes(moteur):
+    """Les remotes que le clone déclare, ou None s'ils ne se lisent pas.
+
+    Il y en a souvent deux pour la même forge — un HTTPS et un ssh — et un seul
+    répond sans identifiants. L'appelant les essaie donc, plutôt que d'en
+    supposer un.
+    """
+    fait = _git(moteur, "remote")
+    if fait is None or fait.returncode:
+        return None
+    return tuple(l.strip() for l in fait.stdout.splitlines() if l.strip())
+
+
+def pointe_distante(moteur, remote, branche):
+    """Le SHA que la forge porte au bout de `branche`, « », ou None.
+
+    `ls-remote` et NON un fetch : il ne rapatrie aucun objet, n'écrit rien dans
+    le clone, et répond à la seule question du retard. Le fetch coûte, et il
+    n'est utile que pour LIRE ce qui sépare les deux.
+
+    « » veut dire « la forge a répondu, cette branche n'y est pas » ; None, « on
+    n'a pas pu demander ».
+    """
+    if not (remote or "").strip() or not (branche or "").strip():
+        return None
+    fait = _git_reseau(moteur, "ls-remote", remote, f"refs/heads/{branche}")
+    if fait is None or fait.returncode:
+        return None
+    for ligne in fait.stdout.splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) == 2 and is_pinned(morceaux[0]):
+            return morceaux[0]
+    return ""
+
+
+def rapatrier(moteur, remote, branche):
+    """Rapatrie les objets de `branche` pour pouvoir les LIRE. Rend un booléen.
+
+    ÉCRIT DANS LE CLONE, et c'est le seul geste d'ici qui le fasse : il ajoute
+    des objets et une référence de suivi. Il ne touche ni l'arbre de travail, ni
+    aucune branche locale — `--no-tags` et une référence nommée gardent la
+    portée étroite. Sans lui, le journal entre l'épingle et la pointe ne se lit
+    pas : les commits n'existent pas encore ici.
+    """
+    if not (remote or "").strip() or not (branche or "").strip():
+        return False
+    fait = _git_reseau(
+        moteur,
+        "fetch",
+        "--no-tags",
+        remote,
+        f"refs/heads/{branche}:refs/remotes/{remote}/{branche}",
+    )
+    return fait is not None and fait.returncode == 0
+
+
+def journal(moteur, depuis, jusqu_a):
+    """Les commits de `depuis..jusqu_a`, du plus récent au plus ancien.
+
+    Rend une suite de (sha court, sujet), `()` quand il n'y en a aucun, et None
+    quand la plage ne se lit pas — un objet absent du clone, par exemple, ce qui
+    arrive tant que `rapatrier` n'a pas tourné.
+    """
+    if not (depuis or "").strip() or not (jusqu_a or "").strip():
+        return None
+    fait = _git(
+        moteur, "log", "--oneline", "--no-decorate", f"{depuis}..{jusqu_a}"
+    )
+    if fait is None or fait.returncode:
+        return None
+    lus = []
+    for ligne in fait.stdout.splitlines():
+        court, _, sujet = ligne.partition(" ")
+        if court.strip():
+            lus.append((court.strip(), sujet.strip()))
+    return tuple(lus)
+
+
+def reecrire_revision(texte, sha):
+    """Le manifeste avec la révision remplacée par `sha`, ou None.
+
+    CHIRURGICAL : un seul attribut change, et tout le reste du fichier — y
+    compris les commentaires, qui portent la raison de l'épingle — est rendu
+    octet pour octet. Une réécriture par sérialisation XML les perdrait, ou les
+    reformaterait.
+
+    Rend None plutôt qu'un fichier douteux quand le SHA n'est pas un SHA complet
+    — une branche ou un SHA court nomme autre chose demain — ou quand le texte
+    ne porte pas EXACTEMENT une révision : zéro, il n'y a rien à remplacer ;
+    plusieurs, on ne saurait laquelle.
+    """
+    if not is_pinned(sha or ""):
+        return None
+    prises = list(re.finditer(r'revision="([^"]*)"', texte or ""))
+    if len(prises) != 1:
+        return None
+    prise = prises[0]
+    return texte[: prise.start(1)] + sha + texte[prise.end(1) :]

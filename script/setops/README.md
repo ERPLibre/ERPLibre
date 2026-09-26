@@ -29,7 +29,15 @@ These functions work on text only:
 - `ignore_probe(chemin)`: the path `parent_is_ignored` asks git about — an
   invented name directly under the parent, since a `folder/` rule only
   applies to a folder and git cannot tell that a path missing from the disk
-  is one: the probe answers on a fresh clone too.
+  is one: the probe answers on a fresh clone too;
+- `reecrire_revision(texte, sha)`: the manifest with the revision replaced,
+  for the deliberate gesture of advancing the pin. ONE attribute changes and
+  the rest of the file comes back byte for byte, comments included — they
+  carry the reason for the pin, and a rewrite through an XML serializer would
+  lose or reformat them. Refuses anything but a full SHA, and refuses a text
+  that does not carry exactly one revision: none, and there is nothing to
+  replace; several, and one cannot tell which. The commit stays the
+  operator's; nothing here writes a file.
 
 The others read the disk or run `git`, and never raise: an unknown verdict
 is `None` — or the `inconnue` relation — and the caller decides what to
@@ -54,6 +62,26 @@ checkout would otherwise answer with ERPLibre's own HEAD.
 - `parent_is_ignored(racine, chemin)`: are the engine's sibling folders
   ignored by the rules of the repository at `racine`, asked with
   `git check-ignore --no-index` about `ignore_probe(chemin)`?
+- `remotes(moteur)`: the remotes the clone declares. There are often two for
+  one forge — an HTTPS and an ssh — and only one answers without credentials,
+  so the caller tries them instead of assuming one;
+- `pointe_distante(moteur, remote, branche)`: the SHA the forge carries at
+  the end of that branch, `""` when the forge answered and the branch is not
+  there, `None` when it could not be asked. Read by `ls-remote`, which
+  fetches no object and writes nothing into the clone. Confusing the two
+  answers would send someone hunting a network fault where a branch is simply
+  absent;
+- `rapatrier(moteur, remote, branche)`: brings the objects down so the log
+  between the two points can be READ. The only gesture of this module that
+  writes into the clone, and it touches neither the worktree nor any local
+  branch;
+- `journal(moteur, depuis, jusqu_a)`: the commits between two points, newest
+  first, `()` when nothing separates them and `None` when the range cannot be
+  read — which is the case until the objects are there.
+
+Neither network gesture ever asks for credentials: a private forge over HTTPS
+would otherwise hang the screen on a prompt nobody is waiting for, and so would
+an unknown ssh host. A refusal reads; a wait does not.
 
 Where the clone's HEAD stands against the pin, from local objects only and
 without network, is a closed vocabulary: `egal`, `avance`, `retard`, `diverge`, `absente`, `inconnue`.

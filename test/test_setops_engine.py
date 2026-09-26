@@ -20,6 +20,7 @@ import itertools
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1107,6 +1108,121 @@ class TestVerifierEmplacement(unittest.TestCase):
             text=True,
         )
         self.assertEqual((0, CHEMIN), (done.returncode, done.stdout.strip()))
+
+
+class TestReecrireLaRevision(unittest.TestCase):
+    """Faire avancer l'épingle est un geste DÉLIBÉRÉ : un seul attribut change,
+    et le commit reste celui de l'exploitant."""
+
+    NEUF = "f" * 40
+
+    def test_only_the_revision_changes(self):
+        """Les commentaires du manifeste portent la RAISON de l'épingle. Une
+        réécriture par sérialisation XML les perdrait ou les reformaterait ;
+        celle-ci rend le fichier octet pour octet, sauf l'attribut."""
+        texte = manifeste(projet())
+        neuf = engine.reecrire_revision(texte, self.NEUF)
+        self.assertIsNotNone(neuf)
+        self.assertEqual(texte.replace(SHA_INVENTE, self.NEUF), neuf)
+        self.assertEqual(self.NEUF, engine.parse_manifest(neuf).revision)
+
+    def test_a_comment_survives_untouched(self):
+        texte = manifeste(
+            "  <!-- la raison de cette épingle, en toutes lettres -->\n"
+            + projet()
+        )
+        neuf = engine.reecrire_revision(texte, self.NEUF)
+        self.assertIn("la raison de cette épingle, en toutes lettres", neuf)
+
+    def test_anything_but_a_full_sha_is_refused(self):
+        """Une branche ou un SHA court nomme autre chose demain."""
+        texte = manifeste(projet())
+        for mauvais in ("main", SHA_INVENTE[:7], "", None, "g" * 40):
+            with self.subTest(sha=mauvais):
+                self.assertIsNone(engine.reecrire_revision(texte, mauvais))
+
+    def test_no_revision_at_all_is_refused(self):
+        """Il n'y a rien à remplacer : écrire quand même inventerait une
+        épingle là où le manifeste n'en déclarait pas."""
+        self.assertIsNone(
+            engine.reecrire_revision(
+                manifeste(projet(revision=None)), self.NEUF
+            )
+        )
+
+    def test_two_revisions_are_refused(self):
+        """On ne saurait laquelle : la remplacer au hasard épinglerait le
+        mauvais dépôt."""
+        deux = projet() + projet(chemin="private/repo/Autre-Invente")
+        self.assertIsNone(engine.reecrire_revision(manifeste(deux), self.NEUF))
+
+
+class TestLireLeRetardSurLaForge(unittest.TestCase):
+    """Le retard se lit, puis le journal se lit — et le second exige que les
+    objets soient là."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="setops-engine-forge-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.depot = os.path.join(self.dossier, "depot")
+        self.premier = depot(self.depot)
+
+    def test_the_remotes_the_clone_declares_are_read(self):
+        """Il y en a souvent deux pour la même forge, et un seul répond sans
+        identifiants : l'appelant les essaie."""
+        self.assertEqual((), engine.remotes(self.depot))
+        git(self.depot, "remote", "add", "forge-inventee", self.dossier)
+        self.assertEqual(("forge-inventee",), engine.remotes(self.depot))
+
+    def test_no_repository_reads_no_remote(self):
+        self.assertIsNone(engine.remotes(self.dossier))
+
+    def test_the_log_between_two_points_is_read_newest_first(self):
+        second = commit(self.depot, "b")
+        troisieme = commit(self.depot, "c")
+        lus = engine.journal(self.depot, self.premier, troisieme)
+        self.assertEqual(["c", "b"], [sujet for _sha, sujet in lus])
+        self.assertTrue(second.startswith(lus[1][0]))
+
+    def test_nothing_between_two_points_is_not_a_failure(self):
+        """`()` dit « rien ne les sépare » ; None dirait « on ne sait pas »."""
+        self.assertEqual(
+            (), engine.journal(self.depot, self.premier, self.premier)
+        )
+
+    def test_an_object_this_clone_does_not_have_is_unknown(self):
+        """C'est le cas tant que le rapatriement n'a pas tourné."""
+        self.assertIsNone(engine.journal(self.depot, self.premier, "e" * 40))
+
+    def test_nothing_is_asked_of_a_remote_that_is_not_named(self):
+        for remote, branche in (("", "main"), ("forge", ""), (None, None)):
+            with self.subTest(remote=remote, branche=branche):
+                self.assertIsNone(
+                    engine.pointe_distante(self.depot, remote, branche)
+                )
+                self.assertFalse(engine.rapatrier(self.depot, remote, branche))
+
+    def test_a_tip_is_read_from_a_reachable_forge(self):
+        """Le contrôle positif, sur une forge de banc — un dossier voisin. Sans
+        lui, une sonde qui rend toujours None passerait les refus ci-dessus."""
+        git(self.depot, "branch", "-M", "principale")
+        clone = os.path.join(self.dossier, "clone")
+        git(self.dossier, "clone", "-q", self.depot, clone)
+        self.assertEqual(
+            self.premier,
+            engine.pointe_distante(clone, "origin", "principale"),
+        )
+
+    def test_a_branch_the_forge_does_not_carry_is_not_a_failure(self):
+        """« » dit « la forge a répondu, cette branche n'y est pas » ; None
+        dirait « on n'a pas pu demander ». Les confondre ferait chercher une
+        panne de réseau là où il n'y a qu'une branche absente."""
+        clone = os.path.join(self.dossier, "clone2")
+        git(self.dossier, "clone", "-q", self.depot, clone)
+        self.assertEqual(
+            "",
+            engine.pointe_distante(clone, "origin", "branche-jamais-poussee"),
+        )
 
 
 if __name__ == "__main__":

@@ -31,7 +31,15 @@ Ces fonctions ne travaillent que sur du texte :
   interroge git — un nom inventé directement sous le parent, parce qu'une
   règle `dossier/` ne vaut que pour un dossier et que git ne sait pas qu'un
   chemin absent du disque en est un : la sonde répond aussi sur un clone
-  neuf.
+  neuf ;
+- `reecrire_revision(texte, sha)` : le manifeste avec la révision remplacée,
+  pour le geste délibéré de faire avancer l'épingle. UN attribut change, le
+  reste du fichier revient octet pour octet, commentaires compris — ils
+  portent la raison de l'épingle, et une réécriture par sérialisation XML les
+  perdrait ou les reformaterait. Refuse tout ce qui n'est pas un SHA complet,
+  et refuse un texte qui ne porte pas exactement une révision : zéro, il n'y
+  a rien à remplacer ; plusieurs, on ne saurait laquelle. Le commit reste
+  celui de l'exploitant ; rien ici n'écrit de fichier.
 
 Les autres lisent le disque ou lancent `git`, et ne lèvent jamais : un
 verdict inconnu vaut `None` — ou la relation `inconnue` —, et l'appelant
@@ -56,6 +64,26 @@ d'ERPLibre répondrait sinon avec le HEAD d'ERPLibre lui-même.
 - `parent_is_ignored(racine, chemin)` : les dossiers frères du moteur
   sont-ils ignorés par les règles du dépôt `racine`, question posée par
   `git check-ignore --no-index` sur `ignore_probe(chemin)` ?
+- `remotes(moteur)` : les remotes que le clone déclare. Il y en a souvent deux
+  pour une même forge — un HTTPS et un ssh — et un seul répond sans
+  identifiants, donc l'appelant les essaie au lieu d'en supposer un ;
+- `pointe_distante(moteur, remote, branche)` : le SHA que la forge porte au
+  bout de cette branche, `""` quand la forge a répondu et que la branche n'y
+  est pas, `None` quand on n'a pas pu demander. Lu par `ls-remote`, qui ne
+  rapatrie aucun objet et n'écrit rien dans le clone. Confondre les deux
+  réponses ferait chercher une panne de réseau là où il n'y a qu'une branche
+  absente ;
+- `rapatrier(moteur, remote, branche)` : rapatrie les objets pour que le
+  journal entre les deux points se LISE. Le seul geste de ce module qui
+  écrive dans le clone, et il ne touche ni l'arbre de travail, ni aucune
+  branche locale ;
+- `journal(moteur, depuis, jusqu_a)` : les commits entre deux points, du plus
+  récent au plus ancien, `()` quand rien ne les sépare et `None` quand la
+  plage ne se lit pas — ce qui est le cas tant que les objets ne sont pas là.
+
+Aucun des deux gestes réseau ne demande d'identifiants : une forge privée en
+HTTPS suspendrait sinon l'écran sur une invite que personne n'attend, et un hôte
+ssh inconnu en ferait autant. Un refus se lit ; une attente, non.
 
 Où se tient le HEAD du clone face à l'épingle, lu dans les seuls objets
 locaux et sans réseau, est un vocabulaire clos : `egal`, `avance`, `retard`, `diverge`, `absente`, `inconnue`.
