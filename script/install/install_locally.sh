@@ -195,6 +195,9 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     fi
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
+    # pyldap 2.4, épinglé par Odoo 10 à 12 : voir lib_ldap_compat.sh.
+    . ./script/install/lib_ldap_compat.sh
+    el_ldap_r_compat "${VENV_ODOO_PATH}/lib/ldap_r_compat"
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
         "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE}
         retVal=$?
