@@ -26,6 +26,7 @@ import base64
 import errno
 import fcntl
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -42,7 +43,7 @@ import tornado.netutil
 import tornado.web
 from tornado.web import HTTPError
 
-from script.todo import todo_i18n
+from script.todo import todo_i18n, todo_telemetry
 from script.todo.web import paths
 
 log = logging.getLogger(__name__)
@@ -66,6 +67,12 @@ CSP = (
     "default-src 'none'; script-src 'self'{import_map} 'unsafe-eval'; "
     "style-src 'self'; connect-src 'self'; img-src 'self' data:; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
+# Ce que lit build_code_tree, et les surcharges privées de todo.json.
+TREE_SOURCES = (
+    "script/todo/*.py",
+    "script/todo/todo.json",
+    "private/todo/*.json",
 )
 
 
@@ -111,6 +118,89 @@ def content_security_policy(index_html) -> str:
         digest = hashlib.sha256(match.group(1)).digest()
         extra = f" 'sha256-{base64.b64encode(digest).decode()}'"
     return CSP.format(import_map=extra)
+
+
+class CodeTree:
+    """Arbre des menus de `build_code_tree`, refait quand une source change.
+
+    La signature est {chemin: (mtime_ns, taille)} de chaque fichier de
+    TREE_SOURCES : une entrée ajoutée ou retirée d'un menu, dans le code ou
+    dans todo.json, change l'arbre servi à la requête suivante sans
+    redémarrer le hub. Un todo_i18n.py modifié est rechargé, et ses libellés
+    nouveaux arrivent traduits : le hub l'importe depuis la racine qu'il
+    sert. L'analyse AST, coûteuse, tourne dans un thread, une à la fois : la
+    boucle continue de répondre, socket de contrôle comprise.
+    """
+
+    def __init__(self, root):
+        self.root = Path(root)
+        self.i18n_py = str(self.root / "script" / "todo" / "todo_i18n.py")
+        self.signature = None
+        self.tree = None
+        self.lock = asyncio.Lock()
+        # Estampille du todo_i18n.py que le hub vient d'importer.
+        self.i18n_stamp = self._signature().get(self.i18n_py)
+
+    def _signature(self) -> dict:
+        entries = {}
+        for pattern in TREE_SOURCES:
+            for path in self.root.glob(pattern):
+                try:
+                    st = path.stat()
+                except OSError:
+                    continue
+                entries[str(path)] = (st.st_mtime_ns, st.st_size)
+        return entries
+
+    def _refresh(self):
+        signature = self._signature()
+        if signature == self.signature:
+            return self.tree
+        stamp = signature.get(self.i18n_py)
+        if stamp != self.i18n_stamp:
+            _reload_i18n()
+            self.i18n_stamp = stamp
+        todo_py = self.root / "script" / "todo" / "todo.py"
+        self.tree = todo_telemetry.build_code_tree(todo_py)
+        self.signature = signature
+        return self.tree
+
+    async def refresh(self):
+        """L'arbre à jour, ou None si l'analyse échoue ; la table de
+        traduction est rechargée au passage si todo_i18n.py a changé."""
+        async with self.lock:
+            return await asyncio.to_thread(self._refresh)
+
+
+def _reload_i18n():
+    # Un fichier à moitié écrit ne casse pas l'API : l'erreur va au journal,
+    # et l'enregistrement suivant change la signature, donc recharge.
+    try:
+        importlib.reload(todo_i18n)
+    except Exception:
+        log.exception("reloading todo_i18n.py failed")
+
+
+def localize(node, lang, parent=None) -> dict:
+    """Nœud servi à la page.
+
+    `key` : libellé brut ; `label` : sa traduction dans `lang` ; `path` : le
+    chemin de télémétrie, les clés jointes par « › » comme TODO les
+    enregistre ; `menu` ; `section` traduite pour une feuille qui en a une.
+    Ni méthode ni arguments : la page ne lance rien.
+    """
+    key = node["label"]
+    path = key if parent is None else f"{parent} › {key}"
+    out = {
+        "key": key,
+        "label": todo_i18n.translate(key, lang),
+        "path": path,
+        "menu": node["is_menu"],
+        "children": [localize(c, lang, path) for c in node["children"]],
+    }
+    if node.get("section"):
+        out["section"] = todo_i18n.translate(node["section"], lang)
+    return out
 
 
 class Guard:
@@ -174,6 +264,14 @@ class Guard:
         self.hub.touch()
         return csrf
 
+    def lang_argument(self) -> str:
+        """`?lang=` de la requête, langue TODO du serveur par défaut ;
+        400 pour une langue que TRANSLATIONS ne porte pas."""
+        lang = self.get_argument("lang", todo_i18n.get_lang())
+        if lang not in todo_i18n.LANGUAGES:
+            raise HTTPError(400)
+        return lang
+
 
 class Static(Guard, tornado.web.RequestHandler):
     def get(self):
@@ -217,6 +315,41 @@ class Session(Guard, tornado.web.RequestHandler):
         csrf = self.require_session()
         self.write(
             {"csrf": csrf, "lang": todo_i18n.get_lang(), "root": self.hub.root}
+        )
+
+
+class Telemetry(Guard, tornado.web.RequestHandler):
+    """`{tree, counts, updated}` : l'arbre des menus traduit, les compteurs
+    de navigation par chemin et l'heure de leur dernière écriture."""
+
+    async def get(self):
+        self.require_session()
+        lang = self.lang_argument()
+        tree = await self.hub.code_tree.refresh()
+        # load() attend le verrou que TODO tient en écrivant : hors boucle.
+        data = await asyncio.to_thread(todo_telemetry.load)
+        counts = data.get("paths")
+        self.write(
+            {
+                "tree": localize(tree, lang) if tree else None,
+                "counts": counts if isinstance(counts, dict) else {},
+                "updated": data.get("updated"),
+            }
+        )
+
+
+class I18n(Guard, tornado.web.RequestHandler):
+    """Toute la table de traduction dans une langue : `{clé: valeur}`."""
+
+    async def get(self):
+        self.require_session()
+        lang = self.lang_argument()
+        await self.hub.code_tree.refresh()
+        self.write(
+            {
+                key: todo_i18n.translate(key, lang)
+                for key in todo_i18n.TRANSLATIONS
+            }
         )
 
 
@@ -298,6 +431,7 @@ class Hub:
         self.stopped = asyncio.Event()
         self.stopping = None
         self.last_activity = time.monotonic()
+        self.code_tree = CodeTree(self.root)
 
     def routes(self) -> list:
         return [
@@ -305,6 +439,8 @@ class Hub:
             (r"/static/.*", Static),
             (r"/api/login", Login),
             (r"/api/session", Session),
+            (r"/api/telemetry", Telemetry),
+            (r"/api/i18n", I18n),
         ]
 
     async def start(self, host="127.0.0.1", port=0):
@@ -332,6 +468,8 @@ class Hub:
             hub=self,
             xsrf_cookies=False,
             websocket_max_message_size=MAX_BODY,
+            # La table i18n entière pèse quelques centaines de Kio en JSON.
+            compress_response=True,
         )
         # tornado lit le corps avant prepare() : le borner ici.
         self.http = tornado.httpserver.HTTPServer(app, max_body_size=MAX_BODY)

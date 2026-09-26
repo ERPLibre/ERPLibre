@@ -18,7 +18,9 @@ import logging
 import os
 import socket
 import stat
+import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -26,6 +28,7 @@ from unittest.mock import patch
 
 from tornado.httpclient import AsyncHTTPClient
 
+from script.todo import todo_i18n, todo_telemetry
 from script.todo.web import paths, server
 
 # Les réponses 4xx sont journalisées en avertissement ; sans handler, le
@@ -372,6 +375,190 @@ class TestIdle(HubCase):
         self.assertFalse(self.hub.stopped.is_set())
         await self.ctl("status")
         await asyncio.wait_for(self.hub.stopped.wait(), 5)
+
+
+# Un todo.py minimal : un menu Execute, une feuille « Quit » sous une
+# section. build_code_tree le lit par AST, sans l'importer.
+FAKE_TODO = """\
+class TODO:
+    _MENU_LABELS = {"run": "TODO", "prompt_execute": "Execute"}
+
+    def run(self):
+        choices = [{"prompt_description": t("Execute")}]
+        status = input()
+        if status == "1":
+            self.prompt_execute()
+
+    def prompt_execute(self):
+        choices = [
+            {"section": t("Configuration")},
+            {"prompt_description": t("Quit")},
+        ]
+        status = input()
+        if status == "1":
+            self.leave()
+"""
+
+
+class ApiCase(HubCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.todo_py = self.root / "script" / "todo" / "todo.py"
+        self.todo_py.parent.mkdir(parents=True)
+        self.todo_py.write_text(FAKE_TODO)
+        self.session_cookie = await self.cookie()
+
+    async def get_json(self, path):
+        resp = await self.fetch(path, Cookie=self.session_cookie)
+        self.assertEqual(resp.code, 200, path)
+        return json.loads(resp.body)
+
+
+class TestTelemetryApi(ApiCase):
+    async def test_tree_is_translated_and_carries_telemetry_paths(self):
+        tree = (await self.get_json("/api/telemetry?lang=fr"))["tree"]
+        self.assertEqual((tree["key"], tree["path"]), ("TODO", "TODO"))
+        [execute] = tree["children"]
+        self.assertEqual(execute["key"], "Execute")
+        self.assertEqual(
+            execute["label"], todo_i18n.translate("Execute", "fr")
+        )
+        self.assertEqual(execute["path"], "TODO › Execute")
+        self.assertTrue(execute["menu"])
+        [leaf] = execute["children"]
+        self.assertEqual(
+            leaf,
+            {
+                "key": "Quit",
+                "label": "Quitter",
+                "path": "TODO › Execute › Quit",
+                "menu": False,
+                "children": [],
+                "section": todo_i18n.translate("Configuration", "fr"),
+            },
+        )
+        english = await self.get_json("/api/telemetry?lang=en")
+        leaf = english["tree"]["children"][0]["children"][0]
+        self.assertEqual(leaf["label"], "Quit")
+
+    async def test_counts_come_from_the_telemetry_file(self):
+        store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"
+        store.parent.mkdir()
+        store.write_text(
+            json.dumps({"paths": {"TODO › Execute": 3}, "updated": 1234})
+        )
+        data = await self.get_json("/api/telemetry?lang=en")
+        self.assertEqual(data["counts"], {"TODO › Execute": 3})
+        self.assertEqual(data["updated"], 1234)
+
+    async def test_malformed_counters_count_nothing(self):
+        store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"
+        store.parent.mkdir()
+        for text in ("[1, 2]", '{"paths": [1, 2]}'):
+            store.write_text(text)
+            data = await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual((data["counts"], data["updated"]), ({}, None))
+
+    async def test_the_tree_is_built_off_the_event_loop(self):
+        entered, release = threading.Event(), threading.Event()
+        waited = []
+
+        def slow(_todo_py):
+            # Appelée sur la boucle, elle la bloque : rien ne libère alors
+            # `release`, et wait rend False au bout de 2 s.
+            entered.set()
+            waited.append(release.wait(2))
+
+        with patch.object(todo_telemetry, "build_code_tree", slow):
+            pending = asyncio.ensure_future(
+                self.get_json("/api/telemetry?lang=en")
+            )
+            while not (entered.is_set() or pending.done()):
+                await asyncio.sleep(0.01)
+            status = json.loads(await self.ctl("status"))
+            release.set()
+            data = await pending
+        self.assertEqual(waited, [True])
+        self.assertEqual(status["pid"], os.getpid())
+        self.assertIsNone(data["tree"])
+
+    async def test_tree_is_rebuilt_only_when_a_source_changes(self):
+        build = todo_telemetry.build_code_tree
+        with patch.object(
+            todo_telemetry, "build_code_tree", wraps=build
+        ) as spy:
+            await self.get_json("/api/telemetry?lang=en")
+            await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual(spy.call_count, 1)
+            self.todo_py.write_text(
+                FAKE_TODO.replace(
+                    '{"prompt_description": t("Quit")},',
+                    '{"prompt_description": t("Quit")},\n'
+                    '            {"prompt_description": t("Back")},',
+                ).replace(
+                    "self.leave()\n",
+                    'self.leave()\n        if status == "2":\n'
+                    "            self.back()\n",
+                )
+            )
+            data = await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual(spy.call_count, 2)
+            leaves = data["tree"]["children"][0]["children"]
+            self.assertEqual([c["key"] for c in leaves], ["Quit", "Back"])
+            for override in ("script/todo/todo.json", "private/todo/a.json"):
+                target = self.root / override
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("{}")
+            await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual(spy.call_count, 3)
+
+    async def test_an_unreadable_tree_is_null_not_an_error(self):
+        self.todo_py.unlink()
+        data = await self.get_json("/api/telemetry?lang=en")
+        self.assertIsNone(data["tree"])
+        self.assertIsInstance(data["counts"], dict)
+
+    async def test_unknown_language_400_and_no_cookie_403(self):
+        cookie = {"Cookie": self.session_cookie}
+        resp = await self.fetch("/api/telemetry?lang=de", **cookie)
+        self.assertEqual(resp.code, 400)
+        self.assertEqual((await self.fetch("/api/telemetry")).code, 403)
+
+    async def test_the_hub_never_imports_todo_py(self):
+        await self.get_json("/api/telemetry?lang=en")
+        self.assertNotIn("script.todo.todo", sys.modules)
+
+
+class TestI18nApi(ApiCase):
+    async def test_whole_table_in_the_requested_language(self):
+        english = await self.get_json("/api/i18n?lang=en")
+        self.assertEqual(len(english), len(todo_i18n.TRANSLATIONS))
+        self.assertEqual(english["Quit"], "Quit")
+        french = await self.get_json("/api/i18n?lang=fr")
+        self.assertEqual(french["Quit"], "Quitter")
+
+    async def test_unknown_language_400_and_no_cookie_403(self):
+        cookie = {"Cookie": self.session_cookie}
+        resp = await self.fetch("/api/i18n?lang=xx", **cookie)
+        self.assertEqual(resp.code, 400)
+        self.assertEqual((await self.fetch("/api/i18n?lang=en")).code, 403)
+
+    async def test_a_changed_translation_file_is_reloaded(self):
+        i18n_py = self.root / "script" / "todo" / "todo_i18n.py"
+        with patch.object(server.importlib, "reload") as reload:
+            await self.get_json("/api/i18n?lang=en")
+            reload.assert_not_called()
+            i18n_py.write_text("# une clé de plus\n")
+            await self.get_json("/api/i18n?lang=en")
+        reload.assert_called_once_with(todo_i18n)
+
+    async def test_the_table_travels_gzipped(self):
+        resp = await self.fetch(
+            "/api/i18n?lang=en", Cookie=self.session_cookie
+        )
+        self.assertEqual(
+            resp.headers.get("X-Consumed-Content-Encoding"), "gzip"
+        )
 
 
 class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):
