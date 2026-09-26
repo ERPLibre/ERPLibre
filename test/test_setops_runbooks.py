@@ -24,7 +24,39 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+from script.setops import ansible_env, engine, runner  # noqa: E402
 from script.setops import runbooks as R  # noqa: E402
+
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def registre_reel():
+    """Le registre du MOTEUR tel qu'il est sur ce poste, ou None s'il n'y est
+    pas.
+
+    Le chemin vient du manifeste, seule autorité : l'écrire ici en ferait une
+    copie, qui dérive au premier déplacement. Un poste sans moteur rapatrié
+    fait SAUTER les épreuves qui en dépendent, plutôt que rougir sur une
+    absence qui n'est pas un défaut.
+    """
+    decl = engine.declaration(RACINE)
+    if decl is None or not decl.path:
+        return None
+    moteur = os.path.join(RACINE, decl.path)
+    if not os.path.isdir(moteur):
+        return None
+    vu = runner.jouer(
+        R.ARGV_REGISTRE,
+        env=ansible_env.environnement(RACINE, moteur, runner.base()),
+        cwd=moteur,
+    )
+    return R.lit_registre(vu.sortie)
+
+
+REEL = registre_reel()
+AVEC_MOTEUR = unittest.skipUnless(
+    REEL is not None, "registre du moteur illisible"
+)
 
 # La forme exacte que rend « runbooks.py lister --json ».
 REGISTRE = """[
@@ -248,6 +280,126 @@ class TestCeQuiEcrit(unittest.TestCase):
 
     def test_nothing_is_not_a_write(self):
         self.assertFalse(R.ecrit(None))
+
+
+class TestLesPortes(unittest.TestCase):
+    """Onze portes, dérivées du registre. Le nom de la méthode qui ouvre
+    chacune se DÉDUIT de la cible, donc aucune table n'est à tenir."""
+
+    def test_the_method_name_comes_from_the_target(self):
+        self.assertEqual(
+            "_setops_geste_instancier_appliquer",
+            R.methode("instancier-appliquer"),
+        )
+
+    def test_every_door_names_a_distinct_target(self):
+        self.assertEqual(len(R.PORTES), len(set(R.PORTES.values())))
+
+    def test_a_target_declared_once_is_found(self):
+        lus = R.lit_registre(REGISTRE)
+        self.assertEqual("banc-ecrire", R.trouve(lus, "banc-ecrire").cible)
+
+    def test_a_target_the_registry_ignores_is_not_found(self):
+        lus = R.lit_registre(REGISTRE)
+        self.assertIsNone(R.trouve(lus, "banc-fictif-jamais-declare"))
+        self.assertIsNone(R.trouve(None, "banc-ecrire"))
+
+    def test_two_sequences_declaring_the_same_target_alike_is_no_problem(self):
+        """L'ordre d'une séquence à l'autre peut répéter une cible ; tant que
+        la déclaration est la même, la porte en ouvre une sans ambiguïté."""
+        deux = REGISTRE.replace("banc-fictif-sequence", "banc-fictif-bis")
+        lus = R.lit_registre(REGISTRE[:-2] + "," + deux[1:])
+        self.assertEqual(2, len(lus))
+        self.assertIsNotNone(R.trouve(lus, "banc-ecrire"))
+
+    def test_two_sequences_that_disagree_open_no_door(self):
+        """Une porte qui trancherait au hasard lancerait parfois l'autre
+        geste."""
+        autre = REGISTRE.replace("banc-fictif-sequence", "banc-fictif-bis")
+        autre = autre.replace('"libelle": "Ecrit"', '"libelle": "Autre chose"')
+        lus = R.lit_registre(REGISTRE[:-2] + "," + autre[1:])
+        self.assertEqual(2, len(lus))
+        self.assertIsNone(R.trouve(lus, "banc-ecrire"))
+
+
+class TestLesEcarts(unittest.TestCase):
+    """Ce que todo sait et que le registre ne dit pas ENCORE."""
+
+    def test_a_target_without_a_divergence_has_an_empty_one(self):
+        """Jamais None : l'appelant lit toujours des champs."""
+        vide = R.ecart("banc-fictif-sans-ecart")
+        self.assertFalse(vide.interactif or vide.ecrit or vide.drapeau)
+
+    def test_an_assistant_that_writes_is_a_write_whatever_its_nature(self):
+        etape = R.Etape(
+            cible="config",
+            libelle="",
+            portee=R.TENANT,
+            nature=R.MESURE,
+            pourquoi="",
+            duree="",
+            variables=(),
+            exige_confirmation=False,
+            facultative=False,
+        )
+        self.assertTrue(R.ecrit(etape))
+        self.assertTrue(R.interactif(etape))
+
+    def test_a_plain_measure_stays_a_measure(self):
+        self.assertFalse(R.ecrit(etape(nature=R.MESURE)))
+        self.assertFalse(R.interactif(etape(nature=R.MESURE)))
+
+    def test_the_switch_is_named_only_where_there_is_one(self):
+        self.assertEqual(
+            "FORCE", R.drapeau(etape(cible="instancier-appliquer"))
+        )
+        self.assertEqual("", R.drapeau(etape(cible="deployer")))
+        self.assertEqual("", R.drapeau(None))
+
+    def test_every_divergence_says_why_it_exists(self):
+        """Une dérogation sans raison écrite est une dérogation qu'on
+        reconduit sans savoir pourquoi."""
+        for cible, vu in R.ECARTS.items():
+            with self.subTest(cible=cible):
+                self.assertTrue(vu.pourquoi, cible)
+
+
+@AVEC_MOTEUR
+class TestContreLeRegistreReel(unittest.TestCase):
+    """Les épreuves qui interrogent le MOTEUR de ce poste. Elles sautent
+    là où il n'est pas rapatrié : son absence n'est pas un défaut."""
+
+    def test_every_door_names_a_target_the_engine_declares(self):
+        """Une porte dont la cible a disparu du registre mène à un écran qui
+        refuse, et le menu l'annonce quand même."""
+        for cible in R.PORTES:
+            with self.subTest(cible=cible):
+                self.assertIsNotNone(R.trouve(REEL, cible), cible)
+
+    def test_every_divergence_names_a_target_the_engine_declares(self):
+        for cible in R.ECARTS:
+            with self.subTest(cible=cible):
+                self.assertIsNotNone(R.trouve(REEL, cible), cible)
+
+    def test_the_write_divergence_is_still_one(self):
+        """LE JOUR OÙ LE REGISTRE LE DIT LUI-MÊME, cette épreuve rougit et
+        l'entrée d'`ECARTS` doit partir : la garder masquerait la correction
+        en amont."""
+        for cible, vu in R.ECARTS.items():
+            if not vu.ecrit:
+                continue
+            with self.subTest(cible=cible):
+                self.assertEqual(R.MESURE, R.trouve(REEL, cible).nature, cible)
+
+    def test_the_switch_divergence_is_still_one(self):
+        """Même chose : si le registre déclare enfin ce drapeau comme une
+        variable, l'entrée doit partir."""
+        for cible, vu in R.ECARTS.items():
+            if not vu.drapeau:
+                continue
+            with self.subTest(cible=cible):
+                declarees = {v.nom for v in R.trouve(REEL, cible).variables}
+                self.assertNotIn(vu.drapeau, declarees)
 
 
 if __name__ == "__main__":

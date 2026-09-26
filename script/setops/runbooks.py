@@ -71,6 +71,123 @@ BARRIERES = (
 CONFIRMER = "CONFIRMER"
 
 
+class Ecart(NamedTuple):
+    """Ce que todo sait d'une cible et que le registre ne dit pas ENCORE.
+
+    `interactif` : la cible PARLE à l'opérateur — elle pose des questions, et
+    l'une peut demander un secret. Capturée, elle lit une entrée fermée, rend
+    « EOF » et n'a rien fait ; le terminal lui est donc rendu.
+
+    `ecrit` : elle touche au système alors que sa nature déclarée dit le
+    contraire. Todo pose sa propre confirmation dessus.
+
+    `drapeau` : le nom d'une variable qui est un INTERRUPTEUR et non une
+    valeur. La recette la lit par `$(if $(NOM),…)`, où GNU make tient toute
+    chaîne non vide pour vraie : « 0 » force donc autant que « 1 ». Todo ne
+    demande jamais sa valeur — il pose une question fermée et passe « 1 », ou
+    ne passe rien du tout.
+    """
+
+    interactif: bool = False
+    ecrit: bool = False
+    drapeau: str = ""
+    pourquoi: str = ""
+
+
+# LES ÉCARTS SONT NOMMÉS, PAS DISPERSÉS. Chacun est un manque du registre en
+# amont, et une épreuve rougit le jour où le registre le dit lui-même : l'entrée
+# doit alors partir, sans quoi elle masquerait la correction. C'est la seule
+# façon qu'une table de dérogations ne vieillisse pas en silence.
+ECARTS = {
+    "config": Ecart(
+        interactif=True,
+        ecrit=True,
+        pourquoi=(
+            "assistant qui écrit la configuration Proxmox et sème la voûte,"
+            " en demandant un secret par une invite muette"
+        ),
+    ),
+    "instancier-appliquer": Ecart(
+        drapeau="FORCE",
+        pourquoi=(
+            "son libellé enseigne « FORCE=1 », mais la recette lit toute"
+            " chaîne non vide : « 0 » passe outre le diff tout autant"
+        ),
+    ),
+}
+
+
+# LES ONZE PORTES des gestes d'écriture, et le nom de chacune à l'écran. Le
+# libellé de la PORTE appartient à todo — court, stable, traduit, il doit tenir
+# sur une ligne de menu ; TOUT ce qui décrit le geste vient du registre, relu à
+# chaque visite : libellé complet, pourquoi, nature, portée, durée, variables et
+# leurs invites. Une seule source, onze portes d'entrée.
+#
+# Une porte dont la cible n'est pas déclarée au registre ne mène nulle part, et
+# une épreuve la refuse.
+PORTE_INSTANCIER = "Set-OPS - Generate the inventory, diff first"
+PORTE_INSTANCIER_APPLIQUER = "Set-OPS - Take the generated inventory"
+PORTE_DEPLOYER = "Set-OPS - Deploy one host, layer by layer"
+PORTE_DEPLOYER_GROUPE = "Set-OPS - Deploy one group across the fleet"
+PORTE_APPLIQUER = "Set-OPS - Apply one group to the fleet"
+PORTE_CREER_VM = "Set-OPS - Create one VM and wait for it"
+PORTE_FLOTTE_CREER = "Set-OPS - Create the fleet's missing VMs"
+PORTE_FLUX = "Set-OPS - Regenerate the flows and the firewall rules"
+PORTE_SITE = "Set-OPS - Regenerate the site playbook"
+PORTE_GENOME_INSCRIRE = "Set-OPS - Record the parentage in the instance"
+PORTE_CONFIG = "Set-OPS - Proxmox assistant (asks you for a secret)"
+
+PORTES = {
+    "instancier": PORTE_INSTANCIER,
+    "instancier-appliquer": PORTE_INSTANCIER_APPLIQUER,
+    "deployer": PORTE_DEPLOYER,
+    "deployer-groupe": PORTE_DEPLOYER_GROUPE,
+    "appliquer": PORTE_APPLIQUER,
+    "creer-vm": PORTE_CREER_VM,
+    "flotte-creer": PORTE_FLOTTE_CREER,
+    "flux": PORTE_FLUX,
+    "site": PORTE_SITE,
+    "genome-inscrire": PORTE_GENOME_INSCRIRE,
+    "config": PORTE_CONFIG,
+}
+
+
+def methode(cible) -> str:
+    """Le nom de la méthode qui ouvre la porte de `cible`.
+
+    DÉRIVÉ de la cible, et non écrit à côté : une épreuve retrouve ainsi la
+    méthode de chaque porte sans table à tenir à jour, et une porte sans
+    méthode se voit.
+    """
+    return "_setops_geste_" + (cible or "").strip().replace("-", "_")
+
+
+def trouve(runbooks, cible):
+    """L'`Etape` que le registre déclare pour `cible`, ou None.
+
+    Une cible peut figurer dans plusieurs séquences. Tant que ces déclarations
+    sont IDENTIQUES, la porte en ouvre une sans ambiguïté. Si elles divergent,
+    la porte ne peut pas choisir à la place de l'opérateur et rend None : une
+    porte qui trancherait au hasard lancerait parfois l'autre geste.
+    """
+    cible = (cible or "").strip()
+    vues = [
+        etape
+        for runbook in runbooks or ()
+        for etape in runbook.etapes
+        if etape.cible == cible
+    ]
+    if not vues or len(set(vues)) > 1:
+        return None
+    return vues[0]
+
+
+def ecart(cible):
+    """L'`Ecart` de `cible`, ou un écart vide. Jamais None : l'appelant lit
+    toujours des champs, et un None ferait un test de plus à chaque usage."""
+    return ECARTS.get((cible or "").strip(), Ecart())
+
+
 class Variable(NamedTuple):
     """Une variable qu'une étape attend, telle que le registre la décrit.
 
@@ -250,8 +367,33 @@ def ecrit(etape):
     sa PROPRE confirmation : la ligne affichée porte `CONFIRMER=false`, et
     pour ces cibles-là le drapeau ne veut rien dire — elles écrivent quand
     même. Sans cette question, la ligne enseignerait qu'un `false` protège.
+
+    Une nature DÉCLARÉE `mesure` ne suffit pas à conclure : un assistant qui
+    sème une voûte écrit, quoi que le registre en dise, et `ECARTS` le nomme.
     """
-    return etape is not None and etape.nature == ECRITURE
+    if etape is None:
+        return False
+    return etape.nature == ECRITURE or ecart(etape.cible).ecrit
+
+
+def interactif(etape):
+    """`etape` a-t-elle besoin du terminal de l'opérateur ?
+
+    Capturée, une cible qui pose des questions lit une entrée fermée, rend
+    « EOF » et n'a rien fait. Le verdict est alors un refus que rien
+    n'explique.
+    """
+    return etape is not None and ecart(etape.cible).interactif
+
+
+def drapeau(etape):
+    """Le nom du drapeau-INTERRUPTEUR de `etape`, ou « ».
+
+    Sa valeur ne se demande jamais : la recette la lit par `$(if $(NOM),…)`,
+    et GNU make tient toute chaîne non vide pour vraie. Demander « FORCE= »
+    ferait forcer celui qui répond « 0 » pour dire non.
+    """
+    return ecart(etape.cible).drapeau if etape is not None else ""
 
 
 def compte(runbook, ecosysteme="", site=""):
