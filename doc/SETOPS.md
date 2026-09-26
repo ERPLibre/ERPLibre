@@ -319,3 +319,29 @@ does not rename around it — the index changes and everything is regenerated:
 back up, raze, change the index, deploy, restore. Budget about two hours,
 which is why the screen exists and why it is worth running before a
 deployment.
+
+## The engine's sequences
+
+The engine's Makefile carries more than a hundred and thirty documented
+targets and says nowhere in which order to play them. Its registry does, in
+seventeen sequences — and each step carries a "why" that only means something
+at its place in the suite. `Set-OPS - Runbooks` walks them.
+
+**Nothing is hidden.** A sequence stripped of the steps TODO will not launch
+would lie by omission: eight of the seventeen have such steps, and one would
+begin at its step 2. Every step is therefore shown, with the reason it does
+not run from here — destructive and kept by the engine, gated by the engine's
+own confirmation, or waiting for an ecosystem or a site to be mounted. The
+head of each sequence says how many of how many can be driven, so a bare
+station reads "0/9" rather than an empty screen.
+
+**A step that writes asks TODO's own confirmation**, even where the target
+does not demand one. The line shown carries `CONFIRMER=false`, and for those
+targets the flag means nothing — they write regardless. Without the question,
+the line would teach that a `false` protects. That is one place where TODO
+asks more than `make` does, and it says so.
+
+The count is what the registry DECLARES about each step's scope, not a
+guarantee that the prerequisite exists: a step may claim to need neither a
+tenant nor a site and still want an inventory. The verdict is read when it
+runs, and the engine's own words are shown.

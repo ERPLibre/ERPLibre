@@ -327,3 +327,29 @@ Une flotte ne se renomme pas pour le contourner — on change l'index et on
 régénère : sauvegarder, raser, changer l'index, déployer, restaurer. Compter
 environ deux heures, ce qui est la raison d'être de cet écran et de son
 passage avant un déploiement.
+
+## Les séquences du moteur
+
+Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
+nulle part dans quel ordre les jouer. Son registre le dit, en dix-sept
+séquences — et chaque étape porte un « pourquoi » qui n'a de sens qu'à sa place
+dans la suite. `Set-OPS - Runbooks` les parcourt.
+
+**Rien n'est caché.** Une séquence dont on retirerait les étapes que todo ne
+lance pas mentirait par omission : huit des dix-sept en ont, et l'une
+commencerait à son étape 2. Chaque étape est donc affichée, avec la raison pour
+laquelle elle ne part pas d'ici — destructive et gardée par le moteur, soumise
+à la confirmation du moteur lui-même, ou en attente d'un écosystème ou d'un
+site monté. La tête de chaque séquence dit combien sur combien se conduisent,
+si bien qu'un poste nu lit « 0/9 » plutôt qu'un écran vide.
+
+**Une étape qui écrit demande la propre confirmation de todo**, même là où la
+cible n'en exige pas. La ligne affichée porte `CONFIRMER=false`, et pour ces
+cibles-là le drapeau ne veut rien dire — elles écrivent quand même. Sans cette
+question, la ligne enseignerait qu'un « false » protège. C'est un endroit où
+todo demande plus que `make`, et il le dit.
+
+Le compte est ce que le registre DÉCLARE de la portée de chaque étape, non une
+garantie que le préalable existe : une étape peut se dire sans besoin de
+locataire ni de site et vouloir tout de même un inventaire. Le verdict est lu
+au lancement, et les mots du moteur sont montrés.

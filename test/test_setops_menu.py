@@ -30,6 +30,7 @@ sys.path.append(RACINE_DEPOT)
 sys.argv = ["todo.py"]
 
 from script.setops import engine, runner, state  # noqa: E402
+from script.setops import runbooks as registre  # noqa: E402
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -78,6 +79,26 @@ GREFFES = [
 ]
 
 ENTREE_SETOPS = "Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)"
+
+# Un registre de banc, de la forme exacte que rend « lister --json ». Les
+# identifiants sont inventés et n'existent nulle part ailleurs dans le dépôt.
+REGISTRE_BANC = """[
+  {"id": "banc-fictif-sequence", "titre": "Une sequence de banc",
+   "portee": "tenant", "but": "Eprouver l ecran.", "etapes": [
+    {"cible": "banc-mesurer", "libelle": "Mesure", "portee": "toute",
+     "nature": "mesure", "pourquoi": "Parce que.", "variables": [],
+     "fixes": {}},
+    {"cible": "banc-ecrire", "libelle": "Ecrit", "portee": "tenant",
+     "nature": "ecriture", "pourquoi": "Parce que.", "variables": ["NOM"],
+     "fixes": {}},
+    {"cible": "banc-raser", "libelle": "Detruit", "portee": "toute",
+     "nature": "destructif", "pourquoi": "Parce que.", "variables": [],
+     "fixes": {"CONFIRMER": "true"}},
+    {"cible": "banc-tenant", "libelle": "Locataire", "portee": "tenant",
+     "nature": "mesure", "pourquoi": "Parce que.", "variables": [],
+     "fixes": {}}]}
+]
+"""
 
 
 def _interdit(*_a, **_k):
@@ -395,6 +416,87 @@ class TestLaCreation(CasDEcosysteme):
         self.assertIn(
             todo_i18n.t("unreadable answer; replay the line above by hand"), vu
         )
+
+
+class TestLesRunbooks(CasDEcosysteme):
+    """Le navigateur de séquences : RIEN N'EST MASQUÉ.
+
+    Une séquence dont on retirerait ce que todo ne lance pas mentirait par
+    omission — et le pire cas n'est pas théorique : huit des dix-sept
+    séquences réelles ont des trous, et l'une commencerait à son étape 2.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_BANC
+        )
+        self.todo._pve_show = None
+
+    def ecran(self, saisies=()):
+        return self._ecran("_setops_runbooks", saisies)
+
+    def test_every_sequence_is_listed_with_what_it_offers(self):
+        vu = self.ecran()
+        self.assertIn("banc-fictif-sequence", vu)
+        self.assertIn("1/4", vu)
+
+    def test_a_barred_step_stays_shown_with_its_reason(self):
+        """C'est tout le parti : l'étape reste là, et dit pourquoi elle ne
+        part pas d'ici."""
+        vu = self.ecran(["1"])
+        self.assertIn("banc-raser", vu)
+        self.assertIn(
+            todo_i18n.t("destructive: the engine keeps this one"), vu
+        )
+        self.assertIn(todo_i18n.t("no ecosystem mounted"), vu)
+
+    def test_typing_a_barred_step_names_its_barrier(self):
+        """Répondre « choix invalide » ferait croire à une faute de frappe,
+        alors que le numéro est exactement celui qu'on lit."""
+        vu = self.ecran(["1", "3"])
+        self.assertIn(
+            todo_i18n.t("destructive: the engine keeps this one"), vu
+        )
+        self.assertEqual([], self.cibles())
+
+    def test_a_measure_runs_without_asking(self):
+        self.ecran(["1", "1"])
+        self.assertEqual(["banc-mesurer"], self.cibles())
+
+    def test_a_write_asks_todo_s_own_confirmation(self):
+        """La ligne affichée porte CONFIRMER=false, et pour ces cibles-là le
+        drapeau ne veut rien dire : sans cette question, la ligne
+        enseignerait qu'un « false » protège."""
+        with patch.object(
+            state.ecosystems, "monte", lambda _m: "OPS-Fictif-Dolomie"
+        ):
+            vu = self.ecran(["1", "2", "un-nom-fictif", "n"])
+        self.assertIn(todo_i18n.t("This step WRITES."), vu)
+        self.assertEqual([], self.cibles())
+
+    def test_a_confirmed_write_carries_its_variables(self):
+        with patch.object(
+            state.ecosystems, "monte", lambda _m: "OPS-Fictif-Dolomie"
+        ):
+            self.ecran(["1", "2", "un-nom-fictif", "o"])
+        self.assertEqual(
+            ("banc-ecrire", (("NOM", "un-nom-fictif"),), False),
+            self.lances[-1],
+        )
+
+    def test_a_missing_variable_runs_nothing(self):
+        with patch.object(
+            state.ecosystems, "monte", lambda _m: "OPS-Fictif-Dolomie"
+        ):
+            vu = self.ecran(["1", "2", ""])
+        self.assertIn("NOM", vu)
+        self.assertEqual([], self.cibles())
+
+    def test_an_unreadable_registry_lists_nothing(self):
+        self.todo._setops_registre = lambda _m: None
+        self.ecran(["1"])
+        self.assertEqual([], self.cibles())
 
 
 class TestDepuisDeploy(CasDeMenu):

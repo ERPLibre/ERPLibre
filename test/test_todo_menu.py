@@ -994,6 +994,7 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Set-OPS - Ecosystems discovered": "_setops_ecosystems",
         "Set-OPS - Switch the active ecosystem": "_setops_ecosystem_use",
         "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",
+        "Set-OPS - Runbooks": "_setops_runbooks",
     }
 
 

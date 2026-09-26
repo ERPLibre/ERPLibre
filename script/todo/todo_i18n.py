@@ -1377,7 +1377,7 @@ TRANSLATIONS = {
     "never run against the real tool: only unit tests cover it": {
         "fr": "jamais confronté au vrai outil : seules des épreuves"
         " unitaires le couvrent",
-        "en": "never run against the real tool: only unit tests cover" " it",
+        "en": "never run against the real tool: only unit tests cover it",
     },
     "Automatic (decided by the system)": {
         "fr": "Automatique (décidé par le système)",
@@ -1768,8 +1768,7 @@ TRANSLATIONS = {
     },
     "authority: the one you start again from when the station burns": {
         "fr": "autorité : celle dont on repart quand la station brûle",
-        "en": "authority: the one you start again from when the station"
-        " burns",
+        "en": "authority: the one you start again from when the station burns",
     },
     "AUTHORITY": {"fr": "AUTORITÉ", "en": "AUTHORITY"},
     "Another profile is already the authority:": {
@@ -6894,8 +6893,7 @@ TRANSLATIONS = {
     },
     "admin password drawn into /etc/forgejo/admin-password": {
         "fr": (
-            "mot de passe admin tiré au sort dans"
-            " /etc/forgejo/admin-password"
+            "mot de passe admin tiré au sort dans /etc/forgejo/admin-password"
         ),
         "en": "admin password drawn into /etc/forgejo/admin-password",
     },
@@ -17306,6 +17304,70 @@ TRANSLATIONS = {
         "fr": "Retaper « {name} » pour passer outre : ",
         "en": "Retype « {name} » to go on anyway: ",
     },
+    "Runbooks": {
+        "fr": "Runbooks",
+        "en": "Runbooks",
+    },
+    "Set-OPS - Runbooks (the engine's sequences, in order)": {
+        "fr": "📖 Set-OPS - Runbooks (les séquences du moteur, dans l'ordre)",
+        "en": "📖 Set-OPS - Runbooks (the engine's sequences, in order)",
+    },
+    "{n} of {m} steps can be driven from here": {
+        "fr": "{n} étapes sur {m} se conduisent d'ici",
+        "en": "{n} of {m} steps can be driven from here",
+    },
+    "Which sequence? (number, empty to leave): ": {
+        "fr": "Quelle séquence ? (numéro, vide pour sortir) : ",
+        "en": "Which sequence? (number, empty to leave): ",
+    },
+    "Which step? (number, empty to leave): ": {
+        "fr": "Quelle étape ? (numéro, vide pour sortir) : ",
+        "en": "Which step? (number, empty to leave): ",
+    },
+    "optional": {
+        "fr": "facultative",
+        "en": "optional",
+    },
+    "destructive: the engine keeps this one": {
+        "fr": "destructive : le moteur la garde",
+        "en": "destructive: the engine keeps this one",
+    },
+    "the engine demands its own confirmation": {
+        "fr": "le moteur exige sa propre confirmation",
+        "en": "the engine demands its own confirmation",
+    },
+    "no ecosystem mounted": {
+        "fr": "aucun écosystème monté",
+        "en": "no ecosystem mounted",
+    },
+    "no site mounted": {
+        "fr": "aucun site monté",
+        "en": "no site mounted",
+    },
+    "unreadable step": {
+        "fr": "étape illisible",
+        "en": "unreadable step",
+    },
+    "This step takes variables:": {
+        "fr": "Cette étape prend des variables :",
+        "en": "This step takes variables:",
+    },
+    "{name} is required; nothing was run.": {
+        "fr": "{name} est exigée ; rien n'a été lancé.",
+        "en": "{name} is required; nothing was run.",
+    },
+    "This step WRITES.": {
+        "fr": "Cette étape ÉCRIT.",
+        "en": "This step WRITES.",
+    },
+    "The engine does not gate it, so TODO asks here.": {
+        "fr": "Le moteur ne la garde pas, donc TODO demande ici.",
+        "en": "The engine does not gate it, so TODO asks here.",
+    },
+    "Run it? (y/N): ": {
+        "fr": "La lancer ? (o/N) : ",
+        "en": "Run it? (y/N): ",
+    },
     "Ecosystems": {
         "fr": "Écosystèmes",
         "en": "Ecosystems",
@@ -17418,8 +17480,7 @@ TRANSLATIONS = {
         " {mineur}; {n} libraries and {m} collections at the pin",
     },
     "python3 on the gesture PATH is {lu}, the target runs {cible}": {
-        "fr": "python3 du PATH du geste rend {lu}, la cible tourne en"
-        " {cible}",
+        "fr": "python3 du PATH du geste rend {lu}, la cible tourne en {cible}",
         "en": "python3 on the gesture PATH is {lu}, the target runs {cible}",
     },
     "{kind} {name}: {pinned} pinned, {found} installed": {

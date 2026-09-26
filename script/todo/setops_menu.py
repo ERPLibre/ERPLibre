@@ -21,6 +21,7 @@ import shlex
 import click
 
 from script.setops import ansible_env, ecosystems, engine, runner, state
+from script.setops import runbooks as registre
 from script.todo import state_screen
 from script.todo.todo_i18n import t
 
@@ -67,6 +68,13 @@ class SetopsMenuMixin:
                     "Set-OPS - Create an ecosystem from a template"
                 ),
                 "method": "_setops_ecosystem_create",
+            },
+            {"section": t("Runbooks")},
+            {
+                "prompt_description": t(
+                    "Set-OPS - Runbooks (the engine's sequences, in order)"
+                ),
+                "method": "_setops_runbooks",
             },
         ]
         help_info = self.fill_help_info(choices)
@@ -458,3 +466,169 @@ class SetopsMenuMixin:
         if not brut:
             return libre
         return int(brut) if brut.isdigit() else None
+
+    # --- Runbooks ----------------------------------------------------------
+
+    TITRE_RUNBOOKS = "Set-OPS - Runbooks (the engine's sequences, in order)"
+
+    # Les marques de nature, celles que la console du moteur emploie déjà :
+    # les relire ailleurs avec d'autres signes ferait deux vocabulaires.
+    MARQUES_NATURE = {
+        registre.MESURE: " ",
+        registre.ECRITURE: "*",
+        registre.DESTRUCTIF: "!",
+    }
+
+    # Ce qu'une barrière dit à l'écran. Le vocabulaire est clos dans la
+    # couche ; l'écran ne fait que le traduire.
+    BARRIERES = {
+        registre.DESTRUCTIVE: "destructive: the engine keeps this one",
+        registre.CONFIRMATION_MOTEUR: (
+            "the engine demands its own confirmation"
+        ),
+        registre.SANS_ECOSYSTEME: "no ecosystem mounted",
+        registre.SANS_SITE: "no site mounted",
+        registre.FORME_INCONNUE: "unreadable step",
+    }
+
+    def _setops_registre(self, moteur):
+        """Les runbooks du moteur, ou None après avoir dit pourquoi.
+
+        Le registre est lu en LANÇANT le script du moteur, jamais en
+        l'important : todo ne se lie pas aux noms internes du moteur.
+        """
+        argv = registre.ARGV_REGISTRE
+        print(f"\n▶ {runner.cite(argv)}")
+        vu = runner.jouer(
+            argv,
+            env=ansible_env.environnement(RACINE, moteur, runner.base()),
+            cwd=moteur,
+        )
+        lu = registre.lit_registre(vu.sortie) if vu.reussi else None
+        if lu is None:
+            print(
+                "  ✗ " + t("unreadable answer; replay the line above by hand")
+            )
+        return lu
+
+    def _setops_runbooks(self):
+        """Les séquences du moteur, dans leur ordre. RIEN N'EST MASQUÉ.
+
+        Une séquence dont on retirerait ce que todo ne lance pas mentirait
+        par omission : huit des dix-sept en ont, et l'une commencerait à son
+        étape 2. Chaque étape est donc là, et ce qui ne part pas d'ici porte
+        sa raison — comme l'écran d'état montre ses dix lignes plutôt que la
+        seule liste de ce qui est prêt.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print("\n🤖 " + t(self.TITRE_RUNBOOKS))
+        self._setops_bandeau(moteur)
+        lus = self._setops_registre(moteur)
+        if lus is None:
+            return
+        ecosysteme, site = (
+            ecosystems.monte(moteur),
+            ecosystems.site_monte(moteur),
+        )
+        for rang, runbook in enumerate(lus, 1):
+            ouvertes, total = registre.compte(runbook, ecosysteme, site)
+            print(
+                f"  [{rang}] {runbook.id:<22} [{runbook.portee}]"
+                f"  {ouvertes}/{total}  {runbook.titre}"
+            )
+        print(
+            "\n  "
+            + t("{n} of {m} steps can be driven from here").format(
+                n=sum(registre.compte(r, ecosysteme, site)[0] for r in lus),
+                m=sum(len(r.etapes) for r in lus),
+            )
+        )
+        choisi = self._setops_choisir_runbook(lus)
+        if choisi is None:
+            return
+        self._setops_sequence(moteur, choisi, ecosysteme, site)
+
+    @staticmethod
+    def _setops_choisir_runbook(runbooks):
+        """Le runbook dont le numéro est tapé, ou None."""
+        brut = input(t("Which sequence? (number, empty to leave): ")).strip()
+        if not brut.isdigit() or not 0 < int(brut) <= len(runbooks):
+            return None
+        return runbooks[int(brut) - 1]
+
+    def _setops_sequence(self, moteur, runbook, ecosysteme, site):
+        """Une séquence, entière, chaque étape marquée ; puis un geste."""
+        print(f"\n  {runbook.titre}  [{runbook.portee}]")
+        if runbook.but:
+            print(f"    {runbook.but}")
+        for rang, etape in enumerate(runbook.etapes, 1):
+            self._setops_dire_etape(rang, etape, ecosysteme, site)
+        etape = self._setops_choisir_etape(runbook, ecosysteme, site)
+        if etape is None:
+            return
+        self._setops_jouer_etape(moteur, etape)
+
+    def _setops_dire_etape(self, rang, etape, ecosysteme, site):
+        """Une étape, sa nature, et ce qui l'empêche le cas échéant."""
+        barriere = registre.barriere(etape, ecosysteme, site)
+        marque = self.MARQUES_NATURE.get(etape.nature, "?")
+        facultative = f"  ({t('optional')})" if etape.facultative else ""
+        print(f"    {marque} [{rang}] make {etape.cible}{facultative}")
+        if etape.libelle:
+            print(f"        {etape.libelle}")
+        if barriere:
+            print(f"        ⛔ {t(self.BARRIERES[barriere])}")
+
+    def _setops_choisir_etape(self, runbook, ecosysteme, site):
+        """L'étape dont le numéro est tapé, si elle se conduit d'ici.
+
+        Une étape barrée refuse en NOMMANT sa barrière : taper son numéro
+        est la question qu'on se pose en la voyant, et répondre « choix
+        invalide » ferait croire à une faute de frappe.
+        """
+        brut = input(t("Which step? (number, empty to leave): ")).strip()
+        if not brut.isdigit() or not 0 < int(brut) <= len(runbook.etapes):
+            return None
+        etape = runbook.etapes[int(brut) - 1]
+        barriere = registre.barriere(etape, ecosysteme, site)
+        if barriere:
+            print(f"  ⛔ {t(self.BARRIERES[barriere])}")
+            return None
+        return etape
+
+    def _setops_jouer_etape(self, moteur, etape):
+        """Montre la ligne, demande s'il faut, lance, lit le verdict.
+
+        TODO POSE SA PROPRE CONFIRMATION SUR UNE ÉCRITURE, même là où la
+        cible ne lit pas `CONFIRMER`. La ligne affichée porte
+        `CONFIRMER=false`, et pour ces cibles-là le drapeau ne veut rien
+        dire : sans cette question, la ligne enseignerait qu'un « false »
+        protège. L'écart avec le `make` à la main est dit à l'écran.
+        """
+        variables = [(nom, "") for nom in etape.variables]
+        if variables:
+            print(f"\n  {t('This step takes variables:')}")
+            saisies = []
+            for nom, _vide in variables:
+                valeur = input(f"    {nom}=").strip()
+                if not valeur:
+                    print(
+                        f"  ⛔ {t('{name} is required; nothing was run.').format(name=nom)}"
+                    )
+                    return
+                saisies.append((nom, valeur))
+            variables = saisies
+        if etape.pourquoi:
+            print(f"\n  {etape.pourquoi}")
+        if registre.ecrit(etape):
+            print(f"\n  ⚠ {t('This step WRITES.')}")
+            print(
+                f"    {t('The engine does not gate it, so TODO asks here.')}"
+            )
+            if not self._is_yes(input(f"{t('Run it? (y/N): ')}")):
+                print(t("Cancelled."))
+                return
+        vu = self._setops_lancer(moteur, etape.cible, variables)
+        self._setops_dire(vu)
