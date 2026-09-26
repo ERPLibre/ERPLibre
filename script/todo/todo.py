@@ -5398,6 +5398,16 @@ class TODO(
                     "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Odoo reverse proxy (pages and websocket on one port)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Local TLS certificates for testing (HTTPS)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -5412,6 +5422,10 @@ class TODO(
                 self.generate_network_performance_test()
             elif status == "3":
                 self.prompt_execute_vpn()
+            elif status == "4":
+                self.network_reverse_proxy()
+            elif status == "5":
+                self.network_local_certificates()
             else:
                 print(t("Command not found !"))
 
@@ -5437,6 +5451,99 @@ class TODO(
             cmd,
             source_erplibre=False,
             single_source_erplibre=True,
+        )
+
+    def network_reverse_proxy(
+        self, config_path="./config.conf", cert_dir=None
+    ):
+        """Lance script/reverse_proxy/main.py avec les ports de config_path.
+
+        Demande l'écoute — la machine seule ou tout le réseau — et le
+        protocole. En HTTPS, le certificat local de cert_dir sert, émis au
+        premier usage. Signale ensuite les réglages d'Odoo sans lesquels le
+        mandataire ne sert à rien : proxy_mode (Odoo ignore sinon les
+        en-têtes X-Forwarded-*) et workers (à 0, aucun port de bus n'écoute
+        et /websocket échoue). Le mandataire tourne au premier plan ; Ctrl+C
+        le rend au menu.
+        """
+        from script.reverse_proxy import local_cert
+        from script.reverse_proxy.main import read_odoo_config
+
+        cert_dir = cert_dir or local_cert.DEFAULT_DIR
+        odoo = read_odoo_config(config_path)
+        print(f"\n{t('Listen on:')}")
+        print(f"  [1] {t('Local only (127.0.0.1)')} *")
+        print(f"  [2] {t('Whole network (0.0.0.0)')}")
+        choice = input(t("Choice (1-2, default 1): ")).strip()
+        listen = "0.0.0.0" if choice == "2" else "127.0.0.1"
+        print(f"\n{t('Protocol:')}")
+        print("  [1] HTTP *")
+        print(f"  [2] HTTPS ({t('local certificate')})")
+        https = input(t("Choice (1-2, default 1): ")).strip() == "2"
+        tls = ""
+        if https:
+            files = local_cert.paths(cert_dir)
+            if not local_cert.exists(cert_dir):
+                print(t("No local certificate yet: issuing one."))
+                local_cert.issue(cert_dir, local_cert.default_names())
+            print(
+                f"{t('Authority to import in the browser:')} {files['ca_crt']}"
+            )
+            tls = (
+                f" --tls-cert {files['server_crt']}"
+                f" --tls-key {files['server_key']}"
+            )
+        if listen == "0.0.0.0":
+            reachable = t(
+                "The proxy is reachable by every machine on the network."
+            )
+            print(f"⚠️  {reachable}")
+        print(
+            f"{t('Ports read from')} {config_path} : web"
+            f" {odoo['web_port']}, bus {odoo['websocket_port']}"
+        )
+        if not odoo["proxy_mode"]:
+            missing = t("is missing: Odoo ignores the X-Forwarded-* headers.")
+            print(f"⚠️  proxy_mode = True {missing}")
+        if odoo["workers"] < 1:
+            no_bus = t("no bus port listens, /websocket will fail.")
+            print(f"⚠️  workers = {odoo['workers']} : {no_bus}")
+        print(t("Ctrl+C stops the proxy."))
+        self.execute.exec_command_live(
+            "./script/reverse_proxy/main.py"
+            f" --listen {listen}"
+            f" --web-port {odoo['web_port']}"
+            f" --websocket-port {odoo['websocket_port']}" + tls,
+            source_erplibre=False,
+        )
+
+    def network_local_certificates(self, cert_dir=None):
+        """Émet le certificat local du mandataire, et son autorité au besoin.
+
+        Couvre localhost, les boucles locales, le nom d'hôte et ses adresses,
+        plus les noms saisis. L'autorité existante est gardée : déjà importée
+        dans le navigateur, elle y reste valable.
+        """
+        from script.reverse_proxy import local_cert
+
+        cert_dir = cert_dir or local_cert.DEFAULT_DIR
+        names = local_cert.default_names()
+        print(f"{t('Names covered:')} {', '.join(names)}")
+        extra = input(
+            t("Other names or addresses, comma separated (Enter: none): ")
+        )
+        for name in (n.strip() for n in extra.split(",")):
+            if name and name not in names:
+                names.append(name)
+        files = local_cert.issue(cert_dir, names)
+        print(f"{t('Authority to import in the browser:')} {files['ca_crt']}")
+        print(f"{t('Server certificate:')} {files['server_crt']}")
+        print(
+            t(
+                "Import the authority once (Firefox: Settings › Certificates"
+                " › Authorities › Import); a new server certificate needs no"
+                " new import."
+            )
         )
 
     def prompt_execute_security(self):
