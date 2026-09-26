@@ -83,7 +83,8 @@ func TestDepotDeURLRefuseLesSchemasNonHTTP(t *testing.T) {
 func TestGitNEmprunteQueHTTP(t *testing.T) {
 	nu := depotDEssai(t)
 	g := &GitMirror{Dir: t.TempDir()}
-	err := g.git(context.Background(), "", "ls-remote", "--", "file://"+nu)
+	err := g.gitBorne(
+		context.Background(), 30*time.Second, "", "ls-remote", "--", "file://"+nu)
 	if err == nil {
 		t.Fatal("ls-remote file:// accepté")
 	}
@@ -608,4 +609,39 @@ func hoteDe(t *testing.T, brut string) string {
 		t.Fatal(err)
 	}
 	return u.Host
+}
+
+// Un clonage se juge sur son SILENCE, pas sur sa durée : l'histoire complète
+// d'odoo/odoo prend près d'une heure à un débit ordinaire, et un délai total
+// la tuait puis la relançait de zéro, sans fin. Ces trois tests gardent la
+// règle sur une commande qui imite git : muette, bavarde, ou interminable.
+func TestUneCommandeMuetteEstAbandonnee(t *testing.T) {
+	debut := time.Now()
+	err := executerSurveille(context.Background(), time.Minute,
+		400*time.Millisecond, "", "sh", "-c", "sleep 30")
+	if err == nil {
+		t.Fatal("une commande muette n'a pas été abandonnée")
+	}
+	if d := time.Since(debut); d > 10*time.Second {
+		t.Errorf("abandon après %s, attendu près du délai d'inactivité", d)
+	}
+}
+
+func TestUneCommandeQuiProgresseDepasseLeSilenceTolere(t *testing.T) {
+	// Elle dure deux fois le silence toléré, mais écrit sans cesse : c'est
+	// le gros dépôt sain, qui doit aller au bout.
+	err := executerSurveille(context.Background(), time.Minute,
+		time.Second, "", "sh", "-c",
+		"for i in 1 2 3 4 5 6 7 8; do echo progression; sleep 0.25; done")
+	if err != nil {
+		t.Fatalf("une commande active a été abandonnée : %v", err)
+	}
+}
+
+func TestLeDelaiTotalResteUnPlafond(t *testing.T) {
+	err := executerSurveille(context.Background(), time.Second,
+		time.Minute, "", "sh", "-c", "while true; do echo x; sleep 0.1; done")
+	if err == nil {
+		t.Fatal("le délai total n'a rien borné")
+	}
 }
