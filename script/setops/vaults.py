@@ -110,27 +110,83 @@ class Pose(NamedTuple):
         return self.resultat == POSEE
 
 
+def _colonne(reste):
+    """(étiquette, nom, chemin) d'une ligne de tableau, ou None.
+
+    L'ÉTIQUETTE SE RECONNAÎT À SON SÉPARATEUR, jamais à sa simple présence. Le
+    moteur cadre ses colonnes sur douze caractères puis écrit DEUX espaces
+    avant le chemin ; c'est ce blanc double qui distingue la colonne d'état
+    d'une suite de mots qui lui ressemble.
+
+    Sans cette borne, deux lignes se lisent à l'envers : « cle presente mais
+    vide » passe pour une clé présente et emporte le reste de sa phrase dans
+    le chemin, et une ligne qui dit CLE ABSENTE se lit « presente » dès que le
+    chemin traverse un dossier nommé « cle presente ». La seconde est la pire :
+    elle annonce calme une voûte qui bloque.
+
+    Le DERNIER séparateur valable gagne : le chemin, lui, ne porte jamais deux
+    espaces de suite.
+    """
+    trouvee = None
+    for brute, etat in ETIQUETTES.items():
+        depart = 0
+        while True:
+            indice = reste.find(brute, depart)
+            if indice < 0:
+                break
+            depart = indice + 1
+            apres = reste[indice + len(brute) :]
+            # Le moteur complète l'étiquette à douze caractères PUIS pose deux
+            # espaces. Après la partie non blanche de l'étiquette, il reste
+            # donc au moins deux blancs avant le chemin.
+            sans_blanc = apres.lstrip(" ")
+            if not sans_blanc or len(apres) - len(sans_blanc) < 2:
+                continue
+            if trouvee is None or indice > trouvee[0]:
+                trouvee = (indice, etat, reste[:indice], sans_blanc)
+    if trouvee is None:
+        return None
+    _indice, etat, nom, chemin = trouvee
+    return etat, nom.strip(), chemin.strip()
+
+
+def _pretend_etre_du_tableau(ligne):
+    """Cette ligne prétend-elle être une ligne du TABLEAU ?
+
+    Sert à trancher entre une ligne mal comprise et la prose que le moteur
+    imprime sous le tableau. DEUX SIGNES, et il en suffit d'un : un premier mot
+    qui est un rôle connu, ou une étiquette d'état quelque part. Il en faut
+    deux parce qu'une ligne peut perdre l'un OU l'autre en amont — un rôle
+    renommé garde son étiquette, une étiquette reformulée garde son rôle — et
+    dans les deux cas la ligne doit faire refuser le rapport plutôt que passer
+    pour de la prose.
+
+    La prose du moteur n'a ni l'un ni l'autre : elle commence par un mot
+    ordinaire et ne porte aucune étiquette.
+    """
+    texte = ligne or ""
+    if any(brute in texte for brute in ETIQUETTES):
+        return True
+    return texte.split()[:1] in ([r] for r in ROLES)
+
+
 def _ligne(ligne):
     """La `Voute` que porte une ligne du rapport, ou None.
 
     Le chemin est pris APRÈS l'étiquette et non comme dernier mot : un dossier
     de configuration dont le nom contient une espace ne rendrait qu'une queue
-    de chemin, et todo proposerait de créer la clé ailleurs. Le nom du dépôt se
-    lit de la même façon, entre le rôle et l'étiquette.
+    de chemin, et todo proposerait de créer la clé ailleurs.
     """
     if not ligne or ligne[:1].isspace():
         return None
     role, _, reste = ligne.partition(" ")
     if role not in ROLES:
         return None
-    for brute, etat in ETIQUETTES.items():
-        avant, marque, apres = reste.partition(brute)
-        if not marque:
-            continue
-        return Voute(
-            role=role, nom=avant.strip(), etat=etat, chemin=apres.strip()
-        )
-    return None
+    lue = _colonne(reste)
+    if lue is None:
+        return None
+    etat, nom, chemin = lue
+    return Voute(role=role, nom=nom, etat=etat, chemin=chemin)
 
 
 def lit_etat(sortie):
@@ -143,26 +199,38 @@ def lit_etat(sortie):
     étiquette connue, fait refuser TOUT le rapport. Sauter la ligne qu'on ne
     comprend pas ferait taire l'absence que cet écran existe pour montrer.
     """
-    lignes = (sortie or "").splitlines()
-    if any(ligne.lstrip().startswith(AUCUNE) for ligne in lignes):
-        return ()
-    trouvees, tableau = [], False
-    for ligne in lignes:
+    trouvees, rien_a_nommer = [], False
+    for ligne in (sortie or "").splitlines():
         if not ligne.strip():
             continue
         lue = _ligne(ligne)
         if lue is not None:
             trouvees.append(lue)
-            tableau = True
-        elif tableau:
-            # Sous le tableau, le moteur explique le blocage en prose et cite
-            # la commande qui le règle : ces lignes ne sont pas des voûtes.
-            break
-        elif ligne[:1].isspace():
             continue
-        else:
+        # UNE LIGNE QUI PRÉTEND ÊTRE DU TABLEAU doit se lire entièrement,
+        # et doit donc se lire entièrement. Le refus ne dépend PAS de sa
+        # place : avalée comme prose parce qu'une ligne valable la précédait,
+        # une voûte bloquante disparaîtrait sans bruit — et le rôle est
+        # justement ce sur quoi `bloquante` se décide.
+        if _pretend_etre_du_tableau(ligne):
             return None
-    return tuple(trouvees) or None
+        if ligne.lstrip().startswith(AUCUNE):
+            rien_a_nommer = True
+            continue
+        if ligne[:1].isspace():
+            # La commande que le moteur cite sous son explication.
+            continue
+        if trouvees:
+            # Sous le tableau, le moteur explique le blocage en prose.
+            continue
+        return None
+    if trouvees:
+        # LE TABLEAU L'EMPORTE SUR LA SENTINELLE. Cherchée partout, la phrase
+        # « aucune voûte à nommer » se trouve aussi dans la prose que le moteur
+        # imprime SOUS le tableau ; rendre `()` alors ferait dire à l'écran
+        # « rien à nommer » au moment précis où une clé bloquante manque.
+        return tuple(trouvees)
+    return () if rien_a_nommer else None
 
 
 def bloquante(voutes):

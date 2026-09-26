@@ -18,6 +18,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -113,6 +114,55 @@ class TestLaLectureDuRapport(unittest.TestCase):
             lues[0].chemin,
         )
 
+    def test_the_table_wins_over_the_sentinel(self):
+        """LE CALME TROMPEUR. La phrase « aucune voûte à nommer » se trouve
+        aussi dans la prose du moteur ; cherchée partout, elle faisait rendre
+        « rien à nommer » au moment précis où une clé bloquante manque, et
+        l'écran s'en allait sans un mot."""
+        vu = V.lit_etat(BLOQUE + "  " + V.AUCUNE + " pour les compagnons.\n")
+        self.assertEqual(2, len(vu))
+        self.assertIsNotNone(V.bloquante(vu))
+
+    def test_an_unknown_role_refuses_wherever_it_sits(self):
+        """Le refus ne dépend PAS de la place de la ligne. Avalée comme prose
+        parce qu'une ligne valable la précédait, une voûte bloquante
+        disparaîtrait sans bruit."""
+        for rang in (0, 1, 2):
+            with self.subTest(rang=rang):
+                lignes = RAPPORT.splitlines(True)
+                lignes[rang] = "montee" + lignes[rang].split(" ", 1)[1]
+                self.assertIsNone(V.lit_etat("".join(lignes)))
+
+    def test_an_unknown_label_refuses_wherever_it_sits(self):
+        """Un rôle connu suffit à faire prétendre au tableau : une étiquette
+        reformulée en amont ne doit pas passer pour de la prose."""
+        for vieille in ("cle presente", "sans cle"):
+            with self.subTest(etiquette=vieille):
+                self.assertIsNone(
+                    V.lit_etat(RAPPORT.replace(vieille, "cle peut-etre", 1))
+                )
+
+    def test_a_label_followed_by_more_words_is_not_a_label(self):
+        """Le moteur pose DEUX espaces entre l'état et le chemin : sans cette
+        borne, « cle presente mais vide » passait pour une clé présente et
+        emportait sa propre phrase dans le chemin."""
+        self.assertIsNone(
+            V._ligne(
+                "instance    Fabrique-Nord        cle presente mais vide"
+                "   /chemin-fictif/v-a"
+            )
+        )
+
+    def test_a_path_that_traverses_a_label_does_not_change_the_state(self):
+        """LA PIRE DES DEUX : une ligne qui dit CLE ABSENTE se lisait
+        « presente » dès que le chemin traversait un dossier ainsi nommé."""
+        lue = V._ligne(
+            "instance    Fabrique-Nord        CLE ABSENTE   "
+            "/chemin-fictif/cle presente/v-a"
+        )
+        self.assertEqual(V.ABSENTE_BLOQUANTE, lue.etat)
+        self.assertEqual("/chemin-fictif/cle presente/v-a", lue.chemin)
+
     def test_anything_else_is_unreadable(self):
         for texte in ("", None, "Traceback (most recent call last):"):
             with self.subTest(texte=texte):
@@ -170,6 +220,52 @@ class TestLaPoseDuFichierCle(unittest.TestCase):
         V.poser_cle(self.chemin)
         mode = stat.S_IMODE(os.stat(self.chemin).st_mode)
         self.assertEqual(0, mode & (stat.S_IRWXG | stat.S_IRWXO))
+
+    def test_the_mode_is_given_at_the_moment_of_creation(self):
+        """Mesuré SUR LA CRÉATION, et non sur le mode final : créer large puis
+        resserrer laisse une fenêtre où la clé est lisible par tout le monde,
+        et le mode final ne la montre pas."""
+        vus = []
+        vrai = os.open
+
+        def espion(chemin, drapeaux, mode=0o777, *a, **k):
+            vus.append(mode)
+            return vrai(chemin, drapeaux, mode, *a, **k)
+
+        with mock.patch.object(os, "open", espion):
+            V.poser_cle(self.chemin)
+        self.assertEqual([V.MODE], vus)
+
+    def test_the_key_is_one_draw_from_the_system_source(self):
+        """La FORME ne dit rien de l'ALÉA : trois octets répétés seize fois
+        donnent soixante-quatre caractères base64 tous différents d'une pose à
+        l'autre, avec vingt-quatre bits d'entropie au lieu de trois cent
+        quatre-vingt-quatre."""
+        tires = []
+        vrai = os.urandom
+
+        def espion(n):
+            tires.append(n)
+            return vrai(n)
+
+        with mock.patch.object(os, "urandom", espion):
+            V.poser_cle(self.chemin)
+        self.assertEqual([V.OCTETS], tires)
+
+    def test_the_key_repeats_no_short_pattern(self):
+        """Contrôle indépendant de l'espion : une clé bâtie en répétant un
+        motif court le laisse voir dans ses octets."""
+        import base64
+
+        V.poser_cle(self.chemin)
+        with open(self.chemin, "rb") as tenu:
+            octets = base64.b64decode(tenu.read())
+        self.assertEqual(V.OCTETS, len(octets))
+        for periode in range(1, len(octets) // 2 + 1):
+            with self.subTest(periode=periode):
+                motif = octets[:periode]
+                repete = (motif * (len(octets) // periode + 1))[: len(octets)]
+                self.assertNotEqual(repete, octets)
 
     def test_the_key_is_one_line_of_the_documented_shape(self):
         """Le moteur documente 48 octets en base64 sur UNE ligne : un
