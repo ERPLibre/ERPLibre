@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Dolibarr dans TODO : l'entrée du menu Installation et son parcours.
+
+Le menu DEMANDE et AFFICHE ; script/dolibarr/ décide et exécute. Ce qui est
+une décision — l'épinglage, ce que l'hôte permet, la commande à lancer — vit
+dans script/dolibarr/lib_dolibarr.py, sans sortie, et se teste sans TODO.
+Les faits de l'hôte (système, famille de paquets, systemd, moteur de
+conteneurs) sont lus en UN point, _dolibarr_host_facts, que les tests
+remplacent.
+
+Aucun import tiers au niveau du module : prompt_install sert aussi de repli
+quand TODO démarre mal, et cette entrée doit s'y afficher.
+"""
+
+import getpass
+import os
+import platform
+import shlex
+import shutil
+import socket
+
+from script.dolibarr import lib_dolibarr
+from script.todo import todo_install
+from script.todo.todo_i18n import t
+
+ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+DEFAULT_INSTANCE = "dolibarr"
+DEFAULT_LOGIN = "admin"
+DEFAULT_PORT = 8080
+
+# Le script qui bâtit le venv d'outillage quand il manque, comme le fait
+# mobile/install_and_run.sh avant de s'en servir.
+INSTALL_ERPLIBRE = "./script/install/install_erplibre.sh"
+
+
+class DolibarrMenuMixin:
+    # -- Entrée du menu Installation -----------------------------------
+
+    def _dolibarr_install_entry(self, key):
+        """(clé, libellé, None) pour prompt_install, ou None si l'épinglage
+        est illisible — la raison est alors affichée, l'entrée absente."""
+        try:
+            pin = lib_dolibarr.read_pin(ROOT)
+        except lib_dolibarr.PinError as e:
+            print(t("Dolibarr pin unreadable: %s") % e)
+            return None
+        installed = os.path.exists(
+            os.path.join(ROOT, pin["path"], "htdocs", "version.inc.php")
+        )
+        return key, lib_dolibarr.install_label(key, pin, installed), None
+
+    # -- Parcours d'installation ---------------------------------------
+
+    def prompt_install_dolibarr(self):
+        """Environnement, exécution, base, paramètres, puis le script.
+
+        Chaque question offre « 0: Back », qui rend la main sans rien lancer.
+        Rien n'est installé avant la confirmation du récapitulatif.
+        """
+        try:
+            pin = lib_dolibarr.read_pin(ROOT)
+        except lib_dolibarr.PinError as e:
+            print(t("Dolibarr pin unreadable: %s") % e)
+            return
+        modes = [
+            (
+                "dev",
+                t("Development - your user, local port, debugging allowed"),
+            ),
+            (
+                "prod",
+                t("Production - system services, hardened, scheduled jobs"),
+            ),
+        ]
+        delivered = {m for m, _r in lib_dolibarr.AVAILABLE}
+        mode = self._dolibarr_choose(
+            t("Dolibarr environment:"),
+            [(m, label) for m, label in modes if m in delivered],
+        )
+        if mode is None:
+            return
+        runtimes, reasons = self._dolibarr_runtimes(mode)
+        for reason in reasons:
+            print(reason)
+        if not runtimes:
+            return
+        runtime = self._dolibarr_choose(t("Dolibarr runtime:"), runtimes)
+        if runtime is None:
+            return
+        if runtime == "native":
+            db = self._dolibarr_choose(
+                t("Dolibarr database:"),
+                [
+                    ("mariadb", t("MariaDB (recommended)")),
+                    ("postgresql", t("PostgreSQL (the ERPLibre server)")),
+                ],
+            )
+            if db is None:
+                return
+        else:
+            print(
+                t(
+                    "Docker / Podman: MariaDB only, the official image"
+                    " installs itself on MariaDB alone."
+                )
+            )
+            db = "mariadb"
+        params = self._dolibarr_ask_instance(mode, runtime)
+        if params is None:
+            return
+        password = self._dolibarr_ask_admin_password()
+        if password is None:
+            return
+        choice = dict(params, mode=mode, runtime=runtime, db=db)
+        choice["admin_password"] = password
+        argv, env = lib_dolibarr.install_argv(choice)
+        command = shlex.join(argv)
+
+        print()
+        print(
+            t("Dolibarr %s (%s) will be installed:")
+            % (pin["version"], pin["commit"][:7])
+        )
+        print(f"  {t('Instance: %s') % choice['instance']}")
+        if choice.get("port"):
+            print(f"  {t('Web port: %s') % choice['port']}")
+        if choice.get("domain"):
+            print(f"  {t('Domain: %s') % choice['domain']}")
+        if runtime == "container":
+            print(f"  {t('Image: %s') % pin['docker_image']}")
+        print(f"{t('Will execute:')}\n{command}")
+        if not self._is_yes(input(t("Confirm? (y/N): ")).strip().lower()):
+            print(t("Cancelled."))
+            return
+
+        if not self._dolibarr_python_ready():
+            print(f"{t('Will execute:')}\n{INSTALL_ERPLIBRE}")
+            if self.execute.exec_command_live(
+                INSTALL_ERPLIBRE, source_erplibre=False
+            ):
+                print(t("Installation failed, see the output above."))
+                return
+        status = self.execute.exec_command_live(
+            command, source_erplibre=False, new_env=env or None
+        )
+        if status:
+            print(t("Installation failed, see the output above."))
+
+    def _dolibarr_choose(self, question, options):
+        """Liste numérotée de `options` [(valeur, libellé)] plus « 0: Back ».
+
+        Rend la valeur choisie, ou None pour Retour. Même forme que le choix
+        du type d'installation de prompt_install.
+        """
+        choices = {str(i): option for i, option in enumerate(options, start=1)}
+        lines = [f"{k}: {label}" for k, (_v, label) in choices.items()]
+        lines.append(f"0: {t('Back')}")
+        answer = ""
+        while answer not in choices and answer != "0":
+            if answer:
+                print(f"{t('Error, cannot understand value')} '{answer}'")
+            answer = input(
+                f"💬 {question}\n\t"
+                + "\n\t".join(lines)
+                + f"\n{t('Select: ')}"
+            ).strip()
+        if answer == "0":
+            return None
+        return choices[answer][0]
+
+    def _dolibarr_runtimes(self, mode):
+        """([(valeur, libellé)] des exécutions proposées, [raisons])."""
+        facts = self._dolibarr_host_facts()
+        delivered = {r for m, r in lib_dolibarr.AVAILABLE if m == mode}
+        options, reasons = [], []
+        ok, why = lib_dolibarr.native_support(
+            facts["system"],
+            facts["family"],
+            facts["is_nixos"],
+            facts["has_systemd"],
+            mode,
+        )
+        if "native" not in delivered:
+            pass
+        elif ok:
+            options.append(("native", t("Native - nginx + PHP-FPM")))
+        else:
+            reasons.append(t("Native is not offered here: %s") % t(why))
+        ok, why = lib_dolibarr.container_support(
+            facts["system"], facts["family"], facts["engine_usable"]
+        )
+        if "container" not in delivered:
+            pass
+        elif ok:
+            options.append(
+                (
+                    "container",
+                    t("Docker / Podman - official dolibarr/dolibarr image"),
+                )
+            )
+        else:
+            reasons.append(
+                t("Docker / Podman is not offered here: %s") % t(why)
+            )
+        return options, reasons
+
+    def _dolibarr_ask_instance(self, mode, runtime):
+        """Nom, port, domaine et identifiant ; None si on ne peut continuer."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return None
+        while True:
+            name = (
+                input(t("Instance name (default: %s): ") % DEFAULT_INSTANCE)
+                .strip()
+                .lower()
+                or DEFAULT_INSTANCE
+            )
+            if lib_dolibarr.valid_instance_name(name):
+                break
+            print(
+                t(
+                    "Invalid name: lowercase letters, digits and _, starting"
+                    " with a letter."
+                )
+            )
+        if name in known:
+            print(t("This instance already exists: %s") % name)
+            return None
+        params = {"instance": name}
+
+        # La production native passe par nginx sur 80/443 : pas de port.
+        if not (mode == "prod" and runtime == "native"):
+            default = lib_dolibarr.free_port(
+                DEFAULT_PORT, self._dolibarr_port_is_free
+            )
+            if default is None:
+                print(t("No free web port from %s.") % DEFAULT_PORT)
+                return None
+            while True:
+                port = lib_dolibarr.parse_port(
+                    input(t("Web port (default: %s): ") % default), default
+                )
+                if port is not None:
+                    break
+                print(t("Invalid port: a number from 1024 to 65535."))
+            params["port"] = port
+
+        if mode == "prod":
+            domain = input(t("Domain name (empty for none): ")).strip()
+            if domain:
+                tls = self._dolibarr_choose(
+                    t("HTTPS certificate:"),
+                    [
+                        ("certbot", t("Let's Encrypt (public name, certbot)")),
+                        ("local", t("Local CA (tests)")),
+                        ("none", t("None (HTTP only)")),
+                    ],
+                )
+                if tls is None:
+                    return None
+                params.update(domain=domain, tls=tls)
+                if tls == "certbot":
+                    email = input(
+                        t("Email for certbot (empty for none): ")
+                    ).strip()
+                    if email:
+                        params["email"] = email
+
+        while True:
+            login = (
+                input(t("Administrator login (default: admin): ")).strip()
+                or DEFAULT_LOGIN
+            )
+            if lib_dolibarr.valid_login(login):
+                break
+            print(
+                t(
+                    "Invalid login: letters, digits and . _ @ -, starting"
+                    " with a letter or a digit."
+                )
+            )
+        params["admin_login"] = login
+        return params
+
+    def _dolibarr_ask_admin_password(self):
+        """Mot de passe saisi deux fois ; "" = généré par le script ; None
+        si la saisie est interrompue."""
+        try:
+            while True:
+                first = getpass.getpass(
+                    t(
+                        "Administrator password (empty = generated and"
+                        " saved for this instance): "
+                    )
+                )
+                if not first:
+                    return ""
+                if getpass.getpass(t("Confirm the password: ")) == first:
+                    return first
+                print(t("Passwords differ."))
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+
+    # -- Faits de l'hôte (remplacés en test) ---------------------------
+
+    def _dolibarr_host_facts(self):
+        """Système, famille de paquets, NixOS, systemd, moteur utilisable."""
+        system = platform.system()
+        family = None
+        if system == "Linux":
+            family = todo_install.family()
+        elif system == "Darwin" and shutil.which("brew"):
+            family = "brew"
+        engine_usable = False
+        try:
+            from script.todo import container_runtime
+
+            engine_usable = any(
+                container_runtime.utilisable(fiche)
+                for fiche in container_runtime.etats()
+            )
+        except Exception:
+            # Un moteur qu'on ne sait pas interroger n'est pas utilisable ;
+            # la voie reste proposée là où il peut s'installer.
+            engine_usable = False
+        return {
+            "system": system,
+            "family": family,
+            "is_nixos": todo_install.os_id() == "nixos",
+            "has_systemd": os.path.isdir("/run/systemd/system"),
+            "engine_usable": engine_usable,
+        }
+
+    def _dolibarr_port_is_free(self, port):
+        """Vrai si 127.0.0.1:`port` accepte un bind en ce moment."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+            except OSError:
+                return False
+        return True
+
+    def _dolibarr_python_ready(self):
+        """Vrai si l'interpréteur des scripts d'outillage est là."""
+        return os.access(os.path.join(ROOT, lib_dolibarr.PYTHON), os.X_OK)

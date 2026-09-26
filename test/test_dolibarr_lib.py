@@ -328,6 +328,17 @@ class TestContainerSupport(unittest.TestCase):
                 )
 
 
+class TestAvailable(unittest.TestCase):
+    def test_development_native_is_delivered(self):
+        self.assertIn(("dev", "native"), lib_dolibarr.AVAILABLE)
+
+    def test_every_pair_is_a_known_mode_and_runtime(self):
+        for mode, runtime in lib_dolibarr.AVAILABLE:
+            with self.subTest(mode=mode, runtime=runtime):
+                self.assertIn(mode, ("dev", "prod"))
+                self.assertIn(runtime, lib_dolibarr.RUNTIMES)
+
+
 class TestInstallArgv(unittest.TestCase):
     PYTHON = "./.venv.erplibre/bin/python"
 

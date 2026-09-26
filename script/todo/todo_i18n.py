@@ -15887,6 +15887,175 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
+    # Dolibarr (script/todo/dolibarr_menu.py, script/dolibarr/)
+    "Dolibarr pin unreadable: %s": {
+        "fr": "Épinglage de Dolibarr illisible : %s",
+        "en": "Dolibarr pin unreadable: %s",
+    },
+    "Dolibarr environment:": {
+        "fr": "Environnement Dolibarr :",
+        "en": "Dolibarr environment:",
+    },
+    "Development - your user, local port, debugging allowed": {
+        "fr": "Développement - votre utilisateur, port local, déverminage permis",
+        "en": "Development - your user, local port, debugging allowed",
+    },
+    "Production - system services, hardened, scheduled jobs": {
+        "fr": "Production - services système, durcie, tâches planifiées",
+        "en": "Production - system services, hardened, scheduled jobs",
+    },
+    "Dolibarr runtime:": {
+        "fr": "Exécution de Dolibarr :",
+        "en": "Dolibarr runtime:",
+    },
+    "Native - nginx + PHP-FPM": {
+        "fr": "Natif - nginx + PHP-FPM",
+        "en": "Native - nginx + PHP-FPM",
+    },
+    "Docker / Podman - official dolibarr/dolibarr image": {
+        "fr": "Docker / Podman - image officielle dolibarr/dolibarr",
+        "en": "Docker / Podman - official dolibarr/dolibarr image",
+    },
+    "Native is not offered here: %s": {
+        "fr": "Le natif n'est pas proposé ici : %s",
+        "en": "Native is not offered here: %s",
+    },
+    "Docker / Podman is not offered here: %s": {
+        "fr": "Docker / Podman n'est pas proposé ici : %s",
+        "en": "Docker / Podman is not offered here: %s",
+    },
+    "native production needs systemd": {
+        "fr": "la production native exige systemd",
+        "en": "native production needs systemd",
+    },
+    "unsupported system for a native install": {
+        "fr": "système non pris en charge pour une installation native",
+        "en": "unsupported system for a native install",
+    },
+    "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix": {
+        "fr": "sous NixOS, déclarez services.dolibarr dans conf/nixos/erplibre.nix",
+        "en": "on NixOS, declare services.dolibarr in conf/nixos/erplibre.nix",
+    },
+    "a native install on macOS needs Homebrew": {
+        "fr": "une installation native sous macOS exige Homebrew",
+        "en": "a native install on macOS needs Homebrew",
+    },
+    "no container engine, and none can be installed here": {
+        "fr": "aucun moteur de conteneurs, et aucun ne s'installe ici",
+        "en": "no container engine, and none can be installed here",
+    },
+    "install Docker Desktop first": {
+        "fr": "installez d'abord Docker Desktop",
+        "en": "install Docker Desktop first",
+    },
+    "Dolibarr database:": {
+        "fr": "Base de données Dolibarr :",
+        "en": "Dolibarr database:",
+    },
+    "MariaDB (recommended)": {
+        "fr": "MariaDB (recommandé)",
+        "en": "MariaDB (recommended)",
+    },
+    "PostgreSQL (the ERPLibre server)": {
+        "fr": "PostgreSQL (le serveur d'ERPLibre)",
+        "en": "PostgreSQL (the ERPLibre server)",
+    },
+    "Docker / Podman: MariaDB only, the official image installs itself on MariaDB alone.": {
+        "fr": "Docker / Podman : MariaDB seulement, l'image officielle ne s'installe d'elle-même que sur MariaDB.",
+        "en": "Docker / Podman: MariaDB only, the official image installs itself on MariaDB alone.",
+    },
+    "Dolibarr registry unreadable: %s": {
+        "fr": "Registre Dolibarr illisible : %s",
+        "en": "Dolibarr registry unreadable: %s",
+    },
+    "Instance name (default: %s): ": {
+        "fr": "Nom de l'instance (défaut : %s) : ",
+        "en": "Instance name (default: %s): ",
+    },
+    "Invalid name: lowercase letters, digits and _, starting with a letter.": {
+        "fr": "Nom invalide : minuscules, chiffres et _, en commençant par une lettre.",
+        "en": "Invalid name: lowercase letters, digits and _, starting with a letter.",
+    },
+    "This instance already exists: %s": {
+        "fr": "Cette instance existe déjà : %s",
+        "en": "This instance already exists: %s",
+    },
+    "No free web port from %s.": {
+        "fr": "Aucun port web libre à partir de %s.",
+        "en": "No free web port from %s.",
+    },
+    "Web port (default: %s): ": {
+        "fr": "Port web (défaut : %s) : ",
+        "en": "Web port (default: %s): ",
+    },
+    "Invalid port: a number from 1024 to 65535.": {
+        "fr": "Port invalide : un nombre de 1024 à 65535.",
+        "en": "Invalid port: a number from 1024 to 65535.",
+    },
+    "Domain name (empty for none): ": {
+        "fr": "Nom de domaine (vide pour aucun) : ",
+        "en": "Domain name (empty for none): ",
+    },
+    "HTTPS certificate:": {
+        "fr": "Certificat HTTPS :",
+        "en": "HTTPS certificate:",
+    },
+    "Let's Encrypt (public name, certbot)": {
+        "fr": "Let's Encrypt (nom public, certbot)",
+        "en": "Let's Encrypt (public name, certbot)",
+    },
+    "Local CA (tests)": {
+        "fr": "Autorité locale (essais)",
+        "en": "Local CA (tests)",
+    },
+    "None (HTTP only)": {
+        "fr": "Aucun (HTTP seulement)",
+        "en": "None (HTTP only)",
+    },
+    "Email for certbot (empty for none): ": {
+        "fr": "Courriel pour certbot (vide pour aucun) : ",
+        "en": "Email for certbot (empty for none): ",
+    },
+    "Administrator login (default: admin): ": {
+        "fr": "Identifiant de l'administrateur (défaut : admin) : ",
+        "en": "Administrator login (default: admin): ",
+    },
+    "Invalid login: letters, digits and . _ @ -, starting with a letter or a digit.": {
+        "fr": "Identifiant invalide : lettres, chiffres et . _ @ -, en commençant par une lettre ou un chiffre.",
+        "en": "Invalid login: letters, digits and . _ @ -, starting with a letter or a digit.",
+    },
+    "Administrator password (empty = generated and saved for this instance): ": {
+        "fr": "Mot de passe de l'administrateur (vide = généré et gardé pour cette instance) : ",
+        "en": "Administrator password (empty = generated and saved for this instance): ",
+    },
+    "Confirm the password: ": {
+        "fr": "Confirmez le mot de passe : ",
+        "en": "Confirm the password: ",
+    },
+    "Passwords differ.": {
+        "fr": "Les mots de passe diffèrent.",
+        "en": "Passwords differ.",
+    },
+    "Dolibarr %s (%s) will be installed:": {
+        "fr": "Dolibarr %s (%s) sera installé :",
+        "en": "Dolibarr %s (%s) will be installed:",
+    },
+    "Instance: %s": {
+        "fr": "Instance : %s",
+        "en": "Instance: %s",
+    },
+    "Web port: %s": {
+        "fr": "Port web : %s",
+        "en": "Web port: %s",
+    },
+    "Domain: %s": {
+        "fr": "Domaine : %s",
+        "en": "Domain: %s",
+    },
+    "Image: %s": {
+        "fr": "Image : %s",
+        "en": "Image: %s",
+    },
     # Dolibarr — installateur natif (script/dolibarr/install_native.py)
     "Checks": {
         "fr": "Vérifications",

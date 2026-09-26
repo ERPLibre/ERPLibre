@@ -124,6 +124,7 @@ from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.dolibarr_menu import DolibarrMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -205,6 +206,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    DolibarrMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -500,6 +502,9 @@ class TODO(
             ),
         }
         commands_end = {}
+        # Les clés des versions d'Odoo, et elles seules, ouvrent le choix des
+        # modules extra : une autre entrée numérotée ne doit pas y tomber.
+        odoo_keys = set()
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
@@ -519,11 +524,19 @@ class TODO(
             if version_info.get("is_deprecated"):
                 label += " - Deprecated"
             erplibre_version = version_info.get("erplibre_version")
+            odoo_keys.add(key_s)
             commands_begin[key_s] = (
                 key_s,
                 label,
                 f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
             )
+
+        # Dolibarr suit les versions d'Odoo : sa clé est la suivante, donc
+        # elle change le jour où une version d'Odoo s'ajoute.
+        dolibarr_key = str(key_i + 1)
+        dolibarr_entry = self._dolibarr_install_entry(dolibarr_key)
+        if dolibarr_entry:
+            commands_end[dolibarr_key] = dolibarr_entry
 
         # Add final command
         install_commands = {**commands_begin, **commands_end}
@@ -546,12 +559,16 @@ class TODO(
 
         if odoo_version_input == "0":
             return
+        if dolibarr_entry and odoo_version_input == dolibarr_key:
+            # Dolibarr installe ses propres paquets dans son parcours.
+            self.prompt_install_dolibarr()
+            return
 
         self._install_system_step()
         cmd_intern = install_commands.get(odoo_version_input)[2]
 
-        # For numbered version selections, offer extra modules sub-menu
-        if odoo_version_input.isdigit():
+        # For Odoo version selections, offer extra modules sub-menu
+        if odoo_version_input in odoo_keys:
             extra_choices = {
                 "1": (
                     "1",
