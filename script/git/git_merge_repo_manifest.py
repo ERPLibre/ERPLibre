@@ -174,8 +174,10 @@ def main():
     projects_total = {}
     default_remote_total = None
 
-    # Be sure all input is unique
-    input_paths = list(set(input_paths))
+    # Unique, dans l'ordre des listes : un manifest l'emporte sur ceux qui le
+    # précèdent, donc private/, lu en dernier, gagne. Un ensemble rendrait
+    # cet ordre dépendant de PYTHONHASHSEED.
+    input_paths = list(dict.fromkeys(input_paths))
 
     for index, input_path in enumerate(input_paths):
         (
