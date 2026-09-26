@@ -206,6 +206,12 @@ class TestValidateEnvironmentOdooSources(unittest.TestCase):
         self._odoo_bin()
         self.assertTrue(self.update.validate_environment())
 
+    def test_openerp_server_d_odoo_8_et_9_suffit(self):
+        """Odoo 8 et 9 se lancent par openerp-server, sans odoo-bin."""
+        os.makedirs(os.path.join("odoo18.0", "odoo"))
+        open(os.path.join("odoo18.0", "odoo", "openerp-server"), "w").close()
+        self.assertTrue(self.update.validate_environment())
+
     def test_failed_poetry_is_not_an_installation(self):
         """Venv et sources présents, mais aucune installation réussie
         enregistrée : poetry install a échoué, il faut reprendre."""
