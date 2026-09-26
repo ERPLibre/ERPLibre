@@ -6,7 +6,7 @@
 <!-- [en] -->
 # Set-OPS — the declared engine and the state of the integration
 
-Six modules, one split: **the survey touches the system, the decision
+Seven modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -212,6 +212,9 @@ read". A caller given `None` says so and names the line to replay by hand.
   think we are reading;
 - `index_libre(pris, mini, maxi)`: the smallest free index. A PROPOSAL only:
   the engine validates what it receives and refuses a federated collision;
+- `site_monte(moteur)`: the folder that carries the engine's
+  `underlay.yml`. No FILE at the end of the link means nothing mounted:
+  the engine reads that file, and a folder does not read;
 - `monte(moteur)`: the mounted name, read on the link, launching nothing —
   it heads every screen that acts. A BROKEN link keeps its name, so a screen
   can say "mounted on X, which is gone" rather than "nothing".
@@ -250,10 +253,41 @@ deployment, not during one.
   holds. A VM does not collide with itself: the fleet's own carries either
   its pool or the name the plan gives it.
 
+## `runbooks` — the engine's sequences, and nothing masked
+
+The engine's Makefile carries more than a hundred and thirty documented
+targets and says NOWHERE in which order to play them. The registry does: it
+arranges them into seventeen sequences, each with its purpose, and gives every
+step a "why" that only means something at its place in the suite.
+
+**Nothing is masked.** A sequence stripped of the steps TODO will not launch
+would lie by omission — eight of the seventeen have such steps, and one would
+begin at its step 2. Every step is shown, and what will not run from here
+carries the REASON why. That is the same stance as the state screen, which
+shows its ten lines with three marks rather than the bare list of what is
+ready.
+
+**The scope rule is written once**, in `barriere(etape, ecosysteme, site)`. Two copies would sooner or
+later say two different things about the same gesture.
+
+- `lit_registre(sortie)`: the sequences, in order, or `None`. A step whose
+  nature or target cannot be read refuses the WHOLE registry: a partial
+  sequence is worse than none, since its order is what one came for;
+- `barriere(etape, ecosysteme, site)`: what stops TODO from driving this step
+  from here, or `""`. The refusals run from the general to the circumstantial:
+  what destroys never runs from here, whereas a missing scope is settled by
+  mounting an ecosystem;
+- `conduisible(etape, ecosysteme, site)`: the same answer as a yes or no;
+- `ecrit(etape)`: does it touch the system? A write the engine does not gate
+  is where TODO asks its OWN confirmation — the line shown carries
+  `CONFIRMER=false`, and for those targets the flag means nothing;
+- `compte(runbook, ecosysteme, site)`: (drivable, total), shown at the head of
+  a sequence. A list whose offer is unknown is walked in full to find out.
+
 <!-- [fr] -->
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Six modules, un partage : **le relevé touche le système, la décision ne le
+Sept modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -462,6 +496,9 @@ main.
 - `index_libre(pris, mini, maxi)` : le plus petit index libre. Une PROPOSITION
   seulement : le moteur valide ce qu'il reçoit et refuse une collision
   fédérée ;
+- `site_monte(moteur)` : le dossier qui porte l'`underlay.yml` du moteur.
+  Aucun FICHIER au bout du lien vaut « rien de monté » : le moteur lit ce
+  fichier, et un dossier ne se lit pas ;
 - `monte(moteur)` : le nom monté, lu sur le lien, sans rien lancer — il ouvre
   chaque écran qui agit. Un lien BRISÉ garde son nom, pour qu'un écran puisse
   dire « monté sur X, qui n'existe plus » plutôt que « rien ».
@@ -500,4 +537,37 @@ tomber AVANT un déploiement, pas pendant.
 - `collisions(invites, devis)` : les VMID déclarés qu'une VM étrangère occupe
   déjà. Une VM n'entre pas en collision avec elle-même : celle de la flotte
   porte soit son pool, soit le nom que le plan lui donne.
+
+## `runbooks` — les séquences du moteur, et rien de masqué
+
+Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
+NULLE PART dans quel ordre les jouer. Le registre le dit : il les range en
+dix-sept séquences, chacune avec son but, et donne à chaque étape un
+« pourquoi » qui n'a de sens qu'à sa place dans la suite.
+
+**Rien n'est masqué.** Une séquence dont on retirerait les étapes que todo ne
+lance pas mentirait par omission — huit des dix-sept en ont, et l'une
+commencerait à son étape 2. Chaque étape est affichée, et ce qui ne part pas
+d'ici porte la RAISON pour laquelle il ne part pas. C'est le parti de l'écran
+d'état, qui montre ses dix lignes avec trois marques plutôt que la seule liste
+de ce qui est prêt.
+
+**La règle de périmètre est écrite une fois**, dans `barriere(etape, ecosysteme, site)`. Deux copies
+diraient tôt ou tard deux choses différentes du même geste.
+
+- `lit_registre(sortie)` : les séquences, dans l'ordre, ou `None`. Une étape
+  dont la nature ou la cible ne se lisent pas fait refuser TOUT le registre :
+  une séquence partielle est pire qu'une absence, puisque son ordre est ce
+  qu'on vient y chercher ;
+- `barriere(etape, ecosysteme, site)` : ce qui empêche todo de conduire cette
+  étape d'ici, ou `""`. Les refus vont du général au circonstanciel : ce qui
+  détruit ne part jamais d'ici, alors qu'une portée manquante se règle en
+  montant un écosystème ;
+- `conduisible(etape, ecosysteme, site)` : la même réponse, en oui ou non ;
+- `ecrit(etape)` : touche-t-elle au système ? Une écriture que le moteur ne
+  garde pas est celle où todo pose sa PROPRE confirmation — la ligne affichée
+  porte `CONFIRMER=false`, et pour ces cibles-là le drapeau ne veut rien dire ;
+- `compte(runbook, ecosysteme, site)` : (conduisibles, total), affiché en tête
+  d'une séquence. Une liste dont on ignore ce qu'elle offre se parcourt en
+  entier pour le découvrir.
 

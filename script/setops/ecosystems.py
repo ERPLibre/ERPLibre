@@ -25,6 +25,10 @@ from typing import NamedTuple
 # Le lien que le moteur bascule d'un écosystème à l'autre.
 LIEN = "instance"
 
+# Le fichier que le moteur lit pour connaître la fabric d'un site. Un lien y
+# mène depuis le dépôt du site ; le moteur lit le FICHIER, pas le dossier.
+UNDERLAY = "underlay.yml"
+
 # Ce que le moteur imprime quand aucun dépôt frère ne porte de plan.
 AUCUNE = "Aucune instance decouverte"
 
@@ -205,3 +209,19 @@ def monte(moteur):
     except (OSError, ValueError, TypeError):
         return ""
     return ""
+
+
+def site_monte(moteur) -> str:
+    """Le nom du dossier qui porte `<moteur>/underlay.yml`, ou « ».
+
+    Le lien est suivi jusqu'au bout, comme le moteur le suit. Aucun FICHIER
+    au bout vaut « rien de monté » : le moteur lit ce fichier, et un dossier
+    ne se lit pas. NE LANCE PERSONNE, comme `monte()`.
+    """
+    try:
+        chemin = os.path.join(moteur, UNDERLAY)
+        if not os.path.isfile(chemin):
+            return ""
+        return os.path.basename(os.path.dirname(os.path.realpath(chemin)))
+    except (OSError, ValueError, TypeError):
+        return ""

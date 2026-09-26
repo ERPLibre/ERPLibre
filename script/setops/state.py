@@ -704,19 +704,6 @@ def _instance(moteur) -> tuple:
         return False, "", False
 
 
-def _site_monte(moteur) -> str:
-    """Le nom du dossier qui porte `<moteur>/underlay.yml`, suivi jusqu'au
-    bout comme le moteur le suit ; "" si aucun FICHIER n'y est : le moteur
-    lit ce fichier, et un dossier ne se lit pas."""
-    chemin = os.path.join(moteur, "underlay.yml")
-    try:
-        if not os.path.isfile(chemin):
-            return ""
-        return os.path.basename(os.path.dirname(os.path.realpath(chemin)))
-    except (OSError, ValueError):
-        return ""
-
-
 def _lien_brise(chemin) -> bool:
     """Vrai pour un lien symbolique posé en `chemin` qui ne mène à aucun
     fichier : brisé, ou vers un dossier."""
@@ -844,7 +831,7 @@ def releve(racine) -> Releve:
         instance_reelle=reelle,
         ecosysteme=ecosysteme,
         plan_present=plan,
-        site=_site_monte(moteur) if present else "",
+        site=ecosystems.site_monte(moteur) if present else "",
         site_brise=(
             _lien_brise(os.path.join(moteur, "underlay.yml"))
             if present

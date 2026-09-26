@@ -1,7 +1,7 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Six modules, one split: **the survey touches the system, the decision
+Seven modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -207,6 +207,9 @@ read". A caller given `None` says so and names the line to replay by hand.
   think we are reading;
 - `index_libre(pris, mini, maxi)`: the smallest free index. A PROPOSAL only:
   the engine validates what it receives and refuses a federated collision;
+- `site_monte(moteur)`: the folder that carries the engine's
+  `underlay.yml`. No FILE at the end of the link means nothing mounted:
+  the engine reads that file, and a folder does not read;
 - `monte(moteur)`: the mounted name, read on the link, launching nothing —
   it heads every screen that acts. A BROKEN link keeps its name, so a screen
   can say "mounted on X, which is gone" rather than "nothing".
@@ -244,3 +247,34 @@ deployment, not during one.
 - `collisions(invites, devis)`: the declared VMIDs a foreign VM already
   holds. A VM does not collide with itself: the fleet's own carries either
   its pool or the name the plan gives it.
+
+## `runbooks` — the engine's sequences, and nothing masked
+
+The engine's Makefile carries more than a hundred and thirty documented
+targets and says NOWHERE in which order to play them. The registry does: it
+arranges them into seventeen sequences, each with its purpose, and gives every
+step a "why" that only means something at its place in the suite.
+
+**Nothing is masked.** A sequence stripped of the steps TODO will not launch
+would lie by omission — eight of the seventeen have such steps, and one would
+begin at its step 2. Every step is shown, and what will not run from here
+carries the REASON why. That is the same stance as the state screen, which
+shows its ten lines with three marks rather than the bare list of what is
+ready.
+
+**The scope rule is written once**, in `barriere(etape, ecosysteme, site)`. Two copies would sooner or
+later say two different things about the same gesture.
+
+- `lit_registre(sortie)`: the sequences, in order, or `None`. A step whose
+  nature or target cannot be read refuses the WHOLE registry: a partial
+  sequence is worse than none, since its order is what one came for;
+- `barriere(etape, ecosysteme, site)`: what stops TODO from driving this step
+  from here, or `""`. The refusals run from the general to the circumstantial:
+  what destroys never runs from here, whereas a missing scope is settled by
+  mounting an ecosystem;
+- `conduisible(etape, ecosysteme, site)`: the same answer as a yes or no;
+- `ecrit(etape)`: does it touch the system? A write the engine does not gate
+  is where TODO asks its OWN confirmation — the line shown carries
+  `CONFIRMER=false`, and for those targets the flag means nothing;
+- `compte(runbook, ecosysteme, site)`: (drivable, total), shown at the head of
+  a sequence. A list whose offer is unknown is walked in full to find out.

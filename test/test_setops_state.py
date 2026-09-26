@@ -33,7 +33,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.setops import ansible_env, engine  # noqa: E402
+from script.setops import ansible_env, ecosystems, engine  # noqa: E402
 from script.setops import state as S  # noqa: E402
 from script.todo import devstack_state, state_screen, todo_i18n  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -673,7 +673,7 @@ class TestSite(CasDeLangue):
             subprocess.run(argv, cwd=racine, check=True)
             self.assertEqual(
                 FRERE_REJOUE,
-                S._site_monte(os.path.join(racine, CHEMIN)),
+                ecosystems.site_monte(os.path.join(racine, CHEMIN)),
                 argv,
             )
 

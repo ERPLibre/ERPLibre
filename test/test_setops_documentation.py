@@ -25,14 +25,28 @@ sys.path.append(RACINE)
 
 sys.argv = ["todo.py"]
 
-from script.setops import ansible_env, coexistence  # noqa: E402
-from script.setops import ecosystems  # noqa: E402
-from script.setops import engine, runner, state  # noqa: E402
+from script.setops import (  # noqa: E402
+    ansible_env,
+    coexistence,
+    ecosystems,
+    engine,
+    runbooks,
+    runner,
+    state,
+)
 
 # Les modules du paquet, dans l'ordre où le README les présente. Un module
 # neuf entre ici, et ses fonctions publiques doivent alors être nommées dans
 # les deux langues de la page.
-MODULES = (engine, state, ansible_env, runner, ecosystems, coexistence)
+MODULES = (
+    engine,
+    state,
+    ansible_env,
+    runner,
+    ecosystems,
+    coexistence,
+    runbooks,
+)
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo_i18n import TRANSLATIONS  # noqa: E402
 
