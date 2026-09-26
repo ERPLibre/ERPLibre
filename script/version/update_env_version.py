@@ -414,6 +414,15 @@ class Update:
 
     def validate_environment(self):
         status = True
+        # Une installation interrompue — poetry install en échec — laisse le
+        # venv et odooX.0/addons en place, et ce qui suit les jugeait
+        # suffisants : la relance répondait « Nothing to do », rendait 0, et
+        # la version restait à moitié installée. Seule l'inscription finale
+        # d'install_locally.sh dit qu'elle est allée au bout.
+        if self.config.install_dev and not odoo_installee(
+            self.new_version_odoo
+        ):
+            status = False
         venv_exist = os.path.exists(self.expected_venv_name)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
@@ -800,6 +809,17 @@ def remove_dot_path(path):
     if path.startswith("./"):
         return path[2:]
     return path
+
+
+def odoo_installee(version_odoo, fichier=None):
+    """Vrai si « odoo<version> » figure dans le fichier des versions
+    installées, qu'install_locally.sh complète à la fin d'une installation
+    réussie, et seulement là."""
+    try:
+        with open(fichier or INSTALLED_ODOO_VERSION_FILE) as txt:
+            return f"odoo{version_odoo}" in txt.read().splitlines()
+    except OSError:
+        return False
 
 
 def main():
