@@ -1,0 +1,107 @@
+/* Page de télémétrie de TODO, claire ou sombre selon le système. */
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1d2330;
+    --muted: #5f6b7a;
+    --line: #d8dde5;
+    --accent: #0b6bcb;
+    --error: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #14171c;
+        --fg: #e6e9ee;
+        --muted: #9aa4b1;
+        --line: #2b313a;
+        --accent: #6cb1ff;
+        --error: #ff8a80;
+    }
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, sans-serif;
+}
+
+#app {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.bar h1 {
+    margin: 0.5rem 0;
+    font-size: 1.25rem;
+}
+
+.root,
+.summary,
+.section {
+    color: var(--muted);
+}
+
+.root {
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.tree,
+.tree ul {
+    margin: 0;
+    padding-left: 1.5rem;
+    list-style: none;
+}
+
+.tree {
+    padding-left: 0;
+}
+
+.toggle {
+    width: 1.5rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
+.leaf::before {
+    content: "·";
+    display: inline-block;
+    width: 1.5rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.count {
+    margin-left: 0.5rem;
+    padding: 0 0.4rem;
+    border-radius: 0.6rem;
+    background: var(--line);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.section {
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.error {
+    color: var(--error);
+    font-weight: 600;
+}
