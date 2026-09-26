@@ -3,9 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Paquets et emplacements du natif Dolibarr, par famille de distribution.
 
-Les attentes viennent d'installations mesurées dans des conteneurs jetables
-(Debian 12/13, Ubuntu 24.04/26.04, Fedora 44, AlmaLinux 9/10, Arch,
-openSUSE Tumbleweed et Leap 15.6/16.0) : ce sont des NOMS qui existent, et
+Les attentes sont des NOMS qui s'installent sur Debian 12/13, Ubuntu
+24.04/26.04, Fedora 44, AlmaLinux 9/10, Arch et openSUSE Tumbleweed/Leap :
 une liste fausse ne se voit qu'à l'installation, sur la machine d'un autre.
 """
 

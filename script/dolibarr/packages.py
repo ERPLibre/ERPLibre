@@ -3,9 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Paquets et emplacements du natif Dolibarr, par famille de distribution.
 
-Données pures, relevées en installant la pile dans des conteneurs jetables
-de chaque famille (Debian/Ubuntu, Fedora/EL, Arch, openSUSE) : les noms sont
-ceux qui s'installent, pas ceux qu'on attendrait.
+Données pures, pour Debian/Ubuntu, Fedora/EL, Arch et openSUSE : chaque nom
+est celui qu'installe la famille, pas celui qu'on attendrait.
 
 Deux familles s'écartent de la forme commune :
 - Arch livre mysqli, intl, calendar et soap DANS le paquet php, éteints ;
