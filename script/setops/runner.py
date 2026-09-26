@@ -174,3 +174,44 @@ def jouer(argv, env=None, cwd=None, capture=True, delai=DELAI, fusionner=True):
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         return Verdict(None, "")
     return Verdict(fait.returncode, fait.stdout or "")
+
+
+def detacher(argv, env=None, cwd=None, journal=None):
+    """Lance `argv` détaché et rend son PID, ou None. Ne lève jamais.
+
+    NOUVELLE SESSION, ET C'EST CE QUI PERMET DE L'ARRÊTER. Le processus
+    devient chef de sa propre session, donc de son propre groupe : un signal
+    au GROUPE atteint la recette `make` et le serveur qu'elle lance. Sans
+    cela, arrêter `make` laisserait le serveur tenir le port, et le port
+    occupé ferait croire à une console que todo ne saurait plus joindre.
+
+    LE TERMINAL NE LUI EST PAS RENDU. Son entrée est fermée et sa sortie va au
+    journal : un processus détaché qui écrirait sur le terminal brouillerait
+    le menu, et l'un qui attendrait une réponse sur son entrée bloquerait sans
+    que rien ne le dise.
+
+    Le PID rendu est celui du CHEF DE GROUPE. Il ne prouve pas que le service
+    a démarré — un détaché échoue en silence — seulement qu'il a été lancé.
+    """
+    flux = subprocess.DEVNULL
+    if journal:
+        try:
+            flux = open(journal, "ab")
+        except OSError:
+            flux = subprocess.DEVNULL
+    try:
+        fils = subprocess.Popen(
+            list(argv),
+            env=env,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=flux,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return None
+    finally:
+        if flux is not subprocess.DEVNULL:
+            flux.close()
+    return fils.pid
