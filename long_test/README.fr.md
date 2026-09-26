@@ -316,6 +316,48 @@ qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
 
+## setops_banc.py — le moteur tient-il sur une grappe jetable ?
+
+Le moteur Set-OPS se pilote depuis le menu de TODO, et ses gestes y sont gardés.
+Rien ne dit qu'ils tiennent contre une vraie grappe, du gabarit doré au rasage.
+
+**Le terrain se désigne, il ne se devine pas.** `deep_proxmox.py` sert au
+développement ; le cas réel est une grappe qu'on possède. Le banc prend un
+terrain en argument, pour que la même épreuve serve à la répétition puis au cas
+réel — et il ne touche à aucun labo : il pose SON pont et SON utilisateur d'API,
+et n'en modifie aucun.
+
+**Un seul étage suffit**, et c'est le moins profond : un Proxmox imbriqué est un
+Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
+éprouve le moteur, pas l'imbrication.
+
+**Deux passes, et elles ne prouvent pas la même chose.** La première porte le
+jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
+valide la GRAPPE. La seconde le chiffre dans la voûte de l'écosystème de banc et
+rejoue la boucle par les portes de TODO : elle valide LE CHEMIN DE TODO, dont
+l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
+
+Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure.
+
+**Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
+gardées** — préalables dits avant toute création, terrain, pont libre, forme du
+jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
+pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
+du code que rien n'a vérifié.
+
+```
+./long_test/setops_banc.py --dry-run          # le plan, rien de créé
+./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
+./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
+./long_test/setops_banc.py --passe env        # jeton par l'environnement
+```
+
+Le plan annonce ce que chaque étape coûte : ~30 s pour le pont, ~10 s pour le
+jeton, ~10 min pour le gabarit doré, puis par passe ~5 s pour l'inventaire,
+~4 min 30 pour un clone, ~5 min pour un déploiement et ~1 min pour le rasage.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un

@@ -28,13 +28,13 @@
          la pointe exige une forge qui l'accepte.
 
          L'épingle suit une branche de CONTRIBUTION, et non la branche
-         principale : « contrib/runbooks-json » porte l'option « json » de
-         « scripts/runbooks.py lister », dont l'écran Runbooks de todo dérive
-         les séquences. Sur la branche principale, cette option n'existe pas
-         encore et cet écran ne lit plus rien. Le tiret double ne peut pas
-         s'écrire dans un commentaire XML, d'où l'option nommée sans lui. Le jour où la contribution y est
-         fusionnée, « upstream » redevient le nom de la branche principale et
-         la révision saute à sa pointe.
+         principale : « contrib/runbooks-json » porte l'option « json » de «
+         scripts/runbooks.py lister », dont l'écran Runbooks de todo dérive les
+         séquences. Sur la branche principale, cette option n'existe pas encore
+         et cet écran ne lit plus rien. Le tiret double ne peut pas s'écrire
+         dans un commentaire XML, d'où l'option nommée sans lui. Le jour où la
+         contribution y est fusionnée, « upstream » redevient le nom de la
+         branche principale et la révision saute à sa pointe.
 
          Une fois rapatrié, le moteur fait partie de l'espace de travail :
          « repo forall », donc « make repo_do_stash », le parcourent comme

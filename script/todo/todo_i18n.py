@@ -17868,47 +17868,47 @@ TRANSLATIONS = {
     },
     "Set-OPS - Generate the inventory, diff first": {
         "fr": "📝 Set-OPS - Générer l'inventaire, le diff d'abord",
-        "en": "Set-OPS - Generate the inventory, diff first",
+        "en": "📝 Set-OPS - Generate the inventory, diff first",
     },
     "Set-OPS - Take the generated inventory": {
         "fr": "📝 Set-OPS - Prendre l'inventaire généré",
-        "en": "Set-OPS - Take the generated inventory",
+        "en": "📝 Set-OPS - Take the generated inventory",
     },
     "Set-OPS - Deploy one host, layer by layer": {
         "fr": "📝 Set-OPS - Déployer un hôte, couche par couche",
-        "en": "Set-OPS - Deploy one host, layer by layer",
+        "en": "📝 Set-OPS - Deploy one host, layer by layer",
     },
     "Set-OPS - Deploy one group across the fleet": {
         "fr": "📝 Set-OPS - Déployer un groupe sur toute la flotte",
-        "en": "Set-OPS - Deploy one group across the fleet",
+        "en": "📝 Set-OPS - Deploy one group across the fleet",
     },
     "Set-OPS - Apply one group to the fleet": {
         "fr": "📝 Set-OPS - Appliquer un groupe à la flotte",
-        "en": "Set-OPS - Apply one group to the fleet",
+        "en": "📝 Set-OPS - Apply one group to the fleet",
     },
     "Set-OPS - Create one VM and wait for it": {
         "fr": "📝 Set-OPS - Créer une VM et l'attendre",
-        "en": "Set-OPS - Create one VM and wait for it",
+        "en": "📝 Set-OPS - Create one VM and wait for it",
     },
     "Set-OPS - Create the fleet's missing VMs": {
         "fr": "📝 Set-OPS - Créer les VM manquantes de la flotte",
-        "en": "Set-OPS - Create the fleet's missing VMs",
+        "en": "📝 Set-OPS - Create the fleet's missing VMs",
     },
     "Set-OPS - Regenerate the flows and the firewall rules": {
         "fr": "📝 Set-OPS - Régénérer les flux et les règles de pare-feu",
-        "en": "Set-OPS - Regenerate the flows and the firewall rules",
+        "en": "📝 Set-OPS - Regenerate the flows and the firewall rules",
     },
     "Set-OPS - Regenerate the site playbook": {
         "fr": "📝 Set-OPS - Régénérer le playbook du site",
-        "en": "Set-OPS - Regenerate the site playbook",
+        "en": "📝 Set-OPS - Regenerate the site playbook",
     },
     "Set-OPS - Record the parentage in the instance": {
         "fr": "📝 Set-OPS - Inscrire la parenté dans l'instance",
-        "en": "Set-OPS - Record the parentage in the instance",
+        "en": "📝 Set-OPS - Record the parentage in the instance",
     },
     "Set-OPS - Proxmox assistant (asks you for a secret)": {
         "fr": "📝 Set-OPS - Assistant Proxmox (il demande un secret)",
-        "en": "Set-OPS - Proxmox assistant (asks you for a secret)",
+        "en": "📝 Set-OPS - Proxmox assistant (asks you for a secret)",
     },
     "This step asks you questions itself.": {
         "fr": "Cette étape pose elle-même des questions.",

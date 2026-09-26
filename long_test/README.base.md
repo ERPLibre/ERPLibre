@@ -308,6 +308,48 @@ receives, not what a local checkout holds. Say it before running: a fix still
 on an unmerged branch is *not* in the VM, and the test will fail on whatever
 that fix repairs.
 
+## setops_banc.py — does the engine hold on a disposable cluster?
+
+The Set-OPS engine is driven from TODO's menu, and its gestures are guarded
+there. Nothing says they hold against a real cluster, from the golden template
+to the razing.
+
+**The terrain is named, not guessed.** `deep_proxmox.py` serves development; the
+real case is a cluster one owns. The bench takes a terrain as an argument so the
+same trial serves the rehearsal and then the real case — and it touches no lab:
+it lays down ITS bridge and ITS API user, and modifies neither.
+
+**One floor is enough**, and the shallowest is the right one: a nested Proxmox
+is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
+the engine, not the nesting.
+
+**Two passes, and they do not prove the same thing.** The first carries the token
+through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
+validates the CLUSTER. The second seals it in the bench ecosystem's vault and
+replays the loop through TODO's own doors: it validates TODO'S PATH, whose
+runner deliberately passes no `PROXMOX_*`.
+
+Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
+the tooling is missing and nothing was attempted, `30` something stopped it
+before it measured.
+
+**What is posed today are the DECISIONS, and they are all guarded** —
+prerequisites said before anything is created, the terrain, a free bridge, the
+shape of the token, the order of the undoing, the footprint. The verbs that
+create need a cluster to be proven, so a real run refuses and says so rather
+than running code nothing has checked.
+
+```
+./long_test/setops_banc.py --dry-run          # the plan, nothing created
+./long_test/setops_banc.py --detruire         # undo what was laid down
+./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
+./long_test/setops_banc.py --passe env        # token through the environment
+```
+
+The plan announces what each step costs: ~30 s for the bridge, ~10 s for the
+token, ~10 min for the golden template, then per pass ~5 s for the inventory,
+~4 min 30 for a clone, ~5 min for a deployment and ~1 min for the razing.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -651,6 +693,48 @@ défaut). C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
 qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
+
+## setops_banc.py — le moteur tient-il sur une grappe jetable ?
+
+Le moteur Set-OPS se pilote depuis le menu de TODO, et ses gestes y sont gardés.
+Rien ne dit qu'ils tiennent contre une vraie grappe, du gabarit doré au rasage.
+
+**Le terrain se désigne, il ne se devine pas.** `deep_proxmox.py` sert au
+développement ; le cas réel est une grappe qu'on possède. Le banc prend un
+terrain en argument, pour que la même épreuve serve à la répétition puis au cas
+réel — et il ne touche à aucun labo : il pose SON pont et SON utilisateur d'API,
+et n'en modifie aucun.
+
+**Un seul étage suffit**, et c'est le moins profond : un Proxmox imbriqué est un
+Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
+éprouve le moteur, pas l'imbrication.
+
+**Deux passes, et elles ne prouvent pas la même chose.** La première porte le
+jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
+valide la GRAPPE. La seconde le chiffre dans la voûte de l'écosystème de banc et
+rejoue la boucle par les portes de TODO : elle valide LE CHEMIN DE TODO, dont
+l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
+
+Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure.
+
+**Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
+gardées** — préalables dits avant toute création, terrain, pont libre, forme du
+jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
+pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
+du code que rien n'a vérifié.
+
+```
+./long_test/setops_banc.py --dry-run          # le plan, rien de créé
+./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
+./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
+./long_test/setops_banc.py --passe env        # jeton par l'environnement
+```
+
+Le plan annonce ce que chaque étape coûte : ~30 s pour le pont, ~10 s pour le
+jeton, ~10 min pour le gabarit doré, puis par passe ~5 s pour l'inventaire,
+~4 min 30 pour un clone, ~5 min pour un déploiement et ~1 min pour le rasage.
 
 ## Partir d'un hôte qu'on possède déjà
 

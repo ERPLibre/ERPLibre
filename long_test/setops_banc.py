@@ -192,8 +192,8 @@ def pont_libre(interfaces, depart=PONT_DEPART):
     LU sur le terrain, jamais supposé : reprendre un pont déclaré le
     reconfigurerait, et c'est le réseau d'autre chose.
 
-    TROIS CAS RENDENT « », et ils veulent tous dire « je n'ai pas lu le
-    terrain » : un texte vide, un texte qui ne déclare aucune interface — un
+    TROIS CAS RENDENT « », et ils disent tous la même chose : le terrain n'a
+    pas été lu. un texte vide, un texte qui ne déclare aucune interface — un
     `ssh … cat` qui échoue imprime sa plainte, et une plainte n'est pas un
     terrain vierge — et un fichier qui DÉLÈGUE par `source`, car les ponts
     peuvent alors vivre ailleurs, ce que PVE fait par défaut pour sa SDN.

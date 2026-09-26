@@ -303,6 +303,48 @@ receives, not what a local checkout holds. Say it before running: a fix still
 on an unmerged branch is *not* in the VM, and the test will fail on whatever
 that fix repairs.
 
+## setops_banc.py — does the engine hold on a disposable cluster?
+
+The Set-OPS engine is driven from TODO's menu, and its gestures are guarded
+there. Nothing says they hold against a real cluster, from the golden template
+to the razing.
+
+**The terrain is named, not guessed.** `deep_proxmox.py` serves development; the
+real case is a cluster one owns. The bench takes a terrain as an argument so the
+same trial serves the rehearsal and then the real case — and it touches no lab:
+it lays down ITS bridge and ITS API user, and modifies neither.
+
+**One floor is enough**, and the shallowest is the right one: a nested Proxmox
+is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
+the engine, not the nesting.
+
+**Two passes, and they do not prove the same thing.** The first carries the token
+through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
+validates the CLUSTER. The second seals it in the bench ecosystem's vault and
+replays the loop through TODO's own doors: it validates TODO'S PATH, whose
+runner deliberately passes no `PROXMOX_*`.
+
+Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
+the tooling is missing and nothing was attempted, `30` something stopped it
+before it measured.
+
+**What is posed today are the DECISIONS, and they are all guarded** —
+prerequisites said before anything is created, the terrain, a free bridge, the
+shape of the token, the order of the undoing, the footprint. The verbs that
+create need a cluster to be proven, so a real run refuses and says so rather
+than running code nothing has checked.
+
+```
+./long_test/setops_banc.py --dry-run          # the plan, nothing created
+./long_test/setops_banc.py --detruire         # undo what was laid down
+./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
+./long_test/setops_banc.py --passe env        # token through the environment
+```
+
+The plan announces what each step costs: ~30 s for the bridge, ~10 s for the
+token, ~10 min for the golden template, then per pass ~5 s for the inventory,
+~4 min 30 for a clone, ~5 min for a deployment and ~1 min for the razing.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you

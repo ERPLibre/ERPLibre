@@ -284,6 +284,41 @@ class TestLeModeDEmploiDuPaquet(unittest.TestCase):
                     self.assertRegex(moitie, rf"`{code}`")
 
 
+class TestLesEntreesDuMenuSeLisentPareil(unittest.TestCase):
+    """Une entrée de menu porte la même MARQUE dans les deux langues.
+
+    Onze libellés de porte avaient leur emoji en français et pas en anglais : le
+    menu anglais ne distinguait plus les gestes d'écriture des lectures, alors
+    que le français le faisait. Les neuf autres entrées « Set-OPS - » le
+    portaient bien des deux côtés — c'était donc un écart, pas un parti.
+    """
+
+    @staticmethod
+    def marques(texte):
+        """Les caractères hors ASCII qui ouvrent le libellé.
+
+        Mesuré sur le DÉBUT de la chaîne : c'est là que vit la marque d'une
+        entrée de menu, et le corps du libellé porte des accents qui ne sont pas
+        des marques.
+        """
+        return "".join(c for c in texte.split(" ", 1)[0] if ord(c) > 127)
+
+    def test_every_menu_entry_wears_the_same_mark_in_both_languages(self):
+        for cle, entree in TRANSLATIONS.items():
+            if not cle.startswith("Set-OPS - "):
+                continue
+            with self.subTest(cle=cle):
+                self.assertEqual(
+                    self.marques(entree["fr"]), self.marques(entree["en"]), cle
+                )
+
+    def test_the_measure_actually_sees_a_mark(self):
+        """Contrôle positif : sans lui, une mesure qui ne voit jamais rien
+        rendrait le garde ci-dessus vide."""
+        self.assertTrue(self.marques("📝 Set-OPS - quelque chose"))
+        self.assertEqual("", self.marques("Set-OPS - quelque chose"))
+
+
 class TestLaDocumentationSetops(unittest.TestCase):
     def test_the_enumeration_names_every_segment_in_its_language(self):
         """Dans LE paragraphe qui les énumère — celui qui en nomme le plus —

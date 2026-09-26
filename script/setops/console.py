@@ -6,8 +6,9 @@
 LA CONSOLE N'A AUCUNE AUTHENTIFICATION. Ce qui atteint son port lit tout
 l'inventaire — adresses, VLAN, noms d'hôtes — et déclenche ses gestes :
 vérifier, déployer, pousser un flux. Il n'y a ni mot de passe, ni jeton
-d'accès ; le jeton qu'elle porte garde ses exécutions les unes des autres, pas
-sa porte.
+d'accès : le jeton qu'elle porte garde ses routes d'ÉCRITURE contre un appelant
+qui n'a pas lu la page — une preuve de même origine — et elle sert ce jeton dans
+la page à qui la demande. Ce qui sérialise ses exécutions est un verrou, pas lui.
 
 D'OÙ LA BOUCLE LOCALE, ET RIEN D'AUTRE. Le script accepte `--hote`, et todo ne
 le passe JAMAIS : le lier à `0.0.0.0` publierait sur le réseau une console sans
