@@ -13,16 +13,18 @@ serve à la répétition puis au cas réel — et il ne touche pas au labo : il 
 SON pont et SON utilisateur d'API, et n'en modifie aucun.
 
 UN SEUL ÉTAGE SUFFIT. Un Proxmox imbriqué est un Proxmox, et chaque étage de
-plus rend tout 15 à 30 fois plus lent — un invité du quatrième a été mesuré 36
-fois plus lent que le temps réel. Le banc éprouve le moteur, pas l'imbrication.
+plus rend tout 15 à 30 fois plus lent. Le banc éprouve le moteur, pas
+l'imbrication.
 
 TROIS CHOSES QUE LE MOTEUR EXIGE ET QU'UN ÉTAGE NEUF N'A PAS. Son playbook de
 clonage parle à l'API et ASSERTE que l'hôte, l'utilisateur, l'identifiant et le
 secret du jeton sont non vides : sans jeton il refuse avant d'agir. La carte de
-la VM clonée est TOUJOURS taguée, puisque la VLAN se dérive de l'index de la
-flotte, et une carte taguée sur un pont qui n'est pas conscient des VLAN démarre
-en restant injoignable. Enfin le clonage part d'un gabarit, qu'il faut donc
-construire. D'où l'ordre : pont, jeton, gabarit, puis la boucle.
+la VM clonée est taguée SUR CE BANC — son écosystème n'a pas d'underlay, donc le
+moteur dérive une VLAN de l'index de la flotte et la pose sur la carte ; en SDN
+il l'omet au contraire, le VNet la portant déjà, et l'étiqueter deux fois
+couperait le fil. Une carte taguée sur un pont qui n'est pas conscient des VLAN
+démarre en restant injoignable. Enfin le clonage part d'un gabarit, qu'il faut
+donc construire. D'où l'ordre : pont, jeton, gabarit, puis la boucle.
 
 DEUX PASSES, ET ELLES NE PROUVENT PAS LA MÊME CHOSE. La première porte le jeton
 par l'ENVIRONNEMENT, ce que le playbook accepte en repli : elle valide la
@@ -30,8 +32,8 @@ GRAPPE. La seconde le chiffre dans la VOÛTE de l'écosystème de banc et rejoue
 boucle PAR LES PORTES de todo : elle valide le CHEMIN DE TODO, dont la liste
 blanche de l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
 
-Les commandes sont BÂTIES par des fonctions pures et jouées par une seule
-autre : c'est ce qui rend le texte envoyé éprouvable sans machine.
+Les commandes sont BÂTIES par des fonctions pures : c'est ce qui rend le texte
+envoyé éprouvable sans machine, avant même qu'une machine existe.
 
   ./long_test/setops_banc.py --dry-run          # le plan, rien de créé
   ./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
@@ -122,8 +124,16 @@ class Empreinte(NamedTuple):
 
 
 class Geste(NamedTuple):
-    """Un geste de défaite : son genre, ce qu'il vise, et le nom attendu."""
+    """Un geste de défaite : où le jouer, son genre, ce qu'il vise, le nom.
 
+    `terrain` VOYAGE AVEC LE GESTE. Lu puis jeté, il fallait le redéduire au
+    moment de jouer — et le terrain déduit est celui du DERNIER étage posé,
+    potentiellement une autre grappe que celle où l'empreinte a été écrite. Les
+    VMID d'une grappe seraient détruits sur une autre. C'est ce que fait le
+    labo, qui promène `parent_alias` avec chacun de ses gestes.
+    """
+
+    terrain: str
     genre: str
     vise: str
     nom: str
@@ -157,26 +167,46 @@ def terrain_par_defaut(rapport):
     """
     if not isinstance(rapport, dict):
         return ""
+    # LES TYPES SONT EXIGÉS. Un niveau absent devenait 0 et gagnait comme « le
+    # moins profond » ; des niveaux en texte se comparaient dans l'ordre
+    # alphabétique, donc « 9 » après « 10 », à rebours de la raison d'être de
+    # cette fonction ; des niveaux mixtes levaient un TypeError. Et « ok » en
+    # texte est vrai, si bien qu'un étage RATÉ devenait éligible.
     etages = [
         e
         for e in rapport.get("etages") or ()
         if isinstance(e, dict)
-        and e.get("ok")
+        and e.get("ok") is True
+        and isinstance(e.get("niveau"), int)
+        and not isinstance(e.get("niveau"), bool)
         and (e.get("alias") or "").strip()
     ]
     if not etages:
         return ""
-    return min(etages, key=lambda e: e.get("niveau") or 0)["alias"].strip()
+    return min(etages, key=lambda e: e["niveau"])["alias"].strip()
 
 
 def pont_libre(interfaces, depart=PONT_DEPART):
-    """Le premier `vmbrN` que `/etc/network/interfaces` ne déclare pas.
+    """Le premier `vmbrN` que `/etc/network/interfaces` ne déclare pas, ou « ».
 
     LU sur le terrain, jamais supposé : reprendre un pont déclaré le
-    reconfigurerait, et c'est le réseau d'autre chose. Rend « » si aucun numéro
-    n'est libre jusqu'à 99, plutôt qu'un nom qu'il faudrait écraser.
+    reconfigurerait, et c'est le réseau d'autre chose.
+
+    TROIS CAS RENDENT « », et ils veulent tous dire « je n'ai pas lu le
+    terrain » : un texte vide, un texte qui ne déclare aucune interface — un
+    `ssh … cat` qui échoue imprime sa plainte, et une plainte n'est pas un
+    terrain vierge — et un fichier qui DÉLÈGUE par `source`, car les ponts
+    peuvent alors vivre ailleurs, ce que PVE fait par défaut pour sa SDN.
+    Aucun numéro libre jusqu'à 99 rend « » aussi.
     """
     texte = interfaces or ""
+    lignes = texte.splitlines()
+    if any(
+        l.split()[:1] in (["source"], ["source-directory"]) for l in lignes
+    ):
+        return ""
+    if not any(l.split()[:1] in (["auto"], ["iface"]) for l in lignes):
+        return ""
     for numero in range(max(0, int(depart)), 100):
         nom = f"vmbr{numero}"
         if not any(
@@ -252,10 +282,12 @@ def environnement_api(
 ):
     """Les variables que le playbook du moteur lit en repli.
 
-    `api_user` et `api_token_id` SE SÉPARENT : proxmoxer recompose
-    « utilisateur!nom » lui-même, et lui passer la forme complète produit un 401
-    muet — le même jeton répond en HTTP direct, ce qui rend le diagnostic
-    trompeur. Le moteur documente ce piège dans son playbook.
+    `api_user` et `api_token_id` SE SÉPARENT parce que c'est proxmoxer qui
+    recompose « utilisateur!nom » : lui passer la forme complète produit un 401
+    muet, que le même jeton contredit en HTTP direct. Le playbook du moteur, lui,
+    désamorce le piège en ne gardant que ce qui suit le « ! » — la forme courte
+    n'est donc pas une exigence de ce chemin-là, mais elle reste la seule qui
+    vaille partout.
     """
     if not (hote or "").strip() or not (secret or "").strip():
         return {}
@@ -300,21 +332,45 @@ def a_defaire(empreinte):
     L'écosystème part en dernier : son plan nomme les VM, et le rasage s'y
     appuie.
     """
-    if empreinte is None:
+    if empreinte is None or not nous(empreinte):
         return ()
+    terrain = empreinte.terrain
     gestes = [
-        Geste(VM, str(vmid), nom)
+        Geste(terrain, VM, str(vmid), nom)
         for vmid, nom in reversed(empreinte.vms or ())
     ]
     if empreinte.modele:
-        gestes.append(Geste(MODELE, str(empreinte.modele), GABARIT))
+        gestes.append(Geste(terrain, MODELE, str(empreinte.modele), GABARIT))
     if empreinte.pont:
-        gestes.append(Geste(PONT, empreinte.pont, empreinte.pont))
-    if empreinte.utilisateur:
-        gestes.append(Geste(API, empreinte.utilisateur, empreinte.utilisateur))
-    if empreinte.ecosysteme:
-        gestes.append(Geste(ECO, empreinte.ecosysteme, empreinte.ecosysteme))
+        gestes.append(Geste(terrain, PONT, empreinte.pont, empreinte.pont))
+    gestes.append(
+        Geste(terrain, API, empreinte.utilisateur, empreinte.utilisateur)
+    )
+    gestes.append(
+        Geste(terrain, ECO, empreinte.ecosysteme, empreinte.ecosysteme)
+    )
     return tuple(gestes)
+
+
+def nous(empreinte):
+    """Cette empreinte est-elle celle du BANC ?
+
+    Rien ne rattachait au banc les noms qu'elle porte : `lit_empreinte` valide
+    des FORMES — un entier au-dessus de zéro, un nom non vide — jamais une
+    appartenance. Une empreinte nommant un écosystème de production passait, et
+    ses VM s'effaçaient dès que leur nom concordait.
+
+    L'écosystème, l'utilisateur d'API et le terrain doivent être ceux que ce
+    module NOMME. C'est la même idée que le `cree` du labo : « le seul champ qui
+    dise que la machine est à NOUS ».
+    """
+    if empreinte is None:
+        return False
+    return (
+        empreinte.ecosysteme == ECOSYSTEME
+        and empreinte.utilisateur == UTILISATEUR_API
+        and bool(empreinte.terrain)
+    )
 
 
 def lit_empreinte(texte):
@@ -342,6 +398,12 @@ def lit_empreinte(texte):
         if isinstance(vmid, bool) or not isinstance(vmid, int) or vmid < 1:
             return None
         if not isinstance(nom, str) or not nom.strip():
+            return None
+        if any(vmid == deja for deja, _n in vms):
+            # DEUX VM SUR UN VMID N'ONT PAS DE MAÎTRE, comme deux pools sur un
+            # VMID dans le devis. L'appelant confronte le nom geste par geste :
+            # le premier refuserait, le second concorderait, et la destruction
+            # partirait sur un enregistrement qui se contredit.
             return None
         vms.append((vmid, nom.strip()))
     modele = lu.get("modele") or 0
@@ -494,27 +556,41 @@ def defaire(dry_run=False):
         sys.path.insert(0, chemin)
     try:
         import descente
-
-        vivante = descente.autre_descente()
     except ImportError:
-        vivante = ""
+        # NE PAS SAVOIR N'EST PAS UNE PERMISSION. Le garde protège contre
+        # l'effacement de ce qu'une autre épreuve est en train de poser ; sans
+        # lui, on ne détruit pas.
+        print("  ⛔ le verrou des épreuves longues est illisible.")
+        return SORTIE_NON_CONCLUANTE
+    vivante = descente.autre_descente()
     if vivante:
         print(f"  ⛔ {vivante} tourne : rien ne sera détruit.")
         return SORTIE_NON_CONCLUANTE
     try:
         with open(chemin_empreinte(), encoding="utf-8") as tenu:
             empreinte = lit_empreinte(tenu.read())
-    except OSError:
+    except FileNotFoundError:
         print("  aucune empreinte : rien à défaire.")
         return SORTIE_OK
+    except OSError as souci:
+        # PRÉSENTE MAIS ILLISIBLE. Rendue en succès, `--detruire` annonçait
+        # qu'il n'y avait rien à défaire pendant que des VM, un gabarit, un
+        # pont et un utilisateur d'API Administrator restaient sur la grappe.
+        print(f"  ⛔ empreinte illisible : {souci.strerror or souci}")
+        return SORTIE_NON_CONCLUANTE
     if empreinte is None:
         print(f"  ⛔ empreinte illisible : {chemin_empreinte()}")
         return SORTIE_NON_CONCLUANTE
     gestes = a_defaire(empreinte)
     if not gestes:
+        if not nous(empreinte):
+            print(
+                "  ⛔ cette empreinte n'est pas celle du banc : rien touché."
+            )
+            return SORTIE_NON_CONCLUANTE
         print("  l'empreinte ne nomme rien : rien à défaire.")
         return SORTIE_OK
-    print("── à défaire ──")
+    print(f"── à défaire, sur {empreinte.terrain} ──")
     for geste in gestes:
         print(f"  {geste.genre:<11} {geste.vise:<12} {geste.nom}")
     if dry_run:

@@ -104,6 +104,40 @@ class TestLeTerrainSeDeduitSansSEnfoncer(unittest.TestCase):
         rapport = {"etages": [{"niveau": 1, "alias": "  ", "ok": True}]}
         self.assertEqual("", B.terrain_par_defaut(rapport))
 
+    def test_a_level_that_is_not_an_integer_is_no_terrain(self):
+        """Un niveau absent devenait 0 et gagnait comme « le moins profond » ;
+        en texte, « 9 » se comparait après « 10 » ; mixtes, ils levaient un
+        TypeError au lieu de rendre une réponse."""
+        for etage in (
+            {"ok": True, "alias": "sans-niveau"},
+            {"ok": True, "alias": "en-texte", "niveau": "1"},
+            {"ok": True, "alias": "booleen", "niveau": True},
+        ):
+            with self.subTest(etage=etage):
+                self.assertEqual("", B.terrain_par_defaut({"etages": [etage]}))
+
+    def test_a_floor_whose_ok_is_a_word_is_no_terrain(self):
+        """« false » en texte est vrai : un étage RATÉ devenait éligible."""
+        self.assertEqual(
+            "",
+            B.terrain_par_defaut(
+                {"etages": [{"ok": "false", "alias": "rate", "niveau": 1}]}
+            ),
+        )
+
+    def test_mixed_levels_answer_instead_of_raising(self):
+        self.assertEqual(
+            "bon",
+            B.terrain_par_defaut(
+                {
+                    "etages": [
+                        {"ok": True, "alias": "texte", "niveau": "2"},
+                        {"ok": True, "alias": "bon", "niveau": 1},
+                    ]
+                }
+            ),
+        )
+
     def test_no_report_gives_no_terrain_rather_than_a_guess(self):
         for vu in (None, {}, {"etages": []}, "pas un rapport"):
             with self.subTest(vu=vu):
@@ -128,9 +162,33 @@ class TestLePontDuBancNeReprendRien(unittest.TestCase):
             "vmbr9", B.pont_libre("auto vmbr0\niface vmbr0 inet\n")
         )
 
-    def test_nothing_declared_still_stays_off_the_first_bridges(self):
-        """Le numéro de départ est haut exprès : « vmbr0 » est celui du labo."""
-        self.assertEqual("vmbr9", B.pont_libre(""))
+    def test_a_read_that_says_nothing_is_not_a_clean_terrain(self):
+        """Un `ssh … cat` qui échoue imprime sa plainte, et une plainte n'est
+        pas un terrain vierge. Rendre « vmbr9 » donnait un feu vert, et le banc
+        posait un pont conscient des VLAN sur un nom peut-être pris — le geste
+        même que ce module interdit en capitales."""
+        for texte in ("", None, "Permission denied", "cat: no such file"):
+            with self.subTest(texte=texte):
+                self.assertEqual("", B.pont_libre(texte))
+
+    def test_a_file_that_delegates_is_not_the_whole_declaration(self):
+        """PVE écrit « source /etc/network/interfaces.d/* » par défaut, et sa
+        SDN y pose ses ponts : le texte reçu ne les montre pas."""
+        for delegation in (
+            "source /etc/network/interfaces.d/*",
+            "source-directory interfaces.d",
+        ):
+            with self.subTest(delegation=delegation):
+                self.assertEqual(
+                    "", B.pont_libre(self.INTERFACES + delegation + "\n")
+                )
+
+    def test_the_starting_number_stays_off_the_lab_bridge(self):
+        """« vmbr0 » est celui du labo, et le rendre conscient des VLAN
+        changerait le réseau de ses usages."""
+        self.assertEqual(
+            "vmbr9", B.pont_libre("auto vmbr0\niface vmbr0 inet static\n")
+        )
 
     def test_no_free_number_gives_no_name_rather_than_one_to_overwrite(self):
         pris = "".join(f"auto vmbr{n}\n" for n in range(0, 100))
@@ -254,6 +312,35 @@ class TestLOrdreDeLaDefaite(unittest.TestCase):
         """Son plan nomme les VM, et le rasage s'y appuie."""
         self.assertEqual(B.ECO, B.a_defaire(self.EMPREINTE)[-1].genre)
 
+    def test_a_footprint_that_is_not_ours_undoes_nothing(self):
+        """Rien ne rattachait au banc les noms qu'elle porte : la lecture valide
+        des FORMES, jamais une appartenance. Une empreinte nommant un écosystème
+        de production passait, et ses VM s'effaçaient dès que le nom
+        concordait."""
+        for champ, valeur in (
+            ("ecosysteme", "OPS-Fictif-Dolomie"),
+            ("utilisateur", "quelquun-dautre@pve"),
+            ("terrain", ""),
+        ):
+            with self.subTest(champ=champ):
+                autre = self.EMPREINTE._replace(**{champ: valeur})
+                self.assertFalse(B.nous(autre))
+                self.assertEqual((), B.a_defaire(autre))
+
+    def test_the_bench_s_own_footprint_is_recognised(self):
+        """Le contrôle positif : sans lui, une appartenance qui refuse tout
+        passerait les trois refus ci-dessus."""
+        self.assertTrue(B.nous(self.EMPREINTE))
+        self.assertTrue(B.a_defaire(self.EMPREINTE))
+
+    def test_every_step_carries_the_machine_to_play_it_on(self):
+        """Lu puis jeté, le terrain devait être redéduit au moment de jouer — et
+        le terrain déduit est celui du DERNIER étage posé, potentiellement une
+        autre grappe. Les VMID d'une grappe détruits sur une autre."""
+        for geste in B.a_defaire(self.EMPREINTE):
+            with self.subTest(vise=geste.vise):
+                self.assertEqual(self.EMPREINTE.terrain, geste.terrain)
+
     def test_what_was_never_posed_is_not_undone(self):
         vide = B.Empreinte("", "", "", "", 0, ())
         self.assertEqual((), B.a_defaire(vide))
@@ -285,6 +372,19 @@ class TestLEmpreinte(unittest.TestCase):
 
                 texte = json.dumps({"vms": [[vmid, "banc-un"]]})
                 self.assertIsNone(B.lit_empreinte(texte))
+
+    def test_two_vms_on_one_vmid_refuse_it_all(self):
+        """DEUX VM SUR UN VMID N'ONT PAS DE MAÎTRE, comme deux pools sur un VMID
+        dans le devis. L'appelant confronte le nom geste par geste : le premier
+        refuserait, le second concorderait, et la destruction partirait sur un
+        enregistrement qui se contredit."""
+        import json
+
+        self.assertIsNone(
+            B.lit_empreinte(
+                json.dumps({"vms": [[101, "banc-un"], [101, "banc-deux"]]})
+            )
+        )
 
     def test_a_vm_without_a_name_refuses_it_all(self):
         """Sans nom, rien n'autorise son effacement."""
