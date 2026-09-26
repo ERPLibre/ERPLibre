@@ -89,7 +89,7 @@ REGISTRE_BANC = """[
      "nature": "mesure", "pourquoi": "Parce que.", "variables": [],
      "fixes": {}},
     {"cible": "banc-ecrire", "libelle": "Ecrit", "portee": "tenant",
-     "nature": "ecriture", "pourquoi": "Parce que.", "variables": ["NOM"],
+     "nature": "ecriture", "pourquoi": "Parce que.", "variables": [{"nom": "NOM", "invite": "Le nom", "facultatif": false}],
      "fixes": {}},
     {"cible": "banc-raser", "libelle": "Detruit", "portee": "toute",
      "nature": "destructif", "pourquoi": "Parce que.", "variables": [],

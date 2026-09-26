@@ -71,6 +71,19 @@ BARRIERES = (
 CONFIRMER = "CONFIRMER"
 
 
+class Variable(NamedTuple):
+    """Une variable qu'une étape attend, telle que le registre la décrit.
+
+    `invite` est le texte que le MOTEUR a écrit pour la demander : le
+    reformuler ici ferait deux libellés pour la même question, et celui du
+    moteur est celui que sa console affiche déjà.
+    """
+
+    nom: str
+    invite: str
+    facultative: bool
+
+
 class Etape(NamedTuple):
     """Une étape d'un runbook, telle que le registre l'écrit."""
 
@@ -115,6 +128,24 @@ def _etape(brut):
     variables = brut.get("variables")
     if variables is not None and not isinstance(variables, list):
         return None
+    # LES VARIABLES SONT DES TABLES, PAS DES NOMS. Le registre écrit
+    # {nom, invite, facultatif} : les traiter comme des chaînes ferait
+    # demander une valeur pour « {'nom': 'HOTE', …} », et passerait cette
+    # table à `make` comme nom de variable.
+    attendues = []
+    for variable in variables or ():
+        if not isinstance(variable, dict):
+            return None
+        nom = variable.get("nom")
+        if not isinstance(nom, str) or not nom.strip():
+            return None
+        attendues.append(
+            Variable(
+                nom=nom.strip(),
+                invite=str(variable.get("invite") or ""),
+                facultative=bool(variable.get("facultatif")),
+            )
+        )
     fixes = brut.get("fixes")
     if fixes is not None and not isinstance(fixes, dict):
         return None
@@ -125,7 +156,7 @@ def _etape(brut):
         nature=nature,
         pourquoi=str(brut.get("pourquoi") or ""),
         duree=str(brut.get("duree") or ""),
-        variables=tuple(str(v) for v in (variables or ())),
+        variables=tuple(attendues),
         exige_confirmation=CONFIRMER in (fixes or {}),
         facultative=bool(brut.get("facultative")),
     )

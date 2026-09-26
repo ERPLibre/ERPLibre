@@ -607,19 +607,27 @@ class SetopsMenuMixin:
         dire : sans cette question, la ligne enseignerait qu'un « false »
         protège. L'écart avec le `make` à la main est dit à l'écran.
         """
-        variables = [(nom, "") for nom in etape.variables]
-        if variables:
+        variables = []
+        if etape.variables:
             print(f"\n  {t('This step takes variables:')}")
-            saisies = []
-            for nom, _vide in variables:
-                valeur = input(f"    {nom}=").strip()
+            for attendue in etape.variables:
+                # L'INVITE VIENT DU MOTEUR, pas d'ici : la reformuler ferait
+                # deux libellés pour la même question, et celui du moteur est
+                # celui que sa propre console affiche déjà.
+                suffixe = f" ({t('optional')})" if attendue.facultative else ""
+                valeur = input(
+                    f"    {attendue.nom}{suffixe} — {attendue.invite}\n"
+                    f"    {attendue.nom}="
+                ).strip()
                 if not valeur:
-                    print(
-                        f"  ⛔ {t('{name} is required; nothing was run.').format(name=nom)}"
-                    )
+                    if attendue.facultative:
+                        # Une facultative laissée vide n'est pas passée : le
+                        # moteur a son propre défaut, et « VAR= » le noierait.
+                        continue
+                    manque = t("{name} is required; nothing was run.")
+                    print(f"  ⛔ {manque.format(name=attendue.nom)}")
                     return
-                saisies.append((nom, valeur))
-            variables = saisies
+                variables.append((attendue.nom, valeur))
         if etape.pourquoi:
             print(f"\n  {etape.pourquoi}")
         if registre.ecrit(etape):

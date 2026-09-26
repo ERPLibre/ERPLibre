@@ -39,7 +39,9 @@ REGISTRE = """[
        "variables": [], "fixes": {}},
       {"cible": "banc-ecrire", "libelle": "Ecrit", "portee": "tenant",
        "nature": "ecriture", "pourquoi": "Parce que.", "duree": "long",
-       "variables": ["NOM"], "fixes": {}},
+       "variables": [{"nom": "NOM", "invite": "Le nom", "facultatif": false},
+                     {"nom": "SEUL", "invite": "Un seul", "facultatif": true}],
+       "fixes": {}},
       {"cible": "banc-raser", "libelle": "Detruit", "portee": "site",
        "nature": "destructif", "pourquoi": "Parce que.", "duree": "",
        "variables": [], "fixes": {"CONFIRMER": "true"}},
@@ -194,6 +196,43 @@ class TestRienNestMasque(unittest.TestCase):
         runbook = R.lit_registre(seulement_barrees)[0]
         self.assertEqual((0, 4), R.compte(runbook, "eco", "site"))
         self.assertEqual(4, len(runbook.etapes))
+
+
+class TestLesVariablesSontDesTables(unittest.TestCase):
+    """Le registre écrit {nom, invite, facultatif}, pas un nom.
+
+    Les traiter comme des chaînes faisait demander une valeur pour
+    « {'nom': 'HOTE', …} » et passait cette table à `make` comme nom de
+    variable. La fixture disait « ["NOM"] » — une forme INVENTÉE, jamais
+    capturée du moteur, et c'est ce qui a laissé passer le défaut.
+    """
+
+    def setUp(self):
+        self.runbook = R.lit_registre(REGISTRE)[0]
+
+    def test_a_variable_carries_the_prompt_the_engine_wrote(self):
+        """Le reformuler ferait deux libellés pour la même question."""
+        attendue = self.runbook.etapes[1].variables[0]
+        self.assertEqual("NOM", attendue.nom)
+        self.assertEqual("Le nom", attendue.invite)
+        self.assertFalse(attendue.facultative)
+
+    def test_an_optional_variable_says_it_is(self):
+        """Sept des trente-quatre variables réelles sont facultatives :
+        exiger une réponse les rendrait bloquantes."""
+        self.assertTrue(self.runbook.etapes[1].variables[1].facultative)
+
+    def test_a_variable_that_is_not_a_table_refuses_the_registry(self):
+        self.assertIsNone(
+            R.lit_registre(
+                REGISTRE.replace('"variables": [', '"variables": ["NOM", ', 1)
+            )
+        )
+
+    def test_a_variable_without_a_name_refuses_the_registry(self):
+        self.assertIsNone(
+            R.lit_registre(REGISTRE.replace('"nom": "NOM"', '"nom": "  "', 1))
+        )
 
 
 class TestCeQuiEcrit(unittest.TestCase):
