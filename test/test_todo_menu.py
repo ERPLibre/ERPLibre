@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from script.setops import console, state  # noqa: E402
+from script.setops import runbooks as registre  # noqa: E402
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -991,6 +992,17 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
         "state.GESTE_ANSIBLE": state.GESTE_ANSIBLE,
         "state.GESTE_VOUTES": state.GESTE_VOUTES,
         "console.GESTE": console.GESTE,
+        "registre.PORTE_INSTANCIER": registre.PORTE_INSTANCIER,
+        "registre.PORTE_INSTANCIER_APPLIQUER": registre.PORTE_INSTANCIER_APPLIQUER,
+        "registre.PORTE_DEPLOYER": registre.PORTE_DEPLOYER,
+        "registre.PORTE_DEPLOYER_GROUPE": registre.PORTE_DEPLOYER_GROUPE,
+        "registre.PORTE_APPLIQUER": registre.PORTE_APPLIQUER,
+        "registre.PORTE_CREER_VM": registre.PORTE_CREER_VM,
+        "registre.PORTE_FLOTTE_CREER": registre.PORTE_FLOTTE_CREER,
+        "registre.PORTE_FLUX": registre.PORTE_FLUX,
+        "registre.PORTE_SITE": registre.PORTE_SITE,
+        "registre.PORTE_GENOME_INSCRIRE": registre.PORTE_GENOME_INSCRIRE,
+        "registre.PORTE_CONFIG": registre.PORTE_CONFIG,
     }
     EXPECTED = {
         "Set-OPS - State of the integration": "_setops_state",
@@ -1001,6 +1013,17 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Set-OPS - Keys and vaults": "_setops_vaults",
         "Set-OPS - Runbooks": "_setops_runbooks",
         "Set-OPS - Web console": "_setops_console",
+        registre.PORTE_INSTANCIER: "_setops_geste_instancier",
+        registre.PORTE_INSTANCIER_APPLIQUER: "_setops_geste_instancier_appliquer",
+        registre.PORTE_DEPLOYER: "_setops_geste_deployer",
+        registre.PORTE_DEPLOYER_GROUPE: "_setops_geste_deployer_groupe",
+        registre.PORTE_APPLIQUER: "_setops_geste_appliquer",
+        registre.PORTE_CREER_VM: "_setops_geste_creer_vm",
+        registre.PORTE_FLOTTE_CREER: "_setops_geste_flotte_creer",
+        registre.PORTE_FLUX: "_setops_geste_flux",
+        registre.PORTE_SITE: "_setops_geste_site",
+        registre.PORTE_GENOME_INSCRIRE: "_setops_geste_genome_inscrire",
+        registre.PORTE_CONFIG: "_setops_geste_config",
     }
 
 

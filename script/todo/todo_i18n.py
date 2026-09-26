@@ -17835,6 +17835,82 @@ TRANSLATIONS = {
         "fr": "le signal n'a pas pu être envoyé",
         "en": "the signal could not be sent",
     },
+    "Write gestures": {
+        "fr": "Gestes d'écriture",
+        "en": "Write gestures",
+    },
+    "Set-OPS - Generate the inventory, diff first": {
+        "fr": "📝 Set-OPS - Générer l'inventaire, le diff d'abord",
+        "en": "Set-OPS - Generate the inventory, diff first",
+    },
+    "Set-OPS - Take the generated inventory": {
+        "fr": "📝 Set-OPS - Prendre l'inventaire généré",
+        "en": "Set-OPS - Take the generated inventory",
+    },
+    "Set-OPS - Deploy one host, layer by layer": {
+        "fr": "📝 Set-OPS - Déployer un hôte, couche par couche",
+        "en": "Set-OPS - Deploy one host, layer by layer",
+    },
+    "Set-OPS - Deploy one group across the fleet": {
+        "fr": "📝 Set-OPS - Déployer un groupe sur toute la flotte",
+        "en": "Set-OPS - Deploy one group across the fleet",
+    },
+    "Set-OPS - Apply one group to the fleet": {
+        "fr": "📝 Set-OPS - Appliquer un groupe à la flotte",
+        "en": "Set-OPS - Apply one group to the fleet",
+    },
+    "Set-OPS - Create one VM and wait for it": {
+        "fr": "📝 Set-OPS - Créer une VM et l'attendre",
+        "en": "Set-OPS - Create one VM and wait for it",
+    },
+    "Set-OPS - Create the fleet's missing VMs": {
+        "fr": "📝 Set-OPS - Créer les VM manquantes de la flotte",
+        "en": "Set-OPS - Create the fleet's missing VMs",
+    },
+    "Set-OPS - Regenerate the flows and the firewall rules": {
+        "fr": "📝 Set-OPS - Régénérer les flux et les règles de pare-feu",
+        "en": "Set-OPS - Regenerate the flows and the firewall rules",
+    },
+    "Set-OPS - Regenerate the site playbook": {
+        "fr": "📝 Set-OPS - Régénérer le playbook du site",
+        "en": "Set-OPS - Regenerate the site playbook",
+    },
+    "Set-OPS - Record the parentage in the instance": {
+        "fr": "📝 Set-OPS - Inscrire la parenté dans l'instance",
+        "en": "Set-OPS - Record the parentage in the instance",
+    },
+    "Set-OPS - Proxmox assistant (asks you for a secret)": {
+        "fr": "📝 Set-OPS - Assistant Proxmox (il demande un secret)",
+        "en": "Set-OPS - Proxmox assistant (asks you for a secret)",
+    },
+    "This step asks you questions itself.": {
+        "fr": "Cette étape pose elle-même des questions.",
+        "en": "This step asks you questions itself.",
+    },
+    "The terminal is handed over; nothing is captured.": {
+        "fr": "Le terminal lui est rendu ; rien n'est capturé.",
+        "en": "The terminal is handed over; nothing is captured.",
+    },
+    "{name} is a switch, not a value:": {
+        "fr": "{name} est un interrupteur, pas une valeur :",
+        "en": "{name} is a switch, not a value:",
+    },
+    "any value at all turns it on, « 0 » included.": {
+        "fr": "n'importe quelle valeur l'active, « 0 » compris.",
+        "en": "any value at all turns it on, « 0 » included.",
+    },
+    "Turn {name} on? (y/N): ": {
+        "fr": "Activer {name} ? (o/N) : ",
+        "en": "Turn {name} on? (y/N): ",
+    },
+    "takes": {
+        "fr": "dure",
+        "en": "takes",
+    },
+    "the registry declares no single « {cible} »": {
+        "fr": "le registre ne déclare pas un seul « {cible} »",
+        "en": "the registry declares no single « {cible} »",
+    },
 }
 
 

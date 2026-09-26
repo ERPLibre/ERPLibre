@@ -91,6 +91,51 @@ class SetopsMenuMixin:
                 ),
                 "method": "_setops_runbooks",
             },
+            {"section": t("Write gestures")},
+            {
+                "prompt_description": t(registre.PORTE_INSTANCIER),
+                "method": "_setops_geste_instancier",
+            },
+            {
+                "prompt_description": t(registre.PORTE_INSTANCIER_APPLIQUER),
+                "method": "_setops_geste_instancier_appliquer",
+            },
+            {
+                "prompt_description": t(registre.PORTE_DEPLOYER),
+                "method": "_setops_geste_deployer",
+            },
+            {
+                "prompt_description": t(registre.PORTE_DEPLOYER_GROUPE),
+                "method": "_setops_geste_deployer_groupe",
+            },
+            {
+                "prompt_description": t(registre.PORTE_APPLIQUER),
+                "method": "_setops_geste_appliquer",
+            },
+            {
+                "prompt_description": t(registre.PORTE_CREER_VM),
+                "method": "_setops_geste_creer_vm",
+            },
+            {
+                "prompt_description": t(registre.PORTE_FLOTTE_CREER),
+                "method": "_setops_geste_flotte_creer",
+            },
+            {
+                "prompt_description": t(registre.PORTE_FLUX),
+                "method": "_setops_geste_flux",
+            },
+            {
+                "prompt_description": t(registre.PORTE_SITE),
+                "method": "_setops_geste_site",
+            },
+            {
+                "prompt_description": t(registre.PORTE_GENOME_INSCRIRE),
+                "method": "_setops_geste_genome_inscrire",
+            },
+            {
+                "prompt_description": t(registre.PORTE_CONFIG),
+                "method": "_setops_geste_config",
+            },
             {"section": t("Web console")},
             {
                 "prompt_description": t(console.GESTE),
@@ -648,6 +693,9 @@ class SetopsMenuMixin:
                     print(f"  ⛔ {manque.format(name=attendue.nom)}")
                     return
                 variables.append((attendue.nom, valeur))
+        interrupteur = registre.drapeau(etape)
+        if interrupteur and self._setops_demander_interrupteur(interrupteur):
+            variables.append((interrupteur, "1"))
         if etape.pourquoi:
             print(f"\n  {etape.pourquoi}")
         if registre.ecrit(etape):
@@ -658,8 +706,32 @@ class SetopsMenuMixin:
             if not self._is_yes(input(f"{t('Run it? (y/N): ')}")):
                 print(t("Cancelled."))
                 return
-        vu = self._setops_lancer(moteur, etape.cible, variables)
+        parle = registre.interactif(etape)
+        if parle:
+            print(f"\n  💬 {t('This step asks you questions itself.')}")
+            print(
+                f"    {t('The terminal is handed over; nothing is captured.')}"
+            )
+        vu = self._setops_lancer(
+            moteur, etape.cible, variables, capture=not parle
+        )
         self._setops_dire(vu)
+
+    def _setops_demander_interrupteur(self, nom):
+        """Un drapeau-INTERRUPTEUR se demande par oui ou non, jamais par sa
+        valeur.
+
+        La recette le lit par `$(if $(NOM),…)`, et GNU make tient toute chaîne
+        non vide pour vraie : celui qui tape « 0 » pour dire non force tout
+        autant. La question est donc fermée, et « non » ne passe RIEN — pas
+        même un « NOM= » vide, qui se lirait comme une valeur choisie.
+        """
+        print(
+            f"\n  ⚠ {t('{name} is a switch, not a value:').format(name=nom)}"
+        )
+        print(f"    {t('any value at all turns it on, « 0 » included.')}")
+        demande = t("Turn {name} on? (y/N): ").format(name=nom)
+        return self._is_yes(input(demande))
 
     # --- Clés et voûtes -----------------------------------------------------
 
@@ -1017,3 +1089,87 @@ class SetopsMenuMixin:
             print(f"  ✅ {t(self.ARRETS[console.ARRET_FAIT])}")
             return
         print(f"  ✗ {t(self.ARRETS[console.ARRET_TENACE])} ({suivi.pid})")
+
+    # --- Gestes d'écriture --------------------------------------------------
+
+    # ONZE PORTES, UN SEUL ÉCRAN. Chaque méthode ne fait que nommer sa cible :
+    # tout ce qui décrit le geste — libellé, pourquoi, nature, portée, durée,
+    # variables et leurs invites — est relu au registre à chaque visite. Deux
+    # endroits qui décriraient le même geste diraient tôt ou tard deux choses
+    # différentes, et c'est le registre qui a raison.
+
+    def _setops_geste_instancier(self):
+        return self._setops_geste("instancier")
+
+    def _setops_geste_instancier_appliquer(self):
+        return self._setops_geste("instancier-appliquer")
+
+    def _setops_geste_deployer(self):
+        return self._setops_geste("deployer")
+
+    def _setops_geste_deployer_groupe(self):
+        return self._setops_geste("deployer-groupe")
+
+    def _setops_geste_appliquer(self):
+        return self._setops_geste("appliquer")
+
+    def _setops_geste_creer_vm(self):
+        return self._setops_geste("creer-vm")
+
+    def _setops_geste_flotte_creer(self):
+        return self._setops_geste("flotte-creer")
+
+    def _setops_geste_flux(self):
+        return self._setops_geste("flux")
+
+    def _setops_geste_site(self):
+        return self._setops_geste("site")
+
+    def _setops_geste_genome_inscrire(self):
+        return self._setops_geste("genome-inscrire")
+
+    def _setops_geste_config(self):
+        return self._setops_geste("config")
+
+    def _setops_geste(self, cible):
+        """La porte d'un geste d'écriture. TOUT VIENT DU REGISTRE.
+
+        La barrière est celle du navigateur — `runbooks.barriere` — et non une
+        seconde règle : une porte dédiée qui jugerait elle-même le périmètre
+        finirait par conduire ce que le navigateur refuse, ou l'inverse.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print("\n🤖 " + t(registre.PORTES[cible]))
+        self._setops_bandeau(moteur)
+        lus = self._setops_registre(moteur)
+        if lus is None:
+            return
+        etape = registre.trouve(lus, cible)
+        if etape is None:
+            manque = t("the registry declares no single « {cible} »")
+            print(f"  ✗ {manque.format(cible=cible)}")
+            return
+        self._setops_dire_geste(etape)
+        barriere = registre.barriere(
+            etape, ecosystems.monte(moteur), ecosystems.site_monte(moteur)
+        )
+        if barriere:
+            print(f"  ⛔ {t(self.BARRIERES[barriere])}")
+            return
+        self._setops_jouer_etape(moteur, etape)
+
+    def _setops_dire_geste(self, etape):
+        """Ce que le registre dit de ce geste, avec ses mots.
+
+        La nature et la portée sont AFFICHÉES plutôt que sous-entendues par
+        l'entrée de menu : une porte dédiée fait oublier dans quelle séquence
+        le geste vit, et donc ce qu'il suppose déjà fait.
+        """
+        marque = self.MARQUES_NATURE.get(etape.nature, "?")
+        print(f"\n  {marque} make {etape.cible}  [{etape.portee}]")
+        if etape.libelle:
+            print(f"      {etape.libelle}")
+        if etape.duree:
+            print(f"      {t('takes')} {etape.duree}")

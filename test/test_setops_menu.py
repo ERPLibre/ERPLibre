@@ -1282,5 +1282,238 @@ class TestLeReleveDeLaConsole(CasDEcosysteme):
         self.assertEqual(console.INCONNU, mot)
 
 
+# Un registre de banc qui déclare quatre des cibles réelles. Les libellés, les
+# « pourquoi » et les invites sont inventés ; seuls les noms de cible sont ceux
+# du moteur, puisque ce sont eux que les portes nomment.
+REGISTRE_PORTES = """[
+  {"id": "banc-fictif-portes", "titre": "Banc des portes", "portee": "tenant",
+   "but": "Eprouver les portes.", "etapes": [
+    {"cible": "deployer", "libelle": "Deploie un hote de banc",
+     "portee": "tenant", "nature": "ecriture", "pourquoi": "Parce que.",
+     "duree": "~2 min", "fixes": {},
+     "variables": [{"nom": "HOTE", "invite": "Le nom de l hote",
+                    "facultatif": false}]},
+    {"cible": "instancier-appliquer", "libelle": "Prend l inventaire",
+     "portee": "tenant", "nature": "ecriture", "pourquoi": "Parce que.",
+     "duree": "", "variables": [], "fixes": {}},
+    {"cible": "config", "libelle": "Affiche la configuration",
+     "portee": "tenant", "nature": "mesure", "pourquoi": "Parce que.",
+     "duree": "", "variables": [], "fixes": {}},
+    {"cible": "flotte-creer", "libelle": "Cree les VM manquantes",
+     "portee": "poste", "nature": "ecriture", "pourquoi": "Parce que.",
+     "duree": "", "variables": [], "fixes": {"CONFIRMER": "true"}}
+   ]}
+]
+"""
+
+
+class CasDePorte(CasDEcosysteme):
+    """Les portes dédiées, le registre POSÉ.
+
+    Le registre est bouchonné au même endroit que pour le navigateur : les
+    deux doivent lire la MÊME source, et une porte qui décrirait le geste
+    autrement que la séquence serait le défaut qu'on cherche à éviter.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_PORTES
+        )
+        self.todo._pve_show = None
+        self.captures = []
+        # Un écosystème et un site MONTÉS : sans eux, toute étape de portée
+        # « tenant » ou « site » est barrée, et les épreuves ci-dessous
+        # mesureraient la barrière au lieu du geste.
+        for nom, valeur in (
+            ("monte", lambda _m: "Ecosysteme-Fictif-Gneiss"),
+            ("site_monte", lambda _m: "Site-Fictif-Pegmatite"),
+        ):
+            correctif = patch.object(state.ecosystems, nom, valeur)
+            correctif.start()
+            self.addCleanup(correctif.stop)
+
+    def _lancer(
+        self, moteur, cible, variables=(), confirmer=False, capture=True
+    ):
+        """Comme celui de la classe mère, en gardant AUSSI la capture : c'est
+        elle qui dit si le terminal a été rendu au moteur."""
+        self.lances.append((cible, tuple(variables), confirmer))
+        self.captures.append(capture)
+        return self.reponses.get(cible, runner.Verdict(0, ""))
+
+    def porte(self, cible, saisies=()):
+        """Joue la porte de `cible`, les invites ÉCRITES comme un terminal les
+        écrit.
+
+        Le bouchon de la classe mère avale l'invite passée à `input`, si bien
+        qu'un écran pourrait poser une question sans texte sans qu'une épreuve
+        le voie. Ici l'invite est imprimée, donc éprouvable.
+        """
+        file = list(saisies)
+        vrai = builtins.input
+
+        def repondre(invite="", *_a, **_k):
+            print(invite, end="")
+            return file.pop(0) if file else ""
+
+        builtins.input = repondre
+        vu = io.StringIO()
+        try:
+            with redirect_stdout(vu):
+                getattr(self.todo, registre.methode(cible))()
+        finally:
+            builtins.input = vrai
+        return vu.getvalue()
+
+
+class TestChaquePorteMeneAuGesteQuElleNomme(unittest.TestCase):
+    """Onze portes, un seul écran : chaque méthode ne fait que nommer sa
+    cible. Le nom de la méthode est DÉRIVÉ de la cible, donc aucune table
+    n'est à tenir à jour ici."""
+
+    def setUp(self):
+        sys.argv = ["todo.py"]
+        self.todo = TODO()
+        self.vus = []
+        self.todo._setops_geste = lambda cible: self.vus.append(cible)
+
+    def test_every_declared_door_has_its_method(self):
+        for cible in registre.PORTES:
+            with self.subTest(cible=cible):
+                self.assertTrue(
+                    hasattr(self.todo, registre.methode(cible)),
+                    registre.methode(cible),
+                )
+
+    def test_every_door_passes_its_own_target(self):
+        """Une porte qui passerait la cible d'une autre lancerait le mauvais
+        geste sous le bon libellé — le pire des deux mondes."""
+        for cible in registre.PORTES:
+            with self.subTest(cible=cible):
+                self.vus = []
+                getattr(self.todo, registre.methode(cible))()
+                self.assertEqual([cible], self.vus)
+
+    def test_no_method_opens_a_door_that_is_not_declared(self):
+        """Une méthode orpheline offrirait un geste que le menu ne montre
+        pas, et dont le libellé n'existe pas."""
+        ouvertes = {
+            nom for nom in dir(self.todo) if nom.startswith("_setops_geste_")
+        }
+        self.assertEqual(
+            {registre.methode(c) for c in registre.PORTES}, ouvertes
+        )
+
+
+class TestLaPorteDecritCeQueLeRegistreDit(CasDePorte):
+    def test_the_screen_carries_the_registry_s_own_words(self):
+        """Le contrôle positif : sans lui, un écran muet passerait les
+        épreuves de refus plus bas."""
+        vu = self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertIn("Deploie un hote de banc", vu)
+        self.assertIn("[tenant]", vu)
+        self.assertIn("~2 min", vu)
+
+    def test_the_prompt_is_the_one_the_engine_wrote(self):
+        vu = self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertIn("Le nom de l hote", vu)
+        self.assertEqual(
+            [("deployer", (("HOTE", "banc-hote-fictif"),), False)], self.lances
+        )
+
+    def test_a_target_the_registry_does_not_declare_runs_nothing(self):
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_BANC
+        )
+        self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertEqual([], self.cibles())
+
+    def test_an_unreadable_registry_runs_nothing(self):
+        self.todo._setops_registre = lambda _m: None
+        self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertEqual([], self.cibles())
+
+
+class TestLaPorteEtLeNavigateurJugentPareil(CasDePorte):
+    """La barrière est celle du navigateur, et non une seconde règle : une
+    porte qui jugerait elle-même finirait par conduire ce que le navigateur
+    refuse, ou l'inverse."""
+
+    def test_what_the_engine_gates_stays_gated_behind_its_door(self):
+        vu = self.porte("flotte-creer", ["o"])
+        self.assertEqual([], self.cibles())
+        self.assertIn(
+            todo_i18n.t(self.todo.BARRIERES[registre.CONFIRMATION_MOTEUR]), vu
+        )
+
+    def test_a_tenant_gesture_without_an_ecosystem_is_refused(self):
+        with patch.object(state.ecosystems, "monte", lambda _m: ""):
+            vu = self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertEqual([], self.cibles())
+        self.assertIn(
+            todo_i18n.t(self.todo.BARRIERES[registre.SANS_ECOSYSTEME]), vu
+        )
+
+
+class TestUnInterrupteurNeSeDemandePasParSaValeur(CasDePorte):
+    """La recette lit FORCE par « $(if $(FORCE),…) », et GNU make tient toute
+    chaîne non vide pour vraie : celui qui tape « 0 » pour dire non force tout
+    autant. C'est pourquoi la question est fermée."""
+
+    def test_saying_yes_turns_it_on_with_one(self):
+        self.porte("instancier-appliquer", ["o", "o"])
+        self.assertEqual(
+            [("instancier-appliquer", (("FORCE", "1"),), False)], self.lances
+        )
+
+    def test_saying_no_passes_nothing_at_all(self):
+        """Pas même un « FORCE= » vide, qui se lirait comme une valeur
+        choisie — et pas « FORCE=0 », qui forcerait."""
+        self.porte("instancier-appliquer", ["n", "o"])
+        self.assertEqual([("instancier-appliquer", (), False)], self.lances)
+
+    def test_the_screen_says_it_is_a_switch(self):
+        vu = self.porte("instancier-appliquer", ["n", "o"])
+        self.assertIn(
+            todo_i18n.t("any value at all turns it on, « 0 » included."), vu
+        )
+
+    def test_a_gesture_without_a_switch_is_never_asked_about(self):
+        vu = self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertNotIn(
+            todo_i18n.t("any value at all turns it on, « 0 » included."), vu
+        )
+
+
+class TestUneCibleQuiParleGardeLeTerminal(CasDePorte):
+    """Capturée, une cible qui pose des questions lit une entrée fermée, rend
+    « EOF » et n'a rien fait : le verdict est un refus que rien n'explique."""
+
+    def test_the_terminal_is_handed_over(self):
+        self.porte("config", ["o"])
+        self.assertEqual([False], self.captures)
+
+    def test_a_gesture_that_does_not_speak_is_captured(self):
+        self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertEqual([True], self.captures)
+
+    def test_an_assistant_that_writes_is_confirmed_although_declared_a_read(
+        self,
+    ):
+        """Le registre le déclare « mesure » ; il écrit la configuration et
+        sème la voûte. Sans la question, todo le lancerait comme une lecture
+        anodine."""
+        self.porte("config", ["n"])
+        self.assertEqual([], self.cibles())
+        self.assertTrue(
+            registre.ecrit(
+                registre.trouve(
+                    registre.lit_registre(REGISTRE_PORTES), "config"
+                )
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
