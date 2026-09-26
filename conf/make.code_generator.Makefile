@@ -335,5 +335,5 @@ test_addons_code_generator_template_code_generator:
 # generate config repo code_generator
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
-	./script/git/git_repo_update_group.py --group base,code_generator
+	./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py --group base,code_generator
 	./script/generate_config.sh
