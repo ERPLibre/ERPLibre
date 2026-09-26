@@ -15908,7 +15908,7 @@ def get_lang() -> str:
             )
             if match:
                 lang = match.group(1)
-                if lang in ("fr", "en"):
+                if lang in LANGUAGES:
                     _current_lang = lang
                     return _current_lang
         except OSError:
@@ -15916,7 +15916,7 @@ def get_lang() -> str:
 
     # 2. Check env var
     env_lang = os.environ.get("EL_LANG")
-    if env_lang in ("fr", "en"):
+    if env_lang in LANGUAGES:
         _current_lang = env_lang
         return _current_lang
 
