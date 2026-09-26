@@ -20,7 +20,14 @@ import shlex
 
 import click
 
-from script.setops import ansible_env, ecosystems, engine, runner, state
+from script.setops import (
+    ansible_env,
+    ecosystems,
+    engine,
+    runner,
+    state,
+    vaults,
+)
 from script.setops import runbooks as registre
 from script.todo import state_screen
 from script.todo.todo_i18n import t
@@ -68,6 +75,11 @@ class SetopsMenuMixin:
                     "Set-OPS - Create an ecosystem from a template"
                 ),
                 "method": "_setops_ecosystem_create",
+            },
+            {"section": t("Keys and vaults")},
+            {
+                "prompt_description": t(state.GESTE_VOUTES),
+                "method": "_setops_vaults",
             },
             {"section": t("Runbooks")},
             {
@@ -640,3 +652,179 @@ class SetopsMenuMixin:
                 return
         vu = self._setops_lancer(moteur, etape.cible, variables)
         self._setops_dire(vu)
+
+    # --- Clés et voûtes -----------------------------------------------------
+
+    # Ce qu'un état dit à l'écran. UNE ABSENCE VOULUE NE PORTE PAS LA MARQUE
+    # D'UNE PANNE : sur le runner d'un locataire, la clé du site manque parce
+    # qu'il ne doit pas pouvoir l'ouvrir, et la marquer comme un défaut
+    # enverrait réparer une séparation qui tient.
+    VOUTES = {
+        vaults.PRESENTE: ("🔑", "this machine opens it"),
+        vaults.ABSENTE_BLOQUANTE: (
+            "⛔",
+            "KEY MISSING — this machine configures nothing",
+        ),
+        vaults.SANS_CLE: ("🔒", "this machine does not open it, and must not"),
+    }
+
+    # Ce que rend la pose d'un fichier-clé. Le vocabulaire est clos dans la
+    # couche ; l'écran ne fait que le traduire.
+    POSES = {
+        vaults.POSEE: "key posed, readable by you alone",
+        vaults.DEJA_LA: (
+            "a key is already there and was NOT replaced: replacing it"
+            " would make that vault unreadable for good"
+        ),
+        vaults.SANS_CHEMIN: "the engine named no path for that key",
+        vaults.ECHEC: "the file could not be written",
+    }
+
+    def _setops_voutes(self, moteur):
+        """Les voûtes que le moteur nomme, ou None après avoir dit pourquoi.
+
+        UN CODE 1 N'EST PAS UN ÉCHEC ICI : le moteur rend 1 quand la clé de
+        l'instance montée manque, et c'est exactement le cas que cet écran
+        existe pour montrer. C'est donc la LECTURE du tableau qui décide, pas
+        le code — le gater sur un 0 cacherait le rapport au moment où il sert.
+        """
+        argv = vaults.ARGV_ETAT
+        print(f"\n▶ {runner.cite(argv)}")
+        vu = runner.jouer(
+            argv,
+            env=ansible_env.environnement(RACINE, moteur, runner.base()),
+            cwd=moteur,
+        )
+        lues = vaults.lit_etat(vu.sortie)
+        if lues is None:
+            print(
+                "  ✗ " + t("unreadable answer; replay the line above by hand")
+            )
+            for ligne in vu.sortie.splitlines():
+                print(f"    {ligne}")
+        return lues
+
+    def _setops_vaults(self):
+        """Ce que cette machine peut ouvrir, et ce qu'elle ne doit pas.
+
+        Le rapport du moteur ne nomme que des CHEMINS : une clé absente du
+        disque n'y figure pas comme valeur, et c'est la présence des fichiers
+        qui borne le pouvoir. Aucune clé n'est lue, ni affichée, ni
+        journalisée — ni par le moteur, ni par cet écran.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print("\n🤖 " + t(state.GESTE_VOUTES))
+        self._setops_bandeau(moteur)
+        lues = self._setops_voutes(moteur)
+        if lues is None:
+            return
+        if not lues:
+            print(
+                "  "
+                + t("nothing to name: no ecosystem mounted, and no underlay")
+            )
+            return
+        for vue in lues:
+            marque, dit = self.VOUTES[vue.etat]
+            print(f"  {marque} {vue.role:<10} {vue.nom:<22} {t(dit)}")
+            print(f"       {vue.chemin}")
+        self._setops_dire_separation(lues)
+        self._setops_dire_remises(moteur)
+        self._setops_gestes_voutes(moteur, vaults.bloquante(lues))
+
+    def _setops_dire_separation(self, voutes):
+        """Ce que cette machine n'ouvre pas, dit comme un fait et non un manque.
+
+        Sans cette phrase, deux lignes 🔒 se lisent comme deux choses à
+        régler, et la réparation consisterait à donner à ce poste des clés
+        qu'il ne doit pas détenir.
+        """
+        if not vaults.separation(voutes):
+            return
+        print(
+            "\n  🔒 "
+            + t(
+                "A key missing above is not a fault: it is a separation that"
+                " holds. Posing one here would open nothing — the secret of"
+                " that vault already exists elsewhere."
+            )
+        )
+
+    def _setops_dire_remises(self, moteur):
+        """Les gestes que todo REMET, avec la ligne à taper soi-même.
+
+        `gpg` demande une phrase de passe : elle va de la main au terminal
+        sans traverser un outil qui pourrait la retenir. La ligne porte la
+        variable que la cible exige, parce qu'une ligne remise sans elle se
+        fait refuser et la remise n'aurait rien donné.
+        """
+        relatif = os.path.relpath(moteur, RACINE)
+        print(
+            "\n  "
+            + t("Type these in your own terminal — they ask for a passphrase:")
+        )
+        for cible, variable in vaults.CIBLES_GPG.items():
+            print(f"    make -C {relatif} {cible} {variable}=…")
+
+    def _setops_gestes_voutes(self, moteur, bloque):
+        """Les gestes de cet écran, numérotés ; le geste tapé part.
+
+        La pose n'est proposée QUE pour la voûte bloquante : c'est la seule
+        dont l'absence empêche cette machine de travailler, et la seule pour
+        laquelle une clé neuve ait un sens.
+        """
+        gestes = ["poser"] if bloque is not None else []
+        gestes.append("recenser")
+        print()
+        for rang, geste in enumerate(gestes, 1):
+            if geste == "poser":
+                pose = t("Pose a NEW key for {nom}")
+                print(f"  [{rang}] {pose.format(nom=bloque.nom)}")
+            else:
+                print(
+                    f"  [{rang}] make {vaults.CIBLE_RECENSER} — "
+                    + t("what exists only on this station (writes nothing)")
+                )
+        brut = input(t("Which gesture? (number, empty to leave): ")).strip()
+        if not brut.isdigit() or not 0 < int(brut) <= len(gestes):
+            return
+        if gestes[int(brut) - 1] == "poser":
+            self._setops_poser_cle(bloque)
+        else:
+            self._setops_dire(
+                self._setops_lancer(moteur, vaults.CIBLE_RECENSER)
+            )
+
+    def _setops_poser_cle(self, bloque):
+        """Pose une clé neuve pour la voûte bloquante. NE L'AFFICHE JAMAIS.
+
+        LA QUESTION DIT LES DEUX CAS, parce que ni la couche ni cet écran ne
+        savent les distinguer : une clé neuve n'ouvre qu'une voûte qui ne
+        porte encore rien. Sur une voûte déjà chiffrée, elle ne récupère rien
+        — ce secret-là revient de son archive — et Ansible essaierait alors
+        une clé qui n'ouvre aucun bloc.
+
+        La pose n'écrase jamais un fichier existant : la couche refuse, parce
+        qu'une clé remplacée rend sa voûte définitivement illisible.
+        """
+        print(
+            "\n  ⚠ "
+            + t(
+                "A new key only opens a vault that holds nothing yet. If this"
+                " ecosystem already has encrypted files, bring its key back"
+                " from its archive instead."
+            )
+        )
+        print(f"    {bloque.chemin}")
+        demande = t("Pose a new key for {nom}? (y/N): ")
+        if not self._is_yes(input(demande.format(nom=bloque.nom))):
+            print(t("Cancelled."))
+            return
+        pose = vaults.poser_cle(bloque.chemin)
+        dit = t(self.POSES[pose.resultat])
+        if pose.reussi:
+            print(f"  ✅ {dit}")
+            return
+        print(f"  ✗ {dit}" + (f" ({pose.souci})" if pose.souci else ""))

@@ -57,6 +57,10 @@ VENV = ansible_env.VENV
 # entrée qui existe. Une épreuve tient les deux ensemble.
 GESTE_ANSIBLE = "Set-OPS - Ansible environment (set it up)"
 
+# Le geste que la ligne « Clé de voûte de l'écosystème » nomme, à la même
+# condition et pour la même raison : le menu porte cette entrée.
+GESTE_VOUTES = "Set-OPS - Keys and vaults (what this machine can open)"
+
 # Les gestes que les lignes nomment, relatifs à la racine d'ERPLibre.
 INSTALLER_REPO = "./script/install/install_git_repo.sh"
 RAPATRIER = "./script/manifest/update_manifest_local_setops.sh"
@@ -541,20 +545,21 @@ def _site(vu):
 def _cle(vu):
     """Le code de `voutes.py etat` : 0 la clé est là, 1 elle manque.
 
-    Un script qui lève sort AUSSI en 1 : la ligne nomme donc la commande
-    qui en montre la cause, plutôt que de conclure. Tout autre code, et
-    l'absence de code, est un verdict illisible.
+    Un script qui lève sort AUSSI en 1 : la ligne renvoie donc à l'écran qui
+    MONTRE le rapport du moteur, plutôt que de conclure — cet écran rend le
+    texte brut quand il ne se lit pas. Tout autre code, et l'absence de code,
+    est un verdict illisible.
     """
     if vu.code_cle == 0:
         return PORTE, t("key present")
+    geste = t(GESTE_VOUTES)
     if vu.code_cle == 1:
-        commande = (
-            "python3 " + _cite(vu.chemin + "/scripts/voutes.py") + " etat"
-        )
-        return A_REGLER, t("missing: {cmd} names it").format(cmd=commande)
-    return A_REGLER, t("unreadable verdict (code {code})").format(
-        code="?" if vu.code_cle is None else vu.code_cle
-    )
+        return A_REGLER, t(
+            "missing: « {geste} » shows it and poses it"
+        ).format(geste=geste)
+    return A_REGLER, t(
+        "unreadable verdict (code {code}): « {geste} » shows the report"
+    ).format(code="?" if vu.code_cle is None else vu.code_cle, geste=geste)
 
 
 def _outils(vu):

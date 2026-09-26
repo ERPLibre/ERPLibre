@@ -17640,6 +17640,120 @@ TRANSLATIONS = {
         "fr": "underlay.yml ne mène à aucun fichier : {cmd}",
         "en": "underlay.yml leads to no file: {cmd}",
     },
+    "Keys and vaults": {
+        "fr": "Clés et voûtes",
+        "en": "Keys and vaults",
+    },
+    "Set-OPS - Keys and vaults (what this machine can open)": {
+        "fr": "🔑 Set-OPS - Clés et voûtes (ce que cette machine peut ouvrir)",
+        "en": "🔑 Set-OPS - Keys and vaults (what this machine can open)",
+    },
+    "missing: « {geste} » shows it and poses it": {
+        "fr": "absente : « {geste} » la montre et la pose",
+        "en": "missing: « {geste} » shows it and poses it",
+    },
+    "unreadable verdict (code {code}): « {geste} » shows the report": {
+        "fr": (
+            "verdict illisible (code {code}) : « {geste} » montre le rapport"
+        ),
+        "en": "unreadable verdict (code {code}): « {geste} » shows the report",
+    },
+    "this machine opens it": {
+        "fr": "cette machine l'ouvre",
+        "en": "this machine opens it",
+    },
+    "KEY MISSING — this machine configures nothing": {
+        "fr": "CLÉ ABSENTE — cette machine ne configure rien",
+        "en": "KEY MISSING — this machine configures nothing",
+    },
+    "this machine does not open it, and must not": {
+        "fr": "cette machine ne l'ouvre pas, et ne le doit pas",
+        "en": "this machine does not open it, and must not",
+    },
+    "nothing to name: no ecosystem mounted, and no underlay": {
+        "fr": "rien à nommer : aucun écosystème monté, et aucun underlay",
+        "en": "nothing to name: no ecosystem mounted, and no underlay",
+    },
+    (
+        "A key missing above is not a fault: it is a separation that holds."
+        " Posing one here would open nothing — the secret of that vault"
+        " already exists elsewhere."
+    ): {
+        "fr": (
+            "Une clé absente ci-dessus n'est pas une faute : c'est une"
+            " séparation qui tient. En poser une ici n'ouvrirait rien — le"
+            " secret de cette voûte existe déjà ailleurs."
+        ),
+        "en": (
+            "A key missing above is not a fault: it is a separation that"
+            " holds. Posing one here would open nothing — the secret of that"
+            " vault already exists elsewhere."
+        ),
+    },
+    "Type these in your own terminal — they ask for a passphrase:": {
+        "fr": (
+            "À taper dans son propre terminal — elles demandent une phrase de"
+            " passe :"
+        ),
+        "en": "Type these in your own terminal — they ask for a passphrase:",
+    },
+    "Pose a NEW key for {nom}": {
+        "fr": "Poser une clé NEUVE pour {nom}",
+        "en": "Pose a NEW key for {nom}",
+    },
+    "what exists only on this station (writes nothing)": {
+        "fr": "ce qui n'existe QUE sur ce poste (n'écrit rien)",
+        "en": "what exists only on this station (writes nothing)",
+    },
+    "Which gesture? (number, empty to leave): ": {
+        "fr": "Quel geste ? (numéro, vide pour sortir) : ",
+        "en": "Which gesture? (number, empty to leave): ",
+    },
+    (
+        "A new key only opens a vault that holds nothing yet. If this"
+        " ecosystem already has encrypted files, bring its key back from its"
+        " archive instead."
+    ): {
+        "fr": (
+            "Une clé neuve n'ouvre qu'une voûte qui ne porte encore rien. Si"
+            " cet écosystème a déjà des fichiers chiffrés, ramener plutôt sa"
+            " clé depuis son archive."
+        ),
+        "en": (
+            "A new key only opens a vault that holds nothing yet. If this"
+            " ecosystem already has encrypted files, bring its key back from"
+            " its archive instead."
+        ),
+    },
+    "Pose a new key for {nom}? (y/N): ": {
+        "fr": "Poser une clé neuve pour {nom} ? (o/N) : ",
+        "en": "Pose a new key for {nom}? (y/N): ",
+    },
+    "key posed, readable by you alone": {
+        "fr": "clé posée, lisible par vous seul",
+        "en": "key posed, readable by you alone",
+    },
+    (
+        "a key is already there and was NOT replaced: replacing it would make"
+        " that vault unreadable for good"
+    ): {
+        "fr": (
+            "une clé est déjà là et n'a PAS été remplacée : la remplacer"
+            " rendrait cette voûte définitivement illisible"
+        ),
+        "en": (
+            "a key is already there and was NOT replaced: replacing it would"
+            " make that vault unreadable for good"
+        ),
+    },
+    "the engine named no path for that key": {
+        "fr": "le moteur n'a nommé aucun chemin pour cette clé",
+        "en": "the engine named no path for that key",
+    },
+    "the file could not be written": {
+        "fr": "le fichier n'a pas pu être écrit",
+        "en": "the file could not be written",
+    },
 }
 
 

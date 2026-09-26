@@ -728,12 +728,6 @@ class TestLesGestesCitentLeChemin(CasDeLangue):
                 "underlay.yml leads to no file: {cmd}",
                 lien,
             ),
-            (
-                "Ecosystem vault key",
-                {"code_cle": 1},
-                "missing: {cmd} names it",
-                c + "/scripts/voutes.py",
-            ),
         )
         for segment, remplace, gabarit, attendu in cas:
             with self.subTest(segment=segment, gabarit=gabarit):
@@ -765,21 +759,27 @@ class TestCleDeVoute(CasDeLangue):
                 l = ligne(regle(code_cle=code), "Ecosystem vault key")
                 self.assertEqual(etat, l.etat)
 
-    def test_a_missing_key_names_the_command_that_names_it(self):
+    def test_a_missing_key_names_the_screen_that_settles_it(self):
+        """Comme la ligne de l'environnement Ansible : elle nomme l'ENTRÉE du
+        menu, pas une commande à retaper. Une épreuve du menu tient les deux
+        bouts ensemble."""
         l = ligne(regle(code_cle=1), "Ecosystem vault key")
-        self.assertIn(f"{CHEMIN}/scripts/voutes.py etat", l.detail)
+        self.assertIn(t(S.GESTE_VOUTES), l.detail)
 
     def test_an_unexpected_code_is_an_unreadable_verdict(self):
-        """Une sonde qui n'a pas répondu ne dit pas la clé absente."""
+        """Une sonde qui n'a pas répondu ne dit pas la clé absente — et elle
+        renvoie quand même à l'écran, qui rend le texte brut du moteur."""
         for code in (2, -9, None):
             with self.subTest(code=code):
                 l = ligne(regle(code_cle=code), "Ecosystem vault key")
-                self.assertEqual(
+                self.assertIn(
                     t("unreadable verdict (code {code})").format(
                         code="?" if code is None else code
-                    ),
+                    )[:-1],
                     l.detail,
                 )
+                self.assertIn(t(S.GESTE_VOUTES), l.detail)
+                self.assertNotIn(t("key present"), l.detail)
 
 
 class TestPrealables(CasDeLangue):

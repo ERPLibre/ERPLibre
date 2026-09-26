@@ -17,6 +17,7 @@ import builtins
 import io
 import os
 import re
+import stat
 import sys
 import tempfile
 import unittest
@@ -29,9 +30,10 @@ sys.path.append(RACINE_DEPOT)
 
 sys.argv = ["todo.py"]
 
-from script.setops import engine, runner, state  # noqa: E402
+from script.setops import engine, runner, state, vaults  # noqa: E402
 from script.setops import runbooks as registre  # noqa: E402
 from script.todo import state_screen, todo_i18n  # noqa: E402
+from script.todo.setops_menu import SetopsMenuMixin as M  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 TODO_PY = Path(RACINE_DEPOT) / "script" / "todo" / "todo.py"
@@ -136,6 +138,19 @@ class TestLeSousMenuSetops(CasDeMenu):
             rendu = self.todo.prompt_execute_setops()
         return rendu, vu.getvalue()
 
+    # Chaque geste que l'écran d'état NOMME, l'entrée qui doit le porter, et
+    # le relevé qui rend cette ligne « à régler ». Un geste nommé par l'écran
+    # s'ajoute ici, et les deux bouts de la couture sont tenus d'un coup.
+    COUTURES = (
+        (
+            state.GESTE_ANSIBLE,
+            "_setops_ansible_env",
+            state.ANSIBLE,
+            {"ansible_playbook": False},
+        ),
+        (state.GESTE_VOUTES, "_setops_vaults", state.CLE, {"code_cle": 1}),
+    )
+
     def test_the_gesture_the_state_screen_names_is_reachable_here(self):
         """L'écran d'état dit « « X » le pose ». Si aucune entrée ne porte
         ce libellé, il envoie chercher une commande qui n'existe pas.
@@ -143,37 +158,45 @@ class TestLeSousMenuSetops(CasDeMenu):
         Le numéro n'est PAS écrit ici : il se LIT dans le menu, pour qu'une
         entrée posée plus haut ne fasse pas rougir l'épreuve.
         """
-        self.todo._setops_ansible_env = lambda: self.joues.append("ansible")
-        libelle = todo_i18n.t(state.GESTE_ANSIBLE)
-        tapes = []
+        for geste, methode, _segment, _releve in self.COUTURES:
+            with self.subTest(geste=geste):
+                self.joues = []
+                setattr(
+                    self.todo, methode, lambda: self.joues.append("atteint")
+                )
+                libelle = todo_i18n.t(geste)
+                tapes = []
 
-        def saisie(texte, *_a, **_k):
-            if tapes:
-                return "0"
-            vus = [
-                num
-                for num, reste in re.findall(r"^\[(\d+)\] (.*)$", texte, re.M)
-                if reste == libelle
-            ]
-            self.assertEqual(1, len(vus), f"« {libelle} » : {vus}")
-            tapes.append(vus[0])
-            return vus[0]
+                def saisie(texte, *_a, **_k):
+                    if tapes:
+                        return "0"
+                    vus = [
+                        num
+                        for num, reste in re.findall(
+                            r"^\[(\d+)\] (.*)$", texte, re.M
+                        )
+                        if reste == libelle
+                    ]
+                    self.assertEqual(1, len(vus), f"« {libelle} » : {vus}")
+                    tapes.append(vus[0])
+                    return vus[0]
 
-        with (
-            patch("click.prompt", side_effect=saisie),
-            redirect_stdout(io.StringIO()),
-        ):
-            self.assertFalse(self.todo.prompt_execute_setops())
-        self.assertEqual(["ansible"], self.joues)
+                with (
+                    patch("click.prompt", side_effect=saisie),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    self.assertFalse(self.todo.prompt_execute_setops())
+                self.assertEqual(["atteint"], self.joues)
 
     def test_the_state_line_names_that_same_gesture(self):
         """Les deux bouts de la couture : l'écran nomme, le menu porte."""
-        vu = RELEVE._replace(ansible_playbook=False)
-        # Le segment affiché est traduit : la ligne se désigne par son
-        # RANG dans la liste des clés, comme l'écran la construit.
-        rendu = state.lignes(vu)
-        ligne = rendu[state.SEGMENTS.index(state.ANSIBLE)]
-        self.assertIn(todo_i18n.t(state.GESTE_ANSIBLE), ligne.detail)
+        for geste, _methode, segment, champs in self.COUTURES:
+            with self.subTest(geste=geste):
+                # Le segment affiché est traduit : la ligne se désigne par son
+                # RANG dans la liste des clés, comme l'écran la construit.
+                rendu = state.lignes(RELEVE._replace(**champs))
+                ligne = rendu[state.SEGMENTS.index(segment)]
+                self.assertIn(todo_i18n.t(geste), ligne.detail)
 
     def test_typing_1_runs_the_state_screen(self):
         """L'écran joué, le menu reste ouvert : c'est le « 0 » qui le
@@ -238,6 +261,10 @@ class CasDEcosysteme(CasDeMenu):
         self.reponses = {}
         self.todo._setops_moteur = lambda: "/moteur-fictif"
         self.todo._setops_lancer = self._lancer
+        # Le rapport des voûtes ne passe pas par `_setops_lancer` : le moteur
+        # y est appelé directement. Bouchonné ici, aucun écran ne lance de
+        # sous-processus.
+        self.todo._setops_voutes = lambda _m: ()
 
     def _lancer(
         self, moteur, cible, variables=(), confirmer=False, capture=True
@@ -270,6 +297,7 @@ class TestLeBandeau(CasDEcosysteme):
         "_setops_ecosystems",
         "_setops_ecosystem_use",
         "_setops_ecosystem_create",
+        "_setops_vaults",
     )
 
     def test_every_acting_screen_says_which_ecosystem_is_mounted(self):
@@ -718,6 +746,284 @@ class TestLaComposition(CasDeMenu):
 
         noms = {f.name for f in _mixin_files(TODO_PY)}
         self.assertIn("setops_menu.py", noms)
+
+
+class CasDeVoute(CasDEcosysteme):
+    """L'écran des clés, le rapport du moteur POSÉ.
+
+    Les noms de dépôt et les chemins sont inventés ; le chemin de clé pointe
+    dans un dossier temporaire, parce que la pose écrit vraiment.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.dossier = tempfile.mkdtemp(prefix="setops-voutes-ecran-")
+        self.addCleanup(self._menage)
+        self.chemin = os.path.join(self.dossier, "setops-vault-fabrique-nord")
+        self.todo._setops_voutes = lambda _m: self.voutes
+
+    def _menage(self):
+        for nom in os.listdir(self.dossier):
+            os.unlink(os.path.join(self.dossier, nom))
+        os.rmdir(self.dossier)
+
+    def voute(self, role, nom, etat, chemin=None):
+        return vaults.Voute(
+            role=role,
+            nom=nom,
+            etat=etat,
+            chemin=chemin if chemin is not None else self.chemin,
+        )
+
+    @property
+    def reglee(self):
+        """Une machine en ordre : sa clé présente, celle du site absente
+        parce qu'elle DOIT l'être."""
+        return (
+            self.voute(vaults.INSTANCE, "Fabrique-Nord", vaults.PRESENTE),
+            self.voute(
+                vaults.HEBERGEUR,
+                "Terrain-Nord",
+                vaults.SANS_CLE,
+                "/chemin-fictif/setops-vault-terrain-nord",
+            ),
+        )
+
+    @property
+    def bloquee(self):
+        """La seule absence qui empêche cette machine de travailler."""
+        return (
+            self.voute(
+                vaults.INSTANCE, "Fabrique-Nord", vaults.ABSENTE_BLOQUANTE
+            ),
+            self.voute(
+                vaults.HEBERGEUR,
+                "Terrain-Nord",
+                vaults.SANS_CLE,
+                "/chemin-fictif/setops-vault-terrain-nord",
+            ),
+        )
+
+    def ecran(self, saisies=()):
+        return self._ecran("_setops_vaults", saisies)
+
+
+class TestLeTableauDesVoutes(CasDeVoute):
+    def test_each_vault_is_named_with_its_repo_and_its_path(self):
+        """Le contrôle positif : sans lui, un écran qui n'imprime rien
+        passerait les épreuves d'absence ci-dessous."""
+        self.voutes = self.reglee
+        vu = self.ecran()
+        self.assertIn("Fabrique-Nord", vu)
+        self.assertIn("Terrain-Nord", vu)
+        self.assertIn(self.chemin, vu)
+
+    def test_the_three_states_do_not_read_alike(self):
+        self.voutes = self.bloquee
+        vu = self.ecran()
+        for etat in (vaults.ABSENTE_BLOQUANTE, vaults.SANS_CLE):
+            with self.subTest(etat=etat):
+                marque, dit = self.todo.VOUTES[etat]
+                self.assertIn(marque, vu)
+                self.assertIn(todo_i18n.t(dit), vu)
+
+    def test_nothing_to_name_says_so_instead_of_an_empty_table(self):
+        self.voutes = ()
+        vu = self.ecran()
+        self.assertIn(
+            todo_i18n.t(
+                "nothing to name: no ecosystem mounted, and no underlay"
+            ),
+            vu,
+        )
+
+    def test_an_unreadable_report_offers_nothing(self):
+        self.voutes = None
+        self.ecran(["1"])
+        self.assertEqual([], self.cibles())
+
+
+class TestUneAbsenceVoulueNestPasUnePanne(CasDeVoute):
+    """Sur le runner d'un locataire, la clé du site manque EXPRÈS. La
+    présenter comme un défaut enverrait réparer une séparation qui tient — en
+    donnant à ce poste des clés qu'il ne doit pas détenir."""
+
+    SEPARATION = (
+        "A key missing above is not a fault: it is a separation that"
+        " holds. Posing one here would open nothing — the secret of"
+        " that vault already exists elsewhere."
+    )
+
+    def test_the_separation_is_stated_as_a_fact(self):
+        """Le garde porte sur la PHRASE, pas sur le cadenas : celui-ci marque
+        aussi la ligne du tableau, et un garde posé sur lui reste vert le jour
+        où la phrase disparaît."""
+        self.voutes = self.reglee
+        self.assertIn(todo_i18n.t(self.SEPARATION), self.ecran())
+
+    def test_a_machine_with_nothing_shut_does_not_get_the_sentence(self):
+        """Elle ne se dit que là où il y a une séparation à dire."""
+        self.voutes = (
+            self.voute(vaults.INSTANCE, "Fabrique-Nord", vaults.PRESENTE),
+        )
+        self.assertNotIn(todo_i18n.t(self.SEPARATION), self.ecran())
+
+    def test_no_key_is_ever_offered_for_what_must_stay_shut(self):
+        """Le seul geste offert est la lecture : rien ne propose de poser la
+        clé de l'hébergeur."""
+        self.voutes = self.reglee
+        vu = self.ecran()
+        # Apparié sur le libellé FORMÉ avec le nom de l'hébergeur : tronquer le
+        # gabarit couperait dans « {nom} », et le garde ne rougirait jamais.
+        offre = todo_i18n.t("Pose a NEW key for {nom}")
+        self.assertNotIn(offre.format(nom="Terrain-Nord"), vu)
+        self.assertNotIn(offre.format(nom="Fabrique-Nord"), vu)
+        self.assertIn(vaults.CIBLE_RECENSER, vu)
+
+    def test_the_pose_is_offered_only_for_the_blocking_one(self):
+        self.voutes = self.bloquee
+        vu = self.ecran()
+        attendu = todo_i18n.t("Pose a NEW key for {nom}").format(
+            nom="Fabrique-Nord"
+        )
+        self.assertIn(attendu, vu)
+        self.assertNotIn("Terrain-Nord", vu.split(attendu)[1])
+
+
+class TestLaPoseDepuisLEcran(CasDeVoute):
+    def setUp(self):
+        super().setUp()
+        self.voutes = self.bloquee
+
+    def test_the_key_is_posed_and_never_printed(self):
+        """UNE CLÉ AFFICHÉE EST UNE CLÉ PERDUE : l'écran se garde, se copie,
+        se colle dans un rapport."""
+        vu = self.ecran(["1", "o"])
+        self.assertTrue(os.path.isfile(self.chemin))
+        with open(self.chemin, encoding="ascii") as tenu:
+            contenu = tenu.read()
+        self.assertNotIn(contenu, vu)
+        self.assertNotIn(contenu[:8], vu)
+        self.assertIn(todo_i18n.t("key posed, readable by you alone"), vu)
+
+    def test_the_posed_file_is_readable_by_nobody_else(self):
+        self.ecran(["1", "o"])
+        mode = stat.S_IMODE(os.stat(self.chemin).st_mode)
+        self.assertEqual(0, mode & (stat.S_IRWXG | stat.S_IRWXO))
+
+    def test_an_existing_key_is_never_replaced(self):
+        """Une clé remplacée rend sa voûte définitivement illisible."""
+        with open(self.chemin, "w", encoding="ascii") as tenu:
+            tenu.write("la-cle-qui-ouvre-deja-cette-voute")
+        vu = self.ecran(["1", "o"])
+        with open(self.chemin, encoding="ascii") as tenu:
+            self.assertEqual("la-cle-qui-ouvre-deja-cette-voute", tenu.read())
+        self.assertIn(todo_i18n.t(self.todo.POSES[vaults.DEJA_LA]), vu)
+
+    def test_saying_no_poses_nothing(self):
+        vu = self.ecran(["1", "n"])
+        self.assertFalse(os.path.exists(self.chemin))
+        self.assertIn(todo_i18n.t("Cancelled."), vu)
+
+    def test_leaving_the_screen_poses_nothing(self):
+        self.ecran([""])
+        self.assertFalse(os.path.exists(self.chemin))
+
+    def test_the_two_cases_are_said_before_the_question(self):
+        """Une clé neuve n'ouvre qu'une voûte qui ne porte encore rien : sur
+        une voûte déjà chiffrée, le secret revient de son archive."""
+        vu = self.ecran(["1", "n"])
+        self.assertIn(
+            todo_i18n.t(
+                "A new key only opens a vault that holds nothing yet. If this"
+                " ecosystem already has encrypted files, bring its key back"
+                " from its archive instead."
+            ),
+            vu,
+        )
+
+
+class TestCeQueLEcranNeLancePas(CasDeVoute):
+    """`gpg` demande une phrase de passe : elle va de la main au terminal sans
+    traverser un outil qui pourrait la retenir."""
+
+    def setUp(self):
+        super().setUp()
+        self.voutes = self.reglee
+
+    def test_the_passphrase_gestures_are_shown_and_never_run(self):
+        vu = self.ecran(["1"])
+        for cible in vaults.CIBLES_GPG:
+            with self.subTest(cible=cible):
+                self.assertIn(cible, vu)
+                self.assertNotIn(cible, self.cibles())
+
+    def test_each_handed_over_line_carries_the_variable_it_demands(self):
+        """Une ligne remise sans sa variable se fait refuser par le moteur, et
+        la remise n'aurait rien donné."""
+        vu = self.ecran()
+        for cible, variable in vaults.CIBLES_GPG.items():
+            with self.subTest(cible=cible):
+                self.assertIn(f"{cible} {variable}=", vu)
+
+    def test_the_census_is_a_read_and_goes_through_the_engine(self):
+        self.ecran(["1"])
+        self.assertEqual([(vaults.CIBLE_RECENSER, (), False)], self.lances)
+
+
+class TestLeRapportEstLuMemeSurUnRefus(CasDeVoute):
+    """LE CODE 1 EST LE CAS QUE CET ÉCRAN EXISTE POUR MONTRER : le moteur rend
+    1 quand la clé de l'instance montée manque. Gater la lecture sur un 0
+    cacherait le rapport au moment où il sert."""
+
+    def lire(self, verdict):
+        self.todo.__dict__.pop("_setops_voutes", None)
+        vu = io.StringIO()
+        with patch.object(runner, "jouer", lambda *_a, **_k: verdict):
+            with redirect_stdout(vu):
+                return self.todo._setops_voutes("/moteur-fictif")
+
+    def test_a_blocking_report_is_read_although_the_code_is_one(self):
+        lues = self.lire(
+            runner.Verdict(
+                1,
+                "instance    Fabrique-Nord        CLE ABSENTE   "
+                "/chemin-fictif/setops-vault-fabrique-nord\n",
+            )
+        )
+        self.assertEqual(1, len(lues))
+        self.assertEqual(vaults.ABSENTE_BLOQUANTE, lues[0].etat)
+
+    def test_a_gesture_that_could_not_run_at_all_reads_nothing(self):
+        self.assertIsNone(self.lire(runner.Verdict(None, "")))
+
+
+class TestLEcranSaitNommerToutCeQueLaCoucheRend(unittest.TestCase):
+    """Les vocabulaires sont CLOS dans les couches, et l'écran les traduit.
+
+    Un mot ajouté à une couche sans son entrée ici lève un `KeyError` au
+    moment précis où l'écran devait le nommer — c'est-à-dire sur le cas rare
+    que ce mot a été ajouté pour décrire.
+    """
+
+    TABLES = (
+        (registre.BARRIERES, M.BARRIERES, "barrières de runbook"),
+        (vaults.ETATS, M.VOUTES, "états de voûte"),
+        (vaults.POSES, M.POSES, "verdicts de pose"),
+    )
+
+    def test_every_word_of_every_closed_vocabulary_is_named(self):
+        for vocabulaire, table, quoi in self.TABLES:
+            for mot in vocabulaire:
+                with self.subTest(quoi=quoi, mot=mot):
+                    self.assertIn(mot, table)
+
+    def test_no_table_names_a_word_the_layer_cannot_produce(self):
+        """Une entrée orpheline est un mot retiré de la couche : la table
+        garde alors une phrase que rien n'affiche plus."""
+        for vocabulaire, table, quoi in self.TABLES:
+            with self.subTest(quoi=quoi):
+                self.assertEqual(set(), set(table) - set(vocabulaire))
 
 
 if __name__ == "__main__":

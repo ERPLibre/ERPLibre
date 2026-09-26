@@ -987,13 +987,17 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
     # Le plancher se FRANCHIT : une seule entrée demande 0.
     MINIMUM = 0
 
-    CONSTANTES = {"state.GESTE_ANSIBLE": state.GESTE_ANSIBLE}
+    CONSTANTES = {
+        "state.GESTE_ANSIBLE": state.GESTE_ANSIBLE,
+        "state.GESTE_VOUTES": state.GESTE_VOUTES,
+    }
     EXPECTED = {
         "Set-OPS - State of the integration": "_setops_state",
         "Set-OPS - Ansible environment": "_setops_ansible_env",
         "Set-OPS - Ecosystems discovered": "_setops_ecosystems",
         "Set-OPS - Switch the active ecosystem": "_setops_ecosystem_use",
         "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",
+        "Set-OPS - Keys and vaults": "_setops_vaults",
         "Set-OPS - Runbooks": "_setops_runbooks",
     }
 
