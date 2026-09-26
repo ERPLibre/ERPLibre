@@ -56,9 +56,17 @@ type GitMirror struct {
 	// Backend est le chemin de « git-http-backend ». Vide, il est cherché aux
 	// endroits usuels.
 	Backend string
-	// Delai borne un CLONAGE. Un dépôt Odoo complet descend en minutes, pas
-	// en secondes, et l'abandonner à mi-chemin ne laisse rien d'utilisable.
+	// Delai borne la durée TOTALE d'un clonage. C'est un garde-fou, pas la
+	// mesure d'un amont en panne — c'est Inactivite qui la prend : l'histoire
+	// complète d'odoo/odoo pèse 17 Go, et un débit de quelques centaines de
+	// mégaoctets par minute la fait descendre en près d'une heure.
 	Delai time.Duration
+	// Inactivite abandonne un clonage dont git n'écrit plus rien. Lancé avec
+	// --progress, git affiche sa progression en continu, téléchargement
+	// comme résolution des deltas : un silence est un amont qui ne répond
+	// plus. Un délai TOTAL, lui, tuait un gros dépôt sain, et le relançait de
+	// zéro à la requête suivante, sans fin.
+	Inactivite time.Duration
 	// DelaiMaj borne un RAFRAÎCHISSEMENT, et il est court à dessein.
 	//
 	// Un miroir qui existe est déjà servable : si l'amont ne répond pas, la
@@ -233,9 +241,11 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 			return "", false
 		}
 		// « -- » : le dépôt ne peut plus se lire comme une option de git.
-		if err := g.git(
-			ctx, "", "clone", "--mirror", "--", depot, chemin,
+		if err := executerSurveille(
+			ctx, g.delaiClonage(), g.inactivite(), "", "git",
+			"clone", "--mirror", "--progress", "--", depot, chemin,
 		); err != nil {
+			log.Printf(T("miroir abandonné pour %s : %v"), depot, err)
 			// Un clonage à moitié fait laisserait un répertoire que la
 			// prochaine requête prendrait pour un miroir valide.
 			os.RemoveAll(chemin)
@@ -399,12 +409,129 @@ func (g *GitMirror) delaiMaj() time.Duration {
 	return DelaiMajParDefaut
 }
 
-func (g *GitMirror) git(ctx context.Context, dir string, args ...string) error {
-	delai := g.Delai
-	if delai <= 0 {
-		delai = 30 * time.Minute
+// DelaiClonageParDefaut et InactiviteParDefaut : voir Delai et Inactivite.
+const (
+	DelaiClonageParDefaut = 6 * time.Hour
+	InactiviteParDefaut   = 10 * time.Minute
+)
+
+func (g *GitMirror) delaiClonage() time.Duration {
+	if g.Delai > 0 {
+		return g.Delai
 	}
-	return g.gitBorne(ctx, delai, dir, args...)
+	return DelaiClonageParDefaut
+}
+
+func (g *GitMirror) inactivite() time.Duration {
+	if g.Inactivite > 0 {
+		return g.Inactivite
+	}
+	return InactiviteParDefaut
+}
+
+// environnementGit : aucune invite, et seuls les transports HTTP(S).
+//
+// Un dépôt privé doit ÉCHOUER et retomber sur le relais, et non bloquer le
+// service en attendant un mot de passe que personne ne tapera jamais.
+// GIT_ALLOW_PROTOCOL borne les transports de git lui-même, clone comme
+// remote update : le miroir ne sert que des négociations HTTP(S), et aucun
+// dépôt ne doit l'emmener vers ssh, git:// ou un chemin local.
+func environnementGit() []string {
+	return append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_ASKPASS=/bin/true",
+		"GCM_INTERACTIVE=never",
+		"GIT_ALLOW_PROTOCOL=http:https",
+	)
+}
+
+// activite reçoit la sortie d'une commande : elle date la dernière écriture
+// et garde la fin du texte, pour le message d'erreur.
+type activite struct {
+	mu       sync.Mutex
+	derniere time.Time
+	fin      []byte
+}
+
+func (a *activite) Write(p []byte) (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.derniere = time.Now()
+	a.fin = append(a.fin, p...)
+	if len(a.fin) > 4096 {
+		a.fin = a.fin[len(a.fin)-4096:]
+	}
+	return len(p), nil
+}
+
+func (a *activite) silenceDepuis() time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return time.Since(a.derniere)
+}
+
+func (a *activite) texte() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return string(a.fin)
+}
+
+// executerSurveille lance la commande, bornée par deux délais : total, sa
+// durée entière, et inactivite, le plus long silence toléré sur sa sortie.
+// Le second est vérifié quatre fois par période d'inactivité.
+func executerSurveille(
+	ctx context.Context, total, inactivite time.Duration, dir, nom string,
+	args ...string,
+) error {
+	ctx, annule := context.WithTimeout(ctx, total)
+	defer annule()
+	sortie := &activite{derniere: time.Now()}
+	cmd := exec.CommandContext(ctx, nom, args...)
+	cmd.Dir = dir
+	cmd.Env = environnementGit()
+	cmd.Stdout = sortie
+	cmd.Stderr = sortie
+	// Le délai tue « git », mais git délègue le réseau à un auxiliaire —
+	// « git-remote-https » — qui SURVIT et garde le tube ouvert : sans ce
+	// second délai, l'attente de la sortie ne se terminerait jamais.
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	fini := make(chan struct{})
+	muet := false
+	var muetMu sync.Mutex
+	go func() {
+		tic := time.NewTicker(inactivite / 4)
+		defer tic.Stop()
+		for {
+			select {
+			case <-fini:
+				return
+			case <-tic.C:
+				if sortie.silenceDepuis() >= inactivite {
+					muetMu.Lock()
+					muet = true
+					muetMu.Unlock()
+					annule()
+					return
+				}
+			}
+		}
+	}()
+	err := cmd.Wait()
+	close(fini)
+	if err != nil {
+		muetMu.Lock()
+		defer muetMu.Unlock()
+		if muet {
+			return fmt.Errorf(T("%s %s : aucune sortie depuis %s"),
+				nom, strings.Join(args, " "), inactivite)
+		}
+		return fmt.Errorf(T("%s %s : %v : %s"),
+			nom, strings.Join(args, " "), err, court(sortie.texte()))
+	}
+	return nil
 }
 
 func (g *GitMirror) gitBorne(
@@ -420,18 +547,7 @@ func (g *GitMirror) gitBorne(
 	// toujours quand l'amont accepte la connexion et ne répond jamais : le
 	// délai qu'on vient de poser ne borne alors plus rien.
 	cmd.WaitDelay = 5 * time.Second
-	// Aucune invite : un dépôt privé doit ÉCHOUER et retomber sur le relais,
-	// et non bloquer le service en attendant un mot de passe que personne ne
-	// tapera jamais.
-	// GIT_ALLOW_PROTOCOL borne les transports de git lui-même, clone comme
-	// remote update : le miroir ne sert que des négociations HTTP(S), et aucun
-	// dépôt ne doit l'emmener vers ssh, git:// ou un chemin local.
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_ASKPASS=/bin/true",
-		"GCM_INTERACTIVE=never",
-		"GIT_ALLOW_PROTOCOL=http:https",
-	)
+	cmd.Env = environnementGit()
 	sortie, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf(T("git %s : %v : %s"),
