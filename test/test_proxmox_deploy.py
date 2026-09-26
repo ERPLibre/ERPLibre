@@ -524,6 +524,10 @@ class TestLesCommandes(unittest.TestCase):
         )
         self.assertIn("false;", cmd)
 
+    # Un nom de lien montant qui ne peut pas apparaître par accident dans une
+    # commande : l'épreuve compte SES occurrences.
+    MONTANT = "enp7s0banc"
+
     def test_the_internal_bridge_never_touches_a_physical_nic(self):
         """Le point le plus important de ce module : ajouter l'interface au
         pont déplace l'adresse de l'hôte et coupe la session SSH — à distance,
@@ -534,6 +538,53 @@ class TestLesCommandes(unittest.TestCase):
         self.assertNotIn("bridge-ports enp1s0", joint)
         self.assertIn("MASQUERADE", joint)
         self.assertIn("ip_forward", joint)
+
+    def test_the_uplink_is_named_only_as_an_iptables_output(self):
+        """MESURÉ SUR CHAQUE OCCURRENCE, et non sur une orthographe. Le garde
+        d'à côté n'interdit qu'une façon d'enrôler la carte ; cette fonction en
+        connaît une seconde — son repli monte le pont à la main, où un « ip link
+        set <montant> master <pont> » asservirait la carte physique sans qu'un
+        seul « bridge-ports » apparaisse. La catastrophe est la même : l'adresse
+        de l'hôte se déplace et la session ssh tombe, à distance, sans retour.
+
+        La seule place légitime du lien montant est la sortie d'une règle de
+        NAT. Tout autre usage, connu ou à venir, fait rougir."""
+        for vlan in (False, True):
+            joint = "\n".join(
+                pve.bridge_setup_cmds(uplink=self.MONTANT, vlan_aware=vlan)
+            )
+            self.assertIn(self.MONTANT, joint)
+            for prise in re.finditer(re.escape(self.MONTANT), joint):
+                avant = joint[max(0, prise.start() - 3) : prise.start()]
+                with self.subTest(vlan=vlan, avant=avant):
+                    self.assertEqual("-o ", avant)
+
+    def test_no_uplink_means_the_name_appears_nowhere(self):
+        self.assertNotIn(
+            self.MONTANT, "\n".join(pve.bridge_setup_cmds(uplink=""))
+        )
+
+    def test_the_idempotence_test_matches_what_the_command_adds(self):
+        """Mesuré sur l'EFFET, non sur « grep -qE » et « || » recopiés du
+        source : un motif rendu incapable de trouver la strophe qu'il ajoute
+        laissait le garde vert, et « /etc/network/interfaces » accumulait des
+        « auto vmbr0 » en double. Une réécriture équivalente en « if ! … ; then
+        … ; fi » le faisait rougir à tort."""
+        cas = [
+            (nom, vlan)
+            for nom in ("vmbr0", "vmbr42")
+            for vlan in (False, True)
+        ]
+        for nom, vlan in cas:
+            with self.subTest(nom=nom, vlan=vlan):
+                cmds = pve.bridge_setup_cmds(nom=nom, vlan_aware=vlan)
+                pose = next(c for c in cmds if "/etc/network/interfaces" in c)
+                motif = re.search(r"grep -qE '([^']+)'", pose)
+                self.assertIsNotNone(motif, pose)
+                self.assertIsNotNone(
+                    re.search(motif.group(1), f"auto {nom}", re.M),
+                    (motif.group(1), nom),
+                )
 
     def test_the_bridge_is_not_vlan_aware_unless_asked(self):
         """CE QUI PROTÈGE LES USAGES DÉJÀ POSÉS DESSUS. Un pont qui devient
@@ -576,16 +627,6 @@ class TestLesCommandes(unittest.TestCase):
         )
         self.assertIn("bridge-ports none", joint)
         self.assertNotIn("bridge-ports enp1s0", joint)
-
-    def test_a_vlan_aware_stanza_is_added_only_once_too(self):
-        cmds = pve.bridge_setup_cmds(vlan_aware=True)
-        self.assertIn("grep -qE", cmds[0])
-        self.assertIn("||", cmds[0])
-
-    def test_the_bridge_stanza_is_added_only_once(self):
-        cmds = pve.bridge_setup_cmds()
-        self.assertIn("grep -qE", cmds[0])
-        self.assertIn("||", cmds[0])
 
     def test_an_internal_bridge_gets_a_static_address(self):
         """Aucun DHCP n'y répondrait : la VM resterait muette."""
