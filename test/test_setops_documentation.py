@@ -297,9 +297,9 @@ class TestLesEntreesDuMenuSeLisentPareil(unittest.TestCase):
     def marques(texte):
         """Les caractères hors ASCII qui ouvrent le libellé.
 
-        Mesuré sur le DÉBUT de la chaîne : c'est là que vit la marque d'une
-        entrée de menu, et le corps du libellé porte des accents qui ne sont pas
-        des marques.
+        Le garde porte sur le DÉBUT de la chaîne : c'est là que vit la marque
+        d'une entrée de menu, et le corps du libellé porte des accents qui ne
+        sont pas des marques.
         """
         return "".join(c for c in texte.split(" ", 1)[0] if ord(c) > 127)
 

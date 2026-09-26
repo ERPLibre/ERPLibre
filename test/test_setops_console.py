@@ -15,6 +15,7 @@ dans le dépôt ; « .invalid » est réservé par le RFC 2606.
 
 import json
 import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -68,6 +69,28 @@ class TestCeQuiEstSuivi(unittest.TestCase):
             self.assertTrue(C.ecrit_suivi(chemin, 4242, 8765))
             with open(chemin, encoding="utf-8") as tenu:
                 self.assertEqual(C.Suivi(4242, 8765), C.lit_suivi(tenu.read()))
+
+    def test_the_record_is_readable_by_nobody_else(self):
+        """Le dossier de repli est PARTAGÉ, et `open(…, "w")` naît en 0666
+        moins l'umask."""
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, C.SUIVI)
+            self.assertTrue(C.ecrit_suivi(chemin, 4242, 8765))
+            mode = stat.S_IMODE(os.stat(chemin).st_mode)
+            self.assertEqual(0, mode & (stat.S_IRWXG | stat.S_IRWXO))
+
+    def test_a_symlink_in_the_way_is_refused_not_followed(self):
+        """Suivi, `open(…, "w")` TRONQUERAIT la cible avant d'y écrire — le
+        fichier de quelqu'un d'autre, choisi par lui."""
+        with tempfile.TemporaryDirectory() as dossier:
+            cible = os.path.join(dossier, "chez-un-autre")
+            with open(cible, "w", encoding="utf-8") as tenu:
+                tenu.write("intact")
+            chemin = os.path.join(dossier, C.SUIVI)
+            os.symlink(cible, chemin)
+            self.assertFalse(C.ecrit_suivi(chemin, 4242, 8765))
+            with open(cible, encoding="utf-8") as tenu:
+                self.assertEqual("intact", tenu.read())
 
     def test_a_record_that_cannot_be_written_says_so_without_raising(self):
         """Un suivi perdu ne doit pas faire échouer le lancement."""

@@ -32,7 +32,7 @@ sys.argv = ["todo.py"]
 
 from script.setops import console, engine, runner, state, vaults  # noqa: E402
 from script.setops import runbooks as registre  # noqa: E402
-from script.todo import state_screen, todo_i18n  # noqa: E402
+from script.todo import setops_menu, state_screen, todo_i18n  # noqa: E402
 from script.todo.setops_menu import SetopsMenuMixin as M  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
@@ -1432,6 +1432,10 @@ class CasDePorte(CasDEcosysteme):
         """Joue la porte de `cible`, les invites ÉCRITES comme un terminal les
         écrit.
 
+        Rend l'écran. Plusieurs épreuves ne le lisent pas : elles mesurent
+        l'EFFET — ce qui est parti, ce qui a été signalé — et le texte ne leur
+        apprendrait rien de plus.
+
         Le bouchon de la classe mère avale l'invite passée à `input`, si bien
         qu'un écran pourrait poser une question sans texte sans qu'une épreuve
         le voie. Ici l'invite est imprimée, donc éprouvable.
@@ -1615,6 +1619,49 @@ class TestUneCibleQuiAttendUneReponseEstRemise(CasDePorte):
                 )
             )
         )
+
+
+class TestUneSaisieCoupeeNeTuePasTodo(unittest.TestCase):
+    """Un Ctrl-D lève `EOFError`, que le rattrapage de tête de todo ne couvre
+    pas — il ne prend que `KeyboardInterrupt` et `click.Abort`. Todo mourait
+    sur une trace de pile ; les autres menus le rattrapent."""
+
+    def test_an_interrupted_input_answers_nothing(self):
+        for panne in (EOFError, KeyboardInterrupt):
+            with self.subTest(panne=panne.__name__):
+                with patch.object(builtins, "input", side_effect=panne):
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual("", setops_menu.saisir("quoi ? "))
+
+    def test_an_ordinary_answer_comes_back_whole(self):
+        """Le contrôle positif : sans lui, une saisie qui rend toujours « »
+        passerait l'épreuve ci-dessus."""
+        with patch.object(builtins, "input", lambda _i="": "  une réponse  "):
+            self.assertEqual("  une réponse  ", setops_menu.saisir("quoi ? "))
+
+    def test_no_screen_of_this_mixin_reads_a_bare_input(self):
+        """Le garde lit l'ARBRE du module, non son texte : tout appel à
+        `input` hors du helper est une saisie que Ctrl-D fait exploser."""
+        import ast
+
+        arbre = ast.parse(
+            io.open(setops_menu.__file__, encoding="utf-8").read()
+        )
+        nus = []
+        for noeud in ast.walk(arbre):
+            if (
+                not isinstance(noeud, ast.FunctionDef)
+                or noeud.name == "saisir"
+            ):
+                continue
+            for dedans in ast.walk(noeud):
+                if (
+                    isinstance(dedans, ast.Call)
+                    and isinstance(dedans.func, ast.Name)
+                    and dedans.func.id == "input"
+                ):
+                    nus.append((noeud.name, dedans.lineno))
+        self.assertEqual([], nus)
 
 
 if __name__ == "__main__":

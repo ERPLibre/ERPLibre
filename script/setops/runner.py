@@ -169,8 +169,12 @@ def jouer(argv, env=None, cwd=None, capture=True, delai=DELAI, fusionner=True):
             timeout=delai,
             check=False,
         )
-    except subprocess.TimeoutExpired:
-        return Verdict(None, "")
+    except subprocess.TimeoutExpired as souci:
+        # CE QUI A DÉJÀ ÉTÉ DIT EST GARDÉ. Jeté, le verdict d'un déploiement
+        # qui a tourné une heure en imprimant son avancement devenait celui
+        # d'un binaire introuvable, et l'écran annonçait « n'a pas pu tourner
+        # du tout » — faux, et sans la moindre trace de ce qui s'est passé.
+        return Verdict(None, souci.output or "" if capture else "")
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         return Verdict(None, "")
     return Verdict(fait.returncode, fait.stdout or "")
@@ -196,8 +200,24 @@ def detacher(argv, env=None, cwd=None, journal=None):
     flux = subprocess.DEVNULL
     if journal:
         try:
-            flux = open(journal, "ab")
-        except OSError:
+            # 0600 ET SANS SUIVRE DE LIEN. Le dossier de repli est partagé : un
+            # autre compte peut y poser ce NOM en lien vers un fichier qu'on a
+            # le droit d'écrire, et le journal du détaché irait chez lui. Le
+            # mode par défaut d'`open` est 0666 moins l'umask, donc lisible par
+            # tout le monde sur un poste ordinaire.
+            flux = os.fdopen(
+                os.open(
+                    journal,
+                    os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW,
+                    0o600,
+                ),
+                "ab",
+            )
+        except OSError as souci:
+            # L'APPELANT A DEMANDÉ UN JOURNAL. Muet, il nommerait ensuite un
+            # fichier qui n'a jamais été ouvert — sur le seul chemin de
+            # diagnostic d'un geste dont la sortie ne se voit pas.
+            print(f"  ⚠ journal indisponible ({souci.strerror or souci})")
             flux = subprocess.DEVNULL
     try:
         fils = subprocess.Popen(

@@ -17,9 +17,12 @@ ailleurs dans le dépôt.
 import os
 import shlex
 import shutil
+import stat
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -226,6 +229,63 @@ class TestDeBoutEnBout(unittest.TestCase):
         self.assertEqual(
             f"vu={R.CONFIRME!r}", self.vu(R.base(SOURCE), confirmer=True)
         )
+
+
+class TestLeJournalDuDetache(unittest.TestCase):
+    """Le dossier de repli d'un journal est PARTAGÉ : un autre compte peut y
+    poser ce nom en lien vers un fichier qu'on a le droit d'écrire."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="setops-runner-banc-")
+        self.addCleanup(self._menage)
+        self.journal = os.path.join(self.dossier, "banc.log")
+
+    def _menage(self):
+        for nom in os.listdir(self.dossier):
+            os.unlink(os.path.join(self.dossier, nom))
+        os.rmdir(self.dossier)
+
+    def test_the_log_is_readable_by_nobody_else(self):
+        """`open(…, "ab")` naît en 0666 moins l'umask, donc lisible par tout le
+        monde sur un poste ordinaire."""
+        # Le journal est ouvert AVANT le lancement, donc il existe dès le
+        # retour : rien à attendre du fils, dont la sortie ne change pas le mode.
+        self.assertIsNotNone(R.detacher(["true"], journal=self.journal))
+        mode = stat.S_IMODE(os.stat(self.journal).st_mode)
+        self.assertEqual(0, mode & (stat.S_IRWXG | stat.S_IRWXO))
+
+    def test_a_symlink_in_the_way_is_never_followed(self):
+        """Suivi, tout ce que le détaché écrit part chez celui qui a posé le
+        lien."""
+        cible = os.path.join(self.dossier, "chez-un-autre.log")
+        with open(cible, "w", encoding="utf-8") as tenu:
+            tenu.write("intact\n")
+        os.symlink(cible, self.journal)
+        # L'ouverture refusée, le fils reçoit /dev/null : il ne peut donc JAMAIS
+        # atteindre la cible, et le constat ne court après rien.
+        R.detacher(["sh", "-c", "echo une-fuite"], journal=self.journal)
+        with open(cible, encoding="utf-8") as tenu:
+            self.assertEqual("intact\n", tenu.read())
+
+
+class TestLeDelaiGardeCeQuiAEteDit(unittest.TestCase):
+    """Jeté, le verdict d'un geste qui a tourné une heure en imprimant son
+    avancement devenait celui d'un binaire introuvable."""
+
+    def test_what_was_printed_before_the_bound_survives_it(self):
+        panne = subprocess.TimeoutExpired(
+            cmd=["banc"], timeout=1, output="tâche 3 sur 7 terminée\n"
+        )
+        with mock.patch.object(subprocess, "run", side_effect=panne):
+            vu = R.jouer(["banc"])
+        self.assertIsNone(vu.code)
+        self.assertIn("tâche 3 sur 7", vu.sortie)
+
+    def test_a_gesture_that_printed_nothing_says_nothing(self):
+        panne = subprocess.TimeoutExpired(cmd=["banc"], timeout=1)
+        with mock.patch.object(subprocess, "run", side_effect=panne):
+            vu = R.jouer(["banc"])
+        self.assertEqual("", vu.sortie)
 
 
 if __name__ == "__main__":

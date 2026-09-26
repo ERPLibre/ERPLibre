@@ -137,7 +137,15 @@ def ecrit_suivi(chemin, pid, port) -> bool:
     autant serait pire.
     """
     try:
-        with open(chemin, "w", encoding="utf-8") as tenu:
+        # SANS SUIVRE DE LIEN, et en 0600. Le dossier de repli est partagé : un
+        # autre compte peut y poser ce NOM en lien vers un fichier qu'on a le
+        # droit d'écrire, et `open(…, "w")` le TRONQUERAIT avant d'y écrire.
+        descripteur = os.open(
+            chemin,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(descripteur, "w", encoding="utf-8") as tenu:
             json.dump({"pid": int(pid), "port": int(port)}, tenu)
     except (OSError, ValueError, TypeError):
         return False

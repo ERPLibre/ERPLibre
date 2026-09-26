@@ -42,6 +42,27 @@ RACINE = os.path.normpath(
 )
 
 
+def saisir(invite=""):
+    """Une réponse de l'opérateur, « » s'il coupe la saisie.
+
+    AUCUNE SAISIE DE CES ÉCRANS N'EST NUE. Un Ctrl-D lève `EOFError`, que le
+    rattrapage de tête de todo ne couvre pas — il ne prend que
+    `KeyboardInterrupt` et `click.Abort` — et todo mourait sur une trace de
+    pile. Les autres menus le rattrapent ; ceux-ci ne le faisaient pas.
+
+    Une réponse vide vaut refus partout où elle est lue : couper la saisie ne
+    lance donc rien, et n'en confirme rien.
+
+    Fonction du MODULE et non méthode : plusieurs écrans de ce mixin sont
+    statiques et n'ont pas de `self` sous la main.
+    """
+    try:
+        return input(invite)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return ""
+
+
 class SetopsMenuMixin:
     """Menu Set-OPS, mixin de la classe TODO : ses entrées vivent sur la
     même instance que celles des autres menus."""
@@ -230,7 +251,7 @@ class SetopsMenuMixin:
         print(f"\n  {t('What will run:')}")
         for rang, etape in enumerate(pas, 1):
             print(f"    {rang}. {ansible_env.montre(etape)}")
-        if not self._is_yes(input(f"\n{t('Set it up? (y/N): ')}")):
+        if not self._is_yes(saisir(f"\n{t('Set it up? (y/N): ')}")):
             print(t("Cancelled."))
             return
 
@@ -438,7 +459,7 @@ class SetopsMenuMixin:
     @staticmethod
     def _setops_choisir(ecosystemes):
         """L'écosystème dont le numéro est tapé, ou None."""
-        brut = input(t("Which one? (number, empty to cancel): ")).strip()
+        brut = saisir(t("Which one? (number, empty to cancel): ")).strip()
         if not brut.isdigit():
             return None
         rang = int(brut)
@@ -482,7 +503,7 @@ class SetopsMenuMixin:
         if not modeles:
             print(f"  ✗ {t('the engine offers no template')}")
             return
-        nom = input(t("Name of the new ecosystem: ")).strip()
+        nom = saisir(t("Name of the new ecosystem: ")).strip()
         if not nom:
             print(t("Cancelled."))
             return
@@ -508,7 +529,7 @@ class SetopsMenuMixin:
         print(f"\n  {t('Templates the engine offers:')}")
         for rang, nom in enumerate(modeles, 1):
             print(f"    [{rang}] {nom}")
-        brut = input(t("Which template? (number): ")).strip()
+        brut = saisir(t("Which template? (number): ")).strip()
         if not brut.isdigit() or not 0 < int(brut) <= len(modeles):
             return None
         return modeles[int(brut) - 1]
@@ -527,7 +548,7 @@ class SetopsMenuMixin:
             print(f"  ✗ {t('no free index left in range')}")
             return None
         question = t("Index? (empty for {free}): ").format(free=libre)
-        brut = input(question).strip()
+        brut = saisir(question).strip()
         if not brut:
             return libre
         return int(brut) if brut.isdigit() else None
@@ -627,7 +648,7 @@ class SetopsMenuMixin:
     @staticmethod
     def _setops_choisir_runbook(runbooks):
         """Le runbook dont le numéro est tapé, ou None."""
-        brut = input(t("Which sequence? (number, empty to leave): ")).strip()
+        brut = saisir(t("Which sequence? (number, empty to leave): ")).strip()
         if not brut.isdigit() or not 0 < int(brut) <= len(runbooks):
             return None
         return runbooks[int(brut) - 1]
@@ -662,7 +683,7 @@ class SetopsMenuMixin:
         est la question qu'on se pose en la voyant, et répondre « choix
         invalide » ferait croire à une faute de frappe.
         """
-        brut = input(t("Which step? (number, empty to leave): ")).strip()
+        brut = saisir(t("Which step? (number, empty to leave): ")).strip()
         if not brut.isdigit() or not 0 < int(brut) <= len(runbook.etapes):
             return None
         etape = runbook.etapes[int(brut) - 1]
@@ -689,7 +710,7 @@ class SetopsMenuMixin:
                 # deux libellés pour la même question, et celui du moteur est
                 # celui que sa propre console affiche déjà.
                 suffixe = f" ({t('optional')})" if attendue.facultative else ""
-                valeur = input(
+                valeur = saisir(
                     f"    {attendue.nom}{suffixe} — {attendue.invite}\n"
                     f"    {attendue.nom}="
                 ).strip()
@@ -712,7 +733,7 @@ class SetopsMenuMixin:
             print(
                 f"    {t('The engine does not gate it, so TODO asks here.')}"
             )
-            if not self._is_yes(input(f"{t('Run it? (y/N): ')}")):
+            if not self._is_yes(saisir(f"{t('Run it? (y/N): ')}")):
                 print(t("Cancelled."))
                 return
         self._setops_dire(self._setops_lancer(moteur, etape.cible, variables))
@@ -731,7 +752,7 @@ class SetopsMenuMixin:
         )
         print(f"    {t('any value at all turns it on, « 0 » included.')}")
         demande = t("Turn {name} on? (y/N): ").format(name=nom)
-        return self._is_yes(input(demande))
+        return self._is_yes(saisir(demande))
 
     # --- Clés et voûtes -----------------------------------------------------
 
@@ -868,7 +889,7 @@ class SetopsMenuMixin:
                     f"  [{rang}] make {vaults.CIBLE_RECENSER} — "
                     + t("what exists only on this station (writes nothing)")
                 )
-        brut = input(t("Which gesture? (number, empty to leave): ")).strip()
+        brut = saisir(t("Which gesture? (number, empty to leave): ")).strip()
         if not brut.isdigit() or not 0 < int(brut) <= len(gestes):
             return
         if gestes[int(brut) - 1] == "poser":
@@ -900,7 +921,7 @@ class SetopsMenuMixin:
         )
         print(f"    {bloque.chemin}")
         demande = t("Pose a new key for {nom}? (y/N): ")
-        if not self._is_yes(input(demande.format(nom=bloque.nom))):
+        if not self._is_yes(saisir(demande.format(nom=bloque.nom))):
             print(t("Cancelled."))
             return
         pose = vaults.poser_cle(bloque.chemin)
@@ -1036,7 +1057,7 @@ class SetopsMenuMixin:
         else:
             return
         print(f"\n  [1] {invite}")
-        brut = input(t("Which gesture? (number, empty to leave): ")).strip()
+        brut = saisir(t("Which gesture? (number, empty to leave): ")).strip()
         if brut != "1":
             return
         if geste == "lancer":
