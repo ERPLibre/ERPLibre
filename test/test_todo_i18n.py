@@ -7,6 +7,7 @@ import collections
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from script.todo import todo_i18n
@@ -314,6 +315,51 @@ class TestChaqueCleDitSesDeuxLangues(unittest.TestCase):
             if not isinstance(v, dict) or "fr" not in v or "en" not in v
         )
         self.assertEqual(manques, [], "traductions incomplètes")
+
+
+class TestSessionLanguage(unittest.TestCase):
+    """Langue d'un processus qui sert une session à part (worker web)."""
+
+    def setUp(self):
+        self._saved = todo_i18n._current_lang
+
+    def tearDown(self):
+        todo_i18n._current_lang = self._saved
+
+    def test_use_lang_switches_t(self):
+        todo_i18n.use_lang("en")
+        self.assertEqual(todo_i18n.t("Quit"), "Quit")
+        todo_i18n.use_lang("fr")
+        self.assertEqual(todo_i18n.t("Quit"), "Quitter")
+
+    def test_use_lang_never_writes_env_var_sh(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = Path(d) / "env_var.sh"
+            env.write_text('EL_LANG="fr"\n', encoding="utf-8")
+            before = env.read_bytes()
+            mtime = env.stat().st_mtime_ns
+            with patch.object(todo_i18n, "ENV_VAR_FILE", str(env)):
+                todo_i18n.use_lang("en")
+            self.assertEqual(env.read_bytes(), before)
+            self.assertEqual(env.stat().st_mtime_ns, mtime)
+
+    def test_use_lang_refuses_an_unknown_language(self):
+        with self.assertRaises(ValueError):
+            todo_i18n.use_lang("de")
+
+    def test_translate_ignores_the_process_language(self):
+        todo_i18n.use_lang("fr")
+        self.assertEqual(todo_i18n.translate("Quit", "en"), "Quit")
+        self.assertEqual(todo_i18n.t("Quit"), "Quitter")
+
+    def test_translate_unknown_key_returns_the_key(self):
+        self.assertEqual(
+            todo_i18n.translate("nonexistent_key_xyz", "en"),
+            "nonexistent_key_xyz",
+        )
+
+    def test_translate_unknown_language_falls_back_to_french(self):
+        self.assertEqual(todo_i18n.translate("Quit", "de"), "Quitter")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ ENV_VAR_FILE = "./env_var.sh"
 
 _current_lang = None
 
+# Langues que TRANSLATIONS porte pour chaque clé.
+LANGUAGES = ("fr", "en")
+
 TRANSLATIONS = {
     # Main menu
     "Importation success!": {
@@ -15950,6 +15953,31 @@ def set_lang(lang: str) -> None:
             f.write(content)
 
 
+def use_lang(lang: str) -> None:
+    """Fixe la langue de CE processus sans rien écrire.
+
+    Pour un processus qui sert une session à part, comme un worker de
+    l'interface web : `set_lang` persiste le choix dans env_var.sh, fichier
+    versionné qui règle aussi le terminal de l'utilisateur.
+    """
+    if lang not in LANGUAGES:
+        raise ValueError(f"unknown language: {lang!r}")
+    global _current_lang
+    _current_lang = lang
+
+
+def translate(key: str, lang: str) -> str:
+    """Traduction de `key` dans `lang`, sans toucher à la langue du processus.
+
+    Clé inconnue : la clé elle-même. Langue absente de l'entrée : le
+    français, comme `t`.
+    """
+    entry = TRANSLATIONS.get(key)
+    if entry is None:
+        return key
+    return entry.get(lang, entry.get("fr", key))
+
+
 def lang_is_configured() -> bool:
     """Check if a language has been explicitly set."""
     if os.path.exists(ENV_VAR_FILE):
@@ -15963,8 +15991,4 @@ def lang_is_configured() -> bool:
 
 
 def t(key: str) -> str:
-    entry = TRANSLATIONS.get(key)
-    if entry is None:
-        return key
-    lang = get_lang()
-    return entry.get(lang, entry.get("fr", key))
+    return translate(key, get_lang())
