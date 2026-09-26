@@ -10,3 +10,14 @@
 .PHONY: todo
 todo:
 	./todo.sh
+
+# Interface web de TODO : un hub local par checkout, sur 127.0.0.1. « open »
+# le démarre ou le réutilise et ouvre le navigateur par un lien à usage
+# unique, aussi affiché ici pour un navigateur qui ne l'aurait pas ouvert.
+.PHONY: todo_web
+todo_web:
+	./.venv.erplibre/bin/python -m script.todo.web.launcher open
+
+.PHONY: todo_web_stop
+todo_web_stop:
+	./.venv.erplibre/bin/python -m script.todo.web.launcher stop
