@@ -3,14 +3,15 @@ ARG ERPLIBRE_IMAGE_NAME=1.6.0
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
 ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
-ARG ODOO_VERSION=16.0
+# ODOO_VERSION est herite de la base en ENV, et un ENV l'emporte toujours sur
+# un ARG de meme nom : le redeclarer ici poserait une valeur inerte que
+# l'image contredit sans le dire.
 ARG POETRY_VERSION=1.8.3
-ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
+ENV REPO_MANIFEST_URL=https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
-ENV BRANCH_ERPLIBRE $WORKING_BRANCH
-ENV COMMIT_ERPLIBRE $WORKING_HASH
-ENV COMMIT_ERPLIBRE $WORKING_HASH
+ENV BRANCH_ERPLIBRE=$WORKING_BRANCH
+ENV COMMIT_ERPLIBRE=$WORKING_HASH
 ENV DOCKER_BUILD=true
 
 RUN cat /etc/os-release
@@ -37,15 +38,23 @@ RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     python -m venv .venv.$ERPLIBRE_VERSION
 
-# Le venv des outils prend le python de l'image, celui d'Odoo : le RUN
-# s'arrete ici si ce python ne sait pas lire la syntaxe de script/.
+# Le venv des outils prend le python de l'image, celui d'Odoo.
+#
+# Ses requis sont ceux de l'IMAGE et non ceux de l'hote : le fichier complet
+# vise un venv en 3.14 et porte des bornes qu'un Python 3.7 ou 3.8 ne peut pas
+# satisfaire, ce qui interdisait toute image d'Odoo 12 a 15.
+#
+# Le garde porte sur ce que l'image LANCE, et non sur tout script/ : compiler
+# l'arbre entier alarmait sur des fichiers que l'image n'ouvre jamais. Importer
+# les points d'entree suit le vrai graphe d'imports, donc un requis manquant
+# comme une syntaxe trop recente s'arretent ici, avec le nom du coupable.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    { python -m compileall -q script/ || \
-      { echo "Le python de l'image ($(python -V 2>&1)) ne lit pas script/ : prendre une version Odoo plus recente." ; exit 1 ; } ; } && \
     python -m venv .venv.erplibre && \
     source ./.venv.erplibre/bin/activate && \
-    pip3 install -r requirement/erplibre_require-ments.txt
+    pip3 install -r requirement/erplibre_require-ments-docker.txt && \
+    { python -c "import script.version.update_env_version, script.git.git_merge_repo_manifest" || \
+      { echo "Le python de l'image ($(python -V 2>&1)) ne fait pas tourner l'outillage : prendre une version Odoo plus recente." ; exit 1 ; } ; }
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
@@ -68,6 +77,13 @@ RUN apt update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
+#
+# CPPFLAGS redonne au preprocesseur l'alias Python 2 que SWIG 4.3 a retire.
+# pykcs11 -- tire par endesive, dans les verrous d'Odoo 14, 15 et 17 -- ne
+# livre aucun wrapper pre-genere et laisse Poetry prendre le DERNIER SWIG de
+# PyPI ; son typemap CK_RV emploie PyInt_FromLong, et la compilation meurt.
+# La definition est celle de script/install/install_locally.sh, a l'identique :
+# un test garde que les deux copies ne divergent pas.
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
@@ -75,6 +91,7 @@ RUN cd $ODOO_PREFIX && \
     pip3 install --upgrade pip && git branch && ls . -lha && \
     pip3 install "poetry==${POETRY_VERSION}" && \
     poetry --version && \
+    CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)" \
     poetry install --no-root -v
 
 # Install local npm

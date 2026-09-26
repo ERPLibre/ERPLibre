@@ -15398,6 +15398,495 @@ TRANSLATIONS = {
         "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
     },
+    # Container engines - Docker and Podman
+    "Docker / Podman - Container engines": {
+        "fr": "📦 Docker / Podman - Moteurs de conteneurs",
+        "en": "📦 Docker / Podman - Container engines",
+    },
+    "Container engines!": {
+        "fr": "Moteurs de conteneurs !",
+        "en": "Container engines!",
+    },
+    "Engine": {
+        "fr": "Moteur",
+        "en": "Engine",
+    },
+    "Diagnostic - engine, service, socket, access without sudo": {
+        "fr": "🩺 Diagnostic - moteur, service, socket, accès sans sudo",
+        "en": "🩺 Diagnostic - engine, service, socket, access without sudo",
+    },
+    "Install Docker": {
+        "fr": "🐳 Installer Docker",
+        "en": "🐳 Install Docker",
+    },
+    "Install Podman": {
+        "fr": "🦭 Installer Podman",
+        "en": "🦭 Install Podman",
+    },
+    "Images": {
+        "fr": "💿 Images",
+        "en": "💿 Images",
+    },
+    "Containers": {
+        "fr": "📦 Conteneurs",
+        "en": "📦 Containers",
+    },
+    "Networks": {
+        "fr": "🌐 Réseaux",
+        "en": "🌐 Networks",
+    },
+    "ERPLibre images": {
+        "fr": "Images ERPLibre",
+        "en": "ERPLibre images",
+    },
+    "Build an image for an Odoo version": {
+        "fr": "🔨 Construire l'image d'une version d'Odoo",
+        "en": "🔨 Build an image for an Odoo version",
+    },
+    "Compose - start, stop, logs, processes": {
+        "fr": "🎼 Composition - démarrer, arrêter, journaux, processus",
+        "en": "🎼 Compose - start, stop, logs, processes",
+    },
+    "Enter the ERPLibre container": {
+        "fr": "🐚 Entrer dans le conteneur ERPLibre",
+        "en": "🐚 Enter the ERPLibre container",
+    },
+    "Databases of the ERPLibre container": {
+        "fr": "💾 Bases de données du conteneur ERPLibre",
+        "en": "💾 Databases of the ERPLibre container",
+    },
+    "Remove unused images, containers and volumes": {
+        "fr": "🧹 Effacer images, conteneurs et volumes inutilisés",
+        "en": "🧹 Remove unused images, containers and volumes",
+    },
+    "No container engine answers here.": {
+        "fr": "Aucun moteur de conteneurs ne répond ici.",
+        "en": "No container engine answers here.",
+    },
+    "Available engines:": {
+        "fr": "Moteurs disponibles :",
+        "en": "Available engines:",
+    },
+    "Engine to use": {
+        "fr": "Moteur à employer",
+        "en": "Engine to use",
+    },
+    "binary": {
+        "fr": "binaire",
+        "en": "binary",
+    },
+    "version": {
+        "fr": "version",
+        "en": "version",
+    },
+    "service": {
+        "fr": "service",
+        "en": "service",
+    },
+    "socket": {
+        "fr": "socket",
+        "en": "socket",
+    },
+    "mode": {
+        "fr": "mode",
+        "en": "mode",
+    },
+    "compose": {
+        "fr": "composition",
+        "en": "compose",
+    },
+    "reason": {
+        "fr": "raison",
+        "en": "reason",
+    },
+    "with sudo": {
+        "fr": "avec sudo",
+        "en": "with sudo",
+    },
+    "active": {
+        "fr": "actif",
+        "en": "active",
+    },
+    "unknown to systemd": {
+        "fr": "inconnu de systemd",
+        "en": "unknown to systemd",
+    },
+    "rootless": {
+        "fr": "sans privilège",
+        "en": "rootless",
+    },
+    "as root": {
+        "fr": "en root",
+        "en": "as root",
+    },
+    "Docker runs a daemon owned by root.": {
+        "fr": "Docker pose un démon que root possède.",
+        "en": "Docker runs a daemon owned by root.",
+    },
+    "Mode": {
+        "fr": "Mode",
+        "en": "Mode",
+    },
+    "Use vendor packages? (Y/N): ": {
+        "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
+        "en": "Use vendor packages? (Y/N): ",
+    },
+    "Continue? (Y/N): ": {
+        "fr": "Continuer ? (O/N) : ",
+        "en": "Continue? (Y/N): ",
+    },
+    "Network to inspect (empty to skip)": {
+        "fr": "Réseau à inspecter (vide pour passer)",
+        "en": "Network to inspect (empty to skip)",
+    },
+    "Unreadable version catalogue:": {
+        "fr": "Catalogue de versions illisible :",
+        "en": "Unreadable version catalogue:",
+    },
+    "Odoo version:": {
+        "fr": "Version d'Odoo :",
+        "en": "Odoo version:",
+    },
+    "Number": {
+        "fr": "Numéro",
+        "en": "Number",
+    },
+    "Rebuild without cache? (Y/N): ": {
+        "fr": "Reconstruire sans cache ? (O/N) : ",
+        "en": "Rebuild without cache? (Y/N): ",
+    },
+    "Start in the background": {
+        "fr": "🟢 Démarrer en arrière-plan",
+        "en": "🟢 Start in the background",
+    },
+    "Stop": {
+        "fr": "🔴 Arrêter",
+        "en": "🔴 Stop",
+    },
+    "Follow the logs": {
+        "fr": "📜 Suivre les journaux",
+        "en": "📜 Follow the logs",
+    },
+    "Processes": {
+        "fr": "📊 Processus",
+        "en": "📊 Processes",
+    },
+    "These scripts call the docker command by name.": {
+        "fr": "Ces scripts appellent la commande docker par son nom.",
+        "en": "These scripts call the docker command by name.",
+    },
+    "Install podman-docker to provide it.": {
+        "fr": "Installer podman-docker pour la fournir.",
+        "en": "Install podman-docker to provide it.",
+    },
+    "This REMOVES unused images, containers, networks": {
+        "fr": "Ceci EFFACE images, conteneurs et réseaux inutilisés,",
+        "en": "This REMOVES unused images, containers, networks",
+    },
+    "and VOLUMES - a volume holds the database.": {
+        "fr": "et les VOLUMES - un volume porte la base de données.",
+        "en": "and VOLUMES - a volume holds the database.",
+    },
+    "ERPLibre container - shell, databases, tests, status": {
+        "fr": "🔧 Conteneur ERPLibre - shell, bases, tests, statut",
+        "en": "🔧 ERPLibre container - shell, databases, tests, status",
+    },
+    "Regenerate odoo.conf (addons paths)": {
+        "fr": "📝 Régénérer odoo.conf (chemins des addons)",
+        "en": "📝 Regenerate odoo.conf (addons paths)",
+    },
+    "Run the tests": {
+        "fr": "🧪 Lancer les tests",
+        "en": "🧪 Run the tests",
+    },
+    "Status of the git repositories": {
+        "fr": "🌿 Statut des dépôts git",
+        "en": "🌿 Status of the git repositories",
+    },
+    "Copy a file into the container": {
+        "fr": "📤 Copier un fichier dans le conteneur",
+        "en": "📤 Copy a file into the container",
+    },
+    "File to copy": {
+        "fr": "Fichier à copier",
+        "en": "File to copy",
+    },
+    "Destination in the container (empty for the default)": {
+        "fr": "Destination dans le conteneur (vide pour le défaut)",
+        "en": "Destination in the container (empty for the default)",
+    },
+    "No such file:": {
+        "fr": "Fichier introuvable :",
+        "en": "No such file:",
+    },
+    "Service - start, stop, enable at boot, journal": {
+        "fr": "🚦 Service - démarrer, arrêter, activer au démarrage, journal",
+        "en": "Service - start, stop, enable at boot, journal",
+    },
+    "without sudo": {
+        "fr": "sans sudo",
+        "en": "without sudo",
+    },
+    "Installed engines:": {
+        "fr": "Moteurs installés :",
+        "en": "Installed engines:",
+    },
+    "No container engine is installed here.": {
+        "fr": "Aucun moteur de conteneurs n'est installé ici.",
+        "en": "No container engine is installed here.",
+    },
+    "See [1] Diagnostic, then [3] or [4] to install.": {
+        "fr": "Voir [1] Diagnostic, puis [3] ou [4] pour installer.",
+        "en": "See [1] Diagnostic, then [3] or [4] to install.",
+    },
+    "account session": {
+        "fr": "session du compte",
+        "en": "account session",
+    },
+    "whole host": {
+        "fr": "tout l'hôte",
+        "en": "whole host",
+    },
+    "Start": {
+        "fr": "🟢 Démarrer",
+        "en": "🟢 Start",
+    },
+    "Restart": {
+        "fr": "🔄 Redémarrer",
+        "en": "🔄 Restart",
+    },
+    "Enable at boot": {
+        "fr": "🔌 Activer au démarrage",
+        "en": "🔌 Enable at boot",
+    },
+    "Disable at boot": {
+        "fr": "🚫 Désactiver au démarrage",
+        "en": "🚫 Disable at boot",
+    },
+    "Status and journal": {
+        "fr": "📋 État et journal",
+        "en": "📋 Status and journal",
+    },
+    "A per-account unit needs linger to start": {
+        "fr": "Une unité par compte exige le linger pour démarrer",
+        "en": "A per-account unit needs linger to start",
+    },
+    "without a login:": {
+        "fr": "sans connexion :",
+        "en": "without a login:",
+    },
+    "Add to the account environment:": {
+        "fr": "À poser dans l'environnement du compte :",
+        "en": "Add to the account environment:",
+    },
+    "Two ways to reach it without typing sudo:": {
+        "fr": "Deux façons de l'atteindre sans taper sudo :",
+        "en": "Two ways to reach it without typing sudo:",
+    },
+    "docker group - ONE shared daemon, still root": {
+        "fr": "groupe docker - UN démon partagé, toujours root",
+        "en": "docker group - ONE shared daemon, still root",
+    },
+    "Being in the group opens its socket, which": {
+        "fr": "Être dans le groupe ouvre sa socket, qui monte",
+        "en": "Being in the group opens its socket, which",
+    },
+    "mounts any host path: it equals being root.": {
+        "fr": "n'importe quel chemin de l'hôte : cela vaut root.",
+        "en": "mounts any host path: it equals being root.",
+    },
+    "rootless - ONE daemon per account, no group": {
+        "fr": "rootless (sans privilège) - UN démon par compte",
+        "en": "rootless - ONE daemon per account, no group",
+    },
+    "It runs inside your session, so nothing of it": {
+        "fr": "Il tourne dans ta session, donc rien de lui n'est",
+        "en": "It runs inside your session, so nothing of it",
+    },
+    "is root. Ports under 1024 stay closed to it.": {
+        "fr": "root. Les ports sous 1024 lui restent fermés.",
+        "en": "is root. Ports under 1024 stay closed to it.",
+    },
+    "in the docker group, but not in this session: log in again": {
+        "fr": "dans le groupe docker, mais pas dans cette session : se reconnecter",
+        "en": "in the docker group, but not in this session: log in again",
+    },
+    "not in the docker group - sudo, or install it again": {
+        "fr": "pas dans le groupe docker - sudo, ou relancer l'installation",
+        "en": "not in the docker group - sudo, or install it again",
+    },
+    "not enough rights on the engine socket": {
+        "fr": "droits insuffisants sur la socket du moteur",
+        "en": "not enough rights on the engine socket",
+    },
+    "the running kernel lost its module tree: reboot to load any module": {
+        "fr": "le noyau en cours a perdu son arbre de modules : redémarrer pour qu'un module puisse se charger",
+        "en": "the running kernel lost its module tree: reboot to load any module",
+    },
+    "the service is stopped - see [2] Service": {
+        "fr": "le service est arrêté - voir [2] Service",
+        "en": "the service is stopped - see [2] Service",
+    },
+    "no answer, and systemd does not know this unit": {
+        "fr": "aucune réponse, et systemd ne connaît pas cette unité",
+        "en": "no answer, and systemd does not know this unit",
+    },
+    "the unit runs but the socket does not answer": {
+        "fr": "l'unité tourne mais la socket ne répond pas",
+        "en": "the unit runs but the socket does not answer",
+    },
+    "the engine did not answer within the delay": {
+        "fr": "le moteur n'a pas répondu dans le délai",
+        "en": "the engine did not answer within the delay",
+    },
+    "Where Docker Inc. packages, rootless mode": {
+        "fr": "Là où Docker Inc. empaquette, le mode sans privilège",
+        "en": "Where Docker Inc. packages, rootless mode",
+    },
+    "needs ITS packages; elsewhere the installer": {
+        "fr": "exige SES paquets ; ailleurs l'installateur prend",
+        "en": "needs ITS packages; elsewhere the installer",
+    },
+    "takes the route its distribution offers.": {
+        "fr": "la voie qu'offre la distribution.",
+        "en": "takes the route its distribution offers.",
+    },
+    "The docker engine does not answer here.": {
+        "fr": "Le moteur docker ne répond pas ici.",
+        "en": "The docker engine does not answer here.",
+    },
+    "See [1] Diagnostic, then [2] Service.": {
+        "fr": "Voir [1] Diagnostic, puis [2] Service.",
+        "en": "See [1] Diagnostic, then [2] Service.",
+    },
+    "The unit refused. Its state, then its journal:": {
+        "fr": "L'unité a refusé. Son état, puis son journal :",
+        "en": "The unit refused. Its state, then its journal:",
+    },
+    "All versions": {
+        "fr": "Toutes les versions",
+        "en": "All versions",
+    },
+    "Every version: hours of work, tens of GB.": {
+        "fr": "Toutes les versions : des heures, et des dizaines de Go.",
+        "en": "Every version: hours of work, tens of GB.",
+    },
+    "Built:": {
+        "fr": "Construites :",
+        "en": "Built:",
+    },
+    "Failed:": {
+        "fr": "Tombées :",
+        "en": "Failed:",
+    },
+    "Cleanup": {
+        "fr": "Nettoyage",
+        "en": "Cleanup",
+    },
+    "By workspace - a compose project and what it holds": {
+        "fr": "📁 Par espace de travail - un projet compose et ce qu'il tient",
+        "en": "By workspace - a compose project and what it holds",
+    },
+    "Images one by one": {
+        "fr": "🎯 Images à la pièce",
+        "en": "Images one by one",
+    },
+    "Numbers (1 3, 2-5, * for all, empty to cancel)": {
+        "fr": "Numéros (1 3, 2-5, * pour tout, vide pour annuler)",
+        "en": "Numbers (1 3, 2-5, * for all, empty to cancel)",
+    },
+    "Invalid selection: nothing removed.": {
+        "fr": "Sélection invalide : rien n'est effacé.",
+        "en": "Invalid selection: nothing removed.",
+    },
+    "No image.": {
+        "fr": "Aucune image.",
+        "en": "No image.",
+    },
+    "No workspace (compose project) here.": {
+        "fr": "Aucun espace de travail (projet compose) ici.",
+        "en": "No workspace (compose project) here.",
+    },
+    "Will remove:": {
+        "fr": "Va effacer :",
+        "en": "Will remove:",
+    },
+    "Remove? (Y/N): ": {
+        "fr": "Effacer ? (O/N) : ",
+        "en": "Remove? (Y/N): ",
+    },
+    "Removed:": {
+        "fr": "Effacés :",
+        "en": "Removed:",
+    },
+    "Refused:": {
+        "fr": "Refusés :",
+        "en": "Refused:",
+    },
+    "containers": {
+        "fr": "conteneurs",
+        "en": "containers",
+    },
+    "networks": {
+        "fr": "réseaux",
+        "en": "networks",
+    },
+    "volumes": {
+        "fr": "volumes",
+        "en": "volumes",
+    },
+    "images": {
+        "fr": "images",
+        "en": "images",
+    },
+    "Volumes hold the databases: they do not come back.": {
+        "fr": "Les volumes portent les bases de données : ils ne reviennent pas.",
+        "en": "Volumes hold the databases: they do not come back.",
+    },
+    "Running containers, and what they use, are kept.": {
+        "fr": "Les conteneurs en marche, et ce qu'ils emploient, restent.",
+        "en": "Running containers, and what they use, are kept.",
+    },
+    "A container still uses a refused image.": {
+        "fr": "Un conteneur emploie encore une image refusée.",
+        "en": "A container still uses a refused image.",
+    },
+    "An image another workspace still uses is kept.": {
+        "fr": "Une image qu'un autre espace de travail emploie encore reste.",
+        "en": "An image another workspace still uses is kept.",
+    },
+    "is held by these containers:": {
+        "fr": "est tenue par ces conteneurs :",
+        "en": "is held by these containers:",
+    },
+    "Keep the image": {
+        "fr": "La garder",
+        "en": "Keep the image",
+    },
+    "Remove these containers, then the image - frees the space": {
+        "fr": "Effacer ces conteneurs, puis l'image - libère l'espace",
+        "en": "Remove these containers, then the image - frees the space",
+    },
+    "Force - removes the name only; the space stays": {
+        "fr": "Forcer - retire le nom seulement ; l'espace reste",
+        "en": "Force - removes the name only; the space stays",
+    },
+    "A container runs: the engine refuses to force.": {
+        "fr": "Un conteneur tourne : le moteur refuse de forcer.",
+        "en": "A container runs: the engine refuses to force.",
+    },
+    "Decision:": {
+        "fr": "Décision :",
+        "en": "Decision:",
+    },
+    "after its containers:": {
+        "fr": "après ses conteneurs :",
+        "en": "after its containers:",
+    },
+    "forced: the name only, the space stays": {
+        "fr": "forcée : le nom seulement, l'espace reste",
+        "en": "forced: the name only, the space stays",
+    },
 }
 
 

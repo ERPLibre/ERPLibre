@@ -18,6 +18,19 @@ ERPLIBRE_DOCKER_PROD="technolibre/erplibre"
 
 output_version=""
 
+# get_version.py ne lit qu'un JSON : n'importe quel python3 le fait tourner.
+# « python » nu n'existe pas sur Debian sans python-is-python3, et l'appel
+# muet laissait output_version VIDE : la construction repartait alors sur les
+# versions du checkout, donc une image d'Odoo 18 publiee sous le nom de celle
+# qu'on avait demandee. L'echec s'arrete ici plutot que de se taire.
+EL_PY=""
+for candidat in "./.venv.erplibre/bin/python" python3 python; do
+  if command -v "${candidat}" >/dev/null 2>&1; then
+    EL_PY="${candidat}"
+    break
+  fi
+done
+
 for arg in "$@"; do
   if [ "$arg" == "--no-cache" ]; then
     ARGS="${ARGS} --no-cache"
@@ -27,20 +40,17 @@ for arg in "$@"; do
     IS_RELEASE_ALPHA=true
   elif [ "$arg" == "--release_beta" ]; then
     IS_RELEASE_BETA=true
-  elif [ "$arg" == "--odoo_18" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 18.0)
-  elif [ "$arg" == "--odoo_17" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 17.0)
-  elif [ "$arg" == "--odoo_16" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
-  elif [ "$arg" == "--odoo_15" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 15.0)
-  elif [ "$arg" == "--odoo_14" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
-  elif [ "$arg" == "--odoo_13" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 13.0)
-  elif [ "$arg" == "--odoo_12" ]; then
-    output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
+  elif [[ "$arg" == --odoo_* ]]; then
+    # « --odoo_15 » designe la version 15.0 du catalogue.
+    odoo_demande="${arg#--odoo_}.0"
+    if [ -z "${EL_PY}" ]; then
+      echo -e "${Red}Error${Color_Off} aucun python pour lire conf/supported_version_erplibre.json"
+      exit 1
+    fi
+    if ! output_version=$("${EL_PY}" ./script/version/get_version.py --odoo_version "${odoo_demande}") || [ -z "${output_version}" ]; then
+      echo -e "${Red}Error${Color_Off} version Odoo inconnue : ${odoo_demande}"
+      exit 1
+    fi
   fi
 done
 
@@ -72,6 +82,56 @@ ERPLIBRE_DOCKER_BASE_VERSION="${ERPLIBRE_DOCKER_BASE}:${ERPLIBRE_VERSION}"
 ERPLIBRE_DOCKER_PROD_VERSION="${ERPLIBRE_DOCKER_PROD}:${ERPLIBRE_VERSION}"
 ERPLIBRE_VERSION_MAIN="odoo${ODOO_VERSION}_python${PYTHON_VERSION}"
 
+# Le conteneur CLONE le depot public et se place sur ce commit. Un commit qui
+# n'y est pas encore n'existe pas pour lui : la construction s'arrete deux
+# minutes plus tard, apres le clone, sur « fatal: reference is not a tree » --
+# un message qui ne nomme ni le commit manquant ni le geste qui manque.
+EL_BRANCHE=$(git rev-parse --abbrev-ref HEAD)
+EL_HASH=$(git rev-parse --verify HEAD)
+# Les deux ecritures de ENV : « ENV cle valeur », le format herite dont
+# buildkit se plaint, et « ENV cle=valeur ». Lire les deux evite que passer de
+# l'une a l'autre vide cette variable -- et un EL_DEPOT vide ne faisait pas
+# echouer la verification, il la SAUTAIT.
+EL_DEPOT=$(sed -n \
+  's/^ENV[[:space:]]\+REPO_MANIFEST_URL[[:space:]=]\+"\?\([^"[:space:]]\+\)"\?.*/\1/p' \
+  docker/Dockerfile.prod.pkg | head -1)
+
+verifier_commit_publie() {
+  local sortie rc distant
+  if [ -z "${EL_DEPOT}" ]; then
+    echo -e "${Red}Error${Color_Off} REPO_MANIFEST_URL illisible dans docker/Dockerfile.prod.pkg"
+    echo "  Sans elle, rien ne verifie que le commit bati est publie."
+    exit 1
+  fi
+  sortie=$(git ls-remote --heads "${EL_DEPOT}" "${EL_BRANCHE}" 2>/dev/null)
+  rc=$?
+  if [ ${rc} -ne 0 ]; then
+    # Hors ligne : on ne refuse pas sur une ignorance.
+    echo "Depot injoignable, verification du commit publie sautee."
+    return 0
+  fi
+  distant=$(echo "${sortie}" | cut -f1)
+  if [ -z "${distant}" ]; then
+    echo -e "${Red}Error${Color_Off} la branche ${EL_BRANCHE} n'est pas sur ${EL_DEPOT}"
+    echo "  L'image la clone par son nom : la publier d'abord."
+    echo "  git push -u origin ${EL_BRANCHE}"
+    exit 1
+  fi
+  [ "${distant}" = "${EL_HASH}" ] && return 0
+  # La tete distante est un objet LOCAL des que la branche locale est en
+  # avance, le seul cas qui nous occupe : l'ancetre se verifie alors sans
+  # reseau. Quand elle ne l'est pas, on ne sait pas, et on laisse passer.
+  if git cat-file -e "${distant}^{commit}" 2>/dev/null; then
+    if ! git merge-base --is-ancestor "${EL_HASH}" "${distant}"; then
+      echo -e "${Red}Error${Color_Off} le commit ${EL_HASH} n'est pas publie"
+      echo "  L'image clone ${EL_DEPOT} et se place sur ce commit."
+      echo "  git push origin ${EL_BRANCHE}"
+      exit 1
+    fi
+  fi
+}
+verifier_commit_publie
+
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
@@ -87,7 +147,7 @@ fi
 
 cd docker
 
-ARGS="${ARGS} --build-arg WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg WORKING_HASH=$(git rev-parse --verify HEAD)"
+ARGS="${ARGS} --build-arg WORKING_BRANCH=${EL_BRANCHE} --build-arg WORKING_HASH=${EL_HASH}"
 
 # UNE seule base, bookworm, pour toutes les versions d'Odoo.
 #

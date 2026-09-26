@@ -193,5 +193,37 @@ class TestHypotheseSetuptools(unittest.TestCase):
                     os.environ[var] = val
 
 
+class TestLeDrapeauDansLImage(unittest.TestCase):
+    """L'image Docker lance son propre « poetry install », hors de
+    install_locally.sh : sans le même drapeau, les images d'Odoo 14, 15 et 17
+    meurent sur le même PyInt_FromLong que l'hôte a déjà guéri."""
+
+    DOCKERFILE = RACINE / "docker/Dockerfile.prod.pkg"
+
+    @staticmethod
+    def _definition(texte):
+        m = re.search(r"-DPyInt_FromLong\(x\)=\S+?\(x\)", texte)
+        return m.group(0) if m else None
+
+    def test_l_image_porte_le_drapeau(self):
+        self.assertIsNotNone(
+            self._definition(self.DOCKERFILE.read_text(encoding="utf-8"))
+        )
+
+    def test_les_deux_copies_sont_identiques(self):
+        """Une seule divergence, et les hôtes à vieux SWIG récoltent un
+        avertissement de redéfinition que l'autre copie ne donne pas."""
+        hote = self._definition(SCRIPT.read_text(encoding="utf-8"))
+        image = self._definition(self.DOCKERFILE.read_text(encoding="utf-8"))
+        self.assertEqual(hote, image)
+
+    def test_il_precede_poetry_install_dans_la_meme_commande(self):
+        """Posé dans une autre couche RUN, il n'atteindrait pas Poetry."""
+        texte = self.DOCKERFILE.read_text(encoding="utf-8")
+        ligne = texte.index("-DPyInt_FromLong")
+        install = texte.index("poetry install", ligne)
+        self.assertNotIn("\nRUN ", texte[ligne:install])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
