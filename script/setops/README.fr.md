@@ -1,7 +1,7 @@
 
 # Set-OPS — le moteur déclaré et l'état de l'intégration
 
-Sept modules, un partage : **le relevé touche le système, la décision ne le
+Neuf modules, un partage : **le relevé touche le système, la décision ne le
 touche pas.** Aucun n'importe le code du moteur : il se lit par fichiers et
 sous-processus. Rien ici ne pose de question ; le menu vit dans
 `script/todo/setops_menu.py`, et le mode d'emploi dans
@@ -185,7 +185,13 @@ un sens.
 - `jouer(argv, env, cwd, capture, delai, fusionner)` : joue et rend un
   `Verdict` dont
   le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
-  verdict, pas l'absence de verdict.
+  verdict, pas l'absence de verdict ;
+- `detacher(argv, env, cwd, journal)` : lance et rend le PID du chef de
+  groupe, ou `None`. NOUVELLE SESSION, et c'est ce qui permet de l'arrêter :
+  un seul signal atteint la recette `make` ET le serveur qu'elle lance. Le
+  terminal ne lui est pas rendu — son entrée est fermée, sa sortie va au
+  journal. Le PID ne prouve pas que le service a démarré ; un détaché échoue
+  en silence.
 
 ## `ecosystems` — lire ce que le moteur imprime, sans jamais deviner
 
@@ -284,3 +290,81 @@ diraient tôt ou tard deux choses différentes du même geste.
 - `compte(runbook, ecosysteme, site)` : (conduisibles, total), affiché en tête
   d'une séquence. Une liste dont on ignore ce qu'elle offre se parcourt en
   entier pour le découvrir.
+
+## `vaults` — une clé absente n'est pas une faute
+
+Le moteur l'écrit en capitales : sur le runner d'un locataire, la clé du SITE
+doit manquer. Ce runner porte la carte de la fabric et ne doit jamais
+l'ouvrir ; une absence y est donc une séparation qui TIENT. Seule celle de
+l'instance montée empêche la machine de travailler, et elle seule décide du
+code de sortie du moteur. Présenter les autres comme des défauts enverrait
+réparer ce qui fonctionne — en donnant à ce poste des clés qu'il ne doit pas
+détenir.
+
+**La clé ne s'affiche jamais et ne se journalise jamais.** `poser_cle` écrit
+les octets et rend un verdict qui ne les porte pas.
+
+- `lit_etat(sortie)` : les voûtes que le rapport nomme, `()` s'il n'en nomme
+  aucune, `None` si le rapport n'a pas la forme attendue. Ce sont deux
+  nouvelles différentes : la première dit « ni instance montée ni underlay ».
+  Un rôle hors des trois connus fait refuser TOUT le rapport, parce que
+  `bloquante` se décide sur le mot « instance » : un renommage en amont ne doit
+  pas rendre un calme trompeur sur une machine qui ne peut rien configurer ;
+- `bloquante(voutes)` : la voûte dont l'absence empêche la machine de
+  travailler, ou `None` — celle de l'instance montée, et elle seule ;
+- `separation(voutes)` : les voûtes que cette machine n'ouvre pas et ne doit
+  pas ouvrir. Y poser une clé neuve n'en ouvrirait aucune : le secret de cette
+  voûte existe déjà ailleurs ;
+- `poser_cle(chemin)` : pose un fichier-clé neuf et rend une `Pose`. Il
+  n'écrase JAMAIS un fichier existant — une clé remplacée rend sa voûte
+  définitivement illisible, là où la redirection que documente le moteur
+  tronque. Le mode est posé à la création, pas après : entre les deux, la clé
+  est lisible par tout le monde. Une clé neuve n'ouvre qu'une voûte qui ne
+  porte encore rien ; sur une voûte déjà chiffrée elle ne récupère rien, et
+  l'appelant tranche avant d'appeler.
+
+## `console` — une porte sans serrure, donc une porte sur la boucle
+
+`inventaire-ui` sert une interface qui lit tout l'inventaire — adresses, VLAN,
+noms d'hôtes — et déclenche ses gestes : vérifier, déployer, pousser un flux.
+Elle n'a **aucune authentification** ; le jeton qu'elle porte garde ses
+exécutions les unes des autres, pas sa porte.
+
+D'où la boucle locale, et rien d'autre. Le script accepte `--hote` et todo ne
+le passe jamais : le lier à `0.0.0.0` publierait une console sans serrure qui
+peut déployer sur la flotte. Pour l'atteindre d'ailleurs, on redirige un port
+par SSH, ce qui remet l'authentification à SSH au lieu de la supprimer.
+
+Un détaché échoue en silence, donc le port se sonde après coup. Et un PID se
+réattribue : rien n'est signalé sans avoir relu la ligne de commande de ce PID.
+
+- `dossier(env)`, `chemin_suivi(env)`, `chemin_journal(env)` : où vivent le
+  suivi et le journal — le dossier d'exécution de l'utilisateur d'abord, qui
+  n'appartient qu'à lui, le dossier temporaire sinon ;
+- `lit_suivi(texte)` : le `Suivi` que porte un enregistrement, ou `None`. Un
+  PID sous 1 est refusé, parce qu'un signal envoyé à 0 porte sur TOUT le groupe
+  de processus de l'appelant — todo se tuerait lui-même — et un signal envoyé à
+  -1 sur tout ce que l'utilisateur possède ;
+- `ecrit_suivi(chemin, pid, port)`, `oublie(chemin)` : le noter et l'oublier,
+  sans lever. Un suivi perdu ne casse rien de grave ;
+- `ligne_de_commande(pid, procfs)` : la ligne de commande, `ABSENT`, ou
+  `None` — trois réponses parce qu'il y a trois cas. `ABSENT` est ce que le
+  système AFFIRME quand le dossier du PID a disparu d'un procfs monté ; `None`
+  dit qu'on ne sait pas, et sur un doute rien n'est tué ni déclaré arrêté ;
+- `tenue(ligne, marque)` : est-ce notre console ? `None` transmet le doute ;
+- `port_occupe(adresse, port, delai)` : quelque chose écoute-t-il ? Sondé par
+  une connexion et non par une liaison d'essai, qui prendrait le port et le
+  rendrait au moment précis où la console cherche à le prendre ;
+- `situation(suivi, portee, occupe)` : (état, pid) depuis ces trois faits
+  mesurés. Un fait manquant rend `INCONNU` plutôt qu'une supposition : sur un
+  doute, l'écran n'offre ni de lancer — deux consoles se disputeraient le
+  port — ni d'arrêter ;
+- `url(adresse, port)`, `redirection(hote, utilisateur, port)` : l'adresse à
+  montrer, et la redirection qui garde les deux bouts sur la boucle locale ;
+- `arreter(suivi, portee, signal_au_groupe)` : l'arrête, et RIEN n'est tué sans
+  preuve. Le signal va au GROUPE : la recette `make` et le serveur qu'elle a
+  lancé y sont tous les deux, et signaler le seul `make` laisserait le serveur
+  tenir le port ;
+- `attendre(sonde, attendu, essais, pause)` : sonde jusqu'à ce que la réponse
+  vienne. Le port ne s'ouvre ni ne se libère à l'instant du geste ; sans cette
+  attente, l'écran conclurait sur l'état d'avant.

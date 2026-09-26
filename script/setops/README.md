@@ -1,7 +1,7 @@
 
 # Set-OPS — the declared engine and the state of the integration
 
-Seven modules, one split: **the survey touches the system, the decision
+Nine modules, one split: **the survey touches the system, the decision
 does not.** Neither imports the engine's code: it is read through files and
 subprocesses. Nothing here asks a question; the menu lives in
 `script/todo/setops_menu.py`, and the user manual in
@@ -183,7 +183,13 @@ one way only.
 - `jouer(argv, env, cwd, capture, delai, fusionner)`: runs and returns a
   `Verdict`
   whose `code` is `None` when the process could not run at all — that is a
-  verdict, not the absence of one.
+  verdict, not the absence of one;
+- `detacher(argv, env, cwd, journal)`: launches and hands back the PID of the
+  group leader, or `None`. A NEW SESSION, and that is what makes it stoppable:
+  one signal reaches both the `make` recipe and the server it starts. The
+  terminal is not given to it — its input is closed, its output goes to the
+  log. The PID does not prove the service came up; a detached launch fails in
+  silence.
 
 ## `ecosystems` — reading what the engine prints, never guessing
 
@@ -278,3 +284,78 @@ later say two different things about the same gesture.
   `CONFIRMER=false`, and for those targets the flag means nothing;
 - `compte(runbook, ecosysteme, site)`: (drivable, total), shown at the head of
   a sequence. A list whose offer is unknown is walked in full to find out.
+
+## `vaults` — a missing key is not a fault
+
+The engine writes it in capitals: on a tenant runner the SITE key must be
+absent. That runner carries the fabric map and must never open it, so an
+absence there is a separation that HOLDS. Only the mounted instance's key
+stops the machine from working, and it alone decides the engine's exit code.
+Presenting the others as defects would send someone to repair what works — by
+handing that station keys it must not hold.
+
+**The key is never displayed and never logged.** `poser_cle` writes the bytes
+and returns a verdict that does not carry them.
+
+- `lit_etat(sortie)`: the vaults the report names, `()` when it names none,
+  `None` when the report is not the expected shape. Those are two different
+  pieces of news: the first says "no instance mounted and no underlay". A role
+  outside the three known ones refuses the WHOLE report, because `bloquante`
+  decides on the word "instance": a rename upstream must not report calm on a
+  machine that can configure nothing;
+- `bloquante(voutes)`: the vault whose absence stops the machine, or `None` —
+  the mounted instance's, and it alone;
+- `separation(voutes)`: the vaults this machine does not open and must not.
+  Posing a new key for one of them would open nothing: that vault's secret
+  already exists elsewhere;
+- `poser_cle(chemin)`: poses a new key file and returns a `Pose`. It NEVER
+  overwrites an existing file — a replaced key makes its vault unreadable for
+  good, where the shell redirection the engine documents truncates. The mode is
+  set at creation, not after: in between, the key would be world readable. A
+  new key only opens a vault that holds nothing yet; on one already encrypted
+  it recovers nothing, and the caller settles that before calling.
+
+## `console` — a door without a lock, so a door on the loopback
+
+`inventaire-ui` serves an interface that reads the whole inventory — addresses,
+VLANs, host names — and triggers its gestures: verify, deploy, push a flow. It
+has **no authentication**; the token it carries guards its executions from one
+another, not its door.
+
+Hence the loopback and nothing else. The script accepts `--hote` and TODO never
+passes it: binding to `0.0.0.0` would publish a lockless console that can
+deploy to the fleet. To reach it from elsewhere a port is forwarded over SSH,
+which hands authentication back to SSH instead of removing it.
+
+A detached launch fails in silence, so the port is probed afterwards. And a PID
+is reassigned: nothing is signalled without rereading that PID's command line.
+
+- `dossier(env)`, `chemin_suivi(env)`, `chemin_journal(env)`: where the record
+  and the log live — the user's runtime directory first, which belongs to them
+  alone, the temporary directory otherwise;
+- `lit_suivi(texte)`: the `Suivi` a record carries, or `None`. A PID below 1 is
+  refused, because a signal sent to 0 hits the caller's WHOLE process group —
+  TODO would kill itself — and one sent to -1 everything the user owns;
+- `ecrit_suivi(chemin, pid, port)`, `oublie(chemin)`: note and forget it,
+  without raising. A lost record does not break anything grave;
+- `ligne_de_commande(pid, procfs)`: the command line, `ABSENT`, or `None` —
+  three answers because there are three cases. `ABSENT` is what the system
+  AFFIRMS when the PID's folder is gone from a mounted procfs; `None` says it
+  is not known, and on a doubt nothing is killed nor declared stopped;
+- `tenue(ligne, marque)`: is that our console? `None` passes the doubt on;
+- `port_occupe(adresse, port, delai)`: is something listening? Probed by
+  connecting and not by a trial bind, which would take the port and give it
+  back exactly when the console tries to take it;
+- `situation(suivi, portee, occupe)`: (state, pid) from those three measured
+  facts. A missing fact gives `INCONNU` rather than a guess: on a doubt the
+  screen offers neither to start — two consoles would fight over the port — nor
+  to stop;
+- `url(adresse, port)`, `redirection(hote, utilisateur, port)`: the address to
+  show, and the forward that keeps both ends on the loopback;
+- `arreter(suivi, portee, signal_au_groupe)`: stops it, and NOTHING is killed
+  without proof. The signal goes to the GROUP: the `make` recipe and the server
+  it started are both there, and signalling `make` alone would leave the server
+  holding the port;
+- `attendre(sonde, attendu, essais, pause)`: probes until the answer comes. The
+  port neither opens nor frees at the instant of the gesture; without this wait
+  the screen would conclude on the state from before.

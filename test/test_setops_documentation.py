@@ -28,11 +28,13 @@ sys.argv = ["todo.py"]
 from script.setops import (  # noqa: E402
     ansible_env,
     coexistence,
+    console,
     ecosystems,
     engine,
     runbooks,
     runner,
     state,
+    vaults,
 )
 
 # Les modules du paquet, dans l'ordre où le README les présente. Un module
@@ -46,6 +48,8 @@ MODULES = (
     ecosystems,
     coexistence,
     runbooks,
+    vaults,
+    console,
 )
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.todo_i18n import TRANSLATIONS  # noqa: E402
