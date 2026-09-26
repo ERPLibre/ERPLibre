@@ -79,12 +79,16 @@ fi
 # diagnostics que GCC 14 a rendus bloquants (types de pointeurs
 # incompatibles) ; le drapeau les ramène à des avertissements. Un GCC
 # antérieur l'ignore en C, avec un simple avertissement.
+#
+# libldap_r : voir script/install/lib_ldap_compat.sh.
 cat > "${VENV_PATH}/bin/poetry" << EOF
 #!/usr/bin/env bash
 VENV="\$(cd "\$(dirname "\$0")/.." && pwd)"
 export VIRTUAL_ENV="\${VENV}"
 export POETRY_CACHE_DIR="\$(dirname "\${VENV}")/"
 export CFLAGS="\${CFLAGS:+\${CFLAGS} }-fpermissive"
+. "\$(dirname "\${VENV}")/script/install/lib_ldap_compat.sh" \\
+  && el_ldap_r_compat "\${VENV}/lib/ldap_r_compat"
 exec "\$(dirname "\${VENV}")/${HELPER_PATH}/bin/poetry" "\$@"
 EOF
 chmod +x "${VENV_PATH}/bin/poetry"
