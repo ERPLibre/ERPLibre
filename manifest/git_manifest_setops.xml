@@ -27,6 +27,15 @@
          « clone-depth » : en profondeur 1, rapatrier un SHA qui n'est plus
          la pointe exige une forge qui l'accepte.
 
+         L'épingle suit une branche de CONTRIBUTION, et non la branche
+         principale : « contrib/runbooks-json » porte l'option « json » de
+         « scripts/runbooks.py lister », dont l'écran Runbooks de todo dérive
+         les séquences. Sur la branche principale, cette option n'existe pas
+         encore et cet écran ne lit plus rien. Le tiret double ne peut pas
+         s'écrire dans un commentaire XML, d'où l'option nommée sans lui. Le jour où la contribution y est
+         fusionnée, « upstream » redevient le nom de la branche principale et
+         la révision saute à sa pointe.
+
          Une fois rapatrié, le moteur fait partie de l'espace de travail :
          « repo forall », donc « make repo_do_stash », le parcourent comme
          les autres projets. Un sync qui l'écarte — « repo init -g » sans
@@ -37,8 +46,8 @@
         name="Set-OPS-Public.git"
         path="private/repo/Set-OPS-Public"
         remote="alliance-boreale"
-        revision="d4614926238a671ea30789a75e33aabd7235fa2c"
-        upstream="main"
+        revision="1d07a6cf80ebc85d9ef73e3c75083202e7ebf8e4"
+        upstream="contrib/runbooks-json"
         groups="setops"
     />
 </manifest>
