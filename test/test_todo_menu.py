@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from script.setops import state  # noqa: E402
+from script.setops import console, state  # noqa: E402
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -990,6 +990,7 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
     CONSTANTES = {
         "state.GESTE_ANSIBLE": state.GESTE_ANSIBLE,
         "state.GESTE_VOUTES": state.GESTE_VOUTES,
+        "console.GESTE": console.GESTE,
     }
     EXPECTED = {
         "Set-OPS - State of the integration": "_setops_state",
@@ -999,6 +1000,7 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
         "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",
         "Set-OPS - Keys and vaults": "_setops_vaults",
         "Set-OPS - Runbooks": "_setops_runbooks",
+        "Set-OPS - Web console": "_setops_console",
     }
 
 

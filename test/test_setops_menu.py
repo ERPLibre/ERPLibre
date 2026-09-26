@@ -30,7 +30,7 @@ sys.path.append(RACINE_DEPOT)
 
 sys.argv = ["todo.py"]
 
-from script.setops import engine, runner, state, vaults  # noqa: E402
+from script.setops import console, engine, runner, state, vaults  # noqa: E402
 from script.setops import runbooks as registre  # noqa: E402
 from script.todo import state_screen, todo_i18n  # noqa: E402
 from script.todo.setops_menu import SetopsMenuMixin as M  # noqa: E402
@@ -1010,6 +1010,8 @@ class TestLEcranSaitNommerToutCeQueLaCoucheRend(unittest.TestCase):
         (registre.BARRIERES, M.BARRIERES, "barrières de runbook"),
         (vaults.ETATS, M.VOUTES, "états de voûte"),
         (vaults.POSES, M.POSES, "verdicts de pose"),
+        (console.ETATS, M.CONSOLES, "états de console"),
+        (console.ARRETS, M.ARRETS, "verdicts d'arrêt"),
     )
 
     def test_every_word_of_every_closed_vocabulary_is_named(self):
@@ -1024,6 +1026,260 @@ class TestLEcranSaitNommerToutCeQueLaCoucheRend(unittest.TestCase):
         for vocabulaire, table, quoi in self.TABLES:
             with self.subTest(quoi=quoi):
                 self.assertEqual(set(), set(table) - set(vocabulaire))
+
+
+class CasDeConsole(CasDEcosysteme):
+    """L'écran de la console web, les trois faits POSÉS.
+
+    Rien n'est lancé, rien n'est signalé, rien ne dort : le lancement détaché,
+    la sonde du port et le signal sont tous bouchonnés.
+    """
+
+    SUIVI = console.Suivi(pid=4242, port=console.PORT)
+
+    def setUp(self):
+        super().setUp()
+        self.mesure = (console.ARRETEE, 0, None)
+        self.detaches = []
+        self.signales = []
+        self.pid_rendu = 4242
+        self.todo._setops_console_etat = lambda env=None: self.mesure
+        self.todo._qemu_self_address = lambda: ("poste-fictif.invalid", True)
+
+    def _detacher(self, argv, env=None, cwd=None, journal=None):
+        self.detaches.append(tuple(argv))
+        return self.pid_rendu
+
+    def ecran(self, saisies=(), ports=(True,)):
+        """Joue l'écran ; `ports` est ce que la sonde du port répond."""
+        vus = list(ports)
+        with (
+            patch.object(runner, "detacher", self._detacher),
+            patch.object(
+                console,
+                "port_occupe",
+                lambda *_a, **_k: vus.pop(0) if len(vus) > 1 else vus[0],
+            ),
+            patch.object(console, "ecrit_suivi", lambda *_a: True),
+            patch.object(console, "oublie", lambda *_a: None),
+            patch("os.killpg", lambda pid, sig: self.signales.append(pid)),
+            patch("time.sleep", lambda _s: None),
+        ):
+            return self._ecran("_setops_console", saisies)
+
+
+class TestLaPorteSansSerrureEstAnnoncee(CasDeConsole):
+    """Une console sans authentification se juge AVANT de la lancer."""
+
+    AVERTISSEMENT = (
+        "This console has NO authentication: whatever reaches its port"
+        " reads the whole inventory and triggers its gestures."
+    )
+
+    def test_the_warning_is_said(self):
+        self.assertIn(todo_i18n.t(self.AVERTISSEMENT), self.ecran())
+
+    def test_the_warning_comes_before_the_state(self):
+        """En note de bas d'écran, il se lit après la décision."""
+        vu = self.ecran()
+        self.assertLess(
+            vu.index(todo_i18n.t(self.AVERTISSEMENT)),
+            vu.index(console.url()),
+        )
+
+    def test_the_way_in_from_elsewhere_is_an_ssh_forward(self):
+        """Elle REMET l'authentification à SSH, là où lier largement la
+        supprimerait."""
+        vu = self.ecran()
+        self.assertIn(
+            console.redirection(
+                "poste-fictif.invalid", os.environ.get("USER", "")
+            ),
+            vu,
+        )
+
+    def test_a_station_outside_an_ssh_session_is_told_so(self):
+        self.todo._qemu_self_address = lambda: ("nom-fictif", False)
+        self.assertIn(
+            todo_i18n.t("Not in an SSH session: check the host address."),
+            self.ecran(),
+        )
+
+
+class TestRienNePublieLaConsole(CasDeConsole):
+    """Lier largement publierait sur le réseau une console sans serrure qui
+    peut déployer sur la flotte."""
+
+    def test_the_launched_command_never_names_an_address(self):
+        """Le moteur lie 127.0.0.1 par défaut ; todo laisse faire ce défaut et
+        ne passe aucun hôte. Éprouvé sur ce qui PART, pas sur le source."""
+        self.mesure = (console.ARRETEE, 0, None)
+        self.ecran(["1"])
+        self.assertEqual(1, len(self.detaches))
+        argv = self.detaches[0]
+        self.assertIn(console.CIBLE, argv)
+        for morceau in argv:
+            with self.subTest(morceau=morceau):
+                self.assertNotIn("--hote", morceau)
+                self.assertNotIn("0.0.0.0", morceau)
+
+    def test_the_address_shown_is_the_loopback(self):
+        self.assertIn(f"http://{console.ADRESSE}:", self.ecran())
+
+
+class TestCeQueLEcranOffre(CasDeConsole):
+    def test_a_stopped_console_can_be_started(self):
+        self.mesure = (console.ARRETEE, 0, None)
+        self.ecran(["1"])
+        self.assertEqual(1, len(self.detaches))
+
+    def test_a_running_console_can_be_stopped(self):
+        self.mesure = (console.VIVANTE, 4242, self.SUIVI)
+        with patch.object(console, "tenue", lambda *_a, **_k: True):
+            self.ecran(["1"], ports=(False,))
+        self.assertEqual([4242], self.signales)
+
+    def test_a_port_held_by_someone_else_offers_nothing(self):
+        """Arrêter ce que todo n'a pas lancé porterait sur le travail de
+        quelqu'un d'autre.
+
+        Éprouvé sur ce que l'écran OFFRE, et non sur ce qui est parti : la
+        couche refuse déjà un arrêt sans preuve, donc un geste offert à tort
+        ne signalerait rien et passerait pour sage.
+        """
+        self.mesure = (console.TENU, 0, None)
+        vu = self.ecran(["1"])
+        self.assertEqual([], self.detaches)
+        self.assertEqual([], self.signales)
+        self.assertNotIn(todo_i18n.t("Stop it"), vu)
+        self.assertNotIn(todo_i18n.t("Start it"), vu)
+        self.assertIn(todo_i18n.t(self.todo.CONSOLES[console.TENU][1]), vu)
+
+    def test_a_doubt_offers_nothing(self):
+        """Lancer une seconde console lui disputerait le port."""
+        self.mesure = (console.INCONNU, 0, None)
+        vu = self.ecran(["1"])
+        self.assertEqual([], self.detaches)
+        self.assertEqual([], self.signales)
+        self.assertNotIn(todo_i18n.t("Stop it"), vu)
+        self.assertNotIn(todo_i18n.t("Start it"), vu)
+
+    def test_leaving_the_screen_does_nothing(self):
+        self.mesure = (console.ARRETEE, 0, None)
+        self.ecran([""])
+        self.assertEqual([], self.detaches)
+
+
+class TestUnDetacheEchoueEnSilence(CasDeConsole):
+    """Le PID rendu ne prouve pas que le serveur écoute."""
+
+    def test_a_console_that_never_answers_is_not_announced_as_up(self):
+        self.mesure = (console.ARRETEE, 0, None)
+        vu = self.ecran(["1"], ports=(False,))
+        self.assertNotIn("✅", vu)
+        self.assertIn(console.JOURNAL, vu)
+
+    def test_a_console_that_answers_is_announced_with_its_group(self):
+        self.mesure = (console.ARRETEE, 0, None)
+        vu = self.ecran(["1"], ports=(False, True))
+        self.assertIn("✅", vu)
+        self.assertIn("4242", vu)
+
+    def test_a_launch_that_could_not_run_says_so(self):
+        self.mesure = (console.ARRETEE, 0, None)
+        self.pid_rendu = None
+        vu = self.ecran(["1"])
+        self.assertIn(todo_i18n.t("the gesture could not run at all"), vu)
+
+
+class TestRienNestSignaleSansPreuve(CasDeConsole):
+    """Un PID se recycle : le groupe visé serait celui d'un autre travail."""
+
+    def test_a_recycled_pid_is_refused_and_nothing_is_signalled(self):
+        self.mesure = (console.VIVANTE, 4242, self.SUIVI)
+        with patch.object(console, "ligne_de_commande", lambda *_a: "autre"):
+            vu = self.ecran(["1"])
+        self.assertEqual([], self.signales)
+        self.assertIn(todo_i18n.t(self.todo.ARRETS[console.ARRET_REFUSE]), vu)
+
+    def test_an_unreadable_command_line_is_refused_too(self):
+        self.mesure = (console.VIVANTE, 4242, self.SUIVI)
+        with patch.object(console, "ligne_de_commande", lambda *_a: None):
+            self.ecran(["1"])
+        self.assertEqual([], self.signales)
+
+    def test_a_port_still_held_after_the_signal_is_said(self):
+        self.mesure = (console.VIVANTE, 4242, self.SUIVI)
+        with patch.object(console, "tenue", lambda *_a, **_k: True):
+            vu = self.ecran(["1"], ports=(True,))
+        self.assertEqual([4242], self.signales)
+        self.assertIn(todo_i18n.t(self.todo.ARRETS[console.ARRET_TENACE]), vu)
+
+
+class TestLeReleveDeLaConsole(CasDEcosysteme):
+    """La mesure elle-même, le suivi POSÉ sur le disque.
+
+    Elle n'est pas bouchonnée ici : c'est elle qui décide de tout l'écran, et
+    c'est elle qui laissait un PID mort rendre l'écran indécidable.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.dossier = tempfile.mkdtemp(prefix="setops-console-releve-")
+        self.addCleanup(self._menage)
+        self.env = {"XDG_RUNTIME_DIR": self.dossier}
+        self.todo.__dict__.pop("_setops_console_etat", None)
+
+    def _menage(self):
+        for nom in os.listdir(self.dossier):
+            os.unlink(os.path.join(self.dossier, nom))
+        os.rmdir(self.dossier)
+
+    def poser_suivi(self, pid):
+        console.ecrit_suivi(console.chemin_suivi(self.env), pid, console.PORT)
+
+    def relever(self, ligne, occupe):
+        with (
+            patch.object(console, "ligne_de_commande", lambda *_a: ligne),
+            patch.object(console, "port_occupe", lambda *_a, **_k: occupe),
+        ):
+            return self.todo._setops_console_etat(self.env)
+
+    def test_our_own_console_is_seen_alive(self):
+        self.poser_suivi(4242)
+        mot, pid, suivi = self.relever("make inventaire-ui", True)
+        self.assertEqual((console.VIVANTE, 4242), (mot, pid))
+        self.assertIsNotNone(suivi)
+
+    def test_a_dead_pid_does_not_freeze_the_screen(self):
+        """LE DÉFAUT QUE LA VRAIE EXÉCUTION A MONTRÉ : un lancement raté
+        laisse un PID mort dans le suivi. Rendu « indécidable », l'écran
+        n'offrait plus jamais de lancer la console."""
+        self.poser_suivi(4242)
+        mot, _pid, suivi = self.relever(console.ABSENT, False)
+        self.assertEqual(console.ARRETEE, mot)
+        self.assertIsNone(suivi)
+
+    def test_a_stale_record_is_forgotten_rather_than_reread(self):
+        """Un PID se réattribue : le relire à chaque visite finit par
+        désigner le travail d'un autre."""
+        self.poser_suivi(4242)
+        self.relever(console.ABSENT, False)
+        self.assertFalse(os.path.exists(console.chemin_suivi(self.env)))
+
+    def test_a_record_that_still_holds_is_kept(self):
+        self.poser_suivi(4242)
+        self.relever("make inventaire-ui", True)
+        self.assertTrue(os.path.exists(console.chemin_suivi(self.env)))
+
+    def test_no_record_at_all_reads_as_stopped(self):
+        mot, pid, suivi = self.relever(None, False)
+        self.assertEqual((console.ARRETEE, 0, None), (mot, pid, suivi))
+
+    def test_an_unreadable_command_line_is_never_guessed(self):
+        self.poser_suivi(4242)
+        mot, _pid, _suivi = self.relever(None, True)
+        self.assertEqual(console.INCONNU, mot)
 
 
 if __name__ == "__main__":

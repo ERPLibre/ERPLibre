@@ -17754,6 +17754,87 @@ TRANSLATIONS = {
         "fr": "le fichier n'a pas pu être écrit",
         "en": "the file could not be written",
     },
+    "Web console": {
+        "fr": "Console web",
+        "en": "Web console",
+    },
+    "Set-OPS - Web console (loopback only, no authentication)": {
+        "fr": (
+            "🌐 Set-OPS - Console web (boucle locale seulement, aucune"
+            " authentification)"
+        ),
+        "en": "🌐 Set-OPS - Web console (loopback only, no authentication)",
+    },
+    (
+        "This console has NO authentication: whatever reaches its port reads"
+        " the whole inventory and triggers its gestures."
+    ): {
+        "fr": (
+            "Cette console n'a AUCUNE authentification : ce qui atteint son"
+            " port lit tout l'inventaire et déclenche ses gestes."
+        ),
+        "en": (
+            "This console has NO authentication: whatever reaches its port"
+            " reads the whole inventory and triggers its gestures."
+        ),
+    },
+    "To reach it from elsewhere, forward the port over SSH:": {
+        "fr": "Pour l'atteindre d'ailleurs, rediriger le port par SSH :",
+        "en": "To reach it from elsewhere, forward the port over SSH:",
+    },
+    "not running here": {
+        "fr": "pas lancée d'ici",
+        "en": "not running here",
+    },
+    "running, started from here": {
+        "fr": "en cours, lancée d'ici",
+        "en": "running, started from here",
+    },
+    "something todo did not start holds that port; not stopped here": {
+        "fr": (
+            "ce port est tenu par autre chose que todo n'a pas lancé ; il ne"
+            " s'arrête pas d'ici"
+        ),
+        "en": (
+            "something todo did not start holds that port; not stopped here"
+        ),
+    },
+    "cannot tell; nothing is offered": {
+        "fr": "impossible de trancher ; rien n'est offert",
+        "en": "cannot tell; nothing is offered",
+    },
+    "process group": {
+        "fr": "groupe de processus",
+        "en": "process group",
+    },
+    "Start it": {
+        "fr": "La lancer",
+        "en": "Start it",
+    },
+    "Stop it": {
+        "fr": "L'arrêter",
+        "en": "Stop it",
+    },
+    "it did not come up; the log says why:": {
+        "fr": "elle n'a pas démarré ; le journal dit pourquoi :",
+        "en": "it did not come up; the log says why:",
+    },
+    "signal sent to the whole group": {
+        "fr": "signal envoyé au groupe entier",
+        "en": "signal sent to the whole group",
+    },
+    "still there after the signal": {
+        "fr": "toujours là après le signal",
+        "en": "still there after the signal",
+    },
+    "refused: that PID no longer carries the console": {
+        "fr": "refus : ce PID ne porte plus la console",
+        "en": "refused: that PID no longer carries the console",
+    },
+    "the signal could not be sent": {
+        "fr": "le signal n'a pas pu être envoyé",
+        "en": "the signal could not be sent",
+    },
 }
 
 

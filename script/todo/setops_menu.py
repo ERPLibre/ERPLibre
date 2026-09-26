@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import os
 import shlex
+import signal
+import time
 
 import click
 
 from script.setops import (
     ansible_env,
+    console,
     ecosystems,
     engine,
     runner,
@@ -87,6 +90,11 @@ class SetopsMenuMixin:
                     "Set-OPS - Runbooks (the engine's sequences, in order)"
                 ),
                 "method": "_setops_runbooks",
+            },
+            {"section": t("Web console")},
+            {
+                "prompt_description": t(console.GESTE),
+                "method": "_setops_console",
             },
         ]
         help_info = self.fill_help_info(choices)
@@ -828,3 +836,184 @@ class SetopsMenuMixin:
             print(f"  ✅ {dit}")
             return
         print(f"  ✗ {dit}" + (f" ({pose.souci})" if pose.souci else ""))
+
+    # --- Console web --------------------------------------------------------
+
+    # Ce qu'un état dit à l'écran. Le vocabulaire est clos dans la couche.
+    CONSOLES = {
+        console.ARRETEE: ("○", "not running here"),
+        console.VIVANTE: ("●", "running, started from here"),
+        console.TENU: (
+            "⚠",
+            "something todo did not start holds that port; not stopped here",
+        ),
+        console.INCONNU: ("?", "cannot tell; nothing is offered"),
+    }
+
+    # Ce qu'un arrêt a donné.
+    ARRETS = {
+        console.ARRET_FAIT: "signal sent to the whole group",
+        console.ARRET_TENACE: "still there after the signal",
+        console.ARRET_REFUSE: (
+            "refused: that PID no longer carries the console"
+        ),
+        console.ARRET_IMPOSSIBLE: "the signal could not be sent",
+    }
+
+    def _setops_console_etat(self, env=None):
+        """(mot, pid, suivi) de la console, sur trois faits mesurés.
+
+        Les trois faits sont pris À CHAQUE VISITE, sans rien garder : une
+        console arrêtée hors de todo, ou un port pris entre-temps, doivent se
+        voir — un état gardé en mémoire ferait proposer d'arrêter ce qui n'est
+        plus là.
+        """
+        chemin = console.chemin_suivi(env)
+        try:
+            with open(chemin, encoding="utf-8") as tenu:
+                suivi = console.lit_suivi(tenu.read())
+        except OSError:
+            suivi = None
+        portee = (
+            console.tenue(console.ligne_de_commande(suivi.pid))
+            if suivi is not None
+            else False
+        )
+        occupe = console.port_occupe(console.ADRESSE, console.PORT)
+        mot, pid = console.situation(suivi, portee, occupe)
+        if mot == console.ARRETEE and suivi is not None:
+            # Le suivi désigne un processus qui n'est plus là et un port qui
+            # ne répond pas : le garder ferait relire un PID mort à chaque
+            # visite, et un PID se réattribue.
+            console.oublie(chemin)
+            suivi = None
+        return mot, pid, suivi
+
+    def _setops_console(self):
+        """La console web du moteur, sur la boucle locale et rien d'autre.
+
+        L'AVERTISSEMENT VIENT AVANT L'ÉTAT, et non en note de bas d'écran :
+        une console sans authentification se juge avant de la lancer, pas
+        après. Ce qui atteint son port lit tout l'inventaire et déclenche ses
+        gestes.
+        """
+        moteur = self._setops_moteur()
+        if not moteur:
+            return
+        print("\n🤖 " + t(console.GESTE))
+        self._setops_bandeau(moteur)
+        self._setops_dire_sans_serrure()
+        mot, pid, suivi = self._setops_console_etat()
+        marque, dit = self.CONSOLES[mot]
+        adresse = console.url()
+        print(f"\n  {marque} {adresse}  {t(dit)}")
+        if mot == console.VIVANTE:
+            print(f"      {t('process group')}: {pid}")
+        self._setops_gestes_console(moteur, mot, suivi)
+
+    def _setops_dire_sans_serrure(self):
+        """Ce que la console laisse faire à qui l'atteint, et par où l'atteindre.
+
+        La redirection SSH n'est pas un pis-aller : elle REMET
+        l'authentification à SSH, là où lier largement la supprimerait.
+        """
+        print(
+            "\n  ⚠ "
+            + t(
+                "This console has NO authentication: whatever reaches its port"
+                " reads the whole inventory and triggers its gestures."
+            )
+        )
+        hote, en_ssh = self._qemu_self_address()
+        print(
+            "    "
+            + t("To reach it from elsewhere, forward the port over SSH:")
+        )
+        print("      " + console.redirection(hote, os.environ.get("USER", "")))
+        if not en_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+
+    def _setops_gestes_console(self, moteur, mot, suivi):
+        """Ce que l'écran offre, selon ce qu'il a mesuré.
+
+        Rien n'est offert sur un doute ni sur un port tenu par un autre :
+        lancer une seconde console lui disputerait le port, et arrêter ce que
+        todo n'a pas lancé porterait sur le travail de quelqu'un d'autre.
+        """
+        if mot == console.ARRETEE:
+            geste, invite = "lancer", t("Start it")
+        elif mot == console.VIVANTE:
+            geste, invite = "arreter", t("Stop it")
+        else:
+            return
+        print(f"\n  [1] {invite}")
+        brut = input(t("Which gesture? (number, empty to leave): ")).strip()
+        if brut != "1":
+            return
+        if geste == "lancer":
+            self._setops_console_lancer(moteur)
+        else:
+            self._setops_console_arreter(suivi)
+
+    def _setops_console_lancer(self, moteur):
+        """Lance la console détachée, puis VÉRIFIE qu'elle écoute.
+
+        `--hote` n'est jamais passé : le moteur lie 127.0.0.1 par défaut, et
+        c'est ce défaut qu'on laisse faire. Un détaché échoue en silence, donc
+        le port est sondé après coup — sans quoi l'écran annoncerait une
+        console qui n'a jamais démarré, et renverrait vers une page morte.
+        """
+        argv = runner.cible(
+            os.path.relpath(moteur, RACINE), console.CIBLE, (), False
+        )
+        journal = console.chemin_journal()
+        print(f"\n▶ {runner.cite(argv)}")
+        pid = runner.detacher(
+            argv,
+            env=ansible_env.environnement(RACINE, moteur, runner.base()),
+            cwd=RACINE,
+            journal=journal,
+        )
+        if pid is None:
+            print(f"  ✗ {t('the gesture could not run at all')}")
+            return
+        console.ecrit_suivi(console.chemin_suivi(), pid, console.PORT)
+        debout = console.attendre(
+            lambda: console.port_occupe(console.ADRESSE, console.PORT),
+            True,
+            pause=lambda: time.sleep(0.2),
+        )
+        if debout:
+            print(f"  ✅ {console.url()}  ({t('process group')}: {pid})")
+            return
+        print(f"  ✗ {t('it did not come up; the log says why:')} {journal}")
+
+    def _setops_console_arreter(self, suivi):
+        """Arrête la console, et vérifie que le port est rendu.
+
+        Le signal va au GROUPE : la recette `make` et le serveur qu'elle lance
+        y sont tous les deux, et signaler le seul `make` laisserait le serveur
+        tenir le port. La ligne de commande du PID est relue JUSTE AVANT — un PID
+        se recycle, et le groupe visé serait celui d'un autre travail.
+        """
+        portee = (
+            console.tenue(console.ligne_de_commande(suivi.pid))
+            if suivi is not None
+            else None
+        )
+        rendu = console.arreter(
+            suivi, portee, lambda pid: os.killpg(pid, signal.SIGTERM)
+        )
+        if rendu != console.ARRET_FAIT:
+            print(f"  ✗ {t(self.ARRETS[rendu])}")
+            return
+        libre = console.attendre(
+            lambda: console.port_occupe(console.ADRESSE, console.PORT),
+            False,
+            pause=lambda: time.sleep(0.2),
+        )
+        if libre is False:
+            console.oublie(console.chemin_suivi())
+            print(f"  ✅ {t(self.ARRETS[console.ARRET_FAIT])}")
+            return
+        print(f"  ✗ {t(self.ARRETS[console.ARRET_TENACE])} ({suivi.pid})")
