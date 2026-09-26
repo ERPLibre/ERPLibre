@@ -819,6 +819,37 @@ class TestLeTableauDesVoutes(CasDeVoute):
         self.assertIn(self.chemin, vu)
 
     def test_the_three_states_do_not_read_alike(self):
+        """Comparées ENTRE ELLES, et non chacune à la table qui les a
+        produites. Donner à une absence VOULUE la marque de la panne — ce que
+        ce module existe pour empêcher — laissait tout le lot au vert : chaque
+        entrée se retrouvait bien à l'écran, puisqu'on la cherchait telle que
+        la table la donnait."""
+        vues = [self.todo.VOUTES[e] for e in vaults.ETATS]
+        self.assertEqual(len(vaults.ETATS), len(set(vues)))
+        self.assertEqual(
+            len(vaults.ETATS), len({marque for marque, _dit in vues})
+        )
+        self.assertNotEqual(
+            self.todo.VOUTES[vaults.ABSENTE_BLOQUANTE],
+            self.todo.VOUTES[vaults.SANS_CLE],
+        )
+
+    def test_a_wanted_absence_never_wears_the_mark_of_a_fault(self):
+        """Sur ce qui est IMPRIMÉ : la ligne d'une clé volontairement absente
+        ne doit pas porter la marque de celle qui bloque."""
+        self.voutes = self.bloquee
+        marque_panne = self.todo.VOUTES[vaults.ABSENTE_BLOQUANTE][0]
+        marque_voulue = self.todo.VOUTES[vaults.SANS_CLE][0]
+        lignes = [
+            ligne
+            for ligne in self.ecran().splitlines()
+            if "Terrain-Nord" in ligne
+        ]
+        self.assertEqual(1, len(lignes))
+        self.assertIn(marque_voulue, lignes[0])
+        self.assertNotIn(marque_panne, lignes[0])
+
+    def test_each_state_reaches_the_screen_with_its_own_words(self):
         self.voutes = self.bloquee
         vu = self.ecran()
         for etat in (vaults.ABSENTE_BLOQUANTE, vaults.SANS_CLE):
@@ -1138,6 +1169,16 @@ class TestCeQueLEcranOffre(CasDeConsole):
         with patch.object(console, "tenue", lambda *_a, **_k: True):
             self.ecran(["1"], ports=(False,))
         self.assertEqual([4242], self.signales)
+
+    def test_a_silent_console_of_ours_can_still_be_stopped(self):
+        """Le processus est le NÔTRE : l'arrêter ne touche que notre groupe.
+        Ne rien offrir laisserait un `make` détaché sans console, que todo
+        refuserait ensuite d'arrêter."""
+        self.mesure = (console.MUETTE, 4242, self.SUIVI)
+        with patch.object(console, "tenue", lambda *_a, **_k: True):
+            vu = self.ecran(["1"], ports=(False,))
+        self.assertEqual([4242], self.signales)
+        self.assertIn(todo_i18n.t("Stop it"), vu)
 
     def test_a_port_held_by_someone_else_offers_nothing(self):
         """Arrêter ce que todo n'a pas lancé porterait sur le travail de

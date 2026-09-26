@@ -374,7 +374,9 @@ is reassigned: nothing is signalled without rereading that PID's command line.
 - `situation(suivi, portee, occupe)`: (state, pid) from those three measured
   facts. A missing fact gives `INCONNU` rather than a guess: on a doubt the
   screen offers neither to start — two consoles would fight over the port — nor
-  to stop;
+  to stop. Our own process alive while nothing answers is `MUETTE`, not
+  running: a detached launch fails in silence, and the recipe can outlive the
+  server it started;
 - `url(adresse, port)`, `redirection(hote, utilisateur, port)`: the address to
   show, and the forward that keeps both ends on the loopback;
 - `arreter(suivi, portee, signal_au_groupe)`: stops it, and NOTHING is killed

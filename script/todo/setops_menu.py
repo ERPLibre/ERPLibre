@@ -915,6 +915,10 @@ class SetopsMenuMixin:
     CONSOLES = {
         console.ARRETEE: ("○", "not running here"),
         console.VIVANTE: ("●", "running, started from here"),
+        console.MUETTE: (
+            "◐",
+            "started from here, but nothing answers on the port",
+        ),
         console.TENU: (
             "⚠",
             "something todo did not start holds that port; not stopped here",
@@ -1014,7 +1018,10 @@ class SetopsMenuMixin:
         """
         if mot == console.ARRETEE:
             geste, invite = "lancer", t("Start it")
-        elif mot == console.VIVANTE:
+        elif mot in (console.VIVANTE, console.MUETTE):
+            # MUETTE aussi : le processus est le NÔTRE, donc l'arrêter ne
+            # touche que notre groupe. Ne rien offrir laisserait un `make`
+            # détaché sans console, que todo refuserait ensuite d'arrêter.
             geste, invite = "arreter", t("Stop it")
         else:
             return

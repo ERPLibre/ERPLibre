@@ -379,7 +379,9 @@ is reassigned: nothing is signalled without rereading that PID's command line.
 - `situation(suivi, portee, occupe)`: (state, pid) from those three measured
   facts. A missing fact gives `INCONNU` rather than a guess: on a doubt the
   screen offers neither to start — two consoles would fight over the port — nor
-  to stop;
+  to stop. Our own process alive while nothing answers is `MUETTE`, not
+  running: a detached launch fails in silence, and the recipe can outlive the
+  server it started;
 - `url(adresse, port)`, `redirection(hote, utilisateur, port)`: the address to
   show, and the forward that keeps both ends on the loopback;
 - `arreter(suivi, portee, signal_au_groupe)`: stops it, and NOTHING is killed
@@ -778,7 +780,9 @@ réattribue : rien n'est signalé sans avoir relu la ligne de commande de ce PID
 - `situation(suivi, portee, occupe)` : (état, pid) depuis ces trois faits
   mesurés. Un fait manquant rend `INCONNU` plutôt qu'une supposition : sur un
   doute, l'écran n'offre ni de lancer — deux consoles se disputeraient le
-  port — ni d'arrêter ;
+  port — ni d'arrêter. Notre propre processus vivant sans que rien ne réponde
+  est `MUETTE`, et non debout : un détaché échoue en silence, et la recette
+  peut survivre au serveur qu'elle a lancé ;
 - `url(adresse, port)`, `redirection(hote, utilisateur, port)` : l'adresse à
   montrer, et la redirection qui garde les deux bouts sur la boucle locale ;
 - `arreter(suivi, portee, signal_au_groupe)` : l'arrête, et RIEN n'est tué sans

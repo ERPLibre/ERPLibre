@@ -386,7 +386,9 @@ réattribue : rien n'est signalé sans avoir relu la ligne de commande de ce PID
 - `situation(suivi, portee, occupe)` : (état, pid) depuis ces trois faits
   mesurés. Un fait manquant rend `INCONNU` plutôt qu'une supposition : sur un
   doute, l'écran n'offre ni de lancer — deux consoles se disputeraient le
-  port — ni d'arrêter ;
+  port — ni d'arrêter. Notre propre processus vivant sans que rien ne réponde
+  est `MUETTE`, et non debout : un détaché échoue en silence, et la recette
+  peut survivre au serveur qu'elle a lancé ;
 - `url(adresse, port)`, `redirection(hote, utilisateur, port)` : l'adresse à
   montrer, et la redirection qui garde les deux bouts sur la boucle locale ;
 - `arreter(suivi, portee, signal_au_groupe)` : l'arrête, et RIEN n'est tué sans

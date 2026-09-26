@@ -17790,6 +17790,10 @@ TRANSLATIONS = {
         "fr": "en cours, lancée d'ici",
         "en": "running, started from here",
     },
+    "started from here, but nothing answers on the port": {
+        "fr": "lancée d'ici, mais rien ne répond sur le port",
+        "en": "started from here, but nothing answers on the port",
+    },
     "something todo did not start holds that port; not stopped here": {
         "fr": (
             "ce port est tenu par autre chose que todo n'a pas lancé ; il ne"
