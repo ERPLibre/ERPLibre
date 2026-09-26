@@ -229,6 +229,22 @@ class TestLEtatDUnInvite(unittest.TestCase):
             C.etat(invite(142, "ancienne", C.POOL_ANCIEN), self.devis),
         )
 
+    def test_the_old_world_name_loses_to_the_plan_that_claims_it(self):
+        """C'EST LE PLAN QUI TRANCHE, PAS LE NOM. Un veto sur le nom faisait
+        revenir LIBRE une VM que le plan revendiquait, et todo s'autorisait à
+        l'effacer. Le nom ne perd rien de son sens : un plan de grappe de
+        référence ne déclare pas ce pool, et la VM reste libre — c'est
+        l'épreuve d'à côté."""
+        devis = C.lit_devis(
+            '{"pools": [{"pool": "' + C.POOL_ANCIEN + '", "membres":'
+            ' [{"vmid": 100100101, "nom": "du-plan"}]}]}'
+        )
+        self.assertIn(C.POOL_ANCIEN, devis.pools)
+        self.assertEqual(
+            (C.GERE, C.POOL_ANCIEN),
+            C.etat(invite(142, "etrangere", C.POOL_ANCIEN), devis),
+        )
+
     def test_without_a_plan_nothing_is_free(self):
         """Sans plan, « libre » ne se prouve pas : même un VMID court est
         inconnu, et l'appelant refuse."""

@@ -15,10 +15,17 @@ de neuf chiffres — VLAN sur quatre, hôte sur trois, rang sur deux. Le pool di
 l'appartenance déclarée ; la forme du VMID rattrape une VM qu'on a sortie de
 son pool à la main.
 
-LE POOL NOMMÉ « Set-OPS » N'EST PAS UN MARQUEUR. Une grappe de référence en
-porte un, qui regroupe des VM ANTÉRIEURES au moteur ; le moteur n'y verse
-rien et n'y touche pas. Le confondre avec un pool du moteur ferait refuser
-des gestes sur des machines dont todo est légitimement le maître.
+LE POOL NOMMÉ « Set-OPS » N'EST PAS UN MARQUEUR EN SOI. Une grappe de référence
+en porte un, qui regroupe des VM ANTÉRIEURES au moteur ; le moteur n'y verse
+rien et n'y touche pas. Le confondre avec un pool du moteur ferait refuser des
+gestes sur des machines dont todo est légitimement le maître.
+
+MAIS C'EST LE PLAN QUI TRANCHE, PAS LE NOM. Un pool que le devis DÉCLARE est
+géré, quel que soit son nom : le plan le revendique, donc il a un maître. Le nom
+de l'ancien monde n'est donc l'objet d'aucun veto — il tombe simplement sous la
+règle générale, puisque le plan d'une grappe de référence ne le déclare pas. Un
+veto sur le nom faisait revenir LIBRE une VM que le plan revendiquait, et todo
+s'autorisait à l'effacer.
 
 FERMÉ PAR DÉFAUT. Quand la grappe ou le plan ne se lisent pas, l'état rendu
 est `INCONNU`, et l'appelant refuse : sans preuve d'appartenance, aucun geste.
@@ -40,7 +47,10 @@ VMID_CHIFFRES = 9
 # vivent, et le nom reste le même d'un hébergeur à l'autre.
 POOL_SITE = "Site-OPS"
 
-# L'ANCIEN MONDE, à ne pas prendre pour un marqueur. Voir l'en-tête.
+# L'ANCIEN MONDE. Nommé ici pour que l'en-tête ait un référent et que les
+# épreuves puissent bâtir le cas ; AUCUNE décision ne le regarde. Ce qui décide
+# est la déclaration du plan, et un plan de grappe de référence ne le déclare
+# pas. Voir l'en-tête.
 POOL_ANCIEN = "Set-OPS"
 
 # Le vocabulaire des états, et il est CLOS. Quatre mots, parce que « libre »
@@ -180,7 +190,7 @@ def etat(invite, devis):
     revendique = devis.proprietaire.get(invite.vmid)
     if revendique:
         return GERE, revendique[0]
-    if pool and pool != POOL_ANCIEN and pool in devis.pools:
+    if pool and pool in devis.pools:
         return GERE, pool
     if vmid_derive(invite.vmid):
         return DERIVE, ""
