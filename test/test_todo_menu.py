@@ -262,11 +262,10 @@ class MenuCoherence:
 
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Le menu Proxmox offre ce qu'offre son vis-à-vis QEMU/KVM.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Il change l'état d'une VM (QEMU/KVM le fait dans « Lister les VM ») et
+    accepte les commandes ajoutées par todo.json.
     """
 
     @classmethod
