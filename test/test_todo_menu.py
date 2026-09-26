@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from script.setops import console, state  # noqa: E402
+from script.setops import console, engine, state  # noqa: E402
 from script.setops import runbooks as registre  # noqa: E402
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
@@ -989,6 +989,7 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
     MINIMUM = 0
 
     CONSTANTES = {
+        "engine.GESTE_EPINGLE": engine.GESTE_EPINGLE,
         "state.GESTE_ANSIBLE": state.GESTE_ANSIBLE,
         "state.GESTE_VOUTES": state.GESTE_VOUTES,
         "console.GESTE": console.GESTE,
@@ -1007,6 +1008,7 @@ class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
     EXPECTED = {
         "Set-OPS - State of the integration": "_setops_state",
         "Set-OPS - Ansible environment": "_setops_ansible_env",
+        "Set-OPS - Advance the pin": "_setops_epingle",
         "Set-OPS - Ecosystems discovered": "_setops_ecosystems",
         "Set-OPS - Switch the active ecosystem": "_setops_ecosystem_use",
         "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",

@@ -41,6 +41,12 @@ import xml.etree.ElementTree as ET
 from typing import NamedTuple
 
 MANIFEST = os.path.join("manifest", "git_manifest_setops.xml")
+
+# Le nom de l'entrée de menu qui fait avancer l'épingle. Aucune ligne de l'écran
+# d'état ne le nomme : cette ligne veut le CLONE à l'épingle, pas l'épingle à la
+# pointe de la forge. Ce sont deux soucis différents, et avancer l'épingle est un
+# geste offert, non le remède d'un constat.
+GESTE_EPINGLE = "Set-OPS - Advance the pin (what the forge carries)"
 GROUP = "setops"
 
 # Relations entre le HEAD du clone et l'épingle. Le vocabulaire est clos.

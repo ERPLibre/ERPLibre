@@ -17761,6 +17761,90 @@ TRANSLATIONS = {
         "fr": "le fichier n'a pas pu être écrit",
         "en": "the file could not be written",
     },
+    "Set-OPS - Advance the pin (what the forge carries)": {
+        "fr": "📌 Set-OPS - Faire avancer l'épingle (ce que la forge porte)",
+        "en": "📌 Set-OPS - Advance the pin (what the forge carries)",
+    },
+    "pinned": {
+        "fr": "épinglé",
+        "en": "pinned",
+    },
+    "the clone against the pin": {
+        "fr": "le clone face à l'épingle",
+        "en": "the clone against the pin",
+    },
+    "the manifest declares no engine": {
+        "fr": "le manifeste ne déclare aucun moteur",
+        "en": "the manifest declares no engine",
+    },
+    "Ask the forge what it carries (network; writes nothing here)": {
+        "fr": "Demander à la forge ce qu'elle porte (réseau ; n'écrit rien ici)",
+        "en": "Ask the forge what it carries (network; writes nothing here)",
+    },
+    "the clone declares no remote": {
+        "fr": "le clone ne déclare aucun remote",
+        "en": "the clone declares no remote",
+    },
+    "the forge carries": {
+        "fr": "la forge porte",
+        "en": "the forge carries",
+    },
+    "could not ask the forge": {
+        "fr": "n'a pas pu demander à la forge",
+        "en": "could not ask the forge",
+    },
+    "that branch is NO LONGER on the forge: a fresh station cannot fetch this pin": {
+        "fr": "cette branche n'est PLUS sur la forge : un poste neuf ne peut pas rapatrier cette épingle",
+        "en": "that branch is NO LONGER on the forge: a fresh station cannot fetch this pin",
+    },
+    "no remote answered; the lag is unknown": {
+        "fr": "aucun remote n'a répondu ; le retard est inconnu",
+        "en": "no remote answered; the lag is unknown",
+    },
+    "the pin is already the forge tip": {
+        "fr": "l'épingle est déjà la pointe de la forge",
+        "en": "the pin is already the forge tip",
+    },
+    "bringing the objects down to read what separates them": {
+        "fr": "rapatriement des objets pour lire ce qui les sépare",
+        "en": "bringing the objects down to read what separates them",
+    },
+    "the objects could not be fetched": {
+        "fr": "les objets n'ont pas pu être rapatriés",
+        "en": "the objects could not be fetched",
+    },
+    "the range between the two could not be read": {
+        "fr": "la plage entre les deux n'a pas pu être lue",
+        "en": "the range between the two could not be read",
+    },
+    "{n} commit(s) the pin would gain": {
+        "fr": "{n} commit(s) que l'épingle gagnerait",
+        "en": "{n} commit(s) the pin would gain",
+    },
+    "This rewrites one attribute of:": {
+        "fr": "Ceci réécrit un attribut de :",
+        "en": "This rewrites one attribute of:",
+    },
+    "The commit stays yours; nothing is committed here.": {
+        "fr": "Le commit reste le tien ; rien n'est commité ici.",
+        "en": "The commit stays yours; nothing is committed here.",
+    },
+    "Advance the pin to {sha}? (y/N): ": {
+        "fr": "Faire avancer l'épingle vers {sha} ? (o/N) : ",
+        "en": "Advance the pin to {sha}? (y/N): ",
+    },
+    "the manifest does not carry exactly one revision": {
+        "fr": "le manifeste ne porte pas exactement une révision",
+        "en": "the manifest does not carry exactly one revision",
+    },
+    "the pin now reads": {
+        "fr": "l'épingle porte désormais",
+        "en": "the pin now reads",
+    },
+    "read the diff, then commit it yourself.": {
+        "fr": "relis le diff, puis commite-le toi-même.",
+        "en": "read the diff, then commit it yourself.",
+    },
     "Web console": {
         "fr": "Console web",
         "en": "Web console",

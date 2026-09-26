@@ -17,6 +17,7 @@ import builtins
 import io
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
@@ -1433,8 +1434,8 @@ class CasDePorte(CasDEcosysteme):
         écrit.
 
         Rend l'écran. Plusieurs épreuves ne le lisent pas : elles mesurent
-        l'EFFET — ce qui est parti, ce qui a été signalé — et le texte ne leur
-        apprendrait rien de plus.
+        l'EFFET — quelle cible part, quel groupe reçoit le signal — et le texte
+        ne leur apprendrait rien de plus.
 
         Le bouchon de la classe mère avale l'invite passée à `input`, si bien
         qu'un écran pourrait poser une question sans texte sans qu'une épreuve
@@ -1662,6 +1663,190 @@ class TestUneSaisieCoupeeNeTuePasTodo(unittest.TestCase):
                 ):
                     nus.append((noeud.name, dedans.lineno))
         self.assertEqual([], nus)
+
+
+# Un manifeste de banc, à la forme que `parse_manifest` attend. Le dépôt et la
+# forge nommés sont inventés et n'existent nulle part ailleurs.
+MANIFESTE_BANC = (
+    '<?xml version="1.0" encoding="UTF-8" ?>\n<manifest>\n'
+    '  <remote name="forge-fictive" fetch="https://forge.fictive.invalid/F/" />\n'
+    "  <!-- la raison de cette épingle, en toutes lettres -->\n"
+    '  <project name="Moteur-Fictif.git" path="private/repo/Moteur-Fictif"\n'
+    '    remote="forge-fictive" revision="' + "a" * 40 + '"\n'
+    '    upstream="principale" groups="setops" />\n'
+    "</manifest>\n"
+)
+
+
+class CasDEpingle(CasDeMenu):
+    """L'écran de l'épingle, la forge POSÉE.
+
+    LA RACINE EST DÉPLACÉE dans un dossier temporaire : sans cela, l'épreuve
+    réécrirait le manifeste du vrai dépôt.
+    """
+
+    POINTE = "b" * 40
+
+    def setUp(self):
+        super().setUp()
+        self.racine = tempfile.mkdtemp(prefix="setops-epingle-banc-")
+        self.addCleanup(shutil.rmtree, self.racine, ignore_errors=True)
+        self.moteur = os.path.join(self.racine, "private/repo/Moteur-Fictif")
+        os.makedirs(self.moteur)
+        self.manifeste = os.path.join(self.racine, engine.MANIFEST)
+        os.makedirs(os.path.dirname(self.manifeste))
+        with open(self.manifeste, "w", encoding="utf-8") as tenu:
+            tenu.write(MANIFESTE_BANC)
+        self.sondes = []
+        self.rapatries = []
+        self.remotes = ("forge-https", "forge-ssh")
+        self.reponses = {}
+        self.commits = ()
+
+    def _pointe(self, _moteur, remote, branche):
+        self.sondes.append((remote, branche))
+        return self.reponses.get(remote, self.POINTE)
+
+    def _rapatrier(self, _moteur, remote, branche):
+        self.rapatries.append((remote, branche))
+        return True
+
+    def ecran(self, saisies=()):
+        file = list(saisies)
+        vrai = builtins.input
+        builtins.input = lambda invite="", *a, **k: (
+            print(invite, end=""),
+            file.pop(0) if file else "",
+        )[1]
+        vu = io.StringIO()
+        try:
+            with (
+                patch.object(setops_menu, "RACINE", self.racine),
+                patch.object(engine, "remotes", lambda _m: self.remotes),
+                patch.object(engine, "pointe_distante", self._pointe),
+                patch.object(engine, "rapatrier", self._rapatrier),
+                patch.object(
+                    engine, "journal", lambda _m, _a, _b: self.commits
+                ),
+                patch.object(
+                    engine,
+                    "relation_to_pin",
+                    lambda _m, _s: (engine.EGAL, 0),
+                ),
+                redirect_stdout(vu),
+            ):
+                self.todo._setops_epingle()
+        finally:
+            builtins.input = vrai
+        return vu.getvalue()
+
+    def revision_posee(self):
+        with open(self.manifeste, encoding="utf-8") as tenu:
+            return engine.parse_manifest(tenu.read()).revision
+
+
+class TestLaSondeEstUnGeste(CasDEpingle):
+    def test_opening_the_screen_touches_no_network(self):
+        """Un écran qui parlerait au réseau en s'ouvrant le ferait à chaque
+        passage."""
+        self.ecran([""])
+        self.assertEqual([], self.sondes)
+
+    def test_the_pin_and_its_branch_are_shown_without_asking_anyone(self):
+        vu = self.ecran([""])
+        self.assertIn("a" * 40, vu)
+        self.assertIn("principale", vu)
+
+    def test_asking_reaches_the_forge(self):
+        """Le contrôle positif : sans lui, un écran qui ne sonde jamais
+        passerait l'épreuve ci-dessus."""
+        self.ecran(["1", "n"])
+        self.assertEqual([("forge-https", "principale")], self.sondes)
+
+
+class TestUneBrancheEffaceeSeDit(CasDEpingle):
+    """LE CAS QUI COÛTE CHER, et il est silencieux autrement : une branche de
+    côté s'efface après sa fusion, et l'épingle qui la visait devient
+    irrapatriable — pendant que ce poste, déjà cloné, continue de marcher."""
+
+    def test_a_branch_gone_from_the_forge_is_said_and_stops_there(self):
+        self.reponses = {"forge-https": ""}
+        vu = self.ecran(["1", "o"])
+        self.assertIn(todo_i18n.t(self.todo.FORGE["effacee"]), vu)
+        self.assertEqual([], self.rapatries)
+        self.assertEqual("a" * 40, self.revision_posee())
+
+    def test_it_is_not_confused_with_a_forge_that_could_not_answer(self):
+        """« » dit « la forge a répondu, la branche n'y est pas » ; None dit
+        « on n'a pas pu demander ». Confondus, on chercherait une panne de
+        réseau là où une branche est simplement absente."""
+        self.reponses = {"forge-https": None, "forge-ssh": None}
+        vu = self.ecran(["1"])
+        self.assertNotIn(todo_i18n.t(self.todo.FORGE["effacee"]), vu)
+        self.assertIn(
+            todo_i18n.t("no remote answered; the lag is unknown"), vu
+        )
+
+
+class TestLesDeuxRemotesNeSeValentPas(CasDEpingle):
+    """L'un passe par HTTPS, l'autre par ssh, et un seul répond sans
+    identifiants."""
+
+    def test_a_silent_remote_is_skipped_and_the_next_is_tried(self):
+        self.reponses = {"forge-https": None}
+        vu = self.ecran(["1", "n"])
+        self.assertEqual(
+            [("forge-https", "principale"), ("forge-ssh", "principale")],
+            self.sondes,
+        )
+        self.assertIn("forge-ssh", vu)
+
+    def test_no_remote_at_all_is_said(self):
+        self.remotes = ()
+        vu = self.ecran(["1"])
+        self.assertIn(todo_i18n.t("the clone declares no remote"), vu)
+        self.assertEqual([], self.sondes)
+
+
+class TestAvancerLEpingle(CasDEpingle):
+    def setUp(self):
+        super().setUp()
+        self.commits = (("bbbbbbb", "un commit de banc"),)
+
+    def test_the_pin_already_at_the_tip_rewrites_nothing(self):
+        self.reponses = {"forge-https": "a" * 40}
+        vu = self.ecran(["1"])
+        self.assertIn(todo_i18n.t("the pin is already the forge tip"), vu)
+        self.assertEqual([], self.rapatries)
+
+    def test_what_the_pin_would_gain_is_shown_before_the_question(self):
+        vu = self.ecran(["1", "n"])
+        self.assertIn("un commit de banc", vu)
+        self.assertIn([("forge-https", "principale")][0][0], vu)
+
+    def test_saying_no_leaves_the_manifest_untouched(self):
+        self.ecran(["1", "n"])
+        self.assertEqual("a" * 40, self.revision_posee())
+
+    def test_saying_yes_rewrites_only_the_revision(self):
+        avant = open(self.manifeste, encoding="utf-8").read()
+        self.ecran(["1", "o"])
+        apres = open(self.manifeste, encoding="utf-8").read()
+        self.assertEqual(self.POINTE, self.revision_posee())
+        self.assertEqual(avant.replace("a" * 40, self.POINTE), apres)
+
+    def test_the_comment_of_the_manifest_survives(self):
+        """Les commentaires portent la RAISON de l'épingle."""
+        self.ecran(["1", "o"])
+        with open(self.manifeste, encoding="utf-8") as tenu:
+            self.assertIn("la raison de cette épingle", tenu.read())
+
+    def test_the_screen_says_the_commit_stays_the_operator_s(self):
+        vu = self.ecran(["1", "n"])
+        self.assertIn(
+            todo_i18n.t("The commit stays yours; nothing is committed here."),
+            vu,
+        )
 
 
 if __name__ == "__main__":

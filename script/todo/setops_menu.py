@@ -81,6 +81,10 @@ class SetopsMenuMixin:
                 "prompt_description": t(state.GESTE_ANSIBLE),
                 "method": "_setops_ansible_env",
             },
+            {
+                "prompt_description": t(engine.GESTE_EPINGLE),
+                "method": "_setops_epingle",
+            },
             {"section": t("Ecosystems")},
             {
                 "prompt_description": t(
@@ -1224,3 +1228,141 @@ class SetopsMenuMixin:
             print(f"      {etape.libelle}")
         if etape.duree:
             print(f"      {t('takes')} {etape.duree}")
+
+    # --- L'épingle -----------------------------------------------------------
+
+    # Ce qu'une réponse de la forge dit à l'écran. Vocabulaire CLOS : trois
+    # réponses, parce que la troisième est celle qui coûte cher.
+    FORGE = {
+        "pointe": "the forge carries",
+        "effacee": (
+            "that branch is NO LONGER on the forge: a fresh station cannot"
+            " fetch this pin"
+        ),
+        "muette": "could not ask the forge",
+    }
+
+    def _setops_epingle(self):
+        """Faire avancer l'épingle, et d'abord savoir ce que la forge porte.
+
+        LA SONDE EST UN GESTE, pas un effet de bord de l'affichage : elle sort
+        de la machine, et un écran qui parlerait au réseau en s'ouvrant le
+        ferait à chaque passage.
+
+        LE COMMIT RESTE CELUI DE L'EXPLOITANT. Cet écran réécrit un attribut du
+        manifeste et s'arrête là : ce qui part dans l'historique se relit et se
+        signe ailleurs.
+        """
+        decl = engine.declaration(RACINE)
+        if decl is None or not decl.path:
+            print(f"  ✗ {t('the manifest declares no engine')}")
+            return
+        moteur = os.path.join(RACINE, decl.path)
+        print("\n🤖 " + t(engine.GESTE_EPINGLE))
+        print(f"  {t('pinned')} : {decl.revision}")
+        print(f"  {t('branch')} : {decl.upstream or '?'}")
+        if not os.path.isdir(moteur):
+            print(
+                f"  ◐ {t('the engine is not here yet; see the state screen')}"
+            )
+            return
+        relation, ecart = engine.relation_to_pin(moteur, decl.revision)
+        print(f"  {t('the clone against the pin')} : {relation} ({ecart})")
+        print(
+            "\n  [1] "
+            + t("Ask the forge what it carries (network; writes nothing here)")
+        )
+        if (
+            saisir(t("Which gesture? (number, empty to leave): ")).strip()
+            != "1"
+        ):
+            return
+        self._setops_sonder_forge(moteur, decl)
+
+    def _setops_sonder_forge(self, moteur, decl):
+        """Interroge chaque remote jusqu'à une réponse, et dit laquelle a parlé.
+
+        LES DEUX REMOTES D'UNE MÊME FORGE ne se valent pas : l'un passe par
+        HTTPS, l'autre par ssh, et un seul répond sans identifiants. Les essayer
+        est la seule façon de ne pas dépendre de celui qui se tait.
+        """
+        noms = engine.remotes(moteur)
+        if not noms:
+            print(f"  ✗ {t('the clone declares no remote')}")
+            return
+        for nom in noms:
+            pointe = engine.pointe_distante(moteur, nom, decl.upstream)
+            if pointe is None:
+                print(f"  ? {nom} : {t(self.FORGE['muette'])}")
+                continue
+            if not pointe:
+                # LE CAS QUI COÛTE CHER, et il est silencieux autrement : une
+                # branche de côté s'efface après sa fusion, et l'épingle qui la
+                # visait devient irrapatriable — pendant que ce poste, déjà
+                # cloné, continue de marcher sans rien dire.
+                print(f"  ⛔ {nom} : {t(self.FORGE['effacee'])}")
+                return
+            print(f"  ✔ {nom} : {t(self.FORGE['pointe'])} {pointe}")
+            self._setops_comparer_pointe(moteur, decl, nom, pointe)
+            return
+        print(f"  ✗ {t('no remote answered; the lag is unknown')}")
+
+    def _setops_comparer_pointe(self, moteur, decl, remote, pointe):
+        """Dit ce qui sépare l'épingle de la pointe, puis propose de l'avancer."""
+        if pointe == decl.revision:
+            print(f"  ✅ {t('the pin is already the forge tip')}")
+            return
+        print(
+            f"\n  {t('bringing the objects down to read what separates them')}"
+        )
+        if not engine.rapatrier(moteur, remote, decl.upstream):
+            print(f"  ✗ {t('the objects could not be fetched')}")
+            return
+        lus = engine.journal(moteur, decl.revision, pointe)
+        if lus is None:
+            print(f"  ✗ {t('the range between the two could not be read')}")
+            return
+        compte = t("{n} commit(s) the pin would gain").format(n=len(lus))
+        print(f"  {compte}")
+        for court, sujet in lus:
+            print(f"    {court} {sujet}")
+        self._setops_avancer_epingle(decl, pointe)
+
+    def _setops_avancer_epingle(self, decl, pointe):
+        """Réécrit la révision du manifeste, et s'arrête là.
+
+        UN SEUL ATTRIBUT CHANGE, commentaires compris : ils portent la raison de
+        l'épingle. Et le commit reste celui de l'exploitant — ce qui part dans
+        l'historique se relit avant d'être signé.
+        """
+        chemin = os.path.join(RACINE, engine.MANIFEST)
+        print(
+            f"\n  ⚠ {t('This rewrites one attribute of:')} {engine.MANIFEST}"
+        )
+        print(f"    {t('The commit stays yours; nothing is committed here.')}")
+        demande = t("Advance the pin to {sha}? (y/N): ").format(
+            sha=pointe[:12]
+        )
+        if not self._is_yes(saisir(demande)):
+            print(t("Cancelled."))
+            return
+        try:
+            with open(chemin, encoding="utf-8") as tenu:
+                avant = tenu.read()
+        except OSError as souci:
+            print(f"  ✗ {souci.strerror or souci}")
+            return
+        apres = engine.reecrire_revision(avant, pointe)
+        if apres is None:
+            print(
+                f"  ✗ {t('the manifest does not carry exactly one revision')}"
+            )
+            return
+        try:
+            with open(chemin, "w", encoding="utf-8") as tenu:
+                tenu.write(apres)
+        except OSError as souci:
+            print(f"  ✗ {souci.strerror or souci}")
+            return
+        print(f"  ✅ {t('the pin now reads')} {pointe}")
+        print(f"    {t('read the diff, then commit it yourself.')}")
