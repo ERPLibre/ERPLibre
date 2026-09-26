@@ -291,6 +291,34 @@ diraient tôt ou tard deux choses différentes du même geste.
   d'une séquence. Une liste dont on ignore ce qu'elle offre se parcourt en
   entier pour le découvrir.
 
+Onze de ces gestes ont aussi une porte dédiée au menu, et les onze mènent à UN
+seul écran : la porte nomme sa cible, et tout ce qui décrit le geste est relu au
+registre à chaque visite. Deux endroits qui décriraient le même geste diraient
+tôt ou tard deux choses différentes.
+
+- `methode(cible)` : le nom de la méthode qui ouvre la porte d'une cible,
+  DÉRIVÉ de la cible pour qu'aucune table n'ait à suivre ;
+- `trouve(runbooks, cible)` : l'étape que le registre déclare pour cette cible,
+  ou `None`. Une cible peut figurer dans plusieurs séquences ; tant que ces
+  déclarations sont identiques la porte en ouvre une sans ambiguïté, et si elles
+  divergent elle n'en ouvre aucune — une porte qui trancherait au hasard
+  lancerait parfois l'autre geste.
+
+`ECARTS` nomme ce que todo sait et que le registre ne dit PAS encore. Une
+épreuve rougit le jour où le registre le dit lui-même, et l'entrée doit alors
+partir : une table de dérogations que personne ne retire finit par masquer la
+correction en amont.
+
+- `ecart(cible)` : cet écart, ou un écart vide — jamais `None`, puisque
+  l'appelant lit toujours des champs ;
+- `interactif(etape)` : a-t-elle besoin du terminal de l'opérateur ? Capturée,
+  une cible qui pose des questions lit une entrée fermée, rend « EOF » et n'a
+  rien fait ;
+- `drapeau(etape)` : le nom d'un drapeau qui est un INTERRUPTEUR et non une
+  valeur. La recette le lit par `$(if $(NOM),…)` et GNU make tient toute chaîne
+  non vide pour vraie : « 0 » l'active aussi sûrement que « 1 ». Sa valeur ne se
+  demande jamais : la question est fermée, et « non » ne passe rien du tout.
+
 ## `vaults` — une clé absente n'est pas une faute
 
 Le moteur l'écrit en capitales : sur le runner d'un locataire, la clé du SITE

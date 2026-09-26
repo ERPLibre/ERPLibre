@@ -285,6 +285,31 @@ later say two different things about the same gesture.
 - `compte(runbook, ecosysteme, site)`: (drivable, total), shown at the head of
   a sequence. A list whose offer is unknown is walked in full to find out.
 
+Eleven of those gestures also have a dedicated door in the menu, and all eleven
+lead to ONE screen: the door names its target, and everything describing the
+gesture is read back from the registry at each visit. Two places describing the
+same gesture would sooner or later say two different things.
+
+- `methode(cible)`: the name of the method that opens a target's door, DERIVED
+  from the target so no table has to be kept in step;
+- `trouve(runbooks, cible)`: the step the registry declares for that target, or
+  `None`. A target may appear in several sequences; while those declarations are
+  identical the door opens one without ambiguity, and if they disagree it opens
+  none — a door choosing at random would sometimes launch the other gesture.
+
+`ECARTS` names what TODO knows and the registry does NOT say yet. A test reddens
+the day the registry says it itself, so the entry must then go: a table of
+exemptions that nobody retires ends up hiding the fix upstream.
+
+- `ecart(cible)`: that divergence, or an empty one — never `None`, since the
+  caller always reads fields;
+- `interactif(etape)`: does it need the operator's terminal? Captured, a target
+  that asks questions reads a closed input, answers "EOF" and has done nothing;
+- `drapeau(etape)`: the name of a flag that is a SWITCH, not a value. The recipe
+  reads it through `$(if $(NOM),…)` and GNU make holds any non-empty string
+  true, so "0" turns it on as surely as "1". Its value is never asked for: the
+  question is closed, and no is nothing at all.
+
 ## `vaults` — a missing key is not a fault
 
 The engine writes it in capitals: on a tenant runner the SITE key must be
