@@ -81,13 +81,6 @@ def load() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _save(data: dict) -> None:
-    try:
-        json_store.write(_path(), data)
-    except OSError:
-        pass
-
-
 def get(key: str, default=None):
     """Valeur d'une préférence : fichier, puis DEFAULTS, puis `default`."""
     if default is None:

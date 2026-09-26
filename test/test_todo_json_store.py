@@ -66,6 +66,20 @@ class TestJsonStore(unittest.TestCase):
         leftovers = [p.name for p in self.dir.iterdir() if p.suffix == ".tmp"]
         self.assertEqual(leftovers, [])
 
+    def test_symlinked_store_stays_a_symlink(self):
+        """Un magasin visé par un lien symbolique (dotfiles gérant
+        ~/.erplibre, par exemple) garde ce lien après écriture : `os.replace`
+        remplace l'inode de son second argument, jamais celui d'une cible
+        qu'on aurait dû suivre à la place."""
+        cible = self.dir / "reel.json"
+        lien = self.dir / "store_lie.json"
+        json_store.write(cible, {"n": 1})
+        lien.symlink_to(cible)
+        json_store.update(lien, lambda d: {**d, "n": d["n"] + 1}, dict)
+        self.assertTrue(lien.is_symlink())
+        self.assertEqual(os.readlink(lien), str(cible))
+        self.assertEqual(json.loads(cible.read_text()), {"n": 2})
+
     def test_two_processes_lose_no_increment(self):
         code = (
             "from pathlib import Path\n"
@@ -76,8 +90,12 @@ class TestJsonStore(unittest.TestCase):
             " dict)\n"
         )
         procs = [_spawn(code, self.dir) for _ in range(2)]
-        for proc in procs:
-            self.assertEqual(proc.wait(timeout=60), 0)
+        # Attend TOUS les processus avant de rien affirmer : une assertion
+        # sur le premier `wait` laisserait le second tourner sans jamais être
+        # attendu (zombie) si elle échouait.
+        codes = [proc.wait(timeout=60) for proc in procs]
+        for code in codes:
+            self.assertEqual(code, 0)
         self.assertEqual(json_store.read(self.path, dict), {"n": 600})
 
     def test_a_reader_never_sees_a_half_written_file(self):
@@ -120,8 +138,9 @@ class TestSharedTodoStores(unittest.TestCase):
             "    tt.record('TODO › B')\n"
         )
         procs = [_spawn(code, self.home) for _ in range(2)]
-        for proc in procs:
-            self.assertEqual(proc.wait(timeout=60), 0)
+        codes = [proc.wait(timeout=60) for proc in procs]
+        for code in codes:
+            self.assertEqual(code, 0)
         data = json.loads(
             (self.home / ".erplibre" / "todo_telemetry.json").read_text()
         )
@@ -142,8 +161,9 @@ class TestSharedTodoStores(unittest.TestCase):
             )
             for tag in ("a", "b")
         ]
-        for proc in procs:
-            self.assertEqual(proc.wait(timeout=60), 0)
+        codes = [proc.wait(timeout=60) for proc in procs]
+        for code in codes:
+            self.assertEqual(code, 0)
         data = json.loads(
             (self.home / ".erplibre" / "todo_prefs.json").read_text()
         )
@@ -156,6 +176,12 @@ class TestSharedTodoStores(unittest.TestCase):
         base.mkdir()
         (base / "todo_prefs.json").write_text("[1, 2]")
         (base / "todo_telemetry.json").write_text("[1, 2]")
+        # _LAST[0] dédupe les ré-affichages consécutifs d'un même menu : le
+        # remettre à sa valeur d'avant évite qu'un test suivant, dans le même
+        # processus, hérite silencieusement de « TODO › X ».
+        self.addCleanup(
+            todo_telemetry._LAST.__setitem__, 0, todo_telemetry._LAST[0]
+        )
         with patch.dict(os.environ, {"HOME": str(self.home)}):
             self.assertEqual(todo_prefs.load(), {})
             todo_prefs.set("k", 1)
@@ -176,6 +202,17 @@ class TestSharedTodoStores(unittest.TestCase):
     def test_a_read_only_directory_never_raises(self):
         from script.todo import todo_prefs, todo_telemetry
 
+        # Racine : chmod ne bloque plus rien, `set()` réussirait et
+        # l'assertion « défaut » échouerait pour une raison étrangère au
+        # module (un shell Docker de développement tourne souvent ainsi).
+        if os.geteuid() == 0:
+            self.skipTest(
+                "racine : les permissions de répertoire ne bloquent rien"
+            )
+
+        self.addCleanup(
+            todo_telemetry._LAST.__setitem__, 0, todo_telemetry._LAST[0]
+        )
         base = self.home / ".erplibre"
         base.mkdir()
         base.chmod(0o500)
