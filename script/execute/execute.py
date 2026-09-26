@@ -59,18 +59,29 @@ _SECRET_HEADER = re.compile(
 )
 # Une URL porte ses identifiants dans l'« userinfo » (RFC 3986 §3.2.1) :
 # « scheme://utilisateur:secret@hôte », que git, libpq et curl acceptent. On
-# masque ce qui suit le deux-points jusqu'à l'@ ; un port (« hôte:8069/ »)
-# n'est jamais suivi d'un @ et reste.
+# masque ce qui suit le deux-points jusqu'au DERNIER @ avant l'hôte (glouton) :
+# un mot de passe tapé avec un « @ » non encodé (la RFC l'interdit, ça arrive
+# quand même) reste ainsi caché en entier plutôt qu'à moitié. Il ne franchit
+# jamais un espace ni un « / », et un port (« hôte:8069/ ») n'est jamais suivi
+# d'un @ et reste. Le schéma est borné (32 caractères, RFC 3986 §3.1 l'autorise
+# largement) pour qu'une ligne sans « :// » ne fasse pas remonter un temps de
+# retour en arrière proportionnel à sa longueur.
 _SECRET_URL_PASSWORD = re.compile(
-    r"(?P<head>\b[a-z][a-z0-9+.-]*://[^\s/:@]*:)(?P<val>[^\s/@]+)(?=@)",
+    r"(?P<head>\b[a-z][a-z0-9+.-]{0,31}://[^\s/:@]*:)(?P<val>[^\s/]+)(?=@)",
     re.IGNORECASE,
 )
-# Un jeton peut aussi tenir lieu de nom d'utilisateur, sans deux-points. Il se
-# reconnaît à son préfixe (GitHub, GitLab) ou à défaut à sa longueur : 32
-# caractères opaques et plus. Un nom ordinaire (« git@ », « alice@ ») reste.
+# Un jeton peut aussi tenir lieu de nom d'utilisateur, sans deux-points, ou
+# être SUIVI d'un mot de passe (GitHub : « <jeton>:x-oauth-basic@hôte »). Le
+# lookahead accepte donc un « :quelquechose » optionnel avant l'@ ; sans lui,
+# la règle du mot de passe ci-dessus masque déjà ce second segment (il ne
+# reste que « :***@ ») et celle-ci ne voit alors plus jamais l'@ juste après
+# le jeton, qui passe en clair. Un jeton se reconnaît à son préfixe (GitHub,
+# GitLab) ou à défaut à sa longueur : 32 caractères opaques et plus. Un nom
+# ordinaire (« git@ », « alice@ ») reste.
 _SECRET_URL_TOKEN = re.compile(
-    r"(?P<head>\b[a-z][a-z0-9+.-]*://)"
-    r"(?P<val>(?:gh[pousr]_|github_pat_|glpat-)[\w-]+|[\w-]{32,})(?=@)",
+    r"(?P<head>\b[a-z][a-z0-9+.-]{0,31}://)"
+    r"(?P<val>(?:gh[pousr]_|github_pat_|glpat-)[\w-]+|[\w-]{32,})"
+    r"(?=(?::[^\s/@]*)?@)",
     re.IGNORECASE,
 )
 

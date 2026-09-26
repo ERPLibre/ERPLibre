@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import time
 import unittest
 from unittest.mock import patch
 
@@ -264,6 +265,30 @@ class TestRedactUrlCredentials(unittest.TestCase):
         sortie = redact_secrets(f"curl https://{jeton}@forge.example/api")
         self.assertNotIn(jeton, sortie)
 
+    def test_token_followed_by_a_password_is_masked(self):
+        """Forme GitHub : le jeton tient lieu de nom d'utilisateur ET porte
+        un mot de passe (« x-oauth-basic »). La règle du mot de passe masque
+        d'abord ce second segment ; celle du jeton doit encore reconnaître
+        l'@ à travers le « :*** » qui reste, sans quoi le jeton passe seul en
+        clair."""
+        jeton = "invente" + "T" * 33
+        sortie = redact_secrets(
+            f"git clone https://{jeton}:x-oauth-basic@forge.example/o/r.git"
+        )
+        self.assertNotIn(jeton, sortie)
+        self.assertNotIn("x-oauth-basic", sortie)
+        self.assertIn("https://***:***@forge.example/o/r.git", sortie)
+
+    def test_password_with_unencoded_at_sign_is_masked_in_full(self):
+        """Un « @ » non encodé dans le mot de passe (RFC 3986 l'interdit,
+        ça arrive) ne doit pas fuir sa moitié : le masquage s'étend, glouton,
+        jusqu'au DERNIER @ avant l'hôte."""
+        sortie = redact_secrets(
+            "psql postgresql://odoo:inventeP@ss@db.example/base"
+        )
+        self.assertNotIn("inventeP@ss", sortie)
+        self.assertIn("postgresql://odoo:***@db.example/base", sortie)
+
     def test_ordinary_user_survives(self):
         for commande in (
             "git clone ssh://git@forge.example/o/r.git",
@@ -278,9 +303,19 @@ class TestRedactUrlCredentials(unittest.TestCase):
         ):
             self.assertEqual(redact_secrets(commande), commande)
 
-    def test_output_line_is_masked_too(self):
+    def test_url_in_the_middle_of_a_printed_line_is_masked(self):
         ligne = "Cloning from https://u:inventeVWX@forge.example/o/r.git\n"
         self.assertNotIn("inventeVWX", redact_secrets(ligne))
+
+    def test_long_line_without_a_scheme_is_fast(self):
+        """Le schéma des deux motifs est borné (32 caractères) : une ligne
+        sans « :// » ne doit jamais coûter un temps proportionnel au CARRÉ de
+        sa longueur (chaque motif balayait auparavant tout le préfixe
+        `[a-z0-9+.-]*` avant d'abandonner à chaque position)."""
+        ligne = "a." * 10000
+        debut = time.monotonic()
+        redact_secrets(ligne)
+        self.assertLess(time.monotonic() - debut, 1.0)
 
 
 if __name__ == "__main__":
