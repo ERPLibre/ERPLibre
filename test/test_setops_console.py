@@ -158,6 +158,28 @@ class TestUnPidSeRecycle(unittest.TestCase):
         self.poser(4242, "un-autre-travail --qui-passait-par-la")
         self.assertFalse(C.tenue(C.ligne_de_commande(4242, self.procfs)))
 
+    def test_the_mark_is_a_word_of_the_line_and_not_a_substring(self):
+        """Cherchée par contenance, la marque se trouve dans une cible voisine,
+        dans le chemin d'un journal, et dans le `grep` d'un développeur — celui
+        que ces écrans invitent justement à retaper. Le signal partirait au
+        GROUPE de ce travail."""
+        for ligne in (
+            f"make {C.MARQUE}-legacy",
+            f"grep -rn {C.MARQUE} script/",
+            f"less /tmp/{C.MARQUE}.log",
+            f"python3 -m http.server  # remplace {C.MARQUE}",
+            f"vim docs/{C.MARQUE}.md",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertFalse(C.tenue(ligne), ligne)
+
+    def test_the_shape_todo_launches_is_recognised(self):
+        """Le contrôle positif : sans lui, un garde qui refuse tout passerait
+        les cinq refus ci-dessus."""
+        self.assertTrue(
+            C.tenue(f"make --no-print-directory -C moteur {C.MARQUE} X=1")
+        )
+
 
 class TestLEtatSeDecideSurDesFaits(unittest.TestCase):
     SUIVI = C.Suivi(pid=4242, port=8765)
@@ -165,6 +187,15 @@ class TestLEtatSeDecideSurDesFaits(unittest.TestCase):
     def test_our_own_console_is_alive(self):
         self.assertEqual(
             (C.VIVANTE, 4242), C.situation(self.SUIVI, True, True)
+        )
+
+    def test_our_process_alive_with_a_dead_port_is_not_running(self):
+        """UN DÉTACHÉ ÉCHOUE EN SILENCE : le `make` peut vivre pendant que le
+        serveur qu'il lance a planté ou n'a pas encore lié. Rendre VIVANTE
+        annonçait une page morte, et n'offrait plus de relancer. Cette
+        combinaison n'était éprouvée nulle part."""
+        self.assertEqual(
+            (C.MUETTE, 4242), C.situation(self.SUIVI, True, False)
         )
 
     def test_a_port_held_by_someone_else_is_not_ours(self):

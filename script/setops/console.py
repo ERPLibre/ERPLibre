@@ -62,9 +62,10 @@ JOURNAL = "setops-console.log"
 # occupe le port sans être à nous ne s'arrête pas d'ici.
 ARRETEE = "arretee"
 VIVANTE = "vivante"
+MUETTE = "muette"
 TENU = "tenu"
 INCONNU = "inconnu"
-ETATS = (ARRETEE, VIVANTE, TENU, INCONNU)
+ETATS = (ARRETEE, VIVANTE, MUETTE, TENU, INCONNU)
 
 # Ce qu'un arrêt a donné. Vocabulaire CLOS lui aussi.
 ARRET_FAIT = "arret-fait"
@@ -196,7 +197,13 @@ def tenue(ligne, marque=MARQUE):
         return None
     if ligne is ABSENT:
         return False
-    return marque in ligne
+    # LA MARQUE EST UN MOT DE LA LIGNE, pas une sous-chaîne. Cherchée par
+    # contenance, elle se trouve dans « inventaire-ui-legacy », dans le chemin
+    # d'un journal, et dans le `grep` d'un développeur — et le signal part au
+    # GROUPE de ce travail. Le `make` exigé avec elle donne la FORME de ce que
+    # todo lance, et non un mot qui passait par là.
+    mots = ligne.split()
+    return marque in mots and "make" in mots
 
 
 def port_occupe(adresse=ADRESSE, port=PORT, delai=0.4):
@@ -231,7 +238,11 @@ def situation(suivi, portee, occupe):
     if portee is None or occupe is None:
         return INCONNU, suivi.pid if suivi else 0
     if suivi is not None and portee:
-        return VIVANTE, suivi.pid
+        # NOTRE PROCESSUS VIT, MAIS RIEN N'ÉCOUTE : ce n'est pas une console
+        # debout. `VIVANTE` sans regarder le port annonçait une page morte, et
+        # n'offrait plus de relancer — l'en-tête de ce module dit pourtant
+        # qu'un détaché échoue en silence et que le port se sonde après coup.
+        return (VIVANTE if occupe else MUETTE), suivi.pid
     if occupe:
         # Le port répond sans que notre PID le tienne : un autre programme, ou
         # une console lancée hors de todo. Elle ne s'arrête pas d'ici.
