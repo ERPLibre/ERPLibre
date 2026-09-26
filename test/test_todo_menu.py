@@ -34,7 +34,9 @@ def prompt_execute_source():
     """Le corps de prompt_execute(), affichage et dispatch compris."""
     source = TODO_PY.read_text(encoding="utf-8")
     start = source.index("def prompt_execute(self):")
-    end = source.index("def prompt_install(self):", start)
+    # Jusqu'à la méthode SUIVANTE, quelle qu'elle soit : une méthode insérée
+    # après prompt_execute ne doit pas entrer dans le corps analysé.
+    end = source.index("\n    def ", start)
     return source[start:end]
 
 

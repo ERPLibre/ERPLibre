@@ -415,7 +415,10 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def prompt_install(self):
+    def _install_system_step(self):
+        """Installe la pile de l'OS pour Odoo si l'utilisateur le demande,
+        et propose d'ouvrir PyCharm. Posée APRÈS le choix de prompt_install :
+        une technologie qui installe ses propres paquets ne passe pas ici."""
         print("Detect first installation from code source.")
 
         first_installation_input = (
@@ -470,6 +473,8 @@ class TODO(
                     "👹 WAIT and Close Pycharm when processing is done before continue"
                     " this guide."
                 )
+
+    def prompt_install(self):
         # TODO detect last version supported
         # cmd_intern = "./script/install/install_erplibre.sh"
         key_i = 0
@@ -542,6 +547,7 @@ class TODO(
         if odoo_version_input == "0":
             return
 
+        self._install_system_step()
         cmd_intern = install_commands.get(odoo_version_input)[2]
 
         # For numbered version selections, offer extra modules sub-menu
