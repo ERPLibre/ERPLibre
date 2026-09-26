@@ -11,14 +11,16 @@ télémétrie de navigation) et non dans un fichier versionné.
 - reset() : efface tout et revient aux défauts.
 
 Tout est best-effort : une préférence illisible ou un disque plein ne doivent
-JAMAIS empêcher le CLI de démarrer.
+JAMAIS empêcher le CLI de démarrer. Les écritures passent par `json_store` :
+plusieurs processus TODO peuvent écrire en même temps.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
+
+from script.todo import json_store
 
 # Clés connues et leur valeur par défaut. Une clé absente de ce dictionnaire
 # reste lisible/écrivable, mais n'apparaît pas dans l'écran de configuration.
@@ -73,15 +75,15 @@ def _path() -> Path:
 
 def load() -> dict:
     try:
-        data = json.loads(_path().read_text())
-    except (OSError, ValueError):
+        data = json_store.read(_path(), dict)
+    except OSError:
         return {}
     return data if isinstance(data, dict) else {}
 
 
 def _save(data: dict) -> None:
     try:
-        _path().write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        json_store.write(_path(), data)
     except OSError:
         pass
 
@@ -94,13 +96,30 @@ def get(key: str, default=None):
 
 
 def set(key: str, value) -> None:  # noqa: A001 - API voulue : prefs.set(...)
-    data = load()
-    data[key] = value
-    _save(data)
+    """Écrit une préférence sous verrou : un autre processus TODO qui écrit
+    en même temps ne perd pas la sienne. Best-effort."""
+
+    def put(data):
+        data = data if isinstance(data, dict) else {}
+        data[key] = value
+        return data
+
+    try:
+        json_store.update(_path(), put, dict)
+    except OSError:
+        pass
 
 
 def reset() -> int:
     """Efface toutes les préférences. Renvoie le nombre de clés effacées."""
-    count = len(load())
-    _save({})
-    return count
+    count = [0]
+
+    def clear(data):
+        count[0] = len(data) if isinstance(data, dict) else 0
+        return {}
+
+    try:
+        json_store.update(_path(), clear, dict)
+    except OSError:
+        return 0
+    return count[0]

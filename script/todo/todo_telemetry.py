@@ -24,6 +24,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from script.todo import json_store
+
 try:
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
@@ -43,38 +45,52 @@ def _path() -> Path:
     return base / "todo_telemetry.json"
 
 
+def _empty() -> dict:
+    return {"paths": {}}
+
+
 def load() -> dict:
+    # _path() crée ~/.erplibre et peut lever OSError (répertoire parent en
+    # lecture seule) : la télémétrie rend alors un magasin vide.
     try:
-        return json.loads(_path().read_text())
-    except (OSError, ValueError):
-        return {"paths": {}}
+        data = json_store.read(_path(), _empty)
+    except OSError:
+        return _empty()
+    return data if isinstance(data, dict) else _empty()
 
 
 def _save(data: dict) -> None:
     try:
-        _path().write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        json_store.write(_path(), data)
     except OSError:
         pass
 
 
 def record(path: str) -> None:
     """Incrémente le compteur du menu `path`. Best-effort : ne lève jamais
-    (la télémétrie ne doit jamais casser la navigation)."""
+    (la télémétrie ne doit jamais casser la navigation). Lecture et écriture
+    se font sous un même verrou : deux processus TODO ne perdent aucun
+    incrément."""
     if not path or path == _LAST[0]:
         return
     _LAST[0] = path
-    try:
-        data = load()
+
+    def bump(data):
+        if not isinstance(data, dict):
+            data = _empty()
         paths = data.setdefault("paths", {})
         paths[path] = paths.get(path, 0) + 1
         data["updated"] = int(time.time())
-        _save(data)
+        return data
+
+    try:
+        json_store.update(_path(), bump, _empty)
     except Exception:
         pass
 
 
 def reset() -> None:
-    _save({"paths": {}})
+    _save(_empty())
 
 
 def _nested(paths: dict) -> dict:
