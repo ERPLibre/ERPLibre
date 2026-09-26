@@ -269,7 +269,12 @@ class QemuInstallMixin:
             "WantedBy=multi-user.target\n"
             "UNIT\n"
             "sudo systemctl daemon-reload; "
-            "sudo systemctl enable --now erplibre.service; "
+            # restart et non « enable --now » : ce dernier ne touche pas un
+            # service qui tourne déjà, et une machine où l'on installe une
+            # autre version d'Odoo continuait de servir l'ancienne — la
+            # nouvelle n'était lancée qu'au prochain démarrage.
+            "sudo systemctl enable erplibre.service; "
+            "sudo systemctl restart erplibre.service; "
             "fi"
         )
 
