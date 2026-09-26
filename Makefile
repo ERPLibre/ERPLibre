@@ -326,19 +326,21 @@ config_install:
 .PHONY: config_update
 config_update:
 	# Need http to configure the file config.conf, or will disable it
-	./run.sh -c config.conf -s --stop-after-init
+	# --save et non -s : Odoo 20 a retiré la forme courte, et toutes les
+	# versions depuis la 10 acceptent la longue.
+	./run.sh -c config.conf --save --stop-after-init
 
 .PHONY: config_update_over_proxy
 config_update_over_proxy:
-	./run.sh -c config.conf -s --stop-after-init --max-cron-threads 2 --workers 2 --xmlrpc-interface 127.0.0.1 --proxy-mode
+	./run.sh -c config.conf --save --stop-after-init --max-cron-threads 2 --workers 2 --xmlrpc-interface 127.0.0.1 --proxy-mode
 
 .PHONY: config_update_dev
 config_update_dev:
-	./run.sh -c config.conf -s --stop-after-init --max-cron-threads 4 --workers 4
+	./run.sh -c config.conf --save --stop-after-init --max-cron-threads 4 --workers 4
 
 .PHONY: config_update_dev_mono
 config_update_dev_mono:
-	./run.sh -c config.conf -s --stop-after-init --workers 0
+	./run.sh -c config.conf --save --stop-after-init --workers 0
 
 .PHONY: config_clear
 config_clear:
