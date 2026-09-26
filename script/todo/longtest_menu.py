@@ -31,6 +31,7 @@ SCRIPTS_DEFAISABLES = (
     "deep_qemu.py",
     "qemu_cache.py",
     "install_nixos.py",
+    "setops_banc.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
