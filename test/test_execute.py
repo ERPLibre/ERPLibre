@@ -230,5 +230,58 @@ class TestRedactSecrets(unittest.TestCase):
         self.assertIsNone(redact_secrets(None))
 
 
+class TestRedactUrlCredentials(unittest.TestCase):
+    """Identifiants portés par une URL (userinfo, RFC 3986 §3.2.1).
+
+    Ni nom d'option ni nom de variable : le secret suit « user: » ou tient
+    lieu de nom d'utilisateur. Schéma, hôte, chemin et nom d'utilisateur
+    ordinaire restent, pour que la commande reste lisible. Valeurs inventées.
+    """
+
+    def test_password_in_userinfo_is_masked(self):
+        sortie = redact_secrets(
+            "psql postgresql://odoo:inventeMNO@db.example/base"
+        )
+        self.assertNotIn("inventeMNO", sortie)
+        self.assertIn("postgresql://odoo:***@db.example/base", sortie)
+
+    def test_token_as_password_is_masked(self):
+        sortie = redact_secrets(
+            "git clone https://x-access-token:inventePQR@forge.example/o/r.git"
+        )
+        self.assertNotIn("inventePQR", sortie)
+        self.assertIn("https://x-access-token:***@forge.example", sortie)
+
+    def test_prefixed_token_as_user_is_masked(self):
+        sortie = redact_secrets(
+            "git clone https://ghp_inventeSTU@forge.example/o/r.git"
+        )
+        self.assertNotIn("ghp_inventeSTU", sortie)
+        self.assertIn("https://***@forge.example/o/r.git", sortie)
+
+    def test_long_opaque_user_is_masked(self):
+        jeton = "invente" + "x" * 30
+        sortie = redact_secrets(f"curl https://{jeton}@forge.example/api")
+        self.assertNotIn(jeton, sortie)
+
+    def test_ordinary_user_survives(self):
+        for commande in (
+            "git clone ssh://git@forge.example/o/r.git",
+            "curl https://alice@forge.example/x",
+        ):
+            self.assertEqual(redact_secrets(commande), commande)
+
+    def test_port_and_path_colon_survive(self):
+        for commande in (
+            "curl http://localhost:8069/web/login",
+            "curl https://forge.example/a:b@c",
+        ):
+            self.assertEqual(redact_secrets(commande), commande)
+
+    def test_output_line_is_masked_too(self):
+        ligne = "Cloning from https://u:inventeVWX@forge.example/o/r.git\n"
+        self.assertNotIn("inventeVWX", redact_secrets(ligne))
+
+
 if __name__ == "__main__":
     unittest.main()

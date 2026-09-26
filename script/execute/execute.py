@@ -57,10 +57,27 @@ _SECRET_HEADER = re.compile(
     r"(?P<schema>\bAuthorization:\s*(?:Bearer|Basic)\s+)(?P<val>\S+)",
     re.IGNORECASE,
 )
+# Une URL porte ses identifiants dans l'« userinfo » (RFC 3986 §3.2.1) :
+# « scheme://utilisateur:secret@hôte », que git, libpq et curl acceptent. On
+# masque ce qui suit le deux-points jusqu'à l'@ ; un port (« hôte:8069/ »)
+# n'est jamais suivi d'un @ et reste.
+_SECRET_URL_PASSWORD = re.compile(
+    r"(?P<head>\b[a-z][a-z0-9+.-]*://[^\s/:@]*:)(?P<val>[^\s/@]+)(?=@)",
+    re.IGNORECASE,
+)
+# Un jeton peut aussi tenir lieu de nom d'utilisateur, sans deux-points. Il se
+# reconnaît à son préfixe (GitHub, GitLab) ou à défaut à sa longueur : 32
+# caractères opaques et plus. Un nom ordinaire (« git@ », « alice@ ») reste.
+_SECRET_URL_TOKEN = re.compile(
+    r"(?P<head>\b[a-z][a-z0-9+.-]*://)"
+    r"(?P<val>(?:gh[pousr]_|github_pat_|glpat-)[\w-]+|[\w-]{32,})(?=@)",
+    re.IGNORECASE,
+)
 
 
 def redact_secrets(text):
-    """Remplace la valeur des options, variables et en-têtes de secret.
+    """Remplace la valeur des options, variables, en-têtes et identifiants
+    d'URL de secret.
 
     Appliqué à CHAQUE affichage d'une commande. Filtrer au point d'affichage
     plutôt qu'à la construction est ce qui rend la garantie tenable : il n'y a
@@ -71,7 +88,9 @@ def redact_secrets(text):
         return text
     text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
     text = _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
-    return _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
+    text = _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
+    text = _SECRET_URL_PASSWORD.sub(lambda m: m.group("head") + "***", text)
+    return _SECRET_URL_TOKEN.sub(lambda m: m.group("head") + "***", text)
 
 
 new_path = os.path.normpath(
