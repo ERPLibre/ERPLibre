@@ -3,26 +3,33 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Hub local de l'interface web de TODO, un par checkout.
 
-Une boucle asyncio porte deux entrées : un serveur HTTP tornado sur
-127.0.0.1, port libre (la page et son API arrivent dans un commit
-séparé) et une socket Unix 0600 (`ctl.sock`), réservée au compte de
-l'utilisateur : une commande par ligne — `mint` (code de connexion à
-usage unique), `status`, `stop`, `tasks`.
+Deux entrées dans une même boucle asyncio :
 
-Un verrou (`hub.lock`) est tenu de bout en bout : deux démarrages
-concurrents devant la même socket morte ne la retirent pas chacun pour
-lier la leur. Le hub n'importe jamais `todo.py`.
+- HTTP tornado sur 127.0.0.1, port libre : la page et son API ;
+- une socket Unix 0600 (`ctl.sock`), réservée au compte de l'utilisateur :
+  une commande par ligne — `mint` (code de connexion à usage unique),
+  `status`, `stop`, `tasks`.
+
+Chaque requête HTTP passe par `Guard.prepare` : `Host` dans la liste (port
+exigé, contre le rebinding DNS) ; hors GET et HEAD, comme pour toute poignée
+de main WebSocket, une Origin égale à `http://<Host>` (absente = refus) ;
+pour un POST autre que la connexion, le jeton CSRF de la session dans
+`X-CSRF-Token`. L'API exige le cookie de session, nommé par port. Le hub
+n'importe jamais todo.py.
 
     python -m script.todo.web.server --root <checkout> [--idle-seconds N]
 """
 
 import argparse
 import asyncio
+import base64
 import errno
 import fcntl
+import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import signal
 import socket
@@ -33,7 +40,9 @@ from pathlib import Path
 import tornado.httpserver
 import tornado.netutil
 import tornado.web
+from tornado.web import HTTPError
 
+from script.todo import todo_i18n
 from script.todo.web import paths
 
 log = logging.getLogger(__name__)
@@ -43,10 +52,172 @@ CODE_TTL = 120.0
 MAX_BODY = 64 * 1024
 IDLE_SECONDS = 1800.0
 PROBE_TIMEOUT = 0.3
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+}
+LICENSE_TYPE = "text/plain; charset=utf-8"
+IMPORT_MAP = re.compile(rb'<script type="importmap">(.*?)</script>', re.S)
+# 'unsafe-eval' : le compilateur de gabarits d'OWL passe par new Function.
+CSP = (
+    "default-src 'none'; script-src 'self'{import_map} 'unsafe-eval'; "
+    "style-src 'self'; connect-src 'self'; img-src 'self' data:; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+)
 
 
 class HubRunning(Exception):
     """Un hub répond déjà sur la socket de contrôle de ce checkout."""
+
+
+def load_static(static_dir: Path) -> dict:
+    """{chemin d'URL: (octets, type MIME)} des fichiers servables.
+
+    Lu une fois, au démarrage : une requête ne construit jamais de chemin
+    disque, une traversée (`/static/../server.py`) ne trouve donc rien. Seuls
+    entrent les fichiers dont l'extension est dans STATIC_TYPES et les
+    `LICENSE`, jamais un lien symbolique. `/` sert `index.html`.
+    """
+    table = {}
+    for dirpath, _dirnames, filenames in os.walk(static_dir):
+        for name in filenames:
+            path = Path(dirpath, name)
+            if name == "LICENSE":
+                ctype = LICENSE_TYPE
+            else:
+                ctype = STATIC_TYPES.get(path.suffix)
+            if ctype is None or path.is_symlink():
+                continue
+            url = "/static/" + path.relative_to(static_dir).as_posix()
+            table[url] = (path.read_bytes(), ctype)
+    if "/static/index.html" in table:
+        table["/"] = table["/static/index.html"]
+    return table
+
+
+def content_security_policy(index_html) -> str:
+    """CSP du hub ; l'import map inline d'`index_html` y entre par son hash.
+
+    Le hash porte sur le texte exact entre les balises, comme le calcule le
+    navigateur : reformater l'import map change le hash, recalculé ici à
+    chaque démarrage.
+    """
+    match = IMPORT_MAP.search(index_html)
+    extra = ""
+    if match:
+        digest = hashlib.sha256(match.group(1)).digest()
+        extra = f" 'sha256-{base64.b64encode(digest).decode()}'"
+    return CSP.format(import_map=extra)
+
+
+class Guard:
+    """Contrôles communs à chaque handler ; mélangé avant la classe tornado."""
+
+    # Seule la connexion reçoit un POST sans session ni jeton CSRF.
+    anonymous_post = False
+
+    @property
+    def hub(self) -> "Hub":
+        # Lu dans les réglages de l'application : set_default_headers est
+        # appelé par le constructeur de tornado, avant initialize().
+        return self.application.settings["hub"]
+
+    def set_default_headers(self):
+        self.clear_header("Server")
+        self.set_header("Content-Security-Policy", self.hub.csp)
+        self.set_header("X-Frame-Options", "DENY")
+        self.set_header("X-Content-Type-Options", "nosniff")
+        self.set_header("Referrer-Policy", "no-referrer")
+        self.set_header("Cache-Control", "no-store")
+
+    def prepare(self):
+        # request.host retombe sur « 127.0.0.1 » en HTTP/1.0 : lire l'en-tête.
+        host = (self.request.headers.get("Host") or "").lower()
+        if host not in self.hub.hosts:
+            raise HTTPError(403)
+        # Une poignée de main WebSocket est un GET : l'en-tête Upgrade la
+        # désigne, lu comme tornado le lit avant de l'accepter.
+        upgrade = self.request.headers.get("Upgrade", "").lower()
+        unsafe = self.request.method not in ("GET", "HEAD")
+        if unsafe or upgrade == "websocket":
+            if self.request.headers.get("Origin") != f"http://{host}":
+                raise HTTPError(403)
+        if self.request.method == "POST" and not self.anonymous_post:
+            csrf = self.require_session()
+            sent = self.request.headers.get("X-CSRF-Token", "")
+            if not secrets.compare_digest(sent.encode(), csrf.encode()):
+                raise HTTPError(403)
+
+    def check_origin(self, origin):
+        """Origin d'une poignée de main WebSocket : `http://<Host>` exacte.
+
+        tornado ne l'appelle que si l'en-tête est présent, et sa version
+        ne compare que l'hôte, quel que soit le schéma ; prepare() refuse
+        déjà une Origin absente.
+        """
+        host = (self.request.headers.get("Host") or "").lower()
+        return origin == f"http://{host}"
+
+    def require_session(self) -> str:
+        """Jeton CSRF de la session du cookie ; 403 sans session.
+
+        Une requête authentifiée compte comme activité : elle repousse
+        l'arrêt à l'inactivité.
+        """
+        token = self.get_cookie(self.hub.cookie)
+        csrf = self.hub.sessions.get(token) if token else None
+        if csrf is None:
+            raise HTTPError(403)
+        self.hub.touch()
+        return csrf
+
+
+class Static(Guard, tornado.web.RequestHandler):
+    def get(self):
+        entry = self.hub.static.get(self.request.path)
+        if entry is None:
+            raise HTTPError(404)
+        body, ctype = entry
+        self.set_header("Content-Type", ctype)
+        self.write(body)
+
+
+class NotFound(Guard, tornado.web.RequestHandler):
+    def prepare(self):
+        super().prepare()
+        raise HTTPError(404)
+
+
+class Login(Guard, tornado.web.RequestHandler):
+    """Échange un code à usage unique contre le cookie de session."""
+
+    anonymous_post = True
+
+    def post(self):
+        try:
+            code = json.loads(self.request.body)["code"]
+        except (ValueError, KeyError, TypeError):
+            raise HTTPError(400) from None
+        if not self.hub.redeem(code):
+            raise HTTPError(403)
+        self.set_cookie(
+            self.hub.cookie,
+            self.hub.open_session(),
+            httponly=True,
+            samesite="Strict",
+        )
+        self.write({"ok": True})
+
+
+class Session(Guard, tornado.web.RequestHandler):
+    def get(self):
+        csrf = self.require_session()
+        self.write(
+            {"csrf": csrf, "lang": todo_i18n.get_lang(), "root": self.hub.root}
+        )
 
 
 def _hold_lock(path: Path) -> int:
@@ -112,11 +283,16 @@ def _claim_ctl(path: Path) -> socket.socket:
 
 
 class Hub:
-    """Socket de contrôle, verrou et cycle de vie du hub, un par checkout."""
+    """Serveur HTTP, socket de contrôle, codes, sessions et inactivité."""
 
-    def __init__(self, root, *, idle_seconds=IDLE_SECONDS):
+    def __init__(
+        self, root, *, idle_seconds=IDLE_SECONDS, static_dir=STATIC_DIR
+    ):
         self.root = os.path.realpath(root)
         self.idle_seconds = idle_seconds
+        self.static = load_static(Path(static_dir))
+        index = self.static.get("/")
+        self.csp = content_security_policy(index[0] if index else b"")
         self.codes = {}  # code -> expiration (horloge monotone)
         self.sessions = {}  # jeton du cookie -> jeton CSRF
         self.stopped = asyncio.Event()
@@ -124,7 +300,12 @@ class Hub:
         self.last_activity = time.monotonic()
 
     def routes(self) -> list:
-        return []
+        return [
+            (r"/", Static),
+            (r"/static/.*", Static),
+            (r"/api/login", Login),
+            (r"/api/session", Session),
+        ]
 
     async def start(self, host="127.0.0.1", port=0):
         self.ctl_path = paths.ctl_path(self.root)
@@ -147,6 +328,7 @@ class Hub:
         self.cookie = f"erplibre_todo_{self.port}"
         app = tornado.web.Application(
             self.routes(),
+            default_handler_class=NotFound,
             hub=self,
             xsrf_cookies=False,
             websocket_max_message_size=MAX_BODY,
@@ -180,6 +362,21 @@ class Hub:
         self.codes[code] = now + CODE_TTL
         self.touch()
         return code
+
+    def redeem(self, code) -> bool:
+        """Consomme `code` ; vrai s'il existait et n'avait pas expiré."""
+        expiry = self.codes.pop(code, 0.0) if isinstance(code, str) else 0.0
+        if expiry < time.monotonic():
+            return False
+        self.touch()
+        # Le fichier de redirection porte un code : il a servi.
+        self.redirect_path.unlink(missing_ok=True)
+        return True
+
+    def open_session(self) -> str:
+        token = secrets.token_urlsafe(32)
+        self.sessions[token] = secrets.token_urlsafe(32)
+        return token
 
     def status(self) -> dict:
         """`sessions` : sessions ouvertes depuis le démarrage ; `running` :
@@ -238,10 +435,10 @@ class Hub:
         """Retire l'état, ferme les sockets, relâche le verrou, puis signale
         `stopped`.
 
-        state.json et redirect.html partent pendant que le verrou est tenu :
-        aucun autre hub ne démarre avant, rien de ce qui est retiré ne lui
-        appartient. Fermer le serveur Unix retire ctl.sock (asyncio vérifie
-        que l'inode est toujours le sien).
+        state.json, redirect.html et ctl.sock partent pendant que le verrou
+        est tenu : aucun autre hub ne démarre avant, rien de ce qui est
+        retiré ne lui appartient. Fermer le serveur Unix retire ctl.sock
+        (asyncio vérifie que l'inode est toujours le sien).
         """
         self.idle_task.cancel()
         self.state_path.unlink(missing_ok=True)
