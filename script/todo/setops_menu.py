@@ -548,6 +548,9 @@ class SetopsMenuMixin:
     # couche ; l'écran ne fait que le traduire.
     BARRIERES = {
         registre.DESTRUCTIVE: "destructive: the engine keeps this one",
+        registre.A_REMETTRE: (
+            "type it yourself: it waits for an answer todo cannot give"
+        ),
         registre.CONFIRMATION_MOTEUR: (
             "the engine demands its own confirmation"
         ),
@@ -569,11 +572,17 @@ class SetopsMenuMixin:
             env=ansible_env.environnement(RACINE, moteur, runner.base()),
             cwd=moteur,
         )
-        lu = registre.lit_registre(vu.sortie) if vu.reussi else None
+        lu = registre.lit_registre(vu.sortie)
         if lu is None:
             print(
                 "  ✗ " + t("unreadable answer; replay the line above by hand")
             )
+            # LES MOTS DU MOTEUR, comme le font le relevé des voûtes et la
+            # liste des écosystèmes. Jetés, une trace Python ou un refus motivé
+            # devenait « réponse illisible » — et c'est la porte d'entrée de
+            # l'écran des séquences ET des onze portes d'écriture.
+            for ligne in vu.sortie.splitlines():
+                print(f"    {ligne}")
         return lu
 
     def _setops_runbooks(self):
@@ -706,16 +715,7 @@ class SetopsMenuMixin:
             if not self._is_yes(input(f"{t('Run it? (y/N): ')}")):
                 print(t("Cancelled."))
                 return
-        parle = registre.interactif(etape)
-        if parle:
-            print(f"\n  💬 {t('This step asks you questions itself.')}")
-            print(
-                f"    {t('The terminal is handed over; nothing is captured.')}"
-            )
-        vu = self._setops_lancer(
-            moteur, etape.cible, variables, capture=not parle
-        )
-        self._setops_dire(vu)
+        self._setops_dire(self._setops_lancer(moteur, etape.cible, variables))
 
     def _setops_demander_interrupteur(self, nom):
         """Un drapeau-INTERRUPTEUR se demande par oui ou non, jamais par sa
@@ -845,8 +845,9 @@ class SetopsMenuMixin:
             "\n  "
             + t("Type these in your own terminal — they ask for a passphrase:")
         )
-        for cible, variable in vaults.CIBLES_GPG.items():
-            print(f"    make -C {relatif} {cible} {variable}=…")
+        for cible, variable in registre.remises().items():
+            argument = f" {variable}=…" if variable else ""
+            print(f"    make -C {relatif} {cible}{argument}")
 
     def _setops_gestes_voutes(self, moteur, bloque):
         """Les gestes de cet écran, numérotés ; le geste tapé part.
@@ -948,8 +949,17 @@ class SetopsMenuMixin:
         try:
             with open(chemin, encoding="utf-8") as tenu:
                 suivi = console.lit_suivi(tenu.read())
-        except OSError:
+        except FileNotFoundError:
+            # Aucun suivi : le cas NORMAL d'une console jamais lancée d'ici.
             suivi = None
+        except OSError:
+            # PRÉSENT MAIS ILLISIBLE, ce qui n'est pas la même nouvelle. Traité
+            # comme une absence, l'écran affirmait un FAIT FAUX — « quelque
+            # chose que todo n'a pas lancé tient ce port » — alors que c'est
+            # todo qui l'a lancée, et l'opérateur laissait tourner une console
+            # sans authentification en croyant au travail d'autrui.
+            print(f"  ? {t('the record is there but unreadable:')} {chemin}")
+            return console.INCONNU, 0, None
         portee = (
             console.tenue(console.ligne_de_commande(suivi.pid))
             if suivi is not None
@@ -1056,14 +1066,27 @@ class SetopsMenuMixin:
         if pid is None:
             print(f"  ✗ {t('the gesture could not run at all')}")
             return
-        console.ecrit_suivi(console.chemin_suivi(), pid, console.PORT)
+        if not console.ecrit_suivi(console.chemin_suivi(), pid, console.PORT):
+            # Sans suivi, la visite suivante ne reconnaîtra plus cette console
+            # et n'offrira plus de l'arrêter. Le dire ICI : l'écran imprimait
+            # ✅ et l'opérateur découvrait la perte en revenant.
+            print(
+                f"  ⚠ {t('the record could not be written:')} {console.chemin_suivi()}"
+            )
+            print(f"    {t('todo will not offer to stop it; do it by hand.')}")
         debout = console.attendre(
             lambda: console.port_occupe(console.ADRESSE, console.PORT),
             True,
             pause=lambda: time.sleep(0.2),
         )
-        if debout:
+        if debout is True:
             print(f"  ✅ {console.url()}  ({t('process group')}: {pid})")
+            return
+        if debout is None:
+            # LA SONDE A ÉCHOUÉ, ce qui ne dit rien du serveur. Confondu avec
+            # « elle n'a pas démarré », le message renvoyait vers un journal
+            # qui ne contient aucune panne.
+            print(f"  ? {t('the port could not be probed; state unknown.')}")
             return
         print(f"  ✗ {t('it did not come up; the log says why:')} {journal}")
 

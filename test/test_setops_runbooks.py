@@ -17,6 +17,7 @@ ailleurs dans le dépôt.
 """
 
 import os
+import re
 import sys
 import unittest
 
@@ -145,6 +146,27 @@ class TestLaLectureDuRegistre(unittest.TestCase):
     def test_a_runbook_without_a_step_is_unknown(self):
         self.assertIsNone(
             R.lit_registre('[{"id": "x", "portee": "toute", "etapes": []}]')
+        )
+
+    def test_a_step_without_a_scope_refuses_the_whole_registry(self):
+        """C'est sur la portée que `barriere` décide du périmètre. Tolérée
+        absente, elle laissait une étape d'ÉCRITURE se conduire sans écosystème
+        monté — donc sur ce qui se trouve être monté, ou sur rien. Une valeur
+        inconnue était refusée et une valeur manquante ne l'était pas."""
+        for sans in ('"portee": "toute",', '"portee":"toute",'):
+            if sans in REGISTRE:
+                self.assertIsNone(
+                    R.lit_registre(REGISTRE.replace(sans, "", 1))
+                )
+                break
+        else:
+            self.fail("la fixture ne porte pas la forme attendue")
+
+    def test_a_scope_that_is_null_refuses_it_too(self):
+        self.assertIsNone(
+            R.lit_registre(
+                REGISTRE.replace('"portee": "toute"', '"portee": null', 1)
+            )
         )
 
     def test_a_scope_outside_the_vocabulary_is_unknown(self):
@@ -328,7 +350,7 @@ class TestLesEcarts(unittest.TestCase):
     def test_a_target_without_a_divergence_has_an_empty_one(self):
         """Jamais None : l'appelant lit toujours des champs."""
         vide = R.ecart("banc-fictif-sans-ecart")
-        self.assertFalse(vide.interactif or vide.ecrit or vide.drapeau)
+        self.assertFalse(vide.remis or vide.ecrit or vide.drapeau)
 
     def test_an_assistant_that_writes_is_a_write_whatever_its_nature(self):
         etape = R.Etape(
@@ -343,11 +365,11 @@ class TestLesEcarts(unittest.TestCase):
             facultative=False,
         )
         self.assertTrue(R.ecrit(etape))
-        self.assertTrue(R.interactif(etape))
+        self.assertTrue(R.remis(etape))
 
     def test_a_plain_measure_stays_a_measure(self):
         self.assertFalse(R.ecrit(etape(nature=R.MESURE)))
-        self.assertFalse(R.interactif(etape(nature=R.MESURE)))
+        self.assertFalse(R.remis(etape(nature=R.MESURE)))
 
     def test_the_switch_is_named_only_where_there_is_one(self):
         self.assertEqual(
@@ -390,6 +412,69 @@ class TestContreLeRegistreReel(unittest.TestCase):
                 continue
             with self.subTest(cible=cible):
                 self.assertEqual(R.MESURE, R.trouve(REEL, cible).nature, cible)
+
+    def test_every_handed_over_target_demands_the_variable_we_name(self):
+        """LA TAUTOLOGIE LEVÉE. Le garde d'avant comparait la table à
+        elle-même : que la variable soit LA BONNE n'était mesuré nulle part.
+        Remise avec la mauvaise, la ligne se fait refuser par le moteur et la
+        remise n'aurait rien donné."""
+        decl = engine.declaration(RACINE)
+        makefile = os.path.join(RACINE, decl.path, "Makefile")
+        with open(makefile, encoding="utf-8") as tenu:
+            texte = tenu.read()
+        for cible, variable in R.remises().items():
+            if not variable:
+                continue
+            with self.subTest(cible=cible):
+                debut = texte.index(f"\n{cible}:")
+                recette = texte[debut : texte.index("\n\n", debut)]
+                exigees = set(re.findall(r"relancer avec ([A-Z]+)=", recette))
+                self.assertEqual({variable}, exigees, cible)
+
+    # Ce que le moteur écrit dans une recette qu'il réserve à un humain.
+    RESERVEE = "A LANCER SOI-MEME"
+
+    def cibles_reservees(self):
+        """Les cibles que le Makefile du moteur réserve à un humain.
+
+        Lues dans SA source : une liste tenue de notre côté ne suit pas la
+        sienne, et c'est précisément ainsi qu'une quatrième cible avait été
+        oubliée.
+        """
+        decl = engine.declaration(RACINE)
+        chemin = os.path.join(RACINE, decl.path, "Makefile")
+        with open(chemin, encoding="utf-8") as tenu:
+            lignes = tenu.read().splitlines()
+        trouvees, courante = set(), ""
+        for ligne in lignes:
+            entete = re.match(r"^([a-z][a-z0-9-]*):", ligne)
+            if entete:
+                courante = entete.group(1)
+            elif ligne[:1] not in ("\t", " ", "#", ""):
+                courante = ""
+            if self.RESERVEE in ligne and courante:
+                trouvees.add(courante)
+        return trouvees
+
+    def test_the_search_finds_what_the_engine_reserves(self):
+        """Contrôle positif : sans lui, une recherche qui ne trouve jamais
+        rien passerait le garde ci-dessous."""
+        self.assertTrue(self.cibles_reservees())
+
+    def test_every_target_the_engine_reserves_is_handed_over(self):
+        """LE MANQUE QUI AVAIT LAISSÉ PASSER UNE CIBLE. Rien ne confrontait la
+        liste à celle du moteur : une cible marquée en amont et absente d'ici
+        se conduit depuis les écrans, alors que le moteur la réserve à un
+        humain."""
+        remises = set(R.remises())
+        for cible in sorted(self.cibles_reservees()):
+            with self.subTest(cible=cible):
+                self.assertIn(cible, remises, cible)
+
+    def test_every_handed_over_target_exists_in_the_engine(self):
+        for cible in R.remises():
+            with self.subTest(cible=cible):
+                self.assertIsNotNone(R.trouve(REEL, cible), cible)
 
     def test_the_switch_divergence_is_still_one(self):
         """Même chose : si le registre déclare enfin ce drapeau comme une

@@ -54,12 +54,14 @@ PORTEES = (TENANT, SITE, POSTE, TOUTE)
 # Les raisons de ne pas conduire une étape depuis ici. Vocabulaire CLOS : une
 # raison de plus s'ajoute ici, et l'écran la traduit — jamais l'inverse.
 DESTRUCTIVE = "destructive"
+A_REMETTRE = "a-remettre"
 CONFIRMATION_MOTEUR = "confirmation-moteur"
 SANS_ECOSYSTEME = "sans-ecosysteme"
 SANS_SITE = "sans-site"
 FORME_INCONNUE = "forme-inconnue"
 BARRIERES = (
     DESTRUCTIVE,
+    A_REMETTRE,
     CONFIRMATION_MOTEUR,
     SANS_ECOSYSTEME,
     SANS_SITE,
@@ -74,9 +76,16 @@ CONFIRMER = "CONFIRMER"
 class Ecart(NamedTuple):
     """Ce que todo sait d'une cible et que le registre ne dit pas ENCORE.
 
-    `interactif` : la cible PARLE à l'opérateur — elle pose des questions, et
-    l'une peut demander un secret. Capturée, elle lit une entrée fermée, rend
-    « EOF » et n'a rien fait ; le terminal lui est donc rendu.
+    `remis` : la cible se tape SOI-MÊME, todo ne la conduit jamais. Deux
+    familles y tombent, et pour la même raison de fond : elle attend une
+    réponse à une invite — une phrase de passe gpg, un secret — que l'exécuteur
+    ne peut pas lui donner, puisqu'il ferme l'entrée de tout geste. Conduite
+    quand même, elle lirait une entrée close, rendrait « EOF » et n'aurait rien
+    fait : un refus que rien n'explique. Le moteur en marque d'ailleurs une
+    partie « À LANCER SOI-MÊME, PAS PAR UN AGENT ».
+
+    `variable` : ce qu'une cible remise exige sur sa ligne. Remise sans elle,
+    la ligne se fait refuser par le moteur et la remise n'aurait rien donné.
 
     `ecrit` : elle touche au système alors que sa nature déclarée dit le
     contraire. Todo pose sa propre confirmation dessus.
@@ -88,7 +97,8 @@ class Ecart(NamedTuple):
     ne passe rien du tout.
     """
 
-    interactif: bool = False
+    remis: bool = False
+    variable: str = ""
     ecrit: bool = False
     drapeau: str = ""
     pourquoi: str = ""
@@ -100,12 +110,32 @@ class Ecart(NamedTuple):
 # façon qu'une table de dérogations ne vieillisse pas en silence.
 ECARTS = {
     "config": Ecart(
-        interactif=True,
+        remis=True,
         ecrit=True,
         pourquoi=(
             "assistant qui écrit la configuration Proxmox et sème la voûte,"
             " en demandant un secret par une invite muette"
         ),
+    ),
+    "cles-exporter": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="gpg demande une phrase de passe ; le moteur la réserve à un humain",
+    ),
+    "cles-compagnons": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="même famille que l'export : une phrase de passe gpg",
+    ),
+    "cles-restaurer": Ecart(
+        remis=True,
+        variable="ARCHIVE",
+        pourquoi="remet des clés en place, et gpg demande une phrase de passe",
+    ),
+    "remise-paquet": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="gpg demande une phrase de passe ; le moteur la réserve à un humain",
     ),
     "instancier-appliquer": Ecart(
         drapeau="FORCE",
@@ -239,8 +269,13 @@ def _etape(brut):
         return None
     if nature not in NATURES:
         return None
+    # LA PORTÉE EST EXIGÉE, comme la cible et la nature : c'est sur elle que
+    # `barriere` décide du périmètre. Tolérée absente, elle laissait une étape
+    # d'écriture se conduire SANS écosystème monté — donc sur ce qui se trouve
+    # être monté, ou sur rien. Une valeur inconnue était refusée et une valeur
+    # manquante ne l'était pas : l'inverse d'un lecteur fermé.
     portee = brut.get("portee")
-    if portee is not None and portee not in PORTEES:
+    if portee not in PORTEES:
         return None
     variables = brut.get("variables")
     if variables is not None and not isinstance(variables, list):
@@ -269,7 +304,7 @@ def _etape(brut):
     return Etape(
         cible=cible.strip(),
         libelle=str(brut.get("libelle") or ""),
-        portee=portee or "",
+        portee=portee,
         nature=nature,
         pourquoi=str(brut.get("pourquoi") or ""),
         duree=str(brut.get("duree") or ""),
@@ -344,6 +379,8 @@ def barriere(etape, ecosysteme="", site=""):
     """
     if etape is None or etape.nature not in NATURES:
         return FORME_INCONNUE
+    if remis(etape):
+        return A_REMETTRE
     if etape.nature == DESTRUCTIF:
         return DESTRUCTIVE
     if etape.exige_confirmation:
@@ -376,14 +413,20 @@ def ecrit(etape):
     return etape.nature == ECRITURE or ecart(etape.cible).ecrit
 
 
-def interactif(etape):
-    """`etape` a-t-elle besoin du terminal de l'opérateur ?
+def remis(etape):
+    """`etape` se tape-t-elle soi-même ?"""
+    return etape is not None and ecart(etape.cible).remis
 
-    Capturée, une cible qui pose des questions lit une entrée fermée, rend
-    « EOF » et n'a rien fait. Le verdict est alors un refus que rien
-    n'explique.
+
+def remises():
+    """Les cibles que todo ne conduit jamais, et la variable de chacune.
+
+    UNE SEULE LISTE, et c'est le point. Une seconde, tenue ailleurs, laissait
+    l'écran des voûtes remettre trois cibles que l'écran des séquences
+    conduisait — et elle en oubliait une quatrième que le moteur réserve
+    pareillement.
     """
-    return etape is not None and ecart(etape.cible).interactif
+    return {cible: vu.variable for cible, vu in ECARTS.items() if vu.remis}
 
 
 def drapeau(etape):

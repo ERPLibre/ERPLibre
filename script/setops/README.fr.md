@@ -311,9 +311,15 @@ correction en amont.
 
 - `ecart(cible)` : cet écart, ou un écart vide — jamais `None`, puisque
   l'appelant lit toujours des champs ;
-- `interactif(etape)` : a-t-elle besoin du terminal de l'opérateur ? Capturée,
-  une cible qui pose des questions lit une entrée fermée, rend « EOF » et n'a
-  rien fait ;
+- `remis(etape)` : se tape-t-elle à la main au lieu d'être conduite ?
+  L'exécuteur ferme l'entrée de TOUT geste, donc une cible qui attend une
+  réponse — phrase de passe gpg, secret — lit une entrée close, rend « EOF » et
+  n'a rien fait : un refus que rien n'explique. `barriere` les refuse EN
+  PREMIER, et c'est ce qui fait de la règle une seule règle : une seconde liste
+  ailleurs faisait REMETTRE par l'écran des voûtes trois gestes que l'écran des
+  séquences CONDUISAIT ;
+- `remises()` : ces cibles, et la variable que chacune exige. Remise sans elle,
+  la ligne se fait refuser par le moteur et la remise n'aurait rien donné ;
 - `drapeau(etape)` : le nom d'un drapeau qui est un INTERRUPTEUR et non une
   valeur. La recette le lit par `$(if $(NOM),…)` et GNU make tient toute chaîne
   non vide pour vraie : « 0 » l'active aussi sûrement que « 1 ». Sa valeur ne se

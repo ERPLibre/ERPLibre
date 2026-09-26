@@ -984,7 +984,7 @@ class TestCeQueLEcranNeLancePas(CasDeVoute):
 
     def test_the_passphrase_gestures_are_shown_and_never_run(self):
         vu = self.ecran(["1"])
-        for cible in vaults.CIBLES_GPG:
+        for cible in registre.remises():
             with self.subTest(cible=cible):
                 self.assertIn(cible, vu)
                 self.assertNotIn(cible, self.cibles())
@@ -993,9 +993,10 @@ class TestCeQueLEcranNeLancePas(CasDeVoute):
         """Une ligne remise sans sa variable se fait refuser par le moteur, et
         la remise n'aurait rien donné."""
         vu = self.ecran()
-        for cible, variable in vaults.CIBLES_GPG.items():
+        for cible, variable in registre.remises().items():
             with self.subTest(cible=cible):
-                self.assertIn(f"{cible} {variable}=", vu)
+                attendu = f"{cible} {variable}=" if variable else f"{cible}"
+                self.assertIn(attendu, vu)
 
     def test_the_census_is_a_read_and_goes_through_the_engine(self):
         self.ecran(["1"])
@@ -1074,6 +1075,9 @@ class CasDeConsole(CasDEcosysteme):
         self.detaches = []
         self.signales = []
         self.pid_rendu = 4242
+        # Le suivi s'écrit, sauf là où l'épreuve veut voir ce qui arrive quand
+        # il ne s'écrit pas.
+        self.suivi_ecrit = True
         self.todo._setops_console_etat = lambda env=None: self.mesure
         self.todo._qemu_self_address = lambda: ("poste-fictif.invalid", True)
 
@@ -1091,7 +1095,7 @@ class CasDeConsole(CasDEcosysteme):
                 "port_occupe",
                 lambda *_a, **_k: vus.pop(0) if len(vus) > 1 else vus[0],
             ),
-            patch.object(console, "ecrit_suivi", lambda *_a: True),
+            patch.object(console, "ecrit_suivi", lambda *_a: self.suivi_ecrit),
             patch.object(console, "oublie", lambda *_a: None),
             patch("os.killpg", lambda pid, sig: self.signales.append(pid)),
             patch("time.sleep", lambda _s: None),
@@ -1226,6 +1230,28 @@ class TestUnDetacheEchoueEnSilence(CasDeConsole):
         self.assertIn("✅", vu)
         self.assertIn("4242", vu)
 
+    def test_a_record_that_could_not_be_written_is_said_at_once(self):
+        """Sans suivi, la visite suivante n'offrira plus de l'arrêter. L'écran
+        imprimait ✅ et l'opérateur découvrait la perte en revenant."""
+        self.mesure = (console.ARRETEE, 0, None)
+        self.suivi_ecrit = False
+        vu = self.ecran(["1"], ports=(False, True))
+        self.assertIn(
+            todo_i18n.t("todo will not offer to stop it; do it by hand."), vu
+        )
+
+    def test_a_probe_that_failed_is_not_a_console_that_did_not_come_up(self):
+        """La sonde qui échoue ne dit rien du serveur. Confondu, le message
+        renvoyait vers un journal qui ne contient aucune panne."""
+        self.mesure = (console.ARRETEE, 0, None)
+        vu = self.ecran(["1"], ports=(None,))
+        self.assertIn(
+            todo_i18n.t("the port could not be probed; state unknown."), vu
+        )
+        self.assertNotIn(
+            todo_i18n.t("it did not come up; the log says why:"), vu
+        )
+
     def test_a_launch_that_could_not_run_says_so(self):
         self.mesure = (console.ARRETEE, 0, None)
         self.pid_rendu = None
@@ -1316,6 +1342,25 @@ class TestLeReleveDeLaConsole(CasDEcosysteme):
     def test_no_record_at_all_reads_as_stopped(self):
         mot, pid, suivi = self.relever(None, False)
         self.assertEqual((console.ARRETEE, 0, None), (mot, pid, suivi))
+
+    def test_a_record_that_is_there_but_unreadable_is_not_an_absence(self):
+        """Traité comme une absence, l'écran affirmait un FAIT FAUX — « quelque
+        chose que todo n'a pas lancé tient ce port » — alors que c'est todo qui
+        l'a lancée, et l'opérateur laissait tourner une console sans
+        authentification en croyant au travail d'autrui."""
+        self.poser_suivi(4242)
+        vrai = builtins.open
+
+        def refuse(chemin, *a, **k):
+            if str(chemin).endswith(console.SUIVI):
+                raise PermissionError(13, "Permission denied")
+            return vrai(chemin, *a, **k)
+
+        with patch.object(builtins, "open", refuse):
+            with patch.object(console, "port_occupe", lambda *_a, **_k: True):
+                mot, _pid, suivi = self.todo._setops_console_etat(self.env)
+        self.assertEqual(console.INCONNU, mot)
+        self.assertIsNone(suivi)
 
     def test_an_unreadable_command_line_is_never_guessed(self):
         self.poser_suivi(4242)
@@ -1475,6 +1520,20 @@ class TestLaPorteDecritCeQueLeRegistreDit(CasDePorte):
         self.porte("deployer", ["banc-hote-fictif", "o"])
         self.assertEqual([], self.cibles())
 
+    def test_an_unreadable_registry_shows_the_engine_s_own_words(self):
+        """C'est la porte d'entrée de l'écran des séquences ET des onze portes.
+        Les mots du moteur jetés, une trace Python ou un refus motivé devient
+        « réponse illisible » et l'opérateur relance la ligne à la main pour
+        découvrir ce que todo avait déjà sous les yeux."""
+        self.todo.__dict__.pop("_setops_registre", None)
+        trace = "Traceback (most recent call last):\n  ImportError: yaml\n"
+        with patch.object(
+            runner, "jouer", lambda *_a, **_k: runner.Verdict(1, trace)
+        ):
+            vu = self._ecran("_setops_runbooks")
+        self.assertIsNone(registre.lit_registre(trace))
+        self.assertIn("ImportError: yaml", vu)
+
 
 class TestLaPorteEtLeNavigateurJugentPareil(CasDePorte):
     """La barrière est celle du navigateur, et non une seconde règle : une
@@ -1527,26 +1586,28 @@ class TestUnInterrupteurNeSeDemandePasParSaValeur(CasDePorte):
         )
 
 
-class TestUneCibleQuiParleGardeLeTerminal(CasDePorte):
-    """Capturée, une cible qui pose des questions lit une entrée fermée, rend
-    « EOF » et n'a rien fait : le verdict est un refus que rien n'explique."""
+class TestUneCibleQuiAttendUneReponseEstRemise(CasDePorte):
+    """L'exécuteur ferme l'entrée de TOUT geste. Conduite quand même, une cible
+    qui attend une réponse lit une entrée close, rend « EOF » et n'a rien
+    fait : un refus que rien n'explique. Elle se tape donc soi-même."""
 
-    def test_the_terminal_is_handed_over(self):
-        self.porte("config", ["o"])
-        self.assertEqual([False], self.captures)
+    def test_the_door_refuses_and_names_the_reason(self):
+        vu = self.porte("config", ["o"])
+        self.assertEqual([], self.cibles())
+        self.assertIn(
+            todo_i18n.t(self.todo.BARRIERES[registre.A_REMETTRE]), vu
+        )
 
-    def test_a_gesture_that_does_not_speak_is_captured(self):
+    def test_a_gesture_that_waits_for_nothing_is_still_driven(self):
+        """Le contrôle positif : sans lui, une porte qui refuse tout passerait
+        le refus ci-dessus."""
         self.porte("deployer", ["banc-hote-fictif", "o"])
+        self.assertEqual(["deployer"], self.cibles())
         self.assertEqual([True], self.captures)
 
-    def test_an_assistant_that_writes_is_confirmed_although_declared_a_read(
-        self,
-    ):
+    def test_an_assistant_that_writes_is_named_a_write(self):
         """Le registre le déclare « mesure » ; il écrit la configuration et
-        sème la voûte. Sans la question, todo le lancerait comme une lecture
-        anodine."""
-        self.porte("config", ["n"])
-        self.assertEqual([], self.cibles())
+        sème la voûte."""
         self.assertTrue(
             registre.ecrit(
                 registre.trouve(

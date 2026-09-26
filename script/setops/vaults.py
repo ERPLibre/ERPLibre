@@ -33,18 +33,11 @@ ARGV_ETAT = ("python3", "-B", "scripts/voutes.py", "etat")
 # La cible du moteur qui montre ce qui n'existe QUE sur ce poste. Lecture.
 CIBLE_RECENSER = "cles-recenser"
 
-# CE QUE TODO NE LANCE PAS, et la variable que chacune exige. Ces cibles
-# passent par `gpg`, qui demande une phrase de passe : elle doit aller de la
-# main au terminal sans traverser un outil qui pourrait la retenir. Le moteur
-# réserve donc ces gestes à un terminal tenu par un humain, et todo les REMET
-# plutôt que de les conduire — le même parti que les cibles dont il garde la
-# confirmation. La variable accompagne la cible parce qu'une ligne remise sans
-# elle se fait refuser par le moteur, et la remise n'aurait rien donné.
-CIBLES_GPG = {
-    "cles-exporter": "VERS",
-    "cles-compagnons": "VERS",
-    "cles-restaurer": "ARCHIVE",
-}
+# CE QUE TODO NE LANCE PAS vit dans `runbooks.ECARTS`, avec tout le reste de la
+# règle de périmètre. Une seconde liste ici laissait cet écran REMETTRE trois
+# cibles que l'écran des séquences CONDUISAIT — deux endroits qui disaient deux
+# choses du même geste, ce que cette règle interdit en toutes lettres — et elle
+# en oubliait une quatrième que le moteur réserve pareillement.
 
 # Les rôles que le rapport nomme, et le vocabulaire est CLOS. `bloquante` se
 # décide sur `instance` : si ce mot changeait en amont, un rôle inconnu doit
@@ -285,11 +278,49 @@ def poser_cle(chemin) -> Pose:
         return Pose(
             ECHEC, souci.strerror or errno.errorcode.get(souci.errno, "")
         )
+    # Les octets ne passent par aucun retour, aucun journal, aucun écran.
+    attendu = base64.b64encode(os.urandom(OCTETS))
     try:
-        # Les octets ne passent par aucun retour, aucun journal, aucun écran.
-        os.write(descripteur, base64.b64encode(os.urandom(OCTETS)))
+        ecrits = os.write(descripteur, attendu)
     except OSError as souci:
-        os.close(descripteur)
+        _defaire(descripteur, chemin)
         return Pose(ECHEC, souci.strerror or "")
+    except BaseException:
+        # CTRL-C COMPRIS, qui n'est pas un `OSError`. Sans ce bras, la frappe
+        # laisse un fichier de zéro octet et le descripteur ouvert.
+        _defaire(descripteur, chemin)
+        raise
     os.close(descripteur)
+    if ecrits != len(attendu):
+        # Une écriture courte rendrait POSEE sur une clé tronquée, qui n'ouvre
+        # rien et ne se distingue pas d'une bonne.
+        _retirer(chemin)
+        return Pose(ECHEC, "ecriture partielle")
     return Pose(POSEE)
+
+
+def _retirer(chemin) -> None:
+    """Retire le fichier que cette pose venait de créer.
+
+    UN FICHIER À MOITIÉ POSÉ EST PIRE QU'AUCUN. La pose suivante rend
+    `DEJA_LA`, et l'écran affirme alors qu'une clé est là et que la remplacer
+    rendrait la voûte définitivement illisible — la phrase même qui dissuadera
+    de l'effacer. La voûte devient inposable, et rien ne distingue ce fichier
+    d'une vraie clé.
+
+    N'est appelée que sur le chemin qu'`O_EXCL` vient de CRÉER : aucun fichier
+    préexistant ne peut être retiré par là.
+    """
+    try:
+        os.unlink(chemin)
+    except OSError:
+        pass
+
+
+def _defaire(descripteur, chemin) -> None:
+    """Ferme le descripteur et retire le fichier, sans jamais lever."""
+    try:
+        os.close(descripteur)
+    except OSError:
+        pass
+    _retirer(chemin)

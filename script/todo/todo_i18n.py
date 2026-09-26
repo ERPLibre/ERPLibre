@@ -17332,6 +17332,13 @@ TRANSLATIONS = {
         "fr": "destructive : le moteur la garde",
         "en": "destructive: the engine keeps this one",
     },
+    "type it yourself: it waits for an answer todo cannot give": {
+        "fr": (
+            "à taper soi-même : elle attend une réponse que todo ne peut pas"
+            " donner"
+        ),
+        "en": "type it yourself: it waits for an answer todo cannot give",
+    },
     "the engine demands its own confirmation": {
         "fr": "le moteur exige sa propre confirmation",
         "en": "the engine demands its own confirmation",
@@ -17806,6 +17813,22 @@ TRANSLATIONS = {
     "cannot tell; nothing is offered": {
         "fr": "impossible de trancher ; rien n'est offert",
         "en": "cannot tell; nothing is offered",
+    },
+    "the record is there but unreadable:": {
+        "fr": "le suivi est là mais illisible :",
+        "en": "the record is there but unreadable:",
+    },
+    "the record could not be written:": {
+        "fr": "le suivi n'a pas pu être écrit :",
+        "en": "the record could not be written:",
+    },
+    "todo will not offer to stop it; do it by hand.": {
+        "fr": "todo n'offrira pas de l'arrêter ; le faire à la main.",
+        "en": "todo will not offer to stop it; do it by hand.",
+    },
+    "the port could not be probed; state unknown.": {
+        "fr": "le port n'a pas pu être sondé ; état inconnu.",
+        "en": "the port could not be probed; state unknown.",
     },
     "process group": {
         "fr": "groupe de processus",

@@ -303,8 +303,14 @@ exemptions that nobody retires ends up hiding the fix upstream.
 
 - `ecart(cible)`: that divergence, or an empty one — never `None`, since the
   caller always reads fields;
-- `interactif(etape)`: does it need the operator's terminal? Captured, a target
-  that asks questions reads a closed input, answers "EOF" and has done nothing;
+- `remis(etape)`: is it typed by hand instead of driven? The runner closes the
+  input of every gesture, so a target that waits for an answer — a gpg
+  passphrase, a secret — reads a closed input, answers "EOF" and has done
+  nothing: a refusal nothing explains. `barriere` refuses these FIRST, which is
+  what makes the rule one rule: a second list elsewhere had the vault screen
+  hand over three gestures the sequences screen drove;
+- `remises()`: those targets and the variable each one demands. Handed over
+  without it, the line is refused by the engine and the handover gave nothing;
 - `drapeau(etape)`: the name of a flag that is a SWITCH, not a value. The recipe
   reads it through `$(if $(NOM),…)` and GNU make holds any non-empty string
   true, so "0" turns it on as surely as "1". Its value is never asked for: the

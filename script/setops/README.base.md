@@ -308,8 +308,14 @@ exemptions that nobody retires ends up hiding the fix upstream.
 
 - `ecart(cible)`: that divergence, or an empty one — never `None`, since the
   caller always reads fields;
-- `interactif(etape)`: does it need the operator's terminal? Captured, a target
-  that asks questions reads a closed input, answers "EOF" and has done nothing;
+- `remis(etape)`: is it typed by hand instead of driven? The runner closes the
+  input of every gesture, so a target that waits for an answer — a gpg
+  passphrase, a secret — reads a closed input, answers "EOF" and has done
+  nothing: a refusal nothing explains. `barriere` refuses these FIRST, which is
+  what makes the rule one rule: a second list elsewhere had the vault screen
+  hand over three gestures the sequences screen drove;
+- `remises()`: those targets and the variable each one demands. Handed over
+  without it, the line is refused by the engine and the handover gave nothing;
 - `drapeau(etape)`: the name of a flag that is a SWITCH, not a value. The recipe
   reads it through `$(if $(NOM),…)` and GNU make holds any non-empty string
   true, so "0" turns it on as surely as "1". Its value is never asked for: the
@@ -705,9 +711,15 @@ correction en amont.
 
 - `ecart(cible)` : cet écart, ou un écart vide — jamais `None`, puisque
   l'appelant lit toujours des champs ;
-- `interactif(etape)` : a-t-elle besoin du terminal de l'opérateur ? Capturée,
-  une cible qui pose des questions lit une entrée fermée, rend « EOF » et n'a
-  rien fait ;
+- `remis(etape)` : se tape-t-elle à la main au lieu d'être conduite ?
+  L'exécuteur ferme l'entrée de TOUT geste, donc une cible qui attend une
+  réponse — phrase de passe gpg, secret — lit une entrée close, rend « EOF » et
+  n'a rien fait : un refus que rien n'explique. `barriere` les refuse EN
+  PREMIER, et c'est ce qui fait de la règle une seule règle : une seconde liste
+  ailleurs faisait REMETTRE par l'écran des voûtes trois gestes que l'écran des
+  séquences CONDUISAIT ;
+- `remises()` : ces cibles, et la variable que chacune exige. Remise sans elle,
+  la ligne se fait refuser par le moteur et la remise n'aurait rien donné ;
 - `drapeau(etape)` : le nom d'un drapeau qui est un INTERRUPTEUR et non une
   valeur. La recette le lit par `$(if $(NOM),…)` et GNU make tient toute chaîne
   non vide pour vraie : « 0 » l'active aussi sûrement que « 1 ». Sa valeur ne se

@@ -222,9 +222,9 @@ class TestLaPoseDuFichierCle(unittest.TestCase):
         self.assertEqual(0, mode & (stat.S_IRWXG | stat.S_IRWXO))
 
     def test_the_mode_is_given_at_the_moment_of_creation(self):
-        """Mesuré SUR LA CRÉATION, et non sur le mode final : créer large puis
-        resserrer laisse une fenêtre où la clé est lisible par tout le monde,
-        et le mode final ne la montre pas."""
+        """Le garde porte sur LA CRÉATION, et non sur le mode final : créer
+        large puis resserrer laisse une fenêtre où la clé est lisible par tout
+        le monde, et le mode final ne la montre pas."""
         vus = []
         vrai = os.open
 
@@ -314,6 +314,43 @@ class TestLaPoseDuFichierCle(unittest.TestCase):
         # Un fragment aussi : la clé ne doit pas fuir par morceaux.
         self.assertNotIn(contenu[:8], ensemble)
 
+    def test_a_failed_write_leaves_no_file_behind(self):
+        """UN FICHIER À MOITIÉ POSÉ EST PIRE QU'AUCUN : la pose suivante rend
+        DEJA_LA, et l'écran affirme alors qu'une clé est là et que la remplacer
+        rendrait la voûte définitivement illisible — la phrase même qui
+        dissuadera de l'effacer."""
+        with mock.patch.object(
+            os, "write", side_effect=OSError(28, "No space left on device")
+        ):
+            pose = V.poser_cle(self.chemin)
+        self.assertEqual(V.ECHEC, pose.resultat)
+        self.assertFalse(os.path.exists(self.chemin))
+
+    def test_a_short_write_is_a_failure_and_leaves_no_file(self):
+        """Une écriture courte rendrait POSEE sur une clé tronquée, qui n'ouvre
+        rien et ne se distingue pas d'une bonne."""
+        with mock.patch.object(os, "write", return_value=3):
+            pose = V.poser_cle(self.chemin)
+        self.assertEqual(V.ECHEC, pose.resultat)
+        self.assertFalse(os.path.exists(self.chemin))
+
+    def test_an_interrupt_leaves_no_file_behind_either(self):
+        """Ctrl-C n'est pas un `OSError` : sans son propre bras, la frappe
+        laissait le fichier de zéro octet et le descripteur ouvert."""
+        with mock.patch.object(os, "write", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                V.poser_cle(self.chemin)
+        self.assertFalse(os.path.exists(self.chemin))
+
+    def test_an_existing_file_is_never_removed_by_a_failure(self):
+        """Le nettoyage ne porte que sur le chemin qu'`O_EXCL` vient de créer :
+        un refus DEJA_LA ne doit rien retirer."""
+        with open(self.chemin, "w", encoding="ascii") as tenu:
+            tenu.write("la-cle-qui-ouvre-deja-cette-voute")
+        with mock.patch.object(os, "write", side_effect=OSError(5, "EIO")):
+            self.assertEqual(V.DEJA_LA, V.poser_cle(self.chemin).resultat)
+        self.assertTrue(os.path.isfile(self.chemin))
+
     def test_no_path_poses_nothing(self):
         for vide in ("", "   ", None):
             with self.subTest(vide=vide):
@@ -331,15 +368,31 @@ class TestLaPoseDuFichierCle(unittest.TestCase):
 
 
 class TestCeQueTodoNeLancePas(unittest.TestCase):
+    """La liste vit dans `runbooks`, avec le reste de la règle de périmètre.
+    Une seconde ici laissait cet écran REMETTRE ce que l'écran des séquences
+    CONDUISAIT."""
+
     def test_the_passphrase_gestures_are_named_as_handed_over(self):
-        """`gpg` demande une phrase de passe : elle va de la main au terminal
-        sans traverser un outil qui pourrait la retenir."""
+        from script.setops import runbooks as R
+
         for cible in ("cles-exporter", "cles-compagnons", "cles-restaurer"):
             with self.subTest(cible=cible):
-                self.assertIn(cible, V.CIBLES_GPG)
+                self.assertIn(cible, R.remises())
 
     def test_the_read_only_target_is_not_among_them(self):
-        self.assertNotIn(V.CIBLE_RECENSER, V.CIBLES_GPG)
+        from script.setops import runbooks as R
+
+        self.assertNotIn(V.CIBLE_RECENSER, R.remises())
+
+    def test_this_module_keeps_no_second_list(self):
+        """Le défaut, nommé : deux endroits qui décident du même geste."""
+        self.assertFalse(
+            [
+                n
+                for n in dir(V)
+                if n.startswith("CIBLES_") and n != "CIBLE_RECENSER"
+            ]
+        )
 
 
 if __name__ == "__main__":
