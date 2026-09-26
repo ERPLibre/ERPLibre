@@ -535,6 +535,53 @@ class TestLesCommandes(unittest.TestCase):
         self.assertIn("MASQUERADE", joint)
         self.assertIn("ip_forward", joint)
 
+    def test_the_bridge_is_not_vlan_aware_unless_asked(self):
+        """CE QUI PROTÈGE LES USAGES DÉJÀ POSÉS DESSUS. Un pont qui devient
+        conscient des VLAN filtre ce qu'il laissait passer, et le labo de
+        développement imbriqué n'a pas demandé ce changement."""
+        joint = "\n".join(pve.bridge_setup_cmds())
+        self.assertNotIn("bridge-vlan-aware", joint)
+        self.assertNotIn("bridge-vids", joint)
+
+    def test_asking_for_it_declares_both_lines(self):
+        """Une carte de VM taguée sur un pont qui ne l'est pas démarre et reste
+        injoignable : la panne ne se voit ni à la création, ni dans un code de
+        retour."""
+        joint = "\n".join(pve.bridge_setup_cmds(vlan_aware=True))
+        self.assertIn("bridge-vlan-aware yes", joint)
+        self.assertIn("bridge-vids", joint)
+
+    def test_the_vid_range_leaves_the_native_vlan_out(self):
+        """Le VID 1 est le VLAN natif, non tagué : l'annoncer ferait passer le
+        trafic sans étiquette pour du trafic étiqueté 1."""
+        joint = "\n".join(pve.bridge_setup_cmds(vlan_aware=True))
+        plage = re.search(r"bridge-vids (\d+)-(\d+)", joint)
+        self.assertIsNotNone(plage, joint)
+        bas, haut = int(plage.group(1)), int(plage.group(2))
+        self.assertEqual(2, bas)
+        self.assertEqual(pve.VLAN_MAX, haut)
+
+    def test_the_vid_range_covers_what_the_engine_derives(self):
+        """Le moteur Set-OPS dérive ses VLAN au-dessus de 1000 et sous la borne
+        du 802.1Q ; une plage plus courte refuserait celles du haut."""
+        self.assertEqual(4094, pve.VLAN_MAX)
+        joint = "\n".join(pve.bridge_setup_cmds(vlan_aware=True))
+        bas, haut = re.search(r"bridge-vids (\d+)-(\d+)", joint).groups()
+        self.assertLessEqual(int(bas), 1000)
+        self.assertGreaterEqual(int(haut), 4094)
+
+    def test_a_vlan_aware_bridge_still_touches_no_physical_nic(self):
+        joint = "\n".join(
+            pve.bridge_setup_cmds(uplink="enp1s0", vlan_aware=True)
+        )
+        self.assertIn("bridge-ports none", joint)
+        self.assertNotIn("bridge-ports enp1s0", joint)
+
+    def test_a_vlan_aware_stanza_is_added_only_once_too(self):
+        cmds = pve.bridge_setup_cmds(vlan_aware=True)
+        self.assertIn("grep -qE", cmds[0])
+        self.assertIn("||", cmds[0])
+
     def test_the_bridge_stanza_is_added_only_once(self):
         cmds = pve.bridge_setup_cmds()
         self.assertIn("grep -qE", cmds[0])

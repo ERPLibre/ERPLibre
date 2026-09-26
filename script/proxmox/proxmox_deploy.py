@@ -746,10 +746,17 @@ def parse_bridge_config(text: str) -> dict:
     return ponts
 
 
+# Le plus grand VID que 802.1Q permet : douze bits, 4095 réservé. Le moteur
+# Set-OPS dérive ses VLAN sous cette borne, et un pont qui n'annonce pas la
+# plage entière refuserait celles du haut.
+VLAN_MAX = 4094
+
+
 def bridge_setup_cmds(
     nom: str = INTERNAL_BRIDGE,
     cidr: str = INTERNAL_CIDR,
     uplink: str = "",
+    vlan_aware: bool = False,
 ) -> list:
     """Crée un pont INTERNE, et le masque derrière l'uplink si demandé.
 
@@ -757,6 +764,16 @@ def bridge_setup_cmds(
     l'accès à l'hôte survit. Les lignes post-up/post-down de masquerading sont
     celles que documente Proxmox pour un hôte à une seule adresse routée : sans
     elles les VM se parlent entre elles mais ne sortent pas.
+
+    `vlan_aware` ajoute `bridge-vlan-aware` et la plage de VID. IL FAUT LE
+    DEMANDER, et le défaut ne l'est pas : un pont qui devient conscient des
+    VLAN filtre ce qu'il laissait passer, et les usages déjà posés dessus n'ont
+    pas demandé ce changement. En revanche, une carte de VM TAGUÉE sur un pont
+    qui ne l'est pas démarre et reste injoignable — la panne ne se voit ni à la
+    création, ni dans un code de retour.
+
+    La plage part de 2 : le VID 1 est le VLAN natif, non tagué, et l'inclure
+    ferait passer le trafic sans étiquette pour du trafic étiqueté 1.
     """
     reseau = cidr.rsplit(".", 1)[0] + ".0/" + cidr.split("/")[1]
     bloc = [
@@ -768,6 +785,11 @@ def bridge_setup_cmds(
         "    bridge-stp off",
         "    bridge-fd 0",
     ]
+    if vlan_aware:
+        bloc += [
+            "    bridge-vlan-aware yes",
+            f"    bridge-vids 2-{VLAN_MAX}",
+        ]
     if uplink:
         bloc += [
             f"    post-up   iptables -t nat -A POSTROUTING -s '{reseau}'"
