@@ -106,6 +106,25 @@ def conseil_sans_gestionnaire() -> str:
     )
 
 
+# Le rafraîchissement des index, avant une installation. apt-get échoue sur
+# des index vides d'un système neuf ; Arch ne supporte pas la mise à jour
+# partielle, donc -Syu et jamais -Sy seul ; dnf rafraîchit ses métadonnées
+# lui-même quand elles ont expiré.
+_REFRESH = {
+    "apt-get": ("sudo", "apt-get", "update"),
+    "pacman": ("sudo", "pacman", "-Syu", "--noconfirm"),
+    "zypper": ("sudo", "zypper", "--non-interactive", "refresh"),
+}
+
+
+def refresh_command(famille=None) -> list | None:
+    """La commande qui rafraîchit les index de paquets, ou None s'il n'y en
+    a pas à lancer (dnf, ou aucune famille reconnue)."""
+    famille = famille or family()
+    commande = _REFRESH.get(famille)
+    return list(commande) if commande else None
+
+
 def install_command(paquets, famille=None) -> list | None:
     """La commande d'installation, en liste d'arguments. None si personne.
 
