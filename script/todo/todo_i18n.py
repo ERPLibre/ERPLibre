@@ -15887,6 +15887,171 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
+    # Dolibarr — installateur natif (script/dolibarr/install_native.py)
+    "Checks": {
+        "fr": "Vérifications",
+        "en": "Checks",
+    },
+    "System packages": {
+        "fr": "Paquets système",
+        "en": "System packages",
+    },
+    "PHP and its extensions": {
+        "fr": "PHP et ses extensions",
+        "en": "PHP and its extensions",
+    },
+    "Database server": {
+        "fr": "Serveur de base de données",
+        "en": "Database server",
+    },
+    "Database and account": {
+        "fr": "Base et compte",
+        "en": "Database and account",
+    },
+    "Dolibarr source": {
+        "fr": "Source de Dolibarr",
+        "en": "Dolibarr source",
+    },
+    "Data directories": {
+        "fr": "Dossiers de données",
+        "en": "Data directories",
+    },
+    "Headless install": {
+        "fr": "Installation sans navigateur",
+        "en": "Headless install",
+    },
+    "Install lock": {
+        "fr": "Verrou d'installation",
+        "en": "Install lock",
+    },
+    "Web configuration": {
+        "fr": "Configuration web",
+        "en": "Web configuration",
+    },
+    "Check from PHP": {
+        "fr": "Contrôle depuis PHP",
+        "en": "Check from PHP",
+    },
+    "Instance record": {
+        "fr": "Enregistrement de l'instance",
+        "en": "Instance record",
+    },
+    "ok": {
+        "fr": "ok",
+        "en": "ok",
+    },
+    "already done": {
+        "fr": "déjà fait",
+        "en": "already done",
+    },
+    "FAILED": {
+        "fr": "ÉCHEC",
+        "en": "FAILED",
+    },
+    "checked after the packages": {
+        "fr": "vérifié après les paquets",
+        "en": "checked after the packages",
+    },
+    "checkout at %s, pin %s": {
+        "fr": "checkout à %s, épinglage %s",
+        "en": "checkout at %s, pin %s",
+    },
+    "Cannot write %s": {
+        "fr": "Impossible d'écrire %s",
+        "en": "Cannot write %s",
+    },
+    "This installer handles Linux for now.": {
+        "fr": "Cet installateur ne traite que Linux pour l'instant.",
+        "en": "This installer handles Linux for now.",
+    },
+    "Native production is not available yet.": {
+        "fr": "La production native n'est pas encore disponible.",
+        "en": "Native production is not available yet.",
+    },
+    "Install these packages? (y/N): ": {
+        "fr": "Installer ces paquets ? (o/N) : ",
+        "en": "Install these packages? (y/N): ",
+    },
+    "Packages refused, nothing installed.": {
+        "fr": "Paquets refusés, rien n'est installé.",
+        "en": "Packages refused, nothing installed.",
+    },
+    "Package installation failed.": {
+        "fr": "L'installation des paquets a échoué.",
+        "en": "Package installation failed.",
+    },
+    "php does not answer.": {
+        "fr": "php ne répond pas.",
+        "en": "php does not answer.",
+    },
+    "PHP %s is outside what Dolibarr supports (%s to %s).": {
+        "fr": "PHP %s est hors de ce que Dolibarr prend en charge (%s à %s).",
+        "en": "PHP %s is outside what Dolibarr supports (%s to %s).",
+    },
+    "PHP extensions missing: %s": {
+        "fr": "Extensions PHP manquantes : %s",
+        "en": "PHP extensions missing: %s",
+    },
+    "Database server does not start.": {
+        "fr": "Le serveur de base de données ne démarre pas.",
+        "en": "Database server does not start.",
+    },
+    "Cannot create the database.": {
+        "fr": "Impossible de créer la base.",
+        "en": "Cannot create the database.",
+    },
+    "Cannot find pg_hba.conf.": {
+        "fr": "Impossible de trouver pg_hba.conf.",
+        "en": "Cannot find pg_hba.conf.",
+    },
+    "PostgreSQL does not reload.": {
+        "fr": "PostgreSQL ne se recharge pas.",
+        "en": "PostgreSQL does not reload.",
+    },
+    "Cannot fetch the Dolibarr source.": {
+        "fr": "Impossible de récupérer la source de Dolibarr.",
+        "en": "Cannot fetch the Dolibarr source.",
+    },
+    "%s already configures another instance; one checkout serves one instance.": {
+        "fr": "%s configure déjà une autre instance ; un checkout ne sert qu'une instance.",
+        "en": "%s already configures another instance; one checkout serves one instance.",
+    },
+    "%s failed.": {
+        "fr": "%s a échoué.",
+        "en": "%s failed.",
+    },
+    "step1.php did not write conf.php.": {
+        "fr": "step1.php n'a pas écrit conf.php.",
+        "en": "step1.php did not write conf.php.",
+    },
+    "The database holds no installed version.": {
+        "fr": "La base ne porte aucune version installée.",
+        "en": "The database holds no installed version.",
+    },
+    "step5.php did not lock the install.": {
+        "fr": "step5.php n'a pas verrouillé l'installation.",
+        "en": "step5.php did not lock the install.",
+    },
+    "Dolibarr does not answer from PHP.": {
+        "fr": "Dolibarr ne répond pas depuis PHP.",
+        "en": "Dolibarr does not answer from PHP.",
+    },
+    "Dolibarr answers, but reads no installed version.": {
+        "fr": "Dolibarr répond, mais ne lit aucune version installée.",
+        "en": "Dolibarr answers, but reads no installed version.",
+    },
+    "Nothing was undone: running again resumes at this step.": {
+        "fr": "Rien n'a été défait : relancer reprend à cette étape.",
+        "en": "Nothing was undone: running again resumes at this step.",
+    },
+    "Dolibarr %s installed: %s": {
+        "fr": "Dolibarr %s installé : %s",
+        "en": "Dolibarr %s installed: %s",
+    },
+    "Login: %s — password in %s": {
+        "fr": "Identifiant : %s — mot de passe dans %s",
+        "en": "Login: %s — password in %s",
+    },
 }
 
 
