@@ -24,6 +24,9 @@ DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
 DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
+DEFAULT_PATH_MANIFEST_DOLIBARR_CONF = os.path.join(
+    "conf", "git_manifest_dolibarr.csv"
+)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -32,6 +35,7 @@ DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
 MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
+DOLIBARR_PATH = os.path.join("dolibarr", "dolibarr")
 ODOO_VERSION_PATH = ".odoo-version"
 
 
@@ -71,6 +75,11 @@ def get_config():
         help="Add mobile project manifest",
     )
     parser.add_argument(
+        "--with_dolibarr",
+        action="store_true",
+        help="Add the pinned Dolibarr project manifest",
+    )
+    parser.add_argument(
         "--with_extra",
         action="store_true",
         help=(
@@ -102,6 +111,11 @@ def main():
             config.with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             config.with_mobile = True
+        # Un projet sorti de la fusion est effacé par le prochain « repo
+        # sync », fichiers ignorés compris : le checkout Dolibarr y reste
+        # donc dès qu'il existe.
+        if os.path.isdir(DOLIBARR_PATH):
+            config.with_dolibarr = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             config.with_extra = True
 
@@ -154,6 +168,10 @@ def main():
         if config.with_mobile:
             append_file_path_manifest(
                 input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+            )
+        if config.with_dolibarr:
+            append_file_path_manifest(
+                input_paths, DEFAULT_PATH_MANIFEST_DOLIBARR_CONF
             )
         if config.with_extra and odoo_version:
             path_extra = os.path.join(

@@ -52,6 +52,7 @@ screencasts
 private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+/dolibarr/
 
 # Working notes, kept out of tracked files by the code conventions.
 tasks/

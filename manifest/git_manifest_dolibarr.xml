@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="Dolibarr" fetch="https://github.com/Dolibarr/" />
+
+    <!-- Dolibarr épinglé sur un COMMIT de sa branche de maintenance :
+         revision porte le commit, upstream et dest-branch la branche d'où
+         repo le récupère (fetch à profondeur 1). La version affichée par
+         TODO vit dans conf/supported_version_dolibarr.json, dont « branch »
+         doit égaler upstream. La relève passe par script/dolibarr/pin.py.
+         remote est porté par le projet : la fusion ignore <default>. -->
+    <project
+        name="dolibarr.git"
+        path="dolibarr/dolibarr"
+        remote="Dolibarr"
+        revision="36b20af0d10697e288608f90bbc502cc95d3082a"
+        upstream="24.0"
+        dest-branch="24.0"
+        clone-depth="1"
+        groups="dolibarr"
+    />
+</manifest>
