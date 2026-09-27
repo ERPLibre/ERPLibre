@@ -48,6 +48,18 @@ class StoreCase(unittest.TestCase):
         page = tasklog.read(self.base, task_id, 1, 1000)
         return [r["d"] for r in page["lines"] if r["s"] == "out"]
 
+    def stored(self, chunks):
+        """`chunks` reçus un à un par une tâche, PARTIAL_LIMIT à 40, puis
+        close : ses lignes relues, et son journal compressé, décompressé."""
+        task = self.task()
+        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
+            for chunk in chunks:
+                task.output(chunk)
+            task.close("done")
+        packed = task.path.with_name(task.path.name + ".zst")
+        data = zstd.decompress(packed.read_bytes())
+        return self.texts(task.info["id"]), data
+
 
 class TestTaskLog(StoreCase):
     def test_directories_are_0700_and_files_0600(self):
@@ -207,27 +219,61 @@ class TestTaskLog(StoreCase):
         # PARTIAL_LIMIT peut tomber pile au milieu du mot qui ferait
         # reconnaître un secret (« https:/|/ », « Pa|ssword ») plutôt qu'au
         # milieu de sa valeur : aucun des deux morceaux ne le porte encore
-        # en entier, mais la coupure recule jusqu'au dernier blanc reçu, pas
-        # à la frontière du morceau du PTY, et le mot ne se retrouve jamais
+        # en entier, mais la coupure recule jusqu'à un blanc, pas à la
+        # frontière du morceau du PTY, et le mot ne se retrouve jamais
         # coupé en deux.
-        task = self.task()
-        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
-            task.output(b"x" * 33 + b" https:/")
-            task.output(b"/u:inventeAB@forge.example/r\r\n")
-            task.output(b"y" * 38 + b" Pa")
-            task.output(b"ssword: inventeCD more\r\n")
-            task.close("done")
-        self.assertEqual(
-            self.texts(task.info["id"]),
+        texts, packed = self.stored(
             [
-                "x" * 33 + " ",
-                "https://u:***@forge.example/r",
-                "y" * 38 + " ",
-                "Password: ***",
+                b"x" * 29 + b" a b https:/",
+                b"/u:inventeAB@forge.example/r\r\n",
+                b"y" * 34 + b" a b Pa",
+                b"ssword: inventeCD more\r\n",
+            ]
+        )
+        self.assertEqual(
+            texts,
+            [
+                "x" * 29 + " ",
+                "a b https://u:***@forge.example/r",
+                "y" * 34 + " ",
+                "a b Password: ***",
             ],
         )
-        packed = task.path.with_name(task.path.name + ".zst")
-        self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
+        self.assertNotIn(b"invente", packed)
+
+    def test_a_label_completed_past_the_partial_limit_holds_the_line(self):
+        # Le morceau qui franchit PARTIAL_LIMIT achève l'étiquette et porte
+        # sa valeur, ou une séquence ANSI en sépare les deux moitiés : aucun
+        # morceau ne la porte seul, la ligne jointe si, et elle attend son
+        # \n entière plutôt que de laisser la valeur hors de l'étiquette.
+        y = b"y" * 30
+        cases = (
+            ([y + b" Pa", b"ssword: inventeEF", b"\r\n"], "Password: ***"),
+            ([y + b" --pa", b"ssword inventeGH", b"\r\n"], "--password ***"),
+            (
+                [y + b" Au", b"thorization: Bearer inventeIJ", b"\r\n"],
+                "Authorization: Bearer '***'",
+            ),
+            ([y + b" Pa", b"ssword: inventeKL\r", b"\n"], "Password: ***"),
+            (
+                [y + b" Pa\x1b[0m", b"ssword: inventeMN", b"\r\n"],
+                "Password: ***",
+            ),
+        )
+        for chunks, masked in cases:
+            with self.subTest(chunks=chunks):
+                texts, packed = self.stored(chunks)
+                self.assertEqual(texts, ["y" * 30 + " " + masked])
+                self.assertNotIn(b"invente", packed)
+
+    def test_a_cut_keeps_two_whole_words_before_the_last_one(self):
+        # « mot de passe » ne se reconnaît qu'entier : une coupure au seul
+        # dernier blanc laisserait « passe : … », que rien ne masque.
+        texts, packed = self.stored(
+            [b"y" * 33 + b" mot de pa", b"sse : inventeOP\r\n"]
+        )
+        self.assertEqual(texts, ["y" * 33 + " ", "mot de passe : ***"])
+        self.assertNotIn(b"invente", packed)
 
     def test_a_tainted_line_survives_many_tiny_chunks_past_the_limit(self):
         # Beaucoup de très petits morceaux, sans jamais de \n : la ligne

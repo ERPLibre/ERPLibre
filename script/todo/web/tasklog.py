@@ -25,21 +25,13 @@ La sortie arrive en octets bruts du PTY. Chaque ligne est décodée en UTF-8
 d'une ligne réécrite par retour chariot (barre de progression) reste la
 dernière version ; elle passe entière par `redact_for_storage`, puis
 s'écrit par morceaux de LINE_LIMIT caractères. Une ligne sans fin passé
-PARTIAL_LIMIT caractères s'écrit de même, sauf si elle porte encore un mot
-que `redact_for_storage` guette (`holds_secret_trigger`) : sans cette fin
-de ligne, une valeur qui continue plus loin (un mot de passe imprimé va
-jusqu'à la fin de la ligne, une valeur entre guillemets peut porter un
-blanc) ne se coupe pas à l'aveugle, elle attend le prochain `\n`. La coupure
-recule aussi jusqu'au dernier blanc reçu : un mot encore en cours, pile à la
-frontière entre deux morceaux du PTY, ne se scinde donc jamais, qu'il porte
-ou non un mot guetté ; sans aucun blanc, la ligne grossit comme une ligne
-guettée, jusqu'à son `\n` ou jusqu'au plafond CAP. Un morceau reçu sans
-saut de ligne ni retour chariot s'ajoute tel quel à la ligne en cours, sans
-la relire : ce qu'elle porte déjà ne coûte qu'une fois, à sa coupure réelle,
-jamais à chaque envoi. Au-delà de CAP octets bruts, seuls les TAIL derniers
-restent, écrits à la clôture derrière l'événement `omitted {bytes}` ; la
-ligne que coupe le plafond et celle que la fin retenue commence au milieu
-partent entières : un secret coupé ne s'y reconnaîtrait plus.
+PARTIAL_LIMIT caractères s'écrit en deux, mais seulement là où chaque
+moitié se masque seule comme la ligne entière l'aurait été (`_cut`) ; faute
+d'une telle coupure, elle attend son `\n`, ou le plafond CAP. Au-delà de CAP
+octets bruts, seuls les TAIL derniers restent, écrits à la clôture derrière
+l'événement `omitted {bytes}` ; la ligne que coupe le plafond et celle que
+la fin retenue commence au milieu partent entières : un secret coupé ne s'y
+reconnaîtrait plus.
 
 `purge` retire des jours entiers ; d'un jour qui tient un `.log` pas encore
 à l'index, seul ce `.log` reste. Un `.log` que rien n'a clos — son hub tué,
@@ -68,9 +60,8 @@ TAIL = 1024 * 1024
 # Caractères d'un enregistrement de sortie ; une ligne plus longue, masquée
 # entière, s'écrit en plusieurs.
 LINE_LIMIT = 16 * 1024
-# Une ligne sans fin s'écrit, masquée, passé ce nombre de caractères ; la
-# suite commence une ligne neuve. Tant qu'elle porte un mot que
-# redact_for_storage guette, elle attend son \n plutôt que de se couper là.
+# Une ligne sans fin s'écrit, masquée, passé ce nombre de caractères, là où
+# `_cut` le permet ; la suite commence une ligne neuve.
 PARTIAL_LIMIT = 1024 * 1024
 TASK_ID = re.compile(r"([0-9]{4})([0-9]{2})([0-9]{2})-[0-9]{6}-[0-9a-f]{6}")
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -126,43 +117,50 @@ def _at_risk(text) -> bool:
     return holds_secret_trigger(text)
 
 
-def _cut_at_space(line) -> tuple:
-    """`(devant, après)` du dernier blanc de `line`, lui-même dans `devant` ;
-    `(None, line)` si `line` n'en porte aucun. Le mot en cours à la fin de
-    `line` — celui qu'une coupure pile à la frontière entre deux morceaux du
-    PTY aurait pu couper en deux, guetté ou non — reste ainsi entier dans
-    l'une des deux moitiés, jamais partagé entre les deux."""
-    cut = line.rfind(" ")
-    return (None, line) if cut < 0 else (line[: cut + 1], line[cut + 1 :])
+def _cut(line) -> tuple:
+    """`(écrit, gardé)`, les deux moitiés de `line`, une ligne sans fin,
+    telles que chacune se masque seule comme la ligne entière l'aurait
+    été : `écrit` part aussitôt, `gardé` attend la suite. `(None, line)` si
+    aucune coupure n'est sûre.
+
+    Aucune ne l'est si `line` porte déjà un mot que `redact_for_storage`
+    guette, brut ou une fois retirés, comme le fait `clean`, les séquences
+    ANSI et les contrôles qui peuvent en séparer les deux moitiés : la
+    valeur qui le suit peut continuer plus loin (un mot de passe imprimé va
+    jusqu'à la fin de la ligne, une valeur entre guillemets peut porter un
+    blanc). Sinon, tout mot guetté à venir, sans blanc, tombe après le
+    dernier blanc de `line` ; or chaque motif de `redact_for_storage`
+    commence dans le mot où tombe son mot guetté, sauf « mot de passe », qui
+    commence deux mots plus tôt. La coupure se place donc au troisième blanc
+    depuis la fin, `gardé` reprenant les deux mots complets devant le mot
+    en cours ; sans ces trois blancs, aucune coupure."""
+    if _at_risk(line) or _at_risk(CONTROL.sub("", ANSI.sub("", line))):
+        return None, line
+    cut = len(line)
+    for _ in range(3):
+        cut = line.rfind(" ", 0, cut)
+        if cut < 0:
+            return None, line
+    return line[: cut + 1], line[cut + 1 :]
 
 
 class Lines:
     """Découpe un flux d'octets en lignes nettoyées et entières ; la
     dernière, sans fin, attend la suite en morceaux non joints (`pieces`)
     tant qu'aucun n'apporte de saut de ligne ni de retour chariot : les
-    rejoindre et les relire à chaque envoi coûterait un temps proportionnel
-    à leur longueur déjà accumulée — un temps total proportionnel au carré
-    de celle-ci pour une ligne qui grossit sans jamais se terminer. Ils ne
-    se joignent (`partial`) qu'à une coupure réelle, au dernier blanc reçu
-    avant PARTIAL_LIMIT caractères : jamais au milieu d'un mot, secret ou
-    non — un mot que `redact_for_storage` guette et qui tomberait pile à la
-    frontière entre deux morceaux du PTY reste ainsi entier d'un côté ou de
-    l'autre, reconnaissable. Sans aucun blanc à trouver, ou tant que la
-    ligne porte déjà un mot guetté, la coupure attend plutôt son `\\n` — sans
-    quoi elle laisserait une valeur à cheval sur deux morceaux, qu'aucun des
-    deux ne reconnaîtrait plus (une valeur entre guillemets peut porter un
-    blanc, qui n'est alors plus une frontière sûre) ; `stuck` évite de
-    rechercher ce blanc à nouveau à chaque morceau reçu tant qu'aucun n'est
-    apparu, une recherche aussi coûteuse que la ligne déjà accumulée. Une
-    barre de progression qui ne finit pas sa ligne n'y garde que sa
-    dernière version."""
+    rejoindre et les relire à chaque envoi coûterait, pour une ligne qui
+    grossit sans jamais se terminer, un temps total au carré de sa
+    longueur. Ils ne se joignent (`partial`) que passé PARTIAL_LIMIT
+    caractères, pour chercher où couper (`_cut`) ; une coupure refusée tient
+    la ligne (`held`) jusqu'à sa coupure réelle suivante, sans chercher de
+    nouveau à chaque morceau reçu. Une barre de progression qui ne finit pas
+    sa ligne n'y garde que sa dernière version."""
 
     def __init__(self):
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.pieces = []  # morceaux de la ligne en cours, pas encore joints
         self.length = 0  # somme de leurs longueurs, sans les joindre
-        self.tainted = False  # la ligne en cours porte un mot guetté
-        self.stuck = False  # déjà cherché un blanc où couper, sans en trouver
+        self.held = False  # `_cut` l'a refusée : attend \n, ou le CAP
         self.pending_cr = False  # elle finit par un \r pas encore tranché
 
     @property
@@ -173,13 +171,14 @@ class Lines:
             self.pieces = ["".join(self.pieces)]
         return self.pieces[0] if self.pieces else ""
 
-    def _keep(self, rest):
+    def _keep(self, rest, held=False):
         """Ce qui reste ouvert après une coupure : `rest` seul, en attente
-        d'un morceau neuf pour continuer, ou rien si la ligne est partie."""
+        d'un morceau neuf pour continuer, ou rien si la ligne est partie ;
+        `held` si `_cut` vient de refuser de le couper."""
         self.pieces = [rest] if rest else []
         self.length = len(rest)
         self.pending_cr = rest.endswith("\r")
-        self.stuck = False
+        self.held = held
 
     def feed(self, data, final=False) -> list:
         added = self.decoder.decode(data, final)
@@ -194,41 +193,27 @@ class Lines:
             # précède déjà.
             self.pieces.append(added)
             self.length += len(added)
-            self.tainted = self.tainted or _at_risk(added)
-            if (
-                self.length > PARTIAL_LIMIT
-                and not self.tainted
-                and not self.stuck
-            ):
-                shown, rest = _cut_at_space(self.partial)
-                if shown is None:
-                    self.stuck = True  # aucun blanc : attend \n, ou le CAP
-                    return []
-                self._keep(rest)
-                return [clean(shown)]
-            return []
+            if self.held or self.length <= PARTIAL_LIMIT:
+                return []
+            shown, rest = _cut(self.partial)
+            self._keep(rest, held=shown is None)
+            return [] if shown is None else [clean(shown)]
         text = self.partial + added
         *done, rest = text.split("\n")
-        if done:
-            # Une fin de ligne referme tout ce qui précède : seule la suite,
-            # venue après elle, peut encore porter une valeur.
-            self.tainted = _at_risk(rest)
-        else:
-            self.tainted = self.tainted or _at_risk(added)
         cut = rest.rfind("\r", 0, len(rest) - 1)
         if cut > 0:
             rest = rest[cut:]
-            self.tainted = _at_risk(rest)
+        held = False
         if final:
             if rest:
                 done.append(rest)
                 rest = ""
-                self.tainted = False
-        elif not self.tainted and len(rest) > PARTIAL_LIMIT:
-            shown, rest = _cut_at_space(rest)
-            if shown is not None:
+        elif len(rest) > PARTIAL_LIMIT:
+            shown, rest = _cut(rest)
+            held = shown is None
+            if not held:
                 done.append(shown)
-        self._keep(rest)
+        self._keep(rest, held)
         return [clean(line) for line in done]
 
 
