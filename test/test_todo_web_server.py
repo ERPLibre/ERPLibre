@@ -12,6 +12,7 @@ session lance le worker jetable de todo_web_env, jamais TODO.
 
 import asyncio
 import base64
+import datetime
 import errno
 import hashlib
 import io
@@ -1409,6 +1410,83 @@ class TestTaskLogs(TerminalCase):
             self.assertLess(time.monotonic(), deadline, "still held")
             await asyncio.sleep(0.05)
         self.assertEqual(page["state"], "open")
+
+
+class TestTasksApi(ApiCase):
+    """L'historique : liste, journal paginé, purge."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        resp = await self.fetch("/api/session", Cookie=self.session_cookie)
+        self.csrf = json.loads(resp.body)["csrf"]
+        self.ids = []
+        for when, text in ((time.time() - 60, b"old\r\n"), (None, b"new\r\n")):
+            now = time.time() if when is None else when
+            info = {"id": tasklog.new_id(now), "session": "s1", "start": now}
+            info.update(crumbs=["TODO"], entry="Show code status", key="1")
+            task = tasklog.TaskLog(self.hub.tasks_dir, info)
+            task.output(text * 3)
+            task.close("done")
+            self.ids.append(info["id"])
+
+    async def test_the_list_is_newest_first_and_pages_by_id(self):
+        old, new = self.ids
+        listed = await self.get_json("/api/tasks")
+        self.assertEqual([e["id"] for e in listed["tasks"]], [new, old])
+        self.assertFalse(listed["more"])
+        first = await self.get_json("/api/tasks?limit=1")
+        self.assertEqual(
+            ([e["id"] for e in first["tasks"]], first["more"]), ([new], True)
+        )
+        rest = await self.get_json(f"/api/tasks?limit=1&before={new}")
+        self.assertEqual([e["id"] for e in rest["tasks"]], [old])
+        for query in ("limit=0", "limit=x", "limit=201", "before=../x"):
+            resp = await self.fetch(
+                f"/api/tasks?{query}", Cookie=self.session_cookie
+            )
+            self.assertEqual(resp.code, 400, query)
+
+    async def test_a_log_reads_in_pages(self):
+        new = self.ids[1]
+        page = await self.get_json(f"/api/tasks/{new}?from=2&limit=2")
+        self.assertEqual([r["d"] for r in page["lines"]], ["new", "new"])
+        self.assertEqual(
+            (page["next"], page["eof"], page["state"]), (4, False, "done")
+        )
+
+    async def test_without_a_cookie_or_with_a_bad_id_nothing_is_read(self):
+        new = self.ids[1]
+        for path in ("/api/tasks", f"/api/tasks/{new}"):
+            self.assertEqual((await self.fetch(path)).code, 403, path)
+        other = tasklog.new_id(time.time() - 3 * 24 * 3600)
+        for task_id in ("..%2F..%2Fserver.log", "x", other):
+            resp = await self.fetch(
+                f"/api/tasks/{task_id}", Cookie=self.session_cookie
+            )
+            self.assertEqual(resp.code, 404, task_id)
+
+    async def test_purge_needs_the_csrf_token(self):
+        post = {"Cookie": self.session_cookie, "Origin": self.origin}
+        resp = await self.fetch("/api/tasks/purge", "POST", "{}", **post)
+        self.assertEqual(resp.code, 403)
+        post["X-CSRF-Token"] = self.csrf
+        for body in ('{"before": "tomorrow"}', '{"before": 5}', "[]"):
+            resp = await self.fetch("/api/tasks/purge", "POST", body, **post)
+            self.assertEqual(resp.code, 400, body)
+        self.assertEqual(len((await self.get_json("/api/tasks"))["tasks"]), 2)
+        resp = await self.fetch("/api/tasks/purge", "POST", "{}", **post)
+        self.assertEqual(json.loads(resp.body), {"removed": 2})
+        self.assertEqual((await self.get_json("/api/tasks"))["tasks"], [])
+
+    async def test_the_control_socket_purges_past_the_retention(self):
+        old = datetime.date.today() - datetime.timedelta(31)
+        stamp = time.mktime(old.timetuple()) + 12 * 3600
+        info = {"id": tasklog.new_id(stamp), "session": "s1", "start": stamp}
+        task = tasklog.TaskLog(self.hub.tasks_dir, info)
+        task.output(b"old\r\n")
+        task.close("done")
+        self.assertEqual(await self.ctl("purge"), "1")
+        self.assertEqual(await self.ctl("purge all"), "2")
 
 
 class TestTerminalIdle(TerminalCase):

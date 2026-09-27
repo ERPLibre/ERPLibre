@@ -28,3 +28,9 @@ todo_web:
 .PHONY: todo_web_stop
 todo_web_stop:
 	./.venv.erplibre/bin/python -m script.todo.web.launcher stop
+
+# Journal des tâches des sessions web : retire les jours de plus de 30 jours,
+# sauf une tâche en cours. « launcher purge --all » les retire tous.
+.PHONY: todo_web_purge
+todo_web_purge:
+	./.venv.erplibre/bin/python -m script.todo.web.launcher purge

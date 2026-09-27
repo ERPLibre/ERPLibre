@@ -8,11 +8,12 @@ Deux entrées dans une même boucle asyncio :
 - HTTP tornado sur 127.0.0.1, port libre : la page et son API ;
 - une socket Unix 0600 (`ctl.sock`), réservée au compte de l'utilisateur :
   une commande par ligne — `mint` (code de connexion à usage unique),
-  `status`, `stop`, `tasks`.
+  `status`, `stop`, `tasks`, `purge` et `purge all` (le journal des tâches).
 
 Le WebSocket `/ws` porte les sessions TODO (`sessions.py`) : un worker par
 session, jamais d'autre programme. Le hub ne s'arrête pas pour inactivité
-tant qu'une session existe ; son arrêt les ferme toutes.
+tant qu'une session existe ; son arrêt les ferme toutes. Chaque session
+tient le journal de ses tâches (`tasklog`), que `/api/tasks` relit.
 
 Chaque requête HTTP passe par `Guard.prepare` : `Host` dans la liste (port
 exigé, contre le rebinding DNS) ; hors GET et HEAD, comme pour toute poignée
@@ -27,6 +28,7 @@ par port. Le hub n'importe jamais todo.py.
 import argparse
 import asyncio
 import base64
+import datetime
 import errno
 import fcntl
 import hashlib
@@ -71,6 +73,12 @@ MAX_TERMINAL = 1000
 # fermé en moins d'une minute : l'envoi en attente échoue et la session le
 # détache, au lieu de retenir la commande jusqu'à ce que TCP abandonne.
 PING_SECONDS = 20.0
+# Purge du journal des tâches : au démarrage, puis à cet intervalle.
+PURGE_SECONDS = 6 * 3600.0
+# Plafonds de `limit` : tâches d'une page de l'historique, enregistrements
+# d'une page de journal.
+TASKS_LIMIT = 200
+LINES_LIMIT = 1000
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -300,6 +308,16 @@ class Guard:
             raise HTTPError(403)
         self.hub.touch()
         return csrf
+
+    def int_argument(self, name, default, most) -> int:
+        """`?name=`, un entier de 1 à `most`, `default` sans lui ; 400
+        sinon."""
+        raw = self.get_argument(name, None)
+        if raw is None:
+            return default
+        if not re.fullmatch(r"[0-9]{1,10}", raw) or not 1 <= int(raw) <= most:
+            raise HTTPError(400)
+        return int(raw)
 
     def lang_argument(self) -> str:
         """`?lang=` de la requête, langue TODO du serveur par défaut ;
@@ -638,6 +656,59 @@ class SessionList(Guard, tornado.web.RequestHandler):
         )
 
 
+class Tasks(Guard, tornado.web.RequestHandler):
+    """`{tasks, more}` : au plus `limit` (1 à TASKS_LIMIT, 50 par défaut)
+    entrées d'index des tâches closes, les plus récentes d'abord, toutes
+    avant l'identifiant `before` ; `more`, vrai s'il en reste."""
+
+    async def get(self):
+        self.require_session()
+        limit = self.int_argument("limit", 50, TASKS_LIMIT)
+        before = self.get_argument("before", None)
+        if before is not None and not tasklog.TASK_ID.fullmatch(before):
+            raise HTTPError(400)
+        found = await asyncio.to_thread(
+            tasklog.entries, self.hub.tasks_dir, limit + 1, before
+        )
+        self.write({"tasks": found[:limit], "more": len(found) > limit})
+
+
+class TaskLines(Guard, tornado.web.RequestHandler):
+    """`{lines, next, eof, state}` (`tasklog.read`) : au plus `limit` (1 à
+    LINES_LIMIT, 500 par défaut) enregistrements du journal d'une tâche, à
+    partir du numéro `from`. 404 pour un identifiant hors TASK_ID, avant
+    tout chemin, et pour une tâche inconnue."""
+
+    async def get(self, task_id):
+        self.require_session()
+        if not tasklog.TASK_ID.fullmatch(task_id):
+            raise HTTPError(404)
+        start = self.int_argument("from", 1, 2**31)
+        limit = self.int_argument("limit", 500, LINES_LIMIT)
+        page = await asyncio.to_thread(
+            tasklog.read, self.hub.tasks_dir, task_id, start, limit
+        )
+        if page is None:
+            raise HTTPError(404)
+        self.write(page)
+
+
+class TasksPurge(Guard, tornado.web.RequestHandler):
+    """`POST {before?}` → `{removed}` : retire du journal les jours
+    antérieurs à la date `before` (AAAA-MM-JJ), ou tous sans elle, sauf une
+    tâche ouverte. Le jeton CSRF est exigé, comme pour toute écriture
+    (`Guard.prepare`)."""
+
+    def post(self):
+        try:
+            before = json.loads(self.request.body or b"{}").get("before")
+            if before is not None:
+                before = datetime.date.fromisoformat(before)
+        except (ValueError, AttributeError, TypeError):
+            raise HTTPError(400) from None
+        self.write({"removed": self.hub.purge_tasks(before)})
+
+
 def _hold_lock(path: Path) -> int:
     """Descripteur de `path` (0600) sous verrou exclusif, ou `HubRunning`.
 
@@ -739,6 +810,9 @@ class Hub:
             (r"/api/i18n", I18n),
             (r"/api/system", System),
             (r"/api/sessions", SessionList),
+            (r"/api/tasks", Tasks),
+            (r"/api/tasks/purge", TasksPurge),
+            (r"/api/tasks/([^/]+)", TaskLines),
             (r"/ws", Terminal),
         ]
 
@@ -801,6 +875,7 @@ class Hub:
         }
         paths.write_private(self.state_path, json.dumps(state))
         self.idle_task = asyncio.create_task(self.watch_idle())
+        self.purge_task = asyncio.create_task(self.watch_purge())
         log.info("listening on 127.0.0.1:%s for %s", self.port, self.root)
 
     def _tidy(self):
@@ -959,6 +1034,25 @@ class Hub:
         self.pending.add(task)
         task.add_done_callback(self.pending.discard)
 
+    def purge_tasks(self, before=None) -> int:
+        """Tâches closes retirées du journal : les jours antérieurs à la
+        date `before`, tous sans elle (`tasklog.purge`). Dans la boucle :
+        aucune tâche ne s'ouvre pendant la purge."""
+        removed = tasklog.purge(self.tasks_dir, before)
+        log.info("task logs purged: %s", removed)
+        return removed
+
+    async def watch_purge(self):
+        """Retire, au démarrage puis toutes les PURGE_SECONDS, les jours de
+        plus de RETENTION_DAYS jours. Un échec, fichier abîmé compris, va au
+        journal ; la purge suivante réessaie."""
+        while True:
+            try:
+                self.purge_tasks(tasklog.expiry())
+            except Exception:
+                log.exception("purging the task logs failed")
+            await asyncio.sleep(PURGE_SECONDS)
+
     def status(self) -> dict:
         """`sessions` : sessions TODO ouvertes ; `running` : celles dont le
         worker a lancé une commande ou un processus (`Session.busy`)."""
@@ -985,6 +1079,13 @@ class Hub:
             return "\n".join(
                 asyncio.format_call_graph(task) for task in asyncio.all_tasks()
             )
+        if name in ("purge", "purge all"):
+            before = None if name == "purge all" else tasklog.expiry()
+            try:
+                return str(self.purge_tasks(before))
+            except Exception as exc:
+                log.exception("purging the task logs failed")
+                return f"error: {exc}"
         return "error: unknown command"
 
     async def control(self, reader, writer):
@@ -1040,6 +1141,7 @@ class Hub:
         (asyncio vérifie que l'inode est toujours le sien).
         """
         self.idle_task.cancel()
+        self.purge_task.cancel()
         spares = [self.spare] if self.spare is not None else []
         closing = [s.close() for s in (*self.terminals.values(), *spares)]
         try:

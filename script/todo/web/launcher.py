@@ -11,17 +11,18 @@ reçoit le chemin d'un fichier de redirection 0600, et le lien complet n'est
 rendu qu'à l'appelant, qui l'affiche dans le terminal de l'utilisateur.
 
 API du menu TODO : `status`, `ensure_running`, `mint_code`, `open_page`,
-`stop`, `LaunchError`, `OpenResult`. Elles ne lèvent que `ValueError`
-(argument invalide) ou `LaunchError`. Sous root, aucune ne crée de fichier :
-le hub refuse root, et un répertoire créé par root sous le HOME de
-l'utilisateur (`sudo -E`) bloquerait ses lancements suivants. En ligne de
-commande (messages anglais, sans traduction) :
+`stop`, `purge`, `LaunchError`, `OpenResult`. Elles ne lèvent que
+`ValueError` (argument invalide) ou `LaunchError`. Sous root, aucune ne crée
+de fichier : le hub refuse root, et un répertoire créé par root sous le
+HOME de l'utilisateur (`sudo -E`) bloquerait ses lancements suivants. En
+ligne de commande (messages anglais, sans traduction) :
 
-    python -m script.todo.web.launcher open|stop|status [--view V]
-                                       [--no-browser] [--root R]
+    python -m script.todo.web.launcher open|stop|status|purge [--view V]
+                                       [--no-browser] [--all] [--root R]
 """
 
 import argparse
+import fcntl
 import html
 import json
 import logging
@@ -301,16 +302,70 @@ def stop(root) -> bool:
     return True
 
 
+def purge(root, everything=False) -> int:
+    """Nombre de tâches closes retirées du journal de `root` : les jours de
+    plus de RETENTION_DAYS jours, tous avec `everything`, sauf une tâche
+    ouverte. Le hub de `root` purge s'il répond ou tient son verrou ;
+    sinon ce processus, verrou pris (`_purge_here`). `LaunchError` sous
+    root, ou si rien n'a purgé."""
+    # À l'appel : TODO importe ce module à chaque démarrage.
+    from script.todo.web import tasklog
+
+    if os.geteuid() == 0:
+        raise LaunchError("refusing to purge as root", kind="root")
+    before = None if everything else tasklog.expiry()
+    if status(root) is None:
+        try:
+            removed = _purge_here(root, before)
+        except OSError as exc:
+            raise LaunchError(f"cannot purge the task logs: {exc}") from exc
+        if removed is not None:
+            return removed
+    reply = _ctl(root, "purge all" if everything else "purge")
+    if not reply or not reply.isdigit():
+        raise LaunchError(f"the web hub did not purge: {reply}")
+    return int(reply)
+
+
+def _purge_here(root, before):
+    """Sous le verrou du hub, que son démarrage attend : clôt ce qu'un hub
+    tué a laissé ouvert (`tasklog.recover`), puis purge avant `before`.
+    None, sans rien toucher, si un hub tient le verrou."""
+    from script.todo.web import tasklog
+
+    fd = os.open(paths.lock_path(root), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return None
+        base = paths.tasks_dir(root)
+        tasklog.recover(base)
+        return tasklog.purge(base, before)
+    finally:
+        os.close(fd)  # relâche le verrou
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m script.todo.web.launcher",
         description="Start, open or stop the TODO web interface.",
     )
-    parser.add_argument("action", choices=("open", "stop", "status"))
+    parser.add_argument("action", choices=("open", "stop", "status", "purge"))
     parser.add_argument("--view", default="telemetry")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument(
+        "--all", action="store_true", help="purge: every day, not only old"
+    )
     parser.add_argument("--root", default=str(ROOT), help="ERPLibre checkout")
     args = parser.parse_args(argv)
+    if args.action == "purge":
+        try:
+            print(f"removed: {purge(args.root, args.all)}")
+        except LaunchError as exc:
+            print(exc.message, file=sys.stderr)
+            return 1
+        return 0
     if args.action == "status":
         info = status(args.root)
         print(json.dumps(info) if info else "not running")

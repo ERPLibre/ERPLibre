@@ -9,6 +9,8 @@ lancement qui échoue passe par un faux interpréteur, un script shell.
 """
 
 import contextlib
+import datetime
+import fcntl
 import http.client
 import io
 import json
@@ -31,7 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 import tornado
 from todo_web_env import private_env
 
-from script.todo.web import launcher, paths, server
+from script.todo.web import launcher, paths, server, tasklog
 
 REPO = Path(__file__).resolve().parent.parent
 # Le lanceur et le hub refusent root : sous root, ces tests n'ont rien à
@@ -458,6 +460,8 @@ class TestRoot(unittest.TestCase):
             self.assertEqual(ctx.exception.kind, "root")
             with self.assertRaisesRegex(launcher.LaunchError, "root"):
                 launcher.open_page(REPO, browser=False)
+            with self.assertRaisesRegex(launcher.LaunchError, "root"):
+                launcher.purge(REPO)
             self.assertFalse(launcher.stop(REPO))
         popen.assert_not_called()
         self.assertFalse((self.base / "run" / paths.APP).exists())
@@ -495,6 +499,59 @@ class TestStop(unittest.TestCase):
         self.assertEqual((code, out.getvalue()), (0, "not running\n"))
 
 
+@as_user
+class TestPurge(unittest.TestCase):
+    """`purge` : par le hub s'il tourne ou tient son verrou, sinon ici ; un
+    jour de 31 jours part, un jour de 29 reste, sauf avec `--all`."""
+
+    def setUp(self):
+        self.base = private_env(self.addCleanup)
+        self.tasks = paths.tasks_dir(REPO)
+        for days in (31, 29):
+            self.task(days).close("done")
+
+    def task(self, days):
+        """Une tâche ouverte à midi il y a `days` jours, une ligne écrite."""
+        day = datetime.date.today() - datetime.timedelta(days)
+        start = datetime.datetime.combine(day, datetime.time(12)).timestamp()
+        info = {"id": tasklog.new_id(start), "start": start}
+        task = tasklog.TaskLog(self.tasks, info)
+        task.output(b"forged\r\n")
+        return task
+
+    def test_without_a_hub_this_process_purges(self):
+        # Une tâche qu'un hub tué a laissée ouverte il y a 31 jours est
+        # reprise d'abord, puis part avec son jour.
+        self.task(31).abandon()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = launcher.main(["purge", "--root", str(REPO)])
+            code += launcher.main(["purge", "--all", "--root", str(REPO)])
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), "removed: 2\nremoved: 1\n")
+        self.assertIsNone(launcher.status(REPO))
+
+    def test_a_hub_holding_its_lock_purges_for_this_process(self):
+        # Un hub qui démarre tient son verrou avant de répondre : rien
+        # n'est touché ici, la purge lui est demandée.
+        fd = os.open(paths.lock_path(REPO), os.O_RDWR | os.O_CREAT, 0o600)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        with patch.object(launcher, "_ctl", return_value="7") as ctl:
+            self.assertEqual(launcher.purge(REPO), 7)
+        ctl.assert_called_with(REPO, "purge")
+        self.assertEqual(len(tasklog.entries(self.tasks)), 2)
+
+    def test_a_running_hub_purges_at_start_and_for_it(self):
+        launcher.ensure_running(REPO)
+        self.addCleanup(launcher.stop, REPO)
+        # Le hub a déjà retiré le jour de 31 jours à son démarrage.
+        self.assertEqual(len(tasklog.entries(paths.tasks_dir(REPO))), 1)
+        with patch.object(launcher, "_ctl", wraps=launcher._ctl) as ctl:
+            self.assertEqual(launcher.purge(REPO, everything=True), 1)
+        ctl.assert_any_call(REPO, "purge all")
+
+
 class TestInstallation(unittest.TestCase):
     def test_venv_python_follows_the_conf_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -513,7 +570,7 @@ class TestInstallation(unittest.TestCase):
     def test_make_targets_run_the_launcher(self):
         out = subprocess.run(
             ["make", "-n", "-f", "conf/make.todo.Makefile"]
-            + ["todo_web", "todo_web_stop"],
+            + ["todo_web", "todo_web_stop", "todo_web_purge"],
             cwd=REPO,
             capture_output=True,
             text=True,
@@ -521,6 +578,7 @@ class TestInstallation(unittest.TestCase):
         ).stdout
         self.assertIn("-m script.todo.web.launcher open", out)
         self.assertIn("-m script.todo.web.launcher stop", out)
+        self.assertIn("-m script.todo.web.launcher purge", out)
 
     def test_tornado_is_declared_and_installed_in_range(self):
         text = (
