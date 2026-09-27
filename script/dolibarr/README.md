@@ -33,6 +33,7 @@ script also runs on its own.
 | `package.py` | `check` a module against DoliStore's rules, `build` its zip |
 | `quality.py` | phpcs and PHPStan on a module, with Dolibarr's own rules |
 | `hooks_index.py` | Hooks, contexts and triggers at a version, and the diff between two |
+| `core.py` | Core changes: `status`, `start` a work branch, `check` against CONTRIBUTING, `patches` |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -156,6 +157,8 @@ set.
 ./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
 ./script/dolibarr/hooks_index.py list --kind context --filter '^thirdparty'
 ./script/dolibarr/hooks_index.py diff --from 23.0.4       # to the pinned commit
+./script/dolibarr/core.py start --topic fix-invoice-total
+./script/dolibarr/core.py check && ./script/dolibarr/core.py patches
 ```
 
 - `debug.py on` shows development features (`MAIN_FEATURES_LEVEL=2`),
@@ -201,6 +204,17 @@ set.
   branch or commit is fetched once, at depth 1, into
   `~/.erplibre/dolibarr_index.git`, which borrows the checkout's objects:
   the checkout that Google Repo manages is never written.
+- `core.py` works on the pinned checkout and nothing leaves this machine:
+  no push, no pull request. `start` opens a work branch at the pinned
+  commit (`repo start`) and deepens the shallow history; it needs a git
+  identity, since `repo sync` silently resets a branch none of whose
+  commits carries it (`status` warns about it). `check` applies Dolibarr's
+  `CONTRIBUTING.md`: the author's `Signed-off-by` (DCO), a title keyword
+  (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC, in capitals for the ChangeLog),
+  neither `ChangeLog` nor a language other than en_US, one fix per pull
+  request on a stable branch. `patches` exports the series under
+  `private/dolibarr/patches/`. The `ERPLibre/dolibarr` fork does not exist
+  yet; `status` says when it answers.
 
 ## Pinned version
 
