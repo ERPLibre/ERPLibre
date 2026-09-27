@@ -78,11 +78,16 @@ def t(key):
 
 
 class StepError(Exception):
-    """Une étape a échoué ; `detail` porte la sortie utile, déjà filtrée."""
+    """Une étape a échoué ; `detail` porte la sortie utile, déjà filtrée.
 
-    def __init__(self, message, detail=""):
+    `resumable` faux : un refus avant toute écriture, que relancer ne
+    reprendrait pas (instance existante, système non pris en charge).
+    """
+
+    def __init__(self, message, detail="", resumable=True):
         super().__init__(message)
         self.detail = detail
+        self.resumable = resumable
 
 
 class Runner:
@@ -262,15 +267,24 @@ def step_preflight(ctx, runner):
         ctx.args.mode,
     )
     if not ok:
-        raise StepError(t("Native is not offered here: %s") % t(why))
+        raise StepError(
+            t("Native is not offered here: %s") % t(why), resumable=False
+        )
     if ctx.facts["system"] != "Linux":
-        raise StepError(t("This installer handles Linux for now."))
+        raise StepError(
+            t("This installer handles Linux for now."), resumable=False
+        )
     try:
         known = lib_dolibarr.load_registry(ROOT)
     except lib_dolibarr.RegistryError as e:
-        raise StepError(t("Dolibarr registry unreadable: %s") % e)
+        raise StepError(
+            t("Dolibarr registry unreadable: %s") % e, resumable=False
+        )
     if ctx.instance in known:
-        raise StepError(t("This instance already exists: %s") % ctx.instance)
+        raise StepError(
+            t("This instance already exists: %s") % ctx.instance,
+            resumable=False,
+        )
     return t("ok")
 
 
@@ -893,9 +907,12 @@ def run_steps(ctx, runner, steps=STEPS):
             if e.detail:
                 runner.out(e.detail)
             runner.out(t("Step failed, stopping here."))
-            runner.out(
-                t("Nothing was undone: running again resumes at this step.")
-            )
+            if e.resumable:
+                runner.out(
+                    t(
+                        "Nothing was undone: running again resumes at this step."
+                    )
+                )
             return 1
         runner.out(f"[{i}/{total}] {t(label)}: {result}")
     return 0

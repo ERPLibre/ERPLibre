@@ -499,6 +499,20 @@ class TestRefus(Banc):
         code, runner = self.installer("--yes")
         self.assertEqual(code, 1)
         self.assertFalse(runner.lances)
+        # Relancer ne reprendrait rien : l'instance existe, c'est tout.
+        reprise = install_native.t(
+            "Nothing was undone: running again resumes at this step."
+        )
+        self.assertNotIn(reprise, runner.sortie)
+
+    def test_a_failure_after_the_checks_says_a_rerun_resumes(self):
+        self.sys.echec["step1.php"] = (1, "boom")
+        code, runner = self.installer("--yes")
+        self.assertEqual(code, 1)
+        reprise = install_native.t(
+            "Nothing was undone: running again resumes at this step."
+        )
+        self.assertIn(reprise, runner.sortie)
 
     def test_php_out_of_range_stops(self):
         self.sys.php = "8.6"

@@ -403,6 +403,10 @@ class TestRefus(Banc):
         code, runner = self.installer()
         self.assertEqual(code, 1)
         self.assertEqual(runner.lances(), [])
+        reprise = install_native.t(
+            "Nothing was undone: running again resumes at this step."
+        )
+        self.assertNotIn(reprise, runner.sortie)
 
     def test_a_busy_port_is_refused(self):
         with mock.patch.object(

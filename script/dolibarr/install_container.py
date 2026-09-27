@@ -116,9 +116,14 @@ def step_preflight(ctx, runner):
     try:
         known = lib_dolibarr.load_registry(install_native.ROOT)
     except lib_dolibarr.RegistryError as e:
-        raise StepError(t("Dolibarr registry unreadable: %s") % e)
+        raise StepError(
+            t("Dolibarr registry unreadable: %s") % e, resumable=False
+        )
     if ctx.instance in known:
-        raise StepError(t("This instance already exists: %s") % ctx.instance)
+        raise StepError(
+            t("This instance already exists: %s") % ctx.instance,
+            resumable=False,
+        )
     running = exists(
         ctx,
         runner,
@@ -131,7 +136,9 @@ def step_preflight(ctx, runner):
         ],
     )
     if not running and not port_is_free(ctx.args.port):
-        raise StepError(t("Port %s is already in use.") % ctx.args.port)
+        raise StepError(
+            t("Port %s is already in use.") % ctx.args.port, resumable=False
+        )
     return ctx.fiche["moteur"]
 
 
