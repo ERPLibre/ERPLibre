@@ -5,6 +5,10 @@
 
     ./script/dolibarr/backup.py create --instance erp [--dest DOSSIER]
     ./script/dolibarr/backup.py list [--instance erp]
+    ./script/dolibarr/backup.py restore --instance erp --archive CHEMIN \
+        --confirm erp
+
+La restauration écrase l'instance : voir restore.py.
 
 Une archive <instance>-<AAAAMMJJ-HHMMSS>.tar.gz porte manifest.json, db.sql,
 documents.tar, conf.php et custom.tar. conf.php y est parce que sa clé
@@ -74,6 +78,26 @@ class System:
             except OSError as e:
                 return 127, str(e)
         return r.returncode, r.stderr.decode("utf-8", "replace")
+
+    def run(self, argv, env=None, stdin_path=None):
+        full = dict(os.environ, **env) if env else None
+        stdin = open(stdin_path, "rb") if stdin_path else subprocess.DEVNULL
+        try:
+            r = subprocess.run(
+                argv, stdin=stdin, capture_output=True, env=full
+            )
+        except OSError as e:
+            return 127, str(e)
+        finally:
+            if stdin_path:
+                stdin.close()
+        out = (r.stdout or b"") + (r.stderr or b"")
+        return r.returncode, out.decode("utf-8", "replace")
+
+    def http_get(self, url, host):
+        from script.dolibarr import native_prod
+
+        return native_prod.http_get(url, host)
 
     def engine(self, moteur):
         from script.todo import container_runtime
@@ -283,6 +307,10 @@ def build_parser():
     p.add_argument("--dest")
     p = sub.add_parser("list")
     p.add_argument("--instance")
+    p = sub.add_parser("restore")
+    p.add_argument("--instance", required=True)
+    p.add_argument("--archive", required=True)
+    p.add_argument("--confirm", default="")
     return parser
 
 
@@ -309,6 +337,18 @@ def main(argv=None, root=None, system=None, now=None):
     if args.instance not in known:
         print(t("No instance named %s.") % args.instance)
         return 2
+    if args.action == "restore":
+        from script.dolibarr import restore
+
+        return restore.restore(
+            args.instance,
+            known[args.instance],
+            args.archive,
+            args.confirm,
+            system or System(),
+            root,
+            (now or _now)(),
+        )
     dest = args.dest or os.path.join(root, BACKUPS, args.instance)
     path = create(
         args.instance,

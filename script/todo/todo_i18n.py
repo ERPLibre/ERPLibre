@@ -16732,6 +16732,98 @@ TRANSLATIONS = {
         "fr": "Instance :",
         "en": "Instance:",
     },
+    "Dolibarr - Restore a backup": {
+        "fr": "♻️ Dolibarr - Restaurer une sauvegarde",
+        "en": "♻️ Dolibarr - Restore a backup",
+    },
+    "No backup to restore.": {
+        "fr": "Aucune sauvegarde à restaurer.",
+        "en": "No backup to restore.",
+    },
+    "Backup to restore:": {
+        "fr": "Sauvegarde à restaurer :",
+        "en": "Backup to restore:",
+    },
+    "This overwrites the database, documents and modules of %s; a safety backup comes first.": {
+        "fr": "Ceci écrase la base, les documents et les modules de %s ; une sauvegarde de sûreté est prise d'abord.",
+        "en": "This overwrites the database, documents and modules of %s; a safety backup comes first.",
+    },
+    "Retype %s to confirm: ": {
+        "fr": "Retapez %s pour confirmer : ",
+        "en": "Retype %s to confirm: ",
+    },
+    "Restoring overwrites %s: retype its name with --confirm.": {
+        "fr": "Restaurer écrase %s : retapez son nom avec --confirm.",
+        "en": "Restoring overwrites %s: retype its name with --confirm.",
+    },
+    "Unsafe or unreadable archive: %s": {
+        "fr": "Archive dangereuse ou illisible : %s",
+        "en": "Unsafe or unreadable archive: %s",
+    },
+    "Not a Dolibarr backup: %s": {
+        "fr": "Pas une sauvegarde Dolibarr : %s",
+        "en": "Not a Dolibarr backup: %s",
+    },
+    "The backup comes from %s, newer than the instance (%s).": {
+        "fr": "La sauvegarde vient de %s, plus récente que l'instance (%s).",
+        "en": "The backup comes from %s, newer than the instance (%s).",
+    },
+    "The safety backup failed: nothing was restored.": {
+        "fr": "La sauvegarde de sûreté a échoué : rien n'a été restauré.",
+        "en": "The safety backup failed: nothing was restored.",
+    },
+    "Safety backup: %s": {
+        "fr": "Sauvegarde de sûreté : %s",
+        "en": "Safety backup: %s",
+    },
+    "Restored from %s.": {
+        "fr": "Restauré depuis %s.",
+        "en": "Restored from %s.",
+    },
+    "Restore stopped: %s": {
+        "fr": "Restauration arrêtée : %s",
+        "en": "Restore stopped: %s",
+    },
+    "The state before the restore is in %s.": {
+        "fr": "L'état d'avant la restauration est dans %s.",
+        "en": "The state before the restore is in %s.",
+    },
+    "Scheduled jobs stopped": {
+        "fr": "Tâches planifiées arrêtées",
+        "en": "Scheduled jobs stopped",
+    },
+    "Scheduled jobs started": {
+        "fr": "Tâches planifiées relancées",
+        "en": "Scheduled jobs started",
+    },
+    "Scheduled jobs key applied": {
+        "fr": "Clé des tâches planifiées appliquée",
+        "en": "Scheduled jobs key applied",
+    },
+    "Database recreated": {
+        "fr": "Base recréée",
+        "en": "Database recreated",
+    },
+    "Database loaded": {
+        "fr": "Base chargée",
+        "en": "Database loaded",
+    },
+    "Documents replaced": {
+        "fr": "Documents remplacés",
+        "en": "Documents replaced",
+    },
+    "Modules replaced": {
+        "fr": "Modules remplacés",
+        "en": "Modules replaced",
+    },
+    "Instance key restored": {
+        "fr": "Clé d'instance restaurée",
+        "en": "Instance key restored",
+    },
+    "Containers recreated": {
+        "fr": "Conteneurs recréés",
+        "en": "Containers recreated",
+    },
 }
 
 
