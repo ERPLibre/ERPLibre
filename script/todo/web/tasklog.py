@@ -22,19 +22,21 @@ premier enregistrement : une tâche dont rien n'est gardé n'en laisse aucun.
 
 La sortie arrive en octets bruts du PTY. Chaque ligne est décodée en UTF-8
 (`replace`), débarrassée des séquences ANSI et des caractères de contrôle ;
-d'une ligne réécrite par retour chariot (barre de progression) reste la
-dernière version ; elle passe entière par `redact_for_storage`, puis
-s'écrit par morceaux de LINE_LIMIT caractères. Une ligne sans fin passé
-PARTIAL_LIMIT caractères s'écrit en deux, mais seulement là où chaque
-moitié se masque seule comme la ligne entière l'aurait été (`_cut`) ; faute
-d'une telle coupure, elle attend son `\n`, ou le plafond CAP. Au-delà de CAP
-octets bruts, seuls les TAIL derniers restent, écrits à la clôture derrière
-l'événement `omitted {bytes}` ; la ligne que coupe le plafond et celle que
-la fin retenue commence au milieu partent entières : un secret coupé ne s'y
-reconnaîtrait plus.
+d'une ligne réécrite par retour chariot (barre de progression), retour du
+curseur en colonne 1 ou effacement de la ligne, reste la dernière version ;
+elle passe entière par `redact_for_storage`, puis s'écrit par morceaux de
+LINE_LIMIT caractères. Une ligne sans fin passé PARTIAL_LIMIT caractères
+s'écrit en deux, mais seulement à un blanc hors séquence ANSI, là où
+chaque moitié se masque seule comme la ligne entière l'aurait été
+(`_cut`) ; faute d'une telle coupure, elle attend son `\n`, ou le plafond
+CAP. Au-delà de CAP octets bruts, seuls les TAIL derniers restent, écrits
+à la clôture derrière l'événement `omitted {bytes}` ; la ligne que coupe
+le plafond et celle que la fin retenue commence au milieu partent
+entières : un secret coupé ne s'y reconnaîtrait plus.
 
 Un événement suit la sortie qui le précède. Le début d'une ligne inachevée
-s'écrit devant lui, une fois par ligne, s'il ne porte aucun mot guetté
+s'écrit devant lui, une fois par ligne, s'il ne porte aucun mot guetté et
+ne finit pas dans une séquence ANSI que la suite peut encore achever
 (`Lines.flush`) ; sinon la ligne reste entière et s'écrit après
 l'événement. La suite d'un début écrit se masque seule, puis derrière lui
 (`TaskLog._outs`) : elle se relit seule, dans un enregistrement à elle, et
@@ -85,11 +87,29 @@ LINE_LIMIT = 16 * 1024
 PARTIAL_LIMIT = 1024 * 1024
 TASK_ID = re.compile(r"([0-9]{4})([0-9]{2})([0-9]{2})-[0-9]{6}-[0-9a-f]{6}")
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-# CSI, puis OSC et chaînes DCS, SOS, PM, APC, puis toute autre séquence.
+# CSI, puis OSC et chaînes DCS, SOS, PM, APC, puis toute autre séquence :
+# un octet final, derrière des intermédiaires ou seul, mais seul jamais
+# « [ » ni l'introducteur d'une chaîne, qui ouvrent une séquence plus
+# longue : une CSI sans octet final n'est pas retirée, son ESC seul part
+# avec les contrôles. Une chaîne sans terminateur court jusqu'au prochain
+# ESC ou jusqu'à la fin de la ligne, que le terminal cache aussi.
 ANSI = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)?"
-    r"|[ -/]*[0-~])"
+    r"|[ -/]+[0-~]|[0-OQ-WYZ\\`-~])"
 )
+# Fin d'un texte qui s'arrête dans une séquence que la suite peut encore
+# achever : ESC seul (celui d'un ST compris) ou suivi d'intermédiaires, CSI
+# sans octet final, chaîne sans terminateur. Chaque départ essayé s'arrête
+# au prochain ESC ou au premier octet hors de sa classe : la recherche
+# reste linéaire.
+UNFINISHED = re.compile(
+    r"\x1b(?:[ -/]*|\[[0-?]*[ -/]*|[\]PX^_][^\x07\x1b]*)\Z"
+)
+# Séquences qui réécrivent la ligne comme un retour chariot : le curseur en
+# colonne 1 (CSI G, 0G, 1G), la ligne effacée jusqu'au curseur ou entière
+# (CSI 1K, 2K). CSI K n'efface que ce qui suit le curseur, rien de ce qui
+# est gardé ; en colonne 1, il suit une réécriture qui a déjà tout pris.
+REWRITE = re.compile(r"\x1b\[0*(?:1?G|[12]K)")
 # Contrôles C0 hors tabulation et saut de ligne, DEL et C1.
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 # Début d'un enregistrement tel que `_line` l'écrit : son numéro et son genre
@@ -128,14 +148,29 @@ def day_of(task_id) -> str:
     return "-".join(match.groups())
 
 
+def _version(match) -> str:
+    """Rien pour une séquence ANSI, un retour chariot pour celle qui
+    réécrit la ligne (REWRITE)."""
+    return "\r" if REWRITE.fullmatch(match[0]) else ""
+
+
 def clean(line) -> str:
     """Ce que montre `line`, décodée et sans son saut de ligne : sans
-    séquence ANSI ni caractère de contrôle, et d'une ligne réécrite par
-    retour chariot, la dernière version qui montre quelque chose ; une
-    version faite de seuls contrôles (une sonnerie) n'en efface pas une."""
-    parts = [CONTROL.sub("", part) for part in ANSI.sub("", line).split("\r")]
-    versions = [part for part in parts if part]
+    séquence ANSI ni caractère de contrôle, et d'une ligne réécrite, par
+    un retour chariot ou une séquence REWRITE, la dernière version qui
+    montre quelque chose ; une version faite de seuls contrôles (une
+    sonnerie) n'en efface pas une. Cette version se lit seule : le texte
+    qu'elle remplace ne se colle pas devant elle."""
+    parts = ANSI.sub(_version, line).split("\r")
+    versions = [part for part in (CONTROL.sub("", p) for p in parts) if part]
     return versions[-1] if versions else ""
+
+
+def _unfinished(text) -> int:
+    """Position de la séquence que `text` laisse inachevée à sa fin
+    (UNFINISHED), ou -1."""
+    found = UNFINISHED.search(text)
+    return -1 if found is None else found.start()
 
 
 def _redact(text, shown=False) -> str:
@@ -191,13 +226,26 @@ def _cut(line, lead="") -> tuple:
     commence dans le mot où tombe son mot guetté, sauf « mot de passe », qui
     commence deux mots plus tôt. La coupure se place donc au troisième blanc
     depuis la fin, `gardé` reprenant les deux mots complets devant le mot
-    en cours ; sans ces trois blancs, aucune coupure."""
+    en cours ; sans ces trois blancs, aucune coupure.
+
+    Seul compte un blanc hors de toute séquence ANSI, et avant celle que
+    la suite peut encore achever (UNFINISHED) : un blanc peut être le texte
+    d'une chaîne (un titre OSC) ou un octet intermédiaire, et une moitié
+    qui en commencerait une au milieu en montrerait le reste, collé à ce
+    qui la suit. Chaque moitié se nettoie alors seule comme dans la ligne
+    entière."""
     plain = CONTROL.sub("", ANSI.sub("", line))
     if _at_risk(lead + line) or _at_risk(lead + plain):
         return None, line
-    cut = len(line)
+    end = _unfinished(line)
+    # Les séquences recouvertes d'ESC, de même longueur : un blanc qui
+    # reste est hors séquence, à la même position que dans `line`.
+    shadow = ANSI.sub(
+        lambda m: "\x1b" * len(m[0]), line if end < 0 else line[:end]
+    )
+    cut = len(shadow)
     for _ in range(3):
-        cut = line.rfind(" ", 0, cut)
+        cut = shadow.rfind(" ", 0, cut)
         if cut < 0:
             return None, line
     return line[: cut + 1], line[cut + 1 :]
@@ -220,10 +268,12 @@ class Lines:
     `lead` dès qu'il rend une ligne : sa première en est la suite. Une
     ligne n'a qu'un `lead` : il ne grandit pas d'un événement à l'autre, et
     rien ne se relit en entier à chacun. Un refus de `flush` se retient de
-    même : une ligne qui porte un mot guetté (`risky`) reste refusée
-    jusqu'à ce que `_keep` la remplace, un morceau ajouté ne retirant pas ce
-    mot ; une ligne qui ne montre rien, ou que l'écho écarté (`bare`), ne se
-    relit qu'une fois grandie."""
+    même : une ligne qui porte un mot guetté, qu'un morceau ajouté ne
+    retire pas, ou qui finit dans une séquence inachevée (`risky`) reste
+    refusée, sans relecture, jusqu'à ce que `_keep` la remplace ; refusée,
+    elle ne fait que s'écrire entière après l'événement. Une ligne qui ne
+    montre rien, ou que l'écho écarté (`bare`), ne se relit qu'une fois
+    grandie."""
 
     def __init__(self):
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -232,7 +282,7 @@ class Lines:
         self.held = False  # `_cut` l'a refusée : attend \n, ou le CAP
         self.pending_cr = False  # elle finit par un \r pas encore tranché
         self.lead = ""  # début de la ligne en cours, déjà rendu par `flush`
-        self.risky = False  # `flush` y a lu un mot guetté
+        self.risky = False  # refusée par `flush` (mot guetté, séquence)
         self.bare = -1  # `length` quand `flush` n'y a rien lu à montrer
 
     @property
@@ -257,16 +307,22 @@ class Lines:
     def flush(self, skip=()) -> str:
         """Le début de la ligne en cours, nettoyé, à écrire devant un
         événement, gardé dans `lead` ; "" si rien n'en paraît ou s'il est
-        dans `skip`, si la ligne a déjà son `lead`, ou si elle porte un mot
-        guetté : elle reste alors entière, sa valeur pouvant continuer plus
-        loin. Un refus ne relit pas la ligne avant qu'elle change (`risky`,
-        `bare`)."""
+        dans `skip`, si la ligne a déjà son `lead`, si elle porte un mot
+        guetté, sa valeur pouvant continuer plus loin, ou si elle finit dans
+        une séquence inachevée (UNFINISHED), dont la suite, lue seule,
+        montrerait le reste collé au texte qui la suit : elle reste alors
+        entière. Un refus ne relit pas la ligne avant qu'elle change
+        (`risky`, `bare`)."""
         if not self.pieces or self.held or self.lead or self.risky:
             return ""
         if self.length == self.bare:
             return ""
         line = self.partial
-        if _at_risk(line) or _at_risk(CONTROL.sub("", ANSI.sub("", line))):
+        if (
+            _at_risk(line)
+            or _at_risk(CONTROL.sub("", ANSI.sub("", line)))
+            or _unfinished(line) >= 0
+        ):
             self.risky = True
             return ""
         shown = clean(line)

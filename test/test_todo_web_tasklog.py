@@ -9,6 +9,7 @@ import datetime
 import errno
 import json
 import os
+import random
 import stat
 import time
 import unittest
@@ -437,7 +438,8 @@ class TestTaskLog(StoreCase):
 
     def test_an_unfinished_line_is_read_once_whatever_the_events(self):
         # Une ligne inachevée que `flush` refuse, parce qu'elle porte un
-        # mot guetté ou ne montre rien, ne se relit pas à chaque
+        # mot guetté, ne montre rien ou finit dans une séquence
+        # d'échappement inachevée (un titre OSC), ne se relit pas à chaque
         # événement : ce qui en est lu ne croît pas avec leur nombre. Une
         # version nouvelle de la ligne (retour chariot) se lit de nouveau.
         read = []
@@ -450,7 +452,11 @@ class TestTaskLog(StoreCase):
             return wrapper
 
         event = {"t": "run_end", "rc": 0, "secs": 1}
-        for partial in (b"Database password: " + b"x" * 65536, b" " * 65536):
+        for partial in (
+            b"Database password: " + b"x" * 65536,
+            b" " * 65536,
+            b"\x1b]0;" + b"t " * 32768,
+        ):
             with self.subTest(partial=partial[:10]):
                 task = self.task()
                 read.clear()
@@ -498,6 +504,280 @@ class TestTaskLog(StoreCase):
         )
         packed = task.path.with_name(task.path.name + ".zst")
         self.assertNotIn(b"hunter2", zstd.decompress(packed.read_bytes()))
+
+    def test_an_event_inside_an_escape_sequence_holds_the_line(self):
+        # Une ligne inachevée qui finit dans une séquence d'échappement
+        # (ESC seul, CSI sans octet final) ne s'écrit pas devant
+        # l'événement : sa suite, lue seule, collerait « [32m » ou « K » à
+        # l'étiquette, que plus rien ne reconnaîtrait. La ligne s'écrit
+        # entière après lui, sous le plafond comme au-delà, où
+        # l'événement retenu prend la même place à la clôture.
+        cases = (
+            (
+                b"abc \x1b",
+                b"[32mpasswd\x1b[0m zqwsecret\n",
+                "abc passwd ***",
+            ),
+            (
+                b"Loading\r\x1b[2",
+                b"KMot de passe : zqwsecret\r\n",
+                "Mot de passe : ***",
+            ),
+            (
+                b"Loading\r\x1b[2",
+                b"KPassword for user x: zqwsecret\r\n",
+                "Password ***",
+            ),
+        )
+        event = {"t": "answered"}
+        head = b"x" * 20 + b"\r\n"
+        for before, after, masked in cases:
+            for between, cap in (
+                (True, tasklog.CAP),
+                (False, tasklog.CAP),
+                (True, 8),
+                (False, 8),
+            ):
+                with self.subTest(after=after, event=between, cap=cap):
+                    task = self.task()
+                    with patch.object(tasklog, "CAP", cap):
+                        task.output(head)
+                        task.output(before)
+                        if between:
+                            task.event(event)
+                        task.output(after)
+                        task.close("done")
+                    if cap == 8:
+                        first = ("event", {"t": "omitted", "bytes": 22})
+                    else:
+                        first = ("out", "x" * 20)
+                    expected = [first, ("out", masked)]
+                    if between:
+                        expected.insert(1, ("event", event))
+                    self.assertEqual(self.records(task), expected)
+                    packed = task.path.with_name(task.path.name + ".zst")
+                    data = zstd.decompress(packed.read_bytes())
+                    self.assertNotIn(b"zqwsecret", data)
+
+    def test_an_unfinished_escape_sequence_is_never_complete(self):
+        # ESC seul ou suivi d'intermédiaires, CSI sans octet final, chaîne
+        # OSC ou DCS sans terminateur, ou dont seul l'ESC du ST est venu :
+        # la suite peut encore l'achever, et `flush` refuse la ligne qui
+        # finit ainsi. ANSI ne lit jamais « \x1b[ » comme une séquence de
+        # deux octets : il laisse entier ce qu'il ne sait pas achevé.
+        for partial in (
+            b"abc \x1b",
+            b"abc \x1b[",
+            b"abc \x1b[2",
+            b"abc \x1b[1;3",
+            b"abc \x1b[1 ",
+            b"abc \x1b(",
+            b"abc \x1b]0;t i",
+            b"abc \x1bPq x",
+            b"abc \x1b]0;t\x1b",
+        ):
+            with self.subTest(partial=partial):
+                lines = tasklog.Lines()
+                lines.feed(partial)
+                self.assertEqual(lines.flush(), "")
+        for partial in (
+            b"abc \x1b[0m",
+            b"abc \x1b]0;t i\x07",
+            b"abc \x1b]0;t\x1b\\",
+            b"abc \x1b(B",
+        ):
+            with self.subTest(partial=partial):
+                lines = tasklog.Lines()
+                lines.feed(partial)
+                self.assertEqual(lines.flush(), "abc ")
+        for sequence in ("\x1b[", "\x1b[2", "\x1b[1;3", "\x1b[1 ", "\x1b("):
+            with self.subTest(sequence=sequence):
+                self.assertEqual(tasklog.ANSI.sub("", sequence), sequence)
+
+    def test_a_return_to_column_one_or_an_erase_rewrites_the_line(self):
+        # Le curseur ramené en colonne 1 (CSI G, 0G, 1G) ou la ligne
+        # effacée jusqu'au curseur ou entière (CSI 1K, 2K) réécrit la
+        # ligne comme un retour chariot : seule la dernière version qui
+        # montre quelque chose reste, et se masque seule. CSI K n'efface
+        # que ce qui suit le curseur : rien de ce qui est gardé. La
+        # couleur ne change rien au texte.
+        for line, shown in (
+            ("Loading\x1b[1G\x1b[2Kpasswd zqwsecret", "passwd zqwsecret"),
+            ("Loading\x1b[Gready", "ready"),
+            ("Loading\x1b[0Gready", "ready"),
+            ("Loading\x1b[1Gready", "ready"),
+            ("Loading\x1b[2K\rready", "ready"),
+            ("Loading\r\x1b[2Kready", "ready"),
+            ("Loading\x1b[2Kready", "ready"),
+            ("Loading\x1b[1Kready", "ready"),
+            ("Loading\x1b[1G\x1b[Kready", "ready"),
+            ("Loading\r\x1b[Kready", "ready"),
+            ("\x1b[Kready", "ready"),
+            ("Loading\x1b[K ready", "Loading ready"),
+            ("Loading\x1b[12Gready", "Loadingready"),
+            ("Loading\x1b[1G\x07", "Loading"),
+            ("\x1b[1;32mgreen\x1b[0m text", "green text"),
+            ("a\x1b[32mb\x1b[0mc \x1b[4mu\x1b[24m", "abc u"),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(tasklog.clean(line), shown)
+        for data, masked in (
+            (b"Loading\x1b[1G\x1b[2Kpasswd zqwsecret\r\n", "passwd ***"),
+            (b"Loading\x1b[2Kpasswd zqwsecret\r\n", "passwd ***"),
+            (b"50%\x1b[0Gmot de passe : zqwsecret\n", "mot de passe : ***"),
+        ):
+            with self.subTest(data=data):
+                task = self.task()
+                task.output(data)
+                task.close("done")
+                self.assertEqual(self.records(task), [("out", masked)])
+                packed = task.path.with_name(task.path.name + ".zst")
+                data = zstd.decompress(packed.read_bytes())
+                self.assertNotIn(b"zqwsecret", data)
+
+    def test_a_cut_never_falls_inside_an_escape_sequence(self):
+        # Un blanc peut être le texte d'une chaîne OSC ou DCS (un titre),
+        # ou un octet intermédiaire d'une séquence : PARTIAL_LIMIT n'y
+        # coupe jamais, pas plus que dans une séquence que la suite peut
+        # encore achever. Chaque ligne arrive octet par octet ; mises bout
+        # à bout, ses lignes gardées valent la ligne entière masquée.
+        for data in (
+            b"\x1b]0;a b c d e f\x07passwd zqwsecret\r\n",
+            b"\x1b]0;t i t l e\x07mot de passe : zqwsecret\r\n",
+            b"\x1b]0;a b c d e f\x1b\\passwd zqwsecret\r\n",
+            b"\x1bPq a b c d e f\x1b\\token: zqwsecret\r\n",
+            b"a b c d e \x1b[1   qpasswd zqwsecret\r\n",
+            b"a b c d e f \x1b   Fpasswd zqwsecret\r\n",
+        ):
+            with self.subTest(data=data):
+                task = self.task()
+                with patch.object(tasklog, "PARTIAL_LIMIT", 15):
+                    for byte in data:
+                        task.output(bytes([byte]))
+                    task.close("done")
+                whole = tasklog._redact(tasklog.clean(data.decode()[:-2]))
+                self.assertIn("***", whole)
+                texts = self.texts(task.info["id"])
+                self.assertEqual("".join(texts), whole)
+                packed = task.path.with_name(task.path.name + ".zst")
+                data = zstd.decompress(packed.read_bytes())
+                self.assertNotIn(b"zqwsecret", data)
+
+    def test_no_split_of_a_decorated_secret_line_keeps_its_value(self):
+        # Fuzz déterministe : des lignes qui impriment une valeur inventée
+        # derrière une étiquette, sous la forme d'un mot ou d'une clé,
+        # précédées d'un retour chariot, d'un effacement, d'un retour en
+        # colonne 1, d'une couleur ou d'un titre OSC, l'étiquette elle-même
+        # en couleur, suivie d'un effacement ou d'un titre (deux de ces
+        # habillages, tirés d'une graine fixe, par forme et par début).
+        # Chacune arrive coupée en deux à chaque position, puis en trois à
+        # des positions tirées, un événement entre les morceaux ou non. Le
+        # .zst décompressé ne garde jamais la valeur.
+        value = "inventeWX"
+        forms = (
+            ("passwd", " "),
+            ("password", " "),
+            ("Password for user x", ": "),
+            ("mot de passe", " : "),
+            ("token", ": "),
+            ("accessToken", "="),
+        )
+        befores = (
+            "",
+            "Loading\r",
+            "Loading\r\x1b[K",
+            "Loading\x1b[2K\r",
+            "Loading\r\x1b[2K",
+            "Loading\x1b[1G",
+            "Loading\x1b[1G\x1b[2K",
+            "Loading\x1b[2K",
+            "Loading\x1b[2K\x1b[0G",
+            "\x1b[K",
+            "\x1b[1;32m",
+            "\x1b]0;a b c\x07",
+            "Loading \x1b]2;t i t l e\x1b\\",
+        )
+        arounds = ("{}", "\x1b[1;32m{}\x1b[0m", "{}\x1b[K", "{}\x1b]0;x y\x07")
+        rng = random.Random(6)
+        for label, sep in forms:
+            cases = []
+            for before in befores:
+                for around in rng.sample(arounds, 2):
+                    line = before + around.format(label) + sep + value
+                    data = (line + rng.choice(("\r\n", "\x1b[0m\n"))).encode()
+                    for at in range(1, len(data)):
+                        for event in (True, False):
+                            cases.append(([data[:at], data[at:]], event))
+                    for _ in range(6):
+                        one, two = sorted(rng.sample(range(1, len(data)), 2))
+                        chunks = [data[:one], data[one:two], data[two:]]
+                        cases.append((chunks, rng.random() < 0.75))
+            with self.subTest(label=label):
+                self.assertIsNone(self.leak(cases, value))
+
+    def leak(self, cases, value):
+        """Le premier cas de `cases` dont le .zst garde `value`, ou None.
+        Un cas : `(morceaux, événement)`, un événement entre deux morceaux
+        si `événement`. Chaque ligne finit : les cas passent par une seule
+        tâche, puis, si elle garde `value`, chacun par une tâche à lui."""
+        event = {"t": "answered"}
+
+        def kept(group):
+            task = self.task()
+            for chunks, between in group:
+                for at, chunk in enumerate(chunks):
+                    if at and between:
+                        task.event(event)
+                    task.output(chunk)
+            task.close("done")
+            packed = task.path.with_name(task.path.name + ".zst")
+            return value.encode() in zstd.decompress(packed.read_bytes())
+
+        if not kept(cases):
+            return None
+        return next(case for case in cases if kept([case]))
+
+    def test_escape_sequences_are_read_in_linear_time(self):
+        # Le hub nettoie et coupe chaque ligne dans sa boucle, que les
+        # autres sessions attendent : 64 Kio faits de séquences, entières
+        # ou inachevées, se nettoient, se coupent et se relisent chacun en
+        # moins de 50 ms, jamais en un temps au carré de leur longueur.
+        size = 64 * 1024
+        for line in (
+            "\x1b" * size,
+            "\x1b[" * (size // 2),
+            "\x1b]" * (size // 2),
+            "\x1b[2K" * (size // 4),
+            "\x1b[1G" * (size // 4),
+            "\r\x1b[2" * (size // 4),
+            "\x1b]0;t\x1b" * (size // 6),
+            "\x1b]0;" + "a " * (size // 2),
+            "\x1b[" + "1" * size,
+            "\x1b[1" + " " * size + "x",
+            "\x1b" + " " * size,
+            "\x1b" + " " * size + "\x1b",
+            "a \x1b[1 " * (size // 7),
+            "a \x1b]0;b c\x07" * (size // 11),
+        ):
+            data = line.encode()
+            whole, chunked = tasklog.Lines(), tasklog.Lines()
+            whole.feed(data)
+
+            def by_chunks():
+                with patch.object(tasklog, "PARTIAL_LIMIT", 1024):
+                    for at in range(0, len(data), 256):
+                        chunked.feed(data[at : at + 256])
+
+            for step, run in (
+                ("clean", lambda: tasklog.clean(line)),
+                ("cut", lambda: tasklog._cut(line)),
+                ("flush", whole.flush),
+                ("chunks", by_chunks),
+            ):
+                with self.subTest(line=line[:12], step=step):
+                    debut = time.monotonic()
+                    run()
+                    self.assertLess(time.monotonic() - debut, 0.05)
 
     def test_the_echo_of_the_answer_stays_out_before_an_event(self):
         task = self.task()
