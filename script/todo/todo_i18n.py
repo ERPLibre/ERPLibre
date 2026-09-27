@@ -16532,6 +16532,18 @@ TRANSLATIONS = {
         "fr": "conteneur démarré",
         "en": "container started",
     },
+    "half running: a container is stopped": {
+        "fr": "à moitié lancée : un conteneur est arrêté",
+        "en": "half running: a container is stopped",
+    },
+    "a container is missing: install the instance again": {
+        "fr": "un conteneur manque : réinstallez l'instance",
+        "en": "a container is missing: install the instance again",
+    },
+    "The containers do not start:": {
+        "fr": "Les conteneurs ne démarrent pas :",
+        "en": "The containers do not start:",
+    },
 }
 
 
