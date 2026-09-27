@@ -358,6 +358,12 @@ shape of the token, the order of the undoing, the footprint. The verbs that
 create need a cluster to be proven, so a real run refuses and says so rather
 than running code nothing has checked.
 
+The menu of long trials offers it too, and the confirmation comes from the
+same place as the others: the plan asks nothing, since it creates nothing, and a
+prompt one learns to confirm without reading protects nothing the day it counts.
+The terrain can be NAMED there — the bench deduces the last floor the lab laid,
+which serves the rehearsal, while a cluster one owns is designated.
+
 ```
 ./long_test/setops_banc.py --dry-run          # the plan, nothing created
 ./long_test/setops_banc.py --detruire         # undo what was laid down
@@ -826,6 +832,13 @@ gardées** — préalables dits avant toute création, terrain, pont libre, form
 jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
 pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
 du code que rien n'a vérifié.
+
+Le menu des épreuves longues le propose aussi, et la confirmation vient du
+même endroit que pour les autres : le plan ne demande rien, puisqu'il ne crée
+rien, et une invite qu'on apprend à confirmer sans lire ne protège plus rien le
+jour où elle compte. Le terrain s'y NOMME — le banc déduit le dernier étage posé
+par le labo, ce qui sert à la répétition, là où une grappe qu'on possède se
+désigne.
 
 ```
 ./long_test/setops_banc.py --dry-run          # le plan, rien de créé

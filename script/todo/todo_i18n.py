@@ -5247,6 +5247,18 @@ TRANSLATIONS = {
         "fr": "Défaire ce que la descente a créé",
         "en": "Undo what the descent created",
     },
+    "Set-OPS bench: plan only (dry-run)": {
+        "fr": "Banc du moteur Set-OPS : le plan seulement (à blanc)",
+        "en": "Set-OPS bench: plan only (dry-run)",
+    },
+    "Set-OPS bench: a conforming template is required": {
+        "fr": "Banc du moteur Set-OPS : exige un gabarit conforme",
+        "en": "Set-OPS bench: a conforming template is required",
+    },
+    "Terrain (ssh alias, empty = the last floor laid): ": {
+        "fr": "Terrain (alias ssh, vide = le dernier étage posé) : ",
+        "en": "Terrain (ssh alias, empty = the last floor laid): ",
+    },
     "Script not found:": {
         "fr": "Script introuvable :",
         "en": "Script not found:",

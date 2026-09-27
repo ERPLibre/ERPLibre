@@ -2672,8 +2672,8 @@ class TestLaDefaiteNEffaceQueCeQuiEstAuBanc(unittest.TestCase):
         self.assertFalse(os.path.lexists(chemin))
 
     def test_a_link_at_another_name_is_refused(self):
-        """MESURÉ SUR UN LIEN, et pas sur un fichier : un fichier serait déjà
-        refusé par le garde du genre, et l'épreuve passerait alors par le
+        """L'ÉPREUVE PORTE SUR UN LIEN, et pas sur un fichier : un fichier est
+        déjà refusé par le garde du genre, si bien qu'elle passerait par le
         mauvais chemin sans rien dire du garde du NOM."""
         cible = self.fichier("la-cible-de-quelqu-un")
         chemin = os.path.join(self.d, "un-lien-qui-n-est-pas-a-nous")

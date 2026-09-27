@@ -367,6 +367,13 @@ jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grapp
 pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
 du code que rien n'a vérifié.
 
+Le menu des épreuves longues le propose aussi, et la confirmation vient du
+même endroit que pour les autres : le plan ne demande rien, puisqu'il ne crée
+rien, et une invite qu'on apprend à confirmer sans lire ne protège plus rien le
+jour où elle compte. Le terrain s'y NOMME — le banc déduit le dernier étage posé
+par le labo, ce qui sert à la répétition, là où une grappe qu'on possède se
+désigne.
+
 ```
 ./long_test/setops_banc.py --dry-run          # le plan, rien de créé
 ./long_test/setops_banc.py --detruire         # défaire ce qui a été posé

@@ -353,6 +353,12 @@ shape of the token, the order of the undoing, the footprint. The verbs that
 create need a cluster to be proven, so a real run refuses and says so rather
 than running code nothing has checked.
 
+The menu of long trials offers it too, and the confirmation comes from the
+same place as the others: the plan asks nothing, since it creates nothing, and a
+prompt one learns to confirm without reading protects nothing the day it counts.
+The terrain can be NAMED there — the bench deduces the last floor the lab laid,
+which serves the rehearsal, while a cluster one owns is designated.
+
 ```
 ./long_test/setops_banc.py --dry-run          # the plan, nothing created
 ./long_test/setops_banc.py --detruire         # undo what was laid down
