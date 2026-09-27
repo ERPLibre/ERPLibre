@@ -16968,6 +16968,74 @@ TRANSLATIONS = {
         "fr": "à %s, épinglée à %s : montez-la",
         "en": "at %s, pinned at %s: upgrade it",
     },
+    "Development tools": {
+        "fr": "🧑‍💻 Outils de développement",
+        "en": "🧑‍💻 Development tools",
+    },
+    "Dolibarr - Debug profile": {
+        "fr": "🐞 Dolibarr - Profil de déverminage",
+        "en": "🐞 Dolibarr - Debug profile",
+    },
+    "Debug profile:": {
+        "fr": "Profil de déverminage :",
+        "en": "Debug profile:",
+    },
+    "Turn on (DebugBar, Syslog level 7, strict mode)": {
+        "fr": "Allumer (DebugBar, Syslog niveau 7, mode strict)",
+        "en": "Turn on (DebugBar, Syslog level 7, strict mode)",
+    },
+    "Turn off, previous settings back": {
+        "fr": "Éteindre, réglages d'avant rendus",
+        "en": "Turn off, previous settings back",
+    },
+    "Follow dolibarr.log": {
+        "fr": "Suivre dolibarr.log",
+        "en": "Follow dolibarr.log",
+    },
+    "Filter (regular expression, Enter for everything): ": {
+        "fr": "Filtre (expression régulière, Entrée pour tout) : ",
+        "en": "Filter (regular expression, Enter for everything): ",
+    },
+    "Debug already on for %s.": {
+        "fr": "Déverminage déjà allumé pour %s.",
+        "en": "Debug already on for %s.",
+    },
+    "Debug could not be turned on:": {
+        "fr": "Impossible d'allumer le déverminage :",
+        "en": "Debug could not be turned on:",
+    },
+    "conf.php is left as is: the image rewrites it on each recreation.": {
+        "fr": "conf.php reste tel quel : l'image le réécrit à chaque recréation.",
+        "en": "conf.php is left as is: the image rewrites it on each recreation.",
+    },
+    "Debug on for %s: DebugBar, Syslog level 7, development features.": {
+        "fr": "Déverminage allumé pour %s : DebugBar, Syslog niveau 7, fonctionnalités en développement.",
+        "en": "Debug on for %s: DebugBar, Syslog level 7, development features.",
+    },
+    "Follow the log with: debug.py tail --instance %s": {
+        "fr": "Suivre le journal : debug.py tail --instance %s",
+        "en": "Follow the log with: debug.py tail --instance %s",
+    },
+    "Debug is not on for %s.": {
+        "fr": "Le déverminage n'est pas allumé pour %s.",
+        "en": "Debug is not on for %s.",
+    },
+    "Debug could not be turned off:": {
+        "fr": "Impossible d'éteindre le déverminage :",
+        "en": "Debug could not be turned off:",
+    },
+    "Debug off for %s: the previous settings are back.": {
+        "fr": "Déverminage éteint pour %s : les réglages d'avant sont revenus.",
+        "en": "Debug off for %s: the previous settings are back.",
+    },
+    "Debug on for %s since %s.": {
+        "fr": "Déverminage allumé pour %s depuis %s.",
+        "en": "Debug on for %s since %s.",
+    },
+    "%s is a production: retype its name with --confirm.": {
+        "fr": "%s est une production : retapez son nom avec --confirm.",
+        "en": "%s is a production: retype its name with --confirm.",
+    },
 }
 
 

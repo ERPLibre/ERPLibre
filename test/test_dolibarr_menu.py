@@ -51,6 +51,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - List the instances": "_dolibarr_fleet_list",
         "Dolibarr - Remove an instance": "_dolibarr_remove",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
+        "Dolibarr - Debug profile": "_dolibarr_debug",
     }
 
 
@@ -327,6 +328,50 @@ class TestMontee(Banc):
     def test_no_runs_nothing(self):
         self.registre = {"erp": dict(DEV)}
         self.assertEqual(self.lancer_montee(["n"]), [])
+
+
+DEBUG = "./.venv.erplibre/bin/python -u script/dolibarr/debug.py"
+
+
+class TestDeverminage(Banc):
+    def lancer_debug(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_debug()
+        return lances
+
+    def test_on_for_a_development_instance(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_debug(["1"]), [f"{DEBUG} on --instance erp"]
+        )
+
+    def test_tail_asks_for_a_filter(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_debug(["4", "sql="]),
+            [f"{DEBUG} tail --instance erp --filter sql="],
+        )
+
+    def test_a_production_needs_its_name_retyped(self):
+        self.registre = {"erp": dict(DEV, mode="prod")}
+        self.assertEqual(
+            self.lancer_debug(["1", "erp"]),
+            [f"{DEBUG} on --instance erp --confirm erp"],
+        )
+        self.assertEqual(self.lancer_debug(["1", "er"]), [])
 
 
 class TestBilan(unittest.TestCase):

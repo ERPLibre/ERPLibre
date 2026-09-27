@@ -42,6 +42,8 @@ DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
 DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
 # Sauvegarde d'une instance, sous private/dolibarr/backups/.
 BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
+# Profil de déverminage d'une instance (DebugBar, Syslog 7, mode strict).
+DEBUG_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/debug.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -100,6 +102,8 @@ class DolibarrMenuMixin:
                     "Dolibarr - Find installations (local or SSH)"
                 )
             },
+            {"section": t("Development tools")},
+            {"prompt_description": t("Dolibarr - Debug profile")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -133,6 +137,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_remove()
             elif status == "13":
                 self._dolibarr_detect()
+            elif status == "14":
+                self._dolibarr_debug()
             else:
                 print(t("Command not found !"))
 
@@ -295,6 +301,52 @@ class DolibarrMenuMixin:
         self.execute.exec_command_live(
             f"{FLEET_CLI} remove --instance {quoted} --confirm {quoted}",
             source_erplibre=False,
+        )
+
+    def _dolibarr_debug(self):
+        """debug.py : allumer, éteindre, état, ou suivre le journal filtré.
+        Une production exige son nom retapé pour on et off."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(known)
+        if not names:
+            print(t("No Dolibarr instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        action = self._dolibarr_choose(
+            t("Debug profile:"),
+            [
+                ("on", t("Turn on (DebugBar, Syslog level 7, strict mode)")),
+                ("off", t("Turn off, previous settings back")),
+                ("status", t("Status")),
+                ("tail", t("Follow dolibarr.log")),
+            ],
+        )
+        if action is None:
+            return
+        args = [action, "--instance", name]
+        if action == "tail":
+            pattern = input(
+                t("Filter (regular expression, Enter for everything): ")
+            ).strip()
+            if pattern:
+                args += ["--filter", pattern]
+        elif action in ("on", "off") and known[name].get("mode") == "prod":
+            if input(t("Retype %s to confirm: ") % name).strip() != name:
+                print(t("Cancelled."))
+                return
+            args += ["--confirm", name]
+        self.execute.exec_command_live(
+            f"{DEBUG_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):
