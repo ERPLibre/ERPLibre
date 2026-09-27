@@ -23,10 +23,15 @@ script also runs on its own.
 | `native_prod.py` | Production steps, played by `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` of a development instance |
 | `pin.py` | `show` the pinned commit, `update` it (dry run unless `--apply`) |
+| `detect.py` | Find Dolibarr installations on this machine or over SSH |
+| `doctor.py` | Health, security and integrity of each registered instance |
+| `backup.py` | `create`, `list` and `restore` backups (restore: `restore.py`) |
+| `fleet.py` | `list` the instances, `remove` one |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
 | `container_plan.py` | Pure rendering of the Docker/Podman commands of an instance |
+| `integrity.py` | Installed code against the archive of its pinned commit |
 
 Supported families: Debian/Ubuntu (apt), Fedora/EL (dnf), Arch (pacman),
 openSUSE (zypper).
@@ -98,6 +103,31 @@ install stopped by an error resumes with the same passwords when run again.
 
 Known limit: SELinux in enforcing mode is refused until its contexts are
 set.
+
+## Operations
+
+```bash
+./script/dolibarr/detect.py --local            # or --ssh host (repeatable)
+./script/dolibarr/doctor.py --all
+./script/dolibarr/backup.py create --instance erp
+./script/dolibarr/backup.py restore --instance erp --archive <file> --confirm erp
+./script/dolibarr/fleet.py list
+./script/dolibarr/fleet.py remove --instance erp --dry-run
+```
+
+- `detect.py` sends a read-only POSIX sh probe (one round trip, no
+  privilege) and reports each installation and Dolibarr container, never a
+  password; reports go to `private/dolibarr/inventory/`.
+- `doctor.py` checks what each instance serves, its code (production: every
+  file against the pinned archive, where an added PHP file fails), its
+  `conf.php`, its install lock, its cron timer and PHP; it changes nothing.
+- A backup holds the database, `documents/`, `custom/` and `conf.php`, whose
+  instance key encrypts values in the database; 0600, under
+  `private/dolibarr/backups/`. Restoring asks for the instance name, takes a
+  safety backup first, refuses a backup newer than the code, and also
+  clones a backup into a freshly installed instance.
+- Removing an instance shows its plan first and asks for its name; a
+  container's `custom/` stays.
 
 ## Pinned version
 
