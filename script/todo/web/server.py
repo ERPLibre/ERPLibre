@@ -463,17 +463,21 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     le client s'y rattache (inconnue, 4404) et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
     "truncated"}`, puis trames binaires. Textes du client : `resize`,
-    `interrupt`, `close`, `raw` ; du hub : `bye`, `open_view`,
+    `interrupt`, `close`, `raw`, `secret` ; du hub : `bye`, `open_view`,
     `tty_state`, `dropped`. Un type inconnu est ignoré.
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
     (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
-    passé. `interrupt` ne passe jamais par ce filtre.
+    passé. `interrupt` ne passe jamais par ce filtre. `secret` annonce que
+    la trame suivante est la réponse du champ masqué : elle n'est écrite
+    que si le terminal attend encore un secret, sinon `dropped` porte
+    `secret` et rien n'atteint le PTY, dont l'écho l'afficherait.
     """
 
     session = None
     hello_timer = None
     raw = False
+    secret_next = False
 
     def prepare(self):
         super().prepare()
@@ -496,9 +500,17 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.control(message)
 
     def type(self, data):
-        kept = data if self.raw else self.session.gate(data)
-        if len(kept) < len(data):
-            self.event({"t": "dropped", "bytes": len(data) - len(kept)})
+        if self.secret_next:
+            self.secret_next = False
+            if not self.session.asks_secret():
+                lost = {"t": "dropped", "bytes": len(data), "secret": True}
+                self.event(lost)
+                return
+            kept = data
+        else:
+            kept = data if self.raw else self.session.gate(data)
+            if len(kept) < len(data):
+                self.event({"t": "dropped", "bytes": len(data) - len(kept)})
         if kept and not self.session.write(kept):
             self.close(1008, "input overflow")
 
@@ -559,6 +571,8 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.hub.keep(self.session.close())
         elif kind == "raw":
             self.raw = data.get("on") is True
+        elif kind == "secret":
+            self.secret_next = True
 
     # Client d'une session (sessions.py) : send, event, close.
 

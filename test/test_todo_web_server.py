@@ -929,6 +929,14 @@ def _masked(opcode, payload):
     return head + mask + body
 
 
+# Un worker qui demande un mot de passe, écho coupé, puis en dit la
+# longueur.
+ASKING = r"""
+import fcntl, getpass, termios
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+print("length", len(getpass.getpass("pw: ")), flush=True)
+"""
+
 # Un worker qui attend `sleep` dans son propre groupe, sans lire son
 # terminal ; SIGINT l'interrompt.
 WAITING = r"""
@@ -978,6 +986,24 @@ class TestKeystrokes(TerminalCase):
                 await tab.conn.write_message(stop, binary=binary)
                 await tab.until(lambda: b"INT" in tab.data)
                 self.assertNotIn("dropped", [t["t"] for t in tab.texts])
+
+    async def test_a_hidden_answer_reaches_only_a_secret_prompt(self):
+        # Écho actif : la réponse s'afficherait, et l'anneau la garderait.
+        tab = await self.tab()
+        await tab.conn.write_message(json.dumps({"t": "secret"}))
+        await tab.conn.write_message(b"hunter2\r", binary=True)
+        lost = {"t": "dropped", "bytes": 8, "secret": True}
+        await tab.until(lambda: lost in tab.texts)
+        await tab.conn.write_message(b"typed\r", binary=True)
+        await tab.until(lambda: b"typed" in tab.data)
+        self.assertNotIn(b"hunter2", tab.data)
+        with patch.object(sessions, "WORKER", ("-c", ASKING)):
+            tab = await self.tab()
+        await tab.until(lambda: any(t.get("echo") is False for t in tab.texts))
+        await tab.conn.write_message(json.dumps({"t": "secret"}))
+        await tab.conn.write_message(b"hunter2\r", binary=True)
+        await tab.until(lambda: b"length 7" in tab.data)
+        self.assertNotIn(b"hunter2", tab.data)
 
 
 class TestDeadClient(TerminalCase):

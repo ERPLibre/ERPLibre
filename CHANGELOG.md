@@ -71,6 +71,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Build the image of one Odoo version, or of every version in one sweep that goes on past a failed version and ends on what was built and what failed. The sweep asks first: a production image weighs about ten gigabytes
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
 - The TODO web page gains a Sessions view: the real TODO runs there in a terminal, Stop interrupts only the command in progress, and a reload finds the session and its output again. Inside such a session, Navigation telemetry › WEB opens the telemetry of the same page
+- In the terminal of the Sessions view, a password prompt opens a masked field whose value is kept nowhere, a question ending in [y/N], (o/N) or (yes/no) offers its answers as buttons, and a full-screen program enlarges the terminal to the window until the Full screen button gives the page back. A keystroke typed while nothing reads the terminal is dropped, and the page says so, instead of answering the next question; Ctrl+C always goes through, and a Raw mode button lets everything through
 
 ## Changed
 

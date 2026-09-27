@@ -91,6 +91,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Build the image of one Odoo version, or of every version in one sweep that goes on past a failed version and ends on what was built and what failed. The sweep asks first: a production image weighs about ten gigabytes
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
 - The TODO web page gains a Sessions view: the real TODO runs there in a terminal, Stop interrupts only the command in progress, and a reload finds the session and its output again. Inside such a session, Navigation telemetry › WEB opens the telemetry of the same page
+- In the terminal of the Sessions view, a password prompt opens a masked field whose value is kept nowhere, a question ending in [y/N], (o/N) or (yes/no) offers its answers as buttons, and a full-screen program enlarges the terminal to the window until the Full screen button gives the page back. A keystroke typed while nothing reads the terminal is dropped, and the page says so, instead of answering the next question; Ctrl+C always goes through, and a Raw mode button lets everything through
 
 <!-- [fr] -->
 
@@ -154,6 +155,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bâtir l'image d'une version d'Odoo, ou de toutes d'un seul balayage qui continue après une version en échec et finit sur ce qui est bâti et ce qui a échoué. Le balayage demande d'abord : une image de production pèse une dizaine de gigaoctets
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
 - La page web de TODO gagne une vue Sessions : le vrai TODO y tourne dans un terminal, Arrêter n'interrompt que la commande en cours, et un rechargement retrouve la session et sa sortie. Dans une telle session, Télémétrie de navigation › WEB ouvre la télémétrie de la même page
+- Dans le terminal de la vue Sessions, une invite de mot de passe ouvre un champ masqué dont la valeur n'est gardée nulle part, une question qui finit par [y/N], (o/N) ou (yes/no) propose ses réponses en boutons, et un programme plein écran agrandit le terminal à la fenêtre, jusqu'à ce que le bouton Plein écran rende la page. Une frappe tapée quand rien ne lit le terminal est ignorée, et la page le dit, au lieu de répondre à la question suivante ; Ctrl+C passe toujours, et un bouton Mode brut laisse tout passer
 
 <!-- [en] -->
 ## Changed

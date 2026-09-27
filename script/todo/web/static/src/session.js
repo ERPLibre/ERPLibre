@@ -49,3 +49,48 @@ export function withSession(hash, id) {
     }
     return `#${params}`;
 }
+
+// Invites à réponse rapide, en fin de ligne : [y/N], (Y/n), [o/N], (O/n),
+// (yes/no) et (yes/no/[fingerprint]), suivies au plus d'un « ? » ou d'un
+// « : ». Rend les réponses que proposent les boutons, ou aucune.
+const QUICK = /(?:\[([yo])\/n\]|\(([yo])\/n\)|\((yes)\/no(?:\/\[fingerprint\])?\))\s*[?:]?$/i;
+
+export function quickAnswers(line) {
+    const match = QUICK.exec(line);
+    if (!match) {
+        return [];
+    }
+    const yes = (match[1] || match[2] || match[3]).toLowerCase();
+    return [yes, yes === "yes" ? "no" : "n"];
+}
+
+// Lignes d'une suite de rangées `{text, wrapped}` : une rangée que le
+// terminal a coupée (`wrapped`, suite de la précédente) s'y rejoint.
+export function joinWrapped(rows) {
+    const lines = [];
+    for (const {text, wrapped} of rows) {
+        if (wrapped && lines.length) {
+            lines[lines.length - 1] += text;
+        } else {
+            lines.push(text);
+        }
+    }
+    return lines;
+}
+
+// Dernière ligne non vide, sans ses espaces de fin, ou "".
+export function lastLine(lines) {
+    for (let at = lines.length - 1; at >= 0; at--) {
+        const line = lines[at].trimEnd();
+        if (line) {
+            return line;
+        }
+    }
+    return "";
+}
+
+// Vrai quand le terminal attend un secret : écho coupé en mode canonique.
+// Un texte « password: » avec l'écho actif n'en est jamais un.
+export function asksSecret(tty) {
+    return tty.echo === false && tty.canon === true;
+}

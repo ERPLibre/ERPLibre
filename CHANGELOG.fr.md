@@ -71,6 +71,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bâtir l'image d'une version d'Odoo, ou de toutes d'un seul balayage qui continue après une version en échec et finit sur ce qui est bâti et ce qui a échoué. Le balayage demande d'abord : une image de production pèse une dizaine de gigaoctets
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
 - La page web de TODO gagne une vue Sessions : le vrai TODO y tourne dans un terminal, Arrêter n'interrompt que la commande en cours, et un rechargement retrouve la session et sa sortie. Dans une telle session, Télémétrie de navigation › WEB ouvre la télémétrie de la même page
+- Dans le terminal de la vue Sessions, une invite de mot de passe ouvre un champ masqué dont la valeur n'est gardée nulle part, une question qui finit par [y/N], (o/N) ou (yes/no) propose ses réponses en boutons, et un programme plein écran agrandit le terminal à la fenêtre, jusqu'à ce que le bouton Plein écran rende la page. Une frappe tapée quand rien ne lit le terminal est ignorée, et la page le dit, au lieu de répondre à la question suivante ; Ctrl+C passe toujours, et un bouton Mode brut laisse tout passer
 
 ## Modifié
 

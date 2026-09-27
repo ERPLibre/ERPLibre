@@ -3863,6 +3863,20 @@ TRANSLATIONS = {
         "en": "This session no longer exists.",
     },
     "Connection lost.": {"fr": "Connexion perdue.", "en": "Connection lost."},
+    # Page web : état du terminal d'une session (TtyWatch).
+    "Raw mode": {"fr": "Mode brut", "en": "Raw mode"},
+    "Nothing reads the terminal: keystrokes ignored.": {
+        "fr": "Rien ne lit le terminal : frappes ignorées.",
+        "en": "Nothing reads the terminal: keystrokes ignored.",
+    },
+    "Hidden answer": {"fr": "Réponse masquée", "en": "Hidden answer"},
+    "Send": {"fr": "Envoyer", "en": "Send"},
+    "The prompt ended: the hidden answer was not sent.": {
+        "fr": "L'invite a pris fin : la réponse masquée n'est pas partie.",
+        "en": "The prompt ended: the hidden answer was not sent.",
+    },
+    "Quick answers": {"fr": "Réponses rapides", "en": "Quick answers"},
+    "Full screen": {"fr": "Plein écran", "en": "Full screen"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",

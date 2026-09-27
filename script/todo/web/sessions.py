@@ -396,6 +396,14 @@ class Session:
             return data
         return bytes(b for b in data if b in self.state.signals)
 
+    def asks_secret(self) -> bool:
+        """Vrai si le terminal, relu, attend un secret : écho coupé en mode
+        canonique. Faux sans suivi du terminal."""
+        if self.watch is None or self.master is None:
+            return False
+        self._probe()
+        return _secret(self.state)
+
     def _probe_soon(self):
         """Relit le terminal bientôt, `gap` après la lecture précédente au
         plus tôt."""

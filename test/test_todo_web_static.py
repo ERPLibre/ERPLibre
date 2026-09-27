@@ -159,6 +159,23 @@ class TestPage(unittest.TestCase):
         for path in [STATIC / "index.html", *SRC.glob("*.js")]:
             self.assertNotIn("style=", path.read_text(encoding="utf-8"))
 
+    def test_the_masked_field_keeps_its_value_nowhere(self):
+        # Ni t-model ni état : la valeur part au terminal, puis s'efface.
+        # Sans formulaire, un gestionnaire de mots de passe n'a rien à
+        # enregistrer.
+        source = (SRC / "sessions_view.js").read_text(encoding="utf-8")
+        [field] = re.findall(r'<input type="password"[^>]*>', source)
+        self.assertNotIn("t-model", field)
+        self.assertIn('autocomplete="off"', field)
+        self.assertNotIn("<form", source)
+
+    def test_a_hidden_session_never_covers_the_page(self):
+        # « display » l'emporterait sur l'attribut hidden : le plein écran
+        # ne vaut que pour une vue Sessions visible.
+        css = (STATIC / "css" / "todo.css").read_text(encoding="utf-8")
+        fixed = re.findall(r"^([^{}\n]+)\{[^}]*position: fixed", css, re.M)
+        self.assertEqual(fixed, [".sessions.fullscreen:not([hidden]) "])
+
     def test_every_reference_of_the_page_is_served(self):
         for ref in re.findall(rb'(?:href|src)="(/static/[^"]+)"', self.index):
             self.assertIn(ref.decode(), self.table)
@@ -486,6 +503,49 @@ class TestSessionProtocol(unittest.TestCase):
             self.out["written"],
             ["#view=sessions&lang=fr&session=s1", "#view=sessions"],
         )
+
+
+QUICK_CHECK = r"""
+const lines = [
+    "Continue? [y/N]", "Remove it? [Y/n] ", "Supprimer ? (o/N) :",
+    "Garder ? (O/n)", "Écraser ? [o/N]", "Proceed (yes/no)?",
+    "Are you sure you want to continue connecting (yes/no/[fingerprint])? ",
+    "Type DELETE to confirm:", "[y/N] is the default", "[sudo] password:", "",
+];
+console.log(JSON.stringify({
+    answers: lines.map((line) => m.quickAnswers(line.trimEnd())),
+    last: [m.lastLine(["a", "Continue? [y/N] ", "", "  "]),
+        m.lastLine(["", " "])],
+    wrapped: m.joinWrapped([{text: "a", wrapped: false},
+        {text: "Proceed? [y/", wrapped: false}, {text: "N] ", wrapped: true},
+        {text: "", wrapped: false}]),
+    secret: [{echo: false, canon: true}, {echo: false, canon: false},
+        {echo: true, canon: true}].map(m.asksSecret),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestQuickAnswers(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(QUICK_CHECK, "session.js")
+
+    def test_known_prompts_at_the_end_of_the_line_offer_answers(self):
+        yes_no = [["y", "n"], ["y", "n"], ["o", "n"], ["o", "n"], ["o", "n"]]
+        self.assertEqual(
+            self.out["answers"],
+            [*yes_no, ["yes", "no"], ["yes", "no"], [], [], [], []],
+        )
+
+    def test_the_prompt_is_the_last_line_with_text(self):
+        self.assertEqual(self.out["last"], ["Continue? [y/N]", ""])
+
+    def test_a_prompt_the_terminal_wrapped_is_one_line(self):
+        self.assertEqual(self.out["wrapped"], ["a", "Proceed? [y/N] ", ""])
+
+    def test_only_a_canonical_terminal_without_echo_asks_a_secret(self):
+        self.assertEqual(self.out["secret"], [True, False, False])
 
 
 if __name__ == "__main__":

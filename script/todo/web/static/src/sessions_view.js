@@ -5,11 +5,39 @@
 // fragment : un rechargement s'y rattache, et le hub rejoue la sortie que
 // son anneau garde. La vue reste montée, cachée, quand une autre s'affiche :
 // la session ne se détache pas. Ce module ne nomme aucune commande.
-import {Component, onMounted, onWillUnmount, useRef, useState, xml} from "@odoo/owl";
+//
+// L'état du terminal vient du hub (`tty_state`), jamais du texte : l'écho
+// coupé en mode canonique ouvre un champ masqué, dont la valeur part au
+// terminal et n'est gardée nulle part ; un processus qui lit le terminal
+// fait proposer les réponses de l'invite qui finit l'écran ; l'écran
+// alternatif agrandit le panneau à la fenêtre, jusqu'à ce que le bouton
+// « Plein écran », relâché, rende la page. Le hub ignore les frappes que
+// rien ne lit (`dropped`), sauf en mode brut.
+import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
-import {closedState, frames, helloMessage, sessionOf, withSession} from "./session.js";
+import {
+    asksSecret,
+    closedState,
+    frames,
+    helloMessage,
+    joinWrapped,
+    lastLine,
+    quickAnswers,
+    sessionOf,
+    withSession,
+} from "./session.js";
 
 const PERIOD = 2000;
+// Durée d'un avis de trame ignorée, en millisecondes.
+const NOTICE = 3000;
+// Avis d'une trame que le hub n'a pas écrite (`dropped`), selon `secret`.
+const NOTICE_LABELS = {
+    keys: "Nothing reads the terminal: keystrokes ignored.",
+    secret: "The prompt ended: the hidden answer was not sent.",
+};
+// Lignes relues au-dessus du curseur pour trouver la dernière non vide.
+const LOOKBACK = 4;
+const TTY = {echo: true, canon: true, reader: null, altscreen: false};
 const STATE_LABELS = {
     connecting: "Connecting…",
     ended: "Session ended",
@@ -21,7 +49,9 @@ const STATE_LABELS = {
 
 export class SessionsView extends Component {
     static template = xml`
-        <section class="sessions" t-att-hidden="props.visible ? undefined : 'hidden'">
+        <section class="sessions"
+            t-att-class="{fullscreen: state.status === 'open' and state.tty.altscreen and !state.windowed}"
+            t-att-hidden="props.visible ? undefined : 'hidden'">
             <nav class="toolbar" t-att-aria-label="env.t('Sessions')">
                 <button type="button" t-on-click="() => this.connect(null)" t-esc="env.t('Open a TODO session')"/>
                 <t t-foreach="state.list" t-as="item" t-key="item.id">
@@ -36,16 +66,61 @@ export class SessionsView extends Component {
                 <t t-if="state.status === 'open'">
                     <button type="button" t-on-click="() => this.send({t: 'interrupt'})" t-esc="env.t('Stop')"/>
                     <button type="button" t-on-click="() => this.send({t: 'close'})" t-esc="env.t('Close')"/>
+                    <button type="button" t-att-aria-pressed="state.raw ? 'true' : 'false'" t-on-click="toggleRaw"
+                        t-esc="env.t('Raw mode')"/>
+                    <button t-if="state.tty.altscreen" type="button"
+                        t-att-aria-pressed="state.windowed ? 'false' : 'true'" t-on-click="toggleWindowed"
+                        t-esc="env.t('Full screen')"/>
+                    <span t-if="state.notice" class="dropped" role="status" t-esc="noticeText"/>
                 </t>
                 <button t-elif="state.id and ['taken', 'lost'].includes(state.status)" type="button"
                     t-on-click="() => this.connect(state.id, this.offset)" t-esc="env.t('Reconnect')"/>
+            </div>
+            <div t-if="secret" class="toolbar secret">
+                <label>
+                    <t t-esc="env.t('Hidden answer')"/>
+                    <input type="password" autocomplete="off" aria-describedby="secret-prompt" t-ref="secret"
+                        t-on-keydown="onSecretKey"/>
+                </label>
+                <span id="secret-prompt" class="visually-hidden" t-esc="state.prompt"/>
+                <button type="button" t-on-click="sendSecret" t-esc="env.t('Send')"/>
+            </div>
+            <div t-if="state.status === 'open' and state.answers.length" class="toolbar" role="group"
+                t-att-aria-label="env.t('Quick answers')">
+                <t t-foreach="state.answers" t-as="answer" t-key="answer">
+                    <button type="button" t-on-click="() => this.answer(answer)" t-esc="answer"/>
+                </t>
             </div>
             <div class="terminal" t-ref="terminal"/>
         </section>`;
 
     setup() {
-        this.state = useState({list: [], id: sessionOf(window.location.hash), status: null, code: null});
+        this.state = useState({
+            list: [],
+            id: sessionOf(window.location.hash),
+            status: null,
+            code: null,
+            tty: {...TTY},
+            answers: [],
+            prompt: "",
+            raw: false,
+            windowed: false,
+            notice: "",
+        });
         this.panel = useRef("terminal");
+        this.secretField = useRef("secret");
+        // Le champ masqué prend le clavier dès qu'il paraît, et quand la vue
+        // revient ; parti, il le rend au terminal si personne ne l'a pris.
+        useEffect(
+            (field, visible) => {
+                if (field && visible) {
+                    field.focus();
+                } else if (!field && document.activeElement === document.body) {
+                    this.term?.focus();
+                }
+            },
+            () => [this.secretField.el, this.props.visible]
+        );
         this.socket = null;
         this.bye = null;
         this.offset = 0; // décalage absolu du prochain octet attendu
@@ -69,10 +144,19 @@ export class SessionsView extends Component {
         });
         onWillUnmount(() => {
             clearInterval(this.timer);
+            clearTimeout(this.noticeTimer);
             this.resizer.disconnect();
             this.drop();
             this.term.dispose();
         });
+    }
+
+    get secret() {
+        return this.state.status === "open" && asksSecret(this.state.tty);
+    }
+
+    get noticeText() {
+        return this.state.notice ? this.env.t(NOTICE_LABELS[this.state.notice]) : "";
     }
 
     get stateText() {
@@ -92,7 +176,10 @@ export class SessionsView extends Component {
             this.term.reset();
         }
         this.bye = null;
-        Object.assign(this.state, {id, status: "connecting", code: null});
+        // Le mode brut vaut pour une session : il ne suit pas vers une autre.
+        const raw = Boolean(id) && id === this.state.id && this.state.raw;
+        Object.assign(this.state, {id, status: "connecting", code: null, tty: {...TTY}, answers: [], raw});
+        Object.assign(this.state, {prompt: "", windowed: false, notice: ""});
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -117,7 +204,7 @@ export class SessionsView extends Component {
         if (typeof data !== "string") {
             const bytes = new Uint8Array(data);
             this.offset += bytes.length;
-            this.term.write(bytes);
+            this.term.write(bytes, () => this.refreshAnswers());
             return;
         }
         const message = JSON.parse(data);
@@ -128,6 +215,20 @@ export class SessionsView extends Component {
             if (message.truncated) {
                 this.term.write(`\r\n[${this.env.t("Output truncated")}]\r\n`);
             }
+            if (this.state.raw) {
+                this.send({t: "raw", on: true});
+            }
+        } else if (message.t === "tty_state") {
+            const {echo, canon, reader, altscreen} = message;
+            this.state.tty = {echo, canon, reader, altscreen};
+            if (!altscreen) {
+                this.state.windowed = false;
+            }
+            this.refreshAnswers();
+        } else if (message.t === "dropped") {
+            this.state.notice = message.secret ? "secret" : "keys";
+            clearTimeout(this.noticeTimer);
+            this.noticeTimer = setTimeout(() => (this.state.notice = ""), NOTICE);
         } else if (message.t === "bye") {
             this.bye = message;
             this.state.code = message.code;
@@ -163,6 +264,73 @@ export class SessionsView extends Component {
                 this.socket.send(frame);
             }
         }
+    }
+
+    // La dernière ligne non vide jusqu'au curseur, rangées coupées par le
+    // terminal rejointes : l'invite, que décrit le champ masqué. Réponses
+    // rapides : celles qu'elle propose, quand un processus lit le terminal
+    // hors de l'écran alternatif, où la ligne du curseur n'est pas une
+    // invite.
+    refreshAnswers() {
+        const buffer = this.term.buffer.active;
+        const end = buffer.baseY + buffer.cursorY;
+        const rows = [];
+        for (let y = Math.max(0, end - LOOKBACK); y <= end; y++) {
+            const line = buffer.getLine(y);
+            rows.push({text: line?.translateToString(false) ?? "", wrapped: Boolean(line?.isWrapped)});
+        }
+        const prompt = lastLine(joinWrapped(rows));
+        const {reader, altscreen} = this.state.tty;
+        const answers = reader === true && !altscreen ? quickAnswers(prompt) : [];
+        if (prompt !== this.state.prompt) {
+            this.state.prompt = prompt;
+        }
+        if (answers.join("/") !== this.state.answers.join("/")) {
+            this.state.answers = answers;
+        }
+    }
+
+    answer(value) {
+        this.state.answers = [];
+        this.type(`${value}\r`);
+        this.term.focus();
+    }
+
+    // La valeur part au terminal, suivie de Entrée, et le champ se vide :
+    // elle n'entre ni dans l'état de la vue ni ailleurs. `secret` annonce
+    // au hub que la trame suivante est cette réponse : il ne l'écrit que si
+    // l'écho est encore coupé, pour qu'elle ne s'affiche jamais.
+    sendSecret() {
+        const field = this.secretField.el;
+        if (this.secret) {
+            this.send({t: "secret"});
+            this.type(`${field.value}\r`);
+        }
+        field.value = "";
+    }
+
+    // Entrée envoie ; Échap rend le clavier au terminal. Sans formulaire, un
+    // gestionnaire de mots de passe n'a rien à enregistrer.
+    onSecretKey(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            this.sendSecret();
+        } else if (event.key === "Escape") {
+            this.term.focus();
+        }
+    }
+
+    toggleRaw() {
+        this.state.raw = !this.state.raw;
+        this.send({t: "raw", on: this.state.raw});
+        this.term.focus();
+    }
+
+    // Plein écran pressé : la vue couvre la fenêtre ; relâché, la page et
+    // ses vues restent à portée pendant l'écran alternatif.
+    toggleWindowed() {
+        this.state.windowed = !this.state.windowed;
+        this.term.focus();
     }
 
     // Liste des sessions, tant que la vue se voit.
