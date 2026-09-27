@@ -1585,6 +1585,11 @@ class TestLaPorteDuPalier(CasDEcosysteme):
         L'INVITE EST IMPRIMÉE, contrairement au bouchon de la classe mère qui
         l'avale : une porte qui poserait sa question sans montrer la valeur à
         retaper ferait recopier de mémoire, et aucune épreuve ne le verrait.
+
+        L'ÉCRAN RENDU EST IGNORÉ PAR PLUSIEURS ÉPREUVES D'ICI, et à dessein :
+        elles mesurent l'EFFET — quel appel porte la confirmation — et le texte
+        ne leur apprendrait rien de plus. Celles qui éprouvent ce qui est DIT le
+        lisent.
         """
         file = ["1", "3"] + list(saisies)
         vrai = builtins.input
@@ -1716,7 +1721,10 @@ class TestLAlerteMetLesDeuxNombresCoteACote(CasDePorte):
     vient de dire, et nomme le piège.
 
     `flotte-creer` est de portée poste : sa retape est le COMPTE d'hôtes, donc
-    c'est par elle que ce chemin se mesure."""
+    c'est par elle que ce chemin se mesure.
+
+    L'écran rendu par `porte` est ignoré là où l'épreuve mesure l'EFFET, et lu
+    là où elle éprouve ce qui est dit."""
 
     PLAN_DEUX = (
         "python3 scripts/serveurs.py lister\n"
