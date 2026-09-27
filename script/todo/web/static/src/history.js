@@ -74,6 +74,8 @@ export function recordText(record, t) {
             return `→ (${t("answered in the terminal")})`;
         case "cancel":
             return `✕ ${t("cancelled")}`;
+        case "timeout":
+            return `⏱ ${t("timed out")}`;
         case "notice":
             return `! ${d.text}`;
         case "omitted":

@@ -307,6 +307,172 @@ class TestTaskLog(StoreCase):
             lines.feed(chunk)
         self.assertLess(time.monotonic() - debut, 3.0)
 
+    def test_clean_keeps_a_real_line_before_control_characters(self):
+        # Une version faite de seuls contrôles ne remplace pas la ligne.
+        for line, shown in (
+            ("progress 100%\r\x07", "progress 100%"),
+            ("50%\r\x1b[K75%", "75%"),
+            ("\x07\r", ""),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(tasklog.clean(line), shown)
+
+    def test_closing_twice_returns_the_first_entry(self):
+        task = self.task()
+        task.output(b"once\r\n")
+        entry = task.close("done")
+        task.output(b"late\r\n")
+        self.assertIs(task.close("interrupted"), entry)
+        self.assertEqual(tasklog.entries(self.base), [entry])
+        self.assertEqual(self.texts(entry["id"]), ["once"])
+
+    def records(self, task):
+        page = tasklog.read(self.base, task.info["id"], 2, 100)
+        return [(r["s"], r["d"]) for r in page["lines"]]
+
+    def test_an_unfinished_line_comes_before_the_next_event(self):
+        # L'invite d'une question précède sa question et sa réponse ; la
+        # suite de la ligne, l'écho de la réponse, vient après elles.
+        task = self.task()
+        task.output(b"Path for the file [x]: ")
+        task.event({"t": "ask", "kind": "text", "text": "Path"})
+        task.event({"t": "answer", "value": "/tmp/y"})
+        task.output(b"/tmp/y\r\nnext\r\n")
+        task.close("done")
+        self.assertEqual(
+            self.records(task),
+            [
+                ("out", "Path for the file [x]: "),
+                ("event", {"t": "ask", "kind": "text", "text": "Path"}),
+                ("event", {"t": "answer", "value": "/tmp/y"}),
+                ("out", "/tmp/y"),
+                ("out", "next"),
+            ],
+        )
+
+    def test_an_event_never_splits_a_secret_from_its_label(self):
+        # Une ligne qui porte un mot guetté reste entière : l'événement
+        # passe devant elle. Sans mot guetté, la coupure se fait, et la
+        # suite se masque avec le début de la ligne déjà écrit : un mot
+        # coupé par l'événement se reconnaît encore.
+        cases = (
+            (b"Database password: ", b"hunter2\r\n", None),
+            (b"x pa", b"ssword: hunter2\r\n", ("x pa", "ssword: ***")),
+            (b"mot de ", b"passe : hunter2\r\n", ("mot de ", "passe : ***")),
+            (
+                b"clone https:/",
+                b"/u:hunter2@forge.example/r\r\n",
+                ("clone https:/", "/u:***@forge.example/r"),
+            ),
+        )
+        for before, after, split in cases:
+            with self.subTest(before=before):
+                task = self.task()
+                task.output(before)
+                task.event({"t": "answered"})
+                task.output(after)
+                task.close("done")
+                event = ("event", {"t": "answered"})
+                if split is None:
+                    whole = "Database password: ***"
+                    expected = [event, ("out", whole)]
+                else:
+                    expected = [("out", split[0]), event, ("out", split[1])]
+                self.assertEqual(self.records(task), expected)
+                packed = task.path.with_name(task.path.name + ".zst")
+                data = zstd.decompress(packed.read_bytes())
+                self.assertNotIn(b"hunter2", data)
+
+    def test_a_line_is_split_once_and_its_rest_waits_for_its_end(self):
+        # Un second événement sur la même ligne inachevée passe devant sa
+        # suite, sans la couper de nouveau ; passé PARTIAL_LIMIT, la
+        # suite se lit avec le début déjà écrit, qui achève le mot guetté.
+        task = self.task()
+        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
+            task.output(b"step x pa")
+            task.event({"t": "run_start", "cmd": "a"})
+            task.output(b"ssword: hunter2 a b c " + b"y" * 40)
+            task.event({"t": "run_end", "rc": 0, "secs": 1})
+            task.output(b" end\r\n")
+            task.close("done")
+        self.assertEqual(
+            self.records(task),
+            [
+                ("out", "step x pa"),
+                ("event", {"t": "run_start", "cmd": "a"}),
+                ("event", {"t": "run_end", "rc": 0, "secs": 1}),
+                ("out", "ssword: ***"),
+            ],
+        )
+        packed = task.path.with_name(task.path.name + ".zst")
+        self.assertNotIn(b"hunter2", zstd.decompress(packed.read_bytes()))
+
+    def test_the_echo_of_the_answer_stays_out_before_an_event(self):
+        task = self.task()
+        task.output(b"1")
+        task.event({"t": "run_start", "cmd": "true"})
+        task.output(b"\r\nworking\r\n")
+        task.close("done")
+        self.assertEqual(
+            self.records(task),
+            [
+                ("event", {"t": "run_start", "cmd": "true"}),
+                ("out", "working"),
+            ],
+        )
+
+    def test_over_the_cap_events_keep_their_place_in_the_tail(self):
+        # 40 lignes de 9 octets, plafond après 10 : un événement dont la
+        # sortie qui suit est omise s'écrit avant `omitted`, un événement
+        # dans la fin retenue, entre ses lignes.
+        lines = b"".join(b"line %02d\r\n" % n for n in range(40))
+        task = self.task()
+        with patch.multiple(tasklog, CAP=90, TAIL=30):
+            task.output(lines[:108])
+            task.event({"t": "run_start", "cmd": "early"})
+            task.output(lines[108:315])
+            task.event({"t": "run_end", "rc": 0, "secs": 1})
+            task.output(lines[315:333])
+            task.close("done")
+        records = self.records(task)
+        at = records.index(("out", "line 09"))
+        self.assertEqual(
+            records[at + 1 :],
+            [
+                ("event", {"t": "run_start", "cmd": "early"}),
+                ("event", {"t": "omitted", "bytes": 333 - 90 - 27}),
+                ("out", "line 34"),
+                ("event", {"t": "run_end", "rc": 0, "secs": 1}),
+                ("out", "line 35"),
+                ("out", "line 36"),
+            ],
+        )
+
+    def test_over_the_cap_waiting_events_stay_bounded(self):
+        # Passé LATER octets d'événements en attente (35 chacun ici), le
+        # plus ancien s'écrit aussitôt, devant la fin retenue.
+        lines = b"".join(b"line %02d\r\n" % n for n in range(12))
+        task = self.task()
+        with patch.multiple(tasklog, CAP=90, TAIL=30, LATER=80):
+            task.output(lines[:99])
+            for n in range(3):
+                task.event({"t": "run_start", "cmd": f"cmd {n}"})
+            self.assertEqual(len(task.later), 2)
+            task.output(lines[99:])
+            task.close("done")
+        records = self.records(task)
+        at = records.index(("out", "line 09"))
+        self.assertEqual(
+            records[at + 1 :],
+            [
+                ("event", {"t": "run_start", "cmd": "cmd 0"}),
+                ("out", "line 10"),
+                ("event", {"t": "run_start", "cmd": "cmd 1"}),
+                ("event", {"t": "run_start", "cmd": "cmd 2"}),
+                ("out", "line 11"),
+            ],
+        )
+
     def test_a_closed_log_reads_back_page_by_page(self):
         task = self.task()
         task.output(b"".join(b"%d\r\n" % n for n in range(10, 20)))
@@ -669,6 +835,50 @@ class TestRecorder(StoreCase):
                 {"t": "answered"},
             ],
         )
+        for path in self.base.rglob("*.zst"):
+            self.assertNotIn(b"hunter2", zstd.decompress(path.read_bytes()))
+
+    def test_a_secret_ended_without_an_answer_is_not_an_answer(self):
+        # Annulée par la page ou au terminal, ou finie à l'échéance : ni
+        # un secret ni une autre question ne s'y lit comme répondue.
+        self.start()
+        asks = [
+            (2, "secret", {"t": "cancel"}, {}),
+            (3, "secret", None, {"end": "cancel"}),
+            (4, "secret", None, {"end": "timeout"}),
+            (5, "countdown", None, {"end": "timeout"}),
+            (6, "secret", None, {}),
+        ]
+        for qid, kind, reply, end in asks:
+            ask = {"t": "ask", "qid": qid, "kind": kind, "text": "Key: "}
+            self.rec.worker(ask)
+            if reply is not None:
+                self.rec.page(dict(reply, qid=qid))
+            self.rec.worker({"t": "answered", "qid": qid, **end})
+        self.rec.end()
+        ends = [d for s, d in self.records()[1] if d["t"] != "ask"]
+        self.assertEqual(
+            ends,
+            [
+                {"t": "cancel"},
+                {"t": "cancel"},
+                {"t": "timeout"},
+                {"t": "timeout"},
+                {"t": "answer", "value": "•••"},
+            ],
+        )
+
+    def test_a_long_notice_is_masked_whole_then_cut(self):
+        # Coupée d'abord, « Password: » perdrait son début et le secret
+        # qui le suit passerait.
+        self.start()
+        text = "Password: hunter2 " + "x" * 4082
+        self.assertEqual(len(text), 4100)
+        for kind in ("notice", "ask"):
+            self.rec.worker({"t": kind, "qid": 2, "text": text})
+        self.rec.end()
+        texts = [d["text"] for s, d in self.records()[1]]
+        self.assertEqual(texts, ["Password: ***", "Password: ***"])
         for path in self.base.rglob("*.zst"):
             self.assertNotIn(b"hunter2", zstd.decompress(path.read_bytes()))
 

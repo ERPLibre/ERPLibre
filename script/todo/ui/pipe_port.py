@@ -23,7 +23,9 @@ le terminal tient quand la question commence n'y répond pas, ce qui reste
 quand elle finit ne répond pas à la suivante, et le hub jette à ces bornes
 la suite d'un collage qu'il retient. Pour un menu répondu par l'une de ses
 entrées, `answered` en porte la clé (`key`), d'où que vienne la réponse :
-le hub y ouvre une tâche du journal. Un secret se pose écho coupé, comme
+le hub y ouvre une tâche du journal. Pour une question finie sans réponse,
+il porte `end` : `timeout` à l'échéance, `cancel` sur une exception
+(annulée par la page, Ctrl+D, Ctrl+C). Un secret se pose écho coupé, comme
 `getpass` ; le hub y voit l'invite d'un mot de passe. Après une réponse
 venue du canal, le terminal en montre la transcription sur la ligne de la
 question : l'entrée choisie d'un menu, sinon la valeur ; un secret y
@@ -158,6 +160,11 @@ class PipePort(port.BasePort):
             keys = [item["key"] for item in message.get("items", ())]
             if value is not None and value.strip() in keys:
                 answered["key"] = value.strip()
+            if source is None:
+                answered["end"] = "timeout"
+        except BaseException:
+            answered["end"] = "cancel"
+            raise
         finally:
             _restore(self.tty, saved)
             _flush_input(self.tty)

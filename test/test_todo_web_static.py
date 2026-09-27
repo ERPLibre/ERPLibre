@@ -575,6 +575,7 @@ const records = [
     {n: 4, s: "event", d: {t: "answer", value: "•••"}},
     {n: 5, s: "event", d: {t: "answered"}},
     {n: 6, s: "event", d: {t: "omitted", bytes: 12}},
+    {n: 7, s: "event", d: {t: "timeout"}},
 ];
 const rc = (codes) => m.taskRc({commands: codes.map((code) => ({rc: code}))});
 console.log(JSON.stringify({
@@ -619,6 +620,7 @@ class TestHistoryText(unittest.TestCase):
                 "→ •••",
                 "→ (<answered in the terminal>)",
                 "… 12 <bytes omitted>",
+                "⏱ <timed out>",
             ],
         )
 

@@ -575,7 +575,7 @@ class TestPipePort(unittest.TestCase):
             future.result(10)
         # Comme getpass : l'écho revient, même annulé.
         self.assertTrue(termios.tcgetattr(self.master)[3] & termios.ECHO)
-        closed = {"t": "answered", "qid": asked["qid"]}
+        closed = {"t": "answered", "qid": asked["qid"], "end": "cancel"}
         self.assertEqual(self.received(), closed)
         future, asked = self.asking(self.port.ask, "Name: ")
         os.write(self.master, b"\x04")
@@ -590,6 +590,8 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(asked["timeout_s"], 0.2)
         self.assertEqual(future.result(10), "n")
         self.assertEqual(self.out.getvalue(), "⏱0.2s Go?  ⏱ → Enter (n)\n")
+        timed_out = {"t": "answered", "qid": asked["qid"], "end": "timeout"}
+        self.assertEqual(self.received(), timed_out)
         # Ctrl+D vaut Entrée, comme dans auto_ask.ask, dont readline()
         # vide rend le défaut : "" ici, que la capture change en défaut.
         future, asked = self.asking(
