@@ -328,6 +328,7 @@ class TestInput(CaptureCase):
             ("Keep it? (O/n) : ", "y"),
             ("Replace it? (y/Y): ", "n"),
             ("Run it now? [y/o/N] ", "n"),
+            ("Continue? (y/n): ", None),
         ]
         scripted = self.capture(*["y"] * len(cases))
         for text, _ in cases:
@@ -400,19 +401,50 @@ class TestInstall(CaptureCase):
         self.assertEqual(click.prompt("Mode", default="2"), "forged")
         self.assertEqual(typed, ["Name: ", "Mode [2]: "])
 
-    def test_uninstall_puts_everything_back(self):
-        hooked = (click.termui, "visible_prompt_func")
-        before = (builtins.input, getpass.getpass, click.prompt, sys.stdout)
-        before += (click.confirm, getattr(*hooked), auto_ask.ask)
+    def test_uninstall_puts_everything_back_once(self):
+        hooked = [
+            (builtins, "input"),
+            (getpass, "getpass"),
+            (click, "prompt"),
+            (click, "confirm"),
+            (click.termui, "visible_prompt_func"),
+            (click.termui, "hidden_prompt_func"),
+            (auto_ask, "ask"),
+            (sys, "stdout"),
+        ]
+        before = [getattr(owner, name) for owner, name in hooked]
         uninstall = legacy.install(port.ScriptedPort())
-        self.assertIs(ui.current().__class__, port.ScriptedPort)
-        with self.assertRaises(RuntimeError):
-            legacy.install(port.ScriptedPort())
-        uninstall()
-        after = (builtins.input, getpass.getpass, click.prompt, sys.stdout)
-        after += (click.confirm, getattr(*hooked), auto_ask.ask)
+        try:
+            self.assertIs(ui.current().__class__, port.ScriptedPort)
+            with self.assertRaises(RuntimeError):
+                legacy.install(port.ScriptedPort())
+        finally:
+            uninstall()
+        after = [getattr(owner, name) for owner, name in hooked]
         self.assertEqual(before, after)
         self.assertIs(ui.current(), ui.TERMINAL)
+        # Une seconde fois, même après une nouvelle capture : rien.
+        again = legacy.install(port.ScriptedPort())
+        try:
+            uninstall()
+            self.assertIs(builtins.input, legacy._input)
+        finally:
+            again()
+        self.assertEqual([getattr(o, n) for o, n in hooked], before)
+
+    def test_a_countdown_under_the_terminal_reaches_the_original(self):
+        # Sans l'original gardé par `install`, TerminalPort rappellerait
+        # le crochet, qui le rappellerait sans fin.
+        self.enterContext(patch.dict(port.ORIGINAL))
+        port.ORIGINAL.pop("auto_ask.ask", None)
+        read, write = os.pipe()
+        self.addCleanup(os.close, write)
+        stdin = self.enterContext(os.fdopen(read))
+        self.enterContext(patch.object(sys, "stdin", stdin))
+        self.capture(target=port.TerminalPort())
+        with patch.dict(os.environ, {auto_ask.ENV_ENABLED: "1"}):
+            self.assertEqual(auto_ask.ask("Go? (Y/n) ", "y", 0.05), "y")
+        self.assertIn("⏱0.05s Go? (Y/n) ", self.out.getvalue())
 
 
 class Menus:
@@ -589,6 +621,7 @@ class TestRealTodo(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, "-c", REAL_TODO, json.dumps(answers), report],
             cwd=REPO,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=60,

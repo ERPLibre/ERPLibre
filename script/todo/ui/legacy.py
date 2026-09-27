@@ -33,9 +33,9 @@ redemande. Le port rend "" pour Entrée : `input` le rend tel quel, click
 et auto_ask y mettent leur défaut. Annuler lève EOFError, que click change
 en Abort, comme Ctrl+D.
 
-`sys.stdout` passe par un `Tee`, qui garde au plus TEE_LIMIT caractères
-imprimés depuis la fin de la question précédente : l'écran que lit la
-suivante.
+`sys.stdout` passe par un `Tee`, qui rend au plus les TEE_LIMIT derniers
+caractères imprimés depuis la fin de la question précédente : l'écran que
+lit la suivante.
 """
 
 import builtins
@@ -71,9 +71,10 @@ _tee = None
 
 
 class Tee:
-    """Écrit tout dans `inner`, le terminal, et garde au plus TEE_LIMIT
-    caractères écrits depuis `clear`. Le reste (`fileno`, `isatty`,
-    `encoding`, `flush`…) est celui de `inner`."""
+    """Écrit tout dans `inner`, le terminal, et garde les caractères écrits
+    depuis `clear` : `since` en rend TEE_LIMIT au plus, les derniers, et la
+    mémoire gardée reste sous 2 × TEE_LIMIT environ. Le reste (`fileno`,
+    `isatty`, `encoding`, `flush`…) est celui de `inner`."""
 
     def __init__(self, inner):
         self.inner = inner
@@ -104,8 +105,9 @@ class Tee:
 
 
 def confirm_default(line):
-    """Ce que vaut Entrée à une invite qui porte ses réponses, « y » ou
-    « n » ; None si les deux sont en majuscules. Sans « n » (y/Y, o/O),
+    """Ce que vaut Entrée à une invite qui porte ses réponses : « y » ou
+    « n », la réponse dont la lettre est en majuscule ; None quand les
+    deux ont la même casse, (Y/N) comme (y/n). Sans « n » (y/Y, o/O),
     seul oui est oui : Entrée vaut « n ». Ce défaut ne fait que redire
     l'invite, pour la page : Entrée rend "", auquel l'appelant donne son
     propre défaut, qui peut contredire les lettres."""
@@ -314,7 +316,8 @@ def _auto_ask(prompt, default="", seconds=None):
 
 def install(target):
     """Pose la capture et lie `target` au contexte courant ; rend la
-    fonction qui défait tout, liens et Tee compris."""
+    fonction qui défait tout, liens et Tee compris, et qui ne fait plus
+    rien une fois la capture défaite."""
     global _tee
     import click
     import click.termui
@@ -336,12 +339,14 @@ def install(target):
     for owner, name, hook in hooks:
         _saved[name] = getattr(owner, name)
         setattr(owner, name, hook)
-    _tee = Tee(sys.stdout)
+    tee = _tee = Tee(sys.stdout)
     sys.stdout = _tee
     token = ui.attach(target)
 
     def uninstall():
         global _tee
+        if _tee is not tee:
+            return  # déjà défaite, peut-être sous une capture plus récente
         ui.detach(token)
         sys.stdout = _tee.inner
         _tee = None
