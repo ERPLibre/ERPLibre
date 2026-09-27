@@ -119,12 +119,21 @@ class System:
             return ""
 
 
+# Un fichier pid présent mais illisible : ni vivant ni mort, inconnu.
+UNREADABLE = -1
+
+
 def read_pid(path):
+    """Le pid du fichier, None s'il n'existe pas, UNREADABLE s'il ne se lit
+    pas : une absence dit « arrêté », un fichier abîmé ne dit rien."""
     try:
-        with open(path, encoding="utf-8") as f:
-            return int(f.read().strip())
-    except (OSError, ValueError):
+        with open(path, encoding="utf-8", errors="strict") as f:
+            text = f.read().strip()
+    except FileNotFoundError:
         return None
+    except (OSError, UnicodeDecodeError):
+        return UNREADABLE
+    return int(text) if text.isdigit() else UNREADABLE
 
 
 class Instance:
@@ -146,11 +155,14 @@ class Instance:
 
 
 def daemons(inst, system):
-    """(pid PHP-FPM vivant ou None, pid nginx vivant ou None)."""
+    """(PHP-FPM, nginx) : pid vivant, None, ou UNREADABLE."""
     out = []
     for path in (inst.fpm_pid, inst.nginx_pid):
         pid = read_pid(path)
-        out.append(pid if pid and system.alive(pid) else None)
+        if pid == UNREADABLE:
+            out.append(UNREADABLE)
+        else:
+            out.append(pid if pid and system.alive(pid) else None)
     return tuple(out)
 
 
@@ -160,11 +172,14 @@ STATE_LABELS = {
     "running": "serving",
     "stopped": "not running",
     "half running": "half running: one daemon is down",
+    "unknown": "unknown: a pid file is unreadable",
 }
 
 
 def state(inst, system):
     fpm, nginx = daemons(inst, system)
+    if UNREADABLE in (fpm, nginx):
+        return "unknown"
     if fpm and nginx:
         return "running"
     if fpm or nginx:
@@ -173,6 +188,10 @@ def state(inst, system):
 
 
 def cmd_start(inst, system, fpm, nginx):
+    if state(inst, system) == "unknown":
+        print(t(STATE_LABELS["unknown"]))
+        print(t("Check %s before starting.") % inst.run)
+        return 1
     if state(inst, system) == "running":
         print(t("Already running: %s") % inst.url)
         return 0
@@ -201,6 +220,8 @@ def cmd_start(inst, system, fpm, nginx):
 
 def cmd_stop(inst, system, nginx):
     fpm_pid, nginx_pid = daemons(inst, system)
+    fpm_pid = None if fpm_pid == UNREADABLE else fpm_pid
+    nginx_pid = None if nginx_pid == UNREADABLE else nginx_pid
     if nginx_pid:
         system.call(inst.nginx_argv(nginx, "-s", "quit"))
     if fpm_pid:

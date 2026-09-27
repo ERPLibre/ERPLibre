@@ -16266,6 +16266,14 @@ TRANSLATIONS = {
         "fr": "à moitié lancée : un démon est arrêté",
         "en": "half running: one daemon is down",
     },
+    "unknown: a pid file is unreadable": {
+        "fr": "inconnu : un fichier pid est illisible",
+        "en": "unknown: a pid file is unreadable",
+    },
+    "Check %s before starting.": {
+        "fr": "Vérifiez %s avant de lancer.",
+        "en": "Check %s before starting.",
+    },
 }
 
 

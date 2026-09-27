@@ -266,6 +266,20 @@ class TestStopStatus(Banc):
         _code, sortie = self.lancer("status", "--instance", "erp")
         self.assertIn(run_mod.t(run_mod.STATE_LABELS["half running"]), sortie)
 
+    def test_an_unreadable_pid_file_is_unknown_not_stopped(self):
+        # Un fichier pid présent mais illisible ne prouve rien : le dire
+        # « arrêtée » ferait relancer par-dessus un démon peut-être vivant.
+        (self.run_dir / "php-fpm.pid").write_text("pas un pid\n")
+        _code, sortie = self.lancer("status", "--instance", "erp")
+        self.assertIn(run_mod.t(run_mod.STATE_LABELS["unknown"]), sortie)
+        self.assertNotIn(run_mod.t(run_mod.STATE_LABELS["stopped"]), sortie)
+
+    def test_start_refuses_an_unknown_state(self):
+        (self.run_dir / "nginx.pid").write_bytes(b"\xff\xfe")
+        code, _sortie = self.lancer("start", "--instance", "erp")
+        self.assertEqual(code, 1)
+        self.assertEqual(self.sys.lances, [])
+
     def test_stop_on_a_stopped_instance_is_quiet(self):
         code, sortie = self.lancer("stop", "--instance", "erp")
         self.assertEqual(code, 0)
