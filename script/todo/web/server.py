@@ -61,6 +61,9 @@ IDLE_SECONDS = 1800.0
 # nombre, le premier de chaque session compris.
 SYSTEM_FULL_EVERY = 5
 PROBE_TIMEOUT = 0.3
+# Un worker de réserve fini avant d'être pris fait attendre le suivant ce
+# nombre de secondes : la vue Sessions liste les sessions toutes les 2 s.
+SPARE_RETRY = 60.0
 # Délai du premier message d'un WebSocket, et bornes d'une taille de terminal.
 HELLO_SECONDS = 10.0
 MAX_TERMINAL = 1000
@@ -594,10 +597,12 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
 
 class SessionList(Guard, tornado.web.RequestHandler):
     """`{sessions: [{id, running, attached}], max}` : les sessions ouvertes,
-    dans l'ordre de leur ouverture."""
+    dans l'ordre de leur ouverture. La vue Sessions la demande : le hub
+    prépare alors un worker de réserve pour la session suivante."""
 
-    def get(self):
+    async def get(self):
         self.require_session()
+        await self.hub.warm()
         terminals = self.hub.terminals.values()
         self.write(
             {
@@ -695,7 +700,10 @@ class Hub:
         self.code_tree = CodeTree(self.root)
         self.system = {}  # jeton du cookie -> {"prev", "calls"}
         self.terminals = {}  # identifiant -> sessions.Session ouverte
-        self.opening = 0  # `open_terminal` en cours
+        self.opening = 0  # `open_terminal` ou `warm` en cours
+        self.spare = None  # worker de réserve, sans session encore
+        # Heure (time.monotonic) avant laquelle aucune réserve n'est lancée.
+        self.spare_after = 0.0
         self.session_idle = sessions.IDLE_SECONDS
         self.pending = set()  # fermetures en cours
         self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
@@ -832,11 +840,19 @@ class Hub:
 
     async def open_terminal(self, lang, cols, rows):
         """Nouvelle session TODO, comptée dès avant son lancement : deux
-        `hello` simultanés ne dépassent pas MAX_SESSIONS. OSError si elle
-        ne démarre pas, ou si le hub s'arrête."""
+        `hello` simultanés ne dépassent pas MAX_SESSIONS. Le worker de
+        réserve, s'il vit, la devient ; sinon un worker neuf est lancé.
+        OSError si elle ne démarre pas, ou si le hub s'arrête."""
         if self.stopping is not None:
             raise OSError("the hub is stopping")
         sid = secrets.token_urlsafe(6)
+        spare, self.spare = self.spare, None
+        if spare is not None and spare.ready:
+            spare.adopt(sid, lang, cols, rows, self._terminal_ended)
+            self.terminals[sid] = spare
+            return spare
+        if spare is not None:
+            self.keep(spare.close())
         session = sessions.Session(
             sid, self.root, lang, cols, rows, on_end=self._terminal_ended
         )
@@ -853,6 +869,41 @@ class Hub:
         finally:
             self.opening -= 1
         return session
+
+    async def warm(self):
+        """Lance un worker de réserve s'il n'y en a pas et qu'une session de
+        plus tiendrait sous MAX_SESSIONS : la session suivante le prend au
+        lieu d'attendre les imports de TODO. Un lancement qui échoue laisse
+        la session suivante partir à froid ; aucun ne suit avant
+        `spare_after`. Compté dans `opening` : l'arrêt du hub attend qu'il
+        rende."""
+        if (
+            self.spare is not None
+            or self.stopping is not None
+            or len(self.terminals) >= sessions.MAX_SESSIONS
+            or time.monotonic() < self.spare_after
+        ):
+            return
+        spare = sessions.Session(
+            None, self.root, None, 80, 24, on_end=self._spare_ended
+        )
+        self.spare = spare
+        self.opening += 1
+        try:
+            await spare.start()
+        except OSError:
+            self._spare_ended(spare)
+        finally:
+            self.opening -= 1
+
+    def _spare_ended(self, session):
+        """Fin d'un worker de réserve qu'aucune session n'a pris : le
+        suivant attend SPARE_RETRY secondes. Un worker qui ne démarre pas
+        (venv cassé, bibliothèque qui lève à son import) n'est pas relancé
+        à chaque liste des sessions."""
+        if self.spare is session:
+            self.spare = None
+        self.spare_after = time.monotonic() + SPARE_RETRY
 
     def _terminal_ended(self, session):
         self.terminals.pop(session.id, None)
@@ -928,16 +979,16 @@ class Hub:
             self.stopping = asyncio.ensure_future(self.stop())
 
     async def stop(self):
-        """Ferme les sessions, retire l'état, ferme les sockets, relâche le
-        verrou, puis signale `stopped`.
+        """Ferme les sessions et le worker de réserve, retire l'état, ferme
+        les sockets, relâche le verrou, puis signale `stopped`.
 
         Chaque session raccroche son PTY ; ses groupes reçoivent SIGHUP, puis
         SIGKILL après REAP_SECONDS : aucun worker ne survit au hub. Une
         session encore en lancement rend `close` aussitôt et s'arrête une
         fois lancée : l'arrêt attend aussi qu'aucune session ne reste et que
-        chaque `open_terminal` ait rendu, ce qu'il fait une fois l'arrêt de
-        sa session fini, SIGKILL compris. L'attente est bornée : une session
-        qui ne finit pas n'empêche pas l'arrêt.
+        chaque `open_terminal` ou `warm` ait rendu, ce qu'il fait une fois
+        l'arrêt de sa session fini, SIGKILL compris. L'attente est bornée :
+        une session qui ne finit pas n'empêche pas l'arrêt.
 
         state.json, redirect.html et ctl.sock partent pendant que le verrou
         est tenu : aucun autre hub ne démarre avant, rien de ce qui est
@@ -945,7 +996,8 @@ class Hub:
         (asyncio vérifie que l'inode est toujours le sien).
         """
         self.idle_task.cancel()
-        closing = [s.close() for s in self.terminals.values()]
+        spares = [self.spare] if self.spare is not None else []
+        closing = [s.close() for s in (*self.terminals.values(), *spares)]
         try:
             async with asyncio.timeout(sessions.REAP_SECONDS + 2):
                 await asyncio.gather(*closing)

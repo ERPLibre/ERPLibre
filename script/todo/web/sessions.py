@@ -180,7 +180,9 @@ class Session:
     """Un worker sur son PTY, l'anneau de sa sortie et au plus un client.
 
     `on_end(session)` est appelé une fois, le worker terminé. `argv`
-    remplace le worker dans les tests ; le hub ne le passe jamais.
+    remplace le worker dans les tests ; le hub ne le passe jamais. Sans
+    langue (`lang` None), la session est un worker de réserve : lancé, il
+    attend son `hello`, que `adopt` envoie en lui donnant son identité.
     """
 
     def __init__(self, sid, root, lang, cols, rows, argv=None, on_end=None):
@@ -263,9 +265,29 @@ class Session:
         reader, self.channel = await asyncio.open_connection(
             sock=hub_end, limit=CHUNK
         )
+        if self.lang is not None:
+            self._greet()
+        self._task(self._listen(reader))
+
+    def _greet(self):
         hello = {"t": "hello", "lang": self.lang}
         self.channel.write(json.dumps(hello).encode() + b"\n")
-        self._task(self._listen(reader))
+
+    @property
+    def ready(self) -> bool:
+        """Vrai pour un worker lancé, vivant, qu'aucune fermeture ne vise."""
+        return (
+            self.channel is not None
+            and self.proc.returncode is None
+            and not self.closing
+        )
+
+    def adopt(self, sid, lang, cols, rows, on_end):
+        """Fait d'un worker de réserve la session `sid` : sa taille d'abord,
+        puis `hello` dans la langue du client."""
+        self.id, self.lang, self.on_end = sid, lang, on_end
+        self.resize(cols, rows)
+        self._greet()
 
     def _task(self, coro):
         task = asyncio.ensure_future(coro)

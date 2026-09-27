@@ -12,6 +12,7 @@ temporaires, la langue passée par `hello`, SIGINT ignoré chez le parent
 comme sous un lanceur en arrière-plan.
 """
 
+import ast
 import asyncio
 import fcntl
 import io
@@ -166,6 +167,58 @@ class TestHooks(unittest.TestCase):
             self.assertIs(signal.getsignal(sig), signal.SIG_DFL)
         handler = signal.getsignal(signal.SIGINT)
         self.assertIs(handler, signal.default_int_handler)
+
+    def test_a_spare_imports_its_libraries_before_its_hello(self):
+        order = []
+
+        def read_hello(fd):
+            order.append("hello")
+            raise ValueError("no hello on the channel")
+
+        with (
+            patch.object(worker, "restore_signals"),
+            patch.object(worker.fcntl, "ioctl"),
+            patch.object(worker, "preload", lambda: order.append("preload")),
+            patch.object(worker, "open_channel", return_value=3),
+            patch.object(worker, "read_hello", read_hello),
+            redirect_stderr(io.StringIO()),
+        ):
+            self.assertEqual(worker.main(), worker.BAD_HELLO)
+        self.assertEqual(order, ["preload", "hello"])
+
+    def test_a_library_that_fails_is_left_to_todo(self):
+        # Absente, ou qui lève à son import : les suivantes s'importent.
+        sys.modules.pop("colorsys", None)
+        real = worker.importlib.import_module
+
+        def import_module(name):
+            if name == "forged_broken_module":
+                raise RuntimeError("raised on import")
+            return real(name)
+
+        forged = ("forged_missing_module", "forged_broken_module", "colorsys")
+        with (
+            patch.object(worker, "PRELOAD", forged),
+            patch.object(worker.importlib, "import_module", import_module),
+        ):
+            worker.preload()
+        self.assertIn("colorsys", sys.modules)
+        self.assertNotIn("forged_missing_module", sys.modules)
+
+    def test_a_spare_preloads_only_what_todo_requires(self):
+        # Une bibliothèque que TODO ne demande plus ne reste pas préchargée.
+        todo = (REPO / "script" / "todo" / "todo.py").read_text(
+            encoding="utf-8"
+        )
+        [required] = [
+            node.value
+            for node in ast.parse(todo).body
+            if isinstance(node, ast.Assign)
+            and ast.unparse(node.targets[0]) == "REQUIRED_MODULES"
+        ]
+        # REQUIRED_MODULES = ("<noms>".split())
+        names = ast.literal_eval(required.func.value).split()
+        self.assertLessEqual(set(worker.PRELOAD), set(names))
 
     def test_the_crumbs_are_the_first_line_of_the_last_header(self):
         class Todo:

@@ -1006,6 +1006,67 @@ class TestKeystrokes(TerminalCase):
         self.assertNotIn(b"hunter2", tab.data)
 
 
+class TestSpare(TerminalCase):
+    async def sessions_list(self):
+        resp = await self.fetch("/api/sessions", Cookie=self.session_cookie)
+        self.assertEqual(resp.code, 200)
+
+    async def test_the_list_warms_a_spare_that_the_next_session_takes(self):
+        await self.sessions_list()
+        spare = self.hub.spare
+        self.assertTrue(spare.ready)
+        self.assertEqual(json.loads(await self.ctl("status"))["sessions"], 0)
+        tab = await self.tab()
+        self.assertIs(self.hub.terminals[tab.texts[0]["id"]], spare)
+        self.assertIsNone(self.hub.spare)
+        await tab.until(lambda: b"ready en 90x20" in tab.data)
+        await self.sessions_list()
+        self.assertIsNot(self.hub.spare, spare)
+
+    async def test_no_spare_beyond_the_session_limit(self):
+        for _ in range(sessions.MAX_SESSIONS):
+            await self.tab()
+        await self.sessions_list()
+        self.assertIsNone(self.hub.spare)
+
+    async def test_a_dead_spare_leaves_a_cold_start(self):
+        await self.sessions_list()
+        spare = self.hub.spare
+        os.killpg(spare.proc.pid, signal.SIGKILL)
+        await asyncio.wait_for(spare.ended.wait(), 10)
+        self.assertIsNone(self.hub.spare)
+        tab = await self.tab()
+        self.assertIsNot(self.hub.terminals[tab.texts[0]["id"]], spare)
+        await tab.until(lambda: b"ready en 90x20" in tab.data)
+
+    async def test_a_spare_that_ends_by_itself_delays_the_next(self):
+        with patch.object(sessions, "WORKER", ("-c", "raise SystemExit(1)")):
+            await self.sessions_list()
+            spare = self.hub.spare
+            await asyncio.wait_for(spare.ended.wait(), 10)
+            await self.sessions_list()
+        self.assertIsNone(self.hub.spare)
+
+    async def test_stopping_the_hub_leaves_no_spare(self):
+        await self.sessions_list()
+        pid = self.hub.spare.proc.pid
+        self.assertEqual(await self.ctl("stop"), "ok")
+        await asyncio.wait_for(self.hub.stopped.wait(), 10)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+    async def test_the_hub_stops_after_the_spare_it_is_starting(self):
+        warming = asyncio.ensure_future(self.hub.warm())
+        await asyncio.sleep(0)
+        spare = self.hub.spare
+        self.assertEqual(self.hub.opening, 1)
+        self.assertEqual(await self.ctl("stop"), "ok")
+        await asyncio.wait_for(self.hub.stopped.wait(), 10)
+        self.assertTrue(warming.done())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(spare.proc.pid, 0)
+
+
 class TestDeadClient(TerminalCase):
     async def asyncSetUp(self):
         patcher = patch.object(server, "PING_SECONDS", 0.2)

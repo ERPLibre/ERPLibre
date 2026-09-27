@@ -337,6 +337,25 @@ class TestRing(SessionCase):
         self.assertEqual(session.attach(client, end)[:2], (end, False))
 
 
+class TestSpare(SessionCase):
+    async def test_a_spare_waits_for_its_hello_then_becomes_the_session(self):
+        argv = [sys.executable, "-c", CHILD]
+        spare = sessions.Session(None, str(REPO), None, 80, 24, argv=argv)
+        await spare.start()
+        self.addAsyncCleanup(spare.close)
+        self.assertTrue(spare.ready)
+        await asyncio.sleep(0.3)
+        self.assertNotIn(b"ready", spare.ring.data)
+        ended = []
+        spare.adopt("s2", "fr", 100, 30, ended.append)
+        await self.seen(spare, b"ready fr 100x30")
+        self.assertEqual(spare.id, "s2")
+        spare.write(b"exit 4\n")
+        await asyncio.wait_for(spare.ended.wait(), 10)
+        self.assertEqual((spare.code, ended), (4, [spare]))
+        self.assertFalse(spare.ready)
+
+
 class TestLifecycle(SessionCase):
     async def test_the_end_of_the_worker_says_bye_after_its_output(self):
         ended = []

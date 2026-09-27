@@ -16,8 +16,10 @@ TODO_WEB_FD). L'ordre compte :
    et TODO_WEB_PID le disent à TODO. La ligne `hello` y donne la langue,
    fixée pour ce seul processus, y compris si le menu Configuration la
    change ensuite : env_var.sh n'est jamais écrit ;
-3. urwid est importé avant TODO : il lie sys.stdout en argument par
-   défaut à son import ;
+3. les bibliothèques tierces que todo.py importe (PRELOAD) le sont avant
+   même la ligne `hello`, entre 1 et 2 : un worker de réserve, lancé avant
+   qu'une session le demande, les tient déjà quand elle le prend. urwid en
+   est : il lie sys.stdout en argument par défaut à son import ;
 4. todo.py est importé en mode script, sous le nom `todo` : importé comme
    paquet, il pose ENABLE_CRASH et laisse todo_upgrade non lié ;
 5. TODO ne demande pas la langue ; chaque Execute lance ses commandes dans
@@ -28,6 +30,7 @@ Puis `serve` fait tourner TODO jusqu'à Quitter.
 """
 
 import fcntl
+import importlib
 import json
 import os
 import signal
@@ -48,6 +51,9 @@ TRACE_TAIL = 8
 HELLO_LIMIT = 64 * 1024
 # Signaux rendus à leur action par défaut, SIGINT à part.
 SIGNALS = (signal.SIGHUP, signal.SIGTERM, signal.SIGQUIT)
+# Bibliothèques tierces que todo.py importe à son chargement ; aucune ne
+# dépend de la langue.
+PRELOAD = ("click", "urwid", "dotenv", "humanize", "openai", "pykeepass")
 
 
 def restore_signals():
@@ -56,6 +62,17 @@ def restore_signals():
     for sig in SIGNALS:
         signal.signal(sig, signal.SIG_DFL)
     signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
+def preload():
+    """Importe PRELOAD ; une bibliothèque absente, ou qui lève à son
+    import, est laissée à todo.py, qui la réimporte et en rend compte dans
+    la session : le worker vit jusqu'à son `hello`."""
+    for name in PRELOAD:
+        try:
+            importlib.import_module(name)
+        except Exception:
+            continue
 
 
 def open_channel() -> int:
@@ -172,14 +189,13 @@ def serve(todo_obj, interrupts, where) -> int:
 def main() -> int:
     restore_signals()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    preload()
     try:
         todo_i18n.use_lang(read_hello(open_channel()).get("lang"))
     except ValueError as exc:
         print(f"todo web worker: {exc}", file=sys.stderr)
         return BAD_HELLO
-    # urwid lie sys.stdout en argument par défaut à son import : avant TODO.
     import click
-    import urwid  # noqa: F401
 
     sys.path.insert(0, os.fspath(TODO_DIR))
     import todo
