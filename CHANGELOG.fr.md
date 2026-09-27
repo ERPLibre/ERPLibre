@@ -11,6 +11,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Ajouté
 
+- Dolibarr, l'ERP en PHP, s'installe depuis `Installation › Dolibarr`, épinglé sur un commit du dépôt officiel que Google Repo récupère : une instance de développement sous votre compte sur un port local, ou une instance de production derrière le nginx de la distribution, avec PHP-FPM sous un compte système par instance, le code en lecture seule dans `/opt`, une minuterie systemd pour les tâches planifiées de Dolibarr et un certificat de certbot ou de l'autorité locale d'ERPLibre. MariaDB ou PostgreSQL ; Debian/Ubuntu, Fedora/EL, Arch et openSUSE
+- `Exécution › Dolibarr` lance, arrête et suit les instances de développement, et relève le commit épinglé avec sa version
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
 - Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
 - OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe

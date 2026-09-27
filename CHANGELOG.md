@@ -11,6 +11,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- Dolibarr, the PHP ERP, installs from `Installation › Dolibarr`, pinned to a commit of the official repository fetched by Google Repo: a development instance under your own account on a local port, or a production instance behind the distribution's nginx, with PHP-FPM under a per-instance system account, the code read-only in `/opt`, a systemd timer for Dolibarr's scheduled jobs and a certificate from certbot or ERPLibre's local authority. MariaDB or PostgreSQL; Debian/Ubuntu, Fedora/EL, Arch and openSUSE
+- `Execute › Dolibarr` starts, stops and follows development instances, and moves the pinned commit together with its version
 - Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
 - Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
 - OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group

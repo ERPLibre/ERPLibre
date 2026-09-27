@@ -31,6 +31,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Ajouté
 <!-- [en] -->
 
+- Dolibarr, the PHP ERP, installs from `Installation › Dolibarr`, pinned to a commit of the official repository fetched by Google Repo: a development instance under your own account on a local port, or a production instance behind the distribution's nginx, with PHP-FPM under a per-instance system account, the code read-only in `/opt`, a systemd timer for Dolibarr's scheduled jobs and a certificate from certbot or ERPLibre's local authority. MariaDB or PostgreSQL; Debian/Ubuntu, Fedora/EL, Arch and openSUSE
+- `Execute › Dolibarr` starts, stops and follows development instances, and moves the pinned commit together with its version
 - Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
 - Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
 - OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group
@@ -93,6 +95,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- [fr] -->
 
+- Dolibarr, l'ERP en PHP, s'installe depuis `Installation › Dolibarr`, épinglé sur un commit du dépôt officiel que Google Repo récupère : une instance de développement sous votre compte sur un port local, ou une instance de production derrière le nginx de la distribution, avec PHP-FPM sous un compte système par instance, le code en lecture seule dans `/opt`, une minuterie systemd pour les tâches planifiées de Dolibarr et un certificat de certbot ou de l'autorité locale d'ERPLibre. MariaDB ou PostgreSQL ; Debian/Ubuntu, Fedora/EL, Arch et openSUSE
+- `Exécution › Dolibarr` lance, arrête et suit les instances de développement, et relève le commit épinglé avec sa version
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
 - Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
 - OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe
