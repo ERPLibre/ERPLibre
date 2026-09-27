@@ -6,6 +6,7 @@ reprise, puis les bornes d'une tâche lues des messages du canal
 (`Recorder`), sur un HOME temporaire. Les secrets sont inventés."""
 
 import datetime
+import errno
 import json
 import os
 import stat
@@ -348,14 +349,15 @@ class TestStore(StoreCase):
         before = tasklog.entries(self.base, 2, before=mid["id"])
         self.assertEqual(before, [old])
 
-    def test_purge_removes_a_day_at_31_days_not_at_29(self):
-        gone, kept = self.closed(self.noon(31)), self.closed(self.noon(29))
+    def test_purge_removes_a_day_at_31_days_not_at_30(self):
+        # Le jour de 30 jours est le plus ancien gardé (`expiry`).
+        gone, edge, kept = (self.closed(self.noon(d)) for d in (31, 30, 29))
         expiry = tasklog.expiry()
         self.assertEqual(
             expiry, datetime.date.today() - datetime.timedelta(30)
         )
         self.assertEqual(tasklog.purge(self.base, expiry), 1)
-        self.assertEqual(tasklog.entries(self.base), [kept])
+        self.assertEqual(tasklog.entries(self.base), [kept, edge])
         self.assertIsNone(tasklog.read(self.base, gone["id"], 1, 1))
 
     def test_purge_keeps_only_an_open_log(self):
@@ -394,6 +396,38 @@ class TestStore(StoreCase):
         self.assertEqual(self.texts(entry["id"]), ["started"])
         self.assertFalse(task.path.exists())
         self.assertEqual(tasklog.recover(self.base), 0)
+
+    def test_recover_counts_what_it_seals_and_goes_past_a_failure(self):
+        # Un disque plein fait échouer le scellement d'une tâche : les
+        # suivantes se closent quand même, et seules elles comptent. Un
+        # `.log` déjà à l'index n'est que retiré.
+        stuck, left = self.task(), self.task()
+        for task in (stuck, left):
+            task.output(b"working\r\n")
+            task.abandon()
+        sealed = self.closed(time.time())
+        stale = self.base / tasklog.day_of(sealed["id"])
+        stale = stale / f"{sealed['id']}.log"
+        stale.write_bytes(b"")  # scellé, puis tué avant de le retirer
+        seal = tasklog._seal
+
+        def full(path, entry):
+            if path == stuck.path:
+                raise OSError(errno.ENOSPC, "No space left on device")
+            seal(path, entry)
+
+        with (
+            patch.object(tasklog, "_seal", side_effect=full),
+            self.assertLogs(tasklog.log, "WARNING") as logs,
+        ):
+            self.assertEqual(tasklog.recover(self.base), 1)
+        self.assertIn(stuck.info["id"], logs.output[0])
+        self.assertTrue(stuck.path.exists())
+        self.assertFalse(stale.exists())
+        states = {e["id"]: e["state"] for e in tasklog.entries(self.base)}
+        self.assertEqual(
+            states, {left.info["id"]: "interrupted", sealed["id"]: "done"}
+        )
 
     def test_an_invalid_id_names_no_file(self):
         # Des chiffres arabes-indiens valent \d, pas [0-9].

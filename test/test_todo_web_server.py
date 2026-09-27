@@ -1601,6 +1601,55 @@ class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(orphan.exists())
 
+    def abandoned(self, when):
+        """Une tâche commencée à `when`, une ligne écrite, puis laissée
+        ouverte comme par un hub tué."""
+        info = {"id": tasklog.new_id(when), "session": "s1", "start": when}
+        task = tasklog.TaskLog(paths.tasks_dir(self.root), info)
+        task.output(b"working\r\n")
+        task.abandon()
+        return task
+
+    async def test_a_failed_orphan_sweep_still_closes_open_tasks(self):
+        task = self.abandoned(time.time())
+        hub = server.Hub(self.root, static_dir=self.static)
+        with (
+            patch.object(
+                server.paths, "remove_orphans", side_effect=OSError("boom")
+            ),
+            self.assertLogs(server.log, "ERROR"),
+        ):
+            await hub.start()
+        self.addAsyncCleanup(hub.stopped.wait)
+        self.addCleanup(hub.request_stop)
+        [entry] = tasklog.entries(hub.tasks_dir)
+        self.assertEqual(
+            (entry["id"], entry["state"]), (task.info["id"], "interrupted")
+        )
+
+    async def test_a_log_that_cannot_be_sealed_leaves_the_purge_to_run(self):
+        # Disque plein : la tâche restée ouverte ne se scelle pas, le hub
+        # démarre et purge à son démarrage le jour de 40 jours.
+        day = datetime.date.today() - datetime.timedelta(40)
+        noon = datetime.datetime.combine(day, datetime.time(12)).timestamp()
+        old = self.abandoned(noon)
+        tasklog.recover(paths.tasks_dir(self.root))  # close, 40 jours
+        stuck = self.abandoned(time.time())
+        full = OSError(errno.ENOSPC, "No space left on device")
+        hub = server.Hub(self.root, static_dir=self.static)
+        with (
+            patch.object(tasklog, "_seal", side_effect=full),
+            self.assertLogs(tasklog.log, "WARNING"),
+        ):
+            await hub.start()
+        self.addAsyncCleanup(hub.stopped.wait)
+        self.addCleanup(hub.request_stop)
+        deadline = time.monotonic() + 5
+        while old.path.parent.exists():
+            self.assertLess(time.monotonic(), deadline, "never purged")
+            await asyncio.sleep(0.05)
+        self.assertTrue(stuck.path.exists())
+
     async def test_ctl_socket_is_0600_through_the_umask_elsewhere(self):
         with patch.object(server.sys, "platform", "darwin"):
             ctl = server._claim_ctl(paths.ctl_path(self.root))

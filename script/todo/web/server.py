@@ -882,12 +882,15 @@ class Hub:
         """Verrou tenu, avant toute session : retire les fichiers
         temporaires orphelins du répertoire d'exécution, et clôt les tâches
         restées ouvertes (`interrupted`). Un échec, fichier abîmé compris,
-        va au journal sans empêcher le démarrage."""
+        va au journal sans empêcher le démarrage ni l'autre étape."""
         try:
             paths.remove_orphans(paths.runtime_dir(self.root))
+        except Exception:
+            log.exception("removing the orphan files failed")
+        try:
             tasklog.recover(self.tasks_dir)
         except Exception:
-            log.exception("tidying the hub files failed")
+            log.exception("closing the open task logs failed")
 
     def _recorder(self, sid):
         """Le journal des tâches de la session `sid`, ses délais planifiés

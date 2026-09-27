@@ -588,8 +588,11 @@ def _summarize(path):
 def recover(base) -> int:
     """Clôt chaque tâche restée ouverte sous `base` — son hub tué, ou son
     journal abandonné après une erreur d'écriture — dans l'état
-    `interrupted`, fin à la dernière écriture de son journal. Rend leur
-    nombre. Le hub l'appelle au démarrage, verrou tenu."""
+    `interrupted`, fin à la dernière écriture de son journal, et rend le
+    nombre de tâches ainsi scellées. Un `.log` déjà à l'index n'est que
+    retiré, sans compter. Une erreur du système de fichiers (disque plein)
+    laisse ce `.log` au démarrage suivant, dit dans le journal, et passe à
+    la tâche suivante. Le hub l'appelle au démarrage, verrou tenu."""
     count = 0
     for day in _days(base):
         indexed = {entry["id"] for entry in _index(day)}
@@ -597,14 +600,18 @@ def recover(base) -> int:
             task_id = path.name.removesuffix(".log")
             if not TASK_ID.fullmatch(task_id):
                 continue
-            count += 1
-            if task_id in indexed:
-                path.unlink()  # scellé, puis tué avant de le retirer
+            try:
+                if task_id in indexed:
+                    path.unlink()  # scellé, puis tué avant de le retirer
+                    continue
+                info, summary = _summarize(path)
+                end = path.stat().st_mtime
+                info = {**info, "id": task_id}
+                _seal(path, summary.entry(info, "interrupted", end))
+            except OSError as exc:
+                log.warning("task %s left open: %s", task_id, exc)
                 continue
-            info, summary = _summarize(path)
-            end = path.stat().st_mtime
-            entry = summary.entry({**info, "id": task_id}, "interrupted", end)
-            _seal(path, entry)
+            count += 1
     return count
 
 

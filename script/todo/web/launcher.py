@@ -305,9 +305,10 @@ def stop(root) -> bool:
 def purge(root, everything=False) -> int:
     """Nombre de tâches closes retirées du journal de `root` : les jours de
     plus de RETENTION_DAYS jours, tous avec `everything`, sauf une tâche
-    ouverte. Le hub de `root` purge s'il répond ou tient son verrou ;
-    sinon ce processus, verrou pris (`_purge_here`). `LaunchError` sous
-    root, ou si rien n'a purgé."""
+    ouverte. Le hub de `root` purge s'il répond ; sinon ce processus,
+    verrou pris (`_purge_here`). Un hub qui tient son verrou sans répondre
+    encore (en démarrage) reçoit la demande une fois, sans attente.
+    `LaunchError` sous root, et quand ce hub ne purge pas."""
     # À l'appel : TODO importe ce module à chaque démarrage.
     from script.todo.web import tasklog
 
@@ -328,9 +329,15 @@ def purge(root, everything=False) -> int:
 
 
 def _purge_here(root, before):
-    """Sous le verrou du hub, que son démarrage attend : clôt ce qu'un hub
-    tué a laissé ouvert (`tasklog.recover`), puis purge avant `before`.
-    None, sans rien toucher, si un hub tient le verrou."""
+    """Sous le verrou du hub, pris sans attendre (`LOCK_NB`) : clôt ce
+    qu'un hub tué a laissé ouvert (`tasklog.recover`), puis purge avant
+    `before`, même si la clôture a échoué — la purge est ce qui libère un
+    disque plein. None, sans rien toucher, si un hub tient le verrou.
+
+    Le démarrage d'un hub n'attend pas non plus ce verrou : lancé pendant
+    la purge, il le trouve pris et sort en code 3, et `ensure_running`
+    échoue au bout de START_TIMEOUT. La fenêtre dure le temps de
+    `recover` et de `purge`."""
     from script.todo.web import tasklog
 
     fd = os.open(paths.lock_path(root), os.O_RDWR | os.O_CREAT, 0o600)
@@ -340,7 +347,10 @@ def _purge_here(root, before):
         except BlockingIOError:
             return None
         base = paths.tasks_dir(root)
-        tasklog.recover(base)
+        try:
+            tasklog.recover(base)
+        except Exception:
+            log.exception("closing the open task logs failed")
         return tasklog.purge(base, before)
     finally:
         os.close(fd)  # relâche le verrou

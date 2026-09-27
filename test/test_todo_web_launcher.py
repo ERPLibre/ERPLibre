@@ -10,6 +10,7 @@ lancement qui échoue passe par un faux interpréteur, un script shell.
 
 import contextlib
 import datetime
+import errno
 import fcntl
 import http.client
 import io
@@ -530,6 +531,26 @@ class TestPurge(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.getvalue(), "removed: 2\nremoved: 1\n")
         self.assertIsNone(launcher.status(REPO))
+
+    def test_a_log_that_cannot_be_sealed_leaves_the_purge_to_run(self):
+        # Disque plein : la tâche laissée ouverte ne se scelle pas, et la
+        # purge qui libère la place passe quand même, jour de 40 jours
+        # compris.
+        old = self.task(40)
+        old.close("done")
+        stuck = self.task(0)
+        stuck.abandon()
+        full = OSError(errno.ENOSPC, "No space left on device")
+        out = io.StringIO()
+        with (
+            patch.object(tasklog, "_seal", side_effect=full),
+            self.assertLogs(tasklog.log, "WARNING"),
+            contextlib.redirect_stdout(out),
+        ):
+            code = launcher.main(["purge", "--root", str(REPO)])
+        self.assertEqual((code, out.getvalue()), (0, "removed: 2\n"))
+        self.assertFalse(old.path.parent.exists())
+        self.assertTrue(stuck.path.exists())
 
     def test_a_hub_holding_its_lock_purges_for_this_process(self):
         # Un hub qui démarre tient son verrou avant de répondre : rien
