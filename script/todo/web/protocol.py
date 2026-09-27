@@ -98,10 +98,14 @@ def from_worker(line):
 
 
 def _printable(value) -> bool:
-    """Vrai pour un texte sans caractère de contrôle (C0, DEL, C1) : rien
-    qui, écrit dans le terminal par la transcription, déplace le curseur
-    ou lance une séquence d'échappement."""
-    return not any(ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 for c in value)
+    """Vrai pour un texte sans caractère de contrôle (C0, DEL, C1) ni
+    demi-substitut UTF-16 isolé : rien qui, écrit dans le terminal par la
+    transcription, déplace le curseur ou lance une séquence d'échappement,
+    et rien que `_dump` ne sache encoder."""
+    return not any(
+        ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 or 0xD800 <= ord(c) < 0xE000
+        for c in value
+    )
 
 
 def reply_line(message, asking):

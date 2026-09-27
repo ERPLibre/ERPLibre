@@ -1261,6 +1261,9 @@ class TestProtocol(unittest.TestCase):
         cancel = protocol.reply_line({"t": "cancel", "qid": 2, "value": 1}, 2)
         self.assertEqual(json.loads(cancel), {"t": "cancel", "qid": 2})
         self.assertIsNone(protocol.reply_line({"t": "hello", "qid": 2}, 2))
+        # Demi-substitut UTF-16 isolé : `_dump` ne saurait pas l'encoder.
+        surrogate = {"t": "answer", "qid": 2, "value": "a\ud800b"}
+        self.assertIsNone(protocol.reply_line(surrogate, 2))
 
 
 class TestTerminalIdle(TerminalCase):
