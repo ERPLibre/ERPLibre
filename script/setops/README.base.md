@@ -213,6 +213,22 @@ one way only.
 - `cible(moteur, nom, variables, confirmer)`: the argv of a `make` target,
   `CONFIRMER` always written, last;
 - `cite(argv)`: the line to show, derived from the argv;
+- `chemin_verrou(moteur)`: the lock file of THIS clone's gestures, or `""`. One
+  lock per clone, not one per machine: two clones are two engines, each with its
+  own mounted instance, and making them wait on each other would refuse a gesture
+  that touches nothing in common. It lives OUTSIDE the engine — a file inside the
+  clone would show up as untracked in its git status, and an operator looking at
+  what they changed would find a leftover they know nothing about;
+- `verrou_du_moteur(moteur)`: holds that clone's exclusive lock for the block,
+  yielding True when it is ours. The engine has none outside its own console, and
+  two gestures led at once on one clone fight over its mounted instance, its
+  generated files and the cluster — the second overwrites what the first has just
+  applied, and the result resembles neither. NON-BLOCKING: a second terminal is
+  refused at once rather than queued behind a deployment lasting tens of minutes.
+  The lock falls with the descriptor, so also on the process's death, even a
+  violent one: nothing to purge after a bad stop. A file that cannot be opened
+  yields True, since the lock closes a race between terminals and making it a
+  condition of execution would stop every gesture where it cannot be written;
 - `jouer(argv, env, cwd, capture, delai, fusionner, entree)`: runs and returns
   a `Verdict` whose `code` is `None` when the process could not run at all —
   that is a verdict, not the absence of one. `entree` passes a text on standard
@@ -676,6 +692,23 @@ un sens.
 - `cible(moteur, nom, variables, confirmer)` : l'argv d'une cible `make`,
   `CONFIRMER` toujours écrit, en dernier ;
 - `cite(argv)` : la ligne à montrer, dérivée de l'argv ;
+- `chemin_verrou(moteur)` : le fichier-verrou des gestes de CE clone, ou `""`.
+  Un verrou par clone, non un par machine : deux clones sont deux moteurs, chacun
+  avec son instance montée, et les faire s'attendre refuserait un geste qui ne
+  touche rien de commun. Il vit HORS du moteur — un fichier posé dans le clone
+  apparaîtrait comme non suivi dans son état git, et un exploitant qui regarde ce
+  qu'il a modifié y verrait un reste dont il ne sait rien ;
+- `verrou_du_moteur(moteur)` : tient le verrou exclusif de ce clone le temps du
+  bloc, en rendant True quand il est à nous. Le moteur n'en a pas hors de sa
+  console, et deux gestes menés en même temps sur un clone se disputent son
+  instance montée, ses fichiers générés et la grappe — le second réécrit ce que le
+  premier vient d'appliquer, et le résultat ne ressemble à aucun des deux. NON
+  BLOQUANT : un second terminal est refusé sur-le-champ plutôt que mis en attente
+  d'un déploiement qui dure des dizaines de minutes. Le verrou tombe avec le
+  descripteur, donc aussi à la mort du processus, même brutale : rien à purger
+  après un arrêt qui s'est mal passé. Un fichier impossible à ouvrir rend True,
+  le verrou ne fermant qu'une course entre terminaux — en faire une condition
+  d'exécution arrêterait tout geste là où il ne peut pas s'écrire ;
 - `jouer(argv, env, cwd, capture, delai, fusionner, entree)` : joue et rend un
   `Verdict` dont le `code` vaut `None` quand le processus n'a pas pu tourner —
   c'est un verdict, pas l'absence de verdict. `entree` passe un texte sur

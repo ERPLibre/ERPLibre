@@ -210,6 +210,23 @@ un sens.
 - `cible(moteur, nom, variables, confirmer)` : l'argv d'une cible `make`,
   `CONFIRMER` toujours écrit, en dernier ;
 - `cite(argv)` : la ligne à montrer, dérivée de l'argv ;
+- `chemin_verrou(moteur)` : le fichier-verrou des gestes de CE clone, ou `""`.
+  Un verrou par clone, non un par machine : deux clones sont deux moteurs, chacun
+  avec son instance montée, et les faire s'attendre refuserait un geste qui ne
+  touche rien de commun. Il vit HORS du moteur — un fichier posé dans le clone
+  apparaîtrait comme non suivi dans son état git, et un exploitant qui regarde ce
+  qu'il a modifié y verrait un reste dont il ne sait rien ;
+- `verrou_du_moteur(moteur)` : tient le verrou exclusif de ce clone le temps du
+  bloc, en rendant True quand il est à nous. Le moteur n'en a pas hors de sa
+  console, et deux gestes menés en même temps sur un clone se disputent son
+  instance montée, ses fichiers générés et la grappe — le second réécrit ce que le
+  premier vient d'appliquer, et le résultat ne ressemble à aucun des deux. NON
+  BLOQUANT : un second terminal est refusé sur-le-champ plutôt que mis en attente
+  d'un déploiement qui dure des dizaines de minutes. Le verrou tombe avec le
+  descripteur, donc aussi à la mort du processus, même brutale : rien à purger
+  après un arrêt qui s'est mal passé. Un fichier impossible à ouvrir rend True,
+  le verrou ne fermant qu'une course entre terminaux — en faire une condition
+  d'exécution arrêterait tout geste là où il ne peut pas s'écrire ;
 - `jouer(argv, env, cwd, capture, delai, fusionner, entree)` : joue et rend un
   `Verdict` dont le `code` vaut `None` quand le processus n'a pas pu tourner —
   c'est un verdict, pas l'absence de verdict. `entree` passe un texte sur

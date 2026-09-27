@@ -208,6 +208,22 @@ one way only.
 - `cible(moteur, nom, variables, confirmer)`: the argv of a `make` target,
   `CONFIRMER` always written, last;
 - `cite(argv)`: the line to show, derived from the argv;
+- `chemin_verrou(moteur)`: the lock file of THIS clone's gestures, or `""`. One
+  lock per clone, not one per machine: two clones are two engines, each with its
+  own mounted instance, and making them wait on each other would refuse a gesture
+  that touches nothing in common. It lives OUTSIDE the engine — a file inside the
+  clone would show up as untracked in its git status, and an operator looking at
+  what they changed would find a leftover they know nothing about;
+- `verrou_du_moteur(moteur)`: holds that clone's exclusive lock for the block,
+  yielding True when it is ours. The engine has none outside its own console, and
+  two gestures led at once on one clone fight over its mounted instance, its
+  generated files and the cluster — the second overwrites what the first has just
+  applied, and the result resembles neither. NON-BLOCKING: a second terminal is
+  refused at once rather than queued behind a deployment lasting tens of minutes.
+  The lock falls with the descriptor, so also on the process's death, even a
+  violent one: nothing to purge after a bad stop. A file that cannot be opened
+  yields True, since the lock closes a race between terminals and making it a
+  condition of execution would stop every gesture where it cannot be written;
 - `jouer(argv, env, cwd, capture, delai, fusionner, entree)`: runs and returns
   a `Verdict` whose `code` is `None` when the process could not run at all —
   that is a verdict, not the absence of one. `entree` passes a text on standard

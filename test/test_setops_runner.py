@@ -323,5 +323,113 @@ class TestLEntreeNePasseJamaisParLeDisque(unittest.TestCase):
         self.assertEqual(0, R.jouer(("true",), entree="x").code)
 
 
+class TestLeVerrouDesGestesDunMoteur(unittest.TestCase):
+    """Deux gestes menés en même temps sur le même clone se disputent son
+    instance montée, ses fichiers générés et la grappe : le second réécrit ce que
+    le premier vient d'appliquer, et le résultat ne ressemble à aucun des deux.
+    Le moteur n'a pas de verrou hors de sa console."""
+
+    def test_two_clones_of_the_same_name_do_not_share_it(self):
+        """UN VERROU PAR CLONE : deux clones sont deux moteurs, avec chacun son
+        instance montée, et les faire s'attendre ferait refuser un geste qui ne
+        touche rien de commun. Le dossier seul se répète d'un checkout à
+        l'autre."""
+        self.assertNotEqual(
+            R.chemin_verrou("/un/endroit/Moteur"),
+            R.chemin_verrou("/un/autre/Moteur"),
+        )
+
+    def test_the_same_clone_always_gives_the_same_file(self):
+        """Le contrôle positif du précédent : sans lui, un chemin qui change à
+        chaque appel ne verrouillerait jamais rien."""
+        self.assertEqual(
+            R.chemin_verrou("/un/endroit/Moteur"),
+            R.chemin_verrou("/un/endroit/Moteur/"),
+        )
+
+    def test_the_file_name_carries_the_folder_so_a_human_reads_it(self):
+        self.assertIn("Moteur", os.path.basename(R.chemin_verrou("/a/Moteur")))
+
+    def test_it_lives_outside_the_engine(self):
+        """Un fichier posé dans le clone apparaîtrait comme non suivi dans son
+        état git, et un exploitant qui regarde ce qu'il a modifié y verrait un
+        reste dont il ne sait rien."""
+        moteur = "/un/endroit/Moteur"
+        self.assertFalse(R.chemin_verrou(moteur).startswith(moteur))
+
+    def test_without_an_engine_there_is_no_lock(self):
+        for moteur in ("", "   ", None):
+            with self.subTest(moteur=moteur):
+                self.assertEqual("", R.chemin_verrou(moteur))
+
+    def test_no_engine_does_not_block_the_gesture(self):
+        """Le verrou ferme une course entre deux terminaux ; en faire une
+        condition d'exécution empêcherait tout geste là où il ne peut pas
+        s'écrire."""
+        with R.verrou_du_moteur("") as libre:
+            self.assertTrue(libre)
+
+    def test_a_second_holder_is_refused_at_once(self):
+        """NON BLOQUANT : un second terminal est refusé sur-le-champ plutôt que
+        mis en attente d'un déploiement qui dure des dizaines de minutes."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        moteur = os.path.join(dossier, "Moteur")
+        with R.verrou_du_moteur(moteur) as premier:
+            self.assertTrue(premier)
+            with R.verrou_du_moteur(moteur) as second:
+                self.assertFalse(second)
+
+    def test_it_is_released_when_the_block_ends(self):
+        """Le contrôle positif du précédent : sans lui, un verrou jamais rendu
+        passerait l'épreuve ci-dessus."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        moteur = os.path.join(dossier, "Moteur")
+        with R.verrou_du_moteur(moteur) as premier:
+            self.assertTrue(premier)
+        with R.verrou_du_moteur(moteur) as apres:
+            self.assertTrue(apres)
+
+    def test_it_falls_with_the_process_even_killed(self):
+        """LA PROPRIÉTÉ QUI COMPTE : aucun reste à nettoyer, et rien à purger
+        après un arrêt qui s'est mal passé. Un verrou par fichier-témoin
+        laisserait un poste bloqué jusqu'à une intervention à la main."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        moteur = os.path.join(dossier, "Moteur")
+        enfant = (
+            "import sys, time; sys.path.insert(0, %r)\n"
+            "from script.setops import runner\n"
+            "with runner.verrou_du_moteur(%r) as libre:\n"
+            "    print(libre, flush=True)\n"
+            "    time.sleep(30)\n"
+            % (
+                os.path.normpath(
+                    os.path.join(os.path.dirname(__file__), "..")
+                ),
+                moteur,
+            )
+        )
+        fils = subprocess.Popen(
+            [sys.executable, "-B", "-c", enfant],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(fils.kill)
+        try:
+            self.assertEqual("True", (fils.stdout.readline() or "").strip())
+            with R.verrou_du_moteur(moteur) as pendant:
+                self.assertFalse(pendant, "tenu ailleurs, il devait refuser")
+            fils.kill()
+            fils.wait(timeout=10)
+        finally:
+            fils.stdout.close()
+        with R.verrou_du_moteur(moteur) as apres:
+            self.assertTrue(
+                apres, "le verrou n'est pas tombé avec le processus"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

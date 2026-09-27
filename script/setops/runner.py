@@ -26,6 +26,9 @@ rien annonce une réussite qui n'a pas eu lieu.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
+import hashlib
 import os
 import shlex
 import subprocess
@@ -63,6 +66,80 @@ SIMULE = "false"
 # Borne d'un geste, en secondes. Un déploiement dure des minutes ; la borne
 # existe pour qu'une machine qui ne répond plus rende la main.
 DELAI = 3600
+
+
+# OÙ LE VERROU DES GESTES VIT, et c'est hors du moteur. Un fichier posé dans son
+# clone apparaîtrait comme non suivi dans son état git, et un exploitant qui
+# regarde ce qu'il a modifié y verrait un reste dont il ne sait rien.
+DOSSIER_VERROUS = os.path.join(".erplibre", "setops")
+
+
+def chemin_verrou(moteur):
+    """Le fichier-verrou des gestes de CE moteur. Ou « » sans moteur.
+
+    UN VERROU PAR CLONE, et non un pour la machine : deux clones sont deux
+    moteurs, avec chacun son instance montée, et les faire s'attendre ferait
+    refuser un geste qui ne touche rien de commun.
+
+    Le nom porte le dossier du moteur ET une empreinte de son chemin complet :
+    le dossier seul se répète d'un checkout à l'autre — deux clones s'appellent
+    volontiers pareil — et l'empreinte seule ne se lit pas.
+    """
+    nu = (moteur or "").strip().rstrip(os.sep)
+    if not nu:
+        return ""
+    entier = os.path.abspath(nu)
+    marque = hashlib.sha256(entier.encode("utf-8")).hexdigest()[:12]
+    return os.path.join(
+        os.path.expanduser("~"),
+        DOSSIER_VERROUS,
+        f"{os.path.basename(entier)}-{marque}.lock",
+    )
+
+
+@contextlib.contextmanager
+def verrou_du_moteur(moteur):
+    """Tient le verrou exclusif des gestes de `moteur` le temps du bloc.
+
+    Rend True s'il est à nous, False s'il est tenu ailleurs. NE LÈVE JAMAIS.
+
+    LE MOTEUR N'EN A PAS HORS DE SA CONSOLE. Deux gestes menés en même temps sur
+    le même clone se disputent son instance montée, ses fichiers générés et la
+    grappe : le second réécrit ce que le premier vient d'appliquer, et le
+    résultat ne ressemble à aucun des deux.
+
+    NON BLOQUANT : un second terminal est refusé sur-le-champ plutôt que mis en
+    attente d'un déploiement qui dure des dizaines de minutes. Le verrou tombe
+    avec le descripteur, donc aussi à la mort du processus, même brutale : aucun
+    reste à nettoyer, et rien à purger après un arrêt qui s'est mal passé.
+
+    UN FICHIER IMPOSSIBLE À OUVRIR REND TRUE, comme un système de fichiers qui
+    ne sait pas verrouiller. Le verrou ferme une course entre deux terminaux ; en
+    faire une condition d'exécution empêcherait tout geste sur un poste dont le
+    dossier personnel est en lecture seule, alors que les gardes qui comptent —
+    la barrière, la retape, le verdict — tiennent encore.
+    """
+    chemin = chemin_verrou(moteur)
+    if not chemin:
+        yield True
+        return
+    try:
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        descripteur = os.open(chemin, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        yield True
+        return
+    try:
+        try:
+            fcntl.flock(descripteur, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            libre = True
+        except BlockingIOError:
+            libre = False
+        except OSError:
+            libre = True
+        yield libre
+    finally:
+        os.close(descripteur)
 
 
 class Verdict(NamedTuple):
