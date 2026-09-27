@@ -159,6 +159,21 @@ def opcache_package(family):
     return _OPCACHE.get(family)
 
 
+_XDEBUG = {
+    "apt-get": "php-xdebug",
+    "dnf": "php-pecl-xdebug3",
+    "pacman": "xdebug",
+    "zypper": "php8-xdebug",
+}
+
+
+def xdebug_package(family):
+    """Le paquet de Xdebug 3. Debian et Fedora l'allument pour tout PHP de
+    l'hôte ; Arch le livre éteint."""
+    _check(family)
+    return _XDEBUG[family]
+
+
 def fpm_layout(family, php_version):
     """Binaire, unité systemd, dossier des pools et compte de nginx.
 

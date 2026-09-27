@@ -373,6 +373,16 @@ class TestDeverminage(Banc):
             [f"{DEBUG} tail --instance erp --filter sql="],
         )
 
+    def test_xdebug_comes_last_for_a_native_development_instance(self):
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(
+            self.lancer_debug(["5"]), [f"{DEBUG} on --instance erp --xdebug"]
+        )
+        self.registre = {"erp": dict(DEV, runtime="container")}
+        with self.assertRaises(StopIteration):
+            # Pas de 5e choix : le menu redemande, et les réponses manquent.
+            self.lancer_debug(["5"])
+
     def test_a_production_needs_its_name_retyped(self):
         self.registre = {"erp": dict(DEV, mode="prod")}
         self.assertEqual(

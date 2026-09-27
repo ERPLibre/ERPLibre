@@ -377,18 +377,24 @@ class DolibarrMenuMixin:
         )
         if name is None:
             return
-        action = self._dolibarr_choose(
-            t("Debug profile:"),
-            [
-                ("on", t("Turn on (DebugBar, Syslog level 7, strict mode)")),
-                ("off", t("Turn off, previous settings back")),
-                ("status", t("Status")),
-                ("tail", t("Follow dolibarr.log")),
-            ],
-        )
+        options = [
+            ("on", t("Turn on (DebugBar, Syslog level 7, strict mode)")),
+            ("off", t("Turn off, previous settings back")),
+            ("status", t("Status")),
+            ("tail", t("Follow dolibarr.log")),
+        ]
+        entry = known[name]
+        if entry.get("mode") != "prod" and entry.get("runtime") != "container":
+            options.append(
+                ("xdebug", t("Turn on with Xdebug (step debugging)"))
+            )
+        action = self._dolibarr_choose(t("Debug profile:"), options)
         if action is None:
             return
-        args = [action, "--instance", name]
+        if action == "xdebug":
+            args = ["on", "--instance", name, "--xdebug"]
+        else:
+            args = [action, "--instance", name]
         if action == "tail":
             pattern = input(
                 t("Filter (regular expression, Enter for everything): ")

@@ -17588,6 +17588,54 @@ TRANSLATIONS = {
         "fr": "Éteindre",
         "en": "Turn off",
     },
+    "PHP-FPM is missing: install the instance again.": {
+        "fr": "PHP-FPM manque : réinstaller l'instance.",
+        "en": "PHP-FPM is missing: install the instance again.",
+    },
+    "Xdebug does not load in PHP-FPM after its install.": {
+        "fr": "Xdebug ne se charge pas dans PHP-FPM après son installation.",
+        "en": "Xdebug does not load in PHP-FPM after its install.",
+    },
+    "Xdebug is missing; installing it: %s": {
+        "fr": "Xdebug manque ; installation : %s",
+        "en": "Xdebug is missing; installing it: %s",
+    },
+    "Xdebug could not be installed.": {
+        "fr": "Xdebug n'a pas pu s'installer.",
+        "en": "Xdebug could not be installed.",
+    },
+    "This host's PHP already loads Xdebug for every program; step debugging is switched on in this pool only.": {
+        "fr": "Le PHP de cet hôte charge déjà Xdebug pour tout programme ; le pas à pas n'est allumé que dans ce pool.",
+        "en": "This host's PHP already loads Xdebug for every program; step debugging is switched on in this pool only.",
+    },
+    "PhpStorm: Settings › PHP › Debug, Xdebug port %d; Settings › PHP › Servers, host 127.0.0.1, port %s, debugger Xdebug, no path mapping; then Run › Start Listening for PHP Debug Connections.": {
+        "fr": "PhpStorm : Settings › PHP › Debug, port Xdebug %d ; Settings › PHP › Servers, hôte 127.0.0.1, port %s, débogueur Xdebug, aucun mappage de chemin ; puis Run › Start Listening for PHP Debug Connections.",
+        "en": "PhpStorm: Settings › PHP › Debug, Xdebug port %d; Settings › PHP › Servers, host 127.0.0.1, port %s, debugger Xdebug, no path mapping; then Run › Start Listening for PHP Debug Connections.",
+    },
+    "Trigger a request with the Xdebug helper of your browser, or add ?XDEBUG_TRIGGER=1 to the address.": {
+        "fr": "Déclencher une requête par l'extension Xdebug du navigateur, ou ajouter ?XDEBUG_TRIGGER=1 à l'adresse.",
+        "en": "Trigger a request with the Xdebug helper of your browser, or add ?XDEBUG_TRIGGER=1 to the address.",
+    },
+    "%s holds comments and is left as is; add this configuration:": {
+        "fr": "%s contient des commentaires et reste tel quel ; y ajouter cette configuration :",
+        "en": "%s holds comments and is left as is; add this configuration:",
+    },
+    "VS Code: configuration « %s » in %s": {
+        "fr": "VS Code : configuration « %s » dans %s",
+        "en": "VS Code: configuration « %s » in %s",
+    },
+    "Xdebug on, port %d.": {
+        "fr": "Xdebug allumé, port %d.",
+        "en": "Xdebug on, port %d.",
+    },
+    "Xdebug is offered on native development instances only.": {
+        "fr": "Xdebug n'est offert que sur les instances de développement natives.",
+        "en": "Xdebug is offered on native development instances only.",
+    },
+    "Turn on with Xdebug (step debugging)": {
+        "fr": "Allumer avec Xdebug (pas à pas)",
+        "en": "Turn on with Xdebug (step debugging)",
+    },
 }
 
 
