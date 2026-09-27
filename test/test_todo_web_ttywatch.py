@@ -58,6 +58,8 @@ WAITERS = {
     "print('ready', flush=True); s.select(30)",
     "child": "import subprocess; print('ready', flush=True)\n"
     "subprocess.run(['sleep', '30'])",
+    "zombie": "import subprocess, time; p = subprocess.Popen(['true'])\n"
+    "print('ready', flush=True); time.sleep(30)",
 }
 
 
@@ -105,9 +107,11 @@ class Child:
             self.read()
 
     def blocked(self) -> bool:
-        """Vrai quand chaque processus de l'enfant est bloqué dans un appel
-        système."""
+        """Vrai quand chaque processus vivant de l'enfant est bloqué dans un
+        appel système."""
         for pid in ttywatch.descendants(self.proc.pid):
+            if ttywatch._ended(pid):
+                continue
             for tid in os.listdir(f"/proc/{pid}/task"):
                 if not ttywatch._syscall(pid, tid)[0].isdigit():
                     return False
@@ -129,6 +133,13 @@ class TestTerminalModes(unittest.TestCase):
         state = watch.probe()
         self.assertEqual((state.echo, state.canon), (False, False))
         self.assertEqual(state.signals, b"")
+
+    def test_a_closed_master_makes_the_reader_unknown(self):
+        master, slave = pty.openpty()
+        watch = ttywatch.TtyWatch(master, os.getpid())
+        os.close(master)
+        os.close(slave)
+        self.assertIsNone(watch.probe().reader)
 
     def test_a_password_prompt_turns_the_echo_off(self):
         child = Child(self, READERS["getpass"])
@@ -165,14 +176,17 @@ class TestReader(unittest.TestCase):
         child.until(child.blocked)
         [_, sleeper] = ttywatch.descendants(child.proc.pid)
         original = ttywatch._syscall
+        # setuid ; noyau sans le fichier syscall.
+        for error in (PermissionError(13, "setuid"), FileNotFoundError(2, "")):
+            with self.subTest(error=error):
 
-        def refused(pid, tid):
-            if pid == sleeper:
-                raise PermissionError(13, "setuid")
-            return original(pid, tid)
+                def refused(pid, tid):
+                    if pid == sleeper:
+                        raise error
+                    return original(pid, tid)
 
-        with patch.object(ttywatch, "_syscall", refused):
-            self.assertIsNone(child.watch.probe().reader)
+                with patch.object(ttywatch, "_syscall", refused):
+                    self.assertIsNone(child.watch.probe().reader)
 
     def test_a_reader_is_found_beside_a_process_out_of_reach(self):
         child = Child(self, READERS["grandchild"])
@@ -188,11 +202,34 @@ class TestReader(unittest.TestCase):
         with patch.object(ttywatch, "_syscall", refused):
             self.assertIs(child.watch.probe().reader, True)
 
-    def test_an_unknown_architecture_makes_the_reader_unknown(self):
-        with patch.object(ttywatch, "MACHINE", "forged-arch"):
-            child = Child(self, READERS["read"])
-        child.until(lambda: b"ready" in child.output)
-        self.assertIsNone(child.watch.probe().reader)
+    def test_what_proc_cannot_say_makes_the_reader_unknown(self):
+        # fdinfo d'un format inconnu ; programme 32 bits, d'une autre table.
+        for name, code, mock in (
+            ("_epoll_fds", READERS["epoll"], {"side_effect": ValueError()}),
+            ("_elf64", READERS["read"], {"return_value": False}),
+        ):
+            with self.subTest(name):
+                child = Child(self, code)
+                child.until(lambda: child.watch.probe().reader)
+                with patch.object(ttywatch, name, **mock):
+                    self.assertIsNone(child.watch.probe().reader)
+
+    def test_without_a_table_or_proc_the_reader_is_unknown(self):
+        for name, value in (
+            ("MACHINE", "forged-arch"),
+            ("PROC_USABLE", False),
+        ):
+            with self.subTest(name):
+                with patch.object(ttywatch, name, value):
+                    child = Child(self, READERS["read"])
+                child.until(lambda: b"ready" in child.output)
+                self.assertIsNone(child.watch.probe().reader)
+
+    def test_an_epoll_beyond_fd_limit_is_not_read(self):
+        child = Child(self, READERS["epoll"])
+        child.until(lambda: child.watch.probe().reader)
+        with patch.object(ttywatch, "FD_LIMIT", 0):
+            self.assertIs(child.watch.probe().reader, False)
 
 
 class TestAlternateScreen(unittest.TestCase):

@@ -22,9 +22,14 @@ un appel de lecture ou d'attente qui vise l'esclave ou `/dev/tty` : read,
 readv et splice nomment le descripteur en premier argument ; select et
 pselect6 le portent dans leur ensemble de lecture, poll et ppoll dans
 leur tableau, lus dans `/proc/<pid>/mem` ; epoll dans
-`/proc/<pid>/fdinfo/<epfd>`. Un processus setuid (sudo, su), ou hors de
-portée de ptrace, refuse ces fichiers : le lecteur devient inconnu, comme
-sur une architecture absente de SYSCALLS.
+`/proc/<pid>/fdinfo/<epfd>`.
+
+Le lecteur est inconnu, jamais faux, dès que /proc ne sait pas répondre :
+un processus setuid (sudo, su) ou hors de portée de ptrace, un programme
+32 bits (ses appels suivent une autre table), un fichier illisible ou d'un
+format inattendu, une architecture absente de SYSCALLS, un système sans
+/proc ou un noyau sans `children` ni `syscall` (PROC_USABLE). Un
+processus qui finit pendant la lecture est ignoré.
 """
 
 import os
@@ -33,7 +38,9 @@ import re
 import select
 import stat
 import struct
+import sys
 import termios
+import threading
 from typing import NamedTuple
 
 # Appels système qui attendent une entrée, par architecture : « fd » nomme
@@ -57,8 +64,9 @@ SYSCALLS = {
 MACHINE = platform.machine()
 # /dev/tty : le terminal de contrôle de qui l'ouvre.
 DEV_TTY = os.makedev(5, 0)
-# Au-delà, un ensemble ou un tableau n'est pas lu : il vient d'un
-# programme qui surveille des milliers de descripteurs, pas d'une invite.
+# Au-delà, un ensemble, un tableau ou une instance epoll n'est pas lu : il
+# vient d'un programme qui surveille des milliers de descripteurs, pas
+# d'une invite.
 FD_LIMIT = 1024
 # Écran alternatif : ESC[?1049h/l, ESC[?1047h/l, ESC[?47h/l ; RIS (ESC c)
 # remet le terminal à zéro, écran principal compris.
@@ -66,6 +74,25 @@ ALTSCREEN = re.compile(rb"\x1b\[\?(?:1049|1047|47)([hl])|\x1bc")
 # Octets gardés d'un morceau au suivant : la plus longue séquence, moins
 # un. Relire une séquence déjà vue redonne le même état.
 TAIL = len(b"\x1b[?1049h") - 1
+
+
+def _proc_usable() -> bool:
+    """Vrai si /proc donne `children` et `syscall` des fils de ce
+    processus : Linux, avec CONFIG_PROC_CHILDREN et le suivi des appels."""
+    if sys.platform != "linux":
+        return False
+    task = f"/proc/self/task/{threading.get_native_id()}"
+    try:
+        with open(f"{task}/children", "rb"):
+            pass
+        with open(f"{task}/syscall", "rb") as f:
+            f.read()
+    except OSError:
+        return False
+    return True
+
+
+PROC_USABLE = _proc_usable()
 
 
 class TtyState(NamedTuple):
@@ -102,6 +129,25 @@ def descendants(pid) -> list:
     return found
 
 
+def _ended(pid) -> bool:
+    """Vrai si `pid` a fini : absent de /proc, ou zombie (état Z ou X,
+    après la dernière parenthèse du nom dans `stat`)."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            fields = f.read().rsplit(b")", 1)[-1].split()
+    except OSError:
+        return True
+    return fields[:1] in ([b"Z"], [b"X"])
+
+
+def _elf64(pid) -> bool:
+    """Vrai si le programme du processus est un ELF 64 bits, dont les
+    appels suivent la table de SYSCALLS. OSError si `exe` ne s'ouvre pas."""
+    with open(f"/proc/{pid}/exe", "rb") as f:
+        head = f.read(5)
+    return head[:4] == b"\x7fELF" and head[4:] == b"\x02"
+
+
 def _syscall(pid, tid) -> list:
     """Champs de `/proc/<pid>/task/<tid>/syscall` : le numéro de l'appel
     en cours et ses six arguments, « running » en plein calcul, « -1 »
@@ -125,24 +171,31 @@ def _peek(pid, address, size) -> bytes:
 
 def _epoll_fds(pid, epfd) -> list:
     """Descripteurs qu'une instance epoll surveille en lecture, lus dans
-    fdinfo : lignes « tfd: <fd> events: <masque hexadécimal> … »."""
-    fds = []
+    fdinfo : lignes « tfd: <fd> events: <masque hexadécimal> … ». Aucun
+    au-delà de FD_LIMIT lignes : la lecture s'arrête là."""
+    fds, count = [], 0
     with open(f"/proc/{pid}/fdinfo/{epfd}") as f:
         for line in f:
             fields = line.split()
-            if fields[:1] == ["tfd:"] and int(fields[3], 16) & select.EPOLLIN:
+            if fields[:1] != ["tfd:"]:
+                continue
+            count += 1
+            if count > FD_LIMIT:
+                return []
+            if int(fields[3], 16) & select.EPOLLIN:
                 fds.append(int(fields[1]))
     return fds
 
 
 class TtyWatch:
-    """État du terminal d'une session : voir le module."""
+    """État du terminal d'une session : voir le module. OSError si
+    l'esclave de `master` ne se trouve pas."""
 
     def __init__(self, master, pid):
         self.master = master
         self.pid = pid
         self.tty = os.stat(os.ptsname(master)).st_rdev
-        self.calls = SYSCALLS.get(MACHINE)
+        self.calls = SYSCALLS.get(MACHINE) if PROC_USABLE else None
         self.altscreen = False
         self.tail = b""
 
@@ -154,8 +207,12 @@ class TtyWatch:
         self.tail = text[-TAIL:]
 
     def probe(self) -> TtyState:
-        """L'état du terminal à cet instant."""
-        attrs = termios.tcgetattr(self.master)
+        """L'état du terminal à cet instant ; un maître déjà fermé rend un
+        terminal ordinaire au lecteur inconnu."""
+        try:
+            attrs = termios.tcgetattr(self.master)
+        except termios.error:
+            return TtyState(True, True, None, self.altscreen, b"")
         lflag, cc = attrs[3], attrs[6]
         signals = b""
         if lflag & termios.ISIG:
@@ -171,23 +228,28 @@ class TtyWatch:
         )
 
     def reader(self) -> bool | None:
-        """Vrai si un processus de la session attend le terminal ; None si
-        aucun ne l'attend et que l'un d'eux ne se laisse pas lire, ou si
-        l'architecture n'a pas de table."""
+        """Vrai si un processus de la session attend le terminal ; faux si
+        aucun, chacun lu ; None si aucun ne l'attend et que l'un d'eux ne
+        se laisse pas lire (voir le module)."""
         if self.calls is None:
             return None
         unknown = False
         for pid in descendants(self.pid):
             try:
-                if self._waits(pid):
-                    return True
-            except PermissionError:
-                unknown = True
-            except OSError:
-                continue  # fini entre-temps
+                waits = self._waits(pid)
+            except (OSError, ValueError, IndexError):
+                # Fini entre-temps, rien à lire ; sinon, illisible.
+                waits = False if _ended(pid) else None
+            if waits:
+                return True
+            unknown = unknown or waits is None
         return None if unknown else False
 
-    def _waits(self, pid) -> bool:
+    def _waits(self, pid) -> bool | None:
+        """Vrai si un fil d'exécution de `pid` attend le terminal ; None
+        pour un programme 32 bits."""
+        if not _elf64(pid):
+            return None
         for tid in os.listdir(f"/proc/{pid}/task"):
             fields = _syscall(pid, tid)
             if not fields or not fields[0].isdigit():
