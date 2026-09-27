@@ -16311,6 +16311,55 @@ TRANSLATIONS = {
         "fr": "Instance Dolibarr :",
         "en": "Dolibarr instance:",
     },
+    # Dolibarr — épinglage (script/dolibarr/pin.py)
+    "Already pinned on %s.": {
+        "fr": "Déjà épinglé sur %s.",
+        "en": "Already pinned on %s.",
+    },
+    "Cannot read the version at %s.": {
+        "fr": "Impossible de lire la version à %s.",
+        "en": "Cannot read the version at %s.",
+    },
+    "Commit %s -> %s, version %s -> %s, branch %s -> %s": {
+        "fr": "Commit %s -> %s, version %s -> %s, branche %s -> %s",
+        "en": "Commit %s -> %s, version %s -> %s, branch %s -> %s",
+    },
+    "Head of %s upstream: %s": {
+        "fr": "Tête de %s en amont : %s",
+        "en": "Head of %s upstream: %s",
+    },
+    "Head of %s upstream: unreachable": {
+        "fr": "Tête de %s en amont : injoignable",
+        "en": "Head of %s upstream: unreachable",
+    },
+    "Image %s -> %s": {
+        "fr": "Image %s -> %s",
+        "en": "Image %s -> %s",
+    },
+    "No %s image on Docker Hub yet: keeping %s.": {
+        "fr": "Pas encore d'image %s sur Docker Hub : %s est gardée.",
+        "en": "No %s image on Docker Hub yet: keeping %s.",
+    },
+    "Nothing upstream at %s.": {
+        "fr": "Rien en amont à %s.",
+        "en": "Nothing upstream at %s.",
+    },
+    "Nothing written: add --apply.": {
+        "fr": "Rien n'est écrit : ajoutez --apply.",
+        "en": "Nothing written: add --apply.",
+    },
+    "Pin written. Sync the checkout with:": {
+        "fr": "Épinglage écrit. Synchronisez le checkout avec :",
+        "en": "Pin written. Sync the checkout with:",
+    },
+    "Pinned: Dolibarr %s, branch %s, commit %s": {
+        "fr": "Épinglé : Dolibarr %s, branche %s, commit %s",
+        "en": "Pinned: Dolibarr %s, branch %s, commit %s",
+    },
+    "Version %s does not belong to branch %s.": {
+        "fr": "La version %s n'appartient pas à la branche %s.",
+        "en": "Version %s does not belong to branch %s.",
+    },
 }
 
 
