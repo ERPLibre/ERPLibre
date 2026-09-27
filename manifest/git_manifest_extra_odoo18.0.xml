@@ -15,6 +15,8 @@
         name="CybroAddons.git"
         path="odoo18.0/addons/CybroOdoo_CybroAddons"
         remote="ERPLibre_origin_CybroOdoo"
+        fork-upstream-remote="CybroOdoo"
+        fork-upstream="18.0"
         clone-depth="1"
         revision="18.0_dev"
         groups="extra,odoo18.0"
@@ -23,6 +25,8 @@
         name="design-themes.git"
         path="odoo18.0/addons/odoo_design-themes"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="odoo"
+        fork-upstream="18.0"
         revision="18.0"
         groups="addons,odoo18.0"
     />

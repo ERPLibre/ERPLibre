@@ -543,6 +543,26 @@ class GitTool:
                 project_attrs.append(
                     ("@dest-branch", entry.get("@dest-branch"))
                 )
+            # La provenance d'un fork, que git-repo ne sait pas exprimer.
+            # « @upstream » et « @dest-branch » portent NOTRE branche, et
+            # « repo manifest -r » les réécrit toutes deux à chaque gel de
+            # version : la branche dont le fork DESCEND n'y tiendrait pas.
+            # git-repo ignore un attribut qu'il ne connaît pas — son parseur
+            # est une chaîne de tests sans rejet final — donc ces trois-là
+            # traversent un « repo sync » sans rien casser.
+            # « @fork-upstream-name » ne paraît que sur un fork RENOMMÉ,
+            # où le nom du dépôt amont diffère de celui du fork.
+            # « @fork-upstream » absent alors que « @fork-upstream-remote »
+            # est présent dit que l'amont ne porte AUCUNE branche pour cette
+            # version d'Odoo, ce qui n'est pas la même chose qu'un amont
+            # inconnu.
+            for attr in (
+                "@fork-upstream-remote",
+                "@fork-upstream-name",
+                "@fork-upstream",
+            ):
+                if attr in entry:
+                    project_attrs.append((attr, entry.get(attr)))
 
             project_entries.append(OrderedDict(project_attrs))
             project_names.append(entry.get("@name"))

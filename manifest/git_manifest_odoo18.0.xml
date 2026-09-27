@@ -7,6 +7,7 @@
     <remote name="ERPLibre_origin_CybroOdoo" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_TechnoLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_ONLYOFFICE" fetch="https://github.com/ERPLibre/" />
+    <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="ONLYOFFICE" fetch="https://github.com/ONLYOFFICE" />
@@ -27,6 +28,7 @@
     <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
+    <remote name="odoo" fetch="https://github.com/odoo/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
     <remote name="odoomates" fetch="https://github.com/odoomates/" />
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
@@ -158,6 +160,8 @@
         revision="18.0_dev"
         path="odoo18.0/addons/bemade_bemade-addons"
         remote="ERPLibre_origin_bemade"
+        fork-upstream-remote="bemade"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project name="brand.git" revision="18.0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
@@ -288,6 +292,7 @@
         revision="18.0"
         path="odoo18.0/addons/MathBenTech_development"
         remote="ERPLibre_origin_MathBenTech"
+        fork-upstream-remote="MathBenTech"
         groups="addons,base,odoo18.0"
     />
     <project
@@ -333,6 +338,8 @@
         revision="18.0_dev"
         path="odoo18.0/addons/OCA_helpdesk"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project name="hr.git" revision="18.0" path="odoo18.0/addons/OCA_hr" remote="OCA" groups="addons,odoo18.0" />
@@ -455,6 +462,9 @@
         name="muk-it_odoo-modules.git"
         path="odoo18.0/addons/muk-it_odoo-modules"
         remote="TechnoLibre_origin_muk-it"
+        fork-upstream-remote="muk-it"
+        fork-upstream-name="odoo-modules.git"
+        fork-upstream="18.0"
         revision="18.0"
         groups="addons,odoo18.0,code_generator"
     />
@@ -476,6 +486,7 @@
         name="odoo-code-generator-template.git"
         path="odoo18.0/addons/TechnoLibre_odoo-code-generator-template"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="18.0"
         groups="addons,odoo18.0,code_generator,image_db"
     />
@@ -483,6 +494,7 @@
         name="odoo-code-generator.git"
         path="odoo18.0/addons/TechnoLibre_odoo-code-generator"
         remote="ERPLibre_origin_TechnoLibre"
+        fork-upstream-remote="TechnoLibre"
         revision="18.0"
         groups="addons,odoo18.0,code_generator,image_db"
     />
@@ -491,6 +503,8 @@
         revision="18.0"
         path="odoo18.0/addons/novacode-nl_odoo-formio"
         remote="ERPLibre_origin_novacode-nl"
+        fork-upstream-remote="novacode-nl"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project
@@ -504,6 +518,8 @@
         name="odoo.git"
         path="odoo18.0/odoo"
         remote="ERPLibre_origin_odoo"
+        fork-upstream-remote="odoo"
+        fork-upstream="18.0"
         clone-depth="10"
         revision="ERPLibre/18.0"
         groups="odoo,odoo18.0"
@@ -527,6 +543,8 @@
         revision="18.0"
         path="odoo18.0/addons/ONLYOFFICE_onlyoffice_odoo"
         remote="ERPLibre_origin_ONLYOFFICE"
+        fork-upstream-remote="ONLYOFFICE"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project
@@ -605,6 +623,8 @@
         revision="18.0_dev"
         path="odoo18.0/addons/OCA_project"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project
@@ -731,6 +751,8 @@
         revision="18.0_dev"
         path="odoo18.0/addons/OCA_server-tools"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
         groups="addons,odoo18.0"
     />
     <project
@@ -738,6 +760,8 @@
         revision="18.0_fix_base_tier_validation_message_repetition"
         path="odoo18.0/addons/OCA_server-ux"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
         groups="addons,odoo18.0,code_generator"
     />
     <project
@@ -837,6 +861,8 @@
         revision="18.0_dev"
         path="odoo18.0/addons/OCA_web"
         remote="ERPLibre_origin_OCA"
+        fork-upstream-remote="OCA"
+        fork-upstream="18.0"
         groups="addons,odoo18.0,code_generator"
     />
     <project
