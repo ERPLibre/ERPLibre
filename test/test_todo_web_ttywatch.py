@@ -245,11 +245,23 @@ class TestTerminalModes(unittest.TestCase):
         self.assertEqual(state.signals, b"")
 
     def test_a_closed_master_makes_the_reader_unknown(self):
+        # Un terminal ordinaire : l'écho actif garde le champ masqué fermé.
         master, slave = pty.openpty()
         watch = ttywatch.TtyWatch(master, os.getpid())
         os.close(master)
         os.close(slave)
-        self.assertIsNone(watch.probe().reader)
+        self.assertEqual(watch.probe(), (True, True, None, False, b""))
+
+    def test_a_disabled_signal_character_is_left_out(self):
+        # _POSIX_VDISABLE : un caractère nul ne devient aucun signal.
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        attrs = termios.tcgetattr(slave)
+        attrs[6][termios.VQUIT] = b"\0"
+        termios.tcsetattr(slave, termios.TCSANOW, attrs)
+        watch = ttywatch.TtyWatch(master, os.getpid())
+        self.assertEqual(watch.probe().signals, b"\x03\x1a")
 
     def test_a_password_prompt_turns_the_echo_off(self):
         child = Child(self, READERS["getpass"])
@@ -283,6 +295,7 @@ class TestReader(unittest.TestCase):
     def test_a_process_out_of_reach_makes_the_reader_unknown(self):
         child = Child(self, WAITERS["child"])
         child.until(lambda: b"ready" in child.output)
+        child.until(lambda: len(ttywatch.descendants(child.proc.pid)) == 2)
         child.until(child.blocked)
         [_, sleeper] = ttywatch.descendants(child.proc.pid)
         original = ttywatch._syscall
@@ -303,6 +316,7 @@ class TestReader(unittest.TestCase):
         # comme le reste ; le vivant reste inconnu, jamais fini.
         child = Child(self, WAITERS["child"])
         child.until(lambda: b"ready" in child.output)
+        child.until(lambda: len(ttywatch.descendants(child.proc.pid)) == 2)
         child.until(child.blocked)
         [_, sleeper] = ttywatch.descendants(child.proc.pid)
         original_elf64 = ttywatch._elf64
@@ -411,6 +425,8 @@ class TestAlternateScreen(unittest.TestCase):
 
 
 class TestFlush(unittest.TestCase):
+    """tcflush au maître laisse l'entrée : `_drop_input` vide par l'esclave."""
+
     def setUp(self):
         self.master, self.slave = pty.openpty()
         self.addCleanup(os.close, self.master)
