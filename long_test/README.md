@@ -368,6 +368,21 @@ blocks and in any backup taken between the two gestures. Anything the bench
 prints or logs is redacted first, and the command line never carries it, since a
 command line is readable in the machine's process table by any account.
 
+**The golden template is a prerequisite, not something the bench makes.** The
+engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+configured for the legacy PCI chipset, and converting it afterwards does not
+change a setting — it replaces the virtual hardware under a system that believes
+it knows its own. Predictable interface names derive from the PCI path, so the
+machine loses its network; disk paths move; each of the failures that follow
+looks like something other than its cause. A machine is born `q35` or it will
+never be so cleanly. The bench therefore MEASURES: is a VM of the declared name
+there, is it converted to a template, and does it carry the hardware the
+procedure requires — the very check the procedure calls "the last moment when the
+correction is free". A missing key counts as non-conforming, because the
+configuration only prints what differs from the default and the defaults are
+exactly what the procedure refuses. Every refusal names the procedure, since the
+bench does not make the template and must say where its making is described.
+
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
 PATH does not carry, and its cluster daemon only talks to root. Played without

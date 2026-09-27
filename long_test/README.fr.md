@@ -382,6 +382,22 @@ et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
 
+**Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
+procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
+configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
+un réglage — elle remplace le matériel virtuel sous un système qui croit
+connaître le sien. Les noms d'interfaces prédictibles dérivent du chemin PCI,
+donc la machine perd son réseau ; les chemins de disques bougent ; et chacune des
+pannes qui suivent ressemble à autre chose qu'à sa cause. Une machine naît `q35`
+ou ne le sera jamais proprement. Le banc MESURE donc : une VM du nom déclaré
+est-elle là, est-elle convertie en modèle, et porte-t-elle le matériel que la
+procédure exige — la vérification même que la procédure appelle « le dernier
+moment où la correction est gratuite ». Une clé absente compte comme non
+conforme, la configuration n'imprimant que ce qui diffère du défaut et les
+défauts étant justement ce que la procédure refuse. Chaque refus nomme la
+procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
+est décrite.
+
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
 non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée

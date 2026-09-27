@@ -613,6 +613,17 @@ def lit_constat_pont(sortie, nom):
     return Constat(debout=True, vlan=prise.group(1) == "1")
 
 
+# LE RÉSEAU DU BANC, et il n'est pas celui du labo. Le labo pose son pont interne
+# en 10.10.10.1/24 ; sur un plancher où il l'a déjà fait, un banc qui reprendrait
+# ce réseau y dupliquerait l'adresse de la passerelle, et les deux ponts se
+# disputeraient le trafic. Le NOM du pont se cherche libre — `pont_libre` — donc
+# son réseau doit l'être aussi, et le plus simple est qu'il soit à lui seul.
+#
+# Hors du 10/8 exprès : l'adressage d'un locataire y dérive tout son supernet de
+# son index, et une fabrication posée dans la même classe A pourrait y tomber.
+CIDR_PONT_BANC = "192.168.212.1/24"
+
+
 def cmds_pont(nom, cidr, uplink=""):
     """Les commandes qui posent le pont du banc, conscient des VLAN.
 
@@ -1416,6 +1427,139 @@ def scelle_jeton(voute, identite, secret, moteur):
     if vu.code == 0:
         return ""
     return f"{OUTIL_VOUTE} : {expurge(vu.sortie, secret).strip()[-200:]}"
+
+
+# L'ÉTAT DU GABARIT, vocabulaire CLOS. Le banc ne le fabrique pas : sa procédure
+# impose une installation depuis l'ISO, parce qu'une machine NAÎT en q35 ou ne le
+# sera jamais proprement — convertir le chipset sous un système installé remplace
+# son matériel virtuel, et chacune des pannes qui s'ensuivent ressemble à autre
+# chose qu'à sa cause. Le banc le MESURE donc, et refuse plutôt que de cloner un
+# gabarit qui le trahirait.
+GABARIT_ABSENT = "absent"
+GABARIT_PAS_MODELE = "pas_modele"
+GABARIT_MATERIEL = "materiel"
+GABARIT_CONFORME = "conforme"
+ETATS_GABARIT = (
+    GABARIT_ABSENT,
+    GABARIT_PAS_MODELE,
+    GABARIT_MATERIEL,
+    GABARIT_CONFORME,
+)
+
+# CE QUE LA PROCÉDURE DU MOTEUR EXIGE DU MATÉRIEL VIRTUEL, et la vérifier est ce
+# qu'elle appelle « le dernier moment où la correction est gratuite » : le gabarit
+# lègue ces valeurs à chacun de ses clones.
+#
+# `q35` est PCIe là où le défaut est PCI : la topologie des bus décide des noms
+# d'interfaces prédictibles, qui en dérivent, et des chemins de disques. Une VM
+# clonée d'un gabarit au mauvais chipset démarre avec une configuration réseau qui
+# désigne une interface inexistante.
+MATERIEL_GABARIT = (("machine", "q35"), ("bios", "ovmf"))
+
+# Où la procédure du moteur se lit, cité au refus : sans elle, « gabarit non
+# conforme » laisse chercher quoi corriger.
+PROCEDURE_GABARIT = "docs/procedure-template-debian13-proxmox.md"
+
+
+def cmds_config_vm(vmid):
+    """La commande qui rend la configuration d'une VM de la grappe."""
+    return [f"qm config {int(vmid)}"]
+
+
+def lit_gabarit(sortie, nom=GABARIT):
+    """Le VMID de la VM nommée `nom`, 0 si aucune, ou None si on n'a pas lu.
+
+    APPARIEMENT STRICT SUR LE NOM, comme l'effacement : c'est par le nom que le
+    clonage du moteur cherche sa source, et « un nom qui ne correspond pas se
+    solde par un clonage qui ne trouve rien ». Un nom qui CONTIENT le nôtre n'est
+    pas le nôtre.
+
+    Deux VM du même nom rendent None : le clonage ne saurait pas laquelle prendre,
+    et choisir pour lui serait deviner.
+    """
+    texte = sortie or ""
+    debut = texte.find("[")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    if not isinstance(lu, list):
+        return None
+    attendu = (nom or "").strip()
+    if not attendu:
+        return None
+    trouves = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        if (entree.get("name") or "").strip() != attendu:
+            continue
+        vmid = entree.get("vmid")
+        if isinstance(vmid, bool) or not isinstance(vmid, int) or vmid < 1:
+            return None
+        trouves.append(vmid)
+    if len(trouves) > 1:
+        return None
+    return trouves[0] if trouves else 0
+
+
+def lit_conformite_gabarit(sortie):
+    """L'état du gabarit d'après sa configuration. Ou None si elle ne se lit pas.
+
+    FERMÉ PAR DÉFAUT SUR CHAQUE CLÉ : une clé ABSENTE vaut non conforme, et ce
+    n'est pas un excès de prudence — `qm config` n'imprime que ce qui diffère du
+    défaut, et ces défauts sont justement le chipset PCI et le micrologiciel
+    d'amorçage hérité que la procédure refuse. Une absence dit donc « c'est le
+    défaut », pas « on ne sait pas ».
+
+    `template` distingue une VM VIVANTE d'un modèle. Cloner une VM vivante n'est
+    pas la même opération, et le moteur suppose un modèle.
+    """
+    texte = sortie or ""
+    if not texte.strip():
+        return None
+    lu = {}
+    for ligne in texte.splitlines():
+        if ":" not in ligne or ligne.startswith((" ", "\t")):
+            continue
+        cle, valeur = ligne.split(":", 1)
+        lu[cle.strip()] = valeur.strip()
+    if not lu:
+        return None
+    if lu.get("template") != "1":
+        return GABARIT_PAS_MODELE
+    for cle, attendu in MATERIEL_GABARIT:
+        if lu.get(cle) != attendu:
+            return GABARIT_MATERIEL
+    return GABARIT_CONFORME
+
+
+def dit_gabarit(etat, nom=GABARIT):
+    """Ce que l'écran dit d'un gabarit non conforme, ou « » s'il l'est.
+
+    LE REFUS CITE LA PROCÉDURE. « Gabarit non conforme » laisse chercher quoi
+    corriger ; le banc ne fabrique pas le gabarit, donc il doit dire où la
+    fabrication est décrite.
+    """
+    if etat == GABARIT_CONFORME:
+        return ""
+    attendu = ", ".join(f"{c} : {v}" for c, v in MATERIEL_GABARIT)
+    raisons = {
+        GABARIT_ABSENT: f"aucune VM nommée « {nom} » sur la grappe",
+        GABARIT_PAS_MODELE: (
+            f"« {nom} » existe mais n'est pas un modèle : le convertir"
+        ),
+        GABARIT_MATERIEL: (
+            f"« {nom} » n'a pas le matériel voulu ({attendu}) ; il ne se"
+            " corrige PAS après coup, il se réinstalle"
+        ),
+    }
+    return (
+        raisons.get(etat, f"état du gabarit illisible : {etat!r}")
+        + f" — voir {PROCEDURE_GABARIT} chez le moteur"
+    )
 
 
 def cmds_effacer_vm(vmid, nom):

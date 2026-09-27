@@ -1858,5 +1858,165 @@ class TestLeSecretNeTouchePasLeDisque(unittest.TestCase):
         )
 
 
+class TestLeReseauDuBancNestPasCeluiDuLabo(unittest.TestCase):
+    """Le labo pose son pont interne en 10.10.10.1/24. Sur un plancher où il l'a
+    déjà fait, un banc qui reprendrait ce réseau y dupliquerait l'adresse de la
+    passerelle, et les deux ponts se disputeraient le trafic."""
+
+    def test_it_differs_from_the_lab_internal_network(self):
+        import sys
+
+        sys.path.insert(0, RACINE)
+        from script.proxmox import proxmox_deploy as pve
+
+        self.assertNotEqual(pve.INTERNAL_CIDR, B.CIDR_PONT_BANC)
+
+    def test_it_stays_out_of_the_class_a_the_tenants_derive_from(self):
+        """L'adressage d'un locataire y dérive tout son supernet de son index :
+        une fabrication posée dans la même classe A pourrait y tomber."""
+        import ipaddress
+
+        reseau = ipaddress.ip_interface(B.CIDR_PONT_BANC).network
+        self.assertFalse(reseau.subnet_of(ipaddress.ip_network("10.0.0.0/8")))
+
+    def test_it_is_a_private_network(self):
+        import ipaddress
+
+        self.assertTrue(ipaddress.ip_interface(B.CIDR_PONT_BANC).is_private)
+
+
+class TestLeBancMesureSonGabaritSansLeFabriquer(unittest.TestCase):
+    """Sa procédure impose une installation depuis l'ISO : une machine NAÎT en
+    q35 ou ne le sera jamais proprement. Convertir le chipset sous un système
+    installé remplace son matériel virtuel, et chacune des pannes qui s'ensuivent
+    ressemble à autre chose qu'à sa cause."""
+
+    def ressources(self, *paires):
+        return json.dumps(
+            [{"vmid": v, "name": n, "type": "qemu"} for v, n in paires]
+        )
+
+    def test_the_template_is_found_by_its_exact_name(self):
+        """C'est par le nom que le clonage du moteur cherche sa source, et « un
+        nom qui ne correspond pas se solde par un clonage qui ne trouve rien »."""
+        self.assertEqual(
+            9000,
+            B.lit_gabarit(self.ressources((100, "autre"), (9000, B.GABARIT))),
+        )
+
+    def test_a_name_that_merely_contains_ours_is_not_ours(self):
+        self.assertEqual(
+            0, B.lit_gabarit(self.ressources((1, B.GABARIT + "-bis")))
+        )
+
+    def test_no_template_of_that_name_is_a_zero_not_a_refusal(self):
+        """Zéro dit « aucune », ce qui est une réponse ; None dirait « pas su
+        lire », et les deux ne commandent pas la même suite."""
+        self.assertEqual(0, B.lit_gabarit(self.ressources((100, "autre"))))
+
+    def test_two_vms_of_the_same_name_refuse(self):
+        """Le clonage ne saurait pas laquelle prendre, et choisir pour lui serait
+        deviner."""
+        self.assertIsNone(
+            B.lit_gabarit(self.ressources((1, "g"), (2, "g")), "g")
+        )
+
+    def test_an_unreadable_listing_refuses(self):
+        for sortie in ("ipcc_send_rec failed", "", None, '{"vmid": 1}'):
+            with self.subTest(sortie=str(sortie)[:24]):
+                self.assertIsNone(B.lit_gabarit(sortie))
+
+    def test_a_bad_vmid_refuses(self):
+        for entree in (
+            '[{"vmid": "9000", "name": "g"}]',
+            '[{"vmid": 0, "name": "g"}]',
+            '[{"vmid": true, "name": "g"}]',
+        ):
+            with self.subTest(entree=entree):
+                self.assertIsNone(B.lit_gabarit(entree, "g"))
+
+    def test_a_missing_key_means_the_default_not_the_unknown(self):
+        """LA PROPRIÉTÉ. `qm config` n'imprime que ce qui DIFFÈRE du défaut, et
+        les défauts sont justement le chipset PCI et le micrologiciel hérité que
+        la procédure refuse. Une clé absente dit donc « c'est le défaut »."""
+        for config in (
+            "template: 1\nbios: ovmf\n",
+            "template: 1\nmachine: q35\n",
+            "template: 1\n",
+        ):
+            with self.subTest(config=config.replace("\n", "|")):
+                self.assertEqual(
+                    B.GABARIT_MATERIEL, B.lit_conformite_gabarit(config)
+                )
+
+    def test_a_living_vm_is_not_a_template(self):
+        """Cloner une VM vivante n'est pas la même opération, et le moteur
+        suppose un modèle."""
+        self.assertEqual(
+            B.GABARIT_PAS_MODELE,
+            B.lit_conformite_gabarit("machine: q35\nbios: ovmf\nname: g\n"),
+        )
+
+    def test_the_right_hardware_on_a_template_conforms(self):
+        """Le contrôle positif : sans lui, une lecture qui refuse toujours
+        passerait tous les refus ci-dessus."""
+        self.assertEqual(
+            B.GABARIT_CONFORME,
+            B.lit_conformite_gabarit(
+                "template: 1\nmachine: q35\nbios: ovmf\nname: g\n"
+            ),
+        )
+
+    def test_an_empty_config_concludes_nothing(self):
+        for sortie in ("", "   ", None):
+            with self.subTest(sortie=repr(sortie)):
+                self.assertIsNone(B.lit_conformite_gabarit(sortie))
+
+    def test_every_answer_is_in_the_closed_vocabulary(self):
+        for config in (
+            "template: 1\nmachine: q35\nbios: ovmf\n",
+            "template: 1\nmachine: i440fx\nbios: ovmf\n",
+            "machine: q35\nbios: ovmf\n",
+        ):
+            with self.subTest(config=config.replace("\n", "|")):
+                self.assertIn(
+                    B.lit_conformite_gabarit(config), B.ETATS_GABARIT
+                )
+
+    def test_every_refusal_says_where_the_making_is_described(self):
+        """Le banc ne fabrique pas le gabarit : il doit donc dire où sa
+        fabrication est décrite, sans quoi « non conforme » laisse chercher."""
+        for etat in B.ETATS_GABARIT:
+            if etat == B.GABARIT_CONFORME:
+                continue
+            with self.subTest(etat=etat):
+                self.assertIn(B.PROCEDURE_GABARIT, B.dit_gabarit(etat))
+
+    def test_a_conforming_template_says_nothing(self):
+        self.assertEqual("", B.dit_gabarit(B.GABARIT_CONFORME))
+
+    def test_the_procedure_it_cites_exists_in_the_engine(self):
+        """LE GARDE CONTRE UN RENOMMAGE EN AMONT : un refus qui renvoie à une
+        page disparue est un refus sans issue."""
+        moteur = os.path.join(RACINE, "private", "repo", "Set-OPS-Public")
+        if not os.path.isdir(moteur):
+            self.skipTest("le clone du moteur n'est pas là")
+        self.assertTrue(
+            os.path.isfile(os.path.join(moteur, B.PROCEDURE_GABARIT)),
+            B.PROCEDURE_GABARIT,
+        )
+
+    def test_the_check_would_catch_a_page_that_is_not_there(self):
+        """Le contrôle positif du précédent."""
+        moteur = os.path.join(RACINE, "private", "repo", "Set-OPS-Public")
+        if not os.path.isdir(moteur):
+            self.skipTest("le clone du moteur n'est pas là")
+        self.assertFalse(
+            os.path.isfile(
+                os.path.join(moteur, "docs/page-qui-n-existe-pas.md")
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

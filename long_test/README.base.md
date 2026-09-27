@@ -373,6 +373,21 @@ blocks and in any backup taken between the two gestures. Anything the bench
 prints or logs is redacted first, and the command line never carries it, since a
 command line is readable in the machine's process table by any account.
 
+**The golden template is a prerequisite, not something the bench makes.** The
+engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+configured for the legacy PCI chipset, and converting it afterwards does not
+change a setting — it replaces the virtual hardware under a system that believes
+it knows its own. Predictable interface names derive from the PCI path, so the
+machine loses its network; disk paths move; each of the failures that follow
+looks like something other than its cause. A machine is born `q35` or it will
+never be so cleanly. The bench therefore MEASURES: is a VM of the declared name
+there, is it converted to a template, and does it carry the hardware the
+procedure requires — the very check the procedure calls "the last moment when the
+correction is free". A missing key counts as non-conforming, because the
+configuration only prints what differs from the default and the defaults are
+exactly what the procedure refuses. Every refusal names the procedure, since the
+bench does not make the template and must say where its making is described.
+
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
 PATH does not carry, and its cluster daemon only talks to root. Played without
@@ -815,6 +830,22 @@ part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libé
 et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
+**Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
+procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
+configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
+un réglage — elle remplace le matériel virtuel sous un système qui croit
+connaître le sien. Les noms d'interfaces prédictibles dérivent du chemin PCI,
+donc la machine perd son réseau ; les chemins de disques bougent ; et chacune des
+pannes qui suivent ressemble à autre chose qu'à sa cause. Une machine naît `q35`
+ou ne le sera jamais proprement. Le banc MESURE donc : une VM du nom déclaré
+est-elle là, est-elle convertie en modèle, et porte-t-elle le matériel que la
+procédure exige — la vérification même que la procédure appelle « le dernier
+moment où la correction est gratuite ». Une clé absente compte comme non
+conforme, la configuration n'imprimant que ce qui diffère du défaut et les
+défauts étant justement ce que la procédure refuse. Chaque refus nomme la
+procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
+est décrite.
 
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
