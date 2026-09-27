@@ -5,7 +5,8 @@
 le navigateur et l'arrêt de l'interface web, et ses méthodes web : ouvrir la
 page par le hub de ce checkout, dire pourquoi il n'a pas démarré, l'arrêter.
 
-Le lanceur est simulé, sauf dans TestWithARealHub, qui démarre un vrai hub.
+La TUI et le lanceur sont simulés, sauf dans TestWithARealHub, qui démarre un
+vrai hub.
 HOME, et XDG_RUNTIME_DIR pour le vrai hub, pointent vers un répertoire
 temporaire ; TODO_WEB_FD et TODO_WEB_PID sont retirés, sauf dans
 TestInsideAWebSession, qui les pose comme le worker d'une session. La langue
@@ -24,7 +25,7 @@ from unittest.mock import patch
 
 import click
 
-from script.todo import todo_i18n
+from script.todo import todo_i18n, todo_telemetry
 from script.todo.todo import TODO, VENV_ERPLIBRE, new_path
 from script.todo.web import launcher, paths
 
@@ -124,6 +125,52 @@ class TestPromptTelemetry(MenuCase):
     def test_an_unreadable_hub_shows_stopped(self):
         lines = self.menu(OSError("forged"))
         self.assertIn("🌐 Web interface: stopped", lines)
+
+
+class TestTelemetryTui(MenuCase):
+    def tui(self, result):
+        """[1] puis [0] : `run_tui` rend `result`, ou le lève. Rend ce qui
+        s'affiche ; rien ne doit remonter."""
+        with (
+            patch("script.todo.textual_setup.ensure", return_value=True),
+            patch.object(todo_telemetry, "run_tui", side_effect=[result]),
+            patch.object(launcher, "status", return_value=None),
+            patch("click.prompt", side_effect=["1", "0"]) as prompt,
+            patch("builtins.input", return_value=""),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            try:
+                self.assertIs(self.todo.prompt_telemetry(), False)
+            except (KeyboardInterrupt, EOFError, click.exceptions.Abort) as e:
+                self.fail(f"{type(e).__name__} left the menu")
+        self.assertEqual(prompt.call_count, 2)
+        return out.getvalue()
+
+    def test_nothing_from_the_tui_leaves_the_menu(self):
+        for error in (KeyboardInterrupt, EOFError, click.exceptions.Abort):
+            with self.subTest(error=error.__name__):
+                self.tui(error())
+        out = self.tui(ValueError("boom-marker"))
+        self.assertIn("Command failed: boom-marker", out)
+
+    def test_a_command_it_launches_keeps_the_path_of_its_menu(self):
+        def forged_command(todo):
+            todo._menu_header()
+
+        path = "TODO › Execute › Git › Forged command"
+        action = ("forged_command", {})
+        with patch.object(TODO, "forged_command", forged_command, create=True):
+            self.tui((action, {"path": path}))
+        keys = [c.args[0] for c in todo_telemetry.record.call_args_list]
+        self.assertEqual(
+            keys,
+            [
+                "Navigation telemetry",
+                path,
+                "TODO › Execute › Git",
+                "Navigation telemetry",
+            ],
+        )
 
 
 class TestTelemetryWeb(MenuCase):

@@ -715,15 +715,24 @@ class TODO(
         "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
     }
+    # Fil d'Ariane, dans l'arbre, du menu de la commande que la TUI de
+    # télémétrie exécute ; None hors d'une telle commande.
+    _tui_crumbs = None
 
     def _menu_header(self, state=None):
         """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels), puis
         `state`, une ligne d'état propre au menu, s'il est donné, puis la
         ligne « Commande : ». Le fil situe le menu courant et se copie pour
-        décrire sans ambiguïté où l'on se trouve."""
+        décrire sans ambiguïté où l'on se trouve. Sous une commande que
+        lance la TUI de télémétrie, il part du menu de cette commande, et
+        non de la télémétrie qui l'a lancée."""
         crumbs = []
         for frame_info in reversed(inspect.stack()):
             if frame_info.frame.f_locals.get("self") is not self:
+                continue
+            launched = frame_info.function == "_telemetry_tui_loop"
+            if launched and self._tui_crumbs is not None:
+                crumbs = list(self._tui_crumbs)
                 continue
             label = self._MENU_LABELS.get(frame_info.function)
             if label and (not crumbs or crumbs[-1] != label):
@@ -746,7 +755,9 @@ class TODO(
         """Télémétrie de navigation : la TUI, la page web, ou l'arrêt de
         l'interface web de ce checkout. Sous le fil d'Ariane, une ligne dit
         si le hub web tourne ; elle l'interroge à chaque affichage, environ
-        0,3 s par opération. Rend False sur [0]."""
+        0,3 s par opération. Rien de ce que lancent [1], [2] et [3] ne
+        remonte : Ctrl+C, Ctrl+D ou une erreur ramènent à ce menu. Rend
+        False sur [0]."""
         while True:
             choices = [
                 {"prompt_description": t("Navigation telemetry (TUI)")},
@@ -769,6 +780,18 @@ class TODO(
                 print(t("Command not found !"))
 
     def _todo_telemetry_tui(self):
+        """Ouvre le TUI de télémétrie, `_telemetry_tui_loop`. Comme [2] et
+        [3], rien n'en remonte au menu : Ctrl+C, Ctrl+D ou une erreur, dans
+        la TUI, dans la commande qu'elle lance ou à la question du retour,
+        ramènent au sous-menu."""
+        try:
+            self._telemetry_tui_loop()
+        except (KeyboardInterrupt, EOFError, click.exceptions.Abort):
+            print()
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+
+    def _telemetry_tui_loop(self):
         """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
         exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
         et la position du curseur sont restaurés) ou de quitter."""
@@ -807,10 +830,15 @@ class TODO(
             if not callable(fn):
                 print(f"{t('Command not found !')} ({method})")
             else:
+                # Les menus que la commande dessine partent de son menu dans
+                # l'arbre : le chemin de la feuille, sans elle.
+                self._tui_crumbs = path.split(" › ")[:-1] if path else None
                 try:
                     fn(**(kwargs or {}))
                 except Exception as exc:
                     print(f"{t('Command failed: ')}{exc}")
+                finally:
+                    self._tui_crumbs = None
             # Revenir (curseur restauré) ou quitter ?
             ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):

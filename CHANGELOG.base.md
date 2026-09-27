@@ -307,6 +307,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Building a commit not yet on the public repository stops at once and names the `git push` to type, instead of failing after the whole clone on « reference is not a tree ». An unreachable repository does not block the build
 - The production image compiles pykcs11 with the `PyInt_FromLong` alias that `install_locally.sh` already gives the host: SWIG 4.3 dropped it, and the Odoo 14, 15 and 17 images stopped at `poetry install`. A test fails if the two definitions diverge
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
+- Navigation telemetry › TUI: Ctrl+C, Ctrl+D or an error comes back to its menu instead of leaving TODO, and a command launched from it records the path of its own menu, not the telemetry's
 
 <!-- [fr] -->
 
@@ -380,6 +381,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bâtir un commit absent du dépôt public s'arrête d'emblée et nomme le `git push` à taper, au lieu d'échouer au bout du clone sur « reference is not a tree ». Un dépôt injoignable ne bloque pas la construction
 - L'image de production compile pykcs11 avec l'alias `PyInt_FromLong` que `install_locally.sh` donne déjà à l'hôte : SWIG 4.3 l'a retiré, et les images d'Odoo 14, 15 et 17 s'arrêtaient à `poetry install`. Un test échoue si les deux définitions divergent
 - Les Dockerfile écrivent `ENV clé=valeur` : buildkit ne signale plus le format hérité à chaque construction
+- Télémétrie de navigation › TUI : Ctrl+C, Ctrl+D ou une erreur ramènent à son menu au lieu de quitter TODO, et une commande lancée depuis elle enregistre le chemin de son propre menu, et non celui de la télémétrie
 
 <!-- [en] -->
 ## Removed
