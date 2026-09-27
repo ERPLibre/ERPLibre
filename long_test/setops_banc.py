@@ -141,7 +141,12 @@ PONT = "pont"
 API = "api"
 ECO = "ecosysteme"
 UNDERLAY = "underlay"
-GENRES = (VM, MODELE, PONT, API, ECO, UNDERLAY)
+# Le lien MONTÉ dans le moteur, et la clé qui ouvre une voûte. Tous deux
+# vivent HORS des deux dépôts — l'un dans le moteur, l'autre sous
+# `~/.config` — donc effacer les dépôts ne les emporte pas.
+LIEN = "lien"
+CLE = "cle"
+GENRES = (VM, MODELE, PONT, API, LIEN, ECO, UNDERLAY, CLE)
 
 
 class Prealable(NamedTuple):
@@ -165,6 +170,12 @@ class Empreinte(NamedTuple):
     DEUX DÉPÔTS, pas un. Le locataire porte le plan et ses hôtes ; l'underlay
     porte la grappe et la voûte au jeton. Les deux se posent, donc les deux se
     défont, et pas dans le même ordre : voir `a_defaire`.
+
+    `liens` ET `cles` SONT ENREGISTRÉS, jamais redérivés. Le moteur nomme la clé
+    d'une voûte d'après le dépôt qui la porte : le dépôt effacé, il ne la nomme
+    plus, et une clé qu'on ne sait plus nommer reste sous `~/.config` pour
+    toujours. Chaque chemin est donc gardé — et relu par `lit_empreinte`, qui
+    refuse ce qui n'est pas au banc.
     """
 
     terrain: str
@@ -174,6 +185,8 @@ class Empreinte(NamedTuple):
     utilisateur: str
     modele: int
     vms: tuple
+    liens: tuple = ()
+    cles: tuple = ()
 
 
 class Geste(NamedTuple):
@@ -630,11 +643,20 @@ def a_defaire(empreinte):
     Les VM d'abord, le gabarit ensuite, le pont et l'utilisateur d'API en
     dernier. Défaire le pont avant les VM leur retirerait leur réseau sans les
     effacer, et un gabarit ne s'efface pas tant qu'un clone lié en dépend.
-    L'écosystème part avant-dernier : son plan nomme les VM, et le rasage s'y
-    appuie. L'UNDERLAY PART EN DERNIER, et c'est lui qui borne tout l'ordre :
-    raser le locataire passe par la grappe, la grappe se joint par le jeton, et
-    le jeton vit dans la voûte de l'underlay. Le défaire plus tôt retirerait au
-    banc le moyen de défaire le reste.
+    LES LIENS PARTENT AVANT LES DÉPÔTS. Tant qu'ils sont montés, les gestes du
+    moteur agissent ; le dépôt retiré sous un lien qui tient, le moteur nomme un
+    inventaire qui n'existe plus et refuse en parlant d'une instance absente au
+    lieu d'une instance démontée. Démonter d'abord rend l'état lisible.
+
+    L'écosystème part ensuite : son plan nomme les VM, et le rasage s'y appuie.
+    L'UNDERLAY PART APRÈS LUI, et c'est lui qui borne tout l'ordre : raser le
+    locataire passe par la grappe, la grappe se joint par le jeton, et le jeton
+    vit dans la voûte de l'underlay. Le défaire plus tôt retirerait au banc le
+    moyen de défaire le reste.
+
+    LES CLÉS PARTENT EN DERNIER, pour la même raison poussée d'un cran : la clé
+    ouvre la voûte qui porte le jeton. Elle survit donc à tout ce qui passe par
+    la grappe, et ne s'efface qu'une fois qu'il n'y a plus rien à joindre.
     """
     if empreinte is None or not nous(empreinte):
         return ()
@@ -650,12 +672,20 @@ def a_defaire(empreinte):
     gestes.append(
         Geste(terrain, API, empreinte.utilisateur, empreinte.utilisateur)
     )
+    gestes += [
+        Geste(terrain, LIEN, chemin, os.path.basename(chemin))
+        for chemin in empreinte.liens or ()
+    ]
     gestes.append(
         Geste(terrain, ECO, empreinte.ecosysteme, empreinte.ecosysteme)
     )
     gestes.append(
         Geste(terrain, UNDERLAY, empreinte.underlay, empreinte.underlay)
     )
+    gestes += [
+        Geste(terrain, CLE, chemin, os.path.basename(chemin))
+        for chemin in empreinte.cles or ()
+    ]
     return tuple(gestes)
 
 
@@ -679,6 +709,35 @@ def nous(empreinte):
         and empreinte.utilisateur == UTILISATEUR_API
         and bool(empreinte.terrain)
     )
+
+
+def cle_du_banc(chemin):
+    """Ce chemin de clé est-il celui d'une voûte du BANC ?
+
+    `--detruire` EFFACE CE QUE L'EMPREINTE NOMME, et l'empreinte est un fichier
+    JSON qu'un éditeur ouvre. Sans cette épreuve, y écrire le chemin de la clé
+    de voûte d'une production suffirait à la faire effacer — la clé sans
+    laquelle plus rien ne s'y déchiffre, et qu'aucune sauvegarde de dépôt ne
+    contient puisqu'elle vit exprès dehors.
+
+    Le moteur nomme une clé d'après son dépôt, en minuscules. Seuls les deux
+    dépôts du banc y répondent. L'épreuve porte sur le NOM DE BASE : elle dit
+    « ce n'est pas une clé du banc », pas « ce chemin est sûr ».
+    """
+    attendus = {
+        f"setops-vault-{nom.lower()}" for nom in (ECOSYSTEME, UNDERLAY_BANC)
+    }
+    return os.path.basename((chemin or "").rstrip(os.sep)) in attendus
+
+
+def lien_du_banc(chemin):
+    """Ce chemin de lien est-il l'un des deux que le banc monte ?
+
+    Même raison que pour les clés, et même portée : le NOM DE BASE doit être
+    l'un des deux que le moteur lit. Ce que le verbe y ajoute est de n'effacer
+    qu'un LIEN — jamais un dossier, jamais un fichier ordinaire.
+    """
+    return os.path.basename((chemin or "").rstrip(os.sep)) in LIENS
 
 
 def lit_empreinte(texte):
@@ -717,6 +776,21 @@ def lit_empreinte(texte):
     modele = lu.get("modele") or 0
     if isinstance(modele, bool) or not isinstance(modele, int) or modele < 0:
         return None
+    chemins = {}
+    for cle, appartient in (("liens", lien_du_banc), ("cles", cle_du_banc)):
+        brutes = lu.get(cle)
+        if brutes is not None and not isinstance(brutes, list):
+            return None
+        vues = []
+        for brute in brutes or ():
+            # UN CHEMIN QUI N'EST PAS AU BANC FAIT REFUSER TOUTE L'EMPREINTE, et
+            # non seulement lui : une empreinte à qui l'on a ajouté une ligne
+            # n'est plus celle que le banc a écrite, et ce qu'elle nomme
+            # d'ailleurs ne se vérifie pas.
+            if not isinstance(brute, str) or not appartient(brute):
+                return None
+            vues.append(brute)
+        chemins[cle] = tuple(vues)
     return Empreinte(
         terrain=str(lu.get("terrain") or ""),
         ecosysteme=str(lu.get("ecosysteme") or ""),
@@ -725,6 +799,8 @@ def lit_empreinte(texte):
         utilisateur=str(lu.get("utilisateur") or ""),
         modele=modele,
         vms=tuple(vms),
+        liens=chemins["liens"],
+        cles=chemins["cles"],
     )
 
 
@@ -743,6 +819,8 @@ def ecrit_empreinte(empreinte) -> str:
             "utilisateur": empreinte.utilisateur,
             "modele": empreinte.modele,
             "vms": [list(v) for v in empreinte.vms],
+            "liens": list(empreinte.liens),
+            "cles": list(empreinte.cles),
         },
         sort_keys=True,
     )

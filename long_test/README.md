@@ -326,7 +326,9 @@ through the two links the engine reads BY THEIR PATH — its playbook looks at
 neither `SETOPS_UNDERLAY` nor `SETOPS_INSTANCE`. It refuses if either name is
 already taken, a dangling link included: that link is an operator's, and
 replacing it would aim their next gesture at the bench's ecosystem, whose razing
-destroys everything the inventory names.
+destroys everything the inventory names. It also poses one vault key per
+repository, and undoes both LAST: a key opens the vault that carries the token,
+and the token is what joins the cluster.
 
 **The plan is activated surgically.** The shipped model declares every server
 `planifie`, and the inventory files as active only what says exactly `actif` — a

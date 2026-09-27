@@ -339,7 +339,9 @@ les liens que le moteur lit PAR LEUR CHEMIN — son playbook ne regarde ni
 `SETOPS_UNDERLAY` ni `SETOPS_INSTANCE`. Il refuse si l'un des deux noms est déjà
 pris, lien brisé compris : ce lien est celui d'un exploitant, et le remplacer
 dirigerait son geste suivant vers l'écosystème du banc, dont le rasage détruit
-tout ce que l'inventaire nomme.
+tout ce que l'inventaire nomme. Il pose aussi une clé de voûte par dépôt, et les
+défait EN DERNIER : une clé ouvre la voûte qui porte le jeton, et c'est le jeton
+qui joint la grappe.
 
 **Le plan s'active chirurgicalement.** Le modèle livré déclare tous ses serveurs
 `planifie`, et l'inventaire ne range parmi les actifs que ce qui porte

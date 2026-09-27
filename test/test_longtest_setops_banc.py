@@ -18,6 +18,7 @@ nulle part ailleurs dans le dépôt : un banc qui reprendrait un nom du parc
 détruirait, au rasage, ce qui ne lui appartient pas.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -833,6 +834,147 @@ class TestLePlanSActiveChirurgicalement(unittest.TestCase):
         ):
             with self.subTest(hote=hote, texte=texte[:30]):
                 self.assertIsNone(B.active_un_hote(texte, hote))
+
+
+def empreinte_pleine(**change):
+    """Une empreinte du banc, complète, que chaque épreuve altère d'un champ."""
+    champs = dict(
+        terrain="banc-terrain",
+        ecosysteme=B.ECOSYSTEME,
+        underlay=B.UNDERLAY_BANC,
+        pont="vmbr9",
+        utilisateur=B.UTILISATEUR_API,
+        modele=9000,
+        vms=((101, "banc-fictif-01"),),
+        liens=("/moteur/underlay.yml", "/moteur/instance"),
+        cles=(
+            f"/config/setops-vault-{B.ECOSYSTEME.lower()}",
+            f"/config/setops-vault-{B.UNDERLAY_BANC.lower()}",
+        ),
+    )
+    champs.update(change)
+    return B.Empreinte(**champs)
+
+
+class TestCeQueLEmpreinteFaitEffacerLuiAppartient(unittest.TestCase):
+    """`--detruire` EFFACE CE QUE L'EMPREINTE NOMME, et l'empreinte est un
+    fichier JSON qu'un éditeur ouvre. Y écrire le chemin de la clé de voûte
+    d'une production suffirait à la faire effacer — la clé sans laquelle plus
+    rien ne s'y déchiffre, et qu'aucune sauvegarde de dépôt ne contient
+    puisqu'elle vit exprès dehors."""
+
+    def test_the_two_keys_of_the_bench_are_recognised(self):
+        """Le contrôle positif : sans lui, un garde qui refuse toujours
+        passerait tous les refus ci-dessous."""
+        for nom in (B.ECOSYSTEME, B.UNDERLAY_BANC):
+            with self.subTest(nom=nom):
+                self.assertTrue(
+                    B.cle_du_banc(f"/config/setops-vault-{nom.lower()}")
+                )
+
+    def test_a_key_that_is_not_ours_is_refused(self):
+        for chemin in (
+            "/config/setops-vault-un-autre-ecosysteme",
+            "/config/setops-vault-",
+            "/config/id_ed25519",
+            "setops-vault-ops-fictif-trachyte-bis",
+            "",
+            None,
+        ):
+            with self.subTest(chemin=chemin):
+                self.assertFalse(B.cle_du_banc(chemin))
+
+    def test_the_two_links_of_the_engine_are_recognised(self):
+        for nom in B.LIENS:
+            with self.subTest(nom=nom):
+                self.assertTrue(B.lien_du_banc(f"/moteur/{nom}"))
+
+    def test_a_link_that_is_not_one_of_the_two_is_refused(self):
+        for chemin in ("/moteur/instances", "/moteur/underlay.yaml", "", None):
+            with self.subTest(chemin=chemin):
+                self.assertFalse(B.lien_du_banc(chemin))
+
+    def test_a_foreign_key_makes_the_whole_footprint_refuse(self):
+        """TOUTE l'empreinte, et non la seule ligne ajoutée : une empreinte à
+        qui l'on a ajouté une ligne n'est plus celle que le banc a écrite."""
+        texte = json.loads(B.ecrit_empreinte(empreinte_pleine()))
+        texte["cles"] = ["/config/setops-vault-une-production"]
+        self.assertIsNone(B.lit_empreinte(json.dumps(texte)))
+
+    def test_a_foreign_link_makes_the_whole_footprint_refuse(self):
+        texte = json.loads(B.ecrit_empreinte(empreinte_pleine()))
+        texte["liens"] = ["/etc/passwd"]
+        self.assertIsNone(B.lit_empreinte(json.dumps(texte)))
+
+    def test_a_footprint_written_by_the_bench_reads_back(self):
+        """Le contrôle positif des deux refus ci-dessus."""
+        empreinte = empreinte_pleine()
+        self.assertEqual(
+            empreinte, B.lit_empreinte(B.ecrit_empreinte(empreinte))
+        )
+
+    def test_a_footprint_naming_none_of_them_names_none(self):
+        """« Rien à nommer » est une réponse valide, pas une absence."""
+        texte = json.loads(B.ecrit_empreinte(empreinte_pleine()))
+        del texte["liens"], texte["cles"]
+        lu = B.lit_empreinte(json.dumps(texte))
+        self.assertEqual(((), ()), (lu.liens, lu.cles))
+
+
+class TestLOrdreDeLaDefaiteTientLesLiensEtLesCles(unittest.TestCase):
+    """L'ordre n'est pas décoratif : chaque geste a besoin que le suivant soit
+    encore là. La clé ouvre la voûte, la voûte porte le jeton, le jeton joint la
+    grappe, et la grappe est ce par quoi tout le reste se défait."""
+
+    def rangs(self, gestes):
+        """Le rang de chaque genre : premier pour les clés, dernier sinon."""
+        return {
+            genre: (
+                min(i for i, g in enumerate(gestes) if g.genre == genre)
+                if genre == B.CLE
+                else max(i for i, g in enumerate(gestes) if g.genre == genre)
+            )
+            for genre in {g.genre for g in gestes}
+        }
+
+    def test_links_go_before_the_repositories(self):
+        """Le dépôt retiré sous un lien qui tient, le moteur nomme un
+        inventaire qui n'existe plus."""
+        rangs = self.rangs(B.a_defaire(empreinte_pleine()))
+        self.assertLess(rangs[B.LIEN], rangs[B.ECO])
+        self.assertLess(rangs[B.LIEN], rangs[B.UNDERLAY])
+
+    def test_keys_go_after_everything_that_needs_the_cluster(self):
+        rangs = self.rangs(B.a_defaire(empreinte_pleine()))
+        for genre in (B.VM, B.MODELE, B.PONT, B.API, B.ECO, B.UNDERLAY):
+            with self.subTest(genre=genre):
+                self.assertGreater(rangs[B.CLE], rangs[genre])
+
+    def test_the_underlay_still_goes_after_the_tenant(self):
+        """Ce que les deux genres nouveaux ne doivent pas avoir déplacé."""
+        rangs = self.rangs(B.a_defaire(empreinte_pleine()))
+        self.assertGreater(rangs[B.UNDERLAY], rangs[B.ECO])
+
+    def test_every_genre_belongs_to_the_closed_vocabulary(self):
+        for geste in B.a_defaire(empreinte_pleine()):
+            with self.subTest(genre=geste.genre):
+                self.assertIn(geste.genre, B.GENRES)
+
+    def test_a_footprint_that_is_not_ours_undoes_nothing(self):
+        """Le contrôle positif : sans lui, un ordre qui ne rend jamais rien
+        passerait les épreuves ci-dessus."""
+        self.assertEqual(
+            (), B.a_defaire(empreinte_pleine(ecosysteme="OPS-Une-Production"))
+        )
+
+    def test_each_path_travels_with_its_gesture(self):
+        """Le chemin est ce que le verbe efface ; le nom ne sert qu'à l'écran."""
+        gestes = B.a_defaire(empreinte_pleine())
+        vises = [g.vise for g in gestes if g.genre in (B.LIEN, B.CLE)]
+        self.assertEqual(
+            sorted(empreinte_pleine().liens + empreinte_pleine().cles),
+            sorted(vises),
+        )
 
 
 if __name__ == "__main__":
