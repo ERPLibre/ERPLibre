@@ -29,7 +29,11 @@ question du worker (`asking`) ; chaque message du worker jette ce qui en
 reste, comme le worker vide son entrée à chaque question. La suite d'un
 collage ne nourrit donc que le programme qui lit hors question : un
 programme qui coupe l'écho et lit aussitôt, sans vider l'entrée, ne la
-reçoit jamais comme secret, ni une question du worker comme réponse.
+reçoit jamais comme secret, ni une question du worker comme réponse. Un
+lecteur qu'aucune sonde ne sait jamais trancher (`ttywatch`) ne la libère
+pas davantage, mais n'arrête pas la frappe suivante pour autant : celle-ci
+la jette plutôt que de s'y ajouter, et repart comme la première d'un
+collage neuf.
 
 Un client offre `send(octets)`, attendable, rendu quand les octets ont
 quitté le hub ; `event(message)`, un dict envoyé en texte ; `close(code,
@@ -424,16 +428,21 @@ class Session:
         Avec `lines`, en mode canonique hors écran alternatif (d'après la
         dernière sonde), seule la première ligne part ; la suite attend dans
         `held`, que `_probe` libère une ligne à la fois hors d'une question
-        du worker, et que chaque message du worker jette."""
+        du worker, et que chaque message du worker jette. Un lecteur inconnu
+        ne libère jamais `held` (voir `_probe`) : une frappe qui suit s'y
+        ajouterait sans fin, alors elle le jette et repart de cette frappe."""
         waiting = len(self.inbox) + len(self.held)
         if waiting + len(data) > INPUT_LIMIT:
             return False
         if self.master is None:
             return True
-        if lines and self.held:
-            self.held += data
-            return True
         state = self.state
+        if lines and self.held:
+            if state is not None and state.reader is None:
+                self.held.clear()
+            else:
+                self.held += data
+                return True
         if lines and state is not None and state.canon and not state.altscreen:
             data, rest = _first_line(data)
             self.held += rest

@@ -756,6 +756,22 @@ class TestPaste(SessionCase):
         self.assertEqual(await session.gate(b"\x03"), b"\x03")
         self.assertEqual(session.held, b"")
 
+    async def test_an_unknown_reader_never_traps_what_is_typed_next(self):
+        # Le lecteur reste inconnu toute la vie de l'enfant (PROC_USABLE
+        # coupé à la construction de TtyWatch) : le reste du collage
+        # n'attend donc jamais de lecteur connu, mais chaque frappe qui
+        # suit lui parvient quand même, au lieu de s'y ajouter sans fin.
+        with patch.object(ttywatch, "PROC_USABLE", False):
+            session, client = await self.open(THREE_LINES)
+        await self.until(lambda: client.seen(reader=None))
+        session.write(await session.gate(b"one\ntwo\n"), lines=True)
+        await self.until(lambda: b"got one" in client.data)
+        self.assertEqual(session.held, b"two\n")
+        for byte in b"three\r":
+            session.write(await session.gate(bytes([byte])), lines=True)
+        await self.until(lambda: b"got three" in client.data)
+        self.assertEqual(session.held, b"")
+
     def test_a_line_ends_at_its_first_cr_or_lf(self):
         cases = {
             b"a\rb\n": (b"a\r", b"b\n"),
