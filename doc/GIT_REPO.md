@@ -126,3 +126,49 @@ Maybe, some version diverge from your manifest. Simply clean all and relaunch yo
 ```bash
 ./script/git/clean_repo_manifest.sh
 ```
+
+## Update or upgrade
+
+Two gestures the word "update" used to cover. TODO › Execute › Git › Repo
+separates them, and Execute › Code › Update leads to the same screen.
+
+An **update** moves every project to the tip of the branch its manifest gives
+it. It asks nothing, cannot conflict, and runs every morning.
+
+An **upgrade** fetches the upstream a fork DESCENDS from — another repository,
+at another organisation — and replays the commits the fork carries of its own.
+It can conflict and it rewrites history, so it is observed before it is
+applied.
+
+### Where a fork comes from
+
+git-repo only knows the remote used to CLONE, and for a fork that is the
+fork's own. Three attributes carry what it cannot express:
+
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         fork-upstream-remote="OCA" fork-upstream="18.0" />
+```
+
+`fork-upstream-remote` names the upstream `<remote>`, whose `fetch` gives the
+URL. `fork-upstream-name` appears only on a RENAMED fork, where the upstream
+repository name differs. `fork-upstream` names the upstream branch; its
+ABSENCE, while the remote is declared, says the upstream carries nothing for
+this Odoo version — which is not the same thing as an unknown upstream.
+
+The dry run writes nothing: it brings the upstream into `FETCH_HEAD` and
+predicts the merge in memory, moving no ref and touching no work tree.
+
+### Freeze the versions
+
+`repo manifest -r -o` pins every project to its commit. The file carries the
+COMMIT in `revision` and the BRANCH in `upstream`, so ONE file serves both
+modes: frozen follows the commit, dev follows the branch. The mode lives in
+`.erplibre-state.json`, so a reconfiguration launched elsewhere reads the same
+choice. It takes effect on the next reconfiguration.
+
+```bash
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
+```
