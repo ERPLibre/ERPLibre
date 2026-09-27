@@ -152,6 +152,13 @@ class TestTheOrmScript(unittest.TestCase):
             with self.subTest(dry=sec):
                 compile(conf.build_script(sec), "script", "exec")
 
+    def test_the_reconcile_repair_needs_the_17_chart_field(self):
+        """res.company.chart_template arrived in 17. Reading it on an older
+        company raised, and the exception took the whole report with it."""
+        sec = conf.build_script(True)
+        garde = sec.index('"chart_template" in env["res.company"]._fields')
+        self.assertLess(garde, sec.index("s.chart_template for s in societes"))
+
     def test_the_dry_run_never_writes(self):
         sec = conf.build_script(True)
         self.assertIn("DRY = True", sec)

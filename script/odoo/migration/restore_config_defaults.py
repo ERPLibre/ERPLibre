@@ -106,7 +106,13 @@ try:
         rapport["pricelist_absent"] = True
 
     # ── Modèles de rapprochement bancaire ───────────────────────────
-    if "account.reconcile.model" in env:
+    # Le rechargement passe par res.company.chart_template, champ de la
+    # 17 : avant elle, l'AttributeError emportait tout le rapport, liste
+    # de prix comprise. Ces versions n'ont pas ce chemin de réparation.
+    if (
+        "account.reconcile.model" in env
+        and "chart_template" in env["res.company"]._fields
+    ):
         Modele = env["account.reconcile.model"].sudo()
         rapport["reconcile_before"] = Modele.search_count([])
         # Sans journal de trésorerie il n'y a rien à rapprocher : créer
