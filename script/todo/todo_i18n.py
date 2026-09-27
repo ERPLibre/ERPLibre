@@ -15343,6 +15343,66 @@ TRANSLATIONS = {
         "fr": "Aucune version d'Odoo trouvée",
         "en": "No Odoo version found",
     },
+    "Update and upgrade the git repositories": {
+        "fr": "Mise à jour et mise à niveau des dépôts git",
+        "en": "Update and upgrade the git repositories",
+    },
+    "🔃 Update git repo": {
+        "fr": "🔃 Mise à jour git repo",
+        "en": "🔃 Update git repo",
+    },
+    "🔄 Synchronize the repositories": {
+        "fr": "🔄 Synchroniser les dépôts",
+        "en": "🔄 Synchronize the repositories",
+    },
+    "🔁 Reconfigure and synchronize": {
+        "fr": "🔁 Reconfigurer et synchroniser",
+        "en": "🔁 Reconfigure and synchronize",
+    },
+    "🔍 Upgrade — dry run": {
+        "fr": "🔍 Mise à niveau — à sec",
+        "en": "🔍 Upgrade — dry run",
+    },
+    "🔗 Fork and upstream status": {
+        "fr": "🔗 État des forks et de leurs amonts",
+        "en": "🔗 Fork and upstream status",
+    },
+    "Fork and upstream status": {
+        "fr": "État des forks et de leurs amonts",
+        "en": "Fork and upstream status",
+    },
+    "Upgrade": {
+        "fr": "Mise à niveau",
+        "en": "Upgrade",
+    },
+    "Observe": {
+        "fr": "Constater",
+        "en": "Observe",
+    },
+    "Update": {
+        "fr": "Mise à jour",
+        "en": "Update",
+    },
+    "Synchronization failed.": {
+        "fr": "La synchronisation a échoué.",
+        "en": "Synchronization failed.",
+    },
+    "Repositories synchronized.": {
+        "fr": "Dépôts synchronisés.",
+        "en": "Repositories synchronized.",
+    },
+    "Reconfiguration failed.": {
+        "fr": "La reconfiguration a échoué.",
+        "en": "Reconfiguration failed.",
+    },
+    "Repositories reconfigured and synchronized.": {
+        "fr": "Dépôts reconfigurés et synchronisés.",
+        "en": "Repositories reconfigured and synchronized.",
+    },
+    "Querying each upstream, this takes a few seconds.": {
+        "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
+        "en": "Querying each upstream, this takes a few seconds.",
+    },
 }
 
 

@@ -262,11 +262,12 @@ class MenuCoherence:
 
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Le menu Proxmox tient deux capacités que son vis-à-vis porte.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Changer l'état d'une VM, que QEMU/KVM offre dans « Lister les VM », et
+    accepter les commandes ajoutées par todo.json. Deux menus qui gèrent des
+    machines et divergent sur ce point obligent à savoir lequel on a ouvert
+    avant de savoir ce qu'on peut y faire.
     """
 
     @classmethod
@@ -562,7 +563,100 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install Starship on Shell": "_shell_install_starship",
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",
+        "🔃 Update git repo": "prompt_execute_git_repo",
     }
+
+
+class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu de mise à jour et de mise à niveau des dépôts git.
+
+    Ses entrées sont séparées par des titres de section, qui ne consomment
+    aucun numéro : une section ajoutée entre deux entrées ne doit décaler
+    aucun dispatch, et c'est précisément ce que ce socle vérifie.
+    """
+
+    SOURCE = TODO_DIR / "git_repo_menu.py"
+    ENTRY = "def prompt_execute_git_repo(self):"
+    END = "def _git_repo_sync(self):"
+    MINIMUM = 3
+
+    EXPECTED = {
+        "🔄 Synchronize the repositories": "_git_repo_sync",
+        "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
+        "🔍 Upgrade — dry run": "_git_repo_a_sec",
+        "🔗 Fork and upstream status": "_git_repo_etat_forks",
+    }
+
+
+class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Update, dont le repli générique soustrayait deux fois.
+
+    Ses entrées codées en dur suivent celles de todo.json, donc leur rang
+    n'est pas connu à la lecture du source : elles portent « method ». Le
+    repli calculait « int(status) - 1 » puis indexait encore à « - 1 »,
+    ce qui rendait la PREMIÈRE entrée injoignable.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_update(self):"
+    END = "def _update_odoo_migration(self):"
+    MINIMUM = 2
+
+    EXPECTED = {
+        "Upgrade Odoo - Migration Database": "_update_odoo_migration",
+        "Upgrade Poetry - Dependency of Odoo": "upgrade_poetry",
+        "🔃 Update git repo": "prompt_execute_git_repo",
+    }
+
+
+class TestCodeMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Code, dont la queue s'adressait par arithmétique.
+
+    « str(len(choices) - 2) » tient tant que rien ne s'insère, et désigne
+    le voisin le jour où quelque chose s'insère. Les quatre entrées codées
+    en dur portent donc leur destination.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_code(self):"
+    END = "_GIT_HOOKS = ("
+    MINIMUM = 3
+
+    EXPECTED = {
+        "Open SHELL": "open_shell_on_database",
+        "Upgrade Module": "upgrade_module",
+        "Debug": "debug_ide",
+        "Update - Update all developed staging source code": (
+            "prompt_execute_update"
+        ),
+    }
+
+
+class TestPremiereEntreeJoignable(unittest.TestCase):
+    """Non-régression : l'entrée [1] d'un menu doit être atteignable.
+
+    Un repli qui soustrait deux fois laisse « 0 < 0 » faux pour le premier
+    rang, et le menu répond « Command not found » sur une entrée qu'il
+    vient d'afficher. Le défaut est muet : rien ne casse, une commande
+    n'existe simplement plus.
+    """
+
+    def _repli(self, nom, fin):
+        source = (TODO_DIR / "todo.py").read_text(encoding="utf-8")
+        start = source.index(f"def {nom}(self):")
+        return source[start : source.index(fin, start)]
+
+    def test_update_ne_soustrait_pas_deux_fois(self):
+        corps = self._repli(
+            "prompt_execute_update", "def _update_odoo_migration"
+        )
+        self.assertIn("int_cmd = int(status)\n", corps)
+        self.assertNotIn("int_cmd = int(status) - 1", corps)
+
+    def test_code_ne_soustrait_pas_deux_fois(self):
+        corps = self._repli("prompt_execute_code", "_GIT_HOOKS = (")
+        self.assertIn("int_cmd = int(status)\n", corps)
+        self.assertNotIn("int_cmd = int(status) - 1", corps)
 
 
 class TestMenuLabels(unittest.TestCase):

@@ -29,6 +29,7 @@ from script.execute import execute
 from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.git_repo_menu import GitRepoMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -110,6 +111,7 @@ class TODO(
     TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
+    GitRepoMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -596,6 +598,7 @@ class TODO(
         "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
+        "prompt_execute_git_repo": "Repo",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_actions": "Actions",
         "prompt_execute_gpt_code": "GPT code",
@@ -910,14 +913,28 @@ class TODO(
         # TODO faire l'upgrade d'un odoo vers un autre
 
         choices = self.config_file.get_config("update_from_makefile")
-        menu_entry = {
-            "prompt_description": t("Upgrade Odoo - Migration Database"),
-        }
-        choices.append(menu_entry)
-        poetry_entry = {
-            "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
-        }
-        choices.append(poetry_entry)
+        # « method » porte la destination dans l'entrée elle-même. Un rang
+        # calculé sur la taille de la liste désignait l'entrée voisine dès
+        # qu'une autre s'ajoutait à la fin, et la soustraction en double du
+        # repli générique rendait la PREMIÈRE entrée injoignable.
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Odoo - Migration Database"),
+                "method": "_update_odoo_migration",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
+                "method": "upgrade_poetry",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("🔃 Update git repo"),
+                "method": "prompt_execute_git_repo",
+            }
+        )
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -925,33 +942,36 @@ class TODO(
             print()
             if status == "0":
                 return False
-            elif status == str(len(choices) - 1):
-                upgrade = todo_upgrade.TodoUpgrade(self)
-                try:
-                    upgrade.execute_odoo_upgrade()
-                except todo_upgrade.MigrationRewind:
-                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
-                    # relancer, et l'écran de reprise repartira de l'étape
-                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
-                    # évite de la reprendre au milieu de son état local.
-                    print(
-                        f"\n⏪ {t('Rewound.')}"
-                        f" {t('Relaunch the migration to resume from there.')}"
-                    )
-            elif status == str(len(choices)):
-                self.upgrade_poetry()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
+            cmd_no_found = True
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(choices):
+                    cmd_no_found = False
+                    instance = choices[int_cmd - 1]
+                    method = instance.get("method")
+                    if method:
+                        getattr(self, method)()
+                    else:
                         self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print(t("Command not found !"))
+
+    def _update_odoo_migration(self):
+        """La migration d'une base d'une version d'Odoo vers la suivante."""
+        upgrade = todo_upgrade.TodoUpgrade(self)
+        try:
+            upgrade.execute_odoo_upgrade()
+        except todo_upgrade.MigrationRewind:
+            # L'état est déjà rembobiné et écrit : il ne reste qu'à
+            # relancer, et l'écran de reprise repartira de l'étape
+            # choisie. Sortir d'ici plutôt que de rappeler la méthode
+            # évite de la reprendre au milieu de son état local.
+            print(
+                f"\n⏪ {t('Rewound.')}"
+                f" {t('Relaunch the migration to resume from there.')}"
+            )
 
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
@@ -2599,22 +2619,28 @@ class TODO(
 
         choices = self.config_file.get_config("code_from_makefile")
 
-        menu_entry = {
-            "prompt_description": t("Open SHELL"),
-        }
-        choices.append(menu_entry)
-
-        menu_entry = {
-            "prompt_description": t("Upgrade Module"),
-        }
-        choices.append(menu_entry)
-
+        # « method » porte la destination dans l'entrée elle-même. Le rang
+        # de ces quatre-là dépend du nombre d'entrées venues de todo.json :
+        # un rang calculé sur la taille de la liste tient tant que rien ne
+        # s'insère, et désigne le voisin le jour où quelque chose s'insère.
+        choices.append(
+            {
+                "prompt_description": t("Open SHELL"),
+                "method": "open_shell_on_database",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Module"),
+                "method": "upgrade_module",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Debug"),
+                "method": "debug_ide",
             }
         )
-
         # Déplacé depuis le menu Execute : mise à jour de tout le code source
         # de dev en staging (sous-menu de mise à jour).
         choices.append(
@@ -2622,6 +2648,7 @@ class TODO(
                 "prompt_description": t(
                     "Update - Update all developed staging source code"
                 ),
+                "method": "prompt_execute_update",
             }
         )
 
@@ -2632,26 +2659,21 @@ class TODO(
             print()
             if status == "0":
                 return False
-            elif status == str(len(choices)):
-                self.prompt_execute_update()
-            elif status == str(len(choices) - 1):
-                self.debug_ide()
-            elif status == str(len(choices) - 2):
-                self.upgrade_module()
-            elif status == str(len(choices) - 3):
-                self.open_shell_on_database()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
+            cmd_no_found = True
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(choices):
+                    cmd_no_found = False
+                    instance = choices[int_cmd - 1]
+                    method = instance.get("method")
+                    if method:
+                        getattr(self, method)()
+                    else:
                         self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print(t("Command not found !"))
 
     # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
     # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
@@ -2700,6 +2722,12 @@ class TODO(
             {
                 "prompt_description": t("Install opencode"),
                 "method": "_shell_install_opencode",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("🔃 Update git repo"),
+                "method": "prompt_execute_git_repo",
             }
         )
 
