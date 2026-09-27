@@ -31,6 +31,9 @@ DEFAULT_INSTANCE = "dolibarr"
 DEFAULT_LOGIN = "admin"
 DEFAULT_PORT = 8080
 
+# Lancer, arrêter, suivre une instance de développement.
+RUN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/run.py"
+
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
 # mobile/install_and_run.sh avant de s'en servir.
 INSTALL_ERPLIBRE = "./script/install/install_erplibre.sh"
@@ -51,6 +54,71 @@ class DolibarrMenuMixin:
             os.path.join(ROOT, pin["path"], "htdocs", "version.inc.php")
         )
         return key, lib_dolibarr.install_label(key, pin, installed), None
+
+    # -- Exécution › Dolibarr ------------------------------------------
+
+    def prompt_execute_dolibarr(self):
+        """Installer, lancer, arrêter et suivre les instances Dolibarr."""
+        import click
+
+        choices = [
+            {"section": t("Development instances")},
+            {"prompt_description": t("Dolibarr - Install an instance")},
+            {"prompt_description": t("Dolibarr - Start an instance")},
+            {"prompt_description": t("Dolibarr - Stop an instance")},
+            {"prompt_description": t("Dolibarr - Instance status")},
+            {"prompt_description": t("Dolibarr - Instance logs")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.prompt_install_dolibarr()
+            elif status == "2":
+                self._dolibarr_run("start")
+            elif status == "3":
+                self._dolibarr_run("stop")
+            elif status == "4":
+                self._dolibarr_run("status")
+            elif status == "5":
+                self._dolibarr_run("logs")
+            else:
+                print(t("Command not found !"))
+
+    def _dolibarr_run(self, action):
+        """script/dolibarr/run.py `action` sur une instance de développement.
+
+        Une seule instance est prise d'office, plusieurs se choisissent ;
+        « status » les couvre toutes, sans choix.
+        """
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        dev = sorted(
+            name
+            for name, e in known.items()
+            if e.get("mode") == "dev" and e.get("runtime") == "native"
+        )
+        if not dev:
+            print(t("No development Dolibarr instance."))
+            return
+        command = f"{RUN_CLI} {action}"
+        if action != "status":
+            if len(dev) == 1:
+                name = dev[0]
+            else:
+                name = self._dolibarr_choose(
+                    t("Dolibarr instance:"), [(n, n) for n in dev]
+                )
+                if name is None:
+                    return
+            command += f" --instance {name}"
+        self.execute.exec_command_live(command, source_erplibre=False)
 
     # -- Parcours d'installation ---------------------------------------
 

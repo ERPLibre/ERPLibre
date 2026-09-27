@@ -16274,6 +16274,43 @@ TRANSLATIONS = {
         "fr": "Vérifiez %s avant de lancer.",
         "en": "Check %s before starting.",
     },
+    # Dolibarr — Exécution › Dolibarr (script/todo/dolibarr_menu.py)
+    "Dolibarr": {
+        "fr": "🐘 Dolibarr",
+        "en": "🐘 Dolibarr",
+    },
+    "Dolibarr - Instances: install, run, follow": {
+        "fr": "🐘 Dolibarr - Instances : installer, lancer, suivre",
+        "en": "🐘 Dolibarr - Instances: install, run, follow",
+    },
+    "Development instances": {
+        "fr": "🛠️ Instances de développement",
+        "en": "🛠️ Development instances",
+    },
+    "Dolibarr - Install an instance": {
+        "fr": "📥 Dolibarr - Installer une instance",
+        "en": "📥 Dolibarr - Install an instance",
+    },
+    "Dolibarr - Start an instance": {
+        "fr": "▶️ Dolibarr - Lancer une instance",
+        "en": "▶️ Dolibarr - Start an instance",
+    },
+    "Dolibarr - Stop an instance": {
+        "fr": "⏹️ Dolibarr - Arrêter une instance",
+        "en": "⏹️ Dolibarr - Stop an instance",
+    },
+    "Dolibarr - Instance status": {
+        "fr": "📊 Dolibarr - État des instances",
+        "en": "📊 Dolibarr - Instance status",
+    },
+    "Dolibarr - Instance logs": {
+        "fr": "📜 Dolibarr - Journaux d'une instance",
+        "en": "📜 Dolibarr - Instance logs",
+    },
+    "Dolibarr instance:": {
+        "fr": "Instance Dolibarr :",
+        "en": "Dolibarr instance:",
+    },
 }
 
 
