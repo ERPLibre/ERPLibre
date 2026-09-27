@@ -26,6 +26,32 @@ if [[ "${1:-}" == "db" ]] \
   set -- "--addons-path=$(pwd)/script/odoo/cli_addons" erplibre_db "$@"
 fi
 
+# Les options « --http-* », « -p » et « --no-http » n'existent que depuis
+# Odoo 11 ; Odoo 10 les nomme « --xmlrpc-* » et « --no-xmlrpc », que 11 garde
+# en alias cachés. Les scripts écrivent la forme récente, traduite ici pour
+# l'Odoo qui ne la connaît pas.
+if ! grep -q '"--no-http"' "${ODOO_PATH}/odoo/odoo/tools/config.py" 2> /dev/null; then
+  EL_ARGS=()
+  for arg in "$@"; do
+    case "${arg}" in
+      --no-http) arg="--no-xmlrpc" ;;
+      -p) arg="--xmlrpc-port" ;;
+      --http-port | --http-port=* | --http-interface | --http-interface=*)
+        arg="--xmlrpc-${arg#--http-}"
+        ;;
+    esac
+    EL_ARGS+=("${arg}")
+  done
+  set -- "${EL_ARGS[@]}"
+fi
+
+# « --uninstall » est une option du fork ERPLibre d'Odoo. Pour un Odoo amont,
+# l'appel va à erplibre_uninstall, qui prend les mêmes arguments.
+if [[ " $* " == *" --uninstall "* || " $* " == *" --uninstall="* ]] \
+  && ! grep -q '"--uninstall"' "${ODOO_PATH}/odoo/odoo/tools/config.py" 2> /dev/null; then
+  set -- "--addons-path=$(pwd)/script/odoo/cli_addons" erplibre_uninstall "$@"
+fi
+
 if [ "$ODOO_MODE_COVERAGE" = "true" ]; then
   coverage run -p ./odoo$(< .odoo-version)/odoo/odoo-bin "$@"
 else

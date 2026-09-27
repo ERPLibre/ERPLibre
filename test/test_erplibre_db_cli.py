@@ -100,6 +100,73 @@ class TestReecritureParOdooBin(unittest.TestCase):
             ["shell", "-d", "base"], self._args("shell", "-d", "base")
         )
 
+    def _config(self, contenu):
+        tools = self.racine / "odoo10.0" / "odoo" / "odoo" / "tools"
+        tools.mkdir(parents=True)
+        (tools / "config.py").write_text(contenu)
+
+    def test_no_http_devient_no_xmlrpc_pour_odoo_10(self):
+        """Odoo 10 refuse « --no-http » : seule sa forme --no-xmlrpc existe."""
+        self._config('group.add_option("--no-xmlrpc", dest="xmlrpc")\n')
+        self.assertEqual(
+            ["--no-xmlrpc", "--stop-after-init", "-d", "base"],
+            self._args("--no-http", "--stop-after-init", "-d", "base"),
+        )
+
+    def test_les_options_http_deviennent_xmlrpc_pour_odoo_10(self):
+        self._config('group.add_option("--no-xmlrpc", dest="xmlrpc")\n')
+        self.assertEqual(
+            [
+                "--xmlrpc-port",
+                "8169",
+                "--xmlrpc-port=8170",
+                "--xmlrpc-port",
+                "8171",
+                "--xmlrpc-interface=127.0.0.1",
+                "--log-handler=werkzeug:INFO",
+            ],
+            self._args(
+                "--http-port",
+                "8169",
+                "--http-port=8170",
+                "-p",
+                "8171",
+                "--http-interface=127.0.0.1",
+                "--log-handler=werkzeug:INFO",
+            ),
+        )
+
+    def test_no_http_reste_tel_quel_des_odoo_11(self):
+        self._config('group.add_option("--no-http", dest="http_enable")\n')
+        self.assertEqual(
+            ["--no-http", "-d", "base"], self._args("--no-http", "-d", "base")
+        )
+
+    def test_uninstall_d_un_odoo_amont_passe_a_erplibre_uninstall(self):
+        self._config('group.add_option("--no-http", dest="http_enable")\n')
+        self.assertEqual(
+            [
+                f"--addons-path={self.racine}/script/odoo/cli_addons",
+                "erplibre_uninstall",
+                "--no-http",
+                "-d",
+                "base",
+                "--uninstall",
+                "a,b",
+            ],
+            self._args("--no-http", "-d", "base", "--uninstall", "a,b"),
+        )
+
+    def test_le_fork_erplibre_garde_son_uninstall(self):
+        self._config(
+            'group.add_option("--no-http", dest="http_enable")\n'
+            'group.add_option("--uninstall", dest="uninstall")\n'
+        )
+        self.assertEqual(
+            ["-d", "base", "--uninstall=a"],
+            self._args("-d", "base", "--uninstall=a"),
+        )
+
 
 def _charger_commande(api):
     """Charge erplibre_db.py contre un faux paquet odoo portant l'API
