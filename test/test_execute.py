@@ -648,7 +648,7 @@ class TestRedactForStorage(unittest.TestCase):
             ("POSTGRES_PASSWORD: inventeQR", "POSTGRES_PASSWORD: ***"),
             ('{"password": "inventeST"}', '{"password": ***'),
             ("{'password': 'inventeUV'}", "{'password': ***"),
-            ("Mot de passe : inventeWX", "Mot de passe : ***"),
+            ("Mot de passe : inventeWX", "Mot de passe : ***"),
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
