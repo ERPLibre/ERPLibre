@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 {
     "name": "ERPLibre db command",
-    "summary": "odoo-bin erplibre_db: list, create, clone, restore, back up",
+    "summary": "odoo-bin erplibre_db and erplibre_uninstall for upstream Odoo",
     "version": "1.0.0",
     "category": "Tools",
     "author": "TechnoLibre",
