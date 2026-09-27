@@ -152,6 +152,9 @@ class Execute:
     # Crochet posé par le worker d'une session web et par le mode
     # enregistrement, jamais par le CLI : reçoit `run_start` (la commande
     # caviardée) avant le lancement et `run_end` (code, durée) à la fin.
+    # Attribut de classe, il doit être une méthode liée ou une fonction
+    # intégrée (`list.append` d'une liste) : une fonction simple recevrait
+    # l'instance d'Execute en premier argument.
     events = None
 
     def __init__(self) -> None:
@@ -247,10 +250,14 @@ class Execute:
             print("🏠 ⬇ Execute command :\n")
             print(redact_secrets(command))
         output_lines = []
-        tty = self._job_control_tty()
+        # Annoncée avant d'ouvrir le terminal : un échec ou une interruption
+        # à l'ouverture a sa fin (`finally`), et aucun descripteur ouvert
+        # ne précède le `try` qui le ferme.
         self._event({"t": "run_start", "cmd": redact_secrets(command)})
+        tty = None
 
         try:
+            tty = self._job_control_tty()
             process = subprocess.Popen(
                 command,
                 shell=True,

@@ -11,8 +11,10 @@ d'origine de TerminalPort, et chaque événement s'ajoute, une ligne JSON,
 à `~/.erplibre/todo_web/<empreinte>/record-<horodatage>-<pid>.jsonl`,
 créé en 0600. Une question (`menu`, `ask`, avec son `qid`) est suivie de
 `answer` (la ligne répondue, MASK pour un secret) ou de `cancel` (Ctrl+C,
-Ctrl+D) ; viennent aussi `notice`, `run_start` et `run_end`. Le fichier
-montre ce que la capture lit d'une vraie session. Le reste est celui de
+Ctrl+D) ; viennent aussi `notice`, `run_start` et `run_end`. Chaque texte
+écrit passe par `redact_secrets`, et un secret n'y laisse que MASK, défaut
+compris ; TODO reçoit, lui, la réponse intacte. Le fichier montre ce que
+la capture lit d'une vraie session. Le reste est celui de
 `make todo` : les exceptions qui finissent TODO, le pied de page, la
 relance de `restart_script`.
 """
@@ -24,6 +26,7 @@ import sys
 import time
 from pathlib import Path
 
+from script.execute.execute import redact_secrets
 from script.todo.todo_i18n import t
 from script.todo.ui import legacy, port
 from script.todo.web import paths
@@ -51,6 +54,18 @@ def open_record(root) -> tuple:
     raise FileExistsError(path)
 
 
+def _redacted(value):
+    """`value` dont chaque chaîne, dans ses listes et ses dict, passe par
+    `redact_secrets`."""
+    if isinstance(value, str):
+        return redact_secrets(value)
+    if isinstance(value, list):
+        return [_redacted(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redacted(item) for key, item in value.items()}
+    return value
+
+
 class RecordingPort(port.TerminalPort):
     """Le terminal, comme TerminalPort, dont chaque événement s'écrit dans
     `sink`, une ligne JSON chacun, écrite aussitôt."""
@@ -60,20 +75,24 @@ class RecordingPort(port.TerminalPort):
         self.qid = 0
 
     def event(self, message) -> None:
-        """Écrit `message` ; sert aussi de crochet `Execute.events`."""
-        self.sink.write(json.dumps(message, ensure_ascii=False) + "\n")
+        """Écrit `message`, caviardé (`_redacted`) ; sert aussi de crochet
+        `Execute.events`."""
+        line = json.dumps(_redacted(message), ensure_ascii=False)
+        self.sink.write(line + "\n")
         self.sink.flush()
 
     def _recorded(self, message, answer) -> str:
         self.qid += 1
         message["qid"] = qid = self.qid
+        secret = message.get("kind") == "secret"
+        if secret and message.get("default"):
+            message["default"] = MASK
         self.event(message)
         try:
             value = answer()
         except (EOFError, KeyboardInterrupt):
             self.event({"t": "cancel", "qid": qid})
             raise
-        secret = message.get("kind") == "secret"
         self.event(
             {"t": "answer", "qid": qid, "value": MASK if secret else value}
         )

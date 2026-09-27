@@ -118,6 +118,28 @@ class TestExecCommandLive(unittest.TestCase):
         self.assertEqual([e["t"] for e in events], ["run_start", "run_end"])
         self.assertIsNone(events[1]["rc"])
 
+    def test_a_terminal_that_fails_still_ends_the_command(self):
+        events = []
+        self.exe.events = events.append
+        with patch.object(Execute, "_job_control_tty", side_effect=OSError):
+            rc = self.exe.exec_command_live(
+                "true", source_erplibre=False, quiet=True
+            )
+        self.assertEqual(rc, 1)
+        self.assertEqual([e["t"] for e in events], ["run_start", "run_end"])
+
+    def test_an_interrupt_while_announcing_opens_no_terminal(self):
+        def hook(message):
+            raise KeyboardInterrupt
+
+        self.exe.events = hook
+        with patch.object(Execute, "_job_control_tty") as tty:
+            with self.assertRaises(KeyboardInterrupt):
+                self.exe.exec_command_live(
+                    "true", source_erplibre=False, quiet=True
+                )
+        tty.assert_not_called()
+
     def test_return_status_and_output_multiline(self):
         status, output = self.exe.exec_command_live(
             "echo -e 'line1\nline2\nline3'",

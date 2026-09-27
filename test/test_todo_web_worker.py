@@ -356,7 +356,7 @@ class TestMain(unittest.TestCase):
     def main(self, hello, todo=None):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
-        fd = _channel(self, hello)
+        fd = self.fd = _channel(self, hello)
         modules = {name: types.ModuleType(name) for name in ("click", "urwid")}
         self.order = []
         finder = TodoFinder(todo, self.order)
@@ -407,7 +407,7 @@ class TestMain(unittest.TestCase):
         self.main(b'{"t": "hello", "lang": "en"}\n', todo)
         [(step, channel), imported] = self.order
         self.assertEqual((step, imported), ("install", "import todo"))
-        self.assertIsInstance(channel, int)
+        self.assertEqual(channel, self.fd)
 
 
 class TestProtocol(unittest.TestCase):

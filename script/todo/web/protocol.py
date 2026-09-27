@@ -23,8 +23,9 @@ LINE_LIMIT = 1024 * 1024
 TEXT_LIMIT = 16 * 1024
 LABEL_LIMIT = 200
 ITEM_LIMIT = 200
-# Une ligne du terminal en mode canonique tient 4095 octets : une réponse
-# de la page n'en dit pas plus que le clavier.
+# Caractères d'une réponse de la page (`reply_line` compte des caractères,
+# non des octets) : l'ordre d'une ligne du terminal en mode canonique, 4095
+# octets et son saut de ligne ; la page n'en dit pas plus que le clavier.
 ANSWER_LIMIT = 4096
 QUESTIONS = ("menu", "ask")
 # Messages du worker qui portent le `qid` d'une question.

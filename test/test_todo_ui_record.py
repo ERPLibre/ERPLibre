@@ -26,6 +26,7 @@ from unittest.mock import patch
 import click
 from todo_web_env import private_env
 
+from script.execute.execute import redact_secrets
 from script.todo import todo_i18n
 from script.todo.ui import legacy, port, record
 
@@ -81,6 +82,29 @@ class TestRecordingPort(unittest.TestCase):
             ],
         )
         self.assertNotIn("hunter2", sink.getvalue())
+
+    def test_what_is_written_is_redacted_and_a_secret_default_masked(self):
+        url = "https://forged:hunter2@forged/repo.git"
+        prompt = "Mirror for --token forged-secret: "
+        sink = io.StringIO()
+        recording = record.RecordingPort(sink)
+        self.enterContext(redirect_stdout(io.StringIO()))
+        self.enterContext(
+            patch.dict(
+                port.ORIGINAL, input=lambda text: url, getpass=lambda t: "x"
+            )
+        )
+        # Ce que TODO reçoit reste intact : seul le fichier est caviardé.
+        self.assertEqual(recording.ask(prompt), url)
+        self.assertEqual(recording.ask("Password: ", "hunter2", "secret"), "x")
+        recording.notice(f"Cloning {url}")
+        written = sink.getvalue()
+        self.assertNotIn("hunter2", written)
+        self.assertNotIn("forged-secret", written)
+        asked, answer, secret, _, _ = map(json.loads, written.splitlines())
+        self.assertEqual(asked["text"], redact_secrets(prompt))
+        self.assertEqual(answer["value"], redact_secrets(url))
+        self.assertEqual(secret["default"], record.MASK)
 
     def test_a_record_is_a_new_private_file(self):
         base = private_env(self.addCleanup)
