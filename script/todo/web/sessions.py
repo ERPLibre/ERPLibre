@@ -174,6 +174,7 @@ class Session:
         self.inbox = bytearray()
         self.flushing = None
         self.closing = False
+        self.killing = None  # l'arrêt que `_watch` lance pendant une relance
         self.code = None
         self.ended = asyncio.Event()
         self.tasks = set()
@@ -486,8 +487,9 @@ class Session:
                 except OSError:
                     break
                 if self.closing:
-                    # `close` est venu pendant la relance : même arrêt.
-                    self._task(self._kill())
+                    # `close` est venu pendant la relance : même arrêt, que
+                    # `close` attend.
+                    self.killing = self._task(self._kill())
         finally:
             # Même sur une erreur imprévue : `close` n'attend pas en vain.
             self.code = self.proc.returncode
@@ -505,13 +507,17 @@ class Session:
 
     async def close(self):
         """Termine la session et rend quand le worker n'est plus, et que
-        plus rien ne reste de ses groupes ou que SIGKILL les a vidés."""
+        plus rien ne reste de ses groupes ou que SIGKILL les a vidés ; y
+        compris quand l'arrêt est celui que `_watch` lance sur le worker
+        d'une relance."""
         self.closing = True
         if self.proc is None:
             return  # pas encore lancé : `start` voit `closing`
         if self.proc.returncode is None:
             await self._kill()
         await self.ended.wait()
+        if self.killing is not None:
+            await self.killing
 
     async def _kill(self):
         """Ferme le maître (SIGHUP au worker) et envoie SIGHUP aux groupes

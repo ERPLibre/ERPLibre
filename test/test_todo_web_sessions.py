@@ -390,6 +390,39 @@ class TestLifecycle(SessionCase):
         await asyncio.wait_for(starting, 10)
         self.assertEqual(session.code, -signal.SIGHUP)
 
+    async def test_close_during_a_restart_waits_for_its_kill(self):
+        # Pendant la relance, `close` voit l'ancien worker, déjà fini :
+        # `_watch` arrête le nouveau, et `close` attend cet arrêt jusqu'à
+        # son contrôle SIGKILL.
+        spawn = sessions.Session._spawn
+        held, release = asyncio.Event(), asyncio.Event()
+
+        async def hold(session):
+            if session.proc is not None:
+                held.set()
+                await release.wait()
+            await spawn(session)
+
+        with tempfile.TemporaryDirectory() as root:
+            with patch.object(sessions.Session, "_spawn", hold):
+                session = await self.open(RESTART_CHILD, root=root)
+                await asyncio.wait_for(held.wait(), 10)
+            closing = asyncio.ensure_future(session.close())
+            await self.until(lambda: session.closing)
+            with (
+                patch.object(sessions, "REAP_SECONDS", 0.3),
+                # Comme si un membre du groupe survivait à SIGHUP : `_kill`
+                # attend REAP_SECONDS, puis envoie SIGKILL.
+                patch.object(sessions, "_alive", return_value=True),
+                patch.object(
+                    sessions, "_killpg", wraps=sessions._killpg
+                ) as killpg,
+            ):
+                release.set()
+                await asyncio.wait_for(closing, 10)
+                sent = [call.args[1] for call in killpg.call_args_list]
+        self.assertEqual(sent, [signal.SIGHUP, signal.SIGKILL])
+
     async def test_restart_keeps_the_id_and_the_ring(self):
         with tempfile.TemporaryDirectory() as root:
             session = await self.open(RESTART_CHILD, root=root)

@@ -509,6 +509,10 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             except OSError:
                 self.close(1011, "the session did not start")
                 return
+            if self.ws_connection is None:
+                # Connexion fermée pendant le lancement : la session reste
+                # sans client et finit par inactivité, comme un onglet fermé.
+                return
         else:
             session = self.hub.terminals.get(sid)
             if session is None:
@@ -534,8 +538,10 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             kind = data.get("t")
         except (ValueError, AttributeError):
             return
-        if kind == "resize" and _size(data) is not None:
-            self.session.resize(*_size(data))
+        if kind == "resize":
+            size = _size(data)
+            if size is not None:
+                self.session.resize(*size)
         elif kind == "interrupt":
             self.session.interrupt()
         elif kind == "close":
@@ -662,6 +668,7 @@ class Hub:
         self.code_tree = CodeTree(self.root)
         self.system = {}  # jeton du cookie -> {"prev", "calls"}
         self.terminals = {}  # identifiant -> sessions.Session ouverte
+        self.opening = 0  # `open_terminal` en cours
         self.session_idle = sessions.IDLE_SECONDS
         self.pending = set()  # fermetures en cours
         self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
@@ -807,6 +814,7 @@ class Hub:
             sid, self.root, lang, cols, rows, on_end=self._terminal_ended
         )
         self.terminals[sid] = session
+        self.opening += 1
         try:
             await session.start()
             if session.closing:
@@ -815,6 +823,8 @@ class Hub:
         except BaseException:
             self.terminals.pop(sid, None)
             raise
+        finally:
+            self.opening -= 1
         return session
 
     def _terminal_ended(self, session):
@@ -895,8 +905,12 @@ class Hub:
         verrou, puis signale `stopped`.
 
         Chaque session raccroche son PTY ; ses groupes reçoivent SIGHUP, puis
-        SIGKILL après REAP_SECONDS : aucun worker ne survit au hub. L'attente
-        est bornée : une session qui ne finit pas n'empêche pas l'arrêt.
+        SIGKILL après REAP_SECONDS : aucun worker ne survit au hub. Une
+        session encore en lancement rend `close` aussitôt et s'arrête une
+        fois lancée : l'arrêt attend aussi qu'aucune session ne reste et que
+        chaque `open_terminal` ait rendu, ce qu'il fait une fois l'arrêt de
+        sa session fini, SIGKILL compris. L'attente est bornée : une session
+        qui ne finit pas n'empêche pas l'arrêt.
 
         state.json, redirect.html et ctl.sock partent pendant que le verrou
         est tenu : aucun autre hub ne démarre avant, rien de ce qui est
@@ -906,9 +920,10 @@ class Hub:
         self.idle_task.cancel()
         closing = [s.close() for s in self.terminals.values()]
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*closing), sessions.REAP_SECONDS + 2
-            )
+            async with asyncio.timeout(sessions.REAP_SECONDS + 2):
+                await asyncio.gather(*closing)
+                while self.terminals or self.opening:
+                    await asyncio.sleep(0.05)
         except TimeoutError:
             log.warning("sessions still closing, stopping anyway")
         self.state_path.unlink(missing_ok=True)

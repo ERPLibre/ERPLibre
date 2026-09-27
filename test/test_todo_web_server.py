@@ -850,6 +850,67 @@ class TestTerminal(TerminalCase):
         with self.assertRaises(ProcessLookupError):
             os.kill(pid, 0)
 
+    async def test_a_tab_lost_while_its_session_starts_is_not_attached(self):
+        handlers, done = [], asyncio.get_running_loop().create_future()
+        hello, opening = server.Terminal.hello, self.hub.open_terminal
+
+        async def said_hello(handler, message):
+            handlers.append(handler)
+            await hello(handler, message)
+            done.set_result(handler)
+
+        async def open_terminal(*args):
+            session = await opening(*args)
+            # La connexion se perd pendant le lancement : tornado appelle
+            # ce crochet.
+            handlers[0].on_connection_close()
+            return session
+
+        with (
+            patch.object(server.Terminal, "hello", said_hello),
+            patch.object(self.hub, "open_terminal", open_terminal),
+        ):
+            tab = await self.connect()
+            message = {"t": "hello", "csrf": self.csrf, "lang": "en"}
+            message.update(cols=80, rows=24)
+            await tab.conn.write_message(json.dumps(message))
+            handler = await asyncio.wait_for(done, 10)
+        [session] = self.hub.terminals.values()
+        self.assertIsNone(handler.session)
+        self.assertIsNone(session.client)
+        # Sans client, elle finit par inactivité, comme un onglet fermé.
+        self.assertFalse(session.closing)
+
+    async def test_stopping_the_hub_reaps_a_session_still_starting(self):
+        spawn = sessions.Session._spawn
+        held, release = asyncio.Event(), asyncio.Event()
+
+        async def hold(session):
+            held.set()
+            await release.wait()
+            await spawn(session)
+
+        with patch.object(sessions.Session, "_spawn", hold):
+            tab = await self.connect()
+            message = {"t": "hello", "csrf": self.csrf, "lang": "en"}
+            message.update(cols=80, rows=24)
+            await tab.conn.write_message(json.dumps(message))
+            await asyncio.wait_for(held.wait(), 10)
+            [session] = self.hub.terminals.values()
+            self.hub.request_stop()
+            # `close` rend aussitôt : la session n'est pas encore lancée.
+            deadline = time.monotonic() + 10
+            while not session.closing:
+                self.assertLess(time.monotonic(), deadline, "not closing")
+                await asyncio.sleep(0.01)
+            release.set()
+            await asyncio.wait_for(self.hub.stopped.wait(), 10)
+        # Lancée puis arrêtée avant que le hub ne se dise arrêté.
+        self.assertTrue(session.ended.is_set())
+        self.assertEqual(session.code, -signal.SIGHUP)
+        self.assertEqual(self.hub.terminals, {})
+        self.assertEqual(await tab.closed(), 1011)
+
 
 def _masked(opcode, payload):
     """Trame WebSocket finale d'un client, masquée comme la RFC 6455 le
