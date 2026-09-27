@@ -22,10 +22,13 @@ libvirt), une panne après l'autre :
   répondait « not running ».
 """
 
+import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -1973,6 +1976,189 @@ class TestLePontRefusePlutotQueDeBatir(unittest.TestCase):
             pve.bridge_setup_cmds(cidr="10.10.10.1/25", uplink="eth0")
         )
         self.assertNotIn("10.10.10.128/25", basse)
+
+
+class TestLInterfaceRouteeDuneVlan(unittest.TestCase):
+    """Un pont conscient des VLAN sépare les domaines de diffusion mais ne ROUTE
+    rien : une VM dont la carte est étiquetée démarre dans un domaine où aucune
+    adresse ne répond, sa passerelle reste muette, et elle ne joint que ses
+    voisines de la même étiquette. La panne ressemble à un pare-feu."""
+
+    def cmds(self, **change):
+        champs = dict(pont="vmbr9", vlan=3114, cidr="10.211.19.1/24")
+        champs.update(change)
+        return pve.svi_setup_cmds(**champs)
+
+    def motif(self, cmds):
+        pose = next(c for c in cmds if "grep -qE" in c)
+        return re.search(r"grep -qE '([^']+)'", pose).group(1)
+
+    def test_the_interface_is_named_after_bridge_and_vid(self):
+        joint = "\n".join(self.cmds())
+        self.assertIn("vmbr9.3114", joint)
+
+    def test_the_dot_of_the_name_is_escaped_in_the_pattern(self):
+        """LA PROPRIÉTÉ : un point est un JOKER dans une expression régulière.
+        Non échappé, le motif reconnaîtrait un nom voisin dont seul ce caractère
+        diffère, et la strophe ne serait JAMAIS ajoutée."""
+        motif = self.motif(self.cmds())
+        self.assertIsNotNone(re.search(motif, "auto vmbr9.3114", re.M))
+        self.assertIsNone(re.search(motif, "auto vmbr9X3114", re.M))
+
+    def test_the_bridge_does_not_see_its_own_vlan_interface(self):
+        """Sinon poser le pont après son SVI serait sauté, et le pont n'aurait
+        jamais sa strophe."""
+        motif = self.motif(pve.bridge_setup_cmds("vmbr9", "10.9.9.1/24"))
+        self.assertIsNone(re.search(motif, "auto vmbr9.3114", re.M))
+
+    def test_the_parent_device_is_declared(self):
+        """Déclaré plutôt que deviné du nom : un humain qui relit le fichier ne
+        devrait pas avoir à le déduire."""
+        self.assertIn("vlan-raw-device vmbr9", "\n".join(self.cmds()))
+
+    def test_the_native_vlan_is_refused(self):
+        """Le VID 1 est le VLAN natif, non étiqueté : lui poser une interface
+        routée dédoublerait l'adresse que le pont porte déjà."""
+        self.assertEqual([], self.cmds(vlan=1))
+
+    def test_a_vid_outside_the_standard_is_refused(self):
+        for vlan in (0, 1, 4095, 9999, -1, "x", None):
+            with self.subTest(vlan=vlan):
+                self.assertEqual([], self.cmds(vlan=vlan))
+
+    def test_it_refuses_without_a_bridge_or_a_prefix(self):
+        for change in (
+            {"pont": ""},
+            {"pont": "   "},
+            {"cidr": "10.211.19.1"},
+            {"cidr": ""},
+            {"cidr": None},
+            {"cidr": "pas-un-reseau/24"},
+        ):
+            with self.subTest(**change):
+                self.assertEqual([], self.cmds(**change))
+
+    def test_a_valid_set_does_build(self):
+        """Le contrôle positif : sans lui, un constructeur qui refuse toujours
+        passerait tous les refus ci-dessus."""
+        self.assertNotEqual([], self.cmds())
+
+    def test_the_masqueraded_network_is_that_of_the_zone(self):
+        joint = "\n".join(self.cmds(uplink="eth0"))
+        self.assertIn("10.211.19.0/24", joint)
+        self.assertNotIn("10.211.19.1/24'", joint.split("POSTROUTING")[-1])
+
+    def test_no_masquerading_without_an_uplink(self):
+        """Le contrôle positif du précédent : sans montant, rien à masquer."""
+        self.assertNotIn("MASQUERADE", "\n".join(self.cmds()))
+
+    def test_the_manual_fallback_creates_a_vlan_not_a_bridge(self):
+        """Le repli est CHIRURGICAL : monter l'interface à la main sans toucher
+        à rien d'autre. Un `type bridge` y fabriquerait un second pont."""
+        montee = self.cmds()[-1]
+        self.assertIn("type vlan id 3114", montee)
+        self.assertNotIn("type bridge", montee)
+
+    def test_it_shares_the_lock_lesson_with_the_bridge(self):
+        """`mkdir -p /run/network` d'abord : ifupdown2 y pose son verrou, et
+        quand le répertoire manque il annonce qu'une autre instance tourne — un
+        message qui est un mensonge."""
+        for cmds in (
+            self.cmds(),
+            pve.bridge_setup_cmds("vmbr9", "10.9.9.1/24"),
+        ):
+            with self.subTest(cmds=cmds[-1][:30]):
+                self.assertIn("mkdir -p /run/network", cmds[-1])
+
+
+class TestLeRetraitDuneInterfaceNEmporteQueLaSienne(unittest.TestCase):
+    """Ce chemin réécrit la configuration réseau d'un hôte distant. L'interface
+    voisine porte peut-être la session ssh : une suppression trop large la coupe,
+    et l'on ne revient pas sur la machine pour réparer."""
+
+    AVANT = (
+        "# autogenerated\n"
+        "auto lo\niface lo inet loopback\n\n"
+        "iface enp1s0 inet manual\n\n"
+        "auto vmbr9\niface vmbr9 inet static\n"
+        "    address 192.168.212.1/24\n"
+        "    bridge-ports none\n"
+        "    bridge-vlan-aware yes\n\n"
+        "auto vmbr9.3114\niface vmbr9.3114 inet static\n"
+        "    address 10.211.19.1/24\n"
+        "    vlan-raw-device vmbr9\n\n"
+        "auto vmbr9.3111\niface vmbr9.3111 inet static\n"
+        "    address 10.211.16.1/24\n"
+        "    vlan-raw-device vmbr9\n"
+    )
+
+    def apres(self, cible):
+        """Le fichier, une fois le filtre du module joué dessus pour de vrai.
+
+        JOUÉ, et non relu : ce qui est éprouvé est le comportement d'`awk` sur un
+        fichier, pas l'orthographe de la commande qui l'appelle. Un garde qui
+        comparerait le texte de la commande resterait vert sur une réécriture
+        équivalente et rouge sur une amélioration."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        fichier = os.path.join(dossier, "interfaces")
+        with open(fichier, "w", encoding="utf-8") as ecrit:
+            ecrit.write(self.AVANT)
+        filtre = next(
+            c for c in pve.interface_teardown_cmds(cible) if "awk" in c
+        ).replace("/etc/network/interfaces", fichier)
+        subprocess.run(["sh", "-c", filtre], capture_output=True, text=True)
+        with open(fichier, encoding="utf-8") as lu:
+            return lu.read()
+
+    def test_the_targeted_stanza_is_gone(self):
+        self.assertNotIn("vmbr9.3114", self.apres("vmbr9.3114"))
+
+    def test_the_neighbour_that_differs_by_one_character_survives(self):
+        """LA PROPRIÉTÉ. Le point d'un nom d'interface de VLAN est un joker : une
+        comparaison par expression régulière emporterait la voisine."""
+        apres = self.apres("vmbr9.3114")
+        self.assertIn("auto vmbr9.3111", apres)
+        self.assertIn("10.211.16.1/24", apres)
+
+    def test_the_parent_bridge_survives_with_its_attributes(self):
+        """Les attributs sont INDENTÉS, donc ils ne terminent pas une strophe :
+        un filtre qui s'arrêterait à la première ligne vide en avalerait une."""
+        apres = self.apres("vmbr9.3114")
+        self.assertIn("auto vmbr9\n", apres)
+        self.assertIn("bridge-vlan-aware yes", apres)
+
+    def test_the_interface_carrying_the_session_survives(self):
+        apres = self.apres("vmbr9.3114")
+        self.assertIn("iface enp1s0 inet manual", apres)
+        self.assertIn("auto lo", apres)
+
+    def test_removing_the_bridge_leaves_its_vlan_stanzas(self):
+        """L'inverse : retirer le pont ne doit pas emporter ses interfaces de
+        VLAN par appariement de préfixe."""
+        apres = self.apres("vmbr9")
+        self.assertIn("auto vmbr9.3114", apres)
+        self.assertIn("auto vmbr9.3111", apres)
+        self.assertNotIn("bridge-vlan-aware", apres)
+
+    def test_removing_something_absent_changes_nothing(self):
+        """Le contrôle positif : sans lui, un filtre qui vide le fichier
+        passerait les épreuves de survie ci-dessus."""
+        self.assertEqual(self.AVANT, self.apres("vmbr42"))
+
+    def test_the_interface_is_brought_down_before_the_file_changes(self):
+        """L'état courant doit suivre le fichier : réécrit d'abord, l'interface
+        resterait montée sans strophe, et le prochain démarrage la perdrait sans
+        que rien ne l'ait annoncé."""
+        cmds = pve.interface_teardown_cmds("vmbr9.3114")
+        descente = next(i for i, c in enumerate(cmds) if "ifdown" in c)
+        reecriture = next(i for i, c in enumerate(cmds) if "awk" in c)
+        self.assertLess(descente, reecriture)
+
+    def test_it_refuses_without_a_name(self):
+        for nom in ("", "   ", None):
+            with self.subTest(nom=nom):
+                self.assertEqual([], pve.interface_teardown_cmds(nom))
 
 
 if __name__ == "__main__":

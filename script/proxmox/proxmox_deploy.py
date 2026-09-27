@@ -812,17 +812,149 @@ def bridge_setup_cmds(
             "    bridge-vlan-aware yes",
             f"    bridge-vids 2-{VLAN_MAX}",
         ]
-    if uplink:
-        bloc += [
-            f"    post-up   iptables -t nat -A POSTROUTING -s '{reseau}'"
-            f" -o {uplink} -j MASQUERADE",
-            f"    post-down iptables -t nat -D POSTROUTING -s '{reseau}'"
-            f" -o {uplink} -j MASQUERADE",
-        ]
+    bloc += _lignes_masquage(reseau, uplink)
+    return _poser_interface(
+        nom, bloc, cidr, reseau, uplink, f"ip link add {nom} type bridge"
+    )
+
+
+def _lignes_masquage(reseau, uplink):
+    """Les deux lignes de strophe qui masquent `reseau` derrière `uplink`.
+
+    Partagées par le pont et l'interface routée d'une VLAN : sans elles, les VM
+    se parlent entre elles mais ne sortent pas — et une flotte qui ne sort pas
+    n'installe rien.
+    """
+    if not uplink:
+        return []
+    return [
+        f"    post-up   iptables -t nat -A POSTROUTING -s '{reseau}'"
+        f" -o {uplink} -j MASQUERADE",
+        f"    post-down iptables -t nat -D POSTROUTING -s '{reseau}'"
+        f" -o {uplink} -j MASQUERADE",
+    ]
+
+
+def svi_setup_cmds(pont: str, vlan, cidr: str, uplink: str = "") -> list:
+    """L'interface ROUTÉE d'une VLAN sur un pont conscient des VLAN.
+
+    C'EST CE QUI RÉPOND À LA PASSERELLE D'UNE FLOTTE. Un pont conscient des VLAN
+    sépare les domaines de diffusion mais ne ROUTE rien : une VM dont la carte
+    est étiquetée démarre dans un domaine où aucune adresse ne répond, sa
+    passerelle reste muette, et elle ne joint que ses voisines de la même
+    étiquette. La panne ressemble à un pare-feu et n'en est pas un.
+
+    LE VID PART DE 2 : le 1 est le VLAN natif, non étiqueté, et lui poser une
+    interface routée dédoublerait l'adresse que le pont porte déjà.
+
+    Refuse par une liste VIDE plutôt que de bâtir : un pont sans nom, un VID hors
+    de la plage 802.1Q, un CIDR sans préfixe explicite — sans lui la dérivation
+    le suppose à /32 et la strophe sort sans masque.
+    """
+    if not (pont or "").strip():
+        return []
+    try:
+        vid = int(vlan)
+    except (TypeError, ValueError):
+        return []
+    if not 2 <= vid <= VLAN_MAX:
+        return []
+    if "/" not in (cidr or ""):
+        return []
+    try:
+        interface = ipaddress.ip_interface(cidr)
+    except (ValueError, TypeError):
+        return []
+    parent = pont.strip()
+    nom = f"{parent}.{vid}"
+    bloc = [
+        "",
+        f"auto {nom}",
+        f"iface {nom} inet static",
+        f"    address {cidr}",
+        # DÉCLARÉ plutôt que deviné du nom : ifupdown2 le déduirait, mais un
+        # humain qui relit le fichier ne devrait pas avoir à le déduire.
+        f"    vlan-raw-device {parent}",
+    ]
+    bloc += _lignes_masquage(str(interface.network), uplink)
+    return _poser_interface(
+        nom,
+        bloc,
+        cidr,
+        str(interface.network),
+        uplink,
+        f"ip link add link {parent} name {nom} type vlan id {vid}",
+    )
+
+
+def interface_teardown_cmds(
+    nom: str, reseau: str = "", uplink: str = ""
+) -> list:
+    """Retire une interface posée par ce module : strophe, lien, règle de NAT.
+
+    LE NOM S'APPARIE PAR CHAMP, jamais par expression régulière. Celui d'une
+    interface de VLAN porte un point, qui serait un joker : une comparaison de
+    champ exacte ne peut pas emporter l'interface voisine dont seul ce caractère
+    diffère — et cette interface-là porte peut-être la session ssh.
+
+    LA STROPHE PART D'UN SEUL BLOC. Le filtre saute la ligne `auto`/`iface` qui
+    porte le nom, puis TOUT ce qui suit jusqu'à la prochaine ligne `auto`/`iface`
+    — les attributs sont indentés, donc ils ne la terminent pas. Une suppression
+    par plage d'expressions régulières s'arrêterait à la première ligne vide, et
+    en avalerait la strophe suivante si l'on en a posé deux.
+
+    ÉCRITURE ATOMIQUE : le fichier est reconstruit à côté puis déplacé. Réécrit
+    en place, une coupure au mauvais moment laisserait l'hôte sans configuration
+    réseau du tout.
+
+    L'interface est DESCENDUE d'abord, pour que l'état courant suive le fichier.
+    Les échecs y sont tolérés : une interface déjà absente n'est pas une panne.
+    """
+    if not (nom or "").strip():
+        return []
+    cible = nom.strip()
+    fichier = "/etc/network/interfaces"
+    filtre = (
+        "awk -v n=" + shlex.quote(cible) + " '"
+        "/^(auto|iface) /{saute = ($2 == n)} saute{next} {print}"
+        "' " + fichier + " > " + fichier + ".banc"
+        " && mv " + fichier + ".banc " + fichier
+    )
+    cmds = [
+        f"ifdown {shlex.quote(cible)} 2>/dev/null; true",
+        f"ip link del {shlex.quote(cible)} 2>/dev/null; true",
+        # Idempotent : on ne réécrit le fichier que si la strophe y est.
+        f"grep -qE '^(auto|iface) {re.escape(cible)}( |$)' {fichier}"
+        f" && {{ {filtre}; }} || true",
+    ]
+    if uplink and reseau:
+        regle = f"POSTROUTING -s {reseau} -o {uplink} -j MASQUERADE"
+        cmds.append(
+            f"iptables -t nat -C {regle} 2>/dev/null"
+            f" && iptables -t nat -D {regle} || true"
+        )
+    return cmds
+
+
+def _poser_interface(nom, bloc, cidr, reseau, uplink, creer):
+    """Les commandes qui rendent `bloc` persistant, puis montent `nom`.
+
+    PARTAGÉ par le pont et son interface de VLAN, et ce n'est pas de
+    l'économie : toutes les leçons du montage d'une interface à DISTANCE sont
+    ici, et une seconde copie les perdrait une à une.
+
+    `creer` est la commande qui fabrique l'interface à la main, en repli. Elle
+    seule diffère d'une sorte d'interface à l'autre.
+    """
     texte = "\n".join(bloc) + "\n"
     cmds = [
-        # Idempotent : on n'ajoute la strophe que si le pont n'y est pas déjà.
-        f"grep -qE '^(auto|iface) {nom}( |$)' /etc/network/interfaces"
+        # Idempotent : on n'ajoute la strophe que si l'interface n'y est pas
+        # déjà. LE NOM EST ÉCHAPPÉ, et ce n'est pas du zèle : celui d'une
+        # interface de VLAN porte un point, qui est un JOKER dans une expression
+        # régulière — le motif reconnaîtrait alors un nom voisin dont seul ce
+        # caractère diffère, et la strophe ne serait jamais ajoutée.
+        f"grep -qE '^(auto|iface) {re.escape(nom)}( |$)'"
+        f" /etc/network/interfaces"
         f" || printf '%s' {shlex.quote(texte)} >> /etc/network/interfaces",
     ]
     if uplink:
@@ -851,7 +983,7 @@ def bridge_setup_cmds(
     # donc CHIRURGICAL : on monte le pont à la main, sans toucher à rien
     # d'autre. La strophe, elle, le rend persistant au prochain démarrage.
     manuel = [
-        f"ip link show {nom} >/dev/null 2>&1 || ip link add {nom} type bridge",
+        f"ip link show {nom} >/dev/null 2>&1 || {creer}",
         f"ip addr add {cidr} dev {nom} 2>/dev/null || true",
         f"ip link set {nom} up",
     ]
