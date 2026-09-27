@@ -390,6 +390,17 @@ class TestInsideAWebSession(MenuCase):
         line = b'{"t": "open_view", "view": "telemetry"}\n'
         self.assertEqual(hub.recv(4096), line)
 
+    def test_a_channel_that_fails_opens_the_page_as_usual(self):
+        # Le hub a fermé son extrémité : l'écriture échoue (EPIPE).
+        self.channel().close()
+        with patch.object(
+            launcher, "open_page", return_value=_page()
+        ) as open_page:
+            lines = self.printed(self.todo._todo_telemetry_web)
+        open_page.assert_called_once()
+        self.assertEqual(lines[0], f"✅ Web interface ready — {URL}")
+        self.assertNotIn("Telemetry opened in this page.", lines)
+
     def test_a_todo_started_from_a_session_opens_the_page_as_usual(self):
         # Il hérite des variables, pas du descripteur : un autre pid.
         hub = self.channel(pid=1)

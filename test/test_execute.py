@@ -320,8 +320,9 @@ class TestJobControl(unittest.TestCase):
             start_new_session=True,
         )
         os.close(slave)
-        # Sur un échec, la fermeture du maître (le dernier nettoyage)
-        # raccroche le terminal : SIGHUP à la commande restée au premier plan.
+        # Sur un échec, les nettoyages tournent en ordre inverse, child.kill
+        # d'abord : la mort du chef de session envoie SIGHUP au groupe au
+        # premier plan de son terminal, la commande qui y est restée.
         self.addCleanup(child.wait, 10)
         self.addCleanup(child.kill)
         _read_until(master, b"Execute command")
