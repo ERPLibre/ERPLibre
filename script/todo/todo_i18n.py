@@ -15575,6 +15575,42 @@ TRANSLATIONS = {
         "fr": "Rien à montrer.",
         "en": "Nothing to show.",
     },
+    "🧊 Freeze the versions": {
+        "fr": "🧊 Geler les versions",
+        "en": "🧊 Freeze the versions",
+    },
+    "🔀 Toggle frozen or dev mode": {
+        "fr": "🔀 Basculer le mode figé ou dev",
+        "en": "🔀 Toggle frozen or dev mode",
+    },
+    "Freeze the versions": {
+        "fr": "Geler les versions",
+        "en": "Freeze the versions",
+    },
+    "Versions": {
+        "fr": "Versions",
+        "en": "Versions",
+    },
+    "freeze": {
+        "fr": "gel",
+        "en": "freeze",
+    },
+    "The freeze could not be produced.": {
+        "fr": "Le gel n'a pas pu être produit.",
+        "en": "The freeze could not be produced.",
+    },
+    "Freeze written to": {
+        "fr": "Gel écrit dans",
+        "en": "Freeze written to",
+    },
+    "Reconfigure and synchronize to apply it.": {
+        "fr": "Reconfigurez et synchronisez pour l'appliquer.",
+        "en": "Reconfigure and synchronize to apply it.",
+    },
+    "No freeze file recorded; freeze first.": {
+        "fr": "Aucun fichier de gel enregistré ; gelez d'abord.",
+        "en": "No freeze file recorded; freeze first.",
+    },
 }
 
 
