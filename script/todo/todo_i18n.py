@@ -16221,6 +16221,51 @@ TRANSLATIONS = {
         "fr": "Identifiant : %s — mot de passe dans %s",
         "en": "Login: %s — password in %s",
     },
+    # Dolibarr — lancer et suivre (script/dolibarr/run.py)
+    "Already running: %s": {
+        "fr": "Déjà lancée : %s",
+        "en": "Already running: %s",
+    },
+    "Dolibarr %s serves %s": {
+        "fr": "Dolibarr %s sert %s",
+        "en": "Dolibarr %s serves %s",
+    },
+    "No development Dolibarr instance.": {
+        "fr": "Aucune instance Dolibarr de développement.",
+        "en": "No development Dolibarr instance.",
+    },
+    "No development instance named %s.": {
+        "fr": "Aucune instance de développement nommée %s.",
+        "en": "No development instance named %s.",
+    },
+    "PHP-FPM or nginx is missing: install the instance again.": {
+        "fr": "PHP-FPM ou nginx manque : réinstallez l'instance.",
+        "en": "PHP-FPM or nginx is missing: install the instance again.",
+    },
+    "Port %s is already taken.": {
+        "fr": "Le port %s est déjà pris.",
+        "en": "Port %s is already taken.",
+    },
+    "Stopped: %s": {
+        "fr": "Arrêtée : %s",
+        "en": "Stopped: %s",
+    },
+    "nginx does not start:": {
+        "fr": "nginx ne démarre pas :",
+        "en": "nginx does not start:",
+    },
+    "serving": {
+        "fr": "en service",
+        "en": "serving",
+    },
+    "not running": {
+        "fr": "arrêtée",
+        "en": "not running",
+    },
+    "half running: one daemon is down": {
+        "fr": "à moitié lancée : un démon est arrêté",
+        "en": "half running: one daemon is down",
+    },
 }
 
 
