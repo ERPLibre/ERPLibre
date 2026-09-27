@@ -203,6 +203,36 @@ class TestTaskLog(StoreCase):
         packed = task.path.with_name(task.path.name + ".zst")
         self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
 
+    def test_a_tainted_line_survives_many_tiny_chunks_past_the_limit(self):
+        # Beaucoup de très petits morceaux, sans jamais de \n : la ligne
+        # guettée doit rester intacte et se masquer entière malgré une
+        # fragmentation extrême, bien au-delà de PARTIAL_LIMIT.
+        task = self.task()
+        secret = b"inventeAB" + b"9" * 40
+        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
+            task.output(b"https://u:")
+            for byte in secret:
+                task.output(bytes([byte]))
+            task.output(b"@forge.example\r\n")
+            task.close("done")
+        self.assertEqual(
+            self.texts(task.info["id"]), ["https://u:***@forge.example"]
+        )
+        packed = task.path.with_name(task.path.name + ".zst")
+        self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
+
+    def test_a_long_tainted_line_costs_linear_not_quadratic_time(self):
+        # Lines.feed ne doit jamais relire toute la ligne guettée déjà
+        # accumulée à chaque envoi : un temps proportionnel à son carré
+        # bloquerait la boucle asyncio commune à toutes les sessions.
+        lines = tasklog.Lines()
+        chunk = b"a" * (64 * 1024)
+        debut = time.monotonic()
+        lines.feed(b"https://" + chunk)
+        for _ in range(1023):  # 64 Mio au total, guettée du début à la fin
+            lines.feed(chunk)
+        self.assertLess(time.monotonic() - debut, 3.0)
+
     def test_a_closed_log_reads_back_page_by_page(self):
         task = self.task()
         task.output(b"".join(b"%d\r\n" % n for n in range(10, 20)))

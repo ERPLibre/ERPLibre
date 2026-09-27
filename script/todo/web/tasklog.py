@@ -29,11 +29,14 @@ PARTIAL_LIMIT caractères s'écrit de même, sauf si elle porte encore un mot
 que `redact_for_storage` guette (`holds_secret_trigger`) : sans cette fin
 de ligne, une valeur qui continue plus loin (un mot de passe imprimé va
 jusqu'à la fin de la ligne, une valeur entre guillemets peut porter un
-blanc) ne se coupe pas à l'aveugle, elle attend le prochain `\n`. Au-delà
-de CAP octets bruts, seuls les TAIL derniers restent, écrits à la clôture
-derrière l'événement `omitted {bytes}` ; la ligne que coupe le plafond et
-celle que la fin retenue commence au milieu partent entières : un secret
-coupé ne s'y reconnaîtrait plus.
+blanc) ne se coupe pas à l'aveugle, elle attend le prochain `\n`. Un
+morceau reçu sans saut de ligne ni retour chariot s'ajoute tel quel à la
+ligne en cours, sans la relire : ce qu'elle porte déjà ne coûte qu'une fois,
+à sa coupure réelle, jamais à chaque envoi. Au-delà de CAP octets bruts,
+seuls les TAIL derniers restent, écrits à la clôture derrière l'événement
+`omitted {bytes}` ; la ligne que coupe le plafond et celle que la fin
+retenue commence au milieu partent entières : un secret coupé ne s'y
+reconnaîtrait plus.
 
 `purge` retire des jours entiers ; d'un jour qui tient un `.log` pas encore
 à l'index, seul ce `.log` reste. Un `.log` que rien n'a clos — son hub tué,
@@ -122,42 +125,78 @@ def _at_risk(text) -> bool:
 
 class Lines:
     """Découpe un flux d'octets en lignes nettoyées et entières ; la
-    dernière, sans fin, attend la suite, PARTIAL_LIMIT caractères au plus,
-    sauf si elle porte encore un mot que `redact_for_storage` guette : elle
-    grossit alors jusqu'à son `\\n`, sans quoi la coupure la laisserait à
-    cheval sur une valeur qu'aucun des deux morceaux ne reconnaîtrait plus.
-    Une barre de progression qui ne finit pas sa ligne n'y garde que sa
-    dernière version."""
+    dernière, sans fin, attend la suite en morceaux non joints (`pieces`)
+    tant qu'aucun n'apporte de saut de ligne ni de retour chariot : les
+    rejoindre et les relire à chaque envoi coûterait un temps proportionnel
+    à leur longueur déjà accumulée — un temps total proportionnel au carré
+    de celle-ci pour une ligne qui grossit sans jamais se terminer. Ils ne
+    se joignent (`partial`) qu'à une coupure réelle : PARTIAL_LIMIT
+    caractères au plus, sauf si la ligne porte encore un mot que
+    `redact_for_storage` guette, auquel cas elle attend son `\\n` — sans
+    quoi la coupure la laisserait à cheval sur une valeur qu'aucun des deux
+    morceaux ne reconnaîtrait plus. Une barre de progression qui ne finit
+    pas sa ligne n'y garde que sa dernière version."""
 
     def __init__(self):
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        self.partial = ""
-        self.tainted = False  # `self.partial` porte un mot guetté
+        self.pieces = []  # morceaux de la ligne en cours, pas encore joints
+        self.length = 0  # somme de leurs longueurs, sans les joindre
+        self.tainted = False  # la ligne en cours porte un mot guetté
+        self.pending_cr = False  # elle finit par un \r pas encore tranché
+
+    @property
+    def partial(self) -> str:
+        """La ligne en cours, jointe. À n'appeler qu'à une coupure réelle,
+        jamais à chaque morceau reçu : `feed` s'en charge lui-même."""
+        if len(self.pieces) != 1:
+            self.pieces = ["".join(self.pieces)]
+        return self.pieces[0] if self.pieces else ""
+
+    def _keep(self, rest):
+        """Ce qui reste ouvert après une coupure : `rest` seul, en attente
+        d'un morceau neuf pour continuer, ou rien si la ligne est partie."""
+        self.pieces = [rest] if rest else []
+        self.length = len(rest)
+        self.pending_cr = rest.endswith("\r")
 
     def feed(self, data, final=False) -> list:
         added = self.decoder.decode(data, final)
+        if (
+            not final
+            and not self.pending_cr
+            and "\n" not in added
+            and "\r" not in added
+        ):
+            # Rien à trancher dans ce morceau, et rien en attente d'un
+            # tranchage reporté : l'ajouter suffit, sans retoucher ce qui
+            # précède déjà.
+            self.pieces.append(added)
+            self.length += len(added)
+            self.tainted = self.tainted or _at_risk(added)
+            if self.length > PARTIAL_LIMIT and not self.tainted:
+                line = self.partial
+                self._keep("")
+                return [clean(line)]
+            return []
         text = self.partial + added
-        *done, self.partial = text.split("\n")
+        *done, rest = text.split("\n")
         if done:
             # Une fin de ligne referme tout ce qui précède : seule la suite,
             # venue après elle, peut encore porter une valeur.
-            self.tainted = _at_risk(self.partial)
+            self.tainted = _at_risk(rest)
         else:
-            # `self.partial` peut déjà tenir plus que ce qu'`added` vient
-            # d'ajouter : ne réexaminer que la partie neuve évite un temps
-            # proportionnel au carré de la longueur d'une ligne qui grossit
-            # sans jamais se terminer.
             self.tainted = self.tainted or _at_risk(added)
-        cut = self.partial.rfind("\r", 0, len(self.partial) - 1)
+        cut = rest.rfind("\r", 0, len(rest) - 1)
         if cut > 0:
-            self.partial = self.partial[cut:]
-            self.tainted = _at_risk(self.partial)
-        if self.partial and (
-            final or (len(self.partial) > PARTIAL_LIMIT and not self.tainted)
+            rest = rest[cut:]
+            self.tainted = _at_risk(rest)
+        if rest and (
+            final or (len(rest) > PARTIAL_LIMIT and not self.tainted)
         ):
-            done.append(self.partial)
-            self.partial = ""
+            done.append(rest)
+            rest = ""
             self.tainted = False
+        self._keep(rest)
         return [clean(line) for line in done]
 
 
