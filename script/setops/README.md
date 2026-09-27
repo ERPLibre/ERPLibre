@@ -300,12 +300,18 @@ carries the REASON why. That is the same stance as the state screen, which
 shows its ten lines with three marks rather than the bare list of what is
 ready.
 
-**The scope rule is written once**, in `barriere(etape, ecosysteme, site)`. Two copies would sooner or
+**The scope rule is written once**, in `barriere(etape, ecosysteme, site, confirme)`. Two copies would sooner or
 later say two different things about the same gesture.
 
 - `lit_registre(sortie)`: the sequences, in order, or `None`. A step whose
   nature or target cannot be read refuses the WHOLE registry: a partial
   sequence is worse than none, since its order is what one came for;
+  `confirme` lifts the tier's TWO refusals and those alone: not the form, not a
+  step handed upstream, not the scope — a site gesture with no site mounted stays
+  barred, confirmed or not, since that is an IMPOSSIBILITY and not a precaution,
+  and lifting a precaution does not make a site appear. Its default is false, and
+  that is what makes the addition safe: no existing caller widens its perimeter
+  without having written it;
 - `destructeur(etape)`: is this gesture in the DESTRUCTIVE tier? Derived, never
   listed: the nature the registry DECLARES, or the confirmation it DEMANDS. A
   list written in TODO would age, and from the wrong side — it would let through
@@ -327,7 +333,7 @@ later say two different things about the same gesture.
   check spelling but that the operator LOOKED; a lenient comparison lets one
   confirm from memory, which is exactly what this guard exists to prevent. Only
   border whitespace is forgiven, since it comes from a copy-paste;
-- `barriere(etape, ecosysteme, site)`: what stops TODO from driving this step
+- `barriere(etape, ecosysteme, site, confirme)`: what stops TODO from driving this step
   from here, or `""`. The refusals run from the general to the circumstantial:
   what destroys never runs from here, whereas a missing scope is settled by
   mounting an ecosystem;

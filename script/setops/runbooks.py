@@ -455,7 +455,7 @@ def retape_concorde(attendu, tape) -> bool:
     return bool(voulu) and (tape or "").strip() == voulu
 
 
-def barriere(etape, ecosysteme="", site=""):
+def barriere(etape, ecosysteme="", site="", confirme=False):
     """Ce qui empêche todo de conduire `etape` d'ici, ou « » s'il peut.
 
     LA RÈGLE DE PÉRIMÈTRE EST ICI, ET NULLE PART AILLEURS. Deux copies
@@ -464,15 +464,26 @@ def barriere(etape, ecosysteme="", site=""):
     L'ordre des refus va du plus général au plus circonstanciel : ce qui
     détruit ne se conduit pas d'ici quel que soit le poste, alors qu'une
     portée manquante se règle en montant un écosystème.
+
+    `confirme` LÈVE LES DEUX REFUS DU PALIER, ET EUX SEULS. Il ne lève ni la
+    forme, ni le geste remis à l'amont, ni la portée : un geste de site sans
+    site monté reste barré, confirmé ou non — c'est une IMPOSSIBILITÉ et non une
+    précaution, et lever une précaution ne fait pas apparaître le site.
+
+    SON DÉFAUT EST FAUX, et c'est ce qui rend l'ajout sûr : aucun appelant
+    existant n'élargit son périmètre sans l'avoir écrit. Un défaut vrai aurait
+    ouvert d'un coup tous les gestes du palier à tous les écrans qui demandent
+    « celui-ci se conduit-il ? ».
     """
     if etape is None or etape.nature not in NATURES:
         return FORME_INCONNUE
     if remis(etape):
         return A_REMETTRE
-    if etape.nature == DESTRUCTIF:
-        return DESTRUCTIVE
-    if etape.exige_confirmation:
-        return CONFIRMATION_MOTEUR
+    if not confirme:
+        if etape.nature == DESTRUCTIF:
+            return DESTRUCTIVE
+        if etape.exige_confirmation:
+            return CONFIRMATION_MOTEUR
     if etape.portee == TENANT and not ecosysteme:
         return SANS_ECOSYSTEME
     if etape.portee == SITE and not site:

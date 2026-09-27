@@ -645,5 +645,88 @@ class TestLaRetapeEstStricte(unittest.TestCase):
                 self.assertFalse(R.retape_concorde("OPS-Un-Eco", tape))
 
 
+class TestLaBarriereNeSeLeveQueDeSesDeuxRefusDuPalier(unittest.TestCase):
+    """Lever une précaution ne fait pas apparaître un site. Confirmé ou non, ce
+    qui est IMPOSSIBLE reste barré ; seul ce qui était une précaution se lève."""
+
+    def test_confirming_lifts_the_declared_destructive(self):
+        self.assertEqual(
+            "",
+            R.barriere(
+                etape_palier(nature=R.DESTRUCTIF), "eco", "site", confirme=True
+            ),
+        )
+
+    def test_confirming_lifts_the_demanded_confirmation(self):
+        self.assertEqual(
+            "", R.barriere(etape_palier(), "eco", "site", confirme=True)
+        )
+
+    def test_confirming_does_not_lift_a_missing_scope(self):
+        """LA PROPRIÉTÉ : c'est une impossibilité, non une précaution. Un geste
+        de site sans site monté n'a rien sur quoi porter."""
+        self.assertEqual(
+            R.SANS_ECOSYSTEME,
+            R.barriere(
+                etape_palier(portee=R.TENANT), "", "site", confirme=True
+            ),
+        )
+        self.assertEqual(
+            R.SANS_SITE,
+            R.barriere(etape_palier(portee=R.SITE), "eco", "", confirme=True),
+        )
+
+    def test_confirming_does_not_lift_an_unreadable_form(self):
+        for etape in (None, etape_palier(nature="inventee")):
+            with self.subTest(etape=etape):
+                self.assertEqual(
+                    R.FORME_INCONNUE,
+                    R.barriere(etape, "eco", "site", confirme=True),
+                )
+
+    def test_the_default_confirms_nothing(self):
+        """CE QUI REND L'AJOUT SÛR : aucun appelant existant n'élargit son
+        périmètre sans l'avoir écrit. Un défaut vrai aurait ouvert d'un coup
+        tout le palier à chaque écran qui demande « celui-ci se conduit-il ? »."""
+        self.assertEqual(
+            R.DESTRUCTIVE,
+            R.barriere(etape_palier(nature=R.DESTRUCTIF), "eco", "site"),
+        )
+        self.assertEqual(
+            R.CONFIRMATION_MOTEUR, R.barriere(etape_palier(), "eco", "site")
+        )
+
+    def test_a_step_handed_upstream_stays_barred(self):
+        """Un geste remis à l'amont n'est pas une précaution qu'on lève : todo
+        ne le conduit plus du tout."""
+        for remise in R.remises():
+            etape = etape_palier(cible=remise)
+            if R.barriere(etape, "eco", "site") != R.A_REMETTRE:
+                continue
+            with self.subTest(cible=remise):
+                self.assertEqual(
+                    R.A_REMETTRE,
+                    R.barriere(etape, "eco", "site", confirme=True),
+                )
+            break
+        else:
+            self.skipTest("aucune remise ne tombe sur cette barrière")
+
+    def test_every_answer_stays_in_the_closed_vocabulary(self):
+        for confirme in (False, True):
+            for portee in (R.TENANT, R.SITE, "poste"):
+                for nature in R.NATURES:
+                    with self.subTest(
+                        confirme=confirme, portee=portee, nature=nature
+                    ):
+                        vu = R.barriere(
+                            etape_palier(portee=portee, nature=nature),
+                            "",
+                            "",
+                            confirme=confirme,
+                        )
+                        self.assertIn(vu, R.BARRIERES + ("",))
+
+
 if __name__ == "__main__":
     unittest.main()

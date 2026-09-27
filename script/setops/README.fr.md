@@ -304,13 +304,19 @@ d'ici porte la RAISON pour laquelle il ne part pas. C'est le parti de l'écran
 d'état, qui montre ses dix lignes avec trois marques plutôt que la seule liste
 de ce qui est prêt.
 
-**La règle de périmètre est écrite une fois**, dans `barriere(etape, ecosysteme, site)`. Deux copies
+**La règle de périmètre est écrite une fois**, dans `barriere(etape, ecosysteme, site, confirme)`. Deux copies
 diraient tôt ou tard deux choses différentes du même geste.
 
 - `lit_registre(sortie)` : les séquences, dans l'ordre, ou `None`. Une étape
   dont la nature ou la cible ne se lisent pas fait refuser TOUT le registre :
   une séquence partielle est pire qu'une absence, puisque son ordre est ce
   qu'on vient y chercher ;
+  `confirme` lève les DEUX refus du palier, et eux seuls : ni la forme, ni un
+  geste remis à l'amont, ni la portée — un geste de site sans site monté reste
+  barré, confirmé ou non, parce que c'est une IMPOSSIBILITÉ et non une précaution,
+  et que lever une précaution ne fait pas apparaître le site. Son défaut est faux,
+  et c'est ce qui rend l'ajout sûr : aucun appelant existant n'élargit son
+  périmètre sans l'avoir écrit ;
 - `destructeur(etape)` : ce geste est-il du PALIER destructeur ? Dérivé, jamais
   listé : la nature que le registre DÉCLARE, ou la confirmation qu'il EXIGE. Une
   liste écrite dans todo vieillirait, et du mauvais côté — elle laisserait passer
@@ -332,7 +338,7 @@ diraient tôt ou tard deux choses différentes du même geste.
   vérifier qu'il sait écrire mais qu'il a REGARDÉ ; une comparaison indulgente
   laisse confirmer de mémoire, et c'est précisément ce que ce garde empêche.
   Seuls les blancs de bordure sont pardonnés, venant d'un copier-coller ;
-- `barriere(etape, ecosysteme, site)` : ce qui empêche todo de conduire cette
+- `barriere(etape, ecosysteme, site, confirme)` : ce qui empêche todo de conduire cette
   étape d'ici, ou `""`. Les refus vont du général au circonstanciel : ce qui
   détruit ne part jamais d'ici, alors qu'une portée manquante se règle en
   montant un écosystème ;
