@@ -8,6 +8,7 @@ Chaque enfant est un `python -c` jetable sur un PTY neuf, dont il fait son
 terminal de contrôle ; aucun test ne lance TODO.
 """
 
+import builtins
 import fcntl
 import os
 import pty
@@ -187,6 +188,30 @@ class TestReader(unittest.TestCase):
 
                 with patch.object(ttywatch, "_syscall", refused):
                     self.assertIsNone(child.watch.probe().reader)
+
+    def test_a_process_denied_even_in_stat_makes_the_reader_unknown(self):
+        # hidepid, ProtectProc : /proc/<pid>/stat refuse aussi la lecture,
+        # comme le reste ; le vivant reste inconnu, jamais fini.
+        child = Child(self, WAITERS["child"])
+        child.until(lambda: b"ready" in child.output)
+        child.until(child.blocked)
+        [_, sleeper] = ttywatch.descendants(child.proc.pid)
+        original_elf64 = ttywatch._elf64
+        original_open = builtins.open
+
+        def elf64_refused(pid):
+            if pid == sleeper:
+                raise PermissionError(13, "ptrace")
+            return original_elf64(pid)
+
+        def stat_refused(path, *args, **kwargs):
+            if path == f"/proc/{sleeper}/stat":
+                raise PermissionError(13, "hidepid")
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(ttywatch, "_elf64", elf64_refused):
+            with patch.object(builtins, "open", stat_refused):
+                self.assertIsNone(child.watch.probe().reader)
 
     def test_a_reader_is_found_beside_a_process_out_of_reach(self):
         child = Child(self, READERS["grandchild"])

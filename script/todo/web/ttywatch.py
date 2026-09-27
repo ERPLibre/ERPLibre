@@ -130,13 +130,22 @@ def descendants(pid) -> list:
 
 
 def _ended(pid) -> bool:
-    """Vrai si `pid` a fini : absent de /proc, ou zombie (état Z ou X,
-    après la dernière parenthèse du nom dans `stat`)."""
+    """Vrai si `pid` a fini : absent du tableau des processus (os.kill le
+    confirme), ou zombie (état Z ou X, après la dernière parenthèse du nom
+    dans `stat`). Faux, jamais une supposition, pour un vivant hors de
+    portée de /proc (setuid, ptrace refusé) : os.kill(pid, 0) distingue son
+    absence d'un droit qui lui est simplement refusé."""
     try:
         with open(f"/proc/{pid}/stat", "rb") as f:
             fields = f.read().rsplit(b")", 1)[-1].split()
     except OSError:
-        return True
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            pass
+        return False
     return fields[:1] in ([b"Z"], [b"X"])
 
 
