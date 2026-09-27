@@ -29,6 +29,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -287,13 +288,27 @@ def create(name, entry, system, dest, stamp):
             os.remove(partial)
 
 
+_STAMP = re.compile(r"(\d{8}-\d{6})\.tar\.gz$")
+
+
 def archives(root, name):
+    """Les archives de `name`, la plus récente d'abord : par leur date,
+    que le préfixe pre-upgrade ou pre-restore ne doit pas déplacer."""
     directory = os.path.join(root, BACKUPS, name)
     try:
-        found = [f for f in os.listdir(directory) if f.endswith(".tar.gz")]
+        found = [f for f in os.listdir(directory) if _STAMP.search(f)]
     except OSError:
         return []
-    return [os.path.join(directory, f) for f in sorted(found, reverse=True)]
+    found.sort(key=lambda f: _STAMP.search(f).group(1), reverse=True)
+    return [os.path.join(directory, f) for f in found]
+
+
+def saved_instances(root):
+    """Les instances qui ont un dossier de sauvegardes, retirées comprises."""
+    try:
+        return sorted(os.listdir(os.path.join(root, BACKUPS)))
+    except OSError:
+        return []
 
 
 def build_parser():
@@ -327,7 +342,8 @@ def main(argv=None, root=None, system=None, now=None):
         print(t("Dolibarr registry unreadable: %s") % e)
         return 2
     if args.action == "list":
-        for name in [args.instance] if args.instance else sorted(known):
+        names = sorted(set(known) | set(saved_instances(root)))
+        for name in [args.instance] if args.instance else names:
             print(f"== {name}")
             for path in archives(root, name):
                 print(

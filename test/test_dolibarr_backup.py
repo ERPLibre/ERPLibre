@@ -247,6 +247,38 @@ class TestConteneur(Banc):
             )
 
 
+class TestOrdre(Banc):
+    def test_newest_first_by_date_whatever_the_prefix(self):
+        dossier = self.racine / "private" / "dolibarr" / "backups" / "erp"
+        dossier.mkdir(parents=True)
+        for nom in (
+            "erp-pre-upgrade-20260927-092405.tar.gz",
+            "erp-pre-restore-20260927-092326.tar.gz",
+            "erp-20260927-093025.tar.gz",
+            "erp-20260927-092308.tar.gz",
+        ):
+            (dossier / nom).write_bytes(b"x")
+        noms = [Path(p).name for p in backup.archives(str(self.racine), "erp")]
+        self.assertEqual(
+            noms,
+            [
+                "erp-20260927-093025.tar.gz",
+                "erp-pre-upgrade-20260927-092405.tar.gz",
+                "erp-pre-restore-20260927-092326.tar.gz",
+                "erp-20260927-092308.tar.gz",
+            ],
+        )
+
+    def test_the_backups_of_a_removed_instance_are_still_listed(self):
+        dossier = self.racine / "private" / "dolibarr" / "backups" / "ancienne"
+        dossier.mkdir(parents=True)
+        (dossier / "ancienne-20260901-000000.tar.gz").write_bytes(b"x")
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            backup.main(["list"], root=str(self.racine))
+        self.assertIn("ancienne-20260901-000000.tar.gz", sortie.getvalue())
+
+
 class TestListe(Banc):
     def test_list_shows_the_archives_newest_first(self):
         dossier = self.racine / "private" / "dolibarr" / "backups" / "erp"
