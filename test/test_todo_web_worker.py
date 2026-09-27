@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le worker d'une session web.
+"""Le worker d'une session web et son port.
 
 `serve`, `run_inline`, `track_crumbs` et `restart` sont vérifiés sur des
 doubles, sans TODO. `read_hello` et `main` lisent une socketpair ; `main`
 s'arrête avant TODO, que remplace un double. `open_channel`, qui déplace un
-descripteur, tourne dans un `python -c` jetable. Un seul test lance le vrai
-worker, donc le vrai TODO, par une session du hub : HOME et XDG_RUNTIME_DIR
-temporaires, la langue passée par `hello`, SIGINT ignoré chez le parent
-comme sous un lanceur en arrière-plan.
+descripteur, tourne dans un `python -c` jetable. PipePort pose ses
+questions sur un vrai PTY et une socketpair, le test tenant le rôle du hub
+et du clavier. Un seul test lance le vrai worker, donc le vrai TODO, par
+une session du hub : HOME et XDG_RUNTIME_DIR temporaires, la langue passée
+par `hello`, SIGINT ignoré chez le parent comme sous un lanceur en
+arrière-plan.
 """
 
 import ast
@@ -18,13 +20,16 @@ import fcntl
 import io
 import json
 import os
+import pty
 import signal
 import socket
 import subprocess
 import sys
+import termios
 import time
 import types
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -32,7 +37,8 @@ from unittest.mock import patch
 from todo_web_env import private_env
 
 from script.todo import todo_i18n
-from script.todo.web import sessions, worker
+from script.todo.ui import pipe_port, port
+from script.todo.web import protocol, sessions, worker
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -352,6 +358,207 @@ class TestMain(unittest.TestCase):
         self.assertEqual(code, worker.CRASHED)
         self.assertEqual(out, "boom-marker\n")
         self.assertEqual(todo_i18n.get_lang(), "en")
+
+
+class TestProtocol(unittest.TestCase):
+    def test_a_worker_line_always_fits_the_hub(self):
+        items = [
+            {"key": str(n), "label": "🧰" * 5000, "section": "s" * 5000}
+            for n in range(1000)
+        ]
+        huge = {"t": "menu", "qid": 1, "text": "x" * 10**6 + "Choice: "}
+        line = protocol.encode(dict(huge, items=items, crumbs=["c" * 10**6]))
+        self.assertLessEqual(len(line), protocol.LINE_LIMIT)
+        message = json.loads(line)
+        self.assertEqual(len(message["text"]), protocol.TEXT_LIMIT)
+        self.assertTrue(message["text"].endswith("xChoice: "))
+        self.assertEqual(len(message["items"]), protocol.ITEM_LIMIT)
+        self.assertEqual(message["items"][0]["key"], "0")
+        small = {"t": "notice", "text": "t" * 100, "level": "info"}
+        self.assertEqual(json.loads(protocol.encode(small)), small)
+        # Un caractère de contrôle s'écrit en six octets (\u0001) : même
+        # coupées, ces listes dépasseraient la borne.
+        control = "\x01" * protocol.LABEL_LIMIT
+        item = dict.fromkeys(("key", "label", "section", "speak"), control)
+        lists = {"items": [item] * 300, "crumbs": [control] * 300}
+        line = protocol.encode(dict(huge, **lists, sections=[control] * 300))
+        self.assertLessEqual(len(line), protocol.LINE_LIMIT)
+        self.assertTrue(json.loads(line)["text"].endswith("xChoice: "))
+
+    def test_the_worker_takes_only_answers_and_cancels(self):
+        answer = {"t": "answer", "qid": 2, "value": "ok"}
+        self.assertEqual(protocol.reply(json.dumps(answer)), answer)
+        cancel = {"t": "cancel", "qid": 2}
+        self.assertEqual(protocol.reply(json.dumps(cancel)), cancel)
+        for line in (
+            b'{"t": "answer", "qid": 2}',
+            b'{"t": "answer", "qid": 0, "value": "x"}',
+            b'{"t": "answer", "qid": "2", "value": "x"}',
+            b'{"t": "hello", "qid": 2, "value": "x"}',
+            b"[2]",
+            b"not json",
+        ):
+            self.assertIsNone(protocol.reply(line), line)
+
+
+class TestPipePort(unittest.TestCase):
+    """PipePort sur un vrai PTY (l'esclave pour terminal) et une
+    socketpair (le canal) ; la question tourne dans un fil, le test tient
+    le rôle du hub et du clavier."""
+
+    def setUp(self):
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        self.master, slave = pty.openpty()
+        self.addCleanup(os.close, self.master)
+        self.addCleanup(os.close, slave)
+        self.slave = slave
+        self.hub, end = socket.socketpair()
+        self.addCleanup(self.hub.close)
+        self.addCleanup(end.close)
+        self.hub.settimeout(10)
+        self.lines = self.hub.makefile("rb")
+        self.addCleanup(self.lines.close)
+        self.out = io.StringIO()
+        self.port = pipe_port.PipePort(end.fileno(), slave, self.out)
+        self.pool = ThreadPoolExecutor(1)
+        self.addCleanup(self.pool.shutdown)
+        # Nettoyé d'abord : une ligne vide au clavier répond à la question
+        # qu'un test en échec laisse posée, et le fil finit.
+        self.addCleanup(os.write, self.master, b"\n")
+
+    def received(self):
+        """Le message suivant que le hub reçoit du port."""
+        return json.loads(self.lines.readline())
+
+    def asking(self, method, *args):
+        """La question posée dans un fil ; rend son futur et le message
+        que le hub en reçoit, le `answered` de la précédente sauté."""
+        future = self.pool.submit(method, *args)
+        message = self.received()
+        while message["t"] == "answered":
+            message = self.received()
+        return future, message
+
+    def reply(self, **message):
+        self.hub.sendall(json.dumps(message).encode() + b"\n")
+
+    def typed(self, data):
+        """Écrit `data` au clavier et attend que l'esclave la tienne."""
+        os.write(self.master, data)
+        deadline = time.monotonic() + 5
+        size = bytearray(4)
+        while True:
+            fcntl.ioctl(self.slave, termios.FIONREAD, size)
+            if int.from_bytes(size, sys.byteorder) >= len(data):
+                return
+            self.assertLess(time.monotonic(), deadline, "never queued")
+            time.sleep(0.01)
+
+    def test_the_channel_answers_the_question_of_its_qid(self):
+        future, asked = self.asking(self.port.ask, "Name: ", "x")
+        # La base est propre au processus : le qid 1 d'un worker d'avant
+        # une relance ne répond pas.
+        qid = os.getpid() * 1000 + 1
+        self.assertEqual(
+            (asked["t"], asked["kind"], asked["qid"], asked["default"]),
+            ("ask", "text", qid, "x"),
+        )
+        self.reply(t="answer", qid=1, value="stale")
+        self.reply(t="answer", qid=qid, value="forged")
+        self.assertEqual(future.result(10), "forged")
+        self.assertEqual(self.received(), {"t": "answered", "qid": qid})
+        self.assertEqual(self.out.getvalue(), "Name: forged\n")
+
+    def test_typeahead_never_answers_and_the_terminal_does(self):
+        self.typed(b"typeahead\n")
+        future, asked = self.asking(self.port.ask, "Name: ")
+        os.write(self.master, b"real\n")
+        self.assertEqual(future.result(10), "real")
+        self.assertEqual(self.received()["t"], "answered")
+        # Tapée, la réponse s'affiche par l'écho : rien n'est transcrit.
+        self.assertEqual(self.out.getvalue(), "Name: ")
+
+    def test_a_secret_is_asked_with_the_echo_off_then_masked(self):
+        future, asked = self.asking(self.port.secret, "Password: ")
+        self.assertEqual(
+            (asked["kind"], asked["requires"]), ("secret", ["secret"])
+        )
+        self.assertFalse(termios.tcgetattr(self.master)[3] & termios.ECHO)
+        os.write(self.master, b"hunter2\n")
+        self.assertEqual(future.result(10), "hunter2")
+        self.assertTrue(termios.tcgetattr(self.master)[3] & termios.ECHO)
+        future, asked = self.asking(self.port.secret, "Password: ")
+        self.reply(t="answer", qid=asked["qid"], value="hunter2")
+        self.assertEqual(future.result(10), "hunter2")
+        self.assertEqual(self.out.getvalue(), "Password: •••\n" * 2)
+
+    def test_cancel_and_ctrl_d_end_the_question_like_input(self):
+        future, asked = self.asking(self.port.secret, "Password: ")
+        self.reply(t="cancel", qid=asked["qid"])
+        with self.assertRaises(EOFError):
+            future.result(10)
+        # Comme getpass : l'écho revient, même annulé.
+        self.assertTrue(termios.tcgetattr(self.master)[3] & termios.ECHO)
+        closed = {"t": "answered", "qid": asked["qid"]}
+        self.assertEqual(self.received(), closed)
+        future, asked = self.asking(self.port.ask, "Name: ")
+        os.write(self.master, b"\x04")
+        with self.assertRaises(EOFError):
+            future.result(10)
+        self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
+
+    def test_the_countdown_ends_at_its_deadline_or_at_ctrl_d(self):
+        future, asked = self.asking(
+            self.port.ask, "Go? ", "n", "countdown", 0.2
+        )
+        self.assertEqual(asked["timeout_s"], 0.2)
+        self.assertEqual(future.result(10), "n")
+        self.assertEqual(self.out.getvalue(), "⏱0.2s Go?  ⏱ → Enter (n)\n")
+        # Ctrl+D vaut Entrée, comme dans auto_ask.ask, dont readline()
+        # vide rend le défaut : "" ici, que la capture change en défaut.
+        future, asked = self.asking(
+            self.port.ask, "Go? ", "n", "countdown", 30
+        )
+        os.write(self.master, b"\x04")
+        self.assertEqual(future.result(10), "")
+
+    def test_a_menu_answer_shows_its_entry(self):
+        item = {"key": "1", "label": "Execute", "section": None}
+        view = port.menu_view("[1] Execute\n: ", [item], crumbs=["TODO"])
+        future, asked = self.asking(self.port.menu, view)
+        self.assertEqual((asked["t"], asked["source"]), ("menu", "text"))
+        self.reply(t="answer", qid=asked["qid"], value="1")
+        self.assertEqual(future.result(10), "1")
+        self.assertEqual(self.out.getvalue(), "[1] Execute\n: 1 → Execute\n")
+
+    def test_without_the_hub_the_terminal_answers_alone(self):
+        self.lines.close()
+        self.hub.close()
+        future = self.pool.submit(self.port.ask, "Name: ")
+        deadline = time.monotonic() + 10
+        while self.out.getvalue() != "Name: ":
+            self.assertLess(time.monotonic(), deadline, "never asked")
+            time.sleep(0.01)
+        os.write(self.master, b"alone\n")
+        self.assertEqual(future.result(10), "alone")
+        self.assertIsNone(self.port.channel)
+
+    def test_notices_and_command_events_go_to_the_hub(self):
+        self.port.notice("forged notice", "error")
+        self.port.event({"t": "run_start", "cmd": "true"})
+        self.assertTrue(self.port.open_view("telemetry"))
+        received = [json.loads(self.lines.readline()) for _ in range(3)]
+        self.assertEqual(
+            received,
+            [
+                {"t": "notice", "text": "forged notice", "level": "error"},
+                {"t": "run_start", "cmd": "true"},
+                {"t": "open_view", "view": "telemetry"},
+            ],
+        )
+        self.assertEqual(self.out.getvalue(), "forged notice\n")
 
 
 class TestRealWorker(unittest.IsolatedAsyncioTestCase):
