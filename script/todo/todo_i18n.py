@@ -16544,6 +16544,58 @@ TRANSLATIONS = {
         "fr": "Les conteneurs ne démarrent pas :",
         "en": "The containers do not start:",
     },
+    "Dolibarr - Find installations (local or SSH)": {
+        "fr": "🔎 Dolibarr - Trouver les installations (locales ou SSH)",
+        "en": "🔎 Dolibarr - Find installations (local or SSH)",
+    },
+    "This machine": {
+        "fr": "Ce poste",
+        "en": "This machine",
+    },
+    "Every host of ~/.ssh/config": {
+        "fr": "Tous les hôtes de ~/.ssh/config",
+        "en": "Every host of ~/.ssh/config",
+    },
+    "Where to look for Dolibarr?": {
+        "fr": "Où chercher Dolibarr ?",
+        "en": "Where to look for Dolibarr?",
+    },
+    "Name a host with --ssh, or use --local.": {
+        "fr": "Nommez un hôte avec --ssh, ou utilisez --local.",
+        "en": "Name a host with --ssh, or use --local.",
+    },
+    "reached": {
+        "fr": "joint",
+        "en": "reached",
+    },
+    "key refused: check the SSH key of this host": {
+        "fr": "clé refusée : vérifiez la clé SSH de cet hôte",
+        "en": "key refused: check the SSH key of this host",
+    },
+    "unknown or changed host key: connect once by hand": {
+        "fr": "clé d'hôte inconnue ou changée : connectez-vous une fois à la main",
+        "en": "unknown or changed host key: connect once by hand",
+    },
+    "the probe did not answer": {
+        "fr": "la sonde n'a pas répondu",
+        "en": "the probe did not answer",
+    },
+    "Dolibarr found": {
+        "fr": "Dolibarr trouvé",
+        "en": "Dolibarr found",
+    },
+    "no Dolibarr found": {
+        "fr": "aucun Dolibarr trouvé",
+        "en": "no Dolibarr found",
+    },
+    "no Dolibarr found, some directories are unreadable": {
+        "fr": "aucun Dolibarr trouvé, des dossiers sont illisibles",
+        "en": "no Dolibarr found, some directories are unreadable",
+    },
+    "Report:": {
+        "fr": "Rapport :",
+        "en": "Report:",
+    },
 }
 
 
