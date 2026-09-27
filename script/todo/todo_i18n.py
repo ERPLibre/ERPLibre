@@ -16864,6 +16864,62 @@ TRANSLATIONS = {
         "fr": "Le certificat certbot de %s est gardé ; pour le supprimer :",
         "en": "The certbot certificate of %s is kept; to remove it:",
     },
+    "Already at %s (%s).": {
+        "fr": "Déjà à %s (%s).",
+        "en": "Already at %s (%s).",
+    },
+    "Backup before the upgrade: %s": {
+        "fr": "Sauvegarde avant la montée : %s",
+        "en": "Backup before the upgrade: %s",
+    },
+    "Dolibarr %s upgraded to %s.": {
+        "fr": "Dolibarr %s monté à %s.",
+        "en": "Dolibarr %s upgraded to %s.",
+    },
+    "Rolling back to the backup…": {
+        "fr": "Retour arrière vers la sauvegarde…",
+        "en": "Rolling back to the backup…",
+    },
+    "The backup failed: nothing was upgraded.": {
+        "fr": "La sauvegarde a échoué : rien n'a été monté.",
+        "en": "The backup failed: nothing was upgraded.",
+    },
+    "The core is modified in %s: commit or set it aside first.": {
+        "fr": "Le core est modifié dans %s : committez-le ou mettez-le de côté d'abord.",
+        "en": "The core is modified in %s: commit or set it aside first.",
+    },
+    "The database reads %s, %s expected.": {
+        "fr": "La base indique %s, %s attendue.",
+        "en": "The database reads %s, %s expected.",
+    },
+    "The pin (%s) is older than the instance (%s): no downgrade.": {
+        "fr": "L'épinglage (%s) est plus ancien que l'instance (%s) : pas de descente.",
+        "en": "The pin (%s) is older than the instance (%s): no downgrade.",
+    },
+    "This runtime is not upgraded by this tool yet.": {
+        "fr": "Cette exécution ne se monte pas encore par cet outil.",
+        "en": "This runtime is not upgraded by this tool yet.",
+    },
+    "Upgrade stopped: %s": {
+        "fr": "Montée arrêtée : %s",
+        "en": "Upgrade stopped: %s",
+    },
+    "Upgrading %s from %s to %s.": {
+        "fr": "Montée de %s de %s à %s.",
+        "en": "Upgrading %s from %s to %s.",
+    },
+    "Checkout synchronized": {
+        "fr": "Checkout synchronisé",
+        "en": "Checkout synchronized",
+    },
+    "Code at the pinned commit": {
+        "fr": "Code au commit épinglé",
+        "en": "Code at the pinned commit",
+    },
+    "Upgrade scripts": {
+        "fr": "Scripts de montée",
+        "en": "Upgrade scripts",
+    },
 }
 
 

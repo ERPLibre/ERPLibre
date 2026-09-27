@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Monter une instance Dolibarr à la version épinglée.
+
+Un système simulé répond aux commandes et à la base ; les faits viennent
+d'une montée réelle 23.0.4 → 24.0.1 (natif et conteneur). Ce qui se garde :
+- une sauvegarde précède toute montée, et son échec arrête tout ;
+- descendre est refusé ; même version et même commit, rien à faire ; même
+  version et autre commit, le schéma peut avoir changé : on monte ;
+- un saut majeur à la fois pour upgrade.php et upgrade2.php, step5.php
+  une fois ;
+- le code de sortie ne suffit pas : MAIN_VERSION_LAST_UPGRADE doit valoir
+  la cible ; sinon retour arrière (ancien code, sauvegarde restaurée) ;
+- le registre ne change qu'après une montée réussie.
+"""
+
+import contextlib
+import io
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+RACINE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RACINE))
+
+from script.dolibarr import upgrade  # noqa: E402
+
+ANCIEN = "a" * 40
+NOUVEAU = "b" * 40
+
+
+class Systeme:
+    def __init__(self):
+        self.appels = []
+        self.base = {"MAIN_VERSION_LAST_INSTALL": "23.0.4"}
+        self.echec = set()
+        self.page = "<title>Login @ 24.0.1</title>"
+        self.apres_step5 = "24.0.1"
+
+    def run(self, argv, env=None, stdin_path=None):
+        self.appels.append(list(argv))
+        joint = " ".join(argv)
+        if any(m in joint for m in self.echec):
+            return 1, "ERROR"
+        if "llx_const" in joint:
+            for nom, valeur in self.base.items():
+                if nom in joint:
+                    return 0, valeur + "\n"
+            return 0, ""
+        if "step5.php" in joint and self.apres_step5:
+            self.base["MAIN_VERSION_LAST_UPGRADE"] = self.apres_step5
+        return 0, ""
+
+    def http_get(self, url, host):
+        return self.page
+
+    def engine(self, moteur):
+        return {
+            "moteur": moteur,
+            "sans_sudo": True,
+            "avec_sudo": False,
+            "rootless": True,
+            "docker_host": None,
+        }
+
+
+class Banc(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.racine = Path(tmp.name)
+        self.etat = self.racine / "etat" / "erp"
+        (self.etat / "documents").mkdir(parents=True)
+        (self.etat / "secrets.env").write_text("DB_PASSWORD=Mdp1\n")
+        self.checkout = self.racine / "dolibarr" / "dolibarr"
+        (self.checkout / "htdocs" / "install").mkdir(parents=True)
+        self.pin = {
+            "commit": NOUVEAU,
+            "version": "24.0.1",
+            "path": "dolibarr/dolibarr",
+            "docker_image": "docker.io/dolibarr/dolibarr:24.0.0@sha256:"
+            + "1" * 64,
+        }
+        self.entree = {
+            "mode": "dev",
+            "runtime": "native",
+            "db": "mariadb",
+            "db_name": "dolibarr_erp",
+            "code_root": str(self.checkout),
+            "data_root": str(self.etat / "documents"),
+            "state_dir": str(self.etat),
+            "url": "http://127.0.0.1:8080",
+            "version": "23.0.4",
+            "commit": ANCIEN,
+            "secrets": f"file:{self.etat}/secrets.env",
+        }
+        self.sys = Systeme()
+        self.sauvegarde = str(self.racine / "erp-pre-upgrade.tar.gz")
+        patches = [
+            mock.patch.object(
+                upgrade.backup, "create", lambda *a, **k: self.sauvegarde
+            ),
+            mock.patch.object(upgrade, "stop_dev", lambda name, root: None),
+            mock.patch.object(upgrade, "start_dev", lambda name, root: 0),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def registre(self):
+        chemin = self.racine / "private" / "dolibarr" / "instances.json"
+        return json.loads(chemin.read_text())["instances"]["erp"]
+
+    def monter(self, restaure=None):
+        chemin = self.racine / "private" / "dolibarr" / "instances.json"
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(json.dumps({"instances": {"erp": self.entree}}))
+        sortie = io.StringIO()
+        restaure = restaure or mock.MagicMock(return_value=0)
+        with (
+            contextlib.redirect_stdout(sortie),
+            mock.patch.object(upgrade.restore, "restore", restaure),
+        ):
+            code = upgrade.upgrade(
+                "erp",
+                self.entree,
+                self.pin,
+                self.sys,
+                str(self.racine),
+                "20260927-100000",
+            )
+        return code, sortie.getvalue(), restaure
+
+    def cmds(self):
+        return [" ".join(a) for a in self.sys.appels]
+
+
+class TestSauts(unittest.TestCase):
+    def test_one_major_at_a_time(self):
+        self.assertEqual(
+            upgrade.hops("23.0.4", "24.0.1"), [("23.0.4", "24.0.1")]
+        )
+        self.assertEqual(
+            upgrade.hops("22.0.5", "24.0.1"),
+            [("22.0.5", "23.0.0"), ("23.0.0", "24.0.1")],
+        )
+        self.assertEqual(
+            upgrade.hops("24.0.1", "24.0.1"), [("24.0.1", "24.0.1")]
+        )
+
+
+class TestDecision(Banc):
+    def test_a_downgrade_is_refused(self):
+        self.entree["version"] = "25.0.0"
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.sys.appels, [])
+
+    def test_same_version_same_commit_is_up_to_date(self):
+        self.entree.update(version="24.0.1", commit=NOUVEAU)
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.sys.appels, [])
+
+    def test_same_version_new_commit_still_upgrades(self):
+        # Le schéma a changé entre le tag et le commit épinglé.
+        self.entree.update(version="24.0.1", commit=ANCIEN)
+        self.sys.base["MAIN_VERSION_LAST_UPGRADE"] = "24.0.1"
+        code, sortie, _r = self.monter()
+        self.assertEqual(code, 0, sortie)
+        self.assertIn("php upgrade.php 24.0.1 24.0.1", " ; ".join(self.cmds()))
+
+    def test_the_database_says_where_it_is_not_the_registry(self):
+        # LAST_INSTALL reste à la version installée après une montée.
+        self.sys.base["MAIN_VERSION_LAST_UPGRADE"] = "23.0.5"
+        self.monter()
+        self.assertIn("php upgrade.php 23.0.5 24.0.1", " ; ".join(self.cmds()))
+
+    def test_a_failed_backup_stops_everything(self):
+        with mock.patch.object(upgrade.backup, "create", lambda *a, **k: None):
+            code, _s, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertFalse([c for c in self.cmds() if "php" in c])
+
+
+class TestNatifDev(Banc):
+    def test_checkout_unlock_scripts_relock_and_record(self):
+        code, sortie, _r = self.monter()
+        self.assertEqual(code, 0, sortie)
+        cmds = self.cmds()
+        git = f"git -C {self.checkout}"
+        self.assertIn(f"{git} checkout --detach {NOUVEAU}", cmds)
+        joint = " ; ".join(cmds)
+        u = joint.index("php upgrade.php 23.0.4 24.0.1")
+        u2 = joint.index("php upgrade2.php 23.0.4 24.0.1")
+        s5 = joint.index("php step5.php 23.0.4 24.0.1")
+        self.assertLess(u, u2)
+        self.assertLess(u2, s5)
+        self.assertFalse((self.etat / "documents" / "upgrade.unlock").exists())
+        fiche = self.registre()
+        self.assertEqual(
+            (fiche["version"], fiche["commit"]), ("24.0.1", NOUVEAU)
+        )
+
+    def test_modified_core_files_stop_before_anything(self):
+        self.sys.run_original = self.sys.run
+
+        def run(argv, env=None, stdin_path=None):
+            if "status" in argv:
+                self.sys.appels.append(list(argv))
+                return 0, " M htdocs/core/lib/functions.lib.php\n"
+            return self.sys.run_original(argv, env, stdin_path)
+
+        self.sys.run = run
+        code, _s, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertFalse([c for c in self.cmds() if "checkout --detach" in c])
+
+    def test_a_silent_step5_rolls_back(self):
+        # step5 sort 0 sans rien faire quand la base est tombée.
+        self.sys.apres_step5 = None
+        code, sortie, restaure = self.monter()
+        self.assertEqual(code, 1)
+        self.assertIn(
+            f"git -C {self.checkout} checkout --detach {ANCIEN}", self.cmds()
+        )
+        restaure.assert_called_once()
+        self.assertEqual(restaure.call_args[0][2], self.sauvegarde)
+        self.assertEqual(self.registre()["version"], "23.0.4")
+
+    def test_a_failing_script_stops_the_rest(self):
+        self.sys.echec.add("upgrade2.php")
+        code, _s, restaure = self.monter()
+        self.assertEqual(code, 1)
+        self.assertFalse([c for c in self.cmds() if "step5.php" in c])
+        restaure.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()
