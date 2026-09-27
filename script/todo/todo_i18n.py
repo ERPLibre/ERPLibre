@@ -13311,12 +13311,12 @@ TRANSLATIONS = {
         "en": "Which technology?",
     },
     "VPN - Create a profile from a site preset": {
-        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
-        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+        "fr": "\U0001f3db VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001f3db VPN - Create a profile from a site preset",
     },
     "VPN - Import an AnyConnect profile (.xml)": {
-        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
-        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+        "fr": "\U0001f4e5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001f4e5 VPN - Import an AnyConnect profile (.xml)",
     },
     "An AnyConnect profile usually sits in"
     " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {
@@ -15221,6 +15221,127 @@ TRANSLATIONS = {
     "This target cannot hold the source's shape: ": {
         "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
+    },
+    # Mise à jour et mise à niveau des dépôts git
+    "Upgrade dry run": {
+        "fr": "Mise à niveau à sec",
+        "en": "Upgrade dry run",
+    },
+    "forks": {
+        "fr": "forks",
+        "en": "forks",
+    },
+    "Conflicting": {
+        "fr": "En conflit",
+        "en": "Conflicting",
+    },
+    "Absorbed upstream": {
+        "fr": "Absorbé en amont",
+        "en": "Absorbed upstream",
+    },
+    "To rebase": {
+        "fr": "À rebaser",
+        "en": "To rebase",
+    },
+    "Behind upstream": {
+        "fr": "En retard sur l'amont",
+        "en": "Behind upstream",
+    },
+    "Cannot be compared": {
+        "fr": "Non comparable",
+        "en": "Cannot be compared",
+    },
+    "Up to date": {
+        "fr": "À jour",
+        "en": "Up to date",
+    },
+    "conflicting files": {
+        "fr": "fichiers en conflit",
+        "en": "conflicting files",
+    },
+    "upstream now carries": {
+        "fr": "l'amont porte désormais",
+        "en": "upstream now carries",
+    },
+    "Modules touched": {
+        "fr": "Modules touchés",
+        "en": "Modules touched",
+    },
+    "Documentation and translation only": {
+        "fr": "Documentation et traduction seulement",
+        "en": "Documentation and translation only",
+    },
+    "Contains code": {
+        "fr": "Contient du code",
+        "en": "Contains code",
+    },
+    "No state was written": {
+        "fr": "Aucun état n'a été écrit",
+        "en": "No state was written",
+    },
+    "missing from disk": {
+        "fr": "absent du disque",
+        "en": "missing from disk",
+    },
+    "no upstream branch declared": {
+        "fr": "aucune branche amont déclarée",
+        "en": "no upstream branch declared",
+    },
+    "shallow repository": {
+        "fr": "dépôt superficiel",
+        "en": "shallow repository",
+    },
+    "divergence unreadable": {
+        "fr": "divergence illisible",
+        "en": "divergence unreadable",
+    },
+    "no merge base": {
+        "fr": "aucune base de fusion",
+        "en": "no merge base",
+    },
+    "No upstream declared for this fork": {
+        "fr": "Aucun amont déclaré pour ce fork",
+        "en": "No upstream declared for this fork",
+    },
+    "Upstream guessed from the remote name": {
+        "fr": "Amont deviné d'après le nom du remote",
+        "en": "Upstream guessed from the remote name",
+    },
+    "The declared upstream branch does not exist": {
+        "fr": "La branche amont déclarée n'existe pas",
+        "en": "The declared upstream branch does not exist",
+    },
+    "Upstream did not answer": {
+        "fr": "L'amont n'a pas répondu",
+        "en": "Upstream did not answer",
+    },
+    "Upstream carries no branch for this version": {
+        "fr": "L'amont ne porte aucune branche pour cette version",
+        "en": "Upstream carries no branch for this version",
+    },
+    "Upstream declared": {
+        "fr": "Amont déclaré",
+        "en": "Upstream declared",
+    },
+    "Upstream confirmed": {
+        "fr": "Amont confirmé",
+        "en": "Upstream confirmed",
+    },
+    "Upstreams were not queried; use --upstream.": {
+        "fr": "Les amonts n'ont pas été interrogés ; utiliser --upstream.",
+        "en": "Upstreams were not queried; use --upstream.",
+    },
+    "Where each forked repository comes from.": {
+        "fr": "D'où vient chaque dépôt forké.",
+        "en": "Where each forked repository comes from.",
+    },
+    "dry run: diverge, conflicts and statistics (network)": {
+        "fr": "à sec : divergence, conflits et statistiques (réseau)",
+        "en": "dry run: diverge, conflicts and statistics (network)",
+    },
+    "No Odoo version found": {
+        "fr": "Aucune version d'Odoo trouvée",
+        "en": "No Odoo version found",
     },
 }
 
