@@ -3882,6 +3882,30 @@ TRANSLATIONS = {
     },
     "Quick answers": {"fr": "Réponses rapides", "en": "Quick answers"},
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
+    # Page web : vue Historique, les journaux des tâches des sessions.
+    "History": {"fr": "Historique", "en": "History"},
+    "Purge": {"fr": "Purger", "en": "Purge"},
+    "Purge the whole task history? A task still running is kept.": {
+        "fr": "Purger tout l'historique des tâches ? Une tâche en cours reste.",
+        "en": "Purge the whole task history? A task still running is kept.",
+    },
+    "Tasks removed:": {"fr": "Tâches retirées :", "en": "Tasks removed:"},
+    "No task recorded yet.": {
+        "fr": "Aucune tâche enregistrée pour l'instant.",
+        "en": "No task recorded yet.",
+    },
+    "More": {"fr": "Suite", "en": "More"},
+    "Date": {"fr": "Date", "en": "Date"},
+    "Task": {"fr": "Tâche", "en": "Task"},
+    "Commands": {"fr": "Commandes", "en": "Commands"},
+    "Exit code": {"fr": "Code de retour", "en": "Exit code"},
+    "Duration": {"fr": "Durée", "en": "Duration"},
+    "answered in the terminal": {
+        "fr": "répondu dans le terminal",
+        "en": "answered in the terminal",
+    },
+    "cancelled": {"fr": "annulée", "en": "cancelled"},
+    "bytes omitted": {"fr": "octets omis", "en": "bytes omitted"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",

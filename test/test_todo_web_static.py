@@ -8,8 +8,8 @@ fichiers doivent rester ceux des paquets npm, dont chaque README de
 provenance note les empreintes. La page, elle, est servie depuis la table
 que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
-`static/src/metrics.js`, `static/src/session.js`) tournent sous node,
-quand il est installé.
+`static/src/metrics.js`, `static/src/session.js`,
+`static/src/history.js`) tournent sous node, quand il est installé.
 """
 
 import ast
@@ -168,6 +168,14 @@ class TestPage(unittest.TestCase):
         self.assertNotIn("t-model", field)
         self.assertIn('autocomplete="off"', field)
         self.assertNotIn("<form", source)
+
+    def test_the_history_shows_a_log_as_text_only(self):
+        # Une ligne de journal vient d'un programme quelconque : aucune
+        # n'entre dans la page autrement que par textContent (t-esc).
+        source = (SRC / "history_view.js").read_text(encoding="utf-8")
+        for unsafe in ("t-out", "t-raw", "innerHTML", "markup"):
+            self.assertNotIn(unsafe, source)
+        self.assertIn('<span t-esc="text(record)"/>', source)
 
     def test_a_hidden_session_never_covers_the_page(self):
         # « display » l'emporterait sur l'attribut hidden : le plein écran
@@ -388,6 +396,7 @@ console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,
     sort: m.effectiveSort("system", "usage") ?? null,
     sessions: m.readFragment("#view=sessions&session=s1").view,
+    history: m.readFragment("#view=history").view,
 }));
 """
 
@@ -425,7 +434,13 @@ class TestSystemRows(unittest.TestCase):
 
     def test_the_system_view_offers_no_sort_hence_no_search(self):
         self.assertEqual(
-            self.view, {"view": "system", "sort": None, "sessions": "sessions"}
+            self.view,
+            {
+                "view": "system",
+                "sort": None,
+                "sessions": "sessions",
+                "history": "history",
+            },
         )
 
     def test_the_first_sample_waits_for_rates(self):
@@ -546,6 +561,66 @@ class TestQuickAnswers(unittest.TestCase):
 
     def test_only_a_canonical_terminal_without_echo_asks_a_secret(self):
         self.assertEqual(self.out["secret"], [True, False, False])
+
+
+HISTORY_CHECK = r"""
+const t = (key) => `<${key}>`;
+const task = {crumbs: ["TODO", "Code"], entry: "Show code status",
+    commands: [{cmd: "make forged", rc: 0}, {cmd: "make other", rc: 3},
+        {cmd: "make last", rc: 2}]};
+const records = [
+    {n: 1, s: "event", d: {t: "task_start", crumbs: ["TODO"], entry: "Run"}},
+    {n: 2, s: "out", d: "<b>not html</b>"},
+    {n: 3, s: "event", d: {t: "run_end", rc: null, secs: 65}},
+    {n: 4, s: "event", d: {t: "answer", value: "•••"}},
+    {n: 5, s: "event", d: {t: "answered"}},
+    {n: 6, s: "event", d: {t: "omitted", bytes: 12}},
+];
+const rc = (codes) => m.taskRc({commands: codes.map((code) => ({rc: code}))});
+console.log(JSON.stringify({
+    title: m.taskTitle(task),
+    rc: [m.taskRc(task), rc([0, null]), rc([0]), rc([])],
+    commands: [m.taskCommands(task), m.taskCommands({commands: []})],
+    durations: [5, 65, 7322, -1, null].map(m.duration),
+    states: ["done", "interrupted", "open", "session-ended"].map(
+        (state) => m.stateLabel(state, t)),
+    texts: records.map((record) => m.recordText(record, t)),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestHistoryText(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(HISTORY_CHECK, "history.js")
+
+    def test_a_task_reads_as_its_path_first_failure_and_length(self):
+        self.assertEqual(self.out["title"], "TODO › Code › Show code status")
+        # La première commande en échec, pas la dernière.
+        self.assertEqual(self.out["rc"], [3, "?", 0, ""])
+        self.assertEqual(self.out["commands"], ["make forged (+2)", ""])
+        self.assertEqual(
+            self.out["durations"],
+            ["5 s", "1 min 05 s", "2 h 02 min", "", ""],
+        )
+        self.assertEqual(
+            self.out["states"],
+            ["<done>", "<interrupted>", "<running>", "<Session ended>"],
+        )
+
+    def test_each_record_is_one_line_of_text(self):
+        self.assertEqual(
+            self.out["texts"],
+            [
+                "▶ TODO › Run",
+                "<b>not html</b>",
+                "⏎ <Exit code> ? · 1 min 05 s",
+                "→ •••",
+                "→ (<answered in the terminal>)",
+                "… 12 <bytes omitted>",
+            ],
+        )
 
 
 if __name__ == "__main__":

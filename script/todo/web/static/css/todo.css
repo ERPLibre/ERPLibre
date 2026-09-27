@@ -230,3 +230,58 @@ body {
     flex: 1;
     height: auto;
 }
+
+.tasks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.tasks th,
+.tasks td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+}
+
+.tasks .cmd,
+.log {
+    font-family: ui-monospace, monospace;
+    overflow-wrap: anywhere;
+}
+
+.link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.task-title {
+    font-size: 1rem;
+}
+
+.log {
+    margin: 0 0 0.5rem;
+    padding: 0;
+    list-style: none;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+}
+
+.log .n {
+    display: inline-block;
+    min-width: 3rem;
+    margin-right: 0.75rem;
+    color: var(--muted);
+    text-align: right;
+    user-select: none;
+}
+
+.log .event {
+    color: var(--muted);
+}
