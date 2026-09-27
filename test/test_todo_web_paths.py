@@ -9,12 +9,34 @@ ne touche le vrai ~/.erplibre ni le vrai répertoire d'exécution.
 
 import os
 import stat
+import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from script.todo.web import paths
+
+REPO = Path(__file__).resolve().parent.parent
+WRITES = 300
+# Écrivain d'un autre processus : il annonce qu'il est prêt, attend le fichier
+# de départ commun, puis écrit sa valeur WRITES fois.
+WRITER = """\
+import os, sys, time
+from pathlib import Path
+from script.todo.web import paths
+target, go, value, count = sys.argv[1:]
+print("ready", flush=True)
+deadline = time.monotonic() + 30
+while not os.path.exists(go):
+    if time.monotonic() > deadline:
+        sys.exit("no start signal")
+    time.sleep(0.001)
+for _ in range(int(count)):
+    paths.write_private(Path(target), value)
+"""
 
 
 def _mode(path) -> int:
@@ -120,6 +142,72 @@ class TestPaths(unittest.TestCase):
         self.assertEqual(_mode(target), 0o600)
         self.assertEqual(
             sorted(p.name for p in target.parent.iterdir()), ["note.txt"]
+        )
+
+    def test_concurrent_writers_share_no_temporary_file(self):
+        # Deux threads et deux processus écrivent le même fichier en même
+        # temps : aucun n'échoue, et le contenu final est entier, celui de
+        # l'un d'eux.
+        target = paths.runtime_dir(self.root) / "redirect.html"
+        go = self.tmp / "go"
+        values = [
+            f"{name}\n" * 512
+            for name in ("thread-a", "thread-b", "process-a", "process-b")
+        ]
+        env = dict(os.environ, PYTHONPATH=str(REPO))
+        procs = []
+        for value in values[2:]:
+            proc = subprocess.Popen(
+                [sys.executable, "-c", WRITER, str(target), str(go), value]
+                + [str(WRITES)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+            )
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.kill)
+            procs.append(proc)
+        for proc in procs:
+            self.assertEqual(proc.stdout.readline(), "ready\n")
+        errors = []
+        start = threading.Event()
+
+        def write(value):
+            start.wait(30)
+            try:
+                for _ in range(WRITES):
+                    paths.write_private(target, value)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=write, args=(value,))
+            for value in values[:2]
+        ]
+        for thread in threads:
+            thread.start()
+        go.touch()
+        start.set()
+        for thread in threads:
+            thread.join(60)
+        for proc in procs:
+            _out, err = proc.communicate(timeout=60)
+            self.assertEqual((proc.returncode, err), (0, ""))
+        self.assertEqual(errors, [])
+        self.assertIn(target.read_text(encoding="utf-8"), values)
+        self.assertEqual(_mode(target), 0o600)
+        self.assertEqual(
+            [p.name for p in target.parent.iterdir()], ["redirect.html"]
+        )
+
+    def test_a_failed_write_leaves_no_temporary_file(self):
+        target = paths.runtime_dir(self.root) / "redirect.html"
+        target.mkdir()
+        with self.assertRaises(OSError):
+            paths.write_private(target, "new")
+        self.assertEqual(
+            [p.name for p in target.parent.iterdir()], ["redirect.html"]
         )
 
     def test_ctl_path_too_long_is_refused(self):

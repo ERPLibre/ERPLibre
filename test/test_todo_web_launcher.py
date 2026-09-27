@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import tornado
 
-from script.todo.web import launcher, paths
+from script.todo.web import launcher, paths, server
 
 REPO = Path(__file__).resolve().parent.parent
 # Le lanceur et le hub refusent root : sous root, ces tests n'ont rien à
@@ -162,11 +162,17 @@ class TestWithHub(unittest.TestCase):
         self.assertFalse(paths.redirect_path(REPO).exists())
 
     def test_an_unwritable_redirect_file_is_a_launch_error(self):
-        blocker = paths.redirect_path(REPO).with_name("redirect.html.tmp")
+        # Un répertoire à la place de redirect.html : os.replace échoue.
+        blocker = paths.redirect_path(REPO)
+        blocker.unlink(missing_ok=True)
         blocker.mkdir()
         self.addCleanup(blocker.rmdir)
         with self.assertRaisesRegex(launcher.LaunchError, "redirect"):
             launcher.open_page(REPO, browser=False)
+        self.assertEqual(
+            [p.name for p in blocker.parent.glob("redirect.html*")],
+            ["redirect.html"],
+        )
 
     def test_invalid_view_or_language_is_refused(self):
         with self.assertRaises(ValueError):
@@ -308,6 +314,44 @@ class TestStartFailure(unittest.TestCase):
         self.assertEqual(code, 2)
         popen.assert_not_called()
         self.assertIn("invalid view", err.getvalue())
+
+
+@as_user
+class TestConcurrentStart(unittest.TestCase):
+    def setUp(self):
+        self.base = _private_env(self.addCleanup)
+
+    def test_a_hub_started_meanwhile_by_another_process_is_found(self):
+        # Un autre démarreur tient le verrou : le hub lancé ici sort en code
+        # 3, et le hub de l'autre ne répond qu'après cette sortie.
+        popen = subprocess.Popen
+        spawned = {}
+
+        def concurrent_start(argv, **kwargs):
+            held = server._hold_lock(paths.lock_path(REPO))
+            try:
+                spawned["ours"] = ours = popen(argv, **kwargs)
+                ours.wait(10)
+            finally:
+                os.close(held)
+            spawned["other"] = other = popen(
+                argv,
+                cwd=REPO,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            self.addCleanup(other.wait, 10)
+            self.addCleanup(other.terminate)
+            return ours
+
+        with patch.object(
+            launcher.subprocess, "Popen", side_effect=concurrent_start
+        ):
+            info = launcher.ensure_running(REPO)
+        self.assertEqual(spawned["ours"].returncode, 3)
+        self.assertEqual(info["pid"], spawned["other"].pid)
 
 
 class TestRoot(unittest.TestCase):

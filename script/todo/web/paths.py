@@ -19,6 +19,7 @@ Module pur : ni tornado ni réseau, importé par le serveur et le lanceur.
 import hashlib
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 APP = "erplibre-todo-web"
@@ -104,13 +105,22 @@ def open_log(root) -> int:
 def write_private(path: Path, text: str) -> None:
     """Écrit `text` dans `path` en 0600, remplacé d'un coup.
 
-    Le fichier temporaire voisin est resserré avant d'être rempli, puis
-    `os.replace` l'installe : un lecteur voit l'ancien contenu ou le nouveau,
-    jamais un fichier à moitié écrit ni lisible par un autre compte.
+    Chaque appel crée son propre fichier temporaire, au nom unique, à côté de
+    `path` ; il est resserré avant d'être rempli, puis `os.replace`
+    l'installe. Deux écrivains simultanés ne partagent donc aucun fichier :
+    le dernier remplacement gagne, entier. Un lecteur voit l'ancien contenu
+    ou le nouveau, jamais un fichier à moitié écrit ni lisible par un autre
+    compte. Sur un échec, le fichier temporaire est retiré avant que
+    l'`OSError` remonte.
     """
-    tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
-    os.replace(tmp, path)
+    fd, tmp = tempfile.mkstemp(
+        dir=path.parent, prefix=path.name + ".", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise

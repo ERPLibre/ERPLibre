@@ -272,10 +272,16 @@ class TestHttp(HubCase):
             resp = await self.fetch("/api/login", "POST", body, **post)
             self.assertEqual(resp.code, expected, body)
 
-    async def test_login_removes_the_redirect_file(self):
-        self.hub.redirect_path.write_text("code inside")
-        self.assertEqual((await self.login()).code, 200)
+    async def test_login_removes_only_the_redirect_file_of_its_code(self):
+        # Le lanceur réécrit redirect.html pour chaque code : un code plus
+        # ancien qui sert ne retire pas le lien plus récent, encore inutilisé.
+        first, second = await self.ctl("mint"), await self.ctl("mint")
+        self.hub.redirect_path.write_text(f"#login={second}&view=telemetry")
+        self.assertEqual((await self.login(first)).code, 200)
+        self.assertTrue(self.hub.redirect_path.exists())
+        self.assertEqual((await self.login(second)).code, 200)
         self.assertFalse(self.hub.redirect_path.exists())
+        self.assertEqual((await self.login()).code, 200, "no redirect file")
 
     async def test_post_needs_the_session_csrf_token(self):
         cookie = await self.cookie()

@@ -507,9 +507,22 @@ class Hub:
         if expiry < time.monotonic():
             return False
         self.touch()
-        # Le fichier de redirection porte un code : il a servi.
-        self.redirect_path.unlink(missing_ok=True)
+        self._drop_redirect(code)
         return True
+
+    def _drop_redirect(self, code):
+        """Retire redirect.html s'il porte `code`, qui vient de servir.
+
+        Le lanceur le réécrit pour chaque code émis : un fichier qui porte un
+        autre code mène à un lien qui n'a pas encore servi, et reste. Un
+        fichier absent ou illisible ne change rien à la connexion.
+        """
+        try:
+            text = self.redirect_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return
+        if code in text:
+            self.redirect_path.unlink(missing_ok=True)
 
     def open_session(self) -> str:
         token = secrets.token_urlsafe(32)

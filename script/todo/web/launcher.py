@@ -164,9 +164,10 @@ def ensure_running(root) -> dict:
     Le hub est détaché (nouvelle session, stdin sur /dev/null, sorties dans
     server.log, vidé à chaque lancement) : Ctrl+C dans le terminal de TODO ne
     l'atteint pas. `status` est sondé toutes les POLL s pendant
-    START_TIMEOUT s ; sinon le hub est tué et `LaunchError` porte la fin du
-    journal. `LaunchError` aussi sous root, et quand le journal ne peut pas
-    être ouvert.
+    START_TIMEOUT s, et encore après une sortie en code 3 du hub lancé ici :
+    le hub d'un autre lanceur répond alors à sa place. Sans réponse, le hub
+    est tué et `LaunchError` porte la fin du journal. `LaunchError` aussi
+    sous root, et quand le journal ne peut pas être ouvert.
     """
     if os.geteuid() == 0:
         raise LaunchError("the web hub refuses to run as root")
@@ -195,16 +196,16 @@ def ensure_running(root) -> dict:
         os.close(fd)
     _SPAWNED[proc.pid] = proc
     deadline = time.monotonic() + START_TIMEOUT
-    while time.monotonic() < deadline and proc.poll() is None:
+    while True:
         info = status(root)
         if info is not None:
             return info
+        # Code 3 : un autre lanceur tient le verrou ou sert déjà ce
+        # checkout, et son hub est attendu comme le nôtre. Tout autre code
+        # de sortie est un échec sans attente.
+        if time.monotonic() >= deadline or proc.poll() not in (None, 3):
+            break
         time.sleep(POLL)
-    # Un autre lanceur a pu démarrer le hub pendant ce temps : le nôtre est
-    # alors sorti en code 3, et celui-là répond.
-    info = status(root)
-    if info is not None:
-        return info
     if proc.poll() is None:
         proc.kill()
         proc.wait()
