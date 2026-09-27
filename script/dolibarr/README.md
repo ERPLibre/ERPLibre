@@ -149,6 +149,7 @@ set.
 
 ```bash
 ./script/dolibarr/debug.py on --instance erp       # off puts everything back
+./script/dolibarr/debug.py on --instance erp --xdebug    # native development
 ./script/dolibarr/debug.py tail --instance erp --filter ERR
 ./script/dolibarr/module.py create --instance erp --name Zorglub --enable
 ./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
@@ -167,6 +168,15 @@ set.
   development instance sets `conf.php` to prod=0 and strict mode. The
   previous state is saved once; `off` puts it back row for row. A production
   needs its name retyped: level 7 logs session ids.
+- `--xdebug`, on a native development instance, loads Xdebug 3 into that
+  instance's PHP-FPM only (an ini under its `run/php.d`, nothing in
+  `/etc`), in trigger mode on port 9003: add `?XDEBUG_TRIGGER=1` to the
+  address or use the browser's Xdebug helper. The package is installed if
+  PHP-FPM cannot load it; a host that already loads it everywhere (Debian
+  and Fedora do on install) is not made to load it twice. VS Code gets a
+  configuration in the checkout's `.vscode/launch.json`, which Dolibarr's
+  `.gitignore` ignores; PhpStorm's settings are printed. The paths are the
+  same on both sides, so no mapping is needed.
 - `module.py create` does what the ModuleBuilder's "New module" does, from
   the instance's own template, so the module goes on in the ModuleBuilder.
   It lands in `custom/` (the checkout's `htdocs/custom`, or the host

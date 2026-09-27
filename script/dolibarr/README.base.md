@@ -294,6 +294,7 @@ ne sont pas posés.
 <!-- [common] -->
 ```bash
 ./script/dolibarr/debug.py on --instance erp       # off puts everything back
+./script/dolibarr/debug.py on --instance erp --xdebug    # native development
 ./script/dolibarr/debug.py tail --instance erp --filter ERR
 ./script/dolibarr/module.py create --instance erp --name Zorglub --enable
 ./script/dolibarr/module.py link --instance erp --path ~/src/zorglub
@@ -313,6 +314,15 @@ ne sont pas posés.
   development instance sets `conf.php` to prod=0 and strict mode. The
   previous state is saved once; `off` puts it back row for row. A production
   needs its name retyped: level 7 logs session ids.
+- `--xdebug`, on a native development instance, loads Xdebug 3 into that
+  instance's PHP-FPM only (an ini under its `run/php.d`, nothing in
+  `/etc`), in trigger mode on port 9003: add `?XDEBUG_TRIGGER=1` to the
+  address or use the browser's Xdebug helper. The package is installed if
+  PHP-FPM cannot load it; a host that already loads it everywhere (Debian
+  and Fedora do on install) is not made to load it twice. VS Code gets a
+  configuration in the checkout's `.vscode/launch.json`, which Dolibarr's
+  `.gitignore` ignores; PhpStorm's settings are printed. The paths are the
+  same on both sides, so no mapping is needed.
 - `module.py create` does what the ModuleBuilder's "New module" does, from
   the instance's own template, so the module goes on in the ModuleBuilder.
   It lands in `custom/` (the checkout's `htdocs/custom`, or the host
@@ -372,6 +382,16 @@ ne sont pas posés.
   mode strict. L'état d'avant est gardé une fois ; `off` le remet ligne à
   ligne. Une production exige son nom retapé : le niveau 7 journalise les
   identifiants de session.
+- `--xdebug`, sur une instance de développement native, charge Xdebug 3
+  dans le PHP-FPM de cette instance seulement (un ini sous son
+  `run/php.d`, rien dans `/etc`), en mode déclenché sur le port 9003 :
+  ajouter `?XDEBUG_TRIGGER=1` à l'adresse ou passer par l'extension Xdebug
+  du navigateur. Le paquet s'installe si PHP-FPM ne peut pas le charger ;
+  un hôte qui le charge déjà partout (Debian et Fedora le font à
+  l'installation) ne le charge pas deux fois. VS Code reçoit une
+  configuration dans `.vscode/launch.json` du checkout, que le
+  `.gitignore` de Dolibarr ignore ; les réglages de PhpStorm sont
+  affichés. Les chemins sont les mêmes des deux côtés : aucun mappage.
 - `module.py create` fait ce que fait « Nouveau module » du ModuleBuilder,
   depuis le gabarit de l'instance elle-même : le module se poursuit dans le
   ModuleBuilder. Il naît dans `custom/` (`htdocs/custom` du checkout, ou le
