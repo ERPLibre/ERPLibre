@@ -43,8 +43,8 @@ MASK = "•••"
 
 def transcript(message, value) -> str:
     """Ce qu'une réponse du canal laisse dans le terminal : « 1 → libellé »
-    pour une entrée de menu, sinon la valeur."""
-    for item in message.get("items", ()):
+    pour une entrée de menu ou une option d'un choix, sinon la valeur."""
+    for item in (*message.get("items", ()), *message.get("options", ())):
         if item["key"] == value.strip():
             return f"{value} → {item['label']}"
     return value
@@ -60,14 +60,18 @@ def _flush_input(fd):
 
 def _echo_off(fd):
     """Coupe l'écho de `fd`, entrée vidée, comme `getpass` ; rend les
-    réglages à remettre, ou None hors terminal."""
+    réglages à remettre, ou None hors terminal ou quand le terminal
+    refuse, raccroché : rien n'a changé."""
     try:
         saved = termios.tcgetattr(fd)
     except (termios.error, OSError):
         return None
     quiet = list(saved)
     quiet[3] &= ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSAFLUSH, quiet)
+    try:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, quiet)
+    except (termios.error, OSError):
+        return None
     return saved
 
 

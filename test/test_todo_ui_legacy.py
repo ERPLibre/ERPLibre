@@ -485,6 +485,26 @@ class TestMenus(CaptureCase):
         )
         self.assertEqual((ask["t"], ask["kind"]), ("ask", "text"))
 
+    def test_without_a_crumb_only_the_block_ending_at_the_prompt_counts(self):
+        earlier = "Compiling...\n[1] 48213\nsome log line\n"
+        self.assertIsNone(legacy.read_screen(earlier + "Database name: "))
+        scripted = self.capture("forged", "2", "0")
+        print(earlier, end="")
+        input("Database name: ")
+        print(earlier + "\nWhich host?\n  [1] Local\n  [2] Address")
+        input("Choice: ")
+        # L'invite collée à la dernière entrée est dans le bloc.
+        print(earlier + "[1] Local\n[2] Address")
+        input("[0] Back: ")
+        ask, menu, glued = scripted.events
+        self.assertEqual((ask["t"], ask["kind"]), ("ask", "text"))
+        self.assertEqual((menu["t"], menu["crumbs"]), ("menu", []))
+        self.assertEqual(
+            [(i["key"], i["label"]) for i in menu["items"]],
+            [("1", "Local"), ("2", "Address")],
+        )
+        self.assertEqual([i["key"] for i in glued["items"]], ["1", "2", "0"])
+
     def test_a_screen_numbered_otherwise_stays_a_text_question(self):
         screens = [
             "1. first step\n2. second step",

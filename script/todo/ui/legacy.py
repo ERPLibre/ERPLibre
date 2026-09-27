@@ -137,13 +137,19 @@ class MenuText(str):
 def read_screen(text):
     """Le menu d'un écran à crochets, depuis son dernier fil d'Ariane :
     un dict `items` (clé, libellé, section), `crumbs`, `sections` ; None
-    sans entrée `[N]`, ou si une ligne numérote autrement."""
+    sans entrée `[N]`, ou si une ligne numérote autrement. Sans fil
+    d'Ariane, les entrées ne viennent que du bloc qui finit à l'invite
+    (`_prompt_block`) : une ligne à crochets d'une sortie antérieure,
+    « [1] 48213 », n'en devient pas une."""
     lines = text.splitlines()
     starts = [n for n, line in enumerate(lines) if CRUMB.match(line)]
+    lines = lines[starts[-1] if starts else 0 :]
+    if any(OTHER_NUMBERING.match(line) for line in lines):
+        return None
+    if not starts:
+        lines = _prompt_block(lines)
     crumbs, sections, items, section = [], [], [], None
-    for line in lines[starts[-1] if starts else 0 :]:
-        if OTHER_NUMBERING.match(line):
-            return None
+    for line in lines:
         if match := CRUMB.match(line):
             crumbs = [crumb.strip() for crumb in match[1].split("›")]
         elif match := SECTION.match(line):
@@ -156,6 +162,22 @@ def read_screen(text):
     if not items:
         return None
     return {"items": items, "crumbs": crumbs, "sections": sections}
+
+
+def _prompt_block(lines) -> list:
+    """Les lignes d'entrée ou de section qui finissent à l'invite, la
+    dernière ligne : celle-ci si elle porte une entrée (« [0] Retour : »),
+    et celles qui la précèdent, jusqu'à la première ligne vide ou d'un
+    autre genre."""
+    end = len(lines)
+    if lines and not ENTRY.match(lines[-1]):
+        end -= 1  # l'invite seule sur sa ligne
+    start = end
+    while start and (
+        ENTRY.match(lines[start - 1]) or SECTION.match(lines[start - 1])
+    ):
+        start -= 1
+    return lines[start:end]
 
 
 def wrap_menus(todo_class) -> None:

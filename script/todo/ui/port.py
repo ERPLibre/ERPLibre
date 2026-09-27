@@ -10,8 +10,9 @@ multi)`, `notice(text, level)`, `run(cmd, **opts)` et `open_view(view)`.
 `menu` et `ask` sont les deux primitives : elles montrent leur texte tel
 quel et rendent la ligne répondue, sans son saut de ligne. Une ligne vide
 rend "" et laisse le défaut à l'appelant, comme `input` ; seul le compte à
-rebours (`kind="countdown"`) rend `default` à l'échéance. `BasePort` en
-déduit les autres questions.
+rebours (`kind="countdown"`) rend `default` à l'échéance. `menu` pose un
+message déjà fait : un `menu`, ou l'`ask` que construit `choose`.
+`BasePort` en déduit les autres questions.
 
 Chaque question est aussi un message `todo.v1` (`question`, `menu_view`) :
 `speak`, un libellé court pour la voix ; `requires`, les capacités qu'un
@@ -38,6 +39,7 @@ REQUIRES = {
     "confirm": [],
     "typed": ["typed"],
     "countdown": [],
+    "choose": [],
 }
 FALLBACK = "pty"
 SPEAK_LIMIT = 80
@@ -64,10 +66,11 @@ def speak(text) -> str:
     return ""
 
 
-def question(kind, text, default=None, timeout=None) -> dict:
+def question(kind, text, default=None, timeout=None, **fields) -> dict:
     """Message `ask` d'une question de genre `kind` (une clé de REQUIRES) ;
-    `timeout_s` pour un compte à rebours. Une confirmation se répond par
-    `y` ou `n`, que `_is_yes` et `_is_no` de TODO lisent déjà."""
+    `timeout_s` pour un compte à rebours ; `fields` s'y ajoutent, ou
+    remplacent `speak`. Une confirmation se répond par `y` ou `n`, que
+    `_is_yes` et `_is_no` de TODO lisent déjà."""
     message = {
         "t": "ask",
         "kind": kind,
@@ -79,14 +82,15 @@ def question(kind, text, default=None, timeout=None) -> dict:
     }
     if timeout is not None:
         message["timeout_s"] = timeout
+    message.update(fields)
     return message
 
 
 def menu_view(text, items, crumbs=(), sections=(), source="text") -> dict:
     """Message `menu` : `text` s'affiche tel quel, `items` sont des dict
     `key`, `label`, `section` (None hors section) ; chacun reçoit son
-    `speak`. `source` dit qui l'a produit : `fill_help_info`, `text` (un
-    écran lu) ou `choose`."""
+    `speak`. `source` dit qui l'a produit : `fill_help_info` ou `text`
+    (un écran lu)."""
     return {
         "t": "menu",
         "text": text,
@@ -104,7 +108,9 @@ def shell(cmd) -> str:
     """La commande shell de `cmd`. Une str passe telle quelle ; dans une
     t-string (`Template`), chaque valeur interpolée, convertie (`!r`, `!s`,
     `!a`) et formatée comme dans une f-string, passe par `shlex.quote` :
-    elle reste un seul mot, espaces et `;` compris. TypeError sinon."""
+    elle reste un seul mot, espaces et `;` compris. TypeError sinon.
+    Jamais de guillemets autour de `{…}` : la citation est faite ici, et
+    `t"echo '{x}'"` la refermerait, rendant `x` à plusieurs mots."""
     if isinstance(cmd, str):
         return cmd
     if not isinstance(cmd, Template):
@@ -148,15 +154,21 @@ class BasePort:
     def choose(self, text, options, multi=False):
         """L'option choisie par son numéro, ou avec `multi` la liste de
         celles que nomme une réponse comme « 1 3 » ; redemande tant que la
-        réponse nomme autre chose."""
+        réponse nomme autre chose. La question est un `ask` de genre
+        `choose`, posé par `menu` : `options` (`key`, `label`, `speak`) et
+        `multi` pour la page, un texte qui numérote les options pour le
+        terminal."""
         items = [
-            {"key": str(n), "label": str(option), "section": None}
+            {"key": str(n), "label": str(option), "speak": speak(option)}
             for n, option in enumerate(options, 1)
         ]
         lines = [text, *(f"[{i['key']}] {i['label']}" for i in items)]
-        view = menu_view("\n".join(lines) + "\n: ", items, source="choose")
+        shown = "\n".join(lines) + "\n: "
+        message = question(
+            "choose", shown, options=items, multi=multi, speak=speak(text)
+        )
         while True:
-            keys = self.menu(view).replace(",", " ").split()
+            keys = self.menu(message).replace(",", " ").split()
             picked = [
                 options[int(key) - 1]
                 for key in keys

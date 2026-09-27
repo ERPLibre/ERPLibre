@@ -35,7 +35,11 @@ VIEWS = ("telemetry",)
 
 
 def _dump(message) -> bytes:
-    return json.dumps(message, ensure_ascii=False).encode() + b"\n"
+    """La ligne UTF-8 de `message` ; un demi-substitut isolé, comme en
+    porte un nom de fichier non UTF-8 lu sous surrogateescape, y devient
+    « ? » au lieu de lever UnicodeEncodeError."""
+    line = json.dumps(message, ensure_ascii=False)
+    return line.encode(errors="replace") + b"\n"
 
 
 def _clip(value):
@@ -101,7 +105,8 @@ def _printable(value) -> bool:
     """Vrai pour un texte sans caractère de contrôle (C0, DEL, C1) ni
     demi-substitut UTF-16 isolé : rien qui, écrit dans le terminal par la
     transcription, déplace le curseur ou lance une séquence d'échappement,
-    et rien que `_dump` ne sache encoder."""
+    et rien que `_dump` changerait en « ? », une réponse autre que celle
+    tapée."""
     return not any(
         ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 or 0xD800 <= ord(c) < 0xE000
         for c in value

@@ -117,6 +117,18 @@ class TestTerminalPort(unittest.TestCase):
             ],
         )
 
+    def test_a_choice_is_asked_by_number_through_input(self):
+        texts = []
+
+        def fake_input(text):
+            texts.append(text)
+            return "2"
+
+        self.originals(input=fake_input)
+        terminal = port.TerminalPort()
+        self.assertEqual(terminal.choose("Which?", ["alpha", "beta"]), "beta")
+        self.assertEqual(texts, ["Which?\n[1] alpha\n[2] beta\n: "])
+
     def test_run_calls_exec_command_live_and_notice_prints(self):
         with patch.object(
             execute.Execute, "exec_command_live", return_value=3
@@ -175,14 +187,24 @@ class TestScriptedPort(unittest.TestCase):
         self.assertEqual(
             scripted.choose("Which?", options, multi=True), ["alpha", "gamma"]
         )
-        view = scripted.events[0]
+        single, again, multi = scripted.events
         self.assertEqual(
-            view["text"], "Which?\n[1] alpha\n[2] beta\n[3] gamma\n: "
+            (single["t"], single["kind"], single["multi"], multi["multi"]),
+            ("ask", "choose", False, True),
         )
         self.assertEqual(
-            [(i["key"], i["label"]) for i in view["items"]],
-            [("1", "alpha"), ("2", "beta"), ("3", "gamma")],
+            single["text"], "Which?\n[1] alpha\n[2] beta\n[3] gamma\n: "
         )
+        self.assertEqual(single["speak"], "Which?")
+        self.assertEqual(
+            [(o["key"], o["label"], o["speak"]) for o in single["options"]],
+            [
+                ("1", "alpha", "alpha"),
+                ("2", "beta", "beta"),
+                ("3", "gamma", "gamma"),
+            ],
+        )
+        self.assertEqual(again, single)
 
 
 class TestMessages(unittest.TestCase):
@@ -193,6 +215,7 @@ class TestMessages(unittest.TestCase):
             "confirm": [],
             "typed": ["typed"],
             "countdown": [],
+            "choose": [],
         }
         for kind, requires in cases.items():
             message = port.question(kind, "💬 Continue anyway? :  ")
@@ -229,6 +252,17 @@ class TestShell(unittest.TestCase):
         # apostrophes, que la citation garde.
         self.assertEqual(
             shlex.split(ui.shell(t"echo {path!r}")), ["echo", repr(path)]
+        )
+
+    def test_quotes_around_an_interpolation_undo_its_quoting(self):
+        # La citation est déjà faite : des guillemets de plus la referment,
+        # et la valeur redevient plusieurs mots, `;` compris.
+        path = "/srv/forged dir;touch forged"
+        command = ui.shell(t"echo '{path}'")
+        self.assertEqual(command, "echo ''/srv/forged dir;touch forged''")
+        self.assertEqual(
+            shlex.split(command),
+            ["echo", "/srv/forged", "dir;touch", "forged"],
         )
 
     def test_a_plain_string_passes_unchanged_and_others_are_refused(self):

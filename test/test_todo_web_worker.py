@@ -435,6 +435,12 @@ class TestProtocol(unittest.TestCase):
         self.assertLessEqual(len(line), protocol.LINE_LIMIT)
         self.assertTrue(json.loads(line)["text"].endswith("xChoice: "))
 
+    def test_a_name_that_is_not_utf_8_never_breaks_the_line(self):
+        # Un nom de fichier non UTF-8, tel que os.listdir le rend.
+        name = b"backup-\xff.zip".decode(errors="surrogateescape")
+        line = protocol.encode({"t": "ask", "qid": 1, "text": f"{name}: "})
+        self.assertEqual(json.loads(line)["text"], "backup-?.zip: ")
+
     def test_the_worker_takes_only_answers_and_cancels(self):
         answer = {"t": "answer", "qid": 2, "value": "ok"}
         self.assertEqual(protocol.reply(json.dumps(answer)), answer)
@@ -521,6 +527,24 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(self.received(), {"t": "answered", "qid": qid})
         self.assertEqual(self.out.getvalue(), "Name: forged\n")
 
+    def test_an_answer_split_across_two_reads_still_answers(self):
+        future, asked = self.asking(self.port.ask, "Name: ")
+        answer = {"t": "answer", "qid": asked["qid"], "value": "forged"}
+        line = json.dumps(answer).encode() + b"\n"
+        self.hub.sendall(line[:10])
+        deadline = time.monotonic() + 5
+        while self.port.pending != line[:10]:
+            self.assertLess(time.monotonic(), deadline, "never read")
+            time.sleep(0.01)
+        self.hub.sendall(line[10:])
+        self.assertEqual(future.result(10), "forged")
+
+    def test_a_terminal_that_refuses_the_echo_off_has_nothing_to_restore(self):
+        refused = termios.error(5, "Input/output error")
+        with patch.object(pipe_port.termios, "tcsetattr", side_effect=refused):
+            self.assertIsNone(pipe_port._echo_off(self.slave))
+        self.assertTrue(termios.tcgetattr(self.slave)[3] & termios.ECHO)
+
     def test_typeahead_never_answers_and_the_terminal_does(self):
         self.typed(b"typeahead\n")
         future, asked = self.asking(self.port.ask, "Name: ")
@@ -582,6 +606,25 @@ class TestPipePort(unittest.TestCase):
         self.reply(t="answer", qid=asked["qid"], value="1")
         self.assertEqual(future.result(10), "1")
         self.assertEqual(self.out.getvalue(), "[1] Execute\n: 1 → Execute\n")
+
+    def test_a_choice_is_an_ask_with_its_options(self):
+        # Entrée seule redemande un choix : Ctrl+D, lui, le finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        future, asked = self.asking(
+            self.port.choose, "Which?", ["alpha", "beta"], True
+        )
+        self.assertEqual(
+            (asked["t"], asked["kind"], asked["multi"]),
+            ("ask", "choose", True),
+        )
+        self.assertEqual(
+            [o["label"] for o in asked["options"]], ["alpha", "beta"]
+        )
+        self.reply(t="answer", qid=asked["qid"], value="2")
+        self.assertEqual(future.result(10), ["beta"])
+        self.assertEqual(
+            self.out.getvalue(), "Which?\n[1] alpha\n[2] beta\n: 2 → beta\n"
+        )
 
     def test_without_the_hub_the_terminal_answers_alone(self):
         self.lines.close()
