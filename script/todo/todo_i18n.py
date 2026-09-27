@@ -16716,6 +16716,22 @@ TRANSLATIONS = {
         "fr": "🩺 Dolibarr - Santé, sécurité et intégrité",
         "en": "🩺 Dolibarr - Health, security and integrity",
     },
+    "Dolibarr - Back up an instance": {
+        "fr": "💾 Dolibarr - Sauvegarder une instance",
+        "en": "💾 Dolibarr - Back up an instance",
+    },
+    "Cannot save %s:": {
+        "fr": "Impossible de sauvegarder %s :",
+        "en": "Cannot save %s:",
+    },
+    "Backup written: %s": {
+        "fr": "Sauvegarde écrite : %s",
+        "en": "Backup written: %s",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
 }
 
 

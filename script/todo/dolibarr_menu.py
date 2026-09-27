@@ -40,6 +40,8 @@ PIN_PENDING = 3
 DETECT_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/detect.py"
 # Bilan de santé, sécurité et intégrité de chaque instance inscrite.
 DOCTOR_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/doctor.py"
+# Sauvegarde d'une instance, sous private/dolibarr/backups/.
+BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
 SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
@@ -83,6 +85,7 @@ class DolibarrMenuMixin:
                     "Dolibarr - Health, security and integrity"
                 )
             },
+            {"prompt_description": t("Dolibarr - Back up an instance")},
             {"section": t("Inventory")},
             {
                 "prompt_description": t(
@@ -111,6 +114,8 @@ class DolibarrMenuMixin:
             elif status == "7":
                 self._dolibarr_doctor()
             elif status == "8":
+                self._dolibarr_backup()
+            elif status == "9":
                 self._dolibarr_detect()
             else:
                 print(t("Command not found !"))
@@ -119,6 +124,30 @@ class DolibarrMenuMixin:
         """doctor.py sur toutes les instances ; il dit lui-même ce qui va."""
         self.execute.exec_command_live(
             f"{DOCTOR_CLI} --all", source_erplibre=False
+        )
+
+    def _dolibarr_backup(self):
+        """backup.py sur l'instance choisie, production comprise ; une
+        seule instance est prise sans question."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(known)
+        if not names:
+            print(t("No Dolibarr instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        self.execute.exec_command_live(
+            f"{BACKUP_CLI} create --instance {shlex.quote(name)}",
+            source_erplibre=False,
         )
 
     def _dolibarr_detect(self):

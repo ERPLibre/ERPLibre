@@ -44,6 +44,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Instance logs": "_dolibarr_run",
         "Dolibarr - Update the pinned commit": "_dolibarr_pin",
         "Dolibarr - Health, security and integrity": "_dolibarr_doctor",
+        "Dolibarr - Back up an instance": "_dolibarr_backup",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
     }
 
@@ -133,6 +134,43 @@ class TestChoixDeLInstance(Banc):
 
 DETECT = "./.venv.erplibre/bin/python -u script/dolibarr/detect.py"
 DOCTOR = "./.venv.erplibre/bin/python -u script/dolibarr/doctor.py"
+
+
+BACKUP = "./.venv.erplibre/bin/python -u script/dolibarr/backup.py"
+
+
+class TestSauvegarde(Banc):
+    def lancer_sauvegarde(self, reponses=()):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_backup()
+        return lances
+
+    def test_every_instance_can_be_saved_production_included(self):
+        self.registre = {"aaa": dict(DEV), "zzz": dict(DEV, mode="prod")}
+        lances = self.lancer_sauvegarde(["2"])
+        self.assertEqual(lances, [f"{BACKUP} create --instance zzz"])
+
+    def test_a_single_instance_is_taken_without_asking(self):
+        self.registre = {"erp": dict(DEV, runtime="container")}
+        self.assertEqual(
+            self.lancer_sauvegarde(), [f"{BACKUP} create --instance erp"]
+        )
+
+    def test_no_instance_saves_nothing(self):
+        self.assertEqual(self.lancer_sauvegarde(), [])
 
 
 class TestBilan(unittest.TestCase):
