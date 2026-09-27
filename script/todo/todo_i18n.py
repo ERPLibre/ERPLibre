@@ -16824,6 +16824,46 @@ TRANSLATIONS = {
         "fr": "Conteneurs recréés",
         "en": "Containers recreated",
     },
+    "Dolibarr - List the instances": {
+        "fr": "📋 Dolibarr - Lister les instances",
+        "en": "📋 Dolibarr - List the instances",
+    },
+    "Dolibarr - Remove an instance": {
+        "fr": "🗑️ Dolibarr - Retirer une instance",
+        "en": "🗑️ Dolibarr - Remove an instance",
+    },
+    "Back up the instance first? (Y/n): ": {
+        "fr": "Sauvegarder l'instance d'abord ? (O/n) : ",
+        "en": "Back up the instance first? (Y/n): ",
+    },
+    "The backup failed: nothing was removed.": {
+        "fr": "La sauvegarde a échoué : rien n'a été retiré.",
+        "en": "The backup failed: nothing was removed.",
+    },
+    "Removing deletes %s: retype its name with --confirm.": {
+        "fr": "Retirer supprime %s : retapez son nom avec --confirm.",
+        "en": "Removing deletes %s: retype its name with --confirm.",
+    },
+    "Not everything was removed; running the removal again resumes:": {
+        "fr": "Tout n'a pas été retiré ; relancer le retrait reprend :",
+        "en": "Not everything was removed; running the removal again resumes:",
+    },
+    "Instance %s removed.": {
+        "fr": "Instance %s retirée.",
+        "en": "Instance %s removed.",
+    },
+    "Kept, your modules: %s": {
+        "fr": "Gardés, vos modules : %s",
+        "en": "Kept, your modules: %s",
+    },
+    "custom/ kept": {
+        "fr": "custom/ gardé",
+        "en": "custom/ kept",
+    },
+    "The certbot certificate of %s is kept; to remove it:": {
+        "fr": "Le certificat certbot de %s est gardé ; pour le supprimer :",
+        "en": "The certbot certificate of %s is kept; to remove it:",
+    },
 }
 
 
