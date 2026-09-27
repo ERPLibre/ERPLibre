@@ -1,8 +1,10 @@
 // Amorçage de la page. Le fragment de l'URL porte « login » (code à usage
 // unique), « view » et « lang » : le code en est retiré avant tout appel
-// réseau et ne reste ni dans l'historique ni dans un rechargement. Puis la
-// session donne le jeton CSRF et la langue par défaut, et la page charge la
-// table de traduction et la télémétrie avant de monter la vue.
+// réseau, il quitte donc la barre d'adresse et un rechargement ne le retrouve
+// pas. L'historique du navigateur peut garder l'URL d'arrivée, code compris :
+// un code déjà dépensé par la connexion qui suit, ou périmé après 120 s.
+// Puis la session donne le jeton CSRF et la langue par défaut, et la page
+// charge la table de traduction et la télémétrie avant de monter la vue.
 import {mount} from "@odoo/owl";
 import {ApiError, getJson, postJson, setCsrfToken} from "./api.js";
 import {TelemetryPage} from "./tree_view.js";

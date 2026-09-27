@@ -133,6 +133,13 @@ class TestPage(unittest.TestCase):
         self.assertEqual(table["/static/LICENSE"][1], server.LICENSE_TYPE)
         self.assertFalse([url for url in self.table if url.endswith(".py")])
 
+    def test_the_tree_toggle_is_named_after_its_node(self):
+        # Le bouton ne montre que ▸ ou ▾ : un lecteur d'écran annonce son
+        # nom accessible, le libellé du nœud.
+        source = (SRC / "tree_view.js").read_text(encoding="utf-8")
+        [button] = re.findall(r"<button\b[^>]*>", source)
+        self.assertIn('t-att-aria-label="props.node.label"', button)
+
     def test_the_page_code_names_no_command(self):
         names = _command_names()
         self.assertGreater(len(names), 50)

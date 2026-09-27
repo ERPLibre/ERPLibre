@@ -7,6 +7,7 @@ export class TreeNode extends Component {
     static template = xml`
         <li t-att-class="props.node.menu ? 'menu' : 'leaf'">
             <button t-if="props.node.menu" type="button" class="toggle"
+                t-att-aria-label="props.node.label"
                 t-att-aria-expanded="state.open ? 'true' : 'false'"
                 t-on-click="toggle" t-esc="state.open ? '▾' : '▸'"/>
             <span class="label" t-esc="props.node.label"/>
