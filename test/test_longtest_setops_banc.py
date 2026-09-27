@@ -2222,5 +2222,190 @@ class TestLesInterfacesDeVlanSeDefontAvantLeurPont(unittest.TestCase):
         self.assertIn("interface routée", dit)
 
 
+def mesures_bonnes(**change):
+    """Des mesures où tout est tenu, que chaque épreuve altère d'un champ."""
+    champs = dict(
+        terrain="un-terrain",
+        elevation=B.ELEVE,
+        liens=(B.A_POSER, B.NOTRE),
+        index_libre=True,
+        pont="vmbr9",
+        vmid_gabarit=9000,
+        gabarit=B.GABARIT_CONFORME,
+    )
+    champs.update(change)
+    return B.Mesures(**champs)
+
+
+class TestLesDepotsDuBancNeSeReserventPasAEuxMemes(unittest.TestCase):
+    """Ils portent l'index par construction dès le premier montage. Les compter
+    ferait refuser toute exécution suivante, et le banc ne tournerait qu'une
+    fois — c'est la même distinction que pour ses liens : « déjà à nous » n'est
+    pas « occupé »."""
+
+    def test_our_own_repository_does_not_reserve_the_index(self):
+        for nom in (B.ECOSYSTEME, B.UNDERLAY_BANC):
+            with self.subTest(nom=nom):
+                self.assertIs(
+                    True,
+                    B.index_libre(
+                        [{"nom": nom, "index": B.INDEX_ECOSYSTEME}],
+                        B.INDEX_ECOSYSTEME,
+                    ),
+                )
+
+    def test_a_third_party_holding_it_still_blocks(self):
+        """Le contrôle positif : sans lui, un garde qui accorde toujours
+        passerait l'épreuve ci-dessus."""
+        self.assertIs(
+            False,
+            B.index_libre(
+                [{"nom": "OPS-Un-Autre", "index": B.INDEX_ECOSYSTEME}],
+                B.INDEX_ECOSYSTEME,
+            ),
+        )
+
+    def test_an_entry_without_a_name_still_reserves(self):
+        """Ne pas savoir à qui appartient un dépôt n'autorise pas à le
+        recouvrir."""
+        self.assertIs(
+            False,
+            B.index_libre([{"index": B.INDEX_ECOSYSTEME}], B.INDEX_ECOSYSTEME),
+        )
+
+
+class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
+    """PURE : elle ne mesure rien, elle juge des mesures. C'est ce qui rend
+    l'ordre des refus éprouvable sans machine, et ce qui fait qu'un refus
+    s'explique de la même façon quel que soit le terrain."""
+
+    def test_everything_held_lets_it_go_on(self):
+        """Le contrôle positif de tous les refus ci-dessous."""
+        self.assertEqual(B.SORTIE_OK, B.juge(B.prealables(mesures_bonnes())))
+
+    def test_each_missing_measure_stops_it(self):
+        for change in (
+            {"terrain": ""},
+            {"elevation": B.IMPOSSIBLE},
+            {"liens": (B.OCCUPE, B.NOTRE)},
+            {"index_libre": False},
+            {"pont": ""},
+            {"vmid_gabarit": 0},
+            {"gabarit": B.GABARIT_ABSENT},
+            {"gabarit": B.GABARIT_MATERIEL},
+            {"gabarit": B.GABARIT_PAS_MODELE},
+        ):
+            with self.subTest(**change):
+                self.assertEqual(
+                    B.SORTIE_OUTILLAGE,
+                    B.juge(B.prealables(mesures_bonnes(**change))),
+                )
+
+    def test_an_unmeasured_condition_is_not_a_refusal(self):
+        """« Pas su regarder » se distingue de « non » : l'écran doit envoyer
+        chercher la sonde, non la machine."""
+        for champ in ("elevation", "index_libre", "gabarit"):
+            with self.subTest(champ=champ):
+                vus = B.prealables(mesures_bonnes(**{champ: None}))
+                inconnus = [p for p in vus if p.tenu is None]
+                self.assertEqual(1, len(inconnus))
+
+    def test_an_unreadable_link_state_is_not_a_refusal(self):
+        vus = B.prealables(mesures_bonnes(liens=(None, B.NOTRE)))
+        self.assertIn(None, [p.tenu for p in vus])
+
+    def test_a_refused_elevation_says_why(self):
+        """Un sudo interactif n'échoue pas, il attend : le dire évite de chercher
+        une machine en panne."""
+        vus = B.prealables(mesures_bonnes(elevation=B.IMPOSSIBLE))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn("mot de passe", dit)
+
+    def test_a_non_conforming_template_says_where_to_look(self):
+        vus = B.prealables(mesures_bonnes(gabarit=B.GABARIT_MATERIEL))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn(B.PROCEDURE_GABARIT, dit)
+
+    def test_an_occupied_link_names_which_one(self):
+        vus = B.prealables(mesures_bonnes(liens=(B.OCCUPE, B.NOTRE)))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn(B.LIEN_UNDERLAY, dit)
+        self.assertNotIn(B.LIEN_INSTANCE, dit)
+
+    def test_the_terrain_is_judged_first(self):
+        """Sans terrain, aucune autre mesure ne veut rien dire."""
+        self.assertIn("terrain", B.prealables(mesures_bonnes())[0].quoi)
+
+
+class TestRienNeSePoseSansAvoirEteNomme(unittest.TestCase):
+    """Écrite APRÈS la pose, une interruption entre les deux laisserait sur la
+    grappe un objet que plus rien ne nomme — et `--detruire` ne défait que ce que
+    l'empreinte nomme. Nommé d'abord, le pire cas est un nom sans objet, et tous
+    les gestes de défaite tolèrent l'absence."""
+
+    def chantier(self):
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        return B.Chantier(
+            "un-terrain", os.path.join(dossier, "creux", "empreinte.json")
+        )
+
+    def relu(self, chantier):
+        with open(chantier.chemin, encoding="utf-8") as lu:
+            return B.lit_empreinte(lu.read())
+
+    def test_the_name_is_on_disk_before_anything_is_posed(self):
+        """LA PROPRIÉTÉ : le fichier porte le nom dès que `nomme` a rendu."""
+        chantier = self.chantier()
+        self.assertEqual("", chantier.nomme(pont="vmbr9"))
+        self.assertEqual("vmbr9", self.relu(chantier).pont)
+
+    def test_it_creates_the_directory_it_needs(self):
+        """Le dossier du labo peut ne pas exister au premier lancement."""
+        chantier = self.chantier()
+        self.assertEqual("", chantier.ecrit())
+        self.assertTrue(os.path.isfile(chantier.chemin))
+
+    def test_every_addition_is_written(self):
+        chantier = self.chantier()
+        chantier.nomme(pont="vmbr9")
+        chantier.nomme(modele=9000)
+        chantier.nomme(vms=((101, "banc-fictif-01"),))
+        relu = self.relu(chantier)
+        self.assertEqual(
+            ("vmbr9", 9000, ((101, "banc-fictif-01"),)),
+            (relu.pont, relu.modele, relu.vms),
+        )
+
+    def test_what_it_writes_is_ours(self):
+        """`a_defaire` refuse une empreinte qui n'est pas celle du banc : un
+        chantier qui écrirait autre chose ne se défairait jamais."""
+        chantier = self.chantier()
+        chantier.nomme(pont="vmbr9")
+        self.assertTrue(B.nous(self.relu(chantier)))
+        self.assertNotEqual((), B.a_defaire(self.relu(chantier)))
+
+    def test_a_directory_that_cannot_be_written_says_so(self):
+        """Rendu et non levé : l'appelant décide s'il continue — mais il ne doit
+        pas poser ce qu'il n'a pas pu nommer."""
+        chantier = B.Chantier("un-terrain", "/proc/interdit/empreinte.json")
+        self.assertTrue(chantier.nomme(pont="vmbr9"))
+
+    def test_no_temporary_file_is_left_behind(self):
+        """CE QUE CETTE ÉPREUVE MESURE : aucun reste. Elle ne prouve PAS
+        l'atomicité — il faudrait tuer le processus au bon moment — mais un
+        fichier de travail oublié à côté de l'empreinte se retrouve plus tard
+        sans qu'on sache lequel des deux compte.
+        """
+        chantier = self.chantier()
+        chantier.nomme(pont="vmbr9")
+        restes = [
+            n
+            for n in os.listdir(os.path.dirname(chantier.chemin))
+            if n.endswith(".chantier")
+        ]
+        self.assertEqual([], restes)
+
+
 if __name__ == "__main__":
     unittest.main()

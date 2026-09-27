@@ -260,6 +260,97 @@ class Geste(NamedTuple):
     nom: str
 
 
+class Mesures(NamedTuple):
+    """Ce que le banc a RELEVÉ du terrain avant de rien poser.
+
+    Chaque champ vaut None quand la mesure n'a pas abouti, ce qui se distingue
+    d'une mesure qui a répondu « non ». Les préalables lisent cette différence :
+    l'écran doit dire « pas su regarder » là où c'est le cas, faute de quoi on
+    cherche une machine en panne quand c'est la sonde qui n'est pas passée.
+    """
+
+    terrain: str
+    elevation: str | None
+    liens: tuple
+    index_libre: bool | None
+    pont: str
+    vmid_gabarit: int
+    gabarit: str | None
+
+
+def prealables(mesures):
+    """Les conditions à tenir avant que quoi que ce soit soit créé.
+
+    PURE : elle ne mesure rien, elle JUGE des mesures. C'est ce qui rend
+    l'ordre des refus éprouvable sans machine, et ce qui fait qu'un refus
+    s'explique toujours de la même façon quel que soit le terrain.
+
+    L'ordre suit le coût de ce qu'on éviterait : le terrain d'abord, sans quoi
+    aucune autre mesure ne veut rien dire ; puis ce qui appartient à autrui —
+    les liens du moteur — puis ce que le banc aurait à choisir.
+    """
+    vu = mesures
+    gabarit = vu.gabarit
+    return (
+        Prealable(
+            quoi="un terrain est désigné",
+            tenu=bool((vu.terrain or "").strip()),
+            dit=""
+            if (vu.terrain or "").strip()
+            else "aucun étage, aucun alias",
+        ),
+        Prealable(
+            quoi="le terrain se joue, élévation connue",
+            tenu=vu.elevation in (TEL_QUEL, ELEVE)
+            if vu.elevation is not None
+            else None,
+            dit=(
+                "sudo réclamerait un mot de passe, qu'une session sans"
+                " terminal ne peut pas taper"
+                if vu.elevation == IMPOSSIBLE
+                else ""
+            ),
+        ),
+        Prealable(
+            quoi=f"les {len(LIENS)} liens du moteur sont libres ou à nous",
+            tenu=(
+                all(etat in (A_POSER, NOTRE) for etat in vu.liens)
+                if vu.liens and None not in vu.liens
+                else None
+            ),
+            dit=", ".join(
+                f"{nom} : {etat}"
+                for nom, etat in zip(LIENS, vu.liens or ())
+                if etat not in (A_POSER, NOTRE)
+            ),
+        ),
+        Prealable(
+            quoi=f"l'index {INDEX_ECOSYSTEME} est libre chez les frères",
+            tenu=vu.index_libre,
+            dit="" if vu.index_libre else "un dépôt frère le porte déjà",
+        ),
+        Prealable(
+            quoi="un nom de pont est libre sur le terrain",
+            tenu=bool((vu.pont or "").strip()),
+            dit=""
+            if (vu.pont or "").strip()
+            else "aucun nom libre, ou la configuration réseau n'a pas été lue",
+        ),
+        Prealable(
+            quoi="un VMID de gabarit est libre sur la grappe",
+            tenu=bool(vu.vmid_gabarit),
+            dit="" if vu.vmid_gabarit else "la grappe n'a pas dit ses VMID",
+        ),
+        Prealable(
+            quoi=f"le gabarit « {GABARIT} » est conforme",
+            tenu=(gabarit == GABARIT_CONFORME)
+            if gabarit is not None
+            else None,
+            dit=dit_gabarit(gabarit) if gabarit is not None else "",
+        ),
+    )
+
+
 def juge(prealables):
     """Le code de sortie que ces préalables commandent.
 
@@ -757,6 +848,14 @@ proxmox_clone_pont: {pont.strip()}
 """
 
 
+# CE QU'ON DEMANDE AU MOTEUR sur ses dossiers frères. Lancé chez lui, avec son
+# python : sa règle de découverte a déjà changé une fois, et la deviner du nom
+# d'un dossier la ferait diverger en silence.
+SONDE_INSTANCES = (
+    "import json, sys; sys.path.insert(0, 'scripts');"
+    " import instances; print(json.dumps(instances.decouvrir()))"
+)
+
 # Le groupe que le générateur d'inventaire du moteur remplit des hôtes ACTIFS.
 # C'est lui que la matérialisation et le rasage lisent.
 GROUPE_ACTIFS = "hotes_actifs"
@@ -1051,13 +1150,18 @@ def lien_etat(chemin, vise):
         return INCONNU
 
 
-def index_libre(instances, voulu):
+def index_libre(instances, voulu, siens=(ECOSYSTEME, UNDERLAY_BANC)):
     """L'index `voulu` est-il libre parmi `instances` ? None si on ne sait pas.
 
     `instances` est ce que le moteur découvre chez ses dossiers frères. Une
     découverte qui n'aboutit pas REFUSE au lieu de conclure : un index déjà pris
     dérive les mêmes adresses et les mêmes VLAN pour deux écosystèmes, et rien
     dans la suite ne le signalerait.
+
+    LES DÉPÔTS DU BANC NE SE RÉSERVENT PAS À EUX-MÊMES. Ils portent l'index par
+    construction dès le premier montage : les compter ferait refuser toute
+    exécution suivante, et le banc ne tournerait qu'une fois. C'est la même
+    distinction que pour ses liens — « déjà à nous » n'est pas « occupé ».
 
     Une entrée sans index déclaré ne réserve rien — la découverte du moteur
     l'ignore elle aussi, donc elle ne peut pas entrer en conflit.
@@ -1069,6 +1173,7 @@ def index_libre(instances, voulu):
             int(une["index"])
             for une in instances
             if une.get("index") is not None
+            and (une.get("nom") or "") not in siens
         }
         return int(voulu) not in pris
     except (AttributeError, TypeError, ValueError):
@@ -1932,6 +2037,124 @@ def ecrit_empreinte(empreinte) -> str:
         },
         sort_keys=True,
     )
+
+
+def mesure_le_terrain(moteur, terrain):
+    """Relève tout ce que les préalables jugent, sans rien poser. Ne lève jamais.
+
+    AUCUNE ÉCRITURE ICI. Chaque commande jouée est une lecture : l'élévation, la
+    configuration réseau, les VMID de la grappe, la configuration du gabarit. Un
+    banc qui poserait en mesurant ne pourrait plus refuser sans avoir déjà sali
+    le terrain.
+
+    L'élévation se mesure EN PREMIER, parce que toutes les autres en dépendent :
+    lues sans droits, elles rendraient « commande introuvable » et le banc
+    conclurait à un terrain vierge.
+    """
+    elevation = elevation_du_terrain(terrain)
+    liens = tuple(
+        lien_etat(os.path.join(moteur, nom), cible)
+        for nom, cible in cibles_des_liens()
+    )
+    vide = Mesures(terrain or "", elevation, liens, None, "", 0, None)
+    if elevation not in (TEL_QUEL, ELEVE):
+        return vide
+
+    interfaces = joue_sur(terrain, ["cat /etc/network/interfaces"], elevation)
+    pont = pont_libre(interfaces.sortie) if interfaces.reussi else ""
+
+    ressources = joue_sur(terrain, cmds_vmids(), elevation)
+    vmids = lit_vmids(ressources.sortie) if ressources.reussi else None
+    vmid = gabarit_libre(vmids)
+
+    gabarit = None
+    trouve = lit_gabarit(ressources.sortie) if ressources.reussi else None
+    if trouve == 0:
+        gabarit = GABARIT_ABSENT
+    elif trouve:
+        config = joue_sur(terrain, cmds_config_vm(trouve), elevation)
+        gabarit = (
+            lit_conformite_gabarit(config.sortie) if config.reussi else None
+        )
+
+    return vide._replace(
+        index_libre=index_libre(instances_freres(moteur), INDEX_ECOSYSTEME),
+        pont=pont,
+        vmid_gabarit=vmid,
+        gabarit=gabarit,
+    )
+
+
+def instances_freres(moteur):
+    """Ce que le moteur découvre chez ses dossiers frères, ou None.
+
+    DEMANDÉ AU MOTEUR, jamais deviné du nom d'un dossier : c'est lui qui décide
+    ce qui compte pour une instance — un `plan/nomenclature.yml` ici, un
+    `SITE-*/underlay.yml` là — et sa règle a déjà changé une fois.
+    """
+    vu = runner_du_banc().jouer(
+        ("python3", "-B", "-c", SONDE_INSTANCES),
+        env=runner_du_banc().base(),
+        cwd=moteur,
+        fusionner=False,
+        delai=60,
+    )
+    if vu.code != 0:
+        return None
+    try:
+        lu = json.loads(vu.sortie or "")
+    except (ValueError, TypeError):
+        return None
+    return lu if isinstance(lu, list) else None
+
+
+class Chantier:
+    """Ce que le banc a posé, écrit sur disque à CHAQUE ajout.
+
+    NOMMÉ D'ABORD, POSÉ ENSUITE, et l'ordre n'est pas un détail. Écrite APRÈS la
+    pose, une interruption entre les deux — une coupure, un délai dépassé, une
+    frappe — laisserait sur la grappe un objet que plus rien ne nomme, et
+    `--detruire` ne défait que ce que l'empreinte nomme. Nommé d'abord, le pire
+    cas est un nom sans objet : tous les gestes de défaite tolèrent l'absence,
+    et l'écran le dit.
+
+    L'ÉCRITURE EST ATOMIQUE. Le fichier est écrit à côté puis déplacé : tronqué
+    par une coupure au mauvais moment, il deviendrait illisible, et une empreinte
+    illisible fait refuser TOUTE la défaite — c'est-à-dire tout laisser en place.
+    """
+
+    def __init__(self, terrain, chemin=""):
+        self.chemin = chemin or chemin_empreinte()
+        self.empreinte = Empreinte(
+            terrain=terrain,
+            ecosysteme=ECOSYSTEME,
+            underlay=UNDERLAY_BANC,
+            pont="",
+            utilisateur=UTILISATEUR_API,
+            modele=0,
+            vms=(),
+        )
+
+    def nomme(self, **champs):
+        """Ajoute au nom ce qui va être posé, puis écrit. Rend le souci, ou « ».
+
+        Rendu et non levé : l'appelant décide s'il continue. Mais il ne DOIT pas
+        poser ce qu'il n'a pas pu nommer — c'est exactement ce que le souci dit.
+        """
+        self.empreinte = self.empreinte._replace(**champs)
+        return self.ecrit()
+
+    def ecrit(self):
+        """Écrit l'empreinte. Rend le souci, ou « »."""
+        try:
+            os.makedirs(os.path.dirname(self.chemin), exist_ok=True)
+            cote = self.chemin + ".chantier"
+            with open(cote, "w", encoding="utf-8") as ouvert:
+                ouvert.write(ecrit_empreinte(self.empreinte))
+            os.replace(cote, self.chemin)
+        except OSError as souci:
+            return f"empreinte non écrite : {souci.strerror or souci}"
+        return ""
 
 
 def plan(passes, terrain):
