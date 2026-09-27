@@ -508,6 +508,12 @@ class Constat(NamedTuple):
         return self.debout and self.vlan is True
 
 
+# Borne d'une CIBLE du moteur. `reconstruire` crée les VM, attend qu'elles
+# répondent, amorce l'autorité de certification puis déploie par couches : elle
+# dure des dizaines de minutes sur un hyperviseur imbriqué. La borne existe pour
+# qu'une grappe qui ne répond plus rende la main, pas pour hâter le geste.
+DELAI_ETAPE = 7200
+
 # Borne d'une commande jouée sur le terrain. Un `qm destroy` ou un `apt` prend
 # des minutes sur un Proxmox imbriqué ; la borne existe pour qu'une grappe qui
 # ne répond plus rende la main.
@@ -1886,9 +1892,25 @@ def lit_sortie(sortie):
     return (interface, adresse)
 
 
+def vmid_lisible(vmid):
+    """`vmid` en entier positif, ou 0. Ne lève jamais.
+
+    UN VMID VIENT DE L'EMPREINTE, donc d'un fichier qu'un éditeur ouvre : le
+    convertir sans filet ferait LEVER sur le chemin de la défaite, et une
+    exception y remplace le verdict par une trace.
+    """
+    try:
+        lu = int(vmid)
+    except (TypeError, ValueError):
+        return 0
+    return lu if lu > 0 else 0
+
+
 def cmds_config_vm(vmid):
-    """La commande qui rend la configuration d'une VM de la grappe."""
-    return [f"qm config {int(vmid)}"]
+    """La commande qui rend la configuration d'une VM. Vide si le VMID n'en est
+    pas un : on n'interroge pas la grappe sur un numéro qu'on n'a pas lu."""
+    lu = vmid_lisible(vmid)
+    return [f"qm config {lu}"] if lu else []
 
 
 def lit_gabarit(sortie, nom=GABARIT):
@@ -1994,9 +2016,12 @@ def cmds_effacer_vm(vmid, nom):
     commandes ne protègent rien par elles-mêmes, elles supposent le constat
     fait.
     """
+    lu = vmid_lisible(vmid)
+    if not lu:
+        return []
     return [
-        f"qm stop {int(vmid)} --skiplock 1 || true",
-        f"qm destroy {int(vmid)} --purge 1",
+        f"qm stop {lu} --skiplock 1 || true",
+        f"qm destroy {lu} --purge 1",
     ]
 
 
@@ -2371,6 +2396,282 @@ class Chantier:
         return ""
 
 
+def vaults_du_banc():
+    """Le module du dépôt qui lit les voûtes du moteur, chargé à l'appel."""
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.setops import vaults
+
+    return vaults
+
+
+def voutes_du_moteur(moteur):
+    """Les voûtes que le moteur recense, ou None. Ne lève jamais.
+
+    DEMANDÉ AU MOTEUR : c'est lui qui décide où vit la clé de chaque voûte, et
+    son nom dérive du dépôt qui la porte. Le recomposer ici le ferait diverger le
+    jour où sa règle change — et une clé posée au mauvais nom n'ouvre rien.
+    """
+    vaults = vaults_du_banc()
+    vu = runner_du_banc().jouer(
+        vaults.ARGV_ETAT,
+        env=env_ansible(moteur),
+        cwd=moteur,
+        fusionner=False,
+        delai=60,
+    )
+    return vaults.lit_etat(vu.sortie)
+
+
+def identite_hebergeur(moteur, voutes):
+    """L'identité de la voûte de l'HÉBERGEUR, ou None. Ne lève jamais.
+
+    APPARIÉE PAR LE CHEMIN DE LA CLÉ, jamais par l'étiquette : l'étiquette dérive
+    du nom du dépôt, et deviner cette dérivation reviendrait à la recopier. Le
+    chemin, lui, vient des deux recensements du moteur — celui des états et celui
+    des identités — donc l'appariement est le SIEN.
+
+    C'est la voûte de l'hébergeur parce que c'est elle qui porte le jeton : celle
+    du locataire est lue AVANT elle par les deux lecteurs du moteur, et la sienne
+    l'emporte quand les deux portent la clé.
+    """
+    vaults = vaults_du_banc()
+    hebergeur = next(
+        (v for v in voutes or () if v.role == vaults.HEBERGEUR), None
+    )
+    if hebergeur is None:
+        return None
+    vu = runner_du_banc().jouer(
+        vaults.ARGV_IDENTITES,
+        env=env_ansible(moteur),
+        cwd=moteur,
+        fusionner=False,
+        delai=60,
+    )
+    identites = vaults.lit_identites(vu.sortie)
+    if not identites:
+        return None
+    return next((i for i in identites if i.cle == hebergeur.chemin), None)
+
+
+def pose_le_banc(moteur, mesures, chantier, dire=print):
+    """Pose ce que le banc exige. Rend (souci, secret). Ne lève jamais.
+
+    LE SECRET EST RENDU À SON SEUL APPELANT, qui le garde en mémoire pour la
+    passe qui le porte par l'environnement, et ne le donne à rien d'autre. Il est
+    DÉJÀ scellé dans la voûte quand cette fonction rend : la passe par la voûte
+    n'en a donc pas besoin, et c'est exactement ce qu'elle prouve.
+
+    NOMMÉ AVANT POSÉ, à chaque pas : c'est le chantier qui écrit, et un pas qui
+    n'a pas pu être nommé n'est pas joué.
+
+    L'ORDRE SUIT LES DÉPENDANCES MESURÉES, et chacune a sa raison. Le pont
+    d'abord, conscient des VLAN, parce qu'une carte étiquetée sur un pont qui ne
+    filtre pas démarre et reste injoignable. L'utilisateur d'API et son jeton
+    ensuite : la grappe ne se joint que par lui, et son secret ne s'affiche qu'à
+    sa création. Les deux dépôts et leurs liens après, parce que le moteur nomme
+    la voûte de l'hébergeur en RÉSOLVANT un lien — sans lui, il ne la nomme pas.
+    Les clés enfin, et le jeton scellé dedans.
+
+    S'ARRÊTE AU PREMIER ÉCHEC. Ce qui suit suppose ce qui précède : poser la
+    suite sur un pont qui n'a pas monté ferait des VM injoignables, et le
+    diagnostic partirait sur la VM.
+    """
+    terrain, elevation = mesures.terrain, mesures.elevation
+
+    souci = chantier.nomme(pont=mesures.pont)
+    if souci:
+        return souci, ""
+    dire(f"  · pont {mesures.pont} en {CIDR_PONT_BANC}, conscient des VLAN")
+    fait = joue_sur(
+        terrain,
+        cmds_pont(mesures.pont, CIDR_PONT_BANC, mesures.uplink),
+        elevation,
+    )
+    if not fait.reussi:
+        return f"le pont n'est pas posé : {fait.sortie.strip()[-200:]}", ""
+    vu = joue_sur(terrain, cmds_constater_pont(mesures.pont), elevation)
+    constat = lit_constat_pont(vu.sortie, mesures.pont) if vu.reussi else None
+    if constat is None or not constat.utilisable:
+        # DEBOUT MAIS NON FILTRANT est le pire des trois états : une carte
+        # taguée y démarre et reste injoignable, et la panne ne se voit ni à la
+        # création, ni dans un code de retour.
+        return f"le pont n'est pas utilisable : {constat}", ""
+
+    dire(f"  · utilisateur d'API {UTILISATEUR_API} et son jeton")
+    secret = lire_jeton(terrain, elevation)
+    if not secret:
+        return (
+            "le jeton d'API n'a pas été créé, ou son secret ne s'est pas lu",
+            "",
+        )
+
+    chemins = chemins_du_banc(moteur)
+    if chemins is None:
+        return "le moteur n'a pas de dossier frère", secret
+    _freres, site, _eco = chemins
+    souci = chantier.nomme(
+        liens=tuple(
+            os.path.join(moteur, nom) for nom, _c in cibles_des_liens()
+        )
+    )
+    if souci:
+        return souci, secret
+    dire(f"  · {UNDERLAY_BANC} et {ECOSYSTEME}, puis les {len(LIENS)} liens")
+    montage = monte_localement(
+        moteur,
+        mesures.noeud,
+        mesures.pont,
+        mesures.stockage,
+        mesures.adresse_api,
+        mesures.vmid_gabarit,
+    )
+    if not montage.complet:
+        return montage.souci or "le montage local n'est pas complet", secret
+
+    voutes = voutes_du_moteur(moteur)
+    if not voutes:
+        return "le moteur n'a pas dit ses voûtes", secret
+    souci = chantier.nomme(cles=tuple(v.chemin for v in voutes))
+    if souci:
+        return souci, secret
+    dire(f"  · les {len(voutes)} clés de voûte")
+    vaults = vaults_du_banc()
+    for voute in voutes:
+        pose = vaults.poser_cle(voute.chemin)
+        if pose.resultat not in (vaults.POSEE, vaults.DEJA_LA):
+            return (
+                f"la clé de {voute.nom} : {pose.souci or pose.resultat}",
+                secret,
+            )
+
+    identite = identite_hebergeur(moteur, voutes)
+    if identite is None:
+        return "l'identité de la voûte de l'hébergeur ne s'est pas lue", secret
+    dire(f"  · le jeton scellé dans {VOUTE_UNDERLAY}")
+    return (
+        scelle_jeton(
+            os.path.join(site, VOUTE_UNDERLAY), identite, secret, moteur
+        ),
+        secret,
+    )
+
+
+def moteur_du_banc():
+    """Le chemin du moteur, tel que le manifeste le DÉCLARE. Ou « ».
+
+    Lu dans la déclaration plutôt qu'écrit ici : c'est le manifeste qui décide où
+    le moteur est cloné, et c'est lui aussi qui porte son épingle. Un chemin
+    écrit dans le banc dériverait du sien le jour où le manifeste bouge, et le
+    banc éprouverait alors un autre moteur que celui que le dépôt épingle.
+    """
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.setops import engine
+
+    decl = engine.declaration(RACINE)
+    if decl is None or not decl.path:
+        return ""
+    chemin = os.path.join(RACINE, decl.path)
+    return chemin if os.path.isdir(chemin) else ""
+
+
+def chemin_inventaire(moteur):
+    """L'inventaire que le générateur du moteur écrit pour le banc."""
+    return os.path.join(
+        moteur, "instance", "inventories", INVENTAIRE_BANC, "hosts.yml"
+    )
+
+
+def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
+    """Joue les cibles du moteur pour une passe. Rend le souci, ou « ».
+
+    L'INVENTAIRE D'ABORD, LES ZONES ENSUITE, LA CONSTRUCTION APRÈS. Le générateur
+    vient d'écrire quelles étiquettes et quelles passerelles les hôtes attendent ;
+    sans une interface routée par zone, ils démarrent dans un domaine où aucune
+    adresse ne répond et la construction ne les joint jamais. Le partage se fait
+    sur `confirmer` : ce qui n'écrit pas prépare, ce qui écrit bâtit.
+
+    LES DEUX PASSES NE PROUVENT PAS LA MÊME CHOSE. `env` porte le jeton par
+    l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle valide
+    la GRAPPE. `voute` ne le porte pas du tout — le secret est dans la voûte, et
+    l'environnement d'un geste est construit à neuf sans aucun `PROXMOX_*` : elle
+    valide le CHEMIN DE TODO. Donner le secret aux deux ne prouverait plus rien
+    de la voûte.
+    """
+    env = env_ansible(moteur)
+    if passe == PASSE_ENV:
+        env = dict(env, **environnement_api(mesures.adresse_api, secret))
+
+    for etape in (e for e in ETAPES_BOUCLE if not e.confirmer):
+        souci = joue_une_etape(moteur, env, etape, dire)
+        if souci:
+            return souci
+
+    souci = route_les_zones(moteur, mesures, chantier, env, dire)
+    if souci:
+        return souci
+
+    for etape in (e for e in ETAPES_BOUCLE if e.confirmer):
+        souci = joue_une_etape(moteur, env, etape, dire)
+        if souci:
+            return souci
+    return ""
+
+
+def joue_une_etape(moteur, env, etape, dire=print):
+    """Joue une cible du moteur et LIT son verdict. Rend le souci, ou « ».
+
+    LE VERDICT SE LIT, code ET sortie : plusieurs gestes du moteur rendent zéro
+    en ayant trouvé un écart, et un appelant qui ne lirait que le code
+    annoncerait une réussite qui n'a pas eu lieu.
+    """
+    argv = runner_du_banc().cible(
+        moteur, etape.cible, etape.variables, confirmer=etape.confirmer
+    )
+    dire(f"    {runner_du_banc().cite(argv)}")
+    vu = runner_du_banc().jouer(argv, env=env, cwd=moteur, delai=DELAI_ETAPE)
+    if vu.code != 0:
+        return f"make {etape.cible} : {vu.sortie.strip()[-400:]}"
+    return ""
+
+
+def route_les_zones(moteur, mesures, chantier, env, dire=print):
+    """Pose une interface routée par zone du plan. Rend le souci, ou « ».
+
+    DÉRIVÉE DE L'INVENTAIRE QUI VIENT D'ÊTRE APPLIQUÉ, jamais recalculée : c'est
+    le moteur qui tire l'étiquette et la passerelle de chaque zone du seul index
+    du plan.
+    """
+    zones = zones_a_router(lit_inventaire(chemin_inventaire(moteur)))
+    if zones is None:
+        return "l'inventaire généré ne s'est pas lu"
+    if not zones:
+        return (
+            "l'inventaire n'a aucun hôte actif : rien à router, rien à bâtir"
+        )
+    souci = chantier.nomme(zones=tuple(z.vlan for z in zones))
+    if souci:
+        return souci
+    for zone in zones:
+        dire(f"    interface routée {mesures.pont}.{zone.vlan} → {zone.cidr}")
+        fait = joue_sur(
+            mesures.terrain,
+            cmds_svi(zone, mesures.pont, mesures.uplink),
+            mesures.elevation,
+        )
+        if not fait.reussi:
+            return (
+                f"la zone {zone.vlan} n'est pas routée :"
+                f" {fait.sortie.strip()[-200:]}"
+            )
+    return ""
+
+
 def plan(passes, terrain):
     """Les étapes, dans l'ordre, avec la durée annoncée de chacune.
 
@@ -2467,10 +2768,52 @@ def principal(argv=None):
     dire_plan(passes, terrain)
     if args.dry_run:
         return SORTIE_OK
-    print()
-    print("  ⛔ les verbes du banc ne sont pas encore posés.")
-    print("     Le plan ci-dessus est complet ; rien n'a été tenté.")
-    return SORTIE_OUTILLAGE
+
+    moteur = moteur_du_banc()
+    if not moteur:
+        print("\n  ⛔ le moteur n'est pas là : voir l'écran d'état de todo.")
+        return SORTIE_OUTILLAGE
+
+    # LES PRÉALABLES SONT TOUS DITS, tenus compris. Ne montrer que ce qui
+    # manque laisse croire que le reste n'a pas été regardé, et c'est justement
+    # ce qu'on veut pouvoir relire après coup.
+    print("\n── les préalables ──")
+    mesures = mesure_le_terrain(moteur, terrain)
+    vus = prealables(mesures)
+    for prealable in vus:
+        marque = (
+            "✓"
+            if prealable.tenu
+            else ("✗" if prealable.tenu is False else "?")
+        )
+        print(f"  {marque} {prealable.quoi}")
+        if prealable.dit:
+            print(f"      {prealable.dit}")
+    if juge(vus) != SORTIE_OK:
+        print("\n  rien n'a été tenté.")
+        return SORTIE_OUTILLAGE
+
+    print("\n── la pose ──")
+    chantier = Chantier(terrain)
+    souci, secret = pose_le_banc(moteur, mesures, chantier)
+    if souci:
+        # EXPURGÉ, comme tout ce que le banc montre : la plainte d'un outil cite
+        # parfois ce qu'il a reçu, et ce qu'il a reçu est le secret.
+        print(f"\n  ⛔ {expurge(souci, secret)}")
+        print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+        return SORTIE_NON_CONCLUANTE
+
+    for passe in passes:
+        print(f"\n── passe « {passe} » ──")
+        souci = joue_une_passe(moteur, mesures, chantier, passe, secret)
+        if souci:
+            print(f"\n  ⛔ {expurge(souci, secret)}")
+            print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+            return SORTIE_NON_CONCLUANTE
+
+    print(f"\n  ✓ le banc est allé au bout des {len(passes)} passe(s).")
+    print(f"     défaire : {os.path.basename(__file__)} --detruire")
+    return SORTIE_OK
 
 
 def terrain_deduit():
@@ -2489,6 +2832,214 @@ def terrain_deduit():
     return terrain_par_defaut(
         descente.dernier_rapport("deep_proxmox", "deep-pve")
     )
+
+
+def lit_nom_vm(sortie):
+    """Le nom que `qm config` donne à cette VM, ou « ».
+
+    « » dit « pas su lire », et l'appariement du nom REFUSE alors l'effacement :
+    un VMID se réattribue, et effacer sans avoir lu le nom détruirait le travail
+    de quelqu'un d'autre.
+    """
+    for ligne in (sortie or "").splitlines():
+        if ligne.startswith("name:"):
+            return ligne.split(":", 1)[1].strip()
+    return ""
+
+
+def cmds_utilisateurs():
+    """La commande qui nomme les utilisateurs que la grappe connaît."""
+    return ["pveum user list --output-format json"]
+
+
+def lit_utilisateurs(sortie):
+    """Les identifiants d'utilisateur que la grappe déclare, ou None.
+
+    Fermé par défaut : ce qui n'est pas une liste d'objets identifiés fait
+    refuser toute la lecture. Une lecture qui conclurait à tort « il n'est pas
+    là » laisserait sur la grappe un compte d'ADMINISTRATION que le banc croit
+    avoir retiré.
+    """
+    lu = _json_liste(sortie)
+    if lu is None:
+        return None
+    vus = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        nom = entree.get("userid")
+        if not isinstance(nom, str) or not nom.strip():
+            return None
+        vus.append(nom.strip())
+    return tuple(vus)
+
+
+def cmds_effacer_api(utilisateur=UTILISATEUR_API):
+    """La commande qui retire l'utilisateur d'API et, avec lui, son jeton.
+
+    Retirer l'utilisateur emporte ses jetons et ses entrées de contrôle d'accès :
+    les retirer séparément laisserait, si l'un des gestes échouait, un compte
+    d'administration sur une grappe que le banc croit avoir quittée.
+    """
+    return [f"pveum user delete {shlex.quote(utilisateur)}"]
+
+
+def api_a_retirer(presents, utilisateur):
+    """Ce compte d'API est-il à retirer ? None si on ne sait pas.
+
+    SÉPARÉE DU GESTE pour être éprouvable sans grappe : c'est la seule décision
+    de la défaite dont l'erreur laisse un ACCÈS OUVERT, et une décision qu'on ne
+    peut éprouver que contre une machine n'est pas éprouvée.
+
+    None n'est pas False. « La grappe n'a pas dit ses comptes » et « le compte
+    n'y est plus » commandent des suites opposées : la première laisse un souci,
+    la seconde est une réussite.
+    """
+    if presents is None:
+        return None
+    return (utilisateur or "") in presents
+
+
+def defait_un_geste(geste, moteur, elevation, dire=print):
+    """Défait un geste. Rend le souci, ou « ». Ne lève jamais.
+
+    TOLÈRE L'ABSENCE. L'empreinte nomme AVANT que la pose ait lieu : un nom sans
+    objet est donc le cas normal d'une pose interrompue, et non une panne. Ce qui
+    n'est PAS toléré est d'effacer autre chose que ce qui est nommé.
+
+    LE RÉSEAU MASQUÉ PART AVEC LA STROPHE. La descente d'une interface joue son
+    `post-down`, qui retire la règle de traduction d'adresses : la nommer une
+    seconde fois ici la ferait dériver de la strophe.
+    """
+    genre, vise = geste.genre, geste.vise
+
+    if genre == VM:
+        if not vmid_lisible(vise):
+            return f"« {vise} » n'est pas un VMID : rien n'est effacé"
+        vu = joue_sur(geste.terrain, cmds_config_vm(vise), elevation)
+        if not vu.reussi:
+            # Une VM déjà absente n'est pas une panne : `qm config` échoue, et
+            # il n'y a rien à effacer.
+            return ""
+        if not effacable(geste.nom, lit_nom_vm(vu.sortie)):
+            return (
+                f"la VM {vise} ne porte plus le nom « {geste.nom} » :"
+                " rien n'est effacé"
+            )
+        fait = joue_sur(
+            geste.terrain, cmds_effacer_vm(vise, geste.nom), elevation
+        )
+        return "" if fait.reussi else f"la VM {vise} n'a pas été effacée"
+
+    if genre in (SVI, PONT):
+        cmds = interface_teardown_cmds_du_banc(vise)
+        fait = joue_sur(geste.terrain, cmds, elevation)
+        return "" if fait.reussi else f"l'interface {vise} n'a pas été retirée"
+
+    if genre == API:
+        # ON DEMANDE D'ABORD S'IL EST LÀ, et ce n'est pas du zèle : un
+        # utilisateur déjà absent fait échouer la commande exactement comme un
+        # vrai refus. Confondre les deux ferait annoncer une défaite complète
+        # alors qu'un compte d'ADMINISTRATION, et le jeton qui va avec, restent
+        # sur la grappe — c'est le seul geste de cette liste dont l'échec
+        # silencieux laisse un accès ouvert.
+        vu = joue_sur(geste.terrain, cmds_utilisateurs(), elevation)
+        a_retirer = api_a_retirer(
+            lit_utilisateurs(vu.sortie) if vu.reussi else None, vise
+        )
+        if a_retirer is None:
+            return (
+                "la grappe n'a pas dit ses utilisateurs :"
+                f" « {vise} » n'est pas retiré"
+            )
+        if not a_retirer:
+            return ""
+        fait = joue_sur(geste.terrain, cmds_effacer_api(vise), elevation)
+        if fait.reussi:
+            return ""
+        return f"l'utilisateur d'API « {vise} » n'a pas été retiré"
+
+    if genre == LIEN:
+        return _retire_lien(vise)
+
+    if genre in (ECO, UNDERLAY):
+        return _retire_depot(moteur, genre)
+
+    if genre == CLE:
+        return _retire_cle(vise)
+
+    return f"genre inconnu : {genre!r}"
+
+
+def interface_teardown_cmds_du_banc(nom):
+    """Les commandes qui retirent une interface, bâties par le module du dépôt."""
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.proxmox import proxmox_deploy as pve
+
+    return list(pve.interface_teardown_cmds(nom))
+
+
+def _retire_lien(chemin):
+    """Retire un lien du moteur. N'efface QUE des liens. Rend le souci, ou « »."""
+    if not lien_du_banc(chemin):
+        return f"« {chemin} » n'est pas un lien du banc : rien n'est retiré"
+    try:
+        if not os.path.lexists(chemin):
+            return ""
+        if not os.path.islink(chemin):
+            # NI DOSSIER NI FICHIER ORDINAIRE. Le banc ne pose QUE des liens à
+            # ces deux noms : un dossier y est le checkout d'un exploitant, et
+            # un fichier ordinaire y est quelque chose que personne d'ici n'a
+            # écrit. Effacer l'un détruirait un plan, effacer l'autre un
+            # fichier dont on ne sait rien.
+            return f"« {chemin} » n'est pas un lien : rien n'est retiré"
+        os.remove(chemin)
+    except OSError as souci:
+        return f"{chemin} : {souci.strerror or souci}"
+    return ""
+
+
+def _retire_depot(moteur, genre):
+    """Efface l'un des deux dépôts du banc. Rend le souci, ou « ».
+
+    LE CHEMIN EST DÉRIVÉ, pas lu dans l'empreinte : il dérive du moteur, et le
+    lire d'un fichier qu'un éditeur ouvre donnerait à ce fichier le pouvoir de
+    faire effacer n'importe quel dossier.
+    """
+    import shutil
+
+    chemins = chemins_du_banc(moteur)
+    if chemins is None:
+        return "le moteur n'a pas de dossier frère : rien n'est effacé"
+    _freres, site, eco = chemins
+    chemin = eco if genre == ECO else site
+    try:
+        if not os.path.isdir(chemin):
+            return ""
+        shutil.rmtree(chemin)
+    except OSError as souci:
+        return f"{chemin} : {souci.strerror or souci}"
+    return ""
+
+
+def _retire_cle(chemin):
+    """Efface une clé de voûte DU BANC. Rend le souci, ou « ».
+
+    La clé sans laquelle une voûte ne s'ouvre plus : le garde de nom est ce qui
+    empêche une empreinte modifiée de faire effacer celle d'une production.
+    """
+    if not cle_du_banc(chemin):
+        return f"« {chemin} » n'est pas une clé du banc : rien n'est effacé"
+    try:
+        if not os.path.isfile(chemin) or os.path.islink(chemin):
+            return ""
+        os.remove(chemin)
+    except OSError as souci:
+        return f"{chemin} : {souci.strerror or souci}"
+    return ""
 
 
 def defaire(dry_run=False):
@@ -2530,6 +3081,7 @@ def defaire(dry_run=False):
     if empreinte is None:
         print(f"  ⛔ empreinte illisible : {chemin_empreinte()}")
         return SORTIE_NON_CONCLUANTE
+    elevation = elevation_du_terrain(empreinte.terrain)
     gestes = a_defaire(empreinte)
     if not gestes:
         if not nous(empreinte):
@@ -2541,13 +3093,42 @@ def defaire(dry_run=False):
         return SORTIE_OK
     print(f"── à défaire, sur {empreinte.terrain} ──")
     for geste in gestes:
-        print(f"  {geste.genre:<11} {geste.vise:<12} {geste.nom}")
+        print(f"  {geste.genre:<11} {geste.vise:<42} {geste.nom}")
     if dry_run:
         return SORTIE_OK
+    if elevation not in (TEL_QUEL, ELEVE):
+        # SANS ÉLÉVATION, RIEN NE SE DÉFAIT SUR LA GRAPPE, et les gestes locaux
+        # partiraient quand même : l'empreinte serait alors effacée alors que le
+        # pont, les interfaces et l'utilisateur d'API restent. On refuse en bloc.
+        print(
+            f"  ⛔ le terrain ne se joue pas ({elevation}) : rien n'est défait."
+        )
+        return SORTIE_NON_CONCLUANTE
     print()
-    print("  ⛔ les verbes du banc ne sont pas encore posés.")
-    print("     Rien n'a été touché ; la liste ci-dessus est ce qui reste.")
-    return SORTIE_OUTILLAGE
+    moteur = moteur_du_banc()
+    soucis = []
+    for geste in gestes:
+        souci = defait_un_geste(geste, moteur, elevation)
+        print(f"  {'✗' if souci else '✓'} {geste.genre:<11} {geste.nom}")
+        if souci:
+            print(f"      {souci}")
+            soucis.append(souci)
+    if soucis:
+        # L'EMPREINTE RESTE. Elle nomme encore ce qui n'a pas été défait, et
+        # c'est par elle qu'on y revient ; l'effacer perdrait les noms.
+        print(
+            f"\n  {len(soucis)} geste(s) n'ont pas abouti :"
+            f" l'empreinte reste en place."
+        )
+        return SORTIE_NON_CONCLUANTE
+    try:
+        os.remove(chemin_empreinte())
+    except OSError:
+        # Tout est défait : une empreinte qui survit nommerait du vide, ce qui
+        # se voit et ne détruit rien.
+        pass
+    print("\n  ✓ tout ce que l'empreinte nommait est défait.")
+    return SORTIE_OK
 
 
 if __name__ == "__main__":

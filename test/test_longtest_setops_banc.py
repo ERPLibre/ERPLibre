@@ -2648,5 +2648,218 @@ class TestLeTerrainDitParOuIlSort(unittest.TestCase):
         self.assertIsNotNone(B.lit_sortie("sortie=s\nadresse=192.0.2.10/24\n"))
 
 
+class TestLaDefaiteNEffaceQueCeQuiEstAuBanc(unittest.TestCase):
+    """L'empreinte est un fichier JSON qu'un éditeur ouvre. Chaque verbe qui
+    efface confronte donc ce qu'il reçoit à ce que le banc peut avoir posé — et
+    refuse le reste, plutôt que de faire confiance à un fichier."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+
+    def fichier(self, nom, contenu="x"):
+        chemin = os.path.join(self.d, nom)
+        with open(chemin, "w", encoding="utf-8") as ecrit:
+            ecrit.write(contenu)
+        return chemin
+
+    def test_a_link_of_the_bench_is_removed(self):
+        """Le contrôle positif : sans lui, un verbe qui refuse toujours
+        passerait tous les refus ci-dessous."""
+        chemin = os.path.join(self.d, B.LIEN_INSTANCE)
+        os.symlink("../quelque-part", chemin)
+        self.assertEqual("", B._retire_lien(chemin))
+        self.assertFalse(os.path.lexists(chemin))
+
+    def test_a_link_at_another_name_is_refused(self):
+        """MESURÉ SUR UN LIEN, et pas sur un fichier : un fichier serait déjà
+        refusé par le garde du genre, et l'épreuve passerait alors par le
+        mauvais chemin sans rien dire du garde du NOM."""
+        cible = self.fichier("la-cible-de-quelqu-un")
+        chemin = os.path.join(self.d, "un-lien-qui-n-est-pas-a-nous")
+        os.symlink(cible, chemin)
+        self.assertTrue(B._retire_lien(chemin))
+        self.assertTrue(os.path.lexists(chemin))
+
+    def test_a_plain_file_at_our_name_is_never_removed(self):
+        """Le banc ne pose QUE des liens à ces deux noms : un fichier ordinaire
+        y est quelque chose que personne d'ici n'a écrit."""
+        chemin = self.fichier(B.LIEN_UNDERLAY, "le fichier de quelqu'un\n")
+        self.assertTrue(B._retire_lien(chemin))
+        self.assertTrue(os.path.isfile(chemin))
+
+    def test_a_real_directory_is_never_removed(self):
+        """Le banc ne pose jamais de dossier à ce nom : c'est le checkout d'un
+        exploitant, et l'effacer détruirait son plan."""
+        chemin = os.path.join(self.d, B.LIEN_INSTANCE)
+        os.makedirs(chemin)
+        with open(
+            os.path.join(chemin, "plan.yml"), "w", encoding="utf-8"
+        ) as e:
+            e.write("le plan de quelqu'un\n")
+        self.assertTrue(B._retire_lien(chemin))
+        self.assertTrue(os.path.isdir(chemin))
+
+    def test_a_link_already_gone_is_not_a_failure(self):
+        """L'empreinte nomme AVANT la pose : un nom sans objet est le cas normal
+        d'une pose interrompue."""
+        self.assertEqual(
+            "", B._retire_lien(os.path.join(self.d, B.LIEN_UNDERLAY))
+        )
+
+    def test_a_key_of_the_bench_is_removed(self):
+        """Le contrôle positif des refus de clés."""
+        chemin = self.fichier(f"setops-vault-{B.ECOSYSTEME.lower()}")
+        self.assertEqual("", B._retire_cle(chemin))
+        self.assertFalse(os.path.exists(chemin))
+
+    def test_a_key_that_is_not_ours_is_refused(self):
+        """La clé sans laquelle une voûte ne s'ouvre plus, et qu'aucune
+        sauvegarde de dépôt ne contient puisqu'elle vit exprès dehors."""
+        chemin = self.fichier("setops-vault-une-production")
+        self.assertTrue(B._retire_cle(chemin))
+        self.assertTrue(os.path.exists(chemin))
+
+    def test_a_key_that_is_a_link_is_refused(self):
+        """Un lien au bon NOM pointant ailleurs ferait effacer sa cible."""
+        vraie = self.fichier("la-vraie-cle-de-quelqu-un")
+        piege = os.path.join(self.d, f"setops-vault-{B.ECOSYSTEME.lower()}")
+        os.symlink(vraie, piege)
+        self.assertEqual("", B._retire_cle(piege))
+        self.assertTrue(os.path.exists(vraie))
+
+    def test_the_repositories_path_comes_from_the_engine(self):
+        """DÉRIVÉ, pas lu dans l'empreinte : le lire d'un fichier qu'un éditeur
+        ouvre donnerait à ce fichier le pouvoir de faire effacer n'importe quel
+        dossier."""
+        self.assertTrue(B._retire_depot("", B.ECO))
+
+    def test_a_repository_already_gone_is_not_a_failure(self):
+        moteur = os.path.join(self.d, "Moteur")
+        os.makedirs(moteur)
+        for genre in (B.ECO, B.UNDERLAY):
+            with self.subTest(genre=genre):
+                self.assertEqual("", B._retire_depot(moteur, genre))
+
+    def test_a_repository_of_the_bench_is_removed(self):
+        """Le contrôle positif du précédent."""
+        moteur = os.path.join(self.d, "Moteur")
+        os.makedirs(moteur)
+        _freres, site, eco = B.chemins_du_banc(moteur)
+        for chemin, genre in ((eco, B.ECO), (site, B.UNDERLAY)):
+            with self.subTest(genre=genre):
+                os.makedirs(chemin, exist_ok=True)
+                self.assertEqual("", B._retire_depot(moteur, genre))
+                self.assertFalse(os.path.isdir(chemin))
+
+    def test_an_unknown_genre_is_refused(self):
+        """Le vocabulaire est CLOS : un genre hors de lui vient d'une empreinte
+        qui n'est pas celle du banc."""
+        geste = B.Geste("un-terrain", "genre-invente", "cible", "nom")
+        self.assertTrue(B.defait_un_geste(geste, "", B.TEL_QUEL))
+
+    def test_every_genre_of_the_vocabulary_is_handled(self):
+        """Le contrôle positif du précédent : aucun genre du vocabulaire ne doit
+        tomber dans le refus « genre inconnu »."""
+        for genre in B.GENRES:
+            with self.subTest(genre=genre):
+                geste = B.Geste("un-terrain-invente.invalid", genre, "", "")
+                self.assertNotIn(
+                    "genre inconnu", B.defait_un_geste(geste, "", B.TEL_QUEL)
+                )
+
+
+class TestUneVmNeSEffacePasSansQueSonNomConcorde(unittest.TestCase):
+    """Un VMID se réattribue. Effacer sans avoir lu le nom détruirait le travail
+    de quelqu'un d'autre."""
+
+    def test_the_name_is_read_from_the_configuration(self):
+        self.assertEqual(
+            "banc-fictif-01",
+            B.lit_nom_vm("vmid: 101\nname: banc-fictif-01\ncores: 2\n"),
+        )
+
+    def test_a_configuration_without_a_name_reads_nothing(self):
+        for sortie in ("cores: 2\n", "", None, "  name: indenté\n"):
+            with self.subTest(sortie=repr(sortie)):
+                self.assertEqual("", B.lit_nom_vm(sortie))
+
+    def test_an_unread_name_refuses_the_erasure(self):
+        """« » dit « pas su lire », et l'appariement REFUSE alors."""
+        self.assertFalse(B.effacable("banc-fictif-01", B.lit_nom_vm("")))
+
+    def test_deleting_the_api_user_takes_its_token_with_it(self):
+        """Les retirer séparément laisserait, si l'un échouait, un compte
+        d'administration sur une grappe que le banc croit avoir quittée."""
+        joint = " ".join(B.cmds_effacer_api("un-compte@pve"))
+        self.assertIn("user delete", joint)
+        self.assertEqual(1, len(B.cmds_effacer_api()))
+
+
+class TestLeCompteDApiNeResteJamaisEnSilence(unittest.TestCase):
+    """C'est le seul geste de la défaite dont l'échec silencieux laisse un ACCÈS
+    OUVERT : un compte d'administration et le jeton qui va avec, sur une grappe
+    que le banc croit avoir quittée."""
+
+    def comptes(self, *ids):
+        return json.dumps([{"userid": i, "enable": 1} for i in ids])
+
+    def test_the_declared_accounts_are_read(self):
+        self.assertEqual(
+            ("root@pam", "banc@pve"),
+            B.lit_utilisateurs(self.comptes("root@pam", "banc@pve")),
+        )
+
+    def test_an_unreadable_answer_refuses(self):
+        """Une lecture qui conclurait à tort « il n'est pas là » laisserait le
+        compte en place en annonçant une défaite complète."""
+        for sortie in (
+            "ipcc_send_rec failed",
+            "",
+            None,
+            '{"userid": "x"}',
+            "[42]",
+            '[{"user": "sans-userid"}]',
+        ):
+            with self.subTest(sortie=str(sortie)[:24]):
+                self.assertIsNone(B.lit_utilisateurs(sortie))
+
+    def test_a_well_formed_list_is_not_refused(self):
+        """Le contrôle positif des refus ci-dessus."""
+        self.assertIsNotNone(B.lit_utilisateurs(self.comptes("root@pam")))
+
+    def test_an_account_that_is_there_is_to_be_removed(self):
+        self.assertIs(
+            True,
+            B.api_a_retirer(
+                ("root@pam", B.UTILISATEUR_API), B.UTILISATEUR_API
+            ),
+        )
+
+    def test_an_account_already_gone_is_not(self):
+        """Une réussite, pas un souci : c'est le cas normal d'une seconde
+        défaite."""
+        self.assertIs(False, B.api_a_retirer(("root@pam",), B.UTILISATEUR_API))
+
+    def test_a_cluster_that_said_nothing_is_not_an_absence(self):
+        """LA PROPRIÉTÉ : None n'est pas False. « La grappe n'a pas dit ses
+        comptes » et « le compte n'y est plus » commandent des suites
+        opposées — l'une laisse un souci, l'autre est une réussite."""
+        self.assertIsNone(B.api_a_retirer(None, B.UTILISATEUR_API))
+
+    def test_a_cluster_that_did_not_answer_leaves_a_trouble(self):
+        """LA PROPRIÉTÉ : ne pas savoir n'est pas « c'est fait ». Le terrain est
+        inventé, donc la grappe ne répond pas."""
+        geste = B.Geste(
+            "un-terrain-invente.invalid",
+            B.API,
+            B.UTILISATEUR_API,
+            B.UTILISATEUR_API,
+        )
+        souci = B.defait_un_geste(geste, "", B.TEL_QUEL)
+        self.assertTrue(souci)
+        self.assertIn(B.UTILISATEUR_API, souci)
+
+
 if __name__ == "__main__":
     unittest.main()
