@@ -25,7 +25,6 @@ ou il est généré ; jamais d'un argument.
 
 import argparse
 import os
-import socket
 import sys
 import time
 
@@ -42,7 +41,7 @@ from script.dolibarr import (  # noqa: E402
     native_prod,
 )
 from script.dolibarr.install_native import StepError, t, tail  # noqa: E402
-from script.dolibarr.run import served_version  # noqa: E402
+from script.dolibarr.run import port_is_free, served_version  # noqa: E402
 
 HOOK = os.path.join(os.path.dirname(__file__), "container", "10-erplibre.php")
 
@@ -63,16 +62,6 @@ WAIT_TRIES = 150
 WAIT_PAUSE = 2.0
 
 http_get = native_prod.http_get
-
-
-def port_is_free(port):
-    """Vrai si 127.0.0.1:`port` accepte un bind en ce moment."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
 
 
 class Context:
