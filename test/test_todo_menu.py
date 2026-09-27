@@ -578,12 +578,16 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
     SOURCE = TODO_DIR / "git_repo_menu.py"
     ENTRY = "def prompt_execute_git_repo(self):"
     END = "def _git_repo_sync(self):"
-    MINIMUM = 3
+    MINIMUM = 7
 
     EXPECTED = {
         "🔄 Synchronize the repositories": "_git_repo_sync",
         "🔁 Reconfigure and synchronize": "_git_repo_reconfigurer",
         "🔍 Upgrade — dry run": "_git_repo_a_sec",
+        "⬆️ Apply the upgrade": "_git_repo_appliquer",
+        "🧩 Conflict queue": "_git_repo_file_conflits",
+        "📊 Report of the last pass": "_git_repo_rapport",
+        "🖥️ Browse the upgrade on screen": "_git_repo_ecran",
         "🔗 Fork and upstream status": "_git_repo_etat_forks",
     }
 
