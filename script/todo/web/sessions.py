@@ -23,9 +23,13 @@ reçoit `tty_state` quand l'état change. `gate` relit le terminal et ne
 laisse passer une frappe que si quelqu'un la lit, ou si un lecteur vu à
 l'instant relit dans les HOLD_SECONDS qui suivent ; ce qu'un lecteur n'a
 pas pris est jeté dès que la sonde voit l'écho se couper en mode
-canonique. Seul un programme qui lit aussitôt après avoir coupé l'écho,
-sans vider l'entrée, devance ce vidage : il reçoit la suite d'un collage
-de plusieurs lignes.
+canonique. En mode canonique, un collage part une ligne à la fois, la
+suivante quand la précédente a été lue (`held`), et jamais pendant une
+question du worker (`asking`) ; chaque message du worker jette ce qui en
+reste, comme le worker vide son entrée à chaque question. La suite d'un
+collage ne nourrit donc que le programme qui lit hors question : un
+programme qui coupe l'écho et lit aussitôt, sans vider l'entrée, ne la
+reçoit jamais comme secret, ni une question du worker comme réponse.
 
 Un client offre `send(octets)`, attendable, rendu quand les octets ont
 quitté le hub ; `event(message)`, un dict envoyé en texte ; `close(code,
@@ -180,6 +184,18 @@ def _exited(pid) -> bool:
     return found is not None
 
 
+def _first_line(data) -> tuple:
+    """`(première ligne, reste)` : jusqu'au premier CR ou LF compris, CR
+    LF comptant pour un ; `(data, b"")` sans fin de ligne."""
+    ends = [at for at in (data.find(b"\r"), data.find(b"\n")) if at >= 0]
+    if not ends:
+        return data, b""
+    end = min(ends) + 1
+    if data[end - 1 : end + 1] == b"\r\n":
+        end += 1
+    return data[:end], data[end:]
+
+
 def _secret(state) -> bool:
     """Écho coupé en mode canonique : une invite de mot de passe."""
     return not state.echo and state.canon
@@ -217,6 +233,7 @@ class Session:
         self.proc = None
         self.channel = None
         self.inbox = bytearray()
+        self.held = bytearray()  # lignes d'un collage, jusqu'à leur lecteur
         self.flushing = None
         self.closing = False
         self.killing = None  # l'arrêt que `_watch` lance pendant une relance
@@ -400,14 +417,28 @@ class Session:
             self.client = None
             self.quiet_since = time.monotonic()
 
-    def write(self, data: bytes) -> bool:
+    def write(self, data: bytes, lines=False) -> bool:
         """Envoie `data` au terminal, dans l'ordre ; faux, et rien n'est
-        gardé, si INPUT_LIMIT octets en attente seraient dépassés."""
-        if len(self.inbox) + len(data) > INPUT_LIMIT:
+        gardé, si INPUT_LIMIT octets en attente seraient dépassés.
+
+        Avec `lines`, en mode canonique hors écran alternatif (d'après la
+        dernière sonde), seule la première ligne part ; la suite attend dans
+        `held`, que `_probe` libère une ligne à la fois hors d'une question
+        du worker, et que chaque message du worker jette."""
+        waiting = len(self.inbox) + len(self.held)
+        if waiting + len(data) > INPUT_LIMIT:
             return False
-        if self.master is not None:
-            self.inbox += data
-            self._write_inbox()
+        if self.master is None:
+            return True
+        if lines and self.held:
+            self.held += data
+            return True
+        state = self.state
+        if lines and state is not None and state.canon and not state.altscreen:
+            data, rest = _first_line(data)
+            self.held += rest
+        self.inbox += data
+        self._write_inbox()
         return True
 
     def _write_inbox(self):
@@ -446,9 +477,12 @@ class Session:
         if self.watch is None or self.master is None:
             return data
         self._probe()
+        signals = bytes(b for b in data if b in self.state.signals)
+        if signals:
+            # Comme au terminal, Ctrl+C jette ce qui attend d'être lu.
+            self.held.clear()
         if _open(self.state):
             return data
-        signals = bytes(b for b in data if b in self.state.signals)
         if signals == data or _secret(self.state):
             return signals
         if self.probed_at - self.read_at > READER_RECENT:
@@ -503,8 +537,16 @@ class Session:
             before is not None and _secret(before)
         ):
             self.inbox.clear()
+            self.held.clear()
             asyncio.get_running_loop().remove_writer(self.master)
             self._drop_input()
+        elif (
+            self.held
+            and self.asking is None
+            and _open(self.state)
+            and not _secret(self.state)
+        ):
+            self._release()
         event = {
             "t": "tty_state",
             "echo": self.state.echo,
@@ -516,15 +558,41 @@ class Session:
             self.shown = event
             self.client.event(event)
 
+    def _release(self):
+        """Écrit la ligne suivante de `held` une fois la précédente lue :
+        rien n'attend plus, ni dans le hub, ni dans l'esclave."""
+        if self.inbox or self._queued():
+            return
+        line, rest = _first_line(bytes(self.held))
+        self.held = bytearray(rest)
+        self.inbox += line
+        self._write_inbox()
+
+    def _queued(self) -> int:
+        """Octets que l'esclave tient, prêts à lire (FIONREAD), par
+        l'esclave rouvert comme dans `_drop_input` ; 0 s'il a disparu."""
+        try:
+            fd = os.open(self.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        except OSError:
+            return 0
+        try:
+            size = bytearray(4)
+            fcntl.ioctl(fd, termios.FIONREAD, size)
+            return int.from_bytes(size, sys.byteorder)
+        except OSError:
+            return 0
+        finally:
+            os.close(fd)
+
     async def _tick(self):
         """Relit le terminal toutes les PROBE_SECONDS jusqu'à la fin de la
-        session, quand un client est attaché."""
+        session, quand un client est attaché ou qu'un collage attend."""
         while True:
             try:
                 await asyncio.wait_for(self.ended.wait(), PROBE_SECONDS)
                 return
             except TimeoutError:
-                if self.client is not None:
+                if self.client is not None or self.held:
                     self._probe()
 
     def interrupt(self) -> bool:
@@ -550,6 +618,7 @@ class Session:
         if not command and not _has_children(self.proc.pid):
             return False
         self.inbox.clear()
+        self.held.clear()
         asyncio.get_running_loop().remove_writer(self.master)
         self._drop_input()
         if command:
@@ -636,6 +705,9 @@ class Session:
                 continue
             asked = message["t"] in protocol.QUESTIONS
             self.asking = message if asked else None
+            # Chaque message est une borne : ce qui reste d'un collage ne
+            # passe pas d'une question, ou d'une commande, à la suivante.
+            self.held.clear()
             if self.client is not None:
                 self.client.event(message)
 
@@ -650,6 +722,7 @@ class Session:
             return False
         self.channel.write(line)
         self.asking = None
+        self.held.clear()
         return True
 
     def _hangup(self):
@@ -662,6 +735,7 @@ class Session:
             os.close(self.master)
             self.master = None
         self.inbox.clear()
+        self.held.clear()
         if self.channel is not None:
             self.channel.close()
             self.channel = None

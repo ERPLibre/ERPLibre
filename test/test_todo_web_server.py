@@ -978,6 +978,25 @@ class TestKeystrokes(TerminalCase):
         await tab.until(lambda: b"xyz" in tab.data)
         self.assertNotIn(b"abc", tab.data)
 
+    async def test_a_paste_goes_line_by_line_unless_in_raw_mode(self):
+        tab = await self.tab()
+        session = self.hub.terminals[tab.texts[0]["id"]]
+        calls, write = [], session.write
+
+        def recorded(data, lines=False):
+            calls.append((bytes(data), lines))
+            return write(data, lines)
+
+        session.write = recorded
+        await tab.conn.write_message(b"big 1\nbig 2\n", binary=True)
+        await tab.until(lambda: tab.data.count(b"END") == 2)
+        await tab.conn.write_message(json.dumps({"t": "raw", "on": True}))
+        await tab.conn.write_message(b"big 3\n", binary=True)
+        await tab.until(lambda: tab.data.count(b"END") == 3)
+        self.assertEqual(
+            calls, [(b"big 1\nbig 2\n", True), (b"big 3\n", False)]
+        )
+
     async def test_stop_and_ctrl_c_are_never_dropped(self):
         for stop in (json.dumps({"t": "interrupt"}), b"\x03"):
             with self.subTest(stop=stop):

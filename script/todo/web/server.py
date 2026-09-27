@@ -510,18 +510,20 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.control(message)
 
     async def type(self, data):
+        # Hors mode brut, un collage part une ligne à la fois.
+        lines = not self.raw
         if self.secret_next:
             self.secret_next = False
             if not self.session.asks_secret():
                 lost = {"t": "dropped", "bytes": len(data), "secret": True}
                 self.event(lost)
                 return
-            kept = data
+            kept, lines = data, False
         else:
             kept = data if self.raw else await self.session.gate(data)
             if len(kept) < len(data):
                 self.event({"t": "dropped", "bytes": len(data) - len(kept)})
-        if kept and not self.session.write(kept):
+        if kept and not self.session.write(kept, lines):
             self.close(1008, "input overflow")
 
     async def hello(self, message):

@@ -3,7 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """TtyWatch : l'état du terminal d'une session, lu sur le maître et dans
 /proc, et ce qu'une session en fait : `tty_state` au client, frappes
-filtrées, file d'entrée vidée devant une invite de secret.
+filtrées, file d'entrée vidée devant une invite de secret, collage passé
+une ligne à la fois.
 
 Chaque enfant est un `python -c` jetable sur un PTY neuf, dont il fait son
 terminal de contrôle ; aucun test ne lance TODO. Le client est un double
@@ -171,6 +172,41 @@ time.sleep(0.5)
 ready = select.select([0], [], [], 0.5)[0]
 print("got", os.read(0, 100) if ready else b"nothing", flush=True)
 """
+
+# Lit une ligne, coupe l'écho SANS vider l'entrée et lit aussitôt : aucune
+# sonde ne devance ce « mot de passe ».
+IMMEDIATE_SECRET = r"""
+import termios
+print("ready", flush=True)
+input()
+attrs = termios.tcgetattr(0)
+attrs[3] &= ~termios.ECHO
+termios.tcsetattr(0, termios.TCSANOW, attrs)
+print("secret was", repr(input("pw: ")), flush=True)
+"""
+
+THREE_LINES = r"""
+print("ready", flush=True)
+for _ in range(3):
+    print("got", input(), flush=True)
+"""
+
+# Deux questions du port du worker, puis deux lignes lues sans question,
+# comme par un programme que TODO lance lui-même.
+PORT_QUESTIONS = r"""
+import os, sys
+sys.path.insert(0, %r)
+from script.todo.ui import pipe_port
+port = pipe_port.PipePort(int(os.environ["TODO_WEB_FD"]), 0)
+first = port.ask("Q1: ")
+print("answers", repr(first), repr(port.ask("Q2: ")), flush=True)
+print("got", repr(input()), repr(input()), flush=True)
+"""
+
+
+def asked(session):
+    """Le texte de la question que la session tient ouverte, ou None."""
+    return session.asking["text"] if session.asking is not None else None
 
 
 def queued(fd) -> int:
@@ -664,6 +700,71 @@ class TestGate(SessionCase):
                     session, client = await self.open(WAITERS["sleep"])
                 await self.until(lambda: b"ready" in client.data)
                 self.assertEqual(await session.gate(b"abc"), b"abc")
+
+
+class TestPaste(SessionCase):
+    async def test_a_paste_never_becomes_a_secret(self):
+        session, client = await self.open(IMMEDIATE_SECRET)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"go\nforged\n"), lines=True)
+        await self.until(lambda: client.seen(echo=False, reader=True))
+        self.assertEqual(session.held, b"")
+        session.write(await session.gate(b"hunter2\n"), lines=True)
+        await self.until(lambda: b"secret was" in client.data)
+        self.assertIn(b"secret was 'hunter2'", client.data)
+
+    async def test_its_lines_reach_their_reader_one_after_the_other(self):
+        session, client = await self.open(THREE_LINES)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"one\rtwo\nthree\r"), lines=True)
+        self.assertEqual(session.held, b"two\nthree\r")
+        await self.until(lambda: b"got three" in client.data)
+        got = [
+            client.data.find(b"got " + w) for w in (b"one", b"two", b"three")
+        ]
+        self.assertEqual(got, sorted(got))
+        self.assertEqual(session.held, b"")
+
+    async def test_the_rest_of_a_paste_never_answers_the_next_question(self):
+        session, client = await self.open(PORT_QUESTIONS % str(REPO))
+        await self.until(lambda: session.asking is not None)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"1\nforged\n"), lines=True)
+        await self.until(lambda: asked(session) == "Q2: ")
+        self.assertEqual(session.held, b"")
+        session.write(b"typed\n", lines=True)
+        await self.until(lambda: b"answers" in client.data)
+        self.assertIn(b"answers '1' 'typed'", client.data)
+
+    async def test_once_answered_a_paste_feeds_what_reads_next(self):
+        session, client = await self.open(PORT_QUESTIONS % str(REPO))
+        for number, text in ((b"1\n", "Q1: "), (b"2\n", "Q2: ")):
+            await self.until(lambda text=text: asked(session) == text)
+            session.write(number)
+        await self.until(lambda: b"answers" in client.data)
+        await self.until(lambda: session.asking is None)
+        session.write(b"a\nb\n", lines=True)
+        await self.until(lambda: b"got" in client.data)
+        self.assertIn(b"got 'a' 'b'", client.data)
+
+    async def test_ctrl_c_throws_away_what_waits(self):
+        session, client = await self.open(READ_THEN_SLEEP)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"go\nlater\n"), lines=True)
+        await self.until(lambda: b"sleeping" in client.data)
+        self.assertEqual(session.held, b"later\n")
+        self.assertEqual(await session.gate(b"\x03"), b"\x03")
+        self.assertEqual(session.held, b"")
+
+    def test_a_line_ends_at_its_first_cr_or_lf(self):
+        cases = {
+            b"a\rb\n": (b"a\r", b"b\n"),
+            b"a\r\nb": (b"a\r\n", b"b"),
+            b"a\nb\r": (b"a\n", b"b\r"),
+            b"abc": (b"abc", b""),
+        }
+        for data, expected in cases.items():
+            self.assertEqual(sessions._first_line(data), expected, data)
 
 
 if __name__ == "__main__":
