@@ -39,6 +39,7 @@ script also runs on its own.
 | `quality.py` | phpcs and PHPStan on a module, with Dolibarr's own rules |
 | `hooks_index.py` | Hooks, contexts and triggers at a version, and the diff between two |
 | `core.py` | Core changes: `status`, `start` a work branch, `check` against CONTRIBUTING, `patches` |
+| `api.py` | REST API: `enable` (module, read-only user, key), `status`, `disable` |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -86,6 +87,7 @@ chaque script se lance aussi seul.
 | `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `hooks_index.py` | Hooks, contextes et déclencheurs à une version, et le diff entre deux |
 | `core.py` | Modifier le cœur : `status`, `start` d'une branche, `check` selon CONTRIBUTING, `patches` |
+| `api.py` | API REST : `enable` (module, utilisateur en lecture, clé), `status`, `disable` |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -361,7 +363,7 @@ ne sont pas posés.
   `private/dolibarr/patches/`. The `ERPLibre/dolibarr` fork does not exist
   yet; `status` says when it answers.
 
-## Pinned version
+## Integration
 
 <!-- [fr] -->
 - `debug.py on` montre les fonctionnalités en développement
@@ -421,6 +423,42 @@ ne sont pas posés.
   stable. `patches` exporte la série sous `private/dolibarr/patches/`. Le
   fork `ERPLibre/dolibarr` n'existe pas encore ; `status` dit quand il
   répond.
+
+## Intégration
+
+<!-- [common] -->
+```bash
+./script/dolibarr/api.py enable --instance erp     # --rotate for a new key
+./script/dolibarr/api.py status --instance erp
+```
+
+<!-- [en] -->
+- `api.py enable` turns the REST API module on and creates a technical
+  user, `erplibre_api`, holding every read right and nothing else. Its
+  `DOLAPIKEY` is drawn by ERPLibre, reaches PHP on stdin only, is stored
+  encrypted by Dolibarr and kept in `private/dolibarr/api/<instance>.key`
+  (0600). Run again, `enable` keeps the key; `--rotate` draws another one
+  and the old one stops working.
+- `status` calls `/api/index.php/status` with the key: only the status
+  answer counts, since a disabled module answers 200 in plain text. The
+  explorer (swagger) is at `/api/index.php/explorer/`. A production needs
+  its name retyped to turn the API on or off. Dolibarr 24's MCP server,
+  still experimental, comes later.
+
+## Pinned version
+
+<!-- [fr] -->
+- `api.py enable` allume le module API REST et crée un utilisateur
+  technique, `erplibre_api`, qui a chaque droit de lecture et aucun autre.
+  Sa `DOLAPIKEY` est tirée par ERPLibre, n'atteint PHP que par stdin, est
+  gardée chiffrée par Dolibarr et dans `private/dolibarr/api/<instance>.key`
+  (0600). Relancé, `enable` garde la clé ; `--rotate` en tire une autre et
+  l'ancienne cesse d'ouvrir l'API.
+- `status` appelle `/api/index.php/status` avec la clé : seule la réponse
+  de statut compte, car un module éteint répond 200 en texte.
+  L'explorateur (swagger) est à `/api/index.php/explorer/`. Une production
+  exige son nom retapé pour allumer ou éteindre l'API. Le serveur MCP de
+  Dolibarr 24, encore expérimental, viendra ensuite.
 
 ## Version épinglée
 
