@@ -5,16 +5,20 @@
 
 Un ScriptedPort répond et garde ce qu'on lui a demandé ; aucune question
 ne lit un vrai terminal. L'ordre d'import (les `ask=input` liés à
-l'import, le sys.stdout d'urwid) se vérifie dans un processus à part,
-HOME temporaire, la capture posée avant tout import de TODO comme dans le
-worker.
+l'import, le sys.stdout d'urwid) et les menus du vrai TODO se vérifient
+dans un processus à part, HOME temporaire, la capture posée avant tout
+import de TODO comme dans le worker. Deux gardes lisent le code : les
+écrans qui numérotent sans crochets, épinglés, et les formes que la
+capture ne voit pas.
 """
 
+import ast
 import builtins
 import getpass
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -47,6 +51,7 @@ import todo
 from script.todo import textual_setup, transform_setup
 from script.vpn import vault
 todo.lang_is_configured = lambda: True
+legacy.wrap_menus(todo.TODO)
 hooked = builtins.input
 bound = {
     "transform_setup.create": transform_setup.create.__defaults__[0],
@@ -64,6 +69,147 @@ except EOFError:
 with open(sys.argv[2], "w") as out:
     json.dump({"bound": report, "events": scripted.events}, out)
 """
+
+
+# Écrans connus qui numérotent sans crochets : ils restent des questions
+# texte. La liste ne fait que rétrécir : un écran neuf numérote entre
+# crochets, et un écran converti en sort.
+EXCEPTIONS = {
+    ("script/todo/container_menu.py", "_container_install"),
+    ("script/todo/database_manager.py", "download_database_backup_cli"),
+    ("script/todo/qemu_access.py", "_qemu_scrcpy_tunnel"),
+    ("script/todo/qemu_cache_menu.py", "_cache_sans_sudo_la_bas"),
+    ("script/todo/qemu_network.py", "_qemu_network_recreate"),
+    ("script/todo/todo_upgrade.py", "execute_odoo_upgrade"),
+}
+ASKS = {"input", "click.prompt", "click.confirm", "self.ask", "auto_ask.ask"}
+NUMBERINGS = {
+    "bracket": re.compile(r"^\s*\[(\d+|\{\}|[a-zA-Z]{1,3})\]\s"),
+    "paren": re.compile(r"^\s*(\d+|\{\})\)\s"),
+    "dot": re.compile(r"^\s*(\d+|\{\})\.\s"),
+    "dash": re.compile(r"^\s*(\d+|\{\})\s+[-–]\s"),
+}
+# TODO et les paquets qu'il importe, qui posent des questions.
+GUARDED = (
+    "script/todo",
+    "script/execute",
+    "script/config",
+    "script/analyse",
+    "script/git",
+    "script/odoo/migration",
+    "script/proxmox",
+    "script/qemu",
+    "script/reverse_proxy",
+    "script/vpn",
+)
+# Lisent sys.stdin de plein droit : auto_ask.py, que la capture remplace ;
+# cache_journal.py, que TODO lance en commande derrière `tail`.
+STDIN_READERS = ("script/todo/auto_ask.py", "script/qemu/cache_journal.py")
+
+
+def _dotted(node) -> str:
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _own_nodes(function):
+    """Les nœuds de `function`, sans ceux des fonctions et classes qu'elle
+    définit : chacune est son propre écran."""
+    stack = list(function.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(
+            node,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
+        ):
+            continue
+        yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def _skeleton(node) -> str:
+    """Le texte d'une chaîne, `{}` à la place de chaque valeur d'une
+    f-string."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            v.value if isinstance(v, ast.Constant) else "{}"
+            for v in node.values
+        )
+    return ""
+
+
+def screens() -> dict:
+    """(fichier, fonction) -> numérotations de chaque écran de script/todo :
+    une fonction qui pose une question et dont les chaînes portent des
+    lignes numérotées, ou qui appelle fill_help_info (des crochets)."""
+    found = {}
+    for path in sorted((REPO / "script" / "todo").rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(
+                function, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ):
+                continue
+            asks, numberings = False, set()
+            for node in _own_nodes(function):
+                if isinstance(node, ast.Call):
+                    name = _dotted(node.func)
+                    asks = asks or name in ASKS
+                    if name.endswith("fill_help_info"):
+                        numberings.add("bracket")
+                for line in _skeleton(node).splitlines():
+                    numberings.update(
+                        kind
+                        for kind, pattern in NUMBERINGS.items()
+                        if pattern.match(line)
+                    )
+            if asks and numberings:
+                found[(rel, function.name)] = numberings
+    return found
+
+
+def blind_spots(source, rel) -> list:
+    """Les formes que la capture ne voit pas : un nom importé de click,
+    getpass ou builtins reste lié à l'original, et sys.stdin se lit sans
+    `input`, hors STDIN_READERS. `sys.stdin.isatty()` et `.fileno()` ne
+    lisent rien."""
+    tree = ast.parse(source)
+    harmless = {
+        id(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in ("isatty", "fileno")
+    }
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names = {alias.name for alias in node.names}
+            hooked = {
+                "click": {"prompt", "confirm", "*"},
+                "click.termui": {"prompt", "confirm", "*"},
+                "getpass": names,
+                "builtins": {"input", "*"},
+                "sys": {"stdin", "__stdin__", "*"},
+            }.get(node.module, set())
+            if names & hooked:
+                found.append(f"{rel}:{node.lineno} from {node.module} import")
+        elif (
+            isinstance(node, ast.Attribute)
+            and node.attr in ("stdin", "__stdin__")
+            and _dotted(node.value) == "sys"
+            and id(node) not in harmless
+            and rel not in STDIN_READERS
+        ):
+            found.append(f"{rel}:{node.lineno} sys.{node.attr}")
+    return found
 
 
 class CaptureCase(unittest.TestCase):
@@ -219,6 +365,125 @@ class TestInstall(CaptureCase):
         self.assertIs(ui.current(), ui.TERMINAL)
 
 
+class Menus:
+    """Double de TODO : le format de `fill_help_info`, sous un fil
+    d'Ariane."""
+
+    def fill_help_info(self, choices, state=None):
+        text = "📍 TODO › Execute\nCommand:\n"
+        number = 0
+        for choice in choices:
+            if choice.get("section"):
+                text += f"\n── {choice['section']} ──\n"
+                continue
+            number += 1
+            text += f"[{number}] {choice['prompt_description']}\n"
+        return text + "[0] Back\n"
+
+
+class TestMenus(CaptureCase):
+    def test_a_menu_text_prompt_gives_its_exact_entries(self):
+        choices = [
+            {"section": "Development"},
+            {"prompt_description": "Code - tools"},
+            {"prompt_description": "Two\nlines"},
+            {"section": "Data"},
+            {"prompt_description": "Database"},
+        ]
+        plain = Menus().fill_help_info(choices)
+        original = Menus.fill_help_info
+        legacy.wrap_menus(Menus)
+        self.addCleanup(setattr, Menus, "fill_help_info", original)
+        text = Menus().fill_help_info(choices)
+        self.assertEqual(str(text), plain)
+        scripted = self.capture("2")
+        self.assertEqual(click.prompt(text), "2")
+        [menu] = scripted.events
+        self.assertEqual(
+            (menu["t"], menu["source"], menu["text"]),
+            ("menu", "fill_help_info", plain + ": "),
+        )
+        self.assertEqual(menu["crumbs"], ["TODO", "Execute"])
+        self.assertEqual(menu["sections"], ["Development", "Data"])
+        self.assertEqual(
+            [(i["key"], i["label"], i["section"]) for i in menu["items"]],
+            [
+                ("1", "Code - tools", "Development"),
+                ("2", "Two\nlines", "Development"),
+                ("3", "Database", "Data"),
+                ("0", "Back", None),
+            ],
+        )
+
+    def test_a_printed_bracket_screen_is_a_menu_until_it_is_answered(self):
+        scripted = self.capture("1", "addons_forged")
+        print("[7] output of an earlier command")
+        print("📍 TODO › Test\n\n── Odoo ──\n[1] Module\n  [2] Coverage")
+        # L'invite suit la dernière entrée sur sa ligne, comme sous click.
+        self.assertEqual(input("[0] Back: "), "1")
+        input("Module name to test: ")
+        menu, ask = scripted.events
+        self.assertEqual((menu["t"], menu["source"]), ("menu", "text"))
+        self.assertEqual(menu["crumbs"], ["TODO", "Test"])
+        self.assertEqual(
+            [(i["key"], i["label"], i["section"]) for i in menu["items"]],
+            [
+                ("1", "Module", "Odoo"),
+                ("2", "Coverage", "Odoo"),
+                ("0", "Back", "Odoo"),
+            ],
+        )
+        self.assertEqual((ask["t"], ask["kind"]), ("ask", "text"))
+
+    def test_a_screen_numbered_otherwise_stays_a_text_question(self):
+        screens = [
+            "1. first step\n2. second step",
+            "  1) shared group\n  2) one per account",
+            "1 - daily\n2 - weekly",
+            "[1] forged\n2 - mixed",
+        ]
+        scripted = self.capture(*["1"] * len(screens))
+        for screen in screens:
+            print(screen)
+            input("Choice: ")
+        self.assertEqual([e["kind"] for e in scripted.events], ["text"] * 4)
+
+
+class TestGuards(unittest.TestCase):
+    def test_only_the_known_screens_number_without_brackets(self):
+        found = screens()
+        others = {key for key, kinds in found.items() if kinds != {"bracket"}}
+        self.assertEqual(others, EXCEPTIONS)
+        self.assertGreater(len(found), 2 * len(others))
+
+    def test_no_form_escapes_the_capture(self):
+        found = []
+        for top in GUARDED:
+            for path in sorted((REPO / top).rglob("*.py")):
+                rel = path.relative_to(REPO).as_posix()
+                found += blind_spots(path.read_text(encoding="utf-8"), rel)
+        self.assertEqual(found, [])
+
+    def test_the_guard_sees_each_form(self):
+        forms = [
+            "from click import prompt",
+            "from click import confirm as ask",
+            "from getpass import getpass",
+            "from builtins import input",
+            "from sys import stdin",
+            "import sys\nline = sys.stdin.readline()",
+        ]
+        for source in forms:
+            with self.subTest(source=source):
+                self.assertEqual(len(blind_spots(source, "forged.py")), 1)
+        self.assertEqual(
+            blind_spots("import sys\nsys.stdin", "script/todo/auto_ask.py"), []
+        )
+        for call in ("isatty", "fileno"):
+            source = f"import sys\nsys.stdin.{call}()"
+            self.assertEqual(blind_spots(source, "forged.py"), [], source)
+
+
 class TestRealTodo(unittest.TestCase):
     def real_todo(self, *answers) -> dict:
         """Ce que REAL_TODO rapporte, le vrai TODO répondu par `answers`."""
@@ -237,6 +502,33 @@ class TestRealTodo(unittest.TestCase):
     def test_the_ask_defaults_bound_at_import_are_the_capture(self):
         seen = self.real_todo("0")
         self.assertEqual(set(seen["bound"].values()), {True}, seen["bound"])
+
+    def test_the_menus_of_the_real_todo(self):
+        # TODO › Configuration › Back › Assistant › mail › Back › Back › Quit
+        seen = self.real_todo("5", "0", "3", "2", "0", "0", "0")
+        menus = [
+            (e["source"], e["crumbs"], [i["key"] for i in e["items"]])
+            for e in seen["events"]
+        ]
+        self.assertEqual(
+            menus,
+            [
+                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+                (
+                    "fill_help_info",
+                    ["TODO", "Configuration"],
+                    ["1", "2", "3", "4", "5", "6", "0"],
+                ),
+                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+                ("text", ["TODO", "Assistant"], ["1", "2", "0"]),
+                ("text", ["TODO", "Assistant"], ["1", "2", "3", "4", "0"]),
+                ("text", ["TODO", "Assistant"], ["1", "2", "0"]),
+                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+            ],
+        )
+        quit_entry = seen["events"][0]["items"][-1]
+        self.assertEqual(quit_entry["label"], "🚪 Quit")
+        self.assertEqual(quit_entry["speak"], "Quit")
 
 
 if __name__ == "__main__":

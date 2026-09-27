@@ -13,15 +13,20 @@ alors le crochet. Le CLI ne la pose jamais.
 
 Ce que devient chaque question, dans cet ordre :
 - `getpass`, `click.prompt(hide_input=True)` : un secret ;
+- le texte d'un menu de `fill_help_info` (`MenuText`, voir `wrap_menus`) :
+  ce menu, entrée pour entrée ;
 - « Type … to confirm », « Tapez … pour confirmer » : une confirmation
   tapée, jamais un bouton ;
 - `click.confirm`, une dernière ligne qui porte [y/N], (o/N), (Y/n),
   (O/n) : une confirmation, avec le défaut qu'elle dit ;
+- un écran à crochets (`[N] libellé`, sous un fil d'Ariane `📍 A › B` et
+  des sections `── X ──`) : un menu ; un écran qui numérote aussi
+  autrement (`1.`, `1)`, `1 -`) reste du texte ;
 - tout le reste : une question texte, avec son défaut.
 `auto_ask.ask` en mode auto devient un compte à rebours.
 
 click garde sa boucle : les enveloppes de `click.prompt` et
-`click.confirm` notent le défaut et `hide_input`, puis appellent
+`click.confirm` notent le défaut, `hide_input` et le menu, puis appellent
 l'original, dont les crochets `visible_prompt_func` et
 `hidden_prompt_func` posent la question ; une valeur que click refuse
 redemande. Le port rend "" pour Entrée : `input` le rend tel quel, click
@@ -41,6 +46,7 @@ import re
 import sys
 
 from script.todo import ui
+from script.todo.todo_i18n import t
 from script.todo.ui import port
 
 TEE_LIMIT = 64 * 1024
@@ -50,6 +56,14 @@ TYPED = re.compile(
     r"\b(?:re)?(?:type|tape[sz]?)\b.*\b(?:to confirm|pour confirmer)\b",
     re.IGNORECASE,
 )
+# Écrans faits à la main : fil d'Ariane, section, entrée.
+CRUMB = re.compile(r"^\s*📍\s*(.+?)\s*$")
+SECTION = re.compile(r"^\s*──\s*(.+?)\s*──\s*$")
+# `[N] libellé` ; le « : » d'une invite collée à la dernière entrée n'en
+# fait pas partie.
+ENTRY = re.compile(r"^\s*\[(\d{1,3}|[A-Za-z])\]\s+(\S.*?)\s*:?\s*$")
+# Une numérotation qui n'est pas entre crochets : « 1. », « 1) », « 1 - ».
+OTHER_NUMBERING = re.compile(r"^\s*\d{1,3}(?:[.)]|\s+[-–])\s+\S")
 
 _NOTE = contextvars.ContextVar("todo_legacy_note", default=None)
 _saved = {}
@@ -112,6 +126,75 @@ def _last_line(text) -> str:
     )
 
 
+class MenuText(str):
+    """Le texte exact d'un menu de `fill_help_info`, qui porte ce menu :
+    `menu`, un dict `items`, `crumbs`, `sections` (voir
+    `port.menu_view`)."""
+
+    menu = None
+
+
+def read_screen(text):
+    """Le menu d'un écran à crochets, depuis son dernier fil d'Ariane :
+    un dict `items` (clé, libellé, section), `crumbs`, `sections` ; None
+    sans entrée `[N]`, ou si une ligne numérote autrement."""
+    lines = text.splitlines()
+    starts = [n for n, line in enumerate(lines) if CRUMB.match(line)]
+    crumbs, sections, items, section = [], [], [], None
+    for line in lines[starts[-1] if starts else 0 :]:
+        if OTHER_NUMBERING.match(line):
+            return None
+        if match := CRUMB.match(line):
+            crumbs = [crumb.strip() for crumb in match[1].split("›")]
+        elif match := SECTION.match(line):
+            section = match[1]
+            sections.append(section)
+        elif match := ENTRY.match(line):
+            items.append(
+                {"key": match[1], "label": match[2], "section": section}
+            )
+    if not items:
+        return None
+    return {"items": items, "crumbs": crumbs, "sections": sections}
+
+
+def wrap_menus(todo_class) -> None:
+    """Fait rendre à `todo_class.fill_help_info` un MenuText : le même
+    texte, octet pour octet, qui porte ses entrées exactes. Posée avant
+    que TODO() soit construit, elle couvre aussi la copie liée que garde
+    DatabaseManager."""
+    original = todo_class.fill_help_info
+
+    def fill_help_info(self, choices, *args, **kwargs):
+        text = MenuText(original(self, choices, *args, **kwargs))
+        text.menu = _menu_of(text, choices)
+        return text
+
+    todo_class.fill_help_info = fill_help_info
+
+
+def _menu_of(text, choices) -> dict:
+    """Entrées de `choices` comme `fill_help_info` les numérote (une
+    section ne prend pas de numéro), puis `[0]`, la dernière ligne."""
+    items, sections, section, number = [], [], None, 0
+    for choice in choices:
+        if choice.get("section"):
+            section = choice["section"]
+            sections.append(section)
+            continue
+        number += 1
+        key = choice.get("prompt_description_key")
+        label = t(key) if key else choice["prompt_description"]
+        items.append({"key": str(number), "label": label, "section": section})
+    back = ENTRY.match(_last_line(text))
+    items.append(
+        {"key": "0", "label": back[2] if back else "0", "section": None}
+    )
+    crumb = CRUMB.match(text.split("\n", 1)[0])
+    crumbs = [c.strip() for c in crumb[1].split("›")] if crumb else []
+    return {"items": items, "crumbs": crumbs, "sections": sections}
+
+
 def _question(prompt, note=None) -> str:
     """Pose `prompt` au port lié, selon ce qu'il est (voir le module), et
     rend la ligne répondue. L'écran lu est ce que le Tee a gardé, suivi de
@@ -124,6 +207,10 @@ def _question(prompt, note=None) -> str:
     try:
         if note.get("hide"):
             return target.ask(text, kind="secret")
+        menu = note.get("menu") or getattr(prompt, "menu", None)
+        if menu is not None:
+            view = port.menu_view(text, source="fill_help_info", **menu)
+            return target.menu(view)
         line = _last_line(screen)
         if TYPED.search(line):
             return target.ask(text, default, "typed")
@@ -131,6 +218,9 @@ def _question(prompt, note=None) -> str:
             if default is None and not note.get("confirm"):
                 default = confirm_default(line)
             return target.ask(text, default, "confirm")
+        read = read_screen(screen)
+        if read is not None:
+            return target.menu(port.menu_view(text, **read))
         return target.ask(text, default, "text")
     finally:
         if _tee is not None:
@@ -155,13 +245,15 @@ def _hidden_prompt(prompt):
 
 def _click_prompt(text, *args, **kwargs):
     """`click.prompt` d'origine, qui pose ses questions par les crochets
-    de click ; le défaut et `hide_input` sont notés pour eux."""
+    de click ; le défaut, `hide_input` et le menu de `text` sont notés
+    pour eux."""
     original = _saved["prompt"]
     bound = inspect.signature(original).bind(text, *args, **kwargs)
     default = bound.arguments.get("default")
     note = {
         "default": None if default is None else str(default),
         "hide": bool(bound.arguments.get("hide_input")),
+        "menu": getattr(text, "menu", None),
     }
     token = _NOTE.set(note)
     try:
