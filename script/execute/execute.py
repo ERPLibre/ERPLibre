@@ -14,8 +14,11 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import termios
+import threading
 import time
 
 try:
@@ -121,7 +124,30 @@ logging.basicConfig(
 _logger = logging.getLogger(__name__)
 
 
+def _set_foreground(fd, pgid):
+    """Donne le terminal `fd` au groupe de processus `pgid`.
+
+    Hors du premier plan, tcsetpgrp envoie SIGTTOU à l'appelant, ce qui
+    l'arrête ; bloqué le temps de l'appel dans ce thread, le signal n'est
+    pas émis et l'appel aboutit (POSIX).
+    """
+    old = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTTOU})
+    try:
+        os.tcsetpgrp(fd, pgid)
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, old)
+
+
 class Execute:
+    # Contrôle de tâches, posé par le worker d'une session web et jamais par
+    # le CLI. Vrai, une commande a son propre groupe de processus, au
+    # premier plan du terminal de contrôle le temps qu'elle tourne : l'octet
+    # Ctrl+C écrit sur ce terminal n'interrompt qu'elle (code -2), et le
+    # processus qui l'a lancée continue. Faux, la commande partage le groupe
+    # de l'appelant, et Ctrl+C les interrompt tous deux. Une commande tuée
+    # par un signal laisse le terminal vidé de ce qu'elle n'a pas lu.
+    job_control = False
+
     def __init__(self) -> None:
         self.cmd_source_erplibre: str = ""
         self.cmd_source_default: str = ""
@@ -215,6 +241,7 @@ class Execute:
             print("🏠 ⬇ Execute command :\n")
             print(redact_secrets(command))
         output_lines = []
+        tty = self._job_control_tty()
 
         try:
             process = subprocess.Popen(
@@ -230,7 +257,22 @@ class Execute:
                 # réponse, et l'on répondait à l'aveugle.
                 bufsize=0,
                 env=my_env,
+                **({"process_group": 0} if tty is not None else {}),
             )
+            if tty is not None:
+                try:
+                    _set_foreground(tty, process.pid)
+                    # Lancée hors du premier plan, la commande a pu lire le
+                    # terminal avant de le recevoir : SIGTTIN l'a alors
+                    # arrêtée.
+                    os.killpg(process.pid, signal.SIGCONT)
+                except OSError:
+                    # Sans le premier plan, personne ne suivrait la commande.
+                    # SIGKILL : arrêtée par SIGTTIN, elle garderait SIGTERM
+                    # en attente.
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+                    raise
 
             sink = getattr(self, "log_sink", None)
             # Le tube porte des octets, et une lecture peut couper un caractère
@@ -324,6 +366,19 @@ class Execute:
             exit_code = 1
             if not quiet:
                 print(f"An error occurred: {redact_secrets(str(e))}")
+        finally:
+            if tty is not None:
+                try:
+                    _set_foreground(tty, os.getpgrp())
+                    # Comme Ctrl+C au terminal, une commande tuée par un
+                    # signal ne laisse pas ce qu'on lui a tapé répondre à la
+                    # question suivante.
+                    if exit_code is not None and exit_code < 0:
+                        termios.tcflush(tty, termios.TCIFLUSH)
+                except OSError:
+                    pass  # terminal raccroché : plus rien à reprendre
+                finally:
+                    os.close(tty)
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
         if humanize:
@@ -344,3 +399,16 @@ class Execute:
         if return_status_and_output:
             return exit_code, output_lines
         return exit_code
+
+    def _job_control_tty(self):
+        """Descripteur du terminal de contrôle, ouvert pour une commande
+        lancée avec le contrôle de tâches ; None sans `job_control`, hors du
+        fil principal (deux fils se disputeraient le premier plan) ou sans
+        terminal de contrôle, et la commande tourne alors comme au CLI."""
+        main = threading.current_thread() is threading.main_thread()
+        if not self.job_control or not main:
+            return None
+        try:
+            return os.open("/dev/tty", os.O_RDWR)
+        except OSError:
+            return None

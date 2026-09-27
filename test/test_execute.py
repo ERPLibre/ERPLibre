@@ -3,11 +3,19 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import pty
+import select
+import signal
+import subprocess
+import sys
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from script.execute.execute import Execute, redact_secrets
+
+REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class TestExecuteInit(unittest.TestCase):
@@ -168,6 +176,131 @@ class TestExecCommandLive(unittest.TestCase):
         )
         self.assertEqual(status, 0)
         self.assertEqual(output, [])
+
+
+# Tient le rôle du worker d'une session web : rétablit SIGINT (un SIGINT
+# ignoré s'hérite, d'un lanceur en arrière-plan), prend le PTY comme terminal
+# de contrôle, lance une commande avec le contrôle de tâches, puis dit son
+# code, si le terminal lui est revenu, et qu'il vit encore.
+JOB_CHILD = r"""
+import fcntl, os, signal, termios
+signal.signal(signal.SIGINT, signal.default_int_handler)
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+from script.execute.execute import Execute
+exe = Execute()
+exe.job_control = True
+rc = exe.exec_command_live('read -r x; echo "got $x"; sleep 30', False)
+back = os.tcgetpgrp(0) == os.getpgrp()
+print(f"rc={rc} back={back}", flush=True)
+print("alive", flush=True)
+"""
+
+
+def _read_until(fd, marker, timeout=10.0):
+    """Octets lus sur `fd` jusqu'à `marker` compris ; échec au délai."""
+    out = b""
+    deadline = time.monotonic() + timeout
+    while marker not in out:
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            raise AssertionError(f"{marker!r} not seen in {out!r}")
+        try:
+            out += os.read(fd, 65536)
+        except OSError:  # EIO : plus personne au bout de l'esclave
+            raise AssertionError(f"{marker!r} not seen in {out!r}")
+    return out
+
+
+class TestJobControl(unittest.TestCase):
+    def test_off_by_default_the_command_shares_the_caller_group(self):
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        self.assertIs(exe.job_control, False)
+        with (
+            patch("subprocess.Popen", wraps=subprocess.Popen) as popen,
+            patch("os.tcsetpgrp") as tcsetpgrp,
+        ):
+            rc = exe.exec_command_live("true", False, quiet=True)
+        self.assertEqual(rc, 0)
+        self.assertNotIn("process_group", popen.call_args.kwargs)
+        tcsetpgrp.assert_not_called()
+
+    def test_without_a_controlling_terminal_it_runs_as_in_the_cli(self):
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        exe.job_control = True
+        with (
+            patch("os.open", side_effect=OSError("no terminal")),
+            patch("subprocess.Popen", wraps=subprocess.Popen) as popen,
+        ):
+            rc = exe.exec_command_live("true", False, quiet=True)
+        self.assertEqual(rc, 0)
+        self.assertNotIn("process_group", popen.call_args.kwargs)
+
+    def test_outside_the_main_thread_it_runs_as_in_the_cli(self):
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        exe.job_control = True
+        ttys = []
+        with patch("os.open") as open_:
+            thread = threading.Thread(
+                target=lambda: ttys.append(exe._job_control_tty())
+            )
+            thread.start()
+            thread.join()
+        self.assertEqual(ttys, [None])
+        open_.assert_not_called()
+
+    def test_a_foreground_refused_leaves_no_command_behind(self):
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        exe.job_control = True
+        tty = os.open(os.devnull, os.O_RDWR)
+        started, real = [], subprocess.Popen
+
+        def popen(*args, **kwargs):
+            started.append(real(*args, **kwargs))
+            return started[-1]
+
+        with (
+            patch.object(Execute, "_job_control_tty", return_value=tty),
+            patch(
+                "script.execute.execute._set_foreground",
+                side_effect=OSError(5, "EIO"),
+            ),
+            patch("subprocess.Popen", side_effect=popen),
+            patch("os.close", wraps=os.close) as close,
+        ):
+            rc = exe.exec_command_live("sleep 30", False, quiet=True)
+        started[0].stdout.close()
+        # Tuée et attendue ; le descripteur se ferme malgré l'échec.
+        self.assertEqual((rc, started[0].returncode), (1, -signal.SIGKILL))
+        close.assert_any_call(tty)
+
+    def test_ctrl_c_stops_the_command_and_not_its_caller(self):
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        child = subprocess.Popen(
+            [sys.executable, "-c", JOB_CHILD],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            cwd=REPO,
+            start_new_session=True,
+        )
+        os.close(slave)
+        # Sur un échec, la fermeture du maître (le dernier nettoyage)
+        # raccroche le terminal : SIGHUP à la commande restée au premier plan.
+        self.addCleanup(child.wait, 10)
+        self.addCleanup(child.kill)
+        _read_until(master, b"Execute command")
+        # La commande lit le terminal : elle y est au premier plan.
+        os.write(master, b"yes\n")
+        out = _read_until(master, b"got yes")
+        os.write(master, b"\x03")
+        out += _read_until(master, b"alive")
+        self.assertIn(b"rc=-2 back=True", out)
+        self.assertEqual(child.wait(10), 0)
 
 
 class TestRedactSecrets(unittest.TestCase):
