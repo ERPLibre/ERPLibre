@@ -6,13 +6,14 @@
 import {Component, useState, xml} from "@odoo/owl";
 import {ListView} from "./list_view.js";
 import {SORTS, VIEWS, effectiveSort, readFragment, writeFragment} from "./model.js";
+import {SystemView} from "./system_view.js";
 import {TreeView} from "./tree_view.js";
 
-const VIEW_LABELS = {tree: "Tree", list: "List"};
+const VIEW_LABELS = {tree: "Tree", list: "List", system: "System"};
 const SORT_LABELS = {code: "Code order", usage: "Most used", name: "Name"};
 
 export class TelemetryPage extends Component {
-    static components = {ListView, TreeView};
+    static components = {ListView, SystemView, TreeView};
     static template = xml`
         <header class="bar">
             <h1 t-esc="env.t('TODO navigation telemetry')"/>
@@ -40,7 +41,8 @@ export class TelemetryPage extends Component {
         <p class="summary" t-esc="summary"/>
         <TreeView t-if="state.view === 'tree'" t-key="sort + '|' + state.query" tree="tree" counts="counts"
             query="state.query" sort="sort"/>
-        <ListView t-else="" tree="tree" counts="counts" query="state.query" sort="sort"/>`;
+        <ListView t-elif="state.view === 'list'" tree="tree" counts="counts" query="state.query" sort="sort"/>
+        <SystemView t-else=""/>`;
 
     setup() {
         this.views = VIEWS;

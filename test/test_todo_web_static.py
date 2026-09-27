@@ -7,7 +7,8 @@ OWL est vendoré sans modification : ses fichiers doivent rester ceux du
 paquet npm, dont le README de provenance note les empreintes. La page, elle,
 est servie depuis la table que le hub charge au démarrage, sous une CSP qui
 n'autorise que l'import map par son hash. Les fonctions pures des vues
-(`static/src/model.js`) tournent sous node, quand il est installé.
+(`static/src/model.js`, `static/src/metrics.js`) tournent sous node, quand
+il est installé.
 """
 
 import ast
@@ -293,6 +294,75 @@ class TestPageModel(unittest.TestCase):
             self.out["written"],
             ["#view=list&lang=fr", "#lang=en&view=tree&sort=usage"],
         )
+
+
+VIEW_CHECK = r"""
+console.log(JSON.stringify({
+    view: m.readFragment("#view=system").view,
+    sort: m.effectiveSort("system", "usage") ?? null,
+}));
+"""
+
+# Deux échantillons, le premier sans taux ni température, le second complet.
+METRICS_CHECK = r"""
+const metrics = {cpu: null, net: null, mem: [8e9, 2e9],
+    disk: [100e9, 40e9, 60e9], battery: null, temp: null, uptime: 90061,
+    load: [0.5, 0.25, 1], ncpu: 4};
+const next = {...metrics, cpu: 12, net: [1500, 2e6],
+    battery: [85, "Discharging"]};
+const rows = (sample, temp, lang = "en") =>
+    m.systemRows(sample, temp, (key) => key, lang);
+console.log(JSON.stringify({
+    first: rows(metrics, null),
+    next: rows(next, ["sysfs", [40.2, 55.7]]),
+    french: rows(metrics, null, "fr"),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestSystemRows(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.view = _node_json(VIEW_CHECK, "model.js")
+        out = _node_json(METRICS_CHECK, "metrics.js")
+        cls.text = {
+            name: {label: value for label, value, _ in rows}
+            for name, rows in out.items()
+        }
+        cls.share = {
+            name: {label: share for label, _, share in rows}
+            for name, rows in out.items()
+        }
+
+    def test_the_system_view_offers_no_sort_hence_no_search(self):
+        self.assertEqual(self.view, {"view": "system", "sort": None})
+
+    def test_the_first_sample_waits_for_rates(self):
+        first = self.text["first"]
+        self.assertEqual(first["State"], "uptime 1d 1h · load 0.5 / 0.3 / 1")
+        self.assertEqual(first["CPU"], "… · 4 cores")
+        self.assertEqual(first["Memory"], "2 GB / 8 GB · 25%")
+        self.assertEqual(first["Disk /"], "40 GB / 100 GB · 40% · 60 GB free")
+        self.assertEqual(first["Network"], "…")
+        self.assertEqual(first["Temperature"], "unavailable")
+        self.assertNotIn("Battery", first)
+        self.assertIsNone(self.share["first"]["CPU"])
+
+    def test_the_next_sample_has_rates_shares_and_temperature(self):
+        after = self.text["next"]
+        self.assertEqual(after["CPU"], "12% · 4 cores")
+        self.assertEqual(after["Network"], "↓ 1.5 kB/s · ↑ 2 MB/s")
+        self.assertEqual(after["Battery"], "85% (Discharging)")
+        self.assertEqual(after["Temperature"], "56°C (max)")
+        shares = self.share["next"]
+        self.assertEqual((shares["CPU"], shares["Battery"]), (0.12, 0.85))
+        self.assertEqual((shares["Memory"], shares["Disk /"]), (0.25, 0.4))
+
+    def test_units_and_numbers_follow_the_language(self):
+        french = self.text["french"]
+        self.assertIn("Go", french["Memory"])
+        self.assertIn("0,5", french["State"])
 
 
 if __name__ == "__main__":

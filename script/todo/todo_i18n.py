@@ -3748,12 +3748,15 @@ TRANSLATIONS = {
     "Network": {"fr": "Réseau", "en": "Network"},
     "Battery": {"fr": "Batterie", "en": "Battery"},
     "Temperature": {"fr": "Température", "en": "Temperature"},
-    # Page web de télémétrie : vues, recherche et tri.
+    # Page web de télémétrie : vues, recherche, tri et relevé système.
     "Tree": {"fr": "Arbre", "en": "Tree"},
     "List": {"fr": "Liste", "en": "List"},
+    "System": {"fr": "Système", "en": "System"},
     "Sort": {"fr": "Tri", "en": "Sort"},
     "Code order": {"fr": "Ordre du code", "en": "Code order"},
     "Most used": {"fr": "Les plus utilisés", "en": "Most used"},
+    "CPU": {"fr": "Processeur", "en": "CPU"},
+    "unavailable": {"fr": "indisponible", "en": "unavailable"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",

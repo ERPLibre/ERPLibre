@@ -573,6 +573,60 @@ class TestI18nApi(ApiCase):
         )
 
 
+class TestSystemApi(ApiCase):
+    async def test_a_real_snapshot_carries_the_temperature_first(self):
+        data = await self.get_json("/api/system")
+        self.assertTrue(data["full"])
+        self.assertEqual(
+            set(data["metrics"]),
+            {
+                "cpu",
+                "net",
+                "mem",
+                "disk",
+                "battery",
+                "temp",
+                "uptime",
+                "load",
+                "ncpu",
+            },
+        )
+        self.assertGreaterEqual(data["metrics"]["ncpu"], 1)
+
+    async def test_no_cookie_403(self):
+        self.assertEqual((await self.fetch("/api/system")).code, 403)
+
+    async def test_each_session_keeps_its_previous_sample(self):
+        calls = []
+
+        def snapshot(prev, full):
+            calls.append((prev, full))
+            return {"prev": prev}, len(calls)
+
+        other = await self.cookie()
+        with patch.object(todo_telemetry, "system_snapshot", snapshot):
+            await self.get_json("/api/system")
+            await self.get_json("/api/system")
+            resp = await self.fetch("/api/system", Cookie=other)
+        self.assertEqual(calls, [(None, True), (1, False), (None, True)])
+        self.assertEqual(json.loads(resp.body)["metrics"], {"prev": None})
+
+    async def test_the_temperature_is_read_once_in_five_calls(self):
+        fulls = []
+
+        def snapshot(prev, full):
+            fulls.append(full)
+            return {}, None
+
+        with patch.object(todo_telemetry, "system_snapshot", snapshot):
+            for _ in range(11):
+                data = await self.get_json("/api/system")
+                self.assertEqual(data["full"], fulls[-1])
+        self.assertEqual(
+            fulls, [True, False, False, False, False] * 2 + [True]
+        )
+
+
 class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.make_env()

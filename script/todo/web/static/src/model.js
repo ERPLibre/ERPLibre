@@ -3,7 +3,7 @@
 // celui de /api/telemetry : {key, label, path, menu, children, section?} ;
 // `counts` associe un chemin à son compteur.
 
-export const VIEWS = ["tree", "list"];
+export const VIEWS = ["tree", "list", "system"];
 // Tris offerts par vue ; le premier est celui de la vue quand le fragment
 // n'en nomme aucun qu'elle offre.
 export const SORTS = {tree: ["code", "usage"], list: ["usage", "name", "code"]};

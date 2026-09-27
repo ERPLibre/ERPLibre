@@ -52,6 +52,9 @@ CODE_TTL = 120.0
 # Corps HTTP et messages WebSocket : tornado accepte 100 Mo par défaut.
 MAX_BODY = 64 * 1024
 IDLE_SECONDS = 1800.0
+# Le relevé de température peut lancer `sensors` : au plus un appel sur ce
+# nombre, le premier de chaque session compris.
+SYSTEM_FULL_EVERY = 5
 PROBE_TIMEOUT = 0.3
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
@@ -368,6 +371,31 @@ class I18n(Guard, tornado.web.RequestHandler):
         )
 
 
+class System(Guard, tornado.web.RequestHandler):
+    """`{metrics, full}` : le relevé de `todo_telemetry.system_snapshot`.
+
+    Le relevé précédent, d'où se calculent les taux du processeur et du
+    réseau, est gardé par session, une par navigateur : ses onglets
+    partagent le cookie, donc le relevé, et chaque taux se calcule sur
+    l'intervalle réel entre deux appels. `full`, qui ajoute la température,
+    vaut vrai au premier appel d'une session puis une fois sur
+    SYSTEM_FULL_EVERY ; entre deux, `metrics["temp"]` est null et la page
+    garde la dernière reçue.
+    """
+
+    async def get(self):
+        self.require_session()
+        token = self.get_cookie(self.hub.cookie)
+        state = self.hub.system.setdefault(token, {"prev": None, "calls": 0})
+        full = state["calls"] % SYSTEM_FULL_EVERY == 0
+        state["calls"] += 1
+        # Lectures de /proc et de /sys, `sensors` peut-être : hors boucle.
+        metrics, state["prev"] = await asyncio.to_thread(
+            todo_telemetry.system_snapshot, state["prev"], full
+        )
+        self.write({"metrics": metrics, "full": full})
+
+
 def _hold_lock(path: Path) -> int:
     """Descripteur de `path` (0600) sous verrou exclusif, ou `HubRunning`.
 
@@ -447,6 +475,7 @@ class Hub:
         self.stopping = None
         self.last_activity = time.monotonic()
         self.code_tree = CodeTree(self.root)
+        self.system = {}  # jeton du cookie -> {"prev", "calls"}
         self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
         self.http = None
 
@@ -458,6 +487,7 @@ class Hub:
             (r"/api/session", Session),
             (r"/api/telemetry", Telemetry),
             (r"/api/i18n", I18n),
+            (r"/api/system", System),
         ]
 
     async def start(self, host="127.0.0.1", port=0):

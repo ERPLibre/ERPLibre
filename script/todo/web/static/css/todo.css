@@ -160,3 +160,26 @@ body {
 .empty {
     color: var(--muted);
 }
+
+.system {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.4rem 1rem;
+}
+
+.system dt {
+    color: var(--muted);
+}
+
+.system dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.system meter {
+    width: 10rem;
+}
