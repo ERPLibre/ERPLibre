@@ -262,11 +262,10 @@ class MenuCoherence:
 
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Deux capacités du menu QEMU/KVM que le menu Proxmox offre aussi.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Changer l'état d'une VM depuis la liste (QEMU/KVM le fait dans
+    « Lister les VM »), et lancer les commandes ajoutées par todo.json.
     """
 
     @classmethod
@@ -399,6 +398,32 @@ class TestLArbreDesMenus(unittest.TestCase):
         noeud = self._noeud("Proxmox VE")
         self.assertIsNotNone(noeud, "colonne Proxmox VE absente de l'arbre")
         self.assertGreaterEqual(len(noeud.get("children") or []), 15)
+
+    def test_the_telemetry_entry_is_a_menu_of_three_leaves(self):
+        # [4] du menu principal ouvre un sous-menu, et non plus la TUI ; les
+        # autres entrées gardent leur numéro.
+        noeud = self._noeud("Navigation telemetry")
+        self.assertIsNotNone(noeud, "menu Navigation telemetry absent")
+        self.assertTrue(noeud["is_menu"])
+        self.assertEqual(
+            [(f["label"], f["method"]) for f in noeud["children"]],
+            [
+                ("Navigation telemetry (TUI)", "_todo_telemetry_tui"),
+                ("Navigation telemetry (WEB)", "_todo_telemetry_web"),
+                ("Stop the web interface", "_todo_web_stop"),
+            ],
+        )
+        racine = [enfant["label"] for enfant in self.arbre["children"]]
+        self.assertEqual(
+            racine,
+            [
+                "Execute",
+                "Install",
+                "Assistant",
+                "Navigation telemetry",
+                "Configuration",
+            ],
+        )
 
     def test_the_breadcrumb_names_the_proxmox_menu(self):
         # Sans étiquette, le fil d'Ariane sautait le menu Proxmox : on lisait
@@ -563,6 +588,28 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",
     }
+
+
+class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
+    """L'entrée [4] du menu principal : TUI, WEB, arrêt de l'interface web.
+
+    [3] arrête un serveur que d'autres onglets peuvent employer : un
+    décalage entre l'affichage et le dispatch arrêterait au lieu d'ouvrir.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_telemetry(self):"
+    END = "def _todo_telemetry_tui(self):"
+    MINIMUM = 2
+
+    EXPECTED = {
+        "Navigation telemetry (TUI)": "_todo_telemetry_tui",
+        "Navigation telemetry (WEB)": "_todo_telemetry_web",
+        "Stop the web interface": "_todo_web_stop",
+    }
+
+    def test_zero_goes_back(self):
+        self.assertRegex(self.body, r'if status == "0":\s*\n\s*return False')
 
 
 class TestMenuLabels(unittest.TestCase):

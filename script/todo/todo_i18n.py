@@ -2454,9 +2454,29 @@ TRANSLATIONS = {
         "fr": "suivi d'installation",
         "en": "install monitoring",
     },
+    "Navigation telemetry": {
+        "fr": "📊 Télémétrie de navigation",
+        "en": "📊 Navigation telemetry",
+    },
     "Navigation telemetry (TUI)": {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
+    },
+    "Navigation telemetry (WEB)": {
+        "fr": "🌐 Télémétrie de navigation (WEB)",
+        "en": "🌐 Navigation telemetry (WEB)",
+    },
+    "Stop the web interface": {
+        "fr": "⏹️ Arrêter l'interface web",
+        "en": "⏹️ Stop the web interface",
+    },
+    "Web interface: running on {url} (sessions: {n})": {
+        "fr": "🌐 Interface web : active sur {url} (sessions : {n})",
+        "en": "🌐 Web interface: running on {url} (sessions: {n})",
+    },
+    "Web interface: stopped": {
+        "fr": "🌐 Interface web : arrêtée",
+        "en": "🌐 Web interface: stopped",
     },
     "Web interface ready": {
         "fr": "✅ Interface web prête",

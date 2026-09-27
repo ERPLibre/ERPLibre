@@ -105,6 +105,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
 - factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
 - Le choix d'interface du déploiement QEMU et de la migration Odoo, et ses préférences dans `TODO › Configuration`, marquent le formulaire TUI d'un 📋 et les questions ligne par ligne d'un 💬
+- L'entrée 4 du menu principal de TODO, Télémétrie de navigation, demande s'il faut ouvrir la télémétrie dans le terminal (TUI) ou dans le navigateur (WEB), et sait arrêter l'interface web ; une ligne sous son fil d'Ariane dit si cette interface tourne. La page du navigateur gagne une vue Liste et une vue Système, une recherche qui ignore la casse et les accents, et des tris par usage, par nom ou dans l'ordre du code
 
 ## Corrigé
 

@@ -225,7 +225,7 @@ class LeMenu(unittest.TestCase):
 
         set_lang("fr")
         todo = TODO()
-        todo._menu_header = lambda: "x"
+        todo._menu_header = lambda state=None: "x"
         lancees = []
         todo.execute_from_configuration = lambda e: lancees.append(e)
         # Le numéro se DÉDUIT du menu : l'entrée de config est la dernière

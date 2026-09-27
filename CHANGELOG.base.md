@@ -191,6 +191,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Transform data` reads Excel with openpyxl 3.1.5 and xlsxwriter 3.2.9; the leak test that guards openpyxl's exact pin passes on them
 - factur-x requires 6.8 outside s390x, the version already locked, so a regeneration can no longer fall back to an untested 4.x or 5.x
 - The interface chooser of the QEMU deployment and of the Odoo migration, and its preferences in `TODO › Configuration`, mark the TUI form with 📋 and the line by line questions with 💬
+- Entry 4 of the TODO main menu, Navigation telemetry, asks whether to open the telemetry in the terminal (TUI) or in the browser (WEB), and can stop the web interface; a line under its breadcrumb says whether that interface runs. The browser page gains a List and a System view, a search that ignores case and accents, and sorts by usage, name or code order
 
 <!-- [fr] -->
 
@@ -226,6 +227,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
 - factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
 - Le choix d'interface du déploiement QEMU et de la migration Odoo, et ses préférences dans `TODO › Configuration`, marquent le formulaire TUI d'un 📋 et les questions ligne par ligne d'un 💬
+- L'entrée 4 du menu principal de TODO, Télémétrie de navigation, demande s'il faut ouvrir la télémétrie dans le terminal (TUI) ou dans le navigateur (WEB), et sait arrêter l'interface web ; une ligne sous son fil d'Ariane dit si cette interface tourne. La page du navigateur gagne une vue Liste et une vue Système, une recherche qui ignore la casse et les accents, et des tris par usage, par nom ou dans l'ordre du code
 
 <!-- [en] -->
 ## Fixed

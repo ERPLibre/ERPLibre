@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""La télémétrie dans le navigateur depuis TODO : ouvrir la page par le hub
-web de ce checkout, dire pourquoi il n'a pas démarré, l'arrêter.
+"""L'entrée [4] du menu principal, qui propose la télémétrie en TUI ou dans
+le navigateur et l'arrêt de l'interface web, et ses méthodes web : ouvrir la
+page par le hub de ce checkout, dire pourquoi il n'a pas démarré, l'arrêter.
 
 Le lanceur est simulé, sauf dans TestWithARealHub, qui démarre un vrai hub.
 HOME, et XDG_RUNTIME_DIR pour le vrai hub, pointent vers un répertoire
@@ -65,6 +66,60 @@ class MenuCase(unittest.TestCase):
         with redirect_stdout(out):
             self.assertIsNone(method())
         return out.getvalue().splitlines()
+
+    def menu(self, status=None):
+        """Texte que prompt_telemetry soumet à click.prompt, puis [0].
+        `status` est ce que rend launcher.status, ou l'exception qu'il
+        lève."""
+        with (
+            patch.object(launcher, "status", side_effect=[status]) as probe,
+            patch("click.prompt", side_effect=["0"]) as prompt,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIs(self.todo.prompt_telemetry(), False)
+        probe.assert_called_with(new_path)
+        return prompt.call_args.args[0].splitlines()
+
+
+class TestPromptTelemetry(MenuCase):
+    def test_each_number_reaches_its_method_and_zero_goes_back(self):
+        with (
+            patch.object(TODO, "_todo_telemetry_tui") as tui,
+            patch.object(TODO, "_todo_telemetry_web") as web,
+            patch.object(TODO, "_todo_web_stop") as stop,
+            patch.object(launcher, "status", return_value=None),
+            patch("click.prompt", side_effect=["1", "2", "3", "9", "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_telemetry(), False)
+        for method in (tui, web, stop):
+            method.assert_called_once_with()
+        self.assertIn("Command not found !", out.getvalue())
+
+    def test_the_french_menu_is_the_one_of_the_spec(self):
+        todo_i18n.use_lang("fr")
+        self.assertEqual(
+            self.menu(),
+            [
+                "📍 Navigation telemetry",
+                "🌐 Interface web : arrêtée",
+                "Commande :",
+                "[1] 📊 Télémétrie de navigation (TUI)",
+                "[2] 🌐 Télémétrie de navigation (WEB)",
+                "[3] ⏹️ Arrêter l'interface web",
+                "[0] 🔙 Retour",
+            ],
+        )
+
+    def test_a_running_hub_shows_its_address_and_sessions(self):
+        self.assertEqual(
+            self.menu(RUNNING)[1],
+            f"🌐 Web interface: running on {URL} (sessions: 2)",
+        )
+
+    def test_an_unreadable_hub_shows_stopped(self):
+        lines = self.menu(OSError("forged"))
+        self.assertIn("🌐 Web interface: stopped", lines)
 
 
 class TestTelemetryWeb(MenuCase):
@@ -255,11 +310,20 @@ class TestWithARealHub(MenuCase):
         self.assertEqual(lines[0], f"✅ Web interface ready — {url}")
         self.assertTrue(lines[2].startswith(f"   ssh -L {port}:127.0.0.1:"))
         self.assertRegex(lines[-1], rf"^   {url}#login=\S+&view=telemetry")
+        self.assertIn(f"running on {url} (sessions: 0)", self.menu_text())
         self.assertEqual(
             self.printed(self.todo._todo_web_stop),
             ["⏹️ Web interface stopped"],
         )
         self.assertIsNone(launcher.status(new_path))
+
+    def menu_text(self):
+        with (
+            patch("click.prompt", side_effect=["0"]) as prompt,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.todo.prompt_telemetry()
+        return prompt.call_args.args[0]
 
 
 if __name__ == "__main__":

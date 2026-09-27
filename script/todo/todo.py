@@ -257,7 +257,7 @@ class TODO(
 [1] {t("Execute")}
 [2] {t("Install")}
 [3] {t("Assistant")}
-[4] {t("Navigation telemetry (TUI)")}
+[4] {t("Navigation telemetry")}
 [5] {t("Configuration")}
 [0] 🚪 {t("Quit")}
 """
@@ -284,7 +284,7 @@ class TODO(
             elif status == "3":
                 self.prompt_assistant()
             elif status == "4":
-                self._todo_telemetry_tui()
+                self.prompt_telemetry()
             elif status == "5":
                 self.prompt_configuration()
             # elif status == "3" or status == "install":
@@ -712,12 +712,14 @@ class TODO(
         "_container_erplibre": "ERPLibre container",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
     }
 
-    def _menu_header(self):
-        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
-        la ligne « Commande : ». Le fil situe le menu courant et se copie pour
+    def _menu_header(self, state=None):
+        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels), puis
+        `state`, une ligne d'état propre au menu, s'il est donné, puis la
+        ligne « Commande : ». Le fil situe le menu courant et se copie pour
         décrire sans ambiguïté où l'on se trouve."""
         crumbs = []
         for frame_info in reversed(inspect.stack()):
@@ -736,7 +738,35 @@ class TODO(
                 todo_telemetry.record(" › ".join(crumbs))
             except Exception:
                 pass
+        if state:
+            header += state + "\n"
         return header + t("Command:")
+
+    def prompt_telemetry(self):
+        """Télémétrie de navigation : la TUI, la page web, ou l'arrêt de
+        l'interface web de ce checkout. Sous le fil d'Ariane, une ligne dit
+        si le hub web tourne ; elle l'interroge à chaque affichage, 0,3 s au
+        plus. Rend False sur [0]."""
+        while True:
+            choices = [
+                {"prompt_description": t("Navigation telemetry (TUI)")},
+                {"prompt_description": t("Navigation telemetry (WEB)")},
+                {"prompt_description": t("Stop the web interface")},
+            ]
+            status = click.prompt(
+                self.fill_help_info(choices, state=self._web_state())
+            )
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._todo_telemetry_tui()
+            elif status == "2":
+                self._todo_telemetry_web()
+            elif status == "3":
+                self._todo_web_stop()
+            else:
+                print(t("Command not found !"))
 
     def _todo_telemetry_tui(self):
         """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
@@ -794,6 +824,17 @@ class TODO(
             return launcher.status(new_path)
         except Exception:
             return None
+
+    def _web_state(self):
+        """Ligne d'état du hub web de ce checkout, sous le fil d'Ariane de
+        prompt_telemetry. Un hub dont l'état ne se lit pas est dit arrêté."""
+        info = self._web_status()
+        if info is None:
+            return t("Web interface: stopped")
+        return t("Web interface: running on {url} (sessions: {n})").format(
+            url=f"http://127.0.0.1:{info.get('port')}/",
+            n=info.get("sessions", 0),
+        )
 
     def _todo_telemetry_web(self):
         """Ouvre la télémétrie dans le navigateur, par le hub web de ce
@@ -1013,11 +1054,12 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-    def fill_help_info(self, choices):
+    def fill_help_info(self, choices, state=None):
         # Une entrée {"section": "..."} affiche un titre de section SANS
         # consommer de numéro : la numérotation reste continue sur les vraies
         # commandes (compatible avec les elif codés en dur des menus).
-        help_info = self._menu_header() + "\n"
+        # `state` : une ligne d'état, sous le fil d'Ariane.
+        help_info = self._menu_header(state) + "\n"
         help_end = f"[0] {t('Back')}\n"
         n = 0
         for instance in choices:
