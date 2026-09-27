@@ -48,6 +48,17 @@ _ROOTPW = 'MYSQL_PWD="$(cat /run/secrets/db_root_password)"'
 WAIT_TRIES = 90
 WAIT_PAUSE = 2.0
 
+# Le filtre « data » de tarfile n'existe qu'à partir de Python 3.11.4
+# (Debian 12 livre 3.11.2) : sans lui, chaque membre se vérifie à la main.
+_HAS_FILTER = hasattr(tarfile, "data_filter")
+_SAFE_TYPES = (
+    tarfile.REGTYPE,
+    tarfile.AREGTYPE,
+    tarfile.DIRTYPE,
+    tarfile.SYMTYPE,
+    tarfile.LNKTYPE,
+)
+
 # Remet la clé cron de l'instance en base : restaurée, la base porte celle
 # de la sauvegarde, et un clone enverrait la sienne, refusée à chaque
 # passage. La clé arrive par stdin ou par le fichier secret, jamais sur
@@ -76,12 +87,40 @@ def _version(text):
     return tuple(int(x) for x in re.findall(r"\d+", text or "")[:3])
 
 
+def _check_member(member):
+    """Lève si `member` sortirait du dossier d'extraction : chemin absolu,
+    « .. », lien vers l'extérieur, ou type autre que fichier, dossier, lien."""
+    if member.type not in _SAFE_TYPES:
+        raise tarfile.TarError(f"{member.name}: unexpected type")
+    parts = member.name.split("/")
+    if member.name.startswith("/") or ".." in parts:
+        raise tarfile.TarError(f"{member.name}: outside the folder")
+    if member.issym() or member.islnk():
+        target = member.linkname
+        base = os.path.dirname(member.name) if member.issym() else ""
+        resolved = os.path.normpath(os.path.join(base, target))
+        if target.startswith("/") or resolved.split("/")[0] == "..":
+            raise tarfile.TarError(f"{member.name}: link outside the folder")
+
+
+def _extract(tar, directory):
+    if _HAS_FILTER:
+        tar.extractall(directory, filter="data")
+        return
+    for member in tar.getmembers():
+        _check_member(member)
+    tar.extractall(directory)
+
+
 def _check_tar(path):
     """Refuse un tar dont un membre sortirait du dossier d'extraction."""
     try:
         with tarfile.open(path) as tar:
             for member in tar.getmembers():
-                tarfile.data_filter(member, "/nonexistent-dest")
+                if _HAS_FILTER:
+                    tarfile.data_filter(member, "/nonexistent-dest")
+                else:
+                    _check_member(member)
     except (tarfile.TarError, OSError) as e:
         raise RestoreError(t("Unsafe or unreadable archive: %s") % e)
 
@@ -94,7 +133,7 @@ def read_archive(path, work):
             names = set(tar.getnames())
             if names != MEMBERS:
                 raise RestoreError(t("Not a Dolibarr backup: %s") % path)
-            tar.extractall(work, filter="data")
+            _extract(tar, work)
     except (tarfile.TarError, OSError) as e:
         raise RestoreError(t("Unsafe or unreadable archive: %s") % e)
     for member in ("documents.tar", "custom.tar"):
@@ -116,7 +155,7 @@ def _replace_dir(directory, tar_path):
     os.makedirs(directory, exist_ok=True)
     _empty(directory)
     with tarfile.open(tar_path) as tar:
-        tar.extractall(directory, filter="data")
+        _extract(tar, directory)
 
 
 def _sudo_read(system, path):

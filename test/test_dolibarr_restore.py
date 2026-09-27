@@ -181,6 +181,27 @@ class TestGardeFous(Banc):
         self.assertEqual(self.sys.appels, [])
         self.assertTrue((self.documents / "vieux" / "a.txt").exists())
 
+    def test_a_member_that_is_a_link_is_refused(self):
+        # Chargé plus loin, un db.sql qui serait un lien lirait sa cible.
+        chemin = self.racine / "lien.tar.gz"
+        with tarfile.open(archive(self.racine / "base.tar.gz")) as source:
+            membres = {m.name: source.extractfile(m).read() for m in source}
+        with tarfile.open(chemin, "w:gz") as tar:
+            for nom, donnees in membres.items():
+                if nom == "db.sql":
+                    info = tarfile.TarInfo(nom)
+                    info.type = tarfile.SYMTYPE
+                    info.linkname = "/etc/hostname"
+                    tar.addfile(info)
+                    continue
+                info = tarfile.TarInfo(nom)
+                info.size = len(donnees)
+                tar.addfile(info, io.BytesIO(donnees))
+        self.archive = chemin
+        code, _s = self.restaurer()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.sys.appels, [])
+
     def test_an_archive_that_escapes_its_folder_is_refused(self):
         piege = membre_tar({"../../evade.txt": "x"})
         self.archive = archive(
@@ -353,6 +374,70 @@ class TestConteneur(Banc):
             (self.etat / "custom" / "monmodule" / "mod.php").exists()
         )
         self.assertFalse((self.etat / "custom" / "ancien").exists())
+
+
+class SansFiltre:
+    """Python avant 3.11.4 (Debian 12 livre 3.11.2) n'a pas le filtre
+    « data » de tarfile : la même vérification se fait à la main."""
+
+    def setUp(self):
+        super().setUp()
+        origine = tarfile.TarFile.extractall
+
+        def extractall_3_11_2(tar, path=".", members=None, **kw):
+            if "filter" in kw:
+                raise TypeError(
+                    "extractall() got an unexpected keyword 'filter'"
+                )
+            # 3.11.2 extrait sans aucun filtre ; 3.14 filtre d'office.
+            return origine(tar, path, members, filter="fully_trusted")
+
+        patches = [
+            mock.patch.object(
+                tarfile.TarFile, "extractall", extractall_3_11_2
+            ),
+            mock.patch.object(restore, "_HAS_FILTER", False, create=True),
+        ]
+        if hasattr(tarfile, "data_filter"):
+            patches.append(mock.patch.object(tarfile, "data_filter", None))
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+
+class TestGardeFousSansFiltre(SansFiltre, TestGardeFous):
+    def test_a_link_out_of_the_folder_is_refused(self):
+        tampon = io.BytesIO()
+        with tarfile.open(fileobj=tampon, mode="w") as tar:
+            lien = tarfile.TarInfo("./sortie")
+            lien.type = tarfile.SYMTYPE
+            lien.linkname = "../../../etc"
+            tar.addfile(lien)
+        self.archive = archive(
+            self.racine / "lien.tar.gz",
+            extra={"documents.tar": tampon.getvalue()},
+        )
+        code, _s = self.restaurer()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.sys.appels, [])
+
+    def test_a_device_or_fifo_is_refused(self):
+        tampon = io.BytesIO()
+        with tarfile.open(fileobj=tampon, mode="w") as tar:
+            fifo = tarfile.TarInfo("./tube")
+            fifo.type = tarfile.FIFOTYPE
+            tar.addfile(fifo)
+        self.archive = archive(
+            self.racine / "fifo.tar.gz",
+            extra={"documents.tar": tampon.getvalue()},
+        )
+        code, _s = self.restaurer()
+        self.assertEqual(code, 1)
+        self.assertEqual(self.sys.appels, [])
+
+
+class TestNatifDevSansFiltre(SansFiltre, TestNatifDev):
+    pass
 
 
 if __name__ == "__main__":
