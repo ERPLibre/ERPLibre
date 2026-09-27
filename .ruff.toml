@@ -35,3 +35,8 @@ extend-exclude = [
 [lint]
 # Le tri des imports seul : le lint du dépôt reste décrit par .flake8.
 select = ["I"]
+
+# Ces fichiers ne tournent que sous le Python du venv d'outillage (3.14) et
+# écrivent des t-strings (PEP 750), que la cible py310 refuse de lire.
+[per-file-target-version]
+"test/test_todo_ui_*.py" = "py314"
