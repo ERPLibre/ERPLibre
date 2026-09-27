@@ -105,6 +105,48 @@ GUARDED = (
 # Lisent sys.stdin de plein droit : auto_ask.py, que la capture remplace ;
 # cache_journal.py, que TODO lance en commande derrière `tail`.
 STDIN_READERS = ("script/todo/auto_ask.py", "script/qemu/cache_journal.py")
+# Appels bruts de questions, par fichier de GUARDED : un compte ne fait
+# que baisser. Une question neuve passe par `script.todo.ui` ; un fichier
+# qui en convertit baisse son compte ici. Un fichier absent en compte 0.
+RAW_PROMPTS = {
+    "input",
+    "click.prompt",
+    "click.confirm",
+    "getpass",
+    "getpass.getpass",
+}
+RAW_CALLS = {
+    "script/analyse/check_migration_quality_tui.py": 2,
+    "script/odoo/migration/check_stale_scss.py": 1,
+    "script/odoo/migration/smoke_public_url.py": 1,
+    "script/qemu/deploy_qemu.py": 3,
+    "script/qemu/network_qemu.py": 1,
+    "script/todo/assistant_menu.py": 24,
+    "script/todo/auto_ask.py": 2,
+    "script/todo/container_menu.py": 17,
+    "script/todo/database_manager.py": 17,
+    "script/todo/kdbx_manager.py": 1,
+    "script/todo/longtest_menu.py": 8,
+    "script/todo/mail/menu.py": 20,
+    "script/todo/proxmox_menu.py": 23,
+    "script/todo/qemu_access.py": 14,
+    "script/todo/qemu_cache_menu.py": 26,
+    "script/todo/qemu_deploy.py": 31,
+    "script/todo/qemu_install.py": 2,
+    "script/todo/qemu_install_monitor.py": 8,
+    "script/todo/qemu_manage.py": 44,
+    "script/todo/qemu_menu.py": 7,
+    "script/todo/qemu_network.py": 3,
+    "script/todo/qemu_recover.py": 7,
+    "script/todo/todo.py": 129,
+    "script/todo/todo_install.py": 1,
+    "script/todo/todo_telemetry.py": 1,
+    "script/todo/todo_upgrade.py": 14,
+    "script/todo/transform_menu.py": 7,
+    "script/todo/vpn_menu.py": 17,
+    "script/vpn/runner.py": 1,
+    "script/vpn/vault.py": 2,
+}
 
 
 def _dotted(node) -> str:
@@ -115,6 +157,14 @@ def _dotted(node) -> str:
     if isinstance(node, ast.Name):
         parts.append(node.id)
     return ".".join(reversed(parts))
+
+
+def raw_calls(source) -> int:
+    """Nombre d'appels de `source` à une fonction de RAW_PROMPTS."""
+    return sum(
+        isinstance(node, ast.Call) and _dotted(node.func) in RAW_PROMPTS
+        for node in ast.walk(ast.parse(source))
+    )
 
 
 def _own_nodes(function):
@@ -463,6 +513,33 @@ class TestGuards(unittest.TestCase):
                 rel = path.relative_to(REPO).as_posix()
                 found += blind_spots(path.read_text(encoding="utf-8"), rel)
         self.assertEqual(found, [])
+
+    def test_raw_prompt_calls_only_decrease(self):
+        counts = {}
+        for top in GUARDED:
+            for path in sorted((REPO / top).rglob("*.py")):
+                rel = path.relative_to(REPO).as_posix()
+                counts[rel] = raw_calls(path.read_text(encoding="utf-8"))
+        grown = [
+            f"{rel}: {count} raw calls, {RAW_CALLS.get(rel, 0)} pinned"
+            for rel, count in counts.items()
+            if count > RAW_CALLS.get(rel, 0)
+        ]
+        self.assertEqual(grown, [], "ask through script.todo.ui instead")
+        lower = [
+            f"{rel}: {counts.get(rel, 0)} raw calls, {pinned} pinned"
+            for rel, pinned in RAW_CALLS.items()
+            if counts.get(rel, 0) < pinned
+        ]
+        self.assertEqual(lower, [], "lower RAW_CALLS to these counts")
+
+    def test_the_count_sees_each_raw_call(self):
+        source = (
+            "import click, getpass\n"
+            "input('a')\nclick.prompt('b')\nclick.confirm('c')\n"
+            "getpass.getpass()\nui.ask('d')\nself.input('e')\n"
+        )
+        self.assertEqual(raw_calls(source), 4)
 
     def test_the_guard_sees_each_form(self):
         forms = [
