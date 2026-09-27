@@ -167,10 +167,14 @@ def _syscall(pid, tid) -> list:
 
 def _peek(pid, address, size) -> bytes:
     """`size` octets de la mémoire du processus `pid` à `address` ; le même
-    droit que `syscall` ouvre `mem`. OSError si elle ne se lit pas."""
+    droit que `syscall` ouvre `mem`. OSError si elle ne se lit pas, ou si
+    `address` dépasse le plus grand décalage d'un fichier, 2**63 - 1 : un
+    pointeur étiqueté d'aarch64 porte son étiquette dans l'octet de tête."""
     fd = os.open(f"/proc/{pid}/mem", os.O_RDONLY | os.O_CLOEXEC)
     try:
         data = os.pread(fd, size, address)
+    except OverflowError as exc:
+        raise OSError(f"no file offset for {address:#x}") from exc
     finally:
         os.close(fd)
     if len(data) < size:

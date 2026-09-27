@@ -903,10 +903,13 @@ class Hub:
         """Fin d'un worker de réserve qu'aucune session n'a pris : le
         suivant attend SPARE_RETRY secondes. Un worker qui ne démarre pas
         (venv cassé, bibliothèque qui lève à son import) n'est pas relancé
-        à chaque liste des sessions."""
+        à chaque liste des sessions. Une réserve que le hub a fermée
+        (`closing`) ne retarde rien : `open_terminal` ferme celle qui se
+        lance encore, `stop` celle qui reste."""
         if self.spare is session:
             self.spare = None
-        self.spare_after = time.monotonic() + SPARE_RETRY
+        if not session.closing:
+            self.spare_after = time.monotonic() + SPARE_RETRY
 
     def _terminal_ended(self, session):
         self.terminals.pop(session.id, None)

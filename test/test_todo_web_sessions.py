@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 from todo_web_env import CHILD
 
-from script.todo.web import sessions
+from script.todo.web import sessions, ttywatch
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -353,6 +353,21 @@ class TestSpare(SessionCase):
         spare.write(b"exit 4\n")
         await asyncio.wait_for(spare.ended.wait(), 10)
         self.assertEqual((spare.code, ended), (4, [spare]))
+        self.assertFalse(spare.ready)
+
+    async def test_a_worker_ended_or_exited_unwaited_is_not_ready(self):
+        spare = await self.open()
+        self.assertTrue(spare.ready)
+        with patch.object(spare.ended, "is_set", return_value=True):
+            self.assertFalse(spare.ready)
+        os.killpg(spare.proc.pid, signal.SIGKILL)
+        # Sans rendre la main à la boucle, qui l'attendrait : un zombie dont
+        # `returncode` vaut encore None.
+        deadline = time.monotonic() + 5
+        while not ttywatch._ended(spare.proc.pid):
+            self.assertLess(time.monotonic(), deadline, "still alive")
+            time.sleep(0.01)
+        self.assertIsNone(spare.proc.returncode)
         self.assertFalse(spare.ready)
 
 

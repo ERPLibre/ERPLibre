@@ -33,7 +33,7 @@ from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPRequest
 from tornado.websocket import websocket_connect
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths, server, sessions
+from script.todo.web import paths, server, sessions, ttywatch
 
 # Les réponses 4xx sont journalisées en avertissement ; sans handler, le
 # dernier recours de logging les écrirait sur stderr.
@@ -1038,6 +1038,35 @@ class TestSpare(TerminalCase):
         tab = await self.tab()
         self.assertIsNot(self.hub.terminals[tab.texts[0]["id"]], spare)
         await tab.until(lambda: b"ready en 90x20" in tab.data)
+
+    async def test_a_dead_spare_not_yet_reaped_is_never_adopted(self):
+        await self.sessions_list()
+        spare = self.hub.spare
+        os.killpg(spare.proc.pid, signal.SIGKILL)
+        # Sans rendre la main à la boucle, qui l'attendrait : un zombie dont
+        # `returncode` vaut encore None.
+        deadline = time.monotonic() + 5
+        while not ttywatch._ended(spare.proc.pid):
+            self.assertLess(time.monotonic(), deadline, "still alive")
+            time.sleep(0.01)
+        self.assertIsNone(spare.proc.returncode)
+        session = await self.hub.open_terminal("en", 80, 24)
+        self.assertIsNot(session, spare)
+
+    async def test_a_spare_closed_while_starting_delays_nothing(self):
+        # Une session vient pendant que la réserve se lance : celle-ci est
+        # fermée, et la suivante part dès la liste suivante.
+        warming = asyncio.ensure_future(self.hub.warm())
+        await asyncio.sleep(0)
+        spare = self.hub.spare
+        self.assertFalse(spare.ready)
+        session = await self.hub.open_terminal("en", 80, 24)
+        self.assertIsNot(session, spare)
+        await asyncio.wait_for(warming, 10)
+        self.assertTrue(spare.ended.is_set())
+        self.assertLessEqual(self.hub.spare_after, time.monotonic())
+        await self.sessions_list()
+        self.assertNotIn(self.hub.spare, (None, spare))
 
     async def test_a_spare_that_ends_by_itself_delays_the_next(self):
         with patch.object(sessions, "WORKER", ("-c", "raise SystemExit(1)")):

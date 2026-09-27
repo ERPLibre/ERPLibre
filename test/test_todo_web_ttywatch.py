@@ -359,6 +359,18 @@ class TestReader(unittest.TestCase):
                 child.until(lambda: b"ready" in child.output)
                 self.assertIsNone(child.watch.probe().reader)
 
+    def test_a_tagged_pointer_makes_the_reader_unknown(self):
+        # aarch64 garde une étiquette dans l'octet de tête d'un pointeur :
+        # au-delà de 2**63, aucun décalage de /proc/<pid>/mem ne le porte.
+        child = Child(self, WAITERS["sleep"])
+        child.until(lambda: b"ready" in child.output)
+        child.until(child.blocked)
+        number = str(min(child.watch.calls["select"])).encode()
+        pointer = hex(2**64 - 16).encode()
+        forged = [number, b"0x1", pointer, *[b"0x0"] * 6]
+        with patch.object(ttywatch, "_syscall", return_value=forged):
+            self.assertIsNone(child.watch.probe().reader)
+
     def test_an_epoll_beyond_fd_limit_is_not_read(self):
         child = Child(self, READERS["epoll"])
         child.until(lambda: child.watch.probe().reader)

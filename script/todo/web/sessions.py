@@ -171,6 +171,16 @@ def _has_children(pid) -> bool:
     return any(_in_group(cpid.decode(), pid) for cpid in children)
 
 
+def _exited(pid) -> bool:
+    """Vrai si l'enfant `pid` a fini, attendu ou non : WNOWAIT le laisse
+    attendable par qui l'attend (asyncio)."""
+    try:
+        found = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return True  # déjà attendu
+    return found is not None
+
+
 def _secret(state) -> bool:
     """Écho coupé en mode canonique : une invite de mot de passe."""
     return not state.echo and state.canon
@@ -282,11 +292,16 @@ class Session:
 
     @property
     def ready(self) -> bool:
-        """Vrai pour un worker lancé, vivant, qu'aucune fermeture ne vise."""
+        """Vrai pour un worker lancé, vivant, qu'aucune fermeture ne vise.
+        Un worker fini ne l'est pas, même avant qu'asyncio ne l'attende et
+        ne pose `returncode` (`_exited`), ni après la fin de la session
+        (`ended`)."""
         return (
             self.channel is not None
-            and self.proc.returncode is None
             and not self.closing
+            and not self.ended.is_set()
+            and self.proc.returncode is None
+            and not _exited(self.proc.pid)
         )
 
     def adopt(self, sid, lang, cols, rows, on_end):

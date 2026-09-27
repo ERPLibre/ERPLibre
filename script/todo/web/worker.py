@@ -17,9 +17,11 @@ TODO_WEB_FD). L'ordre compte :
    fixée pour ce seul processus, y compris si le menu Configuration la
    change ensuite : env_var.sh n'est jamais écrit ;
 3. les bibliothèques tierces que todo.py importe (PRELOAD) le sont avant
-   même la ligne `hello`, entre 1 et 2 : un worker de réserve, lancé avant
-   qu'une session le demande, les tient déjà quand elle le prend. urwid en
-   est : il lie sys.stdout en argument par défaut à son import ;
+   même la ligne `hello`, mais après le canal : un descripteur qu'une
+   bibliothèque ouvre à son import ne prend pas le fd 3, que `dup2`
+   remplacerait. Un worker de réserve, lancé avant qu'une session le
+   demande, les tient déjà quand elle le prend. urwid en est : il lie
+   sys.stdout en argument par défaut à son import ;
 4. todo.py est importé en mode script, sous le nom `todo` : importé comme
    paquet, il pose ENABLE_CRASH et laisse todo_upgrade non lié ;
 5. TODO ne demande pas la langue ; chaque Execute lance ses commandes dans
@@ -189,9 +191,10 @@ def serve(todo_obj, interrupts, where) -> int:
 def main() -> int:
     restore_signals()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-    preload()
     try:
-        todo_i18n.use_lang(read_hello(open_channel()).get("lang"))
+        channel = open_channel()
+        preload()
+        todo_i18n.use_lang(read_hello(channel).get("lang"))
     except ValueError as exc:
         print(f"todo web worker: {exc}", file=sys.stderr)
         return BAD_HELLO

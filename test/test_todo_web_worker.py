@@ -168,8 +168,14 @@ class TestHooks(unittest.TestCase):
         handler = signal.getsignal(signal.SIGINT)
         self.assertIs(handler, signal.default_int_handler)
 
-    def test_a_spare_imports_its_libraries_before_its_hello(self):
+    def test_a_spare_imports_its_libraries_between_channel_and_hello(self):
+        # Le canal d'abord : un descripteur qu'une bibliothèque ouvre à son
+        # import ne prend pas le fd 3, que `dup2` remplacerait sans un mot.
         order = []
+
+        def open_channel():
+            order.append("channel")
+            return 3
 
         def read_hello(fd):
             order.append("hello")
@@ -179,12 +185,12 @@ class TestHooks(unittest.TestCase):
             patch.object(worker, "restore_signals"),
             patch.object(worker.fcntl, "ioctl"),
             patch.object(worker, "preload", lambda: order.append("preload")),
-            patch.object(worker, "open_channel", return_value=3),
+            patch.object(worker, "open_channel", open_channel),
             patch.object(worker, "read_hello", read_hello),
             redirect_stderr(io.StringIO()),
         ):
             self.assertEqual(worker.main(), worker.BAD_HELLO)
-        self.assertEqual(order, ["preload", "hello"])
+        self.assertEqual(order, ["channel", "preload", "hello"])
 
     def test_a_library_that_fails_is_left_to_todo(self):
         # Absente, ou qui lève à son import : les suivantes s'importent.
