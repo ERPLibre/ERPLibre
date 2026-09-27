@@ -117,6 +117,14 @@ class TestHooks(unittest.TestCase):
         self.assertEqual(exe.cmd_source_default, "")
         self.assertIs(exe.job_control, True)
 
+    def test_the_configuration_menu_cannot_write_env_var_sh(self):
+        module = types.SimpleNamespace(
+            lang_is_configured=lambda: False, set_lang=None
+        )
+        worker.use_web_lang(module)
+        self.assertTrue(module.lang_is_configured())
+        self.assertIs(module.set_lang, todo_i18n.use_lang)
+
     def test_signals_ignored_by_the_launcher_are_restored(self):
         for sig in (*worker.SIGNALS, signal.SIGINT):
             self.addCleanup(signal.signal, sig, signal.getsignal(sig))

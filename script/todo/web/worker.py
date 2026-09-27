@@ -14,7 +14,8 @@ TODO_WEB_FD). L'ordre compte :
    s'y comportent comme dans un terminal ;
 2. le canal passe sur le fd 3, non hérité par les commandes ; TODO_WEB_FD
    et TODO_WEB_PID le disent à TODO. La ligne `hello` y donne la langue,
-   fixée pour ce seul processus : env_var.sh n'est jamais écrit ;
+   fixée pour ce seul processus, y compris si le menu Configuration la
+   change ensuite : env_var.sh n'est jamais écrit ;
 3. urwid est importé avant TODO : il lie sys.stdout en argument par
    défaut à son import ;
 4. todo.py est importé en mode script, sous le nom `todo` : importé comme
@@ -84,6 +85,15 @@ def read_hello(fd) -> dict:
     if not isinstance(hello, dict) or hello.get("t") != "hello":
         raise ValueError("no hello on the channel")
     return hello
+
+
+def use_web_lang(todo_module):
+    """Empêche `_ask_language` de redemander la langue et détourne
+    `set_lang` du menu Configuration vers `todo_i18n.use_lang` : l'une
+    comme l'autre ne durent que ce processus, jamais persistées dans
+    env_var.sh ni visibles du TODO du terminal."""
+    todo_module.lang_is_configured = lambda: True
+    todo_module.set_lang = todo_i18n.use_lang
 
 
 def run_inline(execute_module, venv):
@@ -177,7 +187,7 @@ def main() -> int:
     if todo.ENABLE_CRASH:
         print(todo.CRASH_E)
         return CRASHED
-    todo.lang_is_configured = lambda: True
+    use_web_lang(todo)
     run_inline(todo.execute, todo.VENV_ERPLIBRE)
     where = track_crumbs(todo.TODO)
     todo_obj = todo.TODO()
