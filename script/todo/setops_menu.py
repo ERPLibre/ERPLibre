@@ -670,8 +670,16 @@ class SetopsMenuMixin:
         self._setops_jouer_etape(moteur, etape)
 
     def _setops_dire_etape(self, rang, etape, ecosysteme, site):
-        """Une étape, sa nature, et ce qui l'empêche le cas échéant."""
-        barriere = registre.barriere(etape, ecosysteme, site)
+        """Une étape, sa nature, et ce qui l'empêche le cas échéant.
+
+        LE PALIER EST JUGÉ COMME S'IL ÉTAIT CONFIRMÉ, ici et au choix : sa porte
+        demandera la vraie confirmation, et le barrer à l'affichage le rendrait
+        inatteignable. Ce qui reste barré l'est pour une IMPOSSIBILITÉ — pas de
+        site monté, forme illisible — et non pour une précaution.
+        """
+        barriere = registre.barriere(
+            etape, ecosysteme, site, confirme=registre.destructeur(etape)
+        )
         marque = self.MARQUES_NATURE.get(etape.nature, "?")
         facultative = f"  ({t('optional')})" if etape.facultative else ""
         print(f"    {marque} [{rang}] make {etape.cible}{facultative}")
@@ -679,6 +687,8 @@ class SetopsMenuMixin:
             print(f"        {etape.libelle}")
         if barriere:
             print(f"        ⛔ {t(self.BARRIERES[barriere])}")
+        elif registre.destructeur(etape):
+            print(f"        ⚠ {t('DESTRUCTIVE tier: a retype is demanded')}")
 
     def _setops_choisir_etape(self, runbook, ecosysteme, site):
         """L'étape dont le numéro est tapé, si elle se conduit d'ici.
@@ -691,7 +701,9 @@ class SetopsMenuMixin:
         if not brut.isdigit() or not 0 < int(brut) <= len(runbook.etapes):
             return None
         etape = runbook.etapes[int(brut) - 1]
-        barriere = registre.barriere(etape, ecosysteme, site)
+        barriere = registre.barriere(
+            etape, ecosysteme, site, confirme=registre.destructeur(etape)
+        )
         if barriere:
             print(f"  ⛔ {t(self.BARRIERES[barriere])}")
             return None
@@ -732,6 +744,9 @@ class SetopsMenuMixin:
             variables.append((interrupteur, "1"))
         if etape.pourquoi:
             print(f"\n  {etape.pourquoi}")
+        if registre.destructeur(etape):
+            self._setops_franchir_le_palier(moteur, etape, variables)
+            return
         if registre.ecrit(etape):
             print(f"\n  ⚠ {t('This step WRITES.')}")
             print(
@@ -741,6 +756,119 @@ class SetopsMenuMixin:
                 print(t("Cancelled."))
                 return
         self._setops_dire(self._setops_lancer(moteur, etape.cible, variables))
+
+    # CE QUE L'ÉCRAN DEMANDE DE RETAPER, un libellé par chose. Les trois disent
+    # d'où vient la valeur, et non ce que le geste touchera : un geste de portée
+    # poste ne touche pas forcément des hôtes — l'un d'eux ne fait que reposer
+    # des clés — et promettre le contraire serait affirmer faux.
+    RETAPES = {
+        registre.RETAPE_ECOSYSTEME: "Retype the name of the MOUNTED ecosystem:",
+        registre.RETAPE_SITE: "Retype the name of the MOUNTED site:",
+        registre.RETAPE_HOTES: (
+            "Retype the number of ACTIVE hosts the plan declares:"
+        ),
+    }
+
+    def _setops_franchir_le_palier(self, moteur, etape, variables):
+        """La porte d'un geste du PALIER : essai, retape, verrou, vrai appel.
+
+        QUATRE GARDES EN FILE, et chacun répare une façon précise de se tromper.
+
+        L'ESSAI D'ABORD. Le geste est lancé avec `CONFIRMER=false`, et ce que le
+        moteur répond est MONTRÉ : il dit ce qu'il ferait, parfois en listant les
+        machines. C'est la seule occasion de voir la portée réelle avant qu'elle
+        soit appliquée, et elle ne coûte rien.
+
+        LA RETAPE ENSUITE. Un oui-non se confirme de mémoire ; recopier un nom ou
+        un nombre lu à l'écran oblige à REGARDER. Ce qu'on demande vient de la
+        portée déclarée, et sa valeur d'une mesure — jamais d'une invite qui
+        rappellerait la réponse.
+
+        LE VERROU AVANT LE VRAI APPEL, et pas avant l'essai : deux essais en même
+        temps ne se gênent pas, deux applications si.
+
+        LE VERDICT SE LIT, code ET sortie. Plusieurs gestes du moteur rendent zéro
+        en ayant trouvé un écart.
+        """
+        print(f"\n  ⚠ {t('This gesture is in the DESTRUCTIVE tier.')}")
+        print(
+            f"    {t('A trial runs first: the engine says what it would do.')}"
+        )
+        essai = self._setops_lancer(moteur, etape.cible, variables)
+        self._setops_dire(essai)
+
+        attendu = self._setops_attendu_du_palier(moteur, etape)
+        if not attendu:
+            print(f"\n  ⛔ {t('Nothing to ask for: it could not be read.')}")
+            return
+        quoi = registre.retape(etape)
+        print()
+        # L'ALERTE MONTRE LES DEUX NOMBRES, elle ne prétend pas détecter l'écart.
+        # Le moteur rend la MÊME valeur pour « la flotte est vide » et pour « la
+        # lecture d'API n'a rien dit » : son client rend une liste vide sur un
+        # corps vide comme sur une erreur, si bien qu'un geste destructeur peut
+        # annoncer « rien à faire » sans avoir lu quoi que ce soit — et annoncer
+        # cela AVANT d'évaluer ses propres verrous. Todo ne peut donc pas
+        # trancher à la place de l'opérateur ; il peut mettre côte à côte ce que
+        # le PLAN déclare et ce que l'essai vient de dire, et nommer le piège.
+        if quoi == registre.RETAPE_HOTES and attendu != "0":
+            alerte = t(
+                "The plan declares {n} active host(s). If the trial above saw"
+                " none, the state may not have been READ: an empty API answer"
+                " does not differ from an empty fleet."
+            )
+            print(f"  ⚠ {alerte.format(n=attendu)}")
+            print()
+        tape = saisir(f"  {t(self.RETAPES[quoi])} « {attendu} »\n  > ")
+        if not registre.retape_concorde(attendu, tape):
+            print(
+                f"  ⛔ {t('What was typed does not match. Nothing was run.')}"
+            )
+            return
+
+        with runner.verrou_du_moteur(moteur) as libre:
+            if not libre:
+                print(f"\n  ⛔ {t('Another gesture holds this engine lock.')}")
+                return
+            print(f"\n  {t('Now for real:')}")
+            self._setops_dire(
+                self._setops_lancer(
+                    moteur, etape.cible, variables, confirmer=True
+                )
+            )
+
+    def _setops_attendu_du_palier(self, moteur, etape):
+        """La valeur à retaper pour ce geste, MESURÉE. Ou « ».
+
+        « » ARRÊTE LE GESTE. Sans savoir ce qu'on demande, on ne peut pas
+        comparer, et un garde qui accepte n'importe quoi parce qu'il n'attend
+        rien est pire que pas de garde : il donne l'assurance d'en être un.
+
+        LE COMPTE D'HÔTES VIENT D'UN GESTE DU REGISTRE, la liste des serveurs du
+        plan, et non d'une commande bâtie ici. Une lecture qui n'aboutit pas ne
+        devient PAS zéro : « aucun hôte actif » se confirme par « 0 », « on n'a
+        pas su lire » ne se confirme pas du tout.
+        """
+        quoi = registre.retape(etape)
+        if quoi == registre.RETAPE_ECOSYSTEME:
+            return registre.attendu_retape(
+                quoi, ecosysteme=ecosystems.monte(moteur)
+            )
+        if quoi == registre.RETAPE_SITE:
+            return registre.attendu_retape(
+                quoi, site=ecosystems.site_monte(moteur)
+            )
+        if quoi == registre.RETAPE_HOTES:
+            vu = self._setops_lancer(moteur, registre.CIBLE_SERVEURS)
+            if not vu.reussi:
+                return ""
+            return registre.attendu_retape(
+                quoi,
+                hotes=ecosystems.compte_actifs(
+                    ecosystems.lit_serveurs(vu.sortie)
+                ),
+            )
+        return ""
 
     def _setops_demander_interrupteur(self, nom):
         """Un drapeau-INTERRUPTEUR se demande par oui ou non, jamais par sa
@@ -1208,7 +1336,10 @@ class SetopsMenuMixin:
             return
         self._setops_dire_geste(etape)
         barriere = registre.barriere(
-            etape, ecosystems.monte(moteur), ecosystems.site_monte(moteur)
+            etape,
+            ecosystems.monte(moteur),
+            ecosystems.site_monte(moteur),
+            confirme=registre.destructeur(etape),
         )
         if barriere:
             print(f"  ⛔ {t(self.BARRIERES[barriere])}")

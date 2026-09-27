@@ -94,7 +94,10 @@ REGISTRE_BANC = """[
     {"cible": "banc-ecrire", "libelle": "Ecrit", "portee": "tenant",
      "nature": "ecriture", "pourquoi": "Parce que.", "variables": [{"nom": "NOM", "invite": "Le nom", "facultatif": false}],
      "fixes": {}},
-    {"cible": "banc-raser", "libelle": "Detruit", "portee": "toute",
+    {"cible": "banc-raser", "libelle": "Detruit", "portee": "tenant",
+     "nature": "destructif", "pourquoi": "Parce que.", "variables": [],
+     "fixes": {"CONFIRMER": "true"}},
+    {"cible": "banc-raser-tout", "libelle": "Detruit partout", "portee": "toute",
      "nature": "destructif", "pourquoi": "Parce que.", "variables": [],
      "fixes": {"CONFIRMER": "true"}},
     {"cible": "banc-tenant", "libelle": "Locataire", "portee": "tenant",
@@ -468,26 +471,43 @@ class TestLesRunbooks(CasDEcosysteme):
     def test_every_sequence_is_listed_with_what_it_offers(self):
         vu = self.ecran()
         self.assertIn("banc-fictif-sequence", vu)
-        self.assertIn("1/4", vu)
+        # DEUX sur cinq : la mesure de portée « toute », et le geste du
+        # palier dont l'écosystème est monté. Le compte de l'en-tête doit
+        # égaler ce que la liste offre.
+        self.assertIn("2/5", vu)
 
     def test_a_barred_step_stays_shown_with_its_reason(self):
-        """C'est tout le parti : l'étape reste là, et dit pourquoi elle ne
-        part pas d'ici."""
+        """C'est tout le parti : l'étape reste là, et dit ce qui la retient.
+        Un geste du PALIER dit qu'une retape sera demandée ; ce qui est
+        IMPOSSIBLE — pas d'écosystème monté — dit son refus."""
         vu = self.ecran(["1"])
         self.assertIn("banc-raser", vu)
         self.assertIn(
-            todo_i18n.t("destructive: the engine keeps this one"), vu
+            todo_i18n.t("DESTRUCTIVE tier: a retype is demanded"), vu
         )
         self.assertIn(todo_i18n.t("no ecosystem mounted"), vu)
 
     def test_typing_a_barred_step_names_its_barrier(self):
         """Répondre « choix invalide » ferait croire à une faute de frappe,
-        alors que le numéro est exactement celui qu'on lit."""
-        vu = self.ecran(["1", "3"])
-        self.assertIn(
-            todo_i18n.t("destructive: the engine keeps this one"), vu
-        )
+        alors que le numéro est exactement celui qu'on lit. L'étape 4 est de
+        portée locataire sans écosystème monté : une IMPOSSIBILITÉ, que
+        confirmer ne lève pas."""
+        vu = self.ecran(["1", "5"])
+        self.assertIn(todo_i18n.t("no ecosystem mounted"), vu)
         self.assertEqual([], self.cibles())
+
+    def test_typing_a_tier_step_enters_its_door(self):
+        """Le geste du palier n'est plus barré : il est CHOISISSABLE, et sa
+        porte demande la retape. Le barrer à l'affichage le rendrait
+        inatteignable, et la porte ne servirait jamais."""
+        with patch.object(
+            state.ecosystems, "monte", lambda _m: "OPS-Fictif-Dolomie"
+        ):
+            vu = self.ecran(["1", "3", ""])
+        self.assertIn(
+            todo_i18n.t("This gesture is in the DESTRUCTIVE tier."), vu
+        )
+        self.assertEqual([], [c for c, _v, conf in self.lances if conf])
 
     def test_a_measure_runs_without_asking(self):
         self.ecran(["1", "1"])
@@ -1540,17 +1560,144 @@ class TestLaPorteDecritCeQueLeRegistreDit(CasDePorte):
         self.assertIn("ImportError: yaml", vu)
 
 
+class TestLaPorteDuPalier(CasDEcosysteme):
+    """QUATRE GARDES EN FILE, et ce qui est mesuré ici est le seul fait qui
+    compte : aucun appel ne porte la confirmation tant que la retape ne
+    concorde pas. Tout le reste de la porte sert à obtenir cette retape."""
+
+    ECO = "OPS-Fictif-Dolomie"
+
+    def setUp(self):
+        super().setUp()
+        self.todo._setops_registre = lambda _m: registre.lit_registre(
+            REGISTRE_BANC
+        )
+        self.todo._pve_show = None
+        correctif = patch.object(
+            state.ecosystems, "monte", lambda _m: self.ECO
+        )
+        correctif.start()
+        self.addCleanup(correctif.stop)
+
+    def porte(self, saisies):
+        """La séquence 1, son étape 3 — le geste du palier — puis les saisies.
+
+        L'INVITE EST IMPRIMÉE, contrairement au bouchon de la classe mère qui
+        l'avale : une porte qui poserait sa question sans montrer la valeur à
+        retaper ferait recopier de mémoire, et aucune épreuve ne le verrait.
+        """
+        file = ["1", "3"] + list(saisies)
+        vrai = builtins.input
+
+        def repondre(invite="", *_a, **_k):
+            print(invite, end="")
+            return file.pop(0) if file else ""
+
+        builtins.input = repondre
+        vu = io.StringIO()
+        try:
+            with redirect_stdout(vu):
+                self.todo._setops_runbooks()
+        finally:
+            builtins.input = vrai
+        return vu.getvalue()
+
+    def confirmes(self):
+        """Les cibles lancées AVEC la confirmation. C'est la mesure."""
+        return [cible for cible, _v, conf in self.lances if conf]
+
+    def essais(self):
+        """Les cibles lancées SANS la confirmation."""
+        return [cible for cible, _v, conf in self.lances if not conf]
+
+    def test_the_trial_runs_before_the_retype_is_asked(self):
+        """L'ESSAI D'ABORD : le moteur dit ce qu'il ferait, et c'est la seule
+        occasion de voir la portée réelle avant qu'elle soit appliquée."""
+        self.porte([""])
+        self.assertIn("banc-raser", self.essais())
+
+    def test_a_matching_retype_lets_it_through(self):
+        """Le contrôle positif de tous les refus ci-dessous."""
+        self.porte([self.ECO])
+        self.assertEqual(["banc-raser"], self.confirmes())
+
+    def test_border_whitespace_still_matches(self):
+        """Il vient du copier-coller, non de la mémoire."""
+        self.porte([f"  {self.ECO}  "])
+        self.assertEqual(["banc-raser"], self.confirmes())
+
+    def test_another_case_is_refused(self):
+        """LA PROPRIÉTÉ : une comparaison indulgente laisse confirmer de
+        mémoire, et c'est précisément ce que ce garde empêche."""
+        vu = self.porte([self.ECO.lower()])
+        self.assertEqual([], self.confirmes())
+        self.assertIn(
+            todo_i18n.t("What was typed does not match. Nothing was run."), vu
+        )
+
+    def test_a_prefix_is_refused(self):
+        self.porte([self.ECO[:-2]])
+        self.assertEqual([], self.confirmes())
+
+    def test_nothing_typed_is_refused(self):
+        for tape in ("", "   "):
+            with self.subTest(tape=tape):
+                self.lances.clear()
+                self.porte([tape])
+                self.assertEqual([], self.confirmes())
+
+    def test_the_screen_shows_what_must_be_retyped(self):
+        """Une invite qui ne montrerait pas la valeur ferait chercher ailleurs,
+        et l'opérateur la retaperait de mémoire — ce que le garde combat."""
+        vu = self.porte([""])
+        self.assertIn(self.ECO, vu)
+        self.assertIn(
+            todo_i18n.t("Retype the name of the MOUNTED ecosystem:"), vu
+        )
+
+    def test_a_lock_held_elsewhere_refuses_even_a_matching_retype(self):
+        """LE VERROU EST LE DERNIER GARDE, après la retape : deux applications
+        en même temps sur un clone se disputent son instance montée, et le
+        second réécrit ce que le premier vient d'appliquer."""
+        import contextlib
+
+        @contextlib.contextmanager
+        def tenu_ailleurs(_moteur):
+            yield False
+
+        with patch("script.setops.runner.verrou_du_moteur", tenu_ailleurs):
+            vu = self.porte([self.ECO])
+        self.assertEqual([], self.confirmes())
+        self.assertIn(
+            todo_i18n.t("Another gesture holds this engine lock."), vu
+        )
+
+    def test_an_unreadable_expected_value_refuses(self):
+        """« » ARRÊTE LE GESTE : sans savoir ce qu'on demande, on ne peut pas
+        comparer, et un garde qui accepte n'importe quoi parce qu'il n'attend
+        rien donne l'assurance d'en être un."""
+        with patch.object(state.ecosystems, "monte", lambda _m: ""):
+            vu = self.porte(["n-importe-quoi"])
+        self.assertEqual([], self.confirmes())
+        self.assertIn(todo_i18n.t("no ecosystem mounted"), vu)
+
+
 class TestLaPorteEtLeNavigateurJugentPareil(CasDePorte):
     """La barrière est celle du navigateur, et non une seconde règle : une
     porte qui jugerait elle-même finirait par conduire ce que le navigateur
     refuse, ou l'inverse."""
 
-    def test_what_the_engine_gates_stays_gated_behind_its_door(self):
+    def test_what_the_engine_gates_goes_through_the_tier_door(self):
+        """CE QUE MESURE CETTE ÉPREUVE A CHANGÉ DE FORME, pas de fond. Le geste
+        ne partait pas d'ici du tout ; il passe désormais par la porte du palier,
+        et ce qui compte est qu'AUCUN appel ne porte la confirmation tant que la
+        retape ne concorde pas. Le compte d'hôtes ne se lit pas dans ce bouchon,
+        donc la porte refuse faute de savoir quoi demander."""
         vu = self.porte("flotte-creer", ["o"])
-        self.assertEqual([], self.cibles())
         self.assertIn(
-            todo_i18n.t(self.todo.BARRIERES[registre.CONFIRMATION_MOTEUR]), vu
+            todo_i18n.t("This gesture is in the DESTRUCTIVE tier."), vu
         )
+        self.assertEqual([], [c for c, _v, conf in self.lances if conf])
 
     def test_a_tenant_gesture_without_an_ecosystem_is_refused(self):
         with patch.object(state.ecosystems, "monte", lambda _m: ""):
@@ -1559,6 +1706,82 @@ class TestLaPorteEtLeNavigateurJugentPareil(CasDePorte):
         self.assertIn(
             todo_i18n.t(self.todo.BARRIERES[registre.SANS_ECOSYSTEME]), vu
         )
+
+
+class TestLAlerteMetLesDeuxNombresCoteACote(CasDePorte):
+    """Le moteur rend la MÊME valeur pour « la flotte est vide » et pour « la
+    lecture d'API n'a rien dit » : son client rend une liste vide sur un corps
+    vide comme sur une erreur. Todo ne peut donc pas trancher à la place de
+    l'opérateur ; il met côte à côte ce que le PLAN déclare et ce que l'essai
+    vient de dire, et nomme le piège.
+
+    `flotte-creer` est de portée poste : sa retape est le COMPTE d'hôtes, donc
+    c'est par elle que ce chemin se mesure."""
+
+    PLAN_DEUX = (
+        "python3 scripts/serveurs.py lister\n"
+        "banc-un  [fonction f, etat actif]  derive: vmid 1\n"
+        "banc-deux  [fonction f, etat actif]  derive: vmid 2\n"
+        "banc-trois  [fonction f, etat planifie]  derive: vmid 3\n"
+    )
+    PLAN_ZERO = (
+        "python3 scripts/serveurs.py lister\n"
+        "banc-un  [fonction f, etat planifie]  derive: vmid 1\n"
+    )
+
+    def confirmes(self):
+        return [cible for cible, _v, conf in self.lances if conf]
+
+    def test_the_count_comes_from_the_plan_and_is_shown(self):
+        self.reponses[registre.CIBLE_SERVEURS] = runner.Verdict(
+            0, self.PLAN_DEUX
+        )
+        vu = self.porte("flotte-creer", ["2"])
+        self.assertIn("« 2 »", vu)
+        self.assertEqual(["flotte-creer"], self.confirmes())
+
+    def test_the_trap_is_named_next_to_the_number(self):
+        """Nommé, et non détecté : prétendre détecter l'écart supposerait que
+        todo sache distinguer ce que le moteur confond."""
+        self.reponses[registre.CIBLE_SERVEURS] = runner.Verdict(
+            0, self.PLAN_DEUX
+        )
+        vu = self.porte("flotte-creer", ["2"])
+        self.assertIn("2", vu)
+        self.assertIn("API", vu)
+
+    def test_a_plan_with_no_active_host_warns_of_nothing(self):
+        """Le contrôle positif : sans lui, une alerte imprimée toujours
+        passerait l'épreuve ci-dessus. Zéro hôte actif n'a rien de trompeur —
+        c'est le seul cas où « rien à faire » est ce qu'on attend."""
+        self.reponses[registre.CIBLE_SERVEURS] = runner.Verdict(
+            0, self.PLAN_ZERO
+        )
+        vu = self.porte("flotte-creer", ["0"])
+        self.assertNotIn("API", vu)
+        self.assertEqual(["flotte-creer"], self.confirmes())
+
+    def test_a_plan_that_did_not_read_refuses(self):
+        """LA PROPRIÉTÉ que l'épreuve précédente de ce fichier n'atteignait
+        pas : la portée est satisfaite, mais la VALEUR ne se lit pas. « » arrête
+        le geste — un garde qui accepterait n'importe quoi parce qu'il n'attend
+        rien donnerait l'assurance d'en être un."""
+        self.reponses[registre.CIBLE_SERVEURS] = runner.Verdict(1, "")
+        vu = self.porte("flotte-creer", ["2"])
+        self.assertEqual([], self.confirmes())
+        self.assertIn(
+            todo_i18n.t("Nothing to ask for: it could not be read."), vu
+        )
+
+    def test_an_unreadable_plan_refuses_too(self):
+        """Une ligne qui prétend être un serveur et ne se lit pas fait refuser
+        toute la lecture : le compte serait partiel, et c'est lui qu'on
+        recopie."""
+        self.reponses[registre.CIBLE_SERVEURS] = runner.Verdict(
+            0, "banc-un  [etat actif]\nbanc-deux  [rien de lisible]\n"
+        )
+        self.porte("flotte-creer", ["1"])
+        self.assertEqual([], self.confirmes())
 
 
 class TestUnInterrupteurNeSeDemandePasParSaValeur(CasDePorte):

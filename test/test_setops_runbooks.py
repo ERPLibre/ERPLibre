@@ -237,19 +237,38 @@ class TestRienNestMasque(unittest.TestCase):
 
     def test_the_count_says_how_many_of_how_many(self):
         """Une liste dont on ne sait pas combien elle offre se parcourt en
-        entier pour le découvrir."""
-        self.assertEqual((1, 4), R.compte(self.runbook, "", ""))
-        self.assertEqual((2, 4), R.compte(self.runbook, "eco", "site"))
+        entier pour le découvrir.
+
+        LE PALIER COMPTE POUR CONDUISIBLE, parce que sa porte le conduit — elle
+        demande une retape, elle ne refuse pas. Sans écosystème ni site : la
+        mesure de portée « toute » et le geste du palier de même portée. Avec
+        les deux montés : les quatre."""
+        self.assertEqual((2, 4), R.compte(self.runbook, "", ""))
+        self.assertEqual((4, 4), R.compte(self.runbook, "eco", "site"))
 
     def test_a_sequence_that_offers_nothing_still_shows_its_steps(self):
-        """Le pire cas, et il n'est pas théorique : une séquence de trois
-        étapes se réduirait à zéro si l'on masquait les barrées."""
-        seulement_barrees = REGISTRE.replace(
-            '"nature": "mesure"', '"nature": "destructif"'
-        ).replace('"nature": "ecriture"', '"nature": "destructif"')
-        runbook = R.lit_registre(seulement_barrees)[0]
-        self.assertEqual((0, 4), R.compte(runbook, "eco", "site"))
+        """Le pire cas, et il n'est pas théorique : une séquence de quatre
+        étapes se réduirait à zéro si l'on masquait les barrées.
+
+        LE ZÉRO VIENT D'UNE IMPOSSIBILITÉ, non d'une précaution : toutes les
+        étapes sont de portée site, et aucun site n'est monté. Le produire par
+        la nature destructrice ne marcherait plus — confirmer la lève, parce que
+        c'est une précaution, alors qu'un site absent ne s'invente pas."""
+        toutes_de_site = REGISTRE.replace(
+            '"portee": "toute"', '"portee": "site"'
+        ).replace('"portee": "tenant"', '"portee": "site"')
+        runbook = R.lit_registre(toutes_de_site)[0]
+        self.assertEqual((0, 4), R.compte(runbook, "eco", ""))
         self.assertEqual(4, len(runbook.etapes))
+
+    def test_the_precaution_and_the_impossibility_do_not_count_alike(self):
+        """Le contrôle positif du précédent : la même séquence, site monté,
+        offre tout. Sans lui, un compte toujours nul passerait."""
+        toutes_de_site = REGISTRE.replace(
+            '"portee": "toute"', '"portee": "site"'
+        ).replace('"portee": "tenant"', '"portee": "site"')
+        runbook = R.lit_registre(toutes_de_site)[0]
+        self.assertEqual((4, 4), R.compte(runbook, "eco", "site"))
 
 
 class TestLesVariablesSontDesTables(unittest.TestCase):
@@ -726,6 +745,146 @@ class TestLaBarriereNeSeLeveQueDeSesDeuxRefusDuPalier(unittest.TestCase):
                             confirme=confirme,
                         )
                         self.assertIn(vu, R.BARRIERES + ("",))
+
+
+class TestLaCibleQuiCompteLesHotesResteUneMesure(unittest.TestCase):
+    """Le palier la joue pour obtenir le nombre qu'il fait retaper. Devenue
+    ÉCRITURE en amont, elle serait dès lors jouée avant CHAQUE destruction, sans
+    que rien ne le dise — et le geste qu'on croyait préparer en aurait déjà
+    changé l'état."""
+
+    def registre(self):
+        """Le registre du moteur, ou un saut si le clone n'est pas là."""
+        import os
+        import subprocess
+        import sys
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        moteur = os.path.join(racine, "private", "repo", "Set-OPS-Public")
+        if not os.path.isdir(moteur):
+            self.skipTest("le clone du moteur n'est pas là")
+        sys.path.insert(0, racine)
+        from script.setops import runner
+
+        # L'ENVIRONNEMENT NEUF SUFFIT : le recenseur du registre est du python
+        # pur, sans ansible. Y monter le venv du moteur ferait dépendre cette
+        # épreuve d'une bibliothèque que la lecture n'emploie pas.
+        vu = runner.jouer(
+            R.ARGV_REGISTRE,
+            env=runner.base(),
+            cwd=moteur,
+            fusionner=False,
+            delai=180,
+        )
+        lus = R.lit_registre(vu.sortie)
+        if lus is None:
+            self.skipTest("le registre du moteur ne s'est pas lu")
+        return lus
+
+    def etapes_de(self, lus, cible):
+        return [e for rb in lus for e in rb.etapes if e.cible == cible]
+
+    def test_the_engine_declares_it_a_measure(self):
+        vues = self.etapes_de(self.registre(), R.CIBLE_SERVEURS)
+        self.assertNotEqual(
+            [], vues, f"« {R.CIBLE_SERVEURS} » absente du registre"
+        )
+        for etape in vues:
+            with self.subTest(portee=etape.portee):
+                self.assertEqual(R.MESURE, etape.nature)
+                self.assertFalse(etape.exige_confirmation)
+
+    def test_it_is_therefore_outside_the_tier(self):
+        """La conséquence qui compte : la jouer ne demande aucune confirmation,
+        donc la porte du palier ne se rappelle pas elle-même."""
+        for etape in self.etapes_de(self.registre(), R.CIBLE_SERVEURS):
+            with self.subTest(portee=etape.portee):
+                self.assertFalse(R.destructeur(etape))
+
+    def test_the_check_would_notice_a_write(self):
+        """Le contrôle positif : sans lui, une recherche qui ne trouve jamais
+        d'écriture passerait les deux épreuves ci-dessus."""
+        lus = self.registre()
+        ecritures = [
+            e for rb in lus for e in rb.etapes if e.nature == R.ECRITURE
+        ]
+        self.assertNotEqual(
+            [], ecritures, "le registre ne déclare aucune écriture"
+        )
+
+
+class TestChaqueGesteDuPalierPeutEtreGarde(unittest.TestCase):
+    """L'ÉPREUVE DE COUVERTURE. Un geste du palier dont la portée n'a rien à
+    faire retaper est INCONDUISIBLE : sa porte refuse faute de savoir quoi
+    demander. C'est le sens SÛR du refus, mais il se lit comme une panne, et rien
+    ne dirait d'où il vient. Cette épreuve le dit le jour où l'amont rend
+    destructeur un geste d'une portée que la porte ne sait pas garder."""
+
+    def registre(self):
+        import os
+        import sys
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        moteur = os.path.join(racine, "private", "repo", "Set-OPS-Public")
+        if not os.path.isdir(moteur):
+            self.skipTest("le clone du moteur n'est pas là")
+        sys.path.insert(0, racine)
+        from script.setops import runner
+
+        vu = runner.jouer(
+            R.ARGV_REGISTRE,
+            env=runner.base(),
+            cwd=moteur,
+            fusionner=False,
+            delai=180,
+        )
+        lus = R.lit_registre(vu.sortie)
+        if lus is None:
+            self.skipTest("le registre du moteur ne s'est pas lu")
+        return lus
+
+    def palier(self, lus):
+        vues = {}
+        for runbook in lus:
+            for etape in runbook.etapes:
+                if R.destructeur(etape):
+                    vues.setdefault(etape.cible, etape)
+        return vues
+
+    def test_every_tier_gesture_has_something_to_retype(self):
+        vues = self.palier(self.registre())
+        self.assertNotEqual(
+            {}, vues, "le registre ne déclare aucun geste du palier"
+        )
+        muets = sorted(c for c, e in vues.items() if not R.retape(e))
+        self.assertEqual(
+            [],
+            muets,
+            f"ces gestes du palier n'ont rien à faire retaper : {muets}",
+        )
+
+    def test_a_scope_the_door_cannot_gate_would_be_caught(self):
+        """Le contrôle positif : sans lui, une recherche qui ne trouve jamais de
+        geste muet passerait l'épreuve ci-dessus. La portée « toute » existe dans
+        le registre — huit étapes la portent — et n'a rien à faire retaper."""
+        lus = self.registre()
+        portees = {e.portee for rb in lus for e in rb.etapes}
+        sans_retape = {
+            p
+            for p in portees
+            if not R.retape(
+                R.Etape("c", "", p, R.DESTRUCTIF, "", "", (), True, False)
+            )
+        }
+        self.assertNotEqual(
+            set(),
+            sans_retape,
+            "aucune portée n'est ingardable : le contrôle ne prouve rien",
+        )
 
 
 if __name__ == "__main__":

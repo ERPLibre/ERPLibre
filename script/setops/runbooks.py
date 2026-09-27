@@ -370,6 +370,13 @@ def lit_registre(sortie):
 # CE QU'ON FAIT RETAPER avant qu'un geste du palier écrive, dérivé de sa PORTÉE.
 # Vocabulaire CLOS. « » n'en fait pas partie : il dit que le geste n'est pas du
 # palier, donc qu'il n'y a rien à retaper.
+# LA CIBLE QUI LISTE LES SERVEURS DU PLAN, nommée une fois. Le palier s'en sert
+# pour le compte qu'il fait retaper. Le registre la déclare MESURE, donc la
+# conduire ne touche rien — et une épreuve le vérifie CHEZ LE MOTEUR, parce
+# qu'une mesure devenue écriture serait dès lors jouée avant chaque destruction,
+# sans que rien ne le dise.
+CIBLE_SERVEURS = "serveurs"
+
 RETAPE_ECOSYSTEME = "ecosysteme"
 RETAPE_SITE = "site"
 RETAPE_HOTES = "hotes"
@@ -491,9 +498,9 @@ def barriere(etape, ecosysteme="", site="", confirme=False):
     return ""
 
 
-def conduisible(etape, ecosysteme="", site=""):
+def conduisible(etape, ecosysteme="", site="", confirme=False):
     """`etape` se lance-t-elle d'ici ?"""
-    return not barriere(etape, ecosysteme, site)
+    return not barriere(etape, ecosysteme, site, confirme)
 
 
 def ecrit(etape):
@@ -543,7 +550,17 @@ def compte(runbook, ecosysteme="", site=""):
 
     Affiché en tête de chaque séquence : une liste dont on ne sait pas
     combien elle offre se parcourt en entier pour le découvrir.
+
+    LE MÊME JUGEMENT QUE L'AFFICHAGE, palier compris. Un en-tête qui compterait
+    autrement que la liste qu'il annonce mentirait par ARITHMÉTIQUE : on lirait
+    « une sur cinq » devant deux étapes qu'on peut choisir, et c'est le genre
+    d'écart qu'on met longtemps à voir parce que chacune des deux moitiés a
+    l'air juste.
     """
     etapes = runbook.etapes if runbook is not None else ()
-    ouvertes = sum(1 for e in etapes if conduisible(e, ecosysteme, site))
+    ouvertes = sum(
+        1
+        for e in etapes
+        if conduisible(e, ecosysteme, site, confirme=destructeur(e))
+    )
     return ouvertes, len(etapes)

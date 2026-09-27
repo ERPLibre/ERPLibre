@@ -361,7 +361,8 @@ later say two different things about the same gesture.
   from here, or `""`. The refusals run from the general to the circumstantial:
   what destroys never runs from here, whereas a missing scope is settled by
   mounting an ecosystem;
-- `conduisible(etape, ecosysteme, site)`: the same answer as a yes or no;
+- `conduisible(etape, ecosysteme, site, confirme)`: the same answer as a yes or
+  no;
 - `ecrit(etape)`: does it touch the system? A write the engine does not gate
   is where TODO asks its OWN confirmation — the line shown carries
   `CONFIRMER=false`, and for those targets the flag means nothing;

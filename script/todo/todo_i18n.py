@@ -5247,6 +5247,50 @@ TRANSLATIONS = {
         "fr": "Défaire ce que la descente a créé",
         "en": "Undo what the descent created",
     },
+    "The plan declares {n} active host(s). If the trial above saw none, the state may not have been READ: an empty API answer does not differ from an empty fleet.": {
+        "fr": "Le plan déclare {n} hôte(s) actif(s). Si l'essai ci-dessus n'en a vu aucun, l'état n'a peut-être pas été LU : une réponse d'API vide ne se distingue pas d'une flotte vide.",
+        "en": "The plan declares {n} active host(s). If the trial above saw none, the state may not have been READ: an empty API answer does not differ from an empty fleet.",
+    },
+    "DESTRUCTIVE tier: a retype is demanded": {
+        "fr": "palier destructeur : une retape est demandée",
+        "en": "DESTRUCTIVE tier: a retype is demanded",
+    },
+    "This gesture is in the DESTRUCTIVE tier.": {
+        "fr": "Ce geste est du PALIER DESTRUCTEUR.",
+        "en": "This gesture is in the DESTRUCTIVE tier.",
+    },
+    "A trial runs first: the engine says what it would do.": {
+        "fr": "Un essai part d'abord : le moteur dit ce qu'il ferait.",
+        "en": "A trial runs first: the engine says what it would do.",
+    },
+    "Retype the name of the MOUNTED ecosystem:": {
+        "fr": "Retapez le nom de l'écosystème MONTÉ :",
+        "en": "Retype the name of the MOUNTED ecosystem:",
+    },
+    "Retype the name of the MOUNTED site:": {
+        "fr": "Retapez le nom du site MONTÉ :",
+        "en": "Retype the name of the MOUNTED site:",
+    },
+    "Retype the number of ACTIVE hosts the plan declares:": {
+        "fr": "Retapez le nombre d'hôtes ACTIFS que le plan déclare :",
+        "en": "Retype the number of ACTIVE hosts the plan declares:",
+    },
+    "What was typed does not match. Nothing was run.": {
+        "fr": "Ce qui est tapé ne concorde pas. Rien n'a été lancé.",
+        "en": "What was typed does not match. Nothing was run.",
+    },
+    "Nothing to ask for: it could not be read.": {
+        "fr": "Rien à demander : la valeur ne s'est pas lue.",
+        "en": "Nothing to ask for: it could not be read.",
+    },
+    "Another gesture holds this engine lock.": {
+        "fr": "Un autre geste tient le verrou de ce moteur.",
+        "en": "Another gesture holds this engine lock.",
+    },
+    "Now for real:": {
+        "fr": "Maintenant pour de vrai :",
+        "en": "Now for real:",
+    },
     "Set-OPS bench: plan only (dry-run)": {
         "fr": "Banc du moteur Set-OPS : le plan seulement (à blanc)",
         "en": "Set-OPS bench: plan only (dry-run)",

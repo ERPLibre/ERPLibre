@@ -366,7 +366,8 @@ later say two different things about the same gesture.
   from here, or `""`. The refusals run from the general to the circumstantial:
   what destroys never runs from here, whereas a missing scope is settled by
   mounting an ecosystem;
-- `conduisible(etape, ecosysteme, site)`: the same answer as a yes or no;
+- `conduisible(etape, ecosysteme, site, confirme)`: the same answer as a yes or
+  no;
 - `ecrit(etape)`: does it touch the system? A write the engine does not gate
   is where TODO asks its OWN confirmation — the line shown carries
   `CONFIRMER=false`, and for those targets the flag means nothing;
@@ -858,7 +859,8 @@ diraient tôt ou tard deux choses différentes du même geste.
   étape d'ici, ou `""`. Les refus vont du général au circonstanciel : ce qui
   détruit ne part jamais d'ici, alors qu'une portée manquante se règle en
   montant un écosystème ;
-- `conduisible(etape, ecosysteme, site)` : la même réponse, en oui ou non ;
+- `conduisible(etape, ecosysteme, site, confirme)` : la même réponse, en oui ou
+  non ;
 - `ecrit(etape)` : touche-t-elle au système ? Une écriture que le moteur ne
   garde pas est celle où todo pose sa PROPRE confirmation — la ligne affichée
   porte `CONFIRMER=false`, et pour ces cibles-là le drapeau ne veut rien dire ;
