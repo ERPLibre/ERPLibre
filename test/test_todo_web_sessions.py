@@ -135,7 +135,9 @@ class Client:
         self.data += data
 
     def event(self, message):
-        self.events.append(message)
+        # L'état du terminal a ses tests : test_todo_web_ttywatch.py.
+        if message["t"] != "tty_state":
+            self.events.append(message)
 
     def close(self, code, reason):
         self.closed = (code, reason)

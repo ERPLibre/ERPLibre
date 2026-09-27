@@ -688,21 +688,25 @@ class TerminalCase(HubCase):
         self.addCleanup(conn.close)
         return Tab(conn)
 
-    async def tab(self, **hello):
-        """Onglet qui a envoyé `hello` (complété) et reçu sa réponse."""
+    async def tab(self, reading=True, **hello):
+        """Onglet qui a envoyé `hello` (complété) et reçu sa réponse ; avec
+        `reading`, aussi un `tty_state` qui voit l'enfant lire son
+        terminal : les frappes de l'onglet passent alors le filtre."""
         tab = await self.connect()
         message = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 90}
         message.update(rows=20)
         message.update(hello)
         await tab.conn.write_message(json.dumps(message))
         await tab.until(lambda: tab.texts)
+        if reading:
+            await tab.until(lambda: any(t.get("reader") for t in tab.texts))
         return tab
 
 
 class TestTerminal(TerminalCase):
     async def test_hello_opens_a_session_and_bytes_flow_both_ways(self):
         tab = await self.tab()
-        [reply] = tab.texts
+        reply = tab.texts[0]
         self.assertEqual(
             reply,
             {
@@ -824,8 +828,8 @@ class TestTerminal(TerminalCase):
         tab = await self.tab()
         line = b'send {"t":"open_view","view":"telemetry"}\n'
         await tab.conn.write_message(line, binary=True)
-        await tab.until(lambda: len(tab.texts) == 2)
-        self.assertEqual(tab.texts[1], {"t": "open_view", "view": "telemetry"})
+        opened = {"t": "open_view", "view": "telemetry"}
+        await tab.until(lambda: opened in tab.texts)
 
     async def test_the_session_list(self):
         tab = await self.tab()
@@ -925,6 +929,57 @@ def _masked(opcode, payload):
     return head + mask + body
 
 
+# Un worker qui attend `sleep` dans son propre groupe, sans lire son
+# terminal ; SIGINT l'interrompt.
+WAITING = r"""
+import fcntl, signal, subprocess, termios
+signal.signal(signal.SIGINT, signal.default_int_handler)
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+print("ready", flush=True)
+try:
+    subprocess.run(["sleep", "30"])
+except KeyboardInterrupt:
+    print("INT", flush=True)
+"""
+
+
+class TestKeystrokes(TerminalCase):
+    async def waiting(self):
+        """Onglet d'une session dont le worker ne lit pas son terminal."""
+        with patch.object(sessions, "WORKER", ("-c", WAITING)):
+            tab = await self.tab(reading=False)
+        await tab.until(lambda: b"ready" in tab.data)
+        await tab.until(
+            lambda: any(t.get("reader") is False for t in tab.texts)
+        )
+        return tab
+
+    async def test_the_tab_learns_the_state_of_the_terminal(self):
+        tab = await self.tab()
+        state = {"t": "tty_state", "echo": True, "canon": True}
+        state.update(reader=True, altscreen=False)
+        await tab.until(lambda: state in tab.texts)
+
+    async def test_what_nobody_reads_is_dropped_unless_in_raw_mode(self):
+        tab = await self.waiting()
+        await tab.conn.write_message(b"abc", binary=True)
+        await tab.until(lambda: {"t": "dropped", "bytes": 3} in tab.texts)
+        await tab.conn.write_message(json.dumps({"t": "raw", "on": True}))
+        await tab.conn.write_message(b"xyz", binary=True)
+        # L'écho du terminal : ces octets ont atteint le PTY, pas les autres.
+        await tab.until(lambda: b"xyz" in tab.data)
+        self.assertNotIn(b"abc", tab.data)
+
+    async def test_stop_and_ctrl_c_are_never_dropped(self):
+        for stop in (json.dumps({"t": "interrupt"}), b"\x03"):
+            with self.subTest(stop=stop):
+                tab = await self.waiting()
+                binary = isinstance(stop, bytes)
+                await tab.conn.write_message(stop, binary=binary)
+                await tab.until(lambda: b"INT" in tab.data)
+                self.assertNotIn("dropped", [t["t"] for t in tab.texts])
+
+
 class TestDeadClient(TerminalCase):
     async def asyncSetUp(self):
         patcher = patch.object(server, "PING_SECONDS", 0.2)
@@ -954,6 +1009,8 @@ class TestDeadClient(TerminalCase):
         hello = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 80}
         hello["rows"] = 24
         writer.write(_masked(0x1, json.dumps(hello).encode()))
+        # Mode brut : la commande part avant que l'enfant lise le terminal.
+        writer.write(_masked(0x1, b'{"t": "raw", "on": true}'))
         writer.write(_masked(0x2, b"big 50000000\n"))
         # Sans pong, le hub ferme ; tornado laisse 5 s au client pour
         # répondre, puis l'envoi en attente échoue et la session le détache.

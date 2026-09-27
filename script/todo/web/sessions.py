@@ -16,6 +16,15 @@ n'attend jamais un onglet fermé. Avec un client, elle s'arrête le temps de
 lui envoyer ce qui lui manque, CHUNK octets au plus par envoi : un client
 lent ralentit la commande, comme un terminal.
 
+Chaque session suit son terminal (`ttywatch.TtyWatch`) : après la sortie,
+et toutes les PROBE_SECONDS tant qu'un client est attaché, le client
+reçoit `tty_state` quand l'état change. `gate` relit le terminal et ne
+laisse passer une frappe que si quelqu'un la lit ; ce qu'un lecteur n'a
+pas pris est jeté dès que la sonde voit l'écho se couper en mode
+canonique. Seul un programme qui lit aussitôt après avoir coupé l'écho,
+sans vider l'entrée, devance ce vidage : il reçoit la suite d'un collage
+de plusieurs lignes.
+
 Un client offre `send(octets)`, attendable, rendu quand les octets ont
 quitté le hub ; `event(message)`, un dict envoyé en texte ; `close(code,
 raison)`. Module sans tornado ; les enfants du worker se lisent dans /proc.
@@ -33,6 +42,8 @@ import sys
 import termios
 import time
 
+from script.todo.web import ttywatch
+
 RING_SIZE = 4 * 1024 * 1024
 CHUNK = 64 * 1024
 # Frappes et collages qui attendent que le worker lise son terminal ; au-delà,
@@ -49,6 +60,12 @@ RESTART_WINDOW = 60.0
 WORKER = ("-m", "script.todo.web.worker")
 # Vues que le worker peut faire ouvrir à la page.
 VIEWS = ("telemetry",)
+# Sonde du terminal : toutes les PROBE_SECONDS tant qu'un client est
+# attaché, et après la sortie, PROBE_GAP secondes après la précédente au
+# plus tôt (dix fois son coût si c'est plus, PROBE_SECONDS au plus), pour
+# qu'un flot de sortie ne relise pas /proc à chaque morceau.
+PROBE_SECONDS = 0.2
+PROBE_GAP = 0.02
 
 
 class Ring:
@@ -148,6 +165,17 @@ def _has_children(pid) -> bool:
     return any(_in_group(cpid.decode(), pid) for cpid in children)
 
 
+def _secret(state) -> bool:
+    """Écho coupé en mode canonique : une invite de mot de passe."""
+    return not state.echo and state.canon
+
+
+def _open(state) -> bool:
+    """Vrai si une frappe peut aller au terminal sans filtre : quelqu'un
+    la lit, un programme tient l'écran alternatif, ou on ne sait pas."""
+    return state.altscreen or state.reader is not False
+
+
 class Session:
     """Un worker sur son PTY, l'anneau de sa sortie et au plus un client.
 
@@ -178,12 +206,19 @@ class Session:
         self.code = None
         self.ended = asyncio.Event()
         self.tasks = set()
+        self.watch = None  # TtyWatch du PTY courant
+        self.state = None  # dernier TtyState lu
+        self.shown = None  # dernier tty_state envoyé au client
+        self.probe_timer = None
+        self.probed_at = 0.0
+        self.gap = PROBE_GAP  # délai minimal entre deux sondes
 
     async def start(self):
         """Lance le worker ; OSError si le PTY ou le processus manquent. Un
         `close` venu pendant le lancement l'arrête dès qu'il est lancé."""
         await self._spawn()
         self._task(self._watch())
+        self._task(self._tick())
         if self.closing:
             await self.close()
 
@@ -219,6 +254,11 @@ class Session:
             os.close(slave)
             worker_end.close()
         self.master, self.tty, self.eof = master, tty, False
+        try:
+            self.watch = ttywatch.TtyWatch(master, self.proc.pid)
+        except OSError:
+            self.watch = None  # sans suivi, tout passe, comme sans TtyWatch
+        self.state = None
         self._reading(True)
         reader, self.channel = await asyncio.open_connection(
             sock=hub_end, limit=CHUNK
@@ -264,8 +304,11 @@ class Session:
         data = self._read_master()
         if data:
             self.ring.append(data)
+            if self.watch is not None:
+                self.watch.feed(data)
             if self.client is not None:
                 self._flush()
+                self._probe_soon()
         if self.eof:
             self._reading(False)
 
@@ -301,6 +344,9 @@ class Session:
         wanted = self.ring.start if after is None else after
         self.sent, _ = self.ring.read(wanted, 0)
         self._flush()
+        # Le nouveau client reçoit l'état du terminal, même inchangé.
+        self.shown = None
+        self._probe_soon()
         return self.sent, (after or 0) < self.ring.start, previous
 
     def detach(self, client):
@@ -333,6 +379,74 @@ class Session:
             del self.inbox[:written]
         if self.master is not None:
             loop.remove_writer(self.master)
+
+    def gate(self, data: bytes) -> bytes:
+        """Ce que `data`, une frappe ou un collage, peut porter au terminal.
+
+        Le terminal est relu à chaque appel : l'état gardé peut dater
+        d'avant la dernière invite, ou d'un lecteur parti depuis. Tout
+        passe quand `_open` le permet ; sinon, les seuls caractères de
+        signal de `data` (Ctrl+C, Ctrl+\\, Ctrl+Z), que le noyau change en
+        signal sans lecteur.
+        """
+        if self.watch is None or self.master is None:
+            return data
+        self._probe()
+        if _open(self.state):
+            return data
+        return bytes(b for b in data if b in self.state.signals)
+
+    def _probe_soon(self):
+        """Relit le terminal bientôt, `gap` après la lecture précédente au
+        plus tôt."""
+        if self.probe_timer is None:
+            delay = self.probed_at + self.gap - time.monotonic()
+            loop = asyncio.get_running_loop()
+            self.probe_timer = loop.call_later(max(0.0, delay), self._probe)
+
+    def _probe(self):
+        """Relit l'état du terminal ; le client reçoit `tty_state` quand il
+        change. Quand l'écho se coupe en mode canonique, une invite de
+        secret, ce qui attend d'être lu est jeté, dans le hub comme dans
+        le PTY : une frappe d'avance ne devient pas le secret, sauf lue
+        avant cette sonde. `gap` suit le coût de la lecture : un arbre de
+        processus large la rend plus chère."""
+        if self.probe_timer is not None:
+            self.probe_timer.cancel()
+            self.probe_timer = None
+        if self.watch is None or self.master is None:
+            return
+        self.probed_at = time.monotonic()
+        before, self.state = self.state, self.watch.probe()
+        cost = time.monotonic() - self.probed_at
+        self.gap = min(PROBE_SECONDS, max(PROBE_GAP, 10 * cost))
+        if _secret(self.state) and not (
+            before is not None and _secret(before)
+        ):
+            self.inbox.clear()
+            asyncio.get_running_loop().remove_writer(self.master)
+            self._drop_input()
+        event = {
+            "t": "tty_state",
+            "echo": self.state.echo,
+            "canon": self.state.canon,
+            "reader": self.state.reader,
+            "altscreen": self.state.altscreen,
+        }
+        if self.client is not None and event != self.shown:
+            self.shown = event
+            self.client.event(event)
+
+    async def _tick(self):
+        """Relit le terminal toutes les PROBE_SECONDS jusqu'à la fin de la
+        session, quand un client est attaché."""
+        while True:
+            try:
+                await asyncio.wait_for(self.ended.wait(), PROBE_SECONDS)
+                return
+            except TimeoutError:
+                if self.client is not None:
+                    self._probe()
 
     def interrupt(self) -> bool:
         """Arrête ce que le worker a lancé ; faux, et rien ne change, s'il

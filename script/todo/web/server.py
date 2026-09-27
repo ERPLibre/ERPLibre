@@ -463,12 +463,17 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     le client s'y rattache (inconnue, 4404) et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
     "truncated"}`, puis trames binaires. Textes du client : `resize`,
-    `interrupt`, `close` ; du hub : `bye`, `open_view`. Un type inconnu est
-    ignoré.
+    `interrupt`, `close`, `raw` ; du hub : `bye`, `open_view`,
+    `tty_state`, `dropped`. Un type inconnu est ignoré.
+
+    Une trame binaire du client passe par `Session.gate`, sauf en mode brut
+    (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
+    passé. `interrupt` ne passe jamais par ce filtre.
     """
 
     session = None
     hello_timer = None
+    raw = False
 
     def prepare(self):
         super().prepare()
@@ -486,10 +491,16 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
         elif self.session.client is not self:
             return  # repris par un autre onglet : ce qui arrive encore d'ici
         elif isinstance(message, bytes):
-            if not self.session.write(message):
-                self.close(1008, "input overflow")
+            self.type(message)
         else:
             self.control(message)
+
+    def type(self, data):
+        kept = data if self.raw else self.session.gate(data)
+        if len(kept) < len(data):
+            self.event({"t": "dropped", "bytes": len(data) - len(kept)})
+        if kept and not self.session.write(kept):
+            self.close(1008, "input overflow")
 
     async def hello(self, message):
         self.hello_timer.cancel()
@@ -546,6 +557,8 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.session.interrupt()
         elif kind == "close":
             self.hub.keep(self.session.close())
+        elif kind == "raw":
+            self.raw = data.get("on") is True
 
     # Client d'une session (sessions.py) : send, event, close.
 

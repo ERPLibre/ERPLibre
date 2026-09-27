@@ -2,12 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """TtyWatch : l'état du terminal d'une session, lu sur le maître et dans
-/proc.
+/proc, et ce qu'une session en fait : `tty_state` au client, frappes
+filtrées, file d'entrée vidée devant une invite de secret.
 
 Chaque enfant est un `python -c` jetable sur un PTY neuf, dont il fait son
-terminal de contrôle ; aucun test ne lance TODO.
+terminal de contrôle ; aucun test ne lance TODO. Le client est un double
+qui date ce qu'il reçoit.
 """
 
+import asyncio
 import builtins
 import fcntl
 import os
@@ -19,10 +22,12 @@ import sys
 import termios
 import time
 import unittest
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import Mock, patch
 
-from script.todo.web import ttywatch
+from script.todo.web import sessions, ttywatch
 
+REPO = Path(__file__).resolve().parent.parent
 # Prend le PTY comme terminal de contrôle : /dev/tty le désigne ensuite.
 CTTY = "import fcntl, termios; fcntl.ioctl(0, termios.TIOCSCTTY, 0)\n"
 
@@ -62,6 +67,81 @@ WAITERS = {
     "zombie": "import subprocess, time; p = subprocess.Popen(['true'])\n"
     "print('ready', flush=True); time.sleep(30)",
 }
+
+
+# Invite de mot de passe après une première ligne, puis une ligne encore.
+SECRET = r"""
+import getpass
+print("ready", flush=True)
+input()
+print("length", len(getpass.getpass("pw: ")), flush=True)
+input()
+"""
+
+READ_THEN_SLEEP = r"""
+import time
+print("ready", flush=True)
+input()
+print("sleeping", flush=True)
+time.sleep(30)
+"""
+
+# ESC[?1049h en deux écritures, puis ESC[?1049l après une ligne.
+ALTSCREEN = r"""
+import sys, time
+sys.stdout.write("\x1b[?10")
+sys.stdout.flush()
+time.sleep(0.2)
+sys.stdout.write("49h")
+sys.stdout.flush()
+input()
+sys.stdout.write("\x1b[?1049l")
+sys.stdout.flush()
+input()
+"""
+
+FULL_SCREEN = r"""
+import sys, time
+sys.stdout.write("\x1b[?1049h")
+sys.stdout.flush()
+time.sleep(30)
+"""
+
+# Coupe l'écho au bout d'une demi-seconde, sans rien écrire.
+SILENT = r"""
+import termios, time
+print("ready", flush=True)
+time.sleep(0.5)
+attrs = termios.tcgetattr(0)
+attrs[3] &= ~termios.ECHO
+termios.tcsetattr(0, termios.TCSANOW, attrs)
+time.sleep(30)
+"""
+
+# 8 Mo de sortie d'un coup, en lignes de 4 Ko.
+FLOOD = r"""
+import os
+print("ready", flush=True)
+input()
+for _ in range(2000):
+    os.write(1, b"x" * 4000 + b"\n")
+print("END", flush=True)
+input()
+"""
+
+# Coupe l'écho sans vider la file (TCSANOW), puis lit ce qui y reste.
+TYPEAHEAD = r"""
+import os, select, termios, time
+print("ready", flush=True)
+input()
+attrs = termios.tcgetattr(0)
+attrs[3] &= ~termios.ECHO
+termios.tcsetattr(0, termios.TCSANOW, attrs)
+print("pw: ", end="", flush=True)
+time.sleep(0.5)
+ready = select.select([0], [], [], 0.5)[0]
+print("got", os.read(0, 100) if ready else b"nothing", flush=True)
+"""
 
 
 def queued(fd) -> int:
@@ -305,6 +385,184 @@ class TestFlush(unittest.TestCase):
             with self.subTest(queue=queue):
                 termios.tcflush(self.master, queue)
                 self.assertEqual(queued(self.slave), 10)
+
+
+class Client:
+    """Double d'un client : octets et messages reçus, avec leur heure."""
+
+    def __init__(self):
+        self.data = bytearray()
+        self.arrivals = []  # (heure, taille de data après l'envoi)
+        self.events = []  # (heure, message)
+
+    async def send(self, data):
+        self.data += data
+        self.arrivals.append((time.monotonic(), len(self.data)))
+
+    def event(self, message):
+        self.events.append((time.monotonic(), message))
+
+    def close(self, code, reason):
+        pass
+
+    def states(self) -> list:
+        return [m for _, m in self.events if m["t"] == "tty_state"]
+
+    def seen(self, **fields) -> bool:
+        """Vrai si un `tty_state` reçu porte ces valeurs."""
+        return any(
+            all(state[key] == value for key, value in fields.items())
+            for state in self.states()
+        )
+
+    def arrived(self, marker) -> float:
+        """Heure de l'envoi qui a complété `marker` dans `data`."""
+        end = self.data.find(marker) + len(marker)
+        return next(at for at, size in self.arrivals if size >= end)
+
+
+class SessionCase(unittest.IsolatedAsyncioTestCase):
+    async def open(self, code):
+        argv = [sys.executable, "-c", CTTY + code]
+        session = sessions.Session("t1", str(REPO), "en", 80, 24, argv=argv)
+        await session.start()
+        self.addAsyncCleanup(session.close)
+        client = Client()
+        session.attach(client)
+        return session, client
+
+    async def until(self, predicate, timeout=5.0):
+        deadline = time.monotonic() + timeout
+        while not predicate():
+            if time.monotonic() > deadline:
+                self.fail(f"still waiting: {predicate}")
+            await asyncio.sleep(0.01)
+
+
+class TestSessionState(SessionCase):
+    async def test_a_password_prompt_reaches_the_client_within_0_2_s(self):
+        # Sans l'horloge : la sortie de l'invite fait relire le terminal.
+        with patch.object(sessions, "PROBE_SECONDS", 60):
+            session, client = await self.open(SECRET)
+            await self.until(lambda: b"ready" in client.data)
+            session.write(b"go\n")
+            await self.until(lambda: client.seen(echo=False), 1)
+        at, state = next(
+            (at, m)
+            for at, m in client.events
+            if m["t"] == "tty_state" and not m["echo"]
+        )
+        self.assertLess(at - client.arrived(b"pw: "), 0.2)
+        self.assertEqual((state["canon"], state["altscreen"]), (True, False))
+        session.write(b"hunter2\n")
+        await self.until(lambda: b"length 7" in client.data)
+        self.assertNotIn(b"hunter2", client.data)
+        await self.until(lambda: client.states()[-1]["echo"])
+
+    async def test_a_change_without_output_is_seen_by_the_clock(self):
+        session, client = await self.open(SILENT)
+        await self.until(lambda: b"ready" in client.data)
+        wait = 0.5 + sessions.PROBE_SECONDS + 0.3
+        await self.until(lambda: client.seen(echo=False), wait)
+
+    async def test_a_new_client_gets_the_state_at_once(self):
+        session, client = await self.open(SECRET)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(b"go\n")
+        await self.until(lambda: client.seen(echo=False))
+        other = Client()
+        session.attach(other)
+        await self.until(lambda: other.seen(echo=False, canon=True), 0.2)
+
+    async def test_a_flood_of_output_reads_proc_a_few_times_only(self):
+        session, client = await self.open(FLOOD)
+        await self.until(lambda: client.seen(reader=True))
+        probes = []
+        probe = session.watch.probe
+
+        def slow():
+            # 5 ms par sonde : l'écart entre deux sondes passe à 50 ms.
+            probes.append(1)
+            time.sleep(0.005)
+            return probe()
+
+        session.watch.probe = slow
+        start = time.monotonic()
+        session.write(b"go\n")
+        await self.until(lambda: b"END" in client.data)
+        elapsed = time.monotonic() - start
+        # Une lecture par écart au plus, plus celles de l'horloge.
+        most = elapsed / 0.05 + elapsed / sessions.PROBE_SECONDS
+        self.assertLess(len(probes), most + 2)
+        self.assertGreaterEqual(session.gap, 0.05)
+        self.assertGreater(len(client.arrivals), len(probes))
+
+    async def test_password_text_with_the_echo_on_never_says_echo_off(self):
+        session, client = await self.open("input('[sudo] password for x: ')")
+        await self.until(lambda: client.seen(reader=True))
+        await asyncio.sleep(3 * sessions.PROBE_SECONDS)
+        self.assertEqual({state["echo"] for state in client.states()}, {True})
+
+    async def test_the_reader_follows_the_child(self):
+        session, client = await self.open(READ_THEN_SLEEP)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(b"go\n")
+        await self.until(lambda: b"sleeping" in client.data)
+        await self.until(lambda: client.states()[-1]["reader"] is False, 2)
+
+    async def test_the_alternate_screen_cut_in_two_chunks_is_seen(self):
+        session, client = await self.open(ALTSCREEN)
+        await self.until(lambda: client.seen(altscreen=True, reader=True))
+        session.write(b"\n")
+        await self.until(lambda: not client.states()[-1]["altscreen"])
+
+    async def test_typeahead_is_dropped_when_the_echo_goes_off(self):
+        session, client = await self.open(TYPEAHEAD)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(b"go\nforged\n")
+        await self.until(lambda: b"got" in client.data)
+        self.assertIn(b"got b'nothing'", client.data)
+
+
+class TestGate(SessionCase):
+    async def test_only_what_is_read_goes_through_and_signals_always(self):
+        session, client = await self.open(READ_THEN_SLEEP)
+        await self.until(lambda: client.seen(reader=True))
+        self.assertEqual(session.gate(b"go\n"), b"go\n")
+        session.write(b"go\n")
+        await self.until(lambda: client.states()[-1]["reader"] is False)
+        self.assertEqual(session.gate(b"abc"), b"")
+        # Le noyau change Ctrl+C et Ctrl+Z en signal, sans lecteur.
+        self.assertEqual(session.gate(b"a\x03b\x1a"), b"\x03\x1a")
+
+    async def test_each_keystroke_reads_the_terminal_again(self):
+        # L'état gardé peut dater d'avant l'invite, ou d'un lecteur parti.
+        session, client = await self.open(READ_THEN_SLEEP)
+        await self.until(lambda: client.seen(reader=True))
+        session.state = session.state._replace(reader=False)
+        self.assertEqual(session.gate(b"go\n"), b"go\n")
+        session.write(b"go\n")
+        await self.until(lambda: b"sleeping" in client.data)
+        session.state = session.state._replace(reader=True)
+        self.assertEqual(session.gate(b"abc"), b"")
+
+    async def test_the_alternate_screen_lets_everything_through(self):
+        session, client = await self.open(FULL_SCREEN)
+        await self.until(lambda: client.seen(altscreen=True, reader=False))
+        self.assertEqual(session.gate(b"q"), b"q")
+
+    async def test_an_unknown_reader_lets_everything_through(self):
+        # Architecture sans table ; /proc inutilisable ; esclave introuvable.
+        for name, value in (
+            ("MACHINE", "forged-arch"),
+            ("PROC_USABLE", False),
+            ("TtyWatch", Mock(side_effect=OSError)),
+        ):
+            with self.subTest(name):
+                with patch.object(ttywatch, name, value):
+                    session, client = await self.open(WAITERS["sleep"])
+                await self.until(lambda: b"ready" in client.data)
+                self.assertEqual(session.gate(b"abc"), b"abc")
 
 
 if __name__ == "__main__":

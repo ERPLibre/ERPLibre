@@ -305,6 +305,14 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
                 self.fail(f"{prompt!r} × {count} not seen: {tail!r}")
             await asyncio.sleep(0.02)
 
+    async def reading(self, session):
+        """Attend que TODO lise son terminal : ses frappes passent alors le
+        filtre du hub."""
+        deadline = time.monotonic() + 5
+        while session.gate(b"1") != b"1":
+            self.assertLess(time.monotonic(), deadline, "TODO does not read")
+            await asyncio.sleep(0.02)
+
     async def test_the_real_todo_answers_zero_and_ends_with_zero(self):
         private_env(self.addCleanup)
         # Un SIGINT ignoré s'hérite : le worker doit rétablir le sien.
@@ -315,6 +323,7 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(session.close)
         main_menu = "[0] 🚪 Quit\r\n: ".encode()
         await self.shown(session, main_menu, 1)
+        await self.reading(session)
         # Ctrl+C à un sous-menu, sans commande : retour au menu principal.
         # Arrêter, lui, n'y fait rien : TODO n'a rien lancé.
         session.write(b"1\n")
