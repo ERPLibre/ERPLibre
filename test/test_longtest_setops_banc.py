@@ -1251,5 +1251,132 @@ class TestLeSecretNeTraverseNiEcranNiJournal(unittest.TestCase):
         self.assertEqual("", B.expurge(None, self.SECRET))
 
 
+class TestLesDeuxDepotsSontFreresDuMoteur(unittest.TestCase):
+    """La fédération se découvre par les dossiers FRÈRES du moteur : ailleurs, le
+    locataire du banc est invisible, et le moteur répond « aucun tenant fédéré
+    découvert » — un refus dont la cause ne se lit nulle part."""
+
+    MOTEUR = os.path.join("un", "chemin", "vers", "Moteur")
+
+    def test_both_are_siblings_of_the_engine(self):
+        _freres, site, eco = B.chemins_du_banc(self.MOTEUR)
+        attendu = os.path.dirname(os.path.abspath(self.MOTEUR))
+        self.assertEqual(attendu, os.path.dirname(site))
+        self.assertEqual(attendu, os.path.dirname(eco))
+
+    def test_neither_is_inside_the_engine(self):
+        """Dedans, ils seraient suivis par le dépôt du moteur et vus par ses
+        propres épreuves."""
+        racine = os.path.abspath(self.MOTEUR)
+        for chemin in B.chemins_du_banc(self.MOTEUR)[1:]:
+            with self.subTest(chemin=chemin):
+                self.assertFalse(chemin.startswith(racine + os.sep))
+
+    def test_a_trailing_separator_changes_nothing(self):
+        self.assertEqual(
+            B.chemins_du_banc(self.MOTEUR),
+            B.chemins_du_banc(self.MOTEUR + os.sep),
+        )
+
+    def test_it_refuses_what_has_no_sibling(self):
+        for vu in ("", "   ", os.sep, os.sep * 3, None):
+            with self.subTest(moteur=vu):
+                self.assertIsNone(B.chemins_du_banc(vu))
+
+    def test_the_answer_never_depends_on_the_working_directory(self):
+        """LA PROPRIÉTÉ. Un chemin dépouillé de ses séparateurs peut être la
+        chaîne VIDE, et une chaîne vide résolue rend le DOSSIER COURANT sans
+        rien dire : le banc prendrait le répertoire de travail pour le moteur,
+        y poserait ses liens et créerait ses dépôts à côté."""
+        ailleurs = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, ailleurs, True)
+        ici = os.getcwd()
+        os.chdir(ailleurs)
+        try:
+            self.assertIsNone(B.chemins_du_banc(os.sep))
+        finally:
+            os.chdir(ici)
+
+    def test_a_real_engine_path_still_answers(self):
+        """Le contrôle positif : sans lui, une fonction qui refuse toujours
+        passerait tous les refus ci-dessus."""
+        self.assertIsNotNone(B.chemins_du_banc(self.MOTEUR))
+
+
+class TestLesLiensSontRelatifsEtDesignentLeBonGenre(unittest.TestCase):
+    """Le moteur résout `underlay.yml` pour en dériver le dépôt de l'hébergeur,
+    et parcourt `instance` pour trouver le plan."""
+
+    def test_both_targets_are_relative(self):
+        """Un lien absolu pend dès que le checkout est déplacé, et il porte un
+        chemin de compte — que rien dans un dépôt ne doit porter."""
+        for nom, vise in B.cibles_des_liens():
+            with self.subTest(nom=nom):
+                self.assertFalse(os.path.isabs(vise), vise)
+
+    def test_the_underlay_link_names_a_file(self):
+        """Le moteur le résout PUIS prend son dossier parent pour trouver la
+        grappe de l'hébergeur : pointé sur un dossier, il chercherait la grappe
+        un niveau trop haut."""
+        vise = dict(B.cibles_des_liens())[B.LIEN_UNDERLAY]
+        self.assertTrue(vise.endswith("underlay.yml"), vise)
+
+    def test_the_instance_link_names_the_tenant_directory(self):
+        """Le moteur le parcourt pour trouver `plan/` : pointé sur un fichier,
+        il chercherait un plan dans un fichier."""
+        vise = dict(B.cibles_des_liens())[B.LIEN_INSTANCE]
+        self.assertEqual(os.path.basename(vise), B.ECOSYSTEME)
+
+    def test_the_two_names_are_exactly_the_two_the_engine_reads(self):
+        """Ni plus ni moins : un troisième lien ne serait défait par rien."""
+        self.assertEqual(
+            sorted(B.LIENS), sorted(nom for nom, _v in B.cibles_des_liens())
+        )
+
+    def test_each_target_points_at_a_repository_of_the_bench(self):
+        vises = dict(B.cibles_des_liens())
+        self.assertIn(B.UNDERLAY_BANC, vises[B.LIEN_UNDERLAY])
+        self.assertIn(B.ECOSYSTEME, vises[B.LIEN_INSTANCE])
+
+
+class TestUnMontagePartielSeDitPartiel(unittest.TestCase):
+    """Un montage interrompu porte quand même ses chemins, parce que c'est par
+    eux qu'il se défait : rendre une absence sur un échec laisserait sur le
+    disque ce que plus rien ne nomme."""
+
+    def montage(self, **change):
+        champs = dict(
+            underlay="/f/SITE",
+            ecosysteme="/f/OPS",
+            liens=("/m/underlay.yml", "/m/instance"),
+            cles=("/c/une", "/c/deux"),
+            souci="",
+        )
+        champs.update(change)
+        return B.Montage(**champs)
+
+    def test_everything_posed_is_complete(self):
+        """Le contrôle positif : sans lui, un « complet » toujours faux
+        passerait les refus ci-dessous."""
+        self.assertTrue(self.montage().complet)
+
+    def test_a_trouble_makes_it_incomplete(self):
+        self.assertFalse(self.montage(souci="le lien est occupé").complet)
+
+    def test_a_missing_link_makes_it_incomplete(self):
+        self.assertFalse(self.montage(liens=("/m/underlay.yml",)).complet)
+
+    def test_a_missing_repository_makes_it_incomplete(self):
+        for change in ({"underlay": ""}, {"ecosysteme": ""}):
+            with self.subTest(**change):
+                self.assertFalse(self.montage(**change).complet)
+
+    def test_a_partial_mount_still_names_what_it_posed(self):
+        """Ce qui reste à défaire est ce qu'il nomme, souci ou non."""
+        partiel = self.montage(souci="arrêté", cles=())
+        self.assertEqual("/f/SITE", partiel.underlay)
+        self.assertEqual(2, len(partiel.liens))
+
+
 if __name__ == "__main__":
     unittest.main()

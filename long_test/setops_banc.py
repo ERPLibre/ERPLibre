@@ -609,6 +609,83 @@ def environnement_api(
     }
 
 
+def chemins_du_banc(moteur):
+    """Où vivent les deux dépôts du banc : (frères, underlay, locataire). Ou None.
+
+    DES DOSSIERS FRÈRES DU MOTEUR, jamais un dossier temporaire et jamais dedans.
+    La fédération se découvre par les dossiers frères : ailleurs, le locataire du
+    banc est invisible au moteur, qui répond alors « aucun tenant fédéré
+    découvert » — un refus dont la cause ne se lit nulle part.
+
+    Le chemin rendu est ABSOLU, parce que le banc y écrit ; ce sont les LIENS qui
+    sont relatifs, et pour une autre raison.
+    """
+    # LE VIDE SE TESTE APRÈS LE DÉPOUILLEMENT. « / » dépouillé de ses
+    # séparateurs est la chaîne vide, et une chaîne vide donnée à la résolution
+    # rend le DOSSIER COURANT — sans rien dire. Le banc prendrait alors le
+    # répertoire de travail pour le moteur, y poserait ses liens et créerait ses
+    # dépôts à côté.
+    nu = (moteur or "").strip().rstrip(os.sep)
+    if not nu:
+        return None
+    racine = os.path.abspath(nu)
+    freres = os.path.dirname(racine)
+    if not freres or freres == racine:
+        return None
+    return (
+        freres,
+        os.path.join(freres, UNDERLAY_BANC),
+        os.path.join(freres, ECOSYSTEME),
+    )
+
+
+def cibles_des_liens():
+    """Les deux liens à poser : ((nom, cible), …), les cibles RELATIVES.
+
+    RELATIVES ET NON ABSOLUES. Le moteur résout `underlay.yml` pour en dériver
+    le dépôt de l'hébergeur ; un lien absolu pend dès que le checkout est
+    déplacé ou monté ailleurs, et il porte un chemin de compte, que rien dans un
+    dépôt ne doit porter.
+
+    `underlay.yml` désigne un FICHIER, `instance` un DOSSIER : le moteur lit le
+    premier puis prend son dossier parent pour trouver la grappe de l'hébergeur,
+    et parcourt le second pour trouver le plan. Les échanger ferait chercher un
+    plan dans un fichier.
+    """
+    return (
+        (LIEN_UNDERLAY, f"..{os.sep}{UNDERLAY_BANC}{os.sep}underlay.yml"),
+        (LIEN_INSTANCE, f"..{os.sep}{ECOSYSTEME}"),
+    )
+
+
+class Montage(NamedTuple):
+    """Ce que le montage local a posé, et ce qui l'a arrêté.
+
+    Les chemins sont ceux de ce qui EXISTE désormais. Un montage interrompu les
+    porte quand même, parce que c'est par eux qu'il se défait : rendre une
+    absence sur un échec laisserait sur le disque ce que plus rien ne nomme.
+
+    `souci` est vide quand tout a été posé. Non vide, il DIT quoi, et le montage
+    partiel reste à défaire.
+    """
+
+    underlay: str
+    ecosysteme: str
+    liens: tuple
+    cles: tuple
+    souci: str
+
+    @property
+    def complet(self) -> bool:
+        """Tout est posé : les deux dépôts, les deux liens, et pas de souci."""
+        return (
+            not self.souci
+            and bool(self.underlay)
+            and bool(self.ecosysteme)
+            and len(self.liens) == len(LIENS)
+        )
+
+
 def lien_etat(chemin, vise):
     """L'état du lien `chemin` au regard de la cible `vise`. Vocabulaire clos.
 
