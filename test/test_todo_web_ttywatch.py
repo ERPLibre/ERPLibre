@@ -191,6 +191,16 @@ for _ in range(3):
     print("got", input(), flush=True)
 """
 
+# Trois lignes, un tiers de seconde de sommeil après chacune : pendant ce
+# temps, rien ne lit le terminal.
+SLOW_LINES = r"""
+import time
+print("ready", flush=True)
+for _ in range(3):
+    print("got", input(), flush=True)
+    time.sleep(0.3)
+"""
+
 # Deux questions du port du worker, puis deux lignes lues sans question,
 # comme par un programme que TODO lance lui-même.
 PORT_QUESTIONS = r"""
@@ -207,6 +217,11 @@ print("got", repr(input()), repr(input()), flush=True)
 def asked(session):
     """Le texte de la question que la session tient ouverte, ou None."""
     return session.asking["text"] if session.asking is not None else None
+
+
+def dropped(client) -> list:
+    """Les tailles des `dropped` que `client` a reçus, dans l'ordre."""
+    return [m["bytes"] for _, m in client.events if m["t"] == "dropped"]
 
 
 def queued(fd) -> int:
@@ -709,6 +724,7 @@ class TestPaste(SessionCase):
         session.write(await session.gate(b"go\nforged\n"), lines=True)
         await self.until(lambda: client.seen(echo=False, reader=True))
         self.assertEqual(session.held, b"")
+        self.assertEqual(dropped(client), [len(b"forged\n")])
         session.write(await session.gate(b"hunter2\n"), lines=True)
         await self.until(lambda: b"secret was" in client.data)
         self.assertIn(b"secret was 'hunter2'", client.data)
@@ -725,6 +741,18 @@ class TestPaste(SessionCase):
         self.assertEqual(got, sorted(got))
         self.assertEqual(session.held, b"")
 
+    async def test_a_known_reader_gets_one_line_per_read(self):
+        session, client = await self.open(SLOW_LINES)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"one\ntwo\nthree\n"), lines=True)
+        for word, rest in ((b"one", b"two\nthree\n"), (b"two", b"three\n")):
+            await self.until(lambda word=word: b"got " + word in client.data)
+            # L'enfant dort : ni le hub ni l'esclave ne lui ont livré la
+            # ligne suivante.
+            self.assertEqual(session.held, rest)
+            self.assertEqual(session._queued(), 0)
+        await self.until(lambda: b"got three" in client.data)
+
     async def test_the_rest_of_a_paste_never_answers_the_next_question(self):
         session, client = await self.open(PORT_QUESTIONS % str(REPO))
         await self.until(lambda: session.asking is not None)
@@ -732,6 +760,7 @@ class TestPaste(SessionCase):
         session.write(await session.gate(b"1\nforged\n"), lines=True)
         await self.until(lambda: asked(session) == "Q2: ")
         self.assertEqual(session.held, b"")
+        self.assertEqual(dropped(client), [len(b"forged\n")])
         session.write(b"typed\n", lines=True)
         await self.until(lambda: b"answers" in client.data)
         self.assertIn(b"answers '1' 'typed'", client.data)
@@ -755,22 +784,52 @@ class TestPaste(SessionCase):
         self.assertEqual(session.held, b"later\n")
         self.assertEqual(await session.gate(b"\x03"), b"\x03")
         self.assertEqual(session.held, b"")
+        self.assertEqual(dropped(client), [len(b"later\n")])
 
-    async def test_an_unknown_reader_never_traps_what_is_typed_next(self):
+    async def test_every_other_discard_is_reported(self):
+        # Ctrl+C, une invite de secret et un message du worker ont leurs
+        # tests ; ici, un lecteur devenu inconnu, une réponse de la page,
+        # et, sans client, ce qu'un lecteur inconnu retient.
+        for case in ("unknown reader", "answer", "no client"):
+            with self.subTest(case):
+                session, client = await self.open(READ_THEN_SLEEP)
+                await self.until(lambda: client.seen(reader=True))
+                session.write(await session.gate(b"go\nlater\n"), lines=True)
+                await self.until(lambda: b"sleeping" in client.data)
+                self.assertEqual(session.held, b"later\n")
+                if case == "unknown reader":
+                    session.state = session.state._replace(reader=None)
+                    self.assertTrue(session.write(b"x", lines=True))
+                elif case == "answer":
+                    session.asking = {"t": "ask", "qid": 1}
+                    self.assertTrue(session.answer({"t": "cancel", "qid": 1}))
+                else:
+                    session.detach(client)
+                    probe = session.watch.probe
+                    session.watch.probe = lambda: probe()._replace(reader=None)
+                    wait = 3 * sessions.PROBE_SECONDS
+                    await self.until(lambda: not session.held, wait)
+                    self.assertEqual(session.unreported, len(b"later\n"))
+                    self.assertEqual(dropped(client), [])
+                    continue
+                self.assertEqual(session.held, b"")
+                self.assertEqual(dropped(client), [len(b"later\n")])
+
+    async def test_an_unknown_reader_gets_the_whole_paste(self):
         # Le lecteur reste inconnu toute la vie de l'enfant (PROC_USABLE
-        # coupé à la construction de TtyWatch) : le reste du collage
-        # n'attend donc jamais de lecteur connu, mais chaque frappe qui
-        # suit lui parvient quand même, au lieu de s'y ajouter sans fin.
+        # coupé à la construction de TtyWatch) : aucune sonde ne dirait
+        # quand livrer la ligne suivante, le collage part donc entier, et
+        # chaque frappe qui suit aussi.
         with patch.object(ttywatch, "PROC_USABLE", False):
             session, client = await self.open(THREE_LINES)
         await self.until(lambda: client.seen(reader=None))
         session.write(await session.gate(b"one\ntwo\n"), lines=True)
-        await self.until(lambda: b"got one" in client.data)
-        self.assertEqual(session.held, b"two\n")
+        self.assertEqual(session.held, b"")
+        await self.until(lambda: b"got two" in client.data)
         for byte in b"three\r":
             session.write(await session.gate(bytes([byte])), lines=True)
         await self.until(lambda: b"got three" in client.data)
-        self.assertEqual(session.held, b"")
+        self.assertEqual(dropped(client), [])
 
     def test_a_line_ends_at_its_first_cr_or_lf(self):
         cases = {

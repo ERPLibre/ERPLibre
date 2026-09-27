@@ -23,17 +23,20 @@ reçoit `tty_state` quand l'état change. `gate` relit le terminal et ne
 laisse passer une frappe que si quelqu'un la lit, ou si un lecteur vu à
 l'instant relit dans les HOLD_SECONDS qui suivent ; ce qu'un lecteur n'a
 pas pris est jeté dès que la sonde voit l'écho se couper en mode
-canonique. En mode canonique, un collage part une ligne à la fois, la
-suivante quand la précédente a été lue (`held`), et jamais pendant une
-question du worker (`asking`) ; chaque message du worker jette ce qui en
-reste, comme le worker vide son entrée à chaque question. La suite d'un
-collage ne nourrit donc que le programme qui lit hors question : un
-programme qui coupe l'écho et lit aussitôt, sans vider l'entrée, ne la
-reçoit jamais comme secret, ni une question du worker comme réponse. Un
-lecteur qu'aucune sonde ne sait jamais trancher (`ttywatch`) ne la libère
-pas davantage, mais n'arrête pas la frappe suivante pour autant : celle-ci
-la jette plutôt que de s'y ajouter, et repart comme la première d'un
-collage neuf.
+canonique. En mode canonique, devant un lecteur connu, un collage part une
+ligne à la fois, la suivante quand la précédente a été lue (`held`), une
+sonde plus tard : une cinquantaine de lignes par seconde avec un client
+(PROBE_GAP). Jamais pendant une question du worker (`asking`) : chaque
+message du worker jette ce qui en reste, comme le worker vide son entrée à
+chaque question. La suite d'un collage ne nourrit donc que le programme
+qui lit hors question : un programme qui coupe l'écho et lit aussitôt,
+sans vider l'entrée, ne la reçoit jamais comme secret, ni une question du
+worker comme réponse. Devant un lecteur qu'aucune sonde ne sait trancher
+(`ttywatch` : programme setuid, /proc inutilisable), rien ne dirait quand
+livrer la ligne suivante : le collage part entier, et le worker, qui vide
+son entrée avant et après chaque question, n'en prend qu'une ligne. Ce que
+`held` jette est dit au client par `dropped`, ou au suivant quand il n'y
+en a pas (`unreported`).
 
 Un client offre `send(octets)`, attendable, rendu quand les octets ont
 quitté le hub ; `event(message)`, un dict envoyé en texte ; `close(code,
@@ -211,6 +214,17 @@ def _open(state) -> bool:
     return state.altscreen or state.reader is not False
 
 
+def _by_line(state) -> bool:
+    """Vrai si un collage part une ligne à la fois : mode canonique, hors
+    écran alternatif, devant un lecteur connu ; faux sans état lu."""
+    return (
+        state is not None
+        and state.canon
+        and not state.altscreen
+        and state.reader is not None
+    )
+
+
 class Session:
     """Un worker sur son PTY, l'anneau de sa sortie et au plus un client.
 
@@ -238,6 +252,7 @@ class Session:
         self.channel = None
         self.inbox = bytearray()
         self.held = bytearray()  # lignes d'un collage, jusqu'à leur lecteur
+        self.unreported = 0  # octets jetés sans client, dus au suivant
         self.flushing = None
         self.closing = False
         self.killing = None  # l'arrêt que `_watch` lance pendant une relance
@@ -422,33 +437,46 @@ class Session:
             self.quiet_since = time.monotonic()
 
     def write(self, data: bytes, lines=False) -> bool:
-        """Envoie `data` au terminal, dans l'ordre ; faux, et rien n'est
-        gardé, si INPUT_LIMIT octets en attente seraient dépassés.
+        """Envoie `data` au terminal, dans l'ordre ; faux, et `data` n'est
+        pas gardé, si INPUT_LIMIT octets en attente seraient dépassés.
 
-        Avec `lines`, en mode canonique hors écran alternatif (d'après la
-        dernière sonde), seule la première ligne part ; la suite attend dans
-        `held`, que `_probe` libère une ligne à la fois hors d'une question
-        du worker, et que chaque message du worker jette. Un lecteur inconnu
-        ne libère jamais `held` (voir `_probe`) : une frappe qui suit s'y
-        ajouterait sans fin, alors elle le jette et repart de cette frappe."""
+        Avec `lines`, en mode canonique hors écran alternatif, devant un
+        lecteur connu (d'après la dernière sonde), seule la première ligne
+        part ; la suite attend dans `held`, derrière ce qu'il retient déjà,
+        que `_probe` libère une ligne à la fois hors d'une question du
+        worker, et que chaque message du worker jette. Devant un lecteur
+        inconnu, `data` part entier : aucune sonde ne libérerait la suite.
+        Ce que `held` retenait alors est jeté (`_drop_held`), faute de quoi
+        chaque frappe s'y ajouterait sans fin."""
+        state = self.state
+        if lines and state is not None and state.reader is None:
+            self._drop_held()
         waiting = len(self.inbox) + len(self.held)
         if waiting + len(data) > INPUT_LIMIT:
             return False
         if self.master is None:
             return True
-        state = self.state
         if lines and self.held:
-            if state is not None and state.reader is None:
-                self.held.clear()
-            else:
-                self.held += data
-                return True
-        if lines and state is not None and state.canon and not state.altscreen:
+            self.held += data
+            return True
+        if lines and _by_line(state):
             data, rest = _first_line(data)
             self.held += rest
         self.inbox += data
         self._write_inbox()
         return True
+
+    def _drop_held(self):
+        """Jette ce que `held` retient ; le client l'apprend par `dropped`,
+        et sans client, le suivant (`unreported`)."""
+        if not self.held:
+            return
+        lost = len(self.held)
+        self.held.clear()
+        if self.client is None:
+            self.unreported += lost
+        else:
+            self.client.event({"t": "dropped", "bytes": lost})
 
     def _write_inbox(self):
         loop = asyncio.get_running_loop()
@@ -489,7 +517,7 @@ class Session:
         signals = bytes(b for b in data if b in self.state.signals)
         if signals:
             # Comme au terminal, Ctrl+C jette ce qui attend d'être lu.
-            self.held.clear()
+            self._drop_held()
         if _open(self.state):
             return data
         if signals == data or _secret(self.state):
@@ -546,7 +574,7 @@ class Session:
             before is not None and _secret(before)
         ):
             self.inbox.clear()
-            self.held.clear()
+            self._drop_held()
             asyncio.get_running_loop().remove_writer(self.master)
             self._drop_input()
         elif (
@@ -558,9 +586,10 @@ class Session:
             # `_open` laisse aussi passer un lecteur inconnu (setuid : sudo,
             # su), qu'aucune sonde ne voit jamais bloqué en lecture : lui
             # livrer une ligne tenue la ferait passer pour un secret dès que
-            # le programme coupe l'écho sans vider son entrée. Un lecteur
-            # inconnu attend donc un lecteur connu, un message du worker,
-            # Ctrl+C ou Arrêter.
+            # le programme coupe l'écho sans vider son entrée. Devant lui,
+            # `held` attend donc un lecteur connu, ou ce qui le jette : un
+            # message du worker, Ctrl+C, Arrêter, la frappe suivante, ou
+            # `_tick` quand aucun client n'est là pour frapper.
             self._release()
         event = {
             "t": "tty_state",
@@ -583,25 +612,37 @@ class Session:
         self.inbox += line
         self._write_inbox()
 
-    def _queued(self) -> int:
-        """Octets que l'esclave tient, prêts à lire (FIONREAD), par
-        l'esclave rouvert comme dans `_drop_input` ; 0 s'il a disparu."""
+    def _on_slave(self, action, failed=None):
+        """`action(fd)` sur l'esclave, rouvert sous son nom sans en devenir
+        le terminal de contrôle, puis refermé ; `failed` s'il a disparu ou
+        si l'appel échoue."""
         try:
             fd = os.open(self.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         except OSError:
-            return 0
+            return failed
         try:
-            size = bytearray(4)
-            fcntl.ioctl(fd, termios.FIONREAD, size)
-            return int.from_bytes(size, sys.byteorder)
-        except OSError:
-            return 0
+            return action(fd)
+        except (OSError, termios.error):
+            return failed
         finally:
             os.close(fd)
 
+    def _queued(self) -> int:
+        """Octets que l'esclave tient, prêts à lire (FIONREAD) ; 0 s'il a
+        disparu."""
+
+        def fionread(fd):
+            size = bytearray(4)
+            fcntl.ioctl(fd, termios.FIONREAD, size)
+            return int.from_bytes(size, sys.byteorder)
+
+        return self._on_slave(fionread, 0)
+
     async def _tick(self):
         """Relit le terminal toutes les PROBE_SECONDS jusqu'à la fin de la
-        session, quand un client est attaché ou qu'un collage attend."""
+        session, quand un client est attaché ou qu'un collage attend. Sans
+        client, un collage qu'un lecteur inconnu retient ne sera plus
+        libéré : il est jeté (`_drop_held`) au lieu d'être relu sans fin."""
         while True:
             try:
                 await asyncio.wait_for(self.ended.wait(), PROBE_SECONDS)
@@ -609,6 +650,9 @@ class Session:
             except TimeoutError:
                 if self.client is not None or self.held:
                     self._probe()
+                if self.client is None and self.held:
+                    if self.state is not None and self.state.reader is None:
+                        self._drop_held()
 
     def interrupt(self) -> bool:
         """Arrête ce que le worker a lancé ; faux, et rien ne change, s'il
@@ -633,7 +677,7 @@ class Session:
         if not command and not _has_children(self.proc.pid):
             return False
         self.inbox.clear()
-        self.held.clear()
+        self._drop_held()
         asyncio.get_running_loop().remove_writer(self.master)
         self._drop_input()
         if command:
@@ -647,19 +691,10 @@ class Session:
         return True
 
     def _drop_input(self):
-        """Vide l'entrée du terminal (TCIFLUSH) par l'esclave, rouvert sous
-        son nom sans en devenir le terminal de contrôle : vider par le
-        maître viderait la sortie. Un esclave disparu n'a rien à vider."""
-        try:
-            fd = os.open(self.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-        except OSError:
-            return
-        try:
-            termios.tcflush(fd, termios.TCIFLUSH)
-        except (OSError, termios.error):
-            pass
-        finally:
-            os.close(fd)
+        """Vide l'entrée du terminal (TCIFLUSH) par l'esclave (`_on_slave`) :
+        vider par le maître viderait la sortie. Un esclave disparu n'a rien
+        à vider."""
+        self._on_slave(lambda fd: termios.tcflush(fd, termios.TCIFLUSH))
 
     def resize(self, cols, rows):
         """Nouvelle taille ; le noyau prévient le premier plan (SIGWINCH)."""
@@ -722,7 +757,7 @@ class Session:
             self.asking = message if asked else None
             # Chaque message est une borne : ce qui reste d'un collage ne
             # passe pas d'une question, ou d'une commande, à la suivante.
-            self.held.clear()
+            self._drop_held()
             if self.client is not None:
                 self.client.event(message)
 
@@ -737,7 +772,7 @@ class Session:
             return False
         self.channel.write(line)
         self.asking = None
-        self.held.clear()
+        self._drop_held()
         return True
 
     def _hangup(self):
@@ -750,7 +785,7 @@ class Session:
             os.close(self.master)
             self.master = None
         self.inbox.clear()
-        self.held.clear()
+        self._drop_held()
         if self.channel is not None:
             self.channel.close()
             self.channel = None

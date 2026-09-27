@@ -466,22 +466,24 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     le client s'y rattache (inconnue, 4404) et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
     "truncated"}`, puis la question ouverte du worker s'il en a une, puis
-    trames binaires. Textes du client : `resize`, `interrupt`, `close`,
-    `raw`, `secret`, `answer`, `cancel` ; du hub : `bye`, `tty_state`,
-    `dropped`, et les messages du worker (`menu`, `ask`, `answered`,
-    `notice`, `run_start`, `run_end`, `open_view`). Un type inconnu est
-    ignoré, comme une réponse qui n'est pas celle de la question ouverte
-    (`Session.answer`).
+    `dropped` pour ce que la session a jeté d'un collage sans client
+    (`Session.unreported`), puis trames binaires. Textes du client :
+    `resize`, `interrupt`, `close`, `raw`, `secret`, `answer`, `cancel` ;
+    du hub : `bye`, `tty_state`, `dropped`, et les messages du worker
+    (`menu`, `ask`, `answered`, `notice`, `run_start`, `run_end`,
+    `open_view`). Un type inconnu est ignoré, comme une réponse qui n'est
+    pas celle de la question ouverte (`Session.answer`).
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
     (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
-    passé. tornado attend la fin de `on_message` avant de lire le message
-    suivant : les messages qui suivent une trame que `gate` fait attendre
-    attendent derrière elle, dans l'ordre. `interrupt` ne passe jamais par
-    ce filtre. `secret` annonce que
-    la trame suivante est la réponse du champ masqué : elle n'est écrite
-    que si le terminal attend encore un secret, sinon `dropped` porte
-    `secret` et rien n'atteint le PTY, dont l'écho l'afficherait.
+    passé, ou combien la session a jeté de la suite d'un collage
+    (`Session._drop_held`). tornado attend la fin de `on_message` avant de
+    lire le message suivant : les messages qui suivent une trame que `gate`
+    fait attendre attendent derrière elle, dans l'ordre. `interrupt` ne
+    passe jamais par ce filtre. `secret` annonce que la trame suivante est
+    la réponse du champ masqué : elle n'est écrite que si le terminal
+    attend encore un secret, sinon `dropped` porte `secret` et rien
+    n'atteint le PTY, dont l'écho l'afficherait.
     """
 
     session = None
@@ -566,6 +568,10 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
         )
         if session.asking is not None:
             self.event(session.asking)
+        if session.unreported:
+            # Jeté d'un collage pendant qu'aucun onglet n'était là.
+            self.event({"t": "dropped", "bytes": session.unreported})
+            session.unreported = 0
         if previous is not None:
             previous.close(4001, "taken over")
 

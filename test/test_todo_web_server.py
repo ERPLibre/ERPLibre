@@ -997,6 +997,23 @@ class TestKeystrokes(TerminalCase):
             calls, [(b"big 1\nbig 2\n", True), (b"big 3\n", False)]
         )
 
+    async def test_a_tab_that_comes_back_learns_what_was_dropped(self):
+        first = await self.tab()
+        sid = first.texts[0]["id"]
+        session = self.hub.terminals[sid]
+        first.conn.close()
+        deadline = time.monotonic() + 10
+        while session.client is not None:
+            self.assertLess(time.monotonic(), deadline, "still attached")
+            await asyncio.sleep(0.02)
+        # Sans onglet, la session jette le reste d'un collage.
+        session.held += b"later\n"
+        session._drop_held()
+        again = await self.tab(session=sid, after=0)
+        lost = {"t": "dropped", "bytes": len(b"later\n")}
+        self.assertEqual(again.texts[1], lost)
+        self.assertEqual(session.unreported, 0)
+
     async def test_stop_and_ctrl_c_are_never_dropped(self):
         for stop in (json.dumps({"t": "interrupt"}), b"\x03"):
             with self.subTest(stop=stop):
