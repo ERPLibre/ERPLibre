@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from script.execute.execute import (
     Execute,
+    holds_secret_trigger,
     redact_for_storage,
     redact_secrets,
 )
@@ -689,6 +690,27 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), ligne)
         self.assertIsNone(redact_for_storage(None))
+
+
+class TestHoldsSecretTrigger(unittest.TestCase):
+    """Un appelant qui doit couper un texte avant sa fin de ligne (todo web,
+    tasklog.py) s'en sert pour savoir si `redact_for_storage` guette encore
+    un mot dedans."""
+
+    def test_a_trigger_word_is_found_whole_or_split_by_the_caller(self):
+        for texte in (
+            "Password: ",
+            "clone https://",
+            "PGPASSWORD=",
+            "Mot de passe : inv",
+        ):
+            with self.subTest(texte=texte):
+                self.assertTrue(holds_secret_trigger(texte))
+
+    def test_none_and_a_plain_line_hold_no_trigger(self):
+        for texte in ("", None, "make test_unit", "no newline"):
+            with self.subTest(texte=texte):
+                self.assertFalse(holds_secret_trigger(texte))
 
 
 if __name__ == "__main__":

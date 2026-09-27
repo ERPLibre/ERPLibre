@@ -180,6 +180,29 @@ class TestTaskLog(StoreCase):
         )
         self.assertEqual([len(t) for t in texts[::2]], [width, width])
 
+    def test_a_secret_across_the_partial_limit_is_still_masked(self):
+        # PARTIAL_LIMIT force une ligne sans fin à s'écrire avant son \n ;
+        # un secret qui commence avant la limite et finit après, dans le
+        # morceau suivant reçu du PTY, ne doit ni se couper en deux moitiés
+        # en clair (l'URL), ni sortir en clair une fois séparé du mot qui
+        # l'aurait fait masquer (le mot de passe).
+        task = self.task()
+        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
+            task.output(b"x" * 30 + b" https://u:inven")
+            task.output(b"teAB@forge.example/r\r\n")
+            task.output(b"y" * 30 + b" Password: inv")
+            task.output(b"enteCD more\r\n")
+            task.close("done")
+        self.assertEqual(
+            self.texts(task.info["id"]),
+            [
+                "x" * 30 + " https://u:***@forge.example/r",
+                "y" * 30 + " Password: ***",
+            ],
+        )
+        packed = task.path.with_name(task.path.name + ".zst")
+        self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
+
     def test_a_closed_log_reads_back_page_by_page(self):
         task = self.task()
         task.output(b"".join(b"%d\r\n" % n for n in range(10, 20)))

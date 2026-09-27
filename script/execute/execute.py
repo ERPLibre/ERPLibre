@@ -160,6 +160,20 @@ def redact_for_storage(text):
     return _PASSWORD_LINE.sub(lambda m: m.group("head") + "***", text)
 
 
+def holds_secret_trigger(text) -> bool:
+    """Vrai si `text` porte un mot de `_TRIGGERS`.
+
+    Pour un appelant qui doit couper un texte avant sa fin de ligne (un
+    tampon trop grand pour attendre le `\\n`) : `redact_for_storage` ne
+    masque qu'une ligne entière, jamais un texte auquel il en manque un
+    bout, et une valeur (`_PASSWORD_LINE` va jusqu'à la fin de ligne, une
+    valeur entre guillemets peut porter un blanc) coupée au milieu ne se
+    reconnaît plus dans aucun des deux morceaux. Vrai ici retarde la
+    coupure jusqu'à ce que la ligne se termine réellement.
+    """
+    return bool(text) and any(word in text.casefold() for word in _TRIGGERS)
+
+
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
