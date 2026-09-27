@@ -16932,6 +16932,18 @@ TRANSLATIONS = {
         "fr": "Le site ne sert pas %s.",
         "en": "The site does not serve %s.",
     },
+    "Image pulled": {
+        "fr": "Image téléchargée",
+        "en": "Image pulled",
+    },
+    "Install lock removed": {
+        "fr": "Verrou d'installation ôté",
+        "en": "Install lock removed",
+    },
+    "The image migrates one major version at a time (%s to %s).": {
+        "fr": "L'image ne migre qu'une version majeure à la fois (%s vers %s).",
+        "en": "The image migrates one major version at a time (%s to %s).",
+    },
 }
 
 
