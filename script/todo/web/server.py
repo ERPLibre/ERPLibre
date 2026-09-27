@@ -10,6 +10,10 @@ Deux entrées dans une même boucle asyncio :
   une commande par ligne — `mint` (code de connexion à usage unique),
   `status`, `stop`, `tasks`.
 
+Le WebSocket `/ws` porte les sessions TODO (`sessions.py`) : un worker par
+session, jamais d'autre programme. Le hub ne s'arrête pas pour inactivité
+tant qu'une session existe ; son arrêt les ferme toutes.
+
 Chaque requête HTTP passe par `Guard.prepare` : `Host` dans la liste (port
 exigé, contre le rebinding DNS) ; hors GET et HEAD, comme pour toute poignée
 de main WebSocket, une Origin égale à `http://<Host>` (absente = refus) ;
@@ -41,10 +45,11 @@ from pathlib import Path
 import tornado.httpserver
 import tornado.netutil
 import tornado.web
+import tornado.websocket
 from tornado.web import HTTPError
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths
+from script.todo.web import paths, sessions
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +61,13 @@ IDLE_SECONDS = 1800.0
 # nombre, le premier de chaque session compris.
 SYSTEM_FULL_EVERY = 5
 PROBE_TIMEOUT = 0.3
+# Délai du premier message d'un WebSocket, et bornes d'une taille de terminal.
+HELLO_SECONDS = 10.0
+MAX_TERMINAL = 1000
+# Un client qui ne répond plus au ping (tunnel SSH d'un poste en veille) est
+# fermé en moins d'une minute : l'envoi en attente échoue et la session le
+# détache, au lieu de retenir la commande jusqu'à ce que TCP abandonne.
+PING_SECONDS = 20.0
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -396,6 +408,175 @@ class System(Guard, tornado.web.RequestHandler):
         self.write({"metrics": metrics, "full": full})
 
 
+def _size(message):
+    """`(cols, rows)` d'un message, entiers dans [1, MAX_TERMINAL], ou None."""
+    size = (message.get("cols"), message.get("rows"))
+    if all(type(n) is int and 0 < n <= MAX_TERMINAL for n in size):
+        return size
+    return None
+
+
+def _hello(message, csrf):
+    """Le `hello` d'un client, ou None s'il ne tient pas : texte JSON, `t`
+    valant « hello », jeton CSRF de la session du cookie, langue de
+    TRANSLATIONS, taille valide, `session` texte et `after` entier positif
+    s'ils sont là."""
+    try:
+        hello = json.loads(message) if isinstance(message, str) else None
+    except ValueError:
+        return None
+    if not isinstance(hello, dict) or hello.get("t") != "hello":
+        return None
+    sent = hello.get("csrf")
+    if not isinstance(sent, str) or not secrets.compare_digest(
+        sent.encode(), csrf.encode()
+    ):
+        return None
+    sid, after = hello.get("session"), hello.get("after")
+    if (
+        hello.get("lang") not in todo_i18n.LANGUAGES
+        or _size(hello) is None
+        or not (sid is None or isinstance(sid, str))
+        or not (after is None or (type(after) is int and after >= 0))
+    ):
+        return None
+    return hello
+
+
+def _consume(future):
+    """Lit l'issue d'un envoi que personne n'attend : une connexion fermée
+    entre-temps n'a rien à signaler."""
+    if not future.cancelled():
+        future.exception()
+
+
+class Terminal(Guard, tornado.websocket.WebSocketHandler):
+    """`/ws` : une session TODO, octets du PTY dans les deux sens.
+
+    Le premier message, texte, est `{"t": "hello", "csrf", "lang", "cols",
+    "rows", "session"?, "after"?}`, sous HELLO_SECONDS, sinon 1008. Sans
+    `session`, une session s'ouvre (au-delà de MAX_SESSIONS, 1013) ; avec,
+    le client s'y rattache (inconnue, 4404) et en prend le contrôle :
+    l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
+    "truncated"}`, puis trames binaires. Textes du client : `resize`,
+    `interrupt`, `close` ; du hub : `bye`, `open_view`. Un type inconnu est
+    ignoré.
+    """
+
+    session = None
+    hello_timer = None
+
+    def prepare(self):
+        super().prepare()
+        self.csrf = self.require_session()
+
+    def open(self):
+        loop = asyncio.get_running_loop()
+        self.hello_timer = loop.call_later(
+            HELLO_SECONDS, self.close, 1008, "hello expected"
+        )
+
+    async def on_message(self, message):
+        if self.session is None:
+            await self.hello(message)
+        elif self.session.client is not self:
+            return  # repris par un autre onglet : ce qui arrive encore d'ici
+        elif isinstance(message, bytes):
+            if not self.session.write(message):
+                self.close(1008, "input overflow")
+        else:
+            self.control(message)
+
+    async def hello(self, message):
+        self.hello_timer.cancel()
+        hello = _hello(message, self.csrf)
+        if hello is None:
+            self.close(1008, "hello expected")
+            return
+        sid, (cols, rows) = hello.get("session"), _size(hello)
+        if sid is None:
+            if len(self.hub.terminals) >= sessions.MAX_SESSIONS:
+                self.close(1013, "try again later")
+                return
+            try:
+                session = await self.hub.open_terminal(
+                    hello["lang"], cols, rows
+                )
+            except OSError:
+                self.close(1011, "the session did not start")
+                return
+        else:
+            session = self.hub.terminals.get(sid)
+            if session is None:
+                self.close(4404, "unknown session")
+                return
+            session.resize(cols, rows)
+        self.session = session
+        offset, truncated, previous = session.attach(self, hello.get("after"))
+        self.event(
+            {
+                "t": "session",
+                "id": session.id,
+                "offset": offset,
+                "truncated": truncated,
+            }
+        )
+        if previous is not None:
+            previous.close(4001, "taken over")
+
+    def control(self, message):
+        try:
+            data = json.loads(message)
+            kind = data.get("t")
+        except (ValueError, AttributeError):
+            return
+        if kind == "resize" and _size(data) is not None:
+            self.session.resize(*_size(data))
+        elif kind == "interrupt":
+            self.session.interrupt()
+        elif kind == "close":
+            self.hub.keep(self.session.close())
+
+    # Client d'une session (sessions.py) : send, event, close.
+
+    def send(self, data):
+        return self.write_message(data, binary=True)
+
+    def event(self, message):
+        try:
+            self.write_message(message).add_done_callback(_consume)
+        except tornado.websocket.WebSocketClosedError:
+            pass
+
+    def on_close(self):
+        if self.hello_timer is not None:
+            self.hello_timer.cancel()
+        if self.session is not None:
+            self.session.detach(self)
+
+
+class SessionList(Guard, tornado.web.RequestHandler):
+    """`{sessions: [{id, running, attached}], max}` : les sessions ouvertes,
+    dans l'ordre de leur ouverture."""
+
+    def get(self):
+        self.require_session()
+        terminals = self.hub.terminals.values()
+        self.write(
+            {
+                "sessions": [
+                    {
+                        "id": s.id,
+                        "running": s.busy,
+                        "attached": s.client is not None,
+                    }
+                    for s in terminals
+                ],
+                "max": sessions.MAX_SESSIONS,
+            }
+        )
+
+
 def _hold_lock(path: Path) -> int:
     """Descripteur de `path` (0600) sous verrou exclusif, ou `HubRunning`.
 
@@ -476,6 +657,9 @@ class Hub:
         self.last_activity = time.monotonic()
         self.code_tree = CodeTree(self.root)
         self.system = {}  # jeton du cookie -> {"prev", "calls"}
+        self.terminals = {}  # identifiant -> sessions.Session ouverte
+        self.session_idle = sessions.IDLE_SECONDS
+        self.pending = set()  # fermetures en cours
         self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
         self.http = None
 
@@ -488,6 +672,8 @@ class Hub:
             (r"/api/telemetry", Telemetry),
             (r"/api/i18n", I18n),
             (r"/api/system", System),
+            (r"/api/sessions", SessionList),
+            (r"/ws", Terminal),
         ]
 
     async def start(self, host="127.0.0.1", port=0):
@@ -529,6 +715,7 @@ class Hub:
             hub=self,
             xsrf_cookies=False,
             websocket_max_message_size=MAX_BODY,
+            websocket_ping_interval=PING_SECONDS,
             # La table i18n entière pèse quelques centaines de Kio en JSON.
             compress_response=True,
         )
@@ -605,16 +792,47 @@ class Hub:
         self.sessions[token] = secrets.token_urlsafe(32)
         return token
 
+    async def open_terminal(self, lang, cols, rows):
+        """Nouvelle session TODO, comptée dès avant son lancement : deux
+        `hello` simultanés ne dépassent pas MAX_SESSIONS. OSError si elle
+        ne démarre pas, ou si le hub s'arrête."""
+        if self.stopping is not None:
+            raise OSError("the hub is stopping")
+        sid = secrets.token_urlsafe(6)
+        session = sessions.Session(
+            sid, self.root, lang, cols, rows, on_end=self._terminal_ended
+        )
+        self.terminals[sid] = session
+        try:
+            await session.start()
+            if session.closing:
+                # `stop` l'a fermée pendant son lancement.
+                raise OSError("the hub is stopping")
+        except BaseException:
+            self.terminals.pop(sid, None)
+            raise
+        return session
+
+    def _terminal_ended(self, session):
+        self.terminals.pop(session.id, None)
+        self.touch()
+
+    def keep(self, coro):
+        """Lance `coro` et garde sa tâche jusqu'à sa fin."""
+        task = asyncio.ensure_future(coro)
+        self.pending.add(task)
+        task.add_done_callback(self.pending.discard)
+
     def status(self) -> dict:
-        """`sessions` : sessions ouvertes depuis le démarrage ; `running` :
-        sessions qui exécutent une commande, aucune dans un hub qui ne lance
-        rien."""
+        """`sessions` : sessions TODO ouvertes ; `running` : celles dont le
+        worker a lancé une commande ou un processus (`Session.busy`)."""
+        terminals = self.terminals.values()
         return {
             "pid": os.getpid(),
             "port": self.port,
             "root": self.root,
-            "sessions": len(self.sessions),
-            "running": 0,
+            "sessions": len(terminals),
+            "running": sum(s.busy for s in terminals),
             "started": self.started,
             "idle_seconds": int(time.monotonic() - self.last_activity),
         }
@@ -646,10 +864,20 @@ class Hub:
             writer.close()
 
     async def watch_idle(self):
+        """Ferme une session sans client ni rien en cours depuis
+        `session_idle` secondes ; tant qu'une session existe, le hub ne
+        s'arrête pas."""
         period = max(0.05, min(60.0, self.idle_seconds / 4))
         while True:
             await asyncio.sleep(period)
-            if time.monotonic() - self.last_activity >= self.idle_seconds:
+            now = time.monotonic()
+            for session in list(self.terminals.values()):
+                idle = session.idle(now) >= self.session_idle
+                if idle and not session.closing:
+                    self.keep(session.close())
+            if self.terminals:
+                self.touch()
+            elif now - self.last_activity >= self.idle_seconds:
                 log.info("idle for %ss, stopping", self.idle_seconds)
                 self.request_stop()
                 return
@@ -659,8 +887,12 @@ class Hub:
             self.stopping = asyncio.ensure_future(self.stop())
 
     async def stop(self):
-        """Retire l'état, ferme les sockets, relâche le verrou, puis signale
-        `stopped`.
+        """Ferme les sessions, retire l'état, ferme les sockets, relâche le
+        verrou, puis signale `stopped`.
+
+        Chaque session raccroche son PTY ; ses groupes reçoivent SIGHUP, puis
+        SIGKILL après REAP_SECONDS : aucun worker ne survit au hub. L'attente
+        est bornée : une session qui ne finit pas n'empêche pas l'arrêt.
 
         state.json, redirect.html et ctl.sock partent pendant que le verrou
         est tenu : aucun autre hub ne démarre avant, rien de ce qui est
@@ -668,6 +900,13 @@ class Hub:
         (asyncio vérifie que l'inode est toujours le sien).
         """
         self.idle_task.cancel()
+        closing = [s.close() for s in self.terminals.values()]
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*closing), sessions.REAP_SECONDS + 2
+            )
+        except TimeoutError:
+            log.warning("sessions still closing, stopping anyway")
         self.state_path.unlink(missing_ok=True)
         self.redirect_path.unlink(missing_ok=True)
         self.ctl.close()

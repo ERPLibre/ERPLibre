@@ -4,9 +4,10 @@
 """Le hub web de TODO sur de vrais sockets.
 
 Un serveur sur 127.0.0.1:0 par test, piloté par le client HTTP de tornado,
-par des requêtes brutes et par la socket de contrôle. HOME et
-XDG_RUNTIME_DIR pointent vers un répertoire temporaire : aucun test ne
-touche le vrai ~/.erplibre ni le hub de l'utilisateur.
+par son client WebSocket, par des requêtes brutes et par la socket de
+contrôle. HOME et XDG_RUNTIME_DIR pointent vers un répertoire temporaire :
+aucun test ne touche le vrai ~/.erplibre ni le hub de l'utilisateur. Une
+session lance le worker jetable de todo_web_env, jamais TODO.
 """
 
 import asyncio
@@ -17,19 +18,22 @@ import io
 import json
 import logging
 import os
+import signal
 import socket
 import stat
 import sys
 import threading
+import time
 import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-from todo_web_env import private_env
-from tornado.httpclient import AsyncHTTPClient
+from todo_web_env import CHILD, private_env
+from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPRequest
+from tornado.websocket import websocket_connect
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths, server
+from script.todo.web import paths, server, sessions
 
 # Les réponses 4xx sont journalisées en avertissement ; sans handler, le
 # dernier recours de logging les écrirait sur stderr.
@@ -317,7 +321,7 @@ class TestControl(HubCase):
         self.assertEqual((before["sessions"], before["running"]), (0, 0))
         await self.cookie()
         after = json.loads(await self.ctl("status"))
-        self.assertEqual((after["sessions"], after["running"]), (1, 0))
+        self.assertEqual((after["sessions"], after["running"]), (0, 0))
 
     async def test_tasks_lists_the_idle_watcher(self):
         self.assertIn("watch_idle", await self.ctl("tasks"))
@@ -625,6 +629,284 @@ class TestSystemApi(ApiCase):
         self.assertEqual(
             fulls, [True, False, False, False, False] * 2 + [True]
         )
+
+
+class Tab:
+    """Un onglet sur `/ws` : octets reçus, messages texte, code de fin."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        self.data = bytearray()
+        self.texts = []
+
+    async def read(self, timeout=10.0):
+        """Un message rangé dans `data` ou `texts` ; faux à la fermeture."""
+        message = await asyncio.wait_for(self.conn.read_message(), timeout)
+        if message is None:
+            return False
+        if isinstance(message, bytes):
+            self.data += message
+        else:
+            self.texts.append(json.loads(message))
+        return True
+
+    async def until(self, predicate):
+        while not predicate():
+            if not await self.read():
+                raise AssertionError(f"closed: {self.conn.close_code}")
+
+    async def closed(self):
+        """Code de fermeture, une fois tout lu."""
+        while await self.read():
+            pass
+        return self.conn.close_code
+
+
+class TerminalCase(HubCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        patcher = patch.object(sessions, "WORKER", ("-c", CHILD))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.session_cookie = await self.cookie()
+        resp = await self.fetch("/api/session", Cookie=self.session_cookie)
+        self.csrf = json.loads(resp.body)["csrf"]
+
+    async def connect(self, **headers):
+        """Poignée de main sur `/ws` ; un en-tête qui vaut None est omis."""
+        headers = {
+            "Host": self.host,
+            "Cookie": self.session_cookie,
+            "Origin": self.origin,
+            **headers,
+        }
+        url = f"ws://127.0.0.1:{self.hub.port}/ws"
+        sent = {name: value for name, value in headers.items() if value}
+        request = HTTPRequest(url, headers=sent)
+        conn = await websocket_connect(request)
+        self.addCleanup(conn.close)
+        return Tab(conn)
+
+    async def tab(self, **hello):
+        """Onglet qui a envoyé `hello` (complété) et reçu sa réponse."""
+        tab = await self.connect()
+        message = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 90}
+        message.update(rows=20)
+        message.update(hello)
+        await tab.conn.write_message(json.dumps(message))
+        await tab.until(lambda: tab.texts)
+        return tab
+
+
+class TestTerminal(TerminalCase):
+    async def test_hello_opens_a_session_and_bytes_flow_both_ways(self):
+        tab = await self.tab()
+        [reply] = tab.texts
+        self.assertEqual(
+            reply,
+            {
+                "t": "session",
+                "id": reply["id"],
+                "offset": 0,
+                "truncated": False,
+            },
+        )
+        await tab.until(lambda: b"ready en 90x20" in tab.data)
+        status = json.loads(await self.ctl("status"))
+        self.assertEqual((status["sessions"], status["running"]), (1, 0))
+        await tab.conn.write_message(b"exit 3\n", binary=True)
+        self.assertEqual(await tab.closed(), 1000)
+        self.assertEqual(tab.texts[-1], {"t": "bye", "code": 3})
+        self.assertEqual(self.hub.terminals, {})
+
+    async def test_hello_is_required_within_the_delay(self):
+        bad = [
+            json.dumps({"t": "hello", "csrf": "forged", "lang": "en"}),
+            json.dumps({"t": "hello", "csrf": self.csrf, "lang": "de"}),
+            b"binary first",
+        ]
+        for message in bad:
+            tab = await self.connect()
+            await tab.conn.write_message(message, binary=message == bad[2])
+            self.assertEqual(await tab.closed(), 1008, message)
+        with patch.object(server, "HELLO_SECONDS", 0.2):
+            tab = await self.connect()
+            self.assertEqual(await tab.closed(), 1008)
+        self.assertEqual(self.hub.terminals, {})
+
+    async def test_the_handshake_needs_cookie_and_exact_origin(self):
+        for headers in (
+            {"Origin": "http://evil.example"},
+            {"Origin": None},
+            {"Cookie": f"erplibre_todo_{self.hub.port}=forged"},
+            {"Cookie": None},
+        ):
+            with self.assertRaises(HTTPClientError) as ctx:
+                await self.connect(**headers)
+            self.assertEqual(ctx.exception.code, 403, headers)
+
+    async def test_a_fourth_session_waits(self):
+        for _ in range(sessions.MAX_SESSIONS):
+            await self.tab()
+        tab = await self.connect()
+        hello = {"t": "hello", "csrf": self.csrf, "lang": "en"}
+        await tab.conn.write_message(
+            json.dumps({**hello, "cols": 80, "rows": 24})
+        )
+        self.assertEqual(await tab.closed(), 1013)
+        self.assertEqual(len(self.hub.terminals), sessions.MAX_SESSIONS)
+
+    async def test_a_reload_replays_and_takes_the_session_over(self):
+        first = await self.tab()
+        sid = first.texts[0]["id"]
+        await first.until(lambda: b"ready" in first.data)
+        session = self.hub.terminals[sid]
+        old = session.client
+        second = await self.tab(session=sid, after=0, cols=70, rows=15)
+        self.assertEqual(second.texts[0]["id"], sid)
+        self.assertEqual(await first.closed(), 4001)
+        await second.until(lambda: b"ready en 90x20" in second.data)
+        self.assertEqual(os.get_terminal_size(session.master), (70, 15))
+        # Ce que l'ancien onglet envoyait encore n'atteint plus la session.
+        await old.on_message(b"exit 7\n")
+        await old.on_message(json.dumps({"t": "close"}))
+        await asyncio.sleep(0.3)
+        self.assertFalse(session.ended.is_set())
+        unknown = await self.connect()
+        hello = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 80}
+        hello.update(rows=24, session="forged")
+        await unknown.conn.write_message(json.dumps(hello))
+        self.assertEqual(await unknown.closed(), 4404)
+
+    async def test_resize_interrupt_and_close(self):
+        tab = await self.tab()
+        session = self.hub.terminals[tab.texts[0]["id"]]
+        await tab.until(lambda: b"ready" in tab.data)
+        await tab.conn.write_message(
+            json.dumps({"t": "resize", "cols": 60, "rows": 10})
+        )
+        await tab.conn.write_message(json.dumps({"t": "unknown"}))
+        # Rien de lancé : Arrêter ne change rien, la session répond encore.
+        await tab.conn.write_message(json.dumps({"t": "interrupt"}))
+        await tab.conn.write_message(b"big 10\n", binary=True)
+        await tab.until(lambda: b"END" in tab.data)
+        # L'octet Ctrl+C, lui, atteint le worker.
+        await tab.conn.write_message(b"\x03", binary=True)
+        self.assertEqual(await tab.closed(), 1000)
+        self.assertIn(b"INT", tab.data)
+        self.assertEqual(tab.texts[-1], {"t": "bye", "code": 5})
+        self.assertEqual((session.cols, session.rows), (60, 10))
+        tab = await self.tab()
+        await tab.conn.write_message(json.dumps({"t": "close"}))
+        self.assertEqual(await tab.closed(), 1000)
+        self.assertEqual(tab.texts[-1], {"t": "bye", "code": -signal.SIGHUP})
+
+    async def test_input_beyond_the_limit_closes_with_1008(self):
+        tab = await self.tab()
+        await tab.until(lambda: b"ready" in tab.data)
+        with patch.object(sessions, "INPUT_LIMIT", 1000):
+            await tab.conn.write_message(b"x" * 1001, binary=True)
+            self.assertEqual(await tab.closed(), 1008)
+
+    async def test_open_view_is_relayed(self):
+        tab = await self.tab()
+        line = b'send {"t":"open_view","view":"telemetry"}\n'
+        await tab.conn.write_message(line, binary=True)
+        await tab.until(lambda: len(tab.texts) == 2)
+        self.assertEqual(tab.texts[1], {"t": "open_view", "view": "telemetry"})
+
+    async def test_the_session_list(self):
+        tab = await self.tab()
+        sid = tab.texts[0]["id"]
+        resp = await self.fetch("/api/sessions", Cookie=self.session_cookie)
+        self.assertEqual(
+            json.loads(resp.body),
+            {
+                "sessions": [{"id": sid, "running": False, "attached": True}],
+                "max": sessions.MAX_SESSIONS,
+            },
+        )
+        self.assertEqual((await self.fetch("/api/sessions")).code, 403)
+
+    async def test_stopping_the_hub_leaves_no_worker(self):
+        tab = await self.tab()
+        pid = self.hub.terminals[tab.texts[0]["id"]].proc.pid
+        self.assertEqual(await self.ctl("stop"), "ok")
+        self.assertEqual(await tab.closed(), 1000)
+        self.assertEqual(tab.texts[-1], {"t": "bye", "code": -signal.SIGHUP})
+        await asyncio.wait_for(self.hub.stopped.wait(), 10)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
+
+
+def _masked(opcode, payload):
+    """Trame WebSocket finale d'un client, masquée comme la RFC 6455 le
+    veut ; `payload` de moins de 64 Kio."""
+    mask = os.urandom(4)
+    size = len(payload)
+    if size < 126:
+        head = bytes([0x80 | opcode, 0x80 | size])
+    else:
+        head = bytes([0x80 | opcode, 0x80 | 126]) + size.to_bytes(2, "big")
+    body = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    return head + mask + body
+
+
+class TestDeadClient(TerminalCase):
+    async def asyncSetUp(self):
+        patcher = patch.object(server, "PING_SECONDS", 0.2)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        await super().asyncSetUp()
+
+    async def test_a_client_that_stops_reading_is_detached(self):
+        # Un client qui ne lit plus sa socket, comme un tunnel SSH d'un poste
+        # en veille : les envois du hub restent en attente.
+        reader, writer = await asyncio.open_connection(
+            "127.0.0.1", self.hub.port
+        )
+        self.addCleanup(writer.close)
+        key = base64.b64encode(os.urandom(16)).decode()
+        writer.write(
+            (
+                f"GET /ws HTTP/1.1\r\nHost: {self.host}\r\n"
+                f"Origin: {self.origin}\r\nCookie: {self.session_cookie}\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            ).encode()
+        )
+        head = await reader.readuntil(b"\r\n\r\n")
+        self.assertTrue(head.startswith(b"HTTP/1.1 101 "))
+        hello = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 80}
+        hello["rows"] = 24
+        writer.write(_masked(0x1, json.dumps(hello).encode()))
+        writer.write(_masked(0x2, b"big 50000000\n"))
+        # Sans pong, le hub ferme ; tornado laisse 5 s au client pour
+        # répondre, puis l'envoi en attente échoue et la session le détache.
+        deadline = time.monotonic() + 20
+        while len(self.hub.terminals) != 1:
+            self.assertLess(time.monotonic(), deadline, "no session")
+            await asyncio.sleep(0.05)
+        [session] = self.hub.terminals.values()
+        while session.client is not None or b"END" not in session.ring.data:
+            self.assertLess(time.monotonic(), deadline, "still attached")
+            await asyncio.sleep(0.05)
+
+
+class TestTerminalIdle(TerminalCase):
+    IDLE = 1.0
+
+    async def test_a_session_keeps_the_hub_until_it_idles_out(self):
+        self.hub.session_idle = 1.5
+        tab = await self.tab()
+        pid = self.hub.terminals[tab.texts[0]["id"]].proc.pid
+        tab.conn.close()
+        await asyncio.sleep(1.2)
+        self.assertFalse(self.hub.stopped.is_set())
+        await asyncio.wait_for(self.hub.stopped.wait(), 10)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
 
 
 class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):

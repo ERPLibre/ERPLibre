@@ -149,10 +149,9 @@ def _tail(root) -> str:
 def status(root):
     """dict `{pid, port, root, sessions, running, started, idle_seconds}`
     du hub de `root`, ou None si aucun ne répond en CTL_TIMEOUT s, et sous
-    root. `sessions` compte les sessions ouvertes depuis le démarrage,
-    `running` celles qui exécutent une commande. Un hub qui annonce une
-    autre racine n'est pas celui de ce checkout : None, et un avertissement
-    dans le journal."""
+    root. `sessions` compte les sessions TODO ouvertes, `running` celles
+    qui exécutent une commande. Un hub qui annonce une autre racine n'est
+    pas celui de ce checkout : None, et un avertissement dans le journal."""
     _reap()
     reply = _ctl(root, "status")
     try:
