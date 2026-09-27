@@ -16596,6 +16596,126 @@ TRANSLATIONS = {
         "fr": "Rapport :",
         "en": "Report:",
     },
+    "Served version": {
+        "fr": "Version servie",
+        "en": "Served version",
+    },
+    "Code": {
+        "fr": "Code",
+        "en": "Code",
+    },
+    "conf.php": {
+        "fr": "conf.php",
+        "en": "conf.php",
+    },
+    "Install page": {
+        "fr": "Page d'installation",
+        "en": "Install page",
+    },
+    "PHP": {
+        "fr": "PHP",
+        "en": "PHP",
+    },
+    "Instance containers": {
+        "fr": "Conteneurs de l'instance",
+        "en": "Instance containers",
+    },
+    "%d core files modified": {
+        "fr": "%d fichiers du core modifiés",
+        "en": "%d core files modified",
+    },
+    "%s served, %s expected": {
+        "fr": "%s servie, %s attendue",
+        "en": "%s served, %s expected",
+    },
+    "No Dolibarr instance.": {
+        "fr": "Aucune instance Dolibarr.",
+        "en": "No Dolibarr instance.",
+    },
+    "No instance named %s.": {
+        "fr": "Aucune instance nommée %s.",
+        "en": "No instance named %s.",
+    },
+    "absent: %s": {
+        "fr": "absent : %s",
+        "en": "absent: %s",
+    },
+    "absent: the installer can run again": {
+        "fr": "absent : l'installateur peut se relancer",
+        "en": "absent: the installer can run again",
+    },
+    "added": {
+        "fr": "ajoutés",
+        "en": "added",
+    },
+    "modified": {
+        "fr": "modifiés",
+        "en": "modified",
+    },
+    "unreadable": {
+        "fr": "illisibles",
+        "en": "unreadable",
+    },
+    "cannot read the pinned archive: %s": {
+        "fr": "archive épinglée illisible : %s",
+        "en": "cannot read the pinned archive: %s",
+    },
+    "checkout at %s, pinned at %s": {
+        "fr": "checkout à %s, épinglage à %s",
+        "en": "checkout at %s, pinned at %s",
+    },
+    "identical to the pinned archive": {
+        "fr": "identique à l'archive épinglée",
+        "en": "identical to the pinned archive",
+    },
+    "last run: %s": {
+        "fr": "dernier passage : %s",
+        "en": "last run: %s",
+    },
+    "missing: %s": {
+        "fr": "manquant : %s",
+        "en": "missing: %s",
+    },
+    "mode %o, %o expected": {
+        "fr": "mode %o, %o attendu",
+        "en": "mode %o, %o expected",
+    },
+    "no login page at %s": {
+        "fr": "aucune page de connexion à %s",
+        "en": "no login page at %s",
+    },
+    "readable by every account (%o)": {
+        "fr": "lisible par tous les comptes (%o)",
+        "en": "readable by every account (%o)",
+    },
+    "refused (403)": {
+        "fr": "refusée (403)",
+        "en": "refused (403)",
+    },
+    "stopped: %s": {
+        "fr": "arrêtés : %s",
+        "en": "stopped: %s",
+    },
+    "the install pages are served": {
+        "fr": "les pages d'installation sont servies",
+        "en": "the install pages are served",
+    },
+    "the pinned commit, unmodified": {
+        "fr": "le commit épinglé, sans modification",
+        "en": "the pinned commit, unmodified",
+    },
+    "the three are running": {
+        "fr": "les trois tournent",
+        "en": "the three are running",
+    },
+    "timer %s inactive": {
+        "fr": "minuterie %s inactive",
+        "en": "timer %s inactive",
+    },
+    "Dolibarr - Health, security and integrity": {
+        "fr": "🩺 Dolibarr - Santé, sécurité et intégrité",
+        "en": "🩺 Dolibarr - Health, security and integrity",
+    },
 }
 
 

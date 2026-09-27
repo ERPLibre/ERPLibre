@@ -43,6 +43,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Instance status": "_dolibarr_run",
         "Dolibarr - Instance logs": "_dolibarr_run",
         "Dolibarr - Update the pinned commit": "_dolibarr_pin",
+        "Dolibarr - Health, security and integrity": "_dolibarr_doctor",
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
     }
 
@@ -131,6 +132,23 @@ class TestChoixDeLInstance(Banc):
 
 
 DETECT = "./.venv.erplibre/bin/python -u script/dolibarr/detect.py"
+DOCTOR = "./.venv.erplibre/bin/python -u script/dolibarr/doctor.py"
+
+
+class TestBilan(unittest.TestCase):
+    def test_every_instance_is_checked_at_once(self):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 1
+
+        todo.execute = Execute()
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._dolibarr_doctor()
+        self.assertEqual(lances, [f"{DOCTOR} --all"])
 
 
 class TestDetection(unittest.TestCase):
