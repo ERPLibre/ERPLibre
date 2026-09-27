@@ -187,13 +187,14 @@ class TestInstallLabel(unittest.TestCase):
 
 
 class TestInstanceName(unittest.TestCase):
-    # Le nom devient nom de base, de pool php-fpm, d'unité systemd et de
-    # répertoire : tout ce qui casse l'un de ces usages est refusé.
-    ACCEPTES = ("dolibarr", "doli_2", "ab", "a" * 31)
+    # Le nom devient nom de base, de pool php-fpm, d'unité systemd, de
+    # répertoire et de compte système « dolibarr_<nom> », que useradd borne
+    # à 32 caractères : tout ce qui casse l'un de ces usages est refusé.
+    ACCEPTES = ("dolibarr", "doli_2", "ab", "a" * 23)
     REFUSES = (
         "",
         "a",  # trop court pour se distinguer
-        "a" * 32,
+        "a" * 24,  # « dolibarr_ » + 24 = 33 : refusé par useradd
         "Dolibarr",  # majuscule
         "2dolibarr",  # commence par un chiffre
         "doli-barr",  # tiret : invalide en nom de base MariaDB sans quotes
