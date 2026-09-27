@@ -13859,9 +13859,13 @@ TRANSLATIONS = {
     # Assistant LLM — déploiement : poser un modèle sur un serveur connu,
     # poser un ERPLibre sur une cible, porter la configuration. « Deployment »,
     # « Target », « Install », « Models », « model », « models »,
-    # « Will execute: », « Existing checkout kept, not updated: » et
-    # « Destination not retyped — nothing was sent. » servent aussi ici et sont
-    # définies plus haut : les redéfinir écraserait la première sans rien lever.
+    # « Will execute: » et « Destination not retyped — nothing was sent. »
+    # servent aussi ici et sont définies plus haut : les redéfinir écraserait
+    # la première sans rien lever.
+    "Existing checkout kept, not updated:": {
+        "fr": "Dépôt existant gardé, sans mise à jour :",
+        "en": "Existing checkout kept, not updated:",
+    },
     "Models on a server": {
         "fr": "📦 Modèles sur un serveur",
         "en": "Models on a server",
