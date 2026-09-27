@@ -230,7 +230,16 @@ def plan(name, entry, system, root):
         Step(["sudo", "rm", "-f", site, *([link] if link else [])]),
         Step(["sudo", "systemctl", "reload", "nginx"]),
         *_drop_database(entry, ["sudo", "mariadb"]),
-        Step(["sudo", "rm", "-rf", entry["code_root"]]),
+        # upgrade.py prépare .new, garde .prev, range .failed : leur conf.php
+        # garde le groupe de dolibarr_<i>, que userdel libère et que le
+        # prochain compte système reçoit.
+        Step(
+            ["sudo", "rm", "-rf"]
+            + [
+                entry["code_root"] + x
+                for x in ("", ".new", ".prev", ".failed")
+            ]
+        ),
         Step(["sudo", "rm", "-rf", entry["state_dir"]]),
         Step(["sudo", "rm", "-rf", f"/etc/erplibre-dolibarr/{name}"]),
         Step(["sudo", "userdel", entry["user"]]),
