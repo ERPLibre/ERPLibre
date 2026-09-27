@@ -522,6 +522,8 @@ class TestRedactSecrets(unittest.TestCase):
             "--password '" + "a" * 16384,
             "--password " + "a'" * 8192,
             "A_PASSWORD=" + "\"'" * 8192,
+            "PASSWORD_" * 7282 + "= x",
+            "PASSWORD_" * 7282 + "=",
         ):
             with self.subTest(debut=ligne[:4]):
                 debut = time.monotonic()
@@ -702,6 +704,21 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
 
+    def test_a_camel_case_or_glued_key_is_masked(self):
+        """Le mot d'un secret se trouve n'importe où dans le nom de la clé :
+        derrière une minuscule (camelCase) ou collé à un préfixe."""
+        for ligne, attendu in (
+            ("accessToken: inventeAB", "accessToken: ***"),
+            ("refreshToken=inventeCD", "refreshToken=***"),
+            ("clientSecret: inventeEF", "clientSecret: ***"),
+            ("adminPassword: inventeGH", "adminPassword: ***"),
+            ("apiKey: inventeIJ", "apiKey: ***"),
+            ("pgpassword=inventeKL", "pgpassword=***"),
+            ('{"accessToken": "inventeMN"}', '{"accessToken": ***'),
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), attendu)
+
     def test_an_ordinary_word_is_not_a_key(self):
         """Sans « : », « = » ni « ? » derrière elle, une clé n'en est pas
         une ; un mot qui ne fait que commencer comme elle non plus."""
@@ -728,11 +745,37 @@ class TestRedactForStorage(unittest.TestCase):
             ("A_" * 32768 + "x: y", False),
             ("password-" * 8192 + ":", False),
             ("a-" * 32768 + "x: y", False),
+            ("xpassword" * 7282 + ":", False),
+            ("aToken" * 10922 + ": x", False),
+            ("pgPasswor" * 7282 + ": x", False),
         ):
             with self.subTest(debut=ligne[:10], fin=ligne[-5:]):
                 debut = time.monotonic()
                 redact_for_storage(ligne, keep_masked)
                 self.assertLess(time.monotonic() - debut, 0.5)
+
+    def test_a_run_of_blanks_is_read_once(self):
+        """Une clé commence par un caractère de nom : une suite de blancs,
+        espaces, tabulations ou les deux, n'en commence aucune et se lit
+        une fois, par le nom qui la précède, jamais depuis chacun de ses
+        blancs. 64 Kio se lisent en quelques millisecondes."""
+        run = 64 * 1024
+        for ligne, keep_masked in (
+            ("token" + " " * run + "x", False),
+            ("token" + " " * run + "x", True),
+            ("pass" + "\t" * run, False),
+            ("pass" + "\t" * run + "x", False),
+            ("key" + " \t" * (run // 2) + "| 12", False),
+            ("| key |" + " " * run + "| 12 |", False),
+            ("password" + " " * run, False),
+            ("token:" + " " * run, False),
+            ("key" + " " * run + ":" + " " * run, False),
+            ("secret " * (run // 7), False),
+        ):
+            with self.subTest(debut=ligne[:6], fin=ligne[-3:]):
+                debut = time.monotonic()
+                redact_for_storage(ligne, keep_masked)
+                self.assertLess(time.monotonic() - debut, 0.05)
 
     def test_each_mask_passes_the_fast_path(self):
         """Une ligne sans mot de `_TRIGGERS` n'essaie aucun motif : chaque

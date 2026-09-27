@@ -61,9 +61,11 @@ _SECRET_OPTION = re.compile(
 )
 # Une variable dont le nom porte le mot d'un secret, ou « _PWD »
 # (MASTER_PWD) ; PWD et OLDPWD, des répertoires, restent. Le nom n'est lu que
-# suivi de « = », pour la même raison de temps.
+# suivi de « = » et du début d'une valeur, pour la même raison de temps : un
+# nom qui répète le mot d'un secret sans valeur derrière son « = » ferait
+# relire sa fin depuis chacune de ses occurrences.
 _SECRET_ENV = re.compile(
-    r"(?P<var>\b(?=\w*=)\w*"
+    r"(?P<var>\b(?=\w*=\S)\w*"
     r"(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|_PWD)\w*=)"
     rf"(?P<val>{_VALUE})"
 )
@@ -138,17 +140,21 @@ def redact_secrets(text):
 # - une clé suivie de « : », « = » ou « ? », un guillemet éventuel entre
 #   les deux : un nom fait de lettres, de chiffres, de « _ » et de « - »
 #   qui porte password, passwd, passphrase, api_key (apikey, api-key),
-#   token ou secret, au début, derrière un « _ » ou un « - », ou derrière
-#   des majuscules (PGPASSWORD), suivi de n'importe quel suffixe collé
+#   token ou secret n'importe où : au début, derrière un « _ » ou un « - »,
+#   collé à un préfixe (PGPASSWORD, pgpassword) ou en camelCase
+#   (accessToken, clientSecret), suivi de n'importe quel suffixe collé
 #   (new_password1, password_confirm). Sans ce séparateur, « tokenizer
 #   output » ou « passwords rotate » restent.
 # Une invite qui attend encore sa réponse (« Password: ») n'a rien à masquer.
 #
 # Une clé se lit à partir du début de son nom seulement, jamais derrière un
-# caractère de mot ou un tiret, et son lookahead vérifie le séparateur et le début de
-# la valeur avant que le mot de secret s'y cherche : sans cet ordre, un nom
-# qui répète « PASSWORD » ou fait de mots liés par des tirets ferait relire
-# sa fin depuis chaque occurrence, en un temps au carré de sa longueur.
+# caractère de mot ou un tiret. Son lookahead vérifie, avant que le mot de
+# secret s'y cherche, qu'un nom d'au moins un caractère est suivi du
+# séparateur et du début de la valeur : sans cet ordre, un nom qui répète
+# « PASSWORD » ou fait de mots liés par des tirets ferait relire sa fin
+# depuis chaque occurrence ; sans ce premier caractère, chaque blanc d'une
+# longue suite commencerait un nom vide et relirait les blancs qui le
+# suivent. Les deux coûteraient un temps au carré de la longueur.
 # Aucun quantificateur possessif : ce module se charge aussi sous le Python
 # d'Odoo 12.
 _PASSWORD_WORD = (
@@ -161,9 +167,8 @@ def _secret_key(value):
     """Motif d'une clé, la seconde forme ci-dessus, dont le lookahead exige
     derrière le séparateur le début de valeur `value`."""
     return (
-        r"(?<![\w-])(?=[\w-]*[\"']?[^\S\n]*[:=?][^\S\n]*" + value + ")"
-        r"(?:[\w-]*[_-])?(?-i:[A-Z]*)"
-        r"(?:password|passwd|passphrase|api[-_]?key|token|secret)"
+        r"(?<![\w-])(?=[\w-]+[\"']?[^\S\n]*[:=?][^\S\n]*" + value + ")"
+        r"[\w-]*(?:password|passwd|passphrase|api[-_]?key|token|secret)"
         r"[\w-]*[\"']?[^\S\n]*[:=?][^\S\n]*"
     )
 
