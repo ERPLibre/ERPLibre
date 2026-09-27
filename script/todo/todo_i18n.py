@@ -17300,6 +17300,50 @@ TRANSLATIONS = {
         "fr": "Bâtir le zip seulement s'il est prêt pour DoliStore",
         "en": "Build the zip only if DoliStore-ready",
     },
+    "The quality tools could not be installed:": {
+        "fr": "Les outils qualité n'ont pas pu s'installer :",
+        "en": "The quality tools could not be installed:",
+    },
+    "No module %s in %s.": {
+        "fr": "Aucun module %s dans %s.",
+        "en": "No module %s in %s.",
+    },
+    "no finding": {
+        "fr": "aucun constat",
+        "en": "no finding",
+    },
+    "findings above": {
+        "fr": "constats ci-dessus",
+        "en": "findings above",
+    },
+    "did not run to the end (code %d)": {
+        "fr": "n'est pas allé au bout (code %d)",
+        "en": "did not run to the end (code %d)",
+    },
+    "The Dolibarr checkout lacks %s: %s": {
+        "fr": "Il manque %s au checkout de Dolibarr : %s",
+        "en": "The Dolibarr checkout lacks %s: %s",
+    },
+    "Quality tools:": {
+        "fr": "Outils qualité :",
+        "en": "Quality tools:",
+    },
+    "Dolibarr - Code quality of a module (phpcs, PHPStan)": {
+        "fr": "🔬 Dolibarr - Qualité du code d'un module (phpcs, PHPStan)",
+        "en": "🔬 Dolibarr - Code quality of a module (phpcs, PHPStan)",
+    },
+    "phpcs and PHPStan": {
+        "fr": "phpcs et PHPStan",
+        "en": "phpcs and PHPStan",
+    },
+    "phpcs only (Dolibarr rules)": {
+        "fr": "phpcs seulement (règles de Dolibarr)",
+        "en": "phpcs only (Dolibarr rules)",
+    },
+    "PHPStan only": {
+        "fr": "PHPStan seulement",
+        "en": "PHPStan only",
+    },
 }
 
 
