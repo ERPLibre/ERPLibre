@@ -35,8 +35,10 @@ reconnaîtrait plus.
 
 Un événement suit la sortie qui le précède. Le début d'une ligne inachevée
 s'écrit devant lui, une fois par ligne, s'il ne porte aucun mot guetté
-(`Lines.flush`), et la suite de la ligne se masque derrière ce début ;
-sinon la ligne reste entière et s'écrit après l'événement. Au-delà de CAP,
+(`Lines.flush`) ; sinon la ligne reste entière et s'écrit après
+l'événement. La suite d'un début écrit se masque seule, puis derrière lui
+(`TaskLog._outs`) : elle se relit seule, dans un enregistrement à elle, et
+peut réécrire la ligne plutôt que la continuer. Au-delà de CAP,
 un événement attend la clôture et y prend sa place entre les lignes de la
 fin retenue ; celui dont la sortie qui suit est omise s'écrit aussitôt,
 devant `omitted`, comme le plus ancien quand ceux qui attendent passent
@@ -217,7 +219,11 @@ class Lines:
     reste dans `lead` jusqu'à ce que la ligne finisse, et `feed` vide
     `lead` dès qu'il rend une ligne : sa première en est la suite. Une
     ligne n'a qu'un `lead` : il ne grandit pas d'un événement à l'autre, et
-    rien ne se relit en entier à chacun."""
+    rien ne se relit en entier à chacun. Un refus de `flush` se retient de
+    même : une ligne qui porte un mot guetté (`risky`) reste refusée
+    jusqu'à ce que `_keep` la remplace, un morceau ajouté ne retirant pas ce
+    mot ; une ligne qui ne montre rien, ou que l'écho écarté (`bare`), ne se
+    relit qu'une fois grandie."""
 
     def __init__(self):
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -226,6 +232,8 @@ class Lines:
         self.held = False  # `_cut` l'a refusée : attend \n, ou le CAP
         self.pending_cr = False  # elle finit par un \r pas encore tranché
         self.lead = ""  # début de la ligne en cours, déjà rendu par `flush`
+        self.risky = False  # `flush` y a lu un mot guetté
+        self.bare = -1  # `length` quand `flush` n'y a rien lu à montrer
 
     @property
     def partial(self) -> str:
@@ -243,21 +251,27 @@ class Lines:
         self.length = len(rest)
         self.pending_cr = rest.endswith("\r")
         self.held = held
+        self.risky = False
+        self.bare = -1
 
-    def flush(self) -> str:
+    def flush(self, skip=()) -> str:
         """Le début de la ligne en cours, nettoyé, à écrire devant un
-        événement, gardé dans `lead` ; "" si rien n'en paraît, si la ligne
-        a déjà son `lead`, ou si elle porte un mot guetté : elle reste
-        alors entière, sa valeur pouvant continuer plus loin. Sans mot
-        guetté, le masque de la ligne entière ne touche que la suite
-        (`TaskLog._outs`)."""
-        if not self.pieces or self.held or self.lead:
+        événement, gardé dans `lead` ; "" si rien n'en paraît ou s'il est
+        dans `skip`, si la ligne a déjà son `lead`, ou si elle porte un mot
+        guetté : elle reste alors entière, sa valeur pouvant continuer plus
+        loin. Un refus ne relit pas la ligne avant qu'elle change (`risky`,
+        `bare`)."""
+        if not self.pieces or self.held or self.lead or self.risky:
+            return ""
+        if self.length == self.bare:
             return ""
         line = self.partial
         if _at_risk(line) or _at_risk(CONTROL.sub("", ANSI.sub("", line))):
+            self.risky = True
             return ""
         shown = clean(line)
-        if not shown.strip():
+        if not shown.strip() or shown.strip() in skip:
+            self.bare = self.length
             return ""
         self.lead = shown
         self._keep("")
@@ -345,7 +359,8 @@ class TaskLog:
     `entry` (le libellé choisi), `key`, `start` (time.time()) ; il devient
     l'événement `task_start`. Les lignes vides en tête et en fin de tâche ne
     sont pas gardées, ni, en tête, une ligne dont le texte est dans `skip` :
-    l'écho de la réponse qui a lancé la tâche."""
+    l'écho de la réponse qui a lancé la tâche. Une fois close, elle ignore
+    sortie et événements : aucun `.log` n'en renaît."""
 
     def __init__(self, base, info, skip=()):
         self.info = {"t": "task_start", **info}
@@ -370,6 +385,8 @@ class TaskLog:
 
     def output(self, data):
         """Octets du PTY : les lignes finies sont écrites aussitôt."""
+        if self.closed:
+            return
         if self.tail is None:
             head = data[: CAP - self.raw]
             self.raw += len(head)
@@ -401,13 +418,20 @@ class TaskLog:
         """Un événement, dict dont `t` nomme le genre, écrit aussitôt
         derrière le début de la ligne inachevée qui le précède (`_flush`) ;
         au-delà de CAP, retenu jusqu'à la clôture (`later`)."""
+        if self.closed:
+            return
         if self.tail is None:
-            self._write([*self._flush(), *self._blanks(), self._event(data)])
+            self._put(data)
             return
         self.later.append((self.past, data))
         self.later_size += len(_line(data))
         while self.later_size > LATER and self.later:
             self._release_one()
+
+    def _put(self, data):
+        """Écrit l'événement `data` aussitôt, derrière le début de la ligne
+        inachevée qui le précède."""
+        self._write([*self._flush(), *self._blanks(), self._event(data)])
 
     def _event(self, data) -> bytes:
         return self._record("event", data)
@@ -426,9 +450,7 @@ class TaskLog:
         """Les enregistrements du début de la ligne inachevée, écrit devant
         un événement (`Lines.flush`) ; rien en tête de tâche pour l'écho de
         la réponse, qui attend sa fin pour être écarté."""
-        if self.first and clean(self.lines.partial).strip() in self.skip:
-            return []
-        shown = self.lines.flush()
+        shown = self.lines.flush(self.skip if self.first else ())
         if not shown:
             return []
         self.first = False
@@ -455,12 +477,19 @@ class TaskLog:
 
     def _outs(self, line, prefix="") -> list:
         """Les enregistrements de `line`, masquée entière, puis coupée : un
-        secret à cheval sur deux morceaux se reconnaît encore. Derrière
-        `prefix`, le début de sa ligne déjà écrit, le masque relit la ligne
-        entière et n'en rend que la suite : `prefix` ne porte aucun mot
-        guetté (`Lines.flush`), et chaque motif de `redact_for_storage` ne
-        remplace que ce qui suit le sien."""
-        shown = _redact(prefix + line)[len(prefix) :]
+        secret à cheval sur deux morceaux se reconnaît encore.
+
+        Derrière `prefix`, le début de sa ligne déjà écrit devant un
+        événement, `line` se masque pour ses deux lectures : seule, d'abord,
+        car elle s'écrit dans un enregistrement à elle et a pu réécrire la
+        ligne (retour chariot, effacement) plutôt que la continuer ; puis
+        derrière `prefix`, dont le masque ne rend que la suite, pour un mot
+        guetté que l'événement a coupé. `prefix` ne porte aucun mot guetté
+        (`Lines.flush`) et chaque motif de `redact_for_storage` ne remplace
+        que ce qui suit le sien : ce début en ressort inchangé."""
+        shown = _redact(line)
+        if prefix:
+            shown = _redact(prefix + shown)[len(prefix) :]
         return [
             self._record("out", shown[at : at + LINE_LIMIT])
             for at in range(0, len(shown), LINE_LIMIT)
@@ -516,13 +545,13 @@ class TaskLog:
             del tail[:cut]
             start += cut
         if self.omitted:
-            self.event({"t": "omitted", "bytes": self.omitted})
+            self._put({"t": "omitted", "bytes": self.omitted})
         at = 0
         for offset, data in later:
             upto = max(at, offset - start)
             self._feed(bytes(tail[at:upto]))
             at = upto
-            self.event(data)
+            self._put(data)
         self._feed(bytes(tail[at:] if tail else b""), final=True)
         if self.fd is None:
             return None

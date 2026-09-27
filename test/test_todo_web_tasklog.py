@@ -318,13 +318,21 @@ class TestTaskLog(StoreCase):
                 self.assertEqual(tasklog.clean(line), shown)
 
     def test_closing_twice_returns_the_first_entry(self):
+        # Après la clôture, une sortie ou un événement ne recrée aucun
+        # `.log`, que rien ne clorait plus.
         task = self.task()
         task.output(b"once\r\n")
         entry = task.close("done")
         task.output(b"late\r\n")
+        task.event({"t": "run_start", "cmd": "late"})
+        self.assertFalse(task.path.exists())
         self.assertIs(task.close("interrupted"), entry)
         self.assertEqual(tasklog.entries(self.base), [entry])
         self.assertEqual(self.texts(entry["id"]), ["once"])
+        self.assertEqual(
+            sorted(path.name for path in task.path.parent.iterdir()),
+            [task.path.name + ".zst", "index.jsonl"],
+        )
 
     def records(self, task):
         page = tasklog.read(self.base, task.info["id"], 2, 100)
@@ -382,6 +390,90 @@ class TestTaskLog(StoreCase):
                 packed = task.path.with_name(task.path.name + ".zst")
                 data = zstd.decompress(packed.read_bytes())
                 self.assertNotIn(b"hunter2", data)
+
+    def test_a_rewritten_line_after_an_event_is_masked_alone(self):
+        # Le début déjà écrit devant un événement ne précède pas toujours
+        # la suite : un retour chariot ou un effacement ANSI réécrit la
+        # ligne, et la version gardée se lit seule. Elle se masque seule
+        # comme derrière ce début, avec ou sans événement entre les deux.
+        cases = (
+            (b"Loading", b"\rpassword: hunter2\r\n", "password: ***"),
+            (b"Loading", b"\rtoken: hunter2\r\n", "token: ***"),
+            (
+                b"Loading",
+                b"\r\x1b[2Kpassword: hunter2\r\n",
+                "password: ***",
+            ),
+            (b"50", b"\rsecret=hunter2\r\n", "secret=***"),
+            (b"Loading", b"\rpasswd hunter2\r\n", "passwd ***"),
+            (
+                b"Loading",
+                b"\rmot de passe : hunter2\r\n",
+                "mot de passe : ***",
+            ),
+        )
+        event = {"t": "answered"}
+        for before, after, masked in cases:
+            for between in ([event], []):
+                with self.subTest(after=after, event=bool(between)):
+                    task = self.task()
+                    task.output(before)
+                    for data in between:
+                        task.event(data)
+                    task.output(after)
+                    task.close("done")
+                    if between:
+                        expected = [
+                            ("out", before.decode()),
+                            ("event", event),
+                            ("out", masked),
+                        ]
+                    else:
+                        expected = [("out", masked)]
+                    self.assertEqual(self.records(task), expected)
+                    packed = task.path.with_name(task.path.name + ".zst")
+                    data = zstd.decompress(packed.read_bytes())
+                    self.assertNotIn(b"hunter2", data)
+
+    def test_an_unfinished_line_is_read_once_whatever_the_events(self):
+        # Une ligne inachevée que `flush` refuse, parce qu'elle porte un
+        # mot guetté ou ne montre rien, ne se relit pas à chaque
+        # événement : ce qui en est lu ne croît pas avec leur nombre. Une
+        # version nouvelle de la ligne (retour chariot) se lit de nouveau.
+        read = []
+
+        def counted(function):
+            def wrapper(text, *args):
+                read.append(len(text))
+                return function(text, *args)
+
+            return wrapper
+
+        event = {"t": "run_end", "rc": 0, "secs": 1}
+        for partial in (b"Database password: " + b"x" * 65536, b" " * 65536):
+            with self.subTest(partial=partial[:10]):
+                task = self.task()
+                read.clear()
+                with patch.multiple(
+                    tasklog,
+                    _at_risk=counted(tasklog._at_risk),
+                    clean=counted(tasklog.clean),
+                ):
+                    task.output(partial)
+                    task.event(event)
+                    once = sum(read)
+                    for _ in range(60):
+                        task.event(event)
+                    self.assertEqual(sum(read), once)
+                    self.assertLessEqual(once, 4 * len(partial))
+                    task.output(b"\rready")
+                    task.event(event)
+                    task.close("done")
+                self.assertEqual(
+                    self.records(task),
+                    [("event", event)] * 61
+                    + [("out", "ready"), ("event", event)],
+                )
 
     def test_a_line_is_split_once_and_its_rest_waits_for_its_end(self):
         # Un second événement sur la même ligne inachevée passe devant sa
