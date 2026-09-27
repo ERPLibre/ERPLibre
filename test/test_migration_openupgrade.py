@@ -76,5 +76,29 @@ class TestLaCibleEstInstallee(unittest.TestCase):
         self.assertIn("range(start_version, end_version + 1)", source)
 
 
+class TestLOdooOrdinaireNeVoitPlusOpenUpgrade(unittest.TestCase):
+    """Jusqu'à la 13, OpenUpgrade est un Odoo complet : son « base » dans
+    l'addons_path fait échouer l'Odoo ordinaire sur « odoo.openupgrade ».
+    La configuration sans OpenUpgrade doit donc précéder la mise à jour de
+    tous les modules, pas la suivre."""
+
+    def test_la_configuration_est_refaite_avant_la_mise_a_jour(self):
+        source = (RACINE / "script/todo/todo_upgrade.py").read_text(
+            encoding="utf-8"
+        )
+        mise_a_jour = source.index(
+            'f"./script/addons/update_addons_all.sh {database_name_upgrade}"'
+        )
+        sans_openupgrade = source.rindex(
+            "git_repo_update_group.py && ./script/generate_config.sh",
+            0,
+            mise_a_jour,
+        )
+        # Aucune autre génération de configuration entre les deux.
+        self.assertNotIn(
+            "generate_config.sh", source[sans_openupgrade + 60 : mise_a_jour]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

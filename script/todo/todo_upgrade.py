@@ -2665,7 +2665,7 @@ class TodoUpgrade:
                     else ""
                 )
                 cmd_update_config = (
-                    f"./script/git/git_repo_update_group.py {ignore_path}"
+                    f"./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py {ignore_path}"
                     f"--extra-addons-path {path_addons_openupgrade}{extra_addons_path_extra} "
                     f"&& ./script/generate_config.sh"
                 )
@@ -2809,6 +2809,13 @@ class TodoUpgrade:
                     f" -d {database_name_upgrade} -t odoo{next_version}.0"
                 )
 
+                # La configuration SANS OpenUpgrade avant tout lancement de
+                # l'Odoo ordinaire : jusqu'à la 13, OpenUpgrade est un Odoo
+                # complet, et son « base » dans l'addons_path ferait échouer
+                # la mise à jour des modules sur « odoo.openupgrade ».
+                cmd_update_config = f"./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py && ./script/generate_config.sh"
+                self.todo_upgrade_execute(cmd_update_config)
+
                 str_wait_next_version = (
                     " (or wait next version 🤖)"
                     if next_version != lst_next_version[-1]
@@ -2853,10 +2860,6 @@ class TodoUpgrade:
                     f"✅ -> {t('Database upgrade done for Odoo')}"
                     f"{next_version}"
                 )
-
-                # Update config without OCA_OpenUpgrade
-                cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
-                self.todo_upgrade_execute(cmd_update_config)
 
                 # Une migration peut charger tous ses modules et servir
                 # quand même un 500 sur une page que personne n'ouvre. Mesuré
@@ -4244,7 +4247,7 @@ class TodoUpgrade:
     def install_OCA_odoo_module_migrator(self):
         if not os.path.exists(PATH_VENV_MODULE_MIGRATOR):
             self.todo_upgrade_execute(
-                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt"
+                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python3 -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt"
             )
 
     def install_OCA_openupgrade(self, next_version):
