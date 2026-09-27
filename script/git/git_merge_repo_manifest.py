@@ -15,7 +15,11 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
-from script.version.erplibre_state import get_version_extra
+from script.version.erplibre_state import (
+    MODE_FIGE,
+    get_git_repo,
+    get_version_extra,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -218,12 +222,78 @@ def main():
             else:
                 remotes_total[key] = copy.deepcopy(value)
 
+    # Le gel, s'il est désigné, a le dernier mot sur les révisions : c'est
+    # lui qui distingue un plan de travail épinglé d'un plan de travail qui
+    # suit ses branches. Sans gel désigné, rien ne change.
+    reglages = get_git_repo()
+    touches = projeter_gel(
+        projects_total, reglages.get("mode"), reglages.get("gel")
+    )
+    if touches:
+        _logger.info(
+            f"Freeze '{reglages.get('gel')}' applied in"
+            f" '{reglages.get('mode')}' mode: {touches} projects"
+        )
+
     git_tool.generate_repo_manifest(
         remotes_config=remotes_total,
         projects_config=projects_total,
         output=config.output,
         default_remote=default_remote_total,
     )
+
+
+def lire_gel(chemin_gel):
+    """{« nom+chemin »: (revision, upstream)} d'un fichier de gel.
+
+    Le gel est produit par « repo manifest -r -o » : chaque projet y porte
+    le COMMIT dans @revision et la BRANCHE dans @upstream. Un seul fichier
+    porte donc les deux lectures, ce qui évite d'en tenir deux qui
+    dériveraient l'un de l'autre sans que rien ne le dise.
+    """
+    import xml.etree.ElementTree as ET
+
+    if not chemin_gel or not os.path.isfile(chemin_gel):
+        return {}
+    try:
+        racine = ET.parse(chemin_gel).getroot()
+    except ET.ParseError as exc:
+        _logger.warning(f"Cannot read freeze file {chemin_gel}: {exc}")
+        return {}
+    return {
+        f"{p.get('name')}+{p.get('path')}": (
+            p.get("revision"),
+            p.get("upstream"),
+        )
+        for p in racine.findall("project")
+        if p.get("name") and p.get("path")
+    }
+
+
+def projeter_gel(projects, mode, chemin_gel):
+    """Réécrit @revision d'après le gel. Rend le nombre de projets touchés.
+
+    En mode figé, chaque projet reçoit le COMMIT du gel : le plan de travail
+    se reconstruit à l'identique, des mois plus tard. En mode dev, il reçoit
+    la BRANCHE que le gel a enregistrée, donc la pointe du jour.
+
+    Un projet absent du gel n'est pas touché : il est arrivé APRÈS, et lui
+    inventer une révision le sortirait de son manifeste.
+    """
+    gel = lire_gel(chemin_gel)
+    if not gel:
+        return 0
+    touches = 0
+    for key, value in projects.items():
+        fige = gel.get(key)
+        if not fige:
+            continue
+        revision, upstream = fige
+        neuve = revision if mode == MODE_FIGE else upstream
+        if neuve and value.get("@revision") != neuve:
+            value["@revision"] = neuve
+            touches += 1
+    return touches
 
 
 def append_file_path_manifest(input_paths, path_manifest):

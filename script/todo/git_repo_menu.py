@@ -38,6 +38,7 @@ sys.path.append(new_path)
 
 from script.git import repo_apply, repo_upgrade  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
+from script.version import erplibre_state  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
 # venv : lancé depuis un autre répertoire, il ne trouve pas son interpréteur
@@ -63,7 +64,15 @@ class GitRepoMenuMixin:
         version = repo_upgrade.version_active(RACINE) or "?"
         forks = repo_upgrade.etat_forks(version)
         print(f"🔃 {t('Update and upgrade the git repositories')}")
-        print(f"   Odoo {version} · {len(forks)} {t('forks')}")
+        reglages = erplibre_state.get_git_repo()
+        mode = (
+            t("frozen mode, pinned to a commit")
+            if reglages["mode"] == erplibre_state.MODE_FIGE
+            else t("dev mode, follows the branches")
+        )
+        print(f"   Odoo {version} · {len(forks)} {t('forks')} · {mode}")
+        if reglages.get("gel"):
+            print(f"   {t('freeze')} : {reglages['gel']}")
         choices = [
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
@@ -76,6 +85,9 @@ class GitRepoMenuMixin:
             {"prompt_description": t("📊 Report of the last pass")},
             {"prompt_description": t("🖥️ Browse the upgrade on screen")},
             {"prompt_description": t("🔗 Fork and upstream status")},
+            {"section": t("Versions")},
+            {"prompt_description": t("🧊 Freeze the versions")},
+            {"prompt_description": t("🔀 Toggle frozen or dev mode")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -99,6 +111,10 @@ class GitRepoMenuMixin:
                 self._git_repo_ecran()
             elif status == "8":
                 self._git_repo_etat_forks()
+            elif status == "9":
+                self._git_repo_geler()
+            elif status == "10":
+                self._git_repo_basculer_mode()
             else:
                 print(t("Command not found !"))
 
@@ -398,3 +414,62 @@ class GitRepoMenuMixin:
         lst = repo_upgrade.passe_diagnostic(version, racine=RACINE)
         git_repo_tui.run_git_repo_tui({"version": version, "forks": lst})
         return len(lst)
+
+    def _git_repo_geler(self):
+        """Épingle chaque dépôt à son commit, dans un fichier versé.
+
+        Le fichier porte le COMMIT dans « revision » et la BRANCHE dans
+        « upstream » : un seul fichier sert donc les deux modes, et il n'y
+        a pas deux manifestes à tenir alignés.
+
+        Le gel est ENREGISTRÉ mais ne prend effet qu'à la reconfiguration :
+        c'est elle qui régénère le manifeste local que git-repo lit.
+        """
+        version = repo_upgrade.version_active(RACINE) or "?"
+        horodatage = datetime.datetime.now().strftime("%Y%m%dT%H%M")
+        relatif = os.path.join(
+            "manifest", "snapshot", f"odoo{version}_{horodatage}.xml"
+        )
+        sortie = os.path.join(RACINE, relatif)
+        os.makedirs(os.path.dirname(sortie), exist_ok=True)
+        cmd = f"{REPO_BIN} manifest -r -o {relatif}"
+        print(f"🧊 {t('Freeze the versions')} — Odoo {version}")
+        print(f"  {t('Will execute:')} {cmd}")
+        status = self.execute.exec_command_live(
+            f"cd {RACINE} && {cmd}", source_erplibre=False
+        )
+        if status or not os.path.isfile(sortie):
+            print(f"⚠  {t('The freeze could not be produced.')} ({status})")
+            return status or 1
+        erplibre_state.set_git_repo_gel(relatif)
+        print(f"✅ {t('Freeze written to')} {relatif}")
+        print(f"   {t('Reconfigure and synchronize to apply it.')}")
+        return 0
+
+    def _git_repo_basculer_mode(self):
+        """Fait passer le plan de travail du suivi de branche à l'épinglage.
+
+        Le mode est un état du checkout et non un argument de la commande :
+        une reconfiguration lancée ailleurs, par le Makefile par exemple,
+        doit lire le même choix, sans quoi le plan de travail bougerait sans
+        que personne ne l'ait demandé.
+        """
+        reglages = erplibre_state.get_git_repo()
+        ancien = reglages["mode"]
+        neuf = (
+            erplibre_state.MODE_DEV
+            if ancien == erplibre_state.MODE_FIGE
+            else erplibre_state.MODE_FIGE
+        )
+        if neuf == erplibre_state.MODE_FIGE and not reglages.get("gel"):
+            print(f"⚠  {t('No freeze file recorded; freeze first.')}")
+            return 1
+        erplibre_state.set_git_repo_mode(neuf)
+        libelle = (
+            t("frozen mode, pinned to a commit")
+            if neuf == erplibre_state.MODE_FIGE
+            else t("dev mode, follows the branches")
+        )
+        print(f"✅ {libelle}")
+        print(f"   {t('Reconfigure and synchronize to apply it.')}")
+        return 0
