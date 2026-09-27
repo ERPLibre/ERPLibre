@@ -27,6 +27,7 @@ chaque script se lance aussi seul.
 | `doctor.py` | Santé, sécurité et intégrité de chaque instance inscrite |
 | `backup.py` | `create`, `list` et `restore` des sauvegardes (restauration : `restore.py`) |
 | `fleet.py` | `list` des instances, `remove` d'une instance |
+| `upgrade.py` | Monter une instance à la version épinglée, retour arrière sur échec |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -117,6 +118,7 @@ ne sont pas posés.
 ./script/dolibarr/backup.py restore --instance erp --archive <file> --confirm erp
 ./script/dolibarr/fleet.py list
 ./script/dolibarr/fleet.py remove --instance erp --dry-run
+./script/dolibarr/upgrade.py --instance erp        # after pin.py update --apply
 ```
 
 - `detect.py` envoie une sonde POSIX sh en lecture seule (un aller-retour,
@@ -132,6 +134,14 @@ ne sont pas posés.
   que le code, et clone aussi une sauvegarde dans une instance neuve.
 - Retirer une instance montre d'abord son plan et demande son nom ; le
   `custom/` d'un conteneur reste.
+- `upgrade.py` amène une instance à la version épinglée après `pin.py
+  update --apply` : sauvegarde d'abord, un saut majeur à la fois, réussite
+  jugée par `MAIN_VERSION_LAST_UPGRADE` et non par les seuls codes de
+  sortie, et sur échec l'ancien code (ou l'ancienne image) et la sauvegarde
+  reviennent. Un nouveau commit de même version se monte aussi : son schéma
+  peut différer. La sortie complète de chaque montée va dans
+  `private/dolibarr/upgrades/`, et `doctor.py` avertit quand une instance
+  est en retard sur l'épinglage.
 
 ## Version épinglée
 
