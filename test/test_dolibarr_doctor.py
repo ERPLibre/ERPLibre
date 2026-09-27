@@ -60,6 +60,7 @@ class Banc(unittest.TestCase):
             "php_min": "7.2",
             "php_max": "8.5",
             "path": "dolibarr/dolibarr",
+            "docker_image": "docker.io/dolibarr/dolibarr:24.0.0",
         }
         self.sys.commandes[
             ("php", "-r", 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
@@ -105,6 +106,7 @@ class TestDeveloppement(Banc):
             {k: v.level for k, v in r.items()},
             {
                 "served": "ok",
+                "pin": "ok",
                 "code": "ok",
                 "conf": "ok",
                 "lock": "ok",
@@ -127,6 +129,13 @@ class TestDeveloppement(Banc):
         r = self.verifier("erp", self.entree)
         self.assertEqual(r["code"].level, "warn")
         self.assertIn(AUTRE[:7], r["code"].detail)
+
+    def test_an_instance_behind_the_pin_is_a_warning(self):
+        # Après une montée revenue en arrière, rien d'autre ne le dirait.
+        self.pin["commit"] = AUTRE
+        r = self.verifier("erp", self.entree)
+        self.assertEqual(r["pin"].level, "warn")
+        self.assertIn(AUTRE[:7], r["pin"].detail)
 
     def test_a_site_that_does_not_answer_fails(self):
         self.sys.pages = {}
@@ -213,6 +222,7 @@ class TestProduction(Banc):
             {k: v.level for k, v in r.items()},
             {
                 "served": "ok",
+                "pin": "ok",
                 "code": "ok",
                 "conf": "ok",
                 "lock": "ok",
@@ -324,6 +334,7 @@ class TestConteneurs(Banc):
             "containers": self.noms,
             "url": "http://127.0.0.1:8081",
             "version": "24.0.0",
+            "image": "docker.io/dolibarr/dolibarr:24.0.0",
         }
         self.sys.pages["http://127.0.0.1:8081/"] = (
             "<title>Login @ 24.0.0</title>"
@@ -351,7 +362,14 @@ class TestConteneurs(Banc):
         r = self.verifier("ctr", self.entree)
         self.assertEqual(
             {k: v.level for k, v in r.items()},
-            {"served": "ok", "containers": "ok"},
+            {"served": "ok", "pin": "ok", "containers": "ok"},
+        )
+
+    def test_a_container_on_another_image_than_the_pin_is_a_warning(self):
+        self.entree["image"] = "docker.io/dolibarr/dolibarr:23.0.4"
+        self.pin["docker_image"] = "docker.io/dolibarr/dolibarr:24.0.0"
+        self.assertEqual(
+            self.verifier("ctr", self.entree)["pin"].level, "warn"
         )
 
     def test_a_stopped_container_is_a_warning(self):
