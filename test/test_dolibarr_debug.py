@@ -191,8 +191,18 @@ class TestConteneur(Banc):
         code, sortie = self.lancer("on", "--instance", "erp", entree=entree)
         self.assertEqual(code, 0, sortie)
         argv = self.sys.appels[0][0]
-        self.assertEqual(argv[:4], ["podman", "exec", "x-web", "php"])
+        # En www-data : root y laisserait des dossiers que le site ne peut
+        # plus écrire.
+        self.assertEqual(
+            argv[:6], ["podman", "exec", "-u", "www-data", "x-web", "php"]
+        )
         self.assertIn("conf.php", sortie)  # dit que conf.php n'est pas touché
+        self.lancer("off", "--instance", "erp", entree=entree)
+        argv = self.sys.appels[-1][0]
+        self.assertEqual(
+            argv[:7],
+            ["podman", "exec", "-i", "-u", "www-data", "x-web", "php"],
+        )
 
 
 class TestJournal(unittest.TestCase):

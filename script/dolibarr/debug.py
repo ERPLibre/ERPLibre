@@ -55,7 +55,7 @@ _PHP_ON = (
     ' $keys = array("' + '", "'.join(_KEYS) + '"); $prev = array();'
     # La ligne de l'entité courante, pas $conf->global : il mêle l'entité 0,
     # et off y écrirait une ligne qui n'existait pas.
-    " foreach ($keys as $k) { $r = $db->query(\"SELECT value FROM \""
+    ' foreach ($keys as $k) { $r = $db->query("SELECT value FROM "'
     ' .MAIN_DB_PREFIX."const WHERE name = \x27".$db->escape($k)'
     ' ."\x27 AND entity = ".((int) $conf->entity));'
     " $o = $r ? $db->fetch_object($r) : null;"
@@ -127,10 +127,12 @@ class Target:
 
     def php(self, code, stdin_text=None):
         if self.container:
+            # En www-data, comme le site : un dossier créé par root dans
+            # documents/ lui serait fermé en écriture.
             argv = self.cmd(
                 ["exec"]
                 + (["-i"] if stdin_text else [])
-                + [self.web, "php", "-r", code]
+                + ["-u", "www-data", self.web, "php", "-r", code]
             )
         else:
             argv = [
