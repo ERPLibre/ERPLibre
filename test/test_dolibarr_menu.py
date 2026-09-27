@@ -59,6 +59,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         ),
         "Dolibarr - Hooks and triggers between versions": "_dolibarr_hooks",
         "Dolibarr - Core changes: branch, check, patches": "_dolibarr_core",
+        "Dolibarr - REST API: technical user and key": "_dolibarr_api",
     }
 
 
@@ -623,6 +624,50 @@ class TestCoeur(unittest.TestCase):
             [f"{CORE} start --topic fix-total"],
         )
         self.assertEqual(self.lancer_coeur(["2", ""]), [])
+
+
+API = "./.venv.erplibre/bin/python -u script/dolibarr/api.py"
+
+
+class TestApi(Banc):
+    def lancer_api(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_api()
+        return lances
+
+    def test_each_action_on_a_development_instance(self):
+        self.registre = {"erp": dict(DEV)}
+        for choix, fin in (
+            ("1", "enable --instance erp"),
+            ("2", "status --instance erp"),
+            ("3", "enable --instance erp --rotate"),
+            ("4", "disable --instance erp"),
+        ):
+            self.assertEqual(self.lancer_api([choix]), [f"{API} {fin}"])
+
+    def test_a_production_needs_its_name_to_change(self):
+        self.registre = {"erp": dict(DEV, mode="prod")}
+        self.assertEqual(
+            self.lancer_api(["1", "erp"]),
+            [f"{API} enable --instance erp --confirm erp"],
+        )
+        self.assertEqual(self.lancer_api(["1", "er"]), [])
+        self.assertEqual(
+            self.lancer_api(["2"]), [f"{API} status --instance erp"]
+        )
 
 
 class TestBilan(unittest.TestCase):

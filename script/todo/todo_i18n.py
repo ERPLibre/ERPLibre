@@ -17520,6 +17520,74 @@ TRANSLATIONS = {
         "fr": "Nom de la branche : ",
         "en": "Branch name: ",
     },
+    "Dolibarr refused:": {
+        "fr": "Dolibarr a refusé :",
+        "en": "Dolibarr refused:",
+    },
+    "API on for %s: user %s, %s read right(s), key in %s (0600).": {
+        "fr": "API allumée pour %s : utilisateur %s, %s droit(s) de lecture, clé dans %s (0600).",
+        "en": "API on for %s: user %s, %s read right(s), key in %s (0600).",
+    },
+    "API off for %s; its key stays for a later enable.": {
+        "fr": "API éteinte pour %s ; sa clé reste pour un prochain enable.",
+        "en": "API off for %s; its key stays for a later enable.",
+    },
+    "No API key for %s: run api.py enable.": {
+        "fr": "Aucune clé d'API pour %s : lancer api.py enable.",
+        "en": "No API key for %s: run api.py enable.",
+    },
+    "API of %s answers with its key: Dolibarr %s.": {
+        "fr": "L'API de %s répond à sa clé : Dolibarr %s.",
+        "en": "API of %s answers with its key: Dolibarr %s.",
+    },
+    "Explorer: %s": {
+        "fr": "Explorateur : %s",
+        "en": "Explorer: %s",
+    },
+    "API of %s refuses the key (401).": {
+        "fr": "L'API de %s refuse la clé (401).",
+        "en": "API of %s refuses the key (401).",
+    },
+    "Invalid login: %s": {
+        "fr": "Identifiant invalide : %s",
+        "en": "Invalid login: %s",
+    },
+    "API of %s is off: run api.py enable.": {
+        "fr": "L'API de %s est éteinte : lancer api.py enable.",
+        "en": "API of %s is off: run api.py enable.",
+    },
+    "API of %s does not answer: %s": {
+        "fr": "L'API de %s ne répond pas : %s",
+        "en": "API of %s does not answer: %s",
+    },
+    "REST API:": {
+        "fr": "API REST :",
+        "en": "REST API:",
+    },
+    "Integration": {
+        "fr": "Intégration",
+        "en": "Integration",
+    },
+    "Dolibarr - REST API: technical user and key": {
+        "fr": "🔌 Dolibarr - API REST : utilisateur technique et clé",
+        "en": "🔌 Dolibarr - REST API: technical user and key",
+    },
+    "Turn on: module, read-only user, key": {
+        "fr": "Allumer : module, utilisateur en lecture, clé",
+        "en": "Turn on: module, read-only user, key",
+    },
+    "Status: does the key open the API?": {
+        "fr": "État : la clé ouvre-t-elle l'API ?",
+        "en": "Status: does the key open the API?",
+    },
+    "New key (the old one stops)": {
+        "fr": "Nouvelle clé (l'ancienne cesse)",
+        "en": "New key (the old one stops)",
+    },
+    "Turn off": {
+        "fr": "Éteindre",
+        "en": "Turn off",
+    },
 }
 
 

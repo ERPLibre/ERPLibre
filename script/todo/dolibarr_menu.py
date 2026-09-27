@@ -54,6 +54,8 @@ QUALITY_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/quality.py"
 HOOKS_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/hooks_index.py"
 # Modifier le cœur : branche de travail, contrôle, série de patchs.
 CORE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/core.py"
+# API REST : module, utilisateur technique en lecture, clé DOLAPIKEY.
+API_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/api.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -139,6 +141,12 @@ class DolibarrMenuMixin:
                     "Dolibarr - Core changes: branch, check, patches"
                 )
             },
+            {"section": t("Integration")},
+            {
+                "prompt_description": t(
+                    "Dolibarr - REST API: technical user and key"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -184,6 +192,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_hooks()
             elif status == "19":
                 self._dolibarr_core()
+            elif status == "20":
+                self._dolibarr_api()
             else:
                 print(t("Command not found !"))
 
@@ -581,6 +591,49 @@ class DolibarrMenuMixin:
             args += ["--topic", topic]
         self.execute.exec_command_live(
             f"{CORE_CLI} {shlex.join(args)}", source_erplibre=False
+        )
+
+    def _dolibarr_api(self):
+        """api.py sur l'instance choisie ; une production exige son nom
+        retapé pour allumer, tourner la clé ou éteindre."""
+        try:
+            known = lib_dolibarr.load_registry(ROOT)
+        except lib_dolibarr.RegistryError as e:
+            print(t("Dolibarr registry unreadable: %s") % e)
+            return
+        names = sorted(known)
+        if not names:
+            print(t("No Dolibarr instance."))
+            return
+        name = (
+            names[0]
+            if len(names) == 1
+            else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
+        )
+        if name is None:
+            return
+        action = self._dolibarr_choose(
+            t("REST API:"),
+            [
+                ("enable", t("Turn on: module, read-only user, key")),
+                ("status", t("Status: does the key open the API?")),
+                ("rotate", t("New key (the old one stops)")),
+                ("disable", t("Turn off")),
+            ],
+        )
+        if action is None:
+            return
+        verb = "enable" if action == "rotate" else action
+        args = [verb, "--instance", name]
+        if action == "rotate":
+            args.append("--rotate")
+        if verb != "status" and known[name].get("mode") == "prod":
+            if input(t("Retype %s to confirm: ") % name).strip() != name:
+                print(t("Cancelled."))
+                return
+            args += ["--confirm", name]
+        self.execute.exec_command_live(
+            f"{API_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):
