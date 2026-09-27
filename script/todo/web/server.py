@@ -465,9 +465,13 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     `session`, une session s'ouvre (au-delà de MAX_SESSIONS, 1013) ; avec,
     le client s'y rattache (inconnue, 4404) et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
-    "truncated"}`, puis trames binaires. Textes du client : `resize`,
-    `interrupt`, `close`, `raw`, `secret` ; du hub : `bye`, `open_view`,
-    `tty_state`, `dropped`. Un type inconnu est ignoré.
+    "truncated"}`, puis la question ouverte du worker s'il en a une, puis
+    trames binaires. Textes du client : `resize`, `interrupt`, `close`,
+    `raw`, `secret`, `answer`, `cancel` ; du hub : `bye`, `tty_state`,
+    `dropped`, et les messages du worker (`menu`, `ask`, `answered`,
+    `notice`, `run_start`, `run_end`, `open_view`). Un type inconnu est
+    ignoré, comme une réponse qui n'est pas celle de la question ouverte
+    (`Session.answer`).
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
     (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
@@ -558,6 +562,8 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
                 "truncated": truncated,
             }
         )
+        if session.asking is not None:
+            self.event(session.asking)
         if previous is not None:
             previous.close(4001, "taken over")
 
@@ -579,6 +585,8 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.raw = data.get("on") is True
         elif kind == "secret":
             self.secret_next = True
+        elif kind in ("answer", "cancel"):
+            self.session.answer(data)
 
     # Client d'une session (sessions.py) : send, event, close.
 

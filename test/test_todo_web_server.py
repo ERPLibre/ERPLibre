@@ -33,7 +33,7 @@ from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPRequest
 from tornado.websocket import websocket_connect
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths, server, sessions, ttywatch
+from script.todo.web import paths, protocol, server, sessions, ttywatch
 
 # Les réponses 4xx sont journalisées en avertissement ; sans handler, le
 # dernier recours de logging les écrirait sur stderr.
@@ -1138,6 +1138,129 @@ class TestDeadClient(TerminalCase):
         while session.client is not None or b"END" not in session.ring.data:
             self.assertLess(time.monotonic(), deadline, "still attached")
             await asyncio.sleep(0.05)
+
+
+class TestQuestions(TerminalCase):
+    """Les questions du worker vont à la page, ses réponses au worker ;
+    l'enfant jetable écrit une question par `send`, et `recv` répète la
+    ligne que le hub lui porte."""
+
+    async def ask(self, tab, qid):
+        message = {"t": "ask", "qid": qid, "kind": "text", "text": "Name: "}
+        line = b"send " + json.dumps(message).encode() + b"\n"
+        await tab.conn.write_message(line, binary=True)
+        await tab.until(lambda: message in tab.texts)
+        return message
+
+    async def answer(self, tab, **message):
+        await tab.conn.write_message(json.dumps(message))
+
+    async def test_only_the_open_question_is_answered(self):
+        tab = await self.tab()
+        await self.ask(tab, 1)
+        await tab.conn.write_message(b"recv\n", binary=True)
+        await self.answer(tab, t="answer", qid=2, value="stale")
+        await self.answer(tab, t="answer", qid="1", value="stale")
+        await self.answer(tab, t="answer", qid=1, value="forged")
+        got = b'got {"t": "answer", "qid": 1, "value": "forged"}'
+        await tab.until(lambda: got in tab.data)
+        await self.ask(tab, 2)
+        await tab.conn.write_message(b"recv\n", binary=True)
+        await self.answer(tab, t="answer", qid=1, value="stale")
+        await self.answer(tab, t="cancel", qid=2)
+        await tab.until(lambda: b'got {"t": "cancel", "qid": 2}' in tab.data)
+        self.assertNotIn(b"stale", tab.data)
+
+    async def test_an_answer_is_one_line_of_bounded_text(self):
+        tab = await self.tab()
+        await self.ask(tab, 1)
+        await tab.conn.write_message(b"recv\n", binary=True)
+        longest = "x" * protocol.ANSWER_LIMIT
+        # Rien qui, écrit dans le terminal, y lancerait une séquence.
+        escapes = ("\x1b]0;x\x07", "\x9b2J", "del\x7f", "tab\t")
+        for value in (longest + "x", 5, None, "two\nlines", "cr\r", *escapes):
+            await self.answer(tab, t="answer", qid=1, value=value)
+        await self.answer(tab, t="answer", qid=1, value=longest)
+        got = f'got {{"t": "answer", "qid": 1, "value": "{longest}"}}\r\n'
+        await tab.until(
+            lambda: b"got" in tab.data and tab.data.endswith(b"\n")
+        )
+        self.assertEqual(tab.data.split(b"\n")[-2] + b"\n", got.encode())
+
+    async def test_a_tab_that_takes_over_gets_the_open_question(self):
+        first = await self.tab()
+        asked = await self.ask(first, 1)
+        sid = first.texts[0]["id"]
+        second = await self.tab(session=sid, after=0)
+        self.assertEqual(second.texts[1], asked)
+
+    async def test_a_tab_that_comes_back_gets_the_open_question(self):
+        first = await self.tab()
+        asked = await self.ask(first, 1)
+        sid = first.texts[0]["id"]
+        session = self.hub.terminals[sid]
+        first.conn.close()
+        deadline = time.monotonic() + 10
+        while session.client is not None:
+            self.assertLess(time.monotonic(), deadline, "still attached")
+            await asyncio.sleep(0.02)
+        again = await self.tab(session=sid, after=0)
+        self.assertEqual(again.texts[1], asked)
+
+    async def test_an_answer_is_never_logged(self):
+        records = []
+        handler = logging.Handler(logging.DEBUG)
+        handler.emit = records.append
+        root = logging.getLogger()
+        root.addHandler(handler)
+        self.addCleanup(root.removeHandler, handler)
+        self.addCleanup(root.setLevel, root.level)
+        root.setLevel(logging.DEBUG)
+        tab = await self.tab()
+        await self.ask(tab, 1)
+        await tab.conn.write_message(b"recv\n", binary=True)
+        await self.answer(tab, t="answer", qid=1, value="hunter2")
+        await tab.until(lambda: b"hunter2" in tab.data)
+        self.assertTrue(records)
+        logged = [record.getMessage() for record in records]
+        self.assertFalse([line for line in logged if "hunter2" in line])
+
+
+class TestProtocol(unittest.TestCase):
+    def test_the_hub_relays_only_what_the_protocol_names(self):
+        relayed = [
+            b'{"t": "ask", "qid": 3, "kind": "text", "text": "Name: "}',
+            b'{"t": "menu", "qid": 4, "items": []}',
+            b'{"t": "notice", "text": "done", "level": "info"}',
+            b'{"t": "run_start", "cmd": "true"}',
+            b'{"t": "run_end", "rc": 0, "secs": 0.1}',
+            b'{"t": "open_view", "view": "telemetry"}',
+            b'{"t": "answered", "qid": 3}',
+        ]
+        refused = [
+            b'{"t": "ask", "kind": "text"}',
+            b'{"t": "answered"}',
+            b'{"t": "ask", "qid": true}',
+            b'{"t": "menu", "qid": 0}',
+            b'{"t": "open_view", "view": "shell"}',
+            b'{"t": "spawn", "argv": ["sh"]}',
+            b"[1]",
+            b"not json",
+        ]
+        for line in relayed:
+            self.assertEqual(protocol.from_worker(line), json.loads(line))
+        for line in refused:
+            self.assertIsNone(protocol.from_worker(line), line)
+
+    def test_replies_travel_only_for_the_open_question(self):
+        answer = {"t": "answer", "qid": 2, "value": "ok"}
+        line = protocol.reply_line(answer, 2)
+        self.assertEqual(protocol.reply(line), answer)
+        self.assertIsNone(protocol.reply_line(answer, 3))
+        self.assertIsNone(protocol.reply_line(answer, None))
+        cancel = protocol.reply_line({"t": "cancel", "qid": 2, "value": 1}, 2)
+        self.assertEqual(json.loads(cancel), {"t": "cancel", "qid": 2})
+        self.assertIsNone(protocol.reply_line({"t": "hello", "qid": 2}, 2))
 
 
 class TestTerminalIdle(TerminalCase):

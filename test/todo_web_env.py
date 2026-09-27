@@ -18,7 +18,8 @@ from unittest.mock import patch
 # Worker jetable, lancé par `python -c` : rétablit SIGINT et SIGHUP (une
 # disposition ignorée s'hérite, d'un lanceur en arrière-plan ou de nohup),
 # prend le PTY comme terminal de contrôle, lit `hello` sur le canal, ouvre
-# /dev/tty, dit sa langue et sa taille, puis obéit ligne par ligne. Jamais
+# /dev/tty, dit sa langue et sa taille, puis obéit ligne par ligne : `send`
+# écrit la suite sur le canal, `recv` en lit une ligne et la répète. Jamais
 # TODO.
 CHILD = r"""
 import fcntl, json, os, signal, sys, termios
@@ -42,6 +43,11 @@ try:
             sys.stdout.flush()
         if line.startswith("send "):
             os.write(fd, line[5:].encode())
+        if line.startswith("recv"):
+            got = b""
+            while not got.endswith(b"\n"):
+                got += os.read(fd, 1)
+            print("got", got.decode().strip(), flush=True)
 except KeyboardInterrupt:
     print("INT", flush=True)
     sys.exit(5)

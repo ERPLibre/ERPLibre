@@ -80,6 +80,44 @@ class TestExecCommandLive(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(output, ["hello"])
 
+    def test_events_announce_each_command_redacted(self):
+        self.assertIsNone(Execute.events)
+        events = []
+        self.exe.events = events.append
+        rc = self.exe.exec_command_live(
+            "MY_PASSWORD=hunter2 true; exit 3",
+            source_erplibre=False,
+            quiet=True,
+        )
+        self.assertEqual(rc, 3)
+        start, end = events
+        self.assertEqual(
+            start, {"t": "run_start", "cmd": "MY_PASSWORD='***' true; exit 3"}
+        )
+        self.assertEqual((end["t"], end["rc"]), ("run_end", 3))
+        self.assertIsInstance(end["secs"], float)
+
+    def test_a_broken_event_hook_never_breaks_the_command(self):
+        def hook(message):
+            raise RuntimeError("forged failure")
+
+        self.exe.events = hook
+        rc = self.exe.exec_command_live(
+            "exit 4", source_erplibre=False, quiet=True
+        )
+        self.assertEqual(rc, 4)
+
+    def test_an_interrupted_command_still_ends(self):
+        events = []
+        self.exe.events = events.append
+        with patch("subprocess.Popen", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.exe.exec_command_live(
+                    "true", source_erplibre=False, quiet=True
+                )
+        self.assertEqual([e["t"] for e in events], ["run_start", "run_end"])
+        self.assertIsNone(events[1]["rc"])
+
     def test_return_status_and_output_multiline(self):
         status, output = self.exe.exec_command_live(
             "echo -e 'line1\nline2\nline3'",

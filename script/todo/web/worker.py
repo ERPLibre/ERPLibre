@@ -22,11 +22,16 @@ TODO_WEB_FD). L'ordre compte :
    remplacerait. Un worker de réserve, lancé avant qu'une session le
    demande, les tient déjà quand elle le prend. urwid en est : il lie
    sys.stdout en argument par défaut à son import ;
-4. todo.py est importé en mode script, sous le nom `todo` : importé comme
+4. la capture des questions (`legacy.install`), liée au PipePort du canal,
+   est posée après urwid et avant tout import de TODO : les `ask=input`
+   liés à l'import désignent alors le crochet ;
+5. todo.py est importé en mode script, sous le nom `todo` : importé comme
    paquet, il pose ENABLE_CRASH et laisse todo_upgrade non lié ;
-5. TODO ne demande pas la langue ; chaque Execute lance ses commandes dans
-   ce terminal, avec le contrôle de tâches ; `restart_script` termine le
-   worker avec RESTART, et le hub en relance un neuf.
+6. TODO ne demande pas la langue ; `fill_help_info` rend un MenuText ;
+   chaque Execute lance ses commandes dans ce terminal, avec le contrôle de
+   tâches, et les annonce au hub (`run_start`, `run_end`) ;
+   `restart_script` termine le worker avec RESTART, et le hub en relance un
+   neuf.
 
 Puis `serve` fait tourner TODO jusqu'à Quitter.
 """
@@ -42,6 +47,7 @@ import traceback
 from pathlib import Path
 
 from script.todo import todo_i18n
+from script.todo.ui import legacy, pipe_port
 from script.todo.web.sessions import RESTART
 
 TODO_DIR = Path(__file__).resolve().parent.parent
@@ -115,10 +121,11 @@ def use_web_lang(todo_module):
     todo_module.set_lang = todo_i18n.use_lang
 
 
-def run_inline(execute_module, venv):
+def run_inline(execute_module, venv, events=None):
     """Chaque Execute créé ensuite lance ses commandes dans ce terminal,
     jamais dans gnome-terminal ni par osascript, avec le contrôle de
-    tâches ; celui de TODO comme celui de TodoUpgrade."""
+    tâches, et les annonce à `events` ; celui de TODO comme celui de
+    TodoUpgrade."""
     original = execute_module.Execute.__init__
 
     def __init__(self):
@@ -128,6 +135,7 @@ def run_inline(execute_module, venv):
 
     execute_module.Execute.__init__ = __init__
     execute_module.Execute.job_control = True
+    execute_module.Execute.events = events
 
 
 def track_crumbs(todo_class):
@@ -160,13 +168,14 @@ def exit_code(code) -> int:
     return 1
 
 
-def serve(todo_obj, interrupts, where) -> int:
+def serve(todo_obj, interrupts, where, notice=None) -> int:
     """Fait tourner `todo_obj.run()` et rend le code de sortie du worker.
 
     Quitter rend 0, SystemExit son code. `interrupts` (Ctrl+C, Ctrl+D,
     Abort de click) ramènent au menu principal, comme une exception, dont
-    la fin de la trace s'affiche ; la troisième de suite au même fil
-    d'Ariane, `where()`, rend CRASHED.
+    la fin de la trace va à `notice(texte, "error")` (affichée par `print`
+    sans lui) ; la troisième de suite au même fil d'Ariane, `where()`, rend
+    CRASHED.
     """
     crashes, last = 0, None
     while True:
@@ -180,7 +189,11 @@ def serve(todo_obj, interrupts, where) -> int:
             crashes = 0
         except Exception:
             lines = traceback.format_exc().splitlines()
-            print("\n".join(lines[-TRACE_TAIL:]))
+            tail = "\n".join(lines[-TRACE_TAIL:])
+            if notice is None:
+                print(tail)
+            else:
+                notice(tail, "error")
             here = where()
             crashes = crashes + 1 if here == last else 1
             last = here
@@ -200,6 +213,8 @@ def main() -> int:
         return BAD_HELLO
     import click
 
+    port = pipe_port.PipePort(channel)
+    legacy.install(port)
     sys.path.insert(0, os.fspath(TODO_DIR))
     import todo
 
@@ -207,12 +222,13 @@ def main() -> int:
         print(todo.CRASH_E)
         return CRASHED
     use_web_lang(todo)
-    run_inline(todo.execute, todo.VENV_ERPLIBRE)
+    run_inline(todo.execute, todo.VENV_ERPLIBRE, port.event)
+    legacy.wrap_menus(todo.TODO)
     where = track_crumbs(todo.TODO)
     todo_obj = todo.TODO()
     todo_obj.restart_script = restart
     interrupts = (KeyboardInterrupt, EOFError, click.exceptions.Abort)
-    return serve(todo_obj, interrupts, where)
+    return serve(todo_obj, interrupts, where, port.notice)
 
 
 if __name__ == "__main__":

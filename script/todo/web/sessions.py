@@ -6,9 +6,10 @@
 Le worker (`python -m script.todo.web.worker`, argv fixe, cwd à la racine
 du checkout) tourne dans une session Unix neuve, fd 0-2 sur l'esclave d'un
 PTY dont la taille est posée avant le lancement. Une socketpair sert de
-canal : le hub y écrit la ligne `hello` (la langue), le worker ses
-événements, une ligne JSON chacun ; l'extrémité du worker lui arrive par
-`pass_fds`, son numéro dans TODO_WEB_FD. Rien d'un client n'atteint argv.
+canal (`protocol`) : le hub y écrit la ligne `hello` (la langue) puis les
+réponses du client, le worker ses questions et ses événements, que le hub
+relaie au client ; l'extrémité du worker lui arrive par `pass_fds`, son
+numéro dans TODO_WEB_FD. Rien d'un client n'atteint argv.
 
 La sortie du maître s'accumule dans un anneau de RING_SIZE octets, repérés
 par un décalage absolu. Sans client, la lecture continue : une commande
@@ -43,7 +44,7 @@ import sys
 import termios
 import time
 
-from script.todo.web import ttywatch
+from script.todo.web import protocol, ttywatch
 
 RING_SIZE = 4 * 1024 * 1024
 CHUNK = 64 * 1024
@@ -59,8 +60,6 @@ RESTART = 75
 RESTART_LIMIT = 3
 RESTART_WINDOW = 60.0
 WORKER = ("-m", "script.todo.web.worker")
-# Vues que le worker peut faire ouvrir à la page.
-VIEWS = ("telemetry",)
 # Sonde du terminal : toutes les PROBE_SECONDS tant qu'un client est
 # attaché, et après la sortie, PROBE_GAP secondes après la précédente au
 # plus tôt (dix fois son coût si c'est plus, PROBE_SECONDS au plus), pour
@@ -231,6 +230,7 @@ class Session:
         self.probed_at = 0.0
         self.read_at = float("-inf")  # dernière sonde qui a vu un lecteur
         self.gap = PROBE_GAP  # délai minimal entre deux sondes
+        self.asking = None  # question du worker qui attend sa réponse
 
     async def start(self):
         """Lance le worker ; OSError si le PTY ou le processus manquent. Un
@@ -273,6 +273,7 @@ class Session:
             os.close(slave)
             worker_end.close()
         self.master, self.tty, self.eof = master, tty, False
+        self.asking = None
         try:
             self.watch = ttywatch.TtyWatch(master, self.proc.pid)
         except OSError:
@@ -280,7 +281,7 @@ class Session:
         self.state = None
         self._reading(True)
         reader, self.channel = await asyncio.open_connection(
-            sock=hub_end, limit=CHUNK
+            sock=hub_end, limit=protocol.LINE_LIMIT
         )
         if self.lang is not None:
             self._greet()
@@ -616,26 +617,40 @@ class Session:
         return now - self.quiet_since
 
     async def _listen(self, reader):
-        """Relaie au client les `open_view` d'une vue de VIEWS ; toute autre
-        ligne du worker est ignorée, une ligne trop longue clôt l'écoute."""
+        """Relaie au client chaque message que `protocol.from_worker`
+        admet, et ignore toute autre ligne, trop longue comprise : l'écoute
+        ne finit qu'avec le canal. `asking` garde la dernière question
+        jusqu'à la réponse de la page ou au message suivant du worker,
+        `answered` à la fin de chaque question."""
         while True:
             try:
                 line = await reader.readline()
-            except (ValueError, ConnectionError):
+            except ValueError:
+                continue  # plus de LINE_LIMIT octets, que readline a jetés
+            except ConnectionError:
                 return
             if not line:
                 return
-            try:
-                message = json.loads(line)
-            except ValueError:
+            message = protocol.from_worker(line)
+            if message is None:
                 continue
-            if (
-                isinstance(message, dict)
-                and message.get("t") == "open_view"
-                and message.get("view") in VIEWS
-                and self.client is not None
-            ):
-                self.client.event({"t": "open_view", "view": message["view"]})
+            asked = message["t"] in protocol.QUESTIONS
+            self.asking = message if asked else None
+            if self.client is not None:
+                self.client.event(message)
+
+    def answer(self, message) -> bool:
+        """Porte au worker `answer` ou `cancel` du client pour la question
+        ouverte ; faux, et rien ne part, pour un autre `qid`, une valeur
+        refusée par `protocol.reply_line`, ou sans worker. La valeur n'est
+        gardée ni journalisée nulle part."""
+        asking = self.asking["qid"] if self.asking is not None else None
+        line = protocol.reply_line(message, asking)
+        if line is None or self.channel is None:
+            return False
+        self.channel.write(line)
+        self.asking = None
+        return True
 
     def _hangup(self):
         """Ferme le maître, puis le canal : le noyau raccroche l'esclave,

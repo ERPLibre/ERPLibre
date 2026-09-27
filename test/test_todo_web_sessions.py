@@ -9,6 +9,7 @@ reçoit.
 """
 
 import asyncio
+import json
 import os
 import re
 import signal
@@ -107,6 +108,19 @@ import os, time
 if os.fork() == 0:
     os._exit(0)
 print("ready", flush=True)
+time.sleep(30)
+"""
+
+# Écrit sur le canal une ligne de 2 Mio, puis une question : son écriture,
+# bloquante, ne finit que si le hub lit toujours.
+LONG_LINE_CHILD = r"""
+import json, os, time
+ask = {"t": "ask", "qid": 1, "kind": "text", "text": "Name: "}
+data = b"x" * (2 << 20) + b"\n" + json.dumps(ask).encode() + b"\n"
+fd = int(os.environ["TODO_WEB_FD"])
+while data:
+    data = data[os.write(fd, data):]
+print("sent", flush=True)
 time.sleep(30)
 """
 
@@ -492,6 +506,32 @@ class TestLifecycle(SessionCase):
         self.assertEqual(
             client.events, [{"t": "open_view", "view": "telemetry"}]
         )
+
+    async def test_a_question_stays_open_until_it_is_answered(self):
+        session = await self.open()
+        client = Client()
+        session.attach(client)
+        ask = {"t": "ask", "qid": 1, "kind": "text", "text": "Name: "}
+        answered = {"t": "answered", "qid": 1}
+        for message in (ask, answered):
+            session.write(b"send " + json.dumps(message).encode() + b"\n")
+            await self.until(lambda: message in client.events)
+            if message is ask:
+                self.assertEqual(session.asking, ask)
+        # Le terminal a répondu : la question est close.
+        self.assertIsNone(session.asking)
+        late = {"t": "answer", "qid": 1, "value": "late"}
+        self.assertFalse(session.answer(late))
+
+    async def test_a_line_too_long_is_skipped_and_the_next_relayed(self):
+        session = await self.open(LONG_LINE_CHILD)
+        client = Client()
+        session.attach(client)
+        await self.until(lambda: client.events)
+        self.assertEqual(
+            [m["t"] for m in client.events], ["ask"], client.events
+        )
+        await self.seen(session, b"sent")
 
     async def test_idle_counts_without_client_nor_command(self):
         session = await self.open()

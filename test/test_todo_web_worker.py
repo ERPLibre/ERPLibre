@@ -8,7 +8,7 @@ doubles, sans TODO. `read_hello` et `main` lisent une socketpair ; `main`
 s'arrête avant TODO, que remplace un double. `open_channel`, qui déplace un
 descripteur, tourne dans un `python -c` jetable. PipePort pose ses
 questions sur un vrai PTY et une socketpair, le test tenant le rôle du hub
-et du clavier. Un seul test lance le vrai worker, donc le vrai TODO, par
+et du clavier. Deux tests lancent le vrai worker, donc le vrai TODO, par
 une session du hub : HOME et XDG_RUNTIME_DIR temporaires, la langue passée
 par `hello`, SIGINT ignoré chez le parent comme sous un lanceur en
 arrière-plan.
@@ -17,6 +17,8 @@ arrière-plan.
 import ast
 import asyncio
 import fcntl
+import importlib.abc
+import importlib.util
 import io
 import json
 import os
@@ -113,6 +115,17 @@ class TestServe(unittest.TestCase):
         self.assertIn("ValueError: boom-marker", out)
         self.assertLessEqual(len(out.splitlines()), worker.TRACE_TAIL)
 
+    def test_a_crash_is_a_notice_when_the_port_takes_them(self):
+        todo, notices = FakeTodo(ValueError("boom-marker"), None), []
+        interrupts = (KeyboardInterrupt, EOFError, Abort)
+        code = worker.serve(
+            todo, interrupts, lambda: None, lambda *n: notices.append(n)
+        )
+        self.assertEqual((code, todo.runs), (0, 2))
+        [(tail, level)] = notices
+        self.assertEqual(level, "error")
+        self.assertTrue(tail.endswith("ValueError: boom-marker"), tail)
+
     def test_three_crashes_at_the_same_crumbs_end_the_session(self):
         todo = FakeTodo(*[ValueError("boom")] * 3, None)
         code, _ = serve(todo, lambda: "📍 TODO › Execute")
@@ -148,13 +161,15 @@ class TestHooks(unittest.TestCase):
                 self.cmd_source_default = "gnome-terminal -- bash -c '%s'"
 
         module = types.SimpleNamespace(Execute=Execute)
-        worker.run_inline(module, ".venv.forged")
+        events = [].append
+        worker.run_inline(module, ".venv.forged", events)
         exe = module.Execute()
         self.assertEqual(
             exe.cmd_source_erplibre, "source ./.venv.forged/bin/activate;%s"
         )
         self.assertEqual(exe.cmd_source_default, "")
         self.assertIs(exe.job_control, True)
+        self.assertIs(exe.events, events)
 
     def test_the_configuration_menu_cannot_write_env_var_sh(self):
         module = types.SimpleNamespace(
@@ -314,27 +329,54 @@ class TestOpenChannel(unittest.TestCase):
         )
 
 
+class TodoFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Sert `module` à `import todo`, et note l'import dans `order`."""
+
+    def __init__(self, module, order):
+        self.module, self.order = module, order
+
+    def find_spec(self, name, path=None, target=None):
+        if name != "todo":
+            return None
+        self.order.append("import todo")
+        return importlib.util.spec_from_loader(name, self)
+
+    def create_module(self, spec):
+        return self.module
+
+    def exec_module(self, module):
+        pass
+
+
 class TestMain(unittest.TestCase):
-    """`main` jusqu'à TODO exclu : signaux, terminal de contrôle et canal
-    sont des doubles ; `todo`, click et urwid aussi, dans sys.modules."""
+    """`main` jusqu'à TODO exclu : signaux, terminal de contrôle, canal et
+    capture sont des doubles ; `todo`, servi par TodoFinder, aussi, comme
+    click et urwid dans sys.modules."""
 
     def main(self, hello, todo=None):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         fd = _channel(self, hello)
         modules = {name: types.ModuleType(name) for name in ("click", "urwid")}
-        if todo is not None:
-            modules["todo"] = todo
+        self.order = []
+        finder = TodoFinder(todo, self.order)
         out, err = io.StringIO(), io.StringIO()
         with (
             patch.object(worker, "restore_signals"),
             patch.object(worker, "fcntl"),
             patch.object(worker, "open_channel", return_value=fd),
+            patch.object(
+                worker.legacy,
+                "install",
+                lambda port: self.order.append(("install", port.channel)),
+            ),
             patch.object(sys, "path", list(sys.path)),
+            patch.object(sys, "meta_path", [finder, *sys.meta_path]),
             patch.dict(sys.modules, modules),
             redirect_stdout(out),
             redirect_stderr(err),
         ):
+            sys.modules.pop("todo", None)
             code = worker.main()
         return code, out.getvalue(), err.getvalue()
 
@@ -358,6 +400,14 @@ class TestMain(unittest.TestCase):
         self.assertEqual(code, worker.CRASHED)
         self.assertEqual(out, "boom-marker\n")
         self.assertEqual(todo_i18n.get_lang(), "en")
+
+    def test_the_capture_is_bound_to_the_channel_before_todo_loads(self):
+        todo = types.ModuleType("todo")
+        todo.ENABLE_CRASH, todo.CRASH_E = True, "boom-marker"
+        self.main(b'{"t": "hello", "lang": "en"}\n', todo)
+        [(step, channel), imported] = self.order
+        self.assertEqual((step, imported), ("install", "import todo"))
+        self.assertIsInstance(channel, int)
 
 
 class TestProtocol(unittest.TestCase):
@@ -561,6 +611,22 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(self.out.getvalue(), "forged notice\n")
 
 
+class Client:
+    """Double du client d'une session : garde les messages reçus."""
+
+    def __init__(self):
+        self.events = []
+
+    async def send(self, data):
+        pass
+
+    def event(self, message):
+        self.events.append(message)
+
+    def close(self, code, reason):
+        pass
+
+
 class TestRealWorker(unittest.IsolatedAsyncioTestCase):
     async def shown(self, session, prompt, count):
         """Attend la `count`-ième apparition de `prompt` dans la sortie."""
@@ -603,6 +669,52 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         text = session.ring.data.decode()
         self.assertIn("Opening TODO ...", text)
         self.assertNotIn("Ouverture de TODO", text)
+
+    async def question(self, client, count):
+        """La `count`-ième question que le client a reçue."""
+        deadline = time.monotonic() + 20
+        while True:
+            asked = [e for e in client.events if e["t"] in ("menu", "ask")]
+            if len(asked) >= count:
+                return asked[count - 1]
+            self.assertLess(time.monotonic(), deadline, client.events)
+            await asyncio.sleep(0.02)
+
+    async def test_the_real_todo_asks_its_menus_through_the_channel(self):
+        private_env(self.addCleanup)
+        session = sessions.Session("w2", str(REPO), "en", 100, 40)
+        await session.start()
+        self.addAsyncCleanup(session.close)
+        client = Client()
+        session.attach(client)
+        main = await self.question(client, 1)
+        self.assertEqual((main["t"], main["crumbs"]), ("menu", ["TODO"]))
+        # Les libellés portent leur icône ; `speak` la laisse.
+        self.assertEqual(
+            [(i["key"], i["speak"]) for i in main["items"]],
+            [
+                ("1", "Execute"),
+                ("2", "Install"),
+                ("3", "Assistant"),
+                ("4", "Navigation telemetry"),
+                ("5", "Configuration"),
+                ("0", "Quit"),
+            ],
+        )
+        answer = {"t": "answer", "qid": main["qid"], "value": "1"}
+        self.assertTrue(session.answer(answer))
+        execute = await self.question(client, 2)
+        self.assertEqual(execute["crumbs"], ["TODO", "Execute"])
+        self.assertFalse(session.answer(answer))
+        # Annuler vaut Ctrl+D : retour au menu principal.
+        session.answer({"t": "cancel", "qid": execute["qid"]})
+        again = await self.question(client, 3)
+        self.assertEqual(again["crumbs"], ["TODO"])
+        session.answer({"t": "answer", "qid": again["qid"], "value": "0"})
+        await asyncio.wait_for(session.ended.wait(), 20)
+        self.assertEqual(session.code, 0)
+        chosen = f"\r\n: 1 → {main['items'][0]['label']}\r\n"
+        self.assertIn(chosen, session.ring.data.decode())
 
 
 if __name__ == "__main__":

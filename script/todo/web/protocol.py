@@ -5,14 +5,16 @@
 message entre le worker (fd 3) et le hub.
 
 Du hub au worker : `hello`, puis `answer {qid, value}` et `cancel {qid}`.
-Du worker au hub : `menu` et `ask`, les questions, chacune avec son
-`qid`, et `answered {qid}` à la fin de chacune, quelle qu'en soit
-l'issue ; `notice`, `run_start`, `run_end`, `open_view`.
+Du worker au hub (FROM_WORKER) : `menu` et `ask`, les questions, chacune
+avec son `qid`, et `answered {qid}` à la fin de chacune, quelle qu'en soit
+l'issue ; `notice`, `run_start`, `run_end`, `open_view`. Le hub relaie ces
+messages à la page tels quels.
 
 Une ligne du worker tient toujours dans LINE_LIMIT octets, ce que le hub
 lit d'un coup : `encode` coupe au besoin le texte d'une question (il en
-garde la fin, où est l'invite), ses libellés et ses entrées. Module
-pur : ni tornado ni TODO.
+garde la fin, où est l'invite), ses libellés et ses entrées. Une réponse
+de la page est un texte d'une ligne d'au plus ANSWER_LIMIT caractères,
+sans caractère de contrôle. Module pur : ni tornado ni TODO.
 """
 
 import json
@@ -21,6 +23,15 @@ LINE_LIMIT = 1024 * 1024
 TEXT_LIMIT = 16 * 1024
 LABEL_LIMIT = 200
 ITEM_LIMIT = 200
+# Une ligne du terminal en mode canonique tient 4095 octets : une réponse
+# de la page n'en dit pas plus que le clavier.
+ANSWER_LIMIT = 4096
+QUESTIONS = ("menu", "ask")
+# Messages du worker qui portent le `qid` d'une question.
+WITH_QID = ("menu", "ask", "answered")
+FROM_WORKER = (*WITH_QID, "notice", "run_start", "run_end", "open_view")
+# Vues que le worker peut faire ouvrir à la page.
+VIEWS = ("telemetry",)
 
 
 def _dump(message) -> bytes:
@@ -70,6 +81,45 @@ def _load(line):
     except ValueError:
         return None
     return message if isinstance(message, dict) else None
+
+
+def from_worker(line):
+    """Le message d'une ligne du worker que le hub relaie ; None pour une
+    ligne illisible, un type hors FROM_WORKER, un message de WITH_QID sans
+    `qid`, ou une vue hors VIEWS."""
+    message = _load(line)
+    if message is None or message.get("t") not in FROM_WORKER:
+        return None
+    if message["t"] in WITH_QID and not _qid(message.get("qid")):
+        return None
+    if message["t"] == "open_view" and message.get("view") not in VIEWS:
+        return None
+    return message
+
+
+def _printable(value) -> bool:
+    """Vrai pour un texte sans caractère de contrôle (C0, DEL, C1) : rien
+    qui, écrit dans le terminal par la transcription, déplace le curseur
+    ou lance une séquence d'échappement."""
+    return not any(ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 for c in value)
+
+
+def reply_line(message, asking):
+    """La ligne qui porte au worker la réponse de la page, `answer` ou
+    `cancel`, à la question ouverte `asking` (son qid, ou None) ; None pour
+    un autre qid, ou une valeur qui n'est pas un texte d'une ligne d'au plus
+    ANSWER_LIMIT caractères, sans caractère de contrôle."""
+    qid = message.get("qid")
+    if asking is None or not _qid(qid) or qid != asking:
+        return None
+    if message.get("t") == "cancel":
+        return _dump({"t": "cancel", "qid": qid})
+    value = message.get("value")
+    if message.get("t") != "answer" or not isinstance(value, str):
+        return None
+    if len(value) > ANSWER_LIMIT or not _printable(value):
+        return None
+    return _dump({"t": "answer", "qid": qid, "value": value})
 
 
 def reply(line):

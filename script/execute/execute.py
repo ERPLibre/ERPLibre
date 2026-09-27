@@ -149,6 +149,10 @@ class Execute:
     # shell pour la reprendre, Ctrl+Z n'y suspend jamais rien : le terminal
     # de contrôle refuse de produire SIGTSTP.
     job_control = False
+    # Crochet posé par le worker d'une session web et par le mode
+    # enregistrement, jamais par le CLI : reçoit `run_start` (la commande
+    # caviardée) avant le lancement et `run_end` (code, durée) à la fin.
+    events = None
 
     def __init__(self) -> None:
         self.cmd_source_erplibre: str = ""
@@ -244,6 +248,7 @@ class Execute:
             print(redact_secrets(command))
         output_lines = []
         tty = self._job_control_tty()
+        self._event({"t": "run_start", "cmd": redact_secrets(command)})
 
         try:
             process = subprocess.Popen(
@@ -381,6 +386,10 @@ class Execute:
                     pass  # terminal raccroché : plus rien à reprendre
                 finally:
                     os.close(tty)
+            # Une commande annoncée a toujours sa fin, même interrompue par
+            # Ctrl+C sans contrôle de tâches : `rc` vaut alors None.
+            secs = round(time.time() - process_start_time, 3)
+            self._event({"t": "run_end", "rc": exit_code, "secs": secs})
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
         if humanize:
@@ -401,6 +410,16 @@ class Execute:
         if return_status_and_output:
             return exit_code, output_lines
         return exit_code
+
+    def _event(self, message):
+        """Donne `message` au crochet `events`, s'il est posé ; une erreur
+        du crochet ne touche jamais la commande."""
+        if self.events is None:
+            return
+        try:
+            self.events(message)
+        except Exception:
+            pass
 
     def _job_control_tty(self):
         """Descripteur du terminal de contrôle, ouvert pour une commande
