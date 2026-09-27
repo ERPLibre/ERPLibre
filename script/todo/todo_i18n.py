@@ -2505,6 +2505,10 @@ TRANSLATIONS = {
         " journal :",
         "en": "❌ The web interface did not start. Last lines of its log:",
     },
+    "The web interface did not start.": {
+        "fr": "❌ L'interface web n'a pas démarré.",
+        "en": "❌ The web interface did not start.",
+    },
     "The web interface needs {pkg}. Install it with:": {
         "fr": "❌ L'interface web a besoin de {pkg}. Installez-le avec :",
         "en": "❌ The web interface needs {pkg}. Install it with:",

@@ -212,15 +212,32 @@ class TestTelemetryWeb(MenuCase):
 
     def test_without_a_log_the_launcher_says_why(self):
         lines = self.failure("cannot run /nowhere/python: forged")
-        self.assertEqual(lines[-1], "   cannot run /nowhere/python: forged")
+        self.assertEqual(
+            lines,
+            [
+                "❌ The web interface did not start.",
+                "   cannot run /nowhere/python: forged",
+            ],
+        )
 
     def test_an_unexpected_error_stays_in_the_menu(self):
         lines = self.web(side_effect=RuntimeError("forged"))
         self.assertEqual(
-            lines[0],
-            "❌ The web interface did not start. Last lines of its log:",
+            lines,
+            ["❌ The web interface did not start.", "   RuntimeError: forged"],
         )
-        self.assertEqual(lines[-1], "   RuntimeError: forged")
+
+    def test_a_missing_package_always_names_tornado(self):
+        # `exc.pkg` ne vaut aujourd'hui que "tornado" (seul appel du
+        # lanceur avec kind="missing") : la commande affichée l'ignore
+        # sans se tromper pour autant.
+        lines = self.failure(
+            "the web hub did not start", kind="missing", pkg="other"
+        )
+        self.assertEqual(
+            lines[-1],
+            f"   {VENV_ERPLIBRE}/bin/pip install 'tornado>=6.5.10,<7'",
+        )
 
     def test_ctrl_c_while_starting_returns_to_the_choice(self):
         self.assertEqual(self.web(side_effect=KeyboardInterrupt), [""])
@@ -280,6 +297,24 @@ class TestWebStop(MenuCase):
         self.assertEqual(lines, [""])
         lines, _, _ = self.stop(RUNNING, stopped=OSError("forged"))
         self.assertEqual(lines, ["Command failed: forged"])
+
+    def test_ctrl_c_during_the_status_probe_stays_in_the_menu(self):
+        with (
+            patch.object(launcher, "status", side_effect=KeyboardInterrupt),
+            patch.object(launcher, "stop") as stop,
+        ):
+            lines = self.printed(self.todo._todo_web_stop)
+        self.assertEqual(lines, [""])
+        stop.assert_not_called()
+
+    def test_an_unreadable_hub_is_not_running(self):
+        with (
+            patch.object(launcher, "status", side_effect=OSError("forged")),
+            patch.object(launcher, "stop") as stop,
+        ):
+            lines = self.printed(self.todo._todo_web_stop)
+        self.assertEqual(lines, ["ℹ️ The web interface is not running."])
+        stop.assert_not_called()
 
 
 @unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")

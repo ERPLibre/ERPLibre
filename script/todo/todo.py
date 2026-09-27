@@ -745,8 +745,8 @@ class TODO(
     def prompt_telemetry(self):
         """Télémétrie de navigation : la TUI, la page web, ou l'arrêt de
         l'interface web de ce checkout. Sous le fil d'Ariane, une ligne dit
-        si le hub web tourne ; elle l'interroge à chaque affichage, 0,3 s au
-        plus. Rend False sur [0]."""
+        si le hub web tourne ; elle l'interroge à chaque affichage, environ
+        0,3 s par opération. Rend False sur [0]."""
         while True:
             choices = [
                 {"prompt_description": t("Navigation telemetry (TUI)")},
@@ -890,7 +890,9 @@ class TODO(
 
     def _web_launch_failed(self, exc):
         """Message d'un lancement du hub web qui échoue, selon `exc.kind`.
-        Sans journal, la fin affichée est la phrase du lanceur."""
+        Sans journal, la ligne affichée ne prétend pas en citer un : le
+        message du lanceur en tient lieu, sous une phrase qui l'annonce
+        pour ce qu'il est."""
         if exc.kind == "root":
             print(t("The web interface refuses to run as root."))
             return
@@ -900,15 +902,23 @@ class TODO(
                     pkg=exc.pkg
                 )
             )
+            # `kind == "missing"` ne vient aujourd'hui que d'un tornado
+            # absent : la commande affichée est toujours celle de son
+            # paquet, quel que soit `exc.pkg`.
             pip = f"{VENV_ERPLIBRE}/bin/pip"
             print(f"   {pip} install {shlex.quote(launcher.TORNADO)}")
             return
-        print(t("The web interface did not start. Last lines of its log:"))
-        try:
-            print(f"   {paths.log_path(new_path)}")
-        except OSError:
-            pass
-        for line in (exc.log_tail or exc.message).splitlines():
+        if exc.log_tail:
+            print(t("The web interface did not start. Last lines of its log:"))
+            try:
+                print(f"   {paths.log_path(new_path)}")
+            except OSError:
+                pass
+            tail = exc.log_tail
+        else:
+            print(t("The web interface did not start."))
+            tail = exc.message
+        for line in tail.splitlines():
             print(f"   {line}")
 
     def _todo_web_stop(self):
@@ -917,7 +927,13 @@ class TODO(
         Ctrl+D non plus. Un hub qui répond encore après l'attente du lanceur
         n'est pas annoncé arrêté : la ligne d'état du menu, affichée
         ensuite, dit qu'il tourne. Rien ne remonte au menu."""
-        info = self._web_status()
+        try:
+            info = self._web_status()
+        except KeyboardInterrupt:
+            # La sonde n'engage rien sur le hub : rien à annoncer sur son
+            # état réel, la ligne d'état du menu le redira au tour suivant.
+            print()
+            return
         if info is None:
             print(t("The web interface is not running."))
             return

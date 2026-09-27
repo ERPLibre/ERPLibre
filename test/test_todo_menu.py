@@ -400,7 +400,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertGreaterEqual(len(noeud.get("children") or []), 15)
 
     def test_the_telemetry_entry_is_a_menu_of_three_leaves(self):
-        # [4] du menu principal ouvre un sous-menu, et non plus la TUI ; les
+        # [4] du menu principal est un sous-menu de trois feuilles ; les
         # autres entrées gardent leur numéro.
         noeud = self._noeud("Navigation telemetry")
         self.assertIsNotNone(noeud, "menu Navigation telemetry absent")
