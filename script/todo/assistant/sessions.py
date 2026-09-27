@@ -249,18 +249,22 @@ def charger(cible) -> list:
 
     Rend des `chat.Turn`, donc l'historique repart tel qu'il était : le
     modèle reçoit au tour suivant ce qu'il aurait reçu sans l'interruption.
-    Les tours en PANNE n'y sont pas — ils n'étaient pas dans l'historique
-    non plus — et un rôle inconnu est sauté plutôt que de fabriquer un tour
-    que la conversation ne saurait pas rejouer.
+
+    Seuls les ÉCHANGES COMPLETS reviennent — une question et la réponse qui
+    l'a suivie. Le fichier, lui, garde tout : une question dont l'envoi a
+    échoué y reste, parce qu'elle a été posée. Mais la rejouer seule ferait
+    partir deux questions d'affilée vers le modèle, alors que la conversation
+    en mémoire n'a jamais rien gardé d'un tour en panne. Une réponse VIDE
+    compte comme une absence, pour la même raison.
     """
     from script.todo.assistant.chat import Turn
 
-    tours = []
+    lus = []
     for entree in _lignes(cible):
         role = entree.get("role")
         if role not in ("user", "assistant"):
             continue
-        tours.append(
+        lus.append(
             Turn(
                 role,
                 str(entree.get("text", "") or ""),
@@ -268,4 +272,13 @@ def charger(cible) -> list:
                 reasoning=str(entree.get("reasoning", "") or ""),
             )
         )
+    tours = []
+    attente = None
+    for tour in lus:
+        if tour.role == "user":
+            attente = tour
+            continue
+        if attente is not None and tour.text:
+            tours.extend((attente, tour))
+        attente = None
     return tours

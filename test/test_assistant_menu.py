@@ -1871,6 +1871,146 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
         self.assertEqual({}, ecrits)
 
 
+class UneConversationUneSeance(unittest.TestCase):
+    """Le fichier d'une conversation, et ce qui le distingue d'un autre.
+
+    La régression visée porte un nom : L'IDENTIFIANT PARTAGÉ. Il est mis en
+    cache pour toute l'exécution du CLI, parce que le journal des mesures s'en
+    sert pour relier les tours d'une même séance. Le fichier d'une
+    conversation, lui, veut dire autre chose : deux échanges sans rapport,
+    ouverts l'un après l'autre, tombaient dans le MÊME fichier. La liste n'en
+    montrait qu'un, sous la question du premier, et le reprendre rejouait les
+    deux comme s'ils n'en faisaient qu'un.
+    """
+
+    SERVI = "famille-inventee/modele-charge"
+
+    def setUp(self):
+        """Un dossier de séances PAR TEST.
+
+        Celui du module est partagé par tout le fichier, et les autres
+        classes y font tourner la même boucle : compter les fichiers y
+        compterait leurs séances autant que les siennes.
+        """
+        import tempfile
+
+        from script.todo.assistant import sessions as llm_seances
+
+        self._seul = tempfile.TemporaryDirectory()
+        self.addCleanup(self._seul.cleanup)
+        avant = llm_seances.BASE
+        llm_seances.BASE = (self._seul.name, "sessions")
+        self.addCleanup(setattr, llm_seances, "BASE", avant)
+
+    def _serveur(self):
+        from script.todo.assistant import servers as llm_servers
+
+        return llm_servers.Server(
+            handle="server-1",
+            label="essai",
+            host="127.0.0.1",
+            port=9,
+            software="logiciel-invente",
+            model=self.SERVI,
+            hosting="loopback",
+            secret_ref="",
+        )
+
+    def _todo(self):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        todo._llm_session = {
+            "serveur": self._serveur(),
+            "sonde": [],
+            "confirmes": set(),
+            "contextes": set(),
+            "gpt": None,
+            "gpts": None,
+            "tunnels": [],
+        }
+        todo._llm_get_config = lambda keys: []
+        todo._llm_set_config = lambda keys, val: None
+        return todo
+
+    def _parler(self, todo, question, reprise=None):
+        """Un échange complet, sans socket ni serveur."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant import fingerprint as llm_fp
+
+        class FauxBackend:
+            keeps_history = False
+
+            def __init__(self, cible, modele, **_kw):
+                self.model = modele
+
+            def send(self, messages, *, on_chunk=None):
+                return f"réponse à {messages[-1]['content']}", {
+                    "usage": {"completion_tokens": 2}
+                }
+
+        entrees = [question, "/q"]
+
+        def lire(_invite=""):
+            return entrees.pop(0) if entrees else "/q"
+
+        with patch.object(
+            llm_backends, "HttpBackend", FauxBackend
+        ), patch.object(llm_fp, "collect_served", lambda *a, **kw: ()), patch(
+            "builtins.input", lire
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ), redirect_stdout(
+            io.StringIO()
+        ):
+            todo._llm_conversation(reprise=reprise)
+
+    def _seances(self):
+        from script.todo.assistant import sessions as llm_seances
+
+        return llm_seances.lister(base=llm_seances.dossier())
+
+    def test_deux_conversations_neuves_ne_partagent_pas_leur_fichier(self):
+        """Une seule exécution du CLI, deux conversations sans rapport."""
+        todo = self._todo()
+        self._parler(todo, "première question inventée")
+        self._parler(todo, "seconde question inventée")
+        vues = self._seances()
+        self.assertEqual(2, len(vues), "les deux sont tombées au même endroit")
+        self.assertEqual(
+            {"première question inventée", "seconde question inventée"},
+            {vue.titre for vue in vues},
+        )
+        self.assertEqual(2, len({vue.seance for vue in vues}))
+        self.assertEqual([1, 1], sorted(vue.tours for vue in vues))
+
+    def test_une_reprise_ecrit_dans_le_fichier_qu_elle_rouvre(self):
+        """La suite appartient à la même conversation : l'ouvrir ailleurs la
+        couperait en deux au milieu."""
+        todo = self._todo()
+        self._parler(todo, "la question du début")
+        (avant,) = self._seances()
+        self._parler(todo, "la question d'après", reprise=avant.chemin)
+        vues = self._seances()
+        self.assertEqual(1, len(vues))
+        self.assertEqual(avant.seance, vues[0].seance)
+        self.assertEqual(2, vues[0].tours)
+
+    def test_une_reprise_continue_les_rangs_du_journal(self):
+        """Deux tours de rang 1 dans la même séance ne se distinguent pas à
+        la relecture du journal."""
+        todo = self._todo()
+        self._parler(todo, "la question du début")
+        (avant,) = self._seances()
+        self._parler(todo, "la question d'après", reprise=avant.chemin)
+        self.assertEqual(
+            2, todo._llm_state()["mesures"][-1].rang, "le rang est reparti à 1"
+        )
+
+
 class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
     """Le menu des agents calcule cinq comptes, et chacun interroge la machine.
 

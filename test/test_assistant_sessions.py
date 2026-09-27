@@ -179,6 +179,47 @@ class UneSeanceRelue(unittest.TestCase):
             [(tour.role, tour.text) for tour in tours],
         )
 
+    def test_une_question_sans_reponse_ne_repart_pas_dans_l_historique(self):
+        """Le fichier la garde — elle a été posée — mais la rejouer seule
+        enverrait deux questions d'affilée au modèle, alors que la
+        conversation en mémoire n'a jamais rien gardé d'un tour en panne."""
+        sessions.noter(self.cible, Turn("user", "question qui échoue"))
+        sessions.noter(self.cible, Turn("error", "404 pas d'instance"))
+        roles = [entree.get("role") for entree in sessions._lignes(self.cible)]
+        self.assertIn("error", roles, "la panne doit rester sur le disque")
+        textes = [tour.text for tour in sessions.charger(self.cible)]
+        self.assertNotIn("question qui échoue", textes)
+
+    def test_une_reponse_coupee_avec_du_texte_repart(self):
+        """Ce qui est arrivé a été payé : le jeter ferait redemander ce qu'on
+        a déjà."""
+        sessions.noter(self.cible, Turn("user", "question coupée"))
+        sessions.noter(
+            self.cible, Turn("assistant", "un début", interrupted=True)
+        )
+        tours = sessions.charger(self.cible)
+        self.assertEqual("un début", tours[-1].text)
+        self.assertTrue(tours[-1].interrupted)
+        self.assertEqual("question coupée", tours[-2].text)
+
+    def test_une_reponse_vide_ne_fait_pas_un_echange(self):
+        """Une coupure avant le premier mot ne laisse rien à garder, et la
+        conversation en mémoire n'en garde rien non plus."""
+        sessions.noter(self.cible, Turn("user", "question sans un mot"))
+        sessions.noter(self.cible, Turn("assistant", "", interrupted=True))
+        textes = [tour.text for tour in sessions.charger(self.cible)]
+        self.assertNotIn("question sans un mot", textes)
+
+    def test_les_tours_repartent_toujours_par_paires(self):
+        """Un historique qui commence par une réponse, ou qui finit par une
+        question, n'est pas un historique que le modèle sait lire."""
+        sessions.noter(self.cible, Turn("assistant", "réponse orpheline"))
+        sessions.noter(self.cible, Turn("user", "question orpheline"))
+        tours = sessions.charger(self.cible)
+        self.assertEqual(0, len(tours) % 2)
+        roles = [tour.role for tour in tours]
+        self.assertEqual(["user", "assistant"] * (len(tours) // 2), roles)
+
     def test_une_seance_sans_reponse_n_est_pas_proposee(self):
         """Une séance ouverte puis quittée sans un mot ferait rouvrir un
         fichier vide."""

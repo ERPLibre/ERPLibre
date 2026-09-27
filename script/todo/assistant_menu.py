@@ -127,6 +127,7 @@ class AssistantMenuMixin:
                 "tunnels": None,
                 "seance": "",
                 "seance_fichier": None,
+                "rang_depart": 0,
                 "mesures": [],
             }
         return self._llm_session
@@ -3071,9 +3072,26 @@ class AssistantMenuMixin:
             )
         serveur = self._llm_resolve_model(serveur)
         etat = self._llm_state()
-        etat["seance_fichier"] = reprise or llm_seances.ouvrir(
-            self._llm_seance(), serveur, outil=outil.stem if outil else ""
-        )
+        etat["mesures"] = []
+        if reprise is None:
+            # Un identifiant NEUF par conversation. Le garder d'une
+            # conversation à l'autre les fait tomber dans le même fichier :
+            # deux échanges sans rapport s'y suivent, la liste n'en montre
+            # qu'un, et le reprendre rejoue les deux comme s'ils n'en
+            # faisaient qu'un.
+            etat["seance"] = ""
+            etat["rang_depart"] = 0
+            etat["seance_fichier"] = llm_seances.ouvrir(
+                self._llm_seance(), serveur, outil=outil.stem if outil else ""
+            )
+        else:
+            # La reprise garde l'identifiant du fichier : les tours qui
+            # suivent appartiennent à la même séance, dans le journal des
+            # mesures comme dans la conversation.
+            vue = llm_seances.resume(reprise)
+            etat["seance"] = (vue.seance if vue else "") or self._llm_seance()
+            etat["rang_depart"] = vue.tours if vue else 0
+            etat["seance_fichier"] = reprise
 
         def ouvrir(cible):
             """Le backend et la conversation d'un serveur, l'invite avec.
@@ -3225,7 +3243,7 @@ class AssistantMenuMixin:
         mesures.append(
             llm_mesure.mesurer(
                 seance=self._llm_seance(),
-                rang=len(mesures) + 1,
+                rang=etat.get("rang_depart", 0) + len(mesures) + 1,
                 serveur=serveur,
                 outil=outil,
                 question=question,
@@ -3291,7 +3309,7 @@ class AssistantMenuMixin:
             mesures=mesures,
             outil=outil,
             seance=self._llm_seance(),
-            depart=len(mesures),
+            depart=self._llm_state().get("rang_depart", 0) + len(mesures),
             archiver=lambda tour: llm_seances.noter(fichier, tour),
         )
 
