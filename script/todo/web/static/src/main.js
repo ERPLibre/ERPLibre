@@ -7,7 +7,7 @@
 // charge la table de traduction et la télémétrie avant de monter la vue.
 import {mount} from "@odoo/owl";
 import {ApiError, getJson, postJson, setCsrfToken} from "./api.js";
-import {TelemetryPage} from "./tree_view.js";
+import {TelemetryPage} from "./telemetry_page.js";
 
 const LANGUAGES = ["fr", "en"];
 // Sans session, aucune table de traduction n'est lisible : ces messages
@@ -54,8 +54,12 @@ async function start() {
         getJson(`/api/i18n?lang=${chosen}`),
         getJson(`/api/telemetry?lang=${chosen}`),
     ]);
+    // `env` est partagé par tous les composants : la table de traduction et
+    // la langue, qui règle aussi le tri par nom et les unités.
+    const t = (key) => terms[key] ?? key;
     await mount(TelemetryPage, document.getElementById("app"), {
-        props: {root: session.root, telemetry, terms},
+        env: {t, lang: chosen},
+        props: {root: session.root, telemetry},
     });
 }
 

@@ -6,7 +6,8 @@
 OWL est vendoré sans modification : ses fichiers doivent rester ceux du
 paquet npm, dont le README de provenance note les empreintes. La page, elle,
 est servie depuis la table que le hub charge au démarrage, sous une CSP qui
-n'autorise que l'import map par son hash.
+n'autorise que l'import map par son hash. Les fonctions pures des vues
+(`static/src/model.js`) tournent sous node, quand il est installé.
 """
 
 import ast
@@ -14,11 +15,13 @@ import base64
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from script.todo import todo_telemetry
+from script.todo import todo_i18n, todo_telemetry
 from script.todo.web import server
 
 REPO = Path(__file__).resolve().parent.parent
@@ -146,6 +149,150 @@ class TestPage(unittest.TestCase):
         for path in sorted(SRC.glob("*.js")):
             words = set(re.findall(r"\w+", path.read_text(encoding="utf-8")))
             self.assertFalse(words & names, path.name)
+
+    def test_every_key_of_the_page_is_translated(self):
+        # t() rend une clé inconnue telle quelle : une faute de frappe
+        # s'afficherait en anglais dans une page française.
+        keys = set()
+        labels = re.compile(r"^const \w+_LABELS = \{.*\};$", re.M)
+        for path in SRC.glob("*.js"):
+            text = path.read_text(encoding="utf-8")
+            keys |= {m[1] for m in re.findall(r"\bt\((['\"])(.+?)\1\)", text)}
+            for line in labels.findall(text):
+                keys |= set(re.findall(r'"([^"]+)"', line))
+        self.assertGreater(len(keys), 10)
+        missing = sorted(keys - set(todo_i18n.TRANSLATIONS))
+        self.assertEqual(missing, [])
+
+
+# Prélude des scripts node : le module nommé en argument, importé sous `m`
+# par une URL data:, toujours lue comme un module ES — un .js hors d'un
+# paquet « type: module » ne l'est pas avant node 22.
+NODE_PRELUDE = r"""
+const {readFileSync} = await import("node:fs");
+const code = readFileSync(process.argv[1]).toString("base64");
+const m = await import(`data:text/javascript;base64,${code}`);
+"""
+
+
+def _node_json(script, module):
+    """JSON qu'affiche `script`, lancé sous node, `module` importé en `m`."""
+    out = subprocess.run(
+        ["node", "--input-type=module", "-e", NODE_PRELUDE + script]
+        + [str(SRC / module)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    ).stdout
+    return json.loads(out)
+
+
+# Arbre factice aux libellés traduits, comme ceux de /api/telemetry.
+MODEL_CHECK = r"""
+const leaf = (key, label, parent) =>
+    ({key, label, path: `${parent} › ${key}`, menu: false, children: []});
+const tree = {key: "TODO", label: "TODO", path: "TODO", menu: true,
+    children: [
+        {key: "Execute", label: "Exécuter", path: "TODO › Execute",
+            menu: true, children: [
+                leaf("Quit", "🚪 Quitter", "TODO › Execute"),
+                leaf("System", "🖥 Système", "TODO › Execute")]},
+        {key: "Install", label: "Installer", path: "TODO › Install",
+            menu: true, children: [
+                leaf("Apply", "✅ Appliquer", "TODO › Install")]}]};
+const counts = {"TODO › Install": 5, "TODO › Execute": 2,
+    "TODO › Execute › System": 3};
+const keys = (node) =>
+    node && {key: node.key, children: node.children.map(keys)};
+const paths = (rows) => rows.map((row) => row.path);
+const list = (sort, query = "") =>
+    paths(m.listRows(tree, counts, query, sort, "fr"));
+console.log(JSON.stringify({
+    fold: m.fold("Système ÉTÉ"),
+    accents: keys(m.filterTree(tree, "SYSTEME")),
+    menu: keys(m.filterTree(tree, "install")),
+    nothing: m.filterTree(tree, "zzz"),
+    root: m.filterTree(tree, "od"),
+    blank: m.filterTree(tree, "  ") === tree,
+    usage: keys(m.sortTree(tree, counts, "usage")),
+    code: m.sortTree(tree, counts, "code") === tree,
+    leaves: paths(m.leaves(tree)),
+    listUsage: list("usage"),
+    listName: list("name"),
+    listQuery: list("code", "EXECUT"),
+    sorts: [m.effectiveSort("tree", "name"), m.effectiveSort("list", ""),
+        m.effectiveSort("tree", "usage")],
+    launcher: m.readFragment("#login=x&view=telemetry&lang=fr"),
+    reload: m.readFragment("#view=list&sort=name"),
+    written: [
+        m.writeFragment("#view=telemetry&lang=fr", {view: "list", sort: ""}),
+        m.writeFragment("#lang=en", {view: "tree", sort: "usage"})],
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestPageModel(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(MODEL_CHECK, "model.js")
+
+    def test_search_ignores_case_and_accents(self):
+        self.assertEqual(self.out["fold"], "systeme ete")
+        execute = {
+            "key": "Execute",
+            "children": [{"key": "System", "children": []}],
+        }
+        self.assertEqual(
+            self.out["accents"], {"key": "TODO", "children": [execute]}
+        )
+
+    def test_a_matching_menu_keeps_its_whole_subtree(self):
+        install = {
+            "key": "Install",
+            "children": [{"key": "Apply", "children": []}],
+        }
+        self.assertEqual(
+            self.out["menu"], {"key": "TODO", "children": [install]}
+        )
+        self.assertIsNone(self.out["nothing"])
+        self.assertTrue(self.out["blank"])
+
+    def test_the_root_label_never_matches(self):
+        # « od » n'est que dans « TODO », le libellé de la racine.
+        self.assertIsNone(self.out["root"])
+
+    def test_tree_by_usage_is_stable_and_by_code_untouched(self):
+        usage = self.out["usage"]
+        self.assertEqual(
+            [c["key"] for c in usage["children"]], ["Install", "Execute"]
+        )
+        self.assertEqual(
+            [c["key"] for c in usage["children"][1]["children"]],
+            ["System", "Quit"],
+        )
+        self.assertTrue(self.out["code"])
+
+    def test_list_flattens_leaves_with_their_translated_path(self):
+        code = [
+            "Exécuter › 🚪 Quitter",
+            "Exécuter › 🖥 Système",
+            "Installer › ✅ Appliquer",
+        ]
+        self.assertEqual(self.out["leaves"], code)
+        self.assertEqual(self.out["listUsage"], [code[1], code[0], code[2]])
+        self.assertEqual(self.out["listName"], [code[2], code[0], code[1]])
+        self.assertEqual(self.out["listQuery"], code[:2])
+
+    def test_view_and_sort_live_in_the_fragment(self):
+        self.assertEqual(self.out["sorts"], ["code", "usage", "usage"])
+        self.assertEqual(self.out["launcher"], {"view": "tree", "sort": ""})
+        self.assertEqual(self.out["reload"], {"view": "list", "sort": "name"})
+        self.assertEqual(
+            self.out["written"],
+            ["#view=list&lang=fr", "#lang=en&view=tree&sort=usage"],
+        )
 
 
 if __name__ == "__main__":

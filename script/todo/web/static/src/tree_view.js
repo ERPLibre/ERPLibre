@@ -2,6 +2,7 @@
 // Tout vient de /api/telemetry — libellés traduits, chemins, compteurs — et
 // des clés de la table de traduction : ce module ne nomme aucune commande.
 import {Component, useState, xml} from "@odoo/owl";
+import {filterTree, sortTree} from "./model.js";
 
 export class TreeNode extends Component {
     static template = xml`
@@ -15,14 +16,15 @@ export class TreeNode extends Component {
             <span t-if="props.node.menu or count" class="count" t-esc="count"/>
             <ul t-if="props.node.menu and state.open">
                 <t t-foreach="props.node.children" t-as="child" t-key="child_index">
-                    <TreeNode node="child" counts="props.counts" depth="props.depth + 1"/>
+                    <TreeNode node="child" counts="props.counts" depth="props.depth + 1" expand="props.expand"/>
                 </t>
             </ul>
         </li>`;
 
     setup() {
-        // Racine et premier niveau ouverts : les familles de menus d'un coup d'œil.
-        this.state = useState({open: this.props.depth < 2});
+        // Racine et premier niveau ouverts : les familles de menus d'un coup
+        // d'œil. Pendant une recherche (`expand`), tout ce qui reste l'est.
+        this.state = useState({open: this.props.expand || this.props.depth < 2});
     }
 
     get count() {
@@ -35,26 +37,18 @@ export class TreeNode extends Component {
 }
 TreeNode.components = {TreeNode};
 
-export class TelemetryPage extends Component {
+// Vue Arbre : l'arbre filtré par `query`, rangé par `sort`.
+export class TreeView extends Component {
     static components = {TreeNode};
     static template = xml`
-        <header class="bar">
-            <h1 t-esc="t('TODO navigation telemetry')"/>
-            <span class="root" t-esc="props.root"/>
-        </header>
-        <p class="summary" t-esc="summary"/>
-        <ul t-if="props.telemetry.tree" class="tree">
-            <TreeNode node="props.telemetry.tree" counts="props.telemetry.counts" depth="0"/>
-        </ul>`;
+        <t t-set="shown" t-value="tree"/>
+        <ul t-if="shown" class="tree">
+            <TreeNode node="shown" counts="props.counts" depth="0" expand="props.query.trim() !== ''"/>
+        </ul>
+        <p t-else="" class="empty" t-esc="env.t('No command found.')"/>`;
 
-    t(key) {
-        return this.props.terms[key] ?? key;
-    }
-
-    get summary() {
-        const counts = Object.values(this.props.telemetry.counts);
-        const total = counts.reduce((sum, n) => sum + n, 0);
-        const source = this.props.telemetry.tree ? this.t("tree from code") : this.t("visited paths only");
-        return `${total} ${this.t("navigations")} · ${counts.length} ${this.t("menus")} · ${source}`;
+    get tree() {
+        const found = this.props.tree && filterTree(this.props.tree, this.props.query);
+        return found && sortTree(found, this.props.counts, this.props.sort);
     }
 }

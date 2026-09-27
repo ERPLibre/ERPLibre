@@ -105,3 +105,58 @@ body {
     color: var(--error);
     font-weight: 600;
 }
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.toolbar button,
+.toolbar input,
+.toolbar select {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+}
+
+.toolbar button {
+    cursor: pointer;
+}
+
+.toolbar button[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.search {
+    flex: 1 1 12rem;
+}
+
+.sort {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
+}
+
+.list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+.list li {
+    padding: 0.15rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.empty {
+    color: var(--muted);
+}
