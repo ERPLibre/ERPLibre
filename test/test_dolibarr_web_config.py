@@ -258,6 +258,19 @@ class TestProdNginx(unittest.TestCase):
         )
         self.assertFalse([x for x in lignes if "https://$host" in x])
 
+    def test_the_client_cannot_forge_the_address_dolibarr_logs(self):
+        # getUserRemoteIP() lit X-Forwarded-For, Client-IP puis
+        # CF-Connecting-IP avant REMOTE_ADDR ; un fastcgi_param HTTP_*
+        # remplace l'en-tête que le client aurait envoyé.
+        lignes = self.rendre("none")
+        for ligne in (
+            'fastcgi_param HTTP_X_FORWARDED_FOR "";',
+            'fastcgi_param HTTP_CLIENT_IP "";',
+            'fastcgi_param HTTP_CF_CONNECTING_IP "";',
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertIn(ligne, lignes)
+
     def test_the_php_version_is_not_announced(self):
         self.assertIn("fastcgi_hide_header X-Powered-By;", self.rendre("none"))
 

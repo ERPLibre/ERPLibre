@@ -151,7 +151,11 @@ php_admin_flag[display_errors] = off
 
 def _prod_app(instance, htdocs, socket):
     """Ce qu'un serveur nginx de production sert : la même mécanique que
-    le développement, plus le refus de /install/ et des fichiers cachés."""
+    le développement, plus le refus de /install/ et des fichiers cachés.
+
+    getUserRemoteIP() de Dolibarr croit X-Forwarded-For, Client-IP puis
+    CF-Connecting-IP avant REMOTE_ADDR : ces en-têtes arrivent vides, un
+    fastcgi_param HTTP_* remplaçant celui que le client enverrait."""
     return f"""        root {htdocs};
         index index.php;
         client_max_body_size 64M;
@@ -180,6 +184,9 @@ def _prod_app(instance, htdocs, socket):
             fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             fastcgi_param PATH_INFO $path_info;
             fastcgi_param HTTP_PROXY "";
+            fastcgi_param HTTP_X_FORWARDED_FOR "";
+            fastcgi_param HTTP_CLIENT_IP "";
+            fastcgi_param HTTP_CF_CONNECTING_IP "";
             fastcgi_read_timeout 600;
             fastcgi_hide_header X-Powered-By;
             fastcgi_pass unix:{socket};
