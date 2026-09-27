@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -192,6 +193,27 @@ class TestPaths(unittest.TestCase):
             paths.write_private(target, "new")
         self.assertEqual(
             [p.name for p in target.parent.iterdir()], ["redirect.html"]
+        )
+
+    def test_tasks_dir_is_private_under_the_data_dir(self):
+        tasks = paths.tasks_dir(self.root)
+        self.assertEqual(tasks, paths.data_dir(self.root) / "tasks")
+        self.assertEqual(_mode(tasks), 0o700)
+
+    def test_only_old_temporary_files_are_orphans(self):
+        rdir = paths.runtime_dir(self.root)
+        old = rdir / "state.json.a1.tmp"
+        fresh = rdir / "redirect.html.b2.tmp"
+        kept = rdir / "state.json"
+        for path in (old, fresh, kept):
+            path.write_text("x", encoding="utf-8")
+        past = time.time() - paths.ORPHAN_SECONDS - 1
+        os.utime(old, (past, past))
+        os.utime(kept, (past, past))
+        self.assertEqual(paths.remove_orphans(rdir), 1)
+        self.assertEqual(
+            sorted(p.name for p in rdir.iterdir()),
+            ["redirect.html.b2.tmp", "state.json"],
         )
 
     def test_ctl_path_too_long_is_refused(self):
