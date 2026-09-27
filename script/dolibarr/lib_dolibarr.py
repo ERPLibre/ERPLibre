@@ -39,8 +39,9 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 
 # Nom de base MariaDB/PostgreSQL, de pool php-fpm, d'unité systemd, de
 # répertoire et de compte système « dolibarr_<nom> » à la fois : minuscules,
-# chiffres et _, une lettre en tête, 2 à 23 caractères — useradd borne un
-# nom de compte à 32, préfixe compris.
+# chiffres et _, une lettre en tête, 2 à 23 caractères, soit 32 préfixe
+# compris : la borne portable. useradd refuse un 33e caractère jusqu'à
+# shadow 4.13 ; les versions suivantes acceptent jusqu'à 255.
 _INSTANCE = re.compile(r"^[a-z][a-z0-9_]{1,22}$")
 
 
