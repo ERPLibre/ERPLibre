@@ -366,6 +366,76 @@ DELAI_TERRAIN = 900
 EXPURGE = "«secret retiré»"
 
 
+# COMMENT JOUER SUR CE TERRAIN, vocabulaire CLOS. TEL_QUEL : la session est déjà
+# root, rien à envelopper. ELEVE : il faut passer par `sudo`, qui répond sans mot
+# de passe. IMPOSSIBLE : il le faudrait et `sudo` demanderait un mot de passe —
+# ce qu'une session sans terminal ne peut pas taper. None, hors vocabulaire, dit
+# qu'on n'a pas su lire.
+TEL_QUEL = "tel_quel"
+ELEVE = "eleve"
+IMPOSSIBLE = "impossible"
+ELEVATIONS = (TEL_QUEL, ELEVE, IMPOSSIBLE)
+
+# Ce que la sonde d'élévation imprime. Deux faits sur deux lignes plutôt que
+# deux commandes : l'exécuteur ne rend que la sortie de la DERNIÈRE, et la
+# première serait perdue.
+SONDE_ELEVATION = (
+    "printf 'uid=%s\\n' \"$(id -u)\"; "
+    "sudo -n true 2>/dev/null && echo 'sudo=oui' || echo 'sudo=non'"
+)
+
+
+def cmds_elevation():
+    """La commande qui dit comment jouer sur ce terrain.
+
+    DEUX QUESTIONS, et la seconde n'a de sens que si la première dit non :
+    sommes-nous root, et sinon `sudo` répond-il SANS mot de passe ? Une session
+    ssh sans terminal ne peut pas en taper un — un sudo interactif n'échoue pas,
+    il ATTEND, et l'épreuve pend jusqu'à sa borne.
+    """
+    return [SONDE_ELEVATION]
+
+
+def lit_elevation(sortie):
+    """Comment jouer sur ce terrain, ou None si la sonde ne s'est pas lue.
+
+    Les outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une
+    session ssh non interactive ne porte pas, et son démon de grappe ne parle
+    qu'à root : une commande jouée sans élévation ne dit pas « refusé », elle
+    dit « commande introuvable » ou se plaint de son canal de communication.
+
+    Fermé par défaut : les DEUX lignes sont exigées. Une sonde qui n'aurait
+    imprimé que l'une, parce que la seconde a été coupée, ferait conclure sur la
+    moitié de la réponse.
+    """
+    texte = sortie or ""
+    uid, sudo = None, None
+    for ligne in texte.splitlines():
+        nu = ligne.strip()
+        if nu.startswith("uid="):
+            reste = nu[4:].strip()
+            uid = int(reste) if reste.isdigit() else None
+        elif nu.startswith("sudo="):
+            reponse = nu[5:].strip()
+            sudo = reponse if reponse in ("oui", "non") else None
+    if uid is None or sudo is None:
+        return None
+    if uid == 0:
+        return TEL_QUEL
+    return ELEVE if sudo == "oui" else IMPOSSIBLE
+
+
+def elevation_du_terrain(terrain):
+    """Sonde `terrain` et rend son élévation, ou None.
+
+    La sonde elle-même se joue TEL_QUEL : c'est justement ce qu'elle mesure, et
+    l'envelopper d'un `sudo` dont on ne sait pas encore s'il répond ferait pendre
+    la mesure qui devait l'éviter.
+    """
+    fait = joue_sur(terrain, cmds_elevation(), TEL_QUEL, delai=60)
+    return lit_elevation(fait.sortie) if fait.reussi else None
+
+
 class Fait(NamedTuple):
     """Ce qu'une suite de commandes a rendu sur le terrain.
 
@@ -395,7 +465,7 @@ class Fait(NamedTuple):
         return self.code == 0 and self.jouees > 0
 
 
-def ssh_argv(terrain, commande):
+def ssh_argv(terrain, commande, elevation=TEL_QUEL):
     """L'argv qui joue `commande` sur `terrain`, ou None.
 
     Bâti par le module du labo qui sait déjà joindre une machine : un second
@@ -427,11 +497,24 @@ def ssh_argv(terrain, commande):
     except ImportError:
         return None
     base = install_nixos.ssh_base(terrain.strip())
-    return tuple(base[:1] + ["-o", "LogLevel=ERROR"] + base[1:] + [commande])
+    # L'ENVELOPPE VIENT DU DÉPÔT. « sudo sh -c '<tout>' » et non « sudo <tout> » :
+    # une commande du banc est souvent une SUITE, avec un `||`, un tube ou une
+    # redirection, et préfixer n'élèverait que son premier mot.
+    from script.remote.appliance_ssh import wrap_privilege
+
+    joue = wrap_privilege(commande, "sudo" if elevation == ELEVE else "")
+    return tuple(base[:1] + ["-o", "LogLevel=ERROR"] + base[1:] + [joue])
 
 
-def joue_sur(terrain, cmds, delai=DELAI_TERRAIN):
+def joue_sur(terrain, cmds, elevation, delai=DELAI_TERRAIN):
     """Joue `cmds` sur `terrain`, dans l'ordre, et rend un `Fait`. Ne lève jamais.
+
+    `elevation` EST EXIGÉE, sans valeur par défaut : on ne joue pas sur une
+    machine sans avoir décidé comment. Un défaut la ferait omettre, et une
+    commande d'hyperviseur jouée sans élévation se plaint de son canal de
+    communication au lieu de dire « refusé » — un diagnostic qui envoie
+    chercher un démon en panne là où il n'y a qu'un compte sans droits. Toute
+    valeur hors de TEL_QUEL et ELEVE fait refuser SANS RIEN JOUER.
 
     S'ARRÊTE À LA PREMIÈRE QUI ÉCHOUE. Les commandes du banc se suivent — un
     pont avant la carte qui s'y branche, un utilisateur avant son jeton — et
@@ -443,9 +526,11 @@ def joue_sur(terrain, cmds, delai=DELAI_TERRAIN):
     pas rend n'est connu qu'après l'avoir lue. L'appelant l'extrait, puis passe
     par `expurge` pour tout ce qu'il montre ou journalise.
     """
+    if elevation not in (TEL_QUEL, ELEVE):
+        return Fait(None, "", 0)
     sortie, jouees = "", 0
     for commande in cmds or ():
-        argv = ssh_argv(terrain, commande)
+        argv = ssh_argv(terrain, commande, elevation)
         if argv is None:
             return Fait(None, sortie, jouees)
         vu = runner_du_banc().jouer(argv, delai=delai)
@@ -545,6 +630,115 @@ def cmds_pont(nom, cidr, uplink=""):
             nom=nom, cidr=cidr, uplink=uplink, vlan_aware=True
         )
     )
+
+
+# Où le banc commence à chercher un VMID libre pour son gabarit. 9000 est la
+# convention du moteur pour un modèle, et sa valeur par défaut ; le banc part de
+# là et monte, parce qu'une grappe qu'on possède en a peut-être déjà un.
+VMID_GABARIT_DEPART = 9000
+VMID_GABARIT_FIN = 9100
+
+
+def cmds_vmids():
+    """La commande qui liste les VMID de TOUTE la grappe.
+
+    De la grappe et non du nœud : un VMID est unique à l'échelle du cluster, et
+    `qm list` ne voit que la machine où il tourne. Choisir un numéro libre
+    localement le prendrait à une VM d'un autre nœud.
+    """
+    return ["pvesh get /cluster/resources --type vm --output-format json"]
+
+
+def lit_vmids(sortie):
+    """Les VMID que la grappe déclare, ou None.
+
+    Fermé par défaut : ce qui n'est pas une liste d'objets portant un VMID
+    entier fait refuser TOUTE la lecture. Une lecture partielle ferait croire
+    un numéro libre alors qu'il est pris, et `qm create` échouerait au milieu
+    du gabarit — après le téléchargement de l'image.
+
+    Une grappe sans aucune VM rend `()` : « rien à nommer » est une réponse.
+    """
+    texte = sortie or ""
+    debut = texte.find("[")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    if not isinstance(lu, list):
+        return None
+    vus = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        vmid = entree.get("vmid")
+        if isinstance(vmid, bool) or not isinstance(vmid, int):
+            return None
+        vus.append(vmid)
+    return tuple(vus)
+
+
+def gabarit_libre(vmids, depart=VMID_GABARIT_DEPART):
+    """Le premier VMID libre à partir de `depart`, ou 0.
+
+    LU sur la grappe, jamais supposé. `vmids` à None — la grappe n'a pas
+    répondu — rend 0 : prendre un numéro sans savoir lesquels sont pris
+    reviendrait à parier sur la VM de quelqu'un d'autre.
+
+    0 dit « pas de numéro », et c'est le seul entier qu'un VMID ne peut pas
+    valoir : la grappe les compte à partir de 100.
+    """
+    # ÉCRIT POUR SE LIRE, et non porteur : le cas None retomberait de toute
+    # façon dans le `except` en dessous — parcourir None lève une TypeError. Le
+    # dire ici évite de faire dériver l'intention du hasard d'une exception ;
+    # aucune mutation de cette seule ligne ne peut donc changer la réponse.
+    if vmids is None:
+        return 0
+    try:
+        pris = {int(vu) for vu in vmids}
+    except (TypeError, ValueError):
+        return 0
+    for numero in range(max(0, int(depart)), VMID_GABARIT_FIN):
+        if numero not in pris:
+            return numero
+    return 0
+
+
+def texte_placement(noeud, stockage, pont, vmid_modele, gabarit=GABARIT):
+    """Le `group_vars/proxmox.yml` du locataire : OÙ il se pose. Ou « ».
+
+    TROIS CLÉS APPARTIENNENT AU LOCATAIRE et non à l'hébergeur — le nœud, le
+    stockage et le VMID du gabarit — parce que c'est lui qui choisit où se
+    poser, même si les trois NOMMENT des objets de l'hébergeur. Le reste de son
+    adressage dérive de son seul index, ce qui est ce qui le rend portable
+    d'une fabric à l'autre.
+
+    LE PONT EN EST, ICI, ET C'EST UN REPLI. Le générateur d'inventaire pose un
+    pont par hôte quand la fabric a une SDN, dérivé du réseau virtuel de sa
+    zone. Sans SDN, il ne pose rien et le clonage retombe sur cette valeur —
+    qui vaut `vmbr0` par défaut. Une carte étiquetée sur un pont qui n'est pas
+    conscient des VLAN démarre et reste injoignable, et la panne ne se voit ni
+    à la création, ni dans un code de retour : le banc nomme donc SON pont.
+    """
+    if not all((vu or "").strip() for vu in (noeud, stockage, pont, gabarit)):
+        return ""
+    try:
+        vmid = int(vmid_modele)
+    except (TypeError, ValueError):
+        return ""
+    if vmid < 1:
+        return ""
+    return f"""---
+# Le placement du locataire du BANC. L'adressage n'est PAS ici : il dérive de
+# l'index du plan.
+proxmox_clone_noeud: {noeud.strip()}
+proxmox_clone_stockage: {stockage.strip()}
+proxmox_clone_vmid_modele: {vmid}
+proxmox_clone_source_nom: {gabarit.strip()}
+proxmox_clone_pont: {pont.strip()}
+"""
 
 
 def cmds_jeton(utilisateur=UTILISATEUR_API, jeton=JETON_API):
@@ -922,6 +1116,200 @@ def active_un_hote(texte, hote):
         return None
     lignes[vus[0]] = re.sub(r"\betat(\s*:\s*)\w+", r"etat\g<1>actif", ligne)
     return "".join(lignes)
+
+
+# L'INVENTAIRE que le banc renseigne. Le moteur en connaît trois — lab,
+# principal, production — et prend le PREMIER qui existe, dans cet ordre.
+# `production` est celui que son générateur crée, donc le seul qui existera de
+# toute façon : en renseigner un autre en ferait deux, et le premier gagnerait
+# sur celui que le générateur tient à jour.
+INVENTAIRE_BANC = "production"
+
+# Le modèle d'écosystème dont le banc part, relatif au moteur. Celui que le
+# moteur livre et que ses propres preuves valident : un modèle écrit par le banc
+# dériverait de celui-là sans que rien ne le dise.
+MODELE_SOCLE = os.path.join("exemples", "modeles", "socle")
+
+
+def pose_index(texte, index):
+    """`texte`, son `index:` de premier niveau porté à `index`. Ou None.
+
+    CHIRURGICAL, comme l'activation d'un hôte : une ligne change, le reste du
+    fichier est rendu tel quel. Tout l'adressage d'un écosystème dérive de ce
+    seul entier, et le modèle livré en déclare un que deux bancs partageraient.
+
+    REFUSE plutôt que de deviner : pas d'`index:` de premier niveau, ou plus
+    d'un. Un index absent fait retomber la dérivation sur son défaut de bac à
+    sable, qui est le même pour tout le monde.
+    """
+    if not (texte or ""):
+        return None
+    try:
+        voulu = int(index)
+    except (TypeError, ValueError):
+        return None
+    lignes = texte.splitlines(keepends=True)
+    vus = [i for i, l in enumerate(lignes) if re.match(r"index\s*:", l)]
+    if len(vus) != 1:
+        return None
+    lignes[vus[0]] = re.sub(
+        r"^index(\s*:\s*).*?(\r?\n?)$",
+        rf"index\g<1>{voulu}\g<2>",
+        lignes[vus[0]],
+    )
+    return "".join(lignes)
+
+
+def _ecrit(chemin, texte):
+    """Écrit `texte` dans `chemin`. Rend le souci, ou « ».
+
+    Pas de secret ici : ce que le montage pose voyage avec un dépôt. Le jeton
+    passe par un autre chemin, qui le chiffre sans jamais le poser en clair.
+    """
+    if not texte:
+        return f"rien à écrire dans {os.path.basename(chemin)}"
+    try:
+        with open(chemin, "w", encoding="utf-8") as ouvert:
+            ouvert.write(texte)
+    except OSError as souci:
+        return f"{os.path.basename(chemin)} : {souci.strerror or souci}"
+    return ""
+
+
+def _recrit(chemin, transforme):
+    """Relit `chemin`, le passe à `transforme`, le réécrit. Rend le souci.
+
+    `transforme` REFUSE en rendant None, et le fichier n'est alors pas touché :
+    une réécriture partielle laisserait un plan que le moteur lit à moitié.
+    """
+    try:
+        with open(chemin, encoding="utf-8") as ouvert:
+            avant = ouvert.read()
+    except OSError as souci:
+        return f"{os.path.basename(chemin)} : {souci.strerror or souci}"
+    apres = transforme(avant)
+    if apres is None:
+        return f"{os.path.basename(chemin)} : la réécriture a refusé"
+    return _ecrit(chemin, apres)
+
+
+def amorcage_du_plan(moteur, instance):
+    """Les hôtes d'amorçage que le plan d'`instance` dérive. Ou None.
+
+    LU CHEZ LE MOTEUR, avant que le lien soit posé : son lecteur d'instance
+    honore `SETOPS_INSTANCE`, si bien que le banc peut interroger un dépôt
+    qu'il vient de copier sans avoir encore rien monté. Poser le lien d'abord
+    obligerait à le retirer si l'amorçage refusait.
+    """
+    if not (moteur or "").strip() or not (instance or "").strip():
+        return None
+    vu = runner_du_banc().jouer(
+        ("python3", "-B", CIBLE_AMORCAGE),
+        env=dict(runner_du_banc().base(), SETOPS_INSTANCE=instance),
+        cwd=moteur,
+        fusionner=False,
+        delai=60,
+    )
+    return lit_amorcage(vu.sortie) if vu.code == 0 else None
+
+
+def monte_localement(moteur, noeud, pont, stockage, hote_api, vmid_modele):
+    """Pose les deux dépôts du banc et les deux liens du moteur. Rend un `Montage`.
+
+    LES LIENS SE JUGENT AVANT QUE RIEN NE SOIT CRÉÉ. Un lien occupé est celui
+    d'un exploitant, et le remplacer dirigerait son geste suivant vers
+    l'écosystème du banc, dont le rasage détruit tout ce que l'inventaire nomme.
+    Créer les dépôts puis refuser laisserait deux dossiers que rien ne nomme.
+
+    `vmid_modele` VIENT DE LA GRAPPE, pas d'une constante : il est choisi parmi
+    les numéros qu'elle ne porte pas, comme le pont est choisi parmi les noms
+    qu'elle ne déclare pas. L'appelant l'a donc déjà sondée.
+
+    L'ORDRE : l'underlay, puis le locataire, puis son index, ses hôtes
+    d'amorçage et son placement, puis les liens. L'amorçage se lit AVANT les liens, par la
+    variable d'instance ; les clés se posent APRÈS eux, le moteur nommant celle
+    de l'hébergeur en résolvant son lien.
+
+    NE LÈVE JAMAIS, et rend ce qu'elle a posé même en échec : c'est par ces
+    chemins que le montage se défait, et rendre une absence laisserait sur le
+    disque ce que plus rien ne nomme.
+    """
+    import shutil
+
+    vide = Montage("", "", (), (), "")
+    chemins = chemins_du_banc(moteur)
+    if chemins is None:
+        return vide._replace(souci="le moteur n'a pas de dossier frère")
+    _freres, site, eco = chemins
+
+    for nom, cible in cibles_des_liens():
+        etat = lien_etat(os.path.join(moteur, nom), cible)
+        if etat not in (A_POSER, NOTRE):
+            return vide._replace(souci=f"le lien « {nom} » est {etat}")
+
+    pose = vide
+    try:
+        os.makedirs(site, exist_ok=True)
+    except OSError as souci:
+        return pose._replace(souci=f"{UNDERLAY_BANC} : {souci.strerror}")
+    pose = pose._replace(underlay=site)
+    for fichier, texte in (
+        ("underlay.yml", texte_underlay(noeud, pont)),
+        (
+            "proxmox-hebergeur.yml",
+            texte_hebergeur(hote_api, noeud, stockage, pont),
+        ),
+    ):
+        souci = _ecrit(os.path.join(site, fichier), texte)
+        if souci:
+            return pose._replace(souci=souci)
+
+    if not os.path.isdir(eco):
+        try:
+            shutil.copytree(os.path.join(moteur, MODELE_SOCLE), eco)
+        except (OSError, shutil.Error) as souci:
+            return pose._replace(souci=f"{ECOSYSTEME} : {souci}")
+    pose = pose._replace(ecosysteme=eco)
+
+    hotes = amorcage_du_plan(moteur, eco)
+    if not hotes:
+        return pose._replace(souci="le plan ne dérive aucun hôte d'amorçage")
+    for fichier, transforme in (
+        ("nomenclature.yml", lambda t: pose_index(t, INDEX_ECOSYSTEME)),
+        ("serveurs.yml", lambda t: active_les_hotes(t, hotes)),
+    ):
+        souci = _recrit(os.path.join(eco, "plan", fichier), transforme)
+        if souci:
+            return pose._replace(souci=souci)
+
+    # LE PLACEMENT, et le modèle n'en livre aucun : il dit ce que l'écosystème
+    # VEUT, pas sur quelle grappe il se pose. Le dossier n'existe pas encore —
+    # le générateur d'inventaire le créera, mais le clonage lit ce fichier.
+    groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars")
+    try:
+        os.makedirs(groupe, exist_ok=True)
+    except OSError as souci:
+        return pose._replace(souci=f"{INVENTAIRE_BANC} : {souci.strerror}")
+    souci = _ecrit(
+        os.path.join(groupe, "proxmox.yml"),
+        texte_placement(noeud, stockage, pont, vmid_modele),
+    )
+    if souci:
+        return pose._replace(souci=souci)
+
+    liens = []
+    for nom, cible in cibles_des_liens():
+        chemin = os.path.join(moteur, nom)
+        if lien_etat(chemin, cible) == A_POSER:
+            try:
+                os.symlink(cible, chemin)
+            except OSError as souci:
+                return pose._replace(
+                    liens=tuple(liens),
+                    souci=f"le lien « {nom} » : {souci.strerror or souci}",
+                )
+        liens.append(chemin)
+    return pose._replace(liens=tuple(liens))
 
 
 def cmds_effacer_vm(vmid, nom):

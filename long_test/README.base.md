@@ -365,6 +365,17 @@ than running code nothing has checked.
 ./long_test/setops_banc.py --passe env        # token through the environment
 ```
 
+**The terrain is reached as an ordinary account, and that decides everything.**
+A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
+PATH does not carry, and its cluster daemon only talks to root. Played without
+elevation, a command does not say "refused": it says "command not found", or
+complains about its communication channel — a diagnosis that sends you looking
+for a broken daemon where there is only an account without rights. The bench
+measures once whether the session is already root and whether `sudo` answers
+WITHOUT a password: a session with no terminal cannot type one, and an
+interactive sudo does not fail, it WAITS until the deadline. Every command then
+carries that decision, and the executor refuses to run anything without one.
+
 **The loop is the engine's own, not a recomposition of its pieces.**
 `reconstruire` chains the flows, the fleet's creation, the wait, the socle's
 bootstrap and then the layered deployment. The order matters there: without the
@@ -788,6 +799,17 @@ du code que rien n'a vérifié.
 ./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ```
+
+**Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
+outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
+non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée
+sans élévation, une commande ne dit pas « refusé » : elle dit « commande
+introuvable », ou se plaint de son canal de communication — un diagnostic qui
+envoie chercher un démon en panne là où il n'y a qu'un compte sans droits. Le
+banc mesure une fois si la session est déjà root et si `sudo` répond SANS mot de
+passe : une session sans terminal ne peut pas en taper un, et un sudo interactif
+n'échoue pas, il ATTEND jusqu'à la borne. Chaque commande porte ensuite cette
+décision, et l'exécuteur refuse de rien jouer sans elle.
 
 **La boucle est celle du moteur, pas une recomposition de ses morceaux.**
 `reconstruire` enchaîne les flux, la création de la flotte, l'attente,

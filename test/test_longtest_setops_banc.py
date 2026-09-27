@@ -1210,7 +1210,7 @@ class TestUneSuiteVideNeReussitPas(unittest.TestCase):
 
     def test_an_unusable_terrain_runs_nothing(self):
         """`jouees` dit où reprendre ; zéro dit que rien n'a été touché."""
-        fait = B.joue_sur("", ["hostname", "reboot"])
+        fait = B.joue_sur("", ["hostname", "reboot"], B.TEL_QUEL)
         self.assertEqual((None, 0), (fait.code, fait.jouees))
 
 
@@ -1376,6 +1376,371 @@ class TestUnMontagePartielSeDitPartiel(unittest.TestCase):
         partiel = self.montage(souci="arrêté", cles=())
         self.assertEqual("/f/SITE", partiel.underlay)
         self.assertEqual(2, len(partiel.liens))
+
+
+class TestLIndexSePoseChirurgicalement(unittest.TestCase):
+    """Tout l'adressage d'un écosystème dérive de ce seul entier, et le modèle
+    livré en déclare un que deux bancs partageraient."""
+
+    MODELE = (
+        "---\n"
+        "# un commentaire du modèle, qui doit survivre\n"
+        "index: 1\n"
+        "cidr_hote: 24\n"
+        "reservations:\n"
+        "  passerelle: 1\n"
+    )
+
+    def test_the_index_is_replaced(self):
+        lu = yaml.safe_load(B.pose_index(self.MODELE, 211))
+        self.assertEqual(211, lu["index"])
+
+    def test_the_model_carries_another_one(self):
+        """Le contrôle positif : sans lui, une fonction qui ne change rien
+        passerait l'épreuve ci-dessus."""
+        self.assertNotEqual(211, yaml.safe_load(self.MODELE)["index"])
+
+    def test_nothing_else_changes(self):
+        avant, apres = (
+            self.MODELE.splitlines(),
+            B.pose_index(self.MODELE, 211).splitlines(),
+        )
+        self.assertEqual(len(avant), len(apres))
+        self.assertEqual(1, sum(1 for a, b in zip(avant, apres) if a != b))
+
+    def test_a_nested_index_is_not_the_one(self):
+        """Seul l'`index:` de PREMIER niveau est le seed. Un `index:` indenté
+        appartient à autre chose, et le confondre déplacerait l'adressage."""
+        imbrique = "reservations:\n  index: 3\n"
+        self.assertIsNone(B.pose_index(imbrique, 211))
+
+    def test_it_refuses_rather_than_guess(self):
+        for texte, index in (
+            ("cidr_hote: 24\n", 211),
+            ("index: 1\nindex: 2\n", 211),
+            (self.MODELE, "onze"),
+            (self.MODELE, None),
+            ("", 211),
+        ):
+            with self.subTest(texte=texte[:24], index=index):
+                self.assertIsNone(B.pose_index(texte, index))
+
+
+class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
+    """Un lien occupé est celui d'un exploitant. Créer les deux dépôts PUIS
+    refuser laisserait deux dossiers que rien ne nomme — et le montage suivant
+    les retrouverait sans savoir d'où ils viennent."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.moteur = os.path.join(self.d, "Moteur")
+        os.makedirs(self.moteur)
+
+    def depots(self):
+        """Les deux dépôts qui EXISTENT sous les frères du faux moteur."""
+        return sorted(
+            n
+            for n in os.listdir(self.d)
+            if n in (B.ECOSYSTEME, B.UNDERLAY_BANC)
+        )
+
+    def test_an_occupied_link_creates_nothing(self):
+        """LA PROPRIÉTÉ : rien sur le disque après un refus."""
+        os.symlink(
+            "../le-depot-de-quelqu-un",
+            os.path.join(self.moteur, B.LIEN_INSTANCE),
+        )
+        montage = B.monte_localement(
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertEqual([], self.depots())
+        self.assertIn(B.LIEN_INSTANCE, montage.souci)
+        self.assertFalse(montage.complet)
+
+    def test_it_names_which_link_stopped_it(self):
+        """Le souci DIT lequel : « un lien est occupé » laisse chercher."""
+        os.symlink(
+            "/ailleurs/underlay.yml",
+            os.path.join(self.moteur, B.LIEN_UNDERLAY),
+        )
+        montage = B.monte_localement(
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertIn(B.LIEN_UNDERLAY, montage.souci)
+
+    def test_a_directory_in_the_way_is_refused_too(self):
+        """Un vrai dossier `instance/` est un checkout d'exploitant, pas un
+        lien : l'effacer détruirait son plan."""
+        os.makedirs(os.path.join(self.moteur, B.LIEN_INSTANCE))
+        montage = B.monte_localement(
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertEqual([], self.depots())
+        self.assertFalse(montage.complet)
+
+    def test_an_engine_without_a_sibling_is_refused(self):
+        montage = B.monte_localement(
+            "", "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertFalse(montage.complet)
+        self.assertEqual(("", "", (), ()), montage[:4])
+
+    def test_it_never_raises_on_a_bare_engine(self):
+        """Le contrôle positif des refus ci-dessus : un moteur SANS lien occupé
+        va plus loin, et s'arrête sur ce qui manque vraiment — son modèle."""
+        montage = B.monte_localement(
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertNotIn(B.LIEN_INSTANCE, montage.souci)
+        self.assertNotIn(B.LIEN_UNDERLAY, montage.souci)
+        self.assertTrue(montage.souci)
+
+    def test_a_missing_node_or_bridge_stops_the_underlay(self):
+        """`texte_underlay` refuse sans nœud ni pont, et l'écriture d'un texte
+        vide n'est pas une écriture réussie."""
+        montage = B.monte_localement(
+            self.moteur, "", "vmbr9", "local-lvm", "192.0.2.10", 9000
+        )
+        self.assertIn("underlay.yml", montage.souci)
+        self.assertFalse(montage.complet)
+
+
+class TestLAmorcageNeSeDevinePas(unittest.TestCase):
+    """Il est LU chez le moteur, par la variable d'instance, avant que le lien
+    soit posé : poser le lien d'abord obligerait à le retirer si l'amorçage
+    refusait."""
+
+    def test_it_refuses_without_an_engine_or_an_instance(self):
+        for moteur, instance in (
+            ("", "/une/instance"),
+            ("/un/moteur", ""),
+            ("   ", "   "),
+        ):
+            with self.subTest(moteur=moteur, instance=instance):
+                self.assertIsNone(B.amorcage_du_plan(moteur, instance))
+
+    def test_an_engine_that_is_not_one_refuses(self):
+        """Une instance sans plan fait sortir le dérivateur en erreur, et le
+        lecteur rend None plutôt qu'une liste vide : « aucun hôte » et « pas su
+        demander » ne commandent pas la même suite."""
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        self.assertIsNone(B.amorcage_du_plan(d, d))
+
+
+class TestOnNeJouePasSansAvoirDecideComment(unittest.TestCase):
+    """Les outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une
+    session ssh non interactive ne porte pas, et son démon de grappe ne parle
+    qu'à root. Jouée sans élévation, une commande ne dit pas « refusé » : elle
+    dit « commande introuvable », ou se plaint de son canal de communication —
+    un diagnostic qui envoie chercher un démon en panne là où il n'y a qu'un
+    compte sans droits."""
+
+    def sonde(self, uid, sudo):
+        return f"uid={uid}\nsudo={sudo}\n"
+
+    def test_root_plays_as_is(self):
+        self.assertEqual(B.TEL_QUEL, B.lit_elevation(self.sonde(0, "non")))
+
+    def test_a_plain_account_with_passwordless_sudo_is_elevated(self):
+        self.assertEqual(B.ELEVE, B.lit_elevation(self.sonde(1000, "oui")))
+
+    def test_a_plain_account_without_it_is_impossible(self):
+        """Distingué de « pas su lire » : une session sans terminal ne peut pas
+        taper un mot de passe, et un sudo interactif n'échoue pas — il ATTEND,
+        et l'épreuve pend jusqu'à sa borne."""
+        self.assertEqual(
+            B.IMPOSSIBLE, B.lit_elevation(self.sonde(1000, "non"))
+        )
+
+    def test_half_a_probe_concludes_nothing(self):
+        """Les DEUX lignes sont exigées : conclure sur la moitié de la réponse
+        ferait jouer toute la suite sans droits."""
+        for sortie in ("uid=1000\n", "sudo=oui\n", "", "bruit sans rapport\n"):
+            with self.subTest(sortie=sortie.strip()):
+                self.assertIsNone(B.lit_elevation(sortie))
+
+    def test_an_answer_outside_the_vocabulary_concludes_nothing(self):
+        for sortie in (
+            self.sonde("abc", "oui"),
+            self.sonde(1000, "peut-etre"),
+            self.sonde("", "oui"),
+        ):
+            with self.subTest(sortie=sortie.strip()):
+                self.assertIsNone(B.lit_elevation(sortie))
+
+    def test_every_answer_is_in_the_closed_vocabulary_or_none(self):
+        for uid in (0, 1000):
+            for sudo in ("oui", "non"):
+                with self.subTest(uid=uid, sudo=sudo):
+                    self.assertIn(
+                        B.lit_elevation(self.sonde(uid, sudo)), B.ELEVATIONS
+                    )
+
+    def test_nothing_runs_without_a_decision(self):
+        """LA PROPRIÉTÉ : `jouees` vaut zéro. Refuser en ayant joué la première
+        commande laisserait le terrain à moitié touché."""
+        for elevation in (None, "", "peut-etre", B.IMPOSSIBLE):
+            with self.subTest(elevation=elevation):
+                fait = B.joue_sur("un-terrain", ["hostname"], elevation)
+                self.assertEqual((None, 0), (fait.code, fait.jouees))
+
+    def test_a_decided_elevation_does_let_it_try(self):
+        """Le contrôle positif : sans lui, un exécuteur qui refuse toujours
+        passerait les refus ci-dessus. Le terrain est inventé, donc ssh échoue —
+        mais il a été LANCÉ, ce que `jouees` dit."""
+        fait = B.joue_sur(
+            "un-terrain-invente.invalid", ["true"], B.TEL_QUEL, delai=30
+        )
+        self.assertEqual(1, fait.jouees)
+
+    def test_elevating_wraps_the_whole_command(self):
+        """« sudo sh -c '<tout>' » et non « sudo <tout> » : une commande du banc
+        est souvent une SUITE, et préfixer n'élèverait que son premier mot."""
+        suite = "a && b | c > d"
+        argv = B.ssh_argv("un-terrain", suite, B.ELEVE)
+        self.assertNotIn(suite, argv)
+        self.assertEqual(1, sum(1 for m in argv if suite in m))
+
+    def test_playing_as_is_wraps_nothing(self):
+        """Le contrôle positif du précédent."""
+        self.assertIn(
+            "hostname", B.ssh_argv("un-terrain", "hostname", B.TEL_QUEL)
+        )
+
+
+class TestLeVmidDuGabaritSeLitSurLaGrappe(unittest.TestCase):
+    """Un VMID est unique à l'échelle du CLUSTER. Choisir un numéro libre sur le
+    seul nœud où l'on parle le prendrait à une VM d'un autre nœud, et la création
+    échouerait au milieu du gabarit — après le téléchargement de l'image."""
+
+    def test_the_declared_ids_are_read(self):
+        self.assertEqual(
+            (100, 9000),
+            B.lit_vmids('[{"vmid": 100, "name": "a"}, {"vmid": 9000}]'),
+        )
+
+    def test_a_cluster_without_a_vm_names_none(self):
+        """« Rien à nommer » est une réponse ; le premier numéro est alors
+        libre."""
+        self.assertEqual((), B.lit_vmids("[]"))
+        self.assertEqual(B.VMID_GABARIT_DEPART, B.gabarit_libre(()))
+
+    def test_anything_that_is_not_a_list_of_ids_refuses(self):
+        for sortie in (
+            "ipcc_send_rec failed",
+            "",
+            None,
+            '{"vmid": 100}',
+            '[{"name": "sans vmid"}]',
+            '[{"vmid": "100"}]',
+            '[{"vmid": true}]',
+            "[100, 101]",
+        ):
+            with self.subTest(sortie=str(sortie)[:32]):
+                self.assertIsNone(B.lit_vmids(sortie))
+
+    def test_the_first_free_number_is_taken(self):
+        self.assertEqual(9001, B.gabarit_libre((100, 9000)))
+
+    def test_an_unread_cluster_gives_no_number(self):
+        """Prendre un numéro sans savoir lesquels sont pris reviendrait à parier
+        sur la VM de quelqu'un d'autre. Zéro est le seul entier qu'un VMID ne
+        peut pas valoir : la grappe les compte à partir de 100."""
+        self.assertEqual(0, B.gabarit_libre(None))
+
+    def test_a_full_range_gives_no_number(self):
+        plage = tuple(range(B.VMID_GABARIT_DEPART, B.VMID_GABARIT_FIN))
+        self.assertEqual(0, B.gabarit_libre(plage))
+
+    def test_a_malformed_list_gives_no_number(self):
+        self.assertEqual(0, B.gabarit_libre(("pas un nombre",)))
+
+    def test_it_asks_the_cluster_and_not_the_node(self):
+        """`qm list` ne voit que la machine où il tourne."""
+        joint = " ".join(B.cmds_vmids())
+        self.assertIn("/cluster/", joint)
+
+
+class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
+    """Le générateur d'inventaire pose un pont par hôte quand la fabric a une
+    SDN. Sans SDN il ne pose rien, et le clonage retombe sur cette valeur — qui
+    vaut `vmbr0` par défaut. Une carte étiquetée sur un pont qui n'est pas
+    conscient des VLAN démarre et reste injoignable, et la panne ne se voit ni à
+    la création, ni dans un code de retour."""
+
+    def lu(self, **change):
+        champs = dict(
+            noeud="un-noeud",
+            stockage="un-stockage",
+            pont="vmbr9",
+            vmid_modele=9001,
+        )
+        champs.update(change)
+        return yaml.safe_load(B.texte_placement(**champs) or "") or {}
+
+    def test_the_bridge_of_the_bench_is_named(self):
+        self.assertEqual("vmbr9", self.lu()["proxmox_clone_pont"])
+
+    def test_the_default_would_be_another_bridge(self):
+        """Le contrôle positif : sans lui, un fichier qui ne nommerait aucun
+        pont passerait l'épreuve ci-dessus."""
+        self.assertNotEqual("vmbr0", self.lu()["proxmox_clone_pont"])
+
+    def test_the_three_placement_keys_are_there(self):
+        """Elles NOMMENT des objets de l'hébergeur mais appartiennent au
+        locataire, parce que c'est lui qui choisit où se poser."""
+        lu = self.lu()
+        for cle in (
+            "proxmox_clone_noeud",
+            "proxmox_clone_stockage",
+            "proxmox_clone_vmid_modele",
+        ):
+            with self.subTest(cle=cle):
+                self.assertIn(cle, lu)
+
+    def test_no_addressing_is_written_here(self):
+        """Tout l'adressage dérive du seul index du plan : l'écrire ici le
+        figerait, et l'écosystème ne se déplacerait plus d'une fabric à
+        l'autre."""
+        lu = self.lu()
+        for cle in ("proxmox_vmid", "ansible_host", "proxmox_cidr", "index"):
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, lu)
+
+    def test_the_template_name_is_the_one_the_bench_captures(self):
+        """Un nom qui ne correspond pas se solde par un clonage qui ne trouve
+        pas sa source."""
+        self.assertEqual(B.GABARIT, self.lu()["proxmox_clone_source_nom"])
+
+    def test_it_refuses_a_missing_piece(self):
+        for change in (
+            {"noeud": ""},
+            {"stockage": ""},
+            {"pont": ""},
+            {"gabarit": ""},
+            {"vmid_modele": 0},
+            {"vmid_modele": -1},
+            {"vmid_modele": "pas un nombre"},
+            {"vmid_modele": None},
+        ):
+            with self.subTest(**change):
+                champs = dict(
+                    noeud="n", stockage="s", pont="p", vmid_modele=9001
+                )
+                champs.update(change)
+                self.assertEqual("", B.texte_placement(**champs))
+
+    def test_a_valid_set_still_writes(self):
+        """Le contrôle positif des refus ci-dessus."""
+        self.assertNotEqual("", B.texte_placement("n", "s", "p", 9001))
+
+    def test_the_bench_fills_only_one_inventory(self):
+        """Le moteur prend le PREMIER qui existe parmi lab, principal,
+        production, et son générateur crée production : en renseigner un autre
+        en ferait deux, et le premier gagnerait sur celui qui est tenu à jour."""
+        self.assertEqual("production", B.INVENTAIRE_BANC)
 
 
 if __name__ == "__main__":

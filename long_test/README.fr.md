@@ -374,6 +374,17 @@ du code que rien n'a vérifié.
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ```
 
+**Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
+outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
+non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée
+sans élévation, une commande ne dit pas « refusé » : elle dit « commande
+introuvable », ou se plaint de son canal de communication — un diagnostic qui
+envoie chercher un démon en panne là où il n'y a qu'un compte sans droits. Le
+banc mesure une fois si la session est déjà root et si `sudo` répond SANS mot de
+passe : une session sans terminal ne peut pas en taper un, et un sudo interactif
+n'échoue pas, il ATTEND jusqu'à la borne. Chaque commande porte ensuite cette
+décision, et l'exécuteur refuse de rien jouer sans elle.
+
 **La boucle est celle du moteur, pas une recomposition de ses morceaux.**
 `reconstruire` enchaîne les flux, la création de la flotte, l'attente,
 l'amorçage du socle puis le déploiement par couches. L'ordre y compte : sans les
