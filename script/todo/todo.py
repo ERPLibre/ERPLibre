@@ -20,6 +20,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from urllib.parse import urlsplit
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -139,6 +140,7 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
+from script.todo.web import launcher, paths
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 ENABLE_CRASH = False
@@ -783,6 +785,126 @@ class TODO(
             ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
                 return
+
+    def _web_status(self):
+        """État du hub web de ce checkout (`launcher.status`), ou None. Un
+        état qui ne se lit pas vaut None : le menu ne s'arrête pas dessus.
+        La racine est celle de ce fichier, jamais le répertoire courant."""
+        try:
+            return launcher.status(new_path)
+        except Exception:
+            return None
+
+    def _todo_telemetry_web(self):
+        """Ouvre la télémétrie dans le navigateur, par le hub web de ce
+        checkout, démarré au besoin.
+
+        Le hub est détaché : la méthode rend la main dès le lien émis, et
+        Ctrl+C dans ce terminal ne l'atteint pas. Le lien de connexion est
+        toujours affiché, pour un navigateur confiné qui ne lit pas le
+        fichier de redirection ; sans affichage graphique, il suit la
+        commande du tunnel SSH à lancer depuis le poste de l'utilisateur.
+        Un échec s'affiche et rend la main, Ctrl+C pendant le démarrage
+        aussi : rien ne remonte au menu.
+        """
+        try:
+            page = launcher.open_page(
+                new_path, view="telemetry", lang=get_lang()
+            )
+        except launcher.LaunchError as exc:
+            self._web_launch_failed(exc)
+            return
+        except KeyboardInterrupt:
+            # Le hub est détaché : interrompre l'attente ne l'arrête pas, et
+            # la ligne d'état du menu dit ensuite s'il a démarré.
+            print()
+            return
+        except Exception as exc:
+            error = launcher.LaunchError(f"{type(exc).__name__}: {exc}")
+            self._web_launch_failed(error)
+            return
+        print(f"{t('Web interface ready')} — {page.url}")
+        if page.headless:
+            port = urlsplit(page.url).port
+            host = socket.gethostname().split(".")[0]
+            notes = [
+                t("No display on this host. On your workstation, run:"),
+                f"ssh -L {port}:127.0.0.1:{port} {host}",
+                t("Then open this link within 2 minutes:"),
+            ]
+        else:
+            notes = [
+                t("If the page did not open, use this link within 2 minutes:")
+            ]
+            if page.opened:
+                notes.insert(
+                    0,
+                    t(
+                        "Opened in your browser. The link works once, for 2"
+                        " minutes."
+                    ),
+                )
+        for note in notes + [page.link]:
+            print(f"   {note}")
+
+    def _web_launch_failed(self, exc):
+        """Message d'un lancement du hub web qui échoue, selon `exc.kind`.
+        Sans journal, la fin affichée est la phrase du lanceur."""
+        if exc.kind == "root":
+            print(t("The web interface refuses to run as root."))
+            return
+        if exc.kind == "missing":
+            print(
+                t("The web interface needs {pkg}. Install it with:").format(
+                    pkg=exc.pkg
+                )
+            )
+            pip = f"{VENV_ERPLIBRE}/bin/pip"
+            print(f"   {pip} install {shlex.quote(launcher.TORNADO)}")
+            return
+        print(t("The web interface did not start. Last lines of its log:"))
+        try:
+            print(f"   {paths.log_path(new_path)}")
+        except OSError:
+            pass
+        for line in (exc.log_tail or exc.message).splitlines():
+            print(f"   {line}")
+
+    def _todo_web_stop(self):
+        """Arrête le hub web de ce checkout. Si des sessions web exécutent
+        une commande, demande d'abord : un refus n'arrête rien, Ctrl+C ou
+        Ctrl+D non plus. Un hub qui répond encore après l'attente du lanceur
+        n'est pas annoncé arrêté : la ligne d'état du menu, affichée
+        ensuite, dit qu'il tourne. Rien ne remonte au menu."""
+        info = self._web_status()
+        if info is None:
+            print(t("The web interface is not running."))
+            return
+        running = info.get("running", 0)
+        if running:
+            question = t(
+                "{n} web sessions are running a command. Stop them anyway?"
+            )
+            try:
+                sure = click.confirm(question.format(n=running), default=False)
+            except click.exceptions.Abort:
+                # Ctrl+C ou Ctrl+D à la question vaut « non ».
+                print()
+                return
+            if not sure:
+                return
+        try:
+            stopped = launcher.stop(new_path)
+        except KeyboardInterrupt:
+            # L'ordre d'arrêt a pu partir : la ligne d'état qui suit dit si
+            # le hub tourne encore.
+            print()
+            return
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+            return
+        if stopped:
+            print(t("Web interface stopped"))
 
     # Préférences éditables depuis le menu Configuration : clé, libellé, et
     # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :

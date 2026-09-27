@@ -2458,6 +2458,65 @@ TRANSLATIONS = {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
     },
+    "Web interface ready": {
+        "fr": "✅ Interface web prête",
+        "en": "✅ Web interface ready",
+    },
+    "Opened in your browser. The link works once, for 2 minutes.": {
+        "fr": "Ouverte dans votre navigateur. Le lien ne sert qu'une fois,"
+        " pendant 2 minutes.",
+        "en": "Opened in your browser. The link works once, for 2 minutes.",
+    },
+    "If the page did not open, use this link within 2 minutes:": {
+        "fr": "Si la page ne s'est pas ouverte, utilisez ce lien dans les 2"
+        " minutes :",
+        "en": "If the page did not open, use this link within 2 minutes:",
+    },
+    "No display on this host. On your workstation, run:": {
+        "fr": "Aucun affichage sur cet hôte. Sur votre poste, lancez :",
+        "en": "No display on this host. On your workstation, run:",
+    },
+    "Then open this link within 2 minutes:": {
+        "fr": "Puis ouvrez ce lien dans les 2 minutes :",
+        "en": "Then open this link within 2 minutes:",
+    },
+    "The web interface did not start. Last lines of its log:": {
+        "fr": "❌ L'interface web n'a pas démarré. Dernières lignes de son"
+        " journal :",
+        "en": "❌ The web interface did not start. Last lines of its log:",
+    },
+    "The web interface needs {pkg}. Install it with:": {
+        "fr": "❌ L'interface web a besoin de {pkg}. Installez-le avec :",
+        "en": "❌ The web interface needs {pkg}. Install it with:",
+    },
+    "The web interface refuses to run as root.": {
+        "fr": "❌ L'interface web refuse de tourner en root.",
+        "en": "❌ The web interface refuses to run as root.",
+    },
+    "Web interface stopped": {
+        "fr": "⏹️ Interface web arrêtée",
+        "en": "⏹️ Web interface stopped",
+    },
+    "The web interface is not running.": {
+        "fr": "ℹ️ L'interface web n'est pas lancée.",
+        "en": "ℹ️ The web interface is not running.",
+    },
+    "{n} web sessions are running a command. Stop them anyway?": {
+        "fr": "{n} sessions web exécutent une commande. Les arrêter quand"
+        " même ?",
+        "en": "{n} web sessions are running a command. Stop them anyway?",
+    },
+    "Telemetry opened in this page.": {
+        "fr": "Télémétrie ouverte dans cette page.",
+        "en": "Telemetry opened in this page.",
+    },
+    "This page runs on the web interface: stop it from a terminal or with"
+    " the page's Stop button.": {
+        "fr": "Cette page passe par l'interface web : arrêtez-la depuis un"
+        " terminal ou avec le bouton Arrêter de la page.",
+        "en": "This page runs on the web interface: stop it from a terminal"
+        " or with the page's Stop button.",
+    },
     "Configuration": {
         "fr": "🔩 Configuration",
         "en": "🔩 Configuration",
