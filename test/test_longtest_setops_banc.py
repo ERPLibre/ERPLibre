@@ -19,9 +19,13 @@ détruirait, au rasage, ce qui ne lui appartient pas.
 """
 
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
+
+import yaml
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
@@ -609,6 +613,226 @@ class TestLeConstatDuPont(unittest.TestCase):
         self.assertIn(
             "'vmbr9 et plus'", B.cmds_constater_pont("vmbr9 et plus")[0]
         )
+
+
+class TestLesLiensDuMoteurNeSeVolentPas(unittest.TestCase):
+    """LE BANC POSE SES LIENS DANS LE MOTEUR, et le moteur n'est pas à lui. Un
+    moteur où une instance est déjà montée porte le travail d'un exploitant :
+    remplacer son lien détournerait ses gestes vers l'écosystème du banc, dont
+    le rasage détruit tout ce que l'inventaire nomme."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.ici = os.path.join(self.d, "lien")
+
+    def test_nothing_there_is_to_be_posed(self):
+        """Le contrôle positif : sans lui, un état qui refuse toujours
+        passerait tous les refus ci-dessous."""
+        self.assertEqual(B.A_POSER, B.lien_etat(self.ici, "../cible"))
+
+    def test_our_own_link_is_recognised(self):
+        os.symlink("../cible", self.ici)
+        self.assertEqual(B.NOTRE, B.lien_etat(self.ici, "../cible"))
+
+    def test_a_link_pointing_elsewhere_is_occupied(self):
+        os.symlink("../celui-de-quelqu-un-d-autre", self.ici)
+        self.assertEqual(B.OCCUPE, B.lien_etat(self.ici, "../cible"))
+
+    def test_a_real_directory_is_occupied(self):
+        os.mkdir(self.ici)
+        self.assertEqual(B.OCCUPE, B.lien_etat(self.ici, "../cible"))
+
+    def test_a_real_file_is_occupied(self):
+        with open(self.ici, "w", encoding="utf-8") as ecrit:
+            ecrit.write("le fichier d'un exploitant\n")
+        self.assertEqual(B.OCCUPE, B.lien_etat(self.ici, "../cible"))
+
+    def test_a_dangling_link_elsewhere_still_occupies_the_name(self):
+        """LA PROPRIÉTÉ. Le dépôt que le lien d'un exploitant désigne n'est pas
+        toujours monté ; le lien pend alors, et une lecture qui SUIT le lien le
+        déclare absent. Le banc écraserait ce lien, et le geste suivant de
+        l'exploitant partirait vers l'écosystème du banc."""
+        os.symlink(
+            os.path.join(self.d, "depot-non-monte", "underlay.yml"), self.ici
+        )
+        self.assertFalse(os.path.exists(self.ici))
+        self.assertEqual(B.OCCUPE, B.lien_etat(self.ici, "../cible"))
+
+    def test_a_dangling_link_of_ours_is_still_ours(self):
+        """La contrepartie : notre propre lien pend entre deux passes, et le
+        reposer ne doit pas être refusé."""
+        os.symlink("../cible", self.ici)
+        self.assertFalse(os.path.exists(self.ici))
+        self.assertEqual(B.NOTRE, B.lien_etat(self.ici, "../cible"))
+
+    def test_without_a_target_it_refuses_to_conclude(self):
+        self.assertEqual(B.INCONNU, B.lien_etat(self.ici, ""))
+
+    def test_every_answer_belongs_to_the_closed_vocabulary(self):
+        os.symlink("../ailleurs", self.ici)
+        for vise in ("../cible", "../ailleurs", ""):
+            with self.subTest(vise=vise):
+                self.assertIn(B.lien_etat(self.ici, vise), B.ETATS_LIEN)
+
+
+class TestLIndexNeSePartagePas(unittest.TestCase):
+    """Tout l'adressage d'un écosystème dérive de son index : deux dépôts qui
+    le partagent dérivent les mêmes adresses et les mêmes VLAN, et le rasage du
+    banc détruit les VM de l'autre en croyant détruire les siennes."""
+
+    def test_a_free_index_is_free(self):
+        """Le contrôle positif : sans lui, un garde qui refuse toujours
+        passerait les refus ci-dessous."""
+        self.assertIs(True, B.index_libre([{"index": 4}], 211))
+
+    def test_a_taken_index_is_refused(self):
+        self.assertIs(False, B.index_libre([{"index": 211}], 211))
+
+    def test_a_taken_index_is_refused_even_as_text(self):
+        self.assertIs(False, B.index_libre([{"index": "211"}], 211))
+
+    def test_an_unreadable_discovery_does_not_grant(self):
+        """Ne pas savoir n'est pas une permission."""
+        self.assertIsNone(B.index_libre(None, 211))
+
+    def test_a_malformed_discovery_does_not_grant(self):
+        for vu in ([{"index": "pas un nombre"}], ["pas un dictionnaire"]):
+            with self.subTest(vu=vu):
+                self.assertIsNone(B.index_libre(vu, 211))
+
+    def test_an_entry_without_index_reserves_nothing(self):
+        """La découverte du moteur ignore elle aussi ce qui n'en déclare pas."""
+        self.assertIs(True, B.index_libre([{"index": None}], 211))
+
+    def test_the_two_indexes_of_the_bench_differ(self):
+        """Sites et locataires tirent du MÊME espace d'index."""
+        self.assertNotEqual(B.INDEX_ECOSYSTEME, B.INDEX_UNDERLAY)
+
+
+class TestCeQueLeBancEcritSeLitParLeMoteur(unittest.TestCase):
+    """Les fichiers que le banc pose sont lus par le moteur, pas par le banc :
+    ce qui est éprouvé ici est donc l'expression du MOTEUR, appliquée au texte
+    du banc."""
+
+    def bloc(self, texte):
+        """Ce que le lecteur du moteur tire de ce texte : `get(...) or None`."""
+        return (yaml.safe_load(texte) or {}).get("underlay") or None
+
+    def test_the_underlay_block_is_never_empty_for_that_reader(self):
+        """UN BLOC VIDE SE LIT COMME UN FICHIER ABSENT, et l'accès à la grappe
+        refuse alors « pas de cluster à piloter » sans dire que le fichier est
+        là."""
+        self.assertIsNotNone(self.bloc(B.texte_underlay("un-noeud", "vmbr9")))
+
+    def test_that_reader_would_reject_an_empty_block(self):
+        """Le contrôle positif de l'épreuve ci-dessus."""
+        self.assertIsNone(self.bloc("underlay: {}\n"))
+
+    def test_the_underlay_declares_its_index(self):
+        """Un site sans index déclaré reste invisible à la découverte des
+        dossiers frères, donc il n'accueille rien."""
+        self.assertEqual(
+            B.INDEX_UNDERLAY, self.bloc(B.texte_underlay("n", "p"))["index"]
+        )
+
+    def test_the_underlay_refuses_without_a_node_or_a_bridge(self):
+        for noeud, pont in (("", "vmbr9"), ("n", ""), ("", "")):
+            with self.subTest(noeud=noeud, pont=pont):
+                self.assertEqual("", B.texte_underlay(noeud, pont))
+
+    def test_the_hoster_file_carries_no_secret(self):
+        """CE FICHIER VOYAGE AVEC UN DÉPÔT. Le jeton vit dans la voûte
+        chiffrée à côté, et c'est toute la raison d'être des deux fichiers."""
+        lu = yaml.safe_load(B.texte_hebergeur("h", "n", "s", "p")) or {}
+        self.assertNotIn("proxmox_api_token_id", lu)
+        self.assertNotIn("proxmox_api_token_secret", lu)
+
+    def test_the_vault_does_carry_them(self):
+        """Le contrôle positif : sans lui, deux clés jamais écrites nulle part
+        passeraient l'épreuve ci-dessus."""
+        lu = yaml.safe_load(B.texte_voute("un-secret-invente")) or {}
+        self.assertIn("proxmox_api_token_id", lu)
+        self.assertIn("proxmox_api_token_secret", lu)
+
+    def test_the_hoster_file_refuses_a_missing_piece(self):
+        for vu in (
+            ("", "n", "s", "p"),
+            ("h", "", "s", "p"),
+            ("h", "n", "", "p"),
+            ("h", "n", "s", ""),
+        ):
+            with self.subTest(vu=vu):
+                self.assertEqual("", B.texte_hebergeur(*vu))
+
+    def test_the_vault_refuses_without_a_secret(self):
+        for vu in ("", "   ", None):
+            with self.subTest(secret=vu):
+                self.assertEqual("", B.texte_voute(vu))
+
+    def test_the_stored_token_id_is_the_bare_name(self):
+        """Le client d'API recompose « utilisateur!nom » à partir des deux
+        valeurs ; la forme déjà composée produit un 401 que le même jeton
+        contredit en HTTP direct."""
+        lu = yaml.safe_load(B.texte_voute("un-secret-invente")) or {}
+        self.assertNotIn("!", str(lu["proxmox_api_token_id"]))
+
+
+class TestLePlanSActiveChirurgicalement(unittest.TestCase):
+    """`etat: actif` COMMANDE TOUTE LA BOUCLE. Le générateur d'inventaire range
+    dans les hôtes actifs ce qui porte EXACTEMENT « actif » et tout le reste
+    dans les planifiés ; les modèles livrés déclarent « planifie ». Un plan
+    recopié sans la bascule produit un inventaire vide, et la matérialisation
+    comme le rasage sortent à ZÉRO sans avoir rien fait."""
+
+    MODELE = (
+        "---\n"
+        "# un commentaire du modèle, qui doit survivre\n"
+        "serveurs:\n"
+        "  infra-pki-01:  { fonction: infra-pki,  etat: planifie }\n"
+        "  infra-dns-01:  { fonction: infra-dns,  etat: planifie, disque: 40G }\n"
+    )
+
+    def actifs(self, texte):
+        """Les hôtes que la règle du moteur rangerait parmi les actifs."""
+        lu = (yaml.safe_load(texte) or {}).get("serveurs") or {}
+        return sorted(
+            nom
+            for nom, decl in lu.items()
+            if (decl or {}).get("etat") == "actif"
+        )
+
+    def test_exactly_one_host_becomes_active(self):
+        self.assertEqual(
+            ["infra-dns-01"],
+            self.actifs(B.active_un_hote(self.MODELE, "infra-dns-01")),
+        )
+
+    def test_the_model_as_shipped_has_none(self):
+        """Le contrôle positif : sans lui, un plan dont tout serait déjà actif
+        passerait l'épreuve ci-dessus."""
+        self.assertEqual([], self.actifs(self.MODELE))
+
+    def test_nothing_else_changes(self):
+        """CHIRURGICAL : une seule ligne diffère, commentaires compris."""
+        avant = self.MODELE.splitlines()
+        apres = B.active_un_hote(self.MODELE, "infra-dns-01").splitlines()
+        self.assertEqual(len(avant), len(apres))
+        differentes = [
+            i for i, (a, b) in enumerate(zip(avant, apres)) if a != b
+        ]
+        self.assertEqual(1, len(differentes))
+
+    def test_it_refuses_rather_than_guess(self):
+        for texte, hote in (
+            (self.MODELE, "n-existe-pas"),
+            (self.MODELE, ""),
+            ("", "infra-dns-01"),
+            ("serveurs:\n  a: { fonction: f }\n", "a"),
+            ("  a: { etat: planifie }\n  a: { etat: planifie }\n", "a"),
+        ):
+            with self.subTest(hote=hote, texte=texte[:30]):
+                self.assertIsNone(B.active_un_hote(texte, hote))
 
 
 if __name__ == "__main__":

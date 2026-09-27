@@ -331,6 +331,24 @@ et n'en modifie aucun.
 Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
 éprouve le moteur, pas l'imbrication.
 
+**Deux dépôts, pas un.** Le moteur joint sa grappe par la voûte d'un UNDERLAY,
+chez l'hébergeur, et refuse sans le lien qui le désigne : un banc à un seul
+dépôt ne peut donc pas matérialiser de VM. Le banc pose une paire de dossiers
+frères, `SITE-…` pour la fabric et `OPS-…` pour le plan, et monte les deux par
+les liens que le moteur lit PAR LEUR CHEMIN — son playbook ne regarde ni
+`SETOPS_UNDERLAY` ni `SETOPS_INSTANCE`. Il refuse si l'un des deux noms est déjà
+pris, lien brisé compris : ce lien est celui d'un exploitant, et le remplacer
+dirigerait son geste suivant vers l'écosystème du banc, dont le rasage détruit
+tout ce que l'inventaire nomme.
+
+**Le plan s'active chirurgicalement.** Le modèle livré déclare tous ses serveurs
+`planifie`, et l'inventaire ne range parmi les actifs que ce qui porte
+exactement `actif` : un plan recopié sans la bascule produit un inventaire sans
+aucun hôte actif, et la matérialisation comme le rasage sortent alors à zéro
+sans avoir rien fait — ce qui se lit comme une réussite. Le banc bascule un
+attribut d'une ligne et rend le reste du fichier tel quel, commentaires
+compris.
+
 **Deux passes, et elles ne prouvent pas la même chose.** La première porte le
 jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
 valide la GRAPPE. La seconde le chiffre dans la voûte de l'écosystème de banc et

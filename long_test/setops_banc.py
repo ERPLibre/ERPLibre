@@ -95,6 +95,44 @@ GABARIT = "banc-fictif-trachyte-gabarit"
 # haut pour la même raison — on cherche un nom libre, on ne prend pas `vmbr0`.
 PONT_DEPART = 9
 
+# L'INDEX DU BANC, et il se VÉRIFIE au lieu de se choisir. Tout l'adressage d'un
+# écosystème dérive de ce seul entier : le 2e octet du supernet le porte TEL QUEL
+# et la VLAN d'une zone vaut 1000 + index × 10 + zone. Deux dépôts frères qui le
+# partageraient dériveraient les mêmes adresses, et le rasage du banc détruirait
+# les VM de l'autre en croyant détruire les siennes. `index_libre` refuse ce cas.
+# Sites et locataires tirent du MÊME espace, d'où deux valeurs et non une.
+INDEX_ECOSYSTEME = 211
+INDEX_UNDERLAY = 212
+
+# Le port de l'API d'un Proxmox. Chaîne et non entier : le moteur le compare tel
+# quel à ce que porte son fichier d'hébergeur.
+PORT_API = "8006"
+
+# L'hôte que le banc active dans le plan du modèle. Il EXISTE dans le modèle
+# livré — le banc n'en invente pas, il en active un — et sa fonction est donc
+# déjà placée dans une zone par la nomenclature.
+HOTE_BANC = "infra-dns-01"
+
+# Les deux liens que le moteur lit, et il les lit PAR LEUR CHEMIN. Son playbook
+# de clonage résout `<moteur>/underlay.yml` puis lit `<moteur>/instance/`, sans
+# jamais regarder `SETOPS_UNDERLAY` ni `SETOPS_INSTANCE` : ces variables
+# suffisent au chemin Python, pas à celui qui matérialise. Les deux noms sont
+# ignorés du suivi de version du moteur, donc les poser ne salit pas son
+# checkout.
+LIEN_UNDERLAY = "underlay.yml"
+LIEN_INSTANCE = "instance"
+LIENS = (LIEN_UNDERLAY, LIEN_INSTANCE)
+
+# L'ÉTAT D'UN LIEN, vocabulaire CLOS. A_POSER : rien ne porte ce nom. NOTRE :
+# c'est déjà le lien du banc, le reposer ne change rien. OCCUPE : autre chose
+# est là — un lien vers ailleurs, ou un vrai dossier. INCONNU : on n'a pas su
+# regarder. Seuls A_POSER et NOTRE autorisent la suite.
+A_POSER = "a_poser"
+NOTRE = "notre"
+OCCUPE = "occupe"
+INCONNU = "inconnu"
+ETATS_LIEN = (A_POSER, NOTRE, OCCUPE, INCONNU)
+
 # Les genres de ce que le banc pose, et l'ORDRE INVERSE dans lequel ils se
 # défont. Vocabulaire CLOS.
 VM = "vm"
@@ -374,6 +412,192 @@ def environnement_api(
         "PROXMOX_API_TOKEN_ID": jeton,
         "PROXMOX_API_TOKEN_SECRET": secret.strip(),
     }
+
+
+def lien_etat(chemin, vise):
+    """L'état du lien `chemin` au regard de la cible `vise`. Vocabulaire clos.
+
+    FERMÉ PAR DÉFAUT : ce qui ne se lit pas rend INCONNU, jamais A_POSER. Le
+    banc pose ses liens DANS le moteur, et un moteur où une instance est déjà
+    montée porte le travail d'un exploitant : remplacer son lien détournerait
+    ses gestes vers l'écosystème du banc, dont le rasage détruit tout ce que
+    l'inventaire nomme.
+
+    `lexists` et non `exists` : un lien BRISÉ occupe le nom sans que sa cible
+    existe, et `exists` le déclarerait absent — on écraserait alors le lien d'un
+    exploitant dont le dépôt n'est simplement pas monté à cet instant.
+    """
+    if not vise:
+        return INCONNU
+    try:
+        if not os.path.lexists(chemin):
+            return A_POSER
+        if not os.path.islink(chemin):
+            return OCCUPE
+        return NOTRE if os.readlink(chemin) == vise else OCCUPE
+    except OSError:
+        return INCONNU
+
+
+def index_libre(instances, voulu):
+    """L'index `voulu` est-il libre parmi `instances` ? None si on ne sait pas.
+
+    `instances` est ce que le moteur découvre chez ses dossiers frères. Une
+    découverte qui n'aboutit pas REFUSE au lieu de conclure : un index déjà pris
+    dérive les mêmes adresses et les mêmes VLAN pour deux écosystèmes, et rien
+    dans la suite ne le signalerait.
+
+    Une entrée sans index déclaré ne réserve rien — la découverte du moteur
+    l'ignore elle aussi, donc elle ne peut pas entrer en conflit.
+    """
+    if instances is None:
+        return None
+    try:
+        pris = {
+            int(une["index"])
+            for une in instances
+            if une.get("index") is not None
+        }
+        return int(voulu) not in pris
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def texte_underlay(noeud, pont, index=INDEX_UNDERLAY):
+    """Le `underlay.yml` du dépôt d'underlay du banc, ou « ».
+
+    LE BLOC N'EST JAMAIS VIDE, et ce n'est pas un choix de style : le lecteur du
+    moteur rend `data.get("underlay") or None`, si bien qu'un `underlay: {}` se
+    lit exactement comme un fichier ABSENT — l'accès à la grappe refuse alors
+    « pas de cluster à piloter » sans dire que le fichier est là.
+
+    `index` EST DÉCLARÉ, sinon le site reste invisible : la découverte des
+    dossiers frères passe tout `SITE-*/underlay.yml` qui n'en porte pas, et le
+    site n'entre dans aucun compte.
+
+    Le lien de transit porte `passerelle_sortie`, faute de quoi la flotte est
+    routée jusqu'à la bordure puis muette — la panne la plus coûteuse à
+    diagnostiquer de ce fichier.
+    """
+    if not (noeud or "").strip() or not (pont or "").strip():
+        return ""
+    i = int(index)
+    n, p = noeud.strip(), pont.strip()
+    return f"""---
+# Underlay du BANC — grappe jetable, adresses inventées. Aucun équipement réel
+# n'est décrit ici : le banc éprouve le moteur, pas une fabric.
+underlay:
+  index: {i}
+  routeur: banc-switch-01
+  dialecte: cisco
+  stp:
+    mode: rstp
+    topologie: etoile
+  reseaux:
+    - nom: management
+      description: Gestion de l'hyperviseur jetable
+      vlan: 10
+      sous_reseau: 10.{i}.0.0/24
+      passerelle: 10.{i}.0.1
+      mtu: 1500
+    - nom: transit-frontiere
+      description: Lien routeur <-> pare-feu de bordure
+      vlan: 40
+      sous_reseau: 10.{i}.4.0/29
+      passerelle: 10.{i}.4.6
+      passerelle_sortie: 10.{i}.4.1
+      mtu: 1500
+  hotes:
+    - nom: banc-switch-01
+      reseau: management
+      ip: 10.{i}.0.1
+    - {{ nom: banc-switch-01, role: switch, reseau: transit-frontiere, ip: 10.{i}.4.6 }}
+    - {{ nom: banc-parefeu-1, role: frontiere, reseau: transit-frontiere, ip: 10.{i}.4.1 }}
+    - {{ nom: {n}, role: hyperviseur, reseau: management, ip: 10.{i}.0.41, via: {p} }}
+"""
+
+
+def texte_hebergeur(hote, noeud, stockage, pont, utilisateur=UTILISATEUR_API):
+    """Le `proxmox-hebergeur.yml` du dépôt d'underlay, ou « ».
+
+    QUATRE CLÉS SEULEMENT APPARTIENNENT À L'HÉBERGEUR — l'hôte d'API, son
+    utilisateur, son port, la validation TLS ; le placement d'un clone appartient
+    au locataire, qui choisit où se poser. Les nœuds, stockages et ponts décrivent
+    la grappe, donc l'hébergeur les porte aussi.
+
+    LE SECRET N'EST PAS ICI. Ce fichier voyage avec un dépôt ; le jeton vit dans
+    la voûte chiffrée à côté, et c'est toute la raison d'être des deux fichiers.
+
+    `proxmox_validate_certs: false` : une grappe jetable porte un certificat
+    auto-signé qu'aucune autorité connue du moteur ne contresigne.
+    """
+    if not all((vu or "").strip() for vu in (hote, noeud, stockage, pont)):
+        return ""
+    return f"""---
+# La grappe du BANC, relevée sur elle et non écrite de mémoire. Sans secret.
+proxmox_api_host: {hote.strip()}
+proxmox_api_port: '{PORT_API}'
+proxmox_api_user: {utilisateur}
+proxmox_validate_certs: false
+proxmox_noeuds:    [{noeud.strip()}]
+proxmox_stockages: [{stockage.strip()}]
+proxmox_ponts:     [{pont.strip()}]
+"""
+
+
+def texte_voute(secret, utilisateur=UTILISATEUR_API, jeton=JETON_API):
+    """Le CLAIR de `underlay.vault.yml`, à chiffrer. Rend « » sans secret.
+
+    NE SE POSE JAMAIS EN CLAIR SUR LE DISQUE. L'appelant le passe à
+    `ansible-vault encrypt` par l'ENTRÉE STANDARD : écrit d'abord puis chiffré,
+    le secret resterait dans les blocs libérés et dans toute sauvegarde prise
+    entre les deux gestes.
+
+    L'IDENTIFIANT EST LE NOM SEUL, sans « utilisateur! » devant : le client d'API
+    recompose la forme complète à partir des deux valeurs, et la lui donner déjà
+    composée produit un 401 que le même jeton contredit en HTTP direct.
+
+    CETTE VOÛTE GAGNE sur celle du locataire, chez les deux lecteurs qui les
+    superposent. Le jeton n'a donc à vivre qu'ici.
+    """
+    if not (secret or "").strip():
+        return ""
+    return f"""---
+proxmox_api_user: {utilisateur}
+proxmox_api_token_id: {jeton}
+proxmox_api_token_secret: {secret.strip()}
+"""
+
+
+def active_un_hote(texte, hote=HOTE_BANC):
+    """`texte`, le seul `etat:` de `hote` porté à « actif ». None si refus.
+
+    CHIRURGICAL : un attribut d'une ligne change, tout le reste est rendu tel
+    quel, commentaires compris. Réécrire le plan en entier le ferait diverger du
+    modèle livré à chaque évolution de celui-ci.
+
+    `etat: actif` COMMANDE TOUTE LA BOUCLE. Le générateur d'inventaire range
+    dans `hotes_actifs` ce qui porte EXACTEMENT « actif » et tout le reste dans
+    `hotes_planifies` ; les modèles livrés déclarent « planifie ». Un plan
+    recopié sans cette bascule produit un inventaire dont `hotes_actifs` est
+    vide — et la matérialisation comme le rasage sortent alors à ZÉRO sans avoir
+    rien fait, ce qui se lit comme une réussite.
+
+    REFUSE plutôt que de deviner : hôte absent, déclaré deux fois, ou ligne sans
+    `etat:` à porter.
+    """
+    if not (texte or "") or not (hote or "").strip():
+        return None
+    nom = re.escape(hote.strip())
+    lignes = (texte or "").splitlines(keepends=True)
+    vus = [i for i, l in enumerate(lignes) if re.match(rf"\s*{nom}\s*:", l)]
+    if len(vus) != 1:
+        return None
+    ligne = lignes[vus[0]]
+    if len(re.findall(r"\betat\s*:\s*\w+", ligne)) != 1:
+        return None
+    lignes[vus[0]] = re.sub(r"\betat(\s*:\s*)\w+", r"etat\g<1>actif", ligne)
+    return "".join(lignes)
 
 
 def cmds_effacer_vm(vmid, nom):

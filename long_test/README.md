@@ -318,6 +318,23 @@ it lays down ITS bridge and ITS API user, and modifies neither.
 is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
 the engine, not the nesting.
 
+**Two repositories, not one.** The engine reaches its cluster through the vault
+of an UNDERLAY, at the hoster, and refuses without the link that names it — so a
+bench with a single repository cannot materialise a VM. The bench lays down a
+sibling pair, `SITE-…` for the fabric and `OPS-…` for the plan, and mounts both
+through the two links the engine reads BY THEIR PATH — its playbook looks at
+neither `SETOPS_UNDERLAY` nor `SETOPS_INSTANCE`. It refuses if either name is
+already taken, a dangling link included: that link is an operator's, and
+replacing it would aim their next gesture at the bench's ecosystem, whose razing
+destroys everything the inventory names.
+
+**The plan is activated surgically.** The shipped model declares every server
+`planifie`, and the inventory files as active only what says exactly `actif` — a
+plan copied without that flip yields an inventory with no active host, and the
+materialising and the razing then both exit zero having done nothing, which
+reads as a success. The bench flips one attribute of one line and renders the
+rest of the file as it stands, comments included.
+
 **Two passes, and they do not prove the same thing.** The first carries the token
 through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
 validates the CLUSTER. The second seals it in the bench ecosystem's vault and

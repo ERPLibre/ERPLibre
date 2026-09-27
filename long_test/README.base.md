@@ -323,6 +323,23 @@ it lays down ITS bridge and ITS API user, and modifies neither.
 is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
 the engine, not the nesting.
 
+**Two repositories, not one.** The engine reaches its cluster through the vault
+of an UNDERLAY, at the hoster, and refuses without the link that names it — so a
+bench with a single repository cannot materialise a VM. The bench lays down a
+sibling pair, `SITE-…` for the fabric and `OPS-…` for the plan, and mounts both
+through the two links the engine reads BY THEIR PATH — its playbook looks at
+neither `SETOPS_UNDERLAY` nor `SETOPS_INSTANCE`. It refuses if either name is
+already taken, a dangling link included: that link is an operator's, and
+replacing it would aim their next gesture at the bench's ecosystem, whose razing
+destroys everything the inventory names.
+
+**The plan is activated surgically.** The shipped model declares every server
+`planifie`, and the inventory files as active only what says exactly `actif` — a
+plan copied without that flip yields an inventory with no active host, and the
+materialising and the razing then both exit zero having done nothing, which
+reads as a success. The bench flips one attribute of one line and renders the
+rest of the file as it stands, comments included.
+
 **Two passes, and they do not prove the same thing.** The first carries the token
 through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
 validates the CLUSTER. The second seals it in the bench ecosystem's vault and
@@ -708,6 +725,24 @@ et n'en modifie aucun.
 **Un seul étage suffit**, et c'est le moins profond : un Proxmox imbriqué est un
 Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
 éprouve le moteur, pas l'imbrication.
+
+**Deux dépôts, pas un.** Le moteur joint sa grappe par la voûte d'un UNDERLAY,
+chez l'hébergeur, et refuse sans le lien qui le désigne : un banc à un seul
+dépôt ne peut donc pas matérialiser de VM. Le banc pose une paire de dossiers
+frères, `SITE-…` pour la fabric et `OPS-…` pour le plan, et monte les deux par
+les liens que le moteur lit PAR LEUR CHEMIN — son playbook ne regarde ni
+`SETOPS_UNDERLAY` ni `SETOPS_INSTANCE`. Il refuse si l'un des deux noms est déjà
+pris, lien brisé compris : ce lien est celui d'un exploitant, et le remplacer
+dirigerait son geste suivant vers l'écosystème du banc, dont le rasage détruit
+tout ce que l'inventaire nomme.
+
+**Le plan s'active chirurgicalement.** Le modèle livré déclare tous ses serveurs
+`planifie`, et l'inventaire ne range parmi les actifs que ce qui porte
+exactement `actif` : un plan recopié sans la bascule produit un inventaire sans
+aucun hôte actif, et la matérialisation comme le rasage sortent alors à zéro
+sans avoir rien fait — ce qui se lit comme une réussite. Le banc bascule un
+attribut d'une ligne et rend le reste du fichier tel quel, commentaires
+compris.
 
 **Deux passes, et elles ne prouvent pas la même chose.** La première porte le
 jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
