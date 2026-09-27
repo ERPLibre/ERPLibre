@@ -382,6 +382,18 @@ et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
 
+**Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
+démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse
+ne répond : leur passerelle reste muette, ils ne joignent que leurs voisines de
+la même étiquette, et la panne ressemble à un pare-feu. Le banc pose donc une
+interface ROUTÉE par zone, et il ne calcule pas lesquelles — le moteur dérive
+l'étiquette et la passerelle de chaque zone du seul index du plan, et le banc les
+LIT dans l'inventaire généré. Une seconde dérivation écrite dans le banc
+divergerait de la sienne le jour où sa règle change, et le banc routerait alors
+des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeurs
+fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
+flotte injoignable, et rien dans l'inventaire ne dit laquelle.
+
 **Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
 configurée pour le chipset PCI hérité, et la convertir après coup ne change pas

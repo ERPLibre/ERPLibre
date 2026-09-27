@@ -2018,5 +2018,209 @@ class TestLeBancMesureSonGabaritSansLeFabriquer(unittest.TestCase):
         )
 
 
+def inventaire_de(*hotes):
+    """Un inventaire généré, réduit à ses hôtes actifs et leurs variables."""
+    return {
+        "all": {
+            "children": {
+                B.GROUPE_ACTIFS: {
+                    "hosts": {nom: variables for nom, variables in hotes}
+                }
+            }
+        }
+    }
+
+
+def hote_actif(vlan=3114, passerelle="10.211.19.1", cidr=24, **reste):
+    champs = {
+        "proxmox_vlan": vlan,
+        "proxmox_passerelle": passerelle,
+        "proxmox_cidr": cidr,
+    }
+    champs.update(reste)
+    return {c: v for c, v in champs.items() if v is not None}
+
+
+class TestLesZonesSeDerivnentDeLInventaire(unittest.TestCase):
+    """C'est le moteur qui tire la VLAN et la passerelle de chaque zone du seul
+    index du plan. Une seconde dérivation écrite dans le banc divergerait de la
+    sienne le jour où sa règle change, et le banc routerait des domaines où
+    personne n'habite."""
+
+    def test_one_zone_per_distinct_tag(self):
+        zones = B.zones_a_router(
+            inventaire_de(("a", hote_actif()), ("b", hote_actif()))
+        )
+        self.assertEqual([B.Zone(3114, "10.211.19.1/24")], list(zones))
+
+    def test_two_tags_give_two_zones(self):
+        zones = B.zones_a_router(
+            inventaire_de(
+                ("a", hote_actif()),
+                ("b", hote_actif(vlan=3111, passerelle="10.211.16.1")),
+            )
+        )
+        self.assertEqual(2, len(zones))
+
+    def test_the_gateway_carries_its_prefix(self):
+        """Sans préfixe, la dérivation le suppose à /32 et l'interface monte
+        sans masque."""
+        zone = B.zones_a_router(inventaire_de(("a", hote_actif())))[0]
+        self.assertEqual("10.211.19.1/24", zone.cidr)
+
+    def test_a_host_missing_one_value_refuses_everything(self):
+        """Router une zone sur deux laisse la moitié de la flotte injoignable, et
+        rien dans l'inventaire ne dira laquelle : le déploiement échouera sur un
+        hôte qui « ne répond pas »."""
+        for absent in ("proxmox_vlan", "proxmox_passerelle", "proxmox_cidr"):
+            with self.subTest(absent=absent):
+                self.assertIsNone(
+                    B.zones_a_router(
+                        inventaire_de(
+                            (
+                                "a",
+                                hote_actif(
+                                    **{
+                                        {
+                                            "proxmox_vlan": "vlan",
+                                            "proxmox_passerelle": "passerelle",
+                                            "proxmox_cidr": "cidr",
+                                        }[absent]: None
+                                    }
+                                ),
+                            )
+                        )
+                    )
+                )
+
+    def test_a_tag_that_is_not_an_integer_refuses(self):
+        for vlan in ("3114", True, 3.5, None):
+            with self.subTest(vlan=vlan):
+                self.assertIsNone(
+                    B.zones_a_router(
+                        inventaire_de(("a", hote_actif(vlan=vlan)))
+                    )
+                )
+
+    def test_a_prefix_that_is_not_a_number_refuses(self):
+        self.assertIsNone(
+            B.zones_a_router(inventaire_de(("a", hote_actif(cidr="vingt"))))
+        )
+
+    def test_no_active_host_is_an_answer(self):
+        """Il n'y a rien à router, ce qui n'est pas la même nouvelle que « on n'a
+        pas su lire »."""
+        self.assertEqual((), B.zones_a_router(inventaire_de()))
+        self.assertEqual((), B.zones_a_router({"all": {"children": {}}}))
+
+    def test_something_that_is_not_an_inventory_refuses(self):
+        for lu in ("du texte", [], None, {"all": "pas un dict"}):
+            with self.subTest(lu=str(lu)[:20]):
+                self.assertIsNone(B.zones_a_router(lu))
+
+    def test_a_real_inventory_does_yield_a_zone(self):
+        """Le contrôle positif : sans lui, un lecteur qui refuse toujours
+        passerait tous les refus ci-dessus."""
+        self.assertEqual(
+            1, len(B.zones_a_router(inventaire_de(("a", hote_actif()))))
+        )
+
+    def test_an_unreadable_file_yields_nothing(self):
+        self.assertIsNone(B.lit_inventaire("/n-existe-pas-du-tout.yml"))
+
+    def test_the_commands_come_from_the_module_that_knows(self):
+        """Une seconde strophe écrite dans le banc perdrait les leçons du
+        montage à distance une à une."""
+        cmds = B.cmds_svi(B.Zone(3114, "10.211.19.1/24"), "vmbr9")
+        self.assertIn("mkdir -p /run/network", cmds[-1])
+        self.assertIn("type vlan id 3114", cmds[-1])
+
+    def test_no_zone_or_no_bridge_builds_nothing(self):
+        for zone, pont in (
+            (None, "vmbr9"),
+            (B.Zone(3114, "10.211.19.1/24"), ""),
+            (B.Zone(1, "10.211.19.1/24"), "vmbr9"),
+        ):
+            with self.subTest(zone=zone, pont=pont):
+                self.assertEqual([], B.cmds_svi(zone, pont))
+
+
+class TestLesInterfacesDeVlanSeDefontAvantLeurPont(unittest.TestCase):
+    """Retirer le pont d'abord laisse des strophes qui nomment un parent
+    disparu, et le montage des interfaces s'en plaint à chaque démarrage de
+    l'hôte sans que rien ne dise d'où elles viennent."""
+
+    def gestes(self, **change):
+        return B.a_defaire(empreinte_pleine(zones=(3111, 3114), **change))
+
+    def rangs(self, gestes):
+        return {
+            genre: max(i for i, g in enumerate(gestes) if g.genre == genre)
+            for genre in {g.genre for g in gestes}
+        }
+
+    def test_each_zone_gets_its_own_gesture(self):
+        """Chacune a sa propre strophe : retirer celle du pont ne les emporte
+        pas."""
+        vlans = [g.nom for g in self.gestes() if g.genre == B.SVI]
+        self.assertEqual({"3111", "3114"}, set(vlans))
+
+    def test_they_go_before_the_bridge(self):
+        rangs = self.rangs(self.gestes())
+        self.assertLess(rangs[B.SVI], rangs[B.PONT])
+
+    def test_the_gesture_names_the_interface_not_just_the_tag(self):
+        """C'est le nom complet que le retrait apparie, par champ exact."""
+        vises = [g.vise for g in self.gestes() if g.genre == B.SVI]
+        self.assertEqual({"vmbr9.3111", "vmbr9.3114"}, set(vises))
+
+    def test_no_bridge_means_no_vlan_interface_to_undo(self):
+        """Sans pont, aucune interface de VLAN n'a pu être posée : en nommer
+        une ferait annoncer un retrait qui n'a pas lieu."""
+        self.assertEqual(
+            [], [g for g in self.gestes(pont="") if g.genre == B.SVI]
+        )
+
+    def test_a_footprint_naming_no_zone_names_none(self):
+        """Le contrôle positif : sans lui, un ordre qui nomme toujours une
+        interface passerait l'épreuve ci-dessus."""
+        gestes = B.a_defaire(empreinte_pleine(zones=()))
+        self.assertEqual([], [g for g in gestes if g.genre == B.SVI])
+        self.assertNotEqual([], gestes)
+
+    def test_a_tag_outside_the_standard_refuses_the_footprint(self):
+        """Une étiquette hors de la plage 802.1Q ne nomme aucune interface : le
+        geste porterait sur un nom qui n'existe pas, et l'écran annoncerait un
+        retrait qui n'a pas eu lieu."""
+        for zones in (
+            [1],
+            [0],
+            [4095],
+            [9999],
+            ["3114"],
+            [True],
+            [3114, 3114],
+        ):
+            with self.subTest(zones=zones):
+                texte = json.loads(
+                    B.ecrit_empreinte(empreinte_pleine(zones=(3114,)))
+                )
+                texte["zones"] = zones
+                self.assertIsNone(B.lit_empreinte(json.dumps(texte)))
+
+    def test_a_footprint_of_the_bench_reads_its_zones_back(self):
+        """Le contrôle positif des refus ci-dessus."""
+        empreinte = empreinte_pleine(zones=(3111, 3114))
+        self.assertEqual(
+            (3111, 3114), B.lit_empreinte(B.ecrit_empreinte(empreinte)).zones
+        )
+
+    def test_the_plan_announces_them_before_anything_is_created(self):
+        dit = " ".join(
+            quoi for quoi, _d in B.plan((B.PASSE_ENV,), "un-terrain")
+        )
+        self.assertIn("interface routée", dit)
+
+
 if __name__ == "__main__":
     unittest.main()

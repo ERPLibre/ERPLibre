@@ -153,7 +153,11 @@ UNDERLAY = "underlay"
 # `~/.config` — donc effacer les dépôts ne les emporte pas.
 LIEN = "lien"
 CLE = "cle"
-GENRES = (VM, MODELE, PONT, API, LIEN, ECO, UNDERLAY, CLE)
+# L'interface ROUTÉE d'une VLAN, posée SUR le pont. Son propre genre parce
+# qu'elle a sa propre strophe : retirer celle du pont ne l'emporte pas, et une
+# interface orpheline reste à réclamer une passerelle sur un pont disparu.
+SVI = "svi"
+GENRES = (VM, MODELE, SVI, PONT, API, LIEN, ECO, UNDERLAY, CLE)
 
 
 # LE NOM QUE `raser` EXIGE, et c'est un verrou et non une commodité : le moteur
@@ -237,6 +241,7 @@ class Empreinte(NamedTuple):
     vms: tuple
     liens: tuple = ()
     cles: tuple = ()
+    zones: tuple = ()
 
 
 class Geste(NamedTuple):
@@ -750,6 +755,136 @@ proxmox_clone_vmid_modele: {vmid}
 proxmox_clone_source_nom: {gabarit.strip()}
 proxmox_clone_pont: {pont.strip()}
 """
+
+
+# Le groupe que le générateur d'inventaire du moteur remplit des hôtes ACTIFS.
+# C'est lui que la matérialisation et le rasage lisent.
+GROUPE_ACTIFS = "hotes_actifs"
+
+# Les trois valeurs qu'une zone exige pour être routée. L'étiquette dit QUEL
+# domaine, la passerelle QUI y répond, le préfixe JUSQU'OÙ il s'étend.
+CHAMPS_ZONE = ("proxmox_vlan", "proxmox_passerelle", "proxmox_cidr")
+
+
+class Zone(NamedTuple):
+    """Un domaine de diffusion à router : son étiquette et sa passerelle.
+
+    `cidr` porte la passerelle AVEC son préfixe, ce que la strophe d'une
+    interface attend. Le séparer ferait recomposer la chaîne à chaque appelant,
+    et l'un d'eux finirait par oublier le préfixe — sans quoi la dérivation le
+    suppose à /32 et l'interface monte sans masque.
+    """
+
+    vlan: int
+    cidr: str
+
+
+def lit_inventaire(chemin):
+    """L'inventaire généré, ou None. Ne lève jamais.
+
+    Lu ici plutôt que par l'appelant : `zones_a_router` reste alors une fonction
+    PURE, éprouvable sans fichier.
+    """
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(chemin, encoding="utf-8") as ouvert:
+            lu = yaml.safe_load(ouvert.read())
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None
+    return lu if isinstance(lu, dict) else None
+
+
+def zones_a_router(inventaire):
+    """Les zones que les hôtes ACTIFS exigent, sans doublon. Ou None.
+
+    DÉRIVÉ DE L'INVENTAIRE GÉNÉRÉ, jamais recalculé. C'est le moteur qui tire la
+    VLAN et la passerelle de chaque zone du seul index du plan ; une seconde
+    dérivation écrite ici divergerait de la sienne le jour où sa règle change, et
+    le banc routerait alors des domaines où personne n'habite.
+
+    Fermé par défaut : un hôte actif à qui manque l'une des trois valeurs fait
+    refuser TOUTE la lecture. Router une zone sur deux laisse la moitié de la
+    flotte injoignable, et rien dans l'inventaire ne dira laquelle — le
+    déploiement échouera sur un hôte qui « ne répond pas ».
+
+    Zéro hôte actif rend `()` : il n'y a rien à router, ce qui est une réponse.
+    """
+    # CHAQUE NIVEAU EST VÉRIFIÉ AVANT D'ÊTRE PARCOURU. Un `all` qui n'est pas un
+    # dictionnaire faisait LEVER au lieu de refuser, et une exception remonte
+    # très loin de l'inventaire qui l'a causée. Un inventaire se lit aussi après
+    # avoir été édité à la main.
+    if not isinstance(inventaire, dict):
+        return None
+    tout = inventaire.get("all")
+    if tout is None:
+        return ()
+    if not isinstance(tout, dict):
+        return None
+    enfants = tout.get("children")
+    if enfants is None:
+        return ()
+    if not isinstance(enfants, dict):
+        return None
+    groupe = enfants.get(GROUPE_ACTIFS)
+    if groupe is None:
+        return ()
+    if not isinstance(groupe, dict):
+        return None
+    hotes = groupe.get("hosts")
+    if hotes is None:
+        return ()
+    if not isinstance(hotes, dict):
+        return None
+    vues = []
+    for nom in sorted(hotes):
+        variables = hotes[nom]
+        if not isinstance(variables, dict):
+            return None
+        vlan, passerelle, prefixe = (
+            variables.get(champ) for champ in CHAMPS_ZONE
+        )
+        if isinstance(vlan, bool) or not isinstance(vlan, int):
+            return None
+        if not isinstance(passerelle, str) or not passerelle.strip():
+            return None
+        try:
+            prefixe = int(prefixe)
+        except (TypeError, ValueError):
+            return None
+        zone = Zone(vlan, f"{passerelle.strip()}/{prefixe}")
+        if zone not in vues:
+            vues.append(zone)
+    return tuple(vues)
+
+
+def cmds_svi(zone, pont, uplink=""):
+    """Les commandes qui posent l'interface routée de `zone` sur `pont`.
+
+    Bâties par le module qui sait déjà poser une interface à distance, avec
+    toutes ses leçons — le verrou d'ifupdown2, le refus de tout recharger, le
+    nom échappé dans le motif d'idempotence. Une seconde strophe écrite ici les
+    perdrait une à une.
+    """
+    import sys
+
+    if zone is None or not (pont or "").strip():
+        return []
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.proxmox import proxmox_deploy as pve
+
+    return list(
+        pve.svi_setup_cmds(
+            pont=pont, vlan=zone.vlan, cidr=zone.cidr, uplink=uplink
+        )
+    )
 
 
 def cmds_jeton(utilisateur=UTILISATEUR_API, jeton=JETON_API):
@@ -1616,6 +1751,15 @@ def a_defaire(empreinte):
     ]
     if empreinte.modele:
         gestes.append(Geste(terrain, MODELE, str(empreinte.modele), GABARIT))
+    # LES INTERFACES DE VLAN AVANT LEUR PONT. Retirer le pont d'abord laisse
+    # des strophes qui nomment un parent disparu, et le montage des interfaces
+    # s'en plaint à chaque démarrage de l'hôte sans que rien ne dise d'où elles
+    # viennent.
+    gestes += [
+        Geste(terrain, SVI, f"{empreinte.pont}.{vlan}", str(vlan))
+        for vlan in reversed(empreinte.zones or ())
+        if empreinte.pont
+    ]
     if empreinte.pont:
         gestes.append(Geste(terrain, PONT, empreinte.pont, empreinte.pont))
     gestes.append(
@@ -1722,6 +1866,19 @@ def lit_empreinte(texte):
             # partirait sur un enregistrement qui se contredit.
             return None
         vms.append((vmid, nom.strip()))
+    zones = []
+    etiquettes = lu.get("zones")
+    if etiquettes is not None and not isinstance(etiquettes, list):
+        return None
+    for brute in etiquettes or ():
+        # Une étiquette hors de la plage 802.1Q ne nomme aucune interface : le
+        # geste de défaite porterait alors sur un nom qui n'existe pas, et
+        # l'écran annoncerait un retrait qui n'a pas eu lieu.
+        if isinstance(brute, bool) or not isinstance(brute, int):
+            return None
+        if not 2 <= brute <= 4094 or brute in zones:
+            return None
+        zones.append(brute)
     modele = lu.get("modele") or 0
     if isinstance(modele, bool) or not isinstance(modele, int) or modele < 0:
         return None
@@ -1750,6 +1907,7 @@ def lit_empreinte(texte):
         vms=tuple(vms),
         liens=chemins["liens"],
         cles=chemins["cles"],
+        zones=tuple(zones),
     )
 
 
@@ -1770,6 +1928,7 @@ def ecrit_empreinte(empreinte) -> str:
             "vms": [list(v) for v in empreinte.vms],
             "liens": list(empreinte.liens),
             "cles": list(empreinte.cles),
+            "zones": list(empreinte.zones),
         },
         sort_keys=True,
     )
@@ -1794,6 +1953,10 @@ def plan(passes, terrain):
         (f"les {len(LIENS)} liens du moteur", "~1 s"),
         (f"les {len(LIENS)} clés de voûte", "~1 s"),
         ("pont du banc, conscient des VLAN", "~30 s"),
+        # APRÈS l'inventaire dans le temps, mais annoncé ici : les zones à
+        # router se DÉRIVENT de l'inventaire généré, donc le plan ne peut pas
+        # les nommer avant de l'avoir. Il dit ce qu'il fera, pas combien.
+        ("une interface routée par zone du plan", "~10 s"),
         ("utilisateur d'API et son jeton", "~10 s"),
         ("gabarit doré, agent qemu compris", "~10 min"),
     ]

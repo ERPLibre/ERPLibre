@@ -373,6 +373,17 @@ blocks and in any backup taken between the two gestures. Anything the bench
 prints or logs is redacted first, and the command line never carries it, since a
 command line is readable in the machine's process table by any account.
 
+**A vlan-aware bridge separates, it does not route.** The tenant's hosts come up
+with a tagged NIC in a broadcast domain where no address answers: their gateway
+stays mute, they reach only their neighbours under the same tag, and the failure
+looks like a firewall. So the bench poses one ROUTED interface per zone, and it
+does not compute which — the engine derives each zone's tag and gateway from the
+plan's single index, and the bench reads them from the GENERATED inventory. A
+second derivation written in the bench would diverge the day the engine's rule
+changes, and the bench would then route domains where nobody lives. A host
+missing one of the three values refuses the whole read: routing one zone out of
+two leaves half the fleet unreachable, and nothing in the inventory says which.
+
 **The golden template is a prerequisite, not something the bench makes.** The
 engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
@@ -830,6 +841,18 @@ part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libé
 et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
+**Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
+démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse
+ne répond : leur passerelle reste muette, ils ne joignent que leurs voisines de
+la même étiquette, et la panne ressemble à un pare-feu. Le banc pose donc une
+interface ROUTÉE par zone, et il ne calcule pas lesquelles — le moteur dérive
+l'étiquette et la passerelle de chaque zone du seul index du plan, et le banc les
+LIT dans l'inventaire généré. Une seconde dérivation écrite dans le banc
+divergerait de la sienne le jour où sa règle change, et le banc routerait alors
+des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeurs
+fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
+flotte injoignable, et rien dans l'inventaire ne dit laquelle.
 
 **Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
