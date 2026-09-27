@@ -256,6 +256,14 @@ read". A caller given `None` says so and names the line to replay by hand.
   fields exactly;
 - `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
   segment — what `instance-utiliser` expects back;
+- `lit_serveurs(sortie)`: the (name, state) pairs the plan declares, or `None`.
+  A line that PRETENDS to be a server — a first word then a bracket — and does not
+  parse refuses the WHOLE read: a partial count is worse than none, since it is
+  the count an operator copies to confirm a destruction, and one too low would
+  have them confirm fewer machines than they lose;
+- `compte_actifs(serveurs)`: how many the plan declares ACTIVE, or `None`, which
+  propagates. "No active host" and "the plan was not read" are confirmed
+  differently — the first by "0", the second not at all;
 - `lit_modeles(sortie)`: the templates and the federated indexes already
   taken; the sentence carrying them is what says the output is the one we
   think we are reading;

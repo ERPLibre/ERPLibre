@@ -260,6 +260,15 @@ main.
   blancs, cinq champs exactement ;
 - `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
   segment — ce que `instance-utiliser` attend en retour ;
+- `lit_serveurs(sortie)` : les couples (nom, état) que le plan déclare, ou
+  `None`. Une ligne qui PRÉTEND être un serveur — un premier mot puis un crochet —
+  et qui ne se lit pas fait refuser TOUTE la lecture : un compte partiel est pire
+  qu'aucun, puisque c'est lui qu'un opérateur recopie pour confirmer une
+  destruction, et un compte trop bas lui ferait confirmer moins de machines qu'il
+  n'en perd ;
+- `compte_actifs(serveurs)` : combien le plan en déclare ACTIFS, ou `None`, qui se
+  propage. « Aucun hôte actif » et « on n'a pas su lire le plan » se confirment
+  différemment — le premier par « 0 », le second pas du tout ;
 - `lit_modeles(sortie)` : les modèles et les index fédérés déjà pris ; la
   phrase qui les porte est ce qui dit que la sortie est bien celle-là ;
 - `index_libre(pris, mini, maxi)` : le plus petit index libre. Une PROPOSITION

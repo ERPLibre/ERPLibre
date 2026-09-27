@@ -226,5 +226,71 @@ class TestLIndexPropose(unittest.TestCase):
         self.assertIsNone(E.index_libre(range(E.INDEX_MIN, E.INDEX_MAX + 1)))
 
 
+class TestLeCompteDesHotesActifs(unittest.TestCase):
+    """C'est ce compte qu'un opérateur recopie pour confirmer une destruction. Un
+    compte trop bas lui ferait confirmer moins de machines qu'il n'en perd."""
+
+    PLAN = (
+        "python3 scripts/serveurs.py lister\n"
+        "infra-pki-01  [fonction infra-pki, etat actif]  derive: vmid 1\n"
+        "infra-edge-01  [fonction infra-edge, etat planifie]  derive: vmid 2\n"
+        "infra-dns-01  [fonction infra-dns, etat actif]  derive: vmid 3\n"
+    )
+
+    def test_each_server_gives_its_name_and_state(self):
+        self.assertEqual(
+            [
+                ("infra-pki-01", "actif"),
+                ("infra-edge-01", "planifie"),
+                ("infra-dns-01", "actif"),
+            ],
+            list(E.lit_serveurs(self.PLAN)),
+        )
+
+    def test_only_the_exact_state_counts_as_active(self):
+        """Le moteur le compare à l'identique : tout ce qui n'est pas EXACTEMENT
+        celui-là est rangé parmi les planifiés."""
+        self.assertEqual(2, E.compte_actifs(E.lit_serveurs(self.PLAN)))
+
+    def test_a_state_that_merely_starts_like_it_is_not_active(self):
+        lus = E.lit_serveurs("a  [etat actifs]\nb  [etat actif]\n")
+        self.assertEqual(1, E.compte_actifs(lus))
+
+    def test_the_echoed_command_is_not_a_server(self):
+        """`make` fait écho à sa commande : la compter ferait un hôte de plus."""
+        self.assertEqual(
+            (), E.lit_serveurs("python3 scripts/serveurs.py lister\n")
+        )
+
+    def test_a_line_that_pretends_and_does_not_parse_refuses_everything(self):
+        """LA PROPRIÉTÉ : un compte PARTIEL est pire qu'aucun. Il est recopié
+        pour confirmer une destruction."""
+        self.assertIsNone(
+            E.lit_serveurs(
+                "a  [fonction f, etat actif]\nb  [rien de lisible]\n"
+            )
+        )
+
+    def test_two_lines_for_one_name_refuse(self):
+        """Le plan ne sait alors plus lequel des deux états il déclare."""
+        self.assertIsNone(
+            E.lit_serveurs("a  [etat actif]\na  [etat planifie]\n")
+        )
+
+    def test_an_unread_output_refuses(self):
+        self.assertIsNone(E.lit_serveurs(None))
+
+    def test_a_plan_without_a_server_names_none(self):
+        """Le contrôle positif : sans lui, un lecteur qui refuse toujours
+        passerait les refus ci-dessus."""
+        self.assertEqual((), E.lit_serveurs(""))
+        self.assertEqual(0, E.compte_actifs(()))
+
+    def test_a_failed_read_gives_no_count(self):
+        """« Aucun hôte actif » et « on n'a pas su lire le plan » se confirment
+        différemment — le premier par « 0 », le second pas du tout."""
+        self.assertIsNone(E.compte_actifs(None))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -153,6 +153,60 @@ def lit_courante(sortie):
     return None
 
 
+# CE QU'UNE LIGNE DE SERVEUR PORTE : son nom, puis son état entre crochets. La
+# forme est celle que le moteur imprime ; l'état est le seul champ dont le palier
+# a besoin, et le seul qui décide ce que les gestes de flotte touchent.
+FORME_SERVEUR = re.compile(r"^(\S+)\s+\[.*?\betat\s+(\w+)")
+
+# L'état qui compte, et le moteur le compare à l'identique : tout ce qui n'est
+# pas EXACTEMENT celui-là est rangé parmi les planifiés.
+ETAT_ACTIF = "actif"
+
+
+def lit_serveurs(sortie):
+    """Les (nom, état) que le plan déclare, ou None.
+
+    FERMÉ PAR DÉFAUT : une ligne qui prétend être un serveur — un premier mot
+    suivi d'un crochet — et qui ne se lit pas fait refuser TOUTE la lecture. Un
+    compte partiel est pire qu'aucun : c'est lui qu'un opérateur recopie pour
+    confirmer une destruction, et un compte trop bas lui ferait confirmer moins
+    de machines qu'il n'en perd.
+
+    Les lignes qui ne prétendent rien — la commande que `make` fait écho, une
+    ligne vide — sont passées. Un plan sans serveur rend `()`.
+    """
+    if sortie is None:
+        return None
+    vus = []
+    for ligne in sortie.splitlines():
+        nu = ligne.strip()
+        if not nu or "[" not in nu:
+            continue
+        trouve = FORME_SERVEUR.match(nu)
+        if trouve is None:
+            return None
+        nom, etat = trouve.group(1), trouve.group(2)
+        if any(nom == deja for deja, _e in vus):
+            # DEUX LIGNES POUR UN NOM ne se comptent pas : le plan ne sait
+            # alors plus lequel des deux états il déclare, et le compte servirait
+            # à confirmer une destruction.
+            return None
+        vus.append((nom, etat))
+    return tuple(vus)
+
+
+def compte_actifs(serveurs):
+    """Combien de serveurs le plan déclare ACTIFS, ou None.
+
+    None se propage : une lecture qui n'a pas abouti ne donne pas un compte de
+    zéro. « Aucun hôte actif » et « on n'a pas su lire le plan » se confirment
+    différemment — le premier par « 0 », le second pas du tout.
+    """
+    if serveurs is None:
+        return None
+    return sum(1 for _nom, etat in serveurs if etat == ETAT_ACTIF)
+
+
 def lit_modeles(sortie):
     """(modèles, index déjà pris) depuis `instance-modeles`, ou None.
 

@@ -261,6 +261,14 @@ read". A caller given `None` says so and names the line to replay by hand.
   fields exactly;
 - `lit_courante(sortie)`: the mounted ecosystem's name, reduced to the last
   segment — what `instance-utiliser` expects back;
+- `lit_serveurs(sortie)`: the (name, state) pairs the plan declares, or `None`.
+  A line that PRETENDS to be a server — a first word then a bracket — and does not
+  parse refuses the WHOLE read: a partial count is worse than none, since it is
+  the count an operator copies to confirm a destruction, and one too low would
+  have them confirm fewer machines than they lose;
+- `compte_actifs(serveurs)`: how many the plan declares ACTIVE, or `None`, which
+  propagates. "No active host" and "the plan was not read" are confirmed
+  differently — the first by "0", the second not at all;
 - `lit_modeles(sortie)`: the templates and the federated indexes already
   taken; the sentence carrying them is what says the output is the one we
   think we are reading;
@@ -742,6 +750,15 @@ main.
   blancs, cinq champs exactement ;
 - `lit_courante(sortie)` : le nom de l'écosystème monté, réduit à son dernier
   segment — ce que `instance-utiliser` attend en retour ;
+- `lit_serveurs(sortie)` : les couples (nom, état) que le plan déclare, ou
+  `None`. Une ligne qui PRÉTEND être un serveur — un premier mot puis un crochet —
+  et qui ne se lit pas fait refuser TOUTE la lecture : un compte partiel est pire
+  qu'aucun, puisque c'est lui qu'un opérateur recopie pour confirmer une
+  destruction, et un compte trop bas lui ferait confirmer moins de machines qu'il
+  n'en perd ;
+- `compte_actifs(serveurs)` : combien le plan en déclare ACTIFS, ou `None`, qui se
+  propage. « Aucun hôte actif » et « on n'a pas su lire le plan » se confirment
+  différemment — le premier par « 0 », le second pas du tout ;
 - `lit_modeles(sortie)` : les modèles et les index fédérés déjà pris ; la
   phrase qui les porte est ce qui dit que la sortie est bien celle-là ;
 - `index_libre(pris, mini, maxi)` : le plus petit index libre. Une PROPOSITION
