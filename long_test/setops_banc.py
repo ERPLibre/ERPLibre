@@ -356,6 +356,138 @@ class Constat(NamedTuple):
         return self.debout and self.vlan is True
 
 
+# Borne d'une commande jouée sur le terrain. Un `qm destroy` ou un `apt` prend
+# des minutes sur un Proxmox imbriqué ; la borne existe pour qu'une grappe qui
+# ne répond plus rende la main.
+DELAI_TERRAIN = 900
+
+# La marque qui remplace un secret dans un texte qu'on montre. Sa longueur ne
+# dit rien de celle du secret : un gabarit de longueur est déjà un indice.
+EXPURGE = "«secret retiré»"
+
+
+class Fait(NamedTuple):
+    """Ce qu'une suite de commandes a rendu sur le terrain.
+
+    `code` vaut None quand ssh lui-même n'a pas pu tourner — hôte inconnu,
+    binaire absent, délai dépassé. C'est un verdict, pas une absence : un
+    appelant qui le confondrait avec zéro annoncerait une réussite.
+
+    `jouees` compte les commandes qui ont VRAIMENT tourné. Une suite qui
+    s'arrête à la troisième sur cinq a laissé la grappe à moitié faite, et
+    c'est ce nombre qui dit où reprendre — pas le code de retour.
+    """
+
+    code: int | None
+    sortie: str
+    jouees: int
+
+    @property
+    def reussi(self) -> bool:
+        """Tout a rendu zéro, ET quelque chose a tourné.
+
+        `jouees > 0` N'EST PAS UNE PRÉCAUTION DE STYLE. Un constructeur de
+        commandes qui ne peut pas bâtir refuse par une liste VIDE, et une suite
+        vide rendrait « code 0, rien à signaler » : le pont n'aurait jamais été
+        posé et l'écran dirait qu'il l'est. C'est le même défaut qu'un verdict
+        jeté, arrivé par l'autre bout.
+        """
+        return self.code == 0 and self.jouees > 0
+
+
+def ssh_argv(terrain, commande):
+    """L'argv qui joue `commande` sur `terrain`, ou None.
+
+    Bâti par le module du labo qui sait déjà joindre une machine : un second
+    jeu d'options dériverait du premier, et c'est l'option manquante qui pend
+    une épreuve lancée pour des heures sans surveillance.
+
+    `terrain` est un ALIAS ssh, pas une adresse : il porte son utilisateur, son
+    port et son rebond dans la configuration de ssh, et l'alias reste le même
+    quand l'adresse change.
+
+    UNE SEULE OPTION S'AJOUTE, et ce n'est pas un second jeu. Le banc LIT la
+    sortie de ses commandes ; les appelants du labo n'en lisent que le code de
+    retour. Or ssh écrit de lui-même « Permanently added ... to the list of
+    known hosts » sur la sortie d'erreur à chaque connexion, puisque le fichier
+    des hôtes connus est jeté — une ligne qui n'est pas la réponse de la
+    commande, qui porte une adresse, et qui fait passer une réponse d'une ligne
+    pour une réponse bavarde. `LogLevel=ERROR` la retire en laissant passer les
+    vraies erreurs, celles qui disent pourquoi un pas a échoué.
+    """
+    import sys
+
+    if not (terrain or "").strip() or not (commande or "").strip():
+        return None
+    chemin = os.path.join(RACINE, "long_test")
+    if chemin not in sys.path:
+        sys.path.insert(0, chemin)
+    try:
+        import install_nixos
+    except ImportError:
+        return None
+    base = install_nixos.ssh_base(terrain.strip())
+    return tuple(base[:1] + ["-o", "LogLevel=ERROR"] + base[1:] + [commande])
+
+
+def joue_sur(terrain, cmds, delai=DELAI_TERRAIN):
+    """Joue `cmds` sur `terrain`, dans l'ordre, et rend un `Fait`. Ne lève jamais.
+
+    S'ARRÊTE À LA PREMIÈRE QUI ÉCHOUE. Les commandes du banc se suivent — un
+    pont avant la carte qui s'y branche, un utilisateur avant son jeton — et
+    poursuivre après un échec joue la suite sur un terrain qui n'est plus celui
+    qu'elle suppose. Le `Fait` rendu porte la sortie de CELLE qui a échoué,
+    parce que c'est elle qui dit pourquoi.
+
+    LA SORTIE N'EST PAS EXPURGÉE ICI. Elle ne peut pas l'être : le secret qu'un
+    pas rend n'est connu qu'après l'avoir lue. L'appelant l'extrait, puis passe
+    par `expurge` pour tout ce qu'il montre ou journalise.
+    """
+    sortie, jouees = "", 0
+    for commande in cmds or ():
+        argv = ssh_argv(terrain, commande)
+        if argv is None:
+            return Fait(None, sortie, jouees)
+        vu = runner_du_banc().jouer(argv, delai=delai)
+        jouees += 1
+        if vu.code != 0:
+            return Fait(vu.code, vu.sortie, jouees)
+        sortie = vu.sortie
+    return Fait(0, sortie, jouees)
+
+
+def runner_du_banc():
+    """L'exécuteur du dépôt, chargé à l'appel.
+
+    Chargé ici et non en tête de fichier : le banc se lit et s'éprouve sans
+    que le paquet du menu soit importable, et une épreuve du plan n'a pas
+    besoin de lui.
+    """
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.setops import runner
+
+    return runner
+
+
+def expurge(texte, secret):
+    """`texte`, chaque occurrence de `secret` remplacée par une marque.
+
+    TOUT CE QUE LE BANC MONTRE OU JOURNALISE PASSE PAR ICI. Le secret d'un
+    jeton d'API ne s'affiche qu'à sa création : il traverse la mémoire du banc
+    entre la grappe qui le rend et la voûte qui le chiffre, et un écran ou un
+    journal qui l'attrape au passage le rend permanent.
+
+    Un secret vide n'expurge RIEN, et c'est correct : il n'y a rien à retirer,
+    et remplacer la chaîne vide marquerait chaque caractère du texte.
+    """
+    if not (secret or "").strip():
+        return texte or ""
+    return (texte or "").replace(secret.strip(), EXPURGE)
+
+
 def cmds_constater_pont(nom):
     """La commande qui dit si le pont est debout et s'il filtre les VLAN.
 

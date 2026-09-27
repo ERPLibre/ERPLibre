@@ -1145,5 +1145,111 @@ class TestLaBoucleEstCelleDuMoteur(unittest.TestCase):
         )
 
 
+class TestLArgvSshDeriveDuLabo(unittest.TestCase):
+    """Un second jeu d'options dériverait du premier, et c'est l'option
+    manquante qui pend une épreuve lancée pour des heures sans surveillance."""
+
+    def base_du_labo(self):
+        import install_nixos
+
+        return install_nixos.ssh_base("un-terrain")
+
+    def test_everything_the_lab_builds_is_kept_in_order(self):
+        """LA PROPRIÉTÉ : ce que le labo pose est une SOUS-SUITE de ce que le
+        banc joue. Une option perdue en chemin ne se verrait qu'à l'exécution."""
+        argv = list(B.ssh_argv("un-terrain", "hostname"))
+        reste = iter(argv)
+        self.assertTrue(
+            all(morceau in reste for morceau in self.base_du_labo()), argv
+        )
+
+    def test_the_check_would_catch_a_dropped_option(self):
+        """Le contrôle positif : sans lui, une sous-suite vide passerait."""
+        ampute = [m for m in self.base_du_labo() if m != "BatchMode=yes"]
+        reste = iter(ampute)
+        self.assertFalse(
+            all(morceau in reste for morceau in self.base_du_labo())
+        )
+
+    def test_the_command_is_last_and_the_terrain_just_before_options_end(self):
+        """ssh prend son hôte APRÈS ses options et sa commande APRÈS l'hôte.
+        Inversés, l'hôte devient une commande ou la commande un hôte."""
+        argv = list(B.ssh_argv("un-terrain", "hostname"))
+        self.assertEqual("hostname", argv[-1])
+        self.assertEqual("un-terrain", argv[-2])
+
+    def test_it_refuses_without_a_terrain_or_a_command(self):
+        for terrain, commande in (
+            ("", "hostname"),
+            ("   ", "hostname"),
+            ("un-terrain", ""),
+            ("un-terrain", "   "),
+        ):
+            with self.subTest(terrain=terrain, commande=commande):
+                self.assertIsNone(B.ssh_argv(terrain, commande))
+
+
+class TestUneSuiteVideNeReussitPas(unittest.TestCase):
+    """Un constructeur de commandes qui ne peut pas bâtir refuse par une liste
+    VIDE. Une suite vide qui rendrait « code 0, rien à signaler » ferait dire
+    que le pont est posé quand il ne l'est pas."""
+
+    def test_something_that_ran_and_returned_zero_succeeds(self):
+        """Le contrôle positif : sans lui, un verdict qui refuse toujours
+        passerait les refus ci-dessous."""
+        self.assertTrue(B.Fait(0, "", 3).reussi)
+
+    def test_an_empty_suite_does_not_succeed(self):
+        self.assertFalse(B.Fait(0, "", 0).reussi)
+
+    def test_a_launch_that_could_not_happen_does_not_succeed(self):
+        self.assertFalse(B.Fait(None, "", 0).reussi)
+
+    def test_a_non_zero_code_does_not_succeed(self):
+        self.assertFalse(B.Fait(2, "raté", 1).reussi)
+
+    def test_an_unusable_terrain_runs_nothing(self):
+        """`jouees` dit où reprendre ; zéro dit que rien n'a été touché."""
+        fait = B.joue_sur("", ["hostname", "reboot"])
+        self.assertEqual((None, 0), (fait.code, fait.jouees))
+
+
+class TestLeSecretNeTraverseNiEcranNiJournal(unittest.TestCase):
+    """Le secret d'un jeton d'API ne s'affiche qu'à sa création : il traverse la
+    mémoire du banc entre la grappe qui le rend et la voûte qui le chiffre, et
+    un écran ou un journal qui l'attrape au passage le rend permanent."""
+
+    SECRET = "un-secret-invente-pour-l-epreuve"
+
+    def test_the_secret_is_gone_from_what_is_shown(self):
+        montre = B.expurge(f"value: {self.SECRET}\nok", self.SECRET)
+        self.assertNotIn(self.SECRET, montre)
+
+    def test_every_occurrence_is_gone(self):
+        """Un seul remplacement laisserait le second passage."""
+        deux = f"{self.SECRET} puis encore {self.SECRET}"
+        self.assertNotIn(self.SECRET, B.expurge(deux, self.SECRET))
+
+    def test_the_rest_of_the_text_survives(self):
+        """Le contrôle positif : sans lui, un expurgeur qui rendrait la chaîne
+        vide passerait l'épreuve ci-dessus."""
+        self.assertIn("ok", B.expurge(f"{self.SECRET}\nok", self.SECRET))
+
+    def test_a_secret_with_spaces_around_it_is_still_removed(self):
+        """Ce que la grappe rend porte une fin de ligne ; le comparer tel quel
+        ne retrouverait pas la valeur dans le texte."""
+        montre = B.expurge(f"value: {self.SECRET}", f"  {self.SECRET}\n")
+        self.assertNotIn(self.SECRET, montre)
+
+    def test_an_empty_secret_removes_nothing(self):
+        """Remplacer la chaîne vide marquerait chaque caractère du texte."""
+        for vide in ("", "   ", None):
+            with self.subTest(secret=vide):
+                self.assertEqual("un texte", B.expurge("un texte", vide))
+
+    def test_an_empty_text_stays_empty(self):
+        self.assertEqual("", B.expurge(None, self.SECRET))
+
+
 if __name__ == "__main__":
     unittest.main()
