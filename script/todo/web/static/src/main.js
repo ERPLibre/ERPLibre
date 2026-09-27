@@ -54,11 +54,12 @@ async function start() {
         getJson(`/api/i18n?lang=${chosen}`),
         getJson(`/api/telemetry?lang=${chosen}`),
     ]);
-    // `env` est partagé par tous les composants : la table de traduction et
-    // la langue, qui règle aussi le tri par nom et les unités.
+    // `env` est partagé par tous les composants : la table de traduction, la
+    // langue, qui règle aussi le tri par nom et les unités, et le jeton CSRF,
+    // que le premier message d'un WebSocket porte.
     const t = (key) => terms[key] ?? key;
     await mount(TelemetryPage, document.getElementById("app"), {
-        env: {t, lang: chosen},
+        env: {t, lang: chosen, csrf: session.csrf},
         props: {root: session.root, telemetry},
     });
 }

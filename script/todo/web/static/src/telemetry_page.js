@@ -1,19 +1,21 @@
 // Page de télémétrie : une barre d'outils (vues, recherche, tri) au-dessus de
 // la vue choisie. La vue et le tri vivent dans le fragment de l'URL, qu'un
 // rechargement retrouve ; la recherche n'y entre pas. Une vue qui n'offre
-// aucun tri n'offre pas de recherche non plus. Les libellés viennent de
-// `env.t`, la table de traduction de la page.
+// aucun tri n'offre pas de recherche non plus. La vue Sessions, une fois
+// ouverte, reste montée : cachée, sa session continue. Les libellés viennent
+// de `env.t`, la table de traduction de la page.
 import {Component, useState, xml} from "@odoo/owl";
 import {ListView} from "./list_view.js";
 import {SORTS, VIEWS, effectiveSort, readFragment, writeFragment} from "./model.js";
+import {SessionsView} from "./sessions_view.js";
 import {SystemView} from "./system_view.js";
 import {TreeView} from "./tree_view.js";
 
-const VIEW_LABELS = {tree: "Tree", list: "List", system: "System"};
+const VIEW_LABELS = {tree: "Tree", list: "List", system: "System", sessions: "Sessions"};
 const SORT_LABELS = {code: "Code order", usage: "Most used", name: "Name"};
 
 export class TelemetryPage extends Component {
-    static components = {ListView, SystemView, TreeView};
+    static components = {ListView, SessionsView, SystemView, TreeView};
     static template = xml`
         <header class="bar">
             <h1 t-esc="env.t('TODO navigation telemetry')"/>
@@ -38,17 +40,19 @@ export class TelemetryPage extends Component {
                 </label>
             </t>
         </nav>
-        <p class="summary" t-esc="summary"/>
+        <p t-if="state.view !== 'sessions'" class="summary" t-esc="summary"/>
         <TreeView t-if="state.view === 'tree'" t-key="sort + '|' + state.query" tree="tree" counts="counts"
             query="state.query" sort="sort"/>
         <ListView t-elif="state.view === 'list'" tree="tree" counts="counts" query="state.query" sort="sort"/>
-        <SystemView t-else=""/>`;
+        <SystemView t-elif="state.view === 'system'"/>
+        <SessionsView t-if="state.terminal" visible="state.view === 'sessions'" openView.bind="openView"/>`;
 
     setup() {
         this.views = VIEWS;
         this.viewLabels = VIEW_LABELS;
         this.sortLabels = SORT_LABELS;
-        this.state = useState({...readFragment(window.location.hash), query: ""});
+        const fragment = readFragment(window.location.hash);
+        this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions"});
     }
 
     get tree() {
@@ -82,7 +86,15 @@ export class TelemetryPage extends Component {
 
     show(view) {
         this.state.view = view;
+        this.state.terminal ||= view === "sessions";
         this.remember();
+    }
+
+    // Vue que le TODO d'une session demande à la page d'ouvrir.
+    openView(view) {
+        if (view === "telemetry") {
+            this.show("tree");
+        }
     }
 
     sortBy(sort) {

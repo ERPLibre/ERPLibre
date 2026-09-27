@@ -78,10 +78,14 @@ STATIC_TYPES = {
 LICENSE_TYPE = "text/plain; charset=utf-8"
 IMPORT_MAP = re.compile(rb'<script type="importmap">(.*?)</script>', re.S)
 # 'unsafe-eval' : le compilateur de gabarits d'OWL passe par new Function.
+# style-src 'unsafe-inline', pour les styles seulement : le rendu DOM de
+# xterm.js crée des éléments <style> et pose des attributs style ; aucun
+# script en ligne n'est admis pour autant.
 CSP = (
     "default-src 'none'; script-src 'self'{import_map} 'unsafe-eval'; "
-    "style-src 'self'; connect-src 'self'; img-src 'self' data:; "
-    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+    "img-src 'self' data:; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'"
 )
 # Fichiers que lit build_code_tree : todo.py, les mixins qu'il importe et
 # todo.json à côté ; « *.py » couvre aussi todo_i18n.py, rechargé quand il

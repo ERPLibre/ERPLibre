@@ -3840,6 +3840,29 @@ TRANSLATIONS = {
     "Most used": {"fr": "Les plus utilisés", "en": "Most used"},
     "CPU": {"fr": "Processeur", "en": "CPU"},
     "unavailable": {"fr": "indisponible", "en": "unavailable"},
+    # Page web : vue Sessions, le vrai TODO dans un terminal.
+    "Sessions": {"fr": "Sessions", "en": "Sessions"},
+    "Open a TODO session": {
+        "fr": "Ouvrir une session TODO",
+        "en": "Open a TODO session",
+    },
+    "Reconnect": {"fr": "Se reconnecter", "en": "Reconnect"},
+    "Connecting…": {"fr": "Connexion…", "en": "Connecting…"},
+    "Session ended": {"fr": "Session terminée", "en": "Session ended"},
+    "Output truncated": {"fr": "Sortie tronquée", "en": "Output truncated"},
+    "Too many sessions: close one first.": {
+        "fr": "Trop de sessions : fermez-en une d'abord.",
+        "en": "Too many sessions: close one first.",
+    },
+    "Opened in another tab.": {
+        "fr": "Ouverte dans un autre onglet.",
+        "en": "Opened in another tab.",
+    },
+    "This session no longer exists.": {
+        "fr": "Cette session n'existe plus.",
+        "en": "This session no longer exists.",
+    },
+    "Connection lost.": {"fr": "Connexion perdue.", "en": "Connection lost."},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",

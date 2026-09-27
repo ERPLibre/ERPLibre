@@ -183,3 +183,13 @@ body {
 .system meter {
     width: 10rem;
 }
+
+.session-bar .state {
+    color: var(--muted);
+}
+
+/* Le terminal remplit la hauteur que laissent l'en-tête et les barres. */
+.terminal {
+    height: calc(100vh - 17rem);
+    min-height: 16rem;
+}

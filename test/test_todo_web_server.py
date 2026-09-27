@@ -138,8 +138,9 @@ class TestHttp(HubCase):
             resp.headers["Content-Security-Policy"],
             "default-src 'none'; "
             f"script-src 'self' 'sha256-{digest.decode()}' 'unsafe-eval'; "
-            "style-src 'self'; connect-src 'self'; img-src 'self' data:; "
-            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            "style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+            "img-src 'self' data:; base-uri 'none'; form-action 'none'; "
+            "frame-ancestors 'none'",
         )
         self.assertEqual(resp.headers["X-Frame-Options"], "DENY")
         self.assertEqual(resp.headers["X-Content-Type-Options"], "nosniff")

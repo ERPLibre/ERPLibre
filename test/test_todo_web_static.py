@@ -8,7 +8,8 @@ fichiers doivent rester ceux des paquets npm, dont chaque README de
 provenance note les empreintes. La page, elle, est servie depuis la table
 que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
-`static/src/metrics.js`) tournent sous node, quand il est installé.
+`static/src/metrics.js`, `static/src/session.js`) tournent sous node,
+quand il est installé.
 """
 
 import ast
@@ -131,6 +132,24 @@ class TestPage(unittest.TestCase):
         self.assertIn(
             f"script-src 'self' 'sha256-{digest}' 'unsafe-eval';", csp
         )
+        # En ligne, les styles de xterm.js seulement ; jamais un script.
+        self.assertIn("style-src 'self' 'unsafe-inline';", csp)
+        self.assertEqual(csp.count("'unsafe-inline'"), 1)
+
+    def test_xterm_loads_before_the_page_modules(self):
+        # Scripts classiques : leurs globales existent quand main.js tourne.
+        scripts = re.findall(
+            rb'<script(?: type="(\w+)")? src="([^"]+)"', self.index
+        )
+        self.assertEqual(
+            scripts,
+            [
+                (b"", b"/static/lib/xterm-5.5.0/xterm.js"),
+                (b"", b"/static/lib/addon-fit-0.10.0/addon-fit.js"),
+                (b"module", b"/static/src/main.js"),
+            ],
+        )
+        self.assertIn(b'href="/static/lib/xterm-5.5.0/xterm.css"', self.index)
 
     def test_no_inline_script_or_style_besides_the_import_map(self):
         for attrs in re.findall(rb"<script([^>]*)>", self.index):
@@ -180,12 +199,14 @@ class TestPage(unittest.TestCase):
         # t() rend une clé inconnue telle quelle : une faute de frappe
         # s'afficherait en anglais dans une page française.
         keys = set()
-        labels = re.compile(r"^const \w+_LABELS = \{.*\};$", re.M)
+        labels = re.compile(r"^const \w+_LABELS = \{.*?\};$", re.M | re.S)
         for path in SRC.glob("*.js"):
             text = path.read_text(encoding="utf-8")
             keys |= {m[1] for m in re.findall(r"\bt\((['\"])(.+?)\1\)", text)}
-            for line in labels.findall(text):
-                keys |= set(re.findall(r'"([^"]+)"', line))
+            for block in labels.findall(text):
+                keys |= set(re.findall(r'"([^"]+)"', block))
+        # Les clés d'un objet sur plusieurs lignes sont lues aussi.
+        self.assertIn("Connection lost.", keys)
         self.assertGreater(len(keys), 10)
         missing = sorted(keys - set(todo_i18n.TRANSLATIONS))
         self.assertEqual(missing, [])
@@ -349,6 +370,7 @@ VIEW_CHECK = r"""
 console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,
     sort: m.effectiveSort("system", "usage") ?? null,
+    sessions: m.readFragment("#view=sessions&session=s1").view,
 }));
 """
 
@@ -385,7 +407,9 @@ class TestSystemRows(unittest.TestCase):
         }
 
     def test_the_system_view_offers_no_sort_hence_no_search(self):
-        self.assertEqual(self.view, {"view": "system", "sort": None})
+        self.assertEqual(
+            self.view, {"view": "system", "sort": None, "sessions": "sessions"}
+        )
 
     def test_the_first_sample_waits_for_rates(self):
         first = self.text["first"]
@@ -412,6 +436,56 @@ class TestSystemRows(unittest.TestCase):
         french = self.text["french"]
         self.assertIn("Go", french["Memory"])
         self.assertIn("0,5", french["State"])
+
+
+SESSION_CHECK = r"""
+const hello = {csrf: "c", lang: "fr", cols: 80, rows: 24};
+console.log(JSON.stringify({
+    open: JSON.parse(m.helloMessage(hello)),
+    attach: JSON.parse(m.helloMessage({...hello, session: "s1", after: 0})),
+    states: [[1000, {t: "bye"}], [1000, null], [1006, null], [1013, null],
+        [4001, null], [4404, null]].map(([code, bye]) =>
+            m.closedState(code, bye)),
+    read: [m.sessionOf("#view=sessions&session=s1"), m.sessionOf("#lang=fr")],
+    frame: m.FRAME,
+    frames: m.frames(new Uint8Array(70000)).map((frame) => frame.length),
+    written: [m.withSession("#view=sessions&lang=fr", "s1"),
+        m.withSession("#view=sessions&session=s1", null)],
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestSessionProtocol(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(SESSION_CHECK, "session.js")
+
+    def test_hello_opens_or_attaches_from_an_offset(self):
+        opened = {"t": "hello", "csrf": "c", "lang": "fr", "cols": 80}
+        opened["rows"] = 24
+        self.assertEqual(self.out["open"], opened)
+        self.assertEqual(
+            self.out["attach"], {**opened, "session": "s1", "after": 0}
+        )
+
+    def test_each_close_code_names_a_state(self):
+        self.assertEqual(
+            self.out["states"],
+            ["ended", "lost", "lost", "full", "taken", "gone"],
+        )
+
+    def test_a_paste_goes_in_frames_the_hub_accepts(self):
+        frame = self.out["frame"]
+        self.assertLess(frame, server.MAX_BODY)
+        self.assertEqual(self.out["frames"], [frame, frame, 70000 - 2 * frame])
+
+    def test_the_session_lives_in_the_fragment(self):
+        self.assertEqual(self.out["read"], ["s1", None])
+        self.assertEqual(
+            self.out["written"],
+            ["#view=sessions&lang=fr&session=s1", "#view=sessions"],
+        )
 
 
 if __name__ == "__main__":
