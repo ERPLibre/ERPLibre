@@ -50,3 +50,9 @@ screencasts
 private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+
+# Le materiel de travail : enquetes, mesures datees, traces
+# d'execution. Il porte ce que ni le code ni le commit ne doivent
+# porter, et rien ne l'empechait jusqu'ici de partir dans un
+# « git add -A ».
+tasks/
