@@ -145,7 +145,9 @@ class Execute:
     # Ctrl+C écrit sur ce terminal n'interrompt qu'elle (code -2), et le
     # processus qui l'a lancée continue. Faux, la commande partage le groupe
     # de l'appelant, et Ctrl+C les interrompt tous deux. Une commande tuée
-    # par un signal laisse le terminal vidé de ce qu'elle n'a pas lu.
+    # par un signal laisse le terminal vidé de ce qu'elle n'a pas lu. Sans
+    # shell pour la reprendre, Ctrl+Z n'y suspend jamais rien : le terminal
+    # de contrôle refuse de produire SIGTSTP.
     job_control = False
 
     def __init__(self) -> None:
@@ -404,11 +406,21 @@ class Execute:
         """Descripteur du terminal de contrôle, ouvert pour une commande
         lancée avec le contrôle de tâches ; None sans `job_control`, hors du
         fil principal (deux fils se disputeraient le premier plan) ou sans
-        terminal de contrôle, et la commande tourne alors comme au CLI."""
+        terminal de contrôle, et la commande tourne alors comme au CLI.
+        VSUSP y est désactivé (comme `stty susp undef`) : sans shell pour
+        reprendre une tâche suspendue, Ctrl+Z resterait bloqué en position
+        arrêtée (état T) jusqu'à raccrocher la session entière."""
         main = threading.current_thread() is threading.main_thread()
         if not self.job_control or not main:
             return None
         try:
-            return os.open("/dev/tty", os.O_RDWR)
+            tty = os.open("/dev/tty", os.O_RDWR)
         except OSError:
             return None
+        try:
+            attrs = termios.tcgetattr(tty)
+            attrs[6][termios.VSUSP] = os.fpathconf(tty, "PC_VDISABLE")
+            termios.tcsetattr(tty, termios.TCSANOW, attrs)
+        except (OSError, termios.error):
+            pass  # pas un terminal (tests) : rien à désactiver
+        return tty

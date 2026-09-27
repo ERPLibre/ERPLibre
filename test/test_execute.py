@@ -2,6 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import glob
 import os
 import pty
 import select
@@ -196,6 +197,36 @@ print("alive", flush=True)
 """
 
 
+def _descendant_stopped(pid, timeout=0.3):
+    """Vrai si un descendant de `pid` (via /proc) atteint l'état arrêté (T)
+    avant le délai ; balaie l'arbre des enfants à chaque tour, un stade
+    stoppé n'apparaissant que sous son parent direct."""
+
+    def any_stopped(root):
+        for children_path in glob.glob(f"/proc/{root}/task/*/children"):
+            try:
+                with open(children_path) as f:
+                    kids = f.read().split()
+            except OSError:
+                continue
+            for kid in kids:
+                try:
+                    with open(f"/proc/{kid}/status") as f:
+                        status = f.read()
+                except OSError:
+                    continue
+                if "State:\tT" in status or any_stopped(kid):
+                    return True
+        return False
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if any_stopped(pid):
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def _read_until(fd, marker, timeout=10.0):
     """Octets lus sur `fd` jusqu'à `marker` compris ; échec au délai."""
     out = b""
@@ -297,6 +328,35 @@ class TestJobControl(unittest.TestCase):
         # La commande lit le terminal : elle y est au premier plan.
         os.write(master, b"yes\n")
         out = _read_until(master, b"got yes")
+        os.write(master, b"\x03")
+        out += _read_until(master, b"alive")
+        self.assertIn(b"rc=-2 back=True", out)
+        self.assertEqual(child.wait(10), 0)
+
+    def test_ctrl_z_does_not_suspend_and_ctrl_c_still_stops_it(self):
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        child = subprocess.Popen(
+            [sys.executable, "-c", JOB_CHILD],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            cwd=REPO,
+            start_new_session=True,
+        )
+        os.close(slave)
+        self.addCleanup(child.wait, 10)
+        self.addCleanup(child.kill)
+        _read_until(master, b"Execute command")
+        os.write(master, b"yes\n")
+        out = _read_until(master, b"got yes")
+        # VSUSP désactivé : Ctrl+Z ne met pas la commande en état arrêté (T),
+        # où elle resterait faute d'un shell pour la reprendre. On laisse le
+        # temps à un état T de s'installer avant Ctrl+C : sans le délai, les
+        # deux octets sont traités avant qu'un SIGTSTP délivré n'ait figé le
+        # groupe, et le test réussirait même sans le correctif.
+        os.write(master, b"\x1a")
+        self.assertFalse(_descendant_stopped(child.pid))
         os.write(master, b"\x03")
         out += _read_until(master, b"alive")
         self.assertIn(b"rc=-2 back=True", out)
