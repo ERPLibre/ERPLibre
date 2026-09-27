@@ -3,12 +3,12 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Fichiers statiques de l'interface web de TODO.
 
-OWL est vendoré sans modification : ses fichiers doivent rester ceux du
-paquet npm, dont le README de provenance note les empreintes. La page, elle,
-est servie depuis la table que le hub charge au démarrage, sous une CSP qui
-n'autorise que l'import map par son hash. Les fonctions pures des vues
-(`static/src/model.js`, `static/src/metrics.js`) tournent sous node, quand
-il est installé.
+OWL, xterm.js et son addon « fit » sont vendorés sans modification : leurs
+fichiers doivent rester ceux des paquets npm, dont chaque README de
+provenance note les empreintes. La page, elle, est servie depuis la table
+que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
+map par son hash. Les fonctions pures des vues (`static/src/model.js`,
+`static/src/metrics.js`) tournent sous node, quand il est installé.
 """
 
 import ast
@@ -28,6 +28,8 @@ from script.todo.web import server
 REPO = Path(__file__).resolve().parent.parent
 STATIC = REPO / "script" / "todo" / "web" / "static"
 OWL = STATIC / "lib" / "owl-2.8.1"
+XTERM = STATIC / "lib" / "xterm-5.5.0"
+FIT = STATIC / "lib" / "addon-fit-0.10.0"
 SRC = STATIC / "src"
 
 
@@ -35,9 +37,10 @@ def _sha256(path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _recorded(name):
-    """sha256 que le README de provenance donne pour `name`, ou None."""
-    text = (OWL / "README.md").read_text(encoding="utf-8")
+def _recorded(name, lib=OWL):
+    """sha256 que le README de provenance de `lib` donne pour `name`, ou
+    None."""
+    text = (lib / "README.md").read_text(encoding="utf-8")
     match = re.search(
         rf"^- {re.escape(name)} sha256: ([0-9a-f]{{64}})$", text, re.M
     )
@@ -81,6 +84,28 @@ class TestVendoredOwl(unittest.TestCase):
     def test_prettier_leaves_vendored_files_alone(self):
         ignored = (REPO / ".prettierignore").read_text().splitlines()
         self.assertIn("script/todo/web/static/lib/", ignored)
+
+
+class TestVendoredXterm(unittest.TestCase):
+    def test_files_are_the_published_ones(self):
+        vendored = {
+            XTERM: ("xterm.js", "xterm.css", "LICENSE"),
+            FIT: ("addon-fit.js", "LICENSE"),
+        }
+        for lib, names in vendored.items():
+            for name in names:
+                with self.subTest(lib=lib.name, name=name):
+                    self.assertEqual(_sha256(lib / name), _recorded(name, lib))
+
+    def test_both_builds_define_the_globals_the_page_reads(self):
+        # Scripts classiques UMD, sans module ES : hors CommonJS et AMD,
+        # xterm.js pose `Terminal` sur globalThis, addon-fit.js `FitAddon`.
+        xterm = (XTERM / "xterm.js").read_text(encoding="utf-8")
+        fit = (FIT / "addon-fit.js").read_text(encoding="utf-8")
+        self.assertTrue(xterm.startswith("!function(e,t){"))
+        self.assertIn("}(globalThis,", xterm)
+        self.assertIn("e.Terminal=", xterm)
+        self.assertIn(":e.FitAddon=t()}(self,", fit)
 
 
 class TestPage(unittest.TestCase):
