@@ -106,22 +106,46 @@ def _alive(groups) -> bool:
     return False
 
 
+def _in_group(cpid, pgid) -> bool:
+    """Vrai si l'enfant `cpid` est vivant (pas zombie) et dans le groupe de
+    processus `pgid` du worker ; faux pour un zombie non attendu (Popen
+    jamais réattendu) ou pour un enfant reparti dans une session neuve
+    (start_new_session, `setsid`), qu'un octet Ctrl+C au terminal
+    n'atteint pas.
+
+    Lu dans /proc/<cpid>/stat : l'état (champ 3) et le groupe (champ 5),
+    après la dernière parenthèse fermante du nom du processus, qui peut
+    lui-même contenir espaces et parenthèses.
+    """
+    try:
+        with open(f"/proc/{cpid}/stat", "rb") as f:
+            stat = f.read()
+    except OSError:
+        return False
+    fields = stat.rsplit(b")", 1)[-1].split()
+    if len(fields) < 3:
+        return False
+    state, pgrp = fields[0], fields[2]
+    return state != b"Z" and pgrp.isdigit() and int(pgrp) == pgid
+
+
 def _has_children(pid) -> bool:
-    """Vrai si le processus `pid` a un enfant, d'après les fichiers
-    `children` de /proc ; faux sans eux (hors Linux, ou noyau sans
-    CONFIG_PROC_CHILDREN)."""
+    """Vrai si le processus `pid` a, dans son propre groupe, un enfant
+    vivant, d'après les fichiers `children` de /proc ; faux sans eux (hors
+    Linux, ou noyau sans CONFIG_PROC_CHILDREN). Un zombie ou un enfant
+    reparti dans une session neuve ne compte pas : voir `_in_group`."""
     try:
         threads = os.listdir(f"/proc/{pid}/task")
     except OSError:
         return False
+    children = set()
     for tid in threads:
         try:
             with open(f"/proc/{pid}/task/{tid}/children", "rb") as f:
-                if f.read().strip():
-                    return True
+                children.update(f.read().split())
         except OSError:
             continue
-    return False
+    return any(_in_group(cpid.decode(), pid) for cpid in children)
 
 
 class Session:

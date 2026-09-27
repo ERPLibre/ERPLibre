@@ -82,6 +82,34 @@ except KeyboardInterrupt:
     print("INT", flush=True)
 """
 
+# Un enfant fugitif dans une session neuve (virt-viewer, `setsid -f`) :
+# hors du groupe du worker, jamais busy. SIGHUP (close) tue l'enfant lui-même,
+# hors du groupe que `_kill` atteint : sans cela, il survit au test.
+NEWGROUP_CHILD = r"""
+import os, signal, subprocess, sys, time
+child = subprocess.Popen(["sleep", "30"], start_new_session=True)
+def cleanup(signum, frame):
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    sys.exit(0)
+signal.signal(signal.SIGHUP, cleanup)
+print("ready", flush=True)
+time.sleep(30)
+"""
+
+# Un enfant zombie, faute d'être attendu (comme le Popen d'une commande en
+# arrière-plan que rien ne réattend avant le suivant) : jamais busy non
+# plus.
+ZOMBIE_CHILD = r"""
+import os, time
+if os.fork() == 0:
+    os._exit(0)
+print("ready", flush=True)
+time.sleep(30)
+"""
+
 
 class Client:
     """Double d'un client ; `gate`, une fois posé, retient chaque envoi."""
@@ -179,6 +207,22 @@ class TestTerminal(SessionCase):
         self.assertTrue(session.interrupt())
         await asyncio.wait_for(session.ended.wait(), 10)
         self.assertIn(b"INT", session.ring.data)
+
+    async def test_a_child_in_a_new_session_does_not_count_as_busy(self):
+        session = await self.open(NEWGROUP_CHILD)
+        await self.seen(session, b"ready")
+        for _ in range(5):
+            self.assertFalse(session.busy)
+            await asyncio.sleep(0.05)
+        self.assertFalse(session.interrupt())
+
+    async def test_an_unreaped_zombie_does_not_count_as_busy(self):
+        session = await self.open(ZOMBIE_CHILD)
+        await self.seen(session, b"ready")
+        for _ in range(5):
+            self.assertFalse(session.busy)
+            await asyncio.sleep(0.05)
+        self.assertFalse(session.interrupt())
 
     async def test_commands_share_the_terminal_and_session_of_sudo(self):
         # sudo (timestamp_type=tty) garde son ticket par terminal et par
