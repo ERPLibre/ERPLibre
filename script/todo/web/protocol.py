@@ -7,7 +7,8 @@ message entre le worker (fd 3) et le hub.
 Du hub au worker : `hello`, puis `answer {qid, value}` et `cancel {qid}`.
 Du worker au hub (FROM_WORKER) : `menu` et `ask`, les questions, chacune
 avec son `qid`, et `answered {qid}` à la fin de chacune, quelle qu'en soit
-l'issue ; `notice`, `run_start`, `run_end`, `open_view`. Le hub relaie ces
+l'issue, avec `key` pour l'entrée choisie d'un menu ; `notice`,
+`run_start`, `run_end`, `open_view`. Le hub relaie ces
 messages à la page tels quels.
 
 Une ligne du worker tient toujours dans LINE_LIMIT octets, ce que le hub

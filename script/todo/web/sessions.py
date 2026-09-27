@@ -38,6 +38,10 @@ son entrée avant et après chaque question, n'en prend qu'une ligne. Ce que
 `held` jette est dit au client par `dropped`, ou au suivant quand il n'y
 en a pas (`unreported`).
 
+Le hub pose sur chaque session un journal des tâches (`recorder`,
+`tasklog.Recorder`) : il reçoit la sortie du PTY, chaque message relayé du
+worker, chaque réponse de la page portée au worker et la fin de la session.
+
 Un client offre `send(octets)`, attendable, rendu quand les octets ont
 quitté le hub ; `event(message)`, un dict envoyé en texte ; `close(code,
 raison)`. Module sans tornado ; les enfants du worker se lisent dans /proc.
@@ -267,6 +271,7 @@ class Session:
         self.read_at = float("-inf")  # dernière sonde qui a vu un lecteur
         self.gap = PROBE_GAP  # délai minimal entre deux sondes
         self.asking = None  # question du worker qui attend sa réponse
+        self.recorder = None  # journal des tâches, posé par le hub
 
     async def start(self):
         """Lance le worker ; OSError si le PTY ou le processus manquent. Un
@@ -384,7 +389,7 @@ class Session:
     def _on_output(self):
         data = self._read_master()
         if data:
-            self.ring.append(data)
+            self._keep(data)
             if self.watch is not None:
                 self.watch.feed(data)
             if self.client is not None:
@@ -392,6 +397,12 @@ class Session:
                 self._probe_soon()
         if self.eof:
             self._reading(False)
+
+    def _keep(self, data):
+        """`data`, sortie du PTY, dans l'anneau et au journal des tâches."""
+        self.ring.append(data)
+        if self.recorder is not None:
+            self.recorder.output(data)
 
     def _flush(self):
         """Envoie au client ce qui lui manque ; la lecture attend la fin."""
@@ -758,19 +769,24 @@ class Session:
             # Chaque message est une borne : ce qui reste d'un collage ne
             # passe pas d'une question, ou d'une commande, à la suivante.
             self._drop_held()
+            if self.recorder is not None:
+                self.recorder.worker(message)
             if self.client is not None:
                 self.client.event(message)
 
     def answer(self, message) -> bool:
         """Porte au worker `answer` ou `cancel` du client pour la question
         ouverte ; faux, et rien ne part, pour un autre `qid`, une valeur
-        refusée par `protocol.reply_line`, ou sans worker. La valeur n'est
-        gardée ni journalisée nulle part."""
+        refusée par `protocol.reply_line`, ou sans worker. La valeur ne va
+        qu'au worker et au journal des tâches (`recorder.page`), qui n'écrit
+        jamais celle d'un secret."""
         asking = self.asking["qid"] if self.asking is not None else None
         line = protocol.reply_line(message, asking)
         if line is None or self.channel is None:
             return False
         self.channel.write(line)
+        if self.recorder is not None:
+            self.recorder.page(message)
         self.asking = None
         self._drop_held()
         return True
@@ -804,7 +820,7 @@ class Session:
                     data = self._read_master()
                     if not data:
                         break
-                    self.ring.append(data)
+                    self._keep(data)
                 self._hangup()
                 now = time.monotonic()
                 restarts = [t for t in restarts if now - t < RESTART_WINDOW]
@@ -825,6 +841,8 @@ class Session:
             # Même sur une erreur imprévue : `close` n'attend pas en vain.
             self.code = self.proc.returncode
             self.ended.set()
+            if self.recorder is not None:
+                self.recorder.end()
             if self.on_end is not None:
                 self.on_end(self)
         if self.client is not None:

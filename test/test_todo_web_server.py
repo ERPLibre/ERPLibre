@@ -28,12 +28,20 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
+from compression import zstd
 from todo_web_env import CHILD, private_env
 from tornado.httpclient import AsyncHTTPClient, HTTPClientError, HTTPRequest
 from tornado.websocket import websocket_connect
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths, protocol, server, sessions, ttywatch
+from script.todo.web import (
+    paths,
+    protocol,
+    server,
+    sessions,
+    tasklog,
+    ttywatch,
+)
 
 # Les réponses 4xx sont journalisées en avertissement ; sans handler, le
 # dernier recours de logging les écrirait sur stderr.
@@ -444,7 +452,7 @@ class TestTelemetryApi(ApiCase):
 
     async def test_counts_come_from_the_telemetry_file(self):
         store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"
-        store.parent.mkdir()
+        store.parent.mkdir(exist_ok=True)  # le hub y tient ses journaux
         store.write_text(
             json.dumps({"paths": {"TODO › Execute": 3}, "updated": 1234})
         )
@@ -454,7 +462,7 @@ class TestTelemetryApi(ApiCase):
 
     async def test_malformed_counters_count_nothing(self):
         store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"
-        store.parent.mkdir()
+        store.parent.mkdir(exist_ok=True)  # le hub y tient ses journaux
         for text in ("[1, 2]", '{"paths": [1, 2]}'):
             store.write_text(text)
             data = await self.get_json("/api/telemetry?lang=en")
@@ -1302,6 +1310,107 @@ class TestProtocol(unittest.TestCase):
         self.assertIsNone(protocol.reply_line(surrogate, 2))
 
 
+class TestTaskLogs(TerminalCase):
+    """Le journal d'une vraie session : l'enfant jetable écrit sur le canal
+    ce qu'un worker enverrait, et chaque ligne tapée s'affiche par l'écho."""
+
+    MENU = {
+        "t": "menu",
+        "qid": 1,
+        "crumbs": ["TODO", "Code"],
+        "items": [{"key": "1", "label": "Show code status"}],
+        "text": "[1] Show code status\n",
+    }
+
+    async def send(self, tab, message):
+        line = b"send " + json.dumps(message).encode() + b"\n"
+        await tab.conn.write_message(line, binary=True)
+        await tab.until(lambda: message in tab.texts)
+
+    async def closed(self):
+        """L'entrée d'index de la tâche, une fois close."""
+        deadline = time.monotonic() + 10
+        while not tasklog.entries(self.hub.tasks_dir):
+            self.assertLess(time.monotonic(), deadline, "never closed")
+            await asyncio.sleep(0.05)
+        [entry] = tasklog.entries(self.hub.tasks_dir)
+        return entry
+
+    async def test_a_task_runs_from_a_menu_answer_to_the_next_menu(self):
+        patcher = patch.object(tasklog, "SETTLE_SECONDS", 0.2)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        tab = await self.tab()
+        await self.send(tab, self.MENU)
+        await self.send(tab, {"t": "answered", "qid": 1, "key": "1"})
+        await self.send(tab, {"t": "run_start", "cmd": "make forged"})
+        await tab.conn.write_message(b"big 3\n", binary=True)
+        await tab.until(lambda: b"END" in tab.data)
+        # La page répond à un secret, puis à une question texte.
+        for qid, kind, value in ((2, "secret", "hunter2"), (3, "text", "x")):
+            text = "Passphrase: "
+            await self.send(
+                tab, {"t": "ask", "qid": qid, "kind": kind, "text": text}
+            )
+            answer = {"t": "answer", "qid": qid, "value": value}
+            await tab.conn.write_message(json.dumps(answer))
+            await self.send(tab, {"t": "answered", "qid": qid})
+        await self.send(tab, {"t": "run_end", "rc": 0, "secs": 0.1})
+        await self.send(tab, {**self.MENU, "qid": 4})
+        entry = await self.closed()  # le texte ne paraît pas : SETTLE
+        self.assertEqual(
+            (entry["crumbs"], entry["entry"], entry["state"]),
+            (["TODO", "Code"], "Show code status", "done"),
+        )
+        self.assertEqual(entry["commands"][0]["cmd"], "make forged")
+        page = tasklog.read(self.hub.tasks_dir, entry["id"], 1, 100)
+        texts = [r["d"] for r in page["lines"] if r["s"] == "out"]
+        self.assertIn("xxx", texts)
+        events = [r["d"] for r in page["lines"] if r["s"] == "event"]
+        self.assertIn({"t": "answer", "value": "•••"}, events)
+        self.assertIn({"t": "answer", "value": "x"}, events)
+        for path in self.tmp.rglob("*"):
+            if path.is_file():
+                data = path.read_bytes()
+                if path.suffix == ".zst":
+                    data = zstd.decompress(data)
+                self.assertNotIn(b"hunter2", data, path)
+
+    async def test_the_menu_text_in_the_output_closes_the_task(self):
+        tab = await self.tab()  # SETTLE_SECONDS, 2 s, ne joue pas ici
+        menu = {**self.MENU, "text": "[1] forged menu text\n"}
+        await self.send(tab, menu)
+        await self.send(tab, {"t": "answered", "qid": 1, "key": "1"})
+        await tab.conn.write_message(b"big 2\n", binary=True)
+        await tab.until(lambda: b"END" in tab.data)
+        await self.send(tab, {**menu, "qid": 3})
+        # Tapé, le texte du menu revient par l'écho, comme TODO l'imprime.
+        await tab.conn.write_message(b"[1] forged menu text\n", binary=True)
+        entry = await asyncio.wait_for(self.closed(), 1.5)
+        page = tasklog.read(self.hub.tasks_dir, entry["id"], 1, 100)
+        texts = [r["d"] for r in page["lines"] if r["s"] == "out"]
+        self.assertIn("xx", texts)
+        self.assertNotIn("[1] forged menu text", texts)
+
+    async def test_a_running_task_reaches_the_disk_within_a_second(self):
+        tab = await self.tab()
+        await self.send(tab, self.MENU)
+        await self.send(tab, {"t": "answered", "qid": 1, "key": "1"})
+        await tab.conn.write_message(b"big 4\n", binary=True)
+        await tab.until(lambda: b"END" in tab.data)
+        [session] = self.hub.terminals.values()
+        task_id = session.recorder.task.info["id"]
+        deadline = time.monotonic() + 1.5
+        while True:
+            page = tasklog.read(self.hub.tasks_dir, task_id, 1, 100)
+            lines = page["lines"] if page else []
+            if "xxxx" in [r["d"] for r in lines if r["s"] == "out"]:
+                break
+            self.assertLess(time.monotonic(), deadline, "still held")
+            await asyncio.sleep(0.05)
+        self.assertEqual(page["state"], "open")
+
+
 class TestTerminalIdle(TerminalCase):
     IDLE = 1.0
 
@@ -1393,6 +1502,26 @@ class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ConnectionRefusedError):
             await asyncio.open_connection("127.0.0.1", hub.port)
         await self.assert_released()
+
+    async def test_a_restart_closes_open_tasks_and_orphans(self):
+        info = {"id": tasklog.new_id(time.time()), "session": "s1"}
+        info["start"] = time.time()
+        task = tasklog.TaskLog(paths.tasks_dir(self.root), info)
+        task.output(b"working\r\n")
+        task.abandon()  # le hub est tué pendant la tâche
+        orphan = paths.runtime_dir(self.root) / "state.json.x1.tmp"
+        orphan.write_text("{}")
+        past = time.time() - paths.ORPHAN_SECONDS - 1
+        os.utime(orphan, (past, past))
+        hub = server.Hub(self.root, static_dir=self.static)
+        await hub.start()
+        self.addAsyncCleanup(hub.stopped.wait)
+        self.addCleanup(hub.request_stop)
+        [entry] = tasklog.entries(hub.tasks_dir)
+        self.assertEqual(
+            (entry["id"], entry["state"]), (info["id"], "interrupted")
+        )
+        self.assertFalse(orphan.exists())
 
     async def test_ctl_socket_is_0600_through_the_umask_elsewhere(self):
         with patch.object(server.sys, "platform", "darwin"):

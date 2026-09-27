@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Journaux de tâches du hub web : écriture, clôture, relecture, purge et
-reprise, sur un HOME temporaire. Les secrets sont inventés."""
+reprise, puis les bornes d'une tâche lues des messages du canal
+(`Recorder`), sur un HOME temporaire. Les secrets sont inventés."""
 
 import datetime
 import json
@@ -406,6 +407,235 @@ class TestStore(StoreCase):
         ):
             with self.assertRaises(ValueError):
                 tasklog.day_of(task_id)
+
+
+MENU = {
+    "t": "menu",
+    "crumbs": ["TODO", "Code"],
+    "items": [
+        {"key": "1", "label": "Show code status"},
+        {"key": "0", "label": "Back"},
+    ],
+    "text": "📍 TODO › Code\n[1] Show code status\n[0] Back\n: ",
+}
+# Le menu tel que le PTY le montre : ONLCR change chaque \n en \r\n.
+SHOWN = MENU["text"].replace("\n", "\r\n").encode()
+
+
+class TestRecorder(StoreCase):
+    """Une tâche va de la réponse à un menu au menu suivant ; aucun worker,
+    les messages du canal sont donnés tels que le hub les relaie."""
+
+    def setUp(self):
+        super().setUp()
+        self.rec = tasklog.Recorder(self.base, "s1")
+
+    def menu(self, qid):
+        self.rec.worker(dict(MENU, qid=qid))
+
+    def start(self, key="1"):
+        """Le menu 1 montré, puis répondu par `key` ; l'écho suit."""
+        self.menu(1)
+        self.rec.output(SHOWN)
+        self.rec.worker({"t": "answered", "qid": 1, "key": key})
+        self.rec.output(key.encode() + b"\r\n")
+
+    def records(self):
+        [entry] = tasklog.entries(self.base)
+        page = tasklog.read(self.base, entry["id"], 2, 100)
+        return entry, [(r["s"], r["d"]) for r in page["lines"]]
+
+    def test_menu_answer_commands_then_menu_bound_a_task(self):
+        self.start()
+        self.rec.worker({"t": "run_start", "cmd": "make repo_show_status"})
+        self.rec.output(b"nothing to commit\r\n")
+        self.rec.worker({"t": "run_end", "rc": 0, "secs": 0.2})
+        self.rec.output(b"done\r\n")
+        self.menu(2)
+        self.assertIsNotNone(self.rec.waiting)
+        self.rec.output(SHOWN)
+        self.assertIsNone(self.rec.waiting)
+        entry, records = self.records()
+        self.assertEqual(
+            (entry["crumbs"], entry["entry"], entry["state"]),
+            (["TODO", "Code"], "Show code status", "done"),
+        )
+        command = {"cmd": "make repo_show_status", "rc": 0, "secs": 0.2}
+        self.assertEqual(entry["commands"], [command])
+        self.assertEqual(
+            records,
+            [
+                ("event", {"t": "run_start", "cmd": command["cmd"]}),
+                ("out", "nothing to commit"),
+                ("event", {"t": "run_end", "rc": 0, "secs": 0.2}),
+                ("out", "done"),
+            ],
+        )
+
+    def test_a_menu_text_read_before_its_message_is_cut_too(self):
+        self.start()
+        self.rec.output(b"done\r\n" + SHOWN)
+        self.menu(2)
+        self.assertIsNone(self.rec.waiting)
+        self.assertEqual(self.records()[1], [("out", "done")])
+
+    def test_an_event_later_than_the_menu_text_keeps_its_order(self):
+        # Le canal et le PTY sont deux flux : `run_end` peut arriver après
+        # le texte du menu qui le suit.
+        self.start()
+        self.rec.worker({"t": "run_start", "cmd": "true"})
+        self.rec.output(b"out\r\n" + SHOWN)
+        self.rec.worker({"t": "run_end", "rc": 0, "secs": 0.1})
+        self.menu(2)
+        kinds = [
+            (s, d if s == "out" else d["t"]) for s, d in self.records()[1]
+        ]
+        self.assertEqual(
+            kinds,
+            [("event", "run_start"), ("out", "out"), ("event", "run_end")],
+        )
+
+    def test_moving_between_menus_leaves_no_task(self):
+        self.start()
+        self.rec.output(b"\r\nWhat do you need?\r\n")  # l'en-tête du sous-menu
+        self.rec.worker(dict(MENU, qid=2, crumbs=["TODO", "Code", "Sub"]))
+        self.rec.output(SHOWN)
+        self.assertIsNone(self.rec.task)
+        self.start("0")
+        self.menu(2)
+        self.rec.output(SHOWN)
+        self.start("9")  # hors des entrées : aucune tâche
+        self.rec.output(b"Invalid choice\r\n")
+        self.rec.worker({"t": "answered", "qid": 1})
+        self.assertIsNone(self.rec.task)
+        self.assertEqual(tasklog.entries(self.base), [])
+
+    def test_a_leaf_that_leads_elsewhere_is_kept(self):
+        # Un menu d'un autre fil, ni plus ni moins profond : la feuille qui
+        # y mène a fait quelque chose, même sans événement.
+        self.start()
+        self.rec.output(b"report written\r\n")
+        self.rec.worker(dict(MENU, qid=2, crumbs=["TODO", "Mail"]))
+        self.rec.output(SHOWN)
+        self.assertEqual(self.records()[1], [("out", "report written")])
+
+    def test_a_menu_prompt_inside_the_output_does_not_close(self):
+        # Un menu lu à l'écran ne porte que son invite : la même invite plus
+        # haut dans la sortie n'est pas lui.
+        menu = dict(MENU, text="Choice: ")
+        self.rec.worker(dict(menu, qid=1))
+        self.rec.output(b"Choice: ")
+        self.rec.worker({"t": "answered", "qid": 1, "key": "1"})
+        self.rec.output(b"1\r\nstep 1\r\nChoice: A was kept\r\n")
+        self.rec.output(b"step 2 finished after that choice\r\n")
+        self.rec.worker(dict(menu, qid=2))
+        self.assertIsNotNone(self.rec.waiting)
+        self.rec.output(b"Choice: ")
+        self.assertIsNone(self.rec.waiting)
+        self.assertEqual(
+            [d for s, d in self.records()[1]],
+            [
+                "step 1",
+                "Choice: A was kept",
+                "step 2 finished after that choice",
+            ],
+        )
+
+    def test_settle_closes_a_task_whose_menu_never_shows(self):
+        self.start()
+        self.rec.output(b"done\r\n")
+        self.menu(2)
+        waiting = self.rec.waiting
+        self.rec.settle("20260101-000000-abcdef")
+        self.assertEqual(self.rec.waiting, waiting)
+        self.rec.settle(waiting)
+        self.assertEqual(self.records()[1], [("out", "done")])
+
+    def test_output_is_held_half_a_second_and_delays_are_planned(self):
+        planned = []
+        rec = tasklog.Recorder(
+            self.base, "s1", later=lambda *call: planned.append(call)
+        )
+        rec.worker(dict(MENU, qid=1))
+        rec.worker({"t": "answered", "qid": 1, "key": "1"})
+        rec.output(b"working\r\n")
+        self.assertIsNone(rec.task.fd)  # retenue : rien encore sur disque
+        self.assertEqual(planned, [(tasklog.HOLD_SECONDS, rec.flush)])
+        with patch.object(tasklog, "HOLD_SECONDS", 0):
+            rec.flush()
+        page = tasklog.read(self.base, rec.task.info["id"], 2, 10)
+        self.assertEqual([r["d"] for r in page["lines"]], ["working"])
+        rec.worker(dict(MENU, qid=2))  # son texte ne paraît pas
+        waiting = rec.waiting
+        self.assertEqual(
+            planned[-1], (tasklog.SETTLE_SECONDS, rec.settle, waiting)
+        )
+        rec.settle(waiting)
+        self.assertIsNone(rec.task)
+
+    def test_a_command_is_masked_as_shown_whole(self):
+        self.start()
+        run = "mysql --password inventeAB -h db.example base"
+        self.rec.worker({"t": "run_start", "cmd": run})
+        self.rec.end()
+        entry, records = self.records()
+        shown = "mysql --password '***' -h db.example base"
+        self.assertEqual(entry["commands"][0]["cmd"], shown)
+        self.assertEqual(
+            records, [("event", {"t": "run_start", "cmd": shown})]
+        )
+
+    def test_a_secret_answer_is_never_kept(self):
+        self.start()
+        asks = [
+            (2, "secret", "Passphrase: ", "answer", "hunter2"),
+            (3, "text", "Database password: ", "answer", "hunter2"),
+            (4, "text", "Name: ", "answer", "forged"),
+            (5, "text", "Name: ", "cancel", None),
+            (6, "confirm", "Continue? [y/N] ", None, None),
+        ]
+        for qid, kind, text, reply, value in asks:
+            self.rec.worker(
+                {"t": "ask", "qid": qid, "kind": kind, "text": text}
+            )
+            if reply is not None:
+                self.rec.page({"t": reply, "qid": qid, "value": value})
+            if kind == "secret":
+                # La valeur d'un secret n'est pas même retenue.
+                self.assertNotIn(value, repr(self.rec.given))
+            self.rec.worker({"t": "answered", "qid": qid})
+        self.rec.end()
+        entry, records = self.records()
+        self.assertEqual(entry["state"], "session-ended")
+        ends = [d for s, d in records if d["t"] != "ask"]
+        self.assertEqual(
+            ends,
+            [
+                {"t": "answer", "value": "•••"},
+                {"t": "answer", "value": "•••"},
+                {"t": "answer", "value": "forged"},
+                {"t": "cancel"},
+                {"t": "answered"},
+            ],
+        )
+        for path in self.base.rglob("*.zst"):
+            self.assertNotIn(b"hunter2", zstd.decompress(path.read_bytes()))
+
+    def test_a_failing_disk_drops_the_task_not_the_session(self):
+        self.start()
+        self.rec.output(b"working\r\n")
+        full = OSError(28, "No space left on device")
+        with (
+            patch.object(tasklog.TaskLog, "close", side_effect=full),
+            self.assertLogs(tasklog.log, "ERROR"),
+        ):
+            self.menu(2)
+            self.rec.output(SHOWN)
+        self.assertIsNone(self.rec.task)
+        self.start()  # la session continue, et sa tâche suivante
+        self.assertIsNotNone(self.rec.task)
+        # Le journal abandonné reste, que le démarrage suivant reprend.
+        self.assertEqual(tasklog.recover(self.base), 1)
 
 
 if __name__ == "__main__":

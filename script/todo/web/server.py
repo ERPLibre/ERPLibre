@@ -49,7 +49,7 @@ import tornado.websocket
 from tornado.web import HTTPError
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import paths, sessions
+from script.todo.web import paths, sessions, tasklog
 
 log = logging.getLogger(__name__)
 
@@ -727,6 +727,7 @@ class Hub:
         self.pending = set()  # fermetures en cours
         self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
         self.http = None
+        self.tasks_dir = None  # journal des tâches, une fois démarré
 
     def routes(self) -> list:
         return [
@@ -751,9 +752,11 @@ class Hub:
         self.ctl_path = paths.ctl_path(self.root)
         self.state_path = paths.state_path(self.root)
         self.redirect_path = paths.redirect_path(self.root)
+        self.tasks_dir = paths.tasks_dir(self.root)
         self.lock_fd = _hold_lock(paths.lock_path(self.root))
         ctl, socks = None, []
         try:
+            self._tidy()
             ctl = _claim_ctl(self.ctl_path)
             socks = tornado.netutil.bind_sockets(
                 port, host, family=socket.AF_INET
@@ -799,6 +802,23 @@ class Hub:
         paths.write_private(self.state_path, json.dumps(state))
         self.idle_task = asyncio.create_task(self.watch_idle())
         log.info("listening on 127.0.0.1:%s for %s", self.port, self.root)
+
+    def _tidy(self):
+        """Verrou tenu, avant toute session : retire les fichiers
+        temporaires orphelins du répertoire d'exécution, et clôt les tâches
+        restées ouvertes (`interrupted`). Un échec, fichier abîmé compris,
+        va au journal sans empêcher le démarrage."""
+        try:
+            paths.remove_orphans(paths.runtime_dir(self.root))
+            tasklog.recover(self.tasks_dir)
+        except Exception:
+            log.exception("tidying the hub files failed")
+
+    def _recorder(self, sid):
+        """Le journal des tâches de la session `sid`, ses délais planifiés
+        dans la boucle du hub."""
+        loop = asyncio.get_running_loop()
+        return tasklog.Recorder(self.tasks_dir, sid, loop.call_later)
 
     def _undo_start(self, ctl, socks):
         """Ferme ce que `start` a ouvert : serveurs de contrôle et HTTP,
@@ -868,6 +888,7 @@ class Hub:
         spare, self.spare = self.spare, None
         if spare is not None and spare.ready:
             spare.adopt(sid, lang, cols, rows, self._terminal_ended)
+            spare.recorder = self._recorder(sid)
             self.terminals[sid] = spare
             return spare
         if spare is not None:
@@ -875,6 +896,7 @@ class Hub:
         session = sessions.Session(
             sid, self.root, lang, cols, rows, on_end=self._terminal_ended
         )
+        session.recorder = self._recorder(sid)
         self.terminals[sid] = session
         self.opening += 1
         try:

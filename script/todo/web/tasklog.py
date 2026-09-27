@@ -36,13 +36,17 @@ reconnaîtrait plus.
 `purge` retire des jours entiers ; d'un jour qui tient un `.log` pas encore
 à l'index, seul ce `.log` reste. Un `.log` que rien n'a clos — son hub tué,
 ou le journal abandonné après une erreur d'écriture — attend le démarrage
-suivant du hub, où `recover` le clôt (état `interrupted`). Module sans
-tornado.
+suivant du hub, où `recover` le clôt (état `interrupted`).
+
+`Recorder` borne les tâches d'une session par les messages de son worker
+et leur donne sa sortie. Module sans tornado.
 """
 
 import codecs
 import datetime
+import functools
 import json
+import logging
 import os
 import re
 import secrets
@@ -53,6 +57,8 @@ from pathlib import Path
 from compression import zstd
 
 from script.todo.web import paths
+
+log = logging.getLogger(__name__)
 
 RETENTION_DAYS = 30
 CAP = 64 * 1024 * 1024
@@ -75,6 +81,21 @@ CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 # Début d'un enregistrement tel que `_line` l'écrit : son numéro et son genre
 # se lisent sans décoder le reste de la ligne.
 HEAD = re.compile(r'\{"n": ([0-9]{1,18}), "t": [^,]*, "s": "(out|event)", ')
+# Sortie d'une tâche retenue avant d'être écrite, HOLD_SECONDS et HOLD octets
+# au plus, avec les événements venus entre ses octets : le texte du menu qui
+# la clôt, que le hub lit parfois avant le message du menu, s'y retrouve et
+# s'en retire. MATCH : longueur du début de ce texte cherché ; SLACK : octets
+# tolérés après lui, l'écho d'une frappe.
+HOLD = 64 * 1024
+HOLD_SECONDS = 0.5
+MATCH = 4096
+SLACK = 32
+# Sans le texte de son menu dans la sortie, une tâche se clôt ce nombre de
+# secondes après le message du menu.
+SETTLE_SECONDS = 2.0
+# Caractères gardés du texte d'une question ou d'un avis.
+TEXT_LIMIT = 4096
+MASK = "•••"
 
 
 def new_id(now) -> str:
@@ -101,13 +122,17 @@ def clean(line) -> str:
     return CONTROL.sub("", versions[-1]) if versions else ""
 
 
-def _redact(text) -> str:
-    # Importé à la première ligne gardée, pas au chargement : execute.py
-    # pose logging.basicConfig à son import, sans effet une fois le journal
-    # du hub en place.
-    from script.execute.execute import redact_for_storage
+def _redact(text, shown=False) -> str:
+    """`redact_for_storage(text)` ; avec `shown`, `redact_secrets(text)`, le
+    masque de l'affichage, qui garde une commande entière."""
+    # Importé au premier appel, pas au chargement : execute.py pose
+    # logging.basicConfig à son import, sans effet une fois le journal du
+    # hub en place.
+    from script.execute import execute
 
-    return redact_for_storage(text)
+    if shown:
+        return execute.redact_secrets(text)
+    return execute.redact_for_storage(text)
 
 
 def _at_risk(text) -> bool:
@@ -596,3 +621,303 @@ def purge(base, before=None) -> int:
         for path in [*packed, *day.glob("*.zst.tmp"), day / "index.jsonl"]:
             path.unlink(missing_ok=True)
     return removed
+
+
+def _safe(method):
+    """Une erreur du journal abandonne la tâche ouverte, jamais la session :
+    le journal du hub la dit."""
+
+    @functools.wraps(method)
+    def guarded(self, *args):
+        try:
+            return method(self, *args)
+        except Exception:
+            log.exception("task log of session %s dropped", self.session)
+            self._drop()
+
+    return guarded
+
+
+class Recorder:
+    """Les tâches d'une session, bornées par les messages de son worker.
+
+    Le hub appelle :
+    - `worker(message)`, pour chaque message du worker qu'il relaie. Un
+      `menu` est gardé ; `answered` qui porte la `key` d'une de ses entrées
+      ouvre une tâche (fil d'Ariane du menu, libellé de l'entrée) ; le
+      `menu` suivant la clôt (`done`) quand son texte paraît à la fin de la
+      sortie, qui s'en retire, ou sans lui SETTLE_SECONDS plus tard.
+      Pendant la tâche, `ask`, `notice`, `run_start`, `run_end` et la fin
+      d'une question en sont des événements ;
+    - `page(message)`, pour une réponse de la page portée au worker ;
+    - `output(data)`, pour les octets du PTY : hors tâche, rien n'est
+      gardé ;
+    - `end()`, quand la session finit : `session-ended`.
+
+    `later(délai, fonction, *args)`, le `call_later` de la boucle du hub,
+    planifie `flush`, qui écrit la sortie retenue depuis HOLD_SECONDS, et
+    `settle(task_id)`, qui clôt la tâche `waiting` dont le texte du menu
+    n'a pas paru ; sans lui, rien ne se planifie.
+
+    Une tâche sans événement que clôt un menu plus ou moins profond du même
+    fil d'Ariane n'est qu'un passage d'un menu à l'autre : rien n'en est
+    gardé.
+    """
+
+    def __init__(self, base, session, later=None):
+        self.base = Path(base)
+        self.session = session
+        self.later = later
+        self.timer = None  # `flush` planifié
+        self.menu = None  # dernier menu du worker, jusqu'à sa réponse
+        self.task = None  # TaskLog de la tâche ouverte
+        self._reset()
+
+    def _reset(self):
+        self.held = []  # (reçus à, octets) et événements (dict) retenus
+        self.size = 0  # octets retenus, HOLD au plus hors clôture
+        self.quiet = True  # aucun événement dans la tâche
+        self.closing = None  # le menu qui clôt la tâche, s'il est venu
+        self.expected = b""  # début de son texte, tel que le PTY le montre
+        self.rest = 0  # octets de ce texte au-delà de `expected`
+        self.asks = {}  # qid -> question posée pendant la tâche
+        self.given = {}  # qid -> réponse de la page à cette question
+
+    @property
+    def waiting(self):
+        """Identifiant de la tâche qui attend le texte de son menu, ou
+        None."""
+        if self.task is None or self.closing is None:
+            return None
+        return self.task.info["id"]
+
+    @_safe
+    def worker(self, message):
+        kind = message.get("t")
+        if kind == "menu":
+            self.menu = message
+            if self.task is not None and self.closing is None:
+                self.closing = message
+                text = str(message.get("text") or "").replace("\n", "\r\n")
+                shown = text.encode()
+                self.expected = shown[:MATCH]
+                self.rest = len(shown) - len(self.expected)
+                if not self._cut():
+                    self._later(SETTLE_SECONDS, self.settle, self.waiting)
+        elif kind == "answered":
+            self._answered(message)
+        elif self.task is not None:
+            self._note(message)
+
+    @_safe
+    def page(self, message):
+        """Retient la réponse de la page à une question de la tâche ; d'un
+        secret, rien que son genre, jamais sa valeur."""
+        qid = message.get("qid")
+        ask = self.asks.get(qid)
+        if ask is None:
+            return
+        if ask.get("kind") == "secret":
+            message = {"t": message.get("t")}
+        self.given[qid] = message
+
+    @_safe
+    def output(self, data):
+        if self.task is None or not data:
+            return
+        self.held.append((time.monotonic(), bytearray(data)))
+        self.size += len(data)
+        if not self._cut():
+            self._release(HOLD, self._aged())
+            self._plan_flush()
+
+    @_safe
+    def flush(self):
+        """Écrit la sortie retenue depuis HOLD_SECONDS, sauf pendant
+        l'attente du texte d'un menu ; replanifié tant qu'il en reste."""
+        self.timer = None
+        if self.task is not None:
+            self._release(HOLD, self._aged())
+            self._plan_flush()
+
+    @_safe
+    def settle(self, task_id):
+        if task_id is not None and self.waiting == task_id:
+            self._close("done")
+
+    @_safe
+    def end(self):
+        self._close("done" if self.closing else "session-ended")
+
+    def _later(self, delay, callback, *args):
+        if self.later is not None:
+            return self.later(delay, callback, *args)
+        return None
+
+    def _aged(self):
+        """Instant (time.monotonic()) jusqu'auquel la sortie retenue
+        s'écrit ; None pendant l'attente du texte d'un menu."""
+        if self.closing is not None:
+            return None
+        return time.monotonic() - HOLD_SECONDS
+
+    def _plan_flush(self):
+        if self.timer is None and self.size:
+            self.timer = self._later(HOLD_SECONDS, self.flush)
+
+    def _cut(self) -> bool:
+        """Clôt la tâche si le texte de son menu finit la sortie retenue,
+        à SLACK octets près : les octets retenus depuis ce texte partent,
+        les événements venus après lui restent, écrits à la suite ; faux
+        sinon. Le worker attend dès qu'il a écrit ce texte : plus haut dans
+        la sortie, ce n'est qu'une ligne qui lui ressemble."""
+        if self.closing is None or not self.expected:
+            return False
+        data = b"".join(i[1] for i in self.held if not isinstance(i, dict))
+        at = data.rfind(self.expected)
+        after = len(data) - at - len(self.expected)
+        if at < 0 or after > self.rest + SLACK:
+            return False
+        kept, following, offset = [], [], 0
+        for item in self.held:
+            if isinstance(item, dict):
+                (kept if offset <= at else following).append(item)
+                continue
+            stamp, chunk = item
+            if offset < at:
+                kept.append((stamp, chunk[: at - offset]))
+            offset += len(chunk)
+        self.held = kept + following
+        self._close("done")
+        return True
+
+    def _release(self, keep, aged=None):
+        """Écrit les plus anciens éléments retenus, dans l'ordre, jusqu'à
+        n'en garder que `keep` octets, aucun reçu jusqu'à `aged`."""
+        while self.held:
+            item = self.held[0]
+            if isinstance(item, dict):
+                self.task.event(self.held.pop(0))
+                continue
+            stamp, data = item
+            if self.size > keep:
+                size = min(len(data), self.size - keep)
+            elif aged is not None and stamp <= aged:
+                size = len(data)
+            else:
+                break
+            self.task.output(bytes(data[:size]))
+            del data[:size]
+            self.size -= size
+            if not data:
+                self.held.pop(0)
+
+    def _answered(self, message):
+        qid = message.get("qid")
+        if self.menu is not None and qid == self.menu.get("qid"):
+            menu, self.menu = self.menu, None
+            self._close("done")
+            self._open(menu, message.get("key"))
+        elif self.task is not None and qid in self.asks:
+            answer = self._answer(
+                self.asks.pop(qid), self.given.pop(qid, None)
+            )
+            self._event(answer)
+
+    def _open(self, menu, key):
+        labels = {
+            item.get("key"): str(item.get("label"))
+            for item in menu.get("items") or ()
+            if isinstance(item, dict)
+        }
+        if not isinstance(key, str) or key not in labels:
+            return
+        now = time.time()
+        info = {
+            "id": new_id(now),
+            "session": self.session,
+            "crumbs": [str(crumb) for crumb in menu.get("crumbs") or ()],
+            "entry": labels[key],
+            "key": key,
+            "start": round(now, 3),
+        }
+        # L'écho de la réponse tapée, ou sa transcription (pipe_port).
+        self.task = TaskLog(
+            self.base, info, skip=(key, f"{key} → {labels[key]}")
+        )
+
+    def _note(self, message):
+        kind = message.get("t")
+        text = _redact(str(message.get("text") or "")[-TEXT_LIMIT:])
+        if kind == "ask":
+            self.asks[message.get("qid")] = message
+            self._event(
+                {"t": "ask", "kind": message.get("kind"), "text": text}
+            )
+        elif kind == "notice":
+            level = message.get("level")
+            self._event({"t": "notice", "level": level, "text": text})
+        elif kind == "run_start":
+            # Le masque de l'affichage, que le worker a déjà passé : celui du
+            # stockage couperait la commande après « --password '***' ».
+            cmd = _redact(str(message.get("cmd") or ""), shown=True)
+            self._event({"t": "run_start", "cmd": cmd})
+        elif kind == "run_end":
+            rc, secs = message.get("rc"), message.get("secs")
+            self._event({"t": "run_end", "rc": rc, "secs": secs})
+
+    def _answer(self, ask, given) -> dict:
+        """L'événement de la fin de `ask`. Un secret : `answer` MASK, d'où
+        que vienne la réponse. Répondue au terminal : `answered`, sans
+        valeur, que l'écho montre déjà dans la sortie. Annulée par la page :
+        `cancel`. Répondue par la page : sa valeur, ou MASK quand le masque
+        de stockage toucherait la ligne de l'invite qu'elle complète."""
+        if ask.get("kind") == "secret":
+            return {"t": "answer", "value": MASK}
+        if given is None:
+            return {"t": "answered"}
+        if given.get("t") == "cancel":
+            return {"t": "cancel"}
+        value = str(given.get("value"))
+        line = str(ask.get("text") or "").rsplit("\n", 1)[-1] + value
+        return {
+            "t": "answer",
+            "value": value if _redact(line) == line else MASK,
+        }
+
+    def _event(self, data):
+        """Retient l'événement à sa place dans la sortie."""
+        self.held.append(data)
+        self.quiet = False
+
+    def _close(self, state):
+        """Clôt la tâche ouverte dans l'état `state`, sa sortie retenue
+        écrite ; d'un passage d'un menu à l'autre, rien ne reste."""
+        task = self.task
+        if task is not None and not self._moved(task):
+            self._release(0)
+            task.close(state)
+        self.task = None
+        self._reset()
+
+    def _moved(self, task) -> bool:
+        """Vrai si `task` n'est qu'un passage : ni événement ni rien
+        d'écrit, et le menu qui la clôt est plus ou moins profond sur le
+        même fil d'Ariane (un sous-menu, un retour)."""
+        closing = self.closing or {}
+        crumbs = [str(crumb) for crumb in closing.get("crumbs") or ()]
+        old = task.info["crumbs"]
+        if not crumbs or crumbs == old or not self.quiet:
+            return False
+        if task.fd is not None:
+            return False
+        return crumbs[: len(old)] == old or old[: len(crumbs)] == crumbs
+
+    def _drop(self):
+        task, self.task = self.task, None
+        self._reset()
+        if task is not None:
+            try:
+                task.abandon()
+            except OSError:
+                pass

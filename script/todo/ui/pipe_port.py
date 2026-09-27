@@ -21,7 +21,9 @@ L'entrée du terminal est vidée (`tcflush(TCIFLUSH)`) avant et après chaque
 question, puis `answered {qid}` part, quelle qu'en soit l'issue : ce que
 le terminal tient quand la question commence n'y répond pas, ce qui reste
 quand elle finit ne répond pas à la suivante, et le hub jette à ces bornes
-la suite d'un collage qu'il retient. Un secret se pose écho coupé, comme
+la suite d'un collage qu'il retient. Pour un menu répondu par l'une de ses
+entrées, `answered` en porte la clé (`key`), d'où que vienne la réponse :
+le hub y ouvre une tâche du journal. Un secret se pose écho coupé, comme
 `getpass` ; le hub y voit l'invite d'un mot de passe. Après une réponse
 venue du canal, le terminal en montre la transcription sur la ligne de la
 question : l'entrée choisie d'un menu, sinon la valeur ; un secret y
@@ -148,14 +150,18 @@ class PipePort(port.BasePort):
         # L'écho se coupe avant l'invite, comme dans getpass : ce qui est
         # tapé dès qu'elle paraît ne s'affiche jamais.
         saved = _echo_off(self.tty) if kind == "secret" else None
+        answered = {"t": "answered", "qid": qid}
         try:
             self._write(text)
             self.send(message)
             source, value = self._wait(qid, timeout, kind == "countdown")
+            keys = [item["key"] for item in message.get("items", ())]
+            if value is not None and value.strip() in keys:
+                answered["key"] = value.strip()
         finally:
             _restore(self.tty, saved)
             _flush_input(self.tty)
-            self.send({"t": "answered", "qid": qid})
+            self.send(answered)
         if source is None:
             default = message.get("default") or ""
             detail = f" ({default})" if default else ""

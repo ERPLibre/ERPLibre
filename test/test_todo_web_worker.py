@@ -626,6 +626,23 @@ class TestPipePort(unittest.TestCase):
             self.out.getvalue(), "Which?\n[1] alpha\n[2] beta\n: 2 → beta\n"
         )
 
+    def test_the_end_of_a_menu_names_the_entry_chosen(self):
+        items = [{"key": "1", "label": "Execute", "section": None}]
+        view = port.menu_view("[1] Execute\n: ", items, crumbs=["TODO"])
+        future, asked = self.asking(self.port.menu, view)
+        os.write(self.master, b" 1 \n")
+        self.assertEqual(future.result(10), " 1 ")
+        closed = {"t": "answered", "qid": asked["qid"], "key": "1"}
+        self.assertEqual(self.received(), closed)
+        # Une réponse hors des entrées, fût-elle de la page, n'en nomme
+        # aucune.
+        future, asked = self.asking(self.port.menu, view)
+        self.reply(t="answer", qid=asked["qid"], value="9")
+        self.assertEqual(future.result(10), "9")
+        self.assertEqual(
+            self.received(), {"t": "answered", "qid": asked["qid"]}
+        )
+
     def test_without_the_hub_the_terminal_answers_alone(self):
         self.lines.close()
         self.hub.close()
