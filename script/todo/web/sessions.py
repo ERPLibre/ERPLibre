@@ -543,9 +543,15 @@ class Session:
         elif (
             self.held
             and self.asking is None
-            and _open(self.state)
+            and self.state.reader is True
             and not _secret(self.state)
         ):
+            # `_open` laisse aussi passer un lecteur inconnu (setuid : sudo,
+            # su), qu'aucune sonde ne voit jamais bloqué en lecture : lui
+            # livrer une ligne tenue la ferait passer pour un secret dès que
+            # le programme coupe l'écho sans vider son entrée. Un lecteur
+            # inconnu attend donc un lecteur connu, un message du worker,
+            # Ctrl+C ou Arrêter.
             self._release()
         event = {
             "t": "tty_state",
