@@ -45,11 +45,18 @@ VENV_ERPLIBRE = ".venv.erplibre"
 # que si un blanc ou un « = » la suit : sans ces bornes, une longue suite de
 # tirets, ou un mot qui répète « token », fait essayer chaque départ ou chaque
 # occurrence jusqu'au bout du mot, en un temps au carré de sa longueur.
+#
+# La valeur est lue comme le shell la lit : des segments collés, entre
+# apostrophes, entre guillemets ou nus, jusqu'au premier blanc hors
+# guillemets — `shlex.quote` écrit « it's » en « 'it'"'"'s ». Chaque segment
+# se reconnaît à son premier caractère, sans retour en arrière ; un
+# guillemet jamais refermé emporte le reste du mot (`\S*`).
+_VALUE = r"(?=\S)(?:'[^']*'|\"[^\"]*\"|[^\s'\"])*\S*"
 _SECRET_OPTION = re.compile(
     r"(?P<opt>(?<![\w-])--?(?=[\w-]*[\s=])[\w-]*"
     r"(?:password|passwd|pwd|secret|token|api[-_]?key)[\w-]*"
     r"(?:\s+|=))"
-    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
+    rf"(?P<val>{_VALUE})",
     re.IGNORECASE,
 )
 # Une variable dont le nom porte le mot d'un secret, ou « _PWD »
@@ -58,7 +65,7 @@ _SECRET_OPTION = re.compile(
 _SECRET_ENV = re.compile(
     r"(?P<var>\b(?=\w*=)\w*"
     r"(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|_PWD)\w*=)"
-    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
+    rf"(?P<val>{_VALUE})"
 )
 # Un jeton porté par un en-tête n'a ni nom d'option ni nom de variable : il
 # suit le mot « Bearer », et les deux règles ci-dessus passent à côté. Le
@@ -123,14 +130,47 @@ def redact_secrets(text):
 # Une ligne de sortie qui imprime un mot de passe le fait sans nom d'option ni
 # de variable : « Password: … », « password=… », « passwd … », « mot de
 # passe : … », ou par une clé de configuration (« admin_passwd = … »,
-# « POSTGRES_PASSWORD: … ») ou de JSON (« "password": … »). Le mot, sans
-# casse, seul ou au bout d'un nom joint par « _ », un guillemet éventuel,
-# puis sur la même ligne un deux-points, un signe égal ou des blancs
-# (l'espace insécable comprise), fait masquer tout le reste de la ligne. Une
-# invite qui attend encore sa réponse (« Password: ») n'a rien à masquer.
+# « POSTGRES_PASSWORD: … ») ou de JSON (« "password": … »). Deux formes font
+# masquer tout le reste de la ligne, sans casse :
+# - le mot seul, ou au bout d'un nom joint par « _ », un guillemet
+#   éventuel, puis sur la même ligne un deux-points, un signe égal, un point
+#   d'interrogation ou des blancs (l'espace insécable comprise) ;
+# - une clé suivie de « : », « = » ou « ? », un guillemet éventuel entre
+#   les deux : un nom fait de lettres, de chiffres, de « _ » et de « - »
+#   qui porte password, passwd, passphrase, api_key (apikey, api-key),
+#   token ou secret, au début, derrière un « _ » ou un « - », ou derrière
+#   des majuscules (PGPASSWORD), suivi de n'importe quel suffixe collé
+#   (new_password1, password_confirm). Sans ce séparateur, « tokenizer
+#   output » ou « passwords rotate » restent.
+# Une invite qui attend encore sa réponse (« Password: ») n'a rien à masquer.
+#
+# Une clé se lit à partir du début de son nom seulement, jamais derrière un
+# caractère de mot ou un tiret, et son lookahead vérifie le séparateur et le début de
+# la valeur avant que le mot de secret s'y cherche : sans cet ordre, un nom
+# qui répète « PASSWORD » ou fait de mots liés par des tirets ferait relire
+# sa fin depuis chaque occurrence, en un temps au carré de sa longueur.
+# Aucun quantificateur possessif : ce module se charge aussi sous le Python
+# d'Odoo 12.
+_PASSWORD_WORD = (
+    r"(?<![^\W_])(?:password|passwd|mot de passe)\b[\"']?"
+    r"(?:[^\S\n]*[:=?][^\S\n]*|[^\S\n]+)"
+)
+
+
+def _secret_key(value):
+    """Motif d'une clé, la seconde forme ci-dessus, dont le lookahead exige
+    derrière le séparateur le début de valeur `value`."""
+    return (
+        r"(?<![\w-])(?=[\w-]*[\"']?[^\S\n]*[:=?][^\S\n]*" + value + ")"
+        r"(?:[\w-]*[_-])?(?-i:[A-Z]*)"
+        r"(?:password|passwd|passphrase|api[-_]?key|token|secret)"
+        r"[\w-]*[\"']?[^\S\n]*[:=?][^\S\n]*"
+    )
+
+
 _PASSWORD_LINE = re.compile(
-    r"(?P<head>(?<![^\W_])(?:password|passwd|mot de passe)\b[\"']?"
-    r"(?:[^\S\n]*[:=][^\S\n]*|[^\S\n]+))(?P<val>\S.*)",
+    r"(?P<head>" + _PASSWORD_WORD + "|" + _secret_key(r"\S") + ")"
+    r"(?P<val>\S.*)",
     re.IGNORECASE,
 )
 # Le même motif, qui laisse intacte une valeur déjà réduite à « '***' » — la
@@ -140,9 +180,15 @@ _PASSWORD_LINE = re.compile(
 # déjà passée par `redact_secrets` : ce qui suit une option de secret reste
 # lisible, plutôt que d'être à son tour effacé comme pour une ligne de
 # sortie brute, où rien n'est déjà masqué à préserver.
+_KEEP = r"(?!'\*\*\*')"
 _PASSWORD_LINE_KEEP_MASKED = re.compile(
-    r"(?P<head>(?<![^\W_])(?:password|passwd|mot de passe)\b[\"']?"
-    r"(?:[^\S\n]*[:=][^\S\n]*|[^\S\n]+))(?!'\*\*\*')(?P<val>\S.*)",
+    r"(?P<head>"
+    + _PASSWORD_WORD
+    + "|"
+    + _secret_key(_KEEP + r"\S")
+    + ")"
+    + _KEEP
+    + r"(?P<val>\S.*)",
     re.IGNORECASE,
 )
 # Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,

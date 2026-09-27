@@ -1347,9 +1347,12 @@ class TestTaskLogs(TerminalCase):
         await self.send(tab, {"t": "run_start", "cmd": "make forged"})
         await tab.conn.write_message(b"big 3\n", binary=True)
         await tab.until(lambda: b"END" in tab.data)
-        # La page répond à un secret, puis à une question texte.
-        for qid, kind, value in ((2, "secret", "hunter2"), (3, "text", "x")):
-            text = "Passphrase: "
+        # La page répond à un secret, puis à une question texte dont
+        # l'invite ne nomme aucun secret.
+        for qid, kind, text, value in (
+            (2, "secret", "Passphrase: ", "hunter2"),
+            (3, "text", "Name: ", "x"),
+        ):
             await self.send(
                 tab, {"t": "ask", "qid": qid, "kind": kind, "text": text}
             )
