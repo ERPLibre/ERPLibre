@@ -15403,6 +15403,178 @@ TRANSLATIONS = {
         "fr": "Interrogation de chaque amont, cela prend quelques secondes.",
         "en": "Querying each upstream, this takes a few seconds.",
     },
+    "⬆️ Apply the upgrade": {
+        "fr": "⬆️ Appliquer la mise à niveau",
+        "en": "⬆️ Apply the upgrade",
+    },
+    "🧩 Conflict queue": {
+        "fr": "🧩 File des conflits",
+        "en": "🧩 Conflict queue",
+    },
+    "📊 Report of the last pass": {
+        "fr": "📊 Rapport de la dernière passe",
+        "en": "📊 Report of the last pass",
+    },
+    "Apply the upgrade": {
+        "fr": "Appliquer la mise à niveau",
+        "en": "Apply the upgrade",
+    },
+    "Conflict queue": {
+        "fr": "File des conflits",
+        "en": "Conflict queue",
+    },
+    "Report of the last pass": {
+        "fr": "Rapport de la dernière passe",
+        "en": "Report of the last pass",
+    },
+    "Nothing to upgrade: nothing to confirm.": {
+        "fr": "Rien à mettre à niveau : rien à confirmer.",
+        "en": "Nothing to upgrade: nothing to confirm.",
+    },
+    "repositories will be rebased.": {
+        "fr": "dépôts seront rebasés.",
+        "en": "repositories will be rebased.",
+    },
+    "A dated branch is created; the current one stays.": {
+        "fr": "Une branche datée est créée ; l'actuelle reste.",
+        "en": "A dated branch is created; the current one stays.",
+    },
+    "Nothing is pushed.": {
+        "fr": "Rien n'est poussé.",
+        "en": "Nothing is pushed.",
+    },
+    "Type the Odoo version to confirm (empty to cancel): ": {
+        "fr": "Retapez la version d'Odoo pour confirmer (vide pour annuler) : ",
+        "en": "Type the Odoo version to confirm (empty to cancel): ",
+    },
+    "Pass recorded in": {
+        "fr": "Passe enregistrée dans",
+        "en": "Pass recorded in",
+    },
+    "rebased": {
+        "fr": "rebasés",
+        "en": "rebased",
+    },
+    "conflicting": {
+        "fr": "en conflit",
+        "en": "conflicting",
+    },
+    "a dated branch already exists": {
+        "fr": "une branche datée existe déjà",
+        "en": "a dated branch already exists",
+    },
+    "the branch could not be created": {
+        "fr": "la branche n'a pas pu être créée",
+        "en": "the branch could not be created",
+    },
+    "a rebase was already in progress": {
+        "fr": "un rebase était déjà en cours",
+        "en": "a rebase was already in progress",
+    },
+    "Work them through the conflict queue.": {
+        "fr": "Reprenez-les par la file des conflits.",
+        "en": "Work them through the conflict queue.",
+    },
+    "No pass recorded yet.": {
+        "fr": "Aucune passe enregistrée pour l'instant.",
+        "en": "No pass recorded yet.",
+    },
+    "No repository is left in conflict.": {
+        "fr": "Aucun dépôt ne reste en conflit.",
+        "en": "No repository is left in conflict.",
+    },
+    "Repository number (empty to go back): ": {
+        "fr": "Numéro du dépôt (vide pour revenir) : ",
+        "en": "Repository number (empty to go back): ",
+    },
+    "Nothing left in conflict here.": {
+        "fr": "Plus rien en conflit ici.",
+        "en": "Nothing left in conflict here.",
+    },
+    "Open a shell here": {
+        "fr": "Ouvrir un shell ici",
+        "en": "Open a shell here",
+    },
+    "Show the conflicting diff": {
+        "fr": "Montrer le diff en conflit",
+        "en": "Show the conflicting diff",
+    },
+    "Keep ours": {
+        "fr": "Garder le nôtre",
+        "en": "Keep ours",
+    },
+    "Take upstream": {
+        "fr": "Prendre l'amont",
+        "en": "Take upstream",
+    },
+    "Continue the rebase": {
+        "fr": "Continuer le rebase",
+        "en": "Continue the rebase",
+    },
+    "Skip this commit": {
+        "fr": "Sauter ce commit",
+        "en": "Skip this commit",
+    },
+    "Abort this rebase": {
+        "fr": "Abandonner ce rebase",
+        "en": "Abort this rebase",
+    },
+    "Return to the state managed by repo": {
+        "fr": "Revenir à l'état géré par repo",
+        "en": "Return to the state managed by repo",
+    },
+    "Later": {
+        "fr": "Plus tard",
+        "en": "Later",
+    },
+    "Rebase finished.": {
+        "fr": "Rebase terminé.",
+        "en": "Rebase finished.",
+    },
+    "Rebase aborted.": {
+        "fr": "Rebase abandonné.",
+        "en": "Rebase aborted.",
+    },
+    "Back to the state managed by repo.": {
+        "fr": "Retour à l'état géré par repo.",
+        "en": "Back to the state managed by repo.",
+    },
+    "🖥️ Browse the upgrade on screen": {
+        "fr": "🖥️ Parcourir la mise à niveau à l'écran",
+        "en": "🖥️ Browse the upgrade on screen",
+    },
+    "Falling back to the text report.": {
+        "fr": "Repli sur le rapport texte.",
+        "en": "Falling back to the text report.",
+    },
+    "Our commits": {
+        "fr": "Nos commits",
+        "en": "Our commits",
+    },
+    "What upstream brings": {
+        "fr": "Ce que l'amont apporte",
+        "en": "What upstream brings",
+    },
+    "Only what needs a decision": {
+        "fr": "Seulement ce qui demande une décision",
+        "en": "Only what needs a decision",
+    },
+    "Copied.": {
+        "fr": "Copié.",
+        "en": "Copied.",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "shown": {
+        "fr": "affichés",
+        "en": "shown",
+    },
+    "Nothing to show.": {
+        "fr": "Rien à montrer.",
+        "en": "Nothing to show.",
+    },
 }
 
 
