@@ -50,6 +50,8 @@ MODULE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/module.py"
 PACKAGE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/package.py"
 # phpcs et PHPStan sur un module, depuis le conteneur d'outils épinglé.
 QUALITY_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/quality.py"
+# Hooks et déclencheurs de Dolibarr, à une version ou entre deux.
+HOOKS_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/hooks_index.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -125,6 +127,11 @@ class DolibarrMenuMixin:
                     "Dolibarr - Code quality of a module (phpcs, PHPStan)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Dolibarr - Hooks and triggers between versions"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -166,6 +173,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_package()
             elif status == "17":
                 self._dolibarr_quality()
+            elif status == "18":
+                self._dolibarr_hooks()
             else:
                 print(t("Command not found !"))
 
@@ -503,6 +512,42 @@ class DolibarrMenuMixin:
             args += ["--only", only]
         self.execute.exec_command_live(
             f"{QUALITY_CLI} {shlex.join(args)}", source_erplibre=False
+        )
+
+    def _dolibarr_hooks(self):
+        """hooks_index.py : l'index à une version (épinglée par défaut), ou
+        ce qui change depuis une version jusqu'à l'épinglée."""
+        action = self._dolibarr_choose(
+            t("Hooks and triggers:"),
+            [
+                ("list", t("List, at a version")),
+                ("diff", t("What changed since a version")),
+            ],
+        )
+        if action is None:
+            return
+        if action == "list":
+            version = input(
+                t("Version (tag, branch or commit; Enter: the pinned one): ")
+            ).strip()
+            pattern = input(
+                t("Filter (regular expression, Enter for everything): ")
+            ).strip()
+            args = ["list"]
+            if version:
+                args += ["--at", version]
+            if pattern:
+                args += ["--filter", pattern]
+        else:
+            version = input(
+                t("Since which version (tag, branch or commit): ")
+            ).strip()
+            if not version:
+                print(t("Cancelled."))
+                return
+            args = ["diff", "--from", version]
+        self.execute.exec_command_live(
+            f"{HOOKS_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):

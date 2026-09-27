@@ -57,6 +57,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Code quality of a module (phpcs, PHPStan)": (
             "_dolibarr_quality"
         ),
+        "Dolibarr - Hooks and triggers between versions": "_dolibarr_hooks",
     }
 
 
@@ -543,6 +544,50 @@ class TestQualite(Banc):
         self.assertEqual(self.lancer_qualite([]), [])
         self.registre = {"erp": dict(DEV)}
         self.assertEqual(self.lancer_qualite(["1", ""]), [])
+
+
+HOOKS = "./.venv.erplibre/bin/python -u script/dolibarr/hooks_index.py"
+
+
+class TestHooks(unittest.TestCase):
+    def lancer_hooks(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_hooks()
+        return lances
+
+    def test_list_at_the_pin_with_a_filter(self):
+        self.assertEqual(
+            self.lancer_hooks(["1", "", "^thirdparty"]),
+            [f"{HOOKS} list --filter '^thirdparty'"],
+        )
+
+    def test_list_at_a_version_without_filter(self):
+        self.assertEqual(
+            self.lancer_hooks(["1", "23.0.4", ""]),
+            [f"{HOOKS} list --at 23.0.4"],
+        )
+
+    def test_diff_from_a_version_to_the_pin(self):
+        self.assertEqual(
+            self.lancer_hooks(["2", "23.0.4"]),
+            [f"{HOOKS} diff --from 23.0.4"],
+        )
+
+    def test_diff_needs_its_starting_version(self):
+        self.assertEqual(self.lancer_hooks(["2", ""]), [])
 
 
 class TestBilan(unittest.TestCase):

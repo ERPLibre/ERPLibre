@@ -17344,6 +17344,38 @@ TRANSLATIONS = {
         "fr": "PHPStan seulement",
         "en": "PHPStan only",
     },
+    "Dolibarr %s -> %s": {
+        "fr": "Dolibarr %s -> %s",
+        "en": "Dolibarr %s -> %s",
+    },
+    "Version %s not found upstream.": {
+        "fr": "Version %s introuvable en amont.",
+        "en": "Version %s not found upstream.",
+    },
+    "Hooks and triggers:": {
+        "fr": "Hooks et déclencheurs :",
+        "en": "Hooks and triggers:",
+    },
+    "Dolibarr - Hooks and triggers between versions": {
+        "fr": "🪝 Dolibarr - Hooks et déclencheurs entre versions",
+        "en": "🪝 Dolibarr - Hooks and triggers between versions",
+    },
+    "List, at a version": {
+        "fr": "Lister, à une version",
+        "en": "List, at a version",
+    },
+    "What changed since a version": {
+        "fr": "Ce qui a changé depuis une version",
+        "en": "What changed since a version",
+    },
+    "Version (tag, branch or commit; Enter: the pinned one): ": {
+        "fr": "Version (tag, branche ou commit ; Entrée : l'épinglée) : ",
+        "en": "Version (tag, branch or commit; Enter: the pinned one): ",
+    },
+    "Since which version (tag, branch or commit): ": {
+        "fr": "Depuis quelle version (tag, branche ou commit) : ",
+        "en": "Since which version (tag, branch or commit): ",
+    },
 }
 
 
