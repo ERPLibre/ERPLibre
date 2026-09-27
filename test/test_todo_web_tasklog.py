@@ -203,6 +203,32 @@ class TestTaskLog(StoreCase):
         packed = task.path.with_name(task.path.name + ".zst")
         self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
 
+    def test_a_split_word_across_the_partial_limit_is_still_masked(self):
+        # PARTIAL_LIMIT peut tomber pile au milieu du mot qui ferait
+        # reconnaître un secret (« https:/|/ », « Pa|ssword ») plutôt qu'au
+        # milieu de sa valeur : aucun des deux morceaux ne le porte encore
+        # en entier, mais la coupure recule jusqu'au dernier blanc reçu, pas
+        # à la frontière du morceau du PTY, et le mot ne se retrouve jamais
+        # coupé en deux.
+        task = self.task()
+        with patch.object(tasklog, "PARTIAL_LIMIT", 40):
+            task.output(b"x" * 33 + b" https:/")
+            task.output(b"/u:inventeAB@forge.example/r\r\n")
+            task.output(b"y" * 38 + b" Pa")
+            task.output(b"ssword: inventeCD more\r\n")
+            task.close("done")
+        self.assertEqual(
+            self.texts(task.info["id"]),
+            [
+                "x" * 33 + " ",
+                "https://u:***@forge.example/r",
+                "y" * 38 + " ",
+                "Password: ***",
+            ],
+        )
+        packed = task.path.with_name(task.path.name + ".zst")
+        self.assertNotIn(b"invente", zstd.decompress(packed.read_bytes()))
+
     def test_a_tainted_line_survives_many_tiny_chunks_past_the_limit(self):
         # Beaucoup de très petits morceaux, sans jamais de \n : la ligne
         # guettée doit rester intacte et se masquer entière malgré une
