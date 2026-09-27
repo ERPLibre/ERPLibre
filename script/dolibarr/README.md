@@ -32,6 +32,7 @@ script also runs on its own.
 | `module.py` | `create`, `link`, `enable`, `disable` the modules of a development instance |
 | `package.py` | `check` a module against DoliStore's rules, `build` its zip |
 | `quality.py` | phpcs and PHPStan on a module, with Dolibarr's own rules |
+| `hooks_index.py` | Hooks, contexts and triggers at a version, and the diff between two |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -153,6 +154,8 @@ set.
 ./script/dolibarr/package.py check --instance erp --name Zorglub
 ./script/dolibarr/package.py build --instance erp --name Zorglub --dolistore
 ./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
+./script/dolibarr/hooks_index.py list --kind context --filter '^thirdparty'
+./script/dolibarr/hooks_index.py diff --from 23.0.4       # to the pinned commit
 ```
 
 - `debug.py on` shows development features (`MAIN_FEATURES_LEVEL=2`),
@@ -189,6 +192,15 @@ set.
   Exit 0 clean, 1 findings, 2 a tool that could not finish. A container
   instance needs the pinned checkout, fetched by
   `script/manifest/update_manifest_local_dolibarr.sh`.
+- `hooks_index.py` reads, with `git grep` and without checking anything
+  out, the hook names passed to `executeHooks`, the literal contexts of
+  `initHooks`, the trigger codes passed to `call_trigger` and the agenda
+  codes of `llx_c_action_trigger.sql`; `diff` says what appeared or
+  vanished between two versions, what a module must look at before an
+  upgrade. The pinned commit is read from the checkout; any other tag,
+  branch or commit is fetched once, at depth 1, into
+  `~/.erplibre/dolibarr_index.git`, which borrows the checkout's objects:
+  the checkout that Google Repo manages is never written.
 
 ## Pinned version
 

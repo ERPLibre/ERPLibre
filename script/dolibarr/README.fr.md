@@ -32,6 +32,7 @@ chaque script se lance aussi seul.
 | `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
 | `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
 | `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
+| `hooks_index.py` | Hooks, contextes et déclencheurs à une version, et le diff entre deux |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -158,6 +159,8 @@ ne sont pas posés.
 ./script/dolibarr/package.py check --instance erp --name Zorglub
 ./script/dolibarr/package.py build --instance erp --name Zorglub --dolistore
 ./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
+./script/dolibarr/hooks_index.py list --kind context --filter '^thirdparty'
+./script/dolibarr/hooks_index.py diff --from 23.0.4       # to the pinned commit
 ```
 
 - `debug.py on` montre les fonctionnalités en développement
@@ -196,6 +199,15 @@ ne sont pas posés.
   propre. Sortie 0 propre, 1 constats, 2 un outil qui n'a pu finir. Une
   instance en conteneur demande le checkout épinglé, que récupère
   `script/manifest/update_manifest_local_dolibarr.sh`.
+- `hooks_index.py` lit par `git grep`, sans rien extraire, les noms de
+  hooks passés à `executeHooks`, les contextes littéraux d'`initHooks`,
+  les codes de déclencheurs passés à `call_trigger` et les codes d'agenda
+  de `llx_c_action_trigger.sql` ; `diff` dit ce qui apparaît ou disparaît
+  entre deux versions, ce qu'un module doit regarder avant une montée.
+  Le commit épinglé se lit dans le checkout ; tout autre tag, branche ou
+  commit se récupère une fois, à profondeur 1, dans
+  `~/.erplibre/dolibarr_index.git`, qui emprunte les objets du checkout :
+  celui que gère Google Repo n'est jamais écrit.
 
 ## Version épinglée
 
