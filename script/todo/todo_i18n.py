@@ -16360,6 +16360,18 @@ TRANSLATIONS = {
         "fr": "La version %s n'appartient pas à la branche %s.",
         "en": "Version %s does not belong to branch %s.",
     },
+    "Dolibarr - Update the pinned commit": {
+        "fr": "📌 Dolibarr - Relever le commit épinglé",
+        "en": "📌 Dolibarr - Update the pinned commit",
+    },
+    "Apply this pin? (y/N): ": {
+        "fr": "Appliquer cet épinglage ? (o/N) : ",
+        "en": "Apply this pin? (y/N): ",
+    },
+    "Sync the Dolibarr checkout now? (y/N): ": {
+        "fr": "Synchroniser le checkout Dolibarr maintenant ? (o/N) : ",
+        "en": "Sync the Dolibarr checkout now? (y/N): ",
+    },
 }
 
 

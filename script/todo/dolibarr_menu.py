@@ -33,6 +33,11 @@ DEFAULT_PORT = 8080
 
 # Lancer, arrêter, suivre une instance de développement.
 RUN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/run.py"
+# Relever l'épinglage ; PIN_PENDING est le code de pin.py quand un essai à
+# blanc a trouvé quoi changer (sa valeur ici évite d'importer pin.py).
+PIN_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/pin.py"
+PIN_PENDING = 3
+SYNC_SCRIPT = "./script/manifest/update_manifest_local_dolibarr.sh"
 
 # Le script qui bâtit le venv d'outillage quand il manque, comme le fait
 # mobile/install_and_run.sh avant de s'en servir.
@@ -68,6 +73,8 @@ class DolibarrMenuMixin:
             {"prompt_description": t("Dolibarr - Stop an instance")},
             {"prompt_description": t("Dolibarr - Instance status")},
             {"prompt_description": t("Dolibarr - Instance logs")},
+            {"section": t("Maintenance")},
+            {"prompt_description": t("Dolibarr - Update the pinned commit")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -85,8 +92,31 @@ class DolibarrMenuMixin:
                 self._dolibarr_run("status")
             elif status == "5":
                 self._dolibarr_run("logs")
+            elif status == "6":
+                self._dolibarr_pin()
             else:
                 print(t("Command not found !"))
+
+    def _dolibarr_pin(self):
+        """pin.py à blanc ; s'il trouve quoi changer, l'appliquer puis
+        synchroniser le checkout, chaque fois sur confirmation."""
+        if (
+            self.execute.exec_command_live(
+                f"{PIN_CLI} update", source_erplibre=False
+            )
+            != PIN_PENDING
+        ):
+            return
+        if not self._is_yes(input(t("Apply this pin? (y/N): ")).strip()):
+            return
+        if self.execute.exec_command_live(
+            f"{PIN_CLI} update --apply", source_erplibre=False
+        ):
+            return
+        if self._is_yes(
+            input(t("Sync the Dolibarr checkout now? (y/N): ")).strip()
+        ):
+            self.execute.exec_command_live(SYNC_SCRIPT, source_erplibre=False)
 
     def _dolibarr_run(self, action):
         """script/dolibarr/run.py `action` sur une instance de développement.

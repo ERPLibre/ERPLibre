@@ -15,6 +15,9 @@ ensemble : read_pin refuse un couple qui ne s'accorde pas.
 L'étiquette de l'image Docker ne suit la version que si le Hub la publie :
 l'image officielle paraît souvent après la version.
 
+Codes de sortie : 0 rien à faire ou écrit, 1 refus, 2 épinglage
+illisible, 3 (PENDING) des changements montrés et non écrits.
+
 Après --apply, synchroniser le checkout :
 ./script/manifest/update_manifest_local_dolibarr.sh
 """
@@ -41,6 +44,9 @@ UPSTREAM = "https://github.com/Dolibarr/dolibarr.git"
 RAW = "https://raw.githubusercontent.com/Dolibarr/dolibarr"
 HUB_TAG = "https://hub.docker.com/v2/repositories/dolibarr/dolibarr/tags/"
 IMAGE = "docker.io/dolibarr/dolibarr"
+
+# Code de sortie d'un essai à blanc qui a trouvé quoi changer.
+PENDING = 3
 
 _MAJOR = re.compile(r"define\('DOL_MAJOR_VERSION',\s*'([0-9]+)'\)")
 _MINOR = re.compile(r"define\('DOL_MINOR_VERSION',\s*'([0-9][0-9.]*)'\)")
@@ -201,7 +207,7 @@ def cmd_update(root, pin, net, branch, tag, apply):
         print(t("Image %s -> %s") % (pin["docker_image"], image))
     if not apply:
         print(t("Nothing written: add --apply."))
-        return 0
+        return PENDING
     manifest_path = os.path.join(root, lib_dolibarr.PIN_MANIFEST)
     json_path = os.path.join(root, lib_dolibarr.PIN_JSON)
     with open(manifest_path, encoding="utf-8") as f:

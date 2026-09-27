@@ -24,10 +24,7 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
-from script.dolibarr import (
-    lib_dolibarr,  # noqa: E402
-    pin,  # noqa: E402
-)
+from script.dolibarr import lib_dolibarr, pin  # noqa: E402
 
 # Commits inventés.
 ANCIEN = "a" * 40
@@ -175,7 +172,8 @@ class TestUpdate(Banc):
     def test_without_apply_nothing_is_written(self):
         avant_m, avant_j = self.manifest.read_text(), self.json.read_text()
         code, sortie = self.lancer("update")
-        self.assertEqual(code, 0)
+        # 3 : des changements sont montrés, rien n'est écrit.
+        self.assertEqual(code, pin.PENDING)
         self.assertEqual(self.manifest.read_text(), avant_m)
         self.assertEqual(self.json.read_text(), avant_j)
         self.assertIn(NOUVEAU[:7], sortie)
