@@ -143,7 +143,6 @@ ETATS_LIEN = (A_POSER, NOTRE, OCCUPE, INCONNU)
 # Les genres de ce que le banc pose, et l'ORDRE INVERSE dans lequel ils se
 # défont. Vocabulaire CLOS.
 VM = "vm"
-MODELE = "modele"
 PONT = "pont"
 API = "api"
 ECO = "ecosysteme"
@@ -157,7 +156,12 @@ CLE = "cle"
 # qu'elle a sa propre strophe : retirer celle du pont ne l'emporte pas, et une
 # interface orpheline reste à réclamer une passerelle sur un pont disparu.
 SVI = "svi"
-GENRES = (VM, MODELE, SVI, PONT, API, LIEN, ECO, UNDERLAY, CLE)
+# LE GABARIT N'EST PAS UN GENRE, et c'est une garantie et non un oubli : le
+# banc ne le fabrique pas — sa procédure impose une installation depuis
+# l'ISO — donc il ne peut pas l'avoir posé, donc il ne doit jamais le
+# défaire. Le détruire coûterait à l'exploitant la réinstallation entière,
+# et un genre qui existe finit par trouver un appelant.
+GENRES = (VM, SVI, PONT, API, LIEN, ECO, UNDERLAY, CLE)
 
 
 # LE NOM QUE `raser` EXIGE, et c'est un verrou et non une commodité : le moteur
@@ -237,7 +241,6 @@ class Empreinte(NamedTuple):
     underlay: str
     pont: str
     utilisateur: str
-    modele: int
     vms: tuple
     liens: tuple = ()
     cles: tuple = ()
@@ -276,6 +279,10 @@ class Mesures(NamedTuple):
     pont: str
     vmid_gabarit: int
     gabarit: str | None
+    noeud: str = ""
+    stockage: str = ""
+    uplink: str = ""
+    adresse_api: str = ""
 
 
 def prealables(mesures):
@@ -340,6 +347,28 @@ def prealables(mesures):
             quoi="un VMID de gabarit est libre sur la grappe",
             tenu=bool(vu.vmid_gabarit),
             dit="" if vu.vmid_gabarit else "la grappe n'a pas dit ses VMID",
+        ),
+        Prealable(
+            quoi="la grappe nomme un nœud en ligne",
+            tenu=bool((vu.noeud or "").strip()),
+            dit=""
+            if (vu.noeud or "").strip()
+            else "aucun nœud en ligne, ou la grappe n'a pas répondu",
+        ),
+        Prealable(
+            quoi=f"un stockage accepte des {CONTENU_IMAGES}",
+            tenu=bool((vu.stockage or "").strip()),
+            dit=""
+            if (vu.stockage or "").strip()
+            else "aucun stockage ne DÉCLARE accepter des images de disque",
+        ),
+        Prealable(
+            quoi="le terrain dit par où il sort, et sous quelle adresse",
+            tenu=bool((vu.uplink or "").strip())
+            and bool((vu.adresse_api or "").strip()),
+            dit=""
+            if (vu.uplink or "").strip()
+            else "aucune route par défaut : le masquage viserait dans le vide",
         ),
         Prealable(
             quoi=f"le gabarit « {GABARIT} » est conforme",
@@ -428,6 +457,33 @@ def pont_libre(interfaces, depart=PONT_DEPART):
         ):
             return nom
     return ""
+
+
+def pont_du_banc(interfaces, deja, depart=PONT_DEPART):
+    """Le pont à employer : le SIEN s'il est déjà déclaré, sinon le premier
+    libre. Ou « ».
+
+    RÉUTILISER LE SIEN, et non en prendre un de plus. Le premier nom libre change
+    dès que le banc a posé un pont : une exécution qui ne relirait pas son
+    empreinte en poserait un second à chaque fois, et n'en défairait qu'un — le
+    précédent resterait, avec son masquage, sur un réseau que plus rien ne
+    nomme. C'est la même distinction que pour ses liens et son index : « déjà à
+    nous » n'est pas « occupé ».
+
+    `deja` est le nom que porte l'empreinte, ou « ». Il n'est repris que s'il est
+    DÉCLARÉ sur le terrain : nommé dans l'empreinte mais absent de l'hôte, il a
+    été retiré à la main, et le reprendre supposerait une strophe qui n'existe
+    plus.
+    """
+    texte = interfaces or ""
+    voulu = (deja or "").strip()
+    if voulu and any(
+        ligne.split()[1:2] == [voulu]
+        for ligne in texte.splitlines()
+        if ligne.split()[:1] in (["auto"], ["iface"])
+    ):
+        return voulu
+    return pont_libre(texte, depart)
 
 
 class Constat(NamedTuple):
@@ -1701,6 +1757,135 @@ MATERIEL_GABARIT = (("machine", "q35"), ("bios", "ovmf"))
 PROCEDURE_GABARIT = "docs/procedure-template-debian13-proxmox.md"
 
 
+# Ce qu'un stockage doit savoir porter pour accueillir un clone : des IMAGES de
+# disque. Un stockage à sauvegardes ou à modèles de conteneur ne l'accepte pas, et
+# le clonage échoue alors sur un message qui parle du stockage sans dire pourquoi.
+CONTENU_IMAGES = "images"
+
+
+def cmds_noeuds():
+    """La commande qui nomme les nœuds de la grappe."""
+    return ["pvesh get /nodes --output-format json"]
+
+
+def lit_noeuds(sortie):
+    """Les nœuds EN LIGNE de la grappe, ou None.
+
+    En ligne seulement : cloner sur un nœud éteint échoue après avoir attendu,
+    et l'attente ressemble à un clonage lent.
+
+    Fermé par défaut : ce qui n'est pas une liste d'objets nommés fait refuser
+    toute la lecture. Une grappe sans nœud en ligne rend `()`.
+    """
+    lu = _json_liste(sortie)
+    if lu is None:
+        return None
+    vus = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        nom = entree.get("node")
+        if not isinstance(nom, str) or not nom.strip():
+            return None
+        if (entree.get("status") or "") != "online":
+            continue
+        vus.append(nom.strip())
+    return tuple(vus)
+
+
+def cmds_stockages():
+    """La commande qui dit ce que chaque stockage de la grappe accepte."""
+    return ["pvesh get /storage --output-format json"]
+
+
+def lit_stockages(sortie):
+    """Les stockages qui acceptent des IMAGES de disque, ou None.
+
+    Le contenu accepté est déclaré par le stockage lui-même : le deviner de son
+    nom se tromperait sur toute grappe qui nomme ses stockages autrement que la
+    nôtre.
+
+    Fermé par défaut, et un stockage sans contenu déclaré NE COMPTE PAS : ce
+    n'est pas « il accepte tout », c'est « on ne sait pas », et on ne pose pas
+    une VM sur un stockage dont on ne sait rien.
+    """
+    lu = _json_liste(sortie)
+    if lu is None:
+        return None
+    vus = []
+    for entree in lu:
+        if not isinstance(entree, dict):
+            return None
+        nom = entree.get("storage")
+        if not isinstance(nom, str) or not nom.strip():
+            return None
+        contenu = entree.get("content")
+        if not isinstance(contenu, str):
+            continue
+        if CONTENU_IMAGES in [c.strip() for c in contenu.split(",")]:
+            vus.append(nom.strip())
+    return tuple(vus)
+
+
+def _json_liste(sortie):
+    """La liste JSON que `sortie` porte, ou None. Fermé par défaut.
+
+    Partagé par les lecteurs de la grappe : ils reçoivent tous une liste
+    d'objets, et tous doivent refuser la même chose — une plainte de l'outil,
+    une réponse tronquée, un objet là où une liste est attendue.
+    """
+    texte = sortie or ""
+    debut = texte.find("[")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    return lu if isinstance(lu, list) else None
+
+
+# Ce que la sonde de sortie imprime : l'interface qui porte la route par défaut,
+# puis son adresse. Deux faits sur deux lignes d'une SEULE commande, l'exécuteur
+# ne rendant que la sortie de la dernière.
+SONDE_SORTIE = (
+    "s=$(ip -o -4 route show default | awk '{for(i=1;i<NF;i++)"
+    'if($i=="dev")print $(i+1)}\' | head -1); '
+    "printf 'sortie=%s\\n' \"$s\"; "
+    'ip -o -4 addr show dev "$s" 2>/dev/null'
+    " | awk '{print \"adresse=\" $4}' | head -1"
+)
+
+
+def cmds_sortie():
+    """La commande qui dit par où le terrain sort, et sous quelle adresse."""
+    return [SONDE_SORTIE]
+
+
+def lit_sortie(sortie):
+    """(interface de sortie, adresse sans préfixe), ou None.
+
+    L'INTERFACE EST CELLE DE LA ROUTE PAR DÉFAUT, pas un nom deviné. C'est elle
+    que le masquage du pont doit viser : viser la mauvaise laisse les VM se
+    parler entre elles sans jamais sortir, et le symptôme — « apt ne répond
+    pas » — n'envoie pas regarder une règle de traduction d'adresses.
+
+    L'ADRESSE EST CELLE PAR LAQUELLE ON JOINT L'API de la grappe. Fermé par
+    défaut : les deux lignes sont exigées, une interface sans adresse ne
+    permettant pas de joindre son hyperviseur.
+    """
+    interface, adresse = "", ""
+    for ligne in (sortie or "").splitlines():
+        nu = ligne.strip()
+        if nu.startswith("sortie="):
+            interface = nu[7:].strip()
+        elif nu.startswith("adresse="):
+            adresse = nu[8:].strip().split("/")[0]
+    if not interface or not adresse:
+        return None
+    return (interface, adresse)
+
+
 def cmds_config_vm(vmid):
     """La commande qui rend la configuration d'une VM de la grappe."""
     return [f"qm config {int(vmid)}"]
@@ -1854,8 +2039,6 @@ def a_defaire(empreinte):
         Geste(terrain, VM, str(vmid), nom)
         for vmid, nom in reversed(empreinte.vms or ())
     ]
-    if empreinte.modele:
-        gestes.append(Geste(terrain, MODELE, str(empreinte.modele), GABARIT))
     # LES INTERFACES DE VLAN AVANT LEUR PONT. Retirer le pont d'abord laisse
     # des strophes qui nomment un parent disparu, et le montage des interfaces
     # s'en plaint à chaque démarrage de l'hôte sans que rien ne dise d'où elles
@@ -1984,9 +2167,6 @@ def lit_empreinte(texte):
         if not 2 <= brute <= 4094 or brute in zones:
             return None
         zones.append(brute)
-    modele = lu.get("modele") or 0
-    if isinstance(modele, bool) or not isinstance(modele, int) or modele < 0:
-        return None
     chemins = {}
     for cle, appartient in (("liens", lien_du_banc), ("cles", cle_du_banc)):
         brutes = lu.get(cle)
@@ -2008,7 +2188,6 @@ def lit_empreinte(texte):
         underlay=str(lu.get("underlay") or ""),
         pont=str(lu.get("pont") or ""),
         utilisateur=str(lu.get("utilisateur") or ""),
-        modele=modele,
         vms=tuple(vms),
         liens=chemins["liens"],
         cles=chemins["cles"],
@@ -2029,7 +2208,6 @@ def ecrit_empreinte(empreinte) -> str:
             "underlay": empreinte.underlay,
             "pont": empreinte.pont,
             "utilisateur": empreinte.utilisateur,
-            "modele": empreinte.modele,
             "vms": [list(v) for v in empreinte.vms],
             "liens": list(empreinte.liens),
             "cles": list(empreinte.cles),
@@ -2061,7 +2239,20 @@ def mesure_le_terrain(moteur, terrain):
         return vide
 
     interfaces = joue_sur(terrain, ["cat /etc/network/interfaces"], elevation)
-    pont = pont_libre(interfaces.sortie) if interfaces.reussi else ""
+    pont = (
+        pont_du_banc(interfaces.sortie, pont_deja_nomme())
+        if interfaces.reussi
+        else ""
+    )
+
+    noeuds = joue_sur(terrain, cmds_noeuds(), elevation)
+    lus = lit_noeuds(noeuds.sortie) if noeuds.reussi else None
+
+    stockages = joue_sur(terrain, cmds_stockages(), elevation)
+    portants = lit_stockages(stockages.sortie) if stockages.reussi else None
+
+    dehors = joue_sur(terrain, cmds_sortie(), elevation)
+    dedans = lit_sortie(dehors.sortie) if dehors.reussi else None
 
     ressources = joue_sur(terrain, cmds_vmids(), elevation)
     vmids = lit_vmids(ressources.sortie) if ressources.reussi else None
@@ -2082,7 +2273,31 @@ def mesure_le_terrain(moteur, terrain):
         pont=pont,
         vmid_gabarit=vmid,
         gabarit=gabarit,
+        # LE PREMIER, et le banc n'en CHOISIT pas : une grappe de banc n'a qu'un
+        # nœud et qu'un stockage à images. Sur une grappe qui en a plusieurs,
+        # choisir pour l'exploitant serait deviner où il veut se poser — et c'est
+        # ce que le fichier de placement sert à écrire, qui est à lui.
+        noeud=(lus or ("",))[0] if lus else "",
+        stockage=(portants or ("",))[0] if portants else "",
+        uplink=(dedans or ("", ""))[0],
+        adresse_api=(dedans or ("", ""))[1],
     )
+
+
+def pont_deja_nomme(chemin=""):
+    """Le pont que l'empreinte en place nomme, ou « ». Ne lève jamais.
+
+    Lu SANS juger : ce n'est pas ici qu'on décide s'il est réutilisable, mais
+    dans `pont_du_banc`, qui confronte ce nom au terrain. Une empreinte absente
+    ou illisible rend « », et le banc prend alors un nom libre — ce qui est le
+    comportement d'un premier lancement.
+    """
+    try:
+        with open(chemin or chemin_empreinte(), encoding="utf-8") as lu:
+            empreinte = lit_empreinte(lu.read())
+    except OSError:
+        return ""
+    return empreinte.pont if empreinte and nous(empreinte) else ""
 
 
 def instances_freres(moteur):
@@ -2131,7 +2346,6 @@ class Chantier:
             underlay=UNDERLAY_BANC,
             pont="",
             utilisateur=UTILISATEUR_API,
-            modele=0,
             vms=(),
         )
 

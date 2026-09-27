@@ -324,7 +324,6 @@ class TestLOrdreDeLaDefaite(unittest.TestCase):
         underlay=B.UNDERLAY_BANC,
         pont="vmbr9",
         utilisateur=B.UTILISATEUR_API,
-        modele=9000,
         vms=((900101, "banc-un"), (900102, "banc-deux")),
     )
 
@@ -337,7 +336,7 @@ class TestLOrdreDeLaDefaite(unittest.TestCase):
     def test_the_vms_go_before_the_template(self):
         """Un gabarit ne s'efface pas tant qu'un clone lié en dépend."""
         genres = [g.genre for g in B.a_defaire(self.EMPREINTE)]
-        self.assertLess(genres.index(B.VM), genres.index(B.MODELE))
+        self.assertLess(genres.index(B.VM), genres.index(B.PONT))
 
     def test_the_last_created_vm_goes_first(self):
         gestes = [g for g in B.a_defaire(self.EMPREINTE) if g.genre == B.VM]
@@ -358,7 +357,7 @@ class TestLOrdreDeLaDefaite(unittest.TestCase):
     def test_the_underlay_goes_after_everything_it_serves(self):
         genres = [g.genre for g in B.a_defaire(self.EMPREINTE)]
         rang = genres.index(B.UNDERLAY)
-        for servi in (B.VM, B.MODELE, B.PONT, B.API, B.ECO):
+        for servi in (B.VM, B.PONT, B.API, B.ECO):
             with self.subTest(servi=servi):
                 self.assertLess(genres.index(servi), rang)
 
@@ -845,7 +844,6 @@ def empreinte_pleine(**change):
         underlay=B.UNDERLAY_BANC,
         pont="vmbr9",
         utilisateur=B.UTILISATEUR_API,
-        modele=9000,
         vms=((101, "banc-fictif-01"),),
         liens=("/moteur/underlay.yml", "/moteur/instance"),
         cles=(
@@ -947,7 +945,7 @@ class TestLOrdreDeLaDefaiteTientLesLiensEtLesCles(unittest.TestCase):
 
     def test_keys_go_after_everything_that_needs_the_cluster(self):
         rangs = self.rangs(B.a_defaire(empreinte_pleine()))
-        for genre in (B.VM, B.MODELE, B.PONT, B.API, B.ECO, B.UNDERLAY):
+        for genre in (B.VM, B.PONT, B.API, B.ECO, B.UNDERLAY):
             with self.subTest(genre=genre):
                 self.assertGreater(rangs[B.CLE], rangs[genre])
 
@@ -955,6 +953,23 @@ class TestLOrdreDeLaDefaiteTientLesLiensEtLesCles(unittest.TestCase):
         """Ce que les deux genres nouveaux ne doivent pas avoir déplacé."""
         rangs = self.rangs(B.a_defaire(empreinte_pleine()))
         self.assertGreater(rangs[B.UNDERLAY], rangs[B.ECO])
+
+    def test_the_undo_never_names_the_template(self):
+        """LE GABARIT EST À L'EXPLOITANT. Le banc ne le fabrique pas — sa
+        procédure impose une installation depuis l'ISO, parce qu'une machine naît
+        en q35 ou ne le sera jamais proprement — donc il ne peut pas l'avoir
+        posé, donc il ne doit JAMAIS le défaire. Le détruire coûterait à
+        l'exploitant la réinstallation entière."""
+        gestes = B.a_defaire(empreinte_pleine())
+        self.assertNotEqual((), gestes)
+        for geste in gestes:
+            with self.subTest(geste=geste.genre):
+                self.assertNotIn(B.GABARIT, (geste.nom, geste.vise))
+
+    def test_no_genre_of_the_vocabulary_could_name_it(self):
+        """Un genre qui existe finit par trouver un appelant : le vocabulaire
+        clos n'en porte donc aucun pour un modèle."""
+        self.assertNotIn("modele", B.GENRES)
 
     def test_every_genre_belongs_to_the_closed_vocabulary(self):
         for geste in B.a_defaire(empreinte_pleine()):
@@ -2232,6 +2247,10 @@ def mesures_bonnes(**change):
         pont="vmbr9",
         vmid_gabarit=9000,
         gabarit=B.GABARIT_CONFORME,
+        noeud="un-noeud",
+        stockage="un-stockage",
+        uplink="une-sortie",
+        adresse_api="192.0.2.10",
     )
     champs.update(change)
     return B.Mesures(**champs)
@@ -2294,6 +2313,10 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
             {"gabarit": B.GABARIT_ABSENT},
             {"gabarit": B.GABARIT_MATERIEL},
             {"gabarit": B.GABARIT_PAS_MODELE},
+            {"noeud": ""},
+            {"stockage": ""},
+            {"uplink": ""},
+            {"adresse_api": ""},
         ):
             with self.subTest(**change):
                 self.assertEqual(
@@ -2332,6 +2355,22 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
         self.assertIn(B.LIEN_UNDERLAY, dit)
         self.assertNotIn(B.LIEN_INSTANCE, dit)
 
+    def test_no_storage_declaring_images_says_so(self):
+        """Un stockage à sauvegardes ou à modèles de conteneur n'accepte pas un
+        clone, et le clonage échoue alors sur un message qui parle du stockage
+        sans dire pourquoi."""
+        vus = B.prealables(mesures_bonnes(stockage=""))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn("images de disque", dit)
+
+    def test_no_default_route_says_the_masquerading_would_aim_nowhere(self):
+        """Viser la mauvaise interface laisse les VM se parler entre elles sans
+        jamais sortir, et « apt ne répond pas » n'envoie pas regarder une règle
+        de traduction d'adresses."""
+        vus = B.prealables(mesures_bonnes(uplink=""))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn("masquage", dit)
+
     def test_the_terrain_is_judged_first(self):
         """Sans terrain, aucune autre mesure ne veut rien dire."""
         self.assertIn("terrain", B.prealables(mesures_bonnes())[0].quoi)
@@ -2369,12 +2408,12 @@ class TestRienNeSePoseSansAvoirEteNomme(unittest.TestCase):
     def test_every_addition_is_written(self):
         chantier = self.chantier()
         chantier.nomme(pont="vmbr9")
-        chantier.nomme(modele=9000)
+        chantier.nomme(zones=(3114,))
         chantier.nomme(vms=((101, "banc-fictif-01"),))
         relu = self.relu(chantier)
         self.assertEqual(
-            ("vmbr9", 9000, ((101, "banc-fictif-01"),)),
-            (relu.pont, relu.modele, relu.vms),
+            ("vmbr9", (3114,), ((101, "banc-fictif-01"),)),
+            (relu.pont, relu.zones, relu.vms),
         )
 
     def test_what_it_writes_is_ours(self):
@@ -2405,6 +2444,208 @@ class TestRienNeSePoseSansAvoirEteNomme(unittest.TestCase):
             if n.endswith(".chantier")
         ]
         self.assertEqual([], restes)
+
+
+class TestLeBancReutiliseSonPontPlutotQueDenPrendreUnDePlus(unittest.TestCase):
+    """Le premier nom libre CHANGE dès que le banc a posé un pont. Une exécution
+    qui ne relirait pas son empreinte en poserait un second à chaque fois, et
+    n'en défairait qu'un — le précédent resterait, avec son masquage, sur un
+    réseau que plus rien ne nomme."""
+
+    DECLARE = (
+        "auto lo\niface lo inet loopback\n\n"
+        "auto vmbr9\niface vmbr9 inet static\n    address 10.0.0.1/24\n"
+    )
+
+    def test_its_own_declared_bridge_is_reused(self):
+        self.assertEqual("vmbr9", B.pont_du_banc(self.DECLARE, "vmbr9"))
+
+    def test_a_free_name_is_taken_when_it_has_none(self):
+        """Le contrôle positif : sans lui, une reprise inconditionnelle
+        passerait l'épreuve ci-dessus."""
+        self.assertEqual("vmbr10", B.pont_du_banc(self.DECLARE, ""))
+
+    def test_a_name_it_remembers_but_the_host_lost_is_not_reused(self):
+        """Nommé dans l'empreinte mais absent de l'hôte, il a été retiré à la
+        main : le reprendre supposerait une strophe qui n'existe plus."""
+        self.assertEqual("vmbr10", B.pont_du_banc(self.DECLARE, "vmbr42"))
+
+    def test_an_unread_terrain_gives_no_bridge(self):
+        """Trois cas rendent « », et ils disent tous la même chose : le terrain
+        n'a pas été lu. Reprendre un nom sans avoir lu la configuration
+        reconfigurerait le réseau d'autre chose."""
+        for interfaces in ("", None, "Permission denied"):
+            with self.subTest(interfaces=interfaces):
+                self.assertEqual("", B.pont_du_banc(interfaces, "vmbr9"))
+
+    def test_it_never_returns_a_name_the_host_already_uses_otherwise(self):
+        """Ce que `pont_libre` garantit déjà, et que la reprise ne doit pas
+        défaire : seul le nom de l'EMPREINTE est repris, jamais un autre nom
+        déclaré."""
+        self.assertNotEqual("vmbr9", B.pont_du_banc(self.DECLARE, "vmbr11"))
+
+    def test_the_name_remembered_comes_from_a_footprint_of_the_bench(self):
+        """Une empreinte qui n'est pas la nôtre ne nomme rien pour nous : c'est
+        `nous` qui tranche, comme pour la défaite."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        chemin = os.path.join(dossier, "empreinte.json")
+        for ecosysteme, attendu in (
+            (B.ECOSYSTEME, "vmbr9"),
+            ("OPS-Une-Production", ""),
+        ):
+            with self.subTest(ecosysteme=ecosysteme):
+                with open(chemin, "w", encoding="utf-8") as ecrit:
+                    ecrit.write(
+                        B.ecrit_empreinte(
+                            empreinte_pleine(
+                                ecosysteme=ecosysteme, pont="vmbr9"
+                            )
+                        )
+                    )
+                self.assertEqual(attendu, B.pont_deja_nomme(chemin))
+
+    def test_no_footprint_remembers_nothing(self):
+        self.assertEqual("", B.pont_deja_nomme("/n-existe-pas-du-tout.json"))
+
+
+class TestLaGrappeDitSesNoeudsEtSesStockages(unittest.TestCase):
+    """Le banc ne devine ni l'un ni l'autre. Cloner sur un nœud éteint échoue
+    APRÈS avoir attendu, et l'attente ressemble à un clonage lent ; poser une VM
+    sur un stockage qui n'accepte pas d'images échoue sur un message qui parle du
+    stockage sans dire pourquoi."""
+
+    def test_only_online_nodes_are_named(self):
+        """LA PROPRIÉTÉ : un nœud éteint est écarté, pas rendu."""
+        self.assertEqual(
+            ("vivant",),
+            B.lit_noeuds(
+                json.dumps(
+                    [
+                        {"node": "vivant", "status": "online"},
+                        {"node": "eteint", "status": "offline"},
+                    ]
+                )
+            ),
+        )
+
+    def test_a_node_without_a_status_is_not_online(self):
+        """Une absence dit « on ne sait pas », et on ne clone pas sur un nœud
+        dont on ne sait rien."""
+        self.assertEqual((), B.lit_noeuds(json.dumps([{"node": "muet"}])))
+
+    def test_every_node_online_is_kept(self):
+        """Le contrôle positif : sans lui, un lecteur qui n'en rend jamais aucun
+        passerait les épreuves ci-dessus."""
+        self.assertEqual(
+            ("a", "b"),
+            B.lit_noeuds(
+                json.dumps(
+                    [
+                        {"node": "a", "status": "online"},
+                        {"node": "b", "status": "online"},
+                    ]
+                )
+            ),
+        )
+
+    def test_only_storages_declaring_images_are_named(self):
+        """LA PROPRIÉTÉ : le contenu accepté est DÉCLARÉ par le stockage. Le
+        deviner de son nom se tromperait sur toute grappe qui nomme ses stockages
+        autrement que la nôtre."""
+        self.assertEqual(
+            ("qui-porte",),
+            B.lit_stockages(
+                json.dumps(
+                    [
+                        {
+                            "storage": "qui-porte",
+                            "content": "iso,images,vztmpl",
+                        },
+                        {"storage": "sauvegardes", "content": "backup"},
+                    ]
+                )
+            ),
+        )
+
+    def test_a_storage_without_declared_content_does_not_count(self):
+        """Ce n'est pas « il accepte tout », c'est « on ne sait pas »."""
+        self.assertEqual(
+            (), B.lit_stockages(json.dumps([{"storage": "muet"}]))
+        )
+
+    def test_a_content_that_merely_contains_the_word_is_not_enough(self):
+        """L'appariement porte sur un ÉLÉMENT de la liste, pas sur une
+        sous-chaîne : « imagesx » n'est pas « images »."""
+        self.assertEqual(
+            (),
+            B.lit_stockages(
+                json.dumps([{"storage": "presque", "content": "imagesx,iso"}])
+            ),
+        )
+
+    def test_a_storage_declaring_images_is_kept(self):
+        """Le contrôle positif des trois épreuves ci-dessus."""
+        self.assertEqual(
+            ("bon",),
+            B.lit_stockages(
+                json.dumps([{"storage": "bon", "content": "images"}])
+            ),
+        )
+
+    def test_both_refuse_what_is_not_a_list_of_objects(self):
+        for sortie in (
+            "ipcc_send_rec failed",
+            "",
+            None,
+            '{"node": "a"}',
+            "[1, 2]",
+            '[{"node": 42}]',
+        ):
+            for lecteur in (B.lit_noeuds, B.lit_stockages):
+                with self.subTest(sortie=str(sortie)[:24], lecteur=lecteur):
+                    self.assertIsNone(lecteur(sortie))
+
+    def test_a_truncated_answer_refuses(self):
+        """Une réponse coupée en chemin n'est pas une grappe sans nœud."""
+        self.assertIsNone(B.lit_noeuds('[{"node": "a", "statu'))
+
+
+class TestLeTerrainDitParOuIlSort(unittest.TestCase):
+    """L'interface est celle de la ROUTE PAR DÉFAUT, pas un nom deviné. Viser la
+    mauvaise laisse les VM se parler entre elles sans jamais sortir, et le
+    symptôme — « apt ne répond pas » — n'envoie pas regarder une règle de
+    traduction d'adresses."""
+
+    def test_both_facts_are_read(self):
+        self.assertEqual(
+            ("une-sortie", "192.0.2.10"),
+            B.lit_sortie("sortie=une-sortie\nadresse=192.0.2.10/24\n"),
+        )
+
+    def test_the_prefix_is_dropped_from_the_address(self):
+        """C'est l'adresse par laquelle on joint l'API, pas un réseau."""
+        _i, adresse = B.lit_sortie("sortie=s\nadresse=192.0.2.10/24\n")
+        self.assertNotIn("/", adresse)
+
+    def test_half_an_answer_concludes_nothing(self):
+        """Une interface sans adresse ne permet pas de joindre son
+        hyperviseur."""
+        for sortie in (
+            "sortie=s\n",
+            "adresse=192.0.2.10/24\n",
+            "sortie=\nadresse=192.0.2.10/24\n",
+            "sortie=s\nadresse=\n",
+            "",
+            None,
+            "du bruit sans rapport\n",
+        ):
+            with self.subTest(sortie=repr(sortie)):
+                self.assertIsNone(B.lit_sortie(sortie))
+
+    def test_a_complete_answer_is_not_refused(self):
+        """Le contrôle positif des refus ci-dessus."""
+        self.assertIsNotNone(B.lit_sortie("sortie=s\nadresse=192.0.2.10/24\n"))
 
 
 if __name__ == "__main__":
