@@ -1457,6 +1457,25 @@ class TestTasksApi(ApiCase):
             (page["next"], page["eof"], page["state"]), (4, False, "done")
         )
 
+    async def test_a_log_page_out_of_bounds_is_refused(self):
+        new = self.ids[1]
+        for query in (
+            "from=0",
+            "from=x",
+            "from=-1",
+            f"from={2**31 + 1}",
+            "limit=0",
+            "limit=x",
+            f"limit={server.LINES_LIMIT + 1}",
+        ):
+            resp = await self.fetch(
+                f"/api/tasks/{new}?{query}", Cookie=self.session_cookie
+            )
+            self.assertEqual(resp.code, 400, query)
+        edge = f"/api/tasks/{new}?from={2**31}&limit={server.LINES_LIMIT}"
+        page = await self.get_json(edge)
+        self.assertEqual((page["lines"], page["eof"]), ([], True))
+
     async def test_without_a_cookie_or_with_a_bad_id_nothing_is_read(self):
         new = self.ids[1]
         for path in ("/api/tasks", f"/api/tasks/{new}"):
