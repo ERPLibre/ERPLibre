@@ -11,6 +11,7 @@ touche le vrai ~/.erplibre ni le hub de l'utilisateur.
 
 import asyncio
 import base64
+import errno
 import hashlib
 import io
 import json
@@ -283,17 +284,26 @@ class TestHttp(HubCase):
         self.assertFalse(self.hub.redirect_path.exists())
         self.assertEqual((await self.login()).code, 200, "no redirect file")
 
-    async def test_post_needs_the_session_csrf_token(self):
+    async def test_every_writing_method_needs_the_session_csrf_token(self):
         cookie = await self.cookie()
         session = await self.fetch("/api/session", Cookie=cookie)
         csrf = json.loads(session.body)["csrf"]
         base = {"Cookie": cookie, "Origin": self.origin}
-        for token, expected in ((None, 403), ("forged", 403), (csrf, 405)):
-            headers = dict(base)
-            if token is not None:
-                headers["X-CSRF-Token"] = token
-            resp = await self.fetch("/api/session", "POST", "{}", **headers)
-            self.assertEqual(resp.code, expected, token)
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            body = None if method == "DELETE" else "{}"
+            for token, expected in ((None, 403), ("forged", 403), (csrf, 405)):
+                headers = dict(base)
+                if token is not None:
+                    headers["X-CSRF-Token"] = token
+                resp = await self.fetch(
+                    "/api/session", method, body, **headers
+                )
+                self.assertEqual(resp.code, expected, (method, token))
+        # Seul le POST de la connexion se passe de session.
+        resp = await self.fetch("/api/login", "PUT", "{}", Origin=self.origin)
+        self.assertEqual(resp.code, 403)
+        resp = await self.fetch("/api/session", "OPTIONS", Origin=self.origin)
+        self.assertEqual(resp.code, 405)
 
 
 class TestControl(HubCase):
@@ -511,10 +521,13 @@ class TestTelemetryApi(ApiCase):
             self.assertEqual(spy.call_count, 2)
             leaves = data["tree"]["children"][0]["children"]
             self.assertEqual([c["key"] for c in leaves], ["Quit", "Back"])
-            for override in ("script/todo/todo.json", "private/todo/a.json"):
-                target = self.root / override
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text("{}")
+            (self.root / "script" / "todo" / "todo.json").write_text("{}")
+            await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual(spy.call_count, 3)
+            # build_code_tree ne lit pas les surcharges privées.
+            private = self.root / "private" / "todo" / "todo_override.json"
+            private.parent.mkdir(parents=True)
+            private.write_text("{}")
             await self.get_json("/api/telemetry?lang=en")
             self.assertEqual(spy.call_count, 3)
 
@@ -523,6 +536,19 @@ class TestTelemetryApi(ApiCase):
         data = await self.get_json("/api/telemetry?lang=en")
         self.assertIsNone(data["tree"])
         self.assertIsInstance(data["counts"], dict)
+
+    async def test_a_failing_tree_build_is_logged_and_null(self):
+        boom = ValueError("boom-marker")
+        with (
+            patch.object(todo_telemetry, "build_code_tree", side_effect=boom),
+            self.assertLogs(server.log, "ERROR") as logs,
+        ):
+            terms = await self.get_json("/api/i18n?lang=en")
+            data = await self.get_json("/api/telemetry?lang=en")
+        self.assertEqual(terms["Quit"], "Quit")
+        self.assertIsNone(data["tree"])
+        self.assertIsInstance(data["counts"], dict)
+        self.assertEqual([r.exc_info[1] for r in logs.records], [boom])
 
     async def test_unknown_language_400_and_no_cookie_403(self):
         cookie = {"Cookie": self.session_cookie}
@@ -604,6 +630,40 @@ class TestStartup(EnvCase, unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(server.HubRunning):
             await hub.start()
         self.assertEqual(os.stat(ctl).st_ino, inode)
+
+    async def assert_released(self):
+        """Verrou libre, aucun ctl.sock, et un hub suivant démarre."""
+        os.close(server._hold_lock(paths.lock_path(self.root)))
+        self.assertFalse(paths.ctl_path(self.root).exists())
+        hub = server.Hub(self.root, static_dir=self.static)
+        await hub.start()
+        hub.request_stop()
+        await asyncio.wait_for(hub.stopped.wait(), 10)
+
+    async def test_a_start_failing_after_the_lock_releases_it(self):
+        boom = OSError(errno.EADDRINUSE, "boom-marker")
+        hub = server.Hub(self.root, static_dir=self.static)
+        with (
+            patch.object(
+                server.tornado.netutil, "bind_sockets", side_effect=boom
+            ),
+            self.assertRaisesRegex(OSError, "boom-marker"),
+        ):
+            await hub.start()
+        await self.assert_released()
+
+    async def test_a_start_failing_last_closes_its_sockets(self):
+        hub = server.Hub(self.root, static_dir=self.static)
+        with (
+            patch.object(
+                server.paths, "write_private", side_effect=OSError("boom")
+            ),
+            self.assertRaisesRegex(OSError, "boom"),
+        ):
+            await hub.start()
+        with self.assertRaises(ConnectionRefusedError):
+            await asyncio.open_connection("127.0.0.1", hub.port)
+        await self.assert_released()
 
     async def test_ctl_socket_is_0600_through_the_umask_elsewhere(self):
         with patch.object(server.sys, "platform", "darwin"):

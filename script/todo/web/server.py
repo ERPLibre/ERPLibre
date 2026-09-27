@@ -13,9 +13,9 @@ Deux entrées dans une même boucle asyncio :
 Chaque requête HTTP passe par `Guard.prepare` : `Host` dans la liste (port
 exigé, contre le rebinding DNS) ; hors GET et HEAD, comme pour toute poignée
 de main WebSocket, une Origin égale à `http://<Host>` (absente = refus) ;
-pour un POST autre que la connexion, le jeton CSRF de la session dans
-`X-CSRF-Token`. L'API exige le cookie de session, nommé par port. Le hub
-n'importe jamais todo.py.
+hors GET, HEAD et OPTIONS, sauf pour le POST de la connexion, la session et
+son jeton CSRF dans `X-CSRF-Token`. L'API exige le cookie de session, nommé
+par port. Le hub n'importe jamais todo.py.
 
     python -m script.todo.web.server --root <checkout> [--idle-seconds N]
 """
@@ -68,11 +68,13 @@ CSP = (
     "style-src 'self'; connect-src 'self'; img-src 'self' data:; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
-# Ce que lit build_code_tree, et les surcharges privées de todo.json.
+# Fichiers que lit build_code_tree : todo.py, les mixins qu'il importe et
+# todo.json à côté ; « *.py » couvre aussi todo_i18n.py, rechargé quand il
+# change. Les surcharges de private/todo/ n'en sont pas : build_code_tree ne
+# lit que todo.json.
 TREE_SOURCES = (
     "script/todo/*.py",
     "script/todo/todo.json",
-    "private/todo/*.json",
 )
 
 
@@ -161,13 +163,22 @@ class CodeTree:
             _reload_i18n()
             self.i18n_stamp = stamp
         todo_py = self.root / "script" / "todo" / "todo.py"
-        self.tree = todo_telemetry.build_code_tree(todo_py)
+        try:
+            self.tree = todo_telemetry.build_code_tree(todo_py)
+        except Exception:
+            log.exception("building the menu tree failed")
+            self.tree = None
         self.signature = signature
         return self.tree
 
     async def refresh(self):
-        """L'arbre à jour, ou None si l'analyse échoue ; la table de
-        traduction est rechargée au passage si todo_i18n.py a changé."""
+        """L'arbre à jour, ou None si l'analyse échoue ou lève ; la table de
+        traduction est rechargée au passage si todo_i18n.py a changé.
+
+        Une exception de build_code_tree va au journal et ne remonte pas :
+        /api/telemetry et /api/i18n répondent, l'arbre nul, et l'analyse
+        n'est retentée qu'au changement suivant d'une source.
+        """
         async with self.lock:
             return await asyncio.to_thread(self._refresh)
 
@@ -206,7 +217,8 @@ def localize(node, lang, parent=None) -> dict:
 class Guard:
     """Contrôles communs à chaque handler ; mélangé avant la classe tornado."""
 
-    # Seule la connexion reçoit un POST sans session ni jeton CSRF.
+    # Vrai pour la connexion seule : son POST se passe de session et de
+    # jeton CSRF, ses autres méthodes non.
     anonymous_post = False
 
     @property
@@ -231,11 +243,14 @@ class Guard:
         # Une poignée de main WebSocket est un GET : l'en-tête Upgrade la
         # désigne, lu comme tornado le lit avant de l'accepter.
         upgrade = self.request.headers.get("Upgrade", "").lower()
-        unsafe = self.request.method not in ("GET", "HEAD")
-        if unsafe or upgrade == "websocket":
+        method = self.request.method
+        if method not in ("GET", "HEAD") or upgrade == "websocket":
             if self.request.headers.get("Origin") != f"http://{host}":
                 raise HTTPError(403)
-        if self.request.method == "POST" and not self.anonymous_post:
+        # Toute méthode qui peut écrire, quel que soit le handler qui la
+        # recevra, sauf le POST anonyme de la connexion.
+        writes = method not in ("GET", "HEAD", "OPTIONS")
+        if writes and not (self.anonymous_post and method == "POST"):
             csrf = self.require_session()
             sent = self.request.headers.get("X-CSRF-Token", "")
             if not secrets.compare_digest(sent.encode(), csrf.encode()):
@@ -432,6 +447,8 @@ class Hub:
         self.stopping = None
         self.last_activity = time.monotonic()
         self.code_tree = CodeTree(self.root)
+        self.ctl = None  # serveur asyncio de ctl.sock, une fois démarré
+        self.http = None
 
     def routes(self) -> list:
         return [
@@ -444,18 +461,32 @@ class Hub:
         ]
 
     async def start(self, host="127.0.0.1", port=0):
+        """Prend le verrou, lie ctl.sock et le port HTTP, écrit state.json.
+
+        Tout échec après la prise du verrou, `HubRunning` compris, passe par
+        `_undo_start` avant de remonter : un démarrage suivant, dans ce
+        processus ou un autre, trouve le verrou libre et aucune socket liée.
+        """
         self.ctl_path = paths.ctl_path(self.root)
         self.state_path = paths.state_path(self.root)
         self.redirect_path = paths.redirect_path(self.root)
         self.lock_fd = _hold_lock(paths.lock_path(self.root))
+        ctl, socks = None, []
         try:
             ctl = _claim_ctl(self.ctl_path)
+            socks = tornado.netutil.bind_sockets(
+                port, host, family=socket.AF_INET
+            )
+            await self._listen(ctl, socks)
         except BaseException:
-            os.close(self.lock_fd)
+            self._undo_start(ctl, socks)
             raise
-        [sock] = tornado.netutil.bind_sockets(
-            port, host, family=socket.AF_INET
-        )
+        return self
+
+    async def _listen(self, ctl, socks):
+        """Met les serveurs HTTP et de contrôle à l'écoute sur les sockets
+        liées, écrit state.json et lance la surveillance d'inactivité."""
+        [sock] = socks
         self.port = sock.getsockname()[1]
         self.hosts = {
             f"{name}:{self.port}"
@@ -486,7 +517,22 @@ class Hub:
         paths.write_private(self.state_path, json.dumps(state))
         self.idle_task = asyncio.create_task(self.watch_idle())
         log.info("listening on 127.0.0.1:%s for %s", self.port, self.root)
-        return self
+
+    def _undo_start(self, ctl, socks):
+        """Ferme ce que `start` a ouvert : serveurs de contrôle et HTTP,
+        socket de contrôle et sockets TCP ; retire ctl.sock s'il a été lié
+        ici, puis relâche le verrou, en dernier comme dans `stop`. Un
+        ctl.sock que `_claim_ctl` a refusé de prendre n'est pas touché."""
+        if self.ctl is not None:
+            self.ctl.close()
+        if self.http is not None:
+            self.http.stop()
+        for sock in (ctl, *socks):
+            if sock is not None:
+                sock.close()
+        if ctl is not None:
+            self.ctl_path.unlink(missing_ok=True)
+        os.close(self.lock_fd)
 
     def touch(self):
         self.last_activity = time.monotonic()
