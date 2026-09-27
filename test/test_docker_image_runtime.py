@@ -3,16 +3,20 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ce que l'image Docker lit au démarrage vaut-il pour Odoo 10 à 20 ?
 
-Deux fichiers sont partagés par toutes les versions. docker/odoo.conf doit
+Trois fichiers sont partagés par toutes les versions. docker/odoo.conf doit
 nommer l'interface d'écoute : Odoo 20 remplace une valeur vide par
 127.0.0.1, et le port publié du conteneur ne mène alors à rien.
 docker/wait-for-psql.py est lancé par le python de l'image, en 2.7 pour
 Odoo 10 : sans déclaration d'encodage, un seul caractère non ASCII y est une
 SyntaxError, et le conteneur redémarre en boucle.
+docker/Dockerfile.base installe lessc, qu'Odoo 10 et 11 appellent pour leurs
+feuilles : LESS 4 y refuse les calculs d'Odoo, et l'interface perd son style.
 """
 
 import configparser
+import json
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -41,6 +45,36 @@ class TestWaitForPsqlSeLitEnPython2(unittest.TestCase):
         self.assertTrue(
             any(re.search(r"coding[:=]\s*utf-?8", l) for l in tete), tete
         )
+
+
+class TestLessParVersionDOdoo(unittest.TestCase):
+    def _less(self, version):
+        """Rejoue le « case » du Dockerfile et rend le paquet npm choisi."""
+        dockerfile = (RACINE / "docker/Dockerfile.base").read_text(
+            encoding="utf-8"
+        )
+        case = re.search(r"(case .*?esac)", dockerfile).group(1)
+        return subprocess.run(
+            ["bash", "-c", case + ' ; printf %s "$LESS"'],
+            env={"ODOO_VERSION": version},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    def test_less_3_pour_10_et_11_seulement(self):
+        catalogue = json.loads(
+            (RACINE / "conf/supported_version_erplibre.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        versions = {v["odoo_version"] for v in catalogue.values()}
+        self.assertTrue({"10.0", "11.0", "18.0"} <= versions, versions)
+        for version in sorted(versions):
+            attendu = (
+                "less@3.13.1" if version in ("10.0", "11.0") else "less"
+            )
+            self.assertEqual(attendu, self._less(version), version)
 
 
 if __name__ == "__main__":
