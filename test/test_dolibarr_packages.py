@@ -48,8 +48,15 @@ class TestPackages(unittest.TestCase):
 
     def test_rpm_family(self):
         liste = packages.packages_for("dnf", "mariadb")
-        # php-mysqlnd porte mysqli ; php-pecl-zip porte zip.
-        for nom in ("php-mysqlnd", "php-pecl-zip", "mariadb-server", "nginx"):
+        # php-mysqlnd porte mysqli ; php-pecl-zip porte zip ; php-process
+        # porte posix, que les autres familles livrent avec PHP.
+        for nom in (
+            "php-mysqlnd",
+            "php-pecl-zip",
+            "php-process",
+            "mariadb-server",
+            "nginx",
+        ):
             with self.subTest(nom=nom):
                 self.assertIn(nom, liste)
         self.assertIn(
@@ -96,7 +103,8 @@ class TestExtensionsIni(unittest.TestCase):
         chemin, texte = packages.extensions_ini("pacman", "postgresql")
         self.assertEqual(chemin, "/etc/php/conf.d/erplibre-dolibarr.ini")
         lignes = texte.splitlines()
-        for ext in ("pgsql", "gd", "intl", "calendar"):
+        # iconv éteint, dolSlugify perd sa translittération ASCII.
+        for ext in ("pgsql", "gd", "intl", "calendar", "iconv"):
             with self.subTest(ext=ext):
                 self.assertIn(f"extension={ext}", lignes)
         self.assertNotIn("extension=mysqli", lignes)
@@ -105,6 +113,26 @@ class TestExtensionsIni(unittest.TestCase):
         for famille in ("apt-get", "dnf", "zypper"):
             with self.subTest(famille=famille):
                 self.assertIsNone(packages.extensions_ini(famille, "mariadb"))
+
+
+class TestCertbot(unittest.TestCase):
+    def test_certbot_and_its_nginx_plugin_per_family(self):
+        attendu = {
+            "apt-get": ["certbot", "python3-certbot-nginx"],
+            # Le greffon nginx de Fedora 44 ne tire pas pyparsing, sans
+            # lequel toute commande certbot échoue.
+            "dnf": ["certbot", "python3-certbot-nginx", "python3-pyparsing"],
+            "pacman": ["certbot", "certbot-nginx"],
+            # zypper résout ces noms par capacité (python3NN-certbot…).
+            "zypper": ["certbot", "python3-certbot-nginx"],
+        }
+        for famille, noms in attendu.items():
+            with self.subTest(famille=famille):
+                self.assertEqual(packages.certbot_packages(famille), noms)
+
+    def test_unknown_family_is_refused(self):
+        with self.assertRaises(ValueError):
+            packages.certbot_packages("brew")
 
 
 class TestFpmLayout(unittest.TestCase):

@@ -14,9 +14,10 @@ Deux familles s'écartent de la forme commune :
   valeurs en clair, sans erreur.
 
 Absents exprès partout : php-imap (introuvable sur Debian 13, Ubuntu 26.04,
-Arch, EL et SUSE), php-opcache (inexistant sur Ubuntu 26.04, et tiré par
-php-fpm ailleurs) et php-json (json est dans PHP 8, et le paquet seul tire
-apache2 sur Ubuntu 26.04).
+Arch, EL et SUSE), php-opcache et php-json. OPcache est intégré à PHP 8.5,
+qui n'a plus de paquet à part, alors que php-fpm ne le tire ni sur EL 9/10
+ni sur Leap 16 : une instance y tourne sans cache d'opcodes. json est dans
+PHP 8, et son paquet seul tire apache2 sur Ubuntu 26.04.
 """
 
 FAMILIES = ("apt-get", "dnf", "pacman", "zypper")
@@ -43,6 +44,8 @@ _PHP = {
         "php-pecl-zip",
         "php-mbstring",
         "php-soap",
+        # posix, que les autres familles livrent avec PHP.
+        "php-process",
     ],
     "pacman": ["php", "php-fpm", "php-gd"],
     "zypper": [
@@ -115,8 +118,28 @@ def extensions_ini(family, db):
         return None
     driver = "mysqli" if db == "mariadb" else "pgsql"
     lines = [f"extension={e}" for e in (driver, "gd", "intl", "calendar")]
-    lines.append("extension=soap")
+    lines += ["extension=soap", "extension=iconv"]
     return "/etc/php/conf.d/erplibre-dolibarr.ini", "\n".join(lines) + "\n"
+
+
+_CERTBOT = {
+    "apt-get": ["certbot", "python3-certbot-nginx"],
+    "dnf": ["certbot", "python3-certbot-nginx", "python3-pyparsing"],
+    "pacman": ["certbot", "certbot-nginx"],
+    "zypper": ["certbot", "python3-certbot-nginx"],
+}
+
+
+def certbot_packages(family):
+    """certbot et son greffon nginx.
+
+    Sur dnf, python3-pyparsing en plus : le greffon de Fedora 44 ne le tire
+    pas, et toute commande certbot échoue sans lui. EL 9/10 ne les trouvent
+    qu'une fois EPEL activé, ce que l'installateur fait avant. zypper
+    résout ces noms par capacité vers python3NN-certbot.
+    """
+    _check(family)
+    return list(_CERTBOT[family])
 
 
 def fpm_layout(family, php_version):
