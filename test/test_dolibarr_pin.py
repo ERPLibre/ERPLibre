@@ -40,6 +40,9 @@ D_2400_REFAIT = "sha256:" + "4" * 64
 D_2402 = "sha256:" + "2" * 64
 D_MARIA = "sha256:" + "3" * 64
 D_MARIA_REFAIT = "sha256:" + "5" * 64
+OUTILS = "docker.io/library/composer"
+D_OUTILS = "sha256:" + "6" * 64
+D_OUTILS_REFAIT = "sha256:" + "7" * 64
 
 MANIFEST = """<?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
@@ -174,7 +177,11 @@ class Reseau:
             NOUVEAU: VERSION_INC.format(major="24", minor="0.2"),
             TAG: VERSION_INC.format(major="24", minor="0.2"),
         }
-        self.hub = {(DOLI, "24.0.0"): D_2400, (MARIA, "11.4"): D_MARIA}
+        self.hub = {
+            (DOLI, "24.0.0"): D_2400,
+            (MARIA, "11.4"): D_MARIA,
+            (OUTILS, "2"): D_OUTILS,
+        }
 
     def ls_remote(self, ref):
         return self.refs.get(ref)
@@ -201,6 +208,7 @@ class Banc(unittest.TestCase):
                     "branch": "24.0",
                     "docker_image": "docker.io/dolibarr/dolibarr:24.0.0",
                     "mariadb_image": "docker.io/library/mariadb:11.4",
+                    "tools_image": "docker.io/library/composer:2",
                     "php_min": "7.2",
                     "php_max": "8.5",
                 },
@@ -264,6 +272,7 @@ class TestUpdate(Banc):
         self.lancer("update", "--apply")
         data = json.loads(self.json.read_text())
         self.assertEqual(data["mariadb_image"], f"{MARIA}:11.4@{D_MARIA}")
+        self.assertEqual(data["tools_image"], f"{OUTILS}:2@{D_OUTILS}")
         self.assertEqual(
             lib_dolibarr.read_pin(str(self.racine))["docker_image"],
             f"{DOLI}:24.0.0@{D_2400}",
@@ -293,6 +302,17 @@ class TestUpdate(Banc):
         code, _sortie = self.lancer("update")
         self.assertEqual(code, pin.PENDING)
 
+    def test_a_rebuilt_tools_image_alone_is_a_change(self):
+        # L'image des outils qualité suit son étiquette comme les autres.
+        self.lancer("update", "--apply")
+        self.net.hub[(OUTILS, "2")] = D_OUTILS_REFAIT
+        code, sortie = self.lancer("update")
+        self.assertEqual(code, pin.PENDING)
+        self.assertIn(D_OUTILS_REFAIT[:19], sortie)
+        self.lancer("update", "--apply")
+        data = json.loads(self.json.read_text())
+        self.assertEqual(data["tools_image"], f"{OUTILS}:2@{D_OUTILS_REFAIT}")
+
     def test_an_unreachable_hub_keeps_the_images(self):
         self.lancer("update", "--apply")
         avant = json.loads(self.json.read_text())
@@ -302,6 +322,7 @@ class TestUpdate(Banc):
         data = json.loads(self.json.read_text())
         self.assertEqual(data["docker_image"], avant["docker_image"])
         self.assertEqual(data["mariadb_image"], avant["mariadb_image"])
+        self.assertEqual(data["tools_image"], avant["tools_image"])
         self.assertEqual(data["version"], "24.0.2")
 
     def test_a_tag_pins_its_commit(self):
