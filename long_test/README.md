@@ -360,9 +360,27 @@ than running code nothing has checked.
 ./long_test/setops_banc.py --passe env        # token through the environment
 ```
 
-The plan announces what each step costs: ~30 s for the bridge, ~10 s for the
-token, ~10 min for the golden template, then per pass ~5 s for the inventory,
-~4 min 30 for a clone, ~5 min for a deployment and ~1 min for the razing.
+**The loop is the engine's own, not a recomposition of its pieces.**
+`reconstruire` chains the flows, the fleet's creation, the wait, the socle's
+bootstrap and then the layered deployment. The order matters there: without the
+flows FIRST, the derived-rules directory is empty and the socle lays a firewall
+that denies by default WITH NO RULE AT ALL — the fleet comes up, ssh answers
+from administration, and everything else is a wall, a failure that shows up
+neither at creation nor in an exit code. So the bench calls the target and reads
+its verdict; it does not re-sequence the steps, which is how it would drop that
+one the day the engine adds another.
+
+The bootstrap derives ITS hosts from the plan — the certificate authority first,
+then what enrols with it — so the bench reads that list instead of writing one.
+Two hosts of the shipped model are therefore activated, and the rest of the fleet
+stays planned: `reconstruire` only creates the VMs of ACTIVE hosts.
+
+The plan announces what each step costs, and **says when a duration is only
+announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
+template, then per pass ~5 s for each of the two inventory gestures — both
+measured — and, still to be timed, ~45 min for the reconstruction and ~2 min for
+the razing. A plan that gave both in the same tone would promise a time nobody
+has clocked.
 
 ## Starting from a host you already have
 

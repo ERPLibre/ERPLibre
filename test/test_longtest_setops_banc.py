@@ -20,6 +20,7 @@ détruirait, au rasage, ce qui ne lui appartient pas.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -974,6 +975,173 @@ class TestLOrdreDeLaDefaiteTientLesLiensEtLesCles(unittest.TestCase):
         self.assertEqual(
             sorted(empreinte_pleine().liens + empreinte_pleine().cles),
             sorted(vises),
+        )
+
+
+class TestLAmorcageSeLitChezLeMoteur(unittest.TestCase):
+    """L'ORDRE EST CELUI DU MOTEUR. L'autorité de certification vient avant ce
+    qui s'enrôle auprès d'elle, et cette précédence est déclarée dans le plan de
+    l'écosystème. Une seconde liste écrite dans le banc en dériverait le jour où
+    le modèle déplace une application."""
+
+    def test_the_order_of_the_engine_is_kept(self):
+        """LA PROPRIÉTÉ : l'ordre est celui de la sortie, jamais un tri. Trié,
+        « infra-dns-01 » passerait avant « infra-pki-01 » et la flotte
+        réclamerait un certificat à une autorité pas encore debout."""
+        self.assertEqual(
+            ("infra-pki-01", "infra-dns-01"),
+            B.lit_amorcage("infra-pki-01\ninfra-dns-01\n"),
+        )
+
+    def test_blank_lines_are_not_hosts(self):
+        self.assertEqual(
+            ("a-01", "b-01"), B.lit_amorcage("\na-01\n\n  \nb-01\n")
+        )
+
+    def test_naming_nothing_is_an_answer(self):
+        self.assertEqual((), B.lit_amorcage(""))
+
+    def test_an_unreadable_output_refuses(self):
+        self.assertIsNone(B.lit_amorcage(None))
+
+    def test_a_sentence_makes_the_whole_read_refuse(self):
+        """Le script écrit ses erreurs sur CETTE sortie : une liste dont une
+        entrée est une phrase ferait activer un hôte qui n'existe pas."""
+        for sortie in (
+            "infra-pki-01\nerreur: plan introuvable\n",
+            "Refus: relancer avec INSTANCE=nom\n",
+            "infra-pki-01\n../ailleurs\n",
+        ):
+            with self.subTest(sortie=sortie.strip()[:40]):
+                self.assertIsNone(B.lit_amorcage(sortie))
+
+    def test_a_name_twice_makes_the_read_refuse(self):
+        """Une dérivation qui se répète ne sait plus ce qu'elle dérive."""
+        self.assertIsNone(B.lit_amorcage("a-01\na-01\n"))
+
+
+class TestLePlanSActivePourTousSesHotes(unittest.TestCase):
+    """TOUT OU RIEN. Un plan où seul le premier des hôtes d'amorçage serait actif
+    se déploie jusqu'à l'autorité de certification puis refuse — et la moitié
+    faite a déjà créé des machines."""
+
+    MODELE = (
+        "serveurs:\n"
+        "  infra-pki-01: { fonction: infra-pki, etat: planifie }\n"
+        "  infra-dns-01: { fonction: infra-dns, etat: planifie }\n"
+        "  infra-mail-01: { fonction: infra-mail, etat: planifie }\n"
+    )
+
+    def actifs(self, texte):
+        lu = (yaml.safe_load(texte) or {}).get("serveurs") or {}
+        return sorted(
+            nom for nom, d in lu.items() if (d or {}).get("etat") == "actif"
+        )
+
+    def test_both_bootstrap_hosts_become_active(self):
+        self.assertEqual(
+            ["infra-dns-01", "infra-pki-01"],
+            self.actifs(
+                B.active_les_hotes(
+                    self.MODELE, ("infra-pki-01", "infra-dns-01")
+                )
+            ),
+        )
+
+    def test_the_others_stay_planned(self):
+        """Le reste de la flotte ne monte pas : `reconstruire` ne crée que les
+        VM des hôtes ACTIFS, et le banc n'en veut que deux."""
+        actifs = self.actifs(
+            B.active_les_hotes(self.MODELE, ("infra-pki-01", "infra-dns-01"))
+        )
+        self.assertNotIn("infra-mail-01", actifs)
+
+    def test_one_host_missing_activates_none(self):
+        """Le refus porte sur le TEXTE ENTIER, non sur l'hôte fautif."""
+        self.assertIsNone(
+            B.active_les_hotes(self.MODELE, ("infra-pki-01", "n-existe-pas"))
+        )
+
+    def test_no_host_at_all_is_refused(self):
+        """Un plan sans hôte actif fait sortir la flotte à zéro sans rien
+        créer, et le moteur le dit : « aucun hote actif dans le plan »."""
+        self.assertIsNone(B.active_les_hotes(self.MODELE, ()))
+
+
+class TestLaBoucleEstCelleDuMoteur(unittest.TestCase):
+    """Le banc ne recompose pas les morceaux de la reconstruction. Sans les flux
+    d'abord, le dossier des règles dérivées est vide et le socle pose un pare-feu
+    en refus par défaut SANS AUCUNE RÈGLE : la flotte monte, ssh répond depuis
+    l'administration, et tout le reste est mur."""
+
+    def rang(self, cible):
+        return [e.cible for e in B.ETAPES_BOUCLE].index(cible)
+
+    def test_nothing_is_razed_before_it_is_built(self):
+        self.assertLess(self.rang("reconstruire"), self.rang("raser"))
+
+    def test_the_inventory_is_applied_before_anything_is_built(self):
+        """`reconstruire` ne crée que les VM des hôtes actifs de l'inventaire
+        APPLIQUÉ : bâtir avant d'appliquer ne créerait rien."""
+        for avant in ("instancier", "instancier-appliquer"):
+            with self.subTest(cible=avant):
+                self.assertLess(self.rang(avant), self.rang("reconstruire"))
+        self.assertLess(
+            self.rang("instancier"), self.rang("instancier-appliquer")
+        )
+
+    def test_only_the_two_building_gestures_confirm(self):
+        """Un geste qui écrit le DIT. Confirmer une mesure la ferait écrire."""
+        self.assertEqual(
+            ["reconstruire", "raser"],
+            [e.cible for e in B.ETAPES_BOUCLE if e.confirmer],
+        )
+
+    def test_razing_names_what_it_destroys(self):
+        """Le quatrième verrou : le moteur refuse si l'écosystème nommé n'est
+        pas celui qui est monté."""
+        raser = next(e for e in B.ETAPES_BOUCLE if e.cible == "raser")
+        self.assertIn((B.INSTANCE, B.ECOSYSTEME), raser.variables)
+
+    def test_an_announced_duration_says_so(self):
+        """Un plan qui confondrait relevé et annoncé promettrait un temps que
+        personne n'a chronométré."""
+        mesurees = {e.cible for e in B.ETAPES_BOUCLE if e.mesuree}
+        self.assertEqual({"instancier", "instancier-appliquer"}, mesurees)
+
+    def test_every_target_exists_in_the_engine(self):
+        """LE GARDE QUI SURVIT À UN RENOMMAGE EN AMONT. Une cible disparue ferait
+        échouer la boucle au milieu, après avoir créé des VM."""
+        makefile = os.path.join(
+            RACINE, "private", "repo", "Set-OPS-Public", "Makefile"
+        )
+        if not os.path.isfile(makefile):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(makefile, encoding="utf-8") as lu:
+            texte = lu.read()
+        for etape in B.ETAPES_BOUCLE:
+            with self.subTest(cible=etape.cible):
+                self.assertRegex(texte, rf"(?m)^{re.escape(etape.cible)}:")
+
+    def test_the_search_would_miss_a_target_that_is_not_there(self):
+        """Le contrôle positif : sans lui, une recherche qui trouve toujours
+        passerait l'épreuve ci-dessus."""
+        makefile = os.path.join(
+            RACINE, "private", "repo", "Set-OPS-Public", "Makefile"
+        )
+        if not os.path.isfile(makefile):
+            self.skipTest("le clone du moteur n'est pas là")
+        with open(makefile, encoding="utf-8") as lu:
+            texte = lu.read()
+        self.assertNotRegex(texte, "(?m)^cible-qui-n-existe-pas:")
+
+    def test_the_plan_marks_what_is_only_announced(self):
+        dit = dict(B.plan((B.PASSE_ENV,), "un-terrain"))
+        annonces = [
+            quoi for quoi, duree in dit.items() if "annoncé" in (duree or "")
+        ]
+        self.assertEqual(
+            len([e for e in B.ETAPES_BOUCLE if not e.mesuree]), len(annonces)
         )
 
 

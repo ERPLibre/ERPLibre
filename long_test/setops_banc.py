@@ -108,10 +108,17 @@ INDEX_UNDERLAY = 212
 # quel à ce que porte son fichier d'hébergeur.
 PORT_API = "8006"
 
-# L'hôte que le banc active dans le plan du modèle. Il EXISTE dans le modèle
-# livré — le banc n'en invente pas, il en active un — et sa fonction est donc
-# déjà placée dans une zone par la nomenclature.
-HOTE_BANC = "infra-dns-01"
+# LE BANC N'ÉCRIT PAS SA LISTE D'HÔTES, il demande au moteur laquelle amorcer.
+# Le plan déclare quelle application vit sur quel hôte, et l'amorçage du socle
+# s'en dérive : l'autorité de certification d'abord, puis ce qui s'enrôle auprès
+# d'elle. Une seconde liste écrite ici dériverait de la première le jour où le
+# modèle déplace une application.
+CIBLE_AMORCAGE = "scripts/socle_amorcage.py"
+
+# La forme d'un nom d'hôte, qui sert à distinguer un nom d'une PHRASE : le script
+# qui dérive l'amorçage écrit ses erreurs sur la même sortie, et un adaptateur
+# fermé par défaut ne doit pas prendre un message pour un hôte.
+FORME_HOTE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 
 # Les deux liens que le moteur lit, et il les lit PAR LEUR CHEMIN. Son playbook
 # de clonage résout `<moteur>/underlay.yml` puis lit `<moteur>/instance/`, sans
@@ -147,6 +154,49 @@ UNDERLAY = "underlay"
 LIEN = "lien"
 CLE = "cle"
 GENRES = (VM, MODELE, PONT, API, LIEN, ECO, UNDERLAY, CLE)
+
+
+# LE NOM QUE `raser` EXIGE, et c'est un verrou et non une commodité : le moteur
+# refuse si l'écosystème nommé ne correspond pas à celui qui est MONTÉ. Recopier
+# un nom long oblige à regarder ce qu'on détruit.
+INSTANCE = "INSTANCE"
+
+
+class Etape(NamedTuple):
+    """Une étape de la boucle : la cible du moteur, ses variables, sa durée.
+
+    `confirmer` dit si le geste ÉCRIT. La ligne montrée porte toujours
+    `CONFIRMER=`, si bien qu'un geste qui simule se distingue d'un geste qui
+    écrit à la seule lecture, sans rien savoir du moteur.
+
+    `mesuree` distingue une durée RELEVÉE d'une durée annoncée. Un plan qui les
+    confond promet à l'opérateur un temps que personne n'a chronométré.
+    """
+
+    cible: str
+    variables: tuple
+    duree: str
+    confirmer: bool
+    mesuree: bool
+
+
+# LA BOUCLE EST CELLE DU MOTEUR, pas une recomposition de ses morceaux.
+# `reconstruire` enchaîne lui-même les flux, la création de la flotte, l'attente,
+# l'amorçage du socle puis le déploiement par couches. L'ORDRE Y COMPTE : sans les
+# flux D'ABORD, le dossier des règles dérivées est vide et le socle pose un
+# pare-feu en refus par défaut SANS AUCUNE RÈGLE. La flotte monte, ssh répond
+# depuis l'administration, et tout le reste est mur — une panne qui ne se voit ni
+# à la création, ni dans un code de retour. Recomposer les étapes ici laisserait
+# tomber celle-là le jour où le moteur en ajoute une.
+#
+# L'amorçage dérive SES hôtes du plan : l'autorité de certification d'abord,
+# puis ce qui s'enrôle auprès d'elle.
+ETAPES_BOUCLE = (
+    Etape("instancier", (), "~5 s", False, True),
+    Etape("instancier-appliquer", (("FORCE", "1"),), "~5 s", False, True),
+    Etape("reconstruire", (), "~45 min", True, False),
+    Etape("raser", ((INSTANCE, ECOSYSTEME),), "~2 min", True, False),
+)
 
 
 class Prealable(NamedTuple):
@@ -582,7 +632,59 @@ proxmox_api_token_secret: {secret.strip()}
 """
 
 
-def active_un_hote(texte, hote=HOTE_BANC):
+def lit_amorcage(sortie):
+    """Les hôtes d'amorçage du socle, dans l'ORDRE du moteur. Ou None.
+
+    L'ORDRE EST CELUI DU MOTEUR, pas celui du banc : l'autorité de certification
+    vient avant ce qui s'enrôle auprès d'elle, et cette précédence est déclarée
+    dans le plan. Le banc la LIT.
+
+    Fermé par défaut : une ligne qui n'a pas la forme d'un nom d'hôte, ou un nom
+    qui revient deux fois, fait refuser TOUTE la lecture. Le script écrit ses
+    erreurs sur cette même sortie, et une liste dont une entrée est une phrase
+    ferait activer un hôte qui n'existe pas dans le plan — donc un plan dont
+    aucun hôte n'est ce qu'on croit.
+
+    Une sortie sans aucune ligne rend `()` : « rien à nommer » est une réponse,
+    et c'est à l'appelant de refuser d'amorcer sans hôte.
+    """
+    if sortie is None:
+        return None
+    vus = []
+    for ligne in sortie.splitlines():
+        nom = ligne.strip()
+        if not nom:
+            continue
+        if not FORME_HOTE.match(nom) or nom in vus:
+            return None
+        vus.append(nom)
+    return tuple(vus)
+
+
+def active_les_hotes(texte, hotes):
+    """`texte` avec l'`etat:` de CHACUN de `hotes` porté à « actif ». Ou None.
+
+    TOUT OU RIEN. Un plan où seul le premier des hôtes d'amorçage serait actif se
+    déploie jusqu'à l'autorité de certification puis refuse : le second n'est pas
+    dans l'inventaire actif, donc le groupe dont il dépend n'y est pas non plus.
+    Un plan à moitié activé coûte plus cher qu'un refus, parce que la moitié
+    faite a déjà créé des machines.
+
+    Sans hôte à activer, REFUSE : un plan dont aucun hôte n'est actif produit un
+    inventaire vide, où la matérialisation et le rasage sortent à zéro sans avoir
+    rien fait.
+    """
+    if not hotes:
+        return None
+    courant = texte
+    for hote in hotes:
+        courant = active_un_hote(courant, hote)
+        if courant is None:
+            return None
+    return courant
+
+
+def active_un_hote(texte, hote):
     """`texte`, le seul `etat:` de `hote` porté à « actif ». None si refus.
 
     CHIRURGICAL : un attribut d'une ligne change, tout le reste est rendu tel
@@ -831,14 +933,22 @@ def plan(passes, terrain):
 
     IMPRIMÉ AVANT TOUTE CRÉATION, et c'est la règle de ce dossier : un plan
     qu'on lit après coup ne sert plus à décider.
+
+    UNE DURÉE ANNONCÉE LE DIT. Les deux gestes d'inventaire sont chronométrés ;
+    la reconstruction et le rasage ne le sont pas encore, et un plan qui les
+    donnerait du même ton promettrait un temps que personne n'a relevé.
     """
     etapes = [
         (f"terrain : {terrain or '(aucun)'}", ""),
         (f"underlay du banc : {UNDERLAY_BANC}", "~20 s"),
         (f"locataire du banc : {ECOSYSTEME}", "~20 s"),
+        # LES LIENS AVANT LES CLÉS, parce que le moteur nomme la clé de la voûte
+        # de l'hébergeur en RÉSOLVANT le lien. Sans lui, il ne la nomme pas.
+        (f"les {len(LIENS)} liens du moteur", "~1 s"),
+        (f"les {len(LIENS)} clés de voûte", "~1 s"),
         ("pont du banc, conscient des VLAN", "~30 s"),
         ("utilisateur d'API et son jeton", "~10 s"),
-        ("gabarit doré", "~10 min"),
+        ("gabarit doré, agent qemu compris", "~10 min"),
     ]
     for passe in passes or ():
         ou = (
@@ -846,12 +956,14 @@ def plan(passes, terrain):
             if passe == PASSE_ENV
             else "par la voûte, chemin de todo"
         )
+        etapes.append((f"passe « {passe} » — {ou}", ""))
         etapes += [
-            (f"passe « {passe} » — {ou}", ""),
-            ("  inventaire depuis le plan", "~5 s"),
-            ("  clone d'une VM", "~4 min 30"),
-            ("  déploiement de l'hôte", "~5 min"),
-            ("  rasage", "~1 min"),
+            (
+                f"  make {etape.cible}"
+                + ("  (écrit)" if etape.confirmer else ""),
+                etape.duree + ("" if etape.mesuree else " annoncé"),
+            )
+            for etape in ETAPES_BOUCLE
         ]
     return tuple(etapes)
 

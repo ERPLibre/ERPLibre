@@ -374,9 +374,27 @@ du code que rien n'a vérifié.
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ```
 
-Le plan annonce ce que chaque étape coûte : ~30 s pour le pont, ~10 s pour le
-jeton, ~10 min pour le gabarit doré, puis par passe ~5 s pour l'inventaire,
-~4 min 30 pour un clone, ~5 min pour un déploiement et ~1 min pour le rasage.
+**La boucle est celle du moteur, pas une recomposition de ses morceaux.**
+`reconstruire` enchaîne les flux, la création de la flotte, l'attente,
+l'amorçage du socle puis le déploiement par couches. L'ordre y compte : sans les
+flux D'ABORD, le dossier des règles dérivées est vide et le socle pose un
+pare-feu en refus par défaut SANS AUCUNE RÈGLE — la flotte monte, ssh répond
+depuis l'administration, et tout le reste est mur, une panne qui ne se voit ni à
+la création ni dans un code de retour. Le banc appelle donc la cible et lit son
+verdict ; il ne réordonne pas les étapes, ce qui est la façon de laisser tomber
+celle-là le jour où le moteur en ajoute une.
+
+L'amorçage dérive SES hôtes du plan — l'autorité de certification d'abord, puis
+ce qui s'enrôle auprès d'elle — et le banc lit cette liste au lieu d'en écrire
+une. Deux hôtes du modèle livré sont donc activés, et le reste de la flotte
+demeure planifié : `reconstruire` ne crée que les VM des hôtes ACTIFS.
+
+Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
+qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit
+doré, puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
+chronométrés — et, encore à relever, ~45 min pour la reconstruction et ~2 min
+pour le rasage. Un plan qui donnerait les deux du même ton promettrait un temps
+que personne n'a chronométré.
 
 ## Partir d'un hôte qu'on possède déjà
 
