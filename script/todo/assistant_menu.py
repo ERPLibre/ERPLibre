@@ -2998,7 +2998,7 @@ class AssistantMenuMixin:
         if not gardees:
             self._llm_conversation()
             return
-        choices = [{"prompt_description": t("New conversation")}]
+        choices = [{"prompt_description": t("Start a new conversation")}]
         choices.append({"section": t("Resume")})
         for vue in gardees:
             choices.append({"prompt_description": self._llm_ligne_seance(vue)})

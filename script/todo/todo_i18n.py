@@ -12676,7 +12676,7 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
-    "New conversation": {
+    "Start a new conversation": {
         "fr": "✨ Nouvelle conversation",
         "en": "✨ New conversation",
     },
