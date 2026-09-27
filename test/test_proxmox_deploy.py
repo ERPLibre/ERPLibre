@@ -1911,5 +1911,69 @@ class TestLeReleveDesReseauxDeLHote(unittest.TestCase):
         self.assertEqual(pve.USED_NETS_CMD, self.vu["remote"])
 
 
+class TestLePontRefusePlutotQueDeBatir(unittest.TestCase):
+    """UN CONSTRUCTEUR DE COMMANDES QUI NE PEUT PAS BÂTIR REFUSE. Ce chemin pose
+    le réseau d'un hyperviseur : un nom vide y écrivait une strophe « auto » sans
+    interface, que l'hôte recharge en silence, et un CIDR vide levait une erreur
+    d'indice depuis un découpage fait avant qu'on sache s'il sert."""
+
+    VALIDE = {"nom": "vmbr42", "cidr": "10.9.9.1/24"}
+
+    def test_a_valid_pair_still_builds(self):
+        """Le contrôle positif : sans lui, un constructeur qui refuse toujours
+        passerait tous les refus ci-dessous."""
+        self.assertNotEqual([], pve.bridge_setup_cmds(**self.VALIDE))
+
+    def test_it_refuses_rather_than_raise(self):
+        """LA PROPRIÉTÉ : aucune entrée ne fait LEVER. Une exception d'indice
+        remplaçait le verdict d'un geste lancé sur un hyperviseur."""
+        for change in (
+            {"nom": ""},
+            {"nom": "   "},
+            {"cidr": ""},
+            {"cidr": None},
+            {"cidr": "pas-un-cidr"},
+            {"cidr": "10.9.9.1"},
+            {"cidr": "10.9.9.1/99"},
+            {"cidr": "300.1.1.1/24"},
+        ):
+            with self.subTest(**change):
+                self.assertEqual(
+                    [], pve.bridge_setup_cmds(**{**self.VALIDE, **change})
+                )
+
+    def test_an_explicit_prefix_is_required(self):
+        """Sans préfixe, la dérivation le suppose à /32 et la strophe sort avec
+        une adresse sans masque, qu'« inet static » refuse."""
+        self.assertEqual(
+            [], pve.bridge_setup_cmds(nom="vmbr42", cidr="10.9.9.1")
+        )
+
+    def test_the_masqueraded_network_follows_the_prefix(self):
+        """LE RÉSEAU EST DÉRIVÉ, non recomposé. Remplacer le dernier octet par
+        zéro est juste en /24 et faux dès que le préfixe ne tombe pas sur un
+        octet : en /25, une adresse de la moitié haute faisait masquer la
+        moitié basse — donc les VM du pont ne sortaient pas."""
+        for cidr, attendu in (
+            ("10.10.10.1/24", "10.10.10.0/24"),
+            ("10.10.10.130/25", "10.10.10.128/25"),
+            ("10.10.10.1/25", "10.10.10.0/25"),
+            ("10.10.0.1/16", "10.10.0.0/16"),
+        ):
+            with self.subTest(cidr=cidr):
+                joint = "\n".join(
+                    pve.bridge_setup_cmds(cidr=cidr, uplink="eth0")
+                )
+                self.assertIn(attendu, joint)
+
+    def test_the_two_halves_of_a_slash_25_do_not_mix(self):
+        """Le contrôle positif du précédent : sans lui, une dérivation qui
+        rendrait toujours la moitié basse passerait pour la moitié haute."""
+        basse = "\n".join(
+            pve.bridge_setup_cmds(cidr="10.10.10.1/25", uplink="eth0")
+        )
+        self.assertNotIn("10.10.10.128/25", basse)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

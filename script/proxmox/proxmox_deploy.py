@@ -774,8 +774,30 @@ def bridge_setup_cmds(
 
     La plage part de 2 : le VID 1 est le VLAN natif, non tagué, et l'inclure
     ferait passer le trafic sans étiquette pour du trafic étiqueté 1.
+
+    REFUSE PAR UNE LISTE VIDE plutôt que de bâtir. Un nom vide produisait une
+    strophe « auto » sans interface, que l'hôte recharge en silence ; un CIDR
+    vide levait une erreur d'indice depuis un découpage fait AVANT qu'on sache
+    s'il sert — sur un chemin qui pose le réseau d'un hyperviseur. L'appelant
+    qui joue une liste vide doit la lire comme un refus : rien n'a tourné.
+
+    Le réseau à masquer est DÉRIVÉ de l'interface, non recomposé à la main. Le
+    découpage de chaîne remplaçait le dernier octet par zéro, ce qui est juste
+    en /24 et faux dès que le préfixe ne tombe pas sur un octet : un /25
+    masquait la moitié basse du réseau quand l'adresse était dans la haute.
     """
-    reseau = cidr.rsplit(".", 1)[0] + ".0/" + cidr.split("/")[1]
+    # LE PRÉFIXE EST EXIGÉ, écrit. Sans lui, la dérivation le suppose à /32 et
+    # la strophe sort avec une adresse sans masque, qu'`inet static` refuse —
+    # l'ancien découpage de chaîne l'exigeait, et le relâcher serait un recul.
+    if "/" not in (cidr or ""):
+        return []
+    try:
+        interface = ipaddress.ip_interface(cidr)
+    except (ValueError, TypeError):
+        return []
+    if not (nom or "").strip():
+        return []
+    reseau = str(interface.network)
     bloc = [
         "",
         f"auto {nom}",
