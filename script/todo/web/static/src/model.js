@@ -75,7 +75,17 @@ export function listRows(tree, counts, query, sort, lang) {
         rows.sort((a, b) => usage(counts, b.node) - usage(counts, a.node));
     } else if (sort === "name") {
         const collator = new Intl.Collator(lang, {sensitivity: "base"});
-        rows.sort((a, b) => collator.compare(bare(a.node.label), bare(b.node.label)));
+        rows.sort((a, b) => {
+            const nameA = bare(a.node.label);
+            const nameB = bare(b.node.label);
+            // Un libellé sans lettre ni chiffre (« () », un tiret seul, un
+            // point médian) rend `bare` vide : il va après les libellés
+            // nommés plutôt qu'en tête, où une chaîne vide se collerait.
+            if (!nameA || !nameB) {
+                return (nameA === "") - (nameB === "");
+            }
+            return collator.compare(nameA, nameB);
+        });
     }
     return rows;
 }

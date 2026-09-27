@@ -296,6 +296,30 @@ class TestPageModel(unittest.TestCase):
         )
 
 
+# Libellés sans lettre ni chiffre, comme `build_code_tree` en produit pour
+# certaines feuilles (« () », un tiret seul, un point médian) : le tri par
+# nom ne doit pas les placer en tête.
+NAME_SORT_CHECK = r"""
+const leaf = (label) =>
+    ({key: label, label, path: label, menu: false, children: []});
+const tree = {key: "TODO", label: "TODO", path: "TODO", menu: true,
+    children: [
+        leaf("🔧 Bravo"), leaf("()"), leaf("🔧 Alpha"), leaf("— "), leaf("·")]};
+console.log(JSON.stringify({
+    byName: m.listRows(tree, {}, "", "name", "fr").map((row) => row.path),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestNameSortWithLetterlessLabels(unittest.TestCase):
+    def test_labels_with_no_letter_sort_last(self):
+        out = _node_json(NAME_SORT_CHECK, "model.js")
+        self.assertEqual(
+            out["byName"], ["🔧 Alpha", "🔧 Bravo", "()", "— ", "·"]
+        )
+
+
 VIEW_CHECK = r"""
 console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,
