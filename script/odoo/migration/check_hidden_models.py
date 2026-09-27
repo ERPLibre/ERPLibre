@@ -127,7 +127,15 @@ try:
             visible = False
             for membre in membres:
                 try:
-                    if modele.with_user(membre).search([], limit=1):
+                    # with_user() depuis la 13 ; avant, sudo(user) change
+                    # d'utilisateur sans passer superutilisateur. Sans ce
+                    # repli, l'AttributeError passait pour un refus d'accès
+                    # et chaque modèle d'une base 11 ou 12 semblait muet.
+                    if hasattr(modele, "with_user"):
+                        comme = modele.with_user(membre)
+                    else:
+                        comme = modele.sudo(membre)
+                    if comme.search([], limit=1):
                         visible = True
                         break
                 except Exception:

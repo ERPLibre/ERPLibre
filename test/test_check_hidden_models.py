@@ -330,6 +330,14 @@ class TestTheScriptCollectsWhatTheReportNeeds(unittest.TestCase):
     def test_the_script_is_valid_python(self):
         compile(self.corps(), "script", "exec")
 
+    def test_odoo_11_and_12_switch_user_with_sudo(self):
+        """with_user() arrived in 13. Without the fallback its AttributeError
+        read as an access refusal, and every model of an 11 or 12 database
+        looked hidden."""
+        corps = self.corps()
+        self.assertIn('hasattr(modele, "with_user")', corps)
+        self.assertIn("modele.sudo(membre)", corps)
+
 
 if __name__ == "__main__":
     unittest.main()
