@@ -585,6 +585,23 @@ class TestRecorder(StoreCase):
             records, [("event", {"t": "run_start", "cmd": shown})]
         )
 
+    def test_a_command_a_conninfo_password_hides_too(self):
+        # « password= » sans option ni tiret : le masque de l'affichage n'y
+        # touche pas seul (aucun « --password »), celui du stockage le
+        # rattrape sans couper ce qu'il a déjà masqué ailleurs sur la ligne.
+        self.start()
+        run = 'psql "host=db.example password=hunter2" base'
+        self.rec.worker({"t": "run_start", "cmd": run})
+        self.rec.end()
+        entry, records = self.records()
+        shown = 'psql "host=db.example password=***'
+        self.assertEqual(entry["commands"][0]["cmd"], shown)
+        self.assertEqual(
+            records, [("event", {"t": "run_start", "cmd": shown})]
+        )
+        self.assertNotIn("hunter2", repr(entry))
+        self.assertNotIn("hunter2", repr(records))
+
     def test_a_secret_answer_is_never_kept(self):
         self.start()
         asks = [

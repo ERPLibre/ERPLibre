@@ -135,6 +135,21 @@ def _redact(text, shown=False) -> str:
     return execute.redact_for_storage(text)
 
 
+def _redact_command(cmd) -> str:
+    """Le masque de l'affichage (`redact_secrets`), qui garde une commande
+    lisible, puis celui du stockage, qui rattrape ce qu'il guette seul
+    (« password= » sans option ni « -- ») sans retoucher une valeur que le
+    premier a déjà réduite à « '***' » (`keep_masked`). Pour `run_start.cmd`
+    seulement : une ligne de sortie brute n'a jamais cette valeur à
+    préserver, `_redact` seul lui suffit."""
+    # Même import différé que _redact, même raison.
+    from script.execute import execute
+
+    return execute.redact_for_storage(
+        execute.redact_secrets(cmd), keep_masked=True
+    )
+
+
 def _at_risk(text) -> bool:
     # Même import différé que _redact, même raison.
     from script.execute.execute import holds_secret_trigger
@@ -858,9 +873,11 @@ class Recorder:
             level = message.get("level")
             self._event({"t": "notice", "level": level, "text": text})
         elif kind == "run_start":
-            # Le masque de l'affichage, que le worker a déjà passé : celui du
-            # stockage couperait la commande après « --password '***' ».
-            cmd = _redact(str(message.get("cmd") or ""), shown=True)
+            # Les deux masques (_redact_command) : celui de l'affichage
+            # garde la commande lisible, celui du stockage rattrape un mot
+            # de passe imprimé sans option ni tiret (« password= »), que le
+            # premier ne guette pas seul.
+            cmd = _redact_command(str(message.get("cmd") or ""))
             self._event({"t": "run_start", "cmd": cmd})
         elif kind == "run_end":
             rc, secs = message.get("rc"), message.get("secs")

@@ -133,6 +133,18 @@ _PASSWORD_LINE = re.compile(
     r"(?:[^\S\n]*[:=][^\S\n]*|[^\S\n]+))(?P<val>\S.*)",
     re.IGNORECASE,
 )
+# Le même motif, qui laisse intacte une valeur déjà réduite à « '***' » — la
+# marque que pose `redact_secrets` sur une option, une variable ou un
+# en-tête (jamais sur un identifiant d'URL, jamais entre guillemets ailleurs
+# qu'ici). `redact_for_storage(keep_masked=True)` s'en sert pour une commande
+# déjà passée par `redact_secrets` : ce qui suit une option de secret reste
+# lisible, plutôt que d'être à son tour effacé comme pour une ligne de
+# sortie brute, où rien n'est déjà masqué à préserver.
+_PASSWORD_LINE_KEEP_MASKED = re.compile(
+    r"(?P<head>(?<![^\W_])(?:password|passwd|mot de passe)\b[\"']?"
+    r"(?:[^\S\n]*[:=][^\S\n]*|[^\S\n]+))(?!'\*\*\*')(?P<val>\S.*)",
+    re.IGNORECASE,
+)
 # Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,
 # cherchés dans la ligne passée par casefold, qui rend comme la comparaison
 # sans casse des motifs « ſ » en « s ». Aucun ne porte de « i » : le « ı »
@@ -140,9 +152,11 @@ _PASSWORD_LINE = re.compile(
 _TRIGGERS = ("pass", "pwd", "secret", "token", "key", "auth", "://")
 
 
-def redact_for_storage(text):
+def redact_for_storage(text, keep_masked=False):
     """`redact_secrets(text)`, puis, sur chaque ligne qui imprime un mot de
-    passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** ».
+    passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** ». Avec
+    `keep_masked`, une valeur déjà réduite à « '***' » n'est pas reprise et
+    ce qui la suit sur la ligne reste (`_PASSWORD_LINE_KEEP_MASKED`).
 
     Pour ce que le hub garde sur disque, jamais pour l'affichage : à
     l'écran, « No password needed » se lit en entier ; dans un journal, il
@@ -157,7 +171,8 @@ def redact_for_storage(text):
     if not any(word in folded for word in _TRIGGERS):
         return text
     text = redact_secrets(text)
-    return _PASSWORD_LINE.sub(lambda m: m.group("head") + "***", text)
+    pattern = _PASSWORD_LINE_KEEP_MASKED if keep_masked else _PASSWORD_LINE
+    return pattern.sub(lambda m: m.group("head") + "***", text)
 
 
 def holds_secret_trigger(text) -> bool:
