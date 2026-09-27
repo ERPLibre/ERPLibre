@@ -17376,6 +17376,150 @@ TRANSLATIONS = {
         "fr": "Depuis quelle version (tag, branche ou commit) : ",
         "en": "Since which version (tag, branch or commit): ",
     },
+    "detached": {
+        "fr": "détaché",
+        "en": "detached",
+    },
+    "A fix targets the oldest affected version (N-2 advised), anything else develop.": {
+        "fr": "Un correctif vise la plus vieille version touchée (N-2 conseillé), le reste develop.",
+        "en": "A fix targets the oldest affected version (N-2 advised), anything else develop.",
+    },
+    "No git identity (user.email): repo sync would reset the branch. Set it with: git config --global user.email ...": {
+        "fr": "Aucune identité git (user.email) : repo sync remettrait la branche à zéro. La poser par : git config --global user.email ...",
+        "en": "No git identity (user.email): repo sync would reset the branch. Set it with: git config --global user.email ...",
+    },
+    "Branch %s at the pinned commit %s, history deepened by %d.": {
+        "fr": "Branche %s au commit épinglé %s, historique approfondi de %d.",
+        "en": "Branch %s at the pinned commit %s, history deepened by %d.",
+    },
+    "Pinned commit: %s (%s, branch %s)": {
+        "fr": "Commit épinglé : %s (%s, branche %s)",
+        "en": "Pinned commit: %s (%s, branch %s)",
+    },
+    "Checkout: %s at %s": {
+        "fr": "Checkout : %s à %s",
+        "en": "Checkout: %s at %s",
+    },
+    "Work since the pin: %d commit(s), %d uncommitted file(s)": {
+        "fr": "Travail depuis l'épinglé : %d commit(s), %d fichier(s) non commité(s)",
+        "en": "Work since the pin: %d commit(s), %d uncommitted file(s)",
+    },
+    "Fork ERPLibre/dolibarr: answers; its development manifest comes next.": {
+        "fr": "Fork ERPLibre/dolibarr : il répond ; son manifest de développement vient ensuite.",
+        "en": "Fork ERPLibre/dolibarr: answers; its development manifest comes next.",
+    },
+    "Fork ERPLibre/dolibarr: not found; work stays on a local branch.": {
+        "fr": "Fork ERPLibre/dolibarr : introuvable ; le travail reste sur une branche locale.",
+        "en": "Fork ERPLibre/dolibarr: not found; work stays on a local branch.",
+    },
+    "No work commit since the pinned commit.": {
+        "fr": "Aucun commit de travail depuis le commit épinglé.",
+        "en": "No work commit since the pinned commit.",
+    },
+    "%d patch(es) in %s": {
+        "fr": "%d patch(s) dans %s",
+        "en": "%d patch(es) in %s",
+    },
+    "Every commit signed off by its author (DCO)": {
+        "fr": "Chaque commit signé par son auteur (DCO)",
+        "en": "Every commit signed off by its author (DCO)",
+    },
+    "Neither ChangeLog nor a language other than en_US": {
+        "fr": "Ni ChangeLog ni langue autre qu'en_US",
+        "en": "Neither ChangeLog nor a language other than en_US",
+    },
+    "Invalid branch name: %s": {
+        "fr": "Nom de branche invalide : %s",
+        "en": "Invalid branch name: %s",
+    },
+    "Branch %s created; the history could not be deepened:": {
+        "fr": "Branche %s créée ; l'historique n'a pas pu être approfondi :",
+        "en": "Branch %s created; the history could not be deepened:",
+    },
+    "History: shallow, %s commit(s)": {
+        "fr": "Historique : peu profond, %s commit(s)",
+        "en": "History: shallow, %s commit(s)",
+    },
+    "History: full, %s commit(s)": {
+        "fr": "Historique : complet, %s commit(s)",
+        "en": "History: full, %s commit(s)",
+    },
+    "Without the author's Signed-off-by (DCO): %s": {
+        "fr": "Sans le Signed-off-by de l'auteur (DCO) : %s",
+        "en": "Without the author's Signed-off-by (DCO): %s",
+    },
+    "Files left to the release process or to Transifex: %s": {
+        "fr": "Fichiers laissés à la publication ou à Transifex : %s",
+        "en": "Files left to the release process or to Transifex: %s",
+    },
+    "No Dolibarr checkout at %s: sync it with script/manifest/update_manifest_local_dolibarr.sh": {
+        "fr": "Aucun checkout Dolibarr à %s : le synchroniser par script/manifest/update_manifest_local_dolibarr.sh",
+        "en": "No Dolibarr checkout at %s: sync it with script/manifest/update_manifest_local_dolibarr.sh",
+    },
+    "No commit carries %s: the next repo sync resets this branch.": {
+        "fr": "Aucun commit ne porte %s : le prochain repo sync remet cette branche à zéro.",
+        "en": "No commit carries %s: the next repo sync resets this branch.",
+    },
+    "%s: no keyword (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)": {
+        "fr": "%s : aucun mot-clé (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)",
+        "en": "%s: no keyword (FIX, CLOSE, NEW, PERF, DOC, QUAL, SEC)",
+    },
+    "%s: CLOSE names the issue it closes (#123)": {
+        "fr": "%s : CLOSE nomme le ticket qu'il ferme (#123)",
+        "en": "%s: CLOSE names the issue it closes (#123)",
+    },
+    "%s: description of %d characters, 50 at most advised": {
+        "fr": "%s : description de %d caractères, 50 au plus conseillé",
+        "en": "%s: description of %d characters, 50 at most advised",
+    },
+    "Branch %s is stable: one fix per PR, here %d commits": {
+        "fr": "La branche %s est stable : un correctif par PR, ici %d commits",
+        "en": "Branch %s is stable: one fix per PR, here %d commits",
+    },
+    "Branch %s is stable: anything but a fix goes to develop": {
+        "fr": "La branche %s est stable : tout sauf un correctif va à develop",
+        "en": "Branch %s is stable: anything but a fix goes to develop",
+    },
+    "%s: structure changes go first in a PR of their own": {
+        "fr": "%s : un changement de structure passe d'abord dans sa propre PR",
+        "en": "%s: structure changes go first in a PR of their own",
+    },
+    "%s: %s reaches the ChangeLog only in capitals": {
+        "fr": "%s : %s n'entre au ChangeLog qu'en capitales",
+        "en": "%s: %s reaches the ChangeLog only in capitals",
+    },
+    "%s: a new library needs the project's approval first": {
+        "fr": "%s : une nouvelle bibliothèque demande d'abord l'accord du projet",
+        "en": "%s: a new library needs the project's approval first",
+    },
+    "Core changes:": {
+        "fr": "Modifications du cœur :",
+        "en": "Core changes:",
+    },
+    "Dolibarr - Core changes: branch, check, patches": {
+        "fr": "🛠️ Dolibarr - Modifier le cœur : branche, contrôle, patchs",
+        "en": "🛠️ Dolibarr - Core changes: branch, check, patches",
+    },
+    "Status of the checkout": {
+        "fr": "État du checkout",
+        "en": "Status of the checkout",
+    },
+    "Start a work branch at the pinned commit": {
+        "fr": "Ouvrir une branche de travail au commit épinglé",
+        "en": "Start a work branch at the pinned commit",
+    },
+    "Check the commits against Dolibarr's rules": {
+        "fr": "Contrôler les commits selon les règles de Dolibarr",
+        "en": "Check the commits against Dolibarr's rules",
+    },
+    "Export the patch series": {
+        "fr": "Exporter la série de patchs",
+        "en": "Export the patch series",
+    },
+    "Branch name: ": {
+        "fr": "Nom de la branche : ",
+        "en": "Branch name: ",
+    },
 }
 
 

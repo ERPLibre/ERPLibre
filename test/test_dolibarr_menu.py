@@ -58,6 +58,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
             "_dolibarr_quality"
         ),
         "Dolibarr - Hooks and triggers between versions": "_dolibarr_hooks",
+        "Dolibarr - Core changes: branch, check, patches": "_dolibarr_core",
     }
 
 
@@ -588,6 +589,40 @@ class TestHooks(unittest.TestCase):
 
     def test_diff_needs_its_starting_version(self):
         self.assertEqual(self.lancer_hooks(["2", ""]), [])
+
+
+CORE = "./.venv.erplibre/bin/python -u script/dolibarr/core.py"
+
+
+class TestCoeur(unittest.TestCase):
+    def lancer_coeur(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_core()
+        return lances
+
+    def test_each_action(self):
+        for choix, fin in (("1", "status"), ("3", "check"), ("4", "patches")):
+            self.assertEqual(self.lancer_coeur([choix]), [f"{CORE} {fin}"])
+
+    def test_start_asks_for_the_topic(self):
+        self.assertEqual(
+            self.lancer_coeur(["2", "fix-total"]),
+            [f"{CORE} start --topic fix-total"],
+        )
+        self.assertEqual(self.lancer_coeur(["2", ""]), [])
 
 
 class TestBilan(unittest.TestCase):

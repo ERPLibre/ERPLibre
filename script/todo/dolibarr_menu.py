@@ -52,6 +52,8 @@ PACKAGE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/package.py"
 QUALITY_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/quality.py"
 # Hooks et déclencheurs de Dolibarr, à une version ou entre deux.
 HOOKS_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/hooks_index.py"
+# Modifier le cœur : branche de travail, contrôle, série de patchs.
+CORE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/core.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -132,6 +134,11 @@ class DolibarrMenuMixin:
                     "Dolibarr - Hooks and triggers between versions"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Dolibarr - Core changes: branch, check, patches"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -175,6 +182,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_quality()
             elif status == "18":
                 self._dolibarr_hooks()
+            elif status == "19":
+                self._dolibarr_core()
             else:
                 print(t("Command not found !"))
 
@@ -548,6 +557,30 @@ class DolibarrMenuMixin:
             args = ["diff", "--from", version]
         self.execute.exec_command_live(
             f"{HOOKS_CLI} {shlex.join(args)}", source_erplibre=False
+        )
+
+    def _dolibarr_core(self):
+        """core.py sur le checkout épinglé ; rien n'y est poussé."""
+        action = self._dolibarr_choose(
+            t("Core changes:"),
+            [
+                ("status", t("Status of the checkout")),
+                ("start", t("Start a work branch at the pinned commit")),
+                ("check", t("Check the commits against Dolibarr's rules")),
+                ("patches", t("Export the patch series")),
+            ],
+        )
+        if action is None:
+            return
+        args = [action]
+        if action == "start":
+            topic = input(t("Branch name: ")).strip()
+            if not topic:
+                print(t("Cancelled."))
+                return
+            args += ["--topic", topic]
+        self.execute.exec_command_live(
+            f"{CORE_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):
