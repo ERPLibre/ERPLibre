@@ -16944,6 +16944,18 @@ TRANSLATIONS = {
         "fr": "L'image ne migre qu'une version majeure à la fois (%s vers %s).",
         "en": "The image migrates one major version at a time (%s to %s).",
     },
+    "Dolibarr - Upgrade an instance": {
+        "fr": "⬆️ Dolibarr - Monter une instance",
+        "en": "⬆️ Dolibarr - Upgrade an instance",
+    },
+    "The instance stops during the upgrade; a backup comes first and a failure rolls back.": {
+        "fr": "L'instance s'arrête pendant la montée ; une sauvegarde vient d'abord et un échec revient en arrière.",
+        "en": "The instance stops during the upgrade; a backup comes first and a failure rolls back.",
+    },
+    "Upgrade %s to the pinned version? (y/N): ": {
+        "fr": "Monter %s à la version épinglée ? (o/N) : ",
+        "en": "Upgrade %s to the pinned version? (y/N): ",
+    },
 }
 
 
