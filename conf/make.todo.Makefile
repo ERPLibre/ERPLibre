@@ -11,6 +11,13 @@
 todo:
 	./todo.sh
 
+# Le TODO du terminal, qui écrit aussi chacune de ses questions, réponses et
+# commandes dans ~/.erplibre/todo_web/<empreinte>/record-*.jsonl (0600), un
+# secret masqué : ce que la page web lira d'une session.
+.PHONY: todo_record
+todo_record:
+	./.venv.erplibre/bin/python -m script.todo.ui.record
+
 # Interface web de TODO : un hub local par checkout, sur 127.0.0.1. « open »
 # le démarre ou le réutilise et ouvre le navigateur par un lien à usage
 # unique, aussi affiché ici pour un navigateur qui ne l'aurait pas ouvert.

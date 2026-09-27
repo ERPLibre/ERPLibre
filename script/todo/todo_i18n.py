@@ -1206,6 +1206,11 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
+    # Mode enregistrement (make todo_record).
+    "Events recorded in:": {
+        "fr": "Événements enregistrés dans :",
+        "en": "Events recorded in:",
+    },
     # GPT code section
     "GPT code - AI assistant tools": {
         "fr": "🤖 GPT code - Outils d'assistant IA",
