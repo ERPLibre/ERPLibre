@@ -720,14 +720,25 @@ class TestTerminal(TerminalCase):
         self.assertEqual(self.hub.terminals, {})
 
     async def test_hello_is_required_within_the_delay(self):
+        # Chaque cas change UN champ d'un hello par ailleurs valide : le
+        # rejet vient bien de ce champ, jamais d'une taille absente.
+        valid = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 80}
+        valid.update(rows=24)
         bad = [
-            json.dumps({"t": "hello", "csrf": "forged", "lang": "en"}),
-            json.dumps({"t": "hello", "csrf": self.csrf, "lang": "de"}),
+            json.dumps({**valid, "csrf": "forged"}),
+            json.dumps({**valid, "lang": "de"}),
+            json.dumps({**valid, "cols": 0}),
+            json.dumps({**valid, "cols": server.MAX_TERMINAL + 1}),
+            json.dumps({**valid, "cols": True}),
+            json.dumps({**valid, "after": -1}),
+            json.dumps({**valid, "session": 5}),
             b"binary first",
         ]
         for message in bad:
             tab = await self.connect()
-            await tab.conn.write_message(message, binary=message == bad[2])
+            await tab.conn.write_message(
+                message, binary=isinstance(message, bytes)
+            )
             self.assertEqual(await tab.closed(), 1008, message)
         with patch.object(server, "HELLO_SECONDS", 0.2):
             tab = await self.connect()
@@ -902,7 +913,12 @@ class TestTerminalIdle(TerminalCase):
         tab = await self.tab()
         pid = self.hub.terminals[tab.texts[0]["id"]].proc.pid
         tab.conn.close()
-        await asyncio.sleep(1.2)
+        # La session s'éteint seule vers 1.6-1.85 s ; le hub, occupé tant
+        # qu'elle existe, ne s'arrête qu'ensuite — deux faits distincts.
+        deadline = time.monotonic() + 10
+        while self.hub.terminals:
+            self.assertLess(time.monotonic(), deadline, "session still open")
+            await asyncio.sleep(0.05)
         self.assertFalse(self.hub.stopped.is_set())
         await asyncio.wait_for(self.hub.stopped.wait(), 10)
         with self.assertRaises(ProcessLookupError):
