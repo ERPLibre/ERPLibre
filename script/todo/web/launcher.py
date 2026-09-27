@@ -47,6 +47,11 @@ START_TIMEOUT = 5.0
 STOP_TIMEOUT = 5.0
 POLL = 0.1
 LOG_TAIL = 5
+# Seule dépendance tierce du hub, telle que la déclare
+# requirement/erplibre_require-ments.txt.
+TORNADO = "tornado>=6.5.10,<7"
+# Ce que Python écrit dans le journal quand le venv n'a pas tornado.
+TORNADO_MISSING = re.compile(r"No module named 'tornado[.']")
 # Page locale, ouverte en file:// : elle mène au lien sans JavaScript.
 REDIRECT = """<!doctype html>
 <meta charset="utf-8">
@@ -62,12 +67,20 @@ _SPAWNED = {}
 
 
 class LaunchError(Exception):
-    """Le hub n'a pas démarré. `log_tail` : fin de son journal, ou vide."""
+    """Le hub n'a pas démarré. `log_tail` : fin de son journal, ou vide.
 
-    def __init__(self, message, log_tail=""):
+    `kind` nomme la cause, d'où un menu tire son message : `"root"` (le
+    lanceur refuse root), `"missing"` (le paquet `pkg` manque au venv, lu
+    dans le journal) ou `"start"` (tout autre échec). `message` reste la
+    phrase anglaise de la ligne de commande.
+    """
+
+    def __init__(self, message, log_tail="", kind="start", pkg=None):
         super().__init__(message)
         self.message = message
         self.log_tail = log_tail
+        self.kind = kind
+        self.pkg = pkg
 
 
 @dataclass(frozen=True)
@@ -170,7 +183,7 @@ def ensure_running(root) -> dict:
     sous root, et quand le journal ne peut pas être ouvert.
     """
     if os.geteuid() == 0:
-        raise LaunchError("the web hub refuses to run as root")
+        raise LaunchError("the web hub refuses to run as root", kind="root")
     info = status(root)
     if info is not None:
         return info
@@ -210,7 +223,12 @@ def ensure_running(root) -> dict:
         proc.kill()
         proc.wait()
     _SPAWNED.pop(proc.pid, None)
-    raise LaunchError("the web hub did not start", _tail(root))
+    tail = _tail(root)
+    if TORNADO_MISSING.search(tail):
+        raise LaunchError(
+            "the web hub did not start", tail, kind="missing", pkg="tornado"
+        )
+    raise LaunchError("the web hub did not start", tail)
 
 
 def mint_code(root) -> str:

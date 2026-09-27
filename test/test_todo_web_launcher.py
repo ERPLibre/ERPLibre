@@ -14,10 +14,12 @@ import io
 import json
 import os
 import re
+import shlex
 import signal
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -220,6 +222,25 @@ class TestStartFailure(unittest.TestCase):
         self.assertIn("boom-marker", ctx.exception.log_tail)
         self.assertNotIn("earlier run", ctx.exception.log_tail)
         self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual(
+            (ctx.exception.kind, ctx.exception.pkg), ("start", None)
+        )
+
+    def test_a_venv_without_tornado_names_the_missing_package(self):
+        # Le vrai hub sous un Python sans site-packages (-S) : son import
+        # de tornado échoue comme dans un venv qui ne l'a pas.
+        python = shlex.quote(sys.executable)
+        fake = _fake_python(self.base, f'exec {python} -S "$@"\n')
+        with (
+            patch.object(launcher, "venv_python", return_value=fake),
+            self.assertRaises(launcher.LaunchError) as ctx,
+        ):
+            launcher.ensure_running(REPO)
+        self.assertEqual(ctx.exception.message, "the web hub did not start")
+        self.assertEqual(
+            (ctx.exception.kind, ctx.exception.pkg), ("missing", "tornado")
+        )
+        self.assertIn("No module named 'tornado'", ctx.exception.log_tail)
 
     def test_a_hub_that_never_answers_is_killed(self):
         pidfile = self.base / "pid"
@@ -432,8 +453,9 @@ class TestRoot(unittest.TestCase):
             patch.object(launcher.subprocess, "Popen") as popen,
         ):
             self.assertIsNone(launcher.status(REPO))
-            with self.assertRaisesRegex(launcher.LaunchError, "root"):
+            with self.assertRaisesRegex(launcher.LaunchError, "root") as ctx:
                 launcher.ensure_running(REPO)
+            self.assertEqual(ctx.exception.kind, "root")
             with self.assertRaisesRegex(launcher.LaunchError, "root"):
                 launcher.open_page(REPO, browser=False)
             self.assertFalse(launcher.stop(REPO))
@@ -505,6 +527,7 @@ class TestInstallation(unittest.TestCase):
             REPO / "requirement" / "erplibre_require-ments.txt"
         ).read_text()
         self.assertRegex(text, re.compile(r"^tornado>=6\.5\.10,<7$", re.M))
+        self.assertIn(launcher.TORNADO, text.splitlines())
         self.assertGreaterEqual(tornado.version_info[:3], (6, 5, 10))
         self.assertLess(tornado.version_info[0], 7)
 
