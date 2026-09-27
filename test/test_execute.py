@@ -14,7 +14,11 @@ import time
 import unittest
 from unittest.mock import patch
 
-from script.execute.execute import Execute, redact_secrets
+from script.execute.execute import (
+    Execute,
+    redact_for_storage,
+    redact_secrets,
+)
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -475,6 +479,27 @@ class TestRedactSecrets(unittest.TestCase):
         sortie = redact_secrets("odoo --db_password 'inventeJKL'")
         self.assertIn("--db_password", sortie)
 
+    def test_a_pwd_variable_is_redacted_not_the_directory(self):
+        sortie = redact_secrets("MASTER_PWD=inventeMNO PWD=/tmp OLDPWD=/srv")
+        self.assertEqual(sortie, "MASTER_PWD='***' PWD=/tmp OLDPWD=/srv")
+
+    def test_a_long_word_or_run_of_dashes_is_fast(self):
+        """Une option ne commence ni après un caractère de mot ni après un
+        tiret, et ne se lit, comme une variable, que suivie d'un blanc ou
+        d'un « = » : une ligne de séparateurs, de mots liés par des tirets
+        ou d'un mot qui se répète coûte un temps proportionnel à sa
+        longueur, jamais à son carré."""
+        for ligne in (
+            "-" * 16384 + " token",
+            "a-" * 8192 + " token",
+            "--" + "token" * 3277,
+            "PASSWORD" * 8192,
+        ):
+            with self.subTest(debut=ligne[:4]):
+                debut = time.monotonic()
+                redact_secrets(ligne)
+                self.assertLess(time.monotonic() - debut, 0.5)
+
     def test_a_path_is_not_a_secret(self):
         """Rien ne disparaît d'une commande qui ne porte aucun secret."""
         commande = "make test_unit_file F=test/test_execute.py"
@@ -543,6 +568,37 @@ class TestRedactUrlCredentials(unittest.TestCase):
         self.assertNotIn("inventeP@ss", sortie)
         self.assertIn("postgresql://odoo:***@db.example/base", sortie)
 
+    def test_a_password_with_a_stop_character_stays_masked(self):
+        """Sans « @ » avant « ? », « # », une virgule ou un guillemet, le
+        masque va jusqu'au dernier « @ » : un mot de passe qui porte l'un
+        d'eux reste caché en entier."""
+        for mot in ("ab,cd", "it's", "pa?ss", "pa#ss", 'q"x'):
+            ligne = f"git clone https://u:{mot}@forge.example/r.git"
+            with self.subTest(mot=mot):
+                self.assertEqual(
+                    redact_secrets(ligne),
+                    "git clone https://u:***@forge.example/r.git",
+                )
+
+    def test_the_mask_stops_before_a_query_a_comma_or_a_quote(self):
+        """Un « @ » plus loin sur la ligne, après « ? », « # », une virgule
+        ou un guillemet, n'appartient pas à l'userinfo : le masque s'arrête
+        avant, et l'hôte affiché reste le vrai."""
+        for suite in (
+            "?next=forged@example",
+            "#forged@example",
+            ",odoo@db2.example/base",
+            '",mail="forged@example',
+            "',forged@example",
+        ):
+            ligne = f"psql postgresql://odoo:inventeYZ@db.example{suite}"
+            with self.subTest(suite=suite):
+                sortie = redact_secrets(ligne)
+                self.assertNotIn("inventeYZ", sortie)
+                self.assertEqual(
+                    sortie, f"psql postgresql://odoo:***@db.example{suite}"
+                )
+
     def test_ordinary_user_survives(self):
         for commande in (
             "git clone ssh://git@forge.example/o/r.git",
@@ -562,14 +618,77 @@ class TestRedactUrlCredentials(unittest.TestCase):
         self.assertNotIn("inventeVWX", redact_secrets(ligne))
 
     def test_long_line_without_a_scheme_is_fast(self):
-        """Le schéma des deux motifs est borné (32 caractères) : une ligne
-        sans « :// » ne doit jamais coûter un temps proportionnel au CARRÉ de
-        sa longueur (chaque motif balayait auparavant tout le préfixe
-        `[a-z0-9+.-]*` avant d'abandonner à chaque position)."""
+        """Le schéma des deux motifs est borné (32 caractères) : sur une
+        ligne sans « :// », chaque position n'essaie qu'un préfixe
+        `[a-z0-9+.-]` de 32 caractères au plus avant d'abandonner, et le
+        temps reste proportionnel à la longueur, jamais à son carré."""
         ligne = "a." * 10000
         debut = time.monotonic()
         redact_secrets(ligne)
         self.assertLess(time.monotonic() - debut, 1.0)
+
+
+class TestRedactForStorage(unittest.TestCase):
+    """Ce qu'une ligne de sortie devient avant d'être gardée sur disque :
+    `redact_secrets`, puis le reste d'une ligne qui imprime un mot de passe
+    après son mot. Valeurs inventées."""
+
+    def test_a_printed_password_is_masked_after_its_word(self):
+        for ligne, attendu in (
+            ("Password: inventeAB", "Password: ***"),
+            ("admin password=inventeCD", "admin password=***"),
+            ("passwd inventeEF", "passwd ***"),
+            ("Mot de passe : inventeGH", "Mot de passe : ***"),
+            ("PASSWORD:inventeIJ et la suite", "PASSWORD:***"),
+            ("a\nPassword: inventeKL\nb", "a\nPassword: ***\nb"),
+            # Une clé de configuration ou de JSON, et l'espace insécable
+            # de la typographie française.
+            ("admin_passwd = inventeMN", "admin_passwd = ***"),
+            ("db_password = inventeOP", "db_password = ***"),
+            ("POSTGRES_PASSWORD: inventeQR", "POSTGRES_PASSWORD: ***"),
+            ('{"password": "inventeST"}', '{"password": ***'),
+            ("{'password': 'inventeUV'}", "{'password': ***"),
+            ("Mot de passe : inventeWX", "Mot de passe : ***"),
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), attendu)
+
+    def test_each_mask_passes_the_fast_path(self):
+        """Une ligne sans mot de `_TRIGGERS` n'essaie aucun motif : chaque
+        forme qu'un motif masque en porte donc un, casse comprise (« ſ »
+        égale « s » sans casse)."""
+        for ligne in (
+            "mysql --password inventeAB",
+            "PGPASSWORD=inventeCD psql",
+            "MASTER_PWD=inventeEF odoo",
+            "Authorization: Bearer inventeGH",
+            "git clone https://u:inventeIJ@forge.example/r",
+            "git clone https://ghp_inventeKL@forge.example/r",
+            "Password: inventeMN",
+            "Paſſword: inventeOP",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertNotIn("invente", redact_for_storage(ligne))
+
+    def test_redact_secrets_comes_first(self):
+        ligne = "Cloning https://u:inventeMN@forge.example/o/r.git"
+        self.assertEqual(
+            redact_for_storage(ligne),
+            "Cloning https://u:***@forge.example/o/r.git",
+        )
+
+    def test_a_prompt_and_other_words_survive(self):
+        for ligne in (
+            "Password: ",
+            "[sudo] password:",
+            "Passwords rotate daily",
+            "passwordless login",
+            "make test_unit",
+            "",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), ligne)
+        self.assertIsNone(redact_for_storage(None))
 
 
 if __name__ == "__main__":

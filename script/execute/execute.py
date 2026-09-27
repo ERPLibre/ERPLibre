@@ -40,16 +40,24 @@ VENV_ERPLIBRE = ".venv.erplibre"
 # MASTER_PWD dans l'environnement pour cette raison.
 #
 # On caviarde la VALEUR, jamais le nom de l'option : la commande reste lisible et
-# reproductible, il ne manque que ce qui ne doit pas être lu.
+# reproductible, il ne manque que ce qui ne doit pas être lu. Une option ne
+# commence ni juste après un caractère de mot ni après un tiret, et n'est lue
+# que si un blanc ou un « = » la suit : sans ces bornes, une longue suite de
+# tirets, ou un mot qui répète « token », fait essayer chaque départ ou chaque
+# occurrence jusqu'au bout du mot, en un temps au carré de sa longueur.
 _SECRET_OPTION = re.compile(
-    r"(?P<opt>--?[\w-]*"
+    r"(?P<opt>(?<![\w-])--?(?=[\w-]*[\s=])[\w-]*"
     r"(?:password|passwd|pwd|secret|token|api[-_]?key)[\w-]*"
     r"(?:\s+|=))"
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
     re.IGNORECASE,
 )
+# Une variable dont le nom porte le mot d'un secret, ou « _PWD »
+# (MASTER_PWD) ; PWD et OLDPWD, des répertoires, restent. Le nom n'est lu que
+# suivi de « = », pour la même raison de temps.
 _SECRET_ENV = re.compile(
-    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\w*=)"
+    r"(?P<var>\b(?=\w*=)\w*"
+    r"(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|_PWD)\w*=)"
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
 )
 # Un jeton porté par un en-tête n'a ni nom d'option ni nom de variable : il
@@ -65,12 +73,17 @@ _SECRET_HEADER = re.compile(
 # masque ce qui suit le deux-points jusqu'au DERNIER @ avant l'hôte (glouton) :
 # un mot de passe tapé avec un « @ » non encodé (la RFC l'interdit, ça arrive
 # quand même) reste ainsi caché en entier plutôt qu'à moitié. Il ne franchit
-# jamais un espace ni un « / », et un port (« hôte:8069/ ») n'est jamais suivi
-# d'un @ et reste. Le schéma est borné (32 caractères, RFC 3986 §3.1 l'autorise
+# jamais un espace ni un « / ». Il s'arrête d'abord avant « ? », « # », une
+# virgule ou un guillemet, qui finissent l'autorité ou l'URL : un « @ » plus
+# loin sur la ligne n'est pas celui de l'hôte, qui reste le vrai. Sans « @ »
+# avant eux, il va jusqu'au dernier « @ », et un mot de passe qui en porte un
+# reste caché en entier. Un port (« hôte:8069/ ») n'est jamais suivi d'un @ et
+# reste. Le schéma est borné (32 caractères, RFC 3986 §3.1 l'autorise
 # largement) pour qu'une ligne sans « :// » ne fasse pas remonter un temps de
 # retour en arrière proportionnel à sa longueur.
 _SECRET_URL_PASSWORD = re.compile(
-    r"(?P<head>\b[a-z][a-z0-9+.-]{0,31}://[^\s/:@]*:)(?P<val>[^\s/]+)(?=@)",
+    r"(?P<head>\b[a-z][a-z0-9+.-]{0,31}://[^\s/:@]*:)"
+    r"(?P<val>[^\s/?#\"',]+(?=@)|[^\s/]+(?=@))",
     re.IGNORECASE,
 )
 # Un jeton peut aussi tenir lieu de nom d'utilisateur, sans deux-points, ou
@@ -105,6 +118,46 @@ def redact_secrets(text):
     text = _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
     text = _SECRET_URL_PASSWORD.sub(lambda m: m.group("head") + "***", text)
     return _SECRET_URL_TOKEN.sub(lambda m: m.group("head") + "***", text)
+
+
+# Une ligne de sortie qui imprime un mot de passe le fait sans nom d'option ni
+# de variable : « Password: … », « password=… », « passwd … », « mot de
+# passe : … », ou par une clé de configuration (« admin_passwd = … »,
+# « POSTGRES_PASSWORD: … ») ou de JSON (« "password": … »). Le mot, sans
+# casse, seul ou au bout d'un nom joint par « _ », un guillemet éventuel,
+# puis sur la même ligne un deux-points, un signe égal ou des blancs
+# (l'espace insécable comprise), fait masquer tout le reste de la ligne. Une
+# invite qui attend encore sa réponse (« Password: ») n'a rien à masquer.
+_PASSWORD_LINE = re.compile(
+    r"(?P<head>(?<![^\W_])(?:password|passwd|mot de passe)\b[\"']?"
+    r"(?:[^\S\n]*[:=][^\S\n]*|[^\S\n]+))(?P<val>\S.*)",
+    re.IGNORECASE,
+)
+# Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,
+# cherchés dans la ligne passée par casefold, qui rend comme la comparaison
+# sans casse des motifs « ſ » en « s ». Aucun ne porte de « i » : le « ı »
+# sans point l'égale sans casse, et casefold ne le rend pas.
+_TRIGGERS = ("pass", "pwd", "secret", "token", "key", "auth", "://")
+
+
+def redact_for_storage(text):
+    """`redact_secrets(text)`, puis, sur chaque ligne qui imprime un mot de
+    passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** ».
+
+    Pour ce que le hub garde sur disque, jamais pour l'affichage : à
+    l'écran, « No password needed » se lit en entier ; dans un journal, il
+    devient « No password *** », et un mot de passe imprimé n'y reste pas.
+    Un texte sans aucun mot de `_TRIGGERS` est rendu tel quel sans essayer
+    de motif : le hub passe chaque ligne de sortie d'une session dans sa
+    boucle, que les autres sessions attendent.
+    """
+    if not text:
+        return text
+    folded = text.casefold()
+    if not any(word in folded for word in _TRIGGERS):
+        return text
+    text = redact_secrets(text)
+    return _PASSWORD_LINE.sub(lambda m: m.group("head") + "***", text)
 
 
 new_path = os.path.normpath(
