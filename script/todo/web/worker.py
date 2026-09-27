@@ -78,9 +78,9 @@ def read_hello(fd) -> dict:
     data = b""
     while not data.endswith(b"\n"):
         chunk = os.read(fd, 4096)
+        data += chunk
         if not chunk or len(data) > HELLO_LIMIT:
             raise ValueError("no hello on the channel")
-        data += chunk
     hello = json.loads(data)
     if not isinstance(hello, dict) or hello.get("t") != "hello":
         raise ValueError("no hello on the channel")

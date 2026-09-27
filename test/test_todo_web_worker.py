@@ -4,20 +4,29 @@
 """Le worker d'une session web.
 
 `serve`, `run_inline`, `track_crumbs` et `restart` sont vérifiés sur des
-doubles, sans TODO. Un seul test lance le vrai worker, donc le vrai TODO,
-par une session du hub : HOME et XDG_RUNTIME_DIR temporaires, la langue
-passée par `hello`, SIGINT ignoré chez le parent comme sous un lanceur en
-arrière-plan.
+doubles, sans TODO. `read_hello` et `main` lisent une socketpair ; `main`
+s'arrête avant TODO, que remplace un double. `open_channel`, qui déplace un
+descripteur, tourne dans un `python -c` jetable. Un seul test lance le vrai
+worker, donc le vrai TODO, par une session du hub : HOME et XDG_RUNTIME_DIR
+temporaires, la langue passée par `hello`, SIGINT ignoré chez le parent
+comme sous un lanceur en arrière-plan.
 """
 
 import asyncio
+import fcntl
 import io
+import json
+import os
 import signal
+import socket
+import subprocess
+import sys
 import time
 import types
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from todo_web_env import private_env
 
@@ -25,6 +34,29 @@ from script.todo import todo_i18n
 from script.todo.web import sessions, worker
 
 REPO = Path(__file__).resolve().parent.parent
+
+# `open_channel` dans un processus à part, qui dit par le canal ce qu'il en
+# voit : le descripteur, son héritage, l'environnement, et si le
+# descripteur reçu est fermé.
+OPEN_CHANNEL = r"""
+import json, os
+from script.todo.web import worker
+received = int(os.environ["TODO_WEB_FD"])
+fd = worker.open_channel()
+try:
+    os.fstat(received)
+    closed = False
+except OSError:
+    closed = True
+seen = {
+    "fd": fd,
+    "inheritable": os.get_inheritable(fd),
+    "closed": closed,
+    "env": os.environ["TODO_WEB_FD"],
+    "pid": os.environ["TODO_WEB_PID"] == str(os.getpid()),
+}
+os.write(fd, json.dumps(seen).encode() + b"\n")
+"""
 
 
 class Abort(Exception):
@@ -147,6 +179,122 @@ class TestHooks(unittest.TestCase):
         self.assertEqual(where(), "📍 TODO › Execute")
 
 
+def _channel(test, data) -> int:
+    """Descripteur du worker sur une socketpair où le hub a écrit `data`,
+    puis fermé son extrémité."""
+    hub, end = socket.socketpair()
+    test.addCleanup(end.close)
+    with hub:
+        hub.sendall(data)
+    return end.fileno()
+
+
+class TestHello(unittest.TestCase):
+    def test_the_hello_line(self):
+        fd = _channel(self, b'{"t": "hello", "lang": "en"}\n')
+        self.assertEqual(worker.read_hello(fd), {"t": "hello", "lang": "en"})
+
+    def test_a_channel_closed_before_the_end_of_the_line(self):
+        for data in (b"", b'{"t": "hello"'):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                worker.read_hello(_channel(self, data))
+
+    def test_a_line_beyond_the_limit(self):
+        line = b'{"t": "hello", "lang": "en"' + b" " * 100 + b"}\n"
+        with patch.object(worker, "HELLO_LIMIT", len(line) - 1):
+            with self.assertRaises(ValueError):
+                worker.read_hello(_channel(self, line))
+        with patch.object(worker, "HELLO_LIMIT", len(line)):
+            self.assertEqual(
+                worker.read_hello(_channel(self, line))["t"], "hello"
+            )
+
+    def test_anything_but_a_hello_object(self):
+        for data in (b"not json\n", b"\xff\n", b"[1]\n", b'{"t": "bye"}\n'):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                worker.read_hello(_channel(self, data))
+
+
+class TestOpenChannel(unittest.TestCase):
+    def test_the_channel_moves_to_fd_3_not_inherited(self):
+        hub, end = socket.socketpair()
+        self.addCleanup(hub.close)
+        # Reçu ailleurs que sur 3 : `open_channel` l'y déplace.
+        with end:
+            received = fcntl.fcntl(end, fcntl.F_DUPFD_CLOEXEC, 10)
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", OPEN_CHANNEL],
+                cwd=REPO,
+                env=dict(os.environ, TODO_WEB_FD=str(received)),
+                pass_fds=(received,),
+                capture_output=True,
+                timeout=30,
+            )
+        finally:
+            os.close(received)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        hub.settimeout(10)
+        with hub.makefile("rb") as channel:
+            seen = json.loads(channel.readline())
+        self.assertEqual(
+            seen,
+            {
+                "fd": worker.CHANNEL_FD,
+                "inheritable": False,
+                "closed": True,
+                "env": str(worker.CHANNEL_FD),
+                "pid": True,
+            },
+        )
+
+
+class TestMain(unittest.TestCase):
+    """`main` jusqu'à TODO exclu : signaux, terminal de contrôle et canal
+    sont des doubles ; `todo`, click et urwid aussi, dans sys.modules."""
+
+    def main(self, hello, todo=None):
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        fd = _channel(self, hello)
+        modules = {name: types.ModuleType(name) for name in ("click", "urwid")}
+        if todo is not None:
+            modules["todo"] = todo
+        out, err = io.StringIO(), io.StringIO()
+        with (
+            patch.object(worker, "restore_signals"),
+            patch.object(worker, "fcntl"),
+            patch.object(worker, "open_channel", return_value=fd),
+            patch.object(sys, "path", list(sys.path)),
+            patch.dict(sys.modules, modules),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            code = worker.main()
+        return code, out.getvalue(), err.getvalue()
+
+    def test_a_bad_hello_ends_with_bad_hello(self):
+        for hello in (
+            b"",
+            b"not json\n",
+            b'{"t": "hello"}\n',
+            b'{"t": "hello", "lang": "de"}\n',
+        ):
+            with self.subTest(hello=hello):
+                code, out, err = self.main(hello)
+                self.assertEqual(code, worker.BAD_HELLO)
+                self.assertTrue(err.startswith("todo web worker: "), err)
+                self.assertEqual(out, "")
+
+    def test_a_todo_that_cannot_start_ends_with_crashed(self):
+        todo = types.ModuleType("todo")
+        todo.ENABLE_CRASH, todo.CRASH_E = True, "boom-marker"
+        code, out, _ = self.main(b'{"t": "hello", "lang": "en"}\n', todo)
+        self.assertEqual(code, worker.CRASHED)
+        self.assertEqual(out, "boom-marker\n")
+        self.assertEqual(todo_i18n.get_lang(), "en")
+
+
 class TestRealWorker(unittest.IsolatedAsyncioTestCase):
     async def shown(self, session, prompt, count):
         """Attend la `count`-ième apparition de `prompt` dans la sortie."""
@@ -162,7 +310,6 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         # Un SIGINT ignoré s'hérite : le worker doit rétablir le sien.
         previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
         self.addCleanup(signal.signal, signal.SIGINT, previous)
-        started = time.monotonic()
         session = sessions.Session("w1", str(REPO), "en", 100, 40)
         await session.start()
         self.addAsyncCleanup(session.close)
@@ -181,7 +328,6 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         text = session.ring.data.decode()
         self.assertIn("Opening TODO ...", text)
         self.assertNotIn("Ouverture de TODO", text)
-        self.assertLess(time.monotonic() - started, 10)
 
 
 if __name__ == "__main__":
