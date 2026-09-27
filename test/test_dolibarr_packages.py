@@ -135,6 +135,20 @@ class TestCertbot(unittest.TestCase):
             packages.certbot_packages("brew")
 
 
+class TestOpcache(unittest.TestCase):
+    def test_the_package_that_carries_it(self):
+        # Arch le livre dans son paquet php, sans paquet à part.
+        attendu = {
+            "apt-get": "php-opcache",
+            "dnf": "php-opcache",
+            "pacman": None,
+            "zypper": "php8-opcache",
+        }
+        for famille, nom in attendu.items():
+            with self.subTest(famille=famille):
+                self.assertEqual(packages.opcache_package(famille), nom)
+
+
 class TestFpmLayout(unittest.TestCase):
     def test_debian_paths_carry_the_php_version(self):
         self.assertEqual(

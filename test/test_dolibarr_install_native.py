@@ -89,13 +89,15 @@ class Systeme:
     def __init__(self, racine):
         self.racine = racine
         self.paquets_presents = set()
+        self.paquets_introuvables = set()
         self.base_refuse = False
         self.service_actif = False
         self.version_installee = None
         self.echec = {}  # nom d'étape php -> (code, sortie)
         self.php = "8.3"
         self.extensions = set(
-            install_native.REQUIRED_EXTENSIONS + ("mysqli", "pgsql")
+            install_native.REQUIRED_EXTENSIONS
+            + ("mysqli", "pgsql", "Zend OPcache")
         )
         self.hba = "local all all peer\nhost all all 127.0.0.1/32 ident\n"
         self.pg_db_existe = False
@@ -111,6 +113,9 @@ class Systeme:
             return (0, "") if argv[-1] in self.paquets_presents else (1, "")
         if argv == ["sudo", "mariadb"] and self.base_refuse:
             return 1, "ERROR 2002: Can't connect"
+        if argv[:3] == ["sudo", "dnf", "install"]:
+            if argv[-1] in self.paquets_introuvables:
+                return 1, f"No match for argument: {argv[-1]}"
         if argv[:2] == ["systemctl", "is-active"]:
             return (0, "") if self.service_actif else (3, "")
         if argv[:2] == ["sudo", "test"]:
@@ -371,6 +376,41 @@ class TestPaquets(Banc):
         _code, runner = self.installer("--yes", db="postgresql")
         texte = runner.ecrits_sudo["/etc/php/conf.d/erplibre-dolibarr.ini"]
         self.assertIn("extension=pgsql", texte)
+
+
+class TestOpcache(Banc):
+    """OPcache s'ajoute là où php-fpm ne le tire pas, sans rien bloquer."""
+
+    def setUp(self):
+        super().setUp()
+        self.sys.extensions.discard("Zend OPcache")
+
+    def installer_dnf(self):
+        self.faits["family"] = "dnf"
+        code, runner = self.installer("--yes")
+        return code, runner, [a for a, _ in runner.lances]
+
+    def test_a_php_without_opcache_gets_its_package(self):
+        code, _runner, lances = self.installer_dnf()
+        self.assertEqual(code, 0)
+        self.assertIn(["sudo", "dnf", "install", "-y", "php-opcache"], lances)
+
+    def test_a_php_with_opcache_installs_nothing_more(self):
+        # PHP 8.5 l'intègre : il n'a plus de paquet à part.
+        self.sys.extensions.add("Zend OPcache")
+        _code, _runner, lances = self.installer_dnf()
+        self.assertFalse([a for a in lances if "php-opcache" in a])
+
+    def test_an_opcache_package_that_fails_does_not_stop_the_install(self):
+        self.sys.paquets_introuvables = {"php-opcache"}
+        code, runner, _lances = self.installer_dnf()
+        self.assertEqual(code, 0)
+        self.assertIn(
+            install_native.t(
+                "OPcache stays off: PHP runs without its opcode cache."
+            ),
+            "\n".join(runner.sortie),
+        )
 
 
 class TestServeurDeBase(Banc):
