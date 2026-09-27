@@ -17036,6 +17036,150 @@ TRANSLATIONS = {
         "fr": "%s est une production : retapez son nom avec --confirm.",
         "en": "%s is a production: retype its name with --confirm.",
     },
+    "Dolibarr - Modules: create, link, enable": {
+        "fr": "🧩 Dolibarr - Modules : créer, lier, activer",
+        "en": "🧩 Dolibarr - Modules: create, link, enable",
+    },
+    "No development instance.": {
+        "fr": "Aucune instance de développement.",
+        "en": "No development instance.",
+    },
+    "Create from the ModuleBuilder template": {
+        "fr": "Créer depuis le gabarit du ModuleBuilder",
+        "en": "Create from the ModuleBuilder template",
+    },
+    "Link a module kept in its own directory": {
+        "fr": "Lier un module tenu dans son propre dossier",
+        "en": "Link a module kept in its own directory",
+    },
+    "Enable a module": {
+        "fr": "Activer un module",
+        "en": "Enable a module",
+    },
+    "Disable a module": {
+        "fr": "Désactiver un module",
+        "en": "Disable a module",
+    },
+    "Module:": {
+        "fr": "Module :",
+        "en": "Module:",
+    },
+    "Module directory: ": {
+        "fr": "Dossier du module : ",
+        "en": "Module directory: ",
+    },
+    "Module name (letters and digits): ": {
+        "fr": "Nom du module (lettres et chiffres) : ",
+        "en": "Module name (letters and digits): ",
+    },
+    "Module ID (Enter: first free from 500000): ": {
+        "fr": "Numéro du module (Entrée : premier libre dès 500000) : ",
+        "en": "Module ID (Enter: first free from 500000): ",
+    },
+    "A module ID is a number.": {
+        "fr": "Le numéro d'un module est un nombre.",
+        "en": "A module ID is a number.",
+    },
+    "Enable it now? (y/N): ": {
+        "fr": "L'activer maintenant ? (o/N) : ",
+        "en": "Enable it now? (y/N): ",
+    },
+    "The code of %s cannot be read; a container instance must be running (run.py start).": {
+        "fr": "Le code de %s est illisible ; une instance conteneur doit tourner (run.py start).",
+        "en": "The code of %s cannot be read; a container instance must be running (run.py start).",
+    },
+    "%s exists": {
+        "fr": "%s existe",
+        "en": "%s exists",
+    },
+    "Module %s created: %s (ID %d).": {
+        "fr": "Module %s créé : %s (numéro %d).",
+        "en": "Module %s created: %s (ID %d).",
+    },
+    "IDs below 500000 are reserved one by one on the Dolibarr wiki (List_of_modules_id): keep this one only if it is reserved for this module.": {
+        "fr": "Sous 500000, les numéros se réservent un par un sur le wiki de Dolibarr (List_of_modules_id) : ne gardez celui-ci que s'il est réservé à ce module.",
+        "en": "IDs below 500000 are reserved one by one on the Dolibarr wiki (List_of_modules_id): keep this one only if it is reserved for this module.",
+    },
+    "%s links to %s.": {
+        "fr": "%s pointe vers %s.",
+        "en": "%s links to %s.",
+    },
+    "module %s exists: %s": {
+        "fr": "le module %s existe : %s",
+        "en": "module %s exists: %s",
+    },
+    "htdocs/%s exists": {
+        "fr": "htdocs/%s existe",
+        "en": "htdocs/%s exists",
+    },
+    "Invalid version: %s": {
+        "fr": "Version invalide : %s",
+        "en": "Invalid version: %s",
+    },
+    "Invalid picto: %s": {
+        "fr": "Picto invalide : %s",
+        "en": "Invalid picto: %s",
+    },
+    "Invalid editor URL: %s": {
+        "fr": "URL d'éditeur invalide : %s",
+        "en": "Invalid editor URL: %s",
+    },
+    "Name %s is taken: %s": {
+        "fr": "Le nom %s est pris : %s",
+        "en": "Name %s is taken: %s",
+    },
+    "A container only sees its custom/: create or copy the module into %s.": {
+        "fr": "Un conteneur ne voit que son custom/ : créez ou copiez le module dans %s.",
+        "en": "A container only sees its custom/: create or copy the module into %s.",
+    },
+    "No module descriptor in %s/core/modules.": {
+        "fr": "Aucun descripteur de module dans %s/core/modules.",
+        "en": "No module descriptor in %s/core/modules.",
+    },
+    "%s already links to %s.": {
+        "fr": "%s pointe déjà vers %s.",
+        "en": "%s already links to %s.",
+    },
+    "No module %s on %s.": {
+        "fr": "Aucun module %s sur %s.",
+        "en": "No module %s on %s.",
+    },
+    "Dolibarr refused: %s": {
+        "fr": "Dolibarr a refusé : %s",
+        "en": "Dolibarr refused: %s",
+    },
+    "%s enabled on %s.": {
+        "fr": "%s activé sur %s.",
+        "en": "%s enabled on %s.",
+    },
+    "%s disabled on %s.": {
+        "fr": "%s désactivé sur %s.",
+        "en": "%s disabled on %s.",
+    },
+    "%s is a production: modules are developed on a development instance.": {
+        "fr": "%s est une production : les modules se développent sur une instance de développement.",
+        "en": "%s is a production: modules are developed on a development instance.",
+    },
+    "Invalid author or editor: %s": {
+        "fr": "Auteur ou éditeur invalide : %s",
+        "en": "Invalid author or editor: %s",
+    },
+    "Invalid module name %r: letters and digits only.": {
+        "fr": "Nom de module %r invalide : lettres et chiffres seulement.",
+        "en": "Invalid module name %r: letters and digits only.",
+    },
+    "A module ID starts at %d.": {
+        "fr": "Le numéro d'un module commence à %d.",
+        "en": "A module ID starts at %d.",
+    },
+    "ID %d is used by %s.": {
+        "fr": "Le numéro %d est pris par %s.",
+        "en": "ID %d is used by %s.",
+    },
+    "Module not created: %s": {
+        "fr": "Module non créé : %s",
+        "en": "Module not created: %s",
+    },
 }
 
 
