@@ -16956,6 +16956,10 @@ TRANSLATIONS = {
         "fr": "Monter %s à la version épinglée ? (o/N) : ",
         "en": "Upgrade %s to the pinned version? (y/N): ",
     },
+    "Full output: %s": {
+        "fr": "Sortie complète : %s",
+        "en": "Full output: %s",
+    },
 }
 
 

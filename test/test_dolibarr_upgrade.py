@@ -233,6 +233,35 @@ class TestNatifDev(Banc):
         self.assertEqual(restaure.call_args[0][2], self.sauvegarde)
         self.assertEqual(self.registre()["version"], "23.0.4")
 
+    def test_a_failing_script_says_plain_text_and_keeps_its_full_log(self):
+        # Les scripts de Dolibarr sortent du HTML (206 Ko pour upgrade.php).
+        origine = self.sys.run
+
+        def run(argv, env=None, stdin_path=None):
+            if "upgrade2.php" in " ".join(argv):
+                self.sys.appels.append(list(argv))
+                return (
+                    1,
+                    "<html><body>Erreur <b>DB_ERROR_1142</b><br></body></html>",
+                )
+            return origine(argv, env, stdin_path)
+
+        self.sys.run = run
+        code, sortie, _r = self.monter()
+        self.assertEqual(code, 1)
+        self.assertIn("DB_ERROR_1142", sortie)
+        self.assertNotIn("<b>", sortie)
+        journal = (
+            self.racine
+            / "private"
+            / "dolibarr"
+            / "upgrades"
+            / "erp-20260927-100000.log"
+        )
+        self.assertIn("<b>DB_ERROR_1142</b>", journal.read_text())
+        self.assertIn("upgrade.php 23.0.4 24.0.1", journal.read_text())
+        self.assertEqual(journal.stat().st_mode & 0o777, 0o600)
+
     def test_a_failing_script_stops_the_rest(self):
         self.sys.echec.add("upgrade2.php")
         code, _s, restaure = self.monter()
