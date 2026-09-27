@@ -435,5 +435,26 @@ class TestItRunsInsideTheMigration(unittest.TestCase):
         self.assertIn("isfile", corps)
 
 
+class TestUneBaseSansWebsite(unittest.TestCase):
+    """website_id vient du module website. Sans lui, la base n'a aucune
+    copie : la lire échouait sur la colonne absente, et la base passait
+    pour illisible au lieu de saine."""
+
+    def test_aucune_copie_sans_la_colonne(self):
+        requetes = []
+
+        def psql(database, sql, read_only=True):
+            requetes.append(sql)
+            return ""  # information_schema : la colonne n'existe pas
+
+        original = cow.run_psql
+        cow.run_psql = psql
+        self.addCleanup(setattr, cow, "run_psql", original)
+        self.assertEqual([], cow.cow_copies("db", False))
+        self.assertFalse(
+            [r for r in requetes if "website_id IS NOT NULL" in r], requetes
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
