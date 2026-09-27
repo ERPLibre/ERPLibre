@@ -16133,10 +16133,6 @@ TRANSLATIONS = {
         "fr": "Cet installateur ne traite que Linux pour l'instant.",
         "en": "This installer handles Linux for now.",
     },
-    "Native production is not available yet.": {
-        "fr": "La production native n'est pas encore disponible.",
-        "en": "Native production is not available yet.",
-    },
     "Install these packages? (y/N): ": {
         "fr": "Installer ces paquets ? (o/N) : ",
         "en": "Install these packages? (y/N): ",
@@ -16371,6 +16367,114 @@ TRANSLATIONS = {
     "Sync the Dolibarr checkout now? (y/N): ": {
         "fr": "Synchroniser le checkout Dolibarr maintenant ? (o/N) : ",
         "en": "Sync the Dolibarr checkout now? (y/N): ",
+    },
+    "Production needs a valid domain name (--domain).": {
+        "fr": "La production exige un nom de domaine valide (--domain).",
+        "en": "Production needs a valid domain name (--domain).",
+    },
+    "not needed": {
+        "fr": "sans objet",
+        "en": "not needed",
+    },
+    "Production checks": {
+        "fr": "Vérifications de production",
+        "en": "Production checks",
+    },
+    "certbot": {
+        "fr": "certbot",
+        "en": "certbot",
+    },
+    "System account": {
+        "fr": "Compte système",
+        "en": "System account",
+    },
+    "Code in /opt": {
+        "fr": "Code dans /opt",
+        "en": "Code in /opt",
+    },
+    "Hardening": {
+        "fr": "Durcissement",
+        "en": "Hardening",
+    },
+    "Scheduled jobs": {
+        "fr": "Tâches planifiées",
+        "en": "Scheduled jobs",
+    },
+    "PHP-FPM pool": {
+        "fr": "Pool PHP-FPM",
+        "en": "PHP-FPM pool",
+    },
+    "nginx site": {
+        "fr": "Site nginx",
+        "en": "nginx site",
+    },
+    "Check from PHP and HTTP": {
+        "fr": "Vérification par PHP et HTTP",
+        "en": "Check from PHP and HTTP",
+    },
+    "SELinux is enforcing: native production is not validated there yet.": {
+        "fr": "SELinux est en mode enforcing : la production native n'y est pas encore éprouvée.",
+        "en": "SELinux is enforcing: native production is not validated there yet.",
+    },
+    "The checkout lacks the pinned commit %s.": {
+        "fr": "Le dépôt local n'a pas le commit épinglé %s.",
+        "en": "The checkout lacks the pinned commit %s.",
+    },
+    "Cannot create the system account.": {
+        "fr": "Impossible de créer le compte système.",
+        "en": "Cannot create the system account.",
+    },
+    "Cannot create %s.": {
+        "fr": "Impossible de créer %s.",
+        "en": "Cannot create %s.",
+    },
+    "Cannot export the pinned code.": {
+        "fr": "Impossible d'exporter le code épinglé.",
+        "en": "Cannot export the pinned code.",
+    },
+    "Cannot secure %s.": {
+        "fr": "Impossible de protéger %s.",
+        "en": "Cannot secure %s.",
+    },
+    "Cannot read %s.": {
+        "fr": "Impossible de lire %s.",
+        "en": "Cannot read %s.",
+    },
+    "Cannot enable the Cron module.": {
+        "fr": "Impossible d'activer le module Cron.",
+        "en": "Cannot enable the Cron module.",
+    },
+    "Cannot enable the scheduled jobs.": {
+        "fr": "Impossible d'activer les tâches planifiées.",
+        "en": "Cannot enable the scheduled jobs.",
+    },
+    "PHP-FPM rejects the pool.": {
+        "fr": "PHP-FPM refuse le pool.",
+        "en": "PHP-FPM rejects the pool.",
+    },
+    "PHP-FPM does not start.": {
+        "fr": "PHP-FPM ne démarre pas.",
+        "en": "PHP-FPM does not start.",
+    },
+    "Cannot enable the site.": {
+        "fr": "Impossible d'activer le site.",
+        "en": "Cannot enable the site.",
+    },
+    "nginx rejects the configuration.": {
+        "fr": "nginx refuse la configuration.",
+        "en": "nginx rejects the configuration.",
+    },
+    "nginx does not start.": {
+        "fr": "nginx ne démarre pas.",
+        "en": "nginx does not start.",
+    },
+    "certbot could not obtain the certificate.": {
+        "fr": "certbot n'a pas pu obtenir le certificat.",
+        "en": "certbot could not obtain the certificate.",
+    },
+    "nginx does not serve the login page.": {
+        "fr": "nginx ne sert pas la page de connexion.",
+        "en": "nginx does not serve the login page.",
     },
 }
 

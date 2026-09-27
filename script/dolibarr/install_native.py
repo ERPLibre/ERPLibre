@@ -111,14 +111,24 @@ class Runner:
             return None
         return self._exec(argv, None, cwd, None)
 
-    def write(self, path, text, mode=0o600, sudo=False):
-        """Écrit `text` dans `path` ; le contenu passe par stdin sous sudo."""
+    def write(
+        self, path, text, mode=0o600, sudo=False, owner=None, group=None
+    ):
+        """Écrit `text` dans `path` ; le contenu passe par stdin sous sudo.
+
+        Sous sudo, `owner` et `group` fixent le propriétaire du fichier.
+        """
         if self.dry_run:
             self.out(f"      [dry-run] write {path} ({oct(mode)})")
             return
         if sudo:
+            argv = ["sudo", "install", "-m", f"{mode:o}"]
+            if owner:
+                argv += ["-o", owner]
+            if group:
+                argv += ["-g", group]
             code, out = self._exec(
-                ["sudo", "install", "-m", f"{mode:o}", "/dev/stdin", path],
+                argv + ["/dev/stdin", path],
                 text,
                 None,
                 None,
@@ -203,21 +213,39 @@ class Context:
         self.db_type = "mysqli" if args.db == "mariadb" else "pgsql"
         self.php_version = None
         self.secrets = {}
+        self.prod = args.mode == "prod"
+        if self.prod:
+            # Production : code exporté et en lecture seule dans /opt,
+            # données sous /var/lib, secrets et TLS sous /etc (root, 0700).
+            self.user = f"dolibarr_{args.instance}"
+            self.code_root = f"/opt/erplibre-dolibarr/{args.instance}"
+            self.htdocs = f"{self.code_root}/htdocs"
+            self.state = f"/var/lib/erplibre-dolibarr/{args.instance}"
+            self.data_root = f"{self.state}/documents"
+            self.etc = f"/etc/erplibre-dolibarr/{args.instance}"
+            self.secrets_file = f"{self.etc}/secrets.env"
+            self.socket = f"/run/erplibre-dolibarr-{args.instance}.sock"
+            scheme = "http" if args.tls == "none" else "https"
+            self.url = f"{scheme}://{args.domain}"
+
+
+def parse_secrets(text):
+    """{NOM: valeur} du texte d'un fichier secrets.env."""
+    out = {}
+    for line in (text or "").splitlines():
+        if "=" in line and not line.startswith("#"):
+            name, value = line.split("=", 1)
+            out[name.strip()] = value
+    return out
 
 
 def read_secrets(path):
     """{NOM: valeur} d'un fichier secrets.env, {} s'il n'existe pas."""
     try:
         with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
+            return parse_secrets(f.read())
     except FileNotFoundError:
         return {}
-    out = {}
-    for line in lines:
-        if "=" in line and not line.startswith("#"):
-            name, value = line.split("=", 1)
-            out[name.strip()] = value
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +265,6 @@ def step_preflight(ctx, runner):
         raise StepError(t("Native is not offered here: %s") % t(why))
     if ctx.facts["system"] != "Linux":
         raise StepError(t("This installer handles Linux for now."))
-    if ctx.args.mode != "dev":
-        raise StepError(t("Native production is not available yet."))
     try:
         known = lib_dolibarr.load_registry(ROOT)
     except lib_dolibarr.RegistryError as e:
@@ -266,28 +292,41 @@ def installed_packages(runner, family, names):
     return found
 
 
+def install_missing(ctx, runner, groups):
+    """Installe ce qui manque de chaque groupe de paquets ; True si installé.
+
+    Une commande par groupe, dans l'ordre : un groupe peut ouvrir le dépôt
+    où le suivant se trouve. Les commandes sont montrées puis confirmées en
+    une fois, sauf --yes ; un refus ou un échec lève StepError.
+    """
+    commands = []
+    for group in groups:
+        present = installed_packages(runner, ctx.family, group)
+        missing = [p for p in group if p not in present]
+        if missing:
+            commands.append(todo_install.install_command(missing, ctx.family))
+    if not commands:
+        return False
+    refresh = todo_install.refresh_command(ctx.family)
+    if refresh:
+        commands.insert(0, refresh)
+    for cmd in commands:
+        runner.out(f"      {t('Will execute:')} {shlex.join(cmd)}")
+    if not ctx.args.yes and not runner.dry_run:
+        answer = input(f"      {t('Install these packages? (y/N): ')}")
+        if answer.strip().lower() not in ("y", "yes", "o", "oui"):
+            raise StepError(t("Packages refused, nothing installed."))
+    for cmd in commands:
+        code, out = runner.run(cmd)
+        if code:
+            raise StepError(t("Package installation failed."), tail(out))
+    return True
+
+
 def step_packages(ctx, runner):
-    wanted = packages.packages_for(ctx.family, ctx.db)
-    present = installed_packages(runner, ctx.family, wanted)
-    missing = [p for p in wanted if p not in present]
-    changed = False
-    if missing:
-        commands = []
-        refresh = todo_install.refresh_command(ctx.family)
-        if refresh:
-            commands.append(refresh)
-        commands.append(todo_install.install_command(missing, ctx.family))
-        for cmd in commands:
-            runner.out(f"      {t('Will execute:')} {shlex.join(cmd)}")
-        if not ctx.args.yes and not runner.dry_run:
-            answer = input(f"      {t('Install these packages? (y/N): ')}")
-            if answer.strip().lower() not in ("y", "yes", "o", "oui"):
-                raise StepError(t("Packages refused, nothing installed."))
-        for cmd in commands:
-            code, out = runner.run(cmd)
-            if code:
-                raise StepError(t("Package installation failed."), tail(out))
-        changed = True
+    changed = install_missing(
+        ctx, runner, [packages.packages_for(ctx.family, ctx.db)]
+    )
     ini = packages.extensions_ini(ctx.family, ctx.db)
     if ini:
         path, text = ini
@@ -338,6 +377,7 @@ def step_php(ctx, runner):
     if missing:
         raise StepError(t("PHP extensions missing: %s") % ", ".join(missing))
     return f"PHP {version}"
+
 
 
 def _service_active(runner, unit):
@@ -467,9 +507,50 @@ def pg_hba_lines(db_name, user):
     )
 
 
+# Longueur de chaque secret d'une instance ; la clé cron n'existe qu'en
+# production, où une minuterie systemd lance les tâches.
+SECRET_LENGTHS = {"DB_PASSWORD": 32, "ADMIN_PASSWORD": 20}
+PROD_SECRET_LENGTHS = {"CRON_KEY": 32}
+
+
+def ensure_secrets(ctx, runner):
+    """Complète ctx.secrets et les écrit, avant qu'une étape n'en use un.
+
+    Relancée après un échec, l'installation reprend les MÊMES valeurs :
+    step_database réaligne le compte de la base sur le mot de passe du
+    fichier, et conf.php garde celui qu'il a reçu. Tous naissent ici,
+    ensemble, et sont écrits avant que la base soit touchée.
+    """
+    wanted = dict(SECRET_LENGTHS)
+    if ctx.prod:
+        wanted.update(PROD_SECRET_LENGTHS)
+    for name, length in wanted.items():
+        if not ctx.secrets.get(name):
+            ctx.secrets[name] = generate_secret(length)
+    save_secrets(ctx, runner)
+
+
+def save_secrets(ctx, runner):
+    """Écrit ctx.secrets dans secrets.env (0600).
+
+    En production le fichier est sous /etc, écrit par sudo ; son dossier
+    est créé ici.
+    """
+    lines = "".join(f"{k}={v}\n" for k, v in sorted(ctx.secrets.items()))
+    if ctx.prod:
+        code, out = runner.run(["sudo", "install", "-d", "-m", "700", ctx.etc])
+        if code:
+            raise StepError(t("Cannot create %s.") % ctx.etc, tail(out))
+        runner.write(ctx.secrets_file, lines, mode=0o600, sudo=True)
+        return
+    if not runner.dry_run:
+        os.makedirs(ctx.state, mode=0o700, exist_ok=True)
+    runner.write(ctx.secrets_file, lines, mode=0o600)
+
+
 def step_database(ctx, runner):
-    password = ctx.secrets.get("DB_PASSWORD") or generate_secret()
-    ctx.secrets["DB_PASSWORD"] = password
+    ensure_secrets(ctx, runner)
+    password = ctx.secrets["DB_PASSWORD"]
     if ctx.db == "mariadb":
         code, out = runner.run(
             ["sudo", "mariadb"],
@@ -587,8 +668,7 @@ def step_install(ctx, runner):
             % conf
         )
     forced = os.path.join(ctx.htdocs, "install", "install.forced.php")
-    admin_password = ctx.secrets.get("ADMIN_PASSWORD") or generate_secret(20)
-    ctx.secrets["ADMIN_PASSWORD"] = admin_password
+    admin_password = ctx.secrets["ADMIN_PASSWORD"]
     values = {
         "db_type": ctx.db_type,
         "db_host": ctx.db_host,
@@ -721,9 +801,6 @@ def step_check(ctx, runner):
 
 
 def step_record(ctx, runner):
-    lines = "".join(f"{k}={v}\n" for k, v in sorted(ctx.secrets.items()))
-    runner.write(ctx.secrets_file, lines, mode=0o600)
-    registry = os.path.join(ROOT, lib_dolibarr.REGISTRY)
     entry = {
         "mode": ctx.args.mode,
         "runtime": "native",
@@ -740,6 +817,12 @@ def step_record(ctx, runner):
         "admin_login": ctx.args.admin_login,
         "secrets": f"file:{ctx.secrets_file}",
     }
+    return record_entry(ctx, runner, entry)
+
+
+def record_entry(ctx, runner, entry):
+    """Inscrit `entry` au registre des instances, sous private/."""
+    registry = os.path.join(ROOT, lib_dolibarr.REGISTRY)
     if runner.dry_run:
         runner.out(f"      [dry-run] record {ctx.instance} in {registry}")
         return t("ok")
@@ -811,7 +894,9 @@ def build_parser():
     parser.add_argument("--admin-login", default="admin")
     parser.add_argument("--lang", default=None)
     parser.add_argument("--domain")
-    parser.add_argument("--tls", choices=("certbot", "local", "none"))
+    parser.add_argument(
+        "--tls", choices=("certbot", "local", "none"), default="none"
+    )
     parser.add_argument("--email")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -839,6 +924,9 @@ def main(argv=None, facts=None, runner=None):
     if lib_dolibarr.parse_port(str(args.port), None) is None:
         print(t("Invalid port: a number from 1024 to 65535."))
         return 2
+    if args.mode == "prod" and not web_config.valid_domain(args.domain):
+        print(t("Production needs a valid domain name (--domain)."))
+        return 2
     args.lang = args.lang or default_lang()
     try:
         pin = lib_dolibarr.read_pin(ROOT)
@@ -847,11 +935,19 @@ def main(argv=None, facts=None, runner=None):
         return 2
     runner = runner or Runner(dry_run=args.dry_run)
     ctx = Context(args, facts or host_facts(), pin)
-    ctx.secrets = read_secrets(ctx.secrets_file)
+    steps = STEPS
+    if ctx.prod:
+        from script.dolibarr import native_prod
+
+        steps = native_prod.STEPS
+        res = runner.probe(["sudo", "cat", ctx.secrets_file])
+        ctx.secrets = parse_secrets(res[1]) if res and res[0] == 0 else {}
+    else:
+        ctx.secrets = read_secrets(ctx.secrets_file)
     typed = os.environ.get(lib_dolibarr.ENV_ADMIN_PASSWORD)
     if typed:
         ctx.secrets["ADMIN_PASSWORD"] = typed
-    status = run_steps(ctx, runner)
+    status = run_steps(ctx, runner, steps)
     if status == 0 and not args.dry_run:
         print()
         print(t("Dolibarr %s installed: %s") % (pin["version"], ctx.url))
@@ -863,4 +959,10 @@ def main(argv=None, facts=None, runner=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Lancé comme script, ce fichier est __main__ : native_prod importe
+    # script.dolibarr.install_native, un second module dont StepError est
+    # une autre classe, que run_steps d'ici laisserait passer. Tout passe
+    # donc par le module du paquet.
+    from script.dolibarr import install_native as _package
+
+    sys.exit(_package.main())
