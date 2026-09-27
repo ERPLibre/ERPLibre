@@ -487,5 +487,163 @@ class TestContreLeRegistreReel(unittest.TestCase):
                 self.assertNotIn(vu.drapeau, declarees)
 
 
+def etape_palier(**change):
+    """Une étape du registre, que chaque épreuve altère d'un champ."""
+    champs = dict(
+        cible="une-cible",
+        libelle="",
+        portee="tenant",
+        nature=R.ECRITURE,
+        pourquoi="",
+        duree="",
+        variables=(),
+        exige_confirmation=True,
+        facultative=False,
+    )
+    champs.update(change)
+    return R.Etape(**champs)
+
+
+class TestLePalierDestructeurEstDerive(unittest.TestCase):
+    """Une liste écrite dans todo vieillirait, et du MAUVAIS CÔTÉ : elle
+    laisserait passer sans garde le geste que l'amont vient de rendre
+    destructeur."""
+
+    def test_a_declared_destructive_step_is_in(self):
+        self.assertTrue(
+            R.destructeur(
+                etape_palier(nature=R.DESTRUCTIF, exige_confirmation=False)
+            )
+        )
+
+    def test_a_step_that_merely_demands_confirmation_is_in_too(self):
+        """LES DEUX CRITÈRES NE SE RECOUVRENT PAS : d'autres gestes exigent une
+        confirmation sans être déclarés destructeurs, et leur effet est le même.
+        Ce que le moteur PROTÈGE compte, pas ce qu'il nomme."""
+        self.assertTrue(
+            R.destructeur(
+                etape_palier(nature=R.ECRITURE, exige_confirmation=True)
+            )
+        )
+
+    def test_a_plain_write_is_out(self):
+        """Le contrôle positif : sans lui, un palier qui contient tout
+        passerait les deux épreuves ci-dessus."""
+        self.assertFalse(
+            R.destructeur(
+                etape_palier(nature=R.ECRITURE, exige_confirmation=False)
+            )
+        )
+
+    def test_a_measure_is_out(self):
+        self.assertFalse(
+            R.destructeur(
+                etape_palier(nature=R.MESURE, exige_confirmation=False)
+            )
+        )
+
+    def test_nothing_is_out(self):
+        self.assertFalse(R.destructeur(None))
+
+
+class TestCeQuOnFaitRetaper(unittest.TestCase):
+    """La plupart des gestes du palier ne nomment aucune variable : il n'y a rien
+    à leur emprunter. La portée, elle, dit toujours SUR QUOI le geste porte."""
+
+    def test_the_scope_decides_what_is_retyped(self):
+        for portee, attendu in (
+            ("tenant", R.RETAPE_ECOSYSTEME),
+            ("site", R.RETAPE_SITE),
+            ("poste", R.RETAPE_HOTES),
+        ):
+            with self.subTest(portee=portee):
+                self.assertEqual(
+                    attendu, R.retape(etape_palier(portee=portee))
+                )
+
+    def test_what_is_not_in_the_tier_asks_nothing(self):
+        """« » n'est pas « n'importe quoi convient » : l'appelant ne doit pas
+        confondre les deux."""
+        self.assertEqual(
+            "",
+            R.retape(etape_palier(nature=R.MESURE, exige_confirmation=False)),
+        )
+
+    def test_a_scope_outside_the_three_asks_nothing(self):
+        """Fermé par défaut : une portée qu'on ne connaît pas ne fait pas
+        inventer une question."""
+        self.assertEqual("", R.retape(etape_palier(portee="inventee")))
+
+    def test_every_answer_is_in_the_closed_vocabulary_or_empty(self):
+        for portee in ("tenant", "site", "poste", "inventee", ""):
+            with self.subTest(portee=portee):
+                vu = R.retape(etape_palier(portee=portee))
+                self.assertIn(vu, R.RETAPES + ("",))
+
+    def test_the_expected_text_comes_from_what_is_mounted(self):
+        self.assertEqual(
+            "OPS-Un-Eco",
+            R.attendu_retape(R.RETAPE_ECOSYSTEME, ecosysteme=" OPS-Un-Eco "),
+        )
+        self.assertEqual(
+            "SITE-Un-Site",
+            R.attendu_retape(R.RETAPE_SITE, site="SITE-Un-Site"),
+        )
+
+    def test_zero_hosts_is_a_count(self):
+        """Un geste qui ne toucherait aucune machine se fait confirmer par « 0 »,
+        ce qui est justement l'information utile."""
+        self.assertEqual("0", R.attendu_retape(R.RETAPE_HOTES, hotes=0))
+
+    def test_a_count_that_was_not_read_asks_nothing(self):
+        """« » ARRÊTE LE GESTE chez l'appelant : un garde qui accepte n'importe
+        quoi parce qu'il n'attend rien est pire que pas de garde, puisqu'il
+        donne l'assurance d'en être un."""
+        for hotes in (None, -1, True, "4", 4.0):
+            with self.subTest(hotes=hotes):
+                self.assertEqual(
+                    "", R.attendu_retape(R.RETAPE_HOTES, hotes=hotes)
+                )
+
+    def test_nothing_mounted_asks_nothing(self):
+        for quoi, champs in (
+            (R.RETAPE_ECOSYSTEME, {"ecosysteme": "   "}),
+            (R.RETAPE_SITE, {"site": ""}),
+        ):
+            with self.subTest(quoi=quoi):
+                self.assertEqual("", R.attendu_retape(quoi, **champs))
+
+
+class TestLaRetapeEstStricte(unittest.TestCase):
+    """Le but n'est pas de vérifier qu'il sait écrire mais qu'il a REGARDÉ : une
+    comparaison indulgente laisse confirmer de mémoire, et c'est précisément ce
+    que ce garde existe pour empêcher."""
+
+    def test_the_exact_text_passes(self):
+        """Le contrôle positif de tous les refus ci-dessous."""
+        self.assertTrue(R.retape_concorde("OPS-Un-Eco", "OPS-Un-Eco"))
+
+    def test_border_whitespace_is_forgiven(self):
+        """Il vient du copier-coller, non de la mémoire."""
+        self.assertTrue(R.retape_concorde("OPS-Un-Eco", "  OPS-Un-Eco\n"))
+
+    def test_another_case_is_refused(self):
+        self.assertFalse(R.retape_concorde("OPS-Un-Eco", "ops-un-eco"))
+
+    def test_a_prefix_is_refused(self):
+        self.assertFalse(R.retape_concorde("OPS-Un-Eco", "OPS-Un"))
+
+    def test_an_expected_that_is_empty_always_refuses(self):
+        """Il dit qu'on n'a pas su quoi demander."""
+        for tape in ("", "n-importe-quoi", None):
+            with self.subTest(tape=tape):
+                self.assertFalse(R.retape_concorde("", tape))
+
+    def test_nothing_typed_is_refused(self):
+        for tape in ("", "   ", None):
+            with self.subTest(tape=tape):
+                self.assertFalse(R.retape_concorde("OPS-Un-Eco", tape))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -311,6 +311,27 @@ later say two different things about the same gesture.
 - `lit_registre(sortie)`: the sequences, in order, or `None`. A step whose
   nature or target cannot be read refuses the WHOLE registry: a partial
   sequence is worse than none, since its order is what one came for;
+- `destructeur(etape)`: is this gesture in the DESTRUCTIVE tier? Derived, never
+  listed: the nature the registry DECLARES, or the confirmation it DEMANDS. A
+  list written in TODO would age, and from the wrong side — it would let through
+  unguarded the gesture upstream has just made destructive. The two criteria do
+  not overlap: the registry declares only a handful destructive, while others
+  demand a confirmation without being declared so, and their effect is the same.
+  What the engine PROTECTS is what counts, not what it names;
+- `retape(etape)`: what the operator must retype, from the tier gesture's SCOPE,
+  or `""` for what is not in the tier — which is not "anything will do". Most
+  tier gestures name no variable, so there is nothing to borrow from them; the
+  scope always says what the gesture bears on. A POSTE-scoped gesture has a
+  NUMBER retyped, the count of active hosts in the plan, since at that scope
+  there is no single object to name;
+- `attendu_retape(quoi, ecosysteme, site, hotes)`: the exact text expected, or
+  `""` when there is nothing to ask — which STOPS the gesture at the caller. A
+  guard that accepts anything because it expects nothing is worse than no guard,
+  since it gives the assurance of being one. Zero hosts IS a count;
+- `retape_concorde(attendu, tape)`: strict, case included. The point is not to
+  check spelling but that the operator LOOKED; a lenient comparison lets one
+  confirm from memory, which is exactly what this guard exists to prevent. Only
+  border whitespace is forgiven, since it comes from a copy-paste;
 - `barriere(etape, ecosysteme, site)`: what stops TODO from driving this step
   from here, or `""`. The refusals run from the general to the circumstantial:
   what destroys never runs from here, whereas a missing scope is settled by
@@ -750,6 +771,27 @@ diraient tôt ou tard deux choses différentes du même geste.
   dont la nature ou la cible ne se lisent pas fait refuser TOUT le registre :
   une séquence partielle est pire qu'une absence, puisque son ordre est ce
   qu'on vient y chercher ;
+- `destructeur(etape)` : ce geste est-il du PALIER destructeur ? Dérivé, jamais
+  listé : la nature que le registre DÉCLARE, ou la confirmation qu'il EXIGE. Une
+  liste écrite dans todo vieillirait, et du mauvais côté — elle laisserait passer
+  sans garde le geste que l'amont vient de rendre destructeur. Les deux critères
+  ne se recouvrent pas : le registre n'en déclare destructeurs qu'une poignée,
+  quand d'autres exigent une confirmation sans être déclarés tels et que leur
+  effet est le même. Ce que le moteur PROTÈGE compte, pas ce qu'il nomme ;
+- `retape(etape)` : ce que l'opérateur doit retaper, dérivé de la PORTÉE du geste,
+  ou `""` pour ce qui n'est pas du palier — ce qui n'est pas « n'importe quoi
+  convient ». La plupart des gestes du palier ne nomment aucune variable : il n'y
+  a rien à leur emprunter, là où la portée dit toujours sur quoi le geste porte.
+  Un geste de POSTE fait retaper un NOMBRE, celui des hôtes actifs du plan, parce
+  qu'à cette portée il n'y a pas d'objet unique à nommer ;
+- `attendu_retape(quoi, ecosysteme, site, hotes)` : le texte exact attendu, ou
+  `""` quand il n'y a rien à demander — ce qui ARRÊTE le geste chez l'appelant.
+  Un garde qui accepte n'importe quoi parce qu'il n'attend rien est pire que pas
+  de garde, puisqu'il donne l'assurance d'en être un. Zéro hôte EST un compte ;
+- `retape_concorde(attendu, tape)` : strict, casse comprise. Le but n'est pas de
+  vérifier qu'il sait écrire mais qu'il a REGARDÉ ; une comparaison indulgente
+  laisse confirmer de mémoire, et c'est précisément ce que ce garde empêche.
+  Seuls les blancs de bordure sont pardonnés, venant d'un copier-coller ;
 - `barriere(etape, ecosysteme, site)` : ce qui empêche todo de conduire cette
   étape d'ici, ou `""`. Les refus vont du général au circonstanciel : ce qui
   détruit ne part jamais d'ici, alors qu'une portée manquante se règle en

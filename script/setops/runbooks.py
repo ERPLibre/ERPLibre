@@ -367,6 +367,94 @@ def lit_registre(sortie):
     return tuple(trouves)
 
 
+# CE QU'ON FAIT RETAPER avant qu'un geste du palier écrive, dérivé de sa PORTÉE.
+# Vocabulaire CLOS. « » n'en fait pas partie : il dit que le geste n'est pas du
+# palier, donc qu'il n'y a rien à retaper.
+RETAPE_ECOSYSTEME = "ecosysteme"
+RETAPE_SITE = "site"
+RETAPE_HOTES = "hotes"
+RETAPES = (RETAPE_ECOSYSTEME, RETAPE_SITE, RETAPE_HOTES)
+
+
+def destructeur(etape) -> bool:
+    """Ce geste est-il du PALIER destructeur ?
+
+    DÉRIVÉ, jamais listé : la nature que le registre DÉCLARE, ou la confirmation
+    qu'il EXIGE. Une liste écrite ici vieillirait, et du mauvais côté — elle
+    laisserait passer sans garde le geste que l'amont vient de rendre
+    destructeur.
+
+    LES DEUX CRITÈRES NE SE RECOUVRENT PAS, et c'est la raison d'être de la
+    disjonction. Le registre ne déclare destructeurs qu'une poignée de gestes ;
+    d'autres exigent une confirmation sans être déclarés tels, et leur effet est
+    le même — l'un réécrit toute une flotte, l'autre recrée ses machines. Ce que
+    le moteur PROTÈGE est ce qui compte, pas ce qu'il nomme.
+    """
+    if etape is None:
+        return False
+    return etape.nature == DESTRUCTIF or bool(etape.exige_confirmation)
+
+
+def retape(etape):
+    """Ce que l'opérateur doit retaper pour ce geste, ou « ».
+
+    DÉRIVÉ DE LA PORTÉE, parce que la plupart des gestes du palier ne nomment
+    aucune variable : il n'y a rien à leur emprunter. La portée, elle, dit
+    toujours SUR QUOI le geste porte, et c'est cela qu'on fait relire.
+
+    Un geste de POSTE fait retaper un NOMBRE — celui des hôtes qu'il touche — et
+    non un nom : à cette portée, il n'y a pas d'objet unique à nommer, et un
+    nombre qu'on recopie prouve qu'on a regardé combien de machines sont en jeu.
+
+    « » pour ce qui n'est pas du palier : rien à retaper n'est pas « n'importe
+    quoi convient », et l'appelant ne doit pas confondre les deux.
+    """
+    if not destructeur(etape):
+        return ""
+    return {
+        "tenant": RETAPE_ECOSYSTEME,
+        "site": RETAPE_SITE,
+        "poste": RETAPE_HOTES,
+    }.get(etape.portee, "")
+
+
+def attendu_retape(quoi, ecosysteme="", site="", hotes=None):
+    """Ce qu'il faut retaper, tel quel. Ou « » si on ne sait pas quoi demander.
+
+    « » ARRÊTE LE GESTE chez l'appelant. Sans savoir ce qu'on demande, on ne peut
+    pas comparer — et un garde qui accepte n'importe quoi parce qu'il n'attend
+    rien est pire que pas de garde, puisqu'il donne l'assurance d'en être un.
+
+    `hotes` à None dit que le compte ne s'est pas lu. Zéro est un compte : un
+    geste qui ne toucherait aucune machine se fait confirmer par « 0 », ce qui
+    est justement l'information utile.
+    """
+    if quoi == RETAPE_ECOSYSTEME:
+        return (ecosysteme or "").strip()
+    if quoi == RETAPE_SITE:
+        return (site or "").strip()
+    if quoi == RETAPE_HOTES:
+        if isinstance(hotes, bool) or not isinstance(hotes, int) or hotes < 0:
+            return ""
+        return str(hotes)
+    return ""
+
+
+def retape_concorde(attendu, tape) -> bool:
+    """Ce que l'opérateur a tapé est-il EXACTEMENT ce qu'on attendait ?
+
+    STRICT, casse comprise. Le but n'est pas de vérifier qu'il sait écrire mais
+    qu'il a REGARDÉ : une comparaison indulgente laisse confirmer de mémoire, et
+    c'est précisément ce que ce garde existe pour empêcher. Seuls les blancs de
+    bordure sont pardonnés, parce qu'ils viennent du copier-coller et non de la
+    mémoire.
+
+    Un attendu VIDE refuse toujours : il dit qu'on n'a pas su quoi demander.
+    """
+    voulu = (attendu or "").strip()
+    return bool(voulu) and (tape or "").strip() == voulu
+
+
 def barriere(etape, ecosysteme="", site=""):
     """Ce qui empêche todo de conduire `etape` d'ici, ou « » s'il peut.
 

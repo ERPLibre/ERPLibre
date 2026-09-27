@@ -3028,13 +3028,15 @@ def _retire_depot(moteur, genre):
 def _retire_cle(chemin):
     """Efface une clé de voûte DU BANC. Rend le souci, ou « ».
 
-    La clé sans laquelle une voûte ne s'ouvre plus : le garde de nom est ce qui
-    empêche une empreinte modifiée de faire effacer celle d'une production.
+    La clé sans laquelle une voûte ne s'ouvre plus : le garde de NOM est ce qui
+    empêche une empreinte modifiée de faire effacer celle d'une production. Il
+    est le seul garde ici, et il suffit — l'effacement ne SUIT PAS un lien, si
+    bien qu'un lien posé à notre nom perd le lien et non sa cible.
     """
     if not cle_du_banc(chemin):
         return f"« {chemin} » n'est pas une clé du banc : rien n'est effacé"
     try:
-        if not os.path.isfile(chemin) or os.path.islink(chemin):
+        if not os.path.lexists(chemin):
             return ""
         os.remove(chemin)
     except OSError as souci:

@@ -2720,13 +2720,16 @@ class TestLaDefaiteNEffaceQueCeQuiEstAuBanc(unittest.TestCase):
         self.assertTrue(B._retire_cle(chemin))
         self.assertTrue(os.path.exists(chemin))
 
-    def test_a_key_that_is_a_link_is_refused(self):
-        """Un lien au bon NOM pointant ailleurs ferait effacer sa cible."""
-        vraie = self.fichier("la-vraie-cle-de-quelqu-un")
+    def test_removing_a_link_never_touches_what_it_points_at(self):
+        """CE QUE CETTE ÉPREUVE MESURE : l'effacement ne SUIT PAS un lien. Un
+        lien posé à notre nom perd le lien, et la clé de quelqu'un d'autre au
+        bout reste. Le garde de NOM, lui, est éprouvé à côté."""
+        vraie = self.fichier("la-cle-de-quelqu-un")
         piege = os.path.join(self.d, f"setops-vault-{B.ECOSYSTEME.lower()}")
         os.symlink(vraie, piege)
         self.assertEqual("", B._retire_cle(piege))
-        self.assertTrue(os.path.exists(vraie))
+        self.assertFalse(os.path.lexists(piege))
+        self.assertTrue(os.path.isfile(vraie))
 
     def test_the_repositories_path_comes_from_the_engine(self):
         """DÉRIVÉ, pas lu dans l'empreinte : le lire d'un fichier qu'un éditeur
@@ -2751,6 +2754,16 @@ class TestLaDefaiteNEffaceQueCeQuiEstAuBanc(unittest.TestCase):
                 os.makedirs(chemin, exist_ok=True)
                 self.assertEqual("", B._retire_depot(moteur, genre))
                 self.assertFalse(os.path.isdir(chemin))
+
+    def test_an_unreadable_vmid_leaves_a_trouble(self):
+        """LA PROPRIÉTÉ : ce n'est PAS « déjà absente ». Sans ce refus, un VMID
+        qu'on n'a pas su lire fait rendre « rien à faire », et la défaite
+        annonce une réussite pour une VM qu'elle n'a jamais regardée — alors
+        que l'empreinte la nommait."""
+        for vise in ("", "abc", "0", "-3"):
+            with self.subTest(vise=vise):
+                geste = B.Geste("un-terrain", B.VM, vise, "banc-fictif-01")
+                self.assertTrue(B.defait_un_geste(geste, "", B.TEL_QUEL))
 
     def test_an_unknown_genre_is_refused(self):
         """Le vocabulaire est CLOS : un genre hors de lui vient d'une empreinte

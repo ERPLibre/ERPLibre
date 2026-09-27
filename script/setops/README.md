@@ -306,6 +306,27 @@ later say two different things about the same gesture.
 - `lit_registre(sortie)`: the sequences, in order, or `None`. A step whose
   nature or target cannot be read refuses the WHOLE registry: a partial
   sequence is worse than none, since its order is what one came for;
+- `destructeur(etape)`: is this gesture in the DESTRUCTIVE tier? Derived, never
+  listed: the nature the registry DECLARES, or the confirmation it DEMANDS. A
+  list written in TODO would age, and from the wrong side — it would let through
+  unguarded the gesture upstream has just made destructive. The two criteria do
+  not overlap: the registry declares only a handful destructive, while others
+  demand a confirmation without being declared so, and their effect is the same.
+  What the engine PROTECTS is what counts, not what it names;
+- `retape(etape)`: what the operator must retype, from the tier gesture's SCOPE,
+  or `""` for what is not in the tier — which is not "anything will do". Most
+  tier gestures name no variable, so there is nothing to borrow from them; the
+  scope always says what the gesture bears on. A POSTE-scoped gesture has a
+  NUMBER retyped, the count of active hosts in the plan, since at that scope
+  there is no single object to name;
+- `attendu_retape(quoi, ecosysteme, site, hotes)`: the exact text expected, or
+  `""` when there is nothing to ask — which STOPS the gesture at the caller. A
+  guard that accepts anything because it expects nothing is worse than no guard,
+  since it gives the assurance of being one. Zero hosts IS a count;
+- `retape_concorde(attendu, tape)`: strict, case included. The point is not to
+  check spelling but that the operator LOOKED; a lenient comparison lets one
+  confirm from memory, which is exactly what this guard exists to prevent. Only
+  border whitespace is forgiven, since it comes from a copy-paste;
 - `barriere(etape, ecosysteme, site)`: what stops TODO from driving this step
   from here, or `""`. The refusals run from the general to the circumstantial:
   what destroys never runs from here, whereas a missing scope is settled by
