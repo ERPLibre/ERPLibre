@@ -210,7 +210,7 @@ RUNTIMES = ("native", "container")
 # Les couples (mode, exécution) livrés : le menu n'offre qu'eux, jamais un
 # choix qui mènerait à « pas encore disponible ». Un couple s'ajoute quand
 # son script existe et que son test l'éprouve.
-AVAILABLE = frozenset({("dev", "native")})
+AVAILABLE = frozenset({("dev", "native"), ("prod", "native")})
 
 # Le mot de passe saisi voyage par l'environnement, jamais par argv :
 # /proc/<pid>/cmdline est lisible par tout compte de la machine.

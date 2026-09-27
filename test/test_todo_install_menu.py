@@ -105,6 +105,11 @@ FAITS_LINUX = {
 }
 
 
+# Ce que lib_dolibarr livre vraiment, lu avant que BancDolibarr ne le
+# remplace pour exercer toutes les voies.
+AVAILABLE_REEL = dolibarr_menu.lib_dolibarr.AVAILABLE
+
+
 class BancDolibarr(Banc):
     """Épinglage, faits de l'hôte, registre et port sont injectés."""
 
@@ -340,6 +345,23 @@ class TestParcoursDolibarr(BancDolibarr):
         self.assertIn("--email ops@example.org", cmd)
         self.assertNotIn("--port", cmd)
 
+    def test_production_native_asks_the_domain_until_it_is_valid(self):
+        # Le natif sert par nginx sous ce nom : l'installateur refuse de
+        # partir sans lui, le menu ne le laisse donc ni vide ni invalide.
+        self.mots_de_passe = [""]
+        questions, appels, sortie = self.dolibarr(
+            ["2", "1", "1", "", "", "a b.org", "ERP.Example.org", "2", "", "y"]
+        )
+        domaine = todo_i18n.t("Domain name (e.g.: example.com): ")
+        self.assertEqual(questions.count(domaine), 3)
+        self.assertIn(
+            todo_i18n.t(
+                "Invalid domain name: letters, digits, dots and hyphens."
+            ),
+            sortie,
+        )
+        self.assertIn("--domain erp.example.org --tls local", appels[0][0])
+
     def test_a_failed_install_says_so(self):
         self.code = 3
         self.mots_de_passe = [""]
@@ -386,19 +408,29 @@ class TestVoiesLivrees(BancDolibarr):
     def setUp(self):
         super().setUp()
         p = mock.patch.object(
-            dolibarr_menu.lib_dolibarr,
-            "AVAILABLE",
-            frozenset({("dev", "native")}),
+            dolibarr_menu.lib_dolibarr, "AVAILABLE", AVAILABLE_REEL
         )
         p.start()
         self.addCleanup(p.stop)
 
-    def test_only_what_is_delivered_is_offered(self):
+    def test_development_offers_native_only(self):
         self.mots_de_passe = [""]
         questions, appels, _s = self.dolibarr(["1", "1", "1", "", "", "", "y"])
-        self.assertNotIn("Production", questions[0])
         self.assertNotIn("dolibarr/dolibarr", questions[1])
         self.assertIn("install_native.py --mode dev", appels[0][0])
+
+    def test_production_offers_native_behind_a_domain(self):
+        self.mots_de_passe = [""]
+        questions, appels, _s = self.dolibarr(
+            ["2", "1", "1", "", "erp.example.org", "3", "", "y"]
+        )
+        self.assertIn("Production", questions[0])
+        self.assertNotIn("dolibarr/dolibarr", questions[1])
+        self.assertIn(
+            "install_native.py --mode prod --instance dolibarr --db mariadb"
+            " --domain erp.example.org --tls none",
+            appels[0][0],
+        )
 
 
 class TestOrdreDesQuestions(Banc):

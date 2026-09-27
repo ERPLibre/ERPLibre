@@ -16476,6 +16476,10 @@ TRANSLATIONS = {
         "fr": "nginx ne sert pas la page de connexion.",
         "en": "nginx does not serve the login page.",
     },
+    "Invalid domain name: letters, digits, dots and hyphens.": {
+        "fr": "Nom de domaine invalide : lettres, chiffres, points et tirets.",
+        "en": "Invalid domain name: letters, digits, dots and hyphens.",
+    },
     "OPcache stays off: PHP runs without its opcode cache.": {
         "fr": "OPcache reste éteint : PHP tourne sans son cache d'opcodes.",
         "en": "OPcache stays off: PHP runs without its opcode cache.",
