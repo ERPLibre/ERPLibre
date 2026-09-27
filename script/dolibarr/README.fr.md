@@ -19,12 +19,14 @@ chaque script se lance aussi seul.
 | Script | Rôle |
 |--------|------|
 | `install_native.py` | Installe une instance avec nginx, PHP-FPM et MariaDB ou PostgreSQL |
+| `install_container.py` | Installe une instance de développement en conteneurs Docker ou Podman |
 | `native_prod.py` | Étapes de production, jouées par `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` d'une instance de développement |
 | `pin.py` | `show` le commit épinglé, `update` le relève (à blanc sans `--apply`) |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
+| `container_plan.py` | Rendu pur des commandes Docker/Podman d'une instance |
 
 Familles prises en charge : Debian/Ubuntu (apt), Fedora/EL (dnf), Arch
 (pacman), openSUSE (zypper).
@@ -49,6 +51,21 @@ passe de la base et de l'administrateur).
 Le mot de passe administrateur est demandé par TODO, ou généré s'il reste
 vide. En ligne de commande, il vient de la variable d'environnement
 `EL_DOLIBARR_ADMIN_PASSWORD`, jamais d'un argument.
+
+## Conteneurs (développement)
+
+```bash
+./script/dolibarr/install_container.py --mode dev --instance erp --port 8081 [--engine podman]
+```
+
+L'image officielle `dolibarr/dolibarr` sur MariaDB, avec Docker ou Podman,
+celui qui répond sans sudo d'abord ; aucun outil compose n'est requis.
+L'image porte la version que publie Docker Hub, parfois en retard sur
+l'épinglage natif. Ses données vivent dans des volumes nommés ; `custom/`
+est un dossier de l'hôte, inscriptible depuis le conteneur, pour
+développer des modules. Les secrets sont des fichiers (0600) de
+`~/.local/share/ERPLibre/dolibarr/<instance>/secrets`, montés en lecture
+seule. Le premier démarrage prend de 70 à 100 s environ.
 
 ## Production
 

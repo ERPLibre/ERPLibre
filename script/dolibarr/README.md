@@ -19,12 +19,14 @@ script also runs on its own.
 | Script | Role |
 |--------|------|
 | `install_native.py` | Installs an instance with nginx, PHP-FPM and MariaDB or PostgreSQL |
+| `install_container.py` | Installs a development instance in Docker or Podman containers |
 | `native_prod.py` | Production steps, played by `install_native.py --mode prod` |
 | `run.py` | `start`, `stop`, `status`, `logs` of a development instance |
 | `pin.py` | `show` the pinned commit, `update` it (dry run unless `--apply`) |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
+| `container_plan.py` | Pure rendering of the Docker/Podman commands of an instance |
 
 Supported families: Debian/Ubuntu (apt), Fedora/EL (dnf), Arch (pacman),
 openSUSE (zypper).
@@ -49,6 +51,20 @@ administrator passwords).
 The administrator password is asked by TODO, or generated when left empty.
 On the command line it comes from the `EL_DOLIBARR_ADMIN_PASSWORD`
 environment variable, never from an argument.
+
+## Containers (development)
+
+```bash
+./script/dolibarr/install_container.py --mode dev --instance erp --port 8081 [--engine podman]
+```
+
+The official `dolibarr/dolibarr` image on MariaDB, with Docker or Podman,
+whichever answers without sudo first; no compose tool is needed. The image
+runs the version Docker Hub publishes, which can trail the native pin. Its
+data lives in named volumes; `custom/` is a host directory, writable from
+the container, for module development. Secrets are files (0600) in
+`~/.local/share/ERPLibre/dolibarr/<instance>/secrets`, passed to the
+containers read-only. The first start takes about 70 to 100 s.
 
 ## Production
 
