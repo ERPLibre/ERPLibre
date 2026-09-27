@@ -19,7 +19,8 @@ lent ralentit la commande, comme un terminal.
 Chaque session suit son terminal (`ttywatch.TtyWatch`) : après la sortie,
 et toutes les PROBE_SECONDS tant qu'un client est attaché, le client
 reçoit `tty_state` quand l'état change. `gate` relit le terminal et ne
-laisse passer une frappe que si quelqu'un la lit ; ce qu'un lecteur n'a
+laisse passer une frappe que si quelqu'un la lit, ou si un lecteur vu à
+l'instant relit dans les HOLD_SECONDS qui suivent ; ce qu'un lecteur n'a
 pas pris est jeté dès que la sonde voit l'écho se couper en mode
 canonique. Seul un programme qui lit aussitôt après avoir coupé l'écho,
 sans vider l'entrée, devance ce vidage : il reçoit la suite d'un collage
@@ -66,6 +67,11 @@ VIEWS = ("telemetry",)
 # qu'un flot de sortie ne relise pas /proc à chaque morceau.
 PROBE_SECONDS = 0.2
 PROBE_GAP = 0.02
+# Une frappe qui trouve sans lecteur un terminal où une sonde en a vu un
+# depuis moins de READER_RECENT secondes attend HOLD_SECONDS au plus qu'il
+# relise : voir `gate`.
+READER_RECENT = 0.1
+HOLD_SECONDS = 0.03
 
 
 class Ring:
@@ -213,6 +219,7 @@ class Session:
         self.shown = None  # dernier tty_state envoyé au client
         self.probe_timer = None
         self.probed_at = 0.0
+        self.read_at = float("-inf")  # dernière sonde qui a vu un lecteur
         self.gap = PROBE_GAP  # délai minimal entre deux sondes
 
     async def start(self):
@@ -402,7 +409,7 @@ class Session:
         if self.master is not None:
             loop.remove_writer(self.master)
 
-    def gate(self, data: bytes) -> bytes:
+    async def gate(self, data: bytes) -> bytes:
         """Ce que `data`, une frappe ou un collage, peut porter au terminal.
 
         Le terminal est relu à chaque appel : l'état gardé peut dater
@@ -410,13 +417,37 @@ class Session:
         passe quand `_open` le permet ; sinon, les seuls caractères de
         signal de `data` (Ctrl+C, Ctrl+\\, Ctrl+Z), que le noyau change en
         signal sans lecteur.
+
+        Un lecteur qui traite la frappe précédente calcule, hors de tout
+        appel de lecture, et la sonde ne le voit plus. Quand une sonde en
+        a vu un depuis moins de READER_RECENT secondes, `data` attend donc
+        qu'il relise, HOLD_SECONDS au plus, sans bloquer la boucle : le
+        terminal est relu tous les dixièmes de `gap`, 2 ms pour une sonde
+        bon marché. Une invite de secret, déjà là ou venue pendant
+        l'attente, fait jeter `data` : une frappe d'avance ne devient pas
+        le secret.
         """
         if self.watch is None or self.master is None:
             return data
         self._probe()
         if _open(self.state):
             return data
-        return bytes(b for b in data if b in self.state.signals)
+        signals = bytes(b for b in data if b in self.state.signals)
+        if signals == data or _secret(self.state):
+            return signals
+        if self.probed_at - self.read_at > READER_RECENT:
+            return signals
+        watch, deadline = self.watch, self.probed_at + HOLD_SECONDS
+        while time.monotonic() < deadline:
+            await asyncio.sleep(self.gap / 10)
+            if self.watch is not watch or self.master is None:
+                break  # relancée ou finie : un autre terminal
+            self._probe()
+            if _secret(self.state):
+                break
+            if _open(self.state):
+                return data
+        return signals
 
     def asks_secret(self) -> bool:
         """Vrai si le terminal, relu, attend un secret : écho coupé en mode
@@ -448,6 +479,8 @@ class Session:
             return
         self.probed_at = time.monotonic()
         before, self.state = self.state, self.watch.probe()
+        if self.state.reader:
+            self.read_at = self.probed_at
         cost = time.monotonic() - self.probed_at
         self.gap = min(PROBE_SECONDS, max(PROBE_GAP, 10 * cost))
         if _secret(self.state) and not (

@@ -471,7 +471,10 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
     (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
-    passé. `interrupt` ne passe jamais par ce filtre. `secret` annonce que
+    passé. tornado attend la fin de `on_message` avant de lire le message
+    suivant : les messages qui suivent une trame que `gate` fait attendre
+    attendent derrière elle, dans l'ordre. `interrupt` ne passe jamais par
+    ce filtre. `secret` annonce que
     la trame suivante est la réponse du champ masqué : elle n'est écrite
     que si le terminal attend encore un secret, sinon `dropped` porte
     `secret` et rien n'atteint le PTY, dont l'écho l'afficherait.
@@ -498,11 +501,11 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
         elif self.session.client is not self:
             return  # repris par un autre onglet : ce qui arrive encore d'ici
         elif isinstance(message, bytes):
-            self.type(message)
+            await self.type(message)
         else:
             self.control(message)
 
-    def type(self, data):
+    async def type(self, data):
         if self.secret_next:
             self.secret_next = False
             if not self.session.asks_secret():
@@ -511,7 +514,7 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
                 return
             kept = data
         else:
-            kept = data if self.raw else self.session.gate(data)
+            kept = data if self.raw else await self.session.gate(data)
             if len(kept) < len(data):
                 self.event({"t": "dropped", "bytes": len(data) - len(kept)})
         if kept and not self.session.write(kept):

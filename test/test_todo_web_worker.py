@@ -362,7 +362,7 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         """Attend que TODO lise son terminal : ses frappes passent alors le
         filtre du hub."""
         deadline = time.monotonic() + 5
-        while session.gate(b"1") != b"1":
+        while await session.gate(b"1") != b"1":
             self.assertLess(time.monotonic(), deadline, "TODO does not read")
             await asyncio.sleep(0.02)
 

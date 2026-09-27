@@ -118,6 +118,35 @@ termios.tcsetattr(0, termios.TCSANOW, attrs)
 time.sleep(30)
 """
 
+# Lit une touche à la fois hors du mode canonique, comme un éditeur de
+# ligne (PyREPL, readline), et calcule 5 ms sur chacune avant de relire.
+BUSY = r"""
+import os, time, tty
+tty.setcbreak(0)
+print("ready", flush=True)
+while True:
+    key = os.read(0, 1)
+    os.write(1, b"<" + key + b">")
+    end = time.perf_counter() + 0.005
+    while time.perf_counter() < end:
+        pass
+"""
+
+# Lit une ligne, calcule 5 ms, puis coupe l'écho sans vider la file
+# (TCSANOW) et lit le secret.
+BUSY_THEN_SECRET = r"""
+import termios, time
+print("ready", flush=True)
+input()
+end = time.perf_counter() + 0.005
+while time.perf_counter() < end:
+    pass
+attrs = termios.tcgetattr(0)
+attrs[3] &= ~termios.ECHO
+termios.tcsetattr(0, termios.TCSANOW, attrs)
+print("secret was", repr(input()), flush=True)
+"""
+
 # 8 Mo de sortie d'un coup, en lignes de 4 Ko.
 FLOOD = r"""
 import os
@@ -528,28 +557,72 @@ class TestGate(SessionCase):
     async def test_only_what_is_read_goes_through_and_signals_always(self):
         session, client = await self.open(READ_THEN_SLEEP)
         await self.until(lambda: client.seen(reader=True))
-        self.assertEqual(session.gate(b"go\n"), b"go\n")
+        self.assertEqual(await session.gate(b"go\n"), b"go\n")
         session.write(b"go\n")
         await self.until(lambda: client.states()[-1]["reader"] is False)
-        self.assertEqual(session.gate(b"abc"), b"")
+        self.assertEqual(await session.gate(b"abc"), b"")
         # Le noyau change Ctrl+C et Ctrl+Z en signal, sans lecteur.
-        self.assertEqual(session.gate(b"a\x03b\x1a"), b"\x03\x1a")
+        self.assertEqual(await session.gate(b"a\x03b\x1a"), b"\x03\x1a")
 
     async def test_each_keystroke_reads_the_terminal_again(self):
         # L'état gardé peut dater d'avant l'invite, ou d'un lecteur parti.
         session, client = await self.open(READ_THEN_SLEEP)
         await self.until(lambda: client.seen(reader=True))
         session.state = session.state._replace(reader=False)
-        self.assertEqual(session.gate(b"go\n"), b"go\n")
+        self.assertEqual(await session.gate(b"go\n"), b"go\n")
         session.write(b"go\n")
         await self.until(lambda: b"sleeping" in client.data)
         session.state = session.state._replace(reader=True)
-        self.assertEqual(session.gate(b"abc"), b"")
+        self.assertEqual(await session.gate(b"abc"), b"")
+
+    async def test_a_key_behind_one_the_reader_still_handles_passes(self):
+        # Le fil du lecteur calcule, hors de tout appel de lecture : la
+        # touche suivante attend qu'il relise, au lieu d'être jetée.
+        session, client = await self.open(BUSY)
+        await self.until(lambda: client.seen(reader=True))
+        for count in range(1, 11):
+            session.write(await session.gate(b"a"))
+            deadline = time.monotonic() + 1
+            while session.watch.reader():
+                self.assertLess(time.monotonic(), deadline, "never busy")
+            self.assertEqual(await session.gate(b"b"), b"b")
+            session.write(b"b")
+            await self.until(lambda: client.data.count(b"<b>") == count)
+        self.assertEqual(client.data.count(b"<a><b>"), 10)
+
+    async def test_a_key_behind_a_reader_gone_to_sleep_waits_then_drops(self):
+        session, client = await self.open(READ_THEN_SLEEP)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"go\n"))
+        await self.until(lambda: b"sleeping" in client.data)
+        # Le lecteur vu avant `go` compte comme récent : la frappe attend,
+        # puis est jetée.
+        start = time.monotonic()
+        with patch.object(sessions, "READER_RECENT", 60):
+            self.assertEqual(await session.gate(b"abc"), b"")
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, sessions.HOLD_SECONDS)
+        self.assertLess(elapsed, sessions.HOLD_SECONDS + 0.2)
+
+    async def test_a_key_held_until_a_secret_prompt_is_dropped(self):
+        # Tapée pendant que le lecteur calcule, avant l'invite : elle ne
+        # devient pas le secret.
+        session, client = await self.open(BUSY_THEN_SECRET)
+        await self.until(lambda: client.seen(reader=True))
+        session.write(await session.gate(b"go\n"))
+        deadline = time.monotonic() + 1
+        while session.watch.reader():
+            self.assertLess(time.monotonic(), deadline, "never busy")
+        self.assertEqual(await session.gate(b"forged\n"), b"")
+        await self.until(lambda: client.seen(echo=False, reader=True))
+        session.write(b"hunter2\n")
+        await self.until(lambda: b"secret was" in client.data)
+        self.assertIn(b"secret was 'hunter2'", client.data)
 
     async def test_the_alternate_screen_lets_everything_through(self):
         session, client = await self.open(FULL_SCREEN)
         await self.until(lambda: client.seen(altscreen=True, reader=False))
-        self.assertEqual(session.gate(b"q"), b"q")
+        self.assertEqual(await session.gate(b"q"), b"q")
 
     async def test_an_unknown_reader_lets_everything_through(self):
         # Architecture sans table ; /proc inutilisable ; esclave introuvable.
@@ -562,7 +635,7 @@ class TestGate(SessionCase):
                 with patch.object(ttywatch, name, value):
                     session, client = await self.open(WAITERS["sleep"])
                 await self.until(lambda: b"ready" in client.data)
-                self.assertEqual(session.gate(b"abc"), b"abc")
+                self.assertEqual(await session.gate(b"abc"), b"abc")
 
 
 if __name__ == "__main__":
