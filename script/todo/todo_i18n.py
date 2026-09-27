@@ -16484,6 +16484,54 @@ TRANSLATIONS = {
         "fr": "OPcache reste éteint : PHP tourne sans son cache d'opcodes.",
         "en": "OPcache stays off: PHP runs without its opcode cache.",
     },
+    "Instance files": {
+        "fr": "Fichiers de l'instance",
+        "en": "Instance files",
+    },
+    "Network and volumes": {
+        "fr": "Réseau et volumes",
+        "en": "Network and volumes",
+    },
+    "Database container": {
+        "fr": "Conteneur de la base",
+        "en": "Database container",
+    },
+    "Site container": {
+        "fr": "Conteneur du site",
+        "en": "Site container",
+    },
+    "First start": {
+        "fr": "Premier démarrage",
+        "en": "First start",
+    },
+    "Scheduled jobs container": {
+        "fr": "Conteneur des tâches planifiées",
+        "en": "Scheduled jobs container",
+    },
+    "Cannot pull %s.": {
+        "fr": "Impossible de télécharger %s.",
+        "en": "Cannot pull %s.",
+    },
+    "Cannot start %s.": {
+        "fr": "Impossible de démarrer %s.",
+        "en": "Cannot start %s.",
+    },
+    "Port %s is already in use.": {
+        "fr": "Le port %s est déjà pris.",
+        "en": "Port %s is already in use.",
+    },
+    "The site does not serve the login page.": {
+        "fr": "Le site ne sert pas la page de connexion.",
+        "en": "The site does not serve the login page.",
+    },
+    "Container images": {
+        "fr": "Images des conteneurs",
+        "en": "Container images",
+    },
+    "container started": {
+        "fr": "conteneur démarré",
+        "en": "container started",
+    },
 }
 
 
