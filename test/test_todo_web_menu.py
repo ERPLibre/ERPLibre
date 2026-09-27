@@ -7,13 +7,15 @@ page par le hub de ce checkout, dire pourquoi il n'a pas démarré, l'arrêter.
 
 Le lanceur est simulé, sauf dans TestWithARealHub, qui démarre un vrai hub.
 HOME, et XDG_RUNTIME_DIR pour le vrai hub, pointent vers un répertoire
-temporaire. La langue est fixée par test (`use_lang`, sans écrire
-env_var.sh) et la télémétrie de navigation, que chaque menu enregistre, est
-neutralisée.
+temporaire ; TODO_WEB_FD et TODO_WEB_PID sont retirés, sauf dans
+TestInsideAWebSession, qui les pose comme le worker d'une session. La langue
+est fixée par test (`use_lang`, sans écrire env_var.sh) et la télémétrie de
+navigation, que chaque menu enregistre, est neutralisée.
 """
 
 import io
 import os
+import socket
 import sys
 import tempfile
 import unittest
@@ -58,6 +60,8 @@ class MenuCase(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         os.mkdir(os.environ["HOME"])
+        os.environ.pop("TODO_WEB_FD", None)
+        os.environ.pop("TODO_WEB_PID", None)
         self.todo = TODO()
 
     def printed(self, method):
@@ -314,6 +318,61 @@ class TestWebStop(MenuCase):
         ):
             lines = self.printed(self.todo._todo_web_stop)
         self.assertEqual(lines, ["ℹ️ The web interface is not running."])
+        stop.assert_not_called()
+
+
+class TestInsideAWebSession(MenuCase):
+    def channel(self, pid=None):
+        """Le canal comme le pose le worker : rend l'extrémité du hub."""
+        hub, worker = socket.socketpair()
+        self.addCleanup(hub.close)
+        self.addCleanup(worker.close)
+        env = {"TODO_WEB_FD": str(worker.fileno())}
+        env["TODO_WEB_PID"] = str(pid or os.getpid())
+        patcher = patch.dict(os.environ, env)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return hub
+
+    def test_telemetry_opens_in_the_page_and_starts_nothing(self):
+        hub = self.channel()
+        with patch.object(launcher, "open_page") as open_page:
+            lines = self.printed(self.todo._todo_telemetry_web)
+        self.assertEqual(lines, ["Telemetry opened in this page."])
+        open_page.assert_not_called()
+        line = b'{"t": "open_view", "view": "telemetry"}\n'
+        self.assertEqual(hub.recv(4096), line)
+
+    def test_a_todo_started_from_a_session_opens_the_page_as_usual(self):
+        # Il hérite des variables, pas du descripteur : un autre pid.
+        hub = self.channel(pid=1)
+        with patch.object(
+            launcher, "open_page", return_value=_page()
+        ) as open_page:
+            lines = self.printed(self.todo._todo_telemetry_web)
+        open_page.assert_called_once()
+        self.assertEqual(lines[0], f"✅ Web interface ready — {URL}")
+        hub.setblocking(False)
+        with self.assertRaises(BlockingIOError):
+            hub.recv(4096)
+
+    def test_stop_stops_nothing(self):
+        self.channel(pid=1)
+        # Un hub arrêté : sans la branche de session, [3] le dit et rend la
+        # main, sans jamais poser de question.
+        with (
+            patch.object(launcher, "status", return_value=None) as status,
+            patch.object(launcher, "stop") as stop,
+        ):
+            lines = self.printed(self.todo._todo_web_stop)
+        self.assertEqual(
+            lines,
+            [
+                "This TODO runs in the web interface: stop the interface from"
+                " a terminal."
+            ],
+        )
+        status.assert_not_called()
         stop.assert_not_called()
 
 

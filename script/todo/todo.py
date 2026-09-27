@@ -836,18 +836,42 @@ class TODO(
             n=info.get("sessions", 0),
         )
 
+    def _web_channel(self):
+        """Descripteur du canal de la session web qui fait tourner ce TODO,
+        ou None hors session. Le worker pose TODO_WEB_FD et TODO_WEB_PID ;
+        un TODO lancé depuis une commande de la session hérite des deux
+        variables, pas du descripteur : son pid l'écarte."""
+        fd = os.environ.get("TODO_WEB_FD", "")
+        if not fd.isdigit():
+            return None
+        if os.environ.get("TODO_WEB_PID") != str(os.getpid()):
+            return None
+        return int(fd)
+
     def _todo_telemetry_web(self):
         """Ouvre la télémétrie dans le navigateur, par le hub web de ce
         checkout, démarré au besoin.
 
-        Le hub est détaché : la méthode rend la main dès le lien émis, et
-        Ctrl+C dans ce terminal ne l'atteint pas. Le lien de connexion est
-        toujours affiché, pour un navigateur confiné qui ne lit pas le
-        fichier de redirection ; sans affichage graphique, il suit la
-        commande du tunnel SSH à lancer depuis le poste de l'utilisateur.
-        Un échec s'affiche et rend la main, Ctrl+C pendant le démarrage
-        aussi : rien ne remonte au menu.
+        Dans une session web, la page qui montre ce TODO ouvre sa propre
+        vue de télémétrie, demandée par le canal du worker : rien ne
+        démarre. Ailleurs, le hub est détaché : la méthode rend la main dès
+        le lien émis, et Ctrl+C dans ce terminal ne l'atteint pas. Le lien
+        de connexion est toujours affiché, pour un navigateur confiné qui
+        ne lit pas le fichier de redirection ; sans affichage graphique, il
+        suit la commande du tunnel SSH à lancer depuis le poste de
+        l'utilisateur. Un échec s'affiche et rend la main, Ctrl+C pendant
+        le démarrage aussi : rien ne remonte au menu.
         """
+        channel = self._web_channel()
+        if channel is not None:
+            line = json.dumps({"t": "open_view", "view": "telemetry"})
+            try:
+                os.write(channel, line.encode() + b"\n")
+            except OSError:
+                pass
+            else:
+                print(t("Telemetry opened in this page."))
+                return
         try:
             page = launcher.open_page(
                 new_path, view="telemetry", lang=get_lang()
@@ -926,7 +950,19 @@ class TODO(
         une commande, demande d'abord : un refus n'arrête rien, Ctrl+C ou
         Ctrl+D non plus. Un hub qui répond encore après l'attente du lanceur
         n'est pas annoncé arrêté : la ligne d'état du menu, affichée
-        ensuite, dit qu'il tourne. Rien ne remonte au menu."""
+        ensuite, dit qu'il tourne. Rien ne remonte au menu.
+
+        Dans une session web, ou dans un TODO lancé depuis l'une d'elles
+        (TODO_WEB_FD hérité), rien ne s'arrête : ce serait couper la page
+        qui montre ce terminal."""
+        if os.environ.get("TODO_WEB_FD"):
+            print(
+                t(
+                    "This TODO runs in the web interface: stop the interface"
+                    " from a terminal."
+                )
+            )
+            return
         try:
             info = self._web_status()
         except KeyboardInterrupt:

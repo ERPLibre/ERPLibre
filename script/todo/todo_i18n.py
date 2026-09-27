@@ -2534,12 +2534,12 @@ TRANSLATIONS = {
         "fr": "Télémétrie ouverte dans cette page.",
         "en": "Telemetry opened in this page.",
     },
-    "This page runs on the web interface: stop it from a terminal or with"
-    " the page's Stop button.": {
-        "fr": "Cette page passe par l'interface web : arrêtez-la depuis un"
-        " terminal ou avec le bouton Arrêter de la page.",
-        "en": "This page runs on the web interface: stop it from a terminal"
-        " or with the page's Stop button.",
+    "This TODO runs in the web interface: stop the interface from a"
+    " terminal.": {
+        "fr": "Ce TODO tourne dans l'interface web : arrêtez-la depuis un"
+        " terminal.",
+        "en": "This TODO runs in the web interface: stop the interface from a"
+        " terminal.",
     },
     "Configuration": {
         "fr": "🔩 Configuration",

@@ -70,6 +70,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Execute › Docker / Podman` says which engine answers, with or without sudo, and names why one refuses — down to an account added to the `docker` group after its session opened, or a kernel upgraded without a reboot. A rootless daemon is found even when `DOCKER_HOST` does not name its socket. The menu installs Docker — through the `docker` group, announced as root-equivalent, or rootless — or Podman with `script/install/install_container.sh`, drives the engine's systemd unit and shows its journal on failure, and runs the six `script/docker/` scripts, which had make targets only
 - Build the image of one Odoo version, or of every version in one sweep that goes on past a failed version and ends on what was built and what failed. The sweep asks first: a production image weighs about ten gigabytes
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
+- The TODO web page gains a Sessions view: the real TODO runs there in a terminal, Stop interrupts only the command in progress, and a reload finds the session and its output again. Inside such a session, Navigation telemetry › WEB opens the telemetry of the same page
 
 ## Changed
 
