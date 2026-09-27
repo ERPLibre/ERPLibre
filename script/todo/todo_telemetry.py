@@ -605,9 +605,10 @@ def _net_sample():
 def _mem():
     info = {}
     try:
-        for line in open("/proc/meminfo"):
-            k, _, v = line.partition(":")
-            info[k] = int(v.split()[0]) * 1024
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                info[k] = int(v.split()[0]) * 1024
     except (OSError, ValueError):
         return None
     total = info.get("MemTotal", 0)
@@ -689,7 +690,8 @@ def system_snapshot(prev, full=True):
     m["battery"] = _battery()
     m["temp"] = read_temperature() if full else None
     try:
-        m["uptime"] = float(open("/proc/uptime").read().split()[0])
+        with open("/proc/uptime") as f:
+            m["uptime"] = float(f.read().split()[0])
     except (OSError, ValueError):
         m["uptime"] = None
     try:
