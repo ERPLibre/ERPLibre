@@ -16920,6 +16920,18 @@ TRANSLATIONS = {
         "fr": "Scripts de montée",
         "en": "Upgrade scripts",
     },
+    "New code staged": {
+        "fr": "Nouveau code préparé",
+        "en": "New code staged",
+    },
+    "Code swapped": {
+        "fr": "Code permuté",
+        "en": "Code swapped",
+    },
+    "The site does not serve %s.": {
+        "fr": "Le site ne sert pas %s.",
+        "en": "The site does not serve %s.",
+    },
 }
 
 
