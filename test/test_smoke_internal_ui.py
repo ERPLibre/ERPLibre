@@ -199,6 +199,27 @@ class TestReadingTheFieldsOfAPage(unittest.TestCase):
         }
         self.assertEqual(ui.arch_fields(ancien), ["x"])
 
+    def test_a_subview_rendered_apart_is_NOT_read_either(self):
+        # Jusqu'à la 15, la sous-vue d'un one2many arrive à part, sous
+        # fields[<champ>]["views"] : ses champs sont ceux de la ligne.
+        ancien = {
+            "fields_views": {
+                "form": {
+                    "arch": '<form><field name="order_line"/></form>',
+                    "fields": {
+                        "order_line": {
+                            "views": {
+                                "tree": {
+                                    "arch": '<tree><field name="price_unit"/></tree>'
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+        }
+        self.assertEqual(ui.arch_fields(ancien), ["order_line"])
+
 
 class TestTheThreeStatesOfTheTestUser(unittest.TestCase):
     """« je ne sais pas » n'est pas « il n'y en a pas ».

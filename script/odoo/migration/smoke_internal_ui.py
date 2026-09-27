@@ -331,7 +331,13 @@ def arch_fields(views):
             arch = noeud.get("arch")
             if isinstance(arch, str):
                 lst_arch.append(arch)
-            for valeur in noeud.values():
+            for cle, valeur in noeud.items():
+                # Jusqu'à la 15, les sous-vues d'un one2many sont rendues à
+                # part, sous fields[<champ>]["views"] : leurs arch sont
+                # celles du modèle de la LIGNE. Depuis la 16, elles sont
+                # dans l'arch principal, que parcourir() sait déjà borner.
+                if cle == "fields":
+                    continue
                 descendre(valeur)
         elif isinstance(noeud, list):
             for valeur in noeud:
