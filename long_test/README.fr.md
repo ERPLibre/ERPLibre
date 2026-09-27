@@ -374,6 +374,14 @@ du code que rien n'a vérifié.
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ```
 
+**Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
+fois, à sa création, et jamais plus. Il ne va qu'à deux endroits — l'environnement
+d'un geste, ou l'outil qui le chiffre, atteint par l'entrée standard — et nulle
+part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libérés
+et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
+journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
+ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
 non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée

@@ -395,5 +395,61 @@ class TestCeQueTodoNeLancePas(unittest.TestCase):
         )
 
 
+class TestLesIdentitesDeVoute(unittest.TestCase):
+    """Une `Identite` est le COUPLE étiquette/clé : une étiquette sans sa clé
+    n'ouvre rien, et une clé sans son étiquette ne dit pas quelle voûte elle
+    ouvre. Une liste amputée fait échouer un déchiffrement sur un message qui ne
+    parle que de mot de passe — et l'on cherche alors la clé, pas la liste."""
+
+    REELLE = "une-etiquette@/config/une-cle,autre-etiquette@/config/autre-cle"
+
+    def test_both_sides_of_each_pair_are_kept(self):
+        lues = V.lit_identites(self.REELLE)
+        self.assertEqual(
+            [
+                ("une-etiquette", "/config/une-cle"),
+                ("autre-etiquette", "/config/autre-cle"),
+            ],
+            [(i.etiquette, i.cle) for i in lues],
+        )
+
+    def test_the_split_is_on_the_first_at_sign(self):
+        """Une étiquette n'en contient pas ; un chemin pourrait."""
+        lue = V.lit_identites("etiq@/config/cle@sauvegarde")[0]
+        self.assertEqual(
+            ("etiq", "/config/cle@sauvegarde"), (lue.etiquette, lue.cle)
+        )
+
+    def test_declaring_none_is_an_answer(self):
+        """Et c'est un avertissement en soi : le moteur exporte alors sa
+        variable d'identités VIDE, et toute cible ansible qu'il lance échoue."""
+        for sortie in ("", "   ", "\n", None):
+            with self.subTest(sortie=repr(sortie)):
+                self.assertEqual((), V.lit_identites(sortie))
+
+    def test_a_malformed_entry_refuses_the_whole_read(self):
+        for sortie in (
+            "sans-arobase",
+            "@/config/cle",
+            "etiq@",
+            "etiq@   ",
+            "bonne@/config/cle,mauvaise",
+            "bonne@/config/cle,,autre@/config/cle2",
+        ):
+            with self.subTest(sortie=sortie):
+                self.assertIsNone(V.lit_identites(sortie))
+
+    def test_a_well_formed_list_is_not_refused(self):
+        """Le contrôle positif : sans lui, un lecteur qui refuse toujours
+        passerait les refus ci-dessus."""
+        self.assertIsNotNone(V.lit_identites(self.REELLE))
+
+    def test_the_argv_asks_the_engine_for_them(self):
+        """Le couple est DÉRIVÉ du recenseur du moteur, pas recomposé depuis le
+        nom d'un dépôt : c'est lui qui décide comment il nomme ses voûtes."""
+        self.assertIn("identites", V.ARGV_IDENTITES)
+        self.assertEqual(V.ARGV_ETAT[:-1], V.ARGV_IDENTITES[:-1])
+
+
 if __name__ == "__main__":
     unittest.main()

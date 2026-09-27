@@ -29,6 +29,9 @@ from typing import NamedTuple
 # Ce que todo demande au moteur. `etat` rend 1 quand la clé de l'instance
 # montée manque, 0 sinon — une absence ailleurs ne change pas le code.
 ARGV_ETAT = ("python3", "-B", "scripts/voutes.py", "etat")
+# Le même recenseur, interrogé sur ses IDENTITÉS : le couple
+# étiquette/clé de chaque voûte, que les outils de chiffrement attendent.
+ARGV_IDENTITES = ("python3", "-B", "scripts/voutes.py", "identites")
 
 # La cible du moteur qui montre ce qui n'existe QUE sur ce poste. Lecture.
 CIBLE_RECENSER = "cles-recenser"
@@ -246,6 +249,52 @@ def separation(voutes):
     secret de la voûte existe déjà ailleurs. Rien ici ne les propose.
     """
     return tuple(v for v in voutes or () if v.etat == SANS_CLE)
+
+
+class Identite(NamedTuple):
+    """Une voûte que cette machine sait ouvrir : son étiquette et sa clé.
+
+    L'étiquette est celle que le moteur donne à la voûte ; le chemin est celui du
+    fichier-clé. Les deux vont ENSEMBLE, parce que c'est le couple que les outils
+    de chiffrement attendent — une étiquette sans sa clé n'ouvre rien, et une clé
+    sans son étiquette ne dit pas quelle voûte elle ouvre.
+    """
+
+    etiquette: str
+    cle: str
+
+
+def lit_identites(sortie):
+    """Les identités que le moteur déclare, ou None.
+
+    Le moteur les rend sur UNE ligne, séparées par des virgules, chacune de la
+    forme « étiquette@chemin ». La séparation porte sur le PREMIER arobase :
+    une étiquette n'en contient pas, un chemin pourrait.
+
+    Fermé par défaut : une entrée sans arobase, ou dont l'un des deux côtés est
+    vide, fait refuser TOUTE la lecture. Une liste amputée d'une identité fait
+    échouer le déchiffrement d'une voûte sur un message qui ne parle que de mot
+    de passe — et l'on cherche alors la clé, pas la liste.
+
+    Une sortie sans rien rend `()` : le moteur n'en déclare aucune, ce qui est
+    une réponse. Son appelant doit alors savoir que toute cible ansible lancée
+    par le moteur échouera, sa variable d'identités étant exportée VIDE.
+    """
+    texte = (sortie or "").strip()
+    if not texte:
+        return ()
+    vues = []
+    for morceau in texte.split(","):
+        nu = morceau.strip()
+        if not nu:
+            return None
+        if "@" not in nu:
+            return None
+        etiquette, cle = nu.split("@", 1)
+        if not etiquette.strip() or not cle.strip():
+            return None
+        vues.append(Identite(etiquette.strip(), cle.strip()))
+    return tuple(vues)
 
 
 def poser_cle(chemin) -> Pose:

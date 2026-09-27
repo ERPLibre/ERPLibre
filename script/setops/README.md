@@ -208,10 +208,14 @@ one way only.
 - `cible(moteur, nom, variables, confirmer)`: the argv of a `make` target,
   `CONFIRMER` always written, last;
 - `cite(argv)`: the line to show, derived from the argv;
-- `jouer(argv, env, cwd, capture, delai, fusionner)`: runs and returns a
-  `Verdict`
-  whose `code` is `None` when the process could not run at all — that is a
-  verdict, not the absence of one;
+- `jouer(argv, env, cwd, capture, delai, fusionner, entree)`: runs and returns
+  a `Verdict` whose `code` is `None` when the process could not run at all —
+  that is a verdict, not the absence of one. `entree` passes a text on standard
+  input WITHOUT putting it on disk, which is the only path by which a secret
+  reaches the tool that encrypts it: written in clear then encrypted, it would
+  stay in the freed blocks and in any backup taken between the two. Without it
+  the input stays CLOSED, so a gesture that would ask for a passphrase fails at
+  once instead of waiting until the deadline;
 - `detacher(argv, env, cwd, journal)`: launches and hands back the PID of the
   group leader, or `None`. A NEW SESSION, and that is what makes it stoppable:
   one signal reaches both the `make` recipe and the server it starts. The
@@ -367,6 +371,13 @@ and returns a verdict that does not carry them.
 - `separation(voutes)`: the vaults this machine does not open and must not.
   Posing a new key for one of them would open nothing: that vault's secret
   already exists elsewhere;
+- `lit_identites(sortie)`: the label/key pairs the engine declares, `()` when
+  it declares none, `None` when one entry is not `label@path`. An `Identite` is
+  the COUPLE, because a label without its key opens nothing and a key without
+  its label does not say which vault it opens. A truncated list makes a vault's
+  decryption fail on a message that speaks only of a password — one then hunts
+  for the key, not for the list. `()` is its own warning: the engine exports its
+  identity variable EMPTY, and every ansible target it runs then fails;
 - `poser_cle(chemin)`: poses a new key file and returns a `Pose`. It NEVER
   overwrites an existing file — a replaced key makes its vault unreadable for
   good, where the shell redirection the engine documents truncates. The mode is

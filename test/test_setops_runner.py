@@ -288,5 +288,40 @@ class TestLeDelaiGardeCeQuiAEteDit(unittest.TestCase):
         self.assertEqual("", vu.sortie)
 
 
+class TestLEntreeNePasseJamaisParLeDisque(unittest.TestCase):
+    """C'est le seul chemin par lequel un secret atteint l'outil qui le chiffre :
+    écrit en clair puis chiffré, il resterait dans les blocs libérés et dans
+    toute sauvegarde prise entre les deux gestes."""
+
+    def test_the_text_reaches_the_command(self):
+        vu = R.jouer(("cat",), entree="le texte passé\n")
+        self.assertEqual((0, "le texte passé\n"), (vu.code, vu.sortie))
+
+    def test_an_empty_input_is_still_an_input(self):
+        """La chaîne vide OUVRE le tube : « rien à passer » n'est pas « ne rien
+        ouvrir », et un outil qui lit une entrée vide voit une fin de fichier
+        plutôt qu'une erreur."""
+        vu = R.jouer(("cat",), entree="")
+        self.assertEqual((0, ""), (vu.code, vu.sortie))
+
+    def test_without_it_the_input_is_closed(self):
+        """LA PROPRIÉTÉ. Un geste qui réclamerait une phrase de passe doit
+        ÉCHOUER tout de suite, et non attendre jusqu'à la borne — une épreuve
+        lancée pour des heures sans surveillance y resterait pendue."""
+        vu = R.jouer(("sh", "-c", "read x"), delai=10)
+        self.assertNotEqual(0, vu.code)
+
+    def test_the_same_command_succeeds_when_given_one(self):
+        """Le contrôle positif du précédent."""
+        vu = R.jouer(("sh", "-c", "read x"), delai=10, entree="une ligne\n")
+        self.assertEqual(0, vu.code)
+
+    def test_it_never_raises_when_both_would_be_passed(self):
+        """`input` OU `stdin`, jamais les deux : ensemble ils lèvent une
+        ValueError que ce module attrape, et le geste rendrait « n'a pas pu
+        tourner » sur un argument — un diagnostic très loin de sa cause."""
+        self.assertEqual(0, R.jouer(("true",), entree="x").code)
+
+
 if __name__ == "__main__":
     unittest.main()

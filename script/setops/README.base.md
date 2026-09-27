@@ -213,10 +213,14 @@ one way only.
 - `cible(moteur, nom, variables, confirmer)`: the argv of a `make` target,
   `CONFIRMER` always written, last;
 - `cite(argv)`: the line to show, derived from the argv;
-- `jouer(argv, env, cwd, capture, delai, fusionner)`: runs and returns a
-  `Verdict`
-  whose `code` is `None` when the process could not run at all — that is a
-  verdict, not the absence of one;
+- `jouer(argv, env, cwd, capture, delai, fusionner, entree)`: runs and returns
+  a `Verdict` whose `code` is `None` when the process could not run at all —
+  that is a verdict, not the absence of one. `entree` passes a text on standard
+  input WITHOUT putting it on disk, which is the only path by which a secret
+  reaches the tool that encrypts it: written in clear then encrypted, it would
+  stay in the freed blocks and in any backup taken between the two. Without it
+  the input stays CLOSED, so a gesture that would ask for a passphrase fails at
+  once instead of waiting until the deadline;
 - `detacher(argv, env, cwd, journal)`: launches and hands back the PID of the
   group leader, or `None`. A NEW SESSION, and that is what makes it stoppable:
   one signal reaches both the `make` recipe and the server it starts. The
@@ -372,6 +376,13 @@ and returns a verdict that does not carry them.
 - `separation(voutes)`: the vaults this machine does not open and must not.
   Posing a new key for one of them would open nothing: that vault's secret
   already exists elsewhere;
+- `lit_identites(sortie)`: the label/key pairs the engine declares, `()` when
+  it declares none, `None` when one entry is not `label@path`. An `Identite` is
+  the COUPLE, because a label without its key opens nothing and a key without
+  its label does not say which vault it opens. A truncated list makes a vault's
+  decryption fail on a message that speaks only of a password — one then hunts
+  for the key, not for the list. `()` is its own warning: the engine exports its
+  identity variable EMPTY, and every ansible target it runs then fails;
 - `poser_cle(chemin)`: poses a new key file and returns a `Pose`. It NEVER
   overwrites an existing file — a replaced key makes its vault unreadable for
   good, where the shell redirection the engine documents truncates. The mode is
@@ -638,10 +649,14 @@ un sens.
 - `cible(moteur, nom, variables, confirmer)` : l'argv d'une cible `make`,
   `CONFIRMER` toujours écrit, en dernier ;
 - `cite(argv)` : la ligne à montrer, dérivée de l'argv ;
-- `jouer(argv, env, cwd, capture, delai, fusionner)` : joue et rend un
-  `Verdict` dont
-  le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
-  verdict, pas l'absence de verdict ;
+- `jouer(argv, env, cwd, capture, delai, fusionner, entree)` : joue et rend un
+  `Verdict` dont le `code` vaut `None` quand le processus n'a pas pu tourner —
+  c'est un verdict, pas l'absence de verdict. `entree` passe un texte sur
+  l'entrée standard SANS le poser sur le disque, seul chemin par lequel un
+  secret atteint l'outil qui le chiffre : écrit en clair puis chiffré, il
+  resterait dans les blocs libérés et dans toute sauvegarde prise entre les
+  deux. Sans elle l'entrée reste FERMÉE, si bien qu'un geste qui réclamerait une
+  phrase de passe échoue tout de suite au lieu d'attendre jusqu'à la borne ;
 - `detacher(argv, env, cwd, journal)` : lance et rend le PID du chef de
   groupe, ou `None`. NOUVELLE SESSION, et c'est ce qui permet de l'arrêter :
   un seul signal atteint la recette `make` ET le serveur qu'elle lance. Le
@@ -805,6 +820,14 @@ les octets et rend un verdict qui ne les porte pas.
 - `separation(voutes)` : les voûtes que cette machine n'ouvre pas et ne doit
   pas ouvrir. Y poser une clé neuve n'en ouvrirait aucune : le secret de cette
   voûte existe déjà ailleurs ;
+- `lit_identites(sortie)` : les couples étiquette/clé que le moteur déclare,
+  `()` quand il n'en déclare aucun, `None` quand une entrée n'est pas
+  « étiquette@chemin ». Une `Identite` est le COUPLE, car une étiquette sans sa
+  clé n'ouvre rien et une clé sans son étiquette ne dit pas quelle voûte elle
+  ouvre. Une liste amputée fait échouer le déchiffrement d'une voûte sur un
+  message qui ne parle que de mot de passe — et l'on cherche alors la clé, pas
+  la liste. `()` est un avertissement en soi : le moteur exporte sa variable
+  d'identités VIDE, et toute cible ansible qu'il lance échoue alors ;
 - `poser_cle(chemin)` : pose un fichier-clé neuf et rend une `Pose`. Il
   n'écrase JAMAIS un fichier existant — une clé remplacée rend sa voûte
   définitivement illisible, là où la redirection que documente le moteur

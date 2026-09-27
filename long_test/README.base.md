@@ -365,6 +365,14 @@ than running code nothing has checked.
 ./long_test/setops_banc.py --passe env        # token through the environment
 ```
 
+**The token's secret crosses memory only.** The cluster shows it once, at
+creation, and never again. It goes to two places — the environment of a gesture,
+or the tool that encrypts it, reached through standard input — and to nothing
+else: written in clear and encrypted afterwards, it would stay in the freed
+blocks and in any backup taken between the two gestures. Anything the bench
+prints or logs is redacted first, and the command line never carries it, since a
+command line is readable in the machine's process table by any account.
+
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
 PATH does not carry, and its cluster daemon only talks to root. Played without
@@ -799,6 +807,14 @@ du code que rien n'a vérifié.
 ./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
 ./long_test/setops_banc.py --passe env        # jeton par l'environnement
 ```
+
+**Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
+fois, à sa création, et jamais plus. Il ne va qu'à deux endroits — l'environnement
+d'un geste, ou l'outil qui le chiffre, atteint par l'entrée standard — et nulle
+part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libérés
+et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
+journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
+ligne de commande se lit dans la table des processus, par n'importe quel compte.
 
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh

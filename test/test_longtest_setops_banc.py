@@ -1743,5 +1743,120 @@ class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
         self.assertEqual("production", B.INVENTAIRE_BANC)
 
 
+class TestLeSecretNeTouchePasLeDisque(unittest.TestCase):
+    """La grappe n'affiche le secret d'un jeton qu'à sa création et ne le
+    redonne jamais. Il ne va qu'à deux endroits — l'environnement d'un geste, ou
+    l'outil qui le chiffre — et rien ne le journalise en chemin."""
+
+    def identite(self, etiquette="une-etiquette", cle="/config/une-cle"):
+        from script.setops.vaults import Identite
+
+        return Identite(etiquette, cle)
+
+    def test_the_plaintext_comes_from_standard_input(self):
+        """LA PROPRIÉTÉ : la source est « - ». Chiffrer un fichier posé en clair
+        laisserait le secret dans les blocs libérés et dans toute sauvegarde
+        prise entre les deux gestes."""
+        argv = B.argv_chiffrer("/f/underlay.vault.yml", self.identite())
+        self.assertEqual("-", argv[-1])
+
+    def test_no_secret_is_ever_on_the_command_line(self):
+        """Une ligne de commande se lit dans la table des processus de la
+        machine, par n'importe quel compte."""
+        argv = B.argv_chiffrer("/f/v.yml", self.identite())
+        for morceau in argv:
+            with self.subTest(morceau=morceau):
+                self.assertNotIn("SECRET", morceau.upper())
+
+    def test_the_label_travels_with_its_key(self):
+        """C'est par l'étiquette inscrite dans l'en-tête que le moteur retrouve
+        laquelle de ses clés ouvre le fichier."""
+        argv = B.argv_chiffrer("/f/v.yml", self.identite("etiq", "/c/k"))
+        self.assertIn("etiq@/c/k", argv)
+
+    def test_it_refuses_a_half_identity(self):
+        for identite in (
+            None,
+            self.identite("", "/c/k"),
+            self.identite("etiq", ""),
+            self.identite("   ", "/c/k"),
+        ):
+            with self.subTest(identite=identite):
+                self.assertIsNone(B.argv_chiffrer("/f/v.yml", identite))
+
+    def test_it_refuses_without_a_vault_to_write(self):
+        for chemin in ("", "   ", None):
+            with self.subTest(chemin=chemin):
+                self.assertIsNone(B.argv_chiffrer(chemin, self.identite()))
+
+    def test_a_complete_pair_does_build(self):
+        """Le contrôle positif : sans lui, un constructeur qui refuse toujours
+        passerait les refus ci-dessus."""
+        self.assertIsNotNone(B.argv_chiffrer("/f/v.yml", self.identite()))
+
+    def atelier(self):
+        """Un dossier jetable, sa clé de voûte, et le chemin d'une voûte.
+
+        UNE VRAIE CLÉ ET UN CHEMIN ÉCRIVABLE : avec un chemin inventé, le
+        scellement échoue parce qu'il ne peut pas écrire, et l'épreuve passerait
+        pour la mauvaise raison — elle ne mesurerait plus le refus du secret
+        vide mais l'absence du dossier.
+        """
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        cle = os.path.join(d, "cle")
+        with open(cle, "w", encoding="utf-8") as ecrit:
+            ecrit.write("une-phrase-de-passe-inventee\n")
+        return (
+            d,
+            self.identite("etiq-inventee", cle),
+            os.path.join(d, B.VOUTE_UNDERLAY),
+        )
+
+    def test_sealing_nothing_writes_no_vault(self):
+        """LA PROPRIÉTÉ : aucun fichier. Une chaîne vide dit que la lecture du
+        jeton a échoué ; sceller quand même écrirait une voûte VALIDE portant un
+        secret vide — elle s'ouvrirait parfaitement, et la grappe répondrait 401
+        sans que rien n'explique pourquoi."""
+        d, identite, voute = self.atelier()
+        for secret in ("", "   ", None):
+            with self.subTest(secret=secret):
+                self.assertTrue(B.scelle_jeton(voute, identite, secret, d))
+                self.assertFalse(os.path.exists(voute))
+
+    def test_a_real_secret_does_write_one(self):
+        """Le contrôle positif : sans lui, un scellement qui n'écrit jamais rien
+        passerait l'épreuve ci-dessus. L'épreuve saute là où l'outil de voûte
+        n'est pas posé."""
+        d, identite, voute = self.atelier()
+        if not shutil.which(
+            B.OUTIL_VOUTE, path=B.env_ansible(RACINE).get("PATH", "")
+        ):
+            self.skipTest("l'outil de voûte n'est pas posé")
+        souci = B.scelle_jeton(
+            voute, identite, "UN-SECRET-INVENTE-POUR-L-EPREUVE", d
+        )
+        self.assertEqual("", souci)
+        with open(voute, encoding="utf-8") as lu:
+            self.assertTrue(lu.readline().startswith("$ANSIBLE_VAULT"))
+
+    def test_the_vault_it_names_is_the_one_the_engine_looks_for(self):
+        """Le moteur la cherche à côté d'`underlay.yml`, dans le dépôt de
+        l'hébergeur."""
+        self.assertEqual("underlay.vault.yml", B.VOUTE_UNDERLAY)
+
+    def test_the_token_id_is_not_the_composed_form(self):
+        """Le client d'API recompose « utilisateur!nom » ; la forme déjà
+        composée produit un 401 que le même jeton contredit en HTTP direct."""
+        self.assertNotIn("!", B.JETON_API)
+
+    def test_a_failed_read_yields_no_secret(self):
+        """`lire_jeton` rend « » plutôt qu'un secret tronqué, qui rendrait un
+        401 que rien n'explique. Le terrain est inventé, donc ssh échoue."""
+        self.assertEqual(
+            "", B.lire_jeton("un-terrain-invente.invalid", B.TEL_QUEL)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

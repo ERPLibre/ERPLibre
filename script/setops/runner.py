@@ -137,8 +137,23 @@ def cible(moteur, nom, variables=(), confirmer=False):
     return tuple(argv)
 
 
-def jouer(argv, env=None, cwd=None, capture=True, delai=DELAI, fusionner=True):
+def jouer(
+    argv,
+    env=None,
+    cwd=None,
+    capture=True,
+    delai=DELAI,
+    fusionner=True,
+    entree=None,
+):
     """Joue `argv` et rend son `Verdict`. Ne lève jamais.
+
+    `entree` PASSE UN TEXTE SUR L'ENTRÉE STANDARD, sans le poser sur le disque.
+    C'est le seul chemin par lequel un secret atteint l'outil qui le chiffre :
+    écrit en clair puis chiffré, il resterait dans les blocs libérés et dans
+    toute sauvegarde prise entre les deux gestes. Sans lui l'entrée reste
+    FERMÉE, ce qui fait échouer tout de suite un geste qui réclamerait une
+    phrase de passe, au lieu de le laisser attendre jusqu'à la borne.
 
     Sans `capture`, la sortie va au terminal de l'opérateur et le verdict ne
     porte que le code : c'est ce qu'il faut d'un geste long, qu'on regarde
@@ -160,7 +175,15 @@ def jouer(argv, env=None, cwd=None, capture=True, delai=DELAI, fusionner=True):
             list(argv),
             env=env,
             cwd=cwd,
-            stdin=subprocess.DEVNULL,
+            # `input` OU `stdin`, JAMAIS LES DEUX : les passer ensemble lève
+            # une ValueError, que ce module attrape — le geste rendrait alors
+            # « n'a pas pu tourner » sur un argument, ce qui se diagnostique
+            # très loin de sa cause. Avec `input`, l'outil ouvre le tube lui-même.
+            **(
+                {"input": entree}
+                if entree is not None
+                else {"stdin": subprocess.DEVNULL}
+            ),
             stdout=sortie,
             stderr=erreur,
             text=True,

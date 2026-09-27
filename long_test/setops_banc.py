@@ -1312,6 +1312,112 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, vmid_modele):
     return pose._replace(liens=tuple(liens))
 
 
+# L'outil qui chiffre, et le nom de la voûte que le banc scelle. Le moteur la
+# cherche à côté d'`underlay.yml`, dans le dépôt de l'hébergeur.
+OUTIL_VOUTE = "ansible-vault"
+VOUTE_UNDERLAY = "underlay.vault.yml"
+
+
+def env_ansible(moteur):
+    """L'environnement d'un outil ansible, bâti par le module du dépôt.
+
+    L'OUTIL DE VOÛTE NE VIT PAS DANS LE PATH ORDINAIRE. Il est posé dans le venv
+    que todo tient pour le moteur, et l'environnement neuf de l'exécuteur en
+    retire au contraire le venv d'ERPLibre. Sans ce montage, chiffrer échoue sur
+    « commande introuvable » — un message qui envoie installer ansible sur une
+    machine qui l'a déjà.
+    """
+    import sys
+
+    if RACINE not in sys.path:
+        sys.path.insert(0, RACINE)
+    from script.setops import ansible_env
+
+    return ansible_env.environnement(RACINE, moteur, runner_du_banc().base())
+
+
+def argv_chiffrer(chemin, identite):
+    """L'argv qui chiffre la voûte `chemin` sous `identite`, ou None.
+
+    `-` EN SOURCE, et c'est tout l'intérêt : le clair arrive par l'entrée
+    standard et ne touche jamais le disque. Chiffrer un fichier posé en clair
+    laisserait le secret dans les blocs libérés et dans toute sauvegarde prise
+    entre les deux gestes.
+
+    `--output` ÉCRASE, et c'est voulu : la voûte du banc ne porte que le jeton du
+    banc, et un second passage y remplace un jeton révoqué par le neuf. Ce n'est
+    PAS le cas d'une voûte de production, où l'écrasement perd les autres
+    secrets — d'où le fait que cette fonction nomme un chemin plutôt que d'en
+    dériver un.
+
+    `--vault-id étiquette@clé` : l'étiquette est inscrite dans l'en-tête du
+    fichier, et c'est par elle que le moteur retrouve laquelle de ses clés
+    l'ouvre. Chiffré sans elle, le fichier s'ouvre encore, mais le moteur essaie
+    toutes ses clés et ne dit pas laquelle a servi.
+    """
+    if not (chemin or "").strip() or identite is None:
+        return None
+    if not (identite.etiquette or "").strip():
+        return None
+    if not (identite.cle or "").strip():
+        return None
+    return (
+        OUTIL_VOUTE,
+        "encrypt",
+        "--vault-id",
+        f"{identite.etiquette.strip()}@{identite.cle.strip()}",
+        "--output",
+        chemin.strip(),
+        "-",
+    )
+
+
+def lire_jeton(terrain, elevation):
+    """Crée l'utilisateur d'API et son jeton sur `terrain`, et rend son secret.
+
+    C'EST LE SEUL MOMENT OÙ LE SECRET EXISTE : la grappe ne l'affiche qu'à la
+    création du jeton, et ne le redonne jamais. Rendu à l'appelant, il ne va
+    qu'à deux endroits — l'environnement d'un geste, ou l'outil qui le chiffre —
+    et rien ne le journalise en chemin.
+
+    Rend « » dès que quoi que ce soit échoue. Une chaîne vide REFUSE la suite
+    plutôt que d'envoyer un secret tronqué, qui rendrait un 401 que rien
+    n'explique.
+    """
+    fait = joue_sur(terrain, cmds_jeton(), elevation)
+    return lit_jeton(fait.sortie) if fait.reussi else ""
+
+
+def scelle_jeton(voute, identite, secret, moteur):
+    """Chiffre `secret` dans `voute` sous `identite`. Rend le souci, ou « ».
+
+    Le secret PASSE PAR L'ENTRÉE STANDARD de l'outil, jamais par un fichier ni
+    par une ligne de commande — une ligne de commande se lit dans la table des
+    processus de la machine, par n'importe quel compte.
+
+    Le souci rendu est EXPURGÉ : la plainte d'un outil de chiffrement cite
+    parfois ce qu'il a reçu, et ce qu'il a reçu est le secret.
+
+    `moteur` sert à bâtir l'environnement de l'outil, qui ne vit pas dans le PATH
+    ordinaire, et à lui donner son répertoire de travail.
+    """
+    if not (secret or "").strip():
+        return "aucun secret à sceller"
+    argv = argv_chiffrer(voute, identite)
+    if argv is None:
+        return "la voûte ou son identité manque"
+    vu = runner_du_banc().jouer(
+        argv,
+        env=env_ansible(moteur),
+        cwd=moteur or None,
+        entree=texte_voute(secret),
+        delai=120,
+    )
+    if vu.code == 0:
+        return ""
+    return f"{OUTIL_VOUTE} : {expurge(vu.sortie, secret).strip()[-200:]}"
+
+
 def cmds_effacer_vm(vmid, nom):
     """Les commandes qui effacent une VM du banc, le nom VÉRIFIÉ d'abord.
 

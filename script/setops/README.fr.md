@@ -210,10 +210,14 @@ un sens.
 - `cible(moteur, nom, variables, confirmer)` : l'argv d'une cible `make`,
   `CONFIRMER` toujours écrit, en dernier ;
 - `cite(argv)` : la ligne à montrer, dérivée de l'argv ;
-- `jouer(argv, env, cwd, capture, delai, fusionner)` : joue et rend un
-  `Verdict` dont
-  le `code` vaut `None` quand le processus n'a pas pu tourner — c'est un
-  verdict, pas l'absence de verdict ;
+- `jouer(argv, env, cwd, capture, delai, fusionner, entree)` : joue et rend un
+  `Verdict` dont le `code` vaut `None` quand le processus n'a pas pu tourner —
+  c'est un verdict, pas l'absence de verdict. `entree` passe un texte sur
+  l'entrée standard SANS le poser sur le disque, seul chemin par lequel un
+  secret atteint l'outil qui le chiffre : écrit en clair puis chiffré, il
+  resterait dans les blocs libérés et dans toute sauvegarde prise entre les
+  deux. Sans elle l'entrée reste FERMÉE, si bien qu'un geste qui réclamerait une
+  phrase de passe échoue tout de suite au lieu d'attendre jusqu'à la borne ;
 - `detacher(argv, env, cwd, journal)` : lance et rend le PID du chef de
   groupe, ou `None`. NOUVELLE SESSION, et c'est ce qui permet de l'arrêter :
   un seul signal atteint la recette `make` ET le serveur qu'elle lance. Le
@@ -377,6 +381,14 @@ les octets et rend un verdict qui ne les porte pas.
 - `separation(voutes)` : les voûtes que cette machine n'ouvre pas et ne doit
   pas ouvrir. Y poser une clé neuve n'en ouvrirait aucune : le secret de cette
   voûte existe déjà ailleurs ;
+- `lit_identites(sortie)` : les couples étiquette/clé que le moteur déclare,
+  `()` quand il n'en déclare aucun, `None` quand une entrée n'est pas
+  « étiquette@chemin ». Une `Identite` est le COUPLE, car une étiquette sans sa
+  clé n'ouvre rien et une clé sans son étiquette ne dit pas quelle voûte elle
+  ouvre. Une liste amputée fait échouer le déchiffrement d'une voûte sur un
+  message qui ne parle que de mot de passe — et l'on cherche alors la clé, pas
+  la liste. `()` est un avertissement en soi : le moteur exporte sa variable
+  d'identités VIDE, et toute cible ansible qu'il lance échoue alors ;
 - `poser_cle(chemin)` : pose un fichier-clé neuf et rend une `Pose`. Il
   n'écrase JAMAIS un fichier existant — une clé remplacée rend sa voûte
   définitivement illisible, là où la redirection que documente le moteur

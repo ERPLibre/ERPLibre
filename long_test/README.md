@@ -360,6 +360,14 @@ than running code nothing has checked.
 ./long_test/setops_banc.py --passe env        # token through the environment
 ```
 
+**The token's secret crosses memory only.** The cluster shows it once, at
+creation, and never again. It goes to two places — the environment of a gesture,
+or the tool that encrypts it, reached through standard input — and to nothing
+else: written in clear and encrypted afterwards, it would stay in the freed
+blocks and in any backup taken between the two gestures. Anything the bench
+prints or logs is redacted first, and the command line never carries it, since a
+command line is readable in the machine's process table by any account.
+
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
 PATH does not carry, and its cluster daemon only talks to root. Played without
