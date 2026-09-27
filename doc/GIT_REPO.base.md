@@ -229,3 +229,95 @@ Peut-être que certaines versions divergent de votre manifest. Nettoyez simpleme
 ```bash
 ./script/git/clean_repo_manifest.sh
 ```
+
+<!-- [en] -->
+## Update or upgrade
+
+Two gestures the word "update" used to cover. TODO › Execute › Git › Repo
+separates them, and Execute › Code › Update leads to the same screen.
+
+An **update** moves every project to the tip of the branch its manifest gives
+it. It asks nothing, cannot conflict, and runs every morning.
+
+An **upgrade** fetches the upstream a fork DESCENDS from — another repository,
+at another organisation — and replays the commits the fork carries of its own.
+It can conflict and it rewrites history, so it is observed before it is
+applied.
+
+<!-- [fr] -->
+## Mise à jour ou mise à niveau
+
+Deux gestes que le mot « mise à jour » recouvrait. TODO › Execute › Git › Repo
+les sépare, et Execute › Code › Update mène au même écran.
+
+Une **mise à jour** déplace chaque projet sur la pointe de la branche que son
+manifeste lui donne. Elle ne pose aucune question, ne peut pas entrer en
+conflit, et se lance tous les matins.
+
+Une **mise à niveau** va chercher l'amont dont un fork DESCEND — un autre
+dépôt, chez une autre organisation — et rejoue les commits que le fork porte
+en propre. Elle peut entrer en conflit et réécrit un historique, donc elle se
+constate avant de s'appliquer.
+
+<!-- [en] -->
+### Where a fork comes from
+
+git-repo only knows the remote used to CLONE, and for a fork that is the
+fork's own. Three attributes carry what it cannot express:
+
+<!-- [fr] -->
+### D'où descend un fork
+
+git-repo ne connaît que le remote qui sert à CLONER, et pour un fork c'est
+celui du fork. Trois attributs portent ce qu'il ne sait pas exprimer :
+
+<!-- [common] -->
+```xml
+<project name="web.git" path="odoo18.0/addons/OCA_web"
+         remote="ERPLibre_origin_OCA" revision="18.0_dev"
+         fork-upstream-remote="OCA" fork-upstream="18.0" />
+```
+
+<!-- [en] -->
+`fork-upstream-remote` names the upstream `<remote>`, whose `fetch` gives the
+URL. `fork-upstream-name` appears only on a RENAMED fork, where the upstream
+repository name differs. `fork-upstream` names the upstream branch; its
+ABSENCE, while the remote is declared, says the upstream carries nothing for
+this Odoo version — which is not the same thing as an unknown upstream.
+
+The dry run writes nothing: it brings the upstream into `FETCH_HEAD` and
+predicts the merge in memory, moving no ref and touching no work tree.
+
+<!-- [fr] -->
+`fork-upstream-remote` nomme le `<remote>` amont, dont le `fetch` donne l'URL.
+`fork-upstream-name` ne paraît que sur un fork RENOMMÉ, où le nom du dépôt
+amont diffère. `fork-upstream` nomme la branche amont ; son ABSENCE, alors que
+le remote est déclaré, dit que l'amont ne porte rien pour cette version
+d'Odoo — ce qui n'est pas la même chose qu'un amont inconnu.
+
+La passe à sec n'écrit rien : elle amène l'amont dans `FETCH_HEAD` et prédit
+la fusion en mémoire, sans déplacer de référence ni toucher l'arbre de travail.
+
+<!-- [en] -->
+### Freeze the versions
+
+`repo manifest -r -o` pins every project to its commit. The file carries the
+COMMIT in `revision` and the BRANCH in `upstream`, so ONE file serves both
+modes: frozen follows the commit, dev follows the branch. The mode lives in
+`.erplibre-state.json`, so a reconfiguration launched elsewhere reads the same
+choice. It takes effect on the next reconfiguration.
+
+<!-- [fr] -->
+### Geler les versions
+
+`repo manifest -r -o` épingle chaque projet à son commit. Le fichier porte le
+COMMIT dans `revision` et la BRANCHE dans `upstream`, donc UN seul fichier
+sert les deux modes : figé suit le commit, dev suit la branche. Le mode vit
+dans `.erplibre-state.json`, pour qu'une reconfiguration lancée ailleurs lise
+le même choix. Il prend effet à la reconfiguration suivante.
+
+<!-- [common] -->
+```bash
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --diagnostic
+PYTHONPATH=. ./.venv.erplibre/bin/python script/git/repo_upgrade.py --upstream
+```
