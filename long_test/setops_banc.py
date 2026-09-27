@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 from typing import NamedTuple
 
@@ -77,6 +78,14 @@ PASSES = (PASSE_ENV, PASSE_VOUTE)
 # nulle part ailleurs dans le dépôt : un banc qui reprendrait un nom du parc
 # détruirait, au rasage, ce qui ne lui appartient pas.
 ECOSYSTEME = "OPS-Fictif-Trachyte"
+
+# L'UNDERLAY DU BANC, et il en faut un. Les secrets d'API du moteur ne vivent
+# plus dans la voûte d'un locataire mais dans celle de l'underlay, chez
+# l'hébergeur, et l'accès à la grappe REFUSE sans le lien qui le désigne : « pas
+# de cluster a piloter ». Un banc à un seul dépôt ne peut donc pas matérialiser
+# une VM. La convention du moteur nomme les deux moitiés de la même paire
+# « SITE-<nom> » et « OPS-<nom> ».
+UNDERLAY_BANC = "SITE-Fictif-Trachyte"
 UTILISATEUR_API = "banc-fictif-trachyte@pve"
 JETON_API = "banc"
 GABARIT = "banc-fictif-trachyte-gabarit"
@@ -93,7 +102,8 @@ MODELE = "modele"
 PONT = "pont"
 API = "api"
 ECO = "ecosysteme"
-GENRES = (VM, MODELE, PONT, API, ECO)
+UNDERLAY = "underlay"
+GENRES = (VM, MODELE, PONT, API, ECO, UNDERLAY)
 
 
 class Prealable(NamedTuple):
@@ -113,10 +123,15 @@ class Empreinte(NamedTuple):
 
     `vms` est une suite de (vmid, nom) : le NOM est gardé parce que c'est lui
     qui autorise l'effacement — un VMID se réattribue.
+
+    DEUX DÉPÔTS, pas un. Le locataire porte le plan et ses hôtes ; l'underlay
+    porte la grappe et la voûte au jeton. Les deux se posent, donc les deux se
+    défont, et pas dans le même ordre : voir `a_defaire`.
     """
 
     terrain: str
     ecosysteme: str
+    underlay: str
     pont: str
     utilisateur: str
     modele: int
@@ -216,6 +231,68 @@ def pont_libre(interfaces, depart=PONT_DEPART):
         ):
             return nom
     return ""
+
+
+class Constat(NamedTuple):
+    """Ce que le terrain dit du pont du banc, après coup.
+
+    LES DEUX FAITS SE SÉPARENT parce que la pose les dissocie : son repli monte
+    le pont par « ip link add », qui ne demande aucun filtrage de VLAN. Un pont
+    DEBOUT MAIS NON FILTRANT est alors le pire des trois états, car la carte
+    taguée d'une VM y démarre et reste injoignable — la panne ne se voit ni à la
+    création, ni dans un code de retour.
+
+    `vlan` vaut None quand le pont a été lu sans que le champ y soit : « pas vu »
+    n'est pas « ne filtre pas ».
+    """
+
+    debout: bool
+    vlan: bool | None
+
+    @property
+    def utilisable(self) -> bool:
+        """Le banc peut-il clonner dessus ? Les deux faits, ou rien."""
+        return self.debout and self.vlan is True
+
+
+def cmds_constater_pont(nom):
+    """La commande qui dit si le pont est debout et s'il filtre les VLAN.
+
+    `ip -d link show` ET NON UNE LECTURE DE /sys : c'est la commande que le
+    dépôt lit déjà pour les ponts, et sa ligne de détail porte
+    « vlan_filtering 0|1 » — mesuré sur un Proxmox. Un second chemin vers le
+    même fait dériverait du premier.
+    """
+    return [f"ip -d link show dev {shlex.quote(str(nom))}"]
+
+
+def lit_constat_pont(sortie, nom):
+    """Le `Constat` que porte cette sortie, ou None si elle ne se lit pas.
+
+    TROIS RÉPONSES POUR TROIS CAS. `Constat(False, None)` dit « le pont n'est pas
+    là », ce que le noyau AFFIRME par « Device "x" does not exist ». None dit
+    « on n'a pas su lire », et sur ce doute l'appelant ne conclut rien. Les
+    confondre ferait poser un pont par-dessus un autre, ou déclarer absent un
+    pont qui filtre.
+    """
+    texte = sortie or ""
+    nom = (nom or "").strip()
+    if not nom:
+        return None
+    if f'Device "{nom}" does not exist' in texte:
+        return Constat(debout=False, vlan=None)
+    debout = any(
+        re.match(rf"^\d+:\s+{re.escape(nom)}:", ligne)
+        for ligne in texte.splitlines()
+    )
+    if not debout:
+        return None
+    # Le champ se lit par son NOM suivi de sa valeur : « vlan_default_pvid 1 »
+    # porte le même chiffre et ne dit rien du filtrage.
+    prise = re.search(r"\bvlan_filtering\s+(\d+)\b", texte)
+    if prise is None:
+        return Constat(debout=True, vlan=None)
+    return Constat(debout=True, vlan=prise.group(1) == "1")
 
 
 def cmds_pont(nom, cidr, uplink=""):
@@ -329,8 +406,11 @@ def a_defaire(empreinte):
     Les VM d'abord, le gabarit ensuite, le pont et l'utilisateur d'API en
     dernier. Défaire le pont avant les VM leur retirerait leur réseau sans les
     effacer, et un gabarit ne s'efface pas tant qu'un clone lié en dépend.
-    L'écosystème part en dernier : son plan nomme les VM, et le rasage s'y
-    appuie.
+    L'écosystème part avant-dernier : son plan nomme les VM, et le rasage s'y
+    appuie. L'UNDERLAY PART EN DERNIER, et c'est lui qui borne tout l'ordre :
+    raser le locataire passe par la grappe, la grappe se joint par le jeton, et
+    le jeton vit dans la voûte de l'underlay. Le défaire plus tôt retirerait au
+    banc le moyen de défaire le reste.
     """
     if empreinte is None or not nous(empreinte):
         return ()
@@ -348,6 +428,9 @@ def a_defaire(empreinte):
     )
     gestes.append(
         Geste(terrain, ECO, empreinte.ecosysteme, empreinte.ecosysteme)
+    )
+    gestes.append(
+        Geste(terrain, UNDERLAY, empreinte.underlay, empreinte.underlay)
     )
     return tuple(gestes)
 
@@ -368,6 +451,7 @@ def nous(empreinte):
         return False
     return (
         empreinte.ecosysteme == ECOSYSTEME
+        and empreinte.underlay == UNDERLAY_BANC
         and empreinte.utilisateur == UTILISATEUR_API
         and bool(empreinte.terrain)
     )
@@ -412,6 +496,7 @@ def lit_empreinte(texte):
     return Empreinte(
         terrain=str(lu.get("terrain") or ""),
         ecosysteme=str(lu.get("ecosysteme") or ""),
+        underlay=str(lu.get("underlay") or ""),
         pont=str(lu.get("pont") or ""),
         utilisateur=str(lu.get("utilisateur") or ""),
         modele=modele,
@@ -429,6 +514,7 @@ def ecrit_empreinte(empreinte) -> str:
         {
             "terrain": empreinte.terrain,
             "ecosysteme": empreinte.ecosysteme,
+            "underlay": empreinte.underlay,
             "pont": empreinte.pont,
             "utilisateur": empreinte.utilisateur,
             "modele": empreinte.modele,
@@ -446,6 +532,8 @@ def plan(passes, terrain):
     """
     etapes = [
         (f"terrain : {terrain or '(aucun)'}", ""),
+        (f"underlay du banc : {UNDERLAY_BANC}", "~20 s"),
+        (f"locataire du banc : {ECOSYSTEME}", "~20 s"),
         ("pont du banc, conscient des VLAN", "~30 s"),
         ("utilisateur d'API et son jeton", "~10 s"),
         ("gabarit doré", "~10 min"),
