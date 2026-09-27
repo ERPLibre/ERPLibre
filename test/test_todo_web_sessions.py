@@ -13,6 +13,7 @@ import os
 import re
 import signal
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -23,6 +24,26 @@ from todo_web_env import CHILD
 from script.todo.web import sessions
 
 REPO = Path(__file__).resolve().parent.parent
+
+# Demande un worker neuf la première fois, attend la seconde.
+RESTART_CHILD = r"""
+import os, sys
+if os.path.exists("started"):
+    print("second", flush=True)
+    sys.stdin.readline()
+else:
+    open("started", "w").close()
+    print("first", flush=True)
+    sys.exit(75)
+"""
+
+# Demande un worker neuf à chaque lancement, et compte ses lancements.
+LOOP_CHILD = r"""
+import sys
+with open("starts", "a") as f:
+    f.write("+")
+sys.exit(75)
+"""
 
 DEAF_CHILD = r"""
 import signal, time
@@ -46,6 +67,19 @@ for command in sys.argv[1:]:
     rc = exe.exec_command_live(command, False, quiet=True)
     print(f"rc={rc}", flush=True)
 print("read", input(), flush=True)
+"""
+
+# Un worker qui attend un enfant de son propre groupe, sans contrôle de
+# tâches, comme subprocess.run dans TODO.
+BUSY_CHILD = r"""
+import fcntl, signal, subprocess, termios
+signal.signal(signal.SIGINT, signal.default_int_handler)
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+print("ready", flush=True)
+try:
+    subprocess.run(["sleep", "30"])
+except KeyboardInterrupt:
+    print("INT", flush=True)
 """
 
 
@@ -105,6 +139,46 @@ class TestTerminal(SessionCase):
         await asyncio.wait_for(session.ended.wait(), 10)
         self.assertIn(b"INT", session.ring.data)
         self.assertEqual(session.code, 5)
+
+    async def test_stop_without_anything_launched_changes_nothing(self):
+        session = await self.open()
+        await self.seen(session, b"ready")
+        self.assertFalse(session.busy)
+        self.assertFalse(session.interrupt())
+        self.assertTrue(session.write(b"exit 4\n"))
+        await asyncio.wait_for(session.ended.wait(), 10)
+        self.assertEqual(session.code, 4)
+
+    async def test_stop_stops_the_command_and_the_worker_lives(self):
+        session = await self.open(JOB_CHILD, args=["sleep 30"])
+        await self.until(lambda: session.running)
+        self.assertTrue(session.interrupt())
+        await self.seen(session, b"rc=-2")
+        self.assertFalse(session.running)
+        self.assertIsNone(session.proc.returncode)
+
+    async def test_stop_reaches_a_command_behind_unread_input(self):
+        session = await self.open(JOB_CHILD, args=["sleep 30"])
+        await self.until(lambda: session.running)
+        # Des lignes que la commande ne lit pas remplissent le terminal :
+        # l'octet Ctrl+C attendrait derrière elles.
+        self.assertTrue(session.write(b"y\n" * 4000))
+        await asyncio.sleep(0.3)
+        self.assertTrue(session.interrupt())
+        await self.seen(session, b"rc=-2")
+        # Ce qui restait ne répond pas à la question suivante.
+        session.write(b"next\n")
+        await self.seen(session, b"read next")
+
+    async def test_stop_reaches_a_child_of_the_worker_group(self):
+        session = await self.open(BUSY_CHILD)
+        await self.seen(session, b"ready")
+        await self.until(lambda: session.busy)
+        self.assertFalse(session.running)
+        self.assertEqual(session.idle(time.monotonic() + 10**4), 0)
+        self.assertTrue(session.interrupt())
+        await asyncio.wait_for(session.ended.wait(), 10)
+        self.assertIn(b"INT", session.ring.data)
 
     async def test_commands_share_the_terminal_and_session_of_sudo(self):
         # sudo (timestamp_type=tty) garde son ticket par terminal et par
@@ -237,6 +311,24 @@ class TestLifecycle(SessionCase):
         await session.close()
         await asyncio.wait_for(starting, 10)
         self.assertEqual(session.code, -signal.SIGHUP)
+
+    async def test_restart_keeps_the_id_and_the_ring(self):
+        with tempfile.TemporaryDirectory() as root:
+            session = await self.open(RESTART_CHILD, root=root)
+            first = session.proc.pid
+            await self.seen(session, b"second")
+        self.assertIn(b"first", session.ring.data)
+        self.assertNotEqual(session.proc.pid, first)
+        self.assertEqual(session.id, "s1")
+        self.assertFalse(session.ended.is_set())
+
+    async def test_a_worker_that_always_restarts_ends_the_session(self):
+        with tempfile.TemporaryDirectory() as root:
+            session = await self.open(LOOP_CHILD, root=root)
+            await asyncio.wait_for(session.ended.wait(), 10)
+            starts = Path(root, "starts").read_text()
+        self.assertEqual(session.code, sessions.RESTART)
+        self.assertEqual(len(starts), sessions.RESTART_LIMIT + 1)
 
     async def test_only_known_views_reach_the_client(self):
         session = await self.open()

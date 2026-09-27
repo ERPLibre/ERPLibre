@@ -41,6 +41,11 @@ INPUT_LIMIT = 256 * 1024
 MAX_SESSIONS = 3
 IDLE_SECONDS = 15 * 60
 REAP_SECONDS = 3.0
+# Code de sortie par lequel le worker demande un worker neuf ; au-delà de
+# RESTART_LIMIT relances en RESTART_WINDOW secondes, la session finit.
+RESTART = 75
+RESTART_LIMIT = 3
+RESTART_WINDOW = 60.0
 WORKER = ("-m", "script.todo.web.worker")
 # Vues que le worker peut faire ouvrir à la page.
 VIEWS = ("telemetry",)
@@ -98,6 +103,24 @@ def _alive(groups) -> bool:
             continue
         except PermissionError:
             return True
+    return False
+
+
+def _has_children(pid) -> bool:
+    """Vrai si le processus `pid` a un enfant, d'après les fichiers
+    `children` de /proc ; faux sans eux (hors Linux, ou noyau sans
+    CONFIG_PROC_CHILDREN)."""
+    try:
+        threads = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        return False
+    for tid in threads:
+        try:
+            with open(f"/proc/{pid}/task/{tid}/children", "rb") as f:
+                if f.read().strip():
+                    return True
+        except OSError:
+            continue
     return False
 
 
@@ -283,6 +306,34 @@ class Session:
         if self.master is not None:
             loop.remove_writer(self.master)
 
+    def interrupt(self) -> bool:
+        """Arrête ce que le worker a lancé ; faux, et rien ne change, s'il
+        n'a rien lancé : Arrêter ne quitte jamais TODO.
+
+        Les frappes en attente sont jetées, comme Ctrl+C les vide au
+        terminal. Une commande au premier plan reçoit SIGINT directement :
+        l'octet Ctrl+C attendrait derrière des lignes qu'elle ne lit pas.
+        Un enfant dans le groupe du worker reçoit l'octet, que le noyau
+        change en SIGINT pour tout le groupe : le worker revient au menu
+        principal, comme au CLI.
+        """
+        if self.master is None or self.proc.returncode is not None:
+            return False
+        pgrp = self._foreground()
+        command = pgrp > 0 and pgrp != self.proc.pid
+        if not command and not _has_children(self.proc.pid):
+            return False
+        self.inbox.clear()
+        asyncio.get_running_loop().remove_writer(self.master)
+        if command:
+            _killpg([pgrp], signal.SIGINT)
+            return True
+        try:
+            os.write(self.master, b"\x03")
+        except OSError:
+            return False
+        return True
+
     def resize(self, cols, rows):
         """Nouvelle taille ; le noyau prévient le premier plan (SIGWINCH)."""
         self.cols, self.rows = cols, rows
@@ -305,10 +356,20 @@ class Session:
         pgrp = self._foreground()
         return pgrp > 0 and pgrp != self.proc.pid
 
+    @property
+    def busy(self) -> bool:
+        """Vrai quand le worker a lancé quelque chose : une commande au
+        premier plan, ou un enfant dans son propre groupe (subprocess,
+        os.system). Un calcul en Python pur, sans enfant, n'y paraît pas."""
+        if self.proc is None or self.proc.returncode is not None:
+            return False
+        return self.running or _has_children(self.proc.pid)
+
     def idle(self, now) -> float:
-        """Secondes depuis que la session n'a plus de client ; un appel qui
-        en voit un remet le compte à zéro."""
-        if self.client is not None:
+        """Secondes depuis que la session n'a plus ni client ni rien en
+        cours (`busy`) ; un appel qui voit l'un ou l'autre remet le compte
+        à zéro."""
+        if self.client is not None or self.busy:
             self.quiet_since = now
         return now - self.quiet_since
 
@@ -349,16 +410,35 @@ class Session:
             self.channel = None
 
     async def _watch(self):
-        """Suit le worker jusqu'à sa fin, puis termine la session."""
+        """Suit le worker : RESTART relance un worker neuf sur un PTY neuf,
+        sous le même identifiant et avec le même anneau, RESTART_LIMIT fois
+        au plus en RESTART_WINDOW secondes ; toute autre fin, ou une fin
+        demandée par `close`, termine la session."""
+        restarts = []
         try:
-            await self.proc.wait()
-            # Ce que le worker a écrit avant de finir et qui attend.
-            while self.master is not None and not self.eof:
-                data = self._read_master()
-                if not data:
+            while True:
+                code = await self.proc.wait()
+                # Ce que le worker a écrit avant de finir et qui attend.
+                while self.master is not None and not self.eof:
+                    data = self._read_master()
+                    if not data:
+                        break
+                    self.ring.append(data)
+                self._hangup()
+                now = time.monotonic()
+                restarts = [t for t in restarts if now - t < RESTART_WINDOW]
+                if code != RESTART or self.closing:
                     break
-                self.ring.append(data)
-            self._hangup()
+                if len(restarts) >= RESTART_LIMIT:
+                    break
+                restarts.append(now)
+                try:
+                    await self._spawn()
+                except OSError:
+                    break
+                if self.closing:
+                    # `close` est venu pendant la relance : même arrêt.
+                    self._task(self._kill())
         finally:
             # Même sur une erreur imprévue : `close` n'attend pas en vain.
             self.code = self.proc.returncode
