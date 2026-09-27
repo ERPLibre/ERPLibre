@@ -570,7 +570,8 @@ def sensors_install_command():
 
 def _first_int(path):
     try:
-        return int(open(path).read().strip())
+        with open(path) as f:
+            return int(f.read().strip())
     except (OSError, ValueError):
         return None
 
@@ -620,7 +621,8 @@ def _battery():
     for base in glob.glob("/sys/class/power_supply/BAT*"):
         cap = _first_int(os.path.join(base, "capacity"))
         try:
-            status = open(os.path.join(base, "status")).read().strip()
+            with open(os.path.join(base, "status")) as f:
+                status = f.read().strip()
         except OSError:
             status = ""
         if cap is not None:
