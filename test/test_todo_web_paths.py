@@ -11,11 +11,11 @@ import os
 import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+
+from todo_web_env import private_env
 
 from script.todo.web import paths
 
@@ -43,29 +43,13 @@ def _mode(path) -> int:
     return stat.S_IMODE(os.stat(path).st_mode)
 
 
-def _short_tmp() -> str:
-    """Base des répertoires temporaires : celle du système si elle tient en
-    40 octets, /tmp sinon. Le chemin de ctl.sock y ajoute 56 octets, et
-    AF_UNIX n'en accepte que 103 à 107."""
-    base = tempfile.gettempdir()
-    return base if len(os.fsencode(base)) <= 40 else "/tmp"
-
-
 class TestPaths(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory(dir=_short_tmp())
-        self.addCleanup(self._tmp.cleanup)
-        self.tmp = Path(self._tmp.name)
+        self.tmp = private_env(self.addCleanup)
         self.home = self.tmp / "home"
         self.run = self.tmp / "run"
-        self.home.mkdir()
-        self.run.mkdir(mode=0o700)
         self.root = self.tmp / "checkout"
         self.root.mkdir()
-        env = {"HOME": str(self.home), "XDG_RUNTIME_DIR": str(self.run)}
-        patcher = patch.dict(os.environ, env)
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def test_checkout_id_is_short_stable_and_follows_symlinks(self):
         link = self.tmp / "link"

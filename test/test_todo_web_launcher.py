@@ -27,6 +27,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import tornado
+from todo_web_env import private_env
 
 from script.todo.web import launcher, paths, server
 
@@ -38,33 +39,6 @@ as_user = unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")
 
 def _mode(path) -> int:
     return stat.S_IMODE(os.stat(path).st_mode)
-
-
-def _short_tmp() -> str:
-    """Base des répertoires temporaires : celle du système si elle tient en
-    40 octets, /tmp sinon. Le chemin de ctl.sock y ajoute 56 octets, et
-    AF_UNIX n'en accepte que 103 à 107."""
-    base = tempfile.gettempdir()
-    return base if len(os.fsencode(base)) <= 40 else "/tmp"
-
-
-def _private_env(add_cleanup):
-    """HOME et XDG_RUNTIME_DIR temporaires, sans affichage ; rend leur base.
-    `add_cleanup` : addCleanup d'un test ou addClassCleanup d'une classe."""
-    tmp = tempfile.TemporaryDirectory(dir=_short_tmp())
-    add_cleanup(tmp.cleanup)
-    base = Path(tmp.name)
-    (base / "home").mkdir()
-    (base / "run").mkdir(mode=0o700)
-    patcher = patch.dict(
-        os.environ,
-        {"HOME": str(base / "home"), "XDG_RUNTIME_DIR": str(base / "run")},
-    )
-    patcher.start()
-    add_cleanup(patcher.stop)
-    os.environ.pop("DISPLAY", None)
-    os.environ.pop("WAYLAND_DISPLAY", None)
-    return base
 
 
 def _login(port, code):
@@ -95,7 +69,7 @@ class TestWithHub(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.base = _private_env(cls.addClassCleanup)
+        cls.base = private_env(cls.addClassCleanup)
         cls.info = launcher.ensure_running(REPO)
         cls.addClassCleanup(launcher.stop, REPO)
 
@@ -201,7 +175,7 @@ class TestWithHub(unittest.TestCase):
 @as_user
 class TestOtherCheckout(unittest.TestCase):
     def setUp(self):
-        self.base = _private_env(self.addCleanup)
+        self.base = private_env(self.addCleanup)
 
     def test_a_hub_serving_another_checkout_is_ignored(self):
         other = self.base / "other"
@@ -230,7 +204,7 @@ class TestOtherCheckout(unittest.TestCase):
 @as_user
 class TestStartFailure(unittest.TestCase):
     def setUp(self):
-        self.base = _private_env(self.addCleanup)
+        self.base = private_env(self.addCleanup)
 
     def test_a_hub_that_dies_reports_the_end_of_its_log(self):
         fake = _fake_python(self.base, "echo boom-marker >&2\nexit 1\n")
@@ -280,6 +254,16 @@ class TestStartFailure(unittest.TestCase):
             launcher.ensure_running(REPO)
         popen.assert_not_called()
 
+    def test_a_log_that_cannot_be_emptied_is_a_launch_error(self):
+        boom = OSError("boom-marker")
+        with (
+            patch.object(launcher.os, "ftruncate", side_effect=boom),
+            patch.object(launcher.subprocess, "Popen") as popen,
+            self.assertRaisesRegex(launcher.LaunchError, "boom-marker"),
+        ):
+            launcher.ensure_running(REPO)
+        popen.assert_not_called()
+
     def test_main_open_reports_the_failure(self):
         fake = _fake_python(self.base, "echo boom-marker >&2\nexit 1\n")
         err = io.StringIO()
@@ -317,9 +301,93 @@ class TestStartFailure(unittest.TestCase):
 
 
 @as_user
+class TestUnresponsiveHub(unittest.TestCase):
+    """Une socket de contrôle servie par un thread, qui répond mal ou pas."""
+
+    def setUp(self):
+        self.base = private_env(self.addCleanup)
+        self.status = json.dumps(
+            {"pid": 1, "port": 1, "root": os.path.realpath(REPO)}
+        )
+
+    def fake_hub(self, replies):
+        """Répond à chaque commande reçue par `replies[commande]`, ou ferme
+        sans rien répondre si la commande n'y est pas. `replies` est lu à
+        chaque connexion : le modifier change la réponse suivante."""
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(os.fspath(paths.ctl_path(REPO)))
+        srv.listen(8)
+        srv.settimeout(0.05)
+        done = threading.Event()
+
+        def serve():
+            with srv:
+                while not done.is_set():
+                    try:
+                        conn, _ = srv.accept()
+                    except TimeoutError:
+                        continue
+                    with conn:
+                        reply = replies.get(conn.recv(64).decode().strip())
+                        if reply is not None:
+                            conn.sendall(reply.encode() + b"\n")
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(done.set)
+
+    def test_mint_code_without_a_hub_is_a_launch_error(self):
+        with self.assertRaisesRegex(launcher.LaunchError, "not running"):
+            launcher.mint_code(REPO)
+
+    def test_mint_code_without_an_answer_is_a_launch_error(self):
+        self.fake_hub({})
+        with self.assertRaisesRegex(launcher.LaunchError, "not running"):
+            launcher.mint_code(REPO)
+
+    def test_mint_code_refused_by_the_hub_is_a_launch_error(self):
+        self.fake_hub({"mint": "error: unknown command"})
+        with self.assertRaisesRegex(launcher.LaunchError, "not running"):
+            launcher.mint_code(REPO)
+
+    def test_open_page_with_a_refused_code_writes_no_link(self):
+        self.fake_hub({"status": self.status, "mint": "error: no code"})
+        with (
+            patch.object(launcher.subprocess, "Popen") as popen,
+            self.assertRaises(launcher.LaunchError),
+        ):
+            launcher.open_page(REPO, browser=False)
+        popen.assert_not_called()
+        self.assertFalse(paths.redirect_path(REPO).exists())
+
+    def test_an_unreadable_status_is_no_hub(self):
+        replies = {}
+        self.fake_hub(replies)
+        for reply in (None, "not json", "[1, 2]"):
+            replies["status"] = reply
+            self.assertIsNone(launcher.status(REPO), reply)
+
+    def test_stop_without_an_answer_is_false(self):
+        self.assertFalse(launcher.stop(REPO))
+        self.fake_hub({})
+        self.assertFalse(launcher.stop(REPO))
+
+    def test_a_hub_that_ignores_stop_is_reported(self):
+        self.fake_hub({"status": self.status, "stop": "ok"})
+        err = io.StringIO()
+        with patch.object(launcher, "STOP_TIMEOUT", 0.3):
+            self.assertFalse(launcher.stop(REPO))
+            with contextlib.redirect_stderr(err):
+                code = launcher.main(["stop", "--root", str(REPO)])
+        self.assertEqual(code, 1)
+        self.assertIn("did not stop", err.getvalue())
+
+
+@as_user
 class TestConcurrentStart(unittest.TestCase):
     def setUp(self):
-        self.base = _private_env(self.addCleanup)
+        self.base = private_env(self.addCleanup)
 
     def test_a_hub_started_meanwhile_by_another_process_is_found(self):
         # Un autre démarreur tient le verrou : le hub lancé ici sort en code
@@ -356,7 +424,7 @@ class TestConcurrentStart(unittest.TestCase):
 
 class TestRoot(unittest.TestCase):
     def setUp(self):
-        self.base = _private_env(self.addCleanup)
+        self.base = private_env(self.addCleanup)
 
     def test_root_is_refused_before_any_file(self):
         with (
@@ -377,10 +445,11 @@ class TestRoot(unittest.TestCase):
 @as_user
 class TestStop(unittest.TestCase):
     def setUp(self):
-        self.base = _private_env(self.addCleanup)
+        self.base = private_env(self.addCleanup)
 
     def test_stop_stops_reaps_and_cleans(self):
         pid = launcher.ensure_running(REPO)["pid"]
+        self.addCleanup(launcher.stop, REPO)
         self.assertTrue(launcher.stop(REPO))
         self.assertIsNone(launcher.status(REPO))
         with self.assertRaises(ProcessLookupError):
@@ -391,6 +460,7 @@ class TestStop(unittest.TestCase):
 
     def test_sigterm_stops_and_cleans(self):
         pid = launcher.ensure_running(REPO)["pid"]
+        self.addCleanup(launcher.stop, REPO)
         os.kill(pid, signal.SIGTERM)
         self.assertEqual(launcher._SPAWNED.pop(pid).wait(5), 0)
         self.assertFalse(paths.ctl_path(REPO).exists())
