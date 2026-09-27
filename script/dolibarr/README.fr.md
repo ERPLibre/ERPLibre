@@ -31,6 +31,7 @@ chaque script se lance aussi seul.
 | `debug.py` | Profil de déverminage d'une instance `on`/`off`, `status`, `tail` de son journal |
 | `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
 | `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
+| `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -156,6 +157,7 @@ ne sont pas posés.
 ./script/dolibarr/module.py enable --instance erp --name Stock
 ./script/dolibarr/package.py check --instance erp --name Zorglub
 ./script/dolibarr/package.py build --instance erp --name Zorglub --dolistore
+./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
 ```
 
 - `debug.py on` montre les fonctionnalités en développement
@@ -184,6 +186,16 @@ ne sont pas posés.
   `#!/usr/bin/env php` en tête des scripts, aucune copie d'un fichier du
   cœur ; `--dolistore` les rend bloquantes. « Dolibarr » comme mot du nom
   et un éditeur vide sont des avis.
+- `quality.py` lance phpcs avec les règles de Dolibarr et PHPStan avec son
+  `phpstan.neon.dist` (le cœur lu pour ses symboles, l'amorce du CI)
+  depuis l'image composer épinglée : Docker ou Podman, rien d'installé sur
+  l'hôte, les outils gardés dans un volume nommé d'après leurs versions.
+  PHPStan suit la version du CI de Dolibarr ; phpcs est la dernière 3.x,
+  celle que visent les règles maison de Dolibarr. La ligne de base PHPStan
+  du gabarit du ModuleBuilder suit le module renommé : un module neuf sort
+  propre. Sortie 0 propre, 1 constats, 2 un outil qui n'a pu finir. Une
+  instance en conteneur demande le checkout épinglé, que récupère
+  `script/manifest/update_manifest_local_dolibarr.sh`.
 
 ## Version épinglée
 

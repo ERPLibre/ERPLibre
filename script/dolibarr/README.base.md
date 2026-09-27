@@ -36,6 +36,7 @@ script also runs on its own.
 | `debug.py` | Debug profile of an instance `on`/`off`, `status`, `tail` of its log |
 | `module.py` | `create`, `link`, `enable`, `disable` the modules of a development instance |
 | `package.py` | `check` a module against DoliStore's rules, `build` its zip |
+| `quality.py` | phpcs and PHPStan on a module, with Dolibarr's own rules |
 | `lib_dolibarr.py` | Pure decisions: pin, names, what the host allows |
 | `packages.py` | Package names and paths per distribution family |
 | `web_config.py`, `units.py`, `install_files.py` | Pure rendering of the nginx, PHP-FPM, systemd and install files |
@@ -80,6 +81,7 @@ chaque script se lance aussi seul.
 | `debug.py` | Profil de déverminage d'une instance `on`/`off`, `status`, `tail` de son journal |
 | `module.py` | `create`, `link`, `enable`, `disable` les modules d'une instance de développement |
 | `package.py` | `check` d'un module selon les règles de DoliStore, `build` de son zip |
+| `quality.py` | phpcs et PHPStan sur un module, avec les règles de Dolibarr |
 | `lib_dolibarr.py` | Décisions pures : épinglage, noms, ce que l'hôte permet |
 | `packages.py` | Noms de paquets et chemins par famille de distribution |
 | `web_config.py`, `units.py`, `install_files.py` | Rendu pur des fichiers nginx, PHP-FPM, systemd et d'installation |
@@ -292,6 +294,7 @@ ne sont pas posés.
 ./script/dolibarr/module.py enable --instance erp --name Stock
 ./script/dolibarr/package.py check --instance erp --name Zorglub
 ./script/dolibarr/package.py build --instance erp --name Zorglub --dolistore
+./script/dolibarr/quality.py --instance erp --name Zorglub [--only phpstan]
 ```
 
 <!-- [en] -->
@@ -319,6 +322,16 @@ ne sont pas posés.
   several places, `#!/usr/bin/env php` on scripts, no copy of a core file;
   `--dolistore` makes them block the zip. "Dolibarr" as a word of the name
   and an empty editor are warnings.
+- `quality.py` runs phpcs with Dolibarr's ruleset and PHPStan with its
+  `phpstan.neon.dist` (the core scanned for symbols, the CI's bootstrap)
+  from the pinned composer image: Docker or Podman, nothing installed on
+  the host, the tools cached in a volume named after their versions.
+  PHPStan follows the version of Dolibarr's CI; phpcs is the last 3.x,
+  which Dolibarr's own sniffs target. The ModuleBuilder template's PHPStan
+  baseline follows the renamed module, so a fresh module comes out clean.
+  Exit 0 clean, 1 findings, 2 a tool that could not finish. A container
+  instance needs the pinned checkout, fetched by
+  `script/manifest/update_manifest_local_dolibarr.sh`.
 
 ## Pinned version
 
@@ -349,6 +362,16 @@ ne sont pas posés.
   `#!/usr/bin/env php` en tête des scripts, aucune copie d'un fichier du
   cœur ; `--dolistore` les rend bloquantes. « Dolibarr » comme mot du nom
   et un éditeur vide sont des avis.
+- `quality.py` lance phpcs avec les règles de Dolibarr et PHPStan avec son
+  `phpstan.neon.dist` (le cœur lu pour ses symboles, l'amorce du CI)
+  depuis l'image composer épinglée : Docker ou Podman, rien d'installé sur
+  l'hôte, les outils gardés dans un volume nommé d'après leurs versions.
+  PHPStan suit la version du CI de Dolibarr ; phpcs est la dernière 3.x,
+  celle que visent les règles maison de Dolibarr. La ligne de base PHPStan
+  du gabarit du ModuleBuilder suit le module renommé : un module neuf sort
+  propre. Sortie 0 propre, 1 constats, 2 un outil qui n'a pu finir. Une
+  instance en conteneur demande le checkout épinglé, que récupère
+  `script/manifest/update_manifest_local_dolibarr.sh`.
 
 ## Version épinglée
 
