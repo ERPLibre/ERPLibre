@@ -111,6 +111,15 @@ time.sleep(30)
 """
 
 
+def _state(pid):
+    """État du processus `pid` (champ 3 de /proc/<pid>/stat), ou None."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            return f.read().rsplit(b")", 1)[-1].split()[0]
+    except (OSError, IndexError):
+        return None
+
+
 class Client:
     """Double d'un client ; `gate`, une fois posé, retient chaque envoi."""
 
@@ -197,6 +206,31 @@ class TestTerminal(SessionCase):
         # Ce qui restait ne répond pas à la question suivante.
         session.write(b"next\n")
         await self.seen(session, b"read next")
+
+    async def test_stop_clears_the_input_of_a_command_that_exits_itself(self):
+        # La commande rattrape SIGINT et rend un code, comme pip : aucun
+        # signal ne l'a tuée, et ce qu'on lui a tapé ne répond pas pour
+        # autant à la question suivante.
+        armed = "trap 'exit 1' INT; echo armed > /dev/tty; sleep 30"
+        session = await self.open(JOB_CHILD, args=[armed])
+        await self.seen(session, b"armed")
+        self.assertTrue(session.write(b"y\n" * 3))
+        await asyncio.sleep(0.3)
+        self.assertTrue(session.interrupt())
+        await self.seen(session, b"rc=1")
+        session.write(b"next\n")
+        await self.seen(session, b"read next")
+        self.assertNotIn(b"read y", session.ring.data)
+
+    async def test_stop_resumes_a_command_that_suspended_itself(self):
+        session = await self.open(JOB_CHILD, args=["kill -TSTP 0; sleep 30"])
+        await self.until(lambda: session.running)
+        command = os.tcgetpgrp(session.master)
+        await self.until(lambda: _state(command) == b"T")
+        self.assertTrue(session.interrupt())
+        await self.seen(session, b"rc=-2")
+        self.assertFalse(session.running)
+        self.assertIsNone(session.proc.returncode)
 
     async def test_stop_reaches_a_child_of_the_worker_group(self):
         session = await self.open(BUSY_CHILD)

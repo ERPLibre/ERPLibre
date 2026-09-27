@@ -167,6 +167,7 @@ class Session:
         self.sent = 0  # décalage du prochain octet dû au client
         self.quiet_since = time.monotonic()
         self.master = None
+        self.tty = None  # nom de l'esclave du PTY
         self.eof = False
         self.proc = None
         self.channel = None
@@ -189,6 +190,8 @@ class Session:
         master, slave = pty.openpty()
         hub_end, worker_end = socket.socketpair()
         try:
+            # `interrupt` rouvre l'esclave par ce nom pour vider son entrée.
+            tty = os.ttyname(slave)
             # Avant le lancement : un PTY de 0×0 casse Textual.
             _set_size(master, self.cols, self.rows)
             os.set_blocking(master, False)
@@ -214,7 +217,7 @@ class Session:
         finally:
             os.close(slave)
             worker_end.close()
-        self.master, self.eof = master, False
+        self.master, self.tty, self.eof = master, tty, False
         self._reading(True)
         reader, self.channel = await asyncio.open_connection(
             sock=hub_end, limit=CHUNK
@@ -334,12 +337,17 @@ class Session:
         """Arrête ce que le worker a lancé ; faux, et rien ne change, s'il
         n'a rien lancé : Arrêter ne quitte jamais TODO.
 
-        Les frappes en attente sont jetées, comme Ctrl+C les vide au
-        terminal. Une commande au premier plan reçoit SIGINT directement :
-        l'octet Ctrl+C attendrait derrière des lignes qu'elle ne lit pas.
-        Un enfant dans le groupe du worker reçoit l'octet, que le noyau
-        change en SIGINT pour tout le groupe : le worker revient au menu
-        principal, comme au CLI.
+        Les frappes en attente sont jetées d'abord, celles que le hub garde
+        comme celles que le terminal tient déjà, comme Ctrl+C les vide au
+        terminal : une commande qui rattrape SIGINT et rend un code ne les
+        laisse pas plus répondre à la question suivante qu'une commande
+        tuée. Une commande au premier plan reçoit ensuite SIGINT, envoyé à
+        son groupe, puis SIGCONT : arrêtée par SIGTSTP, elle garderait
+        SIGINT en attente. Un enfant dans le groupe du worker reçoit
+        l'octet Ctrl+C, que le noyau change en SIGINT pour tout le groupe :
+        le worker revient au menu principal, comme au CLI. L'entrée vidée
+        d'abord garde l'octet à portée du noyau, qu'il n'atteint pas
+        derrière 4 Kio de lignes non lues.
         """
         if self.master is None or self.proc.returncode is not None:
             return False
@@ -349,14 +357,31 @@ class Session:
             return False
         self.inbox.clear()
         asyncio.get_running_loop().remove_writer(self.master)
+        self._drop_input()
         if command:
             _killpg([pgrp], signal.SIGINT)
+            _killpg([pgrp], signal.SIGCONT)
             return True
         try:
             os.write(self.master, b"\x03")
         except OSError:
             return False
         return True
+
+    def _drop_input(self):
+        """Vide l'entrée du terminal (TCIFLUSH) par l'esclave, rouvert sous
+        son nom sans en devenir le terminal de contrôle : vider par le
+        maître viderait la sortie. Un esclave disparu n'a rien à vider."""
+        try:
+            fd = os.open(self.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        except OSError:
+            return
+        try:
+            termios.tcflush(fd, termios.TCIFLUSH)
+        except (OSError, termios.error):
+            pass
+        finally:
+            os.close(fd)
 
     def resize(self, cols, rows):
         """Nouvelle taille ; le noyau prévient le premier plan (SIGWINCH)."""
