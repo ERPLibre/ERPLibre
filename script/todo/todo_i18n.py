@@ -17180,6 +17180,126 @@ TRANSLATIONS = {
         "fr": "Module non créé : %s",
         "en": "Module not created: %s",
     },
+    "ID %d is in the core range (below 95000)": {
+        "fr": "Le numéro %d est dans la plage du cœur (sous 95000)",
+        "en": "ID %d is in the core range (below 95000)",
+    },
+    "No package built.": {
+        "fr": "Aucun paquet bâti.",
+        "en": "No package built.",
+    },
+    "Package: %s": {
+        "fr": "Paquet : %s",
+        "en": "Package: %s",
+    },
+    "Not ready for DoliStore: see the ✗ above.": {
+        "fr": "Pas prêt pour DoliStore : voir les ✗ plus haut.",
+        "en": "Not ready for DoliStore: see the ✗ above.",
+    },
+    "ID %d in a distributable range": {
+        "fr": "Numéro %d dans une plage distribuable",
+        "en": "ID %d in a distributable range",
+    },
+    "ID %d is private (500000 and up): reserve one from 100000 to 499999 on the Dolibarr wiki (List_of_modules_id)": {
+        "fr": "Le numéro %d est privé (500000 et plus) : en réserver un de 100000 à 499999 sur le wiki de Dolibarr (List_of_modules_id)",
+        "en": "ID %d is private (500000 and up): reserve one from 100000 to 499999 on the Dolibarr wiki (List_of_modules_id)",
+    },
+    "Module descriptor: version %s": {
+        "fr": "Descripteur du module : version %s",
+        "en": "Module descriptor: version %s",
+    },
+    "PHP syntax": {
+        "fr": "Syntaxe PHP",
+        "en": "PHP syntax",
+    },
+    "en_US language file missing": {
+        "fr": "Fichier de langue en_US absent",
+        "en": "en_US language file missing",
+    },
+    "Pages try main.inc.php in several places": {
+        "fr": "Les pages essaient main.inc.php à plusieurs endroits",
+        "en": "Pages try main.inc.php in several places",
+    },
+    "Command-line scripts": {
+        "fr": "Scripts en ligne de commande",
+        "en": "Command-line scripts",
+    },
+    "Copies of core files not checked: no core checkout here": {
+        "fr": "Copies de fichiers du cœur non vérifiées : aucun checkout du cœur ici",
+        "en": "Copies of core files not checked: no core checkout here",
+    },
+    "%s uses the Dolibarr trademark as a word of the name": {
+        "fr": "%s emploie la marque Dolibarr comme mot du nom",
+        "en": "%s uses the Dolibarr trademark as a word of the name",
+    },
+    "Editor name or URL empty in the descriptor": {
+        "fr": "Nom ou URL de l'éditeur vide dans le descripteur",
+        "en": "Editor name or URL empty in the descriptor",
+    },
+    "No module %s in the custom/ of this instance.": {
+        "fr": "Aucun module %s dans le custom/ de cette instance.",
+        "en": "No module %s in the custom/ of this instance.",
+    },
+    "Package name: %s": {
+        "fr": "Nom du paquet : %s",
+        "en": "Package name: %s",
+    },
+    "Package name %s is refused by Dolibarr: numeric version needed": {
+        "fr": "Dolibarr refuse le nom de paquet %s : il faut une version numérique",
+        "en": "Package name %s is refused by Dolibarr: numeric version needed",
+    },
+    "PHP syntax: %s": {
+        "fr": "Syntaxe PHP : %s",
+        "en": "PHP syntax: %s",
+    },
+    "en_US language file, complete": {
+        "fr": "Fichier de langue en_US, complet",
+        "en": "en_US language file, complete",
+    },
+    "Pages that try main.inc.php in one place only: %s": {
+        "fr": "Pages qui n'essaient main.inc.php qu'à un endroit : %s",
+        "en": "Pages that try main.inc.php in one place only: %s",
+    },
+    "Scripts without #!/usr/bin/env php: %s": {
+        "fr": "Scripts sans #!/usr/bin/env php : %s",
+        "en": "Scripts without #!/usr/bin/env php: %s",
+    },
+    "No copy of a Dolibarr core file": {
+        "fr": "Aucune copie d'un fichier du cœur de Dolibarr",
+        "en": "No copy of a Dolibarr core file",
+    },
+    "Module descriptor: %s": {
+        "fr": "Descripteur du module : %s",
+        "en": "Module descriptor: %s",
+    },
+    "Keys missing from en_US: %s": {
+        "fr": "Clés absentes d'en_US : %s",
+        "en": "Keys missing from en_US: %s",
+    },
+    "Copies of Dolibarr core files: %s": {
+        "fr": "Copies de fichiers du cœur de Dolibarr : %s",
+        "en": "Copies of Dolibarr core files: %s",
+    },
+    "Package:": {
+        "fr": "Paquet :",
+        "en": "Package:",
+    },
+    "Dolibarr - Package a module (DoliStore)": {
+        "fr": "📦 Dolibarr - Empaqueter un module (DoliStore)",
+        "en": "📦 Dolibarr - Package a module (DoliStore)",
+    },
+    "Check only": {
+        "fr": "Contrôler seulement",
+        "en": "Check only",
+    },
+    "Build the zip": {
+        "fr": "Bâtir le zip",
+        "en": "Build the zip",
+    },
+    "Build the zip only if DoliStore-ready": {
+        "fr": "Bâtir le zip seulement s'il est prêt pour DoliStore",
+        "en": "Build the zip only if DoliStore-ready",
+    },
 }
 
 

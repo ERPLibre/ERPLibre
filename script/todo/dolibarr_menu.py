@@ -46,6 +46,8 @@ BACKUP_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/backup.py"
 DEBUG_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/debug.py"
 # Modules d'une instance de développement : créer, lier, activer.
 MODULE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/module.py"
+# Paquet d'un module et précontrôle DoliStore.
+PACKAGE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/package.py"
 # Monter une instance à la version épinglée.
 UPGRADE_CLI = f"{lib_dolibarr.PYTHON} -u script/dolibarr/upgrade.py"
 # Le parc : lister les instances, en retirer une.
@@ -111,6 +113,11 @@ class DolibarrMenuMixin:
                     "Dolibarr - Modules: create, link, enable"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Dolibarr - Package a module (DoliStore)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -148,6 +155,8 @@ class DolibarrMenuMixin:
                 self._dolibarr_debug()
             elif status == "15":
                 self._dolibarr_module()
+            elif status == "16":
+                self._dolibarr_package()
             else:
                 print(t("Command not found !"))
 
@@ -358,25 +367,32 @@ class DolibarrMenuMixin:
             f"{DEBUG_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
-    def _dolibarr_module(self):
-        """module.py sur une instance de développement : une production ne
-        se développe pas, un conteneur ne se voit pas offrir le lien."""
+    def _dolibarr_dev_instance(self):
+        """(nom, registre) d'une instance de développement, prise d'office
+        si elle est seule ; None si aucune ou sur Retour."""
         try:
             known = lib_dolibarr.load_registry(ROOT)
         except lib_dolibarr.RegistryError as e:
             print(t("Dolibarr registry unreadable: %s") % e)
-            return
+            return None
         names = sorted(n for n in known if known[n].get("mode") != "prod")
         if not names:
             print(t("No development instance."))
-            return
+            return None
         name = (
             names[0]
             if len(names) == 1
             else self._dolibarr_choose(t("Instance:"), [(n, n) for n in names])
         )
-        if name is None:
+        return None if name is None else (name, known)
+
+    def _dolibarr_module(self):
+        """module.py sur une instance de développement : une production ne
+        se développe pas, un conteneur ne se voit pas offrir le lien."""
+        chosen = self._dolibarr_dev_instance()
+        if chosen is None:
             return
+        name, known = chosen
         options = [("create", t("Create from the ModuleBuilder template"))]
         if known[name].get("runtime") != "container":
             options.append(
@@ -417,6 +433,40 @@ class DolibarrMenuMixin:
                 args.append("--enable")
         self.execute.exec_command_live(
             f"{MODULE_CLI} {shlex.join(args)}", source_erplibre=False
+        )
+
+    def _dolibarr_package(self):
+        """package.py : contrôler, bâtir le zip, ou le bâtir seulement s'il
+        satisfait DoliStore."""
+        chosen = self._dolibarr_dev_instance()
+        if chosen is None:
+            return
+        name, _known = chosen
+        action = self._dolibarr_choose(
+            t("Package:"),
+            [
+                ("check", t("Check only")),
+                ("build", t("Build the zip")),
+                ("dolistore", t("Build the zip only if DoliStore-ready")),
+            ],
+        )
+        if action is None:
+            return
+        module = input(t("Module name (letters and digits): ")).strip()
+        if not module:
+            print(t("Cancelled."))
+            return
+        args = [
+            "check" if action == "check" else "build",
+            "--instance",
+            name,
+            "--name",
+            module,
+        ]
+        if action == "dolistore":
+            args.append("--dolistore")
+        self.execute.exec_command_live(
+            f"{PACKAGE_CLI} {shlex.join(args)}", source_erplibre=False
         )
 
     def _dolibarr_detect(self):

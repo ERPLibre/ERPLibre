@@ -53,6 +53,7 @@ class TestDolibarrMenuNumbering(menus.MenuCoherence, unittest.TestCase):
         "Dolibarr - Find installations (local or SSH)": "_dolibarr_detect",
         "Dolibarr - Debug profile": "_dolibarr_debug",
         "Dolibarr - Modules: create, link, enable": "_dolibarr_module",
+        "Dolibarr - Package a module (DoliStore)": "_dolibarr_package",
     }
 
 
@@ -458,6 +459,46 @@ class TestModules(Banc):
     def test_an_empty_name_runs_nothing(self):
         self.registre = {"erp": dict(DEV)}
         self.assertEqual(self.lancer_module(["1", ""]), [])
+
+
+PACKAGE = "./.venv.erplibre/bin/python -u script/dolibarr/package.py"
+
+
+class TestPaquet(Banc):
+    def lancer_paquet(self, reponses):
+        todo = TODO.__new__(TODO)
+        lances = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, **kwargs):
+                lances.append(cmd)
+                return 0
+
+        todo.execute = Execute()
+        suite = iter(reponses)
+        with (
+            mock.patch.object(builtins, "input", lambda p="": next(suite)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._dolibarr_package()
+        return lances
+
+    def test_check_build_and_build_for_dolistore(self):
+        self.registre = {"erp": dict(DEV)}
+        for choix, fin in (
+            ("1", "check --instance erp --name Zorglub"),
+            ("2", "build --instance erp --name Zorglub"),
+            ("3", "build --instance erp --name Zorglub --dolistore"),
+        ):
+            self.assertEqual(
+                self.lancer_paquet([choix, "Zorglub"]), [f"{PACKAGE} {fin}"]
+            )
+
+    def test_only_development_instances_and_a_name(self):
+        self.registre = {"prod": dict(DEV, mode="prod")}
+        self.assertEqual(self.lancer_paquet([]), [])
+        self.registre = {"erp": dict(DEV)}
+        self.assertEqual(self.lancer_paquet(["1", ""]), [])
 
 
 class TestBilan(unittest.TestCase):
