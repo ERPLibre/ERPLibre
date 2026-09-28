@@ -1646,6 +1646,49 @@ OUTIL_VOUTE = "ansible-vault"
 VOUTE_UNDERLAY = "underlay.vault.yml"
 
 
+def ssh_args_du_moteur(moteur):
+    """Les `ssh_args` que l'ansible.cfg du moteur déclare, ou None.
+
+    LUS CHEZ LUI, jamais recopiés ici. Ils portent sa restriction aux clés et
+    sa persistance de connexion ; une copie dériverait de la sienne le jour où
+    il la change, et le banc jouerait alors sous des options que le moteur
+    n'utilise plus.
+    """
+    if not (moteur or "").strip():
+        return None
+    chemin = os.path.join(moteur, "ansible.cfg")
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            lignes = fh.read().splitlines()
+    except OSError:
+        return None
+    for ligne in lignes:
+        nu = ligne.strip()
+        if nu.startswith("ssh_args") and "=" in nu:
+            return nu.split("=", 1)[1].strip() or None
+    return None
+
+
+def saut_ansible(moteur, terrain):
+    """L'environnement qui fait joindre la flotte PAR le terrain. Ou None.
+
+    LA FLOTTE VIT DERRIÈRE LE TERRAIN. Ses adresses sont celles du réseau
+    interne que le banc a posé, et la station n'y route pas : un `ansible -m
+    ping` lancé d'ici attend sa borne entière puis déclare la flotte
+    injoignable, alors qu'elle répond et que le terrain la joint. Le saut rend
+    l'authentification à ssh au lieu de l'ouvrir : rien n'est publié.
+
+    FERMÉ PAR DÉFAUT. Sans terrain nommé, ou sans `ssh_args` lisible chez le
+    moteur, rend None : poser le seul saut perdrait sa restriction aux clés, et
+    un hôte qui demanderait un mot de passe ferait attendre la borne au lieu
+    d'échouer tout de suite.
+    """
+    args = ssh_args_du_moteur(moteur)
+    if not args or not (terrain or "").strip():
+        return None
+    return {"ANSIBLE_SSH_ARGS": f"{args} -o ProxyJump={terrain.strip()}"}
+
+
 def env_ansible(moteur):
     """L'environnement d'un outil ansible, bâti par le module du dépôt.
 
@@ -2602,6 +2645,16 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
     de la voûte.
     """
     env = env_ansible(moteur)
+    # LE SAUT D'ABORD : sans lui, la première cible qui interroge la flotte
+    # attend sa borne puis la déclare injoignable, et le refus parle d'une
+    # flotte muette là où c'est la route qui manque.
+    saut = saut_ansible(moteur, mesures.terrain)
+    if saut is None:
+        return (
+            "aucun saut vers la flotte : le terrain n'est pas nommé, ou"
+            " l'ansible.cfg du moteur ne déclare pas de ssh_args"
+        )
+    env = dict(env, **saut)
     if passe == PASSE_ENV:
         env = dict(env, **environnement_api(mesures.adresse_api, secret))
 

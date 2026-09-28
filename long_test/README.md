@@ -438,6 +438,15 @@ neither at creation nor in an exit code. So the bench calls the target and reads
 its verdict; it does not re-sequence the steps, which is how it would drop that
 one the day the engine adds another.
 
+**The fleet lives behind the terrain, so the bench hands ssh the jump.** The
+fleet's addresses are those of the internal network the bench laid, and the
+station does not route to them: the wait that pings the fleet would run its
+whole deadline and then call it unreachable, while it answers and the terrain
+reaches it. The jump goes into `ANSIBLE_SSH_ARGS`, APPENDED to the `ssh_args`
+the engine's own configuration declares — read there, never copied here, since
+posting the jump alone drops the engine's key-only restriction and a host that
+asked for a password would hold the deadline instead of failing at once.
+
 The bootstrap derives ITS hosts from the plan — the certificate authority first,
 then what enrols with it — so the bench reads that list instead of writing one.
 Two hosts of the shipped model are therefore activated, and the rest of the fleet
