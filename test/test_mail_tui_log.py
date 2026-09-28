@@ -12,6 +12,7 @@ erreur de session — doit se dire en toutes lettres.
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,9 @@ from pathlib import Path
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session, read_log_tail
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 class TestReadLogTail(unittest.TestCase):
@@ -215,7 +219,7 @@ class FakeTransport:
         pass
 
 
-class LogScreenCase(unittest.IsolatedAsyncioTestCase):
+class LogScreenCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné vers un dossier
     jetable — comme `test_mail_tui_account.py` : `on_mount` lit
     `todo_prefs`, qui crée `~/.erplibre` s'il est absent, et le chemin du

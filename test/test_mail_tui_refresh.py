@@ -14,6 +14,7 @@ un test qui ne franchit pas ce seuil ne prouverait rien sur le bug observé.
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +28,9 @@ from script.todo.mail.imap_sync import (
 )
 from script.todo.mail.store import MessageMeta, Store
 from script.todo.mail.tui import Session
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 class FakeImapTransport:
@@ -87,7 +91,7 @@ class FakeImapTransport:
         pass
 
 
-class RefreshCase(unittest.IsolatedAsyncioTestCase):
+class RefreshCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné — comme
     `test_mail_tui_log.py` : `on_mount` lit `todo_prefs`, qui crée
     `~/.erplibre` s'il est absent."""

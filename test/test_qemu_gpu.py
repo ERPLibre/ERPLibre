@@ -36,6 +36,9 @@ sys.argv = ["todo.py"]
 from script.todo import qemu_hardware as hw  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
+
 
 def _deploy_qemu():
     """deploy_qemu.py chargé comme module, comme le fait todo.py."""
@@ -545,7 +548,7 @@ class TestMenuGlue(unittest.TestCase):
             self.assertFalse(TODO._qemu_autostart("vm-a"))
 
 
-class TestForm(unittest.IsolatedAsyncioTestCase):
+class TestForm(AsyncCase):
     """Le formulaire monté pour de vrai : ce qu'il propose et ce qu'il rend."""
 
     async def _mount(self, rows, node):

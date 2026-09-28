@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -22,6 +23,9 @@ from script.todo.mail.tui import (
     parse_recipients,
     resolve_sent_folder,
 )
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 class TestParseRecipients(unittest.TestCase):
@@ -435,7 +439,7 @@ class TestDeliver(DeliverCase):
         self.assertNotIn(b"secret@y.ca", transport.appended[0])
 
 
-class ComposeScreenCase(unittest.IsolatedAsyncioTestCase):
+class ComposeScreenCase(AsyncCase):
     """Monte l'écran de composition pour de vrai, via `run_test()`.
 
     `MailApp` et `ComposeScreen` sont des classes locales à `run_tui` : rien

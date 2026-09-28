@@ -22,6 +22,8 @@ Ce que ces tests gardent, appris en les construisant contre des VM réelles :
 """
 
 import json
+import os
+import sys
 import tempfile
 import time
 import unittest
@@ -41,6 +43,9 @@ from script.todo.qemu_install_monitor import (
     ram_pair,
     vm_stats_line,
 )
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 # Sortie RÉELLE de « virsh domstats --balloon --block » sur deux VM du parc :
 # une VM de migration en travail, et son seed ISO en second périphérique.
@@ -275,7 +280,7 @@ class TestColonnes(unittest.TestCase):
         self.assertLessEqual(besoin, int(150 * 0.66))
 
 
-class TestEcranMonte(unittest.IsolatedAsyncioTestCase):
+class TestEcranMonte(AsyncCase):
     """Le suivi monté pour de vrai : les colonnes portent-elles les chiffres ?
 
     Aucun appel à libvirt : « read_domstats » rend la sortie enregistrée

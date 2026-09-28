@@ -13,6 +13,7 @@ Le reste — la classe CSS réellement posée sur `#panes`, la persistance dans
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,9 @@ from script.todo.mail.tui import (
     next_layout,
     resolve_layout,
 )
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 class TestResolveLayout(unittest.TestCase):
@@ -55,7 +59,7 @@ class TestNextLayout(unittest.TestCase):
         self.assertEqual(next_layout("bogus"), "split")
 
 
-class LayoutCase(unittest.IsolatedAsyncioTestCase):
+class LayoutCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné — même motif que
     `test_mail_tui_refresh.py` : `on_mount` lit `todo_prefs`, qui crée
     `~/.erplibre` s'il est absent.

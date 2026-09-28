@@ -12,11 +12,15 @@ est donc détourné vers un dossier jetable pour tout le module.
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from script.todo.mail import accounts as mail_accounts
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 class FakeConfigFile:
@@ -69,7 +73,7 @@ class FakeTransport:
         pass
 
 
-class TuiAccountCase(unittest.IsolatedAsyncioTestCase):
+class TuiAccountCase(AsyncCase):
     def setUp(self):
         # Ces tests comparent des libellés d'arbre en français : ils fixent
         # donc la langue au lieu d'hériter de celle que le fichier précédent
