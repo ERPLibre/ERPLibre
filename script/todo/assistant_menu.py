@@ -36,7 +36,6 @@ défilement piloté.
 from __future__ import annotations
 
 import os
-import shutil
 import time
 
 import click
@@ -739,15 +738,21 @@ class AssistantMenuMixin:
         Une frappe sur « o » se donne par réflexe ; recopier un nom oblige à
         regarder ce qu'on retire.
         """
-        noms = [s.label for s in connus]
-        for rang, nom in enumerate(noms, 1):
-            print(f"[{rang}] {nom}")
+        # L'entrée est choisie par son RANG, jamais par son nom. Deux
+        # serveurs peuvent porter la même étiquette — elle retombe sur l'hôte
+        # quand le nom est laissé vide — et filtrer dessus retirait les deux.
+        # L'hôte et le port sont affichés pour que le choix soit possible.
+        for rang, serveur in enumerate(connus, 1):
+            print(f"[{rang}] {serveur.label}  ({serveur.host}:{serveur.port})")
         try:
-            choisis = self._parse_index_selection(
-                click.prompt(t("Delete a server")), noms
-            )
-            if not choisis:
+            brut = click.prompt(t("Delete a server")).strip()
+            if not brut:
                 return
+            if not brut.isdigit() or not 1 <= int(brut) <= len(connus):
+                print(t("Command not found !"))
+                return
+            rang = int(brut) - 1
+            cible = connus[rang]
             frappe = click.prompt(
                 t("Type the server name in full to delete it:"),
                 prompt_suffix=" ",
@@ -755,16 +760,22 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
-        if frappe != choisis[0]:
+        # Le nom retapé CONFIRME, il ne sélectionne pas : c'est le rang qui
+        # désigne, et un homonyme ne peut donc plus partir avec.
+        if not cible.label or frappe != cible.label:
             print(t("Destination not retyped — nothing was sent."))
             return
-        restants = [s for s in connus if s.label != choisis[0]]
+        restants = [s for i, s in enumerate(connus) if i != rang]
         llm_servers.save(
             llm_servers.assign_handles(restants),
             set_config=self._llm_set_config,
         )
         state = self._llm_state()
-        if state["serveur"] and state["serveur"].label == choisis[0]:
+        courant = state.get("serveur")
+        if courant is not None and (courant.host, courant.port) == (
+            cible.host,
+            cible.port,
+        ):
             state["serveur"] = None
 
     def _llm_search(self):
@@ -1433,14 +1444,13 @@ class AssistantMenuMixin:
 
         while True:
             postes = disque.mesurer()
-            # Sans l'outil, la flotte rend une liste vide, qui se lit
-            # « aucune session vivante » et rendrait tout supprimable. None
-            # dit « on n'a pas pu demander », et rien n'est alors proposé.
-            vivantes = (
-                {s.session_id for s in self._claude_flotte() if s.live}
-                if shutil.which("claude")
-                else None
-            )
+            # La question est POSÉE, elle n'est pas devinée. Se fier à la
+            # présence du binaire sur le PATH laissait la garde tomber en
+            # ouvert dès que le listage échouait autrement : compte
+            # déconnecté, version qui ignore la sous-commande, délai dépassé,
+            # sortie qui n'est pas du JSON. `live()` rend None dans tous ces
+            # cas, et `historiques` ne propose alors rien.
+            vivantes = self._claude_vivantes()
             histoires = disque.historiques(vivantes=vivantes)
             print(f"{t('What Claude Code occupies')} :")
             for poste in postes:
@@ -1645,7 +1655,12 @@ class AssistantMenuMixin:
             return
         from script.todo.assistant.agents import tui
 
-        tui.run_tui()
+        # L'écran rend une commande quand il sort pour la laisser passer :
+        # « claude attach » prend le terminal et ne peut pas le partager avec
+        # une application qui le tient déjà.
+        commande = tui.run_tui()
+        if commande:
+            self._ouvrir_plein_ecran(commande)
 
     @staticmethod
     def _claude_transcription(session):
@@ -1804,7 +1819,7 @@ class AssistantMenuMixin:
             return
         print(
             f"   /proc/{session.pid}/environ · {env.resume(liste)}"
-            f"  ({t('total · in clear · masked')})"
+            f"  ({t('total · in clear · masked · secret')})"
         )
         for variable in liste:
             marque = (
@@ -1930,10 +1945,29 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return False
-        if frappe != session.session_id:
+        # Un identifiant VIDE rendrait la comparaison vraie sur une frappe
+        # d'Entrée : la garde la plus forte du paquet s'ouvrirait sur rien.
+        if not session.session_id or frappe != session.session_id:
             print(t("Nothing has been sent."))
             return False
         return True
+
+    def _ouvrir_plein_ecran(self, commande):
+        """Lancer une commande qui EXIGE un terminal, ou la faire copier.
+
+        Le lanceur ordinaire passe par un tube et lit la sortie : un programme
+        plein écran n'y trouve pas le terminal qu'il réclame, et l'utilisateur
+        perd l'écran sans obtenir la session. Sans fenêtre possible, la
+        commande est donc IMPRIMÉE plutôt que lancée là où elle ne survivrait
+        pas.
+        """
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  {commande}")
+            return
+        self.execute.exec_command_live(
+            commande, source_erplibre=False, new_window=True
+        )
 
     def _claude_attacher(self):
         """Ouvrir un agent détaché dans une fenêtre à lui.
@@ -1951,14 +1985,7 @@ class AssistantMenuMixin:
         if session is None:
             return
         argv = adaptateur.argv_action(adaptateur.ATTACHER, session.poignee)
-        commande = " ".join(shlex.quote(m) for m in argv)
-        if not getattr(self.execute, "cmd_source_default", ""):
-            print(t("No terminal can be opened here. Paste this command:"))
-            print(f"  {commande}")
-            return
-        self.execute.exec_command_live(
-            commande, source_erplibre=False, new_window=True
-        )
+        self._ouvrir_plein_ecran(" ".join(shlex.quote(m) for m in argv))
 
     def _claude_journal(self):
         """Imprimer la sortie récente d'un agent détaché. Elle ne fait que lire."""
@@ -2002,6 +2029,25 @@ class AssistantMenuMixin:
             print(t("Command not found !"))
             return
         self._claude_lancer_action(sous, session)
+
+    @staticmethod
+    def _claude_vivantes():
+        """Les identifiants des sessions qui TOURNENT, ou None.
+
+        None veut dire « le listage n'a pas répondu », ce qui n'est pas
+        « aucune session ne tourne ». Seul l'appelant qui protège un geste
+        destructeur a besoin de la différence, et c'est pour lui qu'elle
+        remonte jusqu'ici.
+        """
+        from script.todo.assistant import claude_sessions as cs
+
+        try:
+            trouvees = cs.live()
+        except Exception:
+            return None
+        if trouvees is None:
+            return None
+        return {s.session_id for s in trouvees if s.live}
 
     def _claude_flotte(self):
         """La flotte, relue à chaque tour du menu.
@@ -2272,7 +2318,7 @@ class AssistantMenuMixin:
             if fatals:
                 print(
                     f"      ⚠ {len(fatals)} {t('unreadable gpt files')}"
-                    f" — [d] {t('details')}"
+                    f" — [?] {t('details')}"
                 )
             try:
                 reponse = click.prompt(t("Choice")).strip().lower()
@@ -2281,7 +2327,12 @@ class AssistantMenuMixin:
                 return
             if reponse in ("0", ""):
                 return
-            if reponse == "d" and fatals:
+            # « ? » et non une lettre : les rangs sont eux-mêmes des
+            # lettres, et « d » désignait donc à la fois la quatrième entrée
+            # et ce détail-ci. La branche étant testée avant le rang, le
+            # quatrième outil devenait injoignable dès qu'un fichier gpt était
+            # illisible — l'écran n'affichant aucun chiffre pour le rattraper.
+            if reponse == "?" and fatals:
                 for souci in problemes:
                     self._llm_dire_probleme(souci)
                 continue

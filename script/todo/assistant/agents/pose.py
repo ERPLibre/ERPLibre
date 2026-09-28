@@ -103,7 +103,9 @@ def bloc(endroit=GLOBAL, *, python=None, script=None) -> dict:
     hooks = {}
     for evenement in journal.EVENEMENTS:
         forme = dict(entree)
-        if evenement in ("PreToolUse", "PostToolUse"):
+        # Tout événement d'OUTIL porte un matcher : ce qui est compté est
+        # l'appel de n'importe quel outil, échec compris.
+        if "Tool" in evenement:
             forme = {"matcher": "*", **entree}
         hooks[evenement] = [forme]
     return hooks

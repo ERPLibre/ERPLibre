@@ -33,6 +33,8 @@ import time
 # s'accordent, faute de pouvoir importer sans coûter une seconde par appel.
 RACINE = "~/.erplibre/agents"
 CHAMPS = ("hook_event_name", "session_id", "tool_name", "tool_use_id", "cwd")
+CHAMPS_NOMBRE = ("duration_ms",)
+CHAMPS_BOOLEEN = ("is_interrupt",)
 
 
 def ecrire(brut, *, horloge=None, racine=None) -> bool:
@@ -51,12 +53,31 @@ def ecrire(brut, *, horloge=None, racine=None) -> bool:
             valeur = evenement.get(champ)
             if isinstance(valeur, str) and valeur:
                 ligne[champ] = valeur
+        # Un filtre à chaînes écarte SILENCIEUSEMENT tout nombre : la durée
+        # que l'outil rapporte et le drapeau d'interruption sont l'un un
+        # entier et l'autre un booléen, donc ils se perdent sans rien dire.
+        # Le booléen se teste AVANT l'entier, `isinstance(True, int)` étant
+        # vrai en Python.
+        for champ in CHAMPS_BOOLEEN:
+            valeur = evenement.get(champ)
+            if isinstance(valeur, bool):
+                ligne[champ] = valeur
+        for champ in CHAMPS_NOMBRE:
+            valeur = evenement.get(champ)
+            if isinstance(valeur, int) and not isinstance(valeur, bool):
+                ligne[champ] = valeur
         if "hook_event_name" not in ligne:
             return False
         jour = time.strftime("%Y-%m-%d", time.localtime(horloge()))
         dossier = os.path.expanduser(racine or RACINE)
         os.makedirs(dossier, exist_ok=True)
-        with open(os.path.join(dossier, f"{jour}.jsonl"), "a") as fh:
+        # UTF-8 explicite, comme le lecteur l'impose. Sans lui, le fichier
+        # s'ouvre dans l'encodage de la LOCALE, et un chemin de travail
+        # accentué lève sous une locale latine — l'exception est avalée par
+        # le filet du hook, et l'événement se perd sans que rien ne le dise.
+        with open(
+            os.path.join(dossier, f"{jour}.jsonl"), "a", encoding="utf-8"
+        ) as fh:
             fh.write(json.dumps(ligne, ensure_ascii=False) + "\n")
         return True
     except Exception:

@@ -33,13 +33,21 @@ geste qui n'a pas eu lieu. Une session interactive ne porte pas `id` du tout,
 ce qui est cohérent — les cinq sous-commandes ne s'appliquent qu'aux
 détachées.
 
-**Ce que ce module ne construit pas.** Le lancement d'un agent détaché n'est
-pas ici. `claude --bg` accepte son invite sur l'entrée standard et imprime
-l'identifiant court : la contrainte du dépôt — une invite ne passe jamais par
-l'argv, où `/proc/<pid>/cmdline` la rend lisible par tout compte de la machine
-— est donc tenable. Ce qui manque est ailleurs : un agent détaché ouvre un
-arbre de travail que `rm` supprime, et le menu n'a pas encore de quoi dire à
-l'utilisateur ce qu'il engage.
+**Le lancement passe par l'ENTRÉE STANDARD.** `claude --bg` accepte son invite
+ainsi et imprime l'identifiant court. La contrainte du dépôt est donc tenue
+sans effort : une invite ne passe jamais par l'argv, où `/proc/<pid>/cmdline`
+la rend lisible par tout compte de la machine. Aucun drapeau n'est fabriqué
+autour — ni modèle, ni effort, ni saut de permissions : un écran qui les
+choisirait déciderait à la place de l'utilisateur, sur des valeurs qu'il n'a
+pas vues.
+
+**Le genre peut être VIDE, et ce n'est pas « détaché ».** Le registre annonce
+`interactive` pour un terminal et un genre d'arrière-plan pour un agent, mais
+la flotte réunit une seconde source : un balayage des transcriptions, qui
+annonce ce qui se REPREND. Une session dormante en sort sans genre ni
+processus. `est_arriere_plan` ne tranche donc que le genre, et l'appelant
+exige la VIVACITÉ en plus — sans quoi il proposerait `stop` sur un fichier,
+et l'outil répondrait « No job matching » avec un code de sortie nul.
 """
 from __future__ import annotations
 
@@ -55,6 +63,36 @@ DESTRUCTRICES = (RELANCER, SUPPRIMER)
 
 # Celle qui ne se répare pas. Elle exige l'identifiant retapé en entier.
 IRREVERSIBLE = SUPPRIMER
+
+
+def argv_lancer() -> list[str]:
+    """L'argv qui lance un agent détaché. L'invite passe par l'ENTRÉE STANDARD.
+
+    Jamais en positionnel : `/proc/<pid>/cmdline` est lisible par tout compte
+    de la machine, là où l'entrée standard ne l'est pas. La mesure confirme
+    que l'outil l'accepte ainsi et imprime l'identifiant court sur sa sortie.
+
+    Rend une liste de deux éléments et rien de plus. Aucun drapeau ne s'ajoute
+    ici — ni `--dangerously-skip-permissions`, ni un modèle, ni un effort : un
+    écran qui les fabriquerait déciderait à la place de l'utilisateur, sur des
+    valeurs qu'il n'a pas vues.
+    """
+    return ["claude", "--bg"]
+
+
+def identifiant_lance(sortie: str) -> str:
+    """L'identifiant court qu'un lancement vient d'imprimer, ou "".
+
+    L'outil annonce « backgrounded · <id> » puis les commandes qui le
+    prennent. On lit la PREMIÈRE forme d'identifiant rencontrée, et rien
+    d'autre : le reste de la sortie répète l'identifiant dans des phrases que
+    la moindre reformulation changerait.
+    """
+    for mot in (sortie or "").replace("\u00b7", " ").split():
+        net = mot.strip(".,;:()[]")
+        if len(net) == 8 and all(c in "0123456789abcdef" for c in net):
+            return net
+    return ""
 
 
 def argv_lister(*, terminees=False) -> list[str]:
@@ -96,6 +134,11 @@ def est_arriere_plan(session) -> bool:
     interactive, background, detached, remote, cloud. Tout ce qui n'est pas
     interactif est piloté par les cinq sous-commandes ; un terminal, lui, se
     reprend par `--resume` et se questionne par une copie branchée.
+
+    Le genre VIDE d'une session dormante passe donc ici pour « détaché », et
+    c'est voulu : cette fonction ne connaît que le genre. La vivacité est la
+    seconde moitié de la question, et l'appelant l'exige — les deux séparées,
+    chacune se vérifie.
     """
     return getattr(session, "kind", "") != "interactive"
 

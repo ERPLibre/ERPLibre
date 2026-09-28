@@ -43,6 +43,18 @@ TRANSLATIONS = {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
         "en": "🔀 Fork - Open TODO in a new tab",
     },
+    "Agent started": {
+        "fr": "Lancé",
+        "en": "Agent started",
+    },
+    "failed calls": {
+        "fr": "échoués",
+        "en": "failed calls",
+    },
+    "interrupted calls": {
+        "fr": "interrompus",
+        "en": "interrupted calls",
+    },
     "Quit": {
         "fr": "Quitter",
         "en": "Quit",
@@ -7496,6 +7508,154 @@ TRANSLATIONS = {
     "Installations": {"fr": "Installations", "en": "Installations"},
     "Total": {"fr": "Total", "en": "Total"},
     "succeeded": {"fr": "réussies", "en": "succeeded"},
+    "Latest tool calls, newest first": {
+        "fr": "Derniers appels d'outil, du plus récent",
+        "en": "Latest tool calls, newest first",
+    },
+    "Prompt for the new agent:": {
+        "fr": "Invite du nouvel agent :",
+        "en": "Prompt for the new agent:",
+    },
+    "Pick a detached agent first.": {
+        "fr": "Choisis d'abord un agent détaché.",
+        "en": "Pick a detached agent first.",
+    },
+    "The agent did not report an identifier.": {
+        "fr": "L'agent n'a pas rapporté d'identifiant.",
+        "en": "The agent did not report an identifier.",
+    },
+    "Nothing was said.": {
+        "fr": "Rien n'a été dit.",
+        "en": "Nothing was said.",
+    },
+    "The work in progress is cut. Type yes:": {
+        "fr": "Le travail en cours est coupé. Tape oui :",
+        "en": "The work in progress is cut. Type yes:",
+    },
+    "This deletes the session and its worktree. Retype:": {
+        "fr": "Ceci supprime la séance et son arbre. Retape :",
+        "en": "This deletes the session and its worktree. Retype:",
+    },
+    "Start": {
+        "fr": "Lancer",
+        "en": "Start",
+    },
+    "Stop": {
+        "fr": "Arrêter",
+        "en": "Stop",
+    },
+    "Restart": {
+        "fr": "Relancer",
+        "en": "Restart",
+    },
+    "Delete": {
+        "fr": "Supprimer",
+        "en": "Delete",
+    },
+    "Attach": {
+        "fr": "Attacher",
+        "en": "Attach",
+    },
+    "Detached agents running now": {
+        "fr": "Agents détachés qui tournent en ce moment",
+        "en": "Detached agents running now",
+    },
+    "No detached agent. Press n to start one.": {
+        "fr": "Aucun agent détaché. « n » en lance un.",
+        "en": "No detached agent. Press n to start one.",
+    },
+    "agent": {
+        "fr": "agent",
+        "en": "agent",
+    },
+    "state": {
+        "fr": "état",
+        "en": "state",
+    },
+    "pid": {
+        "fr": "pid",
+        "en": "pid",
+    },
+    "busy": {
+        "fr": "occupé",
+        "en": "busy",
+    },
+    "idle": {
+        "fr": "au repos",
+        "en": "idle",
+    },
+    "This pane shows conversation content.": {
+        "fr": "Ce volet montre du contenu de conversation.",
+        "en": "This pane shows conversation content.",
+    },
+    "This call was not found in the transcript.": {
+        "fr": "Cet appel est introuvable dans la transcription.",
+        "en": "This call was not found in the transcript.",
+    },
+    "Pick a tool call in the stream first.": {
+        "fr": "Choisis d'abord un appel dans le flux.",
+        "en": "Pick a tool call in the stream first.",
+    },
+    "No answer yet.": {
+        "fr": "Pas encore de réponse.",
+        "en": "No answer yet.",
+    },
+    "The command answered nothing.": {
+        "fr": "La commande n'a rien répondu.",
+        "en": "The command answered nothing.",
+    },
+    "The tool reported an error.": {
+        "fr": "L'outil a signalé une erreur.",
+        "en": "The tool reported an error.",
+    },
+    "yes": {
+        "fr": "oui",
+        "en": "yes",
+    },
+    "the identifier in full": {
+        "fr": "l'identifiant en entier",
+        "en": "the identifier in full",
+    },
+    "Reading everything again…": {
+        "fr": "Tout est relu…",
+        "en": "Reading everything again…",
+    },
+    "content": {
+        "fr": "contenu",
+        "en": "content",
+    },
+    "command": {
+        "fr": "commande",
+        "en": "command",
+    },
+    "failure": {
+        "fr": "échec",
+        "en": "failure",
+    },
+    "interruption": {
+        "fr": "interruption",
+        "en": "interruption",
+    },
+    "no ending": {
+        "fr": "sans clôture",
+        "en": "no ending",
+    },
+    "time": {
+        "fr": "heure",
+        "en": "time",
+    },
+    "duration": {
+        "fr": "durée",
+        "en": "duration",
+    },
+    "outcome": {
+        "fr": "fin",
+        "en": "outcome",
+    },
+    "session": {
+        "fr": "session",
+        "en": "session",
+    },
     "failed": {"fr": "échouées", "en": "failed"},
     "Period": {"fr": "Période", "en": "Period"},
     "days": {"fr": "jours", "en": "days"},
@@ -7515,7 +7675,6 @@ TRANSLATIONS = {
     "stopped": {"fr": "arrêtées", "en": "stopped"},
     "Disk used": {"fr": "Disque utilisé", "en": "Disk used"},
     "image": {"fr": "image", "en": "image"},
-    "failure": {"fr": "échec", "en": "failure"},
     "Reset the statistics": {
         "fr": "Réinitialiser les statistiques",
         "en": "Reset the statistics",
@@ -9697,10 +9856,6 @@ TRANSLATIONS = {
         "fr": "terminée",
         "en": "finished",
     },
-    "duration": {
-        "fr": "durée",
-        "en": "duration",
-    },
     "Panels": {
         "fr": "Panneaux",
         "en": "Panels",
@@ -10511,10 +10666,6 @@ TRANSLATIONS = {
     "unknown to this database": {
         "fr": "inconnu de cette base",
         "en": "unknown to this database",
-    },
-    "state": {
-        "fr": "état",
-        "en": "state",
     },
     "author": {
         "fr": "auteur",
@@ -12494,7 +12645,6 @@ TRANSLATIONS = {
         "fr": "ouvrir le projet une fois puis fermer PyCharm : le .idea qu'il écrit est ce que l'installation configure",
         "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
     },
-    "command": {"fr": "commande", "en": "command"},
     "release feed unreachable: unified build, it will ask for a JetBrains account": {
         "fr": "flux des versions injoignable : build unifié, il demandera un compte JetBrains",
         "en": "release feed unreachable: unified build, it will ask for a JetBrains account",
@@ -14528,9 +14678,9 @@ TRANSLATIONS = {
         "fr": "illisible : le processus n'existe plus",
         "en": "unreadable: the process is gone",
     },
-    "total · in clear · masked": {
-        "fr": "total · en clair · masquées",
-        "en": "total · in clear · masked",
+    "total · in clear · masked · secret": {
+        "fr": "total · en clair · masquées · secrètes",
+        "en": "total · in clear · masked · secret",
     },
     "The process carries the login shell environment,": {
         "fr": "Le processus porte l'environnement du shell de connexion,",
@@ -14747,10 +14897,6 @@ TRANSLATIONS = {
         "fr": "sessions",
         "en": "sessions",
     },
-    "session": {
-        "fr": "session",
-        "en": "session",
-    },
     # « project » existe déjà plus haut, avec exactement cette traduction :
     # une clé répétée écrase la précédente en silence, donc elle est réutilisée
     # plutôt que redéclarée.
@@ -14785,6 +14931,10 @@ TRANSLATIONS = {
     "cost": {
         "fr": "coût",
         "en": "cost",
+    },
+    "attention": {
+        "fr": "attention",
+        "en": "attention",
     },
     "tokens": {
         "fr": "jetons",
