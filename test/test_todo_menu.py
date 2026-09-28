@@ -505,6 +505,46 @@ class TestLArbreDesMenus(unittest.TestCase):
             (gpt["label"], gpt["entry"]), ("llm gpt catalogue", "")
         )
 
+    def test_a_submenu_its_parent_does_not_name_has_an_empty_entry(self):
+        # Le menu LLM calcule le libellé de l'entrée qui ouvre Servers : son
+        # `entry` est vide, comme celui d'une feuille que son menu ne nomme
+        # pas, et la page ne donne de ▶ ni à lui ni à ses feuilles.
+        servers = self._noeud("Servers", self._noeud("LLM"))
+        self.assertTrue(servers["is_menu"])
+        self.assertEqual(servers["entry"], "")
+
+    def test_a_label_that_is_not_a_string_leaves_the_tree_built(self):
+        # « t(5) » n'est pas un libellé : son entrée garde son numéro, sans
+        # libellé, et l'arbre se bâtit.
+        import tempfile
+
+        from script.todo.todo_telemetry import _str_of, build_code_tree
+
+        self.assertIsNone(_str_of(ast.parse("t(5)", mode="eval").body))
+        with tempfile.TemporaryDirectory() as tmp:
+            todo_py = Path(tmp) / "todo.py"
+            todo_py.write_text(
+                "class TODO:\n"
+                '    _MENU_LABELS = {"run": "TODO"}\n'
+                "\n"
+                "    def run(self):\n"
+                "        choices = [\n"
+                '            {"prompt_description": t(5)},\n'
+                '            {"prompt_description": t("Second")},\n'
+                "        ]\n"
+                "        status = input()\n"
+                '        if status == "1":\n'
+                "            self.first()\n"
+                '        elif status == "2":\n'
+                "            self.second()\n",
+                encoding="utf-8",
+            )
+            arbre = build_code_tree(todo_py)
+        self.assertEqual(
+            [(n["label"], n.get("entry")) for n in arbre["children"]],
+            [("first", ""), ("Second", None)],
+        )
+
     def test_no_submenu_entry_is_a_sibling_leaf_label(self):
         # La page répond à un menu l'entrée d'un sous-menu par ses lettres
         # et ses chiffres : une feuille voisine qui s'y réduit lancerait sa

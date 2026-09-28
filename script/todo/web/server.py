@@ -244,10 +244,11 @@ def localize(node, lang, parent=None) -> dict:
     `key` : libellé brut ; `label` : sa traduction dans `lang` ; `path` : le
     chemin de télémétrie, les clés jointes par « › » comme TODO les
     enregistre ; `menu` ; `entry` : la traduction du libellé que le menu
-    parent montre pour ce nœud, `label` à défaut, vide pour une feuille
-    qu'il ne nomme pas ; `section` traduite pour une feuille qui en a une.
-    Ni méthode ni arguments : `entry` suffit à trouver le nœud dans le menu
-    de son parent.
+    parent montre pour ce nœud, `label` quand l'arbre n'en porte pas
+    d'autre, vide pour un nœud, feuille ou sous-menu, qu'il ne nomme pas ;
+    `section` traduite pour une feuille qui en a une. Ni méthode ni
+    arguments : un `entry` non vide suffit à trouver le nœud dans le menu
+    de son parent ; un `entry` vide dit qu'aucune entrée ne lui répond.
     """
     key = node["label"]
     path = key if parent is None else f"{parent} › {key}"

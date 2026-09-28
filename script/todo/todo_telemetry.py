@@ -112,7 +112,9 @@ def _nested(paths: dict) -> dict:
 # Métadonnées de navigation DÉRIVÉES DU CODE (structure réelle des menus)
 # --------------------------------------------------------------------------- #
 def _str_of(node) -> str | None:
-    """Chaîne d'un nœud AST : littéral, t("…") ou f-string (parties Constant)."""
+    """Chaîne d'un nœud AST : littéral, t("…") ou f-string (parties Constant).
+    None pour tout autre nœud, et pour t() d'une constante qui n'est pas une
+    chaîne."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if (
@@ -121,6 +123,7 @@ def _str_of(node) -> str | None:
         and node.func.id == "t"
         and node.args
         and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
     ):
         return node.args[0].value
     if isinstance(node, ast.JoinedStr):
@@ -468,10 +471,10 @@ def build_code_tree(todo_path=None) -> dict | None:
     commandes (feuilles). Un sous-menu porte aussi `entry`, le libellé de
     l'entrée qui l'ouvre dans son parent, quand le code du parent l'écrit
     (liste « choices » ou ligne « [N] {t("…")} ») : son `label` est son
-    segment du fil d'Ariane, que le parent montre souvent autrement. Une
-    feuille dont le parent n'écrit pas le libellé prend le nom de sa méthode
-    et un `entry` vide : aucune entrée du menu ne lui répond. None si
-    l'analyse échoue."""
+    segment du fil d'Ariane, que le parent montre souvent autrement. Un
+    nœud dont le parent n'écrit pas le libellé porte un `entry` vide :
+    aucune entrée du menu ne lui répond ; une feuille prend alors le nom de
+    sa méthode. None si l'analyse échoue."""
     p = Path(todo_path) if todo_path else (Path(__file__).parent / "todo.py")
     todo_dir = p.parent  # todo.json est à côté de todo.py
     try:
@@ -522,8 +525,7 @@ def build_code_tree(todo_path=None) -> dict | None:
             said = (entry and entry["label"]) or shown.get(num)
             if target in labels:  # sous-menu
                 child = build(target)
-                if said:
-                    child["entry"] = said
+                child["entry"] = said or ""
                 node["children"].append(child)
             else:  # commande (feuille) exécutable
                 leaf = {
