@@ -145,6 +145,24 @@ names its writing tools before the question is asked. The list of what counts
 as writing is CLOSED, so an unknown tool is not deemed harmless — it is merely
 unknown, which is why the full tool list is shown beside the warning.
 
+## A detached agent outlives the menu
+
+An agent run in the background survives the menu that started it, so it has no
+terminal left to write to: its output goes to a file, and what is known of it
+at launch goes to a second one beside it. Two files because the first is
+written by the PROCESS and the second by the launcher — mixing them would have
+two authors writing into a file one of them truncates on opening.
+
+The OUTPUT decides the state, the pid only guesses. A process identifier is
+recycled, so questioning the one of a finished agent may reach a live
+stranger; an output carrying the complete envelope therefore reads FINISHED
+whatever the pid, and the pid only tells "not finished yet" from "gone without
+returning anything". Gone is said as such rather than left running forever.
+
+The question goes on standard input here too: a command line is readable by
+every account on the machine, and that does not change because the call takes
+longer.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -665,6 +683,7 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `perf_tui.py` | the live screen: the turns table, the stream, the input |
 | `sessions.py` | conversations kept under `~/.erplibre`, and resumed |
 | `agents/specialistes.py` | the specialised agents declared here, and what each is trusted with |
+| `agents/fond.py` | agents run detached: what is running, what came back, what is gone |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
@@ -839,6 +858,26 @@ ses outils d'écriture avant qu'on pose la question. La liste de ce qui compte
 comme une écriture est FERMÉE, si bien qu'un outil inconnu n'est pas réputé
 inoffensif — il est seulement inconnu, et c'est pourquoi la liste complète des
 outils paraît à côté de l'avertissement.
+
+## Un agent détaché survit au menu
+
+Un agent lancé en arrière-plan survit au menu qui l'a lancé : il n'a donc plus
+de terminal où écrire, et sa sortie va dans un fichier tandis que ce qu'on
+sait de lui au départ va dans un second, à côté. Deux fichiers parce que le
+premier est écrit par le PROCESSUS et le second par le lanceur — les mêler
+ferait écrire deux auteurs dans un fichier que l'un des deux tronque à
+l'ouverture.
+
+La SORTIE décide de l'état, le pid ne fait que deviner. Un identifiant de
+processus se recycle, si bien qu'interroger celui d'un agent fini peut
+désigner un inconnu bien vivant ; une sortie qui porte l'enveloppe complète
+dit donc FINI quel que soit le pid, et le pid ne sert qu'à distinguer « pas
+encore fini » de « parti sans rien rendre ». Ce dernier se dit ainsi plutôt
+que de rester « en cours » pour toujours.
+
+La question part sur l'entrée standard ici aussi : une ligne de commande se
+lit par tout compte de la machine, et cela ne change pas parce que l'appel
+dure plus longtemps.
 
 ## Une adresse ne devient jamais du texte de prompt
 
@@ -1416,6 +1455,7 @@ nul ».
 | `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
 | `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
 | `agents/specialistes.py` | les agents spécialisés déclarés ici, et ce qu'on confie à chacun |
+| `agents/fond.py` | les agents détachés : ce qui tourne, ce qui revient, ce qui est perdu |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |

@@ -148,6 +148,26 @@ comme une écriture est FERMÉE, si bien qu'un outil inconnu n'est pas réputé
 inoffensif — il est seulement inconnu, et c'est pourquoi la liste complète des
 outils paraît à côté de l'avertissement.
 
+## Un agent détaché survit au menu
+
+Un agent lancé en arrière-plan survit au menu qui l'a lancé : il n'a donc plus
+de terminal où écrire, et sa sortie va dans un fichier tandis que ce qu'on
+sait de lui au départ va dans un second, à côté. Deux fichiers parce que le
+premier est écrit par le PROCESSUS et le second par le lanceur — les mêler
+ferait écrire deux auteurs dans un fichier que l'un des deux tronque à
+l'ouverture.
+
+La SORTIE décide de l'état, le pid ne fait que deviner. Un identifiant de
+processus se recycle, si bien qu'interroger celui d'un agent fini peut
+désigner un inconnu bien vivant ; une sortie qui porte l'enveloppe complète
+dit donc FINI quel que soit le pid, et le pid ne sert qu'à distinguer « pas
+encore fini » de « parti sans rien rendre ». Ce dernier se dit ainsi plutôt
+que de rester « en cours » pour toujours.
+
+La question part sur l'entrée standard ici aussi : une ligne de commande se
+lit par tout compte de la machine, et cela ne change pas parce que l'appel
+dure plus longtemps.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des
@@ -724,6 +744,7 @@ nul ».
 | `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
 | `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
 | `agents/specialistes.py` | les agents spécialisés déclarés ici, et ce qu'on confie à chacun |
+| `agents/fond.py` | les agents détachés : ce qui tourne, ce qui revient, ce qui est perdu |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |

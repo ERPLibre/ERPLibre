@@ -583,6 +583,7 @@ class TODO(
         "_llm_reprendre": "Conversations",
         "_llm_dossier": "Folder",
         "_llm_specialistes": "Specialists",
+        "_llm_courses": "Background",
         "_llm_specialiste_agir": "Agent",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
