@@ -475,9 +475,20 @@ class SessionsClaudeCode(unittest.TestCase):
             return ""
 
         todo = TODO()
+        # Les comptes affichés à côté des entrées interrogent la machine :
+        # sans ces coutures, chaque test lance « claude agents --json » et
+        # ouvre la base d'Open Code. Un test qui dépend de ce qui tourne chez
+        # celui qui le lance ne mesure plus le câblage du menu.
         with patch.object(TODO, "fill_help_info", fausse_aide), patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=["0"]
-        ), patch("script.todo.todo_telemetry.record"):
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
             todo.prompt_assistant_ia()
         return [c["prompt_description"] for c in capture if "section" not in c]
 
@@ -501,6 +512,11 @@ class SessionsClaudeCode(unittest.TestCase):
         with patch.object(TODO, cible) as mock_cible, patch.object(
             TODO, temoin or "prompt_execute_rtk"
         ) as mock_temoin, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=[chiffre, "0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -542,8 +558,15 @@ class SessionsClaudeCode(unittest.TestCase):
         todo = TODO()
         au_dela = str(len(self._entrees()) + 1)
         with patch.object(TODO, "_agents_telemetrie") as mock, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=[au_dela, "0"]
-        ), patch("script.todo.todo_telemetry.record"):
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
             todo.prompt_assistant_ia()
         mock.assert_not_called()
 
@@ -806,6 +829,41 @@ class LeHarnaisOpenCode(unittest.TestCase):
         self.assertIn("/un/autre/endroit", self._ecran([seance], ["0"]))
 
 
+class LaRetapeNeSOuvrePasSurRien(unittest.TestCase):
+    """La garde la plus forte du paquet, et ce qui l'ouvrait sur le vide.
+
+    `claude rm` supprime la séance ET son arbre de travail, et rien ne la
+    récupère : l'identifiant se retape donc en entier. Mais un listage qui ne
+    porte pas « sessionId » laisse ce champ à "", l'invite affiche « Retape : »
+    suivi du vide, et une frappe d'Entrée rendait la comparaison vraie.
+    """
+
+    def _retape(self, session_id, frappe):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id=session_id, court="aaaaaaaa")
+        with patch("click.prompt", return_value=frappe), patch(
+            "builtins.print"
+        ):
+            return TODO._claude_retape_id(TODO(), session)
+
+    def test_an_empty_identifier_is_refused_even_on_an_empty_answer(self):
+        self.assertFalse(self._retape("", ""))
+
+    def test_an_empty_identifier_is_refused_whatever_is_typed(self):
+        self.assertFalse(self._retape("", "aaaaaaaa"))
+
+    def test_the_whole_identifier_still_opens_it(self):
+        """Refuser trop retirerait la fonctionnalité."""
+        entier = "aaaaaaaa-1111-4111-8111-111111111111"
+        self.assertTrue(self._retape(entier, entier))
+
+    def test_the_short_identifier_is_not_enough(self):
+        entier = "aaaaaaaa-1111-4111-8111-111111111111"
+        self.assertFalse(self._retape(entier, "aaaaaaaa"))
+
+
 class LaVueDUneSession(unittest.TestCase):
     """`displayable()` fixe ce qu'une session a le droit de montrer.
 
@@ -960,6 +1018,238 @@ class LEnvironnementNEstLuQueDUnProcessusVivant(unittest.TestCase):
 
     def test_a_live_session_is_read(self):
         self.assertEqual(self._contexte(live=True), [4321])
+
+
+class LePleinEcranNePasseParUnTube(unittest.TestCase):
+    """`claude attach` est un programme plein écran.
+
+    Le lanceur ordinaire passe par un tube et lit la sortie : le programme n'y
+    trouve pas le terminal qu'il réclame, et l'utilisateur perd l'écran sans
+    obtenir la session. La TUI rendait la commande et le menu la lançait par
+    cette porte-là, alors que l'entrée équivalente du menu refusait de le
+    faire depuis toujours.
+    """
+
+    def _lancer(self, avec_terminal=True):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        appels = []
+        todo.execute.cmd_source_default = (
+            "un-terminal" if avec_terminal else ""
+        )
+        with patch.object(
+            todo.execute,
+            "exec_command_live",
+            side_effect=lambda c, **kw: appels.append((c, kw)),
+        ), patch("builtins.print") as imprime:
+            todo._ouvrir_plein_ecran("claude attach abcd1234")
+        return appels, [str(a) for c in imprime.call_args_list for a in c.args]
+
+    def test_a_terminal_gets_its_own_window(self):
+        appels, _ = self._lancer()
+        ((commande, options),) = appels
+        self.assertEqual(commande, "claude attach abcd1234")
+        self.assertTrue(options.get("new_window"))
+
+    def test_without_a_terminal_the_command_is_printed_not_run(self):
+        """La lancer là où elle ne survivrait pas ferait perdre l'écran ET la
+        session."""
+        appels, sorti = self._lancer(avec_terminal=False)
+        self.assertEqual(appels, [])
+        self.assertTrue(any("claude attach abcd1234" in s for s in sorti))
+
+    def test_the_telemetry_screen_uses_the_same_door(self):
+        """La TUI rendait la commande et le menu la passait au tube."""
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.agents.tui.run_tui",
+            return_value="claude attach abcd1234",
+        ), patch(
+            "script.todo.textual_setup.ensure", return_value=True
+        ), patch.object(
+            TODO, "_ouvrir_plein_ecran"
+        ) as porte:
+            TODO()._agents_telemetrie()
+        porte.assert_called_once_with("claude attach abcd1234")
+
+    def test_nothing_handed_back_opens_nothing(self):
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.agents.tui.run_tui", return_value=None
+        ), patch(
+            "script.todo.textual_setup.ensure", return_value=True
+        ), patch.object(
+            TODO, "_ouvrir_plein_ecran"
+        ) as porte:
+            TODO()._agents_telemetrie()
+        porte.assert_not_called()
+
+
+class LaSuppressionDUnServeurNEnRetireQuUn(unittest.TestCase):
+    """Deux serveurs peuvent porter la même étiquette.
+
+    Elle retombe sur l'hôte quand le nom est laissé vide, donc deux ports du
+    même hôte s'appellent pareil. Le filtre se faisait sur cette étiquette :
+    supprimer l'un retirait les deux, et la garde de la retape ne protégeait
+    rien puisqu'elle portait sur le même nom.
+    """
+
+    def _serveurs(self):
+        from script.todo.assistant import servers as llm
+
+        def serveur(handle, label, host, port):
+            return llm.Server(
+                handle=handle,
+                label=label,
+                host=host,
+                port=port,
+                software="ollama",
+                model="",
+                hosting="local",
+                secret_ref="",
+            )
+
+        # Deux entrées du MÊME hôte : l'étiquette retombe sur l'hôte quand le
+        # nom est laissé vide, donc elles sont homonymes.
+        return [
+            serveur("a", "10.0.0.1", "10.0.0.1", 11434),
+            serveur("b", "10.0.0.1", "10.0.0.1", 8080),
+            serveur("c", "autre", "10.0.0.2", 11434),
+        ]
+
+    def _supprimer(self, rang, frappe):
+        from script.todo.todo import TODO
+
+        gardes = {}
+        todo = TODO()
+        with patch("click.prompt", side_effect=[rang, frappe]), patch(
+            "script.todo.assistant.servers.save",
+            side_effect=lambda restants, **kw: gardes.setdefault(
+                "restants", list(restants)
+            ),
+        ), patch(
+            "script.todo.assistant.servers.assign_handles", side_effect=list
+        ), patch(
+            "builtins.print"
+        ):
+            todo._llm_delete_server(self._serveurs())
+        return gardes.get("restants")
+
+    def test_only_the_chosen_rank_goes(self):
+        restants = self._supprimer("1", "10.0.0.1")
+        self.assertEqual(
+            [(s.host, s.port) for s in restants],
+            [("10.0.0.1", 8080), ("10.0.0.2", 11434)],
+        )
+
+    def test_the_homonym_survives(self):
+        """C'est tout le défaut : les deux partaient ensemble."""
+        restants = self._supprimer("2", "10.0.0.1")
+        self.assertEqual(len(restants), 2)
+        self.assertIn(11434, [s.port for s in restants])
+
+    def test_a_wrong_retype_sends_nothing(self):
+        self.assertIsNone(self._supprimer("1", "pas le nom"))
+
+    def test_a_rank_out_of_bounds_sends_nothing(self):
+        for mauvais in ("0", "4", "-1", "x", ""):
+            self.assertIsNone(self._supprimer(mauvais, "10.0.0.1"), mauvais)
+
+    def test_the_screen_shows_what_tells_them_apart(self):
+        """Sans l'hôte et le port, deux homonymes sont indiscernables."""
+        from script.todo.todo import TODO
+
+        sorti = []
+        with patch("click.prompt", side_effect=["", ""]), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(" ".join(map(str, a))),
+        ):
+            TODO()._llm_delete_server(self._serveurs())
+        rendu = "\n".join(sorti)
+        self.assertIn("10.0.0.1:11434", rendu)
+        self.assertIn("10.0.0.1:8080", rendu)
+
+
+class LesRangsDuCatalogueGptNeSeVolentPas(unittest.TestCase):
+    """Les entrées du catalogue se désignent par une LETTRE.
+
+    La touche des détails en était une : « d » désignait à la fois la
+    quatrième entrée et le détail des fichiers illisibles, et la branche étant
+    testée avant le rang, le quatrième outil devenait injoignable dès qu'un
+    seul fichier gpt était mal formé — l'écran n'affichant aucun chiffre pour
+    le rattraper.
+    """
+
+    def test_the_details_key_is_outside_the_alphabet(self):
+        from script.todo import assistant_menu as menu
+
+        with open(menu.__file__, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn('reponse == "?"', source)
+        self.assertNotIn('reponse == "d"', source)
+
+    def test_no_rank_can_ever_be_the_details_key(self):
+        """La garde qui vaut pour toujours : tant que la touche n'est pas une
+        lettre, aucun rang ne peut la revendiquer."""
+        from script.todo.assistant_menu import LETTRES, AssistantMenuMixin
+
+        self.assertNotIn("?", LETTRES)
+        self.assertIsNone(AssistantMenuMixin._llm_rang("?", len(LETTRES)))
+
+    def test_every_letter_of_the_alphabet_still_reaches_its_rank(self):
+        from script.todo.assistant_menu import LETTRES, AssistantMenuMixin
+
+        for rang, lettre in enumerate(LETTRES):
+            self.assertEqual(
+                AssistantMenuMixin._llm_rang(lettre, len(LETTRES)), rang
+            )
+
+    def test_the_screen_announces_the_new_key(self):
+        from script.todo import assistant_menu as menu
+
+        with open(menu.__file__, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn("[?] {t('details')}", source)
+
+
+class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
+    """Les comptes affichés à côté des entrées interrogent la machine.
+
+    Sans couture, ouvrir l'écran des agents lançait « claude agents --json »
+    trois fois par test et ouvrait la base d'Open Code. Le verdict dépendait
+    alors de ce qui tournait chez celui qui lançait la suite.
+    """
+
+    def test_opening_the_agents_screen_launches_nothing(self):
+        import subprocess
+
+        from script.todo.todo import TODO
+
+        lances = []
+
+        def refuser(argv, *a, **kw):
+            lances.append(argv)
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        with patch.object(TODO, "fill_help_info", lambda s, c: ""), patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ), patch.object(
+            subprocess, "run", refuser
+        ), patch(
+            "builtins.print"
+        ):
+            TODO().prompt_assistant_ia()
+        self.assertEqual(lances, [])
 
 
 if __name__ == "__main__":

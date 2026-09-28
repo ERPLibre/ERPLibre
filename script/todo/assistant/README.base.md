@@ -300,6 +300,119 @@ the other harness does give. The summary line keeps the two apart rather than
 folding them into one total, Claude Code's cost being read from a cost-state
 that a compaction resets while Open Code's is a stable database field.
 
+**Time spent is not time elapsed, and the table shows the first.** A session's
+clock counts everything that passed, including the hours nobody was watching —
+it reports hundreds of hours as soon as a session stays open for days. The
+attention column sums the gaps between hook events instead, each gap capped by
+an inactivity threshold this package chooses and names. Nothing is collected
+for it: the hook log already carries the instant of every event. Without hooks
+installed the column shows a dash, never a zero, a zero saying "this session
+did no work" where the truth is "nothing is measured".
+
+**The time series was on disk all along.** Every assistant message carries its
+instant and its model — present on all ten thousand sampled. Tokens per day and
+per model therefore come from summing messages, not from reading a
+`cost-state`: no compaction resets them, no segment is lost, and they add up
+across sessions without the reserve that weighs on cost. The day is read in UTC
+as the transcript writes it; converting to local time would move messages from
+one day to another depending on who is looking.
+
+**A tool call ends in one of four ways, and the screen tells them apart.** It
+finished, it failed, it was interrupted, or nothing ever closed it. One count
+for all four gave a figure no gesture answers: a failure is corrected, an
+interruption is relaunched, and an unclosed call says nothing at all. The
+`PostToolUseFailure` event carries the difference in `is_interrupt`.
+
+**The duration is the one the tool measured, not the gap between two
+instants.** That gap INCLUDES the time spent in front of a permission prompt,
+so a call approved after four minutes read as a four-minute call and inflated
+the per-tool median. The closing event carries `duration_ms`; the gap remains
+only as a fallback for a binary that does not. Both fields are integers, and a
+string-only filter dropped them silently — the same defect the neighbouring
+module already paid for on a hook's exit code.
+
+**The bottom panel switches rather than stacks.** A terminal has no room for
+three tables, and stacking them would leave four lines each. The `v` key
+cycles: per tool, which answers "which one is slow", and the stream of the
+latest calls, which answers "why has it been stuck for two minutes". Neither
+shows any content — a tool name, a duration, an ending. The outcome column
+stays empty for a finished call, the ordinary case that has nothing to report,
+and the three bad endings name themselves in the singular: a row describes one
+call, where the per-tool table counts many.
+
+**The screen acts, and says what it may not do.** A third panel lists the
+detached agents running right now — live AND detached, because the fleet joins
+two sources: the registry says what RUNS, a sweep of the transcripts says what
+RESUMES, and a dormant session comes out of it with neither kind nor process.
+Offering it would propose `stop` on a file, and the tool answers "No job
+matching" with a NULL exit code, so nothing would look like it failed.
+
+`n` starts an agent, its prompt read on standard input and never in the argv,
+where `/proc/<pid>/cmdline` exposes it to every account. `s` stops the
+highlighted one — its conversation is kept, so nothing to confirm. `a` attaches
+and therefore CLOSES the screen: `claude attach` takes the terminal and cannot
+share it. A key pressed in another panel does nothing, rather than acting on a
+highlighted row nobody can see.
+
+**The stream shows the command, and nothing was collected for it.** "Bash ·
+1.2 s · failure" says that something failed without saying what. The hook log
+keeps `tool_use_id` and nothing else of the call — no command, no answer —
+because writing `tool_input` there would put every shell command on disk for
+fourteen days, which is keeping and not showing. The command is read back from
+the TRANSCRIPT, where Claude Code had already written it, at the moment
+someone asks. Three hundredths of a second per lookup in thirty megabytes: the
+substring pre-filter does the work.
+
+An added trap, and it hides a third of the calls: a tool launched by a
+SUBAGENT is written in the subagent's own file, under the session directory,
+while the hook announces it under the PARENT session's identifier. Both places
+are searched, the main transcript first.
+
+A detail pane opens on the highlighted call and shows the command with its
+output. It is the only pane of the package that displays content, so it says
+so, in the first line rather than the last — a long output would push the
+warning off screen.
+
+**The tables fit the terminal, because they were measured against it.** The
+columns had piled up one per feature without anyone checking the width: twelve
+of them wanted 124 characters, and the stream 95 of which 55 for the command
+alone. An eighty-column terminal — the commonest default — showed neither.
+Nothing was broken, Textual scrolls; but a dashboard you have to scroll no
+longer reads at a glance.
+
+Two fixes, both measured. The command column takes WHAT IS LEFT rather than a
+fixed sixty, so it neither overflows a narrow terminal nor wastes a wide one.
+And the session table shows only the columns that fit, in order of importance
+— which session, which project, what it costs, how full its context is —
+rebuilding them only when the count changes, since redoing them every two
+seconds would reset the cursor under the reader's fingers. A project name is
+cut on the LEFT: a family of repositories shares its prefix and differs by
+what follows.
+
+**Two gestures cost something, and the gap between their guards is the point.**
+`l` restarts the highlighted agent on the current binary — the work in progress
+is cut, so a yes is asked, but the conversation survives and that is what sets
+it apart. `x` deletes the session AND its worktree, and nothing brings it back:
+the whole identifier is retyped, the long one and not the eight characters. A
+tap on "y" is given by reflex; copying thirty-six characters makes you look at
+what you are destroying. Both act with the SHORT identifier, the only one the
+subcommands accept — the retyping is a guard, not an argument.
+
+**The stream's column shows what situates, never what was said.** A call
+carries a shell command, a path, a URL — or free text: the prompt given to a
+subagent, a search pattern. The first three fit a table row without revealing
+anything of the conversation; the last does not, and a `Task` call, having no
+command, used to spread its whole prompt across a column that declares it
+shows no content. It now says "content", and the detail pane — which warns —
+is where that is read. A URL loses what authenticates it, here as in the MCP
+module: the boundary that was relaxed covers CONTENT, never secrets.
+
+**Everything that comes from a cost-state falls silent when none was read.**
+Nine of the eighteen transcripts on an ordinary machine carry none — an
+interrupted session, an older version, a fresh one. Cost already said so with
+a dash; the durations and the lines touched, which come from the same record,
+were showing "0 ms" and "+0/−0", which reads "measured, and nil".
+
 ## The modules
 
 | File | What it owns |
@@ -317,6 +430,7 @@ that a compaction resets while Open Code's is a stable database field.
 | `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
 | `harness/claude.py` | the argv of a detached agent's five subcommands, and what each one costs |
 | `harness/opencode.py` | Open Code's sessions and their cost, read only, and the three shapes its output takes |
+| `agents/detail.py` | a tool call's command and answer, read back from the transcript and never collected |
 | `agents/statistiques.py` | what a transcript says of a session: tokens, cost, durations, context |
 | `agents/tui.py` | the live screen, refreshed without re-reading what it already folded |
 | `agents/journal.py` | the tool-call log: one line per event, and their pairing into durations |
@@ -669,6 +783,129 @@ ligne de résumé garde les deux séparés plutôt que de les fondre en un total
 le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
 zéro là où celui d'Open Code est un champ de base stable.
 
+**Le temps passé n'est pas le temps écoulé, et le tableau montre le premier.**
+L'horloge d'une session compte tout ce qui s'est écoulé, y compris les heures
+où personne ne regardait — elle annonce des centaines d'heures dès qu'une
+session reste ouverte plusieurs jours. La colonne d'attention somme plutôt les
+écarts entre événements de hook, chaque écart borné par un seuil d'inactivité
+que ce paquet choisit et nomme. Rien n'est collecté pour elle : le journal des
+hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonne
+affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
+travaillé » là où la vérité est « rien n'est mesuré ».
+
+**La série temporelle était sur le disque depuis le début.** Chaque message
+d'assistant porte son instant et son modèle — présents sur les dix mille
+échantillonnés. Les jetons par jour et par modèle viennent donc d'une somme de
+messages et non de la lecture d'un `cost-state` : aucune compaction ne les
+remet à zéro, aucun segment ne s'y perd, et ils s'additionnent d'une session à
+l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
+transcription l'écrit ; le convertir en heure locale déplacerait des messages
+d'un jour à l'autre selon qui regarde.
+
+**Un appel d'outil finit de quatre façons, et l'écran les distingue.** Il est
+fini, il a échoué, il a été interrompu, ou rien ne l'a jamais clos. Un seul
+compte pour les quatre donnait un chiffre auquel aucun geste ne répond : un
+échec se corrige, une interruption se relance, et un appel sans clôture ne dit
+rien du tout. L'événement `PostToolUseFailure` porte la différence dans son
+`is_interrupt`.
+
+**La durée est celle que l'outil a mesurée, et non l'écart entre deux
+instants.** Cet écart INCLUT le temps passé devant une demande d'autorisation,
+donc un appel approuvé au bout de quatre minutes se lisait comme un appel de
+quatre minutes et majorait la médiane par outil. L'événement de clôture porte
+`duration_ms` ; l'écart ne reste qu'en repli, pour un binaire qui ne la porte
+pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
+silence — le défaut que le module voisin avait déjà payé sur le code de sortie
+d'un hook.
+
+**Le panneau du bas PERMUTE au lieu de s'empiler.** Un terminal n'a pas la
+hauteur pour trois tableaux, et les empiler les réduirait à quatre lignes
+chacun. La touche `v` fait le tour : par outil, qui répond à « lequel est
+lent », et le flux des derniers appels, qui répond à « pourquoi ça bloque
+depuis deux minutes ». Ni l'un ni l'autre ne montre de contenu — un nom
+d'outil, une durée, une fin. La colonne de fin reste vide pour un appel
+réussi, cas ordinaire qui n'a rien à signaler, et les trois mauvaises fins se
+nomment au singulier : une ligne décrit un appel, là où le tableau par outil
+en compte plusieurs.
+
+**L'écran agit, et dit ce qu'il ne peut pas faire.** Un troisième panneau
+liste les agents détachés qui tournent — vivants ET détachés, car la flotte
+réunit deux sources : le registre annonce ce qui TOURNE, un balayage des
+transcriptions annonce ce qui se REPREND, et une session dormante en sort sans
+genre ni processus. L'offrir proposerait `stop` sur un fichier, et l'outil
+répond « No job matching » avec un code de sortie NUL — rien ne paraîtrait
+avoir échoué.
+
+`n` lance un agent, son invite lue sur l'entrée standard et jamais dans l'argv,
+où `/proc/<pid>/cmdline` l'expose à tout compte. `s` arrête celui qui est
+surligné — sa conversation est gardée, donc rien à confirmer. `a` attache et
+FERME donc l'écran : `claude attach` prend le terminal et ne peut pas le
+partager. Une touche pressée dans un autre panneau ne fait rien, plutôt que
+d'agir sur une ligne surlignée que personne ne voit.
+
+**Le flux montre la commande, et rien n'a été collecté pour ça.** « Bash ·
+1,2 s · échec » dit qu'une chose a raté sans dire laquelle. Le journal des
+hooks garde `tool_use_id` et rien d'autre de l'appel — ni la commande, ni la
+réponse — parce qu'y écrire `tool_input` mettrait chaque commande shell sur le
+disque pour quatorze jours, ce qui est garder et non montrer. La commande est
+relue dans la TRANSCRIPTION, où Claude Code l'avait déjà mise, au moment où
+quelqu'un la demande. Trois centièmes de seconde par recherche dans trente
+mégaoctets : le pré-filtre par sous-chaîne fait tout le travail.
+
+Un piège s'ajoute, et il cache un appel sur trois : un outil lancé par un
+SOUS-AGENT s'écrit dans le fichier de celui-ci, sous le répertoire de la
+session, alors que le hook l'annonce sous l'identifiant de la session PARENTE.
+Les deux endroits sont donc balayés, la transcription principale d'abord.
+
+Un volet de détail s'ouvre sur l'appel surligné et montre la commande avec sa
+sortie. C'est le seul volet du paquet qui affiche du contenu, alors il le dit,
+en première ligne plutôt qu'en dernière — une longue sortie pousserait
+l'avertissement hors de l'écran.
+
+**Les tableaux tiennent dans le terminal, parce qu'ils y ont été mesurés.**
+Les colonnes s'étaient accumulées une par fonctionnalité sans que personne
+regarde la largeur : douze en réclamaient cent vingt-quatre, et le flux
+quatre-vingt-quinze dont cinquante-cinq pour la seule commande. Un terminal de
+quatre-vingts colonnes — le défaut le plus répandu — n'en montrait ni l'un ni
+l'autre. Rien n'était cassé, Textual fait défiler ; mais un tableau de bord
+qu'il faut faire défiler ne se lit plus d'un coup.
+
+Deux correctifs, mesurés tous les deux. La colonne de commande prend CE QUI
+RESTE plutôt qu'un soixante fixe, donc elle ne déborde plus d'un terminal
+étroit et ne gaspille plus celui d'un large. Et le tableau des sessions ne
+montre que les colonnes qui tiennent, par ordre d'importance — quelle session,
+quel projet, combien ça coûte, où en est son contexte —, refaites seulement
+quand leur nombre change, les recréer à chaque tour remettant le curseur en
+haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
+famille de dépôts partage son préfixe et se distingue par ce qui suit.
+
+**Deux gestes coûtent quelque chose, et l'écart entre leurs gardes est tout le
+propos.** `l` relance l'agent surligné sur le binaire courant — le travail en
+cours est coupé, donc un oui est demandé, mais la conversation survit et c'est
+ce qui le distingue du suivant. `x` supprime la séance ET son arbre de travail,
+et rien ne la récupère : l'identifiant se retape en entier, le long et non
+celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopier
+trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
+avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
+est une garde, pas un argument.
+
+**La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
+porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
+donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent
+dans une ligne de tableau sans rien révéler de la conversation ; le dernier
+non, et un appel `Task`, qui n'a pas de commande, y étalait son invite
+entière dans une colonne qui déclare ne montrer aucun contenu. Elle dit
+désormais « contenu », et c'est le volet de détail — qui prévient — qui le
+montre. Une URL y perd ce qui l'authentifie, comme dans le module MCP : la
+frontière qu'on a levée porte sur le CONTENU, jamais sur les secrets.
+
+**Tout ce qui vient d'un `cost-state` se tait quand il n'y en a aucun.** Neuf
+des dix-huit transcriptions d'une machine ordinaire n'en portent pas — session
+interrompue, version antérieure, session neuve. Le coût le disait déjà par un
+tiret ; les durées et les lignes touchées, qui viennent du même
+enregistrement, affichaient « 0 ms » et « +0/−0 », ce qui se lit « mesuré, et
+nul ».
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -686,6 +923,7 @@ zéro là où celui d'Open Code est un champ de base stable.
 | `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
 | `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
 | `harness/opencode.py` | les séances d'Open Code et leur coût, en lecture seule, et les trois formes que prend sa sortie |
+| `agents/detail.py` | la commande et la réponse d'un appel, relues dans la transcription et jamais collectées |
 | `agents/statistiques.py` | ce qu'une transcription dit d'une session : jetons, coût, durées, contexte |
 | `agents/tui.py` | l'écran vivant, rafraîchi sans relire ce qu'il a déjà replié |
 | `agents/journal.py` | le journal des appels d'outils : une ligne par événement, et leur appariement |

@@ -79,6 +79,12 @@ class Agregat:
     lignes_retirees: int = 0
     segments: int = 0
     par_modele: dict = field(default_factory=dict)
+    # Les deux séries que le disque portait sans qu'on les lise. Elles ne
+    # viennent PAS d'un `cost-state`, donc aucune compaction ne les remet à
+    # zéro et aucun segment ne s'y perd : chaque message d'assistant porte son
+    # instant et son modèle, et ce sont des sommes exactes.
+    jetons_par_jour: dict = field(default_factory=dict)
+    jetons_par_modele: dict = field(default_factory=dict)
 
     # La taille de l'invite, tour par tour, tronquée aux derniers SERIE_MAX.
     serie: tuple[int, ...] = ()
@@ -146,6 +152,20 @@ def _texte(valeur) -> str:
     return valeur if isinstance(valeur, str) else ""
 
 
+def _ajoute(table, cle, combien) -> dict:
+    """Une COPIE de `table` avec `combien` ajouté à `cle`. Fonction pure.
+
+    Une clé vide est ignorée plutôt que comptée sous un nom vide : une
+    transcription d'une version antérieure ne porte pas toujours les deux
+    champs, et une ligne « ” : 4 M » à l'écran ne veut rien dire.
+    """
+    if not cle:
+        return table
+    copie = dict(table)
+    copie[cle] = copie.get(cle, 0) + combien
+    return copie
+
+
 def replier(agregat: Agregat, objet) -> Agregat:
     """Replier UNE ligne décodée dans l'agrégat. Fonction pure.
 
@@ -205,11 +225,22 @@ def replier(agregat: Agregat, objet) -> Agregat:
         _entier(usage.get(cle)) for cle, nom in USAGE if nom in TAILLE
     )
     serie = (agregat.serie + (taille,))[-SERIE_MAX:]
+    # Le jour se lit sur les dix premiers caractères de l'horodatage ISO, en
+    # UTC comme la transcription l'écrit. Le convertir en heure locale
+    # déplacerait des messages d'un jour à l'autre selon le fuseau de qui
+    # regarde, et deux machines ne liraient plus la même série.
+    total = sum(_entier(usage.get(cle)) for cle, _ in USAGE)
     return replace(
         agregat,
         tours=agregat.tours + 1,
         reflexion=agregat.reflexion + reflexion,
         serie=serie,
+        jetons_par_jour=_ajoute(
+            agregat.jetons_par_jour, _texte(objet.get("timestamp"))[:10], total
+        ),
+        jetons_par_modele=_ajoute(
+            agregat.jetons_par_modele, _texte(message.get("model")), total
+        ),
         **champs,
     )
 
@@ -297,6 +328,14 @@ def lire(chemin, lecture=None, *, ouvrir=None, taille=None) -> Lecture:
     )
 
 
+def _fusionne(gauche, droite) -> dict:
+    """Deux tables de comptes, additionnées clé par clé. Fonction pure."""
+    fusion = dict(gauche)
+    for cle, combien in droite.items():
+        fusion[cle] = fusion.get(cle, 0) + combien
+    return fusion
+
+
 def somme(agregats) -> Agregat:
     """Les jetons de plusieurs sessions, additionnés ; le reste, non.
 
@@ -324,5 +363,15 @@ def somme(agregats) -> Agregat:
             duree_outils=total.duree_outils + a.duree_outils,
             lignes_ajoutees=total.lignes_ajoutees + a.lignes_ajoutees,
             lignes_retirees=total.lignes_retirees + a.lignes_retirees,
+            # Les deux séries s'additionnent SANS réserve, contrairement au
+            # coût : elles sont des sommes de messages et non la lecture d'un
+            # dernier segment, donc une machine entière se replie en une
+            # série juste, jour par jour et modèle par modèle.
+            jetons_par_jour=_fusionne(
+                total.jetons_par_jour, a.jetons_par_jour
+            ),
+            jetons_par_modele=_fusionne(
+                total.jetons_par_modele, a.jetons_par_modele
+            ),
         )
     return total

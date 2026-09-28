@@ -154,10 +154,23 @@ class TestRienNeSortEnClair(unittest.TestCase):
         self.assertEqual([v.nom for v in liste], ["ANTHROPIC_API_KEY", "TERM"])
 
     def test_the_summary_counts_what_it_says(self):
+        """QUATRE nombres, et ils se réconcilient.
+
+        Trois ne le faisaient pas : le dernier comptait les SECRÈTES sous
+        l'étiquette « masquées », et le lecteur d'un écran de diagnostic en
+        déduisait qu'un reste était dans un état que personne ne nommait. Une
+        masquée montre sa forme, une secrète ne montre même pas sa longueur —
+        deux états, donc deux nombres.
+        """
         liste = self._liste(
             [("TERM", "xterm"), ("SECRET_TOKEN", TEMOIN), ("AUTRE", "x")]
         )
-        self.assertEqual(env.resume(liste), "3 · 1 · 1")
+        self.assertEqual(env.resume(liste), "3 · 1 · 2 · 1")
+        total, claires, masquees, secretes = [
+            int(n) for n in env.resume(liste).split(" · ")
+        ]
+        self.assertEqual(claires + masquees, total, "les nombres se ferment")
+        self.assertLessEqual(secretes, masquees, "un secret est masqué")
 
 
 class TestLIllisible(unittest.TestCase):
