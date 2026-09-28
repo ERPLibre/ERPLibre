@@ -446,20 +446,8 @@ class QemuMenuMixin:
                 self._qemu_stats()
             elif status == "20":
                 self._qemu_list_images()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    # Ignore les entrées de section pour mapper le numéro
-                    # affiché sur la bonne commande (config incluse).
-                    real = [c for c in choices if not c.get("section")]
-                    if 0 < int_cmd <= len(real):
-                        cmd_no_found = False
-                        self.execute_from_configuration(real[int_cmd - 1])
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            elif not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
