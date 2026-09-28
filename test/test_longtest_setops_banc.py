@@ -1230,6 +1230,56 @@ class TestUneSuiteVideNeReussitPas(unittest.TestCase):
         self.assertEqual((None, 0), (fait.code, fait.jouees))
 
 
+class TestLeSautVersLaFlotte(unittest.TestCase):
+    """La flotte vit derrière le terrain : ses adresses sont celles du réseau
+    interne que le banc a posé, et la station n'y route pas. Un `ansible -m
+    ping` lancé d'ici attend sa borne entière puis la déclare injoignable,
+    alors qu'elle répond et que le terrain la joint.
+
+    L'alias de terrain est inventé ; rien n'est joué.
+    """
+
+    ARGS = "-C -o ControlPersist=300s -o PreferredAuthentications=publickey"
+
+    def moteur(self, cfg=None):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        if cfg is not None:
+            with open(os.path.join(d, "ansible.cfg"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(cfg)
+        return d
+
+    def test_the_engine_args_are_read_where_the_engine_declares_them(self):
+        m = self.moteur(f"[ssh_connection]\nssh_args = {self.ARGS}\n")
+        self.assertEqual(self.ARGS, B.ssh_args_du_moteur(m))
+
+    def test_no_declaration_reads_as_nothing(self):
+        """Fermé par défaut : un fichier sans la clé, ou pas de fichier."""
+        for cfg in (None, "[defaults]\nforks = 20\n", "[ssh_connection]\n"):
+            with self.subTest(cfg=repr(cfg)):
+                self.assertIsNone(B.ssh_args_du_moteur(self.moteur(cfg)))
+        self.assertIsNone(B.ssh_args_du_moteur(""))
+
+    def test_the_jump_keeps_what_the_engine_declared(self):
+        """LA PROPRIÉTÉ. Poser le seul saut ÉCRASE `ssh_args` : la restriction
+        aux clés partirait avec, et un hôte qui demanderait un mot de passe
+        ferait attendre la borne entière au lieu d'échouer tout de suite."""
+        m = self.moteur(f"[ssh_connection]\nssh_args = {self.ARGS}\n")
+        vu = B.saut_ansible(m, "un-terrain")["ANSIBLE_SSH_ARGS"]
+        self.assertTrue(vu.startswith(self.ARGS))
+        self.assertIn("-o ProxyJump=un-terrain", vu)
+
+    def test_without_a_terrain_or_without_args_it_refuses(self):
+        """Rien à sauter, ou pas de quoi le poser sans perdre le reste."""
+        m = self.moteur(f"[ssh_connection]\nssh_args = {self.ARGS}\n")
+        for moteur, terrain in ((m, ""), (m, "   "), (self.moteur(), "t")):
+            with self.subTest(terrain=repr(terrain)):
+                self.assertIsNone(B.saut_ansible(moteur, terrain))
+        # Contrôle positif : refuser toujours passerait les trois précédents.
+        self.assertIsNotNone(B.saut_ansible(m, "un-terrain"))
+
+
 class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
     """LE DÉFAUT D'ORIGINE, et il ne se voit qu'en bout de chaîne. Le VMID du
     placement venait du premier numéro LIBRE de la plage — libre PRÉCISÉMENT
