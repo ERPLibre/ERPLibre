@@ -49,6 +49,7 @@ COMMANDS: dict[str, str] = {
     "/model": (
         "change model on this server, history CLEARED; /model <text> filters"
     ),
+    "/dossier": "file this conversation: /dossier <name>, empty to take it out",
     "/tui": "open the live screen, with the timings of each turn",
     "/ctx": "show again what was sent",
     "/m": 'multi-line entry, end with a single "." line',

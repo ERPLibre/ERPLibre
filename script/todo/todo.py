@@ -581,6 +581,7 @@ class TODO(
         "_apertus_modele": "Model",
         "_apertus_reprise": "Resume",
         "_llm_reprendre": "Conversations",
+        "_llm_dossier": "Folder",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",

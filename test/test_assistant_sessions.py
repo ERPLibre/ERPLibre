@@ -277,5 +277,140 @@ class UneSeanceRelue(unittest.TestCase):
         self.assertEqual(2, len(sessions.lister(base=self.base, combien=2)))
 
 
+class LesDossiersDeConversation(unittest.TestCase):
+    """Le fil auquel une séance appartient, et ce qu'il en hérite.
+
+    Un dossier n'est déclaré nulle part : il n'existe qu'à travers les
+    séances qui s'en réclament. Rien ne le crée, rien ne le détruit, et le
+    départ de sa dernière séance le fait disparaître — ce qui évite une
+    seconde liste à tenir d'accord avec la première.
+    """
+
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.base = self.dossier.name
+        self.addCleanup(self.dossier.cleanup)
+
+    def _seance(self, seance, jour, range_a="", modele=None):
+        serveur = (
+            SERVEUR
+            if modele is None
+            else Server(
+                handle="server-1",
+                label="essai",
+                host="192.0.2.21",
+                port=8000,
+                software="logiciel-invente",
+                model=modele,
+                hosting="lan",
+                secret_ref="",
+            )
+        )
+        cible = sessions.ouvrir(
+            seance,
+            serveur,
+            outil="outil-invente",
+            dossier=range_a,
+            debut=jour,
+            base=self.base,
+        )
+        sessions.noter(cible, Turn("user", f"question de {seance}"))
+        sessions.noter(cible, Turn("assistant", "une réponse"))
+        return cible
+
+    def test_une_seance_declare_son_dossier_des_l_ouverture(self):
+        self._seance("aaaa11112222", DEBUT, "dossier-invente")
+        (vue,) = sessions.lister(base=self.base)
+        self.assertEqual("dossier-invente", vue.dossier)
+
+    def test_la_liste_se_filtre_par_dossier(self):
+        self._seance("aaaa11112222", DEBUT, "dossier-invente")
+        self._seance("bbbb33334444", DEBUT, "")
+        dedans = sessions.lister(base=self.base, dossier="dossier-invente")
+        self.assertEqual(["aaaa11112222"], [vue.seance for vue in dedans])
+
+    def test_sans_dossier_est_un_choix_et_non_une_absence(self):
+        """`dossier=None` ne filtre rien ; `dossier=""` ne garde que ce qui
+        n'est rangé nulle part."""
+        self._seance("aaaa11112222", DEBUT, "dossier-invente")
+        self._seance("bbbb33334444", DEBUT, "")
+        self.assertEqual(2, len(sessions.lister(base=self.base)))
+        nulle_part = sessions.lister(base=self.base, dossier="")
+        self.assertEqual(["bbbb33334444"], [v.seance for v in nulle_part])
+
+    def test_ranger_ajoute_une_ligne_et_ne_reecrit_rien(self):
+        """Réécrire la première ligne demanderait de refaire le fichier, ce
+        qui perdrait les tours qu'un autre écrivain y ajoute au même
+        moment."""
+        cible = self._seance("aaaa11112222", DEBUT, "")
+        avant = sessions._lignes(cible)
+        sessions.ranger(cible, "dossier-invente")
+        apres = sessions._lignes(cible)
+        self.assertEqual(avant, apres[: len(avant)])
+        self.assertEqual(len(avant) + 1, len(apres))
+        self.assertEqual(sessions.RANGEMENT, apres[-1]["kind"])
+
+    def test_le_dernier_rangement_fait_foi(self):
+        cible = self._seance("aaaa11112222", DEBUT, "premier-dossier")
+        sessions.ranger(cible, "second-dossier")
+        sessions.ranger(cible, "troisieme-dossier")
+        (vue,) = sessions.lister(base=self.base)
+        self.assertEqual("troisieme-dossier", vue.dossier)
+
+    def test_un_nom_vide_sort_la_seance_de_son_dossier(self):
+        cible = self._seance("aaaa11112222", DEBUT, "dossier-invente")
+        sessions.ranger(cible, "")
+        (vue,) = sessions.lister(base=self.base)
+        self.assertEqual("", vue.dossier)
+
+    def test_un_dossier_herite_de_sa_seance_la_plus_recente(self):
+        """Un fil de travail change de modèle en cours de route, et le
+        dossier suit sans qu'on le lui dise : rien à tenir à jour, donc rien
+        qui puisse mentir."""
+        self._seance(
+            "aaaa11112222",
+            "2026-03-01T00:00:00-05:00",
+            "dossier-invente",
+            modele="famille-inventee/ancien",
+        )
+        self._seance(
+            "bbbb33334444",
+            "2026-03-09T00:00:00-05:00",
+            "dossier-invente",
+            modele="famille-inventee/recent",
+        )
+        (vu,) = sessions.dossiers(base=self.base)
+        self.assertEqual("famille-inventee/recent", vu.modele)
+        self.assertEqual(2, vu.seances)
+        self.assertEqual("192.0.2.21", vu.hote)
+        self.assertEqual(8000, vu.port)
+
+    def test_un_dossier_que_plus_personne_ne_reclame_disparait(self):
+        cible = self._seance("aaaa11112222", DEBUT, "dossier-invente")
+        self.assertEqual(1, len(sessions.dossiers(base=self.base)))
+        sessions.ranger(cible, "")
+        self.assertEqual([], sessions.dossiers(base=self.base))
+
+    def test_les_dossiers_sortent_du_plus_recemment_servi(self):
+        self._seance("aaaa11112222", "2026-03-01T00:00:00-05:00", "ancien")
+        self._seance("bbbb33334444", "2026-03-09T00:00:00-05:00", "recent")
+        noms = [vu.nom for vu in sessions.dossiers(base=self.base)]
+        self.assertEqual(["recent", "ancien"], noms)
+
+    def test_un_nom_se_nettoie_et_se_borne(self):
+        self.assertEqual(
+            "mon dossier", sessions.nom_dossier("  mon   dossier  ")
+        )
+        for vide in (None, "", "   ", 0):
+            with self.subTest(vide=vide):
+                self.assertEqual("", sessions.nom_dossier(vide))
+        self.assertEqual(
+            sessions.DOSSIER_MAX, len(sessions.nom_dossier("x" * 200))
+        )
+
+    def test_ranger_une_seance_absente_ne_fait_pas_lever(self):
+        self.assertFalse(sessions.ranger(None, "dossier-invente"))
+
+
 if __name__ == "__main__":
     unittest.main()

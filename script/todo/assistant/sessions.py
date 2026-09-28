@@ -46,6 +46,17 @@ MODE_FICHIER = 0o600
 # Ce qu'une ligne d'en-tête déclare, par opposition à un tour.
 ENTETE = "entete"
 
+# Ce qu'une ligne de RANGEMENT déclare. Ranger une séance n'en réécrit pas le
+# fichier : la ligne s'AJOUTE, comme tout le reste. Réécrire la première ligne
+# demanderait de refaire le fichier entier, ce qui perdrait les tours qu'un
+# autre écrivain y ajoute au même moment — et le rangement garde au passage
+# la trace de ses propres changements.
+RANGEMENT = "dossier"
+
+# La longueur d'un nom de dossier. Il sert d'étiquette dans une liste, pas de
+# phrase : au-delà, la ligne déborde d'un terminal étroit.
+DOSSIER_MAX = 40
+
 # La longueur du titre tiré de la première question. De quoi reconnaître une
 # séance dans une liste sans que la ligne déborde d'un terminal étroit.
 TITRE_MAX = 60
@@ -63,15 +74,23 @@ class Resume:
     chemin: str
     seance: str
     debut: str
+    hote: str
+    port: int
     logiciel: str
     modele: str
     outil: str
     tours: int
     titre: str
+    dossier: str = ""
 
 
-def dossier(base=None) -> Path:
-    """Le dossier des séances, créé au besoin. Jamais None."""
+def racine(base=None) -> Path:
+    """La RACINE des séances sur le disque. Jamais None.
+
+    Nommée ainsi et non « dossier » : dans ce module, un dossier est celui
+    d'une CONVERSATION, et les deux sens dans un même fichier se confondent
+    à la lecture comme au paramètre.
+    """
     if base is None:
         return Path(os.path.expanduser(os.path.join(*BASE)))
     return Path(base)
@@ -85,7 +104,7 @@ def chemin(seance: str, debut: str, *, base=None) -> Path:
     confondent pas.
     """
     jour = (debut or "")[:10] or "0000-00-00"
-    return dossier(base) / f"{jour}-{seance}.jsonl"
+    return racine(base) / f"{jour}-{seance}.jsonl"
 
 
 def maintenant() -> str:
@@ -118,7 +137,19 @@ def _ecrire(cible: Path, entree: dict) -> bool:
     return True
 
 
-def ouvrir(seance: str, serveur, *, outil="", debut=None, base=None):
+def nom_dossier(brut) -> str:
+    """Un nom de dossier utilisable, ou la chaîne vide. Fonction PURE.
+
+    La chaîne vide veut dire « rangée nulle part », qui est un état normal :
+    une conversation ouverte pour une question isolée n'a pas de fil auquel
+    appartenir.
+    """
+    return " ".join(str(brut or "").split())[:DOSSIER_MAX]
+
+
+def ouvrir(
+    seance: str, serveur, *, outil="", dossier="", debut=None, base=None
+):
     """Déclare une séance et rend son chemin, ou None si l'écriture échoue.
 
     L'en-tête porte de quoi reconnaître la séance sans lire ses tours : le
@@ -136,8 +167,28 @@ def ouvrir(seance: str, serveur, *, outil="", debut=None, base=None):
         "hote": getattr(serveur, "host", ""),
         "port": getattr(serveur, "port", 0),
         "outil": outil,
+        "dossier": nom_dossier(dossier),
     }
     return cible if _ecrire(cible, entree) else None
+
+
+def ranger(cible, dossier) -> bool:
+    """Range une séance dans un dossier, ou l'en sort. Jamais lève.
+
+    Un nom vide l'en sort. La ligne s'ajoute à la fin : la dernière fait foi,
+    donc ranger deux fois de suite laisse la séance là où on l'a mise en
+    dernier, et le fichier garde la trace des deux gestes.
+    """
+    if cible is None:
+        return False
+    return _ecrire(
+        Path(cible),
+        {
+            "t": maintenant(),
+            "kind": RANGEMENT,
+            "dossier": nom_dossier(dossier),
+        },
+    )
 
 
 def noter(cible, tour, *, quand=None) -> bool:
@@ -210,37 +261,103 @@ def resume(cible) -> Resume | None:
     echanges = [one for one in lignes if one.get("role") == "assistant"]
     if not echanges:
         return None
+    # Le DERNIER rangement fait foi, l'en-tête n'étant que le premier.
+    range_a = entete.get("dossier", "")
+    for une in lignes:
+        if une.get("kind") == RANGEMENT:
+            range_a = une.get("dossier", "")
     return Resume(
         chemin=str(cible),
         seance=str(entete.get("seance", "")),
         debut=str(entete.get("t", "")),
+        hote=str(entete.get("hote", "")),
+        port=int(entete.get("port", 0) or 0),
         logiciel=str(entete.get("logiciel", "")),
         modele=str(entete.get("modele", "")),
         outil=str(entete.get("outil", "")),
         tours=len(echanges),
         titre=_titre(lignes),
+        dossier=nom_dossier(range_a),
     )
 
 
-def lister(*, base=None, combien=None) -> list[Resume]:
+def lister(*, base=None, combien=None, dossier=None) -> list[Resume]:
     """Les séances gardées, la plus récente d'abord.
 
     Le tri se fait sur le NOM, qui ouvre par la date : lire chaque fichier
     pour trier sur son en-tête coûterait une ouverture par séance avant même
     d'afficher la liste.
     """
-    racine = dossier(base)
+    ou = racine(base)
     try:
-        fichiers = sorted(racine.glob("*.jsonl"), reverse=True)
+        fichiers = sorted(ou.glob("*.jsonl"), reverse=True)
     except OSError:
         return []
     trouves = []
     for cible in fichiers:
         vu = resume(cible)
-        if vu is not None:
-            trouves.append(vu)
+        if vu is None:
+            continue
+        # `dossier=None` ne filtre rien ; `dossier=""` ne garde que les
+        # séances rangées NULLE PART, ce qui est un choix et non l'absence
+        # d'un choix.
+        if dossier is not None and vu.dossier != nom_dossier(dossier):
+            continue
+        trouves.append(vu)
         if combien is not None and len(trouves) >= combien:
             break
+    return trouves
+
+
+@dataclass(frozen=True)
+class Dossier:
+    """Un dossier, tel qu'il se montre dans une liste.
+
+    Ses défauts — serveur, modèle, outil — sont ceux de sa séance la plus
+    RÉCENTE, et non un réglage rangé ailleurs : un fil de travail change de
+    modèle en cours de route, et le dossier suit sans qu'on ait à le lui
+    dire. Rien à tenir à jour, donc rien qui puisse mentir.
+    """
+
+    nom: str
+    seances: int
+    hote: str
+    port: int
+    logiciel: str
+    modele: str
+    outil: str
+    dernier: str
+
+
+def dossiers(*, base=None) -> list[Dossier]:
+    """Les dossiers connus, le plus récemment servi d'abord.
+
+    Un dossier n'existe qu'à travers les séances qui s'en réclament : rien
+    ne le déclare, rien ne le crée, et le dernier départ d'une séance le
+    fait disparaître de lui-même.
+    """
+    vues = lister(base=base)
+    groupes: dict[str, list[Resume]] = {}
+    for vue in vues:
+        if vue.dossier:
+            groupes.setdefault(vue.dossier, []).append(vue)
+    trouves = []
+    for nom, dedans in groupes.items():
+        # `lister` rend la plus récente d'abord : la tête porte les défauts.
+        tete = dedans[0]
+        trouves.append(
+            Dossier(
+                nom=nom,
+                seances=len(dedans),
+                hote=tete.hote,
+                port=tete.port,
+                logiciel=tete.logiciel,
+                modele=tete.modele,
+                outil=tete.outil,
+                dernier=tete.debut,
+            )
+        )
+    trouves.sort(key=lambda un: un.dernier, reverse=True)
     return trouves
 
 

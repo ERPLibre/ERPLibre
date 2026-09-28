@@ -116,6 +116,16 @@ après-midi. Reprendre recharge les tours dans l'historique — le modèle reço
 au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
 s'ajoute au MÊME fichier.
 
+Une séance peut appartenir à un DOSSIER, et le dossier n'est rien qu'un nom
+dont ses séances se réclament : rien ne le déclare, rien ne le crée, et le
+départ de la dernière le fait disparaître — ce qui évite une seconde liste à
+tenir d'accord avec la première. Ses défauts — serveur, modèle, outil — sont
+ceux de sa séance la plus récente, si bien qu'un fil de travail garde son
+modèle sans qu'on le lui dise, et que rien qu'on tienne à jour ne peut mentir
+à son sujet. Ranger AJOUTE une ligne au lieu de réécrire la première : refaire
+le fichier perdrait les tours qu'un autre écrivain y ajoute au même moment, et
+la dernière ligne fait foi.
+
 TOUS les écrans écrivent, parce qu'ils parlent à la même conversation : la
 boucle en ligne, l'écran des durées et le formulaire plein écran. Celui qui
 ne le ferait pas couperait le fil à l'endroit exact où l'on a changé d'écran,

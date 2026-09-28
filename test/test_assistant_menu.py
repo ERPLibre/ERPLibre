@@ -2077,8 +2077,12 @@ class UneConversationUneSeance(unittest.TestCase):
         todo._llm_set_config = lambda keys, val: None
         return todo
 
-    def _parler(self, todo, question, reprise=None):
-        """Un échange complet, sans socket ni serveur."""
+    def _parler(self, todo, question, reprise=None, dossier="", suite=()):
+        """Un échange complet, sans socket ni serveur.
+
+        `suite` sont les lignes tapées APRÈS la question, avant de quitter :
+        c'est par là qu'une commande de conversation s'éprouve.
+        """
         import io
         from contextlib import redirect_stdout
 
@@ -2096,7 +2100,7 @@ class UneConversationUneSeance(unittest.TestCase):
                     "usage": {"completion_tokens": 2}
                 }
 
-        entrees = [question, "/q"]
+        entrees = [question, *suite, "/q"]
 
         def lire(_invite=""):
             return entrees.pop(0) if entrees else "/q"
@@ -2114,12 +2118,12 @@ class UneConversationUneSeance(unittest.TestCase):
         ), redirect_stdout(
             io.StringIO()
         ):
-            todo._llm_conversation(reprise=reprise)
+            todo._llm_conversation(reprise=reprise, dossier=dossier)
 
     def _seances(self):
         from script.todo.assistant import sessions as llm_seances
 
-        return llm_seances.lister(base=llm_seances.dossier())
+        return llm_seances.lister(base=llm_seances.racine())
 
     def test_deux_conversations_neuves_ne_partagent_pas_leur_fichier(self):
         """Une seule exécution du CLI, deux conversations sans rapport."""
@@ -2157,6 +2161,102 @@ class UneConversationUneSeance(unittest.TestCase):
         self.assertEqual(
             2, todo._llm_state()["mesures"][-1].rang, "le rang est reparti à 1"
         )
+
+
+class LesDossiersDeConversation(UneConversationUneSeance):
+    """Ranger des séances, et les retrouver par leur dossier.
+
+    La classe hérite du décor de sa voisine — dossier de séances par test,
+    serveur d'essai, boucle sans socket — parce que ce qui est éprouvé ici
+    est la MÊME boucle, vue par le rangement.
+    """
+
+    def _dossiers(self):
+        from script.todo.assistant import sessions as llm_seances
+
+        return llm_seances.dossiers(base=llm_seances.racine())
+
+    def test_une_conversation_neuve_dans_un_dossier_s_y_range(self):
+        todo = self._todo()
+        self._parler(todo, "une question inventée", dossier="dossier-invente")
+        (vue,) = self._seances()
+        self.assertEqual("dossier-invente", vue.dossier)
+        self.assertEqual(
+            [("dossier-invente", 1)],
+            [(un.nom, un.seances) for un in self._dossiers()],
+        )
+
+    def test_la_commande_range_puis_sort_la_conversation(self):
+        """Une conversation rangée par mégarde doit pouvoir en ressortir
+        sans qu'on aille éditer un fichier."""
+        todo = self._todo()
+        self._parler(
+            todo,
+            "une question inventée",
+            suite=["/dossier dossier-invente"],
+        )
+        self.assertEqual("dossier-invente", self._seances()[0].dossier)
+        self._parler(
+            todo,
+            "une autre question",
+            reprise=self._seances()[0].chemin,
+            suite=["/dossier"],
+        )
+        self.assertEqual("", self._seances()[0].dossier)
+
+    def _offert(self, todo):
+        """Ce que l'écran de reprise PROPOSE, tel qu'il est composé.
+
+        Le menu est interrogé, et non la couche qui range : un écran qui
+        cesserait de filtrer offrirait deux fois la même séance sans qu'une
+        vérification faite plus bas s'en aperçoive.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        vu = []
+
+        def prompt(texte, *a, **kw):
+            vu.append(texte)
+            return "0"
+
+        with patch("click.prompt", prompt), patch(
+            "script.todo.todo_telemetry.record"
+        ), redirect_stdout(io.StringIO()):
+            todo._llm_reprendre()
+        return vu[0] if vu else ""
+
+    def test_une_seance_rangee_ne_parait_pas_dans_les_isolees(self):
+        """Les offrir des deux côtés ferait douter qu'il s'agisse des
+        mêmes."""
+        todo = self._todo()
+        self._parler(todo, "question rangée", dossier="dossier-invente")
+        self._parler(todo, "question isolée")
+        offert = self._offert(todo)
+        self.assertIn("question isolée", offert)
+        self.assertIn("dossier-invente", offert)
+        self.assertNotIn("question rangée", offert)
+
+    def test_un_dossier_parait_avec_son_compte_de_seances(self):
+        todo = self._todo()
+        self._parler(todo, "première question", dossier="dossier-invente")
+        self._parler(todo, "seconde question", dossier="dossier-invente")
+        offert = self._offert(todo)
+        from script.todo.assistant_menu import AssistantMenuMixin
+
+        combien = AssistantMenuMixin._llm_count(2, "session", "sessions")
+        self.assertIn("dossier-invente", offert)
+        self.assertIn(combien, offert)
+
+    def test_un_dossier_sans_serveur_connu_n_empeche_pas_d_ouvrir(self):
+        """Un serveur retiré depuis laisse le dossier sans défaut : refuser
+        d'ouvrir pour une adresse qui n'existe plus coûterait la
+        conversation."""
+        todo = self._todo()
+        self._parler(todo, "une question inventée", dossier="dossier-invente")
+        (vu,) = self._dossiers()
+        # Aucun serveur connu ne porte cette adresse : la recherche rend None.
+        self.assertIsNone(todo._llm_serveur_du_dossier(vu))
 
 
 class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
