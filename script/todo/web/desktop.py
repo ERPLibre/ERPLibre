@@ -344,9 +344,13 @@ def bridge(window, origin, secret):
         peut rester ouvert longtemps : le chemin n'est rendu que si la page
         qui l'a demandé est encore là quand il se ferme, aucun chargement
         fini entre-temps (`loads`, que `before_load` compte) et une page du
-        hub encore montrée (`accepted`). Un dialogue qui lève rend None, et
-        le type de l'exception va au journal de la fenêtre."""
+        hub encore montrée (`accepted`). Sans pywebview, rien ne s'ouvre et
+        rien ne va au journal ; un dialogue qui lève rend None, et le type
+        de l'exception va au journal de la fenêtre."""
         if not accepted(token):
+            return None
+        webview = _webview()
+        if webview is None:
             return None
         with lock:
             if not state["hub"] or state["picking"]:
@@ -354,7 +358,6 @@ def bridge(window, origin, secret):
             state["picking"] = True
             load = state["loads"]
         try:
-            webview = _webview()
             if directory is True:
                 kind = webview.FOLDER_DIALOG
             else:

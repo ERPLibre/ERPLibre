@@ -523,9 +523,19 @@ class TestBridge(unittest.TestCase):
         fake = _fake_webview(self)
         window = FakeWindow("", "", {})
         _, _, pick_path = self.on_the_hub(window)
-        window.dialogs = [("/srv/forged.zip",), ("/srv/forged_dir",), None]
+        window.dialogs = [
+            ("/srv/forged.zip",),
+            ("/srv/forged_dir",),
+            "/srv/forged.zip",
+            (),
+            None,
+        ]
         self.assertEqual(pick_path(TOKEN, "/srv", False), "/srv/forged.zip")
         self.assertEqual(pick_path(TOKEN, "/srv", True), "/srv/forged_dir")
+        # Un chemin rendu seul, hors d'un tuple, vaut aussi ; un tuple vide
+        # ne choisit rien.
+        self.assertEqual(pick_path(TOKEN, "/srv", False), "/srv/forged.zip")
+        self.assertIsNone(pick_path(TOKEN, "/srv", False))
         # Renoncé ; un départ qui n'est pas un texte ouvre sans répertoire.
         self.assertIsNone(pick_path(TOKEN, 43, "true"))
         self.assertEqual(
@@ -533,6 +543,8 @@ class TestBridge(unittest.TestCase):
             [
                 (fake.OPEN_DIALOG, "/srv"),
                 (fake.FOLDER_DIALOG, "/srv"),
+                (fake.OPEN_DIALOG, "/srv"),
+                (fake.OPEN_DIALOG, "/srv"),
                 (fake.OPEN_DIALOG, ""),
             ],
         )
@@ -622,12 +634,16 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(
             err.getvalue(), "desktop window: file dialog failed: IndexError\n"
         )
-        # Sans pywebview, rien ne s'ouvre ; le dialogue suivant le peut.
+        # Sans pywebview, rien ne s'ouvre ni ne se dit en échec ; le
+        # dialogue suivant peut s'ouvrir.
+        quiet = io.StringIO()
         with (
             patch.dict(sys.modules, {"webview": None}),
-            contextlib.redirect_stderr(io.StringIO()),
+            contextlib.redirect_stderr(quiet),
         ):
             self.assertIsNone(pick_path(TOKEN, "/srv", False))
+        self.assertEqual(quiet.getvalue(), "")
+        self.assertEqual(len(window.opened), 1)
         window.dialogs = [("/srv/forged.zip",)]
         self.assertEqual(pick_path(TOKEN, "/srv", False), "/srv/forged.zip")
 
