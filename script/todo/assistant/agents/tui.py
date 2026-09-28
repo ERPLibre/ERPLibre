@@ -30,6 +30,7 @@ from __future__ import annotations
 import glob
 import os
 import time
+from dataclasses import dataclass, field
 
 from script.todo.assistant.agents import detail as dl
 from script.todo.assistant.agents import journal as jr
@@ -55,11 +56,15 @@ FLUX_MAX = 60
 # lirait comme « cet appel n'a pas de commande ».
 DETAILS_PAR_TOUR = 8
 
-# Tous les combien la flotte est relue. Le listage passe par un SOUS-PROCESSUS
-# et coûte cent soixante millisecondes, soit la moitié de ce qu'un tour dépense
-# — et la lecture des transcriptions, elle, n'en coûte que cinq. Un agent ne
-# naît ni ne meurt toutes les deux secondes, donc la question se pose trois
-# fois moins souvent ; un geste qui en change l'état la repose tout de suite.
+# Tous les combien de PAS la flotte est relue — soit six secondes. Le listage
+# passe par un SOUS-PROCESSUS et coûte cent soixante millisecondes là où la
+# lecture incrémentale des transcriptions n'en coûte que cinq. Un agent ne naît
+# ni ne meurt toutes les deux secondes, donc la question se pose trois fois
+# moins souvent ; un geste qui en change l'état la repose tout de suite.
+#
+# La cadence se compte en TEMPS et non en tours : les tours s'enchaînent en
+# rafale tant que la colonne des commandes se remplit, et un compteur de tours
+# lancerait alors un sous-processus toutes les trois rafales.
 PAS_FLOTTE = 3
 
 # Ce que les cinq autres colonnes du flux occupent — heure, session, outil,
@@ -181,7 +186,13 @@ def barre(serie, largeur=BARRE) -> str:
     pointe = max(serie) or 1
     blocs = "▁▂▃▄▅▆▇█"
     pas = max(1, len(serie) // largeur)
-    echantillon = serie[::pas][-largeur:]
+    # L'échantillon est pris depuis la FIN. Échantillonner depuis le début
+    # écartait le dernier tour dès que le pas dépassait un, c'est-à-dire au
+    # vingt-cinquième : le bloc de droite montrait un tour d'avant, jusqu'à
+    # dix-neuf en arrière sur une série pleine, alors que la colonne
+    # « contexte » d'à côté affiche celui de maintenant. Les deux se lisent
+    # ensemble, et ils ne parlaient pas du même instant.
+    echantillon = serie[::-1][::pas][:largeur][::-1]
     # L'échelle porte la pointe sur le DERNIER bloc : diviser par « pointe + 1
     # » pour éviter la division par zéro décalait tout d'un cran, et le maximum
     # d'une série croissante ne se dessinait jamais plein.
@@ -220,6 +231,10 @@ def lignes(lectures, temps=None) -> list[dict]:
         attention = (temps or {}).get(session_de(chemin))
         sorties.append(
             {
+                # Ce qui IDENTIFIE la rangée, jamais affiché. Le chemin est
+                # unique par construction là où les huit premiers caractères
+                # d'un identifiant ne le sont que probablement.
+                "cle": chemin,
                 "id": f"{ICONES['claude']} {identifiant(chemin)}",
                 "projet": projet(chemin, a),
                 "tours": str(a.tours),
@@ -239,7 +254,10 @@ def lignes(lectures, temps=None) -> list[dict]:
                 "attention": "—" if attention is None else duree(attention),
                 "api": _mesure(a.segments, duree, a.duree_api),
                 "outils": _mesure(a.segments, duree, a.duree_outils),
-                "contexte": jetons(a.contexte),
+                # Sans un seul tour, il n'y a pas d'invite dont donner la
+                # taille : « 0 » se lirait « mesuré, et vide », et l'autre
+                # harnais rend un tiret pour la MÊME absence.
+                "contexte": jetons(a.contexte) if a.tours else "—",
                 "pente": barre(a.serie),
                 "segments": str(a.segments),
                 "compactions": str(a.compactions),
@@ -272,6 +290,12 @@ def lignes_opencode(seances) -> list[dict]:
     colonne à zéro se lit « mesuré, et nul », ce qui est faux et décourage de
     chercher ailleurs ce que l'autre harnais, lui, donne.
 
+    Ce qu'il porte, en revanche, se compte comme en face. Les deux moitiés du
+    cache sont là : les omettre de l'invite faisait une colonne dont la
+    définition changeait d'une ligne à l'autre, et c'est le sens même d'un
+    tableau commun qui s'y perdait. Le nom de projet se borne pareillement —
+    une largeur de colonne ne dépend pas du harnais qui l'a remplie.
+
     `seances` peut valoir None, qui veut dire « la base n'a pas répondu » :
     aucune ligne n'est alors ajoutée, et le tableau ne ment pas sur l'absence.
     """
@@ -280,18 +304,24 @@ def lignes_opencode(seances) -> list[dict]:
         resume = seance.resume
         if resume is None:
             continue
+        reutilisation = resume.reutilisation
         sorties.append(
             {
+                "cle": seance.identifiant,
                 "id": (
                     f"{ICONES['opencode']} "
                     f"{seance.identifiant.removeprefix('ses_')[:8]}"
                 ),
-                "projet": os.path.basename(seance.repertoire.rstrip("/")),
+                "projet": _borne_a_gauche(
+                    os.path.basename(seance.repertoire.rstrip("/"))
+                ),
                 "tours": "—",
-                "entree": jetons(resume.entree + resume.cache_lu),
+                "entree": jetons(resume.invite),
                 "sortie": jetons(resume.sortie),
                 "reflexion": jetons(resume.raisonnement),
-                "cache": "—",
+                "cache": (
+                    "—" if reutilisation is None else f"{reutilisation:.0%}"
+                ),
                 "cout": f"{resume.cout:.2f} $" if resume.cout else "—",
                 "horloge": "—",
                 "attention": "—",
@@ -324,7 +354,7 @@ def resume_opencode(seances) -> str:
     return (
         f" · {ICONES['opencode']} {len(resumes)}"
         f" · {t('cost')} {cout:.2f} $"
-        f" · {jetons(total)}"
+        f" · {t('tokens')} {jetons(total)}"
     )
 
 
@@ -390,6 +420,10 @@ def lignes_flux(
     derniers = sorted(appels, key=lambda a: a.debut_ms)[-limite:]
     return [
         {
+            # L'identifiant d'appel, et non l'heure affichée : celle-ci est à
+            # la seconde, et deux appels par seconde sont l'ordinaire d'une
+            # session qui travaille.
+            "cle": a.identifiant or f"{a.debut_ms}-{rang}",
             "heure": heure(a.debut_ms),
             "session": (a.session or "")[:8],
             "outil": a.outil or "—",
@@ -397,7 +431,7 @@ def lignes_flux(
             "issue": t(ISSUES.get(a.issue, "")) if ISSUES.get(a.issue) else "",
             "commande": _commande_vue(commandes, a.identifiant, largeur),
         }
-        for a in reversed(derniers)
+        for rang, a in enumerate(reversed(derniers))
     ]
 
 
@@ -437,6 +471,14 @@ def texte_du_detail(appel, detail) -> str:
     return "\n".join(lignes)
 
 
+# Ce que le cache retient à la place d'un contenu : rien, sinon sa PRÉSENCE.
+# `None` dit « il y en a, et nous ne le gardons pas », là où la chaîne vide dit
+# « cherché, il n'y a rien ». Les deux se lisent différemment à l'écran, et
+# seul le premier évite de tenir une invite de sous-agent en mémoire pour toute
+# la durée de la séance.
+CONTENU_NON_GARDE = None
+
+
 def _commande_vue(commandes, identifiant, largeur=None) -> str:
     """Ce que la colonne montre, et ce qu'elle refuse de montrer.
 
@@ -446,11 +488,13 @@ def _commande_vue(commandes, identifiant, largeur=None) -> str:
     d'un `Grep` —, que le volet montre avec son avertissement et que cette
     colonne n'a pas le droit d'étaler : elle déclare ne montrer aucun contenu,
     et un appel `Task` y écrivait l'invite entière du sous-agent.
+
+    Le quatrième état ne porte pas la valeur : le cache ne la garde pas.
     """
     if commandes is None or identifiant not in commandes:
         return "…"
     valeur, colonnable = commandes[identifiant]
-    if valeur and not colonnable:
+    if valeur is CONTENU_NON_GARDE or (valeur and not colonnable):
         return t("content")
     coupee = dl.une_ligne(valeur, largeur if largeur else dl.COLONNE_MAX)
     return coupee or "—"
@@ -518,6 +562,7 @@ def lignes_agents(agents) -> list[dict]:
     for session in agents or ():
         sorties.append(
             {
+                "cle": session.poignee or session.session_id,
                 "id": session.poignee,
                 "projet": os.path.basename((session.cwd or "").rstrip("/")),
                 "etat": (
@@ -559,6 +604,7 @@ def lignes_outils(par_outil) -> list[dict]:
     """
     return [
         {
+            "cle": p.outil or "—",
             "outil": p.outil or "—",
             "appels": str(p.appels),
             "mediane": duree(p.mediane_ms),
@@ -623,6 +669,161 @@ COLONNES = (
 COLONNE_LARGEUR = 12
 
 
+# Les touches, et c'est la SEULE liste. Le pied de page, le panneau d'aide et
+# les numéros qui agissent la lisent tous, donc une touche ajoutée ne peut pas
+# manquer à l'un des trois — c'est arrivé : quatre touches tombaient
+# hors d'un pied de page de quatre-vingts colonnes, dont les deux qui
+# détruisent, et rien à l'écran ne disait qu'elles existaient.
+#
+# (touche, action, libellé du pied de page, ce que la touche fait)
+#
+# Les libellés du pied de page sont COURTS par contrainte de place : il tient
+# sur une ligne, et une douzaine d'indications bavardes réclament le double
+# ordinaire. La phrase entière vit dans le panneau d'aide, qui a la place.
+TOUCHES_AFFICHAGE = (
+    ("q", "quit", "Quit", "Quit the screen"),
+    ("f", "gel", "Freeze", "Freeze the display; the reads go on underneath"),
+    ("r", "relire", "Read again", "Read everything again from the start"),
+    ("v", "vue", "Panel", "Switch the bottom panel"),
+    ("h", "aide", "Keys", "Show this panel"),
+)
+
+# Celles qui agissent sur la ligne SURLIGNÉE. Leur rang dans ce tuple est le
+# numéro que le panneau d'aide affiche et accepte, donc les réordonner change
+# ce que « 3 » fait : elles vont du geste qui ne coûte rien à celui que rien ne
+# répare.
+TOUCHES_LIGNE = (
+    (
+        "d",
+        "detail",
+        "Detail",
+        "Detail of the highlighted call (shows content)",
+    ),
+    ("j", "journal", "Output", "Raw output of the agent (shows content)"),
+    ("n", "lancer", "Start", "Start a detached agent"),
+    ("s", "arreter", "Stop", "Stop the highlighted agent"),
+    (
+        "l",
+        "relancer",
+        "Restart",
+        "Restart it on the current binary (confirms)",
+    ),
+    (
+        "x",
+        "supprimer",
+        "Delete",
+        "Delete it and its worktree (retype the identifier)",
+    ),
+    ("a", "attacher", "Attach", "Attach to it — this closes the screen"),
+)
+
+# Les chiffres que le panneau accepte : un par touche de ligne, dans l'ordre.
+CHIFFRES = tuple(str(rang + 1) for rang in range(len(TOUCHES_LIGNE)))
+
+
+def texte_de_l_aide(largeur=None) -> str:
+    """Le panneau des touches, en toutes lettres. Fonction PURE.
+
+    Bâti sur la table des touches et non recopié à côté : un panneau d'aide
+    qui se maintient à la main finit par décrire un écran qui n'existe plus,
+    et c'est justement l'écran qu'on vient consulter quand on ne sait plus.
+    """
+    lignes = [f"⌨  {t('Keys and actions')}", ""]
+    lignes.append(f"  {t('Display')}")
+    for touche, _action, _court, phrase in TOUCHES_AFFICHAGE:
+        lignes.append(f"    {touche}  {t(phrase)}")
+    lignes.append("")
+    lignes.append(f"  {t('Act')}")
+    for rang, (touche, _a, _c, phrase) in enumerate(TOUCHES_LIGNE):
+        lignes.append(f"   [{rang + 1}] {touche}  {t(phrase)}")
+    lignes.append("")
+    lignes.append(f"  {t('A number acts · Esc closes')}")
+    return "\n".join(lignes)
+
+
+@dataclass(frozen=True)
+class Releve:
+    """Ce qu'un tour de lecture rapporte du disque.
+
+    Aucun widget, aucune référence à l'application : cet objet TRAVERSE un
+    fil, et tout ce qui le compose est recopié plutôt que partagé. C'est ce
+    qui permet de lire hors de la boucle d'événements sans course — le fil
+    produit, la boucle applique.
+    """
+
+    lectures: dict = field(default_factory=dict)
+    appels: tuple = ()
+    # None veut dire « les hooks ne sont pas posés », ce qui n'est pas
+    # « aucune session n'a travaillé ».
+    temps: dict | None = None
+    # None veut dire « la base d'Open Code n'a pas répondu ».
+    seances: list | None = None
+    # None veut dire « pas relue ce tour », par opposition à une liste vide
+    # qui veut dire « relue, et personne ne tourne ».
+    flotte: list | None = None
+    commandes: dict = field(default_factory=dict)
+
+
+def relever(
+    precedentes, *, besoins=(), avec_flotte=False, lire_flotte=None
+) -> Releve:
+    """Tout ce qu'un tour lit sur le disque. Ne touche à AUCUN widget.
+
+    C'est la fonction qui tourne sur le fil d'arrière-plan, et la raison
+    d'être de ce fil tient dans un chiffre : le listage des agents est un
+    sous-processus dont le délai est de quinze secondes. Lu sur la boucle
+    d'événements, un outil qui ne répond pas fige l'écran pour quinze
+    secondes — plus une touche, plus même « q ».
+
+    `precedentes` est `{chemin: Lecture}` du tour d'avant : la reprise
+    incrémentale évite de relire des mégaoctets. Le dictionnaire rendu est
+    RECONSTRUIT sur le listage du moment, donc une transcription effacée
+    quitte le tableau.
+
+    `besoins` est la liste d'appels dont la commande manque encore. Elle est
+    choisie par l'appelant, sur le fil de l'affichage, parce qu'elle dépend
+    de ce qui est à l'écran.
+    """
+    lectures = {
+        chemin: st.lire(chemin, precedentes.get(chemin))
+        for chemin in transcriptions()
+    }
+    # Le journal est relu en entier : il ne pèse que quelques lignes par
+    # appel d'outil, là où une transcription pèse des mégaoctets.
+    evenements = jr.lire_lignes()
+    appels = jr.apparier(evenements)
+    # Le temps d'ATTENTION vient du journal, pas de l'horloge de session :
+    # celle-ci compte aussi les heures où personne ne regardait.
+    temps = jr.temps_actif(evenements) or None
+    # La base d'Open Code se lit en moins d'une milliseconde. Son `export`,
+    # lui, coûte presque une seconde PAR séance et se tronque : il n'a rien à
+    # faire dans un écran vivant.
+    seances = oc.lire_base()
+    flotte = (lire_flotte or (lambda: []))() if avec_flotte else None
+    commandes = {}
+    for appel in besoins:
+        trouve = dl.pour(appel)
+        # Ni la SORTIE ni le CONTENU ne sont gardés. Le cache ne sert qu'à la
+        # colonne, donc il ne retient que ce qu'elle a le droit de montrer :
+        # une invite de sous-agent ou un motif de recherche y restaient en
+        # mémoire pour toute la durée de la séance alors que la colonne
+        # affichait « contenu » à leur place. Le volet, lui, les relit dans la
+        # transcription au moment où quelqu'un les demande.
+        commandes[appel.identifiant] = (
+            (trouve.commande, True)
+            if trouve.colonnable
+            else (CONTENU_NON_GARDE if trouve.commande else "", False)
+        )
+    return Releve(
+        lectures=lectures,
+        appels=tuple(appels),
+        temps=temps,
+        seances=seances,
+        flotte=flotte,
+        commandes=commandes,
+    )
+
+
 def colonnes_visibles(largeur_ecran, colonnes=None) -> tuple:
     """Les colonnes qui tiennent, dans l'ordre d'importance. Fonction PURE.
 
@@ -642,6 +843,7 @@ def run_tui(run_app: bool = True):
     chaque affichage, et Textual coûte près d'une seconde à l'import. Le CLI
     ne doit pas le payer pour un écran qu'on n'ouvre pas.
     """
+    from textual import work
     from textual.app import App, ComposeResult
     from textual.widgets import (
         DataTable,
@@ -656,24 +858,20 @@ def run_tui(run_app: bool = True):
         #resume { height: auto; padding: 0 1; color: $text-muted; }
         #etat { height: auto; padding: 0 1; color: $warning; }
         #source { height: auto; padding: 0 1; color: $text-muted; }
+        #aide { height: auto; padding: 1 2; background: $panel; }
         DataTable { height: 1fr; }
         """
-        # Les libellés sont COURTS, et c'est une contrainte de place et non
-        # de goût : le pied de page tient sur une ligne à toute largeur, donc
-        # dix indications un peu bavardes réclament le double d'un terminal de
-        # quatre-vingts colonnes, et les dernières touches disparaissent. Sur
-        # un écran qui se pilote au clavier, une touche invisible n'existe pas.
+        # DÉRIVÉES de la table des touches, jamais recopiées : c'est la
+        # recopie qui avait laissé quatre touches sans mention nulle part.
+        #
+        # L'ordre compte. Le pied de page tient sur UNE ligne et se coupe à
+        # droite : sur quatre-vingts colonnes, une douzaine d'indications perd
+        # quatre. Les cinq premières sont donc celles qui ne détruisent rien
+        # et « h », qui mène à toutes les autres — une touche invisible
+        # n'existe pas, sauf si une touche visible la nomme.
         BINDINGS = [
-            ("q", "quit", t("Quit")),
-            ("f", "gel", t("Freeze")),
-            ("r", "relire", t("Read again")),
-            ("v", "vue", t("Panel")),
-            ("n", "lancer", t("Start")),
-            ("s", "arreter", t("Stop")),
-            ("a", "attacher", t("Attach")),
-            ("d", "detail", t("Detail")),
-            ("l", "relancer", t("Restart")),
-            ("x", "supprimer", t("Delete")),
+            (touche, action, t(court))
+            for touche, action, court, _ in TOUCHES_AFFICHAGE + TOUCHES_LIGNE
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
@@ -711,14 +909,28 @@ def run_tui(run_app: bool = True):
             # Les colonnes actuellement posées, pour ne les refaire que
             # lorsque la largeur en change le nombre.
             self._colonnes: tuple = ()
+            # Ce que le panneau modal a masqué, pour le rendre en se fermant.
+            self._caches: list = []
             # Le redimensionnement arrive AVANT le montage : repeindre alors
             # remplirait des tableaux qui n'ont pas encore de colonnes.
             self._monte = False
-            # Le tour courant, et la demande de relire la flotte sans
-            # attendre : un geste qui lance ou arrête un agent doit se voir
-            # au tour suivant, pas trois tours plus tard.
-            self._tours = 0
+            # La demande de relire la flotte sans attendre : un geste qui
+            # lance ou arrête un agent doit se voir au tour suivant, pas trois
+            # tours plus tard. La cadence ordinaire se compte en TEMPS, sur
+            # une horloge monotone — celle du mur reculerait.
             self._flotte_a_relire = True
+            self._flotte_apres = 0.0
+            # L'horloge est un attribut pour qu'un test avance le temps sans
+            # attendre. MONOTONE : celle du mur recule à un changement d'heure,
+            # et la flotte cesserait d'être relue pendant tout le décalage.
+            self._horloge = time.monotonic
+            # La place de lecture : elle porte la GÉNÉRATION du fil qui la
+            # tient, ou None quand elle est libre. Un simple booléen ne
+            # suffisait pas — celui qui rend la main doit pouvoir dire si la
+            # place est encore la sienne, sans quoi un relevé périmé la
+            # libérerait sous un fil qui lit toujours.
+            self._lecture_en_cours = None
+            self._generation = 0
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
             # La session visée par la saisie en cours. Gardée à part parce que
@@ -736,6 +948,7 @@ def run_tui(run_app: bool = True):
             yield DataTable(id="flux", zebra_stripes=True)
             yield DataTable(id="agents", zebra_stripes=True)
             yield Input(id="saisie", placeholder="")
+            yield Static("", id="aide")
             yield Static("", id="detail")
             yield Static("", id="etat")
             yield Static("", id="source")
@@ -756,6 +969,7 @@ def run_tui(run_app: bool = True):
             self.query_one("#saisie", Input).display = False
             self.query_one("#etat", Static).display = False
             self.query_one("#detail", Static).display = False
+            self.query_one("#aide", Static).display = False
             self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
             # moment où quelqu'un regarde, donc le seul où le ménage ne
@@ -787,21 +1001,43 @@ def run_tui(run_app: bool = True):
             Sans effet avant le montage : Textual annonce une taille dès la
             composition, et repeindre là remplirait des tableaux dont les
             colonnes ne sont pas encore posées.
+
+            Sans effet pendant un gel non plus, et les COLONNES avec : les
+            reposer vide le tableau, ce qui est pire qu'un tableau trop large.
+            Le gel est là pour qu'on lise une ligne pendant que les lectures
+            continuent dessous ; un coup de souris sur le bord de la fenêtre
+            la remplacerait par la mesure de l'instant. Le dégel rattrape.
             """
-            if not self._monte:
+            if not self._monte or self._gele:
                 return
             self._poser_les_colonnes()
             self._peindre()
 
         def action_vue(self):
-            """Passer au panneau suivant, en boucle."""
+            """Passer au panneau suivant, en boucle.
+
+            Le volet de détail se ferme avec le panneau qu'il détaille. Il
+            montre une commande et sa sortie — le seul endroit de l'écran qui
+            montre du CONTENU — et il le doit à une ligne surlignée du flux.
+            Le flux parti, plus rien ne désignait ce qui restait affiché, et
+            la mention qui prévient ne se rapportait plus à rien de visible.
+            """
             self._vue = (self._vue + 1) % len(self.VUES)
+            self._fermer_le_detail()
             self._montrer_la_vue()
-            # Remplir TOUT DE SUITE : sans cela, la colonne des commandes
-            # reste en points de suspension jusqu'au tour suivant, soit deux
-            # secondes après qu'on a demandé à la voir.
-            self._completer_les_commandes()
-            self._peindre()
+            # Le gel tient ICI AUSSI. Repeindre sous un écran qui s'annonce
+            # gelé refait le tableau sur la flotte fraîche, remet le curseur
+            # en tête et remplace la liste peinte : « s », qui ne demande
+            # aucune confirmation, partait alors sur un agent que personne
+            # n'avait choisi. Les quatre panneaux ont été peints au même
+            # instant, donc celui qu'on découvre porte bien l'état figé.
+            if not self._gele:
+                self._peindre()
+            # Demander TOUT DE SUITE ce que le nouveau panneau réclame : sans
+            # cela, la colonne des commandes reste en points de suspension
+            # jusqu'au tour suivant, soit deux secondes après qu'on a demandé
+            # à la voir.
+            self._tick()
 
         def _montrer_la_vue(self):
             """N'afficher que le panneau courant, et LUI donner le clavier.
@@ -813,12 +1049,21 @@ def run_tui(run_app: bool = True):
             visible — dont le curseur n'avait jamais bougé. « s » arrêtait le
             premier agent quel que soit celui qu'on croyait viser, et « s »
             est justement la seule action qui ne demande rien.
+
+            Pendant que le panneau des touches est ouvert, AUCUN tableau n'est
+            affiché : il est modal. C'est ici que cela se décide, et nulle part
+            ailleurs — deux endroits se contrediraient au premier « v ».
             """
+            modal = self.query_one("#aide").display
+            # Le tableau des sessions AUSSI : c'est un tableau, donc il
+            # échappe au masquage ordinaire, et il fait à lui seul la moitié
+            # de la hauteur.
+            self.query_one("#tableau", DataTable).display = not modal
             courant = self.VUES[self._vue]
             for nom in self.VUES:
                 table = self.query_one(f"#{nom}", DataTable)
-                table.display = nom == courant
-                if nom == courant:
+                table.display = not modal and nom == courant
+                if table.display:
                     table.focus()
 
         # Ce que la ligne de saisie attend, et ce que valider déclenche.
@@ -864,6 +1109,68 @@ def run_tui(run_app: bool = True):
                 adaptateur_claude().ATTACHER, session.poignee
             )
             self.exit(" ".join(argv))
+
+        def action_journal(self):
+            """L'écran récent de l'agent surligné, dans le VRAI terminal.
+
+            `claude logs` n'imprime pas un journal mais un ÉCRAN : quelques
+            milliers d'octets pour un agent qui a répondu un mot, dont deux
+            cents séquences d'échappement, des retours chariot et AUCUN saut
+            de ligne. Les positions du curseur y sont absolues, donc dépouiller
+            les codes rend une seule ligne illisible, et aucun panneau de
+            tableau n'y peut rien. Le seul endroit où cette sortie veut dire
+            quelque chose est un terminal : l'application se suspend, l'outil
+            peint, et elle reprend là où elle était.
+
+            **Ce qui paraît là est du CONTENU** — la conversation de l'agent,
+            ses commandes, ce qu'il a lu. Rien n'en est gardé : la sortie va du
+            processus au terminal sans passer par nous, donc il n'y a même pas
+            de quoi écrire. L'avertissement s'imprime APRÈS, avec l'invite de
+            retour, parce que l'outil ouvre par un effacement d'écran et que
+            tout ce qui précède est perdu.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            adaptateur = adaptateur_claude()
+            self._montrer_dans_le_terminal(
+                adaptateur.argv_action(adaptateur.JOURNAL, session.poignee)
+            )
+
+        def _montrer_dans_le_terminal(self, argv):
+            """Rendre le terminal à un outil le temps qu'il peigne.
+
+            `subprocess.run` est appelé SANS capture : la sortie va du
+            processus au terminal, et nous n'en tenons jamais une copie. C'est
+            la garantie qu'un contenu montré ne peut pas être écrit — il
+            faudrait d'abord l'avoir.
+
+            Un environnement sans vrai terminal — un pilote de test, un tube —
+            refuse la suspension, et l'écran le dit au lieu de mourir.
+            """
+            import subprocess
+
+            from textual.app import SuspendNotSupported
+
+            try:
+                with self.suspend():
+                    subprocess.run(argv)
+                    print()
+                    print(t("Shown, not kept: nothing of this was written."))
+                    input(t("Enter to go back to the screen…"))
+            except SuspendNotSupported:
+                self._dire(t("This terminal cannot suspend the screen."))
+            except (KeyboardInterrupt, EOFError):
+                # Deux gestes ordinaires pendant qu'un outil tient le
+                # terminal : Ctrl+C, qui va au GROUPE de processus et donc
+                # aussi à nous, et Ctrl+D à l'invite de retour. Aucun des deux
+                # n'est une OSError, et sans cette branche ils remontaient
+                # jusqu'à Textual, qui ferme l'application — on perdait
+                # l'écran pour avoir interrompu un affichage.
+                self._dire(t("Interrupted; back to the screen."))
+            except OSError as souci:
+                self._dire(str(souci))
 
         def action_relancer(self):
             """Relancer l'agent surligné sur le binaire courant.
@@ -919,6 +1226,11 @@ def run_tui(run_app: bool = True):
             # Ce qu'un geste précédent avait dit ne vaut plus pour celui-ci.
             self._dire(consigne)
 
+            # Le panneau des touches se ferme : ses chiffres et cette invite
+            # se disputeraient les mêmes frappes, et un « 3 » tapé dans une
+            # invite est un caractère, pas un numéro de menu.
+            if self.query_one("#aide").display:
+                self._fermer_l_aide()
             self._attente = attente
             champ = self.query_one("#saisie", Input)
             champ.placeholder = invite
@@ -974,19 +1286,125 @@ def run_tui(run_app: bool = True):
             else:
                 self._dire(t("Nothing has been sent."))
 
+        # Ce qui reste à l'écran pendant que le panneau des touches est
+        # ouvert. L'en-tête situe, le pied de page porte les touches : ni l'un
+        # ni l'autre ne prend de hauteur au panneau.
+        GARDES_EN_MODAL = ("Header", "Footer")
+
+        def action_aide(self):
+            """Ouvrir ou fermer le panneau des touches. Il prend TOUT l'écran.
+
+            Il existe parce que le pied de page MENT par omission : il tient
+            sur une ligne, se coupe à droite, et quatre touches tombaient hors
+            d'un terminal de quatre-vingts colonnes — dont les deux qui
+            détruisent. Rien à l'écran ne disait qu'elles existaient.
+
+            Modal, et pour la même raison. Empilé sous les tableaux, il
+            réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+            offre : ses trois dernières entrées passaient sous le pli, dont les
+            deux qui détruisent, et rien ne signalait qu'il fallait défiler. Un
+            panneau qu'on ouvre PARCE QU'ON NE SAIT PLUS ne peut pas cacher ce
+            qu'il est là pour montrer.
+
+            Il sert aussi de menu : un chiffre y agit sur la ligne surlignée,
+            pour qui ne veut pas les apprendre. Les deux sont la même chose, et
+            les séparer donnerait deux listes à tenir d'accord.
+            """
+            from textual.widgets import DataTable, Static
+
+            volet = self.query_one("#aide", Static)
+            if volet.display:
+                self._fermer_l_aide()
+                return
+            volet.update(texte_de_l_aide())
+            # Ce qui est masqué est DÉDUIT de ce qui est à l'écran, jamais
+            # énuméré : un widget ajouté plus tard repousserait le panneau
+            # sous le pli sans que personne y pense.
+            self._caches = [
+                widget
+                for widget in self.query("Screen > *")
+                if widget.display
+                and widget is not volet
+                and not isinstance(widget, DataTable)
+                and type(widget).__name__ not in self.GARDES_EN_MODAL
+            ]
+            for widget in self._caches:
+                widget.display = False
+            volet.display = True
+            # Les tableaux se cachent par la fonction qui décide de leur
+            # affichage, et non ici : deux endroits qui en décideraient se
+            # contrediraient au premier « v ».
+            self._montrer_la_vue()
+
+        def _fermer_l_aide(self):
+            """Rendre l'écran à ce qu'il montrait avant le panneau."""
+            self.query_one("#aide").display = False
+            for widget in self._caches:
+                widget.display = True
+            self._caches = []
+            self._montrer_la_vue()
+
+        def _agir_par_le_chiffre(self, chiffre):
+            """Exécuter l'action que le panneau numérote, et se refermer.
+
+            Se refermer fait partie du geste : c'est un menu, on choisit et il
+            s'efface. Le rang du chiffre EST celui de la touche dans la table,
+            donc rien ne se recopie et réordonner la table réordonne le menu.
+            """
+            rang = CHIFFRES.index(chiffre)
+            self._fermer_l_aide()
+            getattr(self, f"action_{TOUCHES_LIGNE[rang][1]}")()
+
         def on_key(self, evenement):
-            """Échap referme la saisie sans rien envoyer."""
+            """Échap referme ce qui est ouvert ; un chiffre agit depuis l'aide.
+
+            Les deux ne sont jamais ouverts ensemble — ouvrir la saisie ferme
+            le panneau — donc l'ordre des branches ne départage rien : il dit
+            seulement que la saisie est le cas le plus fréquent.
+            """
             if evenement.key == "escape" and self._attente is not None:
                 self._fermer_saisie()
+                evenement.stop()
+                return
+            if evenement.key == "escape":
+                # Échap ferme ce qui est ouvert, dans l'ordre où les choses se
+                # sont posées : la saisie, puis le panneau, puis le volet. Le
+                # volet en était exclu, et la seule façon de le refermer était
+                # de retrouver « d » — qui, à quatre-vingts colonnes, ne
+                # paraît pas toujours au pied de page.
+                for cible, fermer in (
+                    ("#aide", self._fermer_l_aide),
+                    ("#detail", self._fermer_le_detail),
+                ):
+                    if self.query_one(cible).display:
+                        fermer()
+                        evenement.stop()
+                        return
+                return
+            if not self.query_one("#aide").display:
+                return
+            if evenement.key in CHIFFRES:
+                self._agir_par_le_chiffre(evenement.key)
                 evenement.stop()
 
         def _lancer_agent(self, invite):
             """Lancer un agent détaché, l'invite sur l'ENTRÉE STANDARD.
 
             Jamais en positionnel : `/proc/<pid>/cmdline` est lisible par tout
-            compte de la machine. L'appel rend la main tout de suite — c'est
-            ce que `--bg` promet — donc l'écran ne se fige pas.
+            compte de la machine.
+
+            Sur un FIL, comme les autres sous-processus. « L'appel rend la main
+            tout de suite » était faux : `capture_output` attend la fin des
+            DEUX tubes, et un agent détaché en hérite — ils ne se ferment qu'à
+            sa mort. L'écran tenait donc jusqu'à deux minutes sans une touche,
+            juste après qu'on lui a confié une invite.
             """
+            self._dire(t("Sent, waiting for the answer…"))
+            self._lancer_en_fond(invite)
+
+        @work(thread=True)
+        def _lancer_en_fond(self, invite):
+            """Lancer l'agent et rapporter son identifiant, ou ce qui a raté."""
             import subprocess
 
             adaptateur = adaptateur_claude()
@@ -999,33 +1417,69 @@ def run_tui(run_app: bool = True):
                     timeout=120,
                 )
             except (OSError, subprocess.SubprocessError) as souci:
-                self._dire(str(souci))
+                self.call_from_thread(self._dire, str(souci))
                 return
             identifiant = adaptateur.identifiant_lance(fini.stdout)
-            self._dire(
-                f"{t('Agent started')} {identifiant}"
-                if identifiant
-                else t("The agent did not report an identifier.")
+            self.call_from_thread(
+                self._action_repondue,
+                (
+                    f"{t('Agent started')} {identifiant}"
+                    if identifiant
+                    else t("The agent did not report an identifier.")
+                ),
             )
-            self._flotte_a_relire = True
-            self._tick()
 
         def _lancer_action(self, sous_commande, poignee):
-            """Une action sur un agent, et ce que l'outil en dit."""
+            """Une action sur un agent, sur un FIL comme les lectures.
+
+            `subprocess.run` attend ici jusqu'à soixante secondes. Lancé sur la
+            boucle d'événements, un outil qui ne rend pas la main figeait
+            l'écran d'autant — plus une touche, plus même « q ». C'est le même
+            défaut que les lectures avaient, en pire : une minute au lieu de
+            quinze secondes, et sur un geste qu'on vient de demander.
+
+            L'argv est construit AVANT et non sur le fil : un identifiant vide
+            ou une sous-commande inconnue sont des refus immédiats, et les
+            faire voyager pour être refusés ailleurs retarderait le seul
+            message qui apprenne quelque chose.
+            """
+            try:
+                argv = adaptateur_claude().argv_action(sous_commande, poignee)
+            except ValueError as souci:
+                self._dire(str(souci))
+                return
+            # L'écran DIT qu'il attend. Sans cela, un outil lent se lit comme
+            # un geste qui n'est pas parti, et on le redonne.
+            self._dire(t("Sent, waiting for the answer…"))
+            self._agir_en_fond(argv)
+
+        @work(thread=True)
+        def _agir_en_fond(self, argv):
+            """Lancer la sous-commande, et rapporter ce qu'elle a dit."""
             import subprocess
 
             try:
-                argv = adaptateur_claude().argv_action(sous_commande, poignee)
                 fini = subprocess.run(
                     argv, text=True, capture_output=True, timeout=60
                 )
-            except (OSError, ValueError, subprocess.SubprocessError) as souci:
-                self._dire(str(souci))
+            except (OSError, subprocess.SubprocessError) as souci:
+                self.call_from_thread(self._dire, str(souci))
                 return
             # L'outil répond « No job matching » avec un code de sortie NUL :
             # se fier au code laisserait annoncer un geste qui n'a pas eu lieu.
             premiere = (fini.stdout or fini.stderr or "").strip().splitlines()
-            self._dire(premiere[0] if premiere else t("Nothing was said."))
+            self.call_from_thread(
+                self._action_repondue,
+                premiere[0] if premiere else t("Nothing was said."),
+            )
+
+        def _action_repondue(self, message):
+            """Ce que l'outil a dit, et la flotte relue sans attendre.
+
+            Sur le fil de l'affichage : un geste qui lance ou arrête un agent
+            doit se voir au tour suivant, pas six secondes plus tard.
+            """
+            self._dire(message)
             self._flotte_a_relire = True
             self._tick()
 
@@ -1065,7 +1519,7 @@ def run_tui(run_app: bool = True):
 
             volet = self.query_one("#detail", Static)
             if volet.display:
-                volet.display = False
+                self._fermer_le_detail()
                 return
             appel = self._appel_choisi()
             if appel is None:
@@ -1073,6 +1527,19 @@ def run_tui(run_app: bool = True):
                 return
             volet.update(texte_du_detail(appel, dl.pour(appel)))
             volet.display = True
+
+        def _fermer_le_detail(self):
+            """Fermer le volet de contenu, et OUBLIER ce qu'il portait.
+
+            Le texte est effacé en même temps que le volet est caché : un
+            widget caché garde ce qu'on lui a donné, et le rouvrir sur un
+            autre appel le montrerait le temps d'une image.
+            """
+            from textual.widgets import Static
+
+            volet = self.query_one("#detail", Static)
+            volet.update("")
+            volet.display = False
 
         def _appel_choisi(self):
             """L'appel de la ligne surlignée du flux, ou None.
@@ -1089,52 +1556,163 @@ def run_tui(run_app: bool = True):
             return self._appels_peints[rang]
 
         def action_gel(self):
-            """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
+            """Le rafraîchissement continue dessous ; l'affichage s'arrête.
+
+            Le dégel rattrape ce que le gel a laissé passer : la fenêtre a pu
+            changer de largeur pendant l'arrêt, et le nombre de colonnes en
+            dépend. Sans ce rattrapage, un écran dégelé garde les colonnes
+            d'une largeur qu'il n'a plus jusqu'au redimensionnement suivant.
+            """
             self._gele = not self._gele
-            self._resumer()
+            if self._gele:
+                self._resumer()
+                return
+            self._poser_les_colonnes()
+            self._peindre()
 
         def action_relire(self):
             """Tout relire depuis le début, quand un doute vient sur un total.
 
-            L'écran se fige le temps de la relecture — plus d'une seconde sur
-            une machine qui porte quatre cents mégaoctets de transcriptions —
-            donc il le DIT avant de commencer. Un écran qui ne répond plus sans
-            rien annoncer se lit comme un écran mort.
+            La relecture coûte plus d'une seconde sur une machine qui porte
+            quatre cents mégaoctets de transcriptions. Elle se fait sur le
+            fil, donc l'écran répond pendant ce temps — mais il montre encore
+            les chiffres d'avant, et il le DIT plutôt que de laisser croire
+            que le total affiché est déjà le nouveau.
+
+            Le relevé d'un fil qui lisait encore le monde d'avant est jeté :
+            c'est à cela que sert la génération.
             """
             self._dire(t("Reading everything again…"))
+            self._generation += 1
             self._lectures = {}
             self._commandes = {}
             self._flotte_a_relire = True
+            # Le drapeau n'est PAS rabaissé : il appartient au fil qui lit
+            # encore, et le baisser ouvrirait un second fil par-dessus. Une
+            # touche maintenue en ouvrait un par frappe, chacun relisant tout
+            # depuis zéro et lançant son propre sous-processus. Le fil en vol
+            # rendra la main, son relevé sera jeté par la génération, et le
+            # tour suivant repartira du monde vide.
             self._tick()
 
         def _tick(self):
-            for chemin in transcriptions():
-                self._lectures[chemin] = st.lire(
-                    chemin, self._lectures.get(chemin)
-                )
-            # Le journal est relu en entier : il ne pèse que quelques lignes
-            # par appel d'outil, là où une transcription pèse des mégaoctets.
-            evenements = jr.lire_lignes()
-            self._appels = jr.apparier(evenements)
-            # Le temps d'ATTENTION vient du journal, pas de l'horloge de
-            # session : celle-ci compte aussi les heures où personne ne
-            # regardait. Sans hooks posés, il n'y a rien et la colonne le dit.
-            self._temps = jr.temps_actif(evenements) or None
-            # La base d'Open Code se lit en moins d'une milliseconde, donc
-            # elle tient dans un pas de deux secondes. Son `export`, lui, coûte
-            # presque une seconde PAR séance et se tronque : il n'a rien à
-            # faire dans un écran vivant.
-            self._seances = oc.lire_base()
-            # 0,15 s par tour, soit un quinzième du pas : c'est le prix d'un
-            # panneau qui dit ce qui TOURNE, que le disque ne porte pas.
-            if self._flotte_a_relire or self._tours % PAS_FLOTTE == 0:
-                self._flotte = self._lire_flotte()
-                self._agents = agents_detaches(self._flotte)
+            """Demander une lecture au fil d'arrière-plan, et rendre la main.
+
+            RIEN n'est lu ici. Tout ce que ce tour coûte — deux cent trente
+            millisecondes sur une machine de dix-neuf sessions et sept mille
+            appels, davantage quand la flotte se relit — se paie sur un fil,
+            pas sur la boucle d'événements. Le chiffre qui tranche n'est pas
+            la moyenne mais la queue : le listage des agents est un
+            sous-processus dont le délai est de quinze secondes, et un outil
+            qui ne répond pas figeait l'écran d'autant, « q » compris.
+            """
+            if self._lecture_en_cours is not None:
+                # Un tour qui tombe pendant une lecture est SAUTÉ, et non mis
+                # en file : sur une machine lente, la file grandirait sans
+                # qu'aucun tour ne montre jamais l'état du moment.
+                return
+            self._lecture_en_cours = self._generation
+            maintenant = self._horloge()
+            avec_flotte = (
+                self._flotte_a_relire or maintenant >= self._flotte_apres
+            )
+            if avec_flotte:
+                # La cadence de la flotte se compte en TEMPS et non en tours :
+                # les tours s'enchaînent en rafale tant que la colonne des
+                # commandes se remplit, et un compteur de tours lancerait
+                # alors un sous-processus toutes les trois rafales.
+                self._flotte_apres = maintenant + PAS * PAS_FLOTTE
                 self._flotte_a_relire = False
-            self._tours += 1
-            self._completer_les_commandes()
+            self._lire_en_fond(
+                self._generation,
+                dict(self._lectures),
+                self._besoins(),
+                avec_flotte,
+            )
+
+        def _besoins(self):
+            """Les appels dont la commande manque encore, et rien de plus.
+
+            Choisis ICI, sur le fil de l'affichage, parce que la réponse
+            dépend du panneau visible : on ne paie que ce qu'on regarde.
+            Quelques-uns par relevé, parce qu'une recherche coûte quarante
+            millisecondes — la colonne se remplit par vagues, chaque vague
+            en demandant une autre tant qu'il en manque.
+            """
+            if self.VUES[self._vue] != "flux":
+                return []
+            manquants = [
+                a
+                for a in sorted(self._appels, key=lambda x: -x.debut_ms)[
+                    :FLUX_MAX
+                ]
+                if a.identifiant and a.identifiant not in self._commandes
+            ]
+            return manquants[:DETAILS_PAR_TOUR]
+
+        @work(thread=True)
+        def _lire_en_fond(self, generation, lectures, besoins, avec_flotte):
+            """Le fil : il LIT, et ne touche à rien de ce qui est affiché.
+
+            L'exception est rattrapée ici parce qu'un fil qui meurt ne prévient
+            personne : le drapeau resterait levé et l'écran cesserait de se
+            rafraîchir, sans un mot.
+            """
+            try:
+                releve = relever(
+                    lectures,
+                    besoins=besoins,
+                    avec_flotte=avec_flotte,
+                    lire_flotte=self._lire_flotte,
+                )
+            except Exception as souci:
+                self.call_from_thread(
+                    self._lecture_a_echoue, generation, str(souci)
+                )
+                return
+            self.call_from_thread(self._appliquer, generation, releve)
+
+        def _appliquer(self, generation, releve):
+            """Poser le relevé sur l'écran. Toujours sur le fil de l'affichage.
+
+            Deux choses, et elles ne se décident pas pareil. La PLACE se rend
+            à celui qui la tenait, périmé ou non : la lui refuser arrêtait le
+            rafraîchissement pour de bon dès qu'un « r » croisait une lecture.
+            Le RELEVÉ, lui, est jeté s'il décrit le monde d'avant « r » —
+            l'appliquer ressusciterait ce qu'on venait d'oublier — et le tour
+            que « r » voulait est redemandé aussitôt.
+            """
+            if generation == self._lecture_en_cours:
+                self._lecture_en_cours = None
+            if generation != self._generation:
+                self._tick()
+                return
+            self._lectures = releve.lectures
+            self._appels = list(releve.appels)
+            self._temps = releve.temps
+            self._seances = releve.seances
+            if releve.flotte is not None:
+                self._flotte = releve.flotte
+                self._agents = agents_detaches(releve.flotte)
+            self._commandes.update(releve.commandes)
             if not self._gele:
                 self._peindre()
+            if self._besoins():
+                # La vague suivante, tout de suite : sur un fil, remplir la
+                # colonne en une seconde ne coûte plus rien à l'écran.
+                self._tick()
+
+        def _lecture_a_echoue(self, generation, message):
+            """Une lecture qui a levé le dit, et le rafraîchissement reprend.
+
+            La place se rend comme elle se rend après un relevé : un fil qui
+            meurt sans la libérer arrête l'écran sans un mot.
+            """
+            if generation == self._lecture_en_cours:
+                self._lecture_en_cours = None
+            if generation != self._generation:
+                return
+            self._dire(message)
 
         @staticmethod
         def _repeindre(table, lignes, colonnes, cle):
@@ -1149,6 +1727,14 @@ def run_tui(run_app: bool = True):
             Une ligne qui a disparu depuis le dernier tour ne se retrouve pas,
             et le curseur reste alors où Textual le met : l'agent visé n'existe
             plus, donc il n'y a rien à viser.
+
+            Une clé en double ne ferme PAS l'écran. `add_row` lève
+            `DuplicateKey`, et une exception dans un gestionnaire de message
+            ferme l'application entière : la rangée suivante n'est pas la
+            seule perdue, tout l'est. Le doublon est donc désambiguïsé par son
+            rang, au prix du curseur sur cette rangée-là. C'est un filet :
+            chaque faiseuse de lignes rend une clé qui identifie, distincte
+            des colonnes qui décrivent.
             """
             avant = None
             if table.row_count:
@@ -1159,10 +1745,13 @@ def run_tui(run_app: bool = True):
                 except Exception:
                     avant = None
             table.clear()
-            for ligne in lignes:
-                table.add_row(
-                    *[ligne[c] for c, _ in colonnes], key=str(ligne[cle])
-                )
+            vues = set()
+            for rang, ligne in enumerate(lignes):
+                marque = str(ligne[cle])
+                if marque in vues:
+                    marque = f"{marque}#{rang}"
+                vues.add(marque)
+                table.add_row(*[ligne[c] for c, _ in colonnes], key=marque)
             if avant is not None:
                 # `move_cursor` ne prend qu'un RANG : la clé se retraduit donc
                 # en index après le repeint, ce qui est précisément le point —
@@ -1180,12 +1769,12 @@ def run_tui(run_app: bool = True):
                 lignes(self._lectures, self._temps)
                 + lignes_opencode(self._seances),
                 self._colonnes,
-                "id",
+                "cle",
             )
             outils = self.query_one("#outils", DataTable)
             groupes = jr.par_outil(self._appels)
             self._repeindre(
-                outils, lignes_outils(groupes), COLONNES_OUTILS, "outil"
+                outils, lignes_outils(groupes), COLONNES_OUTILS, "cle"
             )
             flux = self.query_one("#flux", DataTable)
             # La liste PEINTE est gardée : c'est elle que le curseur indexe,
@@ -1201,45 +1790,17 @@ def run_tui(run_app: bool = True):
                     largeur=largeur_commande(self.size.width),
                 ),
                 COLONNES_FLUX,
-                "heure",
+                "cle",
             )
             agents = self.query_one("#agents", DataTable)
             self._agents_peints = list(self._agents)
             self._repeindre(
-                agents, lignes_agents(self._agents), COLONNES_AGENTS, "id"
+                agents, lignes_agents(self._agents), COLONNES_AGENTS, "cle"
             )
             self.query_one("#titre_outils", Static).update(
                 self._titre_du_panneau(groupes)
             )
             self._resumer()
-
-        def _completer_les_commandes(self):
-            """Chercher quelques commandes manquantes, et seulement au besoin.
-
-            Seulement quand le flux est à l'écran : on ne paie que ce qu'on
-            regarde. Et quelques-unes par tour, parce qu'une recherche coûte
-            quarante millisecondes et que soixante d'un coup dépasseraient le
-            pas de rafraîchissement — la colonne se remplit sous les yeux
-            plutôt que de figer l'écran une fois.
-            """
-            if self.VUES[self._vue] != "flux":
-                return
-            manquants = [
-                a
-                for a in sorted(self._appels, key=lambda x: -x.debut_ms)[
-                    :FLUX_MAX
-                ]
-                if a.identifiant and a.identifiant not in self._commandes
-            ]
-            for appel in manquants[:DETAILS_PAR_TOUR]:
-                trouve = dl.pour(appel)
-                # La SORTIE n'est pas gardée : le cache ne sert qu'à la
-                # colonne, et retenir des réponses d'outil en mémoire serait
-                # garder ce que le paquet a promis de seulement montrer.
-                self._commandes[appel.identifiant] = (
-                    trouve.commande,
-                    trouve.colonnable,
-                )
 
         @staticmethod
         def _lire_flotte():
@@ -1294,23 +1855,39 @@ def run_tui(run_app: bool = True):
         def _resumer(self):
             total = st.somme(l.agregat for l in self._lectures.values())
             compte = len(self._lectures)
+            # Le coût et les durées d'outils viennent d'un `cost-state`, et
+            # `somme` ne rapporte pas le compte de segments — il n'a pas de
+            # sens agrégé. La question se repose donc ici : une seule session
+            # qui en porte un suffit à rendre le total mesuré. Sans aucune,
+            # l'en-tête annonçait « 0.00 $ · 0 ms » au-dessus de rangées qui
+            # disent toutes « — » pour la même absence.
+            mesure = any(l.agregat.segments for l in self._lectures.values())
             self.query_one("#resume", Static).update(
                 f"{ICONES['claude']} {compte} {t('sessions')} · "
                 f"{t('prompt')} {jetons(total.entree + total.cache_lu + total.cache_cree)}"
                 f" · {t('output')} {jetons(total.sortie)}"
                 f" · {t('thinking')} {jetons(total.reflexion)}"
-                f" · {t('cost')} {total.cout:.2f} $"
-                f" · {t('tools')} {duree(total.duree_outils)}"
+                f" · {t('cost')} {_mesure(mesure, lambda _: f'{total.cout:.2f} $', 0)}"
+                f" · {t('tools')} {_mesure(mesure, duree, total.duree_outils)}"
                 + resume_opencode(self._seances)
                 + (f"  [{t('frozen')}]" if self._gele else "")
             )
-            self.query_one("#source", Static).update(
-                t(
-                    "Tokens are summed from each message. Cost and durations"
-                    " are read from the last cost-state, which a compaction"
-                    " resets."
-                )
+            note = t(
+                "Tokens are summed from each message. Cost and durations"
+                " are read from the last cost-state, which a compaction"
+                " resets."
             )
+            # La phrase ne vaut que pour l'un des deux harnais. Le coût d'une
+            # séance Open Code est un champ de base, stable sur toute la
+            # séance, là où celui de Claude Code est le dernier segment lu.
+            # Les deux se suivent dans la même colonne, et la note n'en
+            # décrivait qu'un. Elle ne s'allonge que s'il y a lieu.
+            if self._seances:
+                note += f" {ICONES['opencode']} " + t(
+                    "Open Code rows carry a database cost, stable over"
+                    " the whole session."
+                )
+            self.query_one("#source", Static).update(note)
 
     app = Telemetrie()
     if not run_app:

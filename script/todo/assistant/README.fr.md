@@ -440,6 +440,47 @@ trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
 
+**La sortie brute d'un agent va au terminal, parce qu'elle n'est pas du
+texte.** `claude logs` imprime un ÉCRAN et non un journal : des centaines de
+séquences d'échappement, des retours chariot, aucun saut de ligne, et des
+positions de curseur absolues. Dépouiller les codes rend une seule ligne
+illisible, donc aucun panneau de tableau n'y peut rien. `j` suspend
+l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
+revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
+qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
+n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
+**Un pied de page ment par omission, donc une touche mène à toutes les
+autres.** Il tient sur une ligne et se coupe à droite : sur un terminal de
+quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
+quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
+Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
+phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
+les apprendre. Le pied de page, le panneau et les numéros lisent la MÊME
+table, puisque c'est la recopie qui avait laissé quatre touches sans mention
+nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi qu'on
+ajoute ensuite.
+
+Le panneau est MODAL, pour la raison même qui le fait exister. Empilé sous les
+tableaux, il réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+offre, donc ses trois dernières entrées — dont les deux qui détruisent —
+passaient sous le pli sans que rien ne le signale. Ce qu'il masque est déduit
+de ce qui est à l'écran plutôt qu'énuméré, et un test garde ses seize lignes
+dans quatre-vingts colonnes sur vingt-quatre.
+
+**L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
+replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
+flotte : 230 ms en médiane, 408 au pire, un cinquième du pas de deux secondes
+pendant lequel aucune touche n'était vue. Ce n'est pas la moyenne qui a
+tranché — le listage des agents est un sous-processus dont le délai est de
+quinze secondes, et un outil muet figeait l'écran d'autant, « q » compris. Le
+relevé traverse le fil comme une valeur qui ne partage rien ; seule la boucle
+d'événements touche un widget. Une génération fait jeter le relevé d'un fil qui
+travaille encore sur le monde d'avant « r », et un tour qui tombe pendant une
+lecture est SAUTÉ plutôt que mis en file — une file, sur une machine lente,
+grandit sans qu'aucun tour ne montre jamais l'état du moment. Mesuré après :
+1,4 ms au pire sur la boucle.
+
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
 donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent
