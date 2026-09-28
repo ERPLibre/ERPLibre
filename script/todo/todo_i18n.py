@@ -3989,6 +3989,27 @@ TRANSLATIONS = {
         "fr": "Chemin non envoyé : un caractère de contrôle, ou trop long.",
         "en": "Path not sent: a control character, or too long.",
     },
+    # Page web : les erreurs fixes d'une liste du sélecteur de chemins.
+    "Too many reads at once, try again": {
+        "fr": "Trop de lectures à la fois, réessayez",
+        "en": "Too many reads at once, try again",
+    },
+    "The read took too long": {
+        "fr": "La lecture a pris trop de temps",
+        "en": "The read took too long",
+    },
+    "Not an absolute path": {
+        "fr": "Pas un chemin absolu",
+        "en": "Not an absolute path",
+    },
+    "Session refused, reload the page": {
+        "fr": "Session refusée, rechargez la page",
+        "en": "Session refused, reload the page",
+    },
+    "A character that cannot be sent": {
+        "fr": "Un caractère qui ne peut être envoyé",
+        "en": "A character that cannot be sent",
+    },
     # Page web dans la fenêtre bureautique : le dialogue de fichiers.
     "System dialog": {"fr": "Dialogue du système", "en": "System dialog"},
     # Page web dans la fenêtre bureautique : notification de fin de commande.

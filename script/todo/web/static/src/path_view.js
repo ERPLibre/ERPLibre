@@ -15,17 +15,29 @@
 // le chemin choisi répond de même. Annuler fait ce que fait « q » dans le
 // navigateur urwid : rien n'est choisi. Comme les autres widgets, il ne
 // répond que pour le qid qu'il montre (`answer(qid, valeur)`,
-// `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ; une
-// liste qui arrive après une autre, plus récente, est jetée.
+// `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ni
+// dans celles qui suivent chaque nouvelle liste (`shownListing`), et le
+// deuxième clic d'un double-clic ne compte pas (`clickCounts`). Une liste
+// qui arrive après une autre, plus récente, est jetée ; une liste ou un
+// dialogue qui revient après le démontage ne répond plus.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
-import {childPath, filterEntries, listingUrl, pathCrumbs, typedOutcome, typedPath} from "./browse.js";
+import {
+    childPath,
+    filterEntries,
+    listingErrorKey,
+    listingUrl,
+    pathCrumbs,
+    shownListing,
+    typedOutcome,
+    typedPath,
+} from "./browse.js";
 import {formatBytes} from "./metrics.js";
-import {ARM, composing, keyCounts, sendable} from "./prompt.js";
+import {ARM, clickCounts, composing, keyCounts, sendable} from "./prompt.js";
 
 export class PathPicker extends Component {
     static template = xml`
-        <section class="question path-picker" role="group" tabindex="-1" t-ref="root"
+        <section class="question path-picker" role="group" tabindex="-1"
             t-att-aria-label="props.question.speak or env.t('TODO question')">
             <nav class="path-crumbs" t-att-aria-label="env.t('Path')">
                 <t t-foreach="crumbs" t-as="crumb" t-key="crumb.path">
@@ -57,7 +69,7 @@ export class PathPicker extends Component {
                 </li>
                 <li t-foreach="entries" t-as="entry" t-key="entry.name">
                     <button type="button" class="entry" t-att-class="{dir: entry.dir}" t-att-disabled="locked"
-                        t-on-click="() => this.pick(entry)">
+                        t-on-click="(ev) => this.pick(entry, ev)">
                         <span t-esc="entry.dir ? entry.name + '/' : entry.name"/>
                         <span t-if="!entry.dir and entry.size !== null" class="size" t-esc="sizeText(entry.size)"/>
                     </button>
@@ -70,14 +82,15 @@ export class PathPicker extends Component {
     setup() {
         const start = this.props.question.start ?? "~";
         // Le pont de la fenêtre bureautique peut n'arriver qu'après la
-        // question, avec `pywebviewready`.
+        // question, avec `pywebviewready` ; monté, le widget relit une fois
+        // `canPick`, pour l'évènement parti avant son écoute.
         const canPick = this.env.desktop.canPick();
         this.state = useState({listing: null, typed: start, filter: "", armed: false, refused: false, canPick});
         this.onReady = () => (this.state.canPick = this.env.desktop.canPick());
-        this.root = useRef("root");
         this.field = useRef("field");
         this.shownAt = Infinity;
         this.ticket = 0;
+        this.gone = false;
         // Le widget prend le clavier quand il paraît et quand la vue revient.
         useEffect(
             (visible) => {
@@ -88,19 +101,29 @@ export class PathPicker extends Component {
             () => [this.props.visible]
         );
         onMounted(() => {
-            this.shownAt = performance.now();
-            this.arming = setTimeout(() => (this.state.armed = true), ARM);
             window.addEventListener("pywebviewready", this.onReady);
+            this.onReady();
+            this.shown();
             this.open(start);
         });
         onWillUnmount(() => {
+            this.gone = true;
+            this.ticket++;
             clearTimeout(this.arming);
             window.removeEventListener("pywebviewready", this.onReady);
         });
     }
 
+    // Le widget montre de nouveaux boutons, désarmé : il s'arme ARM ms plus
+    // tard, et une touche d'avant ce moment ne compte pas (`keyCounts`).
+    shown() {
+        clearTimeout(this.arming);
+        this.shownAt = performance.now();
+        this.arming = setTimeout(() => (this.state.armed = true), ARM);
+    }
+
     // Vrai tant que rien ne part : une réponse attend `answered`, ou le
-    // widget vient de paraître.
+    // widget vient de paraître ou de montrer une liste.
     get locked() {
         return this.props.pending || !this.state.armed;
     }
@@ -132,8 +155,12 @@ export class PathPicker extends Component {
         return Boolean(this.state.filter.trim()) && this.listing.entries.length > 0 && !this.entries.length;
     }
 
+    // La raison d'une liste qui ne se fait pas : un jeton fixe traduit, la
+    // raison du système telle quelle.
     get errorText() {
-        return this.env.t("Cannot list this directory: %s").replace("%s", () => this.listing.error);
+        const key = listingErrorKey(this.listing.error);
+        const reason = key ? this.env.t(key) : this.listing.error;
+        return this.env.t("Cannot list this directory: %s").replace("%s", () => reason);
     }
 
     get truncatedText() {
@@ -145,14 +172,18 @@ export class PathPicker extends Component {
     }
 
     // Liste `path` ; tapé (`typed`), un fichier qui existe répond quand
-    // TODO en demande un. Seule la dernière demande se montre.
+    // TODO en demande un. Seule la dernière demande se montre, et chaque
+    // liste montrée désarme le widget. Une demande qui échoue se montre
+    // sous le nom de son erreur : `URIError` pour un chemin que l'adresse
+    // ne peut porter, sinon son message (`HTTP 403`).
     async open(path, typed = false) {
         const ticket = ++this.ticket;
         let listing;
         try {
             listing = await getJson(listingUrl(path, this.directory), {csrf: true});
         } catch (error) {
-            listing = {path, parent: null, entries: [], truncated: false, error: error.message, file: false};
+            const reason = error instanceof URIError ? error.name : error.message;
+            listing = {path, parent: null, entries: [], truncated: false, error: reason, file: false};
         }
         if (ticket !== this.ticket) {
             return;
@@ -162,7 +193,8 @@ export class PathPicker extends Component {
             this.send(outcome.answer);
             return;
         }
-        Object.assign(this.state, {listing: outcome.show, typed: outcome.show.path, filter: "", refused: false});
+        Object.assign(this.state, shownListing(outcome.show));
+        this.shown();
     }
 
     openTyped() {
@@ -172,13 +204,21 @@ export class PathPicker extends Component {
         }
     }
 
-    // Une entrée : un répertoire s'ouvre, un fichier répond.
-    pick(entry) {
+    // Une entrée : un répertoire s'ouvre, un fichier répond. Un répertoire
+    // dont le chemin ne partirait pas comme réponse (`sendable`) ne
+    // s'ouvre pas non plus, et le widget le dit : l'adresse de /api/fs ne
+    // le porterait pas intact.
+    pick(entry, event) {
+        if (this.locked || !clickCounts(event)) {
+            return;
+        }
         const path = childPath(this.here, entry.name);
-        if (entry.dir) {
+        if (!entry.dir) {
+            this.send(path);
+        } else if (sendable(path)) {
             this.open(path);
         } else {
-            this.send(path);
+            this.state.refused = true;
         }
     }
 
@@ -195,7 +235,7 @@ export class PathPicker extends Component {
     }
 
     send(value) {
-        if (this.locked) {
+        if (this.gone || this.locked) {
             return;
         }
         this.state.refused = !sendable(value);

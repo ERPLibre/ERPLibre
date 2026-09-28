@@ -131,6 +131,14 @@ export function keyCounts(event, shownAt) {
     return !event.repeat && event.timeStamp - shownAt >= ARM;
 }
 
+// Vrai quand un clic peut répondre : ni le deuxième clic d'un double-clic
+// ni un suivant (`detail` > 1), qui visaient ce que l'écran montrait sous
+// le premier. Un clic du clavier, Entrée ou Espace sur un bouton, a un
+// `detail` de 0.
+export function clickCounts(event) {
+    return !(event.detail > 1);
+}
+
 // Vrai pour une touche que tient une méthode de saisie (IME) qui compose
 // un caractère : l'Entrée qui valide la composition n'envoie rien. Un
 // navigateur qui ne pose pas `isComposing` sur cette Entrée lui donne le

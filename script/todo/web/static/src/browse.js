@@ -4,6 +4,26 @@
 // sont absolus, à la manière de POSIX.
 import {fold} from "./model.js";
 
+// Les erreurs fixes d'une liste, par genre, et la clé qui les traduit.
+const LISTING_ERROR_LABELS = {
+    busy: "Too many reads at once, try again",
+    timeout: "The read took too long",
+    relative: "Not an absolute path",
+    refused: "Session refused, reload the page",
+    unencodable: "A character that cannot be sent",
+};
+// Le jeton de chaque genre : ceux du hub (/api/fs), puis ceux que la page
+// pose quand sa demande échoue, `HTTP 403` (la session ou son jeton
+// refusés) et `URIError` (un chemin qu'`encodeURIComponent` ne code pas,
+// un demi-substitut isolé).
+const LISTING_ERROR_TOKENS = {
+    busy: "busy",
+    timeout: "timed out",
+    relative: "not an absolute path",
+    refused: "HTTP 403",
+    unencodable: "URIError",
+};
+
 // L'adresse qui liste `path`, ses sous-répertoires seuls avec `directory`.
 export function listingUrl(path, directory) {
     return `/api/fs?path=${encodeURIComponent(path)}&dirs=${directory ? 1 : 0}`;
@@ -50,4 +70,22 @@ export function typedOutcome(listing, directory) {
 export function filterEntries(entries, query) {
     const wanted = fold(query.trim());
     return wanted ? entries.filter((entry) => fold(entry.name).includes(wanted)) : entries;
+}
+
+// L'état du sélecteur qui montre `listing` : le champ du chemin suit le
+// répertoire, le filtre et le refus s'effacent, et le widget se désarme.
+// Chaque liste est un nouvel écran de boutons : le second clic d'un
+// double-clic sur un répertoire tomberait sinon sur l'entrée qui prend sa
+// place dans la liste qui s'ouvre, et y répondrait. Le widget se réarme
+// ARM ms après que la liste paraît, comme à son apparition.
+export function shownListing(listing) {
+    return {listing, typed: listing.path, filter: "", refused: false, armed: false};
+}
+
+// La clé de traduction de l'erreur `error` d'une liste, quand c'est un
+// jeton fixe (LISTING_ERROR_TOKENS) ; null pour une autre, la raison du
+// système (`strerror`) comprise, qui s'affiche telle quelle.
+export function listingErrorKey(error) {
+    const kind = Object.keys(LISTING_ERROR_TOKENS).find((name) => LISTING_ERROR_TOKENS[name] === error);
+    return kind ? LISTING_ERROR_LABELS[kind] : null;
 }

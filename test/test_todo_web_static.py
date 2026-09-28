@@ -26,6 +26,7 @@ from pathlib import Path
 
 from test_todo_web_i18n import TAG, TEMPLATE
 
+from script.todo import todo_i18n
 from script.todo.ui import port
 from script.todo.web import protocol, server
 
@@ -844,6 +845,8 @@ console.log(JSON.stringify({
     limits: [m.FILTER_FROM, m.PAUSE, m.ANSWER_LIMIT, m.ARM],
     composing: [{key: "Enter", isComposing: true}, {key: "Enter", keyCode: 229},
         {key: "Enter", isComposing: false, keyCode: 13}].map(m.composing),
+    clicks: [{}, {detail: 0}, {detail: 1}, {detail: 2}, {detail: 3}].map(
+        m.clickCounts),
     sendable: ["", "forged", "x".repeat(4096), "x".repeat(4097),
         "🧰".repeat(4096), "tab\t", "esc\u001b]0;x", "del\u007f",
         "c1\u009b", "half\ud800"].map(m.sendable),
@@ -929,6 +932,12 @@ class TestMenuWidget(unittest.TestCase):
         # visait la question précédente ; une touche tenue se répète.
         self.assertEqual(self.out["keys"], [False, False, True, False])
         self.assertEqual(self.out["limits"][3], 250)
+
+    def test_a_double_click_counts_once(self):
+        # Un clic du clavier (0), un clic seul (1) ; le deuxième clic d'un
+        # double-clic, et les suivants, visaient ce que montrait l'écran
+        # sous le premier.
+        self.assertEqual(self.out["clicks"], [True, True, True, False, False])
 
     def test_the_enter_that_ends_an_ime_composition_sends_nothing(self):
         # Pendant une composition, ou sous le code 229 d'un navigateur qui
@@ -1026,6 +1035,10 @@ console.log(JSON.stringify({
         m.typedOutcome(absent, false), m.typedOutcome(listing, false)],
     filtered: ["ete", "NOTES", " ", "zzz"].map(
         (query) => names(m.filterEntries(entries, query))),
+    shown: m.shownListing(listing),
+    errors: ["busy", "timed out", "not an absolute path", "HTTP 403",
+        "URIError", "Permission denied", "HTTP 400", "toString"].map(
+        m.listingErrorKey),
 }));
 """
 
@@ -1085,6 +1098,33 @@ class TestPathPicker(unittest.TestCase):
             self.out["filtered"],
             [["Été"], ["Notes.txt"], ["Été", "backup.zip", "Notes.txt"], []],
         )
+
+    def test_each_listing_is_a_new_screen_that_disarms(self):
+        # Le second clic d'un double-clic sur un répertoire tomberait sur
+        # l'entrée qui prend sa place dans la liste qui s'ouvre : chaque
+        # liste montrée désarme le widget, qui se réarme ARM ms après. Le
+        # champ suit le répertoire ; le filtre et le refus s'effacent.
+        shown = self.out["shown"]
+        self.assertEqual(shown.pop("listing")["path"], "/srv/forged")
+        self.assertEqual(
+            shown,
+            {
+                "typed": "/srv/forged",
+                "filter": "",
+                "refused": False,
+                "armed": False,
+            },
+        )
+
+    def test_the_fixed_errors_of_a_listing_are_translated(self):
+        # Les jetons du hub et ceux que la page pose ont chacun leur clé ;
+        # la raison du système et un autre code HTTP restent tels quels.
+        keys = self.out["errors"]
+        self.assertEqual(keys[5:], [None, None, None])
+        self.assertEqual(len(set(keys[:5])), 5)
+        for key in keys[:5]:
+            entry = todo_i18n.TRANSLATIONS[key]
+            self.assertTrue(entry.get("fr") and entry.get("en"), key)
 
 
 # Le repli d'un état, puis des suites de pas depuis un moment sans question :
