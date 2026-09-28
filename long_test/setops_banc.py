@@ -278,11 +278,63 @@ class Mesures(NamedTuple):
     index_libre: bool | None
     pont: str
     vmid_gabarit: int
-    gabarit: str | None
     noeud: str = ""
     stockage: str = ""
     uplink: str = ""
     adresse_api: str = ""
+
+
+def mesure_le_gabarit(terrain, elevation):
+    """L'état du gabarit sur la grappe, ou None si on n'a pas lu.
+
+    HORS DES PRÉALABLES, ET APRÈS LA POSE. Le gabarit est un artefact du
+    SITE : la préparation que le moteur lui applique exige un serveur
+    d'artefacts et un résolveur que le plan du site déclare, et le site
+    n'existe qu'une fois posé. L'exiger avant la pose refuse au premier tour
+    ce que ce tour est seul à rendre possible.
+
+    La grappe est RELUE ici, et aucune valeur d'avant-pose n'est reprise : le
+    gabarit peut naître entre les deux, et une valeur gardée dirait alors le
+    contraire de ce qui est là.
+    """
+    ressources = joue_sur(terrain, cmds_vmids(), elevation)
+    if not ressources.reussi:
+        return None
+    trouve = lit_gabarit(ressources.sortie)
+    if trouve is None:
+        return None
+    if trouve == 0:
+        return GABARIT_ABSENT
+    config = joue_sur(terrain, cmds_config_vm(trouve), elevation)
+    if not config.reussi:
+        return None
+    return lit_conformite_gabarit(config.sortie)
+
+
+def exigence_du_gabarit(etat):
+    """Ce que le banc exige du gabarit, sous la forme d'un préalable.
+
+    La même forme que les préalables parce que l'écran s'en sert de la même
+    façon — une marque, une phrase, et de quoi corriger. Ce qui diffère est
+    le MOMENT : celui-ci se joue la pose faite, donc son refus n'est pas
+    « rien n'a été tenté ».
+    """
+    return Prealable(
+        quoi=f"le gabarit « {GABARIT} » est conforme",
+        tenu=(etat == GABARIT_CONFORME) if etat is not None else None,
+        dit=dit_gabarit(etat) if etat is not None else "",
+    )
+
+
+def juge_le_gabarit(exigence):
+    """Le code de sortie que cette exigence commande, la pose FAITE.
+
+    NON_CONCLUANTE et non OUTILLAGE : le site est debout, donc « rien n'a été
+    tenté » serait faux — c'est la boucle qui n'a pas joué. Une exigence non
+    MESURÉE rend le même code : dans les deux cas la boucle ne part pas, et
+    l'écran, lui, distingue « non » de « pas su regarder ».
+    """
+    return SORTIE_OK if exigence.tenu else SORTIE_NON_CONCLUANTE
 
 
 def prealables(mesures):
@@ -297,7 +349,6 @@ def prealables(mesures):
     les liens du moteur — puis ce que le banc aurait à choisir.
     """
     vu = mesures
-    gabarit = vu.gabarit
     return (
         Prealable(
             quoi="un terrain est désigné",
@@ -369,13 +420,6 @@ def prealables(mesures):
             dit=""
             if (vu.uplink or "").strip()
             else "aucune route par défaut : le masquage viserait dans le vide",
-        ),
-        Prealable(
-            quoi=f"le gabarit « {GABARIT} » est conforme",
-            tenu=(gabarit == GABARIT_CONFORME)
-            if gabarit is not None
-            else None,
-            dit=dit_gabarit(gabarit) if gabarit is not None else "",
         ),
     )
 
@@ -2283,21 +2327,10 @@ def mesure_le_terrain(moteur, terrain):
     vmids = lit_vmids(ressources.sortie) if ressources.reussi else None
     vmid = gabarit_libre(vmids)
 
-    gabarit = None
-    trouve = lit_gabarit(ressources.sortie) if ressources.reussi else None
-    if trouve == 0:
-        gabarit = GABARIT_ABSENT
-    elif trouve:
-        config = joue_sur(terrain, cmds_config_vm(trouve), elevation)
-        gabarit = (
-            lit_conformite_gabarit(config.sortie) if config.reussi else None
-        )
-
     return vide._replace(
         index_libre=index_libre(instances_freres(moteur), INDEX_ECOSYSTEME),
         pont=pont,
         vmid_gabarit=vmid,
-        gabarit=gabarit,
         # LE PREMIER, et le banc n'en CHOISIT pas : une grappe de banc n'a qu'un
         # nœud et qu'un stockage à images. Sur une grappe qui en a plusieurs,
         # choisir pour l'exploitant serait deviner où il veut se poser — et c'est
@@ -2802,6 +2835,21 @@ def principal(argv=None):
         print(f"\n  ⛔ {expurge(souci, secret)}")
         print(f"     ce qui est posé est nommé dans {chantier.chemin}")
         return SORTIE_NON_CONCLUANTE
+
+    # LE GABARIT EST EXIGÉ ICI, le site debout : c'est lui qui rend sa
+    # préparation possible. Refuser maintenant laisse la pose en place, que
+    # `--detruire` reprend, et rend NON_CONCLUANTE — la boucle n'a pas joué.
+    print("\n── le gabarit ──")
+    exige = exigence_du_gabarit(mesure_le_gabarit(terrain, mesures.elevation))
+    marque = "✓" if exige.tenu else ("✗" if exige.tenu is False else "?")
+    print(f"  {marque} {exige.quoi}")
+    if exige.dit:
+        print(f"      {exige.dit}")
+    verdict = juge_le_gabarit(exige)
+    if verdict != SORTIE_OK:
+        print("\n  ⛔ la boucle clone ce gabarit : sans lui elle ne part pas.")
+        print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+        return verdict
 
     for passe in passes:
         print(f"\n── passe « {passe} » ──")

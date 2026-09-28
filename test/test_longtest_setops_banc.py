@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -1229,6 +1230,139 @@ class TestUneSuiteVideNeReussitPas(unittest.TestCase):
         self.assertEqual((None, 0), (fait.code, fait.jouees))
 
 
+class TestCeQueLeBancExigeDuGabarit(unittest.TestCase):
+    """La même forme qu'un préalable, joué à un autre MOMENT : la pose faite.
+
+    Son refus n'est donc pas « rien n'a été tenté » — le site est debout, et
+    c'est justement lui qui rend la préparation du gabarit possible.
+    """
+
+    def test_a_conforming_template_holds(self):
+        """Le contrôle positif : sans lui, refuser toujours passerait les
+        refus ci-dessous."""
+        self.assertTrue(B.exigence_du_gabarit(B.GABARIT_CONFORME).tenu)
+
+    def test_anything_else_refuses_and_says_where_to_look(self):
+        for etat in (
+            B.GABARIT_ABSENT,
+            B.GABARIT_MATERIEL,
+            B.GABARIT_PAS_MODELE,
+        ):
+            with self.subTest(etat=etat):
+                exige = B.exigence_du_gabarit(etat)
+                self.assertFalse(exige.tenu)
+                self.assertIn(B.PROCEDURE_GABARIT, exige.dit)
+
+    def test_an_unread_state_is_not_a_refusal(self):
+        """« Pas su regarder » envoie chercher la sonde, non la machine."""
+        exige = B.exigence_du_gabarit(None)
+        self.assertIsNone(exige.tenu)
+        self.assertEqual("", exige.dit)
+
+    def test_a_refusal_after_the_pose_is_not_tooling(self):
+        """OUTILLAGE dit « RIEN n'a été tenté » : la pose faite, ce serait
+        faux. C'est la boucle qui n'a pas joué, donc NON_CONCLUANTE."""
+        for etat in (B.GABARIT_ABSENT, B.GABARIT_MATERIEL, None):
+            with self.subTest(etat=etat):
+                self.assertEqual(
+                    B.SORTIE_NON_CONCLUANTE,
+                    B.juge_le_gabarit(B.exigence_du_gabarit(etat)),
+                )
+
+    def test_a_conforming_template_lets_the_loop_go(self):
+        """Le contrôle positif : sans lui, refuser toujours passerait le
+        refus ci-dessus."""
+        self.assertEqual(
+            B.SORTIE_OK,
+            B.juge_le_gabarit(B.exigence_du_gabarit(B.GABARIT_CONFORME)),
+        )
+
+    def test_it_names_the_template_the_cloning_looks_for(self):
+        """C'est par le NOM que le clonage du moteur cherche sa source : un
+        écran qui ne le dit pas laisse chercher lequel corriger."""
+        self.assertIn(B.GABARIT, B.exigence_du_gabarit(B.GABARIT_ABSENT).quoi)
+
+
+class TestLaRelectureDuGabaritSurLaGrappe(unittest.TestCase):
+    """RELU sur la grappe, jamais repris d'une mesure d'avant-pose : entre les
+    deux, l'exploitant a pu bâtir le gabarit, et une valeur gardée dirait le
+    contraire de ce qui est là.
+
+    Les VMID et les noms sont inventés, et l'élévation n'est pas jouée : rien
+    ne sort d'ici.
+    """
+
+    CONFORME = "template: 1\nmachine: q35\nbios: ovmf\n"
+
+    def joue(self, *suite):
+        """Remplace l'exécuteur par une file de faits, et note ses argv."""
+        self.vus = []
+        restes = list(suite)
+
+        def faux(terrain, cmds, elevation, delai=None):
+            self.vus.append(list(cmds))
+            return restes.pop(0)
+
+        patch = mock.patch.object(B, "joue_sur", faux)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def liste(self, *paires):
+        return json.dumps(
+            [{"vmid": v, "name": n, "type": "qemu"} for v, n in paires]
+        )
+
+    def test_a_refused_listing_concludes_nothing_even_when_readable(self):
+        """LE CAS QUI TRANCHE. Une commande en échec imprime parfois quelque
+        chose de lisible — une bannière, une liste partielle. Juger sur sa
+        sortie rendrait un verdict tiré d'un refus, et il se lirait comme un
+        verdict tiré d'une réponse. C'est le CODE qui décide, pas le texte."""
+        self.joue(B.Fait(1, self.liste((9000, B.GABARIT)), 1))
+        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+
+    def test_a_command_that_never_ran_concludes_nothing(self):
+        """Fermé par défaut : un ssh qui n'a pas tourné n'est pas une grappe
+        sans gabarit."""
+        self.joue(B.Fait(None, "", 0))
+        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+
+    def test_an_unparsable_listing_concludes_nothing(self):
+        self.joue(B.Fait(0, "pas du json", 1))
+        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+
+    def test_no_vm_by_that_name_is_read_as_absent(self):
+        self.joue(B.Fait(0, self.liste((100, "autre")), 1))
+        self.assertEqual(
+            B.GABARIT_ABSENT, B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        )
+
+    def test_an_unplayed_config_concludes_nothing(self):
+        self.joue(
+            B.Fait(0, self.liste((9000, B.GABARIT)), 1), B.Fait(1, "", 1)
+        )
+        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+
+    def test_the_conformity_comes_from_the_config(self):
+        self.joue(
+            B.Fait(0, self.liste((9000, B.GABARIT)), 1),
+            B.Fait(0, self.CONFORME, 1),
+        )
+        self.assertEqual(
+            B.GABARIT_CONFORME, B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        )
+
+    def test_the_config_read_is_that_of_the_vmid_the_name_found(self):
+        """Le VMID vient de la LISTE, jamais d'un nombre écrit ici : lire la
+        configuration d'une autre VM rendrait un verdict sur une autre
+        machine, et il se lirait comme celui du gabarit."""
+        self.joue(
+            B.Fait(0, self.liste((100, "autre"), (9042, B.GABARIT)), 1),
+            B.Fait(0, self.CONFORME, 1),
+        )
+        B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        self.assertIn("9042", " ".join(self.vus[1]))
+
+
 class TestLeSecretNeTraverseNiEcranNiJournal(unittest.TestCase):
     """Le secret d'un jeton d'API ne s'affiche qu'à sa création : il traverse la
     mémoire du banc entre la grappe qui le rend et la voûte qui le chiffre, et
@@ -2246,7 +2380,6 @@ def mesures_bonnes(**change):
         index_libre=True,
         pont="vmbr9",
         vmid_gabarit=9000,
-        gabarit=B.GABARIT_CONFORME,
         noeud="un-noeud",
         stockage="un-stockage",
         uplink="une-sortie",
@@ -2310,9 +2443,6 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
             {"index_libre": False},
             {"pont": ""},
             {"vmid_gabarit": 0},
-            {"gabarit": B.GABARIT_ABSENT},
-            {"gabarit": B.GABARIT_MATERIEL},
-            {"gabarit": B.GABARIT_PAS_MODELE},
             {"noeud": ""},
             {"stockage": ""},
             {"uplink": ""},
@@ -2327,11 +2457,21 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
     def test_an_unmeasured_condition_is_not_a_refusal(self):
         """« Pas su regarder » se distingue de « non » : l'écran doit envoyer
         chercher la sonde, non la machine."""
-        for champ in ("elevation", "index_libre", "gabarit"):
+        for champ in ("elevation", "index_libre"):
             with self.subTest(champ=champ):
                 vus = B.prealables(mesures_bonnes(**{champ: None}))
                 inconnus = [p for p in vus if p.tenu is None]
                 self.assertEqual(1, len(inconnus))
+
+    def test_the_template_is_not_one_of_them(self):
+        """LE GABARIT EST UN ARTEFACT DU SITE : la préparation que le moteur
+        lui applique exige un serveur d'artefacts et un résolveur que le plan
+        du site déclare, et le site n'existe qu'une fois posé. L'exiger ici
+        refusait au premier tour ce que le premier tour seul rend possible."""
+        quoi = " ".join(p.quoi for p in B.prealables(mesures_bonnes()))
+        self.assertNotIn(B.GABARIT, quoi)
+        # Contrôle positif : les autres préalables sont toujours jugés ici.
+        self.assertIn("pont", quoi)
 
     def test_an_unreadable_link_state_is_not_a_refusal(self):
         vus = B.prealables(mesures_bonnes(liens=(None, B.NOTRE)))
@@ -2343,11 +2483,6 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
         vus = B.prealables(mesures_bonnes(elevation=B.IMPOSSIBLE))
         dit = " ".join(p.dit for p in B.manquants(vus))
         self.assertIn("mot de passe", dit)
-
-    def test_a_non_conforming_template_says_where_to_look(self):
-        vus = B.prealables(mesures_bonnes(gabarit=B.GABARIT_MATERIEL))
-        dit = " ".join(p.dit for p in B.manquants(vus))
-        self.assertIn(B.PROCEDURE_GABARIT, dit)
 
     def test_an_occupied_link_names_which_one(self):
         vus = B.prealables(mesures_bonnes(liens=(B.OCCUPE, B.NOTRE)))

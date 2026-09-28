@@ -385,8 +385,8 @@ changes, and the bench would then route domains where nobody lives. A host
 missing one of the three values refuses the whole read: routing one zone out of
 two leaves half the fleet unreachable, and nothing in the inventory says which.
 
-**The golden template is a prerequisite, not something the bench makes.** The
-engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+**The golden template is required after the pose, and the bench does not make
+it.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
 change a setting — it replaces the virtual hardware under a system that believes
 it knows its own. Predictable interface names derive from the PCI path, so the
@@ -399,6 +399,16 @@ correction is free". A missing key counts as non-conforming, because the
 configuration only prints what differs from the default and the defaults are
 exactly what the procedure refuses. Every refusal names the procedure, since the
 bench does not make the template and must say where its making is described.
+
+It is required AFTER the site is posed, and not among the prerequisites,
+because the template is an artefact OF the site: the preparation the engine
+applies to it demands an artefact server and a resolver that the SITE's plan
+declares, and the site exists only once posed. Requiring it first would refuse
+on the opening round what only that round makes possible. The state is READ
+again on the cluster at that point, never carried over from a measure taken
+before the pose — in between, the operator may have built it. A refusal there
+leaves the pose standing, which `--detruire` takes back, and answers "not
+conclusive" rather than "nothing was attempted": the loop is what did not run.
 
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
