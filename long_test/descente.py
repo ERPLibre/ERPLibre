@@ -855,8 +855,40 @@ def descente_vivante(pid):
     return bool(pid) and _lance_une_descente(pid)
 
 
-def autre_descente():
-    """Les PID des AUTRES descentes vivantes. Le sien est exclu.
+def _ancetres():
+    """Les PID de la chaîne qui mène au processus courant, lui compris.
+
+    Un ancêtre qui PORTE le nom d'un script de descente n'est pas une autre
+    descente : c'est celle du processus courant, vue d'un cran plus haut. `timeout`, `env`,
+    `nohup` et `nice` l'enveloppent en le NOMMANT dans leurs arguments, et le
+    contrôle lit les arguments. Compter un ancêtre fait refuser de détruire à
+    cause de soi, et le message envoie alors attendre un processus de sa propre
+    chaîne — la même illusion que le shell, un cran plus haut.
+
+    La chaîne s'arrête sur un PID déjà vu : un /proc incohérent ne doit pas
+    faire tourner la boucle sans fin.
+    """
+    vus = []
+    courant = os.getpid()
+    while courant > 0 and courant not in vus:
+        vus.append(courant)
+        try:
+            with open(f"/proc/{courant}/status", encoding="utf-8") as fh:
+                for ligne in fh:
+                    if ligne.startswith("PPid:"):
+                        courant = int(ligne.split()[1])
+                        break
+                else:
+                    break
+        except (OSError, ValueError):
+            break
+    return vus
+
+
+def autre_descente(exclus=None):
+    """Les PID des AUTRES descentes vivantes. La chaîne d'ici est exclue.
+
+    `exclus` sert aux épreuves ; par défaut, c'est la chaîne des ancêtres.
 
     Le garde-fou du rapport — un PID dans le fichier — ne protège que les
     descentes lancées APRÈS son écriture : celle qui tourne déjà a chargé
@@ -867,14 +899,14 @@ def autre_descente():
     /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
     l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
     """
-    moi = os.getpid()
+    interdits = set(_ancetres() if exclus is None else exclus)
     vivants = []
     try:
         entrees = os.listdir("/proc")
     except OSError:
         return vivants
     for entree in entrees:
-        if not entree.isdigit() or int(entree) == moi:
+        if not entree.isdigit() or int(entree) in interdits:
             continue
         if _lance_une_descente(entree):
             vivants.append(int(entree))
