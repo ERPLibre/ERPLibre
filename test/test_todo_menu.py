@@ -513,6 +513,35 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertTrue(servers["is_menu"])
         self.assertEqual(servers["entry"], "")
 
+    def test_a_computed_appended_label_is_no_command(self):
+        # Le menu Servers ajoute une entrée par serveur connu, au libellé
+        # calculé à l'affichage : il n'en reste que « — », qu'aucune entrée
+        # ne montre. Ses deux commandes écrites restent, chacune avec sa
+        # méthode, que la place de l'entrée calculée situe encore.
+        from script.todo.todo_telemetry import _choices_children
+
+        servers = self._noeud("Servers", self._noeud("LLM"))
+        self.assertEqual(
+            [n["label"] for n in servers["children"]],
+            ["Add a server by hand", "Delete a server"],
+        )
+        func = ast.parse(
+            "def menu(self):\n"
+            "    choices = []\n"
+            "    for nom in noms:\n"
+            '        choices.append({"prompt_description": f"{nom} — {x}"})\n'
+            '    choices.append({"prompt_description": t("Add")})\n'
+            '    choices.append({"prompt_description": t("Delete")})\n'
+            "    if status == str(len(choices) - 1):\n"
+            "        self.add()\n"
+            "    elif status == str(len(choices)):\n"
+            "        self.delete()\n"
+        ).body[0]
+        self.assertEqual(
+            _choices_children(func, TODO_DIR),
+            [("Add", "add", {}), ("Delete", "delete", {})],
+        )
+
     def test_a_label_that_is_not_a_string_leaves_the_tree_built(self):
         # « t(5) » n'est pas un libellé : son entrée garde son numéro, sans
         # libellé, et l'arbre se bâtit.

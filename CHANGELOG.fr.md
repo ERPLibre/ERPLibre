@@ -210,6 +210,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans la page de TODO, une relecture de la télémétrie revenue après une plus récente ne ramène plus l'ancienne empreinte du code, qui pouvait montrer la bannière de code modifié jusqu'à 10 s
 - Dans une session web, la suite du libellé d'une entrée de menu écrit sur deux lignes ne paraît plus une seconde fois parmi les notes du menu, sous le bouton de l'entrée qui la porte déjà
 - Télémétrie de navigation › [4] Fenêtre bureautique ne prétend plus que son processus a ouvert le navigateur quand aucun navigateur n'a pris la page : elle le dit, puis donne le lien de la page comme [2] ; `make todo_desktop` sans affichage ne dit plus qu'il ouvre le navigateur
+- Télémétrie de navigation : une entrée qu'un menu calcule à l'affichage, une par serveur LLM connu, n'est plus une pseudo-commande « — » dans l'arbre, qu'aucune entrée de menu ne montre
 
 ## Retiré
 

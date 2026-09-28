@@ -210,6 +210,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On the TODO page, a telemetry reread that returns after a newer one no longer brings back the older code stamp, which could show the code-change banner for up to 10 s
 - In a web session, the rest of a menu entry label written on two lines no longer shows a second time among the menu's notes, under the entry's button that already carries it
 - Navigation telemetry › [4] Desktop window no longer claims that its process opened the browser when no browser took the page: it says so, then gives the page's link as [2] does; `make todo_desktop` without a display no longer says it opens the browser
+- Navigation telemetry: an entry that a menu computes on display, one per known LLM server, is no longer a pseudo-command « — » in the tree, which no menu entry shows
 
 ## Removed
 

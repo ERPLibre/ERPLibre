@@ -360,7 +360,10 @@ def _choices_children(func, todo_dir):
     choices.append/extend) avec dispatch « str(len(choices)-N) ». Renvoie une
     liste de (label, méthode, kwargs) dans l'ordre affiché, ou None si le motif
     ne s'applique pas. Les entrées de CONFIG rejouent via
-    execute_from_configuration ; les entrées APPENDÉES via leur méthode."""
+    execute_from_configuration ; les entrées APPENDÉES via leur méthode. Une
+    entrée appendée dont le libellé n'a ni lettre ni chiffre, le reste d'une
+    f-string calculée à l'affichage, n'est pas une commande : aucune entrée
+    ne le montre. Elle garde sa place, qui situe les suivantes."""
 
     def _dict_label(dnode):
         d = {}
@@ -438,7 +441,8 @@ def _choices_children(func, todo_dir):
     for j, lab in enumerate(appended):
         pos = n_config + j  # 0-based dans la liste globale (stable)
         method = len_disp.get(n_total - 1 - pos)  # None si non mappé
-        children.append((lab, method, {}))
+        if any(c.isalnum() for c in lab):
+            children.append((lab, method, {}))
     return children
 
 
