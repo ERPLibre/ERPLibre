@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Rendus de référence de trois menus de TODO : l'entrée [4] (Navigation
-telemetry), Configuration et Update.
+"""Rendus de référence de menus de TODO : l'entrée [4] (Navigation
+telemetry), Configuration, et la famille Execute : Execute, Code, Config,
+Process, Test et Update.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
-- `terminal` : pour chaque menu appelé seul, qui reçoit ANSWERS (une
-  réponse vide, un numéro sans entrée, 0), ce que montre le terminal,
-  réponses tapées comprises, ce que rend le menu, les clés de télémétrie
-  qu'il enregistre et le nombre de sondes du hub web ;
+- `terminal` : pour chaque menu de MENUS appelé seul, qui reçoit ses
+  réponses (ANSWERS : une réponse vide, un numéro sans entrée, 0), ce que
+  montre le terminal, réponses tapées comprises, ce que rend le menu, les
+  clés de télémétrie qu'il enregistre et le nombre de sondes du hub web ;
 - `session` : quand le vrai TODO, sous la capture de la session web comme
-  dans le worker, suit WALK, les messages `menu` des trois menus, le fil
+  dans le worker, suit WALK, les messages `menu` des menus de CRUMBS, le fil
   d'Ariane de chaque menu traversé et les clés de télémétrie. WALK ne
   répond qu'à des menus, jamais à une feuille : une étape nomme l'entrée
   d'un sous-menu par sa clé de traduction, ou est « 0 ».
@@ -37,14 +38,40 @@ from unittest.mock import patch
 REPO = Path(__file__).resolve().parent.parent
 GOLDEN = Path(__file__).resolve().parent / "todo_menu_golden.json"
 LANGS = ("en", "fr")
-MENUS = ("prompt_telemetry", "prompt_configuration", "prompt_execute_update")
-CRUMBS = ("Navigation telemetry", "Configuration", "Update")
+MENUS = (
+    "prompt_telemetry",
+    "prompt_configuration",
+    "prompt_execute",
+    "prompt_execute_code",
+    "prompt_execute_config",
+    "prompt_execute_process",
+    "prompt_execute_test",
+    "prompt_execute_update",
+)
+CRUMBS = (
+    "Navigation telemetry",
+    "Configuration",
+    "Execute",
+    "Code",
+    "Config",
+    "Process",
+    "Test",
+    "Update",
+)
 ANSWERS = ("", "9", "0")
+# Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
+ANSWERS_OF = {"prompt_execute": ("", "17", "0")}
 # Largeur au-delà de laquelle le fichier de référence ouvre une liste ou
 # un dict, un élément par ligne.
 WIDTH = 200
 CONFIG = {
-    "code_from_makefile": [],
+    "code_from_makefile": [
+        {
+            "prompt_description_key": "Show code status",
+            "makefile_cmd": "forged_status",
+        },
+        {"prompt_description": "Forged code", "makefile_cmd": "forged"},
+    ],
     "update_from_makefile": [
         {
             "prompt_description_key": (
@@ -65,6 +92,12 @@ WALK = (
     ["Code - Developer tools"],
     ["Update - Update all developed staging source code"],
     "0",
+    "0",
+    ["Config - Configuration file management"],
+    "0",
+    ["Process - Execution tools"],
+    "0",
+    ["Test - Test an Odoo module"],
     "0",
     "0",
     "0",
@@ -147,15 +180,16 @@ def _environment(base) -> dict:
 
 
 def terminal(method, lang) -> dict:
-    """Ce que montre `TODO().<method>()`, en `lang`, quand il reçoit
-    ANSWERS : `screen`, ses lignes ; `back`, ce qu'il rend ; `keys`, les
-    clés de télémétrie enregistrées ; `probes`, les sondes du hub web."""
+    """Ce que montre `TODO().<method>()`, en `lang`, quand il reçoit ses
+    réponses, ANSWERS_OF[method] ou ANSWERS : `screen`, ses lignes ; `back`,
+    ce qu'il rend ; `keys`, les clés de télémétrie enregistrées ; `probes`,
+    les sondes du hub web."""
     from script.config import config_file
     from script.todo import todo_i18n
     from script.todo.todo import TODO
     from script.todo.web import launcher
 
-    shown, answers = io.StringIO(), iter(ANSWERS)
+    shown, answers = io.StringIO(), iter(ANSWERS_OF.get(method, ANSWERS))
 
     def typed(prompt):
         # L'invite, puis la réponse et le saut de ligne que le terminal
@@ -214,9 +248,9 @@ def terminal(method, lang) -> dict:
 def session(lang) -> dict:
     """Ce que voit la capture de la session web quand le vrai TODO, en
     `lang`, suit WALK : `crumbs`, le fil d'Ariane de chaque menu traversé ;
-    `menus`, les messages `menu` des trois menus ; `keys`, les clés de
-    télémétrie enregistrées. EOFError, qui nomme sa clé, pour une étape
-    de WALK dont le menu n'a pas l'entrée."""
+    `menus`, les messages `menu` des menus de CRUMBS, dans l'ordre ; `keys`,
+    les clés de télémétrie enregistrées. EOFError, qui nomme sa clé, pour une
+    étape de WALK dont le menu n'a pas l'entrée."""
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         config = base / "todo.json"

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Trois menus de TODO rendent leurs rendus de référence : l'entrée [4]
-(Navigation telemetry), Configuration et Update.
+"""Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
+(Navigation telemetry), Configuration, et la famille Execute : Execute,
+Code, Config, Process, Test et Update.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
@@ -35,13 +36,15 @@ class TestGolden(unittest.TestCase):
         text = golden.GOLDEN.read_text(encoding="utf-8")
         cls.reference = json.loads(text)
 
-    def test_the_reference_covers_the_three_menus_in_both_languages(self):
+    def test_the_reference_covers_each_menu_in_both_languages(self):
+        # Une session passe par Execute et Code plus d'une fois : chaque
+        # menu de CRUMBS y a au moins un message.
         for lang in golden.LANGS:
             terminal = self.reference["terminal"][lang]
             self.assertEqual(sorted(terminal), sorted(golden.MENUS))
             session = self.reference["session"][lang]
-            crumbs = [menu["crumbs"][-1] for menu in session["menus"]]
-            self.assertEqual(sorted(crumbs), sorted(golden.CRUMBS))
+            crumbs = {menu["crumbs"][-1] for menu in session["menus"]}
+            self.assertEqual(crumbs, set(golden.CRUMBS))
 
     def test_the_terminal_shows_the_same_bytes(self):
         for lang in golden.LANGS:
