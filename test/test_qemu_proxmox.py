@@ -167,35 +167,38 @@ class TestLeProfil(unittest.TestCase):
         self.assertIn("install_odoo_18", cmd)
 
 
-# Le script s'installe SUR Debian et appelle les outils de Debian. Une
-# machine qui ne les a pas ne peut pas le JOUER : le shell rend 127 au
-# premier appel, et tout ce qui suit — une sortie tronquée, une chaîne
-# introuvable — est l'effet de cette absence, jamais un défaut du script.
-#
-# Un tel test SAUTE, et dit pourquoi. Un échec appellerait une correction qui
-# n'existe pas, et un rapport qui en porte neuf fait douter de tout le reste :
-# celui qui le lit — humain ou machine — cesse d'y chercher ce qui compte.
-_OUTILS_DEBIAN = ("dpkg", "apt-get", "hostname", "debconf-set-selections")
-
-
-def _sauter_si_outil_debian_manquant(res):
-    """Saute le test quand le script a buté sur un outil absent de l'hôte.
-
-    Jugé sur ce qui S'EST PASSÉ — le code 127 et le nom de l'outil dans la
-    sortie — et non sur un inventaire préalable : une machine peut porter
-    « dpkg » sans « debconf-set-selections », et l'inventaire dirait alors le
-    contraire de l'exécution. Les tests qui attendent un REFUS du script
-    n'atteignent jamais ces outils : ils continuent de tourner partout.
-    """
-    if res.returncode != 127:
-        return
-    sortie = (res.stdout or "") + (res.stderr or "")
-    for outil in _OUTILS_DEBIAN:
-        if outil in sortie:
-            raise unittest.SkipTest(
-                f"« {outil} » absent de cet hôte : le script d'installation"
-                " Proxmox ne se joue que sur une base Debian"
-            )
+# Le script s'installe SUR Debian et appelle les outils de Debian. Ceux de
+# l'hôte qui teste n'en disent rien : une machine peut porter « dpkg » sans
+# « debconf-set-selections », et le script, qui sonde ce dernier par
+# « command -v », saute alors la préréponse sans erreur. Les tests jouent donc
+# une Debian fixe — ces doublures —, et le même résultat sur tout hôte.
+# « hostname » et « ip » en font partie : le vrai nom et les vraies adresses
+# de l'hôte entreraient sinon dans la sortie. Un test qui veut une autre
+# réponse passe la sienne par « stubs ».
+DEBIAN = {
+    # Le PATH de _lance remplace celui de l'appelant : sans doublure, « sudo »
+    # serait le vrai, qui demande un mot de passe ou élève sans rien dire.
+    # Même en --dry-run, le script lit sous sudo (« test -d » de l'ESP,
+    # « dpkg -C ») : la doublure exécute donc la commande avec les droits de
+    # l'utilisateur, jamais plus.
+    "sudo": 'exec "$@"',
+    # Aucun paquet à moitié configuré (-C), aucun paquet posé (-s, -l).
+    "dpkg": 'case "$1" in -C) exit 0 ;; *) exit 1 ;; esac',
+    "dpkg-query": "exit 1",
+    "apt-get": "exit 0",
+    "debconf-set-selections": "cat >/dev/null",
+    "hostname": (
+        'case "$1" in -I | -i | --ip-address) echo 192.0.2.10 ;;'
+        " -f) echo pve.example ;; *) echo pve ;; esac"
+    ),
+    # Les deux formes que lit host_ip, avec la même adresse.
+    "ip": (
+        'case "$*" in'
+        " *route*) echo '1.0.0.0 via 192.0.2.1 dev eth0 src 192.0.2.10' ;;"
+        " *addr*) echo '2: eth0 inet 192.0.2.10/24 scope global eth0' ;;"
+        " *) exit 1 ;; esac"
+    ),
+}
 
 
 class TestLeScript(unittest.TestCase):
@@ -223,12 +226,7 @@ class TestLeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
-            # Le PATH ci-dessous remplace celui de l'appelant : sans doublure,
-            # « sudo » serait le vrai, qui demande un mot de passe ou élève
-            # sans rien dire. Même en --dry-run, le script lit sous sudo
-            # (« test -d » de l'ESP, « dpkg -C ») : la doublure exécute donc
-            # la commande avec les droits de l'utilisateur, jamais plus.
-            stubs = {"sudo": 'exec "$@"', **(stubs or {})}
+            stubs = {**DEBIAN, **(stubs or {})}
             for nom, corps in stubs.items():
                 (bin_dir / nom).write_text(f"#!/bin/bash\n{corps}\n")
                 (bin_dir / nom).chmod(0o755)
@@ -246,9 +244,6 @@ class TestLeScript(unittest.TestCase):
                 ),
                 timeout=120,
             )
-        # HORS du « with » : le répertoire des doublures est rendu avant que
-        # le saut ne remonte, et aucun test ne laisse le sien derrière lui.
-        _sauter_si_outil_debian_manquant(res)
         return res
 
     def test_an_unpublished_architecture_is_refused_by_name(self):
