@@ -423,6 +423,20 @@ class TestLaLigneSshVersLaVm(unittest.TestCase):
         code 255 — et toute VM derrière un rebond était injoignable."""
         if not shutil.which("ssh"):
             raise unittest.SkipTest("ssh absent")
+        # Le lanceur unitaire met en tête du PATH un « ssh » qui REFUSE tout :
+        # un test ne touche pas l'hôte. La question posée ici — ssh accepte-t-il
+        # cette ligne — n'a alors aucune réponse, et compter le refus comme une
+        # réponse ferait rougir l'épreuve pour une raison qui n'est pas la
+        # sienne. « -G » n'ouvre aucune connexion : il n'imprime que la
+        # configuration effective, et rend 0 sur un nom qui ne se résout pas.
+        sonde = subprocess.run(
+            ["ssh", "-G", "sans-resolution.invalid"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if sonde.returncode != 0:
+            raise unittest.SkipTest("aucun ssh utilisable ici")
         ligne = V.ssh_prefix(self.DISTANTE_AVEC_REBOND)
         vu = subprocess.run(
             shlex.split(ligne.replace("ssh ", "ssh -G ", 1)),
