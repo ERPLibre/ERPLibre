@@ -651,6 +651,11 @@ class TestTodoMenuFiles(unittest.TestCase):
             sorted(imported),
             [
                 "prompt_configuration",
+                "prompt_execute",
+                "prompt_execute_code",
+                "prompt_execute_config",
+                "prompt_execute_process",
+                "prompt_execute_test",
                 "prompt_execute_update",
                 "prompt_telemetry",
             ],
@@ -678,7 +683,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 3)
+        self.assertEqual(len(menus), 8)
         for menu in menus.values():
             calls = [(menu.name, {}), (menu.state, {}), (menu.intro, {})]
             for item in menu.entries:

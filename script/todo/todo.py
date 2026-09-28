@@ -319,113 +319,11 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_execute(self):
-        """Les seize sous-menus d'Execute, en cinq sections. Le texte vient
-        de `fill_help_info`, qui le numérote : dans une session web, le
-        menu porte ses entrées exactes, sans que la capture relise
-        l'écran."""
-        choices = [
-            {"section": t("Development")},
-            {"prompt_description": t("Code - Developer tools")},
-            {
-                "prompt_description": t(
-                    "Config - Configuration file management"
-                )
-            },
-            {"prompt_description": t("Run - Execute and install an instance")},
-            {"prompt_description": t("Test - Test an Odoo module")},
-            {"prompt_description": t("Process - Execution tools")},
-            {"section": t("Data")},
-            {"prompt_description": t("Database - Database tools")},
-            {"prompt_description": t("Analyse - Odoo database analysis")},
-            {"prompt_description": t("Transform data - Transform your data")},
-            {"section": t("Sources & documentation")},
-            {"prompt_description": t("Git - Git and shell tools")},
-            {"prompt_description": t("Doc - Documentation search")},
-            {"section": t("AI & automation")},
-            {"prompt_description": t("GPT code - AI assistant tools")},
-            {
-                "prompt_description": t(
-                    "Automation - Demonstration of developed features"
-                )
-            },
-            {"section": t("Deployment, network & security")},
-            {"prompt_description": t("Deploy - Deploy ERPLibre locally")},
-            {"prompt_description": t("Network - Network tools")},
-            {"prompt_description": t("Security - Dependency security audit")},
-            {"prompt_description": t("Docker / Podman - Container engines")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                status = self.prompt_execute_code()
-                if status is not False:
-                    return
-            elif status == "2":
-                status = self.prompt_execute_config()
-                if status is not False:
-                    return
-            elif status == "3":
-                status = self.prompt_execute_instance()
-                if status is not False:
-                    return
-            elif status == "4":
-                status = self.prompt_execute_test()
-                if status is not False:
-                    return
-            elif status == "5":
-                status = self.prompt_execute_process()
-                if status is not False:
-                    return
-            elif status == "6":
-                status = self.prompt_execute_database()
-                if status is not False:
-                    return
-            elif status == "7":
-                status = self.prompt_execute_analyse()
-                if status is not False:
-                    return
-            elif status == "8":
-                status = self.prompt_execute_transform()
-                if status is not False:
-                    return
-            elif status == "9":
-                status = self.prompt_execute_git()
-                if status is not False:
-                    return
-            elif status == "10":
-                status = self.prompt_execute_doc()
-                if status is not False:
-                    return
-            elif status == "11":
-                status = self.prompt_execute_gpt_code()
-                if status is not False:
-                    return
-            elif status == "12":
-                status = self.prompt_execute_function()
-                if status is not False:
-                    return
-            elif status == "13":
-                status = self.prompt_execute_deploy()
-                if status is not False:
-                    return
-            elif status == "14":
-                status = self.prompt_execute_network()
-                if status is not False:
-                    return
-            elif status == "15":
-                status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "16":
-                status = self.prompt_execute_container()
-                if status is not False:
-                    return
-            else:
-                print(t("Command not found !"))
+        """Les seize sous-menus d'Execute, en cinq sections (EXECUTE,
+        `menus/execute.py`), dessinés une fois, à l'entrée. Chaque
+        sous-menu rend False sur son [0], et Execute reprend. Rend None sur
+        [0]."""
+        return navigate(self, menus_execute.EXECUTE)
 
     def prompt_install(self):
         print("Detect first installation from code source.")
@@ -3002,75 +2900,14 @@ class TODO(
         )
 
     def prompt_execute_code(self):
+        """Outils du développeur (CODE, `menus/execute.py`) : les entrées de
+        `code_from_makefile`, puis Open SHELL, Upgrade Module, Debug et
+        Update. Dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_execute.CODE)
+
+    def _code_intro(self):
+        """La ligne qui ouvre Code, avant son menu."""
         print(f"🤖 {t('What do you need for development?')}")
-        #         help_info = """Commande :
-        #         [1] Status Git local et distant
-        #         [2] Démarrer le générateur de code
-        #         [3] Format - Formatage automatique selon changement [ou manuelle]
-        #         [4] Qualité - Qualité logiciel, détecter les fichiers qui manquent les licences AGPLv3
-        #         [0] Retour
-        # """
-        #         help_info = """Commande :
-        #         [1] Status Git local et distant
-        #         [0] Retour
-        # """
-
-        # L'arbre de télémétrie lit les entrées de configuration dans cette
-        # affectation (`_choices_children`) : elle reste un appel seul de
-        # get_config, et une liste absente se remplace ensuite.
-        choices = self.config_file.get_config("code_from_makefile")
-        if choices is None:
-            choices = []
-
-        menu_entry = {
-            "prompt_description": t("Open SHELL"),
-        }
-        choices.append(menu_entry)
-
-        menu_entry = {
-            "prompt_description": t("Upgrade Module"),
-        }
-        choices.append(menu_entry)
-
-        choices.append(
-            {
-                "prompt_description": t("Debug"),
-            }
-        )
-
-        # Déplacé depuis le menu Execute : mise à jour de tout le code source
-        # de dev en staging (sous-menu de mise à jour).
-        choices.append(
-            {
-                "prompt_description": t(
-                    "Update - Update all developed staging source code"
-                ),
-            }
-        )
-
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == str(len(choices)):
-                self.prompt_execute_update()
-            elif status == str(len(choices) - 1):
-                self.debug_ide()
-            elif status == str(len(choices) - 2):
-                self.upgrade_module()
-            elif status == str(len(choices) - 3):
-                self.open_shell_on_database()
-            else:
-                # [N], tel qu'affiché, est la N-ième entrée de configuration ;
-                # les quatre dernières ont leur branche ci-dessus.
-                shown = [str(n) for n in range(1, len(choices) - 3)]
-                if status in shown:
-                    self.execute_from_configuration(choices[int(status) - 1])
-                else:
-                    print(t("Command not found !"))
 
     # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
     # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
@@ -5421,24 +5258,13 @@ class TODO(
         return nom
 
     def prompt_execute_process(self):
-        print(f"🤖 {t('Manage execution processes!')}")
-        choices = [
-            {"prompt_description": t("Kill Odoo process from actual port")},
-            {"prompt_description": t("Kill git daemon server process")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Processus d'exécution (PROCESS, `menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.PROCESS)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.process_kill_from_port()
-            elif status == "2":
-                self.process_kill_git_daemon()
-            else:
-                print(t("Command not found !"))
+    def _process_intro(self):
+        """La ligne qui ouvre Process, avant son menu."""
+        print(f"🤖 {t('Manage execution processes!')}")
 
     def process_kill_git_daemon(self):
         self.execute.exec_command_live(
@@ -5627,35 +5453,13 @@ class TODO(
             print(t("Global auto-rewrite hook: inactive"))
 
     def prompt_execute_config(self):
-        print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
-        choices = [
-            {"section": t("Generate")},
-            {"prompt_description": t("Generate all configuration")},
-            {"prompt_description": t("Generate from pre-configuration")},
-            {"prompt_description": t("Generate from backup file")},
-            {"prompt_description": t("Generate from database")},
-            {"section": t("Advanced")},
-            {"prompt_description": t("Setup queue job for parallelism")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Configuration d'ERPLibre et d'Odoo (CONFIG, `menus/execute.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_execute.CONFIG)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.generate_config()
-            elif status == "2":
-                self.generate_config_from_preconfiguration()
-            elif status == "3":
-                self.generate_config_from_backup()
-            elif status == "4":
-                self.generate_config_from_database()
-            elif status == "5":
-                self.generate_config_queue_job()
-            else:
-                print(t("Command not found !"))
+    def _config_intro(self):
+        """La ligne qui ouvre Config, avant son menu."""
+        print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
 
     def prompt_execute_network(self):
         print(f"🤖 {t('Network tools!')}")
@@ -5841,40 +5645,13 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_execute_test(self):
-        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
-        choices = [
-            {"prompt_description": t("Test a module")},
-            {"prompt_description": t("Test a module with code coverage")},
-            {"prompt_description": t("ERPLibre unit tests")},
-            {"prompt_description": t("Mail unit tests")},
-            {"prompt_description": t("Analyse unit tests")},
-            # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
-            # de vraies machines et durent des heures.
-            {"prompt_description": t("Long tests - real VMs, hours")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Tests d'un module, de la suite unitaire, et tests longs (TEST,
+        `menus/execute.py`). Rend False sur [0]."""
+        return navigate(self, menus_execute.TEST)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_test_module(coverage=False)
-            elif status == "2":
-                self.execute_test_module(coverage=True)
-            elif status == "3":
-                self.execute_unit_tests()
-            elif status == "4":
-                # Nommé : l'arbre de télémétrie ne lit que les kwargs, et
-                # [4] › [1] rejoue la feuille avec eux.
-                self.execute_unit_tests(pattern="test_mail*.py")
-            elif status == "5":
-                self.execute_unit_tests(pattern="test_analyse*.py")
-            elif status == "6":
-                self.prompt_execute_longtest()
-            else:
-                print(t("Command not found !"))
+    def _test_intro(self):
+        """La ligne qui ouvre Test, avant son menu."""
+        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
 
     def execute_test_module(self, coverage=False):
         # Module name

@@ -1758,11 +1758,12 @@ class TestLeMenu(unittest.TestCase):
             os.chdir(ancien)
 
     def test_the_test_menu_offers_it(self):
-        import inspect
+        from script.todo.menus import execute as menus_execute
 
-        src = inspect.getsource(TODO.prompt_execute_test)
-        self.assertIn("prompt_execute_longtest", src)
-        self.assertIn("Long tests", src)
+        entries = {e.key: e.action for e in menus_execute.TEST.entries}
+        self.assertEqual(
+            entries["Long tests - real VMs, hours"], "prompt_execute_longtest"
+        )
 
 
 class LeCacheDeLEtage1(unittest.TestCase):

@@ -161,49 +161,6 @@ class MenuCoherence:
             )
 
 
-class TestExecuteMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Execute : seize sous-menus, en cinq sections.
-
-    Une entrée se reconnaît au début de son libellé, avant « - » : « Doc »
-    et « Docker / Podman » commencent de même.
-    """
-
-    SOURCE = TODO_PY
-    ENTRY = "def prompt_execute(self):"
-    END = "def prompt_install(self):"
-
-    # Chaque entrée du menu et la méthode qu'elle DOIT atteindre. Sans cette
-    # table, le test ne vérifie que l'alignement des numéros — et laisse
-    # passer le défaut même qu'une renumérotation produit : une entrée qui
-    # garde son rang mais atterrit dans le mauvais écran.
-    #
-    # Une renumérotation, l'opération risquée, ne touche PAS cette table.
-    # Ajouter ou retirer une entrée demande d'y toucher, et c'est voulu :
-    # c'est le seul moment où quelqu'un doit dire où mène la nouvelle entrée.
-    EXPECTED = {
-        "Code": "prompt_execute_code",
-        "Config": "prompt_execute_config",
-        "Run": "prompt_execute_instance",
-        "Test": "prompt_execute_test",
-        "Process": "prompt_execute_process",
-        "Database": "prompt_execute_database",
-        "Analyse": "prompt_execute_analyse",
-        "Transform data": "prompt_execute_transform",
-        "Git": "prompt_execute_git",
-        "Doc": "prompt_execute_doc",
-        "GPT code": "prompt_execute_gpt_code",
-        "Automation": "prompt_execute_function",
-        "Deploy": "prompt_execute_deploy",
-        "Network": "prompt_execute_network",
-        "Security": "prompt_execute_security",
-        "Docker / Podman": "prompt_execute_container",
-    }
-
-    def _key(self, label):
-        """« Doc - Documentation search » -> « Doc »."""
-        return label.split(" - ", 1)[0].strip()
-
-
 class TestLaParitéProxmox(unittest.TestCase):
     """Deux capacités du menu QEMU/KVM que le menu Proxmox offre aussi.
 
@@ -982,6 +939,150 @@ class TestUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestExecuteMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu Execute : seize sous-menus, en cinq sections.
+
+    Une entrée se reconnaît au début de son libellé, avant « - » : « Doc »
+    et « Docker / Podman » commencent de même.
+    """
+
+    MENU = "prompt_execute"
+    BACK = None
+    # Chaque entrée du menu et la méthode qu'elle DOIT atteindre. Sans cette
+    # table, le test ne vérifie que l'alignement des numéros — et laisse
+    # passer le défaut même qu'une renumérotation produit : une entrée qui
+    # garde son rang mais atterrit dans le mauvais écran.
+    #
+    # Une renumérotation, l'opération risquée, ne touche PAS cette table.
+    # Ajouter ou retirer une entrée demande d'y toucher, et c'est voulu :
+    # c'est le seul moment où quelqu'un doit dire où mène la nouvelle entrée.
+    EXPECTED = {
+        "Code": "prompt_execute_code",
+        "Config": "prompt_execute_config",
+        "Run": "prompt_execute_instance",
+        "Test": "prompt_execute_test",
+        "Process": "prompt_execute_process",
+        "Database": "prompt_execute_database",
+        "Analyse": "prompt_execute_analyse",
+        "Transform data": "prompt_execute_transform",
+        "Git": "prompt_execute_git",
+        "Doc": "prompt_execute_doc",
+        "GPT code": "prompt_execute_gpt_code",
+        "Automation": "prompt_execute_function",
+        "Deploy": "prompt_execute_deploy",
+        "Network": "prompt_execute_network",
+        "Security": "prompt_execute_security",
+        "Docker / Podman": "prompt_execute_container",
+    }
+
+    def _key(self, label):
+        """« Doc - Documentation search » -> « Doc »."""
+        return label.split(" - ", 1)[0].strip()
+
+    def test_each_submenu_gives_back_false(self):
+        # Le navigateur ne lit pas ce que rend une action : un sous-menu qui
+        # rendrait autre chose que False pour refermer Execute ne le
+        # refermerait plus. Écrit à la main, il ne rend que False ; déclaré,
+        # il rend navigate(self, …), dont le menu a `back=False`. Un
+        # `return` nu compte pour None.
+        import inspect
+        import textwrap
+
+        from script.todo import menus
+        from script.todo.todo import TODO
+
+        for entry in self.entries:
+            source = textwrap.dedent(
+                inspect.getsource(getattr(TODO, entry.action))
+            )
+            returns = [
+                r.value or ast.Constant(None)
+                for r in ast.walk(ast.parse(source))
+                if isinstance(r, ast.Return)
+            ]
+            self.assertTrue(returns, entry.action)
+            for value in returns:
+                if isinstance(value, ast.Constant):
+                    self.assertIs(value.value, False, entry.action)
+                    continue
+                self.assertIsInstance(value, ast.Call, entry.action)
+                self.assertEqual(ast.unparse(value.func), "navigate")
+                family, name = ast.unparse(value.args[1]).split(".")
+                module = getattr(menus, family.removeprefix("menus_"))
+                self.assertIs(getattr(module, name).back, False, entry.action)
+
+
+class TestCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Code : les entrées de todo.json, puis Open SHELL, Upgrade Module,
+    Debug et Update, toujours les quatre dernières."""
+
+    MENU = "prompt_execute_code"
+    EXPECTED = {
+        "Open SHELL": "open_shell_on_database",
+        "Upgrade Module": "upgrade_module",
+        "Debug": "debug_ide",
+        "Update": "prompt_execute_update",
+    }
+
+    def test_the_configured_entries_come_first(self):
+        first = self.menu.entries[0]
+        self.assertEqual(
+            (first.config_key, first.action, first.kwarg),
+            ("code_from_makefile", "execute_from_configuration", "instance"),
+        )
+
+
+class TestConfigMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Config : quatre générations de la configuration, puis la file
+    d'attente des tâches."""
+
+    MENU = "prompt_execute_config"
+    EXPECTED = {
+        "Generate all configuration": "generate_config",
+        "Generate from pre-configuration": (
+            "generate_config_from_preconfiguration"
+        ),
+        "Generate from backup file": "generate_config_from_backup",
+        "Generate from database": "generate_config_from_database",
+        "Setup queue job": "generate_config_queue_job",
+    }
+
+
+class TestProcessMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Process : arrêter Odoo sur son port, ou le serveur git daemon."""
+
+    MENU = "prompt_execute_process"
+    EXPECTED = {
+        "Kill Odoo process": "process_kill_from_port",
+        "Kill git daemon": "process_kill_git_daemon",
+    }
+
+
+class TestTestMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Test : un module, avec ou sans couverture, trois suites unitaires,
+    et les tests longs, qui créent de vraies machines."""
+
+    MENU = "prompt_execute_test"
+    EXPECTED = {
+        "Test a module": "execute_test_module",
+        "ERPLibre unit tests": "execute_unit_tests",
+        "Mail unit tests": "execute_unit_tests",
+        "Analyse unit tests": "execute_unit_tests",
+        "Long tests": "prompt_execute_longtest",
+    }
+
+    def test_each_entry_passes_the_arguments_its_label_names(self):
+        self.assertEqual(
+            [(e.key, e.kwargs) for e in self.entries if e.kwargs],
+            [
+                ("Test a module", {"coverage": False}),
+                ("Test a module with code coverage", {"coverage": True}),
+                ("Mail unit tests", {"pattern": "test_mail*.py"}),
+                ("Analyse unit tests", {"pattern": "test_analyse*.py"}),
+            ],
+        )
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -1261,6 +1362,11 @@ class TestMenuLabels(unittest.TestCase):
             {
                 "prompt_telemetry",
                 "prompt_configuration",
+                "prompt_execute",
+                "prompt_execute_code",
+                "prompt_execute_config",
+                "prompt_execute_process",
+                "prompt_execute_test",
                 "prompt_execute_update",
             },
             set(declared),
