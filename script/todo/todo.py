@@ -146,6 +146,7 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.setops_menu import SetopsMenuMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
@@ -219,6 +220,7 @@ class TODO(
     LimaMenuMixin,
     EgressBookMenuMixin,
     DevstackMenuMixin,
+    SetopsMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
 ):
@@ -742,9 +744,7 @@ class TODO(
         "prompt_execute_test": "Test",
         "prompt_execute_vpn": "VPN",
         "prompt_execute_devstack": "Devstack",
-        "prompt_execute_forge": "Forge",
-        "prompt_execute_lima": "Lima",
-        "prompt_execute_egress_book": "Address book",
+        "prompt_execute_setops": "Set-OPS",
         "prompt_configuration": "Configuration",
     }
 
@@ -1112,14 +1112,22 @@ class TODO(
         # TODO faire l'upgrade d'un odoo vers un autre
 
         choices = self.config_file.get_config("update_from_makefile")
-        menu_entry = {
-            "prompt_description": t("Upgrade Odoo - Migration Database"),
-        }
-        choices.append(menu_entry)
-        poetry_entry = {
-            "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
-        }
-        choices.append(poetry_entry)
+        # Les deux entrées propres au menu portent « method » plutôt qu'un
+        # rang : un « elif status == str(len(choices) - 1) » désigne une
+        # position, donc il change de cible dès que todo.json greffe une
+        # entrée de plus, et il oblige chaque branche à recompter.
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Odoo - Migration Database"),
+                "method": "_update_odoo_migration",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
+                "method": "upgrade_poetry",
+            }
+        )
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -1127,33 +1135,25 @@ class TODO(
             print()
             if status == "0":
                 return False
-            elif status == str(len(choices) - 1):
-                upgrade = todo_upgrade.TodoUpgrade(self)
-                try:
-                    upgrade.execute_odoo_upgrade()
-                except todo_upgrade.MigrationRewind:
-                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
-                    # relancer, et l'écran de reprise repartira de l'étape
-                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
-                    # évite de la reprendre au milieu de son état local.
-                    print(
-                        f"\n⏪ {t('Rewound.')}"
-                        f" {t('Relaunch the migration to resume from there.')}"
-                    )
-            elif status == str(len(choices)):
-                self.upgrade_poetry()
-            else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+            if not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
+
+    def _update_odoo_migration(self):
+        """Joue la migration de base de données, et absorbe un rembobinage.
+
+        `MigrationRewind` signale un état DÉJÀ rembobiné et écrit : rendre la
+        main plutôt que rappeler la méthode évite de reprendre celle-ci au
+        milieu de son état local, et l'écran de reprise repart de l'étape
+        choisie au relancement.
+        """
+        upgrade = todo_upgrade.TodoUpgrade(self)
+        try:
+            upgrade.execute_odoo_upgrade()
+        except todo_upgrade.MigrationRewind:
+            print(
+                f"\n⏪ {t('Rewound.')}"
+                f" {t('Relaunch the migration to resume from there.')}"
+            )
 
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
@@ -1238,6 +1238,17 @@ class TODO(
                     "Deploy - verify a deployed VM, layer by layer"
                 ),
                 "method": "_qemu_verify_vm",
+            }
+        )
+        # Déclarée par « method » comme les cinq qui la précèdent : son rang
+        # n'entre pas dans le calcul des « elif », et la greffe de todo.json
+        # qui suit s'affiche après elle.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)"
+                ),
+                "method": "prompt_execute_setops",
             }
         )
         # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
