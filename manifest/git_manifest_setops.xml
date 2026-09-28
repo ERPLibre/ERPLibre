@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="alliance-boreale" fetch="https://forge.alliance-boreale.ca/Alliance-Boreale/" />
+
+    <!-- Set-OPS : moteur de construction d'infrastructure (plan déclaratif,
+         Ansible, Proxmox), piloté par todo.py. Fusionné SUR DEMANDE
+         seulement, par l'option « with_setops » de
+         script/git/git_merge_repo_manifest.py, que passe
+         ./script/manifest/update_manifest_local_setops.sh. Aucune liste de
+         conf/ fusionnée par défaut ne le nomme, et la fusion ne le reprend
+         d'elle-même que si .repo/project.list porte déjà son chemin.
+
+         Chemin sous private/repo/, et non sous script/ : le moteur cherche
+         ses écosystèmes et ses sites parmi ses dossiers FRÈRES ; ses clés
+         vivent hors de tout dépôt, sous ~/.config ($XDG_CONFIG_HOME).
+         private/repo/ est ignoré par le .gitignore d'ERPLibre, si bien que
+         ces frères, qui portent des données de client, n'entrent jamais
+         dans un commit.
+
+         Révision = SHA complet : deux postes synchronisés rapatrient le
+         même code, et la faire avancer est un geste délibéré (nouveau SHA
+         ici, relu, commité). « upstream » nomme la branche qui porte ce
+         SHA : « repo sync -c » ne rapatrie qu'elle tant qu'elle le
+         contient, et toutes les branches sinon, comme sans « upstream ». Ce
+         doit être un nom de branche : repo cherche refs/heads/<upstream>,
+         et un SHA à cette place fait échouer la synchronisation. Aucune
+         « clone-depth » : en profondeur 1, rapatrier un SHA qui n'est plus
+         la pointe exige une forge qui l'accepte.
+
+         L'ÉPINGLE NE SUIT QUE LA BRANCHE PRINCIPALE. Elle a un temps visé une
+         branche de contribution, qui portait seule l'option « json » de «
+         scripts/runbooks.py lister » — celle dont l'écran Runbooks de todo
+         dérive ses séquences ; le tiret double ne peut pas s'écrire dans un
+         commentaire XML, d'où l'option nommée sans lui. Cette contribution
+         est fusionnée et la branche de côté effacée, donc l'épingle est
+         revenue sur la principale.
+
+         La leçon vaut pour la prochaine fois : une branche de côté s'efface
+         après sa fusion, et une épingle qui la visait devient IRRAPATRIABLE
+         pour un poste neuf — « repo sync » cherche « refs/heads/<upstream> »
+         et ne la trouve plus, alors que le clone déjà posé continue de
+         marcher. Rien ne le signale ici ; c'est en sondant la forge qu'on le
+         voit.
+
+         Une fois rapatrié, le moteur fait partie de l'espace de travail :
+         « repo forall », donc « make repo_do_stash », le parcourent comme
+         les autres projets. Un sync qui l'écarte — « repo init -g » sans
+         « setops », branche sans ce manifeste — supprime son arbre s'il
+         est propre, fichiers ignorés compris : toute liste de groupes du
+         dépôt nomme donc « setops ». -->
+    <project
+        name="Set-OPS-Public.git"
+        path="private/repo/Set-OPS-Public"
+        remote="alliance-boreale"
+        revision="5f6ffda5e827adb67fba436dc5f3c1f2f8f6e51d"
+        upstream="main"
+        groups="setops"
+    />
+</manifest>

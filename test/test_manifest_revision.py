@@ -77,8 +77,8 @@ class TestManifestRevision(unittest.TestCase):
 
 
 class TestScriptsDeManifeste(unittest.TestCase):
-    def test_les_six_scripts_sont_vus(self):
-        self.assertEqual(len(SCRIPTS), 6, [s.name for s in SCRIPTS])
+    def test_les_sept_scripts_sont_vus(self):
+        self.assertEqual(len(SCRIPTS), 7, [s.name for s in SCRIPTS])
 
     def test_aucun_sha_passe_a_repo_init(self):
         for script in SCRIPTS:
@@ -88,8 +88,10 @@ class TestScriptsDeManifeste(unittest.TestCase):
                 self.assertTrue(inits)
                 for ligne in inits:
                     self.assertIn('-b "${MANIFEST_REV}"', ligne)
-                self.assertIn(
-                    "MANIFEST_REV=$(manifest_revision) || exit 1", texte
+                # Un refus est TRAITÉ : il sort, ou s'ajoute aux gardes
+                # d'un script qui les fait toutes parler avant de sortir.
+                self.assertRegex(
+                    texte, r"MANIFEST_REV=\$\(manifest_revision\) \|\| \S"
                 )
 
     def test_revision_resolue_avant_le_demon(self):
