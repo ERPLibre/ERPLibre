@@ -3872,6 +3872,7 @@ TRANSLATIONS = {
     # Page web de télémétrie : vues, recherche, tri et relevé système.
     "Tree": {"fr": "Arbre", "en": "Tree"},
     "List": {"fr": "Liste", "en": "List"},
+    "Kanban": {"fr": "Kanban", "en": "Kanban"},
     "System": {"fr": "Système", "en": "System"},
     "Sort": {"fr": "Tri", "en": "Sort"},
     "Code order": {"fr": "Ordre du code", "en": "Code order"},

@@ -400,6 +400,119 @@ class TestNameSortWithLetterlessLabels(unittest.TestCase):
         )
 
 
+# Un arbre factice : Exécution porte une feuille et deux menus, dont Doc,
+# vide ; Code porte deux feuilles et un menu ; la racine, aucune feuille.
+# `view` rend chaque colonne en [chemin, clé du menu, chemins des cartes].
+KANBAN_CHECK = r"""
+const leaf = (key, label, parent) =>
+    ({key, label, path: `${parent} › ${key}`, menu: false, children: []});
+const menu = (key, label, parent, children) =>
+    ({key, label, path: `${parent} › ${key}`, menu: true, children});
+const code = menu("Code", "Code", "TODO › Execute", [
+    leaf("Status", "🔍 Statut", "TODO › Execute › Code"),
+    leaf("Format", "🎨 Formater", "TODO › Execute › Code"),
+    menu("Update", "Mise à jour", "TODO › Execute › Code",
+        [leaf("All", "🔄 Tout", "TODO › Execute › Code › Update")])]);
+const tree = {key: "TODO", label: "TODO", path: "TODO", menu: true,
+    children: [
+        menu("Execute", "🧰 Exécution", "TODO", [
+            code,
+            leaf("Quit", "🚪 Quitter", "TODO › Execute"),
+            menu("Doc", "Doc", "TODO › Execute", [])]),
+        menu("Telemetry", "📊 Télémétrie", "TODO",
+            [leaf("Web", "🌐 Web", "TODO › Telemetry")])]};
+const counts = {"TODO › Telemetry": 7, "TODO › Execute": 3,
+    "TODO › Execute › Code": 2, "TODO › Execute › Code › Format": 4};
+const view = (sort, query = "") =>
+    m.kanbanColumns(tree, counts, query, sort, "fr").map((column) =>
+        [column.path, column.node.key, column.cards.map((card) => card.path)]);
+const [first] = m.kanbanColumns(tree, counts, "", "code", "fr");
+console.log(JSON.stringify({
+    code: view("code"),
+    usage: view("usage"),
+    name: view("name"),
+    query: view("code", "STATUT"),
+    none: view("code", "zzz"),
+    nodes: first.cards[0].nodes.map((node) => node.key),
+    view: m.readFragment("#view=kanban").view,
+    sort: m.effectiveSort("kanban", ""),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestKanban(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(KANBAN_CHECK, "model.js")
+
+    def test_one_column_per_menu_that_holds_leaves_in_code_order(self):
+        # Comme `_command_columns` : profondeur d'abord, un menu sans
+        # feuille (la racine, Doc) n'a pas de colonne.
+        self.assertEqual(
+            self.out["code"],
+            [
+                ["🧰 Exécution", "Execute", ["🧰 Exécution › 🚪 Quitter"]],
+                [
+                    "🧰 Exécution › Code",
+                    "Code",
+                    [
+                        "🧰 Exécution › Code › 🔍 Statut",
+                        "🧰 Exécution › Code › 🎨 Formater",
+                    ],
+                ],
+                [
+                    "🧰 Exécution › Code › Mise à jour",
+                    "Update",
+                    ["🧰 Exécution › Code › Mise à jour › 🔄 Tout"],
+                ],
+                ["📊 Télémétrie", "Telemetry", ["📊 Télémétrie › 🌐 Web"]],
+            ],
+        )
+        # Une carte garde son chemin de nœuds, qui la lance.
+        self.assertEqual(self.out["nodes"], ["Execute", "Quit"])
+
+    def test_usage_orders_columns_and_cards(self):
+        usage = self.out["usage"]
+        self.assertEqual(
+            [column[1] for column in usage],
+            ["Telemetry", "Execute", "Code", "Update"],
+        )
+        self.assertEqual(
+            usage[2][2],
+            [
+                "🧰 Exécution › Code › 🎨 Formater",
+                "🧰 Exécution › Code › 🔍 Statut",
+            ],
+        )
+        # Par nom, les cartes seules : les colonnes restent dans l'ordre du
+        # code.
+        name = self.out["name"]
+        self.assertEqual(
+            [column[1] for column in name],
+            ["Execute", "Code", "Update", "Telemetry"],
+        )
+        self.assertEqual(name[1][2], usage[2][2])
+
+    def test_search_keeps_matching_cards_and_their_columns_only(self):
+        self.assertEqual(
+            self.out["query"],
+            [
+                [
+                    "🧰 Exécution › Code",
+                    "Code",
+                    ["🧰 Exécution › Code › 🔍 Statut"],
+                ]
+            ],
+        )
+        self.assertEqual(self.out["none"], [])
+
+    def test_the_view_lives_in_the_fragment_and_sorts_by_usage(self):
+        self.assertEqual(
+            (self.out["view"], self.out["sort"]), ("kanban", "usage")
+        )
+
+
 VIEW_CHECK = r"""
 console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,

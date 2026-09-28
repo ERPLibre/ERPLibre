@@ -1,12 +1,16 @@
-// Ce que montrent les vues Arbre et Liste, sans OWL ni DOM : recherche et tri
-// de l'arbre des menus, vue et tri tirés du fragment de l'URL. Un nœud est
-// celui de /api/telemetry : {key, label, entry, path, menu, children,
-// section?} ; `counts` associe un chemin à son compteur.
+// Ce que montrent les vues Arbre, Liste et Kanban, sans OWL ni DOM :
+// recherche et tri de l'arbre des menus, vue et tri tirés du fragment de
+// l'URL. Un nœud est celui de /api/telemetry : {key, label, entry, path,
+// menu, children, section?} ; `counts` associe un chemin à son compteur.
 
-export const VIEWS = ["tree", "list", "system", "sessions", "history"];
+export const VIEWS = ["tree", "list", "kanban", "system", "sessions", "history"];
 // Tris offerts par vue ; le premier est celui de la vue quand le fragment
 // n'en nomme aucun qu'elle offre.
-export const SORTS = {tree: ["code", "usage"], list: ["usage", "name", "code"]};
+export const SORTS = {
+    tree: ["code", "usage"],
+    list: ["usage", "name", "code"],
+    kanban: ["usage", "name", "code"],
+};
 
 // Minuscules sans accents : « Système » et « systeme » se rejoignent.
 export function fold(text) {
@@ -71,13 +75,47 @@ export function leaves(node, trail = []) {
 // « usage » (compteur décroissant), « name » (libellé sans icône, selon
 // `lang`) ou « code ». Tri stable.
 export function listRows(tree, counts, query, sort, lang) {
-    const wanted = fold(query.trim());
-    const rows = leaves(tree).filter((row) => fold(row.path).includes(wanted));
+    return rankRows(leaves(tree), counts, query, sort, lang);
+}
+
+// Colonnes du Kanban, comme `_command_columns` de la TUI : une par menu qui
+// porte des feuilles, dans l'ordre du code (profondeur d'abord). Une
+// colonne est {node, path, cards} : `node` son menu, `path` les libellés
+// traduits depuis le premier niveau, `cards` ses feuilles, rangées comme
+// celles de la Liste (`listRows`). Une colonne dont aucune carte ne reste
+// n'est pas rendue ; par usage, les colonnes vont aussi par compteur
+// décroissant de leur menu.
+export function kanbanColumns(tree, counts, query, sort, lang) {
+    const columns = [];
+    const walk = (node, nodes) => {
+        const here = node.children.filter((child) => !child.menu);
+        const cards = rankRows(leaves({children: here}, nodes), counts, query, sort, lang);
+        if (cards.length) {
+            columns.push({node, path: nodes.map((step) => step.label).join(" › ") || node.label, cards});
+        }
+        for (const child of node.children) {
+            if (child.menu) {
+                walk(child, [...nodes, child]);
+            }
+        }
+    };
+    walk(tree, []);
     if (sort === "usage") {
-        rows.sort((a, b) => usage(counts, b.node) - usage(counts, a.node));
+        columns.sort((a, b) => usage(counts, b.node) - usage(counts, a.node));
+    }
+    return columns;
+}
+
+// `rows` ({node, path}) dont le chemin contient `query`, rangées par `sort`
+// (voir `listRows`).
+function rankRows(rows, counts, query, sort, lang) {
+    const wanted = fold(query.trim());
+    const kept = rows.filter((row) => fold(row.path).includes(wanted));
+    if (sort === "usage") {
+        kept.sort((a, b) => usage(counts, b.node) - usage(counts, a.node));
     } else if (sort === "name") {
         const collator = new Intl.Collator(lang, {sensitivity: "base"});
-        rows.sort((a, b) => {
+        kept.sort((a, b) => {
             const nameA = bare(a.node.label);
             const nameB = bare(b.node.label);
             // Un libellé sans lettre ni chiffre (« () », un tiret seul, un
@@ -89,7 +127,7 @@ export function listRows(tree, counts, query, sort, lang) {
             return collator.compare(nameA, nameB);
         });
     }
-    return rows;
+    return kept;
 }
 
 // Tri effectif d'une vue : `sort` s'il est offert, sinon le premier offert.
