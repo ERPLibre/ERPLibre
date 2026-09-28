@@ -41,3 +41,47 @@ resource offers, the name a VM would fall back to, and what a lock freezes.
 foundation already carries — that is what keeps the architecture from drifting
 back into two copies.
 
+## Web interface and desktop window
+
+TODO also runs in a browser page or in a desktop window, served by a local
+hub, one per checkout, under the user's account. Each web session is the real
+TODO in a terminal of its own: menus and questions become buttons and fields,
+and the terminal still answers everything.
+
+- Open: TODO › [4] Navigation telemetry › [2] WEB, or `make todo_web`. The
+  page opens in the browser, and its one-time link is also printed in the
+  terminal; without a display, TODO prints the SSH tunnel to run from the
+  workstation.
+- Stop: [4] › [3], or `make todo_web_stop`. The hub also stops by itself
+  after 30 minutes with no session and no request.
+- Desktop window: [4] › [4], or `make todo_desktop`, opens the same page in a
+  native window (pywebview, not installed by default: TODO prints the
+  commands to install it).
+  `make todo_desktop_install` adds an ERPLibre TODO entry for this checkout
+  to the desktop's application menu.
+- File picker: when a command asks for a file or a directory, the page shows
+  a picker, and the desktop window also offers the system's file dialog.
+- Task logs: each task run in a web session is kept 30 days under
+  `~/.erplibre/todo_web/`, 0600, secrets masked; `make todo_web_purge`
+  removes those older than 30 days.
+- Source: the footer of the page offers its source, as section 13 of the
+  AGPL asks.
+
+Security model:
+
+- the hub listens on 127.0.0.1 only;
+- a login is a one-time code, valid 120 s, carried by the fragment of the
+  link, never by a command line;
+- the session cookie bears the hub's port in its name, `HttpOnly` and
+  `SameSite=Strict`, and every write carries a CSRF token;
+- every write and every WebSocket must come from the exact Origin of the
+  page;
+- the hub refuses to run as root: sudo stays per command, on the terminal
+  of the session.
+
+Limits: 3 sessions at once; at most 5 new sessions per minute; a login lasts
+12 hours, and 16 live at once. Refused login codes count against no limit: a
+good code is always accepted. A ▶ launch refused by the limit has already
+closed the idle session it was to replace; the page shows the wait in seconds
+at the refusal, without counting it down.
+
