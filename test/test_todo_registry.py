@@ -1,27 +1,37 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le registre des menus et son navigateur.
+"""Le registre des menus, son navigateur, et l'arbre de télémétrie qui lit
+les menus déclarés.
 
 Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
 action, état, suffixe ou intro note son appel ; les réponses viennent de
 `click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
-web.
+web. L'arbre se lit dans un répertoire temporaire : un todo.py minimal,
+une copie du module du registre et des fichiers de menus écrits par le
+test ; rien n'y est importé.
 """
 
 import io
+import shutil
+import sys
+import tempfile
 import types
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 import click
 
-from script.todo import todo_i18n
+from script.todo import todo_i18n, todo_telemetry
 from script.todo.todo_i18n import t
 from script.todo.ui import legacy, port
 from script.todo.ui.navigator import navigate
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+
+REPO = Path(__file__).resolve().parent.parent
+REGISTRY_PY = REPO / "script" / "todo" / "ui" / "registry.py"
 
 
 class FakeTodo:
@@ -269,6 +279,176 @@ class TestNavigator(unittest.TestCase):
             [("1", "First", "Forged section"), ("0", "Back", None)],
         )
         self.assertEqual({m["source"] for m in menus}, {"fill_help_info"})
+
+
+def _assert_nothing_imported(test, before, todo_dir):
+    """Aucun module importé depuis `before`, un ensemble de noms de
+    sys.modules, ne vient de `todo_dir`, ni n'est todo.py ou un fichier
+    de menus de TODO."""
+    for name in set(sys.modules) - before:
+        path = str(getattr(sys.modules[name], "__file__", None) or "")
+        test.assertFalse(path.startswith(str(todo_dir)), name)
+        test.assertNotEqual(name, "script.todo.todo")
+        test.assertFalse(name.startswith("script.todo.menus"), name)
+
+
+# Un todo.py minimal : le menu principal ouvre Configuration, déclarée au
+# registre, et Forged, que son code dérive.
+FAKE_TODO = """\
+class TODO:
+    _MENU_LABELS = {
+        "run": "TODO",
+        "prompt_configuration": "Configuration",
+        "prompt_forged": "Forged",
+    }
+
+    def run(self):
+        choices = [
+            {"prompt_description": t("Configuration")},
+            {"prompt_description": t("Forged")},
+        ]
+        status = input()
+        if status == "1":
+            self.prompt_configuration()
+        elif status == "2":
+            self.prompt_forged()
+
+    def prompt_configuration(self):
+        return navigate(self, menus.CONFIGURATION)
+
+    def prompt_forged(self):
+        choices = [{"prompt_description": t("Stay")}]
+        status = input()
+        if status == "1":
+            self.stay()
+"""
+
+FAKE_MENUS = """\
+from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+
+CONFIGURATION = Menu(
+    "prompt_configuration",
+    "Configuration",
+    [
+        Section("Interface"),
+        Entry("Language", "change_language", suffix="language_label"),
+        Entry("Pick", "pick", kwargs={"key": "forged_key"}),
+        Entry("Forged", "prompt_forged"),
+        Section("Maintenance"),
+        FromConfig("forged_list", "run_element", "instance"),
+    ],
+    back=None,
+)
+"""
+
+
+class TestDeclaredTree(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        (self.dir / "todo.py").write_text(FAKE_TODO)
+        (self.dir / "ui").mkdir()
+        shutil.copy(REGISTRY_PY, self.dir / "ui" / "registry.py")
+        (self.dir / "menus").mkdir()
+        self.menus_py = self.dir / "menus" / "forged.py"
+        self.menus_py.write_text(FAKE_MENUS)
+        (self.dir / "todo.json").write_text(
+            '{"forged_list": [{"prompt_description": "Forged element"}]}'
+        )
+
+    def tree(self):
+        """L'arbre de `self.dir`, lu sans rien importer : aucun module neuf
+        ne vient de `self.dir`, et ni todo.py ni les menus de TODO."""
+        before = set(sys.modules)
+        tree = todo_telemetry.build_code_tree(self.dir / "todo.py")
+        _assert_nothing_imported(self, before, self.dir)
+        return tree
+
+    def test_a_declared_menu_is_read_from_its_declaration(self):
+        [configuration, forged] = self.tree()["children"]
+        self.assertEqual(
+            (configuration["label"], configuration["entry"]),
+            ("Configuration", "Configuration"),
+        )
+        [language, pick, submenu, element] = configuration["children"]
+        self.assertEqual(
+            language,
+            {
+                "label": "Language",
+                "is_menu": False,
+                "children": [],
+                "method": "change_language",
+                "kwargs": {},
+                "section": "Interface",
+                "entry": "",
+            },
+        )
+        self.assertEqual(
+            (pick["method"], pick["kwargs"], "entry" in pick),
+            ("pick", {"key": "forged_key"}, False),
+        )
+        # Une entrée qui ouvre un menu : son nœud, et le libellé qui l'ouvre.
+        self.assertEqual(
+            (submenu["label"], submenu["is_menu"], submenu["entry"]),
+            ("Forged", True, "Forged"),
+        )
+        self.assertEqual(submenu["children"], forged["children"])
+        self.assertEqual(
+            element,
+            {
+                "label": "Forged element",
+                "is_menu": False,
+                "children": [],
+                "method": "run_element",
+                "kwargs": {
+                    "instance": {"prompt_description": "Forged element"}
+                },
+                "section": "Maintenance",
+            },
+        )
+
+    def test_a_computed_value_declares_nothing(self):
+        # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
+        # fichier à moitié écrit, puis un littéral du mauvais type : un nom
+        # de menu, une action, des kwargs, une entrée, des kwargs que JSON
+        # n'écrit pas.
+        for n, text in enumerate(
+            (
+                "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
+                FAKE_MENUS.replace('"Language"', 't("Language")'),
+                FAKE_MENUS.replace("back=None", "forged=None"),
+                FAKE_MENUS.replace('{"key": "forged_key"}', '{["key"]: 1}'),
+                FAKE_MENUS + "OTHER = Menu(",
+                FAKE_MENUS.replace(
+                    '"prompt_configuration",', '["prompt_configuration"],'
+                ),
+                FAKE_MENUS.replace('"pick", kwargs', '["pick"], kwargs'),
+                FAKE_MENUS.replace('{"key": "forged_key"}', "[1]"),
+                FAKE_MENUS.replace('Section("Maintenance")', '"Maintenance"'),
+                FAKE_MENUS.replace('"forged_key"', "{1}"),
+            )
+        ):
+            with self.subTest(case=n):
+                self.assertNotEqual(text, FAKE_MENUS)
+                self.menus_py.write_text(text)
+                self.assertEqual(todo_telemetry._declared_menus(self.dir), {})
+                [configuration, _] = self.tree()["children"]
+                self.assertEqual(configuration["children"], [])
+
+    def test_the_fields_come_from_the_registry_module(self):
+        fields = todo_telemetry._registry_fields(REGISTRY_PY)
+        self.assertEqual(
+            fields["Menu"],
+            ["name", "crumb", "entries", "state", "intro", "back", "render"],
+        )
+        self.assertEqual(
+            fields["FromConfig"], ["config_key", "action", "kwarg"]
+        )
+        self.assertEqual(fields["Section"], ["key"])
+        self.assertEqual(
+            fields["Entry"][:4], ["key", "action", "kwargs", "suffix"]
+        )
 
 
 if __name__ == "__main__":

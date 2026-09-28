@@ -170,12 +170,15 @@ CSP = (
     "frame-ancestors 'none'"
 )
 # Fichiers que lit build_code_tree : todo.py, les mixins qu'il importe et
-# todo.json à côté ; « *.py » couvre aussi todo_i18n.py, rechargé quand il
-# change. Les surcharges de private/todo/ n'en sont pas : build_code_tree ne
-# lit que todo.json.
+# todo.json à côté, les fichiers de menus du registre et le module du
+# registre, qui nomme leurs arguments ; « *.py » couvre aussi todo_i18n.py,
+# rechargé quand il change. Les surcharges de private/todo/ n'en sont pas :
+# build_code_tree ne lit que todo.json.
 TREE_SOURCES = (
     "script/todo/*.py",
     "script/todo/todo.json",
+    "script/todo/menus/*.py",
+    "script/todo/ui/registry.py",
 )
 
 

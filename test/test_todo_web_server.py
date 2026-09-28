@@ -462,6 +462,16 @@ class TODO:
         if status == "1":
             self.leave()
 """
+# Un fichier de menus du registre, qui déclare le menu Execute de
+# FAKE_TODO ; le module du registre, qui nomme ses arguments.
+DECLARED = """\
+from script.todo.ui.registry import Entry, Menu
+
+EXECUTE = Menu("prompt_execute", "Execute", [Entry("Stay", "stay")])
+"""
+REGISTRY_PY = (
+    Path(__file__).resolve().parents[1] / "script/todo/ui/registry.py"
+)
 
 
 class ApiCase(HubCase):
@@ -587,6 +597,28 @@ class TestTelemetryApi(ApiCase):
             private.write_text("{}")
             await self.get_json("/api/telemetry?lang=en")
             self.assertEqual(spy.call_count, 3)
+
+    async def test_the_menus_of_the_registry_are_sources_of_the_tree(self):
+        # Le module du registre, puis un fichier de menus : chacun change
+        # l'empreinte, et le menu déclaré remplace celui du code, sans que
+        # le hub importe ni l'un ni l'autre.
+        before = set(sys.modules)
+        codes = [(await self.get_json("/api/telemetry?lang=en"))["code"]]
+        todo_dir = self.todo_py.parent
+        (todo_dir / "ui").mkdir()
+        (todo_dir / "ui" / "registry.py").write_bytes(REGISTRY_PY.read_bytes())
+        codes.append((await self.get_json("/api/telemetry?lang=en"))["code"])
+        (todo_dir / "menus").mkdir()
+        (todo_dir / "menus" / "forged.py").write_text(DECLARED)
+        data = await self.get_json("/api/telemetry?lang=en")
+        codes.append(data["code"])
+        self.assertEqual(len(set(codes)), 3)
+        [execute] = data["tree"]["children"]
+        self.assertEqual([c["key"] for c in execute["children"]], ["Stay"])
+        for name in set(sys.modules) - before:
+            path = str(getattr(sys.modules[name], "__file__", None) or "")
+            self.assertFalse(path.startswith(str(self.root)), name)
+            self.assertFalse(name.startswith("script.todo.menus"), name)
 
     async def test_the_code_stamp_changes_when_a_source_does(self):
         first = (await self.get_json("/api/telemetry?lang=en"))["code"]

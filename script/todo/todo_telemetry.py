@@ -476,6 +476,163 @@ def _mixin_files(todo_py: Path) -> list:
     return fichiers
 
 
+def _registry_fields(registry_py) -> dict:
+    """{constructeur: [champ, …]} des classes de `registry_py`, le module du
+    registre, leurs champs annotés dans l'ordre : le nom de chaque argument
+    positionnel d'un fichier de menus. {} si le fichier ne se lit pas."""
+    try:
+        mod = ast.parse(Path(registry_py).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return {}
+    return {
+        cls.name: [
+            stmt.target.id
+            for stmt in cls.body
+            if isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+        ]
+        for cls in mod.body
+        if isinstance(cls, ast.ClassDef)
+    }
+
+
+def _declared(node, fields):
+    """Valeur de `node`, une expression d'un fichier de menus : l'appel
+    d'un constructeur de `fields`, rendu en dict {"type": constructeur,
+    champ: valeur, …}, une liste, ou un littéral. ValueError pour toute
+    autre expression : un fichier de menus ne calcule rien."""
+    if isinstance(node, ast.Call):
+        name = node.func.id if isinstance(node.func, ast.Name) else None
+        names = fields.get(name)
+        if names is None or len(node.args) > len(names):
+            raise ValueError(f"not a registry call: {ast.unparse(node)}")
+        out = {"type": name}
+        for field, arg in zip(names, node.args):
+            out[field] = _declared(arg, fields)
+        for keyword in node.keywords:
+            if keyword.arg not in names:
+                raise ValueError(f"no field {keyword.arg!r} in {name}")
+            out[keyword.arg] = _declared(keyword.value, fields)
+        return out
+    if isinstance(node, ast.List):
+        return [_declared(element, fields) for element in node.elts]
+    return ast.literal_eval(node)
+
+
+# Champs texte que lisent l'arbre et le navigateur, par constructeur : ceux
+# qu'un appel doit donner, puis ceux qui peuvent valoir None.
+_TEXT_FIELDS = {
+    "Menu": (("name", "crumb"), ("state", "intro")),
+    "Section": (("key",), ()),
+    "Entry": (("key", "action"), ("suffix",)),
+    "FromConfig": (("config_key", "action", "kwarg"), ()),
+}
+
+
+def _check_menu(menu) -> None:
+    """ValueError si `menu`, le dict que `_declared` rend d'un appel de
+    `Menu`, n'a pas la forme que lisent l'arbre et le navigateur : chaque
+    champ de _TEXT_FIELDS une chaîne (ou None s'il est optionnel),
+    `entries` une liste de Section, Entry et FromConfig, les `kwargs` d'une
+    Entry None ou un dict aux clés de chaîne. TypeError si ces `kwargs` ne
+    s'écrivent pas en JSON, comme l'arbre que sert le hub."""
+    entries = menu.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError(f"entries is not a list: {entries!r}")
+    for item in [menu, *entries]:
+        kind = item.get("type") if isinstance(item, dict) else None
+        kinds = (
+            ("Menu",) if item is menu else ("Section", "Entry", "FromConfig")
+        )
+        if kind not in kinds:
+            raise ValueError(f"not one of {kinds}: {item!r}")
+        required, optional = _TEXT_FIELDS[kind]
+        for field in required + optional:
+            value = item.get(field)
+            if not (
+                isinstance(value, str) or (value is None and field in optional)
+            ):
+                raise ValueError(f"{kind}.{field} is not a string: {value!r}")
+        kwargs = item.get("kwargs")
+        if kwargs is not None and not (
+            isinstance(kwargs, dict)
+            and all(isinstance(k, str) for k in kwargs)
+        ):
+            raise ValueError(f"kwargs is not a dict of names: {kwargs!r}")
+        json.dumps(kwargs)
+
+
+def _declared_menus(todo_dir) -> dict:
+    """{méthode: menu} des menus que déclarent `<todo_dir>/menus/*.py`, un
+    menu étant le dict que `_declared` rend d'un appel de `Menu`. Lus par
+    AST, sans rien importer : le hub, qui garde ses modules, lit toujours
+    les fichiers tels qu'ils sont sur le disque. Un fichier qui ne se lit
+    pas, dont une valeur se calcule, ou dont un menu n'a pas la forme que
+    vérifie `_check_menu`, ne déclare rien."""
+    todo_dir = Path(todo_dir)
+    fields = _registry_fields(todo_dir / "ui" / "registry.py")
+    menus = {}
+    for path in sorted(todo_dir.glob("menus/*.py")):
+        found = {}
+        try:
+            mod = ast.parse(path.read_text(encoding="utf-8"))
+            for stmt in mod.body:
+                if not isinstance(stmt, ast.Assign):
+                    continue
+                value = _declared(stmt.value, fields)
+                if isinstance(value, dict) and value["type"] == "Menu":
+                    _check_menu(value)
+                    found[value["name"]] = value
+        except (OSError, SyntaxError, TypeError, ValueError):
+            continue
+        menus.update(found)
+    return menus
+
+
+def _declared_children(menu, todo_dir, labels, build) -> list:
+    """Nœuds des entrées de `menu`, un menu déclaré : le nœud de `build`
+    pour une `Entry` qui ouvre un menu de `labels`, une feuille pour une
+    autre, une feuille par élément de la liste d'un `FromConfig`. Une
+    entrée dont le libellé finit par un `suffix` calculé à l'affichage
+    porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle."""
+    children, section = [], None
+    for item in menu.get("entries") or []:
+        kind = item.get("type") if isinstance(item, dict) else None
+        if kind == "Section":
+            section = item.get("key")
+        elif kind == "Entry" and item.get("action") in labels:
+            child = build(item["action"])
+            child["entry"] = "" if item.get("suffix") else item.get("key")
+            children.append(child)
+        elif kind == "Entry":
+            leaf = {
+                "label": item.get("key"),
+                "is_menu": False,
+                "children": [],
+                "method": item.get("action"),
+                "kwargs": dict(item.get("kwargs") or {}),
+                "section": section,
+            }
+            if item.get("suffix"):
+                leaf["entry"] = ""
+            children.append(leaf)
+        elif kind == "FromConfig":
+            for element in _config_list(item.get("config_key"), todo_dir):
+                children.append(
+                    {
+                        "label": element.get("prompt_description_key")
+                        or element.get("prompt_description")
+                        or "?",
+                        "is_menu": False,
+                        "children": [],
+                        "method": item.get("action"),
+                        "kwargs": {item.get("kwarg"): element},
+                        "section": section,
+                    }
+                )
+    return children
+
+
 def build_code_tree(todo_path=None) -> dict | None:
     """Construit l'arbre des menus/commandes EN LISANT le code de todo.py
     (AST). Chaque menu (méthode de _MENU_LABELS) devient un nœud ; ses branches
@@ -486,7 +643,9 @@ def build_code_tree(todo_path=None) -> dict | None:
     segment du fil d'Ariane, que le parent montre souvent autrement. Un
     nœud dont le parent n'écrit pas le libellé porte un `entry` vide :
     aucune entrée du menu ne lui répond ; une feuille prend alors le nom de
-    sa méthode. None si l'analyse échoue."""
+    sa méthode. Un menu que déclare le registre (`menus/*.py` à côté de
+    todo.py) se lit dans sa déclaration, et non dans le code de sa
+    méthode (`_declared_menus`). None si l'analyse échoue."""
     p = Path(todo_path) if todo_path else (Path(__file__).parent / "todo.py")
     todo_dir = p.parent  # todo.json est à côté de todo.py
     try:
@@ -515,6 +674,7 @@ def build_code_tree(todo_path=None) -> dict | None:
     labels = _menu_labels(cls)
     if "run" not in methods or not labels:
         return None
+    declared = _declared_menus(todo_dir)
     seen = set()
 
     def build(method):
@@ -526,6 +686,12 @@ def build_code_tree(todo_path=None) -> dict | None:
         if method in seen or method not in methods:
             return node
         seen.add(method)
+        if method in declared:
+            node["children"] = _declared_children(
+                declared[method], todo_dir, labels, build
+            )
+            seen.discard(method)
+            return node
         func = methods[method]
         disp = _dispatch(func)
         centries = _choice_entries(func)
