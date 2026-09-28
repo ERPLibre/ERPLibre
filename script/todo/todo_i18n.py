@@ -11695,7 +11695,7 @@ TRANSLATIONS = {
         "en": "Path to the backup .zip (empty to cancel): ",
     },
     "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
-    # Choix d'un chemin, dans le terminal d'une session web.
+    # Choix d'un chemin par le port (pick_path).
     "No such directory: ": {
         "fr": "Répertoire introuvable : ",
         "en": "No such directory: ",

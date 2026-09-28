@@ -30,6 +30,7 @@ from unittest.mock import patch
 
 import click
 import urwid
+from test_todo_ui_port import FakeLoop
 from todo_web_env import private_env
 
 from script.todo import auto_ask, todo_file_browser, todo_i18n, ui
@@ -505,6 +506,19 @@ class TestFileBrowser(CaptureCase):
 
         self.capture("forged.zip")
         self.browse(close)
+        self.assertEqual(self.chosen, [os.path.join(self.base, "forged.zip")])
+
+    def test_a_terminal_port_runs_the_urwid_browser_once(self):
+        # Le mode enregistrement lie un port dérivé de TerminalPort : son
+        # pick_path lance la boucle d'origine du navigateur, jamais le
+        # navigateur capturé, qui le rappellerait sans fin.
+        class Recording(port.TerminalPort):
+            pass
+
+        self.capture(target=Recording())
+        self.enterContext(patch.object(urwid, "MainLoop", FakeLoop))
+        self.enterContext(patch.object(FakeLoop, "press", "forged.zip"))
+        self.browse()
         self.assertEqual(self.chosen, [os.path.join(self.base, "forged.zip")])
 
     def test_the_next_question_reads_a_fresh_screen(self):
