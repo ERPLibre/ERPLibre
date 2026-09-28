@@ -9,10 +9,11 @@ provenance note les empreintes. La page, elle, est servie depuis la table
 que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
-`static/src/history.js`) tournent sous node, quand il est installé.
+`static/src/history.js`, `static/src/prompt.js`) tournent sous node, quand
+il est installé. Les mots de la page sont vérifiés par
+`test_todo_web_i18n.py`.
 """
 
-import ast
 import base64
 import hashlib
 import json
@@ -23,7 +24,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from script.todo import todo_i18n, todo_telemetry
 from script.todo.web import protocol, server
 
 REPO = Path(__file__).resolve().parent.parent
@@ -46,29 +46,6 @@ def _recorded(name, lib=OWL):
         rf"^- {re.escape(name)} sha256: ([0-9a-f]{{64}})$", text, re.M
     )
     return match.group(1) if match else None
-
-
-def _command_names() -> set:
-    """Méthodes que l'arbre de TODO rattache à un menu ou à une feuille.
-
-    Seuls les noms qui contiennent « _ » sont gardés : « run » ou « quit »
-    sont aussi des mots courants, un nom composé ne l'est jamais.
-    """
-    names = set()
-
-    def walk(node):
-        if node.get("method"):
-            names.add(node["method"])
-        for child in node["children"]:
-            walk(child)
-
-    walk(todo_telemetry.build_code_tree())
-    source = (REPO / "script" / "todo" / "todo.py").read_text(encoding="utf-8")
-    cls = next(
-        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ClassDef)
-    )
-    names |= set(todo_telemetry._menu_labels(cls))
-    return {name for name in names if "_" in name}
 
 
 class TestVendoredOwl(unittest.TestCase):
@@ -222,37 +199,21 @@ class TestPage(unittest.TestCase):
         [button] = re.findall(r"<button\b[^>]*>", source)
         self.assertIn('t-att-aria-label="props.node.label"', button)
 
-    def test_the_page_code_names_no_command(self):
-        names = _command_names()
-        self.assertGreater(len(names), 50)
-        for path in sorted(SRC.glob("*.js")):
-            words = set(re.findall(r"\w+", path.read_text(encoding="utf-8")))
-            self.assertFalse(words & names, path.name)
-
-    def test_every_key_of_the_page_is_translated(self):
-        # t() rend une clé inconnue telle quelle : une faute de frappe
-        # s'afficherait en anglais dans une page française.
-        keys = set()
-        labels = re.compile(r"^const \w+_LABELS = \{.*?\};$", re.M | re.S)
-        for path in SRC.glob("*.js"):
-            text = path.read_text(encoding="utf-8")
-            keys |= {m[1] for m in re.findall(r"\bt\((['\"])(.+?)\1\)", text)}
-            for block in labels.findall(text):
-                keys |= set(re.findall(r'"([^"]+)"', block))
-        # Les clés d'un objet sur plusieurs lignes sont lues aussi.
-        self.assertIn("Connection lost.", keys)
-        self.assertGreater(len(keys), 10)
-        missing = sorted(keys - set(todo_i18n.TRANSLATIONS))
-        self.assertEqual(missing, [])
-
 
 # Prélude des scripts node : le module nommé en argument, importé sous `m`
 # par une URL data:, toujours lue comme un module ES — un .js hors d'un
-# paquet « type: module » ne l'est pas avant node 22.
+# paquet « type: module » ne l'est pas avant node 22. Un module qu'il
+# importe par « ./ » devient lui aussi une URL data:, qu'une URL data:
+# peut importer, là où un chemin relatif ne se résout pas.
 NODE_PRELUDE = r"""
 const {readFileSync} = await import("node:fs");
-const code = readFileSync(process.argv[1]).toString("base64");
-const m = await import(`data:text/javascript;base64,${code}`);
+const {dirname, join} = await import("node:path");
+const url = (file) => {
+    const code = readFileSync(file, "utf8").replace(/from "\.\/([\w.]+)"/g,
+        (_, name) => `from "${url(join(dirname(file), name))}"`);
+    return `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+};
+const m = await import(url(process.argv[1]));
 """
 
 
@@ -631,6 +592,120 @@ class TestHistoryText(unittest.TestCase):
                 "… 12 <bytes omitted>",
                 "⏱ <timed out>",
             ],
+        )
+
+
+# Un menu de treize entrées, 0 en plus : le filtre paraît, et plus à douze.
+# Les clés 10 à 13 prolongent « 1 » ; « 2 » porte un accent.
+MENU_CHECK = r"""
+const items = [
+    ...Array.from({length: 13}, (_, n) => ({key: String(n + 1),
+        label: n === 1 ? "🖥 Système" : `Entry ${n + 1}`,
+        section: n < 3 ? null : "Other"})),
+    {key: "0", label: "🔙 Back", section: null},
+];
+const keys = items.map((item) => item.key);
+const press = (sequence) => {
+    let typed = "";
+    const chosen = [];
+    for (const key of sequence) {
+        const out = m.menuKey(keys, typed, key);
+        typed = out.typed;
+        if (out.choose !== null) chosen.push(out.choose);
+    }
+    return [typed, chosen];
+};
+console.log(JSON.stringify({
+    groups: m.menuGroups(items).map((g) =>
+        [g.section, g.items.map((item) => item.key)]),
+    back: [m.backItem(items).key, m.backItem(items.slice(0, 3))],
+    filtered: [m.filterItems(items, " SYSTEME ").map((item) => item.key),
+        m.filterItems(items, "12").map((item) => item.key),
+        m.filterItems(items, "  ").length],
+    presses: [["5"], ["1"], ["1", "Enter"], ["1", "2"], ["1", "9"],
+        ["1", "Backspace", "0"], ["Tab", "x"], ["Escape"]].map(press),
+    pause: [m.menuPause(keys, "1"), m.menuPause(keys, "19")],
+    filters: [m.showsFilter(items), m.showsFilter(items.slice(1))],
+    screens: [
+        {t: "menu", text: "📍 TODO\nCommand:\n[1] Execute\n  [0] 🚪 Quit\n"},
+        {t: "menu", text: "Choice [1]: "},
+        {t: "menu", text: "[0] Back: "},
+        {t: "ask", text: "[1] Execute\n[0] Quit\n"},
+    ].map((question) => m.carriesScreen(
+        {...question, items: [{key: "1"}, {key: "0"}]})),
+    keys: [[false, 900], [false, 1249], [false, 1250], [true, 5000]].map(
+        ([repeat, timeStamp]) => m.keyCounts({repeat, timeStamp}, 1000)),
+    answerable: [[{qid: 2}, null, 2], [{qid: 2}, null, 1], [{qid: 2}, 2, 2],
+        [null, null, 2]].map(([question, pending, qid]) =>
+        m.answerable(question, pending, qid)),
+    limits: [m.FILTER_FROM, m.PAUSE, m.ANSWER_LIMIT, m.ARM],
+    sendable: ["", "forged", "x".repeat(4096), "x".repeat(4097),
+        "🧰".repeat(4096), "tab\t", "esc\u001b]0;x", "del\u007f",
+        "c1\u009b", "half\ud800"].map(m.sendable),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestMenuWidget(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(MENU_CHECK, "prompt.js")
+
+    def test_entries_group_by_section_with_zero_apart(self):
+        rest = [str(n) for n in range(4, 14)]
+        self.assertEqual(
+            self.out["groups"], [[None, ["1", "2", "3"]], ["Other", rest]]
+        )
+        self.assertEqual(self.out["back"], ["0", None])
+
+    def test_the_filter_ignores_case_and_accents_or_names_a_key(self):
+        self.assertEqual(self.out["filtered"], [["2"], ["12"], 14])
+        self.assertEqual(self.out["limits"][0], 12)
+        # Treize entrées numérotées montrent le filtre, douze non : l'entrée
+        # 0 ne compte pas.
+        self.assertEqual(self.out["filters"], [True, False])
+
+    def test_keys_choose_as_in_the_cli(self):
+        # « 5 » part seul ; « 1 » attend, 10 à 13 le prolongent ; ce qui ne
+        # mène à aucune clé s'efface.
+        self.assertEqual(
+            self.out["presses"],
+            [
+                ["", ["5"]],
+                ["1", []],
+                ["", ["1"]],
+                ["", ["12"]],
+                ["", []],
+                ["", ["0"]],
+                ["", []],
+                ["", []],
+            ],
+        )
+        self.assertEqual(self.out["pause"], ["1", None])
+        self.assertEqual(self.out["limits"][1], 700)
+
+    def test_a_menu_whose_text_lists_its_entries_carries_its_screen(self):
+        # Le menu principal passe tout son écran à l'invite ; « Choice
+        # [1]: » et « [0] Back: » ne portent que leur invite ; un `ask`
+        # n'est pas un menu.
+        self.assertEqual(self.out["screens"], [True, False, False, False])
+
+    def test_nothing_answers_until_the_widget_has_been_seen(self):
+        # Une touche d'avant son apparition, ou de moins de 250 ms après,
+        # visait la question précédente ; une touche tenue se répète.
+        self.assertEqual(self.out["keys"], [False, False, True, False])
+        self.assertEqual(self.out["limits"][3], 250)
+
+    def test_only_the_open_question_is_answered_once(self):
+        # La question ouverte ; une autre ; déjà répondue ; aucune.
+        self.assertEqual(self.out["answerable"], [True, False, False, False])
+
+    def test_an_answer_is_what_the_hub_accepts(self):
+        self.assertEqual(self.out["limits"][2], protocol.ANSWER_LIMIT)
+        self.assertEqual(
+            self.out["sendable"],
+            [True, True, True, False, True, False, False, False, False, False],
         )
 
 

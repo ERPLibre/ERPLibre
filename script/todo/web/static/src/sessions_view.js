@@ -6,6 +6,10 @@
 // son anneau garde. La vue reste montée, cachée, quand une autre s'affiche :
 // la session ne se détache pas. Ce module ne nomme aucune commande.
 //
+// Un menu de TODO (`menu`) s'affiche au-dessus du terminal en boutons
+// natifs (MenuView) ; répondre par eux ou par le terminal revient au même :
+// le worker prend la première réponse, puis `answered` ferme le widget.
+//
 // L'état du terminal vient du hub (`tty_state`), jamais du texte : l'écho
 // coupé en mode canonique ouvre un champ masqué, dont la valeur part au
 // terminal et n'est gardée nulle part ; un processus qui lit le terminal
@@ -16,6 +20,8 @@
 // (`dropped`).
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
+import {MenuView} from "./menu_view.js";
+import {answerable} from "./prompt.js";
 import {
     asksSecret,
     closedState,
@@ -53,6 +59,7 @@ const STATE_LABELS = {
 };
 
 export class SessionsView extends Component {
+    static components = {MenuView};
     static template = xml`
         <section class="sessions"
             t-att-class="{fullscreen: state.status === 'open' and state.tty.altscreen and !state.windowed}"
@@ -90,11 +97,16 @@ export class SessionsView extends Component {
                 <span id="secret-prompt" class="visually-hidden" t-esc="state.prompt"/>
                 <button type="button" t-on-click="sendSecret" t-esc="env.t('Send')"/>
             </div>
-            <div t-if="state.status === 'open' and state.answers.length" class="toolbar" role="group"
+            <div t-if="state.status === 'open' and state.answers.length and !structured" class="toolbar" role="group"
                 t-att-aria-label="env.t('Quick answers')">
                 <t t-foreach="state.answers" t-as="answer" t-key="answer">
                     <button type="button" t-on-click="() => this.answer(answer)" t-esc="answer"/>
                 </t>
+            </div>
+            <div t-if="structured" class="prompt-panel">
+                <MenuView t-if="structured.t === 'menu'" t-key="structured.qid" question="structured"
+                    pending="state.pending === structured.qid" visible="props.visible"
+                    answer.bind="reply" cancel.bind="cancel"/>
             </div>
             <div class="terminal" t-ref="terminal"/>
         </section>`;
@@ -111,11 +123,14 @@ export class SessionsView extends Component {
             raw: false,
             windowed: false,
             notice: "",
+            question: null, // la dernière question du worker, jusqu'à `answered`
+            pending: null, // le qid auquel la page a répondu
         });
         this.panel = useRef("terminal");
         this.secretField = useRef("secret");
         // Le champ masqué prend le clavier dès qu'il paraît, et quand la vue
-        // revient ; parti, il le rend au terminal si personne ne l'a pris.
+        // revient ; parti, lui ou le widget d'une question, le clavier revient
+        // au terminal si personne ne l'a pris.
         useEffect(
             (field, visible) => {
                 if (field && visible) {
@@ -124,7 +139,7 @@ export class SessionsView extends Component {
                     this.term?.focus();
                 }
             },
-            () => [this.secretField.el, this.props.visible]
+            () => [this.secretField.el, this.props.visible, this.structured?.qid]
         );
         this.socket = null;
         this.bye = null;
@@ -156,8 +171,16 @@ export class SessionsView extends Component {
         });
     }
 
+    // Le champ masqué de TtyWatch, pour l'invite d'un programme : une
+    // question du worker a son propre widget.
     get secret() {
-        return this.state.status === "open" && asksSecret(this.state.tty);
+        return this.state.status === "open" && asksSecret(this.state.tty) && !this.structured;
+    }
+
+    // La question du worker que la page montre en widget, ou null.
+    get structured() {
+        const question = this.state.question;
+        return this.state.status === "open" && question?.t === "menu" ? question : null;
     }
 
     get noticeText() {
@@ -184,7 +207,7 @@ export class SessionsView extends Component {
         // Le mode brut vaut pour une session : il ne suit pas vers une autre.
         const raw = Boolean(id) && id === this.state.id && this.state.raw;
         Object.assign(this.state, {id, status: "connecting", code: null, tty: {...TTY}, answers: [], raw});
-        Object.assign(this.state, {prompt: "", windowed: false, notice: ""});
+        Object.assign(this.state, {prompt: "", windowed: false, notice: "", question: null, pending: null});
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -214,8 +237,9 @@ export class SessionsView extends Component {
         }
         const message = JSON.parse(data);
         if (message.t === "session") {
+            // La question ouverte, s'il y en a une, suit ce message.
             this.offset = message.offset;
-            Object.assign(this.state, {id: message.id, status: "open"});
+            Object.assign(this.state, {id: message.id, status: "open", question: null, pending: null});
             this.remember(message.id);
             if (message.truncated) {
                 this.term.write(`\r\n[${this.env.t("Output truncated")}]\r\n`);
@@ -230,6 +254,12 @@ export class SessionsView extends Component {
                 this.state.windowed = false;
             }
             this.refreshAnswers();
+        } else if (message.t === "menu" || message.t === "ask") {
+            Object.assign(this.state, {question: message, pending: null});
+        } else if (message.t === "answered") {
+            if (this.state.question?.qid === message.qid) {
+                Object.assign(this.state, {question: null, pending: null});
+            }
         } else if (message.t === "dropped") {
             this.state.notice = Object.hasOwn(DROP_LABELS, message.reason) ? message.reason : "unread";
             clearTimeout(this.noticeTimer);
@@ -245,7 +275,7 @@ export class SessionsView extends Component {
     closed(code) {
         this.socket = null;
         const status = closedState(code, this.bye);
-        this.state.status = status;
+        Object.assign(this.state, {status, question: null, pending: null});
         if (status === "ended" || status === "gone") {
             this.remember(null);
         }
@@ -260,6 +290,24 @@ export class SessionsView extends Component {
         if (this.socket?.readyState === WebSocket.OPEN && this.state.status === "open") {
             this.socket.send(JSON.stringify(message));
         }
+    }
+
+    // La réponse de la page à la question `qid`, ou son annulation, qui
+    // vaut Ctrl+D : une seule part par question, et seulement tant que
+    // `qid` est la question ouverte (`answerable`).
+    settle(qid, message) {
+        if (answerable(this.state.question, this.state.pending, qid)) {
+            this.state.pending = qid;
+            this.send({...message, qid});
+        }
+    }
+
+    reply(qid, value) {
+        this.settle(qid, {t: "answer", value});
+    }
+
+    cancel(qid) {
+        this.settle(qid, {t: "cancel"});
     }
 
     // Frappes et collages : des octets UTF-8, en trames binaires.

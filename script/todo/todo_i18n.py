@@ -3894,6 +3894,14 @@ TRANSLATIONS = {
         "fr": "Des frappes en attente sans onglet ouvert ont été jetées.",
         "en": "Keystrokes pending while no tab was open were thrown away.",
     },
+    # Page web : menus et questions de TODO en widgets natifs.
+    "Menu": {"fr": "Menu", "en": "Menu"},
+    "Filter entries": {"fr": "Filtrer les entrées", "en": "Filter entries"},
+    "No entry matches the filter.": {
+        "fr": "Aucune entrée ne correspond au filtre.",
+        "en": "No entry matches the filter.",
+    },
+    "Other answer": {"fr": "Autre réponse", "en": "Other answer"},
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
     # Page web : vue Historique, les journaux des tâches des sessions.
     "History": {"fr": "Historique", "en": "History"},
