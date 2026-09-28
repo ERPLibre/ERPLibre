@@ -473,6 +473,21 @@ EXECUTE = Menu("prompt_execute", "Execute", [Entry("Stay", "stay")])
 REGISTRY_PY = (
     Path(__file__).resolve().parents[1] / "script/todo/ui/registry.py"
 )
+# Le vrai todo_telemetry.py, suivi d'un build_code_tree qui ajoute une
+# feuille « Newer » à l'arbre : un lecteur de l'arbre qui se reconnaît.
+NEWER_READER = Path(todo_telemetry.__file__).read_text() + textwrap.dedent(
+    """
+    _build = build_code_tree
+
+
+    def build_code_tree(todo_path=None):
+        tree = _build(todo_path)
+        tree["children"].append(
+            {"label": "Newer", "is_menu": False, "children": []}
+        )
+        return tree
+    """
+)
 
 
 class ApiCase(HubCase):
@@ -628,38 +643,30 @@ class TestTelemetryApi(ApiCase):
             self.assertFalse(name.startswith("script.todo.menus"), name)
 
     async def test_a_changed_tree_reader_is_reloaded(self):
-        # Le lecteur tel qu'il est sur le disque de la racine servie : le vrai
-        # todo_telemetry.py, suivi d'un build_code_tree qui ajoute une feuille.
+        # Le lecteur tel qu'il est sur le disque de la racine servie.
         reader = self.root / "script" / "todo" / "todo_telemetry.py"
-        newer = textwrap.dedent(
-            """
-            _build = build_code_tree
-
-
-            def build_code_tree(todo_path=None):
-                tree = _build(todo_path)
-                tree["children"].append(
-                    {"label": "Newer", "is_menu": False, "children": []}
-                )
-                return tree
-            """
-        )
         imported = todo_telemetry.build_code_tree
         seen = []
-        for text in (None, Path(todo_telemetry.__file__).read_text() + newer):
+        for text in (None, NEWER_READER):
             if text:
                 reader.write_text(text)
             data = await self.get_json("/api/telemetry?lang=en")
             seen.append([c["key"] for c in data["tree"]["children"]])
         self.assertEqual(seen, [["Execute"], ["Execute", "Newer"]])
-        # Le module importé, dont d'autres threads se servent, reste entier.
+        # Le module importé, dont d'autres threads se servent, reste entier,
+        # et reste celui que sys.modules nomme.
         self.assertIs(todo_telemetry.build_code_tree, imported)
+        self.assertIs(sys.modules[todo_telemetry.__name__], todo_telemetry)
 
     async def test_a_reader_that_does_not_load_keeps_the_last_one(self):
         # Coupé au milieu d'une instruction, ou qui lève après avoir redéfini
         # build_code_tree : l'erreur va au journal, et l'arbre se lit avec le
-        # lecteur déjà chargé.
+        # dernier lecteur chargé, et non avec celui que le hub a importé.
         reader = self.root / "script" / "todo" / "todo_telemetry.py"
+        reader.write_text(NEWER_READER)
+        data = await self.get_json("/api/telemetry?lang=en")
+        newer = ["Execute", "Newer"]
+        self.assertEqual([c["key"] for c in data["tree"]["children"]], newer)
         halves = (
             "def build_code_tree(\n",
             "def build_code_tree(todo_path=None):\n    return None\n"
@@ -670,7 +677,7 @@ class TestTelemetryApi(ApiCase):
                 reader.write_text(text)
                 data = await self.get_json("/api/telemetry?lang=en")
             self.assertEqual(
-                [c["key"] for c in data["tree"]["children"]], ["Execute"]
+                [c["key"] for c in data["tree"]["children"]], newer
             )
             self.assertEqual(len(logs.records), 1)
 
@@ -726,6 +733,23 @@ class TestTelemetryApi(ApiCase):
     async def test_the_hub_never_imports_todo_py(self):
         await self.get_json("/api/telemetry?lang=en")
         self.assertNotIn("script.todo.todo", sys.modules)
+
+
+class TestLoadReader(unittest.TestCase):
+    def test_a_same_size_rewrite_in_the_same_second_loads_its_source(self):
+        # Un .pyc de __pycache__ ne se valide que sur la taille de la source
+        # et sa date à la seconde : le lecteur se compile depuis les octets
+        # du fichier, et chaque version rend sa propre valeur.
+        path = private_env(self.addCleanup) / "todo_telemetry.py"
+        values = []
+        with patch.object(sys, "dont_write_bytecode", False):
+            for text in ("X = 1\n", "X = 2\n"):
+                path.write_text(text)
+                if not values:
+                    mtime = path.stat().st_mtime_ns
+                os.utime(path, ns=(mtime, mtime))
+                values.append(server._load_reader(str(path)).X)
+        self.assertEqual(values, [1, 2])
 
 
 class TestI18nApi(ApiCase):

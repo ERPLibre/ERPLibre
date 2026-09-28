@@ -370,13 +370,18 @@ def _load_reader(path):
     importé n'est jamais modifié : `load` et `system_snapshot`, qui tournent
     dans d'autres threads, ne le voient jamais à moitié rechargé, et un
     fichier à moitié écrit laisse servir le dernier lecteur chargé, jusqu'à
-    l'enregistrement suivant, qui change son estampille."""
+    l'enregistrement suivant, qui change son estampille.
+
+    Le code se compile depuis les octets du fichier, jamais depuis
+    __pycache__ : un .pyc ne se valide que sur la taille de la source et sa
+    date à la seconde, et une version de même taille enregistrée dans la
+    même seconde ferait servir la précédente."""
     spec = importlib.util.spec_from_file_location(
         todo_telemetry.__name__, path
     )
     module = importlib.util.module_from_spec(spec)
     try:
-        spec.loader.exec_module(module)
+        exec(compile(Path(path).read_bytes(), path, "exec"), module.__dict__)
     except Exception:
         log.exception("loading %s failed", path)
         return None
