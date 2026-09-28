@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.imap_transport import (
+    HEADER_FIELDS,
     ImapError,
     ImaplibTransport,
     connect,
@@ -249,6 +250,60 @@ class TestParseFetchHeaders(unittest.TestCase):
             [HEADERS_1, b")", HEADERS_TRAILING, TRAILING_ATTRS]
         )
         self.assertEqual([m.uid for m in got], [101, 103])
+
+
+class TestThreadHeaders(unittest.TestCase):
+    """Fils de discussion (phase 3) : sans `In-Reply-To`, aucun délai de
+    réponse n'est calculable."""
+
+    def _data(self, entetes: bytes, uid: int = 7):
+        return [
+            (
+                b"1 (UID %d RFC822.SIZE 100 FLAGS (\\Seen) "
+                b"BODY[HEADER.FIELDS (X)] {%d}" % (uid, len(entetes)),
+                entetes,
+            ),
+            b")",
+        ]
+
+    BASE = (
+        b"From: a@x.ca\r\nSubject: Re: Devis\r\n"
+        b"Message-ID: <r1@x.ca>\r\n"
+        b"Date: Wed, 06 Aug 2026 10:00:00 +0000\r\n"
+    )
+
+    def test_the_server_is_asked_for_them(self):
+        """Sans ces champs dans la requête, l'extraction serait du code
+        mort : le serveur ne renverrait jamais ces en-têtes."""
+        self.assertIn("IN-REPLY-TO", HEADER_FIELDS)
+        self.assertIn("REFERENCES", HEADER_FIELDS)
+
+    def test_in_reply_to_is_extracted(self):
+        entetes = self.BASE + b"In-Reply-To: <orig@x.ca>\r\n\r\n"
+        self.assertEqual(
+            parse_fetch_headers(self._data(entetes))[0].in_reply_to,
+            "<orig@x.ca>",
+        )
+
+    def test_references_are_extracted(self):
+        entetes = self.BASE + b"References: <a@x.ca> <orig@x.ca>\r\n\r\n"
+        self.assertEqual(
+            parse_fetch_headers(self._data(entetes))[0].references,
+            "<a@x.ca> <orig@x.ca>",
+        )
+
+    def test_absent_headers_are_empty_not_none(self):
+        entetes = self.BASE + b"\r\n"
+        info = parse_fetch_headers(self._data(entetes))[0]
+        self.assertEqual((info.in_reply_to, info.references), ("", ""))
+
+    def test_raw_8bit_bytes_do_not_lose_the_message(self):
+        """Même piège que la date : un en-tête 8 bits revient en `Header`,
+        et `.strip()` y lèverait — emportant le dossier entier."""
+        entetes = self.BASE + b"In-Reply-To: <ori\xffg@x.ca>\r\n\r\n"
+        infos = parse_fetch_headers(self._data(entetes))
+        self.assertEqual(len(infos), 1)
+        self.assertEqual(infos[0].uid, 7)
 
 
 class TestTransport(unittest.TestCase):

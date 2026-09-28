@@ -28,6 +28,16 @@ from script.todo.mail.store import MessageMeta
 
 SNIPPET_LEN = 200
 
+# Les attributs d'un dossier qui n'est qu'une VUE sur d'autres, chez un
+# serveur qui range par étiquettes : les messages « suivis » et « importants »
+# se trouvent TOUS dans le dossier `\\All` du même compte. Les synchroniser
+# rapporte les mêmes messages une fois de plus chacun.
+#
+# `\\All` n'y est PAS, et c'est le point délicat : archiver un message revient
+# à lui retirer l'étiquette de la boîte de réception, et il ne vit alors plus
+# que là. Le sauter rendrait toute l'archive invisible.
+VUES_REDONDANTES = ("\\Flagged", "\\Important")
+
 _logger = logging.getLogger(__name__)
 
 
@@ -37,10 +47,14 @@ class FolderInfo:
     display: str = ""
     role: str | None = None
     # `\Noselect` / `\NonExistent` : un NIVEAU de la hiérarchie, pas une
-    # boîte. Gmail expose « [Gmail] » ainsi, simple parent de « [Gmail]/Sent
-    # Mail » et consorts. Le SELECTionner répond NO — c'est normal, et le
-    # serveur le dit d'avance dans les drapeaux de LIST.
+    # boîte. Un fournisseur qui préfixe ses dossiers expose ce préfixe ainsi,
+    # simple parent des dossiers qu'il porte. Le SELECTionner répond NO —
+    # c'est normal, et le serveur le dit d'avance dans les drapeaux de LIST.
     selectable: bool = True
+    # Les drapeaux de la ligne LIST, tels quels. `role` n'en retient que le
+    # rôle standard ; un serveur en annonce d'autres, et c'est ce qui permet
+    # de reconnaître un dossier qui n'est qu'une VUE sur d'autres.
+    attributes: tuple[str, ...] = ()
 
 
 @dataclass
@@ -60,6 +74,10 @@ class HeaderInfo:
     frm: str
     to: str
     subject: str
+    # Fils de discussion (v2). Bruts : le hachage appartient au cache, seul
+    # détenteur du sel.
+    in_reply_to: str = ""
+    references: str = ""
 
 
 @dataclass
@@ -131,13 +149,84 @@ class Syncer:
     BATCH = 200
     FLAG_REFRESH = 500
 
-    def __init__(self, store, transport: ImapTransport) -> None:
+    def __init__(
+        self,
+        store,
+        transport: ImapTransport,
+        open_transport=None,
+        parallele: int = 1,
+    ) -> None:
         self.store = store
         self.transport = transport
+        # Fabrique un lien SUPPLÉMENTAIRE vers le même compte, sans
+        # argument. Sans elle, la passe reste sur le seul lien ouvert : un
+        # `imaplib` n'a qu'un dossier sélectionné à la fois, donc deux
+        # dossiers ne peuvent pas avancer ensemble dessus.
+        self.open_transport = open_transport
+        # Le nombre de liens qu'un compte a le droit d'ouvrir en même
+        # temps. Les fournisseurs les plafonnent — quelques dizaines chez
+        # les plus grands, moins chez les petits — et dépasser ne rend pas
+        # une erreur claire : le serveur refuse la connexion suivante.
+        self.parallele = max(1, int(parallele or 1))
 
     def sync(self, progress=None) -> SyncReport:
+        """Une passe sur tous les dossiers du compte.
+
+        `progress(dossier, faits, total)` est appelé depuis PLUSIEURS fils
+        dès qu'un second lien sert : ce qu'on lui passe doit supporter
+        d'être appelé de front.
+        """
+        lots = self._lots(self._a_synchroniser())
+        if len(lots) == 1:
+            return self._sync_lot(lots[0], progress)
+        return self._sync_parallele(lots, progress)
+
+    def _a_synchroniser(self) -> list:
+        """Les dossiers du compte, moins ceux qui ne redisent que d'autres.
+
+        Chez un serveur qui range par ÉTIQUETTES, un message n'est détenu
+        qu'une fois et les dossiers en sont des vues : rapporter « suivis »
+        et « importants » ramène des messages que le dossier `\\All` du
+        même compte contient déjà, sous un autre UID. Trois courriels portant
+        sept étiquettes occupent sept lignes de cache.
+
+        Écartés seulement quand le serveur ANNONCE ranger ainsi : ailleurs
+        un dossier peut porter `\\Flagged` et contenir des messages qui ne
+        sont nulle part d'autre.
+
+        L'annonce se demande par `getattr` : un transport réduit — ceux que
+        montent les tests, qui n'implémentent que ce que leur cas exige —
+        n'a pas à porter cette méthode pour être synchronisable.
+        """
+        dossiers = self.transport.list_folders()
+        etiquettes = getattr(self.transport, "range_par_etiquettes", None)
+        if etiquettes is None or not etiquettes():
+            return dossiers
+        return [
+            d
+            for d in dossiers
+            if not set(getattr(d, "attributes", ())) & set(VUES_REDONDANTES)
+        ]
+
+    def _lots(self, dossiers: list) -> list:
+        """Répartit les dossiers entre les liens disponibles.
+
+        En TOURNIQUET, pas en tranches contiguës : le LIST rend les
+        dossiers groupés par hiérarchie, et les gros se suivent — une
+        découpe en tranches donnerait un lot qui dure et des lots déjà
+        finis.
+        """
+        combien = min(self.parallele, len(dossiers))
+        if combien <= 1 or self.open_transport is None:
+            return [list(dossiers)]
+        lots = [[] for _ in range(combien)]
+        for rang, dossier in enumerate(dossiers):
+            lots[rang % combien].append(dossier)
+        return lots
+
+    def _sync_lot(self, dossiers: list, progress) -> SyncReport:
         report = SyncReport()
-        for folder in self.transport.list_folders():
+        for folder in dossiers:
             try:
                 self._sync_folder(folder, report, progress)
             except Exception as exc:
@@ -146,6 +235,63 @@ class Syncer:
                 report.errors.append(f"{folder.name} : {exc}")
             report.folders += 1
         return report
+
+    def _sync_parallele(self, lots: list, progress) -> SyncReport:
+        """Un lot par lien, le premier sur le lien déjà ouvert.
+
+        Les liens supplémentaires sont FERMÉS à la sortie, quoi qu'il
+        arrive : un compte qui en laisserait derrière lui à chaque passe
+        atteindrait la limite du fournisseur en quelques minutes, et le
+        suivant se verrait refuser.
+
+        Le cache, lui, n'a pas besoin d'être protégé ici : ses méthodes
+        prennent déjà son verrou.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        travaux = [(self, list(lots[0]))]
+        auxiliaires = []
+        for lot in lots[1:]:
+            try:
+                transport = self.open_transport()
+            except Exception as exc:
+                # Le fournisseur refuse un lien de plus, ou le secret a
+                # expiré : le lot revient au lien déjà ouvert plutôt que
+                # de ne pas être synchronisé du tout.
+                _logger.info("lien supplémentaire refusé : %s", exc)
+                travaux[0][1].extend(lot)
+                continue
+            auxiliaires.append(transport)
+            travaux.append((Syncer(self.store, transport), lot))
+        try:
+            with ThreadPoolExecutor(max_workers=len(travaux)) as pool:
+                futurs = [
+                    pool.submit(syncer._sync_lot, lot, progress)
+                    for syncer, lot in travaux
+                ]
+                rapports = [futur.result() for futur in futurs]
+        finally:
+            for transport in auxiliaires:
+                try:
+                    transport.logout()
+                except Exception:
+                    # Le lien est fermé de toute façon à la fin du
+                    # processus ; échouer ici ferait perdre une passe qui a
+                    # réussi.
+                    _logger.exception("fermeture d'un lien supplémentaire")
+        return self._fusion(rapports)
+
+    @staticmethod
+    def _fusion(rapports: list) -> SyncReport:
+        """Un seul rapport pour l'appelant : il n'a pas à savoir combien de
+        liens ont servi."""
+        total = SyncReport()
+        for rapport in rapports:
+            total.folders += rapport.folders
+            total.new_messages += rapport.new_messages
+            total.purged.extend(rapport.purged)
+            total.errors.extend(rapport.errors)
+        return total
 
     def sync_one(self, folder_name: str) -> SyncReport:
         """Une passe limitée à `folder_name`, par son nom seul.
@@ -218,6 +364,8 @@ class Syncer:
                         to=h.to,
                         subject=h.subject,
                         snippet="",
+                        in_reply_to=h.in_reply_to,
+                        references=h.references,
                     )
                     for h in headers
                 ],
@@ -242,6 +390,49 @@ class Syncer:
             unseen=self.store.count_unseen(fid),
             synced_at=int(time.time()),
         )
+
+    def fetch_uids(self, folder_name: str, uids: list[int]) -> int:
+        """Télécharge les en-têtes des UID que le cache n'a pas. Rend leur
+        nombre.
+
+        Sert la recherche côté serveur : ce que le serveur trouve doit
+        ENTRER dans le cache, sinon la question suivante repartirait sur le
+        réseau et le résultat disparaîtrait avec la connexion.
+
+        Le dossier est sélectionné d'abord : un FETCH sans SELECT porte sur
+        le dossier précédent, ou sur rien.
+        """
+        if not uids:
+            return 0
+        fid = self.store.upsert_folder(folder_name)
+        manquants = self.store.missing_uids(fid, uids)
+        if not manquants:
+            return 0
+        self.transport.select(folder_name)
+        ajoutes = 0
+        for batch in _chunks(manquants, self.BATCH):
+            headers = self.transport.fetch_headers(batch)
+            self.store.upsert_messages(
+                fid,
+                [
+                    MessageMeta(
+                        uid=h.uid,
+                        date=h.date,
+                        size=h.size,
+                        flags=h.flags,
+                        msgid=h.msgid,
+                        frm=h.frm,
+                        to=h.to,
+                        subject=h.subject,
+                        snippet="",
+                        in_reply_to=h.in_reply_to,
+                        references=h.references,
+                    )
+                    for h in headers
+                ],
+            )
+            ajoutes += len(headers)
+        return ajoutes
 
     def fetch_body(self, folder_name: str, uid: int) -> bytes:
         """Le corps, du cache s'il y est, du serveur sinon."""
