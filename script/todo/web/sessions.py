@@ -774,6 +774,11 @@ class Session:
             self._drop_held("question")
             if self.recorder is not None:
                 self.recorder.worker(message)
+            if message["t"] == "answered":
+                # Le worker remet l'écho avant `answered` : le client
+                # l'apprend d'abord, et le champ masqué de TtyWatch ne
+                # remplace pas, le temps d'une sonde, celui de la question.
+                self._probe()
             if self.client is not None:
                 self.client.event(message)
 

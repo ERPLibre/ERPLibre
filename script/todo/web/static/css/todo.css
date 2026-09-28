@@ -304,6 +304,28 @@ body {
     overflow-wrap: anywhere;
 }
 
+.question .default {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.question .field {
+    flex: 1 1 16rem;
+}
+
+.question label.entry {
+    align-items: center;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 0.4rem;
+}
+
+.countdown {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* Le terminal remplit la hauteur que laissent l'en-tête et les barres. */
 .terminal {
     height: calc(100vh - 17rem);

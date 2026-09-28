@@ -3902,6 +3902,19 @@ TRANSLATIONS = {
         "en": "No entry matches the filter.",
     },
     "Other answer": {"fr": "Autre réponse", "en": "Other answer"},
+    "TODO question": {"fr": "Question de TODO", "en": "TODO question"},
+    "Answer yes": {"fr": "Oui", "en": "Yes"},
+    "Answer no": {"fr": "Non", "en": "No"},
+    "Time left: %s s": {
+        "fr": "Temps restant : %s s",
+        "en": "Time left: %s s",
+    },
+    "Validate": {"fr": "Valider", "en": "Validate"},
+    "Hidden answer not sent: a control character, or too long.": {
+        "fr": "Réponse masquée non envoyée : un caractère de contrôle, ou "
+        "trop longue.",
+        "en": "Hidden answer not sent: a control character, or too long.",
+    },
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
     # Page web : vue Historique, les journaux des tâches des sessions.
     "History": {"fr": "Historique", "en": "History"},

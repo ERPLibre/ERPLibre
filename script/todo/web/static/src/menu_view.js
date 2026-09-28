@@ -2,10 +2,12 @@
 // lu sur la sortie qui la précède, dont le reste est dans le terminal, les
 // titres de section, un bouton « N. libellé » par entrée, l'entrée 0 à
 // part, un filtre au-delà de FILTER_FROM entrées, et le champ « Autre
-// réponse », qui envoie son texte tel quel. Les libellés viennent du
-// message, dans la langue de la session : ce module ne nomme aucune
-// commande. Au clavier, hors des champs, les touches choisissent comme au
-// CLI (`menuKey`) : plusieurs chiffres partent à Entrée ou après PAUSE ms.
+// réponse », qui envoie son texte tel quel. Un choix simple (`ask` de genre
+// `choose`) s'y montre aussi : son texte, puis ses options en entrées. Les
+// libellés viennent du message, dans la langue de la session : ce module
+// ne nomme aucune commande. Au clavier, hors des champs, les touches
+// choisissent comme au CLI (`menuKey`) : plusieurs chiffres partent à
+// Entrée ou après PAUSE ms.
 // Le parent reçoit
 // la réponse (`answer(qid, valeur)`) ou l'annulation (`cancel(qid)`, qui
 // vaut Ctrl+D), avec le qid de ce menu. Rien ne part tant qu'une réponse
@@ -23,6 +25,7 @@ import {
     menuGroups,
     menuKey,
     menuPause,
+    promptText,
     sendable,
     showsFilter,
 } from "./prompt.js";
@@ -31,7 +34,7 @@ export class MenuView extends Component {
     static template = xml`
         <section class="question" role="group" tabindex="-1" t-ref="root"
             t-att-aria-label="props.question.speak or env.t('Menu')" t-on-keydown="onKey">
-            <p t-if="props.question.crumbs.length" class="crumbs" t-esc="props.question.crumbs.join(' › ')"/>
+            <p t-if="crumbs.length" class="crumbs" t-esc="crumbs.join(' › ')"/>
             <p t-if="text" class="prompt-text" t-esc="text"/>
             <input t-if="filtering" type="search" class="filter" t-model="state.query"
                 t-att-aria-label="env.t('Filter entries')" t-att-placeholder="env.t('Filter entries')"
@@ -98,27 +101,37 @@ export class MenuView extends Component {
         return this.props.pending || !this.state.armed;
     }
 
-    // L'invite d'un menu lu sur la sortie qui la précède ; un menu qui porte
-    // tout son écran est dans ses boutons.
+    // Les entrées d'un menu, ou les options d'un choix.
+    get items() {
+        return this.props.question.items ?? this.props.question.options ?? [];
+    }
+
+    get crumbs() {
+        return this.props.question.crumbs ?? [];
+    }
+
+    // Le texte d'un choix, sans ses options, ou l'invite d'un menu lu sur la
+    // sortie qui la précède ; un menu qui porte tout son écran est dans ses
+    // boutons.
     get text() {
         const question = this.props.question;
-        return carriesScreen(question) ? "" : question.text.trimEnd();
+        return question.t === "ask" || !carriesScreen(question) ? promptText(question) : "";
     }
 
     get keys() {
-        return this.props.question.items.map((item) => item.key);
+        return this.items.map((item) => item.key);
     }
 
     get filtering() {
-        return showsFilter(this.props.question.items);
+        return showsFilter(this.items);
     }
 
     get groups() {
-        return menuGroups(filterItems(this.props.question.items, this.state.query));
+        return menuGroups(filterItems(this.items, this.state.query));
     }
 
     get back() {
-        return backItem(this.props.question.items);
+        return backItem(this.items);
     }
 
     get canSend() {
@@ -188,7 +201,7 @@ export class MenuView extends Component {
             return;
         }
         event.preventDefault();
-        const shown = filterItems(this.props.question.items, this.state.query);
+        const shown = filterItems(this.items, this.state.query);
         if (shown.length === 1 && this.counts(event)) {
             this.choose(shown[0].key);
         }

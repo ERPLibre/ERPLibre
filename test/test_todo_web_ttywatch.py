@@ -213,6 +213,17 @@ print("answers", repr(first), repr(port.ask("Q2: ")), flush=True)
 print("got", repr(input()), repr(input()), flush=True)
 """
 
+# Une question secrète du port du worker : l'écho se coupe pendant la
+# question, et revient avant `answered`.
+PORT_SECRET = r"""
+import os, sys, time
+sys.path.insert(0, %r)
+from script.todo.ui import pipe_port
+port = pipe_port.PipePort(int(os.environ["TODO_WEB_FD"]), 0)
+port.ask("Secret: ", kind="secret")
+time.sleep(30)
+"""
+
 
 def asked(session):
     """Le texte de la question que la session tient ouverte, ou None."""
@@ -571,6 +582,26 @@ class TestSessionState(SessionCase):
         await self.until(lambda: b"length 7" in client.data)
         self.assertNotIn(b"hunter2", client.data)
         await self.until(lambda: client.states()[-1]["echo"])
+
+    async def test_the_echo_is_back_before_a_secret_question_closes(self):
+        # Sans l'horloge : le client apprend l'écho revenu avant `answered`,
+        # et non à la sortie qui suit ; la page ne montre jamais le champ
+        # masqué de TtyWatch à la place de celui de la question.
+        with patch.object(sessions, "PROBE_SECONDS", 60):
+            session, client = await self.open(PORT_SECRET % str(REPO))
+            await self.until(lambda: session.asking is not None)
+            await self.until(lambda: client.seen(echo=False))
+            qid = session.asking["qid"]
+            session.answer({"t": "answer", "qid": qid, "value": "hunter2"})
+            closed = {"t": "answered", "qid": qid}
+            await self.until(lambda: closed in [m for _, m in client.events])
+        seen = [
+            m["t"] if m["t"] == "answered" else m["echo"]
+            for _, m in client.events
+            if m["t"] in ("tty_state", "answered")
+        ]
+        end = seen.index("answered")
+        self.assertIn(True, seen[seen.index(False) : end])
 
     async def test_a_change_without_output_is_seen_by_the_clock(self):
         session, client = await self.open(SILENT)

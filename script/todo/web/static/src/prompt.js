@@ -1,8 +1,9 @@
 // Ce que montrent les widgets des questions de TODO, sans OWL ni DOM. Un
 // menu est le message `menu` du worker : {qid, crumbs, items[{key, label,
 // section, speak}], speak…} ; ses entrées se groupent par section, l'entrée
-// 0 à part, et se choisissent au clavier comme au CLI. Une réponse est ce
-// que le hub accepte de porter au worker.
+// 0 à part, et se choisissent au clavier comme au CLI. Une question est le
+// message `ask` : {qid, kind, text, default, timeout_s?, options?, multi?,
+// expected?}. Une réponse est ce que le hub accepte de porter au worker.
 import {fold} from "./model.js";
 
 // Au-delà de FILTER_FROM entrées, 0 non comprise, le menu offre un filtre.
@@ -130,4 +131,50 @@ export function sendable(value) {
         [...value].length <= ANSWER_LIMIT &&
         !/[\u0000-\u001f\u007f-\u009f]/.test(value)
     );
+}
+
+// Genres de question (`ask.kind`) que la page montre en widget ; un autre
+// genre reste au terminal, qui répond à tout.
+export const ASK_KINDS = ["text", "secret", "confirm", "typed", "countdown", "choose"];
+
+// La réponse d'une touche à une confirmation, sans casse : « y » pour y ou
+// o, « n » pour n ; null pour toute autre.
+export function confirmKey(key) {
+    const lower = key.toLowerCase();
+    if (lower === "y" || lower === "o") {
+        return "y";
+    }
+    return lower === "n" ? "n" : null;
+}
+
+// Vrai quand une confirmation tapée peut partir : le texte attendu exact,
+// quand le message le porte (`expected`), sinon toute réponse que le hub
+// accepte, vide comprise.
+export function typedReady(question, value) {
+    return typeof question.expected === "string" ? value === question.expected : sendable(value);
+}
+
+// Secondes entières qui restent avant `deadline` (en ms), 0 au plus bas.
+export function secondsLeft(deadline, now) {
+    return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
+// La réponse d'un choix multiple : les clés cochées dans l'ordre des
+// options, séparées d'une espace (« 1 3 »), comme on les taperait.
+export function choiceValue(options, picked) {
+    return options
+        .filter((option) => picked.includes(option.key))
+        .map((option) => option.key)
+        .join(" ");
+}
+
+// Le texte d'une question sans ce que son widget montre déjà : pour un
+// choix, les lignes de ses options et l'invite « : » qui les suit.
+export function promptText(question) {
+    let lines = String(question.text ?? "").split("\n");
+    if (question.kind === "choose") {
+        const shown = new Set((question.options ?? []).map((option) => `[${option.key}] ${option.label}`));
+        lines = lines.filter((line) => !shown.has(line) && line.trim() !== ":");
+    }
+    return lines.join("\n").trimEnd();
 }

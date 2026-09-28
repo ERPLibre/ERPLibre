@@ -39,7 +39,7 @@ from unittest.mock import patch
 from todo_web_env import private_env
 
 from script.todo import todo_i18n
-from script.todo.ui import pipe_port, port
+from script.todo.ui import legacy, pipe_port, port
 from script.todo.web import protocol, sessions, worker
 
 REPO = Path(__file__).resolve().parent.parent
@@ -583,6 +583,32 @@ class TestPipePort(unittest.TestCase):
             future.result(10)
         self.assertEqual(self.received(), {**closed, "qid": asked["qid"]})
 
+    def test_a_cancel_from_the_page_is_abort_in_click_eof_in_input(self):
+        # La capture posée dans le fil de la question, comme dans le
+        # worker : Annuler vaut Ctrl+D, que click change en Abort.
+        import click
+
+        def captured(ask):
+            uninstall = legacy.install(self.port)
+            try:
+                return ask()
+            finally:
+                uninstall()
+
+        cases = (
+            (lambda: click.prompt("Name"), click.exceptions.Abort),
+            (lambda: input("Name: "), EOFError),
+        )
+        for ask, error in cases:
+            with self.subTest(error=error.__name__):
+                future, asked = self.asking(captured, ask)
+                self.assertEqual((asked["t"], asked["kind"]), ("ask", "text"))
+                self.reply(t="cancel", qid=asked["qid"])
+                with self.assertRaises(error):
+                    future.result(10)
+                closed = {"t": "answered", "qid": asked["qid"]}
+                self.assertEqual(self.received(), {**closed, "end": "cancel"})
+
     def test_the_countdown_ends_at_its_deadline_or_at_ctrl_d(self):
         future, asked = self.asking(
             self.port.ask, "Go? ", "n", "countdown", 0.2
@@ -777,6 +803,48 @@ class TestRealWorker(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.code, 0)
         chosen = f"\r\n: 1 → {main['items'][0]['label']}\r\n"
         self.assertIn(chosen, session.ring.data.decode())
+
+    async def test_a_page_answer_reaches_the_leaf(self):
+        # Execute › Test › Test a module, par des réponses de la page : la
+        # feuille pose sa question, dont la réponse vide la fait finir.
+        private_env(self.addCleanup)
+        session = sessions.Session("w3", str(REPO), "en", 100, 40)
+        await session.start()
+        self.addAsyncCleanup(session.close)
+        client = Client()
+        session.attach(client)
+
+        def entry(menu, name):
+            """La clé de l'entrée `name`, avec ou sans sa description."""
+            [key] = [
+                i["key"]
+                for i in menu["items"]
+                if i["speak"] == name or i["speak"].startswith(f"{name} - ")
+            ]
+            return key
+
+        count = 1
+        for name in ("Execute", "Test", "Test a module"):
+            menu = await self.question(client, count)
+            value = entry(menu, name)
+            session.answer({"t": "answer", "qid": menu["qid"], "value": value})
+            count += 1
+        leaf = await self.question(client, count)
+        self.assertEqual(
+            (leaf["t"], leaf["kind"], leaf["text"]),
+            ("ask", "text", "Module name to test: "),
+        )
+        session.answer({"t": "answer", "qid": leaf["qid"], "value": ""})
+        back = await self.question(client, count + 1)
+        self.assertEqual(back["crumbs"], ["TODO", "Execute", "Test"])
+        self.assertIn("Module name is required!", session.ring.data.decode())
+        # Annuler un menu de click : Abort, retour au menu principal.
+        session.answer({"t": "cancel", "qid": back["qid"]})
+        main = await self.question(client, count + 2)
+        self.assertEqual(main["crumbs"], ["TODO"])
+        session.answer({"t": "answer", "qid": main["qid"], "value": "0"})
+        await asyncio.wait_for(session.ended.wait(), 20)
+        self.assertEqual(session.code, 0)
 
 
 if __name__ == "__main__":

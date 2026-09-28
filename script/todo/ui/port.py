@@ -134,10 +134,13 @@ class BasePort:
 
     def confirm(self, text, default=False, typed=None) -> bool:
         """Vrai pour oui. Avec `typed`, vrai seulement si la réponse est ce
-        texte exact ; sinon redemande jusqu'à oui, non ou Entrée (le
-        défaut)."""
+        texte exact : la question, un `ask` de genre `typed` posé par
+        `menu`, le porte (`expected`) pour qu'une page n'active sa réponse
+        qu'à l'égalité, et c'est ici qu'elle se vérifie. Sans `typed`,
+        redemande jusqu'à oui, non ou Entrée (le défaut)."""
         if typed is not None:
-            return self.ask(text, kind="typed").strip() == typed
+            message = question("typed", text, expected=typed)
+            return self.menu(message).strip() == typed
         hint = "[Y/n]" if default else "[y/N]"
         while True:
             answer = self.ask(

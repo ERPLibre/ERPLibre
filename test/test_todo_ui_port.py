@@ -206,6 +206,18 @@ class TestScriptedPort(unittest.TestCase):
         )
         self.assertEqual(again, single)
 
+    def test_a_typed_confirmation_carries_the_text_it_expects(self):
+        # La page n'active sa réponse qu'à l'égalité ; le port vérifie.
+        scripted = port.ScriptedPort([" forged ", "forged-other"])
+        self.assertTrue(scripted.confirm("Type forged:", typed="forged"))
+        self.assertFalse(scripted.confirm("Type forged:", typed="forged"))
+        asked = scripted.events[0]
+        self.assertEqual(
+            (asked["t"], asked["kind"], asked["expected"], asked["text"]),
+            ("ask", "typed", "forged", "Type forged:"),
+        )
+        self.assertEqual(asked["requires"], ["typed"])
+
 
 class TestMessages(unittest.TestCase):
     def test_each_question_carries_speak_requires_and_fallback(self):

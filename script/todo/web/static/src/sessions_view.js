@@ -6,9 +6,11 @@
 // son anneau garde. La vue reste montée, cachée, quand une autre s'affiche :
 // la session ne se détache pas. Ce module ne nomme aucune commande.
 //
-// Un menu de TODO (`menu`) s'affiche au-dessus du terminal en boutons
-// natifs (MenuView) ; répondre par eux ou par le terminal revient au même :
-// le worker prend la première réponse, puis `answered` ferme le widget.
+// Un menu de TODO (`menu`) et un choix simple s'affichent au-dessus du
+// terminal en boutons natifs (MenuView), toute autre question en widget
+// selon son genre (QuestionView) ; répondre par eux ou par le terminal
+// revient au même : le worker prend la première réponse, puis `answered`
+// ferme le widget. Un genre que la page ne connaît pas reste au terminal.
 //
 // L'état du terminal vient du hub (`tty_state`), jamais du texte : l'écho
 // coupé en mode canonique ouvre un champ masqué, dont la valeur part au
@@ -21,7 +23,8 @@
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {MenuView} from "./menu_view.js";
-import {answerable} from "./prompt.js";
+import {ASK_KINDS, answerable} from "./prompt.js";
+import {QuestionView} from "./question_view.js";
 import {
     asksSecret,
     closedState,
@@ -59,7 +62,7 @@ const STATE_LABELS = {
 };
 
 export class SessionsView extends Component {
-    static components = {MenuView};
+    static components = {MenuView, QuestionView};
     static template = xml`
         <section class="sessions"
             t-att-class="{fullscreen: state.status === 'open' and state.tty.altscreen and !state.windowed}"
@@ -104,7 +107,10 @@ export class SessionsView extends Component {
                 </t>
             </div>
             <div t-if="structured" class="prompt-panel">
-                <MenuView t-if="structured.t === 'menu'" t-key="structured.qid" question="structured"
+                <MenuView t-if="structured.t === 'menu' or (structured.kind === 'choose' and !structured.multi)"
+                    t-key="structured.qid" question="structured" pending="state.pending === structured.qid"
+                    visible="props.visible" answer.bind="reply" cancel.bind="cancel"/>
+                <QuestionView t-else="" t-key="structured.qid" question="structured"
                     pending="state.pending === structured.qid" visible="props.visible"
                     answer.bind="reply" cancel.bind="cancel"/>
             </div>
@@ -141,6 +147,16 @@ export class SessionsView extends Component {
             },
             () => [this.secretField.el, this.props.visible, this.structured?.qid]
         );
+        // Un gestionnaire de mots de passe peut proposer d'enregistrer ce
+        // que garde un champ masqué quand la page s'en va, formulaire ou non,
+        // `autocomplete="off"` n'y changeant rien : ces champs se vident
+        // avant.
+        this.onPageHide = () => {
+            for (const field of document.querySelectorAll("input[type=password]")) {
+                field.value = "";
+            }
+        };
+        window.addEventListener("pagehide", this.onPageHide);
         this.socket = null;
         this.bye = null;
         this.offset = 0; // décalage absolu du prochain octet attendu
@@ -163,6 +179,7 @@ export class SessionsView extends Component {
             }
         });
         onWillUnmount(() => {
+            window.removeEventListener("pagehide", this.onPageHide);
             clearInterval(this.timer);
             clearTimeout(this.noticeTimer);
             this.resizer.disconnect();
@@ -180,7 +197,8 @@ export class SessionsView extends Component {
     // La question du worker que la page montre en widget, ou null.
     get structured() {
         const question = this.state.question;
-        return this.state.status === "open" && question?.t === "menu" ? question : null;
+        const shown = question?.t === "menu" || (question?.t === "ask" && ASK_KINDS.includes(question.kind));
+        return this.state.status === "open" && shown ? question : null;
     }
 
     get noticeText() {

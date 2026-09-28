@@ -24,6 +24,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from script.todo.ui import port
 from script.todo.web import protocol, server
 
 REPO = Path(__file__).resolve().parent.parent
@@ -136,15 +137,26 @@ class TestPage(unittest.TestCase):
         for path in [STATIC / "index.html", *SRC.glob("*.js")]:
             self.assertNotIn("style=", path.read_text(encoding="utf-8"))
 
-    def test_the_masked_field_keeps_its_value_nowhere(self):
-        # Ni t-model ni état : la valeur part au terminal, puis s'efface.
-        # Sans formulaire, un gestionnaire de mots de passe n'a rien à
-        # enregistrer.
-        source = (SRC / "sessions_view.js").read_text(encoding="utf-8")
-        [field] = re.findall(r'<input type="password"[^>]*>', source)
-        self.assertNotIn("t-model", field)
-        self.assertIn('autocomplete="off"', field)
-        self.assertNotIn("<form", source)
+    def test_a_masked_field_keeps_its_value_nowhere(self):
+        # Ni t-model ni état : la valeur part au terminal ou au worker, puis
+        # s'efface. Sans formulaire, un gestionnaire de mots de passe n'a
+        # rien à enregistrer.
+        fields = {}
+        for path in sorted(SRC.glob("*.js")):
+            source = path.read_text(encoding="utf-8")
+            found = re.findall(r'<input\b[^>]*\btype="password"[^>]*>', source)
+            fields[path.name] = len(found)
+            for field in found:
+                self.assertNotIn("t-model", field)
+                self.assertIn('autocomplete="off"', field)
+            self.assertNotIn("<form", source)
+        masked = {name: n for name, n in fields.items() if n}
+        self.assertEqual(
+            masked, {"question_view.js": 1, "sessions_view.js": 1}
+        )
+        # Une page qui s'en va vide d'abord ses champs masqués.
+        view = (SRC / "sessions_view.js").read_text(encoding="utf-8")
+        self.assertIn('addEventListener("pagehide"', view)
 
     def test_the_history_shows_a_log_as_text_only(self):
         # Une ligne de journal vient d'un programme quelconque : aucune
@@ -706,6 +718,60 @@ class TestMenuWidget(unittest.TestCase):
         self.assertEqual(
             self.out["sendable"],
             [True, True, True, False, True, False, False, False, False, False],
+        )
+
+
+QUESTION_CHECK = r"""
+const choose = {kind: "choose", text: "Which?\n[1] alpha\n[2] beta\n: ",
+    options: [{key: "1", label: "alpha"}, {key: "2", label: "beta"}]};
+const typed = {kind: "typed", text: "Type forged:", expected: "forged"};
+console.log(JSON.stringify({
+    kinds: m.ASK_KINDS,
+    keys: ["y", "Y", "o", "O", "n", "N", "x", "Enter"].map(m.confirmKey),
+    typed: ["forged", " forged", "forge", "Forged", ""].map(
+        (value) => m.typedReady(typed, value)),
+    free: ["", "anything", "tab\t"].map(
+        (value) => m.typedReady({kind: "typed"}, value)),
+    left: [[10000, 0], [10000, 9001], [10000, 9999], [10000, 10000],
+        [10000, 12000]].map(([deadline, now]) => m.secondsLeft(deadline, now)),
+    choice: [m.choiceValue(choose.options, ["2", "1"]),
+        m.choiceValue(choose.options, [])],
+    texts: [m.promptText(choose), m.promptText(typed),
+        m.promptText({kind: "text", text: "💬 Name:  \n"}),
+        m.promptText({t: "menu", source: "text", text: "Choice [1]: "})],
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestQuestionWidgets(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(QUESTION_CHECK, "prompt.js")
+
+    def test_the_page_shows_every_kind_the_port_asks(self):
+        self.assertEqual(self.out["kinds"], list(port.REQUIRES))
+
+    def test_y_o_and_n_answer_a_confirmation(self):
+        yes, no = ["y"] * 4, ["n"] * 2
+        self.assertEqual(self.out["keys"], [*yes, *no, None, None])
+
+    def test_a_typed_confirmation_waits_for_the_exact_text(self):
+        self.assertEqual(self.out["typed"], [True, False, False, False, False])
+        # Sans texte attendu, toute réponse que le hub accepte.
+        self.assertEqual(self.out["free"], [True, True, False])
+
+    def test_the_countdown_counts_whole_seconds_down_to_zero(self):
+        self.assertEqual(self.out["left"], [10, 1, 1, 0, 0])
+
+    def test_a_multiple_choice_answers_its_keys_in_order(self):
+        self.assertEqual(self.out["choice"], ["1 2", ""])
+
+    def test_a_choice_shows_its_text_without_its_options(self):
+        # Un écran lu montre son invite ; le reste est au terminal.
+        self.assertEqual(
+            self.out["texts"],
+            ["Which?", "Type forged:", "💬 Name:", "Choice [1]:"],
         )
 
 
