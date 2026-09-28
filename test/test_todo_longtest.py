@@ -1759,8 +1759,13 @@ class TestLeMenu(unittest.TestCase):
 
     def test_the_test_menu_offers_it(self):
         from script.todo.menus import execute as menus_execute
+        from script.todo.ui.registry import Entry
 
-        entries = {e.key: e.action for e in menus_execute.TEST.entries}
+        entries = {
+            e.key: e.action
+            for e in menus_execute.TEST.entries
+            if isinstance(e, Entry)
+        }
         self.assertEqual(
             entries["Long tests - real VMs, hours"], "prompt_execute_longtest"
         )

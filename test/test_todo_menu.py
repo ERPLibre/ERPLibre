@@ -983,8 +983,10 @@ class TestExecuteMenuNumbering(RegistryCoherence, unittest.TestCase):
         # Le navigateur ne lit pas ce que rend une action : un sous-menu qui
         # rendrait autre chose que False pour refermer Execute ne le
         # refermerait plus. Écrit à la main, il ne rend que False ; déclaré,
-        # il rend navigate(self, …), dont le menu a `back=False`. Un
-        # `return` nu compte pour None.
+        # il rend navigate(self, menus_<famille>.<MENU>), dont le menu a
+        # `back=False`. Un `return` nu compte pour None, et rien ne tombe de
+        # la fin de la méthode, qui rendrait None aussi : sa dernière
+        # instruction est un `return`, ou un `while True` sans aucun `break`.
         import inspect
         import textwrap
 
@@ -995,9 +997,20 @@ class TestExecuteMenuNumbering(RegistryCoherence, unittest.TestCase):
             source = textwrap.dedent(
                 inspect.getsource(getattr(TODO, entry.action))
             )
+            [method] = ast.parse(source).body
+            last = method.body[-1]
+            if isinstance(last, ast.While):
+                self.assertIsInstance(last.test, ast.Constant, entry.action)
+                self.assertIs(last.test.value, True, entry.action)
+                breaks = [
+                    n for n in ast.walk(last) if isinstance(n, ast.Break)
+                ]
+                self.assertFalse(breaks, entry.action)
+            else:
+                self.assertIsInstance(last, ast.Return, entry.action)
             returns = [
                 r.value or ast.Constant(None)
-                for r in ast.walk(ast.parse(source))
+                for r in ast.walk(method)
                 if isinstance(r, ast.Return)
             ]
             self.assertTrue(returns, entry.action)
@@ -1006,10 +1019,17 @@ class TestExecuteMenuNumbering(RegistryCoherence, unittest.TestCase):
                     self.assertIs(value.value, False, entry.action)
                     continue
                 self.assertIsInstance(value, ast.Call, entry.action)
-                self.assertEqual(ast.unparse(value.func), "navigate")
-                family, name = ast.unparse(value.args[1]).split(".")
-                module = getattr(menus, family.removeprefix("menus_"))
-                self.assertIs(getattr(module, name).back, False, entry.action)
+                func = ast.unparse(value.func)
+                self.assertEqual(func, "navigate", entry.action)
+                self.assertEqual(len(value.args), 2, entry.action)
+                menu = value.args[1]
+                self.assertIsInstance(menu, ast.Attribute, entry.action)
+                self.assertIsInstance(menu.value, ast.Name, entry.action)
+                family = menu.value.id.removeprefix("menus_")
+                module = getattr(menus, family)
+                self.assertIs(
+                    getattr(module, menu.attr).back, False, entry.action
+                )
 
 
 class TestCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
