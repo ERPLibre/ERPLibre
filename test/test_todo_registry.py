@@ -438,9 +438,32 @@ class TestDeclaredTree(unittest.TestCase):
             with self.subTest(case=n):
                 self.assertNotEqual(text, FAKE_MENUS)
                 self.menus_py.write_text(text)
-                self.assertEqual(todo_telemetry._declared_menus(self.dir), {})
-                [configuration, _] = self.tree()["children"]
+                with self.assertLogs(
+                    todo_telemetry.__name__, "WARNING"
+                ) as logs:
+                    menus = todo_telemetry._declared_menus(self.dir)
+                    [configuration, _] = self.tree()["children"]
+                self.assertEqual(menus, {})
                 self.assertEqual(configuration["children"], [])
+                # Chaque lecture nomme le fichier.
+                self.assertEqual(len(logs.records), 2)
+                for record in logs.records:
+                    self.assertIn(str(self.menus_py), record.getMessage())
+
+    def test_a_menu_file_that_declares_nothing_is_logged(self):
+        with self.assertNoLogs(todo_telemetry.__name__, "WARNING"):
+            self.assertTrue(todo_telemetry._declared_menus(self.dir))
+        self.menus_py.write_text(
+            FAKE_MENUS.replace('"Language"', 't("Language")')
+        )
+        with self.assertLogs(todo_telemetry.__name__, "WARNING") as logs:
+            self.assertEqual(todo_telemetry._declared_menus(self.dir), {})
+        [record] = logs.records
+        self.assertEqual(
+            record.getMessage(),
+            f"{self.menus_py} declares no menu: "
+            "ValueError: not a registry call: t('Language')",
+        )
 
     def test_the_fields_come_from_the_registry_module(self):
         fields = todo_telemetry._registry_fields(REGISTRY_PY)

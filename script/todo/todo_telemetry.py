@@ -17,6 +17,7 @@ import ast
 import asyncio
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -25,6 +26,8 @@ import time
 from pathlib import Path
 
 from script.todo import json_store
+
+log = logging.getLogger(__name__)
 
 try:
     from script.todo.todo_i18n import t
@@ -568,7 +571,8 @@ def _declared_menus(todo_dir) -> dict:
     AST, sans rien importer : le hub, qui garde ses modules, lit toujours
     les fichiers tels qu'ils sont sur le disque. Un fichier qui ne se lit
     pas, dont une valeur se calcule, ou dont un menu n'a pas la forme que
-    vérifie `_check_menu`, ne déclare rien."""
+    vérifie `_check_menu`, ne déclare rien : un avertissement du journal
+    nomme le fichier et l'erreur, et rien ne lève."""
     todo_dir = Path(todo_dir)
     fields = _registry_fields(todo_dir / "ui" / "registry.py")
     menus = {}
@@ -583,7 +587,13 @@ def _declared_menus(todo_dir) -> dict:
                 if isinstance(value, dict) and value["type"] == "Menu":
                     _check_menu(value)
                     found[value["name"]] = value
-        except (OSError, SyntaxError, TypeError, ValueError):
+        except (OSError, SyntaxError, TypeError, ValueError) as error:
+            log.warning(
+                "%s declares no menu: %s: %s",
+                path,
+                type(error).__name__,
+                error,
+            )
             continue
         menus.update(found)
     return menus
