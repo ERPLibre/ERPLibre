@@ -2572,6 +2572,10 @@ TRANSLATIONS = {
         "fr": "Port local déjà occupé :",
         "en": "Local port already in use:",
     },
+    "using port": {
+        "fr": "on prend le port",
+        "en": "using port",
+    },
     "Try anyway? (y/N): ": {
         "fr": "Essayer quand même ? (o/N, défaut : non) : ",
         "en": "Try anyway? (y/N, default: no): ",

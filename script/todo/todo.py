@@ -2065,6 +2065,14 @@ class TODO(
             pass
         return ""
 
+    def _first_free_port(self, debut, essais=20):
+        """Le premier port libre en local parmi `essais` à partir de
+        `debut`, ou None s'ils sont tous pris."""
+        for port in range(debut, min(debut + essais, 65536)):
+            if self._port_is_free(port):
+                return port
+        return None
+
     @staticmethod
     def _port_is_free(port):
         """Vrai si rien n'écoute sur ce port en local."""
@@ -2464,13 +2472,27 @@ class TODO(
             return
         cible = choisi[0]
 
-        raw = input(f"{t('SOCKS port (default:')} 1080): ").strip()
-        port = raw if raw.isdigit() else "1080"
+        # Le défaut proposé est déjà libre : un autre relais — un premier
+        # proxy SOCKS, un client Tor — tient souvent 1080.
+        defaut = self._first_free_port(1080) or 1080
+        raw = input(f"{t('SOCKS port (default:')} {defaut}): ").strip()
+        port = int(raw) if raw.isdigit() else defaut
 
         if not self._port_is_free(port):
-            print(f"  ⚠ {t('Local port already in use:')} {port}")
-            if not self._is_yes(input(t("Try anyway? (y/N): "))):
-                return
+            # Le relais n'a pas de port imposé : le navigateur prend celui
+            # que le mode d'emploi lui donne. Le suivant libre vaut donc
+            # mieux qu'une question.
+            libre = self._first_free_port(port + 1)
+            if libre:
+                print(
+                    f"  ⚠ {t('Local port already in use:')} {port}"
+                    f" → {t('using port')} {libre}"
+                )
+                port = libre
+            else:
+                print(f"  ⚠ {t('Local port already in use:')} {port}")
+                if not self._is_yes(input(t("Try anyway? (y/N): "))):
+                    return
 
         cmd = f"ssh -D {port} -N -C {shlex.quote(cible)}"
         print(f"\n  {t('Will execute:')} {cmd}")
