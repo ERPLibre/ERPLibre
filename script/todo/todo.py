@@ -140,7 +140,7 @@ from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.web import launcher, paths
+from script.todo.web import desktop, launcher, paths
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 ENABLE_CRASH = False
@@ -752,17 +752,18 @@ class TODO(
         return header + t("Command:")
 
     def prompt_telemetry(self):
-        """Télémétrie de navigation : la TUI, la page web, ou l'arrêt de
-        l'interface web de ce checkout. Sous le fil d'Ariane, une ligne dit
-        si le hub web tourne ; elle l'interroge à chaque affichage, environ
-        0,3 s par opération. Rien de ce que lancent [1], [2] et [3] ne
-        remonte : Ctrl+C, Ctrl+D ou une erreur ramènent à ce menu. Rend
-        False sur [0]."""
+        """Télémétrie de navigation : la TUI, la page web, l'arrêt de
+        l'interface web de ce checkout, ou la page dans la fenêtre
+        bureautique. Sous le fil d'Ariane, une ligne dit si le hub web
+        tourne ; elle l'interroge à chaque affichage, environ 0,3 s par
+        opération. Rien de ce que lancent [1] à [4] ne remonte : Ctrl+C,
+        Ctrl+D ou une erreur ramènent à ce menu. Rend False sur [0]."""
         while True:
             choices = [
                 {"prompt_description": t("Navigation telemetry (TUI)")},
                 {"prompt_description": t("Navigation telemetry (WEB)")},
                 {"prompt_description": t("Stop the web interface")},
+                {"prompt_description": t("Desktop window")},
             ]
             status = click.prompt(
                 self.fill_help_info(choices, state=self._web_state())
@@ -776,6 +777,8 @@ class TODO(
                 self._todo_telemetry_web()
             elif status == "3":
                 self._todo_web_stop()
+            elif status == "4":
+                self._todo_desktop_window()
             else:
                 print(t("Command not found !"))
 
@@ -1026,6 +1029,61 @@ class TODO(
             return
         if stopped:
             print(t("Web interface stopped"))
+
+    def _todo_desktop_window(self):
+        """Ouvre la télémétrie dans la fenêtre bureautique, sur le hub web
+        de ce checkout, démarré au besoin.
+
+        La fenêtre vit dans un processus détaché (`desktop.spawn`) : ce
+        menu reste utilisable pendant qu'elle est ouverte, et la fermer
+        laisse le hub et ses sessions. Un processus sorti avant
+        `desktop.SPAWN_GRACE` s n'a pas ouvert de fenêtre : la fin de son
+        journal s'affiche. Sans affichage graphique, la page s'ouvre comme
+        par [2], qui dit pourquoi ; sans pywebview ou sans moteur web
+        aussi, après les commandes d'installation, que rien ne lance. Dans
+        une session web, ou dans un TODO lancé depuis l'une d'elles, [4]
+        vaut [2] : une fenêtre paraîtrait sur l'affichage de l'hôte du hub,
+        pas devant la page. Un hub qui ne démarre pas se dit comme pour
+        [2]. Rien ne remonte au menu."""
+        if os.environ.get("TODO_WEB_FD") or not desktop.has_display():
+            self._todo_telemetry_web()
+            return
+        if not desktop.available():
+            print(
+                t(
+                    "The desktop window needs pywebview and a web engine."
+                    " Install them with:"
+                )
+            )
+            for line in desktop.install_hint(new_path):
+                print(f"   {line}")
+            print(t("Opening the page in the browser instead."))
+            self._todo_telemetry_web()
+            return
+        try:
+            launcher.ensure_running(new_path)
+            proc = desktop.spawn(new_path, view="telemetry", lang=get_lang())
+            proc.wait(desktop.SPAWN_GRACE)
+        except subprocess.TimeoutExpired:
+            print(t("Desktop window launched. If it does not show, its log:"))
+            print(f"   {desktop.log_path(new_path)}")
+            return
+        except launcher.LaunchError as exc:
+            self._web_launch_failed(exc)
+            return
+        except KeyboardInterrupt:
+            # Le hub et la fenêtre sont détachés : seule l'attente
+            # s'interrompt, et la ligne d'état du menu dit ensuite si le hub
+            # tourne.
+            print()
+            return
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
+            return
+        print(t("The desktop window did not start. Last lines of its log:"))
+        print(f"   {desktop.log_path(new_path)}")
+        for line in desktop.log_tail(new_path):
+            print(f"   {line}")
 
     # Préférences éditables depuis le menu Configuration : clé, libellé, et
     # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :

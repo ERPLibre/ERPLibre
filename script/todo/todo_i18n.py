@@ -2546,6 +2546,31 @@ TRANSLATIONS = {
         "en": "This TODO runs in the web interface: stop the interface from a"
         " terminal.",
     },
+    "Desktop window": {
+        "fr": "🖥️ Fenêtre bureautique",
+        "en": "🖥️ Desktop window",
+    },
+    "The desktop window needs pywebview and a web engine. Install them"
+    " with:": {
+        "fr": "❌ La fenêtre bureautique a besoin de pywebview et d'un moteur"
+        " web. Installez-les avec :",
+        "en": "❌ The desktop window needs pywebview and a web engine. Install"
+        " them with:",
+    },
+    "Opening the page in the browser instead.": {
+        "fr": "La page s'ouvre dans le navigateur à la place.",
+        "en": "Opening the page in the browser instead.",
+    },
+    "Desktop window launched. If it does not show, its log:": {
+        "fr": "🖥️ Fenêtre bureautique lancée. Si elle ne paraît pas, son"
+        " journal :",
+        "en": "🖥️ Desktop window launched. If it does not show, its log:",
+    },
+    "The desktop window did not start. Last lines of its log:": {
+        "fr": "❌ La fenêtre bureautique n'a pas démarré. Dernières lignes de"
+        " son journal :",
+        "en": "❌ The desktop window did not start. Last lines of its log:",
+    },
     "Configuration": {
         "fr": "🔩 Configuration",
         "en": "🔩 Configuration",

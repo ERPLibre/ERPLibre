@@ -8,7 +8,9 @@ rend la main de `start` aussitôt, comme une fenêtre qu'on ferme : ni
 affichage ni moteur web n'est nécessaire. Une fausse fenêtre joue les
 chargements de page que pywebview signale (`before_load`, puis `loaded`).
 Le hub est vrai quand un test le dit, HOME et XDG_RUNTIME_DIR temporaires.
-Le pont de la page (`static/src/desktop.js`) tourne sous node, quand il
+Le processus détaché de `spawn` est un faux python, un script shell ;
+l'entrée du bureau s'écrit sous un XDG_DATA_HOME temporaire. Le pont de la
+page (`static/src/desktop.js`) tourne sous node, quand il
 est installé.
 """
 
@@ -618,6 +620,134 @@ class TestOpenWindow(unittest.TestCase):
             check=True,
         ).stdout
         self.assertIn("-m script.todo.web.desktop open", out)
+
+
+@as_user
+class TestSpawn(unittest.TestCase):
+    def setUp(self):
+        self.base = private_env(self.addCleanup)
+
+    def test_the_window_process_is_detached_with_a_fixed_argv(self):
+        out = self.base / "out"
+        out.mkdir()
+        fake = _program(
+            self,
+            "python",
+            f'printf "%s\\n" "$@" > {out}/argv\n'
+            f'echo "$TODO_LANG" > {out}/lang\n'
+            f"readlink /proc/$$/fd/0 > {out}/stdin\n"
+            "echo log-marker\n"
+            f"touch {out}/done\n"
+            "exec sleep 30",
+        )
+        with patch.object(launcher, "venv_python", return_value=str(fake)):
+            proc = desktop.spawn(REPO, lang="en")
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        self.assertTrue(_wait((out / "done").exists))
+        self.assertEqual(
+            (out / "argv").read_text().splitlines(),
+            ["-m", "script.todo.web.desktop", "open", "--view", "telemetry"],
+        )
+        self.assertEqual((out / "lang").read_text(), "en\n")
+        self.assertEqual((out / "stdin").read_text(), "/dev/null\n")
+        # Sa propre session : Ctrl+C dans le terminal de TODO ne l'atteint
+        # pas.
+        self.assertEqual(os.getsid(proc.pid), proc.pid)
+        log = desktop.log_path(REPO)
+        self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
+        self.assertEqual(log.read_text(), "log-marker\n")
+        # Fermée, la fenêtre ne reste pas zombie : personne ne l'attend ici.
+        proc.kill()
+        self.assertTrue(_wait(lambda: proc.returncode is not None))
+
+    def test_root_or_a_bad_argument_starts_nothing(self):
+        with (
+            patch("os.geteuid", return_value=0),
+            patch.object(desktop.subprocess, "Popen") as popen,
+            self.assertRaisesRegex(launcher.LaunchError, "root"),
+        ):
+            desktop.spawn(REPO)
+        with patch.object(desktop.subprocess, "Popen") as popen:
+            with self.assertRaises(ValueError):
+                desktop.spawn(REPO, view="x --root /")
+            with self.assertRaises(ValueError):
+                desktop.spawn(REPO, lang="de")
+        popen.assert_not_called()
+        self.assertFalse((self.base / "home" / ".erplibre").exists())
+
+
+@as_user
+class TestDesktopEntry(unittest.TestCase):
+    def setUp(self):
+        self.base = private_env(self.addCleanup)
+        self.data = self.base / "data"
+        patcher = patch.dict(os.environ, {"XDG_DATA_HOME": str(self.data)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_entry_runs_the_venv_python_from_the_checkout(self):
+        ran = self.base / "ran"
+        tool = _program(self, "update-desktop-database", f'echo "$@" > {ran}')
+        with patch.dict(os.environ, {"PATH": str(tool.parent)}):
+            path = desktop.install_entry(REPO)
+        cid = paths.checkout_id(REPO)
+        folder = self.data / "applications"
+        self.assertEqual(path, folder / f"erplibre-todo-{cid}.desktop")
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        python = launcher.venv_python(os.path.realpath(REPO))
+        self.assertEqual(
+            path.read_text().splitlines(),
+            [
+                "[Desktop Entry]",
+                "Type=Application",
+                "Name=ERPLibre TODO",
+                f"Comment={os.path.realpath(REPO)}",
+                f"TryExec={python}",
+                f"Exec={python} -m script.todo.web.desktop open",
+                f"Path={os.path.realpath(REPO)}",
+                "Icon=applications-system",
+                "Terminal=false",
+                "Categories=Development;",
+            ],
+        )
+        self.assertTrue(os.path.isabs(python))
+        self.assertEqual(ran.read_text(), f"{folder}\n")
+
+    def test_without_xdg_data_home_the_entry_goes_under_local_share(self):
+        os.environ.pop("XDG_DATA_HOME")
+        with patch.dict(os.environ, {"PATH": ""}):
+            path = desktop.install_entry(REPO)
+        home = self.base / "home" / ".local" / "share" / "applications"
+        self.assertEqual(path.parent, home)
+
+    def test_an_exec_argument_is_quoted_as_the_specification_says(self):
+        self.assertEqual(
+            desktop._exec_arg("/opt/erp libre/100%/a$b\\c"),
+            '"/opt/erp libre/100%%/a\\\\$b\\\\\\\\c"',
+        )
+        self.assertEqual(desktop._exec_arg("/opt/erplibre"), "/opt/erplibre")
+
+    def test_an_unprintable_checkout_or_root_writes_nothing(self):
+        with self.assertRaises(ValueError):
+            desktop.install_entry(str(self.base / "x\nExec=forged"))
+        with (
+            patch("os.geteuid", return_value=0),
+            self.assertRaisesRegex(launcher.LaunchError, "root"),
+        ):
+            desktop.install_entry(REPO)
+        self.assertFalse(self.data.exists())
+
+    def test_the_make_target_installs_the_entry(self):
+        out = subprocess.run(
+            ["make", "-n", "-f", "conf/make.todo.Makefile"]
+            + ["todo_desktop_install"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        self.assertIn("-m script.todo.web.desktop install", out)
 
 
 # Le pont dans un navigateur, puis dans une fenêtre dont l'API arrive

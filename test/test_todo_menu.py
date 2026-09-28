@@ -399,8 +399,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertIsNotNone(noeud, "colonne Proxmox VE absente de l'arbre")
         self.assertGreaterEqual(len(noeud.get("children") or []), 15)
 
-    def test_the_telemetry_entry_is_a_menu_of_three_leaves(self):
-        # [4] du menu principal est un sous-menu de trois feuilles ; les
+    def test_the_telemetry_entry_is_a_menu_of_four_leaves(self):
+        # [4] du menu principal est un sous-menu de quatre feuilles ; les
         # autres entrées gardent leur numéro.
         noeud = self._noeud("Navigation telemetry")
         self.assertIsNotNone(noeud, "menu Navigation telemetry absent")
@@ -411,6 +411,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                 ("Navigation telemetry (TUI)", "_todo_telemetry_tui"),
                 ("Navigation telemetry (WEB)", "_todo_telemetry_web"),
                 ("Stop the web interface", "_todo_web_stop"),
+                ("Desktop window", "_todo_desktop_window"),
             ],
         )
         racine = [enfant["label"] for enfant in self.arbre["children"]]
@@ -591,7 +592,8 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
-    """L'entrée [4] du menu principal : TUI, WEB, arrêt de l'interface web.
+    """L'entrée [4] du menu principal : TUI, WEB, arrêt de l'interface web,
+    fenêtre bureautique.
 
     [3] arrête un serveur que d'autres onglets peuvent employer : un
     décalage entre l'affichage et le dispatch arrêterait au lieu d'ouvrir.
@@ -606,6 +608,7 @@ class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
         "Navigation telemetry (TUI)": "_todo_telemetry_tui",
         "Navigation telemetry (WEB)": "_todo_telemetry_web",
         "Stop the web interface": "_todo_web_stop",
+        "Desktop window": "_todo_desktop_window",
     }
 
     def test_zero_goes_back(self):

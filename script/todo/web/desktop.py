@@ -19,8 +19,12 @@ rien ne lance, et ouvre la page dans le navigateur. En ligne de commande
 (messages anglais, sans traduction, comme le lanceur) :
 
     python -m script.todo.web.desktop open [--view V] [--root R]
+    python -m script.todo.web.desktop install [--root R]
 
-La langue de la page vient de TODO_LANG, sinon de `todo_i18n.get_lang`.
+Le menu de TODO lance `open` dans un processus détaché (`spawn`) ;
+`install` écrit l'entrée du menu des applications du bureau
+(`install_entry`). La langue de la page vient de TODO_LANG, sinon de
+`todo_i18n.get_lang`.
 """
 
 import argparse
@@ -36,6 +40,7 @@ import sys
 import threading
 import time
 import unicodedata
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from script.todo import todo_i18n, todo_install
@@ -65,6 +70,17 @@ QT_LIBRARIES = {
     "zypper": ["libxkbfile1", "libxcb-cursor0"],
 }
 QT_BINDINGS = ("PyQt6", "PySide6", "PyQt5", "PySide2")
+# Secondes pendant lesquelles le menu attend le processus de la fenêtre :
+# sorti avant, il n'a pas ouvert de fenêtre, et son journal dit pourquoi.
+SPAWN_GRACE = 1.5
+# Lignes du journal des fenêtres que le menu affiche.
+LOG_TAIL = 8
+# Icône de l'entrée du bureau : un nom générique de la spécification des
+# noms d'icônes freedesktop, que tout thème porte.
+ICON = "applications-system"
+# Caractères qui obligent à citer un argument de la clé Exec (Desktop Entry
+# Specification).
+EXEC_RESERVED = frozenset(" \t\n\"'\\><~|&;$*?#()`")
 
 
 def _webview():
@@ -344,6 +360,144 @@ def open_window(root, view="telemetry", lang=None) -> int:
     return 0
 
 
+def log_path(root) -> Path:
+    """Journal des fenêtres que lance `spawn`."""
+    return paths.data_dir(root) / "desktop.log"
+
+
+def log_tail(root) -> list:
+    """Les LOG_TAIL dernières lignes de `log_path`, sans les lignes vides
+    qui le terminent ; vide s'il ne se lit pas."""
+    try:
+        text = log_path(root).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return text.rstrip().splitlines()[-LOG_TAIL:]
+
+
+def spawn(root, view="telemetry", lang=None) -> subprocess.Popen:
+    """Lance `open_window` dans un processus détaché, et le rend.
+
+    L'argv est fixe, le python du venv et `-m script.todo.web.desktop open
+    --view <view>`, et ne porte aucun code : le processus émet le sien. La
+    langue passe par TODO_LANG. Nouvelle session, stdin sur /dev/null,
+    sorties dans `log_path` (0600, vidé à chaque lancement) : Ctrl+C dans
+    le terminal de TODO n'atteint pas la fenêtre, qui survit à TODO. Un
+    fil démon attend sa fin : une fenêtre fermée ne reste pas zombie, et
+    `returncode` se remplit sans autre appel. `ValueError` pour une vue ou
+    une langue invalide ; `LaunchError` sous root, avant tout fichier ;
+    `OSError` si le journal ou le python ne s'ouvrent pas.
+    """
+    if not re.fullmatch(r"[a-z]+", view):
+        raise ValueError(f"invalid view: {view!r}")
+    if lang is not None and lang not in todo_i18n.LANGUAGES:
+        raise ValueError(f"unknown language: {lang!r}")
+    if os.geteuid() == 0:
+        raise launcher.LaunchError(
+            "the desktop window refuses to run as root", kind="root"
+        )
+    root = os.path.realpath(root)
+    env = {k: v for k, v in os.environ.items() if k != "TODO_LANG"}
+    if lang:
+        env["TODO_LANG"] = lang
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+    fd = os.open(log_path(root), flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        proc = subprocess.Popen(
+            [launcher.venv_python(root), "-m", "script.todo.web.desktop"]
+            + ["open", "--view", view],
+            cwd=root,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=fd,
+            stderr=fd,
+            start_new_session=True,
+        )
+    finally:
+        os.close(fd)
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return proc
+
+
+def entry_path(root) -> Path:
+    """`applications/erplibre-todo-<empreinte>.desktop` sous
+    XDG_DATA_HOME, s'il est absolu, sinon sous `~/.local/share`."""
+    data = os.environ.get("XDG_DATA_HOME", "")
+    if not os.path.isabs(data):
+        data = Path.home() / ".local" / "share"
+    name = f"erplibre-todo-{paths.checkout_id(root)}.desktop"
+    return Path(data, "applications", name)
+
+
+def _exec_arg(arg) -> str:
+    """`arg` tel que la clé Exec le lit : « % » doublé ; cité s'il porte un
+    caractère réservé, « " », « ` », « $ » et « \\ » échappés dans la
+    citation ; puis chaque « \\ » doublé, l'échappement de toute valeur
+    du fichier."""
+    arg = arg.replace("%", "%%")
+    if EXEC_RESERVED.intersection(arg):
+        arg = '"' + re.sub(r'(["`$\\])', r"\\\1", arg) + '"'
+    return arg.replace("\\", "\\\\")
+
+
+def install_entry(root=ROOT) -> Path:
+    """Écrit l'entrée du menu des applications qui ouvre la fenêtre de
+    `root`, et rend son chemin (`entry_path`).
+
+    Le fichier, 0600, remplacé d'un coup, lance le python du venv par son
+    chemin absolu, `-m script.todo.web.desktop open`, depuis la racine
+    (`Path=`), sous le nom ERPLibre TODO ; `Comment=` nomme le checkout,
+    quand plusieurs ont leur entrée, et `TryExec=` retire l'entrée du menu
+    quand ce python n'existe plus. Puis `update-desktop-database`, s'il
+    existe, relit le répertoire ; son échec ne change rien. `ValueError`
+    pour un chemin non imprimable (un retour à la ligne y écrirait une
+    autre clé) ; `LaunchError` sous root, avant tout fichier.
+    """
+    if os.geteuid() == 0:
+        raise launcher.LaunchError(
+            "refusing to install the desktop entry as root", kind="root"
+        )
+    root = os.path.realpath(root)
+    python = launcher.venv_python(root)
+    if not (root.isprintable() and python.isprintable()):
+        raise ValueError(f"unprintable path: {root!r}")
+    argv = [python, "-m", "script.todo.web.desktop", "open"]
+    folder = root.replace("\\", "\\\\")
+    text = "\n".join(
+        [
+            "[Desktop Entry]",
+            "Type=Application",
+            f"Name={TITLE}",
+            f"Comment={folder}",
+            "TryExec=" + python.replace("\\", "\\\\"),
+            "Exec=" + " ".join(_exec_arg(arg) for arg in argv),
+            f"Path={folder}",
+            f"Icon={ICON}",
+            "Terminal=false",
+            "Categories=Development;",
+            "",
+        ]
+    )
+    path = entry_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    paths.write_private(path, text)
+    program = shutil.which("update-desktop-database")
+    if program:
+        try:
+            subprocess.run(
+                [program, str(path.parent)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return path
+
+
 def _falls_back(exc) -> bool:
     """Vrai pour un `LaunchError` après lequel `main` ouvre le navigateur :
     aucun affichage, aucun moteur, ou pywebview absent. Un hub qui ne
@@ -380,10 +534,17 @@ def main(argv=None) -> int:
         prog="python -m script.todo.web.desktop",
         description="Open the TODO web interface in a desktop window.",
     )
-    parser.add_argument("action", choices=("open",))
+    parser.add_argument("action", choices=("open", "install"))
     parser.add_argument("--view", default="telemetry")
     parser.add_argument("--root", default=str(ROOT), help="ERPLibre checkout")
     args = parser.parse_args(argv)
+    if args.action == "install":
+        try:
+            print(f"desktop entry: {install_entry(args.root)}")
+        except (ValueError, launcher.LaunchError, OSError) as exc:
+            print(getattr(exc, "message", exc), file=sys.stderr)
+            return 1
+        return 0
     if os.environ.get("TODO_LANG") in todo_i18n.LANGUAGES:
         todo_i18n.use_lang(os.environ["TODO_LANG"])
     lang = todo_i18n.get_lang()

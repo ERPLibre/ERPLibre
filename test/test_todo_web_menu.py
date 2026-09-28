@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""L'entrée [4] du menu principal, qui propose la télémétrie en TUI ou dans
-le navigateur et l'arrêt de l'interface web, et ses méthodes web : ouvrir la
-page par le hub de ce checkout, dire pourquoi il n'a pas démarré, l'arrêter.
+"""L'entrée [4] du menu principal, qui propose la télémétrie en TUI, dans
+le navigateur ou dans la fenêtre bureautique, et l'arrêt de l'interface
+web, et ses méthodes web : ouvrir la page par le hub de ce checkout, dire
+pourquoi il n'a pas démarré, l'arrêter, lancer la fenêtre.
 
-La TUI et le lanceur sont simulés, sauf dans TestWithARealHub, qui démarre un
-vrai hub.
+La TUI, le lanceur et la fenêtre sont simulés, sauf dans TestWithARealHub,
+qui démarre un vrai hub.
 HOME, et XDG_RUNTIME_DIR pour le vrai hub, pointent vers un répertoire
 temporaire ; TODO_WEB_FD et TODO_WEB_PID sont retirés, sauf dans
 TestInsideAWebSession, qui les pose comme le worker d'une session. La langue
@@ -17,17 +18,18 @@ navigation, que chaque menu enregistre, est neutralisée.
 import io
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import click
 
 from script.todo import todo_i18n, todo_telemetry
 from script.todo.todo import TODO, VENV_ERPLIBRE, new_path
-from script.todo.web import launcher, paths
+from script.todo.web import desktop, launcher, paths
 
 URL = "http://127.0.0.1:43817/"
 LINK = URL + "#login=forged&view=telemetry&lang=en"
@@ -92,12 +94,13 @@ class TestPromptTelemetry(MenuCase):
             patch.object(TODO, "_todo_telemetry_tui") as tui,
             patch.object(TODO, "_todo_telemetry_web") as web,
             patch.object(TODO, "_todo_web_stop") as stop,
+            patch.object(TODO, "_todo_desktop_window") as window,
             patch.object(launcher, "status", return_value=None),
-            patch("click.prompt", side_effect=["1", "2", "3", "9", "0"]),
+            patch("click.prompt", side_effect=["1", "2", "3", "4", "9", "0"]),
             redirect_stdout(io.StringIO()) as out,
         ):
             self.assertIs(self.todo.prompt_telemetry(), False)
-        for method in (tui, web, stop):
+        for method in (tui, web, stop, window):
             method.assert_called_once_with()
         self.assertIn("Command not found !", out.getvalue())
 
@@ -112,6 +115,7 @@ class TestPromptTelemetry(MenuCase):
                 "[1] 📊 Télémétrie de navigation (TUI)",
                 "[2] 🌐 Télémétrie de navigation (WEB)",
                 "[3] ⏹️ Arrêter l'interface web",
+                "[4] 🖥️ Fenêtre bureautique",
                 "[0] 🔙 Retour",
             ],
         )
@@ -366,6 +370,111 @@ class TestWebStop(MenuCase):
             lines = self.printed(self.todo._todo_web_stop)
         self.assertEqual(lines, ["ℹ️ The web interface is not running."])
         stop.assert_not_called()
+
+
+class TestDesktopWindow(MenuCase):
+    HINT = ["forged pip line", "forged system line"]
+
+    def window(self, available=True, display=True, **spawn):
+        """Lignes de [4] ; rend aussi les doubles du lanceur, de la fenêtre
+        et de [2], le repli sur le navigateur."""
+        with (
+            patch.object(desktop, "available", return_value=available),
+            patch.object(desktop, "has_display", return_value=display),
+            patch.object(desktop, "install_hint", return_value=self.HINT),
+            patch.object(launcher, "ensure_running") as ensure,
+            patch.object(desktop, "spawn", **spawn) as spawned,
+            patch.object(TODO, "_todo_telemetry_web") as web,
+        ):
+            lines = self.printed(self.todo._todo_desktop_window)
+        return lines, ensure, spawned, web
+
+    def test_the_window_opens_in_a_detached_process(self):
+        # Le processus tient encore après SPAWN_GRACE s : la fenêtre s'ouvre.
+        late = subprocess.TimeoutExpired("python", desktop.SPAWN_GRACE)
+        proc = Mock(wait=Mock(side_effect=late))
+        lines, ensure, spawned, web = self.window(return_value=proc)
+        ensure.assert_called_once_with(new_path)
+        spawned.assert_called_once_with(new_path, view="telemetry", lang="en")
+        proc.wait.assert_called_once_with(desktop.SPAWN_GRACE)
+        web.assert_not_called()
+        self.assertEqual(
+            lines,
+            [
+                "🖥️ Desktop window launched. If it does not show, its log:",
+                f"   {desktop.log_path(new_path)}",
+            ],
+        )
+
+    def test_a_window_process_that_ends_at_once_shows_its_log(self):
+        python = os.path.join(self.tmp, "python")
+        with open(python, "w") as script:
+            script.write("#!/bin/sh\necho forged failure\nexit 3\n")
+        os.chmod(python, 0o755)
+        with (
+            patch.object(desktop, "available", return_value=True),
+            patch.object(desktop, "has_display", return_value=True),
+            patch.object(launcher, "ensure_running"),
+            patch.object(launcher, "venv_python", return_value=python),
+        ):
+            lines = self.printed(self.todo._todo_desktop_window)
+        self.assertEqual(
+            lines,
+            [
+                "❌ The desktop window did not start. Last lines of its log:",
+                f"   {desktop.log_path(new_path)}",
+                "   forged failure",
+            ],
+        )
+
+    def test_without_an_engine_the_commands_then_the_browser(self):
+        lines, ensure, spawned, web = self.window(available=False)
+        self.assertEqual(
+            lines,
+            [
+                "❌ The desktop window needs pywebview and a web engine."
+                " Install them with:",
+                "   forged pip line",
+                "   forged system line",
+                "Opening the page in the browser instead.",
+            ],
+        )
+        web.assert_called_once_with()
+        ensure.assert_not_called()
+        spawned.assert_not_called()
+
+    def test_without_a_display_the_browser_says_why(self):
+        # [2] dit alors « aucun affichage » et le tunnel SSH ; les commandes
+        # d'installation ne serviraient pas sur cet hôte.
+        lines, ensure, spawned, web = self.window(
+            available=False, display=False
+        )
+        self.assertEqual(lines, [])
+        web.assert_called_once_with()
+        spawned.assert_not_called()
+
+    def test_inside_a_web_session_the_page_opens_its_telemetry(self):
+        # Une fenêtre paraîtrait sur l'affichage de l'hôte du hub, pas
+        # devant la page : [4] vaut [2].
+        env = {"TODO_WEB_FD": "7", "TODO_WEB_PID": str(os.getpid())}
+        with patch.dict(os.environ, env):
+            lines, ensure, spawned, web = self.window()
+        self.assertEqual(lines, [])
+        web.assert_called_once_with()
+        ensure.assert_not_called()
+        spawned.assert_not_called()
+
+    def test_a_failure_stays_in_the_menu(self):
+        root = launcher.LaunchError("refused", kind="root")
+        lines, _, _, web = self.window(side_effect=root)
+        self.assertEqual(
+            lines, ["❌ The web interface refuses to run as root."]
+        )
+        web.assert_not_called()
+        lines, _, _, _ = self.window(side_effect=OSError("forged"))
+        self.assertEqual(lines, ["Command failed: forged"])
+        lines, _, _, _ = self.window(side_effect=KeyboardInterrupt)
+        self.assertEqual(lines, [""])
 
 
 class TestInsideAWebSession(MenuCase):

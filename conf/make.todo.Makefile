@@ -36,6 +36,12 @@ todo_web_stop:
 todo_desktop:
 	./.venv.erplibre/bin/python -m script.todo.web.desktop open
 
+# Entrée « ERPLibre TODO » de ce checkout dans le menu des applications du
+# bureau (~/.local/share/applications, 0600) : elle lance todo_desktop.
+.PHONY: todo_desktop_install
+todo_desktop_install:
+	./.venv.erplibre/bin/python -m script.todo.web.desktop install
+
 # Journal des tâches des sessions web : retire les jours de plus de 30 jours,
 # sauf une tâche en cours. « launcher purge --all » les retire tous.
 .PHONY: todo_web_purge
