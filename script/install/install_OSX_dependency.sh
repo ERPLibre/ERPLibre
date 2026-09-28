@@ -35,6 +35,12 @@ brew link wget
 
 echo "\n--- Installing extra --"
 brew install shfmt
+# gettext est « keg-only » chez Homebrew : la formule s'installe, mais ses
+# binaires ne sont PAS liés dans le PATH, pour ne pas masquer ceux de la
+# libc du système. Sans « link --force », « msgfmt » reste introuvable alors
+# que « brew list » affiche le paquet.
+brew install gettext
+brew link --force gettext
 brew install parallel
 brew install swig
 brew install portaudio

@@ -98,7 +98,7 @@ echo -e "\n---- Installing arch dependency ----"
 # seul nom est inconnu (pas de --skip-unavailable). Ces deps ne sont pas
 # critiques pour le build Python -> on ne bloque pas sur un nom absent.
 for _pkg in libxslt libzip libldap libsasl cmake parallel swig portaudio \
-  cups xmlsec freetds libev mariadb-libs shfmt; do
+  cups xmlsec freetds libev mariadb-libs shfmt gettext; do
   ${PAC} "${_pkg}" || echo "  ${_pkg} : non installé (optionnel), on continue."
 done
 # libldap_r : Odoo/python-ldap cherche parfois libldap_r.so (supprimé des

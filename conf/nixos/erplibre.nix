@@ -168,6 +168,12 @@
     # succès qu'elle n'a pas obtenu.
     parallel
     shfmt
+    # « gettext » sert les catalogues de traduction, et rien d'autre :
+    # « msgfmt --check » refuse un « .po » dont une traduction a perdu un
+    # « %s » de sa source, « msgmerge » reporte les traductions sur un
+    # « .pot » régénéré. Odoo lit ses catalogues avec son propre analyseur
+    # et n'a besoin d'aucun de ces binaires pour tourner.
+    gettext
     # « cloud-utils » porte growpart, qu'aucune autre voie ne fournit ici.
     # L'agrandissement du disque s'écrit « sudo growpart … || true » : sans le
     # binaire, il rend 0 sans rien agrandir, et la VM garde la taille de son

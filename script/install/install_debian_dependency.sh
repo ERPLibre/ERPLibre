@@ -273,6 +273,16 @@ fi
 # on l'installe SÉPARÉMENT et en best-effort (jamais fatal).
 ${APT_GET} install shfmt -y \
   || echo "shfmt indisponible dans les dépôts (Ubuntu < 22.04 ?) — ignoré."
+# gettext : outil de DÉVELOPPEMENT des catalogues de traduction, comme
+# shfmt plus haut, et posé de même sans jamais bloquer. Odoo lit ses « .po »
+# avec son propre analyseur : aucun binaire gettext n'est nécessaire pour
+# FAIRE TOURNER ERPLibre. « msgfmt --check » refuse un catalogue dont une
+# traduction a perdu un « %s » de sa source — une faute qui ne se voit
+# autrement qu'à l'exécution, sur la page traduite ; « msgmerge » reporte
+# les traductions existantes sur un « .pot » régénéré, au lieu de les
+# réécrire à la main.
+${APT_GET} install gettext -y \
+  || echo "gettext indisponible — ignoré (outils de traduction, optionnel)."
 ${APT_GET} install libmariadbd-dev freetds-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
