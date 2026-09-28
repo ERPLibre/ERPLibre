@@ -24,6 +24,9 @@ boundary.
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
 | `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host |
+| `setops_menu.py` | the Set-OPS menu: a gesture there launches the engine, never a copy of it; the state of the integration |
+| `state_screen.py` | the render shared by the state screens: three states, one line per segment, one count |
+| `script/setops/` | outside the menu: the engine as the manifest declares it, and the survey the Set-OPS lines are decided on — see [../setops/README.md](../setops/README.md) |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:
