@@ -593,6 +593,40 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
         self.assertNotIn(faux.pid, self.dp.autre_descente())
 
+    def test_the_default_exclusion_is_my_whole_chain(self):
+        """LE PIÈGE, un cran au-dessus du shell. `timeout`, `env`, `nohup` et
+        `nice` enveloppent le script en le NOMMANT dans leurs arguments, et le
+        contrôle lit les arguments : ils passaient donc pour des descentes.
+        Refuser alors de détruire, c'est refuser à cause de soi, et le message
+        envoie attendre un processus qui est le sien.
+
+        L'épreuve porte sur le DÉFAUT et non sur le paramètre : ici, aucun
+        ancêtre ne nomme un script, donc comparer les deux ensembles passerait
+        sans rien éprouver. La chaîne est donc rendue observable, et elle porte
+        une descente RÉELLE — que seul le défaut peut écarter.
+        """
+        pid = self._fausse_descente()
+        self.assertIn(pid, self.dp.autre_descente())
+        vrai = moteur._ancetres
+        moteur._ancetres = lambda: [os.getpid(), pid]
+        self.addCleanup(setattr, moteur, "_ancetres", vrai)
+        self.assertNotIn(pid, self.dp.autre_descente())
+
+    def test_my_own_chain_is_walked_to_the_top(self):
+        """Sans la remontée entière, une enveloppe deux crans plus haut —
+        « nohup timeout … » — resterait comptée."""
+        chaine = self.dp._ancetres()
+        self.assertIn(os.getpid(), chaine)
+        self.assertEqual(1, chaine[-1])
+        self.assertEqual(len(chaine), len(set(chaine)))
+
+    def test_what_is_excluded_is_not_reported_even_when_it_is_a_descent(self):
+        """Le contrôle positif de l'exclusion : sans ce cas, exclure tout
+        passerait les deux épreuves ci-dessus."""
+        pid = self._fausse_descente()
+        self.assertIn(pid, self.dp.autre_descente())
+        self.assertNotIn(pid, self.dp.autre_descente(exclus={pid}))
+
     def _argv0(self, nom):
         """Un processus vivant dont argv[0] est `nom`, sans rien exécuter de
         vrai.
