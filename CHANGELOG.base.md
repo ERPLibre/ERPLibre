@@ -370,6 +370,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: the Configuration menu shows its six commands under their own names, Fork and the reset included. Fork launches from the TUI and from the web page; the reset, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice. A preference launched from the TUI opens its own choice; Update's Upgrade Odoo launches from the TUI too. A web interface started before this version shows [4], Configuration and Update without their commands until it is restarted ([4] › [3] stops it)
 - Execute › Code opens when `todo.json` has no `code_from_makefile` list, with Open SHELL, Upgrade Module, Debug and Update, instead of stopping on an error before its menu
 - Execute › Code: only a number exactly as shown runs an entry of `todo.json`, as in Update: « 01 », « 1 » between spaces, « +2 » or a digit of another script answer « Command not found ! » instead of running it, and the number of a fixed entry written with a leading zero, « 05 » say, no longer silently runs nothing
+- Navigation telemetry: Execute › Test › Mail unit tests and Analyse unit tests, launched from the TUI, run their own tests instead of the whole unit suite
 
 <!-- [fr] -->
 
@@ -460,6 +461,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : le menu Configuration montre ses six commandes sous leur propre nom, Fork et la réinitialisation comprises. Fork se lance depuis la TUI et depuis la page web ; la réinitialisation, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis. Une préférence lancée depuis la TUI ouvre son propre choix ; la migration Odoo de Mise à jour s'y lance aussi. Une interface web lancée avant cette version montre [4], Configuration et Mise à jour sans leurs commandes jusqu'à ce qu'elle soit relancée ([4] › [3] l'arrête)
 - Exécution › Code s'ouvre quand `todo.json` n'a pas de liste `code_from_makefile`, avec Ouvrir le SHELL, Mise à jour de module, Débogage et Mise à jour, au lieu de s'arrêter sur une erreur avant son menu
 - Exécution › Code : seul un numéro tel qu'affiché lance une entrée de `todo.json`, comme dans Mise à jour : « 01 », « 1 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de la lancer, et le numéro d'une entrée fixe écrit avec un zéro devant, « 05 » par exemple, ne lance plus rien en silence
+- Télémétrie de navigation : Exécution › Test › Tests unitaires courriel et Tests unitaires analyse, lancés depuis la TUI, lancent leurs propres tests au lieu de toute la suite unitaire
 
 <!-- [en] -->
 ## Removed

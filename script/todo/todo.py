@@ -5866,9 +5866,11 @@ class TODO(
             elif status == "3":
                 self.execute_unit_tests()
             elif status == "4":
-                self.execute_unit_tests("test_mail*.py")
+                # Nommé : l'arbre de télémétrie ne lit que les kwargs, et
+                # [4] › [1] rejoue la feuille avec eux.
+                self.execute_unit_tests(pattern="test_mail*.py")
             elif status == "5":
-                self.execute_unit_tests("test_analyse*.py")
+                self.execute_unit_tests(pattern="test_analyse*.py")
             elif status == "6":
                 self.prompt_execute_longtest()
             else:

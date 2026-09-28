@@ -688,6 +688,21 @@ class TestLArbreDesMenus(unittest.TestCase):
 
         parcours(self.arbre)
 
+    def test_the_unit_test_entries_carry_their_pattern(self):
+        # [4] › [1] lance une feuille par sa méthode et ses kwargs : sans son
+        # motif, Mail unit tests y lancerait toute la suite.
+        kwargs = {
+            n["label"]: n.get("kwargs")
+            for n in self._noeud("Test")["children"]
+        }
+        self.assertEqual(kwargs["ERPLibre unit tests"], {})
+        self.assertEqual(
+            kwargs["Mail unit tests"], {"pattern": "test_mail*.py"}
+        )
+        self.assertEqual(
+            kwargs["Analyse unit tests"], {"pattern": "test_analyse*.py"}
+        )
+
     def test_a_help_line_names_its_entry_once(self):
         # « [N] {t("…")} » dans une f-string ; un libellé calculé n'y entre
         # pas, ni un numéro que la méthode écrit avec deux libellés.

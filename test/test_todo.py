@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 from script.todo import todo_i18n
 from script.todo.todo import (
@@ -410,13 +410,10 @@ class TestExecuteUnitTests(unittest.TestCase):
         # Verify it was called - error handling path
 
     def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
-
-        unittest écrit son verdict sur stderr et les tests impriment sur
-        stdout ; capturés ensemble, le stdout tamponné se déversait après
-        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
-        résultat.
-        """
+        """Le verdict s'affiche en dernier : unittest l'écrit sur stderr et
+        les tests impriment sur stdout, qui, tamponné et capturé avec
+        stderr, se déverserait après le « OK ». `python -u` ne tamponne
+        pas stdout."""
         todo = TODO()
         todo.execute = MagicMock()
         todo.execute.exec_command_live.return_value = (0, ["OK"])
@@ -465,14 +462,20 @@ class TestTestMenuDispatch(unittest.TestCase):
             todo.prompt_execute_test()
         return mock_run
 
+    # Le motif est nommé, comme dans l'arbre de télémétrie, que [4] › [1]
+    # rejoue par ses kwargs.
     def test_entry_4_runs_the_mail_tests(self):
-        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
+        self.assertEqual(
+            self._choose("4").call_args, call(pattern="test_mail*.py")
+        )
 
     def test_entry_5_runs_the_analyse_tests(self):
-        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
+        self.assertEqual(
+            self._choose("5").call_args, call(pattern="test_analyse*.py")
+        )
 
     def test_entry_3_still_runs_everything(self):
-        self.assertEqual(self._choose("3").call_args[0], ())
+        self.assertEqual(self._choose("3").call_args, call())
 
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):

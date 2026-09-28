@@ -220,6 +220,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : le menu Configuration montre ses six commandes sous leur propre nom, Fork et la réinitialisation comprises. Fork se lance depuis la TUI et depuis la page web ; la réinitialisation, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis. Une préférence lancée depuis la TUI ouvre son propre choix ; la migration Odoo de Mise à jour s'y lance aussi. Une interface web lancée avant cette version montre [4], Configuration et Mise à jour sans leurs commandes jusqu'à ce qu'elle soit relancée ([4] › [3] l'arrête)
 - Exécution › Code s'ouvre quand `todo.json` n'a pas de liste `code_from_makefile`, avec Ouvrir le SHELL, Mise à jour de module, Débogage et Mise à jour, au lieu de s'arrêter sur une erreur avant son menu
 - Exécution › Code : seul un numéro tel qu'affiché lance une entrée de `todo.json`, comme dans Mise à jour : « 01 », « 1 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de la lancer, et le numéro d'une entrée fixe écrit avec un zéro devant, « 05 » par exemple, ne lance plus rien en silence
+- Télémétrie de navigation : Exécution › Test › Tests unitaires courriel et Tests unitaires analyse, lancés depuis la TUI, lancent leurs propres tests au lieu de toute la suite unitaire
 
 ## Retiré
 

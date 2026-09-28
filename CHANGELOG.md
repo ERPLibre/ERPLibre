@@ -220,6 +220,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: the Configuration menu shows its six commands under their own names, Fork and the reset included. Fork launches from the TUI and from the web page; the reset, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice. A preference launched from the TUI opens its own choice; Update's Upgrade Odoo launches from the TUI too. A web interface started before this version shows [4], Configuration and Update without their commands until it is restarted ([4] › [3] stops it)
 - Execute › Code opens when `todo.json` has no `code_from_makefile` list, with Open SHELL, Upgrade Module, Debug and Update, instead of stopping on an error before its menu
 - Execute › Code: only a number exactly as shown runs an entry of `todo.json`, as in Update: « 01 », « 1 » between spaces, « +2 » or a digit of another script answer « Command not found ! » instead of running it, and the number of a fixed entry written with a leading zero, « 05 » say, no longer silently runs nothing
+- Navigation telemetry: Execute › Test › Mail unit tests and Analyse unit tests, launched from the TUI, run their own tests instead of the whole unit suite
 
 ## Removed
 
