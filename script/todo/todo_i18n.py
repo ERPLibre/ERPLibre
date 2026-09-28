@@ -16905,6 +16905,44 @@ TRANSLATIONS = {
         "fr": "tunnels SSH",
         "en": "SSH tunnels",
     },
+    "loaded": {
+        "fr": "chargé",
+        "en": "loaded",
+    },
+    "Which model": {
+        "fr": "Quel modèle",
+        "en": "Which model",
+    },
+    "No model under that name on this server.": {
+        "fr": "Aucun modèle de ce nom sur ce serveur.",
+        "en": "No model under that name on this server.",
+    },
+    "%s is not loaded; this server serves %s.": {
+        "fr": "%s n'est pas chargé ; ce serveur sert %s.",
+        "en": "%s is not loaded; this server serves %s.",
+    },
+    "This server does not serve %s.": {
+        "fr": "Ce serveur ne sert pas %s.",
+        "en": "This server does not serve %s.",
+    },
+    "It serves: %s": {
+        "fr": "Il sert : %s",
+        "en": "It serves: %s",
+    },
+    "/model changes it, /model <text> filters": {
+        "fr": "/model en change, /model <texte> filtre",
+        "en": "/model changes it, /model <text> filters",
+    },
+    "change model on this server, history CLEARED; /model <text> filters": {
+        "fr": (
+            "changer de modèle sur ce serveur, historique VIDÉ ;"
+            " /model <texte> filtre"
+        ),
+        "en": (
+            "change model on this server, history CLEARED;"
+            " /model <text> filters"
+        ),
+    },
     "declared tunnel without an answer": {
         "fr": "tunnel déclaré sans réponse",
         "en": "declared tunnel without an answer",

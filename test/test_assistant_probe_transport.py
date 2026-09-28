@@ -89,6 +89,21 @@ FAMILIES = (
 )
 
 
+def _http_get_compteur(frappes):
+    """Le transport réel, qui note chaque URL frappée.
+
+    Compter les frappes est la seule façon de prouver qu'une lecture est
+    ÉTROITE : le résultat serait le même si tout le plan partait.
+    """
+    from script.todo.assistant.fingerprint import _http_get
+
+    def http_get(url, timeout):
+        frappes.append(url)
+        return _http_get(url, timeout)
+
+    return http_get
+
+
 class Transport(unittest.TestCase):
     """Ce que `collect` rend quand le serveur en face n'est pas poli."""
 
@@ -167,6 +182,43 @@ class Transport(unittest.TestCase):
                 parts = urllib.parse.urlsplit(url)
                 self.assertEqual(adresse, parts.hostname)
                 self.assertEqual(8000, parts.port)
+
+    def test_la_lecture_de_ce_qui_est_servi_ne_frappe_qu_un_chemin(self):
+        """Rouvrir une conversation ne doit pas coûter une reconnaissance.
+
+        Ce qu'un moteur tient chargé change pendant qu'on s'en sert, donc la
+        question se repose à chaque ouverture ; la reposer par le plan entier
+        ferait payer seize requêtes pour une réponse.
+        """
+        from script.todo.assistant.fingerprint import (
+            EXO_INSTANCES,
+            collect_served,
+        )
+
+        frappes = []
+
+        with FakeLLM("exo") as serveur:
+            vrai = _http_get_compteur(frappes)
+            servis = collect_served(
+                "exo", serveur.host, serveur.port, http_get=vrai, budget=5.0
+            )
+        self.assertEqual(("famille-inventee/modele-007",), servis)
+        self.assertEqual(
+            [EXO_INSTANCES], [urlsplit(url).path for url in frappes]
+        )
+
+    def test_un_logiciel_qui_ne_distingue_rien_ne_frappe_pas(self):
+        """Une requête pour apprendre ce qu'on sait déjà est une requête de
+        trop : un serveur dont le catalogue ne nomme que des modèles chargés
+        n'a rien de plus à dire."""
+        from script.todo.assistant.fingerprint import collect_served
+
+        frappes = []
+        vrai = _http_get_compteur(frappes)
+        self.assertEqual(
+            (), collect_served("vllm", HOST, 9, http_get=vrai, budget=1.0)
+        )
+        self.assertEqual([], frappes)
 
     def test_un_serveur_muet_est_borne_par_le_delai(self):
         # L'écouteur accepte la connexion et ne répond jamais : « le port est
