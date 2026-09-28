@@ -6,7 +6,6 @@ import ast
 import configparser
 import datetime
 import difflib
-import glob
 import importlib.util
 import inspect
 import json
@@ -5595,9 +5594,9 @@ class TODO(
         choices = [
             {"prompt_description": t("Test a module")},
             {"prompt_description": t("Test a module with code coverage")},
+            # TOUT test/test_*.py : les tests du courriel et de l'analyse en
+            # font partie, et le tableau du lanceur les montre un à un.
             {"prompt_description": t("ERPLibre unit tests")},
-            {"prompt_description": t("Mail unit tests")},
-            {"prompt_description": t("Analyse unit tests")},
             # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
             # de vraies machines et durent des heures.
             {"prompt_description": t("Long tests - real VMs, hours")},
@@ -5616,10 +5615,6 @@ class TODO(
             elif status == "3":
                 self.execute_unit_tests()
             elif status == "4":
-                self.execute_unit_tests("test_mail*.py")
-            elif status == "5":
-                self.execute_unit_tests("test_analyse*.py")
-            elif status == "6":
                 self.prompt_execute_longtest()
             else:
                 print(t("Command not found !"))
@@ -5712,12 +5707,8 @@ class TODO(
                 single_source_erplibre=True,
             )
 
-    def execute_unit_tests(self, pattern="test_*.py"):
-        """Lance les fichiers test/<pattern> par le lanceur unitaire.
-
-        Le motif est le seul paramètre : vérifier un coin précis ne doit
-        pas obliger à attendre toute la suite. Une entrée de menu
-        supplémentaire coûte donc un motif, pas une méthode.
+    def execute_unit_tests(self):
+        """Lance toute la suite unitaire par le lanceur.
 
         Le lanceur, et non `unittest discover` : il tient les tests à
         l'écart de l'hôte (pas de terminal, sudo et virsh refusés), les
@@ -5727,8 +5718,7 @@ class TODO(
         commande en hérite au lieu d'être capturée.
         """
         print(f"\n--- {t('Running unit tests')} ---")
-        fichiers = sorted(glob.glob(os.path.join("test", pattern)))
-        cmd = ["./script/test/run_unit_test.sh", "--tui", *fichiers]
+        cmd = ["./script/test/run_unit_test.sh", "--tui"]
         status_code = subprocess.run(cmd, check=False).returncode
         if status_code == 0:
             print(f"\n✅ {t('All unit tests passed')}")

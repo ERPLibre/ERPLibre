@@ -335,7 +335,7 @@ class TestProcessKillGitDaemon(unittest.TestCase):
 class TestExecuteUnitTests(unittest.TestCase):
     """L'entrée passe par le lanceur unitaire, terminal hérité."""
 
-    def _cmd(self, *args, code=0):
+    def _cmd(self, code=0):
         todo = TODO()
         with (
             patch(
@@ -344,27 +344,14 @@ class TestExecuteUnitTests(unittest.TestCase):
             ) as run,
             patch("builtins.print") as mock_print,
         ):
-            todo.execute_unit_tests(*args)
+            todo.execute_unit_tests()
         self.mock_print = mock_print
         return run.call_args[0][0]
 
-    def test_it_goes_through_the_unit_runner_with_its_table(self):
+    def test_it_runs_the_whole_suite_through_the_runner_table(self):
+        """Aucun fichier nommé : le lanceur balaie alors tout test/."""
         cmd = self._cmd()
-        self.assertEqual(cmd[:2], ["./script/test/run_unit_test.sh", "--tui"])
-
-    def test_the_default_pattern_is_still_the_whole_suite(self):
-        """La signature a gagné un paramètre : l'entrée [3] ne doit pas
-        s'être mise à ne lancer qu'un sous-ensemble en silence."""
-        fichiers = self._cmd()[2:]
-        self.assertIn("test/test_todo_menu.py", fichiers)
-        self.assertIn("test/test_mail_compose.py", fichiers)
-
-    def test_the_pattern_selects_the_files(self):
-        fichiers = self._cmd("test_mail*.py")[2:]
-        self.assertTrue(fichiers)
-        self.assertTrue(
-            all(f.startswith("test/test_mail") for f in fichiers), fichiers
-        )
+        self.assertEqual(cmd, ["./script/test/run_unit_test.sh", "--tui"])
 
     def test_a_failure_is_reported(self):
         self._cmd(code=1)
@@ -391,14 +378,20 @@ class TestTestMenuDispatch(unittest.TestCase):
             todo.prompt_execute_test()
         return mock_run
 
-    def test_entry_4_runs_the_mail_tests(self):
-        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
-
-    def test_entry_5_runs_the_analyse_tests(self):
-        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
-
-    def test_entry_3_still_runs_everything(self):
+    def test_entry_3_runs_everything(self):
         self.assertEqual(self._choose("3").call_args[0], ())
+
+    def test_entry_4_opens_the_long_tests(self):
+        todo = TODO()
+        with (
+            patch.object(todo, "prompt_execute_longtest") as longs,
+            patch.object(todo, "execute_unit_tests") as unitaires,
+            patch("click.prompt", side_effect=["4", "0"]),
+            patch("builtins.print"),
+        ):
+            todo.prompt_execute_test()
+        longs.assert_called_once_with()
+        unitaires.assert_not_called()
 
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
