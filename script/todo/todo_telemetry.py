@@ -537,8 +537,9 @@ def _check_menu(menu) -> None:
     `Menu`, n'a pas la forme que lisent l'arbre et le navigateur : chaque
     champ de _TEXT_FIELDS une chaîne (ou None s'il est optionnel),
     `entries` une liste de Section, Entry et FromConfig, les `kwargs` d'une
-    Entry None ou un dict aux clés de chaîne. TypeError si ces `kwargs` ne
-    s'écrivent pas en JSON, comme l'arbre que sert le hub."""
+    Entry None ou un dict aux clés de chaîne, son `danger` None ou un
+    booléen. TypeError si ces `kwargs` ne s'écrivent pas en JSON, comme
+    l'arbre que sert le hub."""
     entries = menu.get("entries")
     if not isinstance(entries, list):
         raise ValueError(f"entries is not a list: {entries!r}")
@@ -563,6 +564,9 @@ def _check_menu(menu) -> None:
         ):
             raise ValueError(f"kwargs is not a dict of names: {kwargs!r}")
         json.dumps(kwargs)
+        danger = item.get("danger")
+        if danger is not None and not isinstance(danger, bool):
+            raise ValueError(f"danger is not a boolean: {danger!r}")
 
 
 def _declared_menus(todo_dir) -> dict:
@@ -604,7 +608,9 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     pour une `Entry` qui ouvre un menu de `labels`, une feuille pour une
     autre, une feuille par élément de la liste d'un `FromConfig`. Une
     entrée dont le libellé finit par un `suffix` calculé à l'affichage
-    porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle."""
+    porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
+    Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
+    ni la TUI ni la page web ne le lancent."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None
@@ -613,6 +619,8 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
         elif kind == "Entry" and item.get("action") in labels:
             child = build(item["action"])
             child["entry"] = "" if item.get("suffix") else item.get("key")
+            if item.get("danger"):
+                child["danger"] = True
             children.append(child)
         elif kind == "Entry":
             leaf = {
@@ -625,6 +633,8 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
             }
             if item.get("suffix"):
                 leaf["entry"] = ""
+            if item.get("danger"):
+                leaf["danger"] = True
             children.append(leaf)
         elif kind == "FromConfig":
             for element in _config_list(item.get("config_key"), todo_dir):
@@ -1006,8 +1016,10 @@ def _group_by_section(cmds):
 def run_tui(run_app: bool = True, state: dict | None = None):
     """TUI de télémétrie : vue Arbre (issue du code) et vue Kanban (F3), la
     disposition du Kanban défilant par F4 (colonnes / swimlanes / grille).
-    Sélectionner une COMMANDE = l'exécuter. `state` restaure la vue + le
-    curseur au retour. Renvoie (action|None, state) ; run_app=False -> l'app.
+    Sélectionner une COMMANDE = l'exécuter, sauf une commande dont le nœud
+    porte "danger" : un avis le dit, et la TUI reste ouverte. `state`
+    restaure la vue + le curseur au retour. Renvoie (action|None, state) ;
+    run_app=False -> l'app.
     """
     from textual.app import App, ComposeResult
     from textual.containers import (
@@ -1033,13 +1045,15 @@ def run_tui(run_app: bool = True, state: dict | None = None):
     state = state or {}
 
     class CmdItem(ListItem):
-        """Carte : commande à exécuter + son chemin (pour restaurer le curseur)."""
+        """Carte : commande à exécuter, son chemin (pour restaurer le
+        curseur) et son drapeau `danger`."""
 
-        def __init__(self, label, method, kwargs, path):
+        def __init__(self, label, method, kwargs, path, danger=False):
             super().__init__(Label(label))
             self.cmd_method = method
             self.cmd_kwargs = kwargs or {}
             self.cmd_path = path
+            self.cmd_danger = bool(danger)
 
     class Telemetry(App):
         CSS = """
@@ -1092,6 +1106,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                                 c.get("method"),
                                 c.get("kwargs"),
                                 c.get("path"),
+                                c.get("danger"),
                             )
                             for c in group
                         ]
@@ -1120,6 +1135,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                                     c.get("method"),
                                     c.get("kwargs"),
                                     c.get("path"),
+                                    c.get("danger"),
                                 )
                                 for c in group
                             ]
@@ -1448,13 +1464,15 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                     )
                     self._add_code(child, c["children"], path)
                 else:
-                    # Feuille EXÉCUTABLE : méthode + chemin portés en data.
+                    # Feuille EXÉCUTABLE : méthode, chemin et drapeau
+                    # `danger` portés en data.
                     tnode.add_leaf(
                         f"· {c['label']}",
                         data={
                             "method": c.get("method"),
                             "kwargs": c.get("kwargs"),
                             "path": path,
+                            "danger": bool(c.get("danger")),
                         },
                     )
 
@@ -1466,8 +1484,16 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 self._add_visited(child, node["children"])
 
         # -- sélection / exécution ------------------------------------------- #
-        def _run(self, method, kwargs, path):
+        def _run(self, method, kwargs, path, danger=False):
+            # Une commande dangereuse se lance depuis son menu seulement :
+            # un avis, et ni action rendue ni sortie de la TUI.
             if not method:
+                return
+            if danger:
+                self.notify(
+                    t("Dangerous command: run it from its menu."),
+                    severity="warning",
+                )
                 return
             self._action = (method, kwargs or {})
             self._exit_state = {
@@ -1480,7 +1506,12 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         def on_tree_node_selected(self, event):
             d = getattr(event.node, "data", None)
             if isinstance(d, dict) and d.get("method"):
-                self._run(d["method"], d.get("kwargs"), d.get("path"))
+                self._run(
+                    d["method"],
+                    d.get("kwargs"),
+                    d.get("path"),
+                    d.get("danger"),
+                )
 
         def on_list_view_selected(self, event):
             if isinstance(event.item, CmdItem):
@@ -1488,6 +1519,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                     event.item.cmd_method,
                     event.item.cmd_kwargs,
                     event.item.cmd_path,
+                    event.item.cmd_danger,
                 )
 
         async def action_kanban_layout(self):

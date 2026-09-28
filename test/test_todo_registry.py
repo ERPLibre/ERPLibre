@@ -2,22 +2,27 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Le registre des menus, son navigateur, l'arbre de télémétrie qui lit
-les menus déclarés, et les fichiers de menus de TODO.
+les menus déclarés, la TUI de télémétrie qui en lance les feuilles, et
+les fichiers de menus de TODO.
 
 Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
 action, état, suffixe ou intro note son appel ; les réponses viennent de
 `click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
 web. L'arbre se lit dans un répertoire temporaire : un todo.py minimal,
 une copie du module du registre et des fichiers de menus écrits par le
-test ; rien n'y est importé. Les fichiers de menus de TODO sont lus par
-AST, puis importés, et les méthodes qu'ils nomment ne sont jamais
-appelées : seule leur signature est liée.
+test ; rien n'y est importé. La TUI tourne sous `run_test`, sur l'arbre
+de TODO et un HOME temporaire : elle rend l'action choisie sans jamais
+l'appeler. Les fichiers de menus de TODO sont lus par AST, puis
+importés, et les méthodes qu'ils nomment ne sont jamais appelées : seule
+leur signature est liée.
 """
 
 import ast
+import asyncio
 import importlib
 import inspect
 import io
+import os
 import shutil
 import sys
 import tempfile
@@ -25,7 +30,7 @@ import types
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import click
 
@@ -414,11 +419,31 @@ class TestDeclaredTree(unittest.TestCase):
             },
         )
 
+    def test_a_dangerous_entry_is_marked_in_the_tree(self):
+        # Une feuille ou un sous-menu déclarés `danger=True` portent
+        # "danger" ; une autre entrée, `danger=False` comprise, non.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'kwargs={"key": "forged_key"}',
+                'kwargs={"key": "forged_key"}, danger=True',
+            )
+            .replace('"prompt_forged")', '"prompt_forged", danger=True)')
+            .replace('"language_label"', '"language_label", danger=False')
+        )
+        [configuration, forged] = self.tree()["children"]
+        [language, pick, submenu, element] = configuration["children"]
+        self.assertEqual(
+            [node.get("danger") for node in configuration["children"]],
+            [None, True, True, None],
+        )
+        self.assertNotIn("danger", language)
+        self.assertNotIn("danger", forged)
+
     def test_a_computed_value_declares_nothing(self):
         # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
         # fichier à moitié écrit, puis un littéral du mauvais type : un nom
         # de menu, une action, des kwargs, une entrée, des kwargs que JSON
-        # n'écrit pas.
+        # n'écrit pas, un `danger` qui n'est pas un booléen.
         for n, text in enumerate(
             (
                 "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
@@ -433,6 +458,9 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS.replace('{"key": "forged_key"}', "[1]"),
                 FAKE_MENUS.replace('Section("Maintenance")', '"Maintenance"'),
                 FAKE_MENUS.replace('"forged_key"', "{1}"),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", danger=1, kwargs'
+                ),
             )
         ):
             with self.subTest(case=n):
@@ -478,6 +506,97 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertEqual(
             fields["Entry"][:4], ["key", "action", "kwargs", "suffix"]
         )
+
+
+def _tree_nodes(node):
+    """`node`, un nœud d'un Tree de Textual, puis tous ses descendants."""
+    yield node
+    for child in node.children:
+        yield from _tree_nodes(child)
+
+
+class TestTelemetryTui(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # L'arbre de TODO réduit au menu Configuration, que déclare le
+        # registre : la Liste et le Kanban n'ont que ses cartes à monter.
+        tree = todo_telemetry.build_code_tree()
+        cls.tree = {
+            **tree,
+            "children": [
+                node
+                for node in tree["children"]
+                if node["label"] == "Configuration"
+            ],
+        }
+
+    def setUp(self):
+        # `load` lit les compteurs sous ~/.erplibre.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": tmp.name}),
+            patch.object(
+                todo_telemetry, "build_code_tree", return_value=self.tree
+            ),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        _english(self)
+
+    def select(self, mode, methods):
+        """[(action rendue, appels de `notify`), …] quand, dans la vue
+        `mode` de la TUI, Entrée est pressée sur la feuille qui lance
+        chaque méthode de `methods`, dans l'ordre : un relevé après
+        chacune."""
+        from textual.widgets import ListView, Tree
+
+        app = todo_telemetry.run_tui(run_app=False, state={"mode": mode})
+        app.notify = Mock()
+        seen = []
+
+        async def scenario():
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                for method in methods:
+                    if mode == "tree":
+                        tree = app.query_one("#nav", Tree)
+                        [node] = [
+                            node
+                            for node in _tree_nodes(tree.root)
+                            if (node.data or {}).get("method") == method
+                        ]
+                        tree.move_cursor(node)
+                        tree.focus()
+                    else:
+                        [(view, index)] = [
+                            (view, index)
+                            for view in app.query(ListView)
+                            for index, item in enumerate(view.children)
+                            if getattr(item, "cmd_method", None) == method
+                        ]
+                        view.index = index
+                        view.focus()
+                    await pilot.pause()
+                    await pilot.press("enter")
+                    await pilot.pause()
+                    seen.append((app._action, list(app.notify.call_args_list)))
+
+        asyncio.run(scenario())
+        return seen
+
+    def test_a_dangerous_entry_shows_a_notice_and_launches_nothing(self):
+        # Reset, déclaré dangereux, laisse la TUI ouverte, sans action ;
+        # Fork, choisi ensuite, rend la sienne.
+        notice = call(
+            t("Dangerous command: run it from its menu."), severity="warning"
+        )
+        for mode in ("tree", "list", "kanban"):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    self.select(mode, ["_reset_preferences", "_fork_todo"]),
+                    [(None, [notice]), (("_fork_todo", {}), [notice])],
+                )
 
 
 def _rebuilt(value):

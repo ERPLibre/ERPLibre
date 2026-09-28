@@ -523,6 +523,12 @@ class TestTelemetryApi(ApiCase):
         self.assertEqual(
             server.localize({**named, "entry": ""}, "fr")["entry"], ""
         )
+        # Un nœud dangereux le dit à la page, qui ne le lance pas ; un
+        # autre ne porte pas la clé.
+        self.assertIs(
+            server.localize({**named, "danger": True}, "fr")["danger"], True
+        )
+        self.assertNotIn("danger", server.localize(named, "fr"))
 
     async def test_counts_come_from_the_telemetry_file(self):
         store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"

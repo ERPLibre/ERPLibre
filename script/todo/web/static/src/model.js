@@ -1,7 +1,8 @@
 // Ce que montrent les vues Arbre, Liste et Kanban, sans OWL ni DOM :
 // recherche et tri de l'arbre des menus, vue et tri tirés du fragment de
 // l'URL. Un nœud est celui de /api/telemetry : {key, label, entry, path,
-// menu, children, section?} ; `counts` associe un chemin à son compteur.
+// menu, children, section?, danger?} ; `counts` associe un chemin à son
+// compteur.
 
 export const VIEWS = ["tree", "list", "kanban", "system", "sessions", "history"];
 // Tris offerts par vue ; le premier est celui de la vue quand le fragment

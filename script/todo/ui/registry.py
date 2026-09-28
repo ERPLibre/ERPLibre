@@ -34,8 +34,11 @@ class Entry:
     """Entrée numérotée : `t(key)`, suivi de `  (…)`, ce que rend la
     méthode `suffix` quand elle est nommée. Y répondre appelle la méthode
     `action` avec `kwargs`, que `suffix` reçoit aussi. `danger`, `needs`,
-    `interfaces` et `glance` se déclarent pour les interfaces à venir :
-    le navigateur ne les lit pas."""
+    `interfaces` et `glance` se déclarent ; le navigateur ne les lit pas.
+    L'arbre de télémétrie lit `danger` seul : le nœud d'une entrée
+    `danger=True` porte "danger", et ni la TUI de télémétrie ni la page
+    web ne le lancent ; le menu, lui, l'affiche et le lance comme une
+    autre entrée."""
 
     key: str
     action: str

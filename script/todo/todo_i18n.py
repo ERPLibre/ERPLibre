@@ -3831,6 +3831,10 @@ TRANSLATIONS = {
         "fr": "Télémétrie réinitialisée.",
         "en": "Telemetry reset.",
     },
+    "Dangerous command: run it from its menu.": {
+        "fr": "Commande dangereuse : lancez-la depuis son menu.",
+        "en": "Dangerous command: run it from its menu.",
+    },
     "tree from code": {
         "fr": "arbre issu du code",
         "en": "tree from code",

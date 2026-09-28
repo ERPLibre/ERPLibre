@@ -1609,7 +1609,9 @@ console.log(JSON.stringify({
     keys: ["🔍 Afficher  le Statut du CODE", "  ()", " — ", "Élève 2"]
         .map(m.entryKey),
     route,
-    refused: [m.launchRoute([]), m.launchRoute([execute, node("x", "  ()")])],
+    refused: [m.launchRoute([]), m.launchRoute([execute, node("x", "  ()")]),
+        m.launchRoute([execute, code, {...status, danger: true}]),
+        m.launchRoute([{...execute, danger: true}, code, status])],
     match: [
         m.matchEntry(main.items, "🧰 exécution"),
         m.matchEntry(main.items, "Retour"),
@@ -1668,8 +1670,9 @@ class TestLaunch(unittest.TestCase):
         )
         # Un nœud sans `entry` : son libellé.
         self.assertEqual(status["entry"], status["label"])
-        # Ni un chemin vide, ni un chemin dont une étape ne se retrouve.
-        self.assertEqual(self.out["refused"], [None, None])
+        # Ni un chemin vide, ni un chemin dont une étape ne se retrouve, ni
+        # un chemin qui mène à un nœud dangereux ou passe par lui.
+        self.assertEqual(self.out["refused"], [None, None, None, None])
 
     def test_one_entry_matches_never_zero_nor_two(self):
         # « Retour » est l'entrée 0 : le rejeu ne la choisit jamais.
@@ -1729,6 +1732,68 @@ class TestLaunch(unittest.TestCase):
             self.out["resumed"],
             {"answers": [{"qid": 3, "key": "2"}], "done": True},
         )
+
+
+# Un arbre factice dont Configuration porte Fork et une feuille dangereuse,
+# comme celui de /api/telemetry ; chaque vue calcule le plan de route de
+# son bouton ▶ comme ci-dessous : l'Arbre sur le nœud et ceux au-dessus de
+# lui, la Liste et le Kanban sur les `nodes` de chaque rangée ou carte.
+DANGER_CHECK = r"""
+const {launchRoute} = await import(
+    url(join(dirname(process.argv[1]), "launch.js")));
+const leaf = (key, more = {}) => ({key, label: key, entry: key,
+    path: `TODO › Configuration › ${key}`, menu: false, children: [],
+    ...more});
+const fork = leaf("Fork");
+const reset = leaf("Reset", {danger: true});
+const configuration = {key: "Configuration", label: "Configuration",
+    entry: "Configuration", path: "TODO › Configuration", menu: true,
+    children: [fork, reset]};
+const tree = {key: "TODO", label: "TODO", entry: "TODO", path: "TODO",
+    menu: true, children: [configuration]};
+const routed = (rows) =>
+    rows.map((row) => [row.node.key, launchRoute(row.nodes) !== null]);
+console.log(JSON.stringify({
+    tree: [[configuration], [configuration, fork], [configuration, reset]]
+        .map((nodes) => launchRoute(nodes) !== null),
+    list: routed(m.listRows(tree, {}, "", "code", "en")),
+    kanban: m.kanbanColumns(tree, {}, "", "code", "en")
+        .map((column) => routed(column.cards)),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestDangerousNodes(unittest.TestCase):
+    """Un nœud qui porte `danger` n'a pas de bouton ▶ : ni dans l'Arbre,
+    ni dans la Liste, ni dans le Kanban."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(DANGER_CHECK, "model.js")
+
+    def test_no_view_launches_a_dangerous_node(self):
+        self.assertEqual(self.out["tree"], [True, True, False])
+        self.assertEqual(self.out["list"], [["Fork", True], ["Reset", False]])
+        self.assertEqual(
+            self.out["kanban"], [[["Fork", True], ["Reset", False]]]
+        )
+
+    def test_each_launch_button_needs_a_route(self):
+        # Le bouton ▶ de chaque vue ne paraît qu'avec le plan de route que
+        # rend `launchRoute`.
+        for view, route in (
+            ("tree_view.js", "route"),
+            ("list_view.js", "row.route"),
+            ("kanban_view.js", "card.route"),
+        ):
+            with self.subTest(view=view):
+                source = (SRC / view).read_text(encoding="utf-8")
+                [button] = re.findall(
+                    r'<button t-if="([\w.]+)"[^>]*class="launch"', source
+                )
+                self.assertEqual(button, route)
+                self.assertIn("launchRoute(", source)
 
 
 @unittest.skipUnless(shutil.which("node"), "node absent")

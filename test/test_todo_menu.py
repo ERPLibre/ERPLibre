@@ -529,6 +529,23 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_reset_is_the_only_dangerous_node(self):
+        # Seul un nœud qui porte "danger" ne se lance ni de la TUI ni de
+        # la page web.
+        dangerous = []
+
+        def walk(node, path):
+            for child in node["children"]:
+                here = f"{path} › {child['label']}"
+                if child.get("danger"):
+                    dangerous.append(here)
+                walk(child, here)
+
+        walk(self.arbre, "TODO")
+        self.assertEqual(
+            dangerous, ["TODO › Configuration › Reset all preferences"]
+        )
+
     def test_a_computed_label_keeps_the_numbering(self):
         # fill_help_info numérote chaque entrée qui n'est pas une section,
         # son libellé écrit ou calculé : la troisième reste la troisième, et

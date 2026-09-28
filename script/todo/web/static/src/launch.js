@@ -1,10 +1,12 @@
 // Lancer un nœud de l'arbre de télémétrie, sans OWL ni DOM : dans une
 // session, répondre à chaque menu l'entrée dont le libellé est l'étape
 // suivante du chemin, comme l'utilisateur le ferait. Un nœud est celui de
-// /api/telemetry : {key, label, entry, path, menu, children} ; `entry` est
-// le libellé que son menu parent montre, `key` le segment que TODO écrit
-// pour lui dans le fil d'Ariane (`crumbs`) d'un menu. Aucune méthode ni
-// aucun argument : des libellés, déjà dans la langue de la session.
+// /api/telemetry : {key, label, entry, path, menu, children, danger?} ;
+// `entry` est le libellé que son menu parent montre, `key` le segment que
+// TODO écrit pour lui dans le fil d'Ariane (`crumbs`) d'un menu, `danger`
+// vrai pour une entrée qui se lance depuis son menu seulement. Aucune
+// méthode ni aucun argument : des libellés, déjà dans la langue de la
+// session.
 import {fold} from "./model.js";
 
 // Messages qui laissent le rejeu où il en est : ceux du hub (la session,
@@ -23,10 +25,14 @@ export function entryKey(label) {
 
 // Plan de route du nœud au bout de `nodes`, du premier niveau jusqu'à lui :
 // une étape {label, entry, key} par nœud, `entry` valant `label` pour un
-// nœud qui n'en porte pas. null si `nodes` est vide, ou si une étape ne
-// peut trouver son entrée : un libellé que TODO calcule à l'affichage, que
-// l'arbre lit vide (« () »).
+// nœud qui n'en porte pas. null si `nodes` est vide, si une étape ne peut
+// trouver son entrée (un libellé que TODO calcule à l'affichage, que
+// l'arbre lit vide, « () »), ou si un nœud du chemin porte `danger` : le
+// rejeu répondrait à son entrée. Les vues n'offrent ▶ qu'avec un plan.
 export function launchRoute(nodes) {
+    if (nodes.some((node) => node.danger)) {
+        return null;
+    }
     const route = nodes.map(({label, entry, key}) => ({label, entry: entry ?? label, key}));
     return route.length && route.every((step) => entryKey(step.entry)) ? route : null;
 }

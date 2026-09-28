@@ -351,9 +351,11 @@ def localize(node, lang, parent=None) -> dict:
     enregistre ; `menu` ; `entry` : la traduction du libellé que le menu
     parent montre pour ce nœud, `label` quand l'arbre n'en porte pas
     d'autre, vide pour un nœud, feuille ou sous-menu, qu'il ne nomme pas ;
-    `section` traduite pour une feuille qui en a une. Ni méthode ni
-    arguments : un `entry` non vide suffit à trouver le nœud dans le menu
-    de son parent ; un `entry` vide dit qu'aucune entrée ne lui répond.
+    `section` traduite pour une feuille qui en a une ; `danger`, True,
+    pour un nœud que l'arbre marque dangereux, que la page ne lance pas.
+    Ni méthode ni arguments : un `entry` non vide suffit à trouver le nœud
+    dans le menu de son parent ; un `entry` vide dit qu'aucune entrée ne
+    lui répond.
     """
     key = node["label"]
     path = key if parent is None else f"{parent} › {key}"
@@ -367,6 +369,8 @@ def localize(node, lang, parent=None) -> dict:
     }
     if node.get("section"):
         out["section"] = todo_i18n.translate(node["section"], lang)
+    if node.get("danger"):
+        out["danger"] = True
     return out
 
 
