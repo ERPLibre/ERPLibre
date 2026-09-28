@@ -191,6 +191,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Transform data` reads Excel with openpyxl 3.1.5 and xlsxwriter 3.2.9; the leak test that guards openpyxl's exact pin passes on them
 - factur-x requires 6.8 outside s390x, the version already locked, so a regeneration can no longer fall back to an untested 4.x or 5.x
 - The interface chooser of the QEMU deployment and of the Odoo migration, and its preferences in `TODO › Configuration`, mark the TUI form with 📋 and the line by line questions with 💬
+- `make test_unit` runs the test files in parallel, one per core (`UNIT_JOBS`), the longest first from the previous run's durations: the suite goes from about 8 minutes to about 35 s on 16 cores. Each file runs without a controlling terminal and with `/dev/null` as input, `sudo`, `pkexec`, `doas`, `virsh` and `ssh` are replaced by commands that refuse, and a file is stopped after `UNIT_TIMEOUT` seconds (300): a test that escapes its stubs fails instead of asking for a password or querying the machine's VMs
+- `./script/test/run_unit_test.sh --tui` shows every test file pending, running or finished with its duration, and the end of the selected file's log. Without it, a file still running after `UNIT_SIGNAL` seconds (60) is announced, and Ctrl+C stops the running files and names them
+- `TODO › Test` has a single unit-test entry, which runs the whole suite through that runner and its table: the separate mail and analyse entries are gone, and the long tests move from [6] to [4]
+- The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
 
 <!-- [fr] -->
 
@@ -226,6 +230,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Transform data` lit Excel avec openpyxl 3.1.5 et xlsxwriter 3.2.9 ; le test de fuite qui garde l'épingle exacte d'openpyxl passe sur eux
 - factur-x exige 6.8 hors s390x, la version déjà verrouillée : une régénération ne peut plus retomber sur une 4.x ou 5.x non testée
 - Le choix d'interface du déploiement QEMU et de la migration Odoo, et ses préférences dans `TODO › Configuration`, marquent le formulaire TUI d'un 📋 et les questions ligne par ligne d'un 💬
+- `make test_unit` lance les fichiers de tests en parallèle, un par cœur (`UNIT_JOBS`), les plus longs d'abord d'après les durées du passage précédent : la suite passe d'environ 8 minutes à environ 35 s sur 16 cœurs. Chaque fichier tourne sans terminal de contrôle et avec `/dev/null` en entrée, `sudo`, `pkexec`, `doas`, `virsh` et `ssh` sont remplacés par des commandes qui refusent, et un fichier est arrêté après `UNIT_TIMEOUT` secondes (300) : un test qui échappe à ses doublures échoue au lieu de demander un mot de passe ou d'interroger les VM du poste
+- `./script/test/run_unit_test.sh --tui` montre chaque fichier de tests en attente, en cours ou fini avec sa durée, et la fin du journal du fichier choisi. Sans lui, un fichier encore en cours après `UNIT_SIGNAL` secondes (60) est annoncé, et Ctrl+C arrête les fichiers en cours et les nomme
+- `TODO › Test` n'a plus qu'une entrée de tests unitaires, qui lance toute la suite par ce lanceur et son tableau : les entrées séparées courriel et analyse disparaissent, et les tests longs passent de [6] à [4]
+- Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
 
 <!-- [en] -->
 ## Fixed
@@ -303,6 +311,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Building a commit not yet on the public repository stops at once and names the `git push` to type, instead of failing after the whole clone on « reference is not a tree ». An unreachable repository does not block the build
 - The production image compiles pykcs11 with the `PyInt_FromLong` alias that `install_locally.sh` already gives the host: SWIG 4.3 dropped it, and the Odoo 14, 15 and 17 images stopped at `poetry install`. A test fails if the two definitions diverge
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
+- Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
 
 <!-- [fr] -->
 
@@ -376,6 +385,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bâtir un commit absent du dépôt public s'arrête d'emblée et nomme le `git push` à taper, au lieu d'échouer au bout du clone sur « reference is not a tree ». Un dépôt injoignable ne bloque pas la construction
 - L'image de production compile pykcs11 avec l'alias `PyInt_FromLong` que `install_locally.sh` donne déjà à l'hôte : SWIG 4.3 l'a retiré, et les images d'Odoo 14, 15 et 17 s'arrêtaient à `poetry install`. Un test échoue si les deux définitions divergent
 - Les Dockerfile écrivent `ENV clé=valeur` : buildkit ne signale plus le format hérité à chaque construction
+- Les tests unitaires n'atteignent plus l'hôte qui les lance : un vrai `sudo virsh` qui demandait un mot de passe là où libvirt exige root, `ssh` et `~/.ssh/config` lus par les tests du formulaire Proxmox, l'UUID d'un vrai domaine écrit dans un rapport de test long, un `input()` qui bloquait dès que la suite partait d'un terminal, et le script d'installation Proxmox joué contre les outils Debian, le nom et l'adresse de l'hôte. Trois tests de l'écran de composition cessent aussi de tourner dix fois chacun
 
 <!-- [en] -->
 ## Removed
