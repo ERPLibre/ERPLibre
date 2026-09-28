@@ -14484,7 +14484,40 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
-    "New conversation": {
+    "Folders": {
+        "fr": "Dossiers",
+        "en": "Folders",
+    },
+    "New conversation here": {
+        "fr": "✨ Nouvelle conversation dans ce dossier",
+        "en": "✨ New conversation here",
+    },
+    "This conversation is not being kept.": {
+        "fr": "Cette conversation n'est pas gardée.",
+        "en": "This conversation is not being kept.",
+    },
+    "Could not file this conversation.": {
+        "fr": "Impossible de ranger cette conversation.",
+        "en": "Could not file this conversation.",
+    },
+    "Filed under %s": {
+        "fr": "Rangée dans %s",
+        "en": "Filed under %s",
+    },
+    "Taken out of its folder.": {
+        "fr": "Sortie de son dossier.",
+        "en": "Taken out of its folder.",
+    },
+    "file this conversation: /dossier <name>, empty to take it out": {
+        "fr": (
+            "ranger cette conversation : /dossier <nom>, vide pour l'en"
+            " sortir"
+        ),
+        "en": (
+            "file this conversation: /dossier <name>, empty to take it out"
+        ),
+    },
+    "Start a new conversation": {
         "fr": "✨ Nouvelle conversation",
         "en": "✨ New conversation",
     },
@@ -15715,10 +15748,6 @@ TRANSLATIONS = {
     "Advanced options? (y/N): ": {
         "fr": "Options avancées ? (o/N) : ",
         "en": "Advanced options? (y/N): ",
-    },
-    "Start a new conversation": {
-        "fr": "✨ Nouvelle conversation",
-        "en": "✨ New conversation",
     },
     "every sheet": {
         "fr": "toutes les feuilles",

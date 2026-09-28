@@ -61,6 +61,7 @@ COMMANDES_PHASE_1 = (
     "/gpt",
     "/srv",
     "/model",
+    "/dossier",
     "/tui",
     "/ctx",
     "/m",
@@ -3677,46 +3678,144 @@ class AssistantMenuMixin:
         state["confirmes"].add(serveur.host)
         return True
 
-    def _llm_reprendre(self):
-        """Reprendre une conversation gardée, ou en ouvrir une neuve.
+    def _llm_serveur_du_dossier(self, vu):
+        """Le serveur d'un dossier, retrouvé parmi les connus. `None` sinon.
 
-        La liste passe AVANT la conversation parce qu'une question posée à un
-        modèle en appelle une autre : reprendre un fil est le cas courant, en
-        ouvrir un sans rapport avec aucun autre l'exception.
+        Le dossier hérite d'un hôte, d'un port et d'un modèle ; c'est le
+        COUPLE hôte-port qui désigne la machine, le modèle se posant par
+        dessus. Un serveur retiré depuis laisse le dossier sans défaut, et
+        la conversation s'ouvre sur celui du menu — mieux que de refuser
+        d'ouvrir pour une adresse qui n'existe plus.
+        """
+        if not vu.hote or not vu.port:
+            return None
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        for connu in connus:
+            if connu.host == vu.hote and connu.port == vu.port:
+                return replace(connu, model=vu.modele or connu.model)
+        return None
 
-        Sans séance gardée, il n'y a rien à choisir et la conversation
-        s'ouvre directement : une liste d'une seule entrée demande une frappe
-        pour ne rien apprendre.
+    def _llm_ligne_dossier(self, vu):
+        """Un dossier, en une ligne de liste."""
+        combien = self._llm_count(vu.seances, "session", "sessions")
+        parts = [f"📁 {vu.nom}", combien, vu.modele or vu.logiciel]
+        if vu.outil:
+            parts.append(vu.outil)
+        return " · ".join(part for part in parts if part)
+
+    def _llm_dossier(self, nom):
+        """Les séances d'un dossier, et de quoi en ouvrir une neuve.
+
+        Le serveur du dossier prime sur celui du menu : c'est ce qui rend un
+        dossier utile, puisqu'un fil de travail garde son modèle sans qu'on
+        le rechoisisse à chaque fois.
         """
         from script.todo.assistant import sessions as llm_seances
 
-        gardees = llm_seances.lister(combien=REPRISES_MAX)
-        if not gardees:
-            self._llm_conversation()
-            return
-        choices = [{"prompt_description": t("Start a new conversation")}]
-        choices.append({"section": t("Resume")})
-        for vue in gardees:
-            choices.append({"prompt_description": self._llm_ligne_seance(vue)})
+        vus = llm_seances.dossiers()
+        vu = next((un for un in vus if un.nom == nom), None)
+        if vu is not None:
+            serveur = self._llm_serveur_du_dossier(vu)
+            if serveur is not None:
+                self._llm_state()["serveur"] = serveur
+        gardees = llm_seances.lister(combien=REPRISES_MAX, dossier=nom)
+        choices = [{"prompt_description": t("New conversation here")}]
+        if gardees:
+            choices.append({"section": t("Resume")})
+            for garde in gardees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_seance(garde)}
+                )
+        print(f"\n📁 {nom}")
         try:
             status = click.prompt(self.fill_help_info(choices))
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
         print()
-        if status == "0":
+        rang = self._llm_ligne_choisie(status, 1 + len(gardees))
+        if rang is None:
             return
+        if rang == 1:
+            self._llm_conversation(dossier=nom)
+        else:
+            self._llm_conversation(reprise=gardees[rang - 2].chemin)
+
+    @staticmethod
+    def _llm_ligne_choisie(status, combien):
+        """Le numéro d'une ligne choisie, ou None pour « rien ».
+
+        Rend None sur le retour comme sur une entrée qui ne désigne aucune
+        ligne : l'appelant n'a qu'un cas à traiter, et aucune frappe ne
+        tombe dans une branche qu'elle ne visait pas.
+
+        La LECTURE reste chez l'appelant, et ce n'est pas un oubli : la
+        cartographie des menus reconnaît un menu à son appel de
+        `fill_help_info`, et le remonter ici ferait passer cette aide pour
+        un menu de plus, sans fil d'Ariane et sans étiquette.
+        """
+        if status == "0":
+            return None
         try:
             rang = int(status)
         except ValueError:
             print(t("Command not found !"))
+            return None
+        if not 1 <= rang <= combien:
+            print(t("Command not found !"))
+            return None
+        return rang
+
+    def _llm_reprendre(self):
+        """Les dossiers, les séances isolées, ou une conversation neuve.
+
+        Le choix passe AVANT la conversation parce qu'une question posée à un
+        modèle en appelle une autre : reprendre un fil est le cas courant, en
+        ouvrir un sans rapport avec aucun autre l'exception.
+
+        Les séances RANGÉES ne paraissent pas ici : elles s'atteignent par
+        leur dossier, et les lister deux fois ferait douter qu'il s'agisse
+        des mêmes. Sans dossier ni séance, la conversation s'ouvre
+        directement — une liste d'une seule entrée demande une frappe pour
+        ne rien apprendre.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        rangees = llm_seances.dossiers()
+        isolees = llm_seances.lister(combien=REPRISES_MAX, dossier="")
+        if not rangees and not isolees:
+            self._llm_conversation()
+            return
+        choices = [{"prompt_description": t("Start a new conversation")}]
+        if rangees:
+            choices.append({"section": t("Folders")})
+            for vu in rangees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_dossier(vu)}
+                )
+        if isolees:
+            choices.append({"section": t("Resume")})
+            for garde in isolees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_seance(garde)}
+                )
+        combien = 1 + len(rangees) + len(isolees)
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, combien)
+        if rang is None:
             return
         if rang == 1:
             self._llm_conversation()
-        elif 2 <= rang <= 1 + len(gardees):
-            self._llm_conversation(reprise=gardees[rang - 2].chemin)
+        elif rang <= 1 + len(rangees):
+            self._llm_dossier(rangees[rang - 2].nom)
         else:
-            print(t("Command not found !"))
+            depart = rang - 2 - len(rangees)
+            self._llm_conversation(reprise=isolees[depart].chemin)
 
     @staticmethod
     def _llm_ligne_seance(vue):
@@ -3770,22 +3869,30 @@ class AssistantMenuMixin:
             from script.todo.chat_form import run_chat
         except ImportError:
             return False
+        from script.todo.assistant import sessions as llm_seances
+
+        fichier = self._llm_state().get("seance_fichier")
         run_chat(
             conversation,
             invite,
             on_save=lambda: self._llm_save(conversation),
+            archiver=lambda tour: llm_seances.noter(fichier, tour),
             aide=[
                 (nom, t(llm_chat.COMMANDS[nom])) for nom in COMMANDES_PHASE_1
             ],
         )
         return True
 
-    def _llm_conversation(self, reprise=None):
+    def _llm_conversation(self, reprise=None, dossier=""):
         """La boucle de conversation.
 
         `reprise` est le chemin d'une séance gardée : ses tours repartent
         dans l'historique, et la suite s'ajoute AU MÊME fichier. Rouvrir sur
         un fichier neuf couperait la conversation en deux au milieu.
+
+        `dossier` range la séance neuve dès son ouverture. Une reprise garde
+        le sien : il appartient à la séance, pas à la façon dont on y est
+        entré.
 
         L'invite d'une ligne EST la ligne d'état : elle porte le serveur et le
         modèle, elle est réimprimée par la lecture à chaque tour, et elle ne
@@ -3841,7 +3948,10 @@ class AssistantMenuMixin:
             etat["seance"] = ""
             etat["rang_depart"] = 0
             etat["seance_fichier"] = llm_seances.ouvrir(
-                self._llm_seance(), serveur, outil=outil.stem if outil else ""
+                self._llm_seance(),
+                serveur,
+                outil=outil.stem if outil else "",
+                dossier=dossier,
             )
         else:
             # La reprise garde l'identifiant du fichier : les tours qui
@@ -3927,6 +4037,9 @@ class AssistantMenuMixin:
                 # prête des mots qu'il n'a pas dits.
                 conversation, invite = ouvrir(serveur)
                 print(f"✅ {self._llm_label(serveur)}")
+                continue
+            if commande == "/dossier":
+                self._llm_ranger(reste)
                 continue
             if commande == "/tui":
                 self._llm_tui(conversation, serveur, outil)
@@ -4033,6 +4146,28 @@ class AssistantMenuMixin:
         absente dit « aucun tour encore », jamais une panne.
         """
         return self._llm_state().setdefault("mesures", [])
+
+    def _llm_ranger(self, nom):
+        """Range la conversation en cours dans un dossier, ou l'en sort.
+
+        Un nom vide l'en sort, ce qui est un geste et non une erreur : une
+        conversation rangée par mégarde doit pouvoir en ressortir sans qu'on
+        aille éditer un fichier.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        fichier = self._llm_state().get("seance_fichier")
+        if fichier is None:
+            print(f"⚠ {t('This conversation is not being kept.')}")
+            return
+        propre = llm_seances.nom_dossier(nom)
+        if not llm_seances.ranger(fichier, propre):
+            print(f"⚠ {t('Could not file this conversation.')}")
+            return
+        if propre:
+            print(f"  📁 {t('Filed under %s') % propre}")
+        else:
+            print(f"  📂 {t('Taken out of its folder.')}")
 
     def _llm_seance(self):
         """L'identifiant opaque de cette séance de conversation.

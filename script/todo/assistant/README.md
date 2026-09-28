@@ -111,6 +111,22 @@ loads the turns back into the history — the model receives, on the next turn,
 what it would have received without the interruption — and the rest is
 appended to the SAME file.
 
+A session may belong to a FOLDER, and the folder is nothing but a name its
+sessions claim: nothing declares it, nothing creates it, and the last session
+to leave makes it vanish — which spares a second list to keep in agreement
+with the first. Its defaults — server, model, tool — are those of its most
+recent session, so a working thread keeps its model without being told to, and
+nothing kept up to date can lie about it. Filing appends a line rather than
+rewriting the first one: remaking the file would lose the turns another writer
+is appending at that moment, and the last line wins.
+
+EVERY screen writes, because they all speak to the same conversation: the
+line-by-line loop, the timings screen and the full-screen form. One that did
+not would cut the thread exactly where the screen was changed, and nothing
+would say so. What is written is what ENTERS the history and nothing else — a
+failed turn leaves the question on disk but never returns it, and an answer
+cut before its first word is not an exchange.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines

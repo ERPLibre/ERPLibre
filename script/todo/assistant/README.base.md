@@ -116,6 +116,22 @@ loads the turns back into the history — the model receives, on the next turn,
 what it would have received without the interruption — and the rest is
 appended to the SAME file.
 
+A session may belong to a FOLDER, and the folder is nothing but a name its
+sessions claim: nothing declares it, nothing creates it, and the last session
+to leave makes it vanish — which spares a second list to keep in agreement
+with the first. Its defaults — server, model, tool — are those of its most
+recent session, so a working thread keeps its model without being told to, and
+nothing kept up to date can lie about it. Filing appends a line rather than
+rewriting the first one: remaking the file would lose the turns another writer
+is appending at that moment, and the last line wins.
+
+EVERY screen writes, because they all speak to the same conversation: the
+line-by-line loop, the timings screen and the full-screen form. One that did
+not would cut the thread exactly where the screen was changed, and nothing
+would say so. What is written is what ENTERS the history and nothing else — a
+failed turn leaves the question on disk but never returns it, and an answer
+cut before its first word is not an exchange.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -777,6 +793,24 @@ ouverte : une date et un modèle ne distinguent pas deux conversations du même
 après-midi. Reprendre recharge les tours dans l'historique — le modèle reçoit
 au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
 s'ajoute au MÊME fichier.
+
+Une séance peut appartenir à un DOSSIER, et le dossier n'est rien qu'un nom
+dont ses séances se réclament : rien ne le déclare, rien ne le crée, et le
+départ de la dernière le fait disparaître — ce qui évite une seconde liste à
+tenir d'accord avec la première. Ses défauts — serveur, modèle, outil — sont
+ceux de sa séance la plus récente, si bien qu'un fil de travail garde son
+modèle sans qu'on le lui dise, et que rien qu'on tienne à jour ne peut mentir
+à son sujet. Ranger AJOUTE une ligne au lieu de réécrire la première : refaire
+le fichier perdrait les tours qu'un autre écrivain y ajoute au même moment, et
+la dernière ligne fait foi.
+
+TOUS les écrans écrivent, parce qu'ils parlent à la même conversation : la
+boucle en ligne, l'écran des durées et le formulaire plein écran. Celui qui
+ne le ferait pas couperait le fil à l'endroit exact où l'on a changé d'écran,
+sans que rien ne le dise. Ce qui s'écrit est ce qui ENTRE dans l'historique
+et rien d'autre : un tour en panne laisse sa question sur le disque sans
+jamais la rendre, et une réponse coupée avant son premier mot n'est pas un
+échange.
 
 ## Une adresse ne devient jamais du texte de prompt
 
