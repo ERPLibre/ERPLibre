@@ -38,7 +38,7 @@ from unittest.mock import patch
 
 from todo_web_env import private_env
 
-from script.todo import todo_i18n
+from script.todo import auto_ask, todo_i18n
 from script.todo.ui import legacy, pipe_port, port
 from script.todo.web import protocol, sessions, worker
 
@@ -625,6 +625,32 @@ class TestPipePort(unittest.TestCase):
         )
         os.write(self.master, b"\x04")
         self.assertEqual(future.result(10), "")
+
+    def test_cancel_at_a_countdown_is_enter_as_ctrl_d(self):
+        # Annuler, comme Ctrl+D au terminal, n'abandonne pas la tâche : la
+        # question rend "", que la capture change en défaut.
+        future, asked = self.asking(
+            self.port.ask, "Go? ", "n", "countdown", 30
+        )
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertEqual(future.result(10), "")
+        self.assertEqual(
+            self.received(), {"t": "answered", "qid": asked["qid"]}
+        )
+        self.assertEqual(self.out.getvalue(), "⏱30s Go? \n")
+
+        def captured():
+            uninstall = legacy.install(self.port)
+            try:
+                with patch.dict(os.environ, {auto_ask.ENV_ENABLED: "1"}):
+                    return auto_ask.ask("Go on? ", "n", 30)
+            finally:
+                uninstall()
+
+        future, asked = self.asking(captured)
+        self.assertEqual(asked["kind"], "countdown")
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertEqual(future.result(10), "n")
 
     def test_a_menu_answer_shows_its_entry(self):
         item = {"key": "1", "label": "Execute", "section": None}

@@ -8,10 +8,11 @@ Une question (`menu`, `ask`) reçoit un `qid`. Le port écrit son texte dans
 le terminal, comme `input`, l'envoie sur le canal, puis attend la première
 de deux réponses :
 - sur le canal, `answer` ou `cancel` au même `qid`, une ligne d'un autre
-  `qid` étant ignorée ; annuler lève EOFError ;
+  `qid` étant ignorée ; annuler lève EOFError, comme Ctrl+D ;
 - dans le terminal, une ligne tapée ; Ctrl+D sur une ligne vide lève
-  EOFError, et Ctrl+C KeyboardInterrupt, comme `input` ; à un compte à
-  rebours, Ctrl+D vaut Entrée, comme dans `auto_ask.ask`.
+  EOFError, et Ctrl+C KeyboardInterrupt, comme `input`.
+À un compte à rebours, Ctrl+D comme `cancel` vaut Entrée, comme dans
+`auto_ask.ask` : la question rend "", dont l'appelant fait son défaut.
 Le terminal répond donc à toute question (`fallback: pty`), et le canal
 fermé, il répond seul. Les `qid` partent d'une base propre au processus :
 une réponse tardive faite au worker d'avant une relance ne répond pas au
@@ -183,7 +184,8 @@ class PipePort(port.BasePort):
     def _wait(self, qid, timeout, eof_is_enter=False) -> tuple:
         """`(source, valeur)` de la première réponse, `source` valant
         `channel` ou `terminal` ; `(None, None)` à l'échéance. Avec
-        `eof_is_enter`, Ctrl+D rend `("terminal", "")` au lieu de lever."""
+        `eof_is_enter`, Ctrl+D rend `("terminal", "")` et `cancel`
+        `("channel", "")` au lieu de lever."""
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             fds = [self.tty]
@@ -197,7 +199,12 @@ class PipePort(port.BasePort):
                 if time.monotonic() >= deadline:
                     return None, None
             if self.channel in ready:
-                value = self._from_channel(qid)
+                try:
+                    value = self._from_channel(qid)
+                except EOFError:
+                    if not eof_is_enter:
+                        raise
+                    value = ""
                 if value is not None:
                     return "channel", value
             if self.tty in ready:

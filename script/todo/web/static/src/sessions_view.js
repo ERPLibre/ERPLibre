@@ -61,6 +61,9 @@ const DROP_LABELS = {
     secret: "The prompt ended: the hidden answer was not sent.",
     detached: "Keystrokes pending while no tab was open were thrown away.",
 };
+// Millisecondes pendant lesquelles un terminal qui grandit se tient à sa
+// dernière ligne (`refit`).
+const PIN = 200;
 // Lignes relues au-dessus du curseur pour trouver la dernière non vide.
 const LOOKBACK = 4;
 const TTY = {echo: true, canon: true, reader: null, altscreen: false};
@@ -188,7 +191,7 @@ export class SessionsView extends Component {
             this.term.open(this.panel.el);
             this.term.onData((data) => this.type(data));
             this.term.onResize(({cols, rows}) => this.send({t: "resize", cols, rows}));
-            this.resizer = new ResizeObserver(() => this.fit.fit());
+            this.resizer = new ResizeObserver(() => this.refit());
             this.resizer.observe(this.panel.el);
             this.fit.fit();
             this.timer = setInterval(() => this.poll(), PERIOD);
@@ -205,6 +208,24 @@ export class SessionsView extends Component {
             this.drop();
             this.term.dispose();
         });
+    }
+
+    // Ajuste le terminal à son panneau, dont la hauteur suit celle du
+    // panneau d'une question. Quand il grandit, le navigateur ramène son
+    // défilement au plus bas permis par un `scroll` qui arrive après coup :
+    // xterm le prend pour l'utilisateur qui remonte, et la sortie qui suit,
+    // celle d'une commande lancée par la réponse, resterait sous l'écran. Un
+    // terminal qui montrait sa dernière ligne la montre donc encore après ce
+    // `scroll`, s'il vient dans les PIN ms.
+    refit() {
+        const buffer = this.term.buffer.active;
+        const viewport = this.panel.el.querySelector(".xterm-viewport");
+        if (viewport && !this.panel.el.hidden && buffer.viewportY >= buffer.baseY) {
+            const pin = () => this.term.scrollToBottom();
+            viewport.addEventListener("scroll", pin, {once: true});
+            setTimeout(() => viewport.removeEventListener("scroll", pin), PIN);
+        }
+        this.fit.fit();
     }
 
     // Le champ masqué de TtyWatch, pour l'invite d'un programme : une

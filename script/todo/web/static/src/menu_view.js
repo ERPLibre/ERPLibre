@@ -20,6 +20,7 @@ import {
     ARM,
     PAUSE,
     backItem,
+    composing,
     filterItems,
     keyCounts,
     menuGroups,
@@ -194,9 +195,10 @@ export class MenuView extends Component {
         }
     }
 
-    // Entrée dans le filtre choisit l'entrée qu'il laisse seule.
+    // Entrée dans le filtre choisit l'entrée qu'il laisse seule ; celle qui
+    // valide une composition (IME) ne choisit rien.
     onFilterKey(event) {
-        if (event.key !== "Enter") {
+        if (event.key !== "Enter" || composing(event)) {
             return;
         }
         event.preventDefault();
@@ -207,11 +209,12 @@ export class MenuView extends Component {
     }
 
     onOtherKey(event) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            if (this.counts(event)) {
-                this.sendOther();
-            }
+        if (event.key !== "Enter" || composing(event)) {
+            return;
+        }
+        event.preventDefault();
+        if (this.counts(event)) {
+            this.sendOther();
         }
     }
 

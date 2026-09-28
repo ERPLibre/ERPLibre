@@ -122,6 +122,14 @@ export function keyCounts(event, shownAt) {
     return !event.repeat && event.timeStamp - shownAt >= ARM;
 }
 
+// Vrai pour une touche que tient une méthode de saisie (IME) qui compose
+// un caractère : l'Entrée qui valide la composition n'envoie rien. Un
+// navigateur qui ne pose pas `isComposing` sur cette Entrée lui donne le
+// code 229.
+export function composing(event) {
+    return Boolean(event.isComposing) || event.keyCode === 229;
+}
+
 // Vrai quand la page peut répondre à la question `qid` : c'est la question
 // ouverte (`question`), et la page ne lui a pas déjà répondu (`pending`).
 // Le widget d'une question close, encore à l'écran, ne répond pas à la

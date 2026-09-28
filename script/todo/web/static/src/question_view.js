@@ -9,18 +9,35 @@
 // - secret : un champ masqué, hors de tout formulaire, dont la valeur
 //   n'entre jamais dans l'état de la vue : lue à l'envoi, puis effacée ; une
 //   valeur que le hub refuserait ne part pas, et le widget le dit ;
-// - countdown : la question texte et le temps qui reste ; à l'échéance, le
-//   worker prend le défaut et ferme la question ;
+// - countdown : la question texte et le temps qui reste, compté depuis
+//   l'arrivée du message, qui ne porte pas d'heure : un rechargement, ou un
+//   onglet qui reprend la session, le fait repartir de `timeout_s`.
+//   L'échéance qui compte est celle du worker, qui prend le défaut et
+//   ferme la question ;
 // - choose avec `multi` : des cases à cocher et Valider (un choix simple
 //   est un menu : MenuView).
 // Une confirmation et un choix gardent le champ « Autre réponse ». Chaque
-// widget a Annuler (Ctrl+D) et un nom accessible tiré de `speak`. Comme
-// MenuView, il répond pour le qid qu'il montre (`answer(qid, valeur)`,
-// `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ni
-// d'une touche tenue qui se répète ; le clavier va à son champ, ou au
-// widget lui-même, jamais à un bouton qu'une frappe d'avance presserait.
+// widget a un nom accessible tiré de `speak`, et Annuler, qui fait ce que
+// fait Ctrl+D au terminal : la question finit sans réponse (EOFError,
+// Abort sous click), sauf un compte à rebours, où il vaut Entrée et donne
+// le défaut. L'Entrée qui valide une composition (IME) ne valide pas le
+// champ. Comme MenuView, il répond pour le qid qu'il montre
+// (`answer(qid, valeur)`, `cancel(qid)`), jamais dans les ARM ms qui
+// suivent son apparition ni d'une touche tenue qui se répète ; le clavier
+// va à son champ, ou au widget lui-même, jamais à un bouton qu'une frappe
+// d'avance presserait.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
-import {ARM, choiceValue, confirmKey, keyCounts, promptText, secondsLeft, sendable, typedReady} from "./prompt.js";
+import {
+    ARM,
+    choiceValue,
+    composing,
+    confirmKey,
+    keyCounts,
+    promptText,
+    secondsLeft,
+    sendable,
+    typedReady,
+} from "./prompt.js";
 
 // Rafraîchissement du temps qui reste, en millisecondes.
 const TICK = 250;
@@ -189,20 +206,22 @@ export class QuestionView extends Component {
     }
 
     onFieldKey(event) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            if (this.counts(event)) {
-                this.submit();
-            }
+        if (event.key !== "Enter" || composing(event)) {
+            return;
+        }
+        event.preventDefault();
+        if (this.counts(event)) {
+            this.submit();
         }
     }
 
     onOtherKey(event) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            if (this.counts(event)) {
-                this.sendOther();
-            }
+        if (event.key !== "Enter" || composing(event)) {
+            return;
+        }
+        event.preventDefault();
+        if (this.counts(event)) {
+            this.sendOther();
         }
     }
 

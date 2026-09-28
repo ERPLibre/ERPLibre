@@ -327,10 +327,38 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
-/* Le terminal remplit la hauteur que laissent l'en-tête et les barres. */
+/* La vue Sessions montrée tient dans la fenêtre : une colonne où le
+   terminal prend la hauteur que laissent l'en-tête, les barres et le
+   panneau de la question. Celui-ci défile seul, plafonné tant que le
+   terminal se montre : la ligne de l'invite reste à l'écran. */
+#app:has(> .sessions:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    height: 100dvh;
+}
+
+.sessions:not([hidden]) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.prompt-panel {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.prompt-panel:has(~ .terminal:not([hidden])) {
+    max-height: 40vh;
+}
+
 .terminal {
-    height: calc(100vh - 17rem);
-    min-height: 16rem;
+    flex: 1 1 0;
+    min-height: 12rem;
+    overflow: hidden;
 }
 
 /* Écran alternatif (éditeur, application plein écran) : la vue prend la
@@ -343,11 +371,6 @@ body {
     flex-direction: column;
     padding: 0 1rem 1rem;
     background: var(--bg);
-}
-
-.sessions.fullscreen .terminal {
-    flex: 1;
-    height: auto;
 }
 
 .tasks {

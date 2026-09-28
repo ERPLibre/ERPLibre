@@ -651,6 +651,8 @@ console.log(JSON.stringify({
         [null, null, 2]].map(([question, pending, qid]) =>
         m.answerable(question, pending, qid)),
     limits: [m.FILTER_FROM, m.PAUSE, m.ANSWER_LIMIT, m.ARM],
+    composing: [{key: "Enter", isComposing: true}, {key: "Enter", keyCode: 229},
+        {key: "Enter", isComposing: false, keyCode: 13}].map(m.composing),
     sendable: ["", "forged", "x".repeat(4096), "x".repeat(4097),
         "🧰".repeat(4096), "tab\t", "esc\u001b]0;x", "del\u007f",
         "c1\u009b", "half\ud800"].map(m.sendable),
@@ -727,6 +729,11 @@ class TestMenuWidget(unittest.TestCase):
         # visait la question précédente ; une touche tenue se répète.
         self.assertEqual(self.out["keys"], [False, False, True, False])
         self.assertEqual(self.out["limits"][3], 250)
+
+    def test_the_enter_that_ends_an_ime_composition_sends_nothing(self):
+        # Pendant une composition, ou sous le code 229 d'un navigateur qui
+        # n'y pose pas `isComposing` ; une Entrée ordinaire envoie.
+        self.assertEqual(self.out["composing"], [True, True, False])
 
     def test_only_the_open_question_is_answered_once(self):
         # La question ouverte ; une autre ; déjà répondue ; aucune.
