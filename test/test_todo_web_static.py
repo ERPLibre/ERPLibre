@@ -24,6 +24,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from test_todo_web_i18n import TAG, TEMPLATE
+
 from script.todo.ui import port
 from script.todo.web import protocol, server
 
@@ -33,6 +35,18 @@ OWL = STATIC / "lib" / "owl-2.8.1"
 XTERM = STATIC / "lib" / "xterm-5.5.0"
 FIT = STATIC / "lib" / "addon-fit-0.10.0"
 SRC = STATIC / "src"
+
+
+def masked_fields(source) -> list:
+    """Les balises `<input type="password">` des gabarits OWL de `source`,
+    entières : `TAG` respecte les guillemets, et `() => …` dans un
+    attribut ne la coupe pas."""
+    return [
+        tag
+        for template in TEMPLATE.findall(source)
+        for tag in TAG.findall(template)
+        if re.match(r"<input\b", tag) and re.search(r'\btype="password"', tag)
+    ]
 
 
 def _sha256(path) -> str:
@@ -144,7 +158,7 @@ class TestPage(unittest.TestCase):
         fields = {}
         for path in sorted(SRC.glob("*.js")):
             source = path.read_text(encoding="utf-8")
-            found = re.findall(r'<input\b[^>]*\btype="password"[^>]*>', source)
+            found = masked_fields(source)
             fields[path.name] = len(found)
             for field in found:
                 self.assertNotIn("t-model", field)
@@ -154,9 +168,17 @@ class TestPage(unittest.TestCase):
         self.assertEqual(
             masked, {"question_view.js": 1, "sessions_view.js": 1}
         )
-        # Une page qui s'en va vide d'abord ses champs masqués.
+        # Une flèche dans un attribut ne coupe pas la balise : son t-model
+        # se voit.
+        forged = """xml`<input t-on-keydown="(ev) => this.key(ev)"
+            type="password" t-model="state.value"/>`"""
+        [field] = masked_fields(forged)
+        self.assertIn("t-model", field)
+        # Une page qui s'en va vide d'abord ses champs masqués ; l'écoute
+        # part avec la vue.
         view = (SRC / "sessions_view.js").read_text(encoding="utf-8")
         self.assertIn('addEventListener("pagehide"', view)
+        self.assertIn('removeEventListener("pagehide"', view)
 
     def test_the_history_shows_a_log_as_text_only(self):
         # Une ligne de journal vient d'un programme quelconque : aucune
@@ -197,10 +219,11 @@ class TestPage(unittest.TestCase):
 
     def test_the_page_says_each_reason_of_a_drop(self):
         # Une raison que la page ne nomme pas s'afficherait comme `unread`.
-        source = (SRC / "sessions_view.js").read_text(encoding="utf-8")
+        source = (SRC / "session.js").read_text(encoding="utf-8")
         block = re.search(
             r"^const DROP_LABELS = \{(.*?)^\};", source, re.M | re.S
         )
+        self.assertIsNotNone(block, "DROP_LABELS")
         named = re.findall(r"^\s+(\w+): \"", block[1], re.M)
         self.assertEqual(tuple(named), protocol.DROP_REASONS)
 
@@ -465,6 +488,8 @@ console.log(JSON.stringify({
     frames: m.frames(new Uint8Array(70000)).map((frame) => frame.length),
     written: [m.withSession("#view=sessions&lang=fr", "s1"),
         m.withSession("#view=sessions&session=s1", null)],
+    drops: ["unread", "question", "stop", "secret", "detached", "forged",
+        "toString", "__proto__", undefined].map(m.dropLabel),
 }));
 """
 
@@ -493,6 +518,15 @@ class TestSessionProtocol(unittest.TestCase):
         frame = self.out["frame"]
         self.assertLess(frame, server.MAX_BODY)
         self.assertEqual(self.out["frames"], [frame, frame, 70000 - 2 * frame])
+
+    def test_each_drop_reason_names_its_notice(self):
+        # Une raison par avis ; une raison que la page ne connaît pas, fût-
+        # elle le nom d'une propriété de tout objet, dit celui de `unread`.
+        drops = self.out["drops"]
+        named, unknown = drops[:5], drops[5:]
+        self.assertEqual(len(set(named)), 5)
+        self.assertTrue(all(isinstance(label, str) for label in named))
+        self.assertEqual(unknown, [named[0]] * 4)
 
     def test_the_session_lives_in_the_fragment(self):
         self.assertEqual(self.out["read"], ["s1", None])
@@ -644,7 +678,11 @@ console.log(JSON.stringify({
         {t: "menu", text: "[0] Back: "},
         {t: "ask", text: "[1] Execute\n[0] Quit\n"},
     ].map((question) => m.carriesScreen(
-        {...question, items: [{key: "1"}, {key: "0"}]})),
+        {...question, items: [{key: "1"}, {key: "0"}]})).concat(
+        m.carriesScreen({t: "menu", text: "Choice: ", items: []})),
+    misses: [[items.slice(-1), ""], [items.slice(-1), "  "], [items, "zzz"],
+        [items, " SYSTEME "], [items, ""]].map(([some, query]) =>
+        m.filterMisses(some, query)),
     keys: [[false, 900], [false, 1249], [false, 1250], [true, 5000]].map(
         ([repeat, timeStamp]) => m.keyCounts({repeat, timeStamp}, 1000)),
     answerable: [[{qid: 2}, null, 2], [{qid: 2}, null, 1], [{qid: 2}, 2, 2],
@@ -689,6 +727,13 @@ class TestMenuWidget(unittest.TestCase):
         # 0 ne compte pas.
         self.assertEqual(self.out["filters"], [True, False])
 
+    def test_only_a_filter_in_use_says_it_matched_nothing(self):
+        # Un menu qui n'a que l'entrée 0, filtre vide ou blanc : rien à
+        # dire ; « zzz » ne laisse rien ; « SYSTEME » laisse une entrée.
+        self.assertEqual(
+            self.out["misses"], [False, False, True, False, False]
+        )
+
     def test_keys_choose_as_in_the_cli(self):
         # « 5 » part seul ; « 1 » attend, 10 à 13 le prolongent ; ce qui ne
         # mène à aucune clé s'efface.
@@ -711,8 +756,10 @@ class TestMenuWidget(unittest.TestCase):
     def test_a_menu_whose_text_lists_its_entries_carries_its_screen(self):
         # Le menu principal passe tout son écran à l'invite ; « Choice
         # [1]: » et « [0] Back: » ne portent que leur invite ; un `ask`
-        # n'est pas un menu.
-        self.assertEqual(self.out["screens"], [True, False, False, False])
+        # n'est pas un menu. Un menu sans entrée n'a rien qui le porte.
+        self.assertEqual(
+            self.out["screens"], [True, False, False, False, False]
+        )
 
     def test_a_menu_that_carries_its_screen_writes_its_notes(self):
         # Au-dessus des boutons d'un menu qui porte son écran : les lignes

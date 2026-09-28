@@ -36,6 +36,7 @@ import {QuestionView} from "./question_view.js";
 import {
     asksSecret,
     closedState,
+    dropLabel,
     foldPhase,
     frames,
     heldOverride,
@@ -52,15 +53,6 @@ import {
 const PERIOD = 2000;
 // Durée d'un avis de trame ignorée, en millisecondes.
 const NOTICE = 3000;
-// Avis de ce que le hub n'a pas écrit (`dropped`), selon sa raison ; une
-// raison inconnue vaut `unread`.
-const DROP_LABELS = {
-    unread: "Nothing reads the terminal: keystrokes ignored.",
-    question: "A new prompt began: pending keystrokes were not sent.",
-    stop: "Stopped: pending keystrokes were thrown away.",
-    secret: "The prompt ended: the hidden answer was not sent.",
-    detached: "Keystrokes pending while no tab was open were thrown away.",
-};
 // Millisecondes pendant lesquelles un terminal qui grandit se tient à sa
 // dernière ligne (`refit`).
 const PIN = 200;
@@ -147,7 +139,7 @@ export class SessionsView extends Component {
             prompt: "",
             raw: false,
             windowed: false,
-            notice: "",
+            notice: "", // l'avis du dernier `dropped`, une clé de traduction
             question: null, // la dernière question du worker, jusqu'à `answered`
             pending: null, // le qid auquel la page a répondu
             running: false, // entre `run_start` et `run_end`
@@ -178,12 +170,12 @@ export class SessionsView extends Component {
                 field.value = "";
             }
         };
-        window.addEventListener("pagehide", this.onPageHide);
         this.socket = null;
         this.bye = null;
         this.offset = 0; // décalage absolu du prochain octet attendu
         this.encoder = new TextEncoder();
         onMounted(() => {
+            window.addEventListener("pagehide", this.onPageHide);
             // Scripts classiques chargés par index.html : des globales.
             this.term = new globalThis.Terminal({fontFamily: "ui-monospace, monospace"});
             this.fit = new globalThis.FitAddon.FitAddon();
@@ -252,7 +244,7 @@ export class SessionsView extends Component {
     }
 
     get noticeText() {
-        return this.state.notice ? this.env.t(DROP_LABELS[this.state.notice]) : "";
+        return this.state.notice ? this.env.t(this.state.notice) : "";
     }
 
     get stateText() {
@@ -333,7 +325,7 @@ export class SessionsView extends Component {
         } else if (message.t === "run_start" || message.t === "run_end") {
             this.state.running = message.t === "run_start";
         } else if (message.t === "dropped") {
-            this.state.notice = Object.hasOwn(DROP_LABELS, message.reason) ? message.reason : "unread";
+            this.state.notice = dropLabel(message.reason);
             clearTimeout(this.noticeTimer);
             this.noticeTimer = setTimeout(() => (this.state.notice = ""), NOTICE);
         } else if (message.t === "bye") {

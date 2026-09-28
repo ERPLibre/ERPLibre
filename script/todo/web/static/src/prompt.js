@@ -51,15 +51,17 @@ export function showsFilter(items) {
 // début de ligne) : un menu de `fill_help_info`, ou écrit à la main et
 // passé tout entier à l'invite. Ses boutons tiennent tout son écran. Un
 // menu lu sur la sortie qui précède son invite (« Choice [1]: ») ne porte
-// que cette invite : le reste n'est qu'au terminal.
+// que cette invite : le reste n'est qu'au terminal. Un menu sans entrée
+// n'a pas de boutons qui le porteraient.
 export function carriesScreen(question) {
-    if (question?.t !== "menu") {
+    const items = question?.t === "menu" ? question.items ?? [] : [];
+    if (!items.length) {
         return false;
     }
     const starts = String(question.text ?? "")
         .split("\n")
         .map((line) => line.trimStart());
-    return question.items.every((item) => starts.some((line) => line.startsWith(`[${item.key}]`)));
+    return items.every((item) => starts.some((line) => line.startsWith(`[${item.key}]`)));
 }
 
 // Ce que le widget d'un menu écrit au-dessus de ses entrées : pour un menu
@@ -80,6 +82,13 @@ export function filterItems(items, query) {
         return items;
     }
     return items.filter((item) => item.key === typed || fold(item.label).includes(wanted));
+}
+
+// Vrai quand le filtre, en usage (`query` non blanc), ne laisse aucune
+// entrée autre que 0 : le widget le dit. Sans filtre, un menu qui n'a que
+// l'entrée 0 ne dit rien.
+export function filterMisses(items, query) {
+    return Boolean(query.trim()) && !menuGroups(filterItems(items, query)).length;
 }
 
 // Une touche tapée dans un menu, comme au CLI. `keys` : les clés du menu ;

@@ -8,11 +8,10 @@
 // libellés viennent du message, dans la langue de la session : ce module
 // ne nomme aucune commande. Au clavier, hors des champs, les touches
 // choisissent comme au CLI (`menuKey`) : plusieurs chiffres partent à
-// Entrée ou après PAUSE ms.
-// Le parent reçoit
-// la réponse (`answer(qid, valeur)`) ou l'annulation (`cancel(qid)`, qui
-// vaut Ctrl+D), avec le qid de ce menu. Rien ne part tant qu'une réponse
-// attend la fin de la question (`pending`), ni dans les ARM ms qui suivent
+// Entrée ou après PAUSE ms. Le parent reçoit la réponse
+// (`answer(qid, valeur)`) ou l'annulation (`cancel(qid)`, qui vaut
+// Ctrl+D), avec le qid de ce menu. Rien ne part tant qu'une réponse attend
+// la fin de la question (`pending`), ni dans les ARM ms qui suivent
 // l'apparition du menu, ni d'une touche tenue qui se répète : une frappe
 // destinée à la question d'avant ne répond pas à celle-ci.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
@@ -22,6 +21,7 @@ import {
     backItem,
     composing,
     filterItems,
+    filterMisses,
     keyCounts,
     menuGroups,
     menuKey,
@@ -53,7 +53,7 @@ export class MenuView extends Component {
                     </t>
                 </div>
             </t>
-            <p t-if="!groups.length" class="empty" t-esc="env.t('No entry matches the filter.')"/>
+            <p t-if="missed" class="empty" t-esc="env.t('No entry matches the filter.')"/>
             <div class="answer-row">
                 <button t-if="back" type="button" class="entry" t-att-disabled="locked"
                     t-att-aria-label="'0. ' + (back.speak or back.label)" t-on-click="() => this.choose('0')">
@@ -132,6 +132,11 @@ export class MenuView extends Component {
 
     get back() {
         return backItem(this.items);
+    }
+
+    // Vrai quand le filtre en usage ne laisse aucune entrée.
+    get missed() {
+        return filterMisses(this.items, this.state.query);
     }
 
     get canSend() {

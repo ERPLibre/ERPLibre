@@ -1,11 +1,20 @@
 // Protocole de /ws vu de la page, sans OWL ni DOM : le premier message,
-// les trames des frappes, l'état que dit une fermeture, l'identifiant de
-// session que le fragment de l'URL garde pour un rechargement, ce qui
-// reste à lire au terminal, et quand il se replie.
+// les trames des frappes, l'état que dit une fermeture, l'avis d'un jet de
+// frappes, l'identifiant de session que le fragment de l'URL garde pour un
+// rechargement, ce qui reste à lire au terminal, et quand il se replie.
 import {carriesScreen} from "./prompt.js";
 
 // Fermetures du hub autres que la fin d'une session, qu'annonce `bye`.
 const CLOSED = {1013: "full", 4001: "taken", 4404: "gone"};
+// Avis de ce que le hub n'a pas écrit (`dropped`), selon sa raison : des
+// clés de traduction.
+const DROP_LABELS = {
+    unread: "Nothing reads the terminal: keystrokes ignored.",
+    question: "A new prompt began: pending keystrokes were not sent.",
+    stop: "Stopped: pending keystrokes were thrown away.",
+    secret: "The prompt ended: the hidden answer was not sent.",
+    detached: "Keystrokes pending while no tab was open were thrown away.",
+};
 // Octets par trame de frappes : le hub ferme en 1009 un message de plus de
 // 64 Kio, qu'un collage peut dépasser.
 export const FRAME = 32 * 1024;
@@ -34,6 +43,13 @@ export function frames(bytes) {
 // le code, « lost » pour tout autre.
 export function closedState(code, bye) {
     return bye ? "ended" : CLOSED[code] || "lost";
+}
+
+// L'avis d'un `dropped` de raison `reason` ; une raison que la page ne
+// connaît pas, fût-elle le nom d'une propriété de tout objet, dit celui de
+// `unread`.
+export function dropLabel(reason) {
+    return Object.hasOwn(DROP_LABELS, reason) ? DROP_LABELS[reason] : DROP_LABELS.unread;
 }
 
 // Identifiant de session du fragment, ou null.

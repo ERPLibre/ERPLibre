@@ -148,8 +148,10 @@ class BasePort:
         """Vrai pour oui. Avec `typed`, vrai seulement si la réponse est ce
         texte exact : la question, un `ask` de genre `typed` posé par
         `menu`, le porte (`expected`) pour qu'une page n'active sa réponse
-        qu'à l'égalité, et c'est ici qu'elle se vérifie. Sans `typed`,
-        redemande jusqu'à oui, non ou Entrée (le défaut)."""
+        qu'à l'égalité, et c'est ici qu'elle se vérifie. Une page n'y offre
+        donc aucun « non » : son Annuler lève EOFError (Abort sous click),
+        comme Ctrl+D, et l'appelant prend l'une et l'autre pour non. Sans
+        `typed`, redemande jusqu'à oui, non ou Entrée (le défaut)."""
         if typed is not None:
             message = question("typed", text, expected=typed)
             return self.menu(message).strip() == typed
