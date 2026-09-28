@@ -228,6 +228,28 @@ class TestPage(unittest.TestCase):
         for text in texts:
             self.assertEqual(self.table[text][1], server.LICENSE_TYPE)
 
+    def test_every_field_ignores_the_enter_that_ends_a_composition(self):
+        # L'Entrée qui confirme une composition (IME) ne répond pas : le
+        # gestionnaire de touches de chaque champ la laisse à `composing`
+        # avant de lire Entrée.
+        fields = []
+        for path in sorted(SRC.glob("*.js")):
+            source = path.read_text(encoding="utf-8")
+            for template in TEMPLATE.findall(source):
+                for tag in TAG.findall(template):
+                    handler = re.search(r't-on-keydown="(\w+)"', tag)
+                    if not tag.startswith("<input") or not handler:
+                        continue
+                    body = re.search(
+                        rf"^    {handler[1]}\(event\) \{{\n(.*?)^    \}}",
+                        source,
+                        re.M | re.S,
+                    )
+                    fields.append((path.name, handler[1]))
+                    self.assertIn("composing(event)", body[1], fields[-1])
+        self.assertIn(("sessions_view.js", "onSecretKey"), fields)
+        self.assertGreaterEqual(len(fields), 6)
+
     def test_the_page_says_each_reason_of_a_drop(self):
         # Une raison que la page ne nomme pas s'afficherait comme `unread`.
         source = (SRC / "session.js").read_text(encoding="utf-8")

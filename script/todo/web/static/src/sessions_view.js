@@ -57,7 +57,7 @@ import {endsLongRun, runEndBody} from "./desktop.js";
 import {advance, answeredByHand, lands, movingAfter, planOrder, startReplay} from "./launch.js";
 import {MenuView} from "./menu_view.js";
 import {PathPicker} from "./path_view.js";
-import {ASK_KINDS, answerable} from "./prompt.js";
+import {ASK_KINDS, answerable, composing} from "./prompt.js";
 import {QuestionView} from "./question_view.js";
 import {
     asksSecret,
@@ -622,10 +622,11 @@ export class SessionsView extends Component {
         field.value = "";
     }
 
-    // Entrée envoie ; Échap rend le clavier au terminal. Sans formulaire, un
-    // gestionnaire de mots de passe n'a rien à enregistrer.
+    // Entrée envoie, sauf celle qui finit une composition (IME) ; Échap rend
+    // le clavier au terminal. Sans formulaire, un gestionnaire de mots de
+    // passe n'a rien à enregistrer.
     onSecretKey(event) {
-        if (event.key === "Enter") {
+        if (event.key === "Enter" && !composing(event)) {
             event.preventDefault();
             this.sendSecret();
         } else if (event.key === "Escape") {

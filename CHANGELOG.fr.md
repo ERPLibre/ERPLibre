@@ -206,6 +206,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les questions oui/non du déploiement QEMU et de la recréation du réseau libvirt sont de nouveau posées sur le terminal quand l'entrée standard du script est redirigée : ouvrir `/dev/tty` en mode texte échouait toujours, un terminal ne permettant pas de s'y déplacer, et la question retombait sur cette entrée, où une fin de fichier répondait à la place de l'utilisateur. Le clavier pour entrée standard, comme sous le menu TODO, la question passe toujours par la sortie standard, après les lignes qui la précèdent
 - Un point combinant (U+0307) glissé dans un mot password, token ou bearer ne laisse plus la fin de la ligne atteindre en clair le journal des tâches d'une session web : le contrôle rapide qui décide si une ligne est à masquer plie le texte comme la recherche de ces mots
 - Dans l'historique des tâches d'une session web, annuler un compte à rebours depuis la page se journalise comme la réponse par défaut que TODO prend, comme Ctrl+D au terminal, et non plus comme une question annulée
+- Dans la page de TODO, le champ de réponse masquée n'envoie plus sur l'Entrée qui finit une composition de la méthode de saisie, comme les autres champs déjà
 
 ## Retiré
 

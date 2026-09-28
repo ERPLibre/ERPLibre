@@ -206,6 +206,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The yes/no questions of the QEMU deployment and of the libvirt network recreation are asked on the terminal again when the script's standard input is redirected: opening `/dev/tty` in text mode always failed, a terminal being unseekable, and the question fell back to that input, where an end of file answered in the user's place. With the keyboard as standard input, as under the TODO menu, the question still goes through the standard output, after the lines that precede it
 - A combining dot (U+0307) slipped inside a password, token or bearer word no longer lets the rest of the line reach a web session's task log in clear: the quick check that decides whether a line needs masking folds the text as the search for those words does
 - In a web session's task history, cancelling a countdown from the page is logged as the default answer that TODO takes, as Ctrl+D in the terminal, and no longer as a cancelled question
+- On the TODO page, the hidden answer field no longer sends on the Enter that ends an input method composition, as the other fields already did
 
 ## Removed
 
