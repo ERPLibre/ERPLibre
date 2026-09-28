@@ -485,6 +485,13 @@ class SessionsClaudeCode(unittest.TestCase):
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
         ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
+        ), patch(
             "click.prompt", side_effect=["0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -516,6 +523,13 @@ class SessionsClaudeCode(unittest.TestCase):
         ), patch(
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
+        ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
         ), patch(
             "click.prompt", side_effect=[chiffre, "0"]
         ), patch(
@@ -562,6 +576,13 @@ class SessionsClaudeCode(unittest.TestCase):
         ), patch(
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
+        ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
         ), patch(
             "click.prompt", side_effect=[au_dela, "0"]
         ), patch(
@@ -1223,6 +1244,37 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
     alors de ce qui tournait chez celui qui lançait la suite.
     """
 
+    def test_the_open_code_count_never_falls_back_to_the_cli(self):
+        """Une base muette n'autorise pas le repli par la ligne de commande.
+
+        Ce libellé se recalcule à chaque affichage du menu, donc après chaque
+        geste, y compris ceux qui n'ont rien à voir avec ce harnais. Le repli
+        coûte un lancement d'Open Code — près de deux secondes, trente si
+        l'outil ne répond pas.
+        """
+        import subprocess
+
+        from script.todo.todo import TODO
+
+        def refuser(argv, *a, **kw):
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        with patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=None,
+        ), patch.object(subprocess, "run", refuser):
+            self.assertEqual(TODO()._opencode_compte(), "")
+
+    def test_a_readable_base_still_gives_the_count(self):
+        """La couture ne doit pas avoir éteint le libellé lui-même."""
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ):
+            self.assertEqual(TODO()._opencode_compte(), t("nothing here"))
+
     def test_opening_the_agents_screen_launches_nothing(self):
         import subprocess
 
@@ -1240,6 +1292,13 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
         ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
+        ), patch(
             "click.prompt", side_effect=["0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -1250,6 +1309,148 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
         ):
             TODO().prompt_assistant_ia()
         self.assertEqual(lances, [])
+
+
+class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
+    """Le menu des agents calcule cinq comptes, et chacun interroge la machine.
+
+    Deux étaient cousus — la flotte et la base d'Open Code — et trois ne
+    l'étaient pas : le volume du disque parcourt `~/.claude` en entier, l'état
+    des hooks ouvre ses réglages, et le compte MCP ouvre `~/.claude.json`, le
+    fichier qui porte les jetons des passerelles. Le verdict dépendait donc
+    de la machine de qui lance la suite, et sa durée aussi.
+    """
+
+    def test_building_the_menu_opens_nothing_under_the_real_home(self):
+        import builtins
+        import os as os_module
+
+        from script.todo.todo import TODO
+
+        maison = os.path.expanduser("~/.claude")
+        touches = []
+
+        vrai_open = builtins.open
+        vrai_walk = os_module.walk
+
+        def guette_open(fichier, *a, **kw):
+            if str(fichier).startswith(maison):
+                touches.append(str(fichier))
+                raise AssertionError(f"lecture du vrai ~/.claude : {fichier}")
+            return vrai_open(fichier, *a, **kw)
+
+        def guette_walk(chemin, *a, **kw):
+            if str(chemin).startswith(maison):
+                touches.append(str(chemin))
+                raise AssertionError(f"parcours du vrai ~/.claude : {chemin}")
+            return vrai_walk(chemin, *a, **kw)
+
+        with patch.object(builtins, "open", guette_open), patch.object(
+            os_module, "walk", guette_walk
+        ):
+            entrees = SessionsClaudeCode()._entrees()
+        self.assertEqual(touches, [])
+        self.assertTrue(entrees, "le menu s'est bien construit")
+
+
+class UnListageMuetNEstPasUneSessionVivante(unittest.TestCase):
+    """L'écran de ménage : la garde tombe fermée, et elle dit pourquoi.
+
+    Un listage qui n'a pas répondu — `claude` hors du PATH du processus qui
+    lance le menu, compte déconnecté, délai dépassé — protège autant qu'une
+    session réellement vivante. Mais « vivante, non proposée » est une MESURE,
+    et l'annoncer sans l'avoir prise envoie chercher des sessions à fermer qui
+    n'existent pas.
+    """
+
+    def _ecran(self, vivantes):
+        from script.todo.assistant.agents import disque
+        from script.todo.todo import TODO
+
+        histoires = [
+            disque.Historique(
+                session="aaaaaaaa-1111-4111-8111-111111111111",
+                octets=4096,
+                fichiers=3,
+                plus_gros=2048,
+                vivante=vivantes is None,
+            )
+        ]
+        sorti = []
+        with patch.object(
+            TODO, "_claude_vivantes", staticmethod(lambda: vivantes)
+        ), patch.object(disque, "mesurer", lambda *a, **k: []), patch.object(
+            disque, "historiques", lambda **k: list(histoires)
+        ), patch.object(
+            TODO, "fill_help_info", lambda self, c: ""
+        ), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(
+                " ".join(str(x) for x in a)
+            ),
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            TODO()._agents_disque()
+        return "\n".join(sorti)
+
+    def test_a_silent_listing_is_not_announced_as_alive(self):
+        rendu = self._ecran(None)
+        self.assertIn(t("not asked: the listing did not answer"), rendu)
+        self.assertNotIn(t("alive, not offered"), rendu)
+        self.assertIn(
+            t("the listing did not answer, so nothing is offered."), rendu
+        )
+        self.assertNotIn(t("every session with a history is alive."), rendu)
+
+    def test_a_listing_that_answered_still_names_a_live_session(self):
+        """La couture ne doit pas avoir éteint le cas ordinaire."""
+        rendu = self._ecran({"aaaaaaaa-1111-4111-8111-111111111111"})
+        self.assertIn(t("removable"), rendu)
+        self.assertNotIn(t("not asked: the listing did not answer"), rendu)
+
+
+class UnReglageIllisibleNEstPasUnReglageSansHooks(unittest.TestCase):
+    """Le libellé du menu des hooks, qui est ce qu'on lit d'abord.
+
+    Confondre « on n'a pas su relire » avec « aucun posé » invite à en poser
+    un par-dessus : deux blocs de hooks comptent chaque appel d'outil deux
+    fois, et le journal ment sur toute la machine.
+    """
+
+    def _libelle(self, global_, depot):
+        from script.todo.assistant.agents import pose
+        from script.todo.todo import TODO
+
+        etat = {
+            pose.GLOBAL: ("/ou/que/ce/soit/settings.json", global_),
+            pose.DEPOT: ("/un/depot/.claude/settings.json", depot),
+        }
+        with patch.object(pose, "etat", lambda **kw: etat):
+            return TODO()._agents_hooks_etat()
+
+    def test_an_unreadable_settings_file_says_so(self):
+        self.assertEqual(self._libelle(None, []), t("unreadable settings"))
+
+    def test_nothing_installed_still_says_so(self):
+        self.assertEqual(self._libelle([], []), t("none installed"))
+
+    def test_one_installed_and_one_unreadable_carries_the_mark(self):
+        """Le compte affiché est vrai et incomplet : la marque le dit."""
+        from script.todo.assistant_menu import MARQUE
+
+        libelle = self._libelle(["PreToolUse"], None)
+        self.assertIn(t("global"), libelle)
+        self.assertIn(MARQUE["unknown"], libelle)
+
+    def test_both_installed_carries_no_mark(self):
+        from script.todo.assistant_menu import MARQUE
+
+        libelle = self._libelle(["PreToolUse"], ["PreToolUse"])
+        self.assertEqual(libelle, t("both"))
+        self.assertNotIn(MARQUE["unknown"], libelle)
 
 
 if __name__ == "__main__":

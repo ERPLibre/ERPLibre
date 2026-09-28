@@ -168,6 +168,31 @@ class Resume:
     fichiers: int = 0
 
     @property
+    def reutilisation(self) -> float | None:
+        """La part de l'invite relue du cache, ou None sans invite.
+
+        Même définition que du côté de l'autre harnais — le cache ÉCRIT est
+        dans l'invite, le cache LU en est la part relue. C'est la condition
+        pour qu'une colonne de pourcentage veuille dire la même chose d'une
+        ligne à l'autre d'un tableau qui réunit les deux.
+        """
+        invite = self.entree + self.cache_lu + self.cache_ecrit
+        if not invite:
+            return None
+        return self.cache_lu / invite
+
+    @property
+    def invite(self) -> int:
+        """Ce qui a été ENVOYÉ au modèle, cache écrit compris.
+
+        Le cache écrit est de l'invite : il est facturé plus cher qu'un jeton
+        d'entrée, et l'omettre fait annoncer une fraction de ce qui est parti
+        — d'autant plus grande que la séance est longue, puisqu'une première
+        écriture de cache porte tout le contexte.
+        """
+        return self.entree + self.cache_lu + self.cache_ecrit
+
+    @property
     def jetons(self) -> int:
         """Ce qui a traversé le modèle, cache compris.
 

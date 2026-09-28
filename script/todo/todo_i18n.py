@@ -7520,6 +7520,22 @@ TRANSLATIONS = {
         "fr": "Choisis d'abord un agent détaché.",
         "en": "Pick a detached agent first.",
     },
+    "Output": {
+        "fr": "Sortie",
+        "en": "Output",
+    },
+    "Shown, not kept: nothing of this was written.": {
+        "fr": "Montré, pas gardé : rien de ceci n'a été écrit.",
+        "en": "Shown, not kept: nothing of this was written.",
+    },
+    "Enter to go back to the screen…": {
+        "fr": "Entrée pour revenir à l'écran…",
+        "en": "Enter to go back to the screen…",
+    },
+    "This terminal cannot suspend the screen.": {
+        "fr": "Ce terminal ne sait pas suspendre l'écran.",
+        "en": "This terminal cannot suspend the screen.",
+    },
     "The agent did not report an identifier.": {
         "fr": "L'agent n'a pas rapporté d'identifiant.",
         "en": "The agent did not report an identifier.",
@@ -7607,10 +7623,6 @@ TRANSLATIONS = {
     "The tool reported an error.": {
         "fr": "L'outil a signalé une erreur.",
         "en": "The tool reported an error.",
-    },
-    "yes": {
-        "fr": "oui",
-        "en": "yes",
     },
     "the identifier in full": {
         "fr": "l'identifiant en entier",
@@ -14767,6 +14779,14 @@ TRANSLATIONS = {
         "fr": "toute session qui porte un historique est vivante.",
         "en": "every session with a history is alive.",
     },
+    "not asked: the listing did not answer": {
+        "fr": "non demandé : le listage n'a pas répondu",
+        "en": "not asked: the listing did not answer",
+    },
+    "the listing did not answer, so nothing is offered.": {
+        "fr": "le listage n'a pas répondu, donc rien n'est proposé.",
+        "en": "the listing did not answer, so nothing is offered.",
+    },
     "Remove one session's file history": {
         "fr": "🗑 Retirer l'historique des fichiers d'une session",
         "en": "🗑 Remove one session's file history",
@@ -14801,6 +14821,100 @@ TRANSLATIONS = {
     "none installed": {
         "fr": "aucun posé",
         "en": "none installed",
+    },
+    "Interrupted; back to the screen.": {
+        "fr": "Interrompu ; retour à l'écran.",
+        "en": "Interrupted; back to the screen.",
+    },
+    "Sent, waiting for the answer…": {
+        "fr": "Envoyé, en attente de la réponse…",
+        "en": "Sent, waiting for the answer…",
+    },
+    "Open Code rows carry a database cost, stable over the whole session.": {
+        "fr": (
+            "Les rangées Open Code portent un coût de base, stable sur toute"
+            " la séance."
+        ),
+        "en": (
+            "Open Code rows carry a database cost, stable over the whole"
+            " session."
+        ),
+    },
+    "Act": {
+        "fr": "Agir",
+        "en": "Act",
+    },
+    "Keys": {
+        "fr": "Touches",
+        "en": "Keys",
+    },
+    "Keys and actions": {
+        "fr": "Touches et actions",
+        "en": "Keys and actions",
+    },
+    "Display": {
+        "fr": "Affichage",
+        "en": "Display",
+    },
+    "On the highlighted row": {
+        "fr": "Sur la ligne surlignée",
+        "en": "On the highlighted row",
+    },
+    "A number acts · Esc closes": {
+        "fr": "Un chiffre agit · Échap ferme",
+        "en": "A number acts · Esc closes",
+    },
+    "Quit the screen": {
+        "fr": "Quitter l'écran",
+        "en": "Quit the screen",
+    },
+    "Freeze the display; the reads go on underneath": {
+        "fr": "Geler l'affichage ; les lectures continuent dessous",
+        "en": "Freeze the display; the reads go on underneath",
+    },
+    "Read everything again from the start": {
+        "fr": "Tout relire depuis le début",
+        "en": "Read everything again from the start",
+    },
+    "Switch the bottom panel": {
+        "fr": "Permuter le panneau du bas",
+        "en": "Switch the bottom panel",
+    },
+    "Show this panel": {
+        "fr": "Afficher ce panneau",
+        "en": "Show this panel",
+    },
+    "Detail of the highlighted call (shows content)": {
+        "fr": "Détail de l'appel surligné (montre du contenu)",
+        "en": "Detail of the highlighted call (shows content)",
+    },
+    "Raw output of the agent (shows content)": {
+        "fr": "Sortie brute de l'agent (montre du contenu)",
+        "en": "Raw output of the agent (shows content)",
+    },
+    "Start a detached agent": {
+        "fr": "Lancer un agent détaché",
+        "en": "Start a detached agent",
+    },
+    "Stop the highlighted agent": {
+        "fr": "Arrêter l'agent surligné",
+        "en": "Stop the highlighted agent",
+    },
+    "Restart it on the current binary (confirms)": {
+        "fr": "Le relancer sur le binaire courant (confirme)",
+        "en": "Restart it on the current binary (confirms)",
+    },
+    "Delete it and its worktree (retype the identifier)": {
+        "fr": "Le supprimer avec son arbre de travail (retaper l'identifiant)",
+        "en": "Delete it and its worktree (retype the identifier)",
+    },
+    "Attach to it — this closes the screen": {
+        "fr": "S'y attacher — ferme cet écran",
+        "en": "Attach to it — this closes the screen",
+    },
+    "unreadable settings": {
+        "fr": "réglages illisibles",
+        "en": "unreadable settings",
     },
     "both": {
         "fr": "les deux",

@@ -398,6 +398,42 @@ tap on "y" is given by reflex; copying thirty-six characters makes you look at
 what you are destroying. Both act with the SHORT identifier, the only one the
 subcommands accept — the retyping is a guard, not an argument.
 
+**An agent's raw output goes to the terminal, because it is not text.**
+`claude logs` prints a SCREEN and not a log: hundreds of escape sequences,
+carriage returns, no line feed at all, and absolute cursor positions. Stripping
+the codes yields one unreadable line, so no table panel can render it. `j`
+suspends the application for as long as the tool paints, then a line asks for
+Enter to come back. What appears there is content — the conversation, the
+commands, what was read — and that same line says so. Nothing is kept: the
+output is never captured, so there is not even a copy that could be written.
+
+**A footer lies by omission, so one key leads to all the others.** The footer
+fits on one line and truncates on the right: on an eighty-column terminal —
+the width of a window nobody widened — four keys out of eleven fell off,
+including the two that destroy. Nothing on screen said they existed. `h` opens
+the whole list in sentences, and a number there acts on the highlighted row for
+anyone who would rather not learn them. The footer, the panel and the numbers
+read the SAME table, because it was the copy that left four keys mentioned
+nowhere; a test keeps `h` inside eighty columns whatever is added later.
+
+The panel is MODAL, for the same reason it exists. Stacked under the tables it
+needed six more lines than a twenty-four-row terminal offers, so its last three
+entries — including the two that destroy — fell below the fold with nothing to
+signal it. What it hides is derived from what is on screen rather than listed,
+and a test keeps its sixteen lines inside eighty by twenty-four.
+
+**The screen reads on a thread, and the figure that decided it is a tail.** A
+tick folds nineteen transcripts, the hook log, the Open Code database and the
+fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which
+no keystroke was seen. The average was not what settled it — listing agents is
+a subprocess with a fifteen-second timeout, and a silent tool froze the screen
+for that long, "q" included. The reading crosses the thread as a plain value
+sharing nothing; only the event loop touches a widget. A generation number
+discards the reading of a thread still working on the world before "r", and a
+tick landing while one is in flight is SKIPPED rather than queued — a queue on
+a slow machine grows without any tick ever showing the state of the moment.
+Measured after: 1.4 ms worst on the loop.
+
 **The stream's column shows what situates, never what was said.** A call
 carries a shell command, a path, a URL — or free text: the prompt given to a
 subagent, a search pattern. The first three fit a table row without revealing
@@ -888,6 +924,47 @@ celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopi
 trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
+
+**La sortie brute d'un agent va au terminal, parce qu'elle n'est pas du
+texte.** `claude logs` imprime un ÉCRAN et non un journal : des centaines de
+séquences d'échappement, des retours chariot, aucun saut de ligne, et des
+positions de curseur absolues. Dépouiller les codes rend une seule ligne
+illisible, donc aucun panneau de tableau n'y peut rien. `j` suspend
+l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
+revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
+qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
+n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
+**Un pied de page ment par omission, donc une touche mène à toutes les
+autres.** Il tient sur une ligne et se coupe à droite : sur un terminal de
+quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
+quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
+Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
+phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
+les apprendre. Le pied de page, le panneau et les numéros lisent la MÊME
+table, puisque c'est la recopie qui avait laissé quatre touches sans mention
+nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi qu'on
+ajoute ensuite.
+
+Le panneau est MODAL, pour la raison même qui le fait exister. Empilé sous les
+tableaux, il réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+offre, donc ses trois dernières entrées — dont les deux qui détruisent —
+passaient sous le pli sans que rien ne le signale. Ce qu'il masque est déduit
+de ce qui est à l'écran plutôt qu'énuméré, et un test garde ses seize lignes
+dans quatre-vingts colonnes sur vingt-quatre.
+
+**L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
+replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
+flotte : 230 ms en médiane, 408 au pire, un cinquième du pas de deux secondes
+pendant lequel aucune touche n'était vue. Ce n'est pas la moyenne qui a
+tranché — le listage des agents est un sous-processus dont le délai est de
+quinze secondes, et un outil muet figeait l'écran d'autant, « q » compris. Le
+relevé traverse le fil comme une valeur qui ne partage rien ; seule la boucle
+d'événements touche un widget. Une génération fait jeter le relevé d'un fil qui
+travaille encore sur le monde d'avant « r », et un tour qui tombe pendant une
+lecture est SAUTÉ plutôt que mis en file — une file, sur une machine lente,
+grandit sans qu'aucun tour ne montre jamais l'état du moment. Mesuré après :
+1,4 ms au pire sur la boucle.
 
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite

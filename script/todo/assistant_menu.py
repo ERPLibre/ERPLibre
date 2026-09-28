@@ -401,8 +401,22 @@ class AssistantMenuMixin:
         return oc.decoder_liste(self._opencode_lancer(oc.argv_lister())), "cli"
 
     def _opencode_compte(self):
-        """Ce que l'entrée du menu annonce, sans mentir sur la portée."""
-        seances, _ = self._opencode_seances()
+        """Ce que l'entrée du menu annonce, sans mentir sur la portée.
+
+        La BASE seulement, jamais le repli par le CLI. Celui-ci coûte un
+        lancement d'Open Code — près de deux secondes — et ce libellé se
+        recalcule à chaque affichage du menu, donc après chaque geste, y
+        compris ceux qui n'ont rien à voir avec ce harnais. L'écran qui suit,
+        lui, a le droit de payer : on le lui a demandé.
+
+        Base muette, suffixe vide : un compte inventé vaudrait moins que pas
+        de compte du tout.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        seances = oc.lire_base(repertoire=os.getcwd())
+        if seances is None:
+            return ""
         if not seances:
             return t("nothing here")
         return self._llm_count(len(seances), "session here", "sessions here")
@@ -1439,6 +1453,12 @@ class AssistantMenuMixin:
         Une session VIVANTE n'est jamais proposée. Elle écrit encore, et
         retirer son historique sous elle laisserait une session qui croit
         pouvoir restaurer ce qui n'existe plus.
+
+        Un listage qui n'a PAS répondu ferme la garde de la même façon, et
+        l'écran le dit autrement : « non demandé » et non « vivante ». Les
+        deux protègent également, mais la seconde est une mesure et la
+        première une absence de mesure, et confondre les deux envoie chercher
+        des sessions à fermer qui n'existent pas.
         """
         from script.todo.assistant.agents import disque
 
@@ -1451,6 +1471,11 @@ class AssistantMenuMixin:
             # sortie qui n'est pas du JSON. `live()` rend None dans tous ces
             # cas, et `historiques` ne propose alors rien.
             vivantes = self._claude_vivantes()
+            # La garde tombe fermée quand le listage n'a pas répondu, et
+            # l'écran doit dire POURQUOI. Marquer chaque session « vivante,
+            # non proposée » affirmerait un fait qu'on n'a pas mesuré, et
+            # enverrait chercher des sessions à fermer qui n'existent pas.
+            repondu = vivantes is not None
             histoires = disque.historiques(vivantes=vivantes)
             print(f"{t('What Claude Code occupies')} :")
             for poste in postes:
@@ -1463,12 +1488,13 @@ class AssistantMenuMixin:
                 )
             print(f"\n{t('File history, per session')} :")
             for histoire in histoires:
-                marque = MARQUE["no"] if histoire.vivante else MARQUE["ok"]
-                detail = (
-                    t("alive, not offered")
-                    if histoire.vivante
-                    else t("removable")
-                )
+                if not repondu:
+                    marque = MARQUE["unknown"]
+                    detail = t("not asked: the listing did not answer")
+                elif histoire.vivante:
+                    marque, detail = MARQUE["no"], t("alive, not offered")
+                else:
+                    marque, detail = MARQUE["ok"], t("removable")
                 print(
                     f"  {marque} {disque.octets_lisibles(histoire.octets):>10}"
                     f"  {t('largest')} {disque.octets_lisibles(histoire.plus_gros)}"
@@ -1477,7 +1503,11 @@ class AssistantMenuMixin:
             retirables = [h for h in histoires if h.retirable]
             if not retirables:
                 print(f"  {MARQUE['unknown']} {t('Nothing can be removed:')}")
-                print(f"     {t('every session with a history is alive.')}")
+                print(
+                    f"     {t('every session with a history is alive.')}"
+                    if repondu
+                    else f"     {t('the listing did not answer, so nothing is offered.')}"
+                )
             choices = [
                 {"prompt_description": t("Remove one session's file history")}
             ]
@@ -1543,22 +1573,37 @@ class AssistantMenuMixin:
         )
 
     def _agents_hooks_etat(self):
-        """« global », « dépôt », « les deux » ou « aucun posé ».
+        """« global », « dépôt », « les deux », « illisible » ou « aucun ».
 
         Les deux endroits sont nommés parce qu'ils ne se remplacent pas : le
         global mesure toute la machine, celui du dépôt mesure ce dépôt pour
         tout clone. Un utilisateur qui pose le global et voit ses appels
         manquer doit pouvoir apprendre que le dépôt en portait un autre.
+
+        Un fichier de réglages qu'on n'a pas su relire n'est pas un fichier
+        sans hooks. Le confondre avec « aucun posé » invite à en poser un
+        par-dessus, et deux blocs de hooks comptent chaque appel d'outil deux
+        fois. L'écran de pose le distinguait déjà ; le libellé du menu, qui
+        est ce qu'on lit d'abord, non.
         """
         from script.todo.assistant.agents import pose
 
         etat = pose.etat(racine_depot=self._agents_racine())
         poses = [nom for nom, (_, actifs) in etat.items() if actifs]
+        inconnus = [nom for nom, (_, actifs) in etat.items() if actifs is None]
         if len(poses) == 2:
-            return t("both")
-        if poses:
-            return t("global") if poses[0] == pose.GLOBAL else t("repository")
-        return t("none installed")
+            libelle = t("both")
+        elif poses:
+            libelle = (
+                t("global") if poses[0] == pose.GLOBAL else t("repository")
+            )
+        elif inconnus:
+            return t("unreadable settings")
+        else:
+            return t("none installed")
+        # Un endroit posé, l'autre illisible : le libellé est vrai et
+        # incomplet, et la marque est ce qui le dit.
+        return f"{libelle} {MARQUE['unknown']}" if inconnus else libelle
 
     @staticmethod
     def _agents_racine():
