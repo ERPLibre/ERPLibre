@@ -5,7 +5,24 @@
 #
 # Usage:
 #   sudo bash install_ntfy.sh
-#   sudo NTFY_PORT=8080 NTFY_BASE_URL=http://192.168.1.100:8080 bash install_ntfy.sh
+#   sudo NTFY_PORT=8080 NTFY_BASE_URL=http://ntfy.exemple.org:8080 \
+#        bash install_ntfy.sh
+#
+# Securite — les defauts de ce script, et pourquoi :
+#
+#   L'acces est REFUSE par defaut (auth-default-access: deny-all). Le defaut
+#   de ntfy en l'absence de cette directive est un acces anonyme en lecture
+#   ET en ecriture : quiconque apprend un nom de sujet lit tout ce qui y
+#   transite, indefiniment. Or un nom de sujet finit toujours par etre tape
+#   dans un ecran de configuration, colle dans un courriel, ou ecrit dans un
+#   fichier. Un serveur de notifications transporte des donnees personnelles.
+#
+#   NTFY_PUBLIC=1 retablit l'ancien comportement, pour un usage ou tout est
+#   volontairement public. C'est un choix, plus un oubli.
+#
+#   TLS s'active en fournissant un certificat :
+#     sudo NTFY_CERT_FILE=/etc/ssl/ntfy.crt NTFY_KEY_FILE=/etc/ssl/ntfy.key \
+#          NTFY_BASE_URL=https://ntfy.exemple.org bash install_ntfy.sh
 
 set -e
 
@@ -14,6 +31,10 @@ NTFY_BASE_URL="${NTFY_BASE_URL:-http://localhost:${NTFY_PORT}}"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/ntfy"
 CACHE_DIR="/var/cache/ntfy"
+NTFY_PUBLIC="${NTFY_PUBLIC:-0}"
+NTFY_CERT_FILE="${NTFY_CERT_FILE:-}"
+NTFY_KEY_FILE="${NTFY_KEY_FILE:-}"
+NTFY_ADMIN_USER="${NTFY_ADMIN_USER:-erplibre}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -195,6 +216,24 @@ configure_ntfy() {
         return
     fi
 
+    if [ -n "${NTFY_CERT_FILE}" ] && [ -n "${NTFY_KEY_FILE}" ]; then
+        [ -f "${NTFY_CERT_FILE}" ] || die "Certificat introuvable : ${NTFY_CERT_FILE}"
+        [ -f "${NTFY_KEY_FILE}" ]  || die "Cle introuvable : ${NTFY_KEY_FILE}"
+        TLS_BLOCK=$(printf 'listen-https: ":443"\ncert-file: "%s"\nkey-file: "%s"' \
+            "${NTFY_CERT_FILE}" "${NTFY_KEY_FILE}")
+        log "TLS active."
+    else
+        TLS_BLOCK="# Pas de TLS : aucun certificat fourni (NTFY_CERT_FILE / NTFY_KEY_FILE)."
+        log "AVERTISSEMENT : aucun TLS. Le trafic circule en clair."
+    fi
+
+    if [ "${NTFY_PUBLIC}" = "1" ]; then
+        DEFAULT_ACCESS="read-write"
+        log "AVERTISSEMENT : NTFY_PUBLIC=1 — acces anonyme en lecture et ecriture."
+    else
+        DEFAULT_ACCESS="deny-all"
+    fi
+
     cat > "${CONFIG_DIR}/server.yml" <<YAML
 # NTFY Server configuration
 # Documentation: https://ntfy.sh/docs/config/
@@ -202,8 +241,9 @@ configure_ntfy() {
 # Public URL of this server (used in notification links)
 base-url: "${NTFY_BASE_URL}"
 
-# Listening address — change to ":443" + TLS for production
+# Listening address
 listen-http: ":${NTFY_PORT}"
+${TLS_BLOCK}
 
 # Message cache (enables message history for reconnecting subscribers)
 cache-file: "${CACHE_DIR}/cache.db"
@@ -217,10 +257,11 @@ attachment-total-size-limit: "5G"
 attachment-file-size-limit: "15M"
 attachment-expiry-duration: "3h"
 
-# ─── Authentication (optional) ───────────────────────────────────────────────
-# Uncomment and run "ntfy user add <user>" to require login.
-# auth-file: "${CONFIG_DIR}/user.db"
-# auth-default-access: "deny-all"
+# ─── Authentification ────────────────────────────────────────────────────────
+# ACTIVE par defaut. Sans ces deux lignes, ntfy autorise la lecture ET
+# l'ecriture anonymes sur tout sujet : connaitre le nom suffit.
+auth-file: "${CONFIG_DIR}/user.db"
+auth-default-access: "${DEFAULT_ACCESS}"
 YAML
     log "Configuration written to ${CONFIG_DIR}/server.yml"
 }
@@ -239,6 +280,46 @@ enable_service() {
         || log "Warning: ntfy may not have started. Run: systemctl status ntfy"
 }
 
+
+# ---------------------------------------------------------------------------
+# Compte administrateur
+# ---------------------------------------------------------------------------
+
+ensure_admin_user() {
+    # `deny-all` sans compte rend le serveur inutilisable : personne ne peut
+    # plus ni publier ni lire. Refuser l'acces ET ne donner aucune cle serait
+    # une panne, pas une securite.
+    if [ "${NTFY_PUBLIC}" = "1" ]; then
+        return
+    fi
+    if ntfy user list 2>/dev/null | grep -q "^user ${NTFY_ADMIN_USER}"; then
+        log "Compte ${NTFY_ADMIN_USER} deja present, mot de passe inchange."
+        return
+    fi
+
+    local motdepasse
+    motdepasse=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
+    if ! NTFY_PASSWORD="${motdepasse}" ntfy user add --role=admin \
+            "${NTFY_ADMIN_USER}" >/dev/null 2>&1; then
+        log "AVERTISSEMENT : creation du compte impossible."
+        log "  A faire a la main : ntfy user add --role=admin ${NTFY_ADMIN_USER}"
+        return
+    fi
+
+    # Affiche UNE seule fois, et jamais ecrit dans un fichier : un mot de
+    # passe laisse sur disque par un script d'installation y reste des annees.
+    echo
+    echo "=================================================================="
+    echo "  COMPTE ADMINISTRATEUR NTFY — note-le maintenant"
+    echo "=================================================================="
+    echo "  utilisateur : ${NTFY_ADMIN_USER}"
+    echo "  mot de passe : ${motdepasse}"
+    echo "=================================================================="
+    echo "  Il n'est affiche qu'ici et n'est ecrit nulle part."
+    echo "  Pour le changer : ntfy user change-pass ${NTFY_ADMIN_USER}"
+    echo
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -252,6 +333,7 @@ main() {
         log "Reconfiguring and restarting..."
         configure_ntfy
         enable_service
+        ensure_admin_user
     elif is_ubuntu_like; then
         log "Using Ubuntu/Debian install path..."
         apt-get update -qq
@@ -262,11 +344,13 @@ main() {
         install_deb "$version"
         configure_ntfy
         enable_service
+        ensure_admin_user
     elif is_arch_like; then
         log "Using Arch Linux install path..."
         install_arch_aur
         configure_ntfy
         enable_service
+        ensure_admin_user
     else
         log "Unknown OS '${OS}', attempting generic binary install..."
         apt-get install -y --no-install-recommends curl ca-certificates 2>/dev/null \
@@ -277,6 +361,7 @@ main() {
         install_binary "$version"
         configure_ntfy
         enable_service
+        ensure_admin_user
     fi
 
     local ip
