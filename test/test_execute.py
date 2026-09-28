@@ -910,6 +910,20 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
 
+    def test_a_combining_dot_inside_a_secret_word_hides_nothing(self):
+        """Un point combinant (U+0307), que `_fold` retire, glissé dans un
+        mot guetté ne le cache pas au contrôle rapide : la ligne se masque
+        comme le mot seul la masquerait, sur une ligne ou dans un texte."""
+        for ligne in (
+            "paṡsword inventeWX",
+            "tȯken: inventeYZ",
+            "Beȧrer inventeAB",
+            "a\npaṡswd = inventeCD\nb",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertNotIn("invente", redact_for_storage(ligne))
+                self.assertTrue(holds_secret_trigger(ligne))
+
     def test_a_line_joined_by_a_quoted_value_hides_no_secret_word(self):
         """Une valeur entre guillemets que `redact_secrets` masque d'une
         ligne à l'autre joint ces lignes en une : si l'une portait un mot
@@ -956,8 +970,8 @@ class TestRedactForStorage(unittest.TestCase):
 
     def test_the_secret_word_scan_is_linear(self):
         """Chaque mot guetté se cherche une fois dans la ligne passée par
-        casefold : 64 Kio de mots guettés, de leurs débuts ou de blancs
-        se masquent sous LINEAR_SECONDS."""
+        `_fold` : 64 Kio de mots guettés, de leurs débuts ou de blancs se
+        masquent sous LINEAR_SECONDS."""
         size = 64 * 1024
         for ligne in (
             "password" * (size // 8),

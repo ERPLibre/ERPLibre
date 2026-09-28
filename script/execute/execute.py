@@ -240,10 +240,10 @@ def _head(match) -> str:
 
 
 # Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,
-# cherchés dans la ligne passée par casefold, qui rend comme la comparaison
-# sans casse des motifs « ſ » en « s ». Aucun ne porte de « i » : le « ı »
-# sans point l'égale sans casse, et casefold ne le rend pas. Chaque mot de
-# SECRET_WORDS en contient un.
+# cherchés dans la ligne passée par `_fold`, comme ceux de SECRET_WORDS :
+# « ſ » y devient « s », comme sous la comparaison sans casse des motifs, et
+# un point combinant (U+0307) glissé dans un mot, que `_fold` retire, ne
+# l'y cache pas. Chaque mot de SECRET_WORDS en contient un.
 _TRIGGERS = ("pass", "pwd", "secret", "token", "key", "auth", "bearer", "://")
 # Mots dont la présence masque le reste de leur ligne sur disque, où qu'ils
 # tombent : sans casse (casefold) et sans borne de mot, collés au mot qui
@@ -342,7 +342,7 @@ def redact_for_storage(text):
     """
     if not text:
         return text
-    folded = text.casefold()
+    folded = _fold(text)
     if not any(word in folded for word in _TRIGGERS):
         return text
     if "\n" not in text:
@@ -373,11 +373,11 @@ def holds_secret_trigger(text) -> bool:
     valeur entre guillemets peut porter un blanc) coupée au milieu ne se
     reconnaît plus dans aucun des deux morceaux. Vrai ici retarde la
     coupure jusqu'à ce que la ligne se termine réellement. Le texte passe
-    une fois par casefold, pas une fois par mot.
+    une fois par `_fold`, pas une fois par mot.
     """
     if not text:
         return False
-    folded = text.casefold()
+    folded = _fold(text)
     return any(word in folded for word in _TRIGGERS)
 
 
