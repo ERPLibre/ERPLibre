@@ -50,6 +50,7 @@ import descente  # noqa: E402
 from descente import (  # noqa: E402,F401
     DELAIS,
     Famille,
+    _ancetres,
     _lance_une_descente,
     a_defaire,
     autre_descente,
