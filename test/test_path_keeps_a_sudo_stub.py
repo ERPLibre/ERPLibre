@@ -38,6 +38,14 @@ EXEMPTES = {
         "le dictionnaire est l'entrée de system_env(), la fonction testée :"
         " rien n'est exécuté"
     ),
+    "test_setops_ansible_env.py": (
+        "le dictionnaire est l'entrée de environnement(), la fonction"
+        " testée : le PATH rendu est LU, jamais joué"
+    ),
+    "test_todo_rtk.py": (
+        "le PATH est une valeur DANS le fichier de réglages que le test"
+        " écrit pour le faire relire : rien ne le joue"
+    ),
     "test_qemu_cache_guest.py": (
         "les commandes jouées sont celles qui tournent en root dans"
         " l'invité, et n'appellent pas sudo"
