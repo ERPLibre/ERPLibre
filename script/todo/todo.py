@@ -319,35 +319,42 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_execute(self):
-        help_info = f"""{self._menu_header()}
-
-── {t("Development")} ──
-[1] {t("Code - Developer tools")}
-[2] {t("Config - Configuration file management")}
-[3] {t("Run - Execute and install an instance")}
-[4] {t("Test - Test an Odoo module")}
-[5] {t("Process - Execution tools")}
-
-── {t("Data")} ──
-[6] {t("Database - Database tools")}
-[7] {t("Analyse - Odoo database analysis")}
-[8] {t("Transform data - Transform your data")}
-
-── {t("Sources & documentation")} ──
-[9] {t("Git - Git and shell tools")}
-[10] {t("Doc - Documentation search")}
-
-── {t("AI & automation")} ──
-[11] {t("GPT code - AI assistant tools")}
-[12] {t("Automation - Demonstration of developed features")}
-
-── {t("Deployment, network & security")} ──
-[13] {t("Deploy - Deploy ERPLibre locally")}
-[14] {t("Network - Network tools")}
-[15] {t("Security - Dependency security audit")}
-[16] {t("Docker / Podman - Container engines")}
-[0] {t("Back")}
-"""
+        """Les seize sous-menus d'Execute, en cinq sections. Le texte vient
+        de `fill_help_info`, qui le numérote : dans une session web, le
+        menu porte ses entrées exactes, sans que la capture relise
+        l'écran."""
+        choices = [
+            {"section": t("Development")},
+            {"prompt_description": t("Code - Developer tools")},
+            {
+                "prompt_description": t(
+                    "Config - Configuration file management"
+                )
+            },
+            {"prompt_description": t("Run - Execute and install an instance")},
+            {"prompt_description": t("Test - Test an Odoo module")},
+            {"prompt_description": t("Process - Execution tools")},
+            {"section": t("Data")},
+            {"prompt_description": t("Database - Database tools")},
+            {"prompt_description": t("Analyse - Odoo database analysis")},
+            {"prompt_description": t("Transform data - Transform your data")},
+            {"section": t("Sources & documentation")},
+            {"prompt_description": t("Git - Git and shell tools")},
+            {"prompt_description": t("Doc - Documentation search")},
+            {"section": t("AI & automation")},
+            {"prompt_description": t("GPT code - AI assistant tools")},
+            {
+                "prompt_description": t(
+                    "Automation - Demonstration of developed features"
+                )
+            },
+            {"section": t("Deployment, network & security")},
+            {"prompt_description": t("Deploy - Deploy ERPLibre locally")},
+            {"prompt_description": t("Network - Network tools")},
+            {"prompt_description": t("Security - Dependency security audit")},
+            {"prompt_description": t("Docker / Podman - Container engines")},
+        ]
+        help_info = self.fill_help_info(choices)
         while True:
             status = click.prompt(help_info)
             print()

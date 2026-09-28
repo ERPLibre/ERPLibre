@@ -867,6 +867,22 @@ class TestRealTodo(unittest.TestCase):
         self.assertEqual(quit_entry["label"], "🚪 Quit")
         self.assertEqual(quit_entry["speak"], "Quit")
 
+    def test_execute_gives_a_session_its_exact_entries(self):
+        # TODO › Execute › Back › Quit : Execute passe par fill_help_info, et
+        # la session reçoit ses entrées telles qu'il les numérote, sans
+        # relire l'écran : [0] n'est d'aucune section.
+        seen = self.real_todo("1", "0", "0")
+        [execute] = [
+            e for e in seen["events"] if e["crumbs"] == ["TODO", "Execute"]
+        ]
+        self.assertEqual(execute["source"], "fill_help_info")
+        self.assertEqual(
+            [i["key"] for i in execute["items"]],
+            [str(n) for n in range(1, 17)] + ["0"],
+        )
+        self.assertEqual(len(execute["sections"]), 5)
+        self.assertIsNone(execute["items"][-1]["section"])
+
     def test_what_a_leaf_prints_flags_the_menu_that_follows(self):
         # TODO › Execute › Test › Test a module, sans nom : « Module name is
         # required! » précède le menu Test qui revient. Back, Back, puis

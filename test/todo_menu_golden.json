@@ -92,13 +92,13 @@
             {"key": "14", "label": "📡 Network - Network tools", "section": "🌐 Deployment, network & security", "speak": "Network - Network tools"},
             {"key": "15", "label": "🔒 Security - Dependency security audit", "section": "🌐 Deployment, network & security", "speak": "Security - Dependency security audit"},
             {"key": "16", "label": "📦 Docker / Podman - Container engines", "section": "🌐 Deployment, network & security", "speak": "Docker / Podman - Container engines"},
-            {"key": "0", "label": "🔙 Back", "section": "🌐 Deployment, network & security", "speak": "Back"}
+            {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Development", "📊 Data", "📚 Sources & documentation", "🧠 AI & automation", "🌐 Deployment, network & security"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommand:\n\n── 🧰 Development ──\n[1] 💻 Code - Developer tools\n[2] 🔧 Config - Configuration file management\n[3] 🏃 Run - Execute and install an instance\n[4] 🧪 Test - Test an Odoo module\n[5] 📟 Process - Execution tools\n\n── 📊 Data ──\n[6] 💾 Database - Database tools\n[7] 🔬 Analyse - Odoo database analysis\n[8] 🪄 Transform data - Transform your data\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Git and shell tools\n[10] 📖 Doc - Documentation search\n\n── 🧠 AI & automation ──\n[11] 🤖 GPT code - AI assistant tools\n[12] 🦾 Automation - Demonstration of developed features\n\n── 🌐 Deployment, network & security ──\n[13] 🚀 Deploy - Deploy ERPLibre locally\n[14] 📡 Network - Network tools\n[15] 🔒 Security - Dependency security audit\n[16] 📦 Docker / Podman - Container engines\n[0] 🔙 Back\n: "
@@ -184,13 +184,13 @@
             {"key": "14", "label": "📡 Network - Network tools", "section": "🌐 Deployment, network & security", "speak": "Network - Network tools"},
             {"key": "15", "label": "🔒 Security - Dependency security audit", "section": "🌐 Deployment, network & security", "speak": "Security - Dependency security audit"},
             {"key": "16", "label": "📦 Docker / Podman - Container engines", "section": "🌐 Deployment, network & security", "speak": "Docker / Podman - Container engines"},
-            {"key": "0", "label": "🔙 Back", "section": "🌐 Deployment, network & security", "speak": "Back"}
+            {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Development", "📊 Data", "📚 Sources & documentation", "🧠 AI & automation", "🌐 Deployment, network & security"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommand:\n\n── 🧰 Development ──\n[1] 💻 Code - Developer tools\n[2] 🔧 Config - Configuration file management\n[3] 🏃 Run - Execute and install an instance\n[4] 🧪 Test - Test an Odoo module\n[5] 📟 Process - Execution tools\n\n── 📊 Data ──\n[6] 💾 Database - Database tools\n[7] 🔬 Analyse - Odoo database analysis\n[8] 🪄 Transform data - Transform your data\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Git and shell tools\n[10] 📖 Doc - Documentation search\n\n── 🧠 AI & automation ──\n[11] 🤖 GPT code - AI assistant tools\n[12] 🦾 Automation - Demonstration of developed features\n\n── 🌐 Deployment, network & security ──\n[13] 🚀 Deploy - Deploy ERPLibre locally\n[14] 📡 Network - Network tools\n[15] 🔒 Security - Dependency security audit\n[16] 📦 Docker / Podman - Container engines\n[0] 🔙 Back\n: "
@@ -235,13 +235,13 @@
             {"key": "14", "label": "📡 Network - Network tools", "section": "🌐 Deployment, network & security", "speak": "Network - Network tools"},
             {"key": "15", "label": "🔒 Security - Dependency security audit", "section": "🌐 Deployment, network & security", "speak": "Security - Dependency security audit"},
             {"key": "16", "label": "📦 Docker / Podman - Container engines", "section": "🌐 Deployment, network & security", "speak": "Docker / Podman - Container engines"},
-            {"key": "0", "label": "🔙 Back", "section": "🌐 Deployment, network & security", "speak": "Back"}
+            {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Development", "📊 Data", "📚 Sources & documentation", "🧠 AI & automation", "🌐 Deployment, network & security"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommand:\n\n── 🧰 Development ──\n[1] 💻 Code - Developer tools\n[2] 🔧 Config - Configuration file management\n[3] 🏃 Run - Execute and install an instance\n[4] 🧪 Test - Test an Odoo module\n[5] 📟 Process - Execution tools\n\n── 📊 Data ──\n[6] 💾 Database - Database tools\n[7] 🔬 Analyse - Odoo database analysis\n[8] 🪄 Transform data - Transform your data\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Git and shell tools\n[10] 📖 Doc - Documentation search\n\n── 🧠 AI & automation ──\n[11] 🤖 GPT code - AI assistant tools\n[12] 🦾 Automation - Demonstration of developed features\n\n── 🌐 Deployment, network & security ──\n[13] 🚀 Deploy - Deploy ERPLibre locally\n[14] 📡 Network - Network tools\n[15] 🔒 Security - Dependency security audit\n[16] 📦 Docker / Podman - Container engines\n[0] 🔙 Back\n: "
@@ -283,13 +283,13 @@
             {"key": "14", "label": "📡 Network - Network tools", "section": "🌐 Deployment, network & security", "speak": "Network - Network tools"},
             {"key": "15", "label": "🔒 Security - Dependency security audit", "section": "🌐 Deployment, network & security", "speak": "Security - Dependency security audit"},
             {"key": "16", "label": "📦 Docker / Podman - Container engines", "section": "🌐 Deployment, network & security", "speak": "Docker / Podman - Container engines"},
-            {"key": "0", "label": "🔙 Back", "section": "🌐 Deployment, network & security", "speak": "Back"}
+            {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Development", "📊 Data", "📚 Sources & documentation", "🧠 AI & automation", "🌐 Deployment, network & security"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommand:\n\n── 🧰 Development ──\n[1] 💻 Code - Developer tools\n[2] 🔧 Config - Configuration file management\n[3] 🏃 Run - Execute and install an instance\n[4] 🧪 Test - Test an Odoo module\n[5] 📟 Process - Execution tools\n\n── 📊 Data ──\n[6] 💾 Database - Database tools\n[7] 🔬 Analyse - Odoo database analysis\n[8] 🪄 Transform data - Transform your data\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Git and shell tools\n[10] 📖 Doc - Documentation search\n\n── 🧠 AI & automation ──\n[11] 🤖 GPT code - AI assistant tools\n[12] 🦾 Automation - Demonstration of developed features\n\n── 🌐 Deployment, network & security ──\n[13] 🚀 Deploy - Deploy ERPLibre locally\n[14] 📡 Network - Network tools\n[15] 🔒 Security - Dependency security audit\n[16] 📦 Docker / Podman - Container engines\n[0] 🔙 Back\n: "
@@ -335,13 +335,13 @@
             {"key": "14", "label": "📡 Network - Network tools", "section": "🌐 Deployment, network & security", "speak": "Network - Network tools"},
             {"key": "15", "label": "🔒 Security - Dependency security audit", "section": "🌐 Deployment, network & security", "speak": "Security - Dependency security audit"},
             {"key": "16", "label": "📦 Docker / Podman - Container engines", "section": "🌐 Deployment, network & security", "speak": "Docker / Podman - Container engines"},
-            {"key": "0", "label": "🔙 Back", "section": "🌐 Deployment, network & security", "speak": "Back"}
+            {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Development", "📊 Data", "📚 Sources & documentation", "🧠 AI & automation", "🌐 Deployment, network & security"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommand:\n\n── 🧰 Development ──\n[1] 💻 Code - Developer tools\n[2] 🔧 Config - Configuration file management\n[3] 🏃 Run - Execute and install an instance\n[4] 🧪 Test - Test an Odoo module\n[5] 📟 Process - Execution tools\n\n── 📊 Data ──\n[6] 💾 Database - Database tools\n[7] 🔬 Analyse - Odoo database analysis\n[8] 🪄 Transform data - Transform your data\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Git and shell tools\n[10] 📖 Doc - Documentation search\n\n── 🧠 AI & automation ──\n[11] 🤖 GPT code - AI assistant tools\n[12] 🦾 Automation - Demonstration of developed features\n\n── 🌐 Deployment, network & security ──\n[13] 🚀 Deploy - Deploy ERPLibre locally\n[14] 📡 Network - Network tools\n[15] 🔒 Security - Dependency security audit\n[16] 📦 Docker / Podman - Container engines\n[0] 🔙 Back\n: "
@@ -440,13 +440,13 @@
             {"key": "14", "label": "📡 Réseau - Outil réseautique", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Réseau - Outil réseautique"},
             {"key": "15", "label": "🔒 Sécurité - Audit de sécurité des dépendances", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Sécurité - Audit de sécurité des dépendances"},
             {"key": "16", "label": "📦 Docker / Podman - Moteurs de conteneurs", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Docker / Podman - Moteurs de conteneurs"},
-            {"key": "0", "label": "🔙 Retour", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Retour"}
+            {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Développement", "📊 Données", "📚 Sources & documentation", "🧠 IA & automatisation", "🌐 Déploiement, réseau & sécurité"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommande :\n\n── 🧰 Développement ──\n[1] 💻 Code - Outil pour développeur\n[2] 🔧 Config - Traitement du fichier de configuration\n[3] 🏃 Run - Exécuter et installer une instance\n[4] 🧪 Test - Tester un module Odoo\n[5] 📟 Process - Outils sur les executions\n\n── 📊 Données ──\n[6] 💾 Database - Outils sur les bases de données\n[7] 🔬 Analyse - Analyse de base de données Odoo\n[8] 🪄 Transform data - Transformer vos données\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Outils Git et Shell\n[10] 📖 Doc - Recherche de documentation\n\n── 🧠 IA & automatisation ──\n[11] 🤖 GPT code - Outils d'assistant IA\n[12] 🦾 Automatisation - Demonstration des fonctions développées\n\n── 🌐 Déploiement, réseau & sécurité ──\n[13] 🚀 Déploiement - Déployer ERPLibre localement\n[14] 📡 Réseau - Outil réseautique\n[15] 🔒 Sécurité - Audit de sécurité des dépendances\n[16] 📦 Docker / Podman - Moteurs de conteneurs\n[0] 🔙 Retour\n: "
@@ -532,13 +532,13 @@
             {"key": "14", "label": "📡 Réseau - Outil réseautique", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Réseau - Outil réseautique"},
             {"key": "15", "label": "🔒 Sécurité - Audit de sécurité des dépendances", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Sécurité - Audit de sécurité des dépendances"},
             {"key": "16", "label": "📦 Docker / Podman - Moteurs de conteneurs", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Docker / Podman - Moteurs de conteneurs"},
-            {"key": "0", "label": "🔙 Retour", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Retour"}
+            {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Développement", "📊 Données", "📚 Sources & documentation", "🧠 IA & automatisation", "🌐 Déploiement, réseau & sécurité"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommande :\n\n── 🧰 Développement ──\n[1] 💻 Code - Outil pour développeur\n[2] 🔧 Config - Traitement du fichier de configuration\n[3] 🏃 Run - Exécuter et installer une instance\n[4] 🧪 Test - Tester un module Odoo\n[5] 📟 Process - Outils sur les executions\n\n── 📊 Données ──\n[6] 💾 Database - Outils sur les bases de données\n[7] 🔬 Analyse - Analyse de base de données Odoo\n[8] 🪄 Transform data - Transformer vos données\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Outils Git et Shell\n[10] 📖 Doc - Recherche de documentation\n\n── 🧠 IA & automatisation ──\n[11] 🤖 GPT code - Outils d'assistant IA\n[12] 🦾 Automatisation - Demonstration des fonctions développées\n\n── 🌐 Déploiement, réseau & sécurité ──\n[13] 🚀 Déploiement - Déployer ERPLibre localement\n[14] 📡 Réseau - Outil réseautique\n[15] 🔒 Sécurité - Audit de sécurité des dépendances\n[16] 📦 Docker / Podman - Moteurs de conteneurs\n[0] 🔙 Retour\n: "
@@ -583,13 +583,13 @@
             {"key": "14", "label": "📡 Réseau - Outil réseautique", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Réseau - Outil réseautique"},
             {"key": "15", "label": "🔒 Sécurité - Audit de sécurité des dépendances", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Sécurité - Audit de sécurité des dépendances"},
             {"key": "16", "label": "📦 Docker / Podman - Moteurs de conteneurs", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Docker / Podman - Moteurs de conteneurs"},
-            {"key": "0", "label": "🔙 Retour", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Retour"}
+            {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Développement", "📊 Données", "📚 Sources & documentation", "🧠 IA & automatisation", "🌐 Déploiement, réseau & sécurité"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommande :\n\n── 🧰 Développement ──\n[1] 💻 Code - Outil pour développeur\n[2] 🔧 Config - Traitement du fichier de configuration\n[3] 🏃 Run - Exécuter et installer une instance\n[4] 🧪 Test - Tester un module Odoo\n[5] 📟 Process - Outils sur les executions\n\n── 📊 Données ──\n[6] 💾 Database - Outils sur les bases de données\n[7] 🔬 Analyse - Analyse de base de données Odoo\n[8] 🪄 Transform data - Transformer vos données\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Outils Git et Shell\n[10] 📖 Doc - Recherche de documentation\n\n── 🧠 IA & automatisation ──\n[11] 🤖 GPT code - Outils d'assistant IA\n[12] 🦾 Automatisation - Demonstration des fonctions développées\n\n── 🌐 Déploiement, réseau & sécurité ──\n[13] 🚀 Déploiement - Déployer ERPLibre localement\n[14] 📡 Réseau - Outil réseautique\n[15] 🔒 Sécurité - Audit de sécurité des dépendances\n[16] 📦 Docker / Podman - Moteurs de conteneurs\n[0] 🔙 Retour\n: "
@@ -631,13 +631,13 @@
             {"key": "14", "label": "📡 Réseau - Outil réseautique", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Réseau - Outil réseautique"},
             {"key": "15", "label": "🔒 Sécurité - Audit de sécurité des dépendances", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Sécurité - Audit de sécurité des dépendances"},
             {"key": "16", "label": "📦 Docker / Podman - Moteurs de conteneurs", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Docker / Podman - Moteurs de conteneurs"},
-            {"key": "0", "label": "🔙 Retour", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Retour"}
+            {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Développement", "📊 Données", "📚 Sources & documentation", "🧠 IA & automatisation", "🌐 Déploiement, réseau & sécurité"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommande :\n\n── 🧰 Développement ──\n[1] 💻 Code - Outil pour développeur\n[2] 🔧 Config - Traitement du fichier de configuration\n[3] 🏃 Run - Exécuter et installer une instance\n[4] 🧪 Test - Tester un module Odoo\n[5] 📟 Process - Outils sur les executions\n\n── 📊 Données ──\n[6] 💾 Database - Outils sur les bases de données\n[7] 🔬 Analyse - Analyse de base de données Odoo\n[8] 🪄 Transform data - Transformer vos données\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Outils Git et Shell\n[10] 📖 Doc - Recherche de documentation\n\n── 🧠 IA & automatisation ──\n[11] 🤖 GPT code - Outils d'assistant IA\n[12] 🦾 Automatisation - Demonstration des fonctions développées\n\n── 🌐 Déploiement, réseau & sécurité ──\n[13] 🚀 Déploiement - Déployer ERPLibre localement\n[14] 📡 Réseau - Outil réseautique\n[15] 🔒 Sécurité - Audit de sécurité des dépendances\n[16] 📦 Docker / Podman - Moteurs de conteneurs\n[0] 🔙 Retour\n: "
@@ -683,13 +683,13 @@
             {"key": "14", "label": "📡 Réseau - Outil réseautique", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Réseau - Outil réseautique"},
             {"key": "15", "label": "🔒 Sécurité - Audit de sécurité des dépendances", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Sécurité - Audit de sécurité des dépendances"},
             {"key": "16", "label": "📦 Docker / Podman - Moteurs de conteneurs", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Docker / Podman - Moteurs de conteneurs"},
-            {"key": "0", "label": "🔙 Retour", "section": "🌐 Déploiement, réseau & sécurité", "speak": "Retour"}
+            {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
           ],
           "notes": [],
           "printed": false,
           "requires": [],
           "sections": ["🧰 Développement", "📊 Données", "📚 Sources & documentation", "🧠 IA & automatisation", "🌐 Déploiement, réseau & sécurité"],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Execute",
           "t": "menu",
           "text": "📍 TODO › Execute\nCommande :\n\n── 🧰 Développement ──\n[1] 💻 Code - Outil pour développeur\n[2] 🔧 Config - Traitement du fichier de configuration\n[3] 🏃 Run - Exécuter et installer une instance\n[4] 🧪 Test - Tester un module Odoo\n[5] 📟 Process - Outils sur les executions\n\n── 📊 Données ──\n[6] 💾 Database - Outils sur les bases de données\n[7] 🔬 Analyse - Analyse de base de données Odoo\n[8] 🪄 Transform data - Transformer vos données\n\n── 📚 Sources & documentation ──\n[9] 🌿 Git - Outils Git et Shell\n[10] 📖 Doc - Recherche de documentation\n\n── 🧠 IA & automatisation ──\n[11] 🤖 GPT code - Outils d'assistant IA\n[12] 🦾 Automatisation - Demonstration des fonctions développées\n\n── 🌐 Déploiement, réseau & sécurité ──\n[13] 🚀 Déploiement - Déployer ERPLibre localement\n[14] 📡 Réseau - Outil réseautique\n[15] 🔒 Sécurité - Audit de sécurité des dépendances\n[16] 📦 Docker / Podman - Moteurs de conteneurs\n[0] 🔙 Retour\n: "
