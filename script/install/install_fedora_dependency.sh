@@ -220,6 +220,16 @@ if [[ $retVal -ne 0 ]]; then
   exit 1
 fi
 
+# gettext : outil de DÉVELOPPEMENT des catalogues de traduction, posé sans jamais bloquer. Odoo lit ses « .po »
+# avec son propre analyseur : aucun binaire gettext n'est nécessaire pour
+# FAIRE TOURNER ERPLibre. « msgfmt --check » refuse un catalogue dont une
+# traduction a perdu un « %s » de sa source — une faute qui ne se voit
+# autrement qu'à l'exécution, sur la page traduite ; « msgmerge » reporte
+# les traductions existantes sur un « .pot » régénéré, au lieu de les
+# réécrire à la main.
+${DNF} gettext \
+  || echo "gettext non installé (optionnel — outils de traduction)."
+
 # Dépendances selenium / bindings.
 ${DNF} \
   cairo-devel python3-devel pkgconf-pkg-config gobject-introspection-devel \

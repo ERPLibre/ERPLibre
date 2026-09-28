@@ -301,6 +301,17 @@ if [[ ${retVal} -ne 0 ]]; then
   exit 1
 fi
 
+# gettext : outil de DÉVELOPPEMENT des catalogues de traduction, posé par « zyp_soft », qui ne bloque pas. Odoo lit ses « .po »
+# avec son propre analyseur : aucun binaire gettext n'est nécessaire pour
+# FAIRE TOURNER ERPLibre. « msgfmt --check » refuse un catalogue dont une
+# traduction a perdu un « %s » de sa source — une faute qui ne se voit
+# autrement qu'à l'exécution, sur la page traduite ; « msgmerge » reporte
+# les traductions existantes sur un « .pot » régénéré, au lieu de les
+# réécrire à la main.
+# Le paquet s'appelle « gettext-tools » ici : « gettext-runtime » ne porte
+# que « gettext » et « ngettext », pas « msgfmt ».
+zyp_soft gettext-tools
+
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
 # Python de la DISTRIBUTION d'abord : Tumbleweed livre python312 en 3.12.13,
 # qui satisfait « >=3.12.10,<3.13 ». lib_python_provider.sh le prefere alors a
