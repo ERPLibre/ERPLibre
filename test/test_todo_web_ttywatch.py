@@ -220,8 +220,13 @@ def asked(session):
 
 
 def dropped(client) -> list:
-    """Les tailles des `dropped` que `client` a reçus, dans l'ordre."""
-    return [m["bytes"] for _, m in client.events if m["t"] == "dropped"]
+    """`(taille, raison)` des `dropped` que `client` a reçus, dans
+    l'ordre."""
+    return [
+        (m["bytes"], m["reason"])
+        for _, m in client.events
+        if m["t"] == "dropped"
+    ]
 
 
 def queued(fd) -> int:
@@ -724,7 +729,7 @@ class TestPaste(SessionCase):
         session.write(await session.gate(b"go\nforged\n"), lines=True)
         await self.until(lambda: client.seen(echo=False, reader=True))
         self.assertEqual(session.held, b"")
-        self.assertEqual(dropped(client), [len(b"forged\n")])
+        self.assertEqual(dropped(client), [(len(b"forged\n"), "question")])
         session.write(await session.gate(b"hunter2\n"), lines=True)
         await self.until(lambda: b"secret was" in client.data)
         self.assertIn(b"secret was 'hunter2'", client.data)
@@ -760,7 +765,7 @@ class TestPaste(SessionCase):
         session.write(await session.gate(b"1\nforged\n"), lines=True)
         await self.until(lambda: asked(session) == "Q2: ")
         self.assertEqual(session.held, b"")
-        self.assertEqual(dropped(client), [len(b"forged\n")])
+        self.assertEqual(dropped(client), [(len(b"forged\n"), "question")])
         session.write(b"typed\n", lines=True)
         await self.until(lambda: b"answers" in client.data)
         self.assertIn(b"answers '1' 'typed'", client.data)
@@ -784,13 +789,21 @@ class TestPaste(SessionCase):
         self.assertEqual(session.held, b"later\n")
         self.assertEqual(await session.gate(b"\x03"), b"\x03")
         self.assertEqual(session.held, b"")
-        self.assertEqual(dropped(client), [len(b"later\n")])
+        self.assertEqual(dropped(client), [(len(b"later\n"), "stop")])
 
     async def test_every_other_discard_is_reported(self):
         # Ctrl+C, une invite de secret et un message du worker ont leurs
         # tests ; ici, un lecteur devenu inconnu, une réponse de la page,
-        # et, sans client, ce qu'un lecteur inconnu retient.
-        for case in ("unknown reader", "answer", "no client"):
+        # Arrêter, la fin du worker et, sans client, ce qu'un lecteur
+        # inconnu retient.
+        reasons = {
+            "unknown reader": "unread",
+            "answer": "question",
+            "interrupt": "stop",
+            "close": "stop",
+        }
+        cases = ("unknown reader", "answer", "interrupt", "close", "no client")
+        for case in cases:
             with self.subTest(case):
                 session, client = await self.open(READ_THEN_SLEEP)
                 await self.until(lambda: client.seen(reader=True))
@@ -803,6 +816,16 @@ class TestPaste(SessionCase):
                 elif case == "answer":
                     session.asking = {"t": "ask", "qid": 1}
                     self.assertTrue(session.answer({"t": "cancel", "qid": 1}))
+                elif case == "interrupt":
+                    # L'enfant dort sans enfant à lui : `interrupt` n'agit
+                    # que sur une commande ou sur un enfant du worker.
+                    children = patch.object(
+                        sessions, "_has_children", return_value=True
+                    )
+                    with children:
+                        self.assertTrue(session.interrupt())
+                elif case == "close":
+                    await session.close()
                 else:
                     session.detach(client)
                     probe = session.watch.probe
@@ -813,7 +836,8 @@ class TestPaste(SessionCase):
                     self.assertEqual(dropped(client), [])
                     continue
                 self.assertEqual(session.held, b"")
-                self.assertEqual(dropped(client), [len(b"later\n")])
+                lost = [(len(b"later\n"), reasons[case])]
+                self.assertEqual(dropped(client), lost)
 
     async def test_an_unknown_reader_gets_the_whole_paste(self):
         # Le lecteur reste inconnu toute la vie de l'enfant (PROC_USABLE

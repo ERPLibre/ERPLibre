@@ -3881,6 +3881,19 @@ TRANSLATIONS = {
         "en": "The prompt ended: the hidden answer was not sent.",
     },
     "Quick answers": {"fr": "Réponses rapides", "en": "Quick answers"},
+    "A new prompt began: pending keystrokes were not sent.": {
+        "fr": "Une invite a commencé : les frappes en attente ne sont "
+        "pas parties.",
+        "en": "A new prompt began: pending keystrokes were not sent.",
+    },
+    "Stopped: pending keystrokes were thrown away.": {
+        "fr": "Arrêt : les frappes en attente ont été jetées.",
+        "en": "Stopped: pending keystrokes were thrown away.",
+    },
+    "Keystrokes pending while no tab was open were thrown away.": {
+        "fr": "Des frappes en attente sans onglet ouvert ont été jetées.",
+        "en": "Keystrokes pending while no tab was open were thrown away.",
+    },
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
     # Page web : vue Historique, les journaux des tâches des sessions.
     "History": {"fr": "Historique", "en": "History"},

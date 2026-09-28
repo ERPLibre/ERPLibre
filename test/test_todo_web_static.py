@@ -24,7 +24,7 @@ import unittest
 from pathlib import Path
 
 from script.todo import todo_i18n, todo_telemetry
-from script.todo.web import server
+from script.todo.web import protocol, server
 
 REPO = Path(__file__).resolve().parent.parent
 STATIC = REPO / "script" / "todo" / "web" / "static"
@@ -205,6 +205,15 @@ class TestPage(unittest.TestCase):
         self.assertEqual(sorted(table), [f"/static/{n}" for n in served])
         self.assertEqual(table["/static/LICENSE"][1], server.LICENSE_TYPE)
         self.assertFalse([url for url in self.table if url.endswith(".py")])
+
+    def test_the_page_says_each_reason_of_a_drop(self):
+        # Une raison que la page ne nomme pas s'afficherait comme `unread`.
+        source = (SRC / "sessions_view.js").read_text(encoding="utf-8")
+        block = re.search(
+            r"^const DROP_LABELS = \{(.*?)^\};", source, re.M | re.S
+        )
+        named = re.findall(r"^\s+(\w+): \"", block[1], re.M)
+        self.assertEqual(tuple(named), protocol.DROP_REASONS)
 
     def test_the_tree_toggle_is_named_after_its_node(self):
         # Le bouton ne montre que ▸ ou ▾ : un lecteur d'écran annonce son

@@ -35,8 +35,9 @@ worker comme réponse. Devant un lecteur qu'aucune sonde ne sait trancher
 (`ttywatch` : programme setuid, /proc inutilisable), rien ne dirait quand
 livrer la ligne suivante : le collage part entier, et le worker, qui vide
 son entrée avant et après chaque question, n'en prend qu'une ligne. Ce que
-`held` jette est dit au client par `dropped`, ou au suivant quand il n'y
-en a pas (`unreported`).
+`held` jette est dit au client par `dropped`, avec sa raison
+(`protocol.DROP_REASONS`), ou au suivant quand il n'y en a pas
+(`unreported`).
 
 Le hub pose sur chaque session un journal des tâches (`recorder`,
 `tasklog.Recorder`) : il reçoit la sortie du PTY, chaque message relayé du
@@ -461,7 +462,7 @@ class Session:
         chaque frappe s'y ajouterait sans fin."""
         state = self.state
         if lines and state is not None and state.reader is None:
-            self._drop_held()
+            self._drop_held("unread")
         waiting = len(self.inbox) + len(self.held)
         if waiting + len(data) > INPUT_LIMIT:
             return False
@@ -477,9 +478,10 @@ class Session:
         self._write_inbox()
         return True
 
-    def _drop_held(self):
+    def _drop_held(self, reason):
         """Jette ce que `held` retient ; le client l'apprend par `dropped`,
-        et sans client, le suivant (`unreported`)."""
+        avec `reason`, une raison de `protocol.DROP_REASONS`, et sans
+        client, le suivant (`unreported`), comme `detached`."""
         if not self.held:
             return
         lost = len(self.held)
@@ -487,7 +489,8 @@ class Session:
         if self.client is None:
             self.unreported += lost
         else:
-            self.client.event({"t": "dropped", "bytes": lost})
+            dropped = {"t": "dropped", "bytes": lost, "reason": reason}
+            self.client.event(dropped)
 
     def _write_inbox(self):
         loop = asyncio.get_running_loop()
@@ -528,7 +531,7 @@ class Session:
         signals = bytes(b for b in data if b in self.state.signals)
         if signals:
             # Comme au terminal, Ctrl+C jette ce qui attend d'être lu.
-            self._drop_held()
+            self._drop_held("stop")
         if _open(self.state):
             return data
         if signals == data or _secret(self.state):
@@ -585,7 +588,7 @@ class Session:
             before is not None and _secret(before)
         ):
             self.inbox.clear()
-            self._drop_held()
+            self._drop_held("question")
             asyncio.get_running_loop().remove_writer(self.master)
             self._drop_input()
         elif (
@@ -663,7 +666,7 @@ class Session:
                     self._probe()
                 if self.client is None and self.held:
                     if self.state is not None and self.state.reader is None:
-                        self._drop_held()
+                        self._drop_held("unread")
 
     def interrupt(self) -> bool:
         """Arrête ce que le worker a lancé ; faux, et rien ne change, s'il
@@ -688,7 +691,7 @@ class Session:
         if not command and not _has_children(self.proc.pid):
             return False
         self.inbox.clear()
-        self._drop_held()
+        self._drop_held("stop")
         asyncio.get_running_loop().remove_writer(self.master)
         self._drop_input()
         if command:
@@ -768,7 +771,7 @@ class Session:
             self.asking = message if asked else None
             # Chaque message est une borne : ce qui reste d'un collage ne
             # passe pas d'une question, ou d'une commande, à la suivante.
-            self._drop_held()
+            self._drop_held("question")
             if self.recorder is not None:
                 self.recorder.worker(message)
             if self.client is not None:
@@ -788,7 +791,7 @@ class Session:
         if self.recorder is not None:
             self.recorder.page(message)
         self.asking = None
-        self._drop_held()
+        self._drop_held("question")
         return True
 
     def _hangup(self):
@@ -801,7 +804,7 @@ class Session:
             os.close(self.master)
             self.master = None
         self.inbox.clear()
-        self._drop_held()
+        self._drop_held("stop")
         if self.channel is not None:
             self.channel.close()
             self.channel = None

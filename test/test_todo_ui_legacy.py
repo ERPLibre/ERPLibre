@@ -537,6 +537,38 @@ class TestMenus(CaptureCase):
         )
         self.assertEqual([i["key"] for i in glued["items"]], ["1", "2", "0"])
 
+    def test_notes_between_the_entries_and_the_prompt_keep_the_menu(self):
+        # Un écran de qemu_deploy.py : entrées, une note au même retrait,
+        # puis l'invite ; une ligne vide peut aussi les séparer.
+        scripted = self.capture("1", "2")
+        print("\nApplication store (graphical Ubuntu VMs):")
+        print("  [1] deb (apt) *\n  [2] snap + deb")
+        print("  ⚠ snap needs the store; slow under emulation.")
+        input("Choice [1]: ")
+        print("Interface:\n  [1] TUI form *\n  [2] Classic questions\n")
+        input("Choice: ")
+        store, interface = scripted.events
+        self.assertEqual(
+            [(i["key"], i["label"]) for i in store["items"]],
+            [("1", "deb (apt) *"), ("2", "snap + deb")],
+        )
+        self.assertEqual([i["key"] for i in interface["items"]], ["1", "2"])
+        # Ce qui n'est pas la note d'un menu : une ligne sans retrait ; des
+        # entrées sans retrait, devant des notes ou une ligne vide ; une
+        # note à un autre retrait que les entrées ; trois notes ; deux
+        # lignes vides. Les crochets d'avant restent hors menu.
+        for screen in (
+            "[1] 48213\n  at step 2\nsome log line\nDatabase name: ",
+            "[1] 48213\n  at step 2\n  at step 3\nDatabase name: ",
+            "[a] warning: foo\n    File x.py\n    raise X\n\nContinue? ",
+            "[1] 48213\n\nDatabase name: ",
+            "  [1] one\n    deeper note\nChoice: ",
+            "  [1] one\n  note\n  note\n  note\nChoice: ",
+            "  [1] one\n\n\nChoice: ",
+        ):
+            with self.subTest(screen):
+                self.assertIsNone(legacy.read_screen(screen))
+
     def test_a_screen_numbered_otherwise_stays_a_text_question(self):
         screens = [
             "1. first step\n2. second step",

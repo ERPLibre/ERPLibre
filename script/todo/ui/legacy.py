@@ -64,6 +64,10 @@ SECTION = re.compile(r"^\s*──\s*(.+?)\s*──\s*$")
 ENTRY = re.compile(r"^\s*\[(\d{1,3}|[A-Za-z])\]\s+(\S.*?)\s*:?\s*$")
 # Une numérotation qui n'est pas entre crochets : « 1. », « 1) », « 1 - ».
 OTHER_NUMBERING = re.compile(r"^\s*\d{1,3}(?:[.)]|\s+[-–])\s+\S")
+# Entre les entrées d'un menu écrit à la main et son invite : au plus
+# NOTE_LINES notes, au retrait exact des entrées, et BLANK_LINES ligne vide.
+NOTE_LINES = 2
+BLANK_LINES = 1
 
 _NOTE = contextvars.ContextVar("todo_legacy_note", default=None)
 _saved = {}
@@ -140,9 +144,10 @@ def read_screen(text):
     """Le menu d'un écran à crochets, depuis son dernier fil d'Ariane :
     un dict `items` (clé, libellé, section), `crumbs`, `sections` ; None
     sans entrée `[N]`, ou si une ligne numérote autrement. Sans fil
-    d'Ariane, les entrées ne viennent que du bloc qui finit à l'invite
-    (`_prompt_block`) : une ligne à crochets d'une sortie antérieure,
-    « [1] 48213 », n'en devient pas une."""
+    d'Ariane, les entrées ne viennent que du bloc qui finit à l'invite,
+    notes d'un menu écrit à la main comprises (`_prompt_block`) : une
+    ligne à crochets d'une sortie antérieure, « [1] 48213 », n'en devient
+    pas une."""
     lines = text.splitlines()
     starts = [n for n, line in enumerate(lines) if CRUMB.match(line)]
     lines = lines[starts[-1] if starts else 0 :]
@@ -170,16 +175,54 @@ def _prompt_block(lines) -> list:
     """Les lignes d'entrée ou de section qui finissent à l'invite, la
     dernière ligne : celle-ci si elle porte une entrée (« [0] Retour : »),
     et celles qui la précèdent, jusqu'à la première ligne vide ou d'un
-    autre genre."""
+    autre genre. Entre les entrées et l'invite peuvent venir les notes d'un
+    menu écrit à la main (« ⚠ … », une ligne vide : `_notes`) ; des lignes
+    qui en tiennent la place sans en être rendent [] : une sortie en
+    retrait, trace d'appel ou journal, ne fait pas un menu des crochets
+    qui la précèdent."""
     end = len(lines)
     if lines and not ENTRY.match(lines[-1]):
         end -= 1  # l'invite seule sur sa ligne
-    start = end
+    gap = end
+    while gap and _note(lines[gap - 1]):
+        gap -= 1
+    entry = lines[gap - 1] if gap else ""
+    if gap < end and not _notes(entry, lines[gap:end]):
+        return []
+    start = gap
     while start and (
         ENTRY.match(lines[start - 1]) or SECTION.match(lines[start - 1])
     ):
         start -= 1
-    return lines[start:end]
+    return lines[start:gap]
+
+
+def _note(line) -> bool:
+    """Vrai pour une ligne vide, ou en retrait, qui n'est ni une entrée ni
+    une section."""
+    if ENTRY.match(line) or SECTION.match(line):
+        return False
+    return not line.strip() or line[:1].isspace()
+
+
+def _notes(entry, gap) -> bool:
+    """Vrai quand `gap`, les lignes entre la dernière entrée `entry` et
+    l'invite, sont les notes d'un menu écrit à la main : `entry` est en
+    retrait, et `gap` compte au plus NOTE_LINES notes, chacune au retrait
+    exact de `entry`, et BLANK_LINES ligne vide."""
+    indent = _indent(entry)
+    notes = [line for line in gap if line.strip()]
+    return (
+        bool(indent and ENTRY.match(entry))
+        and len(notes) <= NOTE_LINES
+        and len(gap) - len(notes) <= BLANK_LINES
+        and all(_indent(line) == indent for line in notes)
+    )
+
+
+def _indent(line) -> str:
+    """Les blancs qui ouvrent `line`."""
+    return line[: len(line) - len(line.lstrip())]
 
 
 def wrap_menus(todo_class) -> None:

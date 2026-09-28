@@ -34,6 +34,11 @@ WITH_QID = ("menu", "ask", "answered")
 FROM_WORKER = (*WITH_QID, "notice", "run_start", "run_end", "open_view")
 # Vues que le worker peut faire ouvrir à la page.
 VIEWS = ("telemetry",)
+# Raisons d'un `dropped` du hub à la page : rien ne lisait (`unread`), une
+# question commençait ou finissait (`question`), Ctrl+C, Arrêter ou la fin
+# du worker (`stop`), la réponse du champ masqué arrivait après l'invite
+# (`secret`), aucun onglet n'était là (`detached`).
+DROP_REASONS = ("unread", "question", "stop", "secret", "detached")
 
 
 def _dump(message) -> bytes:

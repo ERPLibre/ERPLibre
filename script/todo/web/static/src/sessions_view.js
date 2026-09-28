@@ -12,7 +12,8 @@
 // fait proposer les réponses de l'invite qui finit l'écran ; l'écran
 // alternatif agrandit le panneau à la fenêtre, jusqu'à ce que le bouton
 // « Plein écran », relâché, rende la page. Le hub ignore les frappes que
-// rien ne lit (`dropped`), sauf en mode brut.
+// rien ne lit, sauf en mode brut, et dit ce qu'il a jeté, et pourquoi
+// (`dropped`).
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {
@@ -30,10 +31,14 @@ import {
 const PERIOD = 2000;
 // Durée d'un avis de trame ignorée, en millisecondes.
 const NOTICE = 3000;
-// Avis d'une trame que le hub n'a pas écrite (`dropped`), selon `secret`.
-const NOTICE_LABELS = {
-    keys: "Nothing reads the terminal: keystrokes ignored.",
+// Avis de ce que le hub n'a pas écrit (`dropped`), selon sa raison ; une
+// raison inconnue vaut `unread`.
+const DROP_LABELS = {
+    unread: "Nothing reads the terminal: keystrokes ignored.",
+    question: "A new prompt began: pending keystrokes were not sent.",
+    stop: "Stopped: pending keystrokes were thrown away.",
     secret: "The prompt ended: the hidden answer was not sent.",
+    detached: "Keystrokes pending while no tab was open were thrown away.",
 };
 // Lignes relues au-dessus du curseur pour trouver la dernière non vide.
 const LOOKBACK = 4;
@@ -156,7 +161,7 @@ export class SessionsView extends Component {
     }
 
     get noticeText() {
-        return this.state.notice ? this.env.t(NOTICE_LABELS[this.state.notice]) : "";
+        return this.state.notice ? this.env.t(DROP_LABELS[this.state.notice]) : "";
     }
 
     get stateText() {
@@ -226,7 +231,7 @@ export class SessionsView extends Component {
             }
             this.refreshAnswers();
         } else if (message.t === "dropped") {
-            this.state.notice = message.secret ? "secret" : "keys";
+            this.state.notice = Object.hasOwn(DROP_LABELS, message.reason) ? message.reason : "unread";
             clearTimeout(this.noticeTimer);
             this.noticeTimer = setTimeout(() => (this.state.notice = ""), NOTICE);
         } else if (message.t === "bye") {

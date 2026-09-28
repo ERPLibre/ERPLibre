@@ -980,7 +980,8 @@ class TestKeystrokes(TerminalCase):
     async def test_what_nobody_reads_is_dropped_unless_in_raw_mode(self):
         tab = await self.waiting()
         await tab.conn.write_message(b"abc", binary=True)
-        await tab.until(lambda: {"t": "dropped", "bytes": 3} in tab.texts)
+        lost = {"t": "dropped", "bytes": 3, "reason": "unread"}
+        await tab.until(lambda: lost in tab.texts)
         await tab.conn.write_message(json.dumps({"t": "raw", "on": True}))
         await tab.conn.write_message(b"xyz", binary=True)
         # L'écho du terminal : ces octets ont atteint le PTY, pas les autres.
@@ -1017,11 +1018,45 @@ class TestKeystrokes(TerminalCase):
             await asyncio.sleep(0.02)
         # Sans onglet, la session jette le reste d'un collage.
         session.held += b"later\n"
-        session._drop_held()
+        session._drop_held("question")
         again = await self.tab(session=sid, after=0)
-        lost = {"t": "dropped", "bytes": len(b"later\n")}
+        lost = {"t": "dropped", "bytes": len(b"later\n"), "reason": "detached"}
         self.assertEqual(again.texts[1], lost)
         self.assertEqual(session.unreported, 0)
+
+    async def test_a_tab_taken_over_during_the_gate_writes_nothing(self):
+        first = await self.tab()
+        sid = first.texts[0]["id"]
+        session = self.hub.terminals[sid]
+        loop = asyncio.get_running_loop()
+        held, release, done = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        gate, write, written = session.gate, session.write, []
+
+        async def slow_gate(data):
+            # `gate` attend un lecteur jusqu'à HOLD_SECONDS : ici, jusqu'à ce
+            # qu'un autre onglet ait pris la session.
+            held.set()
+            await release.wait()
+            kept = await gate(data)
+            loop.call_soon(done.set)  # après la suite de `type`
+            return kept
+
+        def recorded(data, lines=False):
+            written.append(bytes(data))
+            return write(data, lines)
+
+        session.gate, session.write = slow_gate, recorded
+        await first.conn.write_message(b"stale\n", binary=True)
+        await asyncio.wait_for(held.wait(), 10)
+        second = await self.tab(session=sid, after=0)
+        self.assertEqual(await first.closed(), 4001)
+        release.set()
+        await asyncio.wait_for(done.wait(), 10)
+        self.assertEqual(written, [])
+        await second.conn.write_message(b"fresh\n", binary=True)
+        await second.until(lambda: b"fresh" in second.data)
+        self.assertEqual(written, [b"fresh\n"])
+        self.assertNotIn(b"stale", second.data)
 
     async def test_stop_and_ctrl_c_are_never_dropped(self):
         for stop in (json.dumps({"t": "interrupt"}), b"\x03"):
@@ -1037,7 +1072,7 @@ class TestKeystrokes(TerminalCase):
         tab = await self.tab()
         await tab.conn.write_message(json.dumps({"t": "secret"}))
         await tab.conn.write_message(b"hunter2\r", binary=True)
-        lost = {"t": "dropped", "bytes": 8, "secret": True}
+        lost = {"t": "dropped", "bytes": 8, "reason": "secret"}
         await tab.until(lambda: lost in tab.texts)
         await tab.conn.write_message(b"typed\r", binary=True)
         await tab.until(lambda: b"typed" in tab.data)

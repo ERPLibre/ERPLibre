@@ -493,15 +493,17 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     pas celle de la question ouverte (`Session.answer`).
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
-    (`{"t": "raw", "on": true}`) ; `dropped` dit combien d'octets n'ont pas
-    passé, ou combien la session a jeté de la suite d'un collage
-    (`Session._drop_held`). tornado attend la fin de `on_message` avant de
-    lire le message suivant : les messages qui suivent une trame que `gate`
-    fait attendre attendent derrière elle, dans l'ordre. `interrupt` ne
-    passe jamais par ce filtre. `secret` annonce que la trame suivante est
-    la réponse du champ masqué : elle n'est écrite que si le terminal
-    attend encore un secret, sinon `dropped` porte `secret` et rien
-    n'atteint le PTY, dont l'écho l'afficherait.
+    (`{"t": "raw", "on": true}`) ; `dropped {bytes, reason}` dit combien
+    d'octets n'ont pas passé (`unread`), ou combien la session a jeté de la
+    suite d'un collage (`Session._drop_held`, avec sa raison). tornado
+    attend la fin de `on_message` avant de lire le message suivant : les
+    messages qui suivent une trame que `gate` fait attendre attendent
+    derrière elle, dans l'ordre. Un onglet qui a perdu la session pendant
+    cette attente n'écrit rien. `interrupt` ne passe jamais par ce filtre.
+    `secret` annonce que la trame suivante est la réponse du champ masqué :
+    elle n'est écrite que si le terminal attend encore un secret, sinon
+    `dropped` a pour raison `secret` et rien n'atteint le PTY, dont l'écho
+    l'afficherait.
     """
 
     session = None
@@ -535,14 +537,15 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
         if self.secret_next:
             self.secret_next = False
             if not self.session.asks_secret():
-                lost = {"t": "dropped", "bytes": len(data), "secret": True}
-                self.event(lost)
+                self.dropped(len(data), "secret")
                 return
             kept, lines = data, False
         else:
             kept = data if self.raw else await self.session.gate(data)
+            if self.session.client is not self:
+                return  # repris par un autre onglet pendant `gate`
             if len(kept) < len(data):
-                self.event({"t": "dropped", "bytes": len(data) - len(kept)})
+                self.dropped(len(data) - len(kept), "unread")
         if kept and not self.session.write(kept, lines):
             self.close(1008, "input overflow")
 
@@ -588,7 +591,7 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.event(session.asking)
         if session.unreported:
             # Jeté d'un collage pendant qu'aucun onglet n'était là.
-            self.event({"t": "dropped", "bytes": session.unreported})
+            self.dropped(session.unreported, "detached")
             session.unreported = 0
         if previous is not None:
             previous.close(4001, "taken over")
@@ -613,6 +616,11 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             self.secret_next = True
         elif kind in ("answer", "cancel"):
             self.session.answer(data)
+
+    def dropped(self, size, reason):
+        """`dropped` : `size` octets jetés, pour `reason`, une raison de
+        `protocol.DROP_REASONS`."""
+        self.event({"t": "dropped", "bytes": size, "reason": reason})
 
     # Client d'une session (sessions.py) : send, event, close.
 
