@@ -72,6 +72,11 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
 - `make test_unit_changed` (`--changed[=REF]`) ne lance que les fichiers de tests qu'un changement peut atteindre, depuis `HEAD` par défaut, fichiers non suivis compris : les dépendances se lisent dans le code — imports, et fichiers qu'un test nomme, comme le script shell qu'il lance. Un module que `TODO` charge atteint encore plus de la moitié de la suite, qui l'importe bel et bien
 - `make test_unit_failed` (`--failed`) ne relance que les fichiers de tests en échec ou en délai au passage précédent ; un fichier sort de la liste en passant
+- Odoo 10, 11, 19 et 20 aux côtés de 12 à 18, sur l'amont odoo/odoo et les dépôts OCA qui publient la branche — 76, 81, 109, et pour l'instant 2 en 20 — plus les modules de neutralisation du dépôt development. Odoo 10 tourne en Python 2.7, son venv et Poetry 1.1 posés par `install_venv_python2.sh` et son image Docker sur buster ; Odoo 20 tourne en Python 3.14 ; 10 et 11 sont marqués dépréciés. `make install_odoo_<N>` en installe un, `make docker_build_odoo_<N>` construit son image
+- Les images Docker d'Odoo 10 et 11 portent LESS 3.13.1, qu'exigent leurs feuilles de style : LESS 4 refuse les calculs d'Odoo et l'interface perd son style. Une installation locale garde le `lessc` du système : un Odoo 10 ou 11 installé localement sur LESS 4 reste sans style
+- Sur un Odoo amont, `./odoo_bin.sh db` — créer, cloner, sauvegarder, restaurer, supprimer — passe par l'addon `erplibre_db`, et `--uninstall` par `erplibre_uninstall`, avec les options du fork ERPLibre d'Odoo, de Python 2.7 à 3.14. En Odoo 10, `--no-http`, `-p` et `--http-*` sont traduits en leur forme `--xmlrpc`
+- La migration de base enchaîne 10 à 20 : depuis une sauvegarde Odoo 10, le menu TODO atteint la 12 avec chaque vente, facture, achat et mouvement de stock identique. Une cible sans OpenUpgrade publié — la 20 pour l'instant — est annoncée dès son choix, et la migration s'arrête proprement avant cette étape
+- `make install_os PG_VERSION=<N>` impose la version de PostgreSQL sous apt. Par défaut, celle de la distribution est gardée quand elle vaut 16 ou plus, le minimum d'Odoo 20 ; sinon, la 16 vient du dépôt PGDG. Un cluster plus ancien reste en place, sans migration
 
 ## Modifié
 
@@ -113,6 +118,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
 - TODO ne charge `openai` que lorsque l'assistant s'en sert : l'import de TODO prend moitié moins de temps, à chaque lancement
 - La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, et les tests Textual tournent sans le mode debug d'asyncio
+- Un Odoo 20 installé localement n'écoute que sur 127.0.0.1, le défaut d'Odoo lui-même dès la 20, là où 12 à 19 écoutent sur toutes les interfaces : poser `http_interface` dans `config.conf` pour l'atteindre d'une autre machine. L'image Docker pose `http_interface = 0.0.0.0` pour toutes les versions
+- Les profils d'installation « ERPLibre + Odoo N » d'une VM QEMU viennent de `conf/supported_version_erplibre.json`, la version par défaut en tête : chaque version prise en charge est proposée
 
 ## Corrigé
 
@@ -189,6 +196,14 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les tests unitaires n'atteignent plus l'hôte qui les lance : un vrai `sudo virsh` qui demandait un mot de passe là où libvirt exige root, `ssh` et `~/.ssh/config` lus par les tests du formulaire Proxmox, l'UUID d'un vrai domaine écrit dans un rapport de test long, un `input()` qui bloquait dès que la suite partait d'un terminal, et le script d'installation Proxmox joué contre les outils Debian, le nom et l'adresse de l'hôte. Trois tests de l'écran de composition cessent aussi de tourner dix fois chacun
 - Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
 - La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
+- Le cache HTTPS de QEMU abandonne le clonage d'un miroir git après 10 minutes sans sortie, et non après 30 minutes en tout : l'histoire de 17 Go d'odoo/odoo était tuée et reprise de zéro, sans fin, et une VM qui synchronisait Odoo attendait indéfiniment
+- Installer une autre version d'Odoo dans une VM relance le service `erplibre`, qui servait l'ancienne version jusqu'au redémarrage suivant
+- `make install_os` sur Fedora n'efface plus le cluster PostgreSQL, avec toutes les bases de la machine, à chaque exécution
+- Relancer `make install_odoo_<N>` après un `poetry install` en échec reprend l'installation au lieu de répondre « Nothing to do » sur une version à moitié installée
+- pyldap, épinglé par Odoo 10 à 12, se compile là où OpenLDAP 2.5 a retiré `libldap_r`, comme sur Fedora 42
+- `make switch_odoo_<N>` et chaque régénération de la configuration passent par le venv de l'outillage, là où une machine neuve s'arrêtait sur « No module named 'git' », et enregistrent la configuration par `--save`, seule forme qu'accepte Odoo 20
+- Les vérifications de la migration tiennent en Odoo 10 à 12 et sur une base sans website : les outils des vues COW n'échouent plus sur `website_id` absent, la sonde des modèles masqués ne déclare plus tout invisible avant Odoo 13, le test d'URL ne sert que la base testée et ne signale plus les champs des lignes one2many, la réparation des réglages par défaut ne s'interrompt plus avant Odoo 17, et la configuration sans OpenUpgrade est refaite avant la mise à jour des modules qui suit chaque migration
+- `poetry_update` écarte les lignes de requis qui désignent un fichier local, rend 1 quand `poetry add` échoue, range le verrou d'une nouvelle version sous `requirement/`, et compare les contraintes à deux clauses
 
 ## Retiré
 

@@ -72,6 +72,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
 - `make test_unit_changed` (`--changed[=REF]`) runs only the test files a change can reach, from `HEAD` by default, untracked files included: the dependencies are read in the code — imports, and the files a test names, such as the shell script it runs. A module that `TODO` loads still reaches more than half the suite, which does import it
 - `make test_unit_failed` (`--failed`) reruns only the test files that failed or timed out last time; a file leaves the list once it passes
+- Odoo 10, 11, 19 and 20 alongside 12 to 18, on upstream odoo/odoo and the OCA repositories that publish the branch — 76, 81, 109, and for now 2 on 20 — plus the neutralization modules of the development repository. Odoo 10 runs on Python 2.7, its venv and Poetry 1.1 set up by `install_venv_python2.sh` and its Docker image on buster; Odoo 20 runs on Python 3.14; 10 and 11 are marked deprecated. `make install_odoo_<N>` installs one, `make docker_build_odoo_<N>` builds its image
+- The Docker images of Odoo 10 and 11 carry LESS 3.13.1, which their stylesheets need: LESS 4 rejects Odoo's arithmetic and the interface loses its styling. A local install keeps the system's `lessc`, so Odoo 10 or 11 installed locally over LESS 4 stays unstyled
+- On an upstream Odoo, `./odoo_bin.sh db` — create, clone, back up, restore, drop — goes to the `erplibre_db` addon and `--uninstall` to `erplibre_uninstall`, with the options of ERPLibre's Odoo fork, from Python 2.7 to 3.14. On Odoo 10, `--no-http`, `-p` and `--http-*` are translated to their `--xmlrpc` form
+- The database migration chains 10 through 20: from an Odoo 10 backup, the TODO menu reaches 12 with every sale, invoice, purchase and stock move identical. A target without a published OpenUpgrade — 20 for now — is announced when it is chosen, and the migration stops cleanly before that step
+- `make install_os PG_VERSION=<N>` forces the PostgreSQL version under apt. By default the distribution's is kept when it is 16 or later, Odoo 20's minimum; otherwise 16 comes from the PGDG repository. An older cluster is left in place, not migrated
 
 ## Changed
 
@@ -113,6 +118,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
 - TODO loads `openai` only when the assistant uses it: importing TODO takes half the time, at every launch
 - The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, and the Textual tests run without asyncio's debug mode
+- A locally installed Odoo 20 listens on 127.0.0.1 only, Odoo's own default from 20 on, where 12 to 19 listen on every interface: set `http_interface` in `config.conf` to reach it from another machine. The Docker image sets `http_interface = 0.0.0.0` for every version
+- The « ERPLibre + Odoo N » install profiles of a QEMU VM come from `conf/supported_version_erplibre.json`, the default version first, so every supported version is offered
 
 ## Fixed
 
@@ -189,6 +196,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
 - A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
 - The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
+- The QEMU HTTPS cache abandons a git mirror clone after 10 minutes without output, not after 30 minutes in all: the 17 GB history of odoo/odoo was killed and restarted from zero, forever, and a VM syncing Odoo waited without end
+- Installing another Odoo version in a VM restarts the `erplibre` service, which kept serving the previous version until the next boot
+- `make install_os` on Fedora no longer erases the PostgreSQL cluster, with every database of the machine, on each run
+- Rerunning `make install_odoo_<N>` after a failed `poetry install` resumes the install instead of answering « Nothing to do » over a half-installed version
+- pyldap, pinned by Odoo 10 to 12, builds where OpenLDAP 2.5 dropped `libldap_r`, such as Fedora 42
+- `make switch_odoo_<N>` and every config regeneration run with the tooling venv, where a fresh machine stopped on « No module named 'git' », and save the config with `--save`, the only form Odoo 20 accepts
+- The migration checks hold on Odoo 10 to 12 and on databases without website: the COW view tools no longer fail on the missing `website_id`, the hidden-model probe no longer reports every model invisible before Odoo 13, the URL smoke check serves only the tested database and no longer flags one2many line fields, the default-settings repair no longer aborts before Odoo 17, and the configuration without OpenUpgrade is regenerated before the module update that follows each upgrade
+- `poetry_update` skips requirement lines naming a local file, returns 1 when `poetry add` fails, files the lock of a new version under `requirement/`, and compares two-clause constraints
 
 ## Removed
 
