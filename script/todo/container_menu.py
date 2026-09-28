@@ -29,6 +29,7 @@ import textwrap
 
 import click
 
+from script.execute.execute import Execute
 from script.todo import container_runtime
 from script.todo.todo_i18n import t
 
@@ -442,6 +443,8 @@ class ContainerMenuMixin:
             self.execute.exec_command_live(
                 shlex.join(cmd), source_erplibre=False
             )
+            if Execute.interrupted:
+                return
 
     def _container_install(self, moteur):
         """Propose l'installation du moteur, après avoir montré la commande.
@@ -573,6 +576,8 @@ class ContainerMenuMixin:
             )
             if self.execute.exec_command_live(cmd, source_erplibre=False):
                 echecs.append(version)
+            if Execute.interrupted:
+                return
         if len(cibles) > 1:
             passees = [v for v in cibles if v not in echecs]
             print(f"\n{t('Built:')} {', '.join(passees) or '-'}")
@@ -834,12 +839,16 @@ class ContainerMenuMixin:
                     self.execute.exec_command_live(
                         shlex.join(cmd), source_erplibre=False
                     )
+                    if Execute.interrupted:
+                        return
             args = ["rmi", "-f", ref] if action == "forcer" else ["rmi", ref]
             cmd = container_runtime.commande(fiche, args)
             if self.execute.exec_command_live(
                 shlex.join(cmd), source_erplibre=False
             ):
                 echecs.append(ref)
+            if Execute.interrupted:
+                return
         self._container_bilan(
             len(plan), echecs, t("A container still uses a refused image.")
         )
@@ -947,6 +956,8 @@ class ContainerMenuMixin:
                 shlex.join(cmd), source_erplibre=False
             ):
                 echecs.append(" ".join(args))
+            if Execute.interrupted:
+                return
         self._container_bilan(
             len(etapes),
             echecs,

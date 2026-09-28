@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 
+from script.execute.execute import Execute
 from script.todo import ssh_config, todo_install
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
@@ -325,6 +326,8 @@ class QemuManageMixin:
             print(f"\n{t('Will execute:')} {cmd}")
             if action != "start":
                 self.execute.exec_command_live(cmd, source_erplibre=False)
+                if Execute.interrupted:
+                    return
                 continue
             # Un démarrage est le seul moment où la 3D écrite dans la
             # définition se met à l'épreuve : QEMU refuse le domaine si EGL
@@ -333,6 +336,8 @@ class QemuManageMixin:
             code, lignes = self.execute.exec_command_live(
                 cmd, source_erplibre=False, return_status_and_output=True
             )
+            if Execute.interrupted:
+                return
             if code:
                 self._qemu_start_failed(real, cmd, "\n".join(lignes or []))
 
@@ -726,6 +731,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                break
         return True
 
     # Ce que libvirt autorise par défaut. La liste sert de BASE à la
@@ -937,6 +944,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                return
         print(f"\n{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1015,6 +1024,8 @@ class QemuManageMixin:
                 source_erplibre=False,
                 new_env={"PATH": system_path()},
             )
+            if Execute.interrupted:
+                return
 
     def _qemu_hw_form(self, rows, node, nets=None):
         """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
@@ -1294,6 +1305,8 @@ class QemuManageMixin:
             )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
 
     def _qemu_console(self):
         # Liste les VM, demande laquelle, rappelle comment quitter (Ctrl+])
@@ -2565,6 +2578,8 @@ class QemuManageMixin:
                 print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
         # Une exception du cache survit à la VM qu'elle nommait, et une MAC
         # libérée se réattribue : l'exception soustrairait alors au cache une
         # machine neuve, sans que personne l'ait demandé et sans que rien ne le
@@ -2790,6 +2805,8 @@ class QemuManageMixin:
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
         print(f"✅ {t('Cleanup done.')}")
 
     def _ssh_entry_alive(self, content, nom, domains, adresses, distantes):

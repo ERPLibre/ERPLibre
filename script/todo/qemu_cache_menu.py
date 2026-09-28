@@ -33,6 +33,7 @@ from urllib.parse import urljoin, urlsplit
 
 import click
 
+from script.execute.execute import Execute
 from script.qemu import cache_offline
 from script.todo.todo_i18n import get_lang, t
 
@@ -2209,6 +2210,8 @@ class QemuCacheMenuMixin:
             )
             print(f"{t('Will execute:')} {cmd}\n")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+            if Execute.interrupted:
+                return
 
 
 def reglage_age_valide(valeur):
@@ -2442,6 +2445,8 @@ def bypass_menage(execute):
         execute.exec_command_live(
             bypass_retrait_cmd(mac), source_erplibre=False
         )
+        if Execute.interrupted:
+            break
     return len(orphelines)
 
 

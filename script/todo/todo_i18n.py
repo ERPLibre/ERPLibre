@@ -1206,6 +1206,10 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
+    "Command interrupted (Ctrl+C).": {
+        "fr": "Commande interrompue (Ctrl+C).",
+        "en": "Command interrupted (Ctrl+C).",
+    },
     # Mode enregistrement (make todo_record).
     "Events recorded in:": {
         "fr": "Événements enregistrés dans :",

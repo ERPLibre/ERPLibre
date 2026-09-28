@@ -2,6 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import ast
 import glob
 import os
 import pty
@@ -10,6 +11,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -434,6 +436,297 @@ class TestJobControl(unittest.TestCase):
         out += _read_until(master, b"alive")
         self.assertIn(b"rc=-2 back=True", out)
         self.assertEqual(child.wait(10), 0)
+
+
+# Tient le rôle du CLI : SIGINT rendu à son gestionnaire par défaut (un
+# SIGINT ignoré s'hérite, d'un lanceur en arrière-plan), le PTY pris comme
+# terminal de contrôle, et aucun contrôle de tâches : la commande de argv[1]
+# partage le groupe de l'enfant. Muette si argv[2] vaut « quiet » ; argv[3]
+# vaut « cli » pour `ctrl_c_stops_command`, comme todo.py, et « script »
+# sinon. Dit son code, celui de `run_end`, le nombre et la dernière de ses
+# lignes, si le terminal fait l'écho, puis « ask », et répète la ligne
+# qu'il lit ensuite : il vit encore.
+CLI_CHILD = r"""
+import fcntl, signal, sys, termios
+signal.signal(signal.SIGINT, signal.default_int_handler)
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+from script.execute.execute import Execute
+from script.todo import todo_i18n
+todo_i18n.use_lang("en")
+Execute.ctrl_c_stops_command = sys.argv[3] == "cli"
+exe = Execute()
+events = []
+exe.events = events.append
+rc, lines = exe.exec_command_live(
+    sys.argv[1],
+    False,
+    quiet=sys.argv[2] == "quiet",
+    return_status_and_output=True,
+)
+last = lines[-1] if lines else ""
+end = events[-1]["rc"]
+print(f"rc={rc} end={end} lines={len(lines)} last={last} .", flush=True)
+print(f"echo={bool(termios.tcgetattr(0)[3] & termios.ECHO)}", flush=True)
+print("ask", flush=True)
+print("read", input(), flush=True)
+"""
+
+# Une commande qui écrit toutes les 10 ms, et qui dit sur le terminal
+# qu'elle a démarré : l'octet Ctrl+C n'est écrit qu'une fois « armed » lu.
+# Les deux marqueurs s'écrivent coupés (ar''med) : la commande affichée par
+# `exec_command_live` ne les porte pas, seule la commande lancée les imprime.
+TICKS = "while :; do echo ti''ck; sleep 0.01; done"
+ARMED = "echo ar''med > /dev/tty; "
+
+
+def _sigint_pending(pid):
+    """Vrai si SIGINT attend encore d'être remis à `pid` (SigPnd ou ShdPnd
+    de /proc/<pid>/status)."""
+    with open(f"/proc/{pid}/status") as f:
+        fields = dict(line.split(":\t", 1) for line in f if ":\t" in line)
+    pending = int(fields["SigPnd"], 16) | int(fields["ShdPnd"], 16)
+    return bool(pending & 1 << (signal.SIGINT - 1))
+
+
+class TestCtrlCInTheCli(unittest.TestCase):
+    """Sans contrôle de tâches, Ctrl+C arrête la commande et rend la main à
+    l'appelant, qui continue ; deux Ctrl+C de plus forcent une commande qui
+    l'ignore. Chaque enfant a sa session et son PTY : l'octet Ctrl+C
+    n'atteint jamais le groupe du lanceur de tests."""
+
+    def spawn(self, command, quiet=True, role="cli", **env):
+        """Lance CLI_CHILD sur un PTY neuf et `command`, dans le rôle `role`,
+        avec les variables `env` en plus, et attend que la commande soit
+        armée."""
+        self.master, slave = pty.openpty()
+        self.addCleanup(os.close, self.master)
+        self.pending = b""
+        mode = "quiet" if quiet else "loud"
+        self.child = subprocess.Popen(
+            [sys.executable, "-c", CLI_CHILD, command, mode, role],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            cwd=REPO,
+            env={**os.environ, **env},
+            start_new_session=True,
+        )
+        os.close(slave)
+        # Nettoyages en ordre inverse : child.kill d'abord, dont la mort du
+        # chef de session envoie SIGHUP au groupe de la commande.
+        self.addCleanup(self.child.wait, 10)
+        self.addCleanup(self.child.kill)
+        self.until(b"armed")
+
+    def until(self, marker, timeout=10.0):
+        """Ce que l'enfant a écrit jusqu'à `marker` compris, depuis la
+        marque précédente ; ce qui suit attend la marque suivante. Échec au
+        délai, ou quand plus personne ne tient l'esclave (EIO)."""
+        deadline = time.monotonic() + timeout
+        while marker not in self.pending:
+            left = deadline - time.monotonic()
+            ready = left > 0 and select.select([self.master], [], [], left)[0]
+            try:
+                chunk = os.read(self.master, 65536) if ready else b""
+            except OSError:
+                chunk = b""
+            if not chunk:
+                raise AssertionError(f"{marker!r} not in {self.pending!r}")
+            self.pending += chunk
+        cut = self.pending.index(marker) + len(marker)
+        seen, self.pending = self.pending[:cut], self.pending[cut:]
+        return seen
+
+    def ctrl_c(self):
+        """Écrit l'octet Ctrl+C, puis attend que l'enfant en ait reçu le
+        SIGINT : le terminal renvoie l'écho « ^C » une fois SIGINT envoyé
+        au groupe, puis SIGINT quitte les signaux en attente de l'enfant.
+        Deux SIGINT remis avant que Python n'appelle le gestionnaire ne
+        font qu'un appel : la pause couvre cet appel, que la prochaine
+        écriture de la commande, toutes les 10 ms, déclenche au plus tard
+        en réveillant la lecture."""
+        os.write(self.master, b"\x03")
+        self.until(b"^C")
+        deadline = time.monotonic() + 10
+        while self.child.poll() is None and _sigint_pending(self.child.pid):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.assertIsNone(self.child.poll(), "Ctrl+C ended the CLI")
+        time.sleep(0.1)
+
+    def goes_on(self):
+        """L'enfant lit encore une ligne après la commande, et finit bien ;
+        rend ce qu'il a écrit jusqu'à la répéter."""
+        os.write(self.master, b"next\n")
+        out = self.until(b"read next")
+        self.assertEqual(self.child.wait(10), 0)
+        return out
+
+    def test_ctrl_c_stops_the_command_and_not_the_cli(self):
+        self.spawn(ARMED + TICKS, quiet=False)
+        self.until(b"tick")
+        os.write(self.master, b"\x03")
+        out = self.until(b"ask")
+        self.assertIn(b"rc=-2 end=-2 ", out)
+        self.assertIn(b"Command interrupted (Ctrl+C).", out)
+        self.goes_on()
+
+    def test_outside_the_cli_ctrl_c_still_stops_the_caller(self):
+        # Un script qui importe Execute, lancé seul ou par TODO : il meurt
+        # de Ctrl+C avec sa commande, au lieu de continuer sur un résultat
+        # partiel.
+        self.spawn(ARMED + TICKS, role="script")
+        os.write(self.master, b"\x03")
+        self.assertIn(b"KeyboardInterrupt", self.until(b"KeyboardInterrupt"))
+        self.assertEqual(self.child.wait(10), -signal.SIGINT)
+        self.assertNotIn(b"ask", self.pending)
+
+    def test_a_command_that_exits_0_on_ctrl_c_is_a_failure(self):
+        # Elle a rattrapé Ctrl+C sans finir son travail : un appelant qui
+        # teste son code ne la prend pas pour une réussite.
+        self.spawn(
+            "trap 'exit 0' INT; " + ARMED + "while :; do sleep 0.01; done"
+        )
+        os.write(self.master, b"\x03")
+        self.assertIn(b"rc=-2 end=-2 ", self.until(b"ask"))
+        self.goes_on()
+
+    def test_the_terminal_modes_come_back_after_it(self):
+        # Tuée, la commande ne défait pas son `stty -echo` : sans retour
+        # des modes, la question suivante se taperait à l'aveugle.
+        self.spawn("stty -echo; " + ARMED + TICKS)
+        os.write(self.master, b"\x03")
+        out = self.until(b"ask")
+        self.assertIn(b"rc=-2 end=-2 ", out)
+        self.assertIn(b"echo=True", out)
+        self.goes_on()
+
+    def test_a_second_ctrl_c_terminates_a_command_that_ignores_it(self):
+        self.spawn("trap '' INT; " + ARMED + TICKS)
+        self.ctrl_c()
+        self.ctrl_c()
+        self.assertIn(b"rc=-15 end=-15 ", self.until(b"ask"))
+        self.goes_on()
+
+    def test_a_third_ctrl_c_kills_it_despite_a_pipe_held_open(self):
+        # Le sous-shell en arrière-plan hérite de SIGINT et SIGTERM ignorés
+        # et garde le tube ouvert après la mort de la commande : la lecture
+        # l'attendrait sans fin. Tube fermé, sa prochaine écriture le tue.
+        held = "(while :; do echo held; sleep 0.01; done) & "
+        ignores = "trap '' INT TERM; " + held + ARMED
+        self.spawn(ignores + "while :; do sleep 0.01; done")
+        self.ctrl_c()
+        self.ctrl_c()
+        self.ctrl_c()
+        self.assertIn(b"rc=-9 end=-9 ", self.until(b"ask"))
+        self.goes_on()
+
+    def test_the_output_written_while_it_stops_is_read_to_the_end(self):
+        # 200 000 lignes, vingt fois le tube : sans lecteur, la commande
+        # resterait bloquée sur son écriture et ne finirait jamais.
+        flood = "trap 'seq 1 200000; exit 3' INT; "
+        self.spawn(flood + ARMED + "while :; do sleep 0.01; done")
+        os.write(self.master, b"\x03")
+        out = self.until(b"ask")
+        self.assertIn(b"rc=3 end=3 lines=200000 last=200000 .", out)
+        self.goes_on()
+
+    def test_what_is_typed_while_it_stops_answers_nothing(self):
+        # La commande rattrape SIGINT, puis rend son propre code une fois le
+        # fichier $GO créé : entre les deux, une ligne tapée attend dans le
+        # terminal, et la question suivante ne la lit pas.
+        go = os.path.join(
+            self.enterContext(tempfile.TemporaryDirectory()), "go"
+        )
+        wait = 'while [ ! -e "$GO" ]; do sleep 0.01; done; exit 3'
+        catch = f"trap 'echo got-int > /dev/tty; {wait}' INT; "
+        self.spawn(catch + ARMED + "while :; do sleep 0.01; done", GO=go)
+        os.write(self.master, b"\x03")
+        self.until(b"got-int")
+        os.write(self.master, b"typed\n")
+        # L'écho dit que le terminal tient la ligne.
+        self.until(b"typed")
+        open(go, "w").close()
+        self.assertIn(b"rc=3 end=3 ", self.until(b"ask"))
+        self.assertNotIn(b"read typed", self.goes_on())
+
+    def test_the_counter_holds_sigint_only_in_the_cli_main_thread(self):
+        """Le compteur prend SIGINT le temps de la commande et le rend au
+        gestionnaire par défaut ; avec le contrôle de tâches, hors du fil
+        principal ou sur un SIGINT ignoré, SIGINT reste ce qu'il était."""
+        before = signal.signal(signal.SIGINT, signal.default_int_handler)
+        self.addCleanup(signal.signal, signal.SIGINT, before)
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        real_read, seen, codes = os.read, [], []
+
+        def read(fd, size):
+            seen.append(signal.getsignal(signal.SIGINT))
+            return real_read(fd, size)
+
+        def during(run):
+            """Le gestionnaire de SIGINT à la dernière lecture de la
+            sortie, la commande tournant encore."""
+            seen.clear()
+            with patch("os.read", side_effect=read):
+                run()
+            return seen[-1]
+
+        def cli():
+            codes.append(exe.exec_command_live("true", False, quiet=True))
+
+        def in_a_thread():
+            thread = threading.Thread(target=cli)
+            thread.start()
+            thread.join(10)
+
+        self.assertIs(during(cli), signal.default_int_handler)
+        self.enterContext(patch.object(Execute, "ctrl_c_stops_command", True))
+        self.enterContext(patch.object(Execute, "interrupted", None))
+        counter = during(cli)
+        self.assertIsNot(counter, signal.default_int_handler)
+        self.assertTrue(callable(counter))
+        self.assertIs(
+            signal.getsignal(signal.SIGINT), signal.default_int_handler
+        )
+        self.assertIs(Execute.interrupted, False)
+        exe.job_control = True
+        with patch.object(Execute, "_job_control_tty", return_value=None):
+            self.assertIs(during(cli), signal.default_int_handler)
+        exe.job_control = False
+        self.assertIs(during(in_a_thread), signal.default_int_handler)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        self.assertEqual(during(cli), signal.SIG_IGN)
+        self.assertEqual(signal.getsignal(signal.SIGINT), signal.SIG_IGN)
+        self.assertEqual(codes, [0, 0, 0, 0, 0])
+
+    def test_each_loop_of_commands_stops_after_a_ctrl_c(self):
+        """Une boucle de script/todo qui lance une commande par élément lit
+        `Execute.interrupted` : un échec la fait passer à l'élément suivant,
+        Ctrl+C l'arrête."""
+        loops, blind = 0, []
+        for path in sorted(
+            glob.glob(f"{REPO}/script/todo/**/*.py", recursive=True)
+        ):
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+            for loop in ast.walk(tree):
+                if not isinstance(loop, ast.For):
+                    continue
+                names = [
+                    node.attr
+                    for node in ast.walk(loop)
+                    if isinstance(node, ast.Attribute)
+                ]
+                if "exec_command_live" not in names:
+                    continue
+                loops += 1
+                if "interrupted" not in names:
+                    blind.append(
+                        f"{os.path.relpath(path, REPO)}:{loop.lineno}"
+                    )
+        self.assertEqual(blind, [])
+        self.assertGreaterEqual(loops, 15)
 
 
 class TestRedactSecrets(unittest.TestCase):

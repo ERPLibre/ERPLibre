@@ -95,6 +95,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Changed
 
+- In TODO's terminal, Ctrl+C during a command stops that command and no longer quits TODO, which carries on as after a failed command: stopping `Execute › Network › Odoo reverse proxy` now brings back its menu. If the command ignores Ctrl+C, a second one sends it SIGTERM and a third SIGKILL; what was typed meanwhile does not answer the next question, and the terminal gets its modes back. A loop of commands, such as deleting several VMs, stops at the interrupted one, and an Odoo upgrade (database migration, module update) stops as before, quitting TODO. At a menu or a question, Ctrl+C behaves as before
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
 - The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
 - Debian and Ubuntu `by-hash` index files are served from disk, their name being the digest of their content; `…/releases/latest/download/…` is no longer pinned to the first version seen

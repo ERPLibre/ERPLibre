@@ -6569,6 +6569,9 @@ class TODO(
 
 if __name__ == "__main__":
     start_time = time.time()
+    # Au CLI, Ctrl+C pendant une commande n'arrête qu'elle. Le worker d'une
+    # session web importe ce fichier et ne passe jamais ici.
+    execute.Execute.ctrl_c_stops_command = True
     try:
         todo = TODO()
         if ENABLE_CRASH:

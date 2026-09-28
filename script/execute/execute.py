@@ -412,17 +412,124 @@ def _set_foreground(fd, pgid):
         signal.pthread_sigmask(signal.SIG_SETMASK, old)
 
 
+def _translate(key):
+    """`key` traduite par `script.todo.todo_i18n`, importé au premier
+    besoin : les scripts qui chargent ce module sans jamais interrompre de
+    commande n'en paient pas l'import. Un import qui échoue rend `key`."""
+    try:
+        from script.todo.todo_i18n import t
+    except Exception:
+        return key
+    return t(key)
+
+
+class _CtrlC:
+    """Gestionnaire de SIGINT d'une commande lancée sans contrôle de
+    tâches, posé par `catch` avant son lancement et retiré par `release`
+    après sa fin : il compte les Ctrl+C (`count`) au lieu de lever
+    KeyboardInterrupt.
+
+    La commande partage le groupe de l'appelant, et le terminal lui envoie
+    déjà SIGINT : le premier Ctrl+C ne fait rien de plus. Le deuxième
+    envoie SIGTERM à `process`, les suivants SIGKILL, à lui seul et jamais
+    au groupe, qui est aussi celui de l'appelant ; avant que `process` ne
+    soit connu, un Ctrl+C n'est que compté. Aucun ne lève dans la boucle
+    qui lit la sortie de la commande, où une exception perdrait ou
+    doublerait un morceau de cette sortie, sauf un seul (`raised`) : le
+    troisième, ou le premier qui le suit une fois `process` connu, tant
+    que la lecture n'est pas finie (`reading`). Un descendant qui ignore
+    SIGINT et SIGTERM garde le tube ouvert après la mort de la commande,
+    et la lecture n'attendrait plus que lui.
+    """
+
+    def __init__(self):
+        self.caught = False
+        self.process = None
+        self.count = 0
+        self.reading = True
+        self.raised = False
+        self.tty_attrs = None
+
+    def catch(self):
+        """Se pose en gestionnaire de SIGINT, dans le fil principal et à la
+        place du gestionnaire par défaut seulement : ailleurs, SIGINT est
+        ignoré ou tenu par un autre (la boucle d'asyncio), qui le garde, et
+        `signal.signal` lève hors du fil principal. Retient les modes du
+        terminal de l'entrée standard, que `restore` remet."""
+        main = threading.current_thread() is threading.main_thread()
+        default = signal.getsignal(signal.SIGINT) is signal.default_int_handler
+        if not (main and default):
+            return
+        signal.signal(signal.SIGINT, self)
+        self.caught = True
+        try:
+            if sys.stdin.isatty():
+                self.tty_attrs = termios.tcgetattr(sys.stdin.fileno())
+        except (AttributeError, OSError, ValueError, termios.error):
+            pass  # pas d'entrée standard, ou pas un terminal
+
+    def release(self):
+        """Rend SIGINT au gestionnaire par défaut, si `catch` l'avait pris ;
+        `caught` reste vrai."""
+        if self.caught:
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+
+    def restore(self):
+        """Après une commande interrompue, remet les modes du terminal que
+        `catch` a retenus (une commande tuée ne défait ni son `stty -echo`
+        ni son mode brut), puis jette ce qu'on a tapé pendant qu'elle
+        s'arrêtait : la question suivante ne le lit pas."""
+        try:
+            if sys.stdin.isatty():
+                fd = sys.stdin.fileno()
+                if self.tty_attrs:
+                    termios.tcsetattr(fd, termios.TCSANOW, self.tty_attrs)
+                termios.tcflush(fd, termios.TCIFLUSH)
+        except (AttributeError, OSError, ValueError, termios.error):
+            pass  # pas d'entrée standard, ou pas un terminal
+
+    def __call__(self, signum, frame):
+        self.count += 1
+        if self.process is None:
+            return
+        try:
+            if self.count == 2:
+                self.process.terminate()
+            elif self.count >= 3:
+                self.process.kill()
+        except OSError:
+            pass  # un processus d'un autre compte : le terminal l'a atteint
+        if self.count >= 3 and self.reading and not self.raised:
+            self.raised = True
+            raise KeyboardInterrupt
+
+
 class Execute:
     # Contrôle de tâches, posé par le worker d'une session web et jamais par
     # le CLI. Vrai, une commande a son propre groupe de processus, au
     # premier plan du terminal de contrôle le temps qu'elle tourne : l'octet
     # Ctrl+C écrit sur ce terminal n'interrompt qu'elle (code -2), et le
     # processus qui l'a lancée continue. Faux, la commande partage le groupe
-    # de l'appelant, et Ctrl+C les interrompt tous deux. Une commande tuée
+    # de l'appelant, et Ctrl+C les atteint tous deux. Une commande tuée
     # par un signal laisse le terminal vidé de ce qu'elle n'a pas lu. Sans
     # shell pour la reprendre, Ctrl+Z n'y suspend jamais rien : le terminal
     # de contrôle refuse de produire SIGTSTP.
     job_control = False
+    # Posé par le CLI de TODO (todo.py lancé comme script), jamais par le
+    # worker d'une session web ni par un script qui importe ce module. Vrai
+    # et sans contrôle de tâches, Ctrl+C pendant une commande n'arrête
+    # qu'elle (`_CtrlC`), et l'appelant continue. Faux, Ctrl+C lève
+    # KeyboardInterrupt chez l'appelant, qui s'arrête avec la commande : un
+    # script que TODO lance meurt de son Ctrl+C, et la chaîne `&&` qui le
+    # porte s'arrête avec lui.
+    ctrl_c_stops_command = False
+    # Vrai quand Ctrl+C a interrompu la dernière commande lancée sous
+    # `_CtrlC`, faux quand elle a fini d'elle-même ; aucune autre commande
+    # ne l'écrit. Écrit sur la classe, il vaut pour le processus, quelle que
+    # soit l'instance qui a lancé la commande. L'appelant le lit juste après
+    # son appel : une boucle qui lance une commande par élément, et qu'un
+    # échec fait passer à l'élément suivant, s'arrête là.
+    interrupted = False
     # Crochet posé par le worker d'une session web et par le mode
     # enregistrement, jamais par le CLI : reçoit `run_start` (la commande
     # caviardée) avant le lancement et `run_end` (code, durée) à la fin.
@@ -529,9 +636,12 @@ class Execute:
         # ne précède le `try` qui le ferme.
         self._event({"t": "run_start", "cmd": redact_secrets(command)})
         tty = None
+        ctrl_c = _CtrlC()
 
         try:
             tty = self._job_control_tty()
+            if self.ctrl_c_stops_command and not self.job_control:
+                ctrl_c.catch()
             process = subprocess.Popen(
                 command,
                 shell=True,
@@ -547,6 +657,7 @@ class Execute:
                 env=my_env,
                 **({"process_group": 0} if tty is not None else {}),
             )
+            ctrl_c.process = process
             if tty is not None:
                 try:
                     _set_foreground(tty, process.pid)
@@ -630,6 +741,7 @@ class Execute:
                     # perdait, la sortie n'étant vidée qu'au saut de ligne.
                     sys.stdout.flush()
 
+            ctrl_c.reading = False
             pending += decoder.decode(b"", True)
             if pending:
                 if not quiet:
@@ -651,10 +763,22 @@ class Execute:
             if not quiet:
                 print(f"Error: Command '{redact_secrets(command)}' not found.")
         except Exception as e:
+            ctrl_c.reading = False
             exit_code = 1
             if not quiet:
                 print(f"An error occurred: {redact_secrets(str(e))}")
+        except KeyboardInterrupt:
+            # Levé une fois par `_CtrlC` (`raised`) : la commande est tuée,
+            # et le tube qu'un descendant garde ouvert n'est plus lu. Un
+            # Ctrl+C de plus pendant l'attente lève encore et sort d'ici,
+            # comme sans `_CtrlC` : un `kill` refusé la laisserait sans fin.
+            if not ctrl_c.raised:
+                raise
+            ctrl_c.raised = False
+            process.stdout.close()
+            exit_code = process.wait()
         finally:
+            ctrl_c.reading = False
             if tty is not None:
                 try:
                     _set_foreground(tty, os.getpgrp())
@@ -667,10 +791,29 @@ class Execute:
                     pass  # terminal raccroché : plus rien à reprendre
                 finally:
                     os.close(tty)
-            # Une commande annoncée a toujours sa fin, même interrompue par
-            # Ctrl+C sans contrôle de tâches : `rc` vaut alors None.
-            secs = round(time.time() - process_start_time, 3)
-            self._event({"t": "run_end", "rc": exit_code, "secs": secs})
+            try:
+                if ctrl_c.count and exit_code == 0:
+                    # Une commande qui rattrape Ctrl+C et rend 0 n'a pas
+                    # fini son travail : l'appelant y lit un échec.
+                    exit_code = -signal.SIGINT
+                # Une commande annoncée a toujours sa fin, même quand
+                # KeyboardInterrupt s'échappe (sans `_CtrlC`, ou par son
+                # Ctrl+C de trop) : `rc` vaut alors None.
+                secs = round(time.time() - process_start_time, 3)
+                self._event({"t": "run_end", "rc": exit_code, "secs": secs})
+            finally:
+                # Rendu en dernier : un Ctrl+C tombé dans ce `finally` n'est
+                # que compté, et `run_end` part. Le bloc de `tty`, hors de ce
+                # `try`, ne tourne jamais sous `_CtrlC`.
+                ctrl_c.release()
+        if ctrl_c.caught:
+            Execute.interrupted = bool(ctrl_c.count)
+        if ctrl_c.count:
+            # Comme sous contrôle de tâches, rien de ce qu'on a tapé à la
+            # commande ne répond à la question suivante.
+            ctrl_c.restore()
+            if not quiet:
+                print(_translate("Command interrupted (Ctrl+C)."))
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
         if humanize:

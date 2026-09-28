@@ -18,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 
+from script.execute.execute import Execute
 from script.todo.qemu_privilege import (
     install_cmd_for,
     system_env,
@@ -275,6 +276,8 @@ class QemuRecoverMixin:
             self.execute.exec_command_live(
                 cmd, source_erplibre=False, new_env={"PATH": system_path()}
             )
+            if Execute.interrupted:
+                return
 
     def _qemu_recover_files(self):
         """Récupère des fichiers dans le disque d'une VM, sans la démarrer."""

@@ -4267,6 +4267,11 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
+        if execute.Execute.interrupted:
+            # Ctrl+C n'est pas un échec à réparer : ni menu d'erreur ni
+            # rejeu, la migration s'arrête comme avant, l'échec inscrit.
+            self.record_event("command", cmd, status or 1)
+            raise KeyboardInterrupt
         # None means « the command never reported a status » -> treat it as a
         # failure, never as a success (defence in depth: exec_command_live now
         # always sets one, but a silent None must not skip this prompt).
