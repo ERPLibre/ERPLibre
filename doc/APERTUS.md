@@ -91,6 +91,7 @@ the 8B cost. It is a real, official model, not a community shrink.
 | Apertus 8B Instruct, `Q8_0` | 8 B | **65536** | 8.57 GB | `swiss-ai/Apertus-8B-Instruct-2509` |
 | Apertus Mini 1.5B Instruct | 1.5 B | **4096** | ≈ 1.2 GB | `swiss-ai/Apertus-v1.1-1.5B-Instruct` |
 | Apertus Mini 0.5B Instruct | 0.5 B | **4096** | ≈ 0.5 GB | `swiss-ai/Apertus-v1.1-0.5B-Instruct` |
+| Apertus 70B Instruct, 4-bit | 70 B | **65536** | 43.7 GB | `swiss-ai/Apertus-70B-Instruct-2509` |
 
 A **4 B** Mini also exists upstream (`swiss-ai/Apertus-v1.1-4B-Instruct`, same
 4096 tokens), but no GGUF build of it was found, so the menu does not offer
@@ -99,6 +100,16 @@ it.
 Official quantizations are published for **MLX** (INT3/INT4/INT6, Apple
 Silicon) and for **vLLM** (NVFP4A16). There is **no official GGUF** — see
 section 8.
+
+**The 70B is a different kind of machine.** It pays its 80 layers on every
+token: **320 KiB of KV cache per token**, against 128 KiB for the 8B, so its
+full 65536-token window costs **20 GiB of cache** on top of the weights. And
+being dense, it reads every one of its weights per token — on a machine with
+273 GB/s of memory bandwidth that caps it near 6 tokens per second, against
+17 for the 8B. Take it when quality matters more than latency, and expect to
+wait. On a coding agent, do not take it at all: its only published numbers are
+HumanEval Pass@10 73.0 and MBPP 47.0, against 97.0 and 73.6 for a 32B coding
+model on the same table.
 
 **Which one to take.** Take the **8B in `Q4_K_M`** unless you have a reason
 not to: it is the default, and the context is what makes an assistant useful
@@ -125,16 +136,33 @@ of the four engines serves it. The menu targets v1 and v1.1 only.
 ## 4. Choosing an engine
 
 An engine is the program that loads the weights and serves them over an
-OpenAI-compatible HTTP API. Four are offered, all free software:
+OpenAI-compatible HTTP API. Five are offered, all free software:
 
 | Engine | Licence | Default port | Minimum version | Who it suits |
 |---|---|---|---|---|
 | **Ollama** | MIT | 11434 | **0.12.6** | anyone starting out — one install command, a systemd service, and the only engine that reports real download progress |
 | **llama.cpp** | MIT | 8080 | build **b6671** | a machine where you have no root, or where you want to pick the quantization yourself |
 | **LocalAI** | MIT | 8080 | **4.0.0** | a host that already serves several models through one gateway |
+| **MLX** | MIT | 8080 | **0.27.1** | an Apple Silicon machine — and the only engine for one, since nothing else uses the GPU there |
 | **vLLM** | Apache-2.0 | 8000 | **0.10.2** | a GPU machine serving several users at once |
 
 The default is **Ollama**, and it is the right answer for a first install.
+
+**On a Mac, take MLX and nothing else.** The menu can install Ollama or
+llama.cpp there, and both will work — but they reach the GPU through a generic
+path, where MLX is Apple's own framework. Two things follow. The official
+`swiss-ai` quantizations of the Mini family are **MLX builds**: nine of the ten
+quantizations the publisher ships are useless anywhere else and native here.
+And the 70B has **no published MLX build at all**, so the menu converts it
+locally with `mlx_lm.convert` — which downloads the full-precision weights
+before writing the quantized ones, so it asks for about 175 GB of free space
+to produce 41 GB. The menu says so before it starts.
+
+One number to know before converting on a Mac: macOS reserves about a quarter
+of the unified memory for the system, so a 256 GB machine offers roughly
+192 GB to a model until `sudo sysctl iogpu.wired_limit_mb=237568` raises it to
+about 232 GB. And Apple's matrix accelerators cover FP16 and INT8 but **not
+BF16** — convert to 4-bit or 8-bit, never to bf16.
 
 ### Why a minimum version: the xIELU activation
 
