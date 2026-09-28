@@ -90,6 +90,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Execute › Docker / Podman` says which engine answers, with or without sudo, and names why one refuses — down to an account added to the `docker` group after its session opened, or a kernel upgraded without a reboot. A rootless daemon is found even when `DOCKER_HOST` does not name its socket. The menu installs Docker — through the `docker` group, announced as root-equivalent, or rootless — or Podman with `script/install/install_container.sh`, drives the engine's systemd unit and shows its journal on failure, and runs the six `script/docker/` scripts, which had make targets only
 - Build the image of one Odoo version, or of every version in one sweep that goes on past a failed version and ends on what was built and what failed. The sweep asks first: a production image weighs about ten gigabytes
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
+- `make test_unit_changed` (`--changed[=REF]`) runs only the test files a change can reach, from `HEAD` by default, untracked files included: the dependencies are read in the code — imports, and the files a test names, such as the shell script it runs. A module that `TODO` loads still reaches more than half the suite, which does import it
+- `make test_unit_failed` (`--failed`) reruns only the test files that failed or timed out last time; a file leaves the list once it passes
 
 <!-- [fr] -->
 
@@ -152,6 +154,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Exécution › Docker / Podman` dit quel moteur répond, avec ou sans sudo, et nomme pourquoi l'un refuse — jusqu'à un compte ajouté au groupe `docker` après l'ouverture de sa session, ou un noyau mis à jour sans redémarrage. Un démon sans privilège est trouvé même quand `DOCKER_HOST` ne nomme pas sa socket. Le menu installe Docker — par le groupe `docker`, annoncé comme équivalent à root, ou sans privilège — ou Podman avec `script/install/install_container.sh`, pilote l'unité systemd du moteur et affiche son journal sur échec, et lance les six scripts de `script/docker/`, qui n'avaient que des cibles make
 - Bâtir l'image d'une version d'Odoo, ou de toutes d'un seul balayage qui continue après une version en échec et finit sur ce qui est bâti et ce qui a échoué. Le balayage demande d'abord : une image de production pèse une dizaine de gigaoctets
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
+- `make test_unit_changed` (`--changed[=REF]`) ne lance que les fichiers de tests qu'un changement peut atteindre, depuis `HEAD` par défaut, fichiers non suivis compris : les dépendances se lisent dans le code — imports, et fichiers qu'un test nomme, comme le script shell qu'il lance. Un module que `TODO` charge atteint encore plus de la moitié de la suite, qui l'importe bel et bien
+- `make test_unit_failed` (`--failed`) ne relance que les fichiers de tests en échec ou en délai au passage précédent ; un fichier sort de la liste en passant
 
 <!-- [en] -->
 ## Changed
@@ -195,6 +199,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./script/test/run_unit_test.sh --tui` shows every test file pending, running or finished with its duration, and the end of the selected file's log. Without it, a file still running after `UNIT_SIGNAL` seconds (60) is announced, and Ctrl+C stops the running files and names them
 - `TODO › Test` has a single unit-test entry, which runs the whole suite through that runner and its table: the separate mail and analyse entries are gone, and the long tests move from [6] to [4]
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
+- TODO loads `openai` only when the assistant uses it: importing TODO takes half the time, at every launch
+- The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, and the Textual tests run without asyncio's debug mode
 
 <!-- [fr] -->
 
@@ -234,6 +240,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./script/test/run_unit_test.sh --tui` montre chaque fichier de tests en attente, en cours ou fini avec sa durée, et la fin du journal du fichier choisi. Sans lui, un fichier encore en cours après `UNIT_SIGNAL` secondes (60) est annoncé, et Ctrl+C arrête les fichiers en cours et les nomme
 - `TODO › Test` n'a plus qu'une entrée de tests unitaires, qui lance toute la suite par ce lanceur et son tableau : les entrées séparées courriel et analyse disparaissent, et les tests longs passent de [6] à [4]
 - Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
+- TODO ne charge `openai` que lorsque l'assistant s'en sert : l'import de TODO prend moitié moins de temps, à chaque lancement
+- La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, et les tests Textual tournent sans le mode debug d'asyncio
 
 <!-- [en] -->
 ## Fixed
@@ -312,6 +320,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The production image compiles pykcs11 with the `PyInt_FromLong` alias that `install_locally.sh` already gives the host: SWIG 4.3 dropped it, and the Odoo 14, 15 and 17 images stopped at `poetry install`. A test fails if the two definitions diverge
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
 - Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
+- A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
+- The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
 
 <!-- [fr] -->
 
@@ -386,6 +396,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'image de production compile pykcs11 avec l'alias `PyInt_FromLong` que `install_locally.sh` donne déjà à l'hôte : SWIG 4.3 l'a retiré, et les images d'Odoo 14, 15 et 17 s'arrêtaient à `poetry install`. Un test échoue si les deux définitions divergent
 - Les Dockerfile écrivent `ENV clé=valeur` : buildkit ne signale plus le format hérité à chaque construction
 - Les tests unitaires n'atteignent plus l'hôte qui les lance : un vrai `sudo virsh` qui demandait un mot de passe là où libvirt exige root, `ssh` et `~/.ssh/config` lus par les tests du formulaire Proxmox, l'UUID d'un vrai domaine écrit dans un rapport de test long, un `input()` qui bloquait dès que la suite partait d'un terminal, et le script d'installation Proxmox joué contre les outils Debian, le nom et l'adresse de l'hôte. Trois tests de l'écran de composition cessent aussi de tourner dix fois chacun
+- Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
+- La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
 
 <!-- [en] -->
 ## Removed

@@ -70,6 +70,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TODO › Execute › Docker / Podman` says which engine answers, with or without sudo, and names why one refuses — down to an account added to the `docker` group after its session opened, or a kernel upgraded without a reboot. A rootless daemon is found even when `DOCKER_HOST` does not name its socket. The menu installs Docker — through the `docker` group, announced as root-equivalent, or rootless — or Podman with `script/install/install_container.sh`, drives the engine's systemd unit and shows its journal on failure, and runs the six `script/docker/` scripts, which had make targets only
 - Build the image of one Odoo version, or of every version in one sweep that goes on past a failed version and ends on what was built and what failed. The sweep asks first: a production image weighs about ten gigabytes
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
+- `make test_unit_changed` (`--changed[=REF]`) runs only the test files a change can reach, from `HEAD` by default, untracked files included: the dependencies are read in the code — imports, and the files a test names, such as the shell script it runs. A module that `TODO` loads still reaches more than half the suite, which does import it
+- `make test_unit_failed` (`--failed`) reruns only the test files that failed or timed out last time; a file leaves the list once it passes
 
 ## Changed
 
@@ -109,6 +111,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./script/test/run_unit_test.sh --tui` shows every test file pending, running or finished with its duration, and the end of the selected file's log. Without it, a file still running after `UNIT_SIGNAL` seconds (60) is announced, and Ctrl+C stops the running files and names them
 - `TODO › Test` has a single unit-test entry, which runs the whole suite through that runner and its table: the separate mail and analyse entries are gone, and the long tests move from [6] to [4]
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
+- TODO loads `openai` only when the assistant uses it: importing TODO takes half the time, at every launch
+- The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, and the Textual tests run without asyncio's debug mode
 
 ## Fixed
 
@@ -183,6 +187,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The production image compiles pykcs11 with the `PyInt_FromLong` alias that `install_locally.sh` already gives the host: SWIG 4.3 dropped it, and the Odoo 14, 15 and 17 images stopped at `poetry install`. A test fails if the two definitions diverge
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
 - Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
+- A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
+- The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
 
 ## Removed
 
