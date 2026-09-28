@@ -127,6 +127,19 @@ would say so. What is written is what ENTERS the history and nothing else — a
 failed turn leaves the question on disk but never returns it, and an answer
 cut before its first word is not an exchange.
 
+## An agent's declared tools are the ones it gets
+
+A specialised agent declares, in its header, the tools it is trusted with.
+Honouring that header is what makes it useful — and several of them name
+`Write`, `Edit` and `Bash`, so the call may write into the working tree, where
+every other path in this package imposes read-only by FLAGS.
+
+That right is therefore stated twice before anything runs: the menu label
+counts the agents that can write before you go in, and the agent's own sheet
+names its writing tools before the question is asked. The list of what counts
+as writing is CLOSED, so an unknown tool is not deemed harmless — it is merely
+unknown, which is why the full tool list is shown beside the warning.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -646,6 +659,7 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `mesure.py` | what a turn cost, and the line it writes under `private/` |
 | `perf_tui.py` | the live screen: the turns table, the stream, the input |
 | `sessions.py` | conversations kept under `~/.erplibre`, and resumed |
+| `agents/specialistes.py` | the specialised agents declared here, and what each is trusted with |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |

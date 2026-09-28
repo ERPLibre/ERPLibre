@@ -134,6 +134,20 @@ et rien d'autre : un tour en panne laisse sa question sur le disque sans
 jamais la rendre, et une réponse coupée avant son premier mot n'est pas un
 échange.
 
+## Les outils qu'un agent déclare sont ceux qu'il reçoit
+
+Un agent spécialisé déclare dans son en-tête les outils qu'on lui confie.
+Honorer cet en-tête est ce qui le rend utile — et plusieurs y nomment
+`Write`, `Edit` et `Bash`, donc l'appel peut écrire dans l'arbre de travail,
+là où tout autre chemin de ce paquet impose la lecture seule par DRAPEAUX.
+
+Ce droit se dit donc deux fois avant que rien ne parte : l'étiquette du menu
+compte les agents qui écrivent avant qu'on entre, et la fiche de l'agent nomme
+ses outils d'écriture avant qu'on pose la question. La liste de ce qui compte
+comme une écriture est FERMÉE, si bien qu'un outil inconnu n'est pas réputé
+inoffensif — il est seulement inconnu, et c'est pourquoi la liste complète des
+outils paraît à côté de l'avertissement.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des
@@ -709,6 +723,7 @@ nul ».
 | `mesure.py` | ce qu'un tour a coûté, et la ligne qu'il écrit sous `private/` |
 | `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
 | `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
+| `agents/specialistes.py` | les agents spécialisés déclarés ici, et ce qu'on confie à chacun |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |

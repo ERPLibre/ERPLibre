@@ -12676,6 +12676,34 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
+    "agents": {
+        "fr": "agents",
+        "en": "agents",
+    },
+    "%s can write": {
+        "fr": "%s écrivent",
+        "en": "%s can write",
+    },
+    "Specialised agents": {
+        "fr": "🧑‍🔧 Agents spécialisés",
+        "en": "🧑‍🔧 Specialised agents",
+    },
+    "No specialised agent is declared here.": {
+        "fr": "Aucun agent spécialisé n'est déclaré ici.",
+        "en": "No specialised agent is declared here.",
+    },
+    "default model": {
+        "fr": "modèle par défaut",
+        "en": "default model",
+    },
+    "read-only": {
+        "fr": "lecture seule",
+        "en": "read-only",
+    },
+    "May write here: %s": {
+        "fr": "Peut écrire ici : %s",
+        "en": "May write here: %s",
+    },
     "Folders": {
         "fr": "Dossiers",
         "en": "Folders",

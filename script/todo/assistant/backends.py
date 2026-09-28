@@ -337,7 +337,9 @@ class HttpBackend:
         return "".join(morceaux), faits
 
 
-def claude_argv(*, session_id, cwd, fork, read_only=True) -> list[str]:
+def claude_argv(
+    *, session_id, cwd, fork, read_only=True, agent="", outils=()
+) -> list[str]:
     """L'argv d'un `claude -p`, SANS l'invite : elle part sur stdin.
 
     `--output-format json` rend une enveloppe qui nomme la session, le
@@ -354,14 +356,28 @@ def claude_argv(*, session_id, cwd, fork, read_only=True) -> list[str]:
     `read_only` impose la lecture seule par des DRAPEAUX — `--tools` et
     `--permission-mode dontAsk` — et non par une phrase d'invite système, qui
     n'engage rien. `--add-dir` ouvre le répertoire à lire quand il est connu.
+
+    `agent` nomme un agent spécialisé, qui apporte son invite système et sa
+    consigne. `outils` REMPLACE alors la liste de lecture seule par celle que
+    l'agent déclare — plusieurs y nomment `Write`, `Edit` et `Bash`, donc
+    l'appel peut écrire dans l'arbre de travail. C'est un choix qui se prend
+    à l'appel, et l'appelant DOIT le montrer avant de lancer : une écriture
+    qui surprend est une écriture qu'on n'a pas voulue.
+
+    `--permission-mode dontAsk` reste posé dans les deux cas parce qu'un
+    `-p` ne peut rien demander : sans lui, un outil d'écriture attendrait une
+    réponse que personne ne donnera.
     """
     argv = ["claude", "-p", "--output-format", "json"]
     if session_id:
         argv += ["--resume", str(session_id)]
         if fork:
             argv.append("--fork-session")
-    if read_only:
-        argv += ["--tools", READ_ONLY_TOOLS]
+    if agent:
+        argv += ["--agent", str(agent)]
+    demandes = ",".join(str(un) for un in outils if str(un).strip())
+    if demandes or read_only:
+        argv += ["--tools", demandes or READ_ONLY_TOOLS]
         argv += ["--permission-mode", "dontAsk"]
         if cwd:
             argv += ["--add-dir", str(cwd)]
@@ -398,19 +414,40 @@ class ClaudeCliBackend:
 
     `run` est le lanceur injecté — `(argv, stdin) -> (code, sortie, erreur)` ;
     laissé à `None`, il lance un vrai sous-processus.
+
+    `agent` et `outils` désignent un agent spécialisé et la liste d'outils
+    qu'il déclare. Les outils d'un agent REMPLACENT la lecture seule, et
+    plusieurs y nomment `Write` et `Edit` : l'appelant montre la liste avant
+    de lancer, parce qu'une écriture qui surprend est une écriture qu'on n'a
+    pas voulue.
     """
 
     keeps_history = True
 
-    def __init__(self, *, session_id=None, cwd=None, fork=True, run=None):
+    def __init__(
+        self,
+        *,
+        session_id=None,
+        cwd=None,
+        fork=True,
+        run=None,
+        agent="",
+        outils=(),
+    ):
         self.session_id = session_id
         self.cwd = cwd
         self.fork = fork
+        self.agent = agent
+        self.outils = tuple(outils or ())
         self._run = run
 
     def argv(self) -> list[str]:
         return claude_argv(
-            session_id=self.session_id, cwd=self.cwd, fork=self.fork
+            session_id=self.session_id,
+            cwd=self.cwd,
+            fork=self.fork,
+            agent=self.agent,
+            outils=self.outils,
         )
 
     def send(self, messages, *, on_chunk=None) -> tuple[str, dict]:

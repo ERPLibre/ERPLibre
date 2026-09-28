@@ -582,6 +582,8 @@ class TODO(
         "_apertus_reprise": "Resume",
         "_llm_reprendre": "Conversations",
         "_llm_dossier": "Folder",
+        "_llm_specialistes": "Specialists",
+        "_llm_specialiste_agir": "Agent",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
