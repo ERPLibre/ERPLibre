@@ -6,7 +6,8 @@
 Un faux module `webview`, posé dans sys.modules, note la fenêtre créée et
 rend la main de `start` aussitôt, comme une fenêtre qu'on ferme : ni
 affichage ni moteur web n'est nécessaire. Une fausse fenêtre joue les
-chargements de page que pywebview signale (`before_load`, puis `loaded`).
+chargements de page que pywebview signale (`before_load`, puis `loaded`),
+avec l'attente et la baisse de `loaded` de pywebview 5.4.
 Le hub est vrai quand un test le dit, HOME et XDG_RUNTIME_DIR temporaires.
 Le processus détaché de `spawn` est un faux python, un script shell ;
 l'entrée du bureau s'écrit sous un XDG_DATA_HOME temporaire. Le pont de la
@@ -15,15 +16,18 @@ est installé.
 """
 
 import contextlib
+import hmac
 import inspect
 import io
 import os
+import secrets
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -40,29 +44,49 @@ from script.todo.web import desktop, launcher, paths
 
 REPO = Path(__file__).resolve().parent.parent
 ORIGIN = "http://127.0.0.1:43817"
+# Jeton du pont des fausses fenêtres, tiré comme celui d'`open_window`.
+TOKEN = secrets.token_urlsafe(32)
+# Secondes que `get_current_url` de pywebview 5.4 attend `loaded`.
+LOADED_WAIT = 20
 as_user = unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")
 as_user = unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")
 
 
 class FakeEvent:
-    """Évènement de pywebview : `+=` ajoute un gestionnaire, `set` les
-    appelle, dans ce fil."""
+    """Évènement de pywebview (`webview.event.Event`) : `+=` ajoute un
+    gestionnaire ; `set` lève le drapeau, puis appelle les gestionnaires
+    dans ce fil ; `is_set`, `wait` et `clear` lisent, attendent et baissent
+    le drapeau."""
 
     def __init__(self):
         self.handlers = []
+        self.flag = threading.Event()
 
     def __iadd__(self, handler):
         self.handlers.append(handler)
         return self
 
     def set(self):
+        self.flag.set()
         for handler in self.handlers:
             handler()
 
+    def is_set(self):
+        return self.flag.is_set()
+
+    def wait(self, timeout=None):
+        return self.flag.wait(timeout)
+
+    def clear(self):
+        self.flag.clear()
+
 
 class FakeWindow:
-    """Fausse fenêtre : note ses titres, ses fonctions exposées et les URL
-    qu'on lui demande de charger ; `get_current_url` rend `current`."""
+    """Fausse fenêtre au contrat de pywebview 5.4 : `get_current_url`
+    attend `events.loaded`, LOADED_WAIT s au plus, puis rend `current` ;
+    `load_url` baisse `loaded` et fait de l'URL demandée la courante, comme
+    le moteur qui y bascule aussitôt. Note ses titres, ses fonctions
+    exposées et les URL que `load_url` reçoit."""
 
     def __init__(self, title, url, options):
         self.title, self.url, self.options = title, url, options
@@ -79,14 +103,20 @@ class FakeWindow:
         self.exposed.extend(functions)
 
     def get_current_url(self):
+        if not self.events.loaded.wait(LOADED_WAIT):
+            raise RuntimeError("Main window failed to load")
         return self.current
 
     def load_url(self, url):
         self.loads.append(url)
+        self.events.loaded.clear()
+        self.current = url
 
     def load(self, url, loaded=True):
-        """Un chargement de `url` tel que pywebview le signale : avant
-        l'injection de son API, puis, avec `loaded`, après."""
+        """Un chargement de `url` fini, tel que pywebview le signale :
+        `before_load` avant l'injection de son API, puis, avec `loaded`,
+        `loaded` après. Sans `load_url`, un lien suivi par exemple, le
+        drapeau `loaded` du chargement précédent reste levé."""
         self.current = url
         self.events.before_load.set()
         if loaded:
@@ -161,6 +191,19 @@ def _wait(predicate, timeout=5.0) -> bool:
             return False
         time.sleep(0.01)
     return True
+
+
+def _at_once(test, function, *args):
+    """`function(*args)` dans un fil, qui doit rendre en moins d'une
+    seconde : un appel du pont n'attend jamais le chargement d'une page."""
+    result = []
+    thread = threading.Thread(
+        target=lambda: result.append(function(*args)), daemon=True
+    )
+    thread.start()
+    thread.join(1.0)
+    test.assertFalse(thread.is_alive(), f"{function.__name__} waits")
+    return result[0]
 
 
 def _resolve(window, name):
@@ -281,9 +324,9 @@ class TestAvailability(unittest.TestCase):
 
 class TestBridge(unittest.TestCase):
     def on_the_hub(self, window):
-        """Les deux fonctions du pont de `window`, sa page du hub chargée ;
-        le chargement applique le titre de base."""
-        functions = desktop.bridge(window, ORIGIN)
+        """Les deux fonctions du pont de `window`, de jeton TOKEN, sa page du
+        hub chargée ; le chargement applique le titre de base."""
+        functions = desktop.bridge(window, ORIGIN, TOKEN)
         window.load(ORIGIN + "/#view=telemetry")
         self.assertTrue(_wait(lambda: window.titles))
         self.assertEqual(window.titles.pop(), "ERPLibre TODO")
@@ -291,7 +334,7 @@ class TestBridge(unittest.TestCase):
 
     def test_the_page_reaches_two_functions_only(self):
         window = FakeWindow("", "", {})
-        functions = desktop.bridge(window, ORIGIN)
+        functions = desktop.bridge(window, ORIGIN, TOKEN)
         window.expose(*functions)
         self.assertEqual(
             sorted(func.__name__ for func in functions),
@@ -310,23 +353,67 @@ class TestBridge(unittest.TestCase):
     def test_the_title_is_one_clean_line(self):
         window = FakeWindow("", "", {})
         set_title, _ = self.on_the_hub(window)
-        set_title("TODO › Execute\n\x1b[31m‮Forged " + "x" * 300)
-        set_title(" \t")
+        set_title(TOKEN, "TODO › Execute\n\x1b[31m‮Forged " + "x" * 300)
+        set_title(TOKEN, " \t")
         [shown, empty] = window.titles
         self.assertTrue(shown.startswith("TODO › Execute [31m Forged xx"))
         self.assertEqual(len(shown), desktop.TITLE_MAX)
         self.assertTrue(shown.isprintable(), shown)
         self.assertEqual(empty, "ERPLibre TODO")
 
-    def test_a_title_sent_during_the_load_applies_once_on_the_hub(self):
+    def test_a_title_sent_during_a_reload_applies_once_on_the_hub(self):
+        # `before_load` a fermé le pont ; `loaded`, levé depuis la page
+        # précédente, laisse lire l'URL : le titre est gardé, puis appliqué.
         window = FakeWindow("", "", {})
-        set_title, _ = desktop.bridge(window, ORIGIN)
+        set_title, _ = self.on_the_hub(window)
         window.load(ORIGIN + "/", loaded=False)
-        set_title("TODO")
+        set_title(TOKEN, "TODO")
         self.assertEqual(window.titles, [])
         window.events.loaded.set()
         self.assertTrue(_wait(lambda: window.titles))
         self.assertEqual(window.titles, ["TODO"])
+
+    def test_a_call_before_the_first_load_ends_is_refused_at_once(self):
+        window = FakeWindow("", "", {})
+        set_title, notify = desktop.bridge(window, ORIGIN, TOKEN)
+        window.load(ORIGIN + "/", loaded=False)
+        _at_once(self, set_title, TOKEN, "TODO")
+        self.assertFalse(_at_once(self, notify, TOKEN, "TODO", "body"))
+        window.events.loaded.set()
+        self.assertTrue(_wait(lambda: window.titles))
+        # Refusé, le titre n'a pas été gardé : la page garde le titre de
+        # base.
+        self.assertEqual(window.titles, ["ERPLibre TODO"])
+
+    def test_only_the_window_token_opens_the_bridge(self):
+        base = self.notify_send('echo >> "${0%/*}/calls"')
+        window = FakeWindow("", "", {})
+        set_title, notify = self.on_the_hub(window)
+        other = "A" if TOKEN[0] != "A" else "B"
+        forged = [
+            None,
+            "",
+            43,
+            [TOKEN],
+            TOKEN[:-1],
+            TOKEN + "x",
+            other + TOKEN[1:],
+            "é" * len(TOKEN),
+            "\ud800",
+            "Forged",
+        ]
+        with patch.object(
+            desktop.hmac, "compare_digest", wraps=hmac.compare_digest
+        ) as compare:
+            for token in forged:
+                set_title(token, "Forged")
+                self.assertFalse(notify(token, "Forged", "body"), token)
+            self.assertTrue(notify(TOKEN, "TODO", "body"))
+        self.assertTrue(compare.called)
+        self.assertEqual(window.titles, [])
+        self.assertEqual((base / "calls").read_text(), "\n")
+        with self.assertRaises(ValueError):
+            desktop.bridge(FakeWindow("", "", {}), ORIGIN, "")
 
     def notify_send(self, body):
         """Un notify-send de corps `body`, seul programme du PATH ; rend son
@@ -340,7 +427,7 @@ class TestBridge(unittest.TestCase):
     def test_a_foreign_page_reaches_nothing_and_goes_back_to_the_hub(self):
         base = self.notify_send('echo >> "${0%/*}/calls"')
         window = FakeWindow("", "", {})
-        set_title, notify = desktop.bridge(window, ORIGIN)
+        set_title, notify = desktop.bridge(window, ORIGIN, TOKEN)
         foreign = [
             "http://forged.invalid/",
             ORIGIN + "0/",
@@ -351,15 +438,52 @@ class TestBridge(unittest.TestCase):
         for number, url in enumerate(foreign, 1):
             window.load(url)
             self.assertTrue(_wait(lambda: len(window.loads) == number))
-            set_title("Forged")
-            self.assertFalse(notify("Forged", "body"))
+            # Le jeton n'y suffit pas : la page n'est pas celle du hub.
+            _at_once(self, set_title, TOKEN, "Forged")
+            self.assertFalse(_at_once(self, notify, TOKEN, "Forged", "body"))
         self.assertEqual(window.loads, [ORIGIN + "/"] * len(foreign))
         self.assertEqual(window.titles, [])
         self.assertFalse((base / "calls").exists())
         # De retour sur le hub, la page retrouve le pont.
         window.load(ORIGIN + "/")
         self.assertTrue(_wait(lambda: window.titles))
-        self.assertTrue(notify("TODO", "body"))
+        self.assertTrue(notify(TOKEN, "TODO", "body"))
+
+    def test_a_call_held_across_the_redirect_is_refused(self):
+        """Le garde renvoie une page étrangère au hub par `load_url`, qui
+        baisse `loaded` et fait de l'URL du hub la courante avant que la
+        page étrangère ne cesse de tourner. Un appel qu'elle envoie alors
+        est refusé sur-le-champ, jeton ou non : il n'attend pas le hub pour
+        être jugé sur son URL, et son titre n'est pas gardé."""
+        base = self.notify_send('echo >> "${0%/*}/calls"')
+        window = FakeWindow("", "", {})
+        set_title, notify = self.on_the_hub(window)
+        window.load("file:///forged.html")
+        self.assertTrue(_wait(lambda: window.loads))
+        self.assertEqual(window.current, ORIGIN + "/")
+        for token in ("Forged", TOKEN):
+            self.assertFalse(_at_once(self, notify, token, "Forged", "x"))
+            _at_once(self, set_title, token, "Forged")
+        window.load(ORIGIN + "/")
+        self.assertTrue(_wait(lambda: window.titles))
+        self.assertEqual(window.titles, ["ERPLibre TODO"])
+        self.assertFalse((base / "calls").exists())
+
+    def test_a_failed_page_check_leaves_the_bridge_closed_and_logged(self):
+        # Sortie d'erreur du processus de la fenêtre : son journal.
+        window = FakeWindow("", "", {})
+        _, notify = desktop.bridge(window, ORIGIN, TOKEN)
+        err = io.StringIO()
+        with (
+            patch.object(window, "set_title", side_effect=RuntimeError("x")),
+            contextlib.redirect_stderr(err),
+        ):
+            window.load(ORIGIN + "/")
+            self.assertTrue(_wait(err.getvalue))
+        self.assertEqual(
+            err.getvalue(), "desktop window: page check failed: RuntimeError\n"
+        )
+        self.assertFalse(notify(TOKEN, "TODO", "body"))
 
     def test_a_foreign_document_reaches_nothing_before_before_load(self):
         """Le canal qui porte les fonctions exposées écoute toute page dès
@@ -369,18 +493,18 @@ class TestBridge(unittest.TestCase):
         window = FakeWindow("", "", {})
         set_title, notify = self.on_the_hub(window)
         window.current = "http://forged.invalid/"
-        self.assertFalse(notify("Forged", "body"))
-        set_title("Forged")
+        self.assertFalse(notify(TOKEN, "Forged", "body"))
+        set_title(TOKEN, "Forged")
         self.assertEqual(window.titles, [])
 
     def test_the_page_notifies_once_a_second_at_most(self):
         base = self.notify_send('echo >> "${0%/*}/calls"')
         _, notify = self.on_the_hub(FakeWindow("", "", {}))
         with patch.object(desktop, "NOTIFY_INTERVAL", 0.2):
-            self.assertTrue(notify("TODO", "first"))
-            self.assertFalse(notify("TODO", "too soon"))
+            self.assertTrue(notify(TOKEN, "TODO", "first"))
+            self.assertFalse(notify(TOKEN, "TODO", "too soon"))
             time.sleep(0.25)
-            self.assertTrue(notify("TODO", "later"))
+            self.assertTrue(notify(TOKEN, "TODO", "later"))
         self.assertEqual((base / "calls").read_text(), "\n\n")
 
     def test_notify_passes_an_argument_list_without_a_shell(self):
@@ -440,12 +564,15 @@ class TestOpenWindow(unittest.TestCase):
         [window] = self.webview.windows
         fragment = parse_qs(urlsplit(window.url).fragment)
         [code] = fragment["login"]
+        [secret] = fragment["bridge"]
         self.assertEqual(
             (fragment["view"], fragment["lang"]), (["telemetry"], ["en"])
         )
-        # Le hub a été lancé ici : un argv existe, sans le code.
+        self.assertGreaterEqual(len(secret), 43)
+        # Le hub a été lancé ici : un argv existe, sans le code ni le jeton.
         self.assertEqual(popen.call_count, 1)
         self.assertNotIn(code, repr(popen.call_args))
+        self.assertNotIn(secret, repr(popen.call_args))
         port = launcher.status(REPO)["port"]
         self.assertTrue(window.url.startswith(f"http://127.0.0.1:{port}/#"))
         self.assertEqual(_login(port, code), 200)
@@ -456,7 +583,20 @@ class TestOpenWindow(unittest.TestCase):
             sorted(func.__name__ for func in window.exposed),
             ["notify", "set_title"],
         )
-        [options] = self.webview.starts
+        # Le jeton du fragment ouvre le pont de cette fenêtre ; aucun
+        # fichier ne le porte, et la fenêtre suivante en tire un autre.
+        set_title = _resolve(window, "set_title")
+        window.load(f"http://127.0.0.1:{port}/")
+        self.assertTrue(_wait(lambda: window.titles))
+        set_title(secret, "TODO")
+        self.assertEqual(window.titles, ["ERPLibre TODO", "TODO"])
+        for path in self.base.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(secret.encode(), path.read_bytes(), path)
+        self.assertEqual(desktop.open_window(REPO, lang="en"), 0)
+        other = parse_qs(urlsplit(self.webview.windows[-1].url).fragment)
+        self.assertNotEqual(other["bridge"], [secret])
+        [options, _] = self.webview.starts
         storage = Path(options["storage_path"])
         self.assertEqual(storage, paths.data_dir(REPO) / "desktop")
         self.assertEqual(stat.S_IMODE(storage.stat().st_mode), 0o700)
@@ -751,7 +891,8 @@ class TestDesktopEntry(unittest.TestCase):
 
 
 # Le pont dans un navigateur, puis dans une fenêtre dont l'API arrive
-# après le pont, avec `pywebviewready` ; enfin une API qui échoue.
+# après le pont, avec `pywebviewready` ; une API qui échoue ; une fenêtre
+# sans jeton. Puis le jeton pris au fragment et gardé par fenêtre.
 BRIDGE_CHECK = r"""
 const calls = [];
 const record = (name) => (...args) => {
@@ -764,12 +905,12 @@ const dropped = (target) => {
     return event.defaultPrevented;
 };
 const browser = new EventTarget();
-const plain = m.desktopBridge(browser, "ERPLibre TODO");
+const plain = m.desktopBridge(browser, "ERPLibre TODO", null);
 plain.title(["TODO"]);
 plain.notify("body");
 browser.dispatchEvent(new Event("pywebviewready"));
 const win = new EventTarget();
-const bridge = m.desktopBridge(win, "ERPLibre TODO");
+const bridge = m.desktopBridge(win, "ERPLibre TODO", "tok");
 bridge.title(["TODO", "Execute"]);
 win.pywebview = {api: {set_title: record("set_title"), notify: record("notify")}};
 win.dispatchEvent(new Event("pywebviewready"));
@@ -782,15 +923,47 @@ broken.pywebview = {api: {
     set_title: () => Promise.reject(new Error("forged")),
     notify: () => { throw new Error("forged"); },
 }};
-const failing = m.desktopBridge(broken, "ERPLibre TODO");
+const failing = m.desktopBridge(broken, "ERPLibre TODO", "tok");
 failing.title(["TODO"]);
 failing.notify("body");
+const bare = new EventTarget();
+bare.pywebview = {api: {set_title: record("bare"), notify: record("bare")}};
+const tokenless = m.desktopBridge(bare, "ERPLibre TODO", null);
+bare.dispatchEvent(new Event("pywebviewready"));
+tokenless.title(["TODO"]);
+tokenless.notify("body");
 await new Promise((resolve) => setTimeout(resolve, 0));
+// Une fenêtre : son sessionStorage, propre à l'origine et à la fenêtre.
+const storage = () => {
+    const items = new Map();
+    return {
+        getItem: (key) => items.get(key) ?? null,
+        setItem: (key, value) => items.set(key, String(value)),
+        items,
+    };
+};
+const take = (target, hash) => {
+    const fragment = new URLSearchParams(hash);
+    const token = m.takeToken(target, fragment);
+    return [token, fragment.toString()];
+};
+const first = {sessionStorage: storage()};
+const refused = {get sessionStorage() { throw new Error("forged"); }};
+const tokens = {
+    first: take(first, "view=telemetry&bridge=tok&lang=en"),
+    reload: take(first, "view=telemetry"),
+    other: take(first, "bridge=forged"),
+    stored: [...first.sessionStorage.items.values()],
+    browser: take({sessionStorage: storage()}, "view=telemetry"),
+    refused: take(refused, "bridge=tok"),
+    none: take(refused, ""),
+};
 const t = (key) => key;
 console.log(JSON.stringify({
     browser: "pywebview" in browser,
     calls,
     dropped: [dropped(browser), dropped(win)],
+    tokens,
     long: [{t: "run_end", secs: 10}, {t: "run_end", secs: 10.5},
         {t: "run_start", secs: 60}, {t: "run_end"}].map(m.endsLongRun),
     bodies: [m.runEndBody(t, {rc: 2, secs: 11.6}),
@@ -808,15 +981,32 @@ class TestPageBridge(unittest.TestCase):
     def test_the_page_calls_the_bridge_only_when_it_exists(self):
         # Dans un navigateur, rien ne part et rien n'apparaît.
         self.assertIs(self.out["browser"], False)
+        # Chaque appel porte d'abord le jeton ; sans jeton, rien ne part.
         self.assertEqual(
             self.out["calls"],
             [
-                ["set_title", "TODO › Execute — ERPLibre TODO"],
-                ["set_title", "TODO — ERPLibre TODO"],
-                ["notify", "TODO — ERPLibre TODO", "Command ended"],
-                ["set_title", "ERPLibre TODO"],
+                ["set_title", "tok", "TODO › Execute — ERPLibre TODO"],
+                ["set_title", "tok", "TODO — ERPLibre TODO"],
+                ["notify", "tok", "TODO — ERPLibre TODO", "Command ended"],
+                ["set_title", "tok", "ERPLibre TODO"],
             ],
         )
+
+    def test_the_token_leaves_the_fragment_for_the_window_storage(self):
+        tokens = self.out["tokens"]
+        # Pris au fragment, dont il sort, puis relu du stockage au
+        # rechargement, sans fragment.
+        self.assertEqual(tokens["first"], ["tok", "view=telemetry&lang=en"])
+        self.assertEqual(tokens["reload"], ["tok", "view=telemetry"])
+        # Un lien vers le hub qui porte un autre jeton ne remplace pas celui
+        # de la fenêtre.
+        self.assertEqual(tokens["other"], ["tok", ""])
+        self.assertEqual(tokens["stored"], ["tok"])
+        # Dans un navigateur, aucun jeton ; un stockage refusé garde celui
+        # du fragment pour cette page seulement.
+        self.assertEqual(tokens["browser"], [None, "view=telemetry"])
+        self.assertEqual(tokens["refused"], ["tok", ""])
+        self.assertEqual(tokens["none"], [None, ""])
 
     def test_a_drop_is_refused_in_the_window_only(self):
         # Le moteur chargerait le lien ou le fichier déposé à la place de

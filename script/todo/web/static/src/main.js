@@ -1,15 +1,17 @@
 // Amorçage de la page. Le fragment de l'URL porte « login » (code à usage
-// unique), « view » et « lang » : le code en est retiré avant tout appel
-// réseau, il quitte donc la barre d'adresse et un rechargement ne le retrouve
-// pas. L'historique du navigateur peut garder l'URL d'arrivée, code compris :
-// un code déjà dépensé par la connexion qui suit, ou périmé après 120 s.
-// Puis la session donne le jeton CSRF et la langue par défaut, et la page
-// charge la table de traduction et la télémétrie avant de monter la vue.
-// Dans la fenêtre bureautique, le pont (`desktop.js`) règle d'emblée le
-// titre de la fenêtre sur celui de la page.
+// unique), « view » et « lang », et, dans la fenêtre bureautique, « bridge »,
+// le jeton de son pont : le code et le jeton en sont retirés avant tout
+// appel réseau, ils quittent donc la barre d'adresse et un rechargement ne
+// les y retrouve pas. L'historique du navigateur peut garder l'URL
+// d'arrivée, code compris : un code déjà dépensé par la connexion qui suit,
+// ou périmé après 120 s. Le jeton passe dans le sessionStorage du hub
+// (`takeToken`). Puis la session donne le jeton CSRF et la langue par
+// défaut, et la page charge la table de traduction et la télémétrie avant
+// de monter la vue. Dans la fenêtre bureautique, le pont (`desktop.js`)
+// règle d'emblée le titre de la fenêtre sur celui de la page.
 import {mount} from "@odoo/owl";
 import {ApiError, getJson, postJson, setCsrfToken} from "./api.js";
-import {desktopBridge} from "./desktop.js";
+import {TOKEN, desktopBridge, takeToken} from "./desktop.js";
 import {TelemetryPage} from "./telemetry_page.js";
 
 const LANGUAGES = ["fr", "en"];
@@ -21,12 +23,14 @@ const FAILED = "The TODO web interface did not answer.";
 function takeFragment() {
     const fragment = new URLSearchParams(window.location.hash.slice(1));
     const code = fragment.get("login");
-    if (code) {
-        fragment.delete("login");
+    const carried = fragment.has("login") || fragment.has(TOKEN);
+    fragment.delete("login");
+    const token = takeToken(window, fragment);
+    if (carried) {
         const rest = fragment.toString();
         history.replaceState(null, "", rest ? `#${rest}` : window.location.pathname);
     }
-    return {code, lang: fragment.get("lang")};
+    return {code, lang: fragment.get("lang"), token};
 }
 
 function showError(message) {
@@ -37,8 +41,8 @@ function showError(message) {
 }
 
 async function start() {
-    const desktop = desktopBridge(window, document.title);
-    const {code, lang} = takeFragment();
+    const {code, lang, token} = takeFragment();
+    const desktop = desktopBridge(window, document.title, token);
     if (code) {
         try {
             await postJson("/api/login", {code});

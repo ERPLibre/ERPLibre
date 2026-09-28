@@ -12,11 +12,13 @@ processus seulement : le hub et ses sessions restent, et la fenêtre
 suivante les retrouve dans la vue Sessions.
 
 La page n'atteint que les deux fonctions de `bridge`, le titre de la
-fenêtre et une notification de bureau, et seulement tant que la fenêtre
-montre une page du hub. Sans pywebview, sans moteur web ou sans affichage,
-`main` le dit, donne les commandes d'installation (`install_hint`), que
-rien ne lance, et ouvre la page dans le navigateur. En ligne de commande
-(messages anglais, sans traduction, comme le lanceur) :
+fenêtre et une notification de bureau, par un jeton que chaque fenêtre tire
+pour elle seule, et seulement tant que la fenêtre montre une page du hub.
+Sans pywebview ou sans moteur web, `main` le dit, donne les commandes
+d'installation (`install_hint`), que rien ne lance, et ouvre la page dans
+le navigateur ; sans affichage, il dit seulement « no display on this
+host » et ouvre le navigateur. En ligne de commande (messages anglais, sans
+traduction, comme le lanceur) :
 
     python -m script.todo.web.desktop open [--view V] [--root R]
     python -m script.todo.web.desktop install [--root R]
@@ -29,10 +31,12 @@ Le menu de TODO lance `open` dans un processus détaché (`spawn`) ;
 
 import argparse
 import ctypes.util
+import hmac
 import html
 import importlib.util
 import os
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -219,36 +223,61 @@ def send_notification(title, body) -> bool:
     return done.returncode == 0
 
 
-def bridge(window, origin):
+def bridge(window, origin, secret):
     """Les deux fonctions que la page de `window` atteint, `set_title` et
     `notify`, à passer à `window.expose` : pywebview ne les trouve que par
     leur nom exact. Un `js_api` n'est jamais donné, car pywebview y suit
     tout chemin pointé que la page envoie, `_privé` et `__dunder__`
     compris.
 
-    Elles n'agissent que tant que la fenêtre montre une page de `origin`
-    (`http://127.0.0.1:P`). Le canal qui les porte à la page reste ouvert à
-    tout document dès son premier script, chargement en cours compris :
-    chaque appel relit donc `get_current_url` sur le fil qui l'a reçu, en
-    plus du drapeau `hub`, avant d'agir. Ce drapeau suit le chargement de
-    la page : `events.before_load` le baisse (au chargement fini, avant
-    que pywebview n'injecte son API) ; puis un fil démon lit l'URL
-    courante (`get_current_url`) au signal `events.loaded` — une page du
-    hub le relève et applique le dernier titre demandé, toute autre page,
-    un lien ou un fichier déposé par exemple, est remplacée par
-    `origin + "/"`, que le cookie de session garde connectée. Une fenêtre
-    fermée pendant la lecture ne retient pas ce fil, qui est démon."""
+    Le canal qui les porte reste ouvert à tout document de la fenêtre dès
+    son premier script, chargement en cours compris. Chaque appel porte
+    donc d'abord un jeton, que `hmac.compare_digest` compare à `secret`,
+    non vide : `open_window` le tire pour cette fenêtre seule et le met
+    dans le fragment du lien, d'où la page du hub le garde dans le
+    sessionStorage de son origine, qu'aucune autre origine ne lit. Un appel
+    sans ce jeton est refusé sans rien toucher.
+
+    En défense de plus, un appel n'agit que si la fenêtre montre une page
+    de `origin` (`http://127.0.0.1:P`), lue sans attendre : `load_url`
+    baisse `events.loaded` avant que le moteur ne change de page, et
+    `get_current_url` attendrait qu'il se relève, puis rendrait l'URL de la
+    page suivante. Un appel reçu drapeau baissé est donc refusé, comme
+    celui dont la lecture l'a vu retomber. Le drapeau `hub` suit le
+    chargement : `events.before_load` le baisse (au chargement fini, avant
+    que pywebview n'injecte son API) ; au signal `events.loaded`, un fil
+    démon lit l'URL courante — une page du hub reçoit le dernier titre
+    accepté, puis relève `hub` ; toute autre page, un lien suivi par
+    exemple, est remplacée par `origin + "/"`, que le cookie de session
+    garde connectée. Si ce fil échoue, fenêtre fermée pendant la lecture
+    par exemple, `hub` reste baissé et le type de l'exception va sur la
+    sortie d'erreur, le journal de la fenêtre. Un titre n'est gardé que
+    d'un appel accepté."""
+    if not secret:
+        raise ValueError("the bridge needs a secret")
+    expected = secret.encode()
     state = {"hub": False, "title": TITLE, "notified": None}
     lock = threading.Lock()
+    loaded = window.events.loaded
 
-    def on_origin():
-        """Vrai si l'URL montrée à l'instant de l'appel est celle du hub,
-        lue en direct : le drapeau `hub` seul retarde d'un chargement."""
+    def on_hub(url):
+        return url == origin or url.startswith(origin + "/")
+
+    def accepted(token):
+        """Vrai si `token` est celui de la fenêtre et si une page du hub y
+        est chargée à l'instant de l'appel ; jamais d'attente."""
+        if not isinstance(token, str):
+            return False
+        given = token.encode("utf-8", "surrogatepass")
+        if not hmac.compare_digest(given, expected):
+            return False
+        if not loaded.is_set():
+            return False
         try:
             url = window.get_current_url() or ""
         except Exception:
             return False
-        return url == origin or url.startswith(origin + "/")
+        return loaded.is_set() and on_hub(url)
 
     def on_before_load():
         with lock:
@@ -256,17 +285,17 @@ def bridge(window, origin):
 
     def check():
         try:
-            url = window.get_current_url() or ""
-            if url != origin and not url.startswith(origin + "/"):
+            if not on_hub(window.get_current_url() or ""):
                 window.load_url(origin + "/")
                 return
             with lock:
-                state["hub"] = True
                 window.set_title(state["title"])
-        except Exception:
-            # La fenêtre s'est fermée pendant la lecture : plus rien à
-            # garder.
-            return
+                state["hub"] = True
+        except Exception as exc:
+            print(
+                f"desktop window: page check failed: {type(exc).__name__}",
+                file=sys.stderr,
+            )
 
     def on_loaded():
         threading.Thread(target=check, daemon=True).start()
@@ -274,19 +303,20 @@ def bridge(window, origin):
     window.events.before_load += on_before_load
     window.events.loaded += on_loaded
 
-    def set_title(text):
+    def set_title(token, text):
         """Titre de la fenêtre, en une ligne ; vide, TITLE."""
         cleaned = _clean(text, TITLE_MAX) or TITLE
-        reachable = on_origin()
+        if not accepted(token):
+            return
         with lock:
             state["title"] = cleaned
-            if state["hub"] and reachable:
+            if state["hub"]:
                 window.set_title(cleaned)
 
-    def notify(title, body):
+    def notify(token, title, body):
         """Notification de bureau (`send_notification`) ; rend si elle est
         partie."""
-        if not on_origin():
+        if not accepted(token):
             return False
         with lock:
             now = time.monotonic()
@@ -307,8 +337,9 @@ def open_window(root, view="telemetry", lang=None) -> int:
     pywebview et GTK l'exigent.
 
     Le hub est démarré ou réutilisé ; le lien
-    `http://127.0.0.1:P/#login=<code>&view=<view>[&lang=<lang>]` porte un
-    code neuf dans son fragment et ne quitte pas ce processus. pywebview
+    `http://127.0.0.1:P/#login=<code>&view=<view>[&lang=<lang>]&bridge=<jeton>`
+    porte dans son fragment un code neuf et le jeton du pont, tiré ici pour
+    cette fenêtre (`bridge`), et ne quitte pas ce processus. pywebview
     choisit son moteur, en mode privé (aucun cookie gardé d'une fenêtre à
     l'autre), ses données sous `paths.data_dir(root)/desktop` (0700). La
     page n'atteint que les deux fonctions de `bridge`. Fermer la fenêtre
@@ -345,10 +376,12 @@ def open_window(root, view="telemetry", lang=None) -> int:
     fragment = {"login": launcher.mint_code(root), "view": view}
     if lang:
         fragment["lang"] = lang
+    secret = secrets.token_urlsafe(32)
+    fragment["bridge"] = secret
     window = webview.create_window(
         TITLE, f"{origin}/#{urlencode(fragment)}", width=WIDTH, height=HEIGHT
     )
-    window.expose(*bridge(window, origin))
+    window.expose(*bridge(window, origin, secret))
     storage = paths.private_dir(paths.data_dir(root) / "desktop")
     try:
         webview.start(private_mode=True, storage_path=str(storage))
