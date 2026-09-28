@@ -24,7 +24,7 @@ Bearer` dans une TRACE, ce qui est le dernier rempart et non le premier.
 pour la même raison. `claude_argv` bâtit donc l'argv SANS l'invite, et
 l'appelant écrit la question sur stdin.
 
-Onze des douze familles de serveurs exposent `/v1/chat/completions` à
+Douze des treize familles de serveurs exposent `/v1/chat/completions` à
 l'identique : un seul client `openai` les couvre toutes, pointé sur ce que
 `servers.base_url()` rend. C'est aussi ce client qu'un test injecte pour
 parler à un vrai serveur de boucle locale plutôt qu'à un double.
@@ -51,6 +51,26 @@ TIMEOUT = 300.0
 # Une seule reprise : au-delà d'une panne de connexion, réessayer un envoi
 # relance une génération entière chez qui la paie.
 MAX_RETRIES = 1
+
+# Ce qu'il faut demander pour qu'un flux rende ses comptes de jetons. Un envoi
+# d'un seul bloc les porte toujours ; un flux, non, et cela dépend du
+# logiciel : certains joignent leur trame d'usage sans qu'on demande rien,
+# d'autres n'en envoient AUCUNE tant que l'option n'est pas là. Sans elle,
+# une part des serveurs ne permet aucun calcul de débit.
+#
+# L'option est celle de l'API que tous ces serveurs imitent, et le client la
+# transmet sans la relire ; un serveur qui l'ignore rend simplement ce qu'il
+# rendait, et un flux sans compte se lit comme un compte INCONNU, jamais
+# comme un zéro.
+STREAM_USAGE = {"stream_options": {"include_usage": True}}
+
+# Le champ où un modèle qui RAISONNE met ses jetons de réflexion. Ils ne
+# rejoignent jamais le texte de la réponse, et c'est voulu des deux côtés :
+# le serveur les sépare, et les renvoyer dans l'historique du tour suivant
+# ferait payer une deuxième fois une réflexion déjà faite. Ils sont pourtant
+# COMPTÉS dans les jetons de réponse, donc sans eux le débit décrit un
+# travail qu'on ne voit nulle part.
+REASONING_FIELD = "reasoning_content"
 
 # Le budget d'un aller-retour `claude -p`, qui inclut le démarrage du CLI.
 CLAUDE_TIMEOUT = 600
@@ -129,6 +149,15 @@ def readable(exc: Exception) -> str:
         if extra and extra not in detail:
             detail = f"{detail} ({extra})"
     return one_line(detail)
+
+
+def _texte(valeur) -> str:
+    """Une valeur de champ ramenée à du texte, vide si ce n'en est pas.
+
+    Un serveur peut rendre `null`, un objet ou un nombre là où le protocole
+    annonce une chaîne ; aucun de ces cas ne doit faire lever le transport.
+    """
+    return valeur if isinstance(valeur, str) else ""
 
 
 def _usage(usage) -> dict:
@@ -254,6 +283,9 @@ class HttpBackend:
             "model": getattr(reponse, "model", "") or self.model,
             "usage": _usage(getattr(reponse, "usage", None)),
             "finish_reason": raison,
+            "reasoning": _texte(
+                getattr(choix[0].message, REASONING_FIELD, None)
+            ),
         }
         return texte, faits
 
@@ -265,8 +297,14 @@ class HttpBackend:
         texte reçu est gardé.
         """
         morceaux: list[str] = []
-        faits = {"model": self.model, "usage": {}, "finish_reason": ""}
-        flux = self._create(appel, stream=True)
+        pensees: list[str] = []
+        faits = {
+            "model": self.model,
+            "usage": {},
+            "finish_reason": "",
+            "reasoning": "",
+        }
+        flux = self._create(appel, stream=True, **STREAM_USAGE)
         try:
             for evenement in flux:
                 faits["model"] = (
@@ -277,6 +315,10 @@ class HttpBackend:
                     faits["usage"] = usage
                 for choix in evenement.choices or ():
                     delta = getattr(choix, "delta", None)
+                    pensee = _texte(getattr(delta, REASONING_FIELD, None))
+                    if pensee:
+                        pensees.append(pensee)
+                        faits["reasoning"] = "".join(pensees)
                     morceau = getattr(delta, "content", None) or ""
                     if morceau:
                         morceaux.append(morceau)
@@ -292,10 +334,13 @@ class HttpBackend:
             except Exception:
                 pass
             raise Interrupted("".join(morceaux), faits) from None
+        faits["reasoning"] = "".join(pensees)
         return "".join(morceaux), faits
 
 
-def claude_argv(*, session_id, cwd, fork, read_only=True) -> list[str]:
+def claude_argv(
+    *, session_id, cwd, fork, read_only=True, agent="", outils=()
+) -> list[str]:
     """L'argv d'un `claude -p`, SANS l'invite : elle part sur stdin.
 
     `--output-format json` rend une enveloppe qui nomme la session, le
@@ -312,14 +357,28 @@ def claude_argv(*, session_id, cwd, fork, read_only=True) -> list[str]:
     `read_only` impose la lecture seule par des DRAPEAUX — `--tools` et
     `--permission-mode dontAsk` — et non par une phrase d'invite système, qui
     n'engage rien. `--add-dir` ouvre le répertoire à lire quand il est connu.
+
+    `agent` nomme un agent spécialisé, qui apporte son invite système et sa
+    consigne. `outils` REMPLACE alors la liste de lecture seule par celle que
+    l'agent déclare — plusieurs y nomment `Write`, `Edit` et `Bash`, donc
+    l'appel peut écrire dans l'arbre de travail. C'est un choix qui se prend
+    à l'appel, et l'appelant DOIT le montrer avant de lancer : une écriture
+    qui surprend est une écriture qu'on n'a pas voulue.
+
+    `--permission-mode dontAsk` reste posé dans les deux cas parce qu'un
+    `-p` ne peut rien demander : sans lui, un outil d'écriture attendrait une
+    réponse que personne ne donnera.
     """
     argv = ["claude", "-p", "--output-format", "json"]
     if session_id:
         argv += ["--resume", str(session_id)]
         if fork:
             argv.append("--fork-session")
-    if read_only:
-        argv += ["--tools", READ_ONLY_TOOLS]
+    if agent:
+        argv += ["--agent", str(agent)]
+    demandes = ",".join(str(un) for un in outils if str(un).strip())
+    if demandes or read_only:
+        argv += ["--tools", demandes or READ_ONLY_TOOLS]
         argv += ["--permission-mode", "dontAsk"]
         if cwd:
             argv += ["--add-dir", str(cwd)]
@@ -356,19 +415,40 @@ class ClaudeCliBackend:
 
     `run` est le lanceur injecté — `(argv, stdin) -> (code, sortie, erreur)` ;
     laissé à `None`, il lance un vrai sous-processus.
+
+    `agent` et `outils` désignent un agent spécialisé et la liste d'outils
+    qu'il déclare. Les outils d'un agent REMPLACENT la lecture seule, et
+    plusieurs y nomment `Write` et `Edit` : l'appelant montre la liste avant
+    de lancer, parce qu'une écriture qui surprend est une écriture qu'on n'a
+    pas voulue.
     """
 
     keeps_history = True
 
-    def __init__(self, *, session_id=None, cwd=None, fork=True, run=None):
+    def __init__(
+        self,
+        *,
+        session_id=None,
+        cwd=None,
+        fork=True,
+        run=None,
+        agent="",
+        outils=(),
+    ):
         self.session_id = session_id
         self.cwd = cwd
         self.fork = fork
+        self.agent = agent
+        self.outils = tuple(outils or ())
         self._run = run
 
     def argv(self) -> list[str]:
         return claude_argv(
-            session_id=self.session_id, cwd=self.cwd, fork=self.fork
+            session_id=self.session_id,
+            cwd=self.cwd,
+            fork=self.fork,
+            agent=self.agent,
+            outils=self.outils,
         )
 
     def send(self, messages, *, on_chunk=None) -> tuple[str, dict]:

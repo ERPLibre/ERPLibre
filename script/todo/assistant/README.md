@@ -9,12 +9,12 @@ keeps the ones you chose, and holds the conversation.
 
 This is the one thing to understand before reading any of the code. Port 8080
 hosts llama.cpp, LocalAI **and** Open WebUI; port 5000 hosts
-text-generation-webui **and** TabbyAPI; `/v1/models` is served by eleven of
-the twelve families. A port therefore opens the question — it never answers
+text-generation-webui **and** TabbyAPI; `/v1/models` is served by twelve of
+the thirteen families. A port therefore opens the question — it never answers
 it.
 
-Identity is read in the **body** of a response, by a ladder of thirteen
-stages over eleven ports, first agreement wins. The order of that ladder
+Identity is read in the **body** of a response, by a ladder of fourteen
+stages over twelve ports, first agreement wins. The order of that ladder
 carries the whole reasoning. LocalAI re-serves Ollama's native API **in
 full** — `/api/tags`, `/api/show`, `/api/ps`, `/api/version` — down to the
 `Ollama is running` string on `/`. The endpoints that look like Ollama's
@@ -27,6 +27,136 @@ LocalAI stage further down names every LocalAI machine "ollama".
 ladder is verified without opening a socket. `collect()` is transport only,
 and it emits GET alone, with no body and no `Authorization` header: a scan
 must not be able to load a model or spend a token.
+
+## Announcing a model is not serving it
+
+A catalogue says what a server KNOWS how to run; it does not say what it
+currently holds in memory. A distributed engine announces hundreds of models
+and keeps one loaded at a time, so retaining the first of the catalogue opens
+a conversation whose every question returns a refusal — and the refusal only
+arrives AFTER the first question. `Fingerprint` therefore carries `models`
+and `served` apart, and an EMPTY `served` reads "the server does not say",
+never "nothing is servable": almost none expose an endpoint that answers the
+question, and taking their silence for a refusal would make every one of them
+unusable.
+
+What is loaded changes while you use it, so the question is asked again when
+a conversation opens, not once and for all. That reading knocks on one path,
+and only for the software that distinguishes the two. `/model` picks another
+model on the same server — `/model <text>` filters, because no list of
+several hundred is chosen by eye.
+
+## What a turn costs, and where that goes
+
+The answer arrives IN A STREAM, token by token, and that is what makes the
+first-token delay observable — the one measure that separates a slow server
+from a slow model, and that no after-the-fact timing recovers. A footer closes
+every answer with its duration, its token counts, its throughput and that
+delay.
+
+Two of those numbers come from HERE and two come from the SERVER, and the
+difference decides what may be shown. The duration and the first-token delay
+are read off this machine's clock and always exist. The token counts come from
+the server, which does not always send them: a stream carries them only when
+the option asked for them, and not every piece of software honours it. A
+missing count is UNKNOWN and shows as a dash, never as a zero — a zero would
+read as a server standing still just after it answered.
+
+`/tui` opens the live screen: the table of timings, the conversation itself —
+questions AND answers, the current one filling in as it arrives — and an input
+to ask the next. The generation runs on a THREAD, never on the event loop — a
+generation lasts minutes, and on the loop the whole screen freezes, keys
+included, with nothing to say it is alive. While an answer streams, the screen
+counts FRAGMENTS and characters, which it observes itself; the token count and
+the throughput appear only once the server has sent them.
+
+Its shortcuts avoid bare letters, and that is not a taste: the input keeps the
+focus for the screen's whole life, since that is where questions are typed, so
+a bare letter is written into the field instead of reaching its action — and
+the shortcut passes for dead with nothing to say so. `escape` goes back,
+`ctrl+t` folds the timings away, `f2` opens the settings, `ctrl+c` leaves.
+
+`f2` keeps what you choose in your own preferences, never in the repository:
+the theme among those Textual ships, a colour for questions and one for
+answers — a theme role or a typed hex, so a shade picked on a dark background
+does not vanish on a light one — which timing columns to show, the time of
+each turn, and whether the REASONING of a model that thinks is displayed.
+Those thinking tokens are counted and paid in the answer's token count while
+being invisible: a short answer can cost ten times its length, and the
+throughput then describes work nothing on screen accounts for.
+
+Each turn also appends one line to a monthly JSONL journal under `private/`:
+timings, counts, model served, tool, end reason. It carries NO text of the
+exchange — a short fingerprint of the question groups repeats instead, and
+`private/` becomes public along with a public fork.
+
+## Conversations are kept, and resumed
+
+The exchange itself is written AS IT HAPPENS, one turn per line, under
+`~/.erplibre/assistant/sessions/` — outside the repository, the directory in
+0700 and the files in 0600, because `~/.erplibre` is readable by every account
+on the machine and a conversation carries what was typed into it. Writing only
+on the way out writes almost never: a conversation rarely ends through the
+door — the terminal closes, the link drops, someone interrupts.
+
+A session's file name carries the DATE and a session identifier. The date so
+the list sorts and reads; the identifier so two sessions never land on each
+other — a name taken from the turn count alone, which is what the export used,
+silently overwrites any conversation of the same length.
+
+`Free question` therefore opens on the kept sessions, most recent first, each
+shown by its date, its model and the QUESTION that opened it: a date and a
+model do not tell two conversations of the same afternoon apart. Resuming
+loads the turns back into the history — the model receives, on the next turn,
+what it would have received without the interruption — and the rest is
+appended to the SAME file.
+
+A session may belong to a FOLDER, and the folder is nothing but a name its
+sessions claim: nothing declares it, nothing creates it, and the last session
+to leave makes it vanish — which spares a second list to keep in agreement
+with the first. Its defaults — server, model, tool — are those of its most
+recent session, so a working thread keeps its model without being told to, and
+nothing kept up to date can lie about it. Filing appends a line rather than
+rewriting the first one: remaking the file would lose the turns another writer
+is appending at that moment, and the last line wins.
+
+EVERY screen writes, because they all speak to the same conversation: the
+line-by-line loop, the timings screen and the full-screen form. One that did
+not would cut the thread exactly where the screen was changed, and nothing
+would say so. What is written is what ENTERS the history and nothing else — a
+failed turn leaves the question on disk but never returns it, and an answer
+cut before its first word is not an exchange.
+
+## An agent's declared tools are the ones it gets
+
+A specialised agent declares, in its header, the tools it is trusted with.
+Honouring that header is what makes it useful — and several of them name
+`Write`, `Edit` and `Bash`, so the call may write into the working tree, where
+every other path in this package imposes read-only by FLAGS.
+
+That right is therefore stated twice before anything runs: the menu label
+counts the agents that can write before you go in, and the agent's own sheet
+names its writing tools before the question is asked. The list of what counts
+as writing is CLOSED, so an unknown tool is not deemed harmless — it is merely
+unknown, which is why the full tool list is shown beside the warning.
+
+## A detached agent outlives the menu
+
+An agent run in the background survives the menu that started it, so it has no
+terminal left to write to: its output goes to a file, and what is known of it
+at launch goes to a second one beside it. Two files because the first is
+written by the PROCESS and the second by the launcher — mixing them would have
+two authors writing into a file one of them truncates on opening.
+
+The OUTPUT decides the state, the pid only guesses. A process identifier is
+recycled, so questioning the one of a finished agent may reach a live
+stranger; an output carrying the complete envelope therefore reads FINISHED
+whatever the pid, and the pid only tells "not finished yet" from "gone without
+returning anything". Gone is said as such rather than left running forever.
+
+The question goes on standard input here too: a command line is readable by
+every account on the machine, and that does not change because the call takes
+longer.
 
 ## An address never becomes prompt text
 
@@ -46,7 +176,7 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries five entries.
+`Assistant › LLM` carries seven entries.
 
 | Entry | What it does |
 |-------|--------------|
@@ -55,6 +185,21 @@ past.
 | Known servers | list, pick, add by hand, delete |
 | Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+| Models on a server | install or remove a model where the family allows it; present ones are picked by letter |
+| Install ERPLibre on a target | a local path or a host of `~/.ssh/config`, refused when anything is already there |
+
+**Apertus does not add a sixth.** Its entry sits one level up, in
+`Assistant › AI`, in the same **Direct model** section as `LLM servers`, and
+what it addresses is the reason. Everything in this package speaks to a server
+that is ALREADY listening; the Apertus entry installs the engine and the
+weights that make one listen — here, on a QEMU domain, or on a host of
+`~/.ssh/config` — then hands the result back through the ordinary path: probe,
+then keep, the same writer and the same section as any other server. The one
+thing it keeps of its own is an installation progress, and it keeps it in
+`~/.erplibre/apertus_install.json`, outside the repository, because a progress
+record names its machine. Which model, which engine, what it costs in memory,
+and what is not official in that path:
+[../../../doc/APERTUS.md](../../../doc/APERTUS.md).
 
 Entries are picked by number, the catalogue by LETTER. A second numbered list
 right after a numbered menu invites retyping a menu entry, and this repository
@@ -74,10 +219,23 @@ pasted line reading `0` would otherwise trigger a menu entry.
 
 ## Finding a server that is not here
 
-Four sources answer "where should I look": the loopback, the QEMU domains of
-this machine, the hosts of `~/.ssh/config`, and a swept `/24`. Two of them are
-INJECTED — enumerating libvirt domains and resolving an SSH alias already
-exist as methods of the CLI class, which this package may not import.
+Five sources answer "where should I look": the loopback, the QEMU domains of
+this machine, the hosts of `~/.ssh/config`, the tunnels those hosts declare,
+and a swept `/24`. Three of them are INJECTED — enumerating libvirt domains,
+resolving an SSH alias, and reading the redirections it declares already exist
+as methods of the CLI class, which this package may not import.
+
+A declared tunnel is a target, and it is HERE. A service behind a firewall
+that only passes the ssh port opens nothing visible from outside: it answers
+on the loopback, at the local end of a `LocalForward`. Probing only the remote
+host name of an alias therefore reports empty a host that serves models. The
+port cannot be guessed either — no list holds a number the operator chose — so
+it is read where ssh resolves it. Reading it requires the resolver that KEEPS
+repetitions: the one that keeps a single value per keyword suits
+`identityfile`, whose first entry is the one that counts, and it silently
+reduces three declared tunnels to one. A declared tunnel whose local port is
+closed is not an absent server but a tunnel to mount, and it is offered as
+such; nothing is launched without a yes.
 
 A server often lives on a network this machine does not CARRY, reachable
 through the gateway: when the CLI runs inside a virtual machine, the "local
@@ -156,13 +314,82 @@ result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
 
+## An installation already there is never overwritten
+
+The path is probed **before** anything is written, and **what was not read
+counts as OCCUPIED**. An unreachable host, a refused key and a broken link all
+return an empty output, and none of them proves the path is free; reading
+silence as permission destroys someone's work. The probe therefore prints a
+token last and unconditionally, and its absence is the refusal.
+
+A non-empty directory is enough to refuse, marker or not — what sits there
+belongs to someone, ERPLibre or not. Six markers name the occupant when it is
+an ERPLibre, because no single one is present in every case: a tree pushed by
+rsync has no repository, a fresh clone has no version files — they are
+generated by the install and do not follow the repository — and an interrupted
+install has neither.
+
+The two methods do not put down the same thing. The clone gives the target its
+own repository at the branch asked for; the copy gives it this tree. **The
+copy carries `.git`**, unlike `make ssh_push`: the install runs
+`update_manifest_local_dev.sh`, which serves the local repository over
+`git daemon` and resolves its revision with `git symbolic-ref`. A tree without
+a repository stops there.
+
+## What a family accepts is not what another accepts
+
+Thirteen families are recognised and only five install **and** remove over
+HTTP. Two install without removing — their weights live in a directory the
+server does not expose. Six do neither: their model is chosen when the process
+starts, or dropped in a directory by hand. The table in `models.py`
+carries that, and a family that offers nothing says so with its reason rather
+than being offered a button that answers 404.
+
+Installing is the **only** write in a package that is read-only everywhere
+else, and it is reached only by an explicit menu choice. None of its paths
+appears in the discovery plan, which stays GET-only — a sweep must be able
+neither to load a model nor to spend a token — and a test pins it.
+
+## What travels to a new installation, and what never does
+
+The question is asked once, and answering it granularly gives one number per
+item: one per known server, then the Claude Code commands, then the
+forbidden-names list.
+
+One line per server rather than one for the list: the hosting class is per
+server and changes meaning across machines — a `loopback` entry moved
+elsewhere addresses the target's own loopback.
+
+The **Claude Code commands are not copied**. They are put down from the
+checkout the target has just received, at the version it runs, and nothing of
+this machine's `~/.claude` leaves.
+
+The private configuration file is **never** copied whole: it also holds the
+vault password and the VPN profiles. The payload is built key by key, travels
+on **standard input** — an address on a command line is readable in a log and
+in the process table — and is written over there by `set_config_value`, the
+only authorised writer.
+
+The forbidden-names list is the one item that moves client names onto a new
+machine. It is never taken by "everything" and only travels when named. Its
+absence over there **refuses every send to a third party**, which is a
+configuration gap and not a failure.
+
 ## The machine's Claude Code sessions
 
 A session open elsewhere already holds a piece of work, and asking it one
-question without retyping that is worth the trip. It sits under `GPT code`
-rather than the LLM submenu: a session is a process addressed by identifier, a
-server is a host addressed by port, and mixing the two in one numbered list
-would make two mental models share the same digits.
+question without retyping that is worth the trip. It sits under
+`Assistant › AI`, in the **Agents** section and not among the servers: a
+session is a process addressed by identifier, a server is a host addressed by
+port, and putting the two in one section would make two mental models share
+the same digits.
+
+That screen lists the harnesses this repository knows by name, and it never
+hides one. A harness whose binary is missing keeps its number, greyed, with
+what is missing said on the same line — and the reason distinguishes two
+things that call for opposite gestures: a binary to install, or an adapter
+nobody has measured yet. Only `claude` is measured; declaring an action for
+the others would offer what fails.
 
 Two hazards had to be measured before offering it. A pid does not prove a
 session lives — pids are recycled, so liveness needs the pid AND the process's
@@ -179,6 +406,263 @@ working directory is read there rather than derived from the containing
 directory's name, because that transformation turns separators, dots and
 underscores all into dashes and so cannot be inverted.
 
+## What an agent costs, and what it carries
+
+Three sources answer that, and they are not worth the same. The screen says
+which one each figure comes from, because a table that mixes a measurement
+with an approximation makes the wrong component look guilty.
+
+**The disk already knows almost everything.** Every transcript carries a
+`cost-state` line — cost in dollars, wall-clock, API and tool durations, lines
+of code — and every assistant message carries its own token `usage`. Nothing
+to install, nothing to switch on, no trace left behind. But those cost lines
+are NOT monotonic: a compaction resets the counter, and one transcript carries
+several segments whose fields do not compose. The last one is kept, and the
+screen says it is a segment.
+
+**What the disk does not know** is WHICH tool, how often, and for how long
+each. `totalToolDuration` is an aggregate: it says nineteen minutes without
+ever saying that one tool takes three quarters of it. A hook set says it, one
+line per call — and no hook event carries a duration, so two events are
+written, before and after, and their call identifier stitches them. A call
+whose after is missing stays UNPAIRED rather than being given an invented
+duration.
+
+**A hook must never fail the call it observes.** A non-zero exit on
+`PreToolUse` BLOCKS the tool call, so the script is wrapped end to end and
+exits zero whatever happens. It imports nothing from the repository either: it
+runs hundreds of times per session, in a fresh interpreter each time.
+
+Neither the command nor the tool's response is written. The log counts calls;
+it does not keep what they say. That holds even where the display boundary was
+lifted — what is never written does not have to be protected later.
+
+## What a session carries
+
+A delta is not a state, and that is the trap of this whole area. Several
+records are re-emitted mid-session and carry only what changed: reading the
+last occurrence gives one instruction file where seven are loaded, and one
+skill where thirty-nine are. Each is corrected according to its shape —
+instructions accumulate by path, a skill listing keeps its initial entry — and
+the one whose semantics cannot be determined is never totalled at all.
+
+The package's old rule, "structure yes, message content no", no longer
+suffices: a transcript now carries the full text of the instruction files, of
+the skills, the system prompt and a hook's raw output, none of which is a
+message. The operative form: **a path, a name, a count, a size or a duration;
+never a field whose value is unbounded free text.**
+
+An environment is read but not copied out. The kernel already reserves
+`/proc/<pid>/environ` to the owner of the process, and a screen that prints a
+value in clear breaks a boundary nobody had to write. A value is shown only if
+its name is on a closed list AND its value has that name's expected shape; the
+rest shows its shape. The pattern-based redaction used elsewhere in the
+repository does not fit here — it only recognises `NAME=value` glued together,
+and in an aligned two-column table it lets almost everything through.
+
+## A second harness answers a different question
+
+Open Code sits beside Claude Code in the menu, and the two look alike enough to
+mislead. Three differences decide the shape of its screen, and each was
+measured against the tool rather than assumed.
+
+**Its listing is scoped to the CURRENT DIRECTORY.** `claude agents` answers
+"what runs on this machine"; `opencode session list` answers "what happened
+HERE", and no flag widens it. The screen therefore states its scope and prints
+the directory before listing anything — otherwise it would announce "no
+session" to someone who has twenty in the folder next door.
+
+**A session's title is GENERATED by the model** from the conversation. It has
+the shape of a structural field and is not one, so it never leaves the
+adapter — the same rule that keeps a Claude Code session's title off screen.
+What situates a session without quoting it is its identifier and its date; the
+directory column is dropped, since it repeats the one the header just printed.
+
+**Two sources answer, and they do not weigh the same.** The SQLite base the
+tool keeps carries everything — cost, tokens, cache, lines touched, model,
+agent, dates — in a read of under a millisecond, over EVERY session. The two
+CLI commands take close to two seconds for less, and one of them truncates. So
+the base is read first and the CLI is the fallback, its schema being a third
+party's and promised stable by nobody. The screen names which one answered,
+because only the base can leave the current directory.
+
+**That same file holds secrets, and that is what bounds the read.** It keeps
+the account's access and refresh tokens, its address, and the prompts typed by
+the user. One table is therefore named, its columns are listed one by one, the
+handle is read-only, and a test refuses any other table or any authenticating
+column. `immutable=1` is refused too: it ignores the write-ahead log, which
+runs to megabytes here, and returns ZERO rows on a populated base — a wrong
+answer rather than an error, which is the worse of the two.
+
+**Only reading is declared.** `opencode run` writes into the working tree
+without asking — a three-word instruction is enough to have a file created —
+so a menu entry called "free question" would be a trap. It stays at the CLI,
+where one goes on purpose, as do `delete`, `uninstall` and `upgrade`.
+
+Two output shapes trap the decoding, and the screen names the culprit rather
+than blaming itself. An EMPTY listing is not `[]`, so decoding it raises; and
+`export` truncates its own output past roughly 60 kB, exiting before its
+buffer is flushed — three runs of the same export return three sizes, all cut
+mid-string. The screen says Open Code cut its output, which is what a reader
+needs to stop looking for a defect here.
+
+The live telemetry screen shows both harnesses in one table, each row marked by
+its harness icon. What Open Code does not measure — turns, context and its
+slope, API and tool durations — shows a DASH and never a zero: a zero column
+reads "measured, and nil", which is false and stops the reader looking for what
+the other harness does give. The summary line keeps the two apart rather than
+folding them into one total, Claude Code's cost being read from a cost-state
+that a compaction resets while Open Code's is a stable database field.
+
+**Time spent is not time elapsed, and the table shows the first.** A session's
+clock counts everything that passed, including the hours nobody was watching —
+it reports hundreds of hours as soon as a session stays open for days. The
+attention column sums the gaps between hook events instead, each gap capped by
+an inactivity threshold this package chooses and names. Nothing is collected
+for it: the hook log already carries the instant of every event. Without hooks
+installed the column shows a dash, never a zero, a zero saying "this session
+did no work" where the truth is "nothing is measured".
+
+**The time series was on disk all along.** Every assistant message carries its
+instant and its model — present on all ten thousand sampled. Tokens per day and
+per model therefore come from summing messages, not from reading a
+`cost-state`: no compaction resets them, no segment is lost, and they add up
+across sessions without the reserve that weighs on cost. The day is read in UTC
+as the transcript writes it; converting to local time would move messages from
+one day to another depending on who is looking.
+
+**A tool call ends in one of four ways, and the screen tells them apart.** It
+finished, it failed, it was interrupted, or nothing ever closed it. One count
+for all four gave a figure no gesture answers: a failure is corrected, an
+interruption is relaunched, and an unclosed call says nothing at all. The
+`PostToolUseFailure` event carries the difference in `is_interrupt`.
+
+**The duration is the one the tool measured, not the gap between two
+instants.** That gap INCLUDES the time spent in front of a permission prompt,
+so a call approved after four minutes read as a four-minute call and inflated
+the per-tool median. The closing event carries `duration_ms`; the gap remains
+only as a fallback for a binary that does not. Both fields are integers, and a
+string-only filter dropped them silently — the same defect the neighbouring
+module already paid for on a hook's exit code.
+
+**The bottom panel switches rather than stacks.** A terminal has no room for
+three tables, and stacking them would leave four lines each. The `v` key
+cycles: per tool, which answers "which one is slow", and the stream of the
+latest calls, which answers "why has it been stuck for two minutes". Neither
+shows any content — a tool name, a duration, an ending. The outcome column
+stays empty for a finished call, the ordinary case that has nothing to report,
+and the three bad endings name themselves in the singular: a row describes one
+call, where the per-tool table counts many.
+
+**The screen acts, and says what it may not do.** A third panel lists the
+detached agents running right now — live AND detached, because the fleet joins
+two sources: the registry says what RUNS, a sweep of the transcripts says what
+RESUMES, and a dormant session comes out of it with neither kind nor process.
+Offering it would propose `stop` on a file, and the tool answers "No job
+matching" with a NULL exit code, so nothing would look like it failed.
+
+`n` starts an agent, its prompt read on standard input and never in the argv,
+where `/proc/<pid>/cmdline` exposes it to every account. `s` stops the
+highlighted one — its conversation is kept, so nothing to confirm. `a` attaches
+and therefore CLOSES the screen: `claude attach` takes the terminal and cannot
+share it. A key pressed in another panel does nothing, rather than acting on a
+highlighted row nobody can see.
+
+**The stream shows the command, and nothing was collected for it.** "Bash ·
+1.2 s · failure" says that something failed without saying what. The hook log
+keeps `tool_use_id` and nothing else of the call — no command, no answer —
+because writing `tool_input` there would put every shell command on disk for
+fourteen days, which is keeping and not showing. The command is read back from
+the TRANSCRIPT, where Claude Code had already written it, at the moment
+someone asks. Three hundredths of a second per lookup in thirty megabytes: the
+substring pre-filter does the work.
+
+An added trap, and it hides a third of the calls: a tool launched by a
+SUBAGENT is written in the subagent's own file, under the session directory,
+while the hook announces it under the PARENT session's identifier. Both places
+are searched, the main transcript first.
+
+A detail pane opens on the highlighted call and shows the command with its
+output. It is the only pane of the package that displays content, so it says
+so, in the first line rather than the last — a long output would push the
+warning off screen.
+
+**The tables fit the terminal, because they were measured against it.** The
+columns had piled up one per feature without anyone checking the width: twelve
+of them wanted 124 characters, and the stream 95 of which 55 for the command
+alone. An eighty-column terminal — the commonest default — showed neither.
+Nothing was broken, Textual scrolls; but a dashboard you have to scroll no
+longer reads at a glance.
+
+Two fixes, both measured. The command column takes WHAT IS LEFT rather than a
+fixed sixty, so it neither overflows a narrow terminal nor wastes a wide one.
+And the session table shows only the columns that fit, in order of importance
+— which session, which project, what it costs, how full its context is —
+rebuilding them only when the count changes, since redoing them every two
+seconds would reset the cursor under the reader's fingers. A project name is
+cut on the LEFT: a family of repositories shares its prefix and differs by
+what follows.
+
+**Two gestures cost something, and the gap between their guards is the point.**
+`l` restarts the highlighted agent on the current binary — the work in progress
+is cut, so a yes is asked, but the conversation survives and that is what sets
+it apart. `x` deletes the session AND its worktree, and nothing brings it back:
+the whole identifier is retyped, the long one and not the eight characters. A
+tap on "y" is given by reflex; copying thirty-six characters makes you look at
+what you are destroying. Both act with the SHORT identifier, the only one the
+subcommands accept — the retyping is a guard, not an argument.
+
+**An agent's raw output goes to the terminal, because it is not text.**
+`claude logs` prints a SCREEN and not a log: hundreds of escape sequences,
+carriage returns, no line feed at all, and absolute cursor positions. Stripping
+the codes yields one unreadable line, so no table panel can render it. `j`
+suspends the application for as long as the tool paints, then a line asks for
+Enter to come back. What appears there is content — the conversation, the
+commands, what was read — and that same line says so. Nothing is kept: the
+output is never captured, so there is not even a copy that could be written.
+
+**A footer lies by omission, so one key leads to all the others.** The footer
+fits on one line and truncates on the right: on an eighty-column terminal —
+the width of a window nobody widened — four keys out of eleven fell off,
+including the two that destroy. Nothing on screen said they existed. `h` opens
+the whole list in sentences, and a number there acts on the highlighted row for
+anyone who would rather not learn them. The footer, the panel and the numbers
+read the SAME table, because it was the copy that left four keys mentioned
+nowhere; a test keeps `h` inside eighty columns whatever is added later.
+
+The panel is MODAL, for the same reason it exists. Stacked under the tables it
+needed six more lines than a twenty-four-row terminal offers, so its last three
+entries — including the two that destroy — fell below the fold with nothing to
+signal it. What it hides is derived from what is on screen rather than listed,
+and a test keeps its sixteen lines inside eighty by twenty-four.
+
+**The screen reads on a thread, and the figure that decided it is a tail.** A
+tick folds nineteen transcripts, the hook log, the Open Code database and the
+fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which
+no keystroke was seen. The average was not what settled it — listing agents is
+a subprocess with a fifteen-second timeout, and a silent tool froze the screen
+for that long, "q" included. The reading crosses the thread as a plain value
+sharing nothing; only the event loop touches a widget. A generation number
+discards the reading of a thread still working on the world before "r", and a
+tick landing while one is in flight is SKIPPED rather than queued — a queue on
+a slow machine grows without any tick ever showing the state of the moment.
+Measured after: 1.4 ms worst on the loop.
+
+**The stream's column shows what situates, never what was said.** A call
+carries a shell command, a path, a URL — or free text: the prompt given to a
+subagent, a search pattern. The first three fit a table row without revealing
+anything of the conversation; the last does not, and a `Task` call, having no
+command, used to spread its whole prompt across a column that declares it
+shows no content. It now says "content", and the detail pane — which warns —
+is where that is read. A URL loses what authenticates it, here as in the MCP
+module: the boundary that was relaxed covers CONTENT, never secrets.
+
+**Everything that comes from a cost-state falls silent when none was read.**
+Nine of the eighteen transcripts on an ordinary machine carry none — an
+interrupted session, an older version, a fresh one. Cost already said so with
+a dash; the durations and the lines touched, which come from the same record,
+were showing "0 ms" and "+0/−0", which reads "measured, and nil".
+
 ## The modules
 
 | File | What it owns |
@@ -190,9 +674,29 @@ underscores all into dashes and so cannot be inverted.
 | `backends.py` | speaking to one destination: an HTTP server, or the `claude` CLI |
 | `chat.py` | the turns of a conversation, and the commands that drive it |
 | `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
+| `mesure.py` | what a turn cost, and the line it writes under `private/` |
+| `perf_tui.py` | the live screen: the turns table, the stream, the input |
+| `sessions.py` | conversations kept under `~/.erplibre`, and resumed |
+| `agents/specialistes.py` | the specialised agents declared here, and what each is trusted with |
+| `agents/fond.py` | agents run detached: what is running, what came back, what is gone |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
+| `models.py` | installing and removing a model: the only write in the package |
+| `deploy.py` | where an ERPLibre goes, and what refuses the path |
+| `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
+| `harness/claude.py` | the argv of a detached agent's five subcommands, and what each one costs |
+| `harness/opencode.py` | Open Code's sessions and their cost, read only, and the three shapes its output takes |
+| `agents/detail.py` | a tool call's command and answer, read back from the transcript and never collected |
+| `agents/statistiques.py` | what a transcript says of a session: tokens, cost, durations, context |
+| `agents/tui.py` | the live screen, refreshed without re-reading what it already folded |
+| `agents/journal.py` | the tool-call log: one line per event, and their pairing into durations |
+| `agents/hooks/evenement.py` | the hook that writes an event, and must never fail the call |
+| `agents/pose.py` | installing and removing the hooks, at either of the two places |
+| `agents/disque.py` | what Claude Code occupies, per directory and per session |
+| `agents/mcp.py` | the MCP servers: what is declared here, and what must be asked for |
+| `agents/contexte.py` | what a session loaded: model, machine, instructions, skills |
+| `agents/environnement.py` | a process's environment, read without copying it out |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and

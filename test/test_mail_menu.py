@@ -602,7 +602,7 @@ class TestTodoWiring(unittest.TestCase):
     def test_one_dispatches_to_assistant_question_only(self):
         """`hasattr` seul ne verrait pas deux branches de menu échangées —
         on pilote `click.prompt` et on vérifie que `[1]` appelle
-        `prompt_assistant_llm`, PAS `prompt_execute_mail`.
+        `prompt_assistant_ia`, PAS `prompt_execute_mail`.
 
         `_menu_header()` enregistre aussi une télémétrie best-effort dans
         `~/.erplibre` : on la neutralise, sinon ce test écrirait pour de
@@ -614,7 +614,7 @@ class TestTodoWiring(unittest.TestCase):
 
         todo = TODO()
         with (
-            patch.object(TODO, "prompt_assistant_llm") as mock_question,
+            patch.object(TODO, "prompt_assistant_ia") as mock_question,
             patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
             patch("click.prompt", side_effect=["1", "0"]),
             patch("script.todo.todo_telemetry.record"),
@@ -626,14 +626,14 @@ class TestTodoWiring(unittest.TestCase):
 
     def test_two_dispatches_to_mail_only(self):
         """Symétrique : `[2]` appelle `prompt_execute_mail`, PAS
-        `prompt_assistant_llm`."""
+        `prompt_assistant_ia`."""
         from unittest.mock import patch
 
         from script.todo.todo import TODO
 
         todo = TODO()
         with (
-            patch.object(TODO, "prompt_assistant_llm") as mock_question,
+            patch.object(TODO, "prompt_assistant_ia") as mock_question,
             patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
             patch("script.todo.todo_telemetry.record"),
             patch("click.prompt", side_effect=["2", "0"]),
@@ -656,9 +656,10 @@ class TestRetryPassword(unittest.TestCase):
 
     def test_a_timeout_does_not_blame_the_password(self):
         """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
+
         Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        d'application pour un problème qui est ailleurs. Un délai de lecture
+        dépassé est la forme la plus courante de ce silence."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",

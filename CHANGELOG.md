@@ -73,6 +73,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make test_unit_changed` (`--changed[=REF]`) runs only the test files a change can reach, from `HEAD` by default, untracked files included: the dependencies are read in the code — imports, and the files a test names, such as the shell script it runs. A module that `TODO` loads still reaches more than half the suite, which does import it
 - `make test_unit_failed` (`--failed`) reruns only the test files that failed or timed out last time; a file leaves the list once it passes
 
+- `Assistant › LLM › Deployment` — install or remove a model on a known server, where its family allows it. Thirteen families are described and only five install and remove over HTTP; two install without removing, and six do neither because their model is chosen when the process starts. A family that offers nothing says what it does instead of offering a button that answers 404. Posing is the only write in a package read-only everywhere else, and none of its paths is reachable from a scan
+- `Assistant › LLM › Deployment` — put an ERPLibre on a local path or on a host of `~/.ssh/config`, by cloning at a chosen branch or by copying this checkout. A path that already carries anything is refused by name and nothing is touched: six markers are read, because a tree pushed by rsync has no repository and a fresh clone has no version files, and a probe that read nothing counts as occupied. The install then offers to carry the LLM configuration over, everything or one number per item; the known servers travel on standard input so no address reaches a command line, and the Claude Code commands are posed from the target's own checkout
+
 ## Changed
 
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers

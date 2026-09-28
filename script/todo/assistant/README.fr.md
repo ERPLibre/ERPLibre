@@ -9,11 +9,11 @@ savoir faire, garde ceux qu'on a choisis, et tient la conversation.
 
 C'est la seule chose à comprendre avant de lire une ligne du code. Le port
 8080 héberge llama.cpp, LocalAI **et** Open WebUI ; le port 5000 héberge
-text-generation-webui **et** TabbyAPI ; `/v1/models` est servi par onze des
-douze familles. Un port ouvre donc la question — il n'y répond jamais.
+text-generation-webui **et** TabbyAPI ; `/v1/models` est servi par douze des
+treize familles. Un port ouvre donc la question — il n'y répond jamais.
 
-L'identité se lit dans le **corps** d'une réponse, par une échelle de treize
-étages sur onze ports, arrêt au premier accord. L'ordre de cette échelle
+L'identité se lit dans le **corps** d'une réponse, par une échelle de quatorze
+étages sur douze ports, arrêt au premier accord. L'ordre de cette échelle
 porte tout le raisonnement. LocalAI réémet l'API native d'Ollama **en
 entier** — `/api/tags`, `/api/show`, `/api/ps`, `/api/version` — jusqu'à la
 chaîne `Ollama is running` sur `/`. Les points de terminaison qui ressemblent
@@ -28,6 +28,145 @@ de l'échelle se vérifie sans ouvrir une socket. `collect()` ne fait que le
 transport, et n'émet que des GET, sans corps et sans en-tête
 `Authorization` : un balayage ne doit pouvoir ni charger un modèle, ni
 dépenser un jeton.
+
+## Annoncer un modèle n'est pas le servir
+
+Un catalogue dit ce qu'un serveur SAIT faire tourner ; il ne dit pas ce qu'il
+tient en mémoire. Un moteur réparti annonce des centaines de modèles et n'en
+garde qu'un chargé à la fois, donc retenir le premier du catalogue ouvre une
+conversation dont chaque question rend un refus — et le refus n'arrive
+qu'APRÈS la première question. `Fingerprint` porte donc `models` et `served`
+séparément, et un `served` VIDE se lit « le serveur ne le dit pas », jamais
+« rien n'est servable » : presque aucun n'expose de point de terminaison qui
+réponde à la question, et prendre leur silence pour un refus les rendrait
+tous inutilisables.
+
+Ce qui est chargé change pendant qu'on s'en sert, donc la question se repose
+à l'ouverture d'une conversation et non une fois pour toutes. Cette lecture
+frappe UN chemin, et seulement chez le logiciel qui distingue les deux.
+`/model` choisit un autre modèle sur le même serveur — `/model <texte>`
+filtre, parce qu'une liste de plusieurs centaines ne se choisit pas à l'œil.
+
+## Ce qu'un tour coûte, et où cela va
+
+La réponse arrive EN FLUX, jeton par jeton, et c'est ce qui rend le délai du
+premier jeton observable — la seule mesure qui sépare un serveur lent d'un
+modèle lent, et qu'aucun relevé pris après coup ne retrouve. Un pied de ligne
+clôt chaque réponse avec sa durée, ses comptes de jetons, son débit et ce
+délai.
+
+Deux de ces nombres viennent d'ICI et deux viennent du SERVEUR, et cette
+différence décide de ce qu'on a le droit d'afficher. La durée et le délai du
+premier jeton se lisent à l'horloge de cette machine et existent toujours. Les
+comptes de jetons viennent du serveur, qui ne les envoie pas toujours : un flux
+ne les porte que si l'option les a demandés, et tous les logiciels ne
+l'honorent pas. Un compte absent est INCONNU et s'affiche en tiret, jamais en
+zéro — un zéro se lirait comme un serveur à l'arrêt juste après qu'il a
+répondu.
+
+`/tui` ouvre l'écran vivant : le tableau des durées, la conversation
+elle-même — les questions ET les réponses, celle du moment se remplissant à
+mesure — et une saisie pour poser la suivante. La génération tourne sur un
+FIL, jamais sur la boucle d'événements — une génération dure des minutes, et
+sur la boucle l'écran gèle entier, touches comprises, sans que rien ne dise
+qu'il est vivant. Pendant qu'une réponse arrive, l'écran compte les FRAGMENTS
+et les caractères, qu'il observe lui-même ; le compte de jetons et le débit ne
+paraissent qu'une fois que le serveur les a envoyés.
+
+Ses raccourcis évitent les lettres nues, et ce n'est pas un goût : la saisie
+garde le focus pendant toute la vie de l'écran, puisque c'est de là qu'on pose
+ses questions, donc une lettre nue s'écrit dans le champ au lieu d'atteindre
+son action — et le raccourci passe pour mort sans que rien ne le signale.
+`escape` rend la main, `ctrl+t` replie les durées, `f2` ouvre les réglages,
+`ctrl+c` sort.
+
+`f2` garde ce qu'on choisit dans les préférences de l'utilisateur, jamais dans
+le dépôt : le thème parmi ceux que livre Textual, une couleur pour les
+questions et une pour les réponses — un rôle du thème ou un hexadécimal
+saisi, pour qu'une teinte choisie sur fond sombre ne disparaisse pas sur fond
+clair — les colonnes de durées à montrer, l'heure de chaque tour, et
+l'affichage du RAISONNEMENT d'un modèle qui réfléchit. Ces jetons-là sont
+comptés et payés dans les jetons de réponse tout en restant invisibles : une
+réponse courte peut coûter dix fois sa longueur, et le débit décrit alors un
+travail que rien à l'écran ne justifie.
+
+Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
+`private/` : durées, comptes, modèle servi, outil, raison de fin. Il ne porte
+AUCUN texte d'échange — une empreinte courte de la question y regroupe les
+répétitions — et `private/` devient public avec un fork public.
+
+## Les conversations sont gardées, et se reprennent
+
+L'échange lui-même s'écrit AU FIL, un tour par ligne, sous
+`~/.erplibre/assistant/sessions/` — hors du dépôt, le dossier en 0700 et les
+fichiers en 0600, parce que `~/.erplibre` est lisible par tous les comptes de
+la machine et qu'une conversation porte ce qu'on y a tapé. N'écrire qu'à la
+sortie n'écrit presque jamais : une conversation se termine rarement par la
+porte — on ferme le terminal, on perd la connexion, on interrompt.
+
+Le nom d'une séance porte la DATE et un identifiant. La date pour que la liste
+se trie et se lise ; l'identifiant pour que deux séances ne se marchent jamais
+dessus — un nom tiré du seul nombre de tours, ce que faisait l'export, écrase
+en silence toute conversation de la même longueur.
+
+« Question libre » ouvre donc sur les séances gardées, la plus récente
+d'abord, chacune montrée par sa date, son modèle et la QUESTION qui l'a
+ouverte : une date et un modèle ne distinguent pas deux conversations du même
+après-midi. Reprendre recharge les tours dans l'historique — le modèle reçoit
+au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
+s'ajoute au MÊME fichier.
+
+Une séance peut appartenir à un DOSSIER, et le dossier n'est rien qu'un nom
+dont ses séances se réclament : rien ne le déclare, rien ne le crée, et le
+départ de la dernière le fait disparaître — ce qui évite une seconde liste à
+tenir d'accord avec la première. Ses défauts — serveur, modèle, outil — sont
+ceux de sa séance la plus récente, si bien qu'un fil de travail garde son
+modèle sans qu'on le lui dise, et que rien qu'on tienne à jour ne peut mentir
+à son sujet. Ranger AJOUTE une ligne au lieu de réécrire la première : refaire
+le fichier perdrait les tours qu'un autre écrivain y ajoute au même moment, et
+la dernière ligne fait foi.
+
+TOUS les écrans écrivent, parce qu'ils parlent à la même conversation : la
+boucle en ligne, l'écran des durées et le formulaire plein écran. Celui qui
+ne le ferait pas couperait le fil à l'endroit exact où l'on a changé d'écran,
+sans que rien ne le dise. Ce qui s'écrit est ce qui ENTRE dans l'historique
+et rien d'autre : un tour en panne laisse sa question sur le disque sans
+jamais la rendre, et une réponse coupée avant son premier mot n'est pas un
+échange.
+
+## Les outils qu'un agent déclare sont ceux qu'il reçoit
+
+Un agent spécialisé déclare dans son en-tête les outils qu'on lui confie.
+Honorer cet en-tête est ce qui le rend utile — et plusieurs y nomment
+`Write`, `Edit` et `Bash`, donc l'appel peut écrire dans l'arbre de travail,
+là où tout autre chemin de ce paquet impose la lecture seule par DRAPEAUX.
+
+Ce droit se dit donc deux fois avant que rien ne parte : l'étiquette du menu
+compte les agents qui écrivent avant qu'on entre, et la fiche de l'agent nomme
+ses outils d'écriture avant qu'on pose la question. La liste de ce qui compte
+comme une écriture est FERMÉE, si bien qu'un outil inconnu n'est pas réputé
+inoffensif — il est seulement inconnu, et c'est pourquoi la liste complète des
+outils paraît à côté de l'avertissement.
+
+## Un agent détaché survit au menu
+
+Un agent lancé en arrière-plan survit au menu qui l'a lancé : il n'a donc plus
+de terminal où écrire, et sa sortie va dans un fichier tandis que ce qu'on
+sait de lui au départ va dans un second, à côté. Deux fichiers parce que le
+premier est écrit par le PROCESSUS et le second par le lanceur — les mêler
+ferait écrire deux auteurs dans un fichier que l'un des deux tronque à
+l'ouverture.
+
+La SORTIE décide de l'état, le pid ne fait que deviner. Un identifiant de
+processus se recycle, si bien qu'interroger celui d'un agent fini peut
+désigner un inconnu bien vivant ; une sortie qui porte l'enveloppe complète
+dit donc FINI quel que soit le pid, et le pid ne sert qu'à distinguer « pas
+encore fini » de « parti sans rien rendre ». Ce dernier se dit ainsi plutôt
+que de rester « en cours » pour toujours.
+
+La question part sur l'entrée standard ici aussi : une ligne de commande se
+lit par tout compte de la machine, et cela ne change pas parce que l'appel
+dure plus longtemps.
 
 ## Une adresse ne devient jamais du texte de prompt
 
@@ -48,7 +187,7 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte cinq entrées.
+`Assistant › LLM` porte sept entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
@@ -57,6 +196,21 @@ position de passer.
 | Serveurs connus | lister, choisir, ajouter à la main, supprimer |
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
+| Modèles sur un serveur | poser ou retirer un modèle là où la famille le permet ; les présents se choisissent par lettre |
+| Installer ERPLibre sur une cible | un chemin local ou un hôte de `~/.ssh/config`, refusé quand quoi que ce soit est déjà là |
+
+**Apertus n'en ajoute pas une sixième.** Son entrée est un cran au-dessus,
+dans `Assistant › IA`, dans la même section **Modèle direct** que `Serveurs
+LLM`, et ce qu'elle adresse en est la raison. Tout dans ce paquet parle à un
+serveur qui écoute DÉJÀ ; l'entrée Apertus installe le moteur et les poids qui
+font qu'un serveur écoute — ici, sur un domaine QEMU, ou sur un hôte de
+`~/.ssh/config` — puis rend le résultat par le chemin ordinaire : sonder, puis
+retenir, le même écrivain et la même section que n'importe quel autre serveur.
+La seule chose qu'elle garde en propre est une progression d'installation, et
+elle la garde dans `~/.erplibre/apertus_install.json`, hors du dépôt, parce
+qu'une progression nomme sa machine. Quel modèle, quel moteur, ce que ça coûte
+en mémoire, et ce qui n'est pas officiel dans ce chemin :
+[../../../doc/APERTUS.fr.md](../../../doc/APERTUS.fr.md).
 
 Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
 liste numérotée juste après un menu numéroté invite à retaper une entrée de
@@ -77,10 +231,11 @@ plusieurs lignes devient autant de tours, et une ligne collée valant `0`
 déclencherait sinon une entrée de menu.
 
 La découverte d'hôtes au-delà de la boucle locale — domaines QEMU,
-`~/.ssh/config`, balayage du `/24` local — repose sur quatre sources, dont
-deux sont INJECTÉES : l'énumération des domaines libvirt et la résolution d'un
-alias SSH existent déjà comme méthodes de la classe du CLI, que ce paquet n'a
-pas le droit d'importer.
+`~/.ssh/config`, tunnels déclarés, balayage du `/24` local — repose sur cinq
+sources, dont trois sont INJECTÉES : l'énumération des domaines libvirt, la
+résolution d'un alias SSH et la lecture de ses redirections existent déjà
+comme méthodes de la classe du CLI, que ce paquet n'a pas le droit
+d'importer.
 
 Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
 par la passerelle : quand le CLI tourne dans une machine virtuelle, le
@@ -96,6 +251,43 @@ ces fils attendent le réseau. Et le délai de connexion est le seul réglage
 d'ici qui fabrique des FAUX NÉGATIFS — un hôte joignable en une milliseconde
 au repos se manque à cinq centièmes sous mille connexions simultanées, donc il
 ne se déduit pas de la latence mesurée.
+
+## Trouver un serveur qui n'est pas là
+
+Cinq sources répondent à « où chercher » : la boucle locale, les domaines
+QEMU de cette machine, les hôtes de `~/.ssh/config`, les tunnels que ces
+hôtes déclarent, et un `/24` balayé. Trois d'entre elles sont INJECTÉES —
+énumérer les domaines libvirt, résoudre un alias SSH et lire les
+redirections qu'il déclare sont déjà des méthodes de la classe du CLI, que
+ce paquet n'a pas le droit d'importer.
+
+Un tunnel déclaré est une cible, et elle est ICI. Un service derrière un
+pare-feu qui ne laisse passer que le port de ssh n'ouvre rien qui se voie du
+dehors : il répond sur la boucle locale, au bout d'un `LocalForward`. Sonder
+le seul nom d'hôte d'un alias annonce donc vide un hôte qui sert des modèles.
+Le port ne se devine pas davantage — aucune liste ne contient un numéro que
+l'utilisateur a choisi — d'où sa lecture là où ssh le résout. Cette lecture
+exige le résolveur qui GARDE les répétitions : celui qui ne garde qu'une
+valeur par mot-clé convient à `identityfile`, dont la première entrée est
+celle qui compte, et il réduit en silence trois tunnels déclarés à un seul.
+Un tunnel déclaré dont le port local est fermé n'est pas une absence de
+serveur mais un tunnel à monter, et il est proposé comme tel ; rien n'est
+lancé sans un oui.
+
+Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
+par la passerelle : quand le CLI tourne dans une machine virtuelle, le
+« réseau local » qu'il voit est celui de l'hyperviseur. Deux sources y
+répondent — un CIDR saisi, et les réseaux lus en SSH sur une autre machine
+puis balayés d'ici. La table de voisinage, elle, ne le peut pas : elle est
+link-local, donc un hôte routé n'y paraît jamais.
+
+Plus large qu'un `/24` est refusé, et le refus a lieu AVANT l'énumération —
+mesurer un `/8` en le matérialisant coûterait seize millions d'adresses. La
+réserve de fils se dimensionne au NOMBRE DE VAGUES et jamais au nombre de
+cœurs : ces fils attendent le réseau. Et le délai de connexion est le seul
+réglage d'ici qui fabrique des FAUX NÉGATIFS — un hôte joignable en une
+milliseconde au repos se manque à cinq centièmes sous mille connexions
+simultanées, donc il ne se déduit pas d'une latence mesurée.
 
 ## Le catalogue d'outils gpt
 
@@ -161,13 +353,83 @@ vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répond
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
 
+## Une installation déjà là n'est jamais écrasée
+
+Le chemin est sondé **avant** toute écriture, et **ce qui n'a pas été lu compte
+pour OCCUPÉ**. Un hôte injoignable, une clé refusée et un lien coupé rendent
+tous une sortie vide, et aucun ne prouve que le chemin est libre ; lire le
+silence comme une autorisation détruit le travail de quelqu'un. La sonde
+imprime donc un jeton en dernier et sans condition, et son absence est le
+refus.
+
+Un répertoire non vide suffit à refuser, marqueur ou non — ce qui s'y trouve
+appartient à quelqu'un, ERPLibre ou non. Six marqueurs nomment l'occupant
+quand c'est un ERPLibre, car aucun n'est présent dans tous les cas : un arbre
+poussé par rsync n'a pas de dépôt, un clone frais n'a pas les fichiers de
+version — ils se génèrent à l'installation et ne suivent pas le dépôt —, et
+une pose interrompue n'a ni l'un ni l'autre.
+
+Les deux méthodes ne posent pas la même chose. Le clone donne à la cible son
+propre dépôt, à la branche demandée ; la copie lui donne cet arbre-ci. **La
+copie emporte `.git`**, contrairement à `make ssh_push` : l'installation lance
+`update_manifest_local_dev.sh`, qui sert le dépôt local par `git daemon` et
+résout sa révision par `git symbolic-ref`. Un arbre sans dépôt s'y arrête.
+
+## Ce qu'une famille accepte n'est pas ce qu'une autre accepte
+
+Treize familles se reconnaissent et cinq seulement savent poser **et** retirer
+en HTTP. Deux posent sans retirer — leurs poids vivent dans un répertoire que
+le serveur n'expose pas. Six ne savent ni l'un ni l'autre : leur modèle se
+choisit au lancement du processus, ou se dépose à la main. La
+table de `models.py` porte cela, et une famille qui n'offre rien le dit avec sa
+raison plutôt que de se voir proposer un bouton qui rendra 404.
+
+La pose est la **seule** écriture d'un paquet en lecture seule partout
+ailleurs, et on ne l'atteint que par un choix explicite du menu. Aucun de ses
+chemins ne figure dans le plan de découverte, qui reste en GET seul — un
+balayage ne doit pouvoir ni charger un modèle ni dépenser un jeton — et un test
+le vérifie.
+
+## Ce qui voyage vers une installation neuve, et ce qui ne voyage jamais
+
+La question se pose une fois, et y répondre finement donne un numéro par
+article : un par serveur connu, puis les commandes Claude Code, puis la liste
+des noms interdits.
+
+Une ligne par serveur plutôt qu'une pour la liste : la classe d'hébergement est
+par serveur et change de sens d'une machine à l'autre — une entrée `loopback`
+déplacée ailleurs désigne la boucle locale de la cible.
+
+Les **commandes Claude Code ne se copient pas**. Elles se posent depuis le
+checkout que la cible vient de recevoir, à la version qu'elle exécute, et rien
+du `~/.claude` d'ici ne part.
+
+Le fichier de configuration privé n'est **jamais** recopié en bloc : il porte
+aussi le mot de passe du coffre et les profils VPN. La charge se bâtit clé par
+clé, voyage sur l'**entrée standard** — une adresse en ligne de commande se lit
+dans un journal comme dans la table des processus — et s'écrit là-bas par
+`set_config_value`, le seul écrivain autorisé.
+
+La liste des noms interdits est le seul article qui déplace des noms de clients
+sur une machine neuve. Elle n'est jamais prise par « tout » et ne voyage que
+nommée. Son absence là-bas **refuse tout envoi vers un tiers**, ce qui est un
+défaut de configuration et non une panne.
+
 ## Les sessions Claude Code de la machine
 
 Une session ouverte ailleurs porte déjà le contexte d'un travail, et lui poser
-une question sans le retaper vaut le détour. Elle vit sous « GPT code » et non
-sous le sous-menu LLM : une session est un processus adressé par identifiant,
-un serveur est un hôte adressé par port, et les mêler dans une seule liste
-numérotée ferait partager les mêmes chiffres à deux modèles mentaux.
+une question sans le retaper vaut le détour. Elle vit sous « Assistant › IA »,
+dans la section **Agents** et non parmi les serveurs : une session est un
+processus adressé par identifiant, un serveur est un hôte adressé par port, et
+les mettre dans une même section ferait partager les mêmes chiffres à deux
+modèles mentaux.
+
+Cet écran liste les harnais que ce dépôt connaît de nom, et il n'en cache
+jamais un. Un harnais dont le binaire manque garde son numéro, grisé, avec ce
+qui manque dit sur la même ligne — et la raison distingue deux choses qui
+appellent des gestes opposés : un binaire à installer, ou un adaptateur que
+personne n'a mesuré. Seul `claude` l'est ; déclarer une action pour les autres
+offrirait ce qui échoue.
 
 Deux dangers ont dû être mesurés avant de le proposer. Un pid ne prouve pas
 qu'une session vit — les pids se recyclent, donc la vivacité exige le pid ET
@@ -185,6 +447,288 @@ invite ou un message. Le répertoire y est LU plutôt que dérivé du nom du
 répertoire qui la contient, parce que cette transformation change les
 séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 
+## Ce qu'un agent coûte, et ce qu'il porte
+
+Trois sources y répondent et elles ne se valent pas. L'écran dit de laquelle
+vient chaque chiffre, parce qu'un tableau qui mélange une mesure et une
+approximation fait accuser le mauvais composant.
+
+**Le disque sait déjà presque tout.** Chaque transcription porte une ligne
+`cost-state` — coût en dollars, durée d'horloge, durée d'API, durée d'outils,
+lignes de code — et chaque message d'assistant porte son propre `usage` de
+jetons. Rien à installer, rien à activer, aucune trace posée. Mais ces lignes
+de coût ne sont PAS monotones : une compaction remet le compteur à zéro, et
+une transcription porte plusieurs segments dont les champs ne se composent
+pas. La dernière est retenue, et l'écran dit que c'en est une.
+
+**Ce que le disque ne sait pas**, c'est QUEL outil, combien de fois et combien
+de temps chacun. `totalToolDuration` est un agrégat : il annonce dix-neuf
+minutes sans jamais dire que l'un d'eux en prend les trois quarts. Un jeu de
+hooks le dit, une ligne par appel — et aucun événement de hook ne porte de
+durée, donc deux sont écrits, avant et après, et leur identifiant d'appel les
+recoud. Un appel dont l'après manque reste NON APPARIÉ plutôt que de se voir
+attribuer une durée inventée.
+
+**Un hook ne doit jamais faire échouer l'appel qu'il observe.** Un code non
+nul sur `PreToolUse` BLOQUE l'appel d'outil, donc le script est enveloppé de
+bout en bout et sort à zéro quoi qu'il arrive. Il n'importe rien du dépôt non
+plus : il tourne des centaines de fois par session, dans un interpréteur neuf
+chaque fois.
+
+Ni la commande ni la réponse de l'outil ne sont écrites. Le journal compte des
+appels, il ne garde pas ce qu'ils disent. Cela tient même là où la frontière
+d'affichage a été levée : ce qui n'est pas écrit n'a pas à être protégé plus
+tard.
+
+## Ce qu'une session porte
+
+Un delta n'est pas un état, et c'est le piège de tout ce domaine. Plusieurs
+enregistrements sont réémis en cours de session et ne portent que ce qui a
+changé : lire la dernière occurrence donne un fichier d'instructions là où
+sept sont chargés, et une skill là où trente-neuf le sont. Chacun se corrige
+selon sa forme — les instructions s'accumulent par chemin, une liste de skills
+retient son entrée initiale — et celui dont la sémantique n'est pas
+déterminable n'est jamais totalisé.
+
+L'ancienne règle du paquet, « la structure oui, le contenu d'un message non »,
+ne suffit plus : une transcription porte maintenant le texte intégral des
+fichiers d'instructions, celui des skills, l'invite système et la sortie brute
+d'un hook, dont aucun n'est un message. La forme opérante : **un chemin, un
+nom, un compte, une taille ou une durée ; jamais un champ dont la valeur est
+du texte libre de longueur non bornée.**
+
+Un environnement se lit sans se recopier. Le noyau réserve déjà
+`/proc/<pid>/environ` au propriétaire du processus, et un écran qui en imprime
+une valeur en clair casse une frontière que personne n'a eu à écrire. Une
+valeur ne s'affiche que si son nom est sur une liste fermée ET que sa valeur a
+la forme attendue de ce nom ; le reste montre sa forme. Le caviardage par
+motifs employé ailleurs dans le dépôt ne convient pas ici : il ne reconnaît
+que `NOM=valeur` collé, et en deux colonnes alignées il laisse passer presque
+tout.
+
+## Un second harnais répond à une autre question
+
+Open Code voisine avec Claude Code dans le menu, et les deux se ressemblent
+assez pour tromper. Trois différences décident de la forme de son écran, et
+chacune a été mesurée contre l'outil plutôt que supposée.
+
+**Son listage est cadré sur le RÉPERTOIRE COURANT.** `claude agents` répond
+« ce qui tourne sur cette machine » ; `opencode session list` répond « ce qui
+s'est passé ICI », et aucun drapeau n'élargit la portée. L'écran dit donc sa
+portée et imprime le répertoire avant de lister quoi que ce soit — sans quoi
+il annoncerait « aucune séance » à qui en a vingt dans le dossier d'à côté.
+
+**Le titre d'une séance est ENGENDRÉ par le modèle** à partir de la
+conversation. Il a la forme d'un champ structurel et n'en est pas un, donc il
+ne sort pas de l'adaptateur — la même règle qui garde hors de l'écran le titre
+d'une session de Claude Code. Ce qui situe une séance sans la citer est son
+identifiant et sa date ; la colonne du répertoire disparaît, puisqu'elle
+répète celui que l'en-tête vient d'imprimer.
+
+**Deux sources répondent, et elles ne pèsent pas pareil.** La base SQLite que
+l'outil tient porte tout — coût, jetons, cache, lignes touchées, modèle,
+agent, dates — en une lecture de moins d'une milliseconde, sur TOUTES les
+séances. Les deux commandes du CLI demandent près de deux secondes pour moins,
+et l'une des deux se tronque. La base est donc lue d'abord et le CLI sert de
+repli, son schéma étant celui d'un tiers que personne ne promet stable.
+L'écran nomme celle qui a répondu, car seule la base sait sortir du répertoire
+courant.
+
+**Ce même fichier porte des secrets, et c'est ce qui borne la lecture.** Il
+tient les jetons d'accès et de rafraîchissement du compte, son adresse, et les
+invites tapées par l'utilisateur. Une seule table est donc nommée, ses
+colonnes énumérées une à une, l'ouverture en lecture seule, et un test refuse
+toute autre table comme toute colonne d'authentification. `immutable=1` est
+refusé aussi : il ignore le journal d'écriture anticipée, qui pèse ici
+plusieurs mégaoctets, et rend ZÉRO ligne sur une base pleine — une réponse
+fausse plutôt qu'une erreur, ce qui est pire.
+
+**Seule la lecture est déclarée.** `opencode run` écrit dans l'arbre de
+travail sans demander — une consigne de trois mots suffit à faire créer un
+fichier — donc une entrée « question libre » y serait un piège. Elle reste au
+CLI, où l'on va exprès, comme `delete`, `uninstall` et `upgrade`.
+
+Deux formes de sortie piègent le décodage, et l'écran nomme le coupable au
+lieu de s'accuser. Un listage VIDE n'est pas `[]`, donc le décoder lève ; et
+`export` tronque sa propre sortie au-delà d'une soixantaine de kilooctets, en
+sortant avant d'avoir vidé son tampon — trois exécutions du même export
+rendent trois tailles, toutes coupées au milieu d'une chaîne. L'écran dit
+qu'Open Code a coupé, ce qu'il faut savoir pour cesser de chercher un défaut
+ici.
+
+L'écran vivant de télémétrie montre les deux harnais dans un seul tableau,
+chaque ligne marquée de l'icône du sien. Ce qu'Open Code ne mesure pas — les
+tours, le contexte et sa pente, les durées d'API et d'outils — affiche un
+TIRET et jamais un zéro : une colonne à zéro se lit « mesuré, et nul », ce qui
+est faux et décourage de chercher ailleurs ce que l'autre harnais donne. La
+ligne de résumé garde les deux séparés plutôt que de les fondre en un total,
+le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
+zéro là où celui d'Open Code est un champ de base stable.
+
+**Le temps passé n'est pas le temps écoulé, et le tableau montre le premier.**
+L'horloge d'une session compte tout ce qui s'est écoulé, y compris les heures
+où personne ne regardait — elle annonce des centaines d'heures dès qu'une
+session reste ouverte plusieurs jours. La colonne d'attention somme plutôt les
+écarts entre événements de hook, chaque écart borné par un seuil d'inactivité
+que ce paquet choisit et nomme. Rien n'est collecté pour elle : le journal des
+hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonne
+affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
+travaillé » là où la vérité est « rien n'est mesuré ».
+
+**La série temporelle était sur le disque depuis le début.** Chaque message
+d'assistant porte son instant et son modèle — présents sur les dix mille
+échantillonnés. Les jetons par jour et par modèle viennent donc d'une somme de
+messages et non de la lecture d'un `cost-state` : aucune compaction ne les
+remet à zéro, aucun segment ne s'y perd, et ils s'additionnent d'une session à
+l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
+transcription l'écrit ; le convertir en heure locale déplacerait des messages
+d'un jour à l'autre selon qui regarde.
+
+**Un appel d'outil finit de quatre façons, et l'écran les distingue.** Il est
+fini, il a échoué, il a été interrompu, ou rien ne l'a jamais clos. Un seul
+compte pour les quatre donnait un chiffre auquel aucun geste ne répond : un
+échec se corrige, une interruption se relance, et un appel sans clôture ne dit
+rien du tout. L'événement `PostToolUseFailure` porte la différence dans son
+`is_interrupt`.
+
+**La durée est celle que l'outil a mesurée, et non l'écart entre deux
+instants.** Cet écart INCLUT le temps passé devant une demande d'autorisation,
+donc un appel approuvé au bout de quatre minutes se lisait comme un appel de
+quatre minutes et majorait la médiane par outil. L'événement de clôture porte
+`duration_ms` ; l'écart ne reste qu'en repli, pour un binaire qui ne la porte
+pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
+silence — le défaut que le module voisin avait déjà payé sur le code de sortie
+d'un hook.
+
+**Le panneau du bas PERMUTE au lieu de s'empiler.** Un terminal n'a pas la
+hauteur pour trois tableaux, et les empiler les réduirait à quatre lignes
+chacun. La touche `v` fait le tour : par outil, qui répond à « lequel est
+lent », et le flux des derniers appels, qui répond à « pourquoi ça bloque
+depuis deux minutes ». Ni l'un ni l'autre ne montre de contenu — un nom
+d'outil, une durée, une fin. La colonne de fin reste vide pour un appel
+réussi, cas ordinaire qui n'a rien à signaler, et les trois mauvaises fins se
+nomment au singulier : une ligne décrit un appel, là où le tableau par outil
+en compte plusieurs.
+
+**L'écran agit, et dit ce qu'il ne peut pas faire.** Un troisième panneau
+liste les agents détachés qui tournent — vivants ET détachés, car la flotte
+réunit deux sources : le registre annonce ce qui TOURNE, un balayage des
+transcriptions annonce ce qui se REPREND, et une session dormante en sort sans
+genre ni processus. L'offrir proposerait `stop` sur un fichier, et l'outil
+répond « No job matching » avec un code de sortie NUL — rien ne paraîtrait
+avoir échoué.
+
+`n` lance un agent, son invite lue sur l'entrée standard et jamais dans l'argv,
+où `/proc/<pid>/cmdline` l'expose à tout compte. `s` arrête celui qui est
+surligné — sa conversation est gardée, donc rien à confirmer. `a` attache et
+FERME donc l'écran : `claude attach` prend le terminal et ne peut pas le
+partager. Une touche pressée dans un autre panneau ne fait rien, plutôt que
+d'agir sur une ligne surlignée que personne ne voit.
+
+**Le flux montre la commande, et rien n'a été collecté pour ça.** « Bash ·
+1,2 s · échec » dit qu'une chose a raté sans dire laquelle. Le journal des
+hooks garde `tool_use_id` et rien d'autre de l'appel — ni la commande, ni la
+réponse — parce qu'y écrire `tool_input` mettrait chaque commande shell sur le
+disque pour quatorze jours, ce qui est garder et non montrer. La commande est
+relue dans la TRANSCRIPTION, où Claude Code l'avait déjà mise, au moment où
+quelqu'un la demande. Trois centièmes de seconde par recherche dans trente
+mégaoctets : le pré-filtre par sous-chaîne fait tout le travail.
+
+Un piège s'ajoute, et il cache un appel sur trois : un outil lancé par un
+SOUS-AGENT s'écrit dans le fichier de celui-ci, sous le répertoire de la
+session, alors que le hook l'annonce sous l'identifiant de la session PARENTE.
+Les deux endroits sont donc balayés, la transcription principale d'abord.
+
+Un volet de détail s'ouvre sur l'appel surligné et montre la commande avec sa
+sortie. C'est le seul volet du paquet qui affiche du contenu, alors il le dit,
+en première ligne plutôt qu'en dernière — une longue sortie pousserait
+l'avertissement hors de l'écran.
+
+**Les tableaux tiennent dans le terminal, parce qu'ils y ont été mesurés.**
+Les colonnes s'étaient accumulées une par fonctionnalité sans que personne
+regarde la largeur : douze en réclamaient cent vingt-quatre, et le flux
+quatre-vingt-quinze dont cinquante-cinq pour la seule commande. Un terminal de
+quatre-vingts colonnes — le défaut le plus répandu — n'en montrait ni l'un ni
+l'autre. Rien n'était cassé, Textual fait défiler ; mais un tableau de bord
+qu'il faut faire défiler ne se lit plus d'un coup.
+
+Deux correctifs, mesurés tous les deux. La colonne de commande prend CE QUI
+RESTE plutôt qu'un soixante fixe, donc elle ne déborde plus d'un terminal
+étroit et ne gaspille plus celui d'un large. Et le tableau des sessions ne
+montre que les colonnes qui tiennent, par ordre d'importance — quelle session,
+quel projet, combien ça coûte, où en est son contexte —, refaites seulement
+quand leur nombre change, les recréer à chaque tour remettant le curseur en
+haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
+famille de dépôts partage son préfixe et se distingue par ce qui suit.
+
+**Deux gestes coûtent quelque chose, et l'écart entre leurs gardes est tout le
+propos.** `l` relance l'agent surligné sur le binaire courant — le travail en
+cours est coupé, donc un oui est demandé, mais la conversation survit et c'est
+ce qui le distingue du suivant. `x` supprime la séance ET son arbre de travail,
+et rien ne la récupère : l'identifiant se retape en entier, le long et non
+celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopier
+trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
+avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
+est une garde, pas un argument.
+
+**La sortie brute d'un agent va au terminal, parce qu'elle n'est pas du
+texte.** `claude logs` imprime un ÉCRAN et non un journal : des centaines de
+séquences d'échappement, des retours chariot, aucun saut de ligne, et des
+positions de curseur absolues. Dépouiller les codes rend une seule ligne
+illisible, donc aucun panneau de tableau n'y peut rien. `j` suspend
+l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
+revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
+qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
+n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
+**Un pied de page ment par omission, donc une touche mène à toutes les
+autres.** Il tient sur une ligne et se coupe à droite : sur un terminal de
+quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
+quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
+Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
+phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
+les apprendre. Le pied de page, le panneau et les numéros lisent la MÊME
+table, puisque c'est la recopie qui avait laissé quatre touches sans mention
+nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi qu'on
+ajoute ensuite.
+
+Le panneau est MODAL, pour la raison même qui le fait exister. Empilé sous les
+tableaux, il réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+offre, donc ses trois dernières entrées — dont les deux qui détruisent —
+passaient sous le pli sans que rien ne le signale. Ce qu'il masque est déduit
+de ce qui est à l'écran plutôt qu'énuméré, et un test garde ses seize lignes
+dans quatre-vingts colonnes sur vingt-quatre.
+
+**L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
+replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
+flotte : 230 ms en médiane, 408 au pire, un cinquième du pas de deux secondes
+pendant lequel aucune touche n'était vue. Ce n'est pas la moyenne qui a
+tranché — le listage des agents est un sous-processus dont le délai est de
+quinze secondes, et un outil muet figeait l'écran d'autant, « q » compris. Le
+relevé traverse le fil comme une valeur qui ne partage rien ; seule la boucle
+d'événements touche un widget. Une génération fait jeter le relevé d'un fil qui
+travaille encore sur le monde d'avant « r », et un tour qui tombe pendant une
+lecture est SAUTÉ plutôt que mis en file — une file, sur une machine lente,
+grandit sans qu'aucun tour ne montre jamais l'état du moment. Mesuré après :
+1,4 ms au pire sur la boucle.
+
+**La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
+porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
+donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent
+dans une ligne de tableau sans rien révéler de la conversation ; le dernier
+non, et un appel `Task`, qui n'a pas de commande, y étalait son invite
+entière dans une colonne qui déclare ne montrer aucun contenu. Elle dit
+désormais « contenu », et c'est le volet de détail — qui prévient — qui le
+montre. Une URL y perd ce qui l'authentifie, comme dans le module MCP : la
+frontière qu'on a levée porte sur le CONTENU, jamais sur les secrets.
+
+**Tout ce qui vient d'un `cost-state` se tait quand il n'y en a aucun.** Neuf
+des dix-huit transcriptions d'une machine ordinaire n'en portent pas — session
+interrompue, version antérieure, session neuve. Le coût le disait déjà par un
+tiret ; les durées et les lignes touchées, qui viennent du même
+enregistrement, affichaient « 0 ms » et « +0/−0 », ce qui se lit « mesuré, et
+nul ».
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -196,9 +740,29 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `backends.py` | parler à une destination : un serveur HTTP, ou le CLI `claude` |
 | `chat.py` | les tours d'une conversation, et les commandes qui la pilotent |
 | `discover.py` | quels couples (hôte, port) méritent une reconnaissance, et la frappe |
+| `mesure.py` | ce qu'un tour a coûté, et la ligne qu'il écrit sous `private/` |
+| `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
+| `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
+| `agents/specialistes.py` | les agents spécialisés déclarés ici, et ce qu'on confie à chacun |
+| `agents/fond.py` | les agents détachés : ce qui tourne, ce qui revient, ce qui est perdu |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
+| `models.py` | poser et retirer un modèle : la seule écriture du paquet |
+| `deploy.py` | où va un ERPLibre, et ce qui refuse le chemin |
+| `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
+| `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
+| `harness/opencode.py` | les séances d'Open Code et leur coût, en lecture seule, et les trois formes que prend sa sortie |
+| `agents/detail.py` | la commande et la réponse d'un appel, relues dans la transcription et jamais collectées |
+| `agents/statistiques.py` | ce qu'une transcription dit d'une session : jetons, coût, durées, contexte |
+| `agents/tui.py` | l'écran vivant, rafraîchi sans relire ce qu'il a déjà replié |
+| `agents/journal.py` | le journal des appels d'outils : une ligne par événement, et leur appariement |
+| `agents/hooks/evenement.py` | le hook qui écrit un événement, et ne doit jamais faire échouer l'appel |
+| `agents/pose.py` | poser et retirer les hooks, à l'un ou l'autre des deux endroits |
+| `agents/disque.py` | ce que Claude Code occupe, par répertoire et par session |
+| `agents/mcp.py` | les serveurs MCP : ce qui est déclaré ici, et ce qu'il faut demander |
+| `agents/contexte.py` | ce qu'une session a chargé : modèle, machine, instructions, skills |
+| `agents/environnement.py` | l'environnement d'un processus, lu sans le recopier |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

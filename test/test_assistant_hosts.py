@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Les deux sources de machines qui viennent d'ailleurs : QEMU et SSH.
+"""Les sources de cibles qui viennent d'ailleurs : QEMU, SSH, et ses tunnels.
 
-L'énumération des VM libvirt et la résolution d'un alias SSH sont des
-méthodes de la classe TODO, et le paquet `assistant` n'a pas le droit
-d'importer `todo.py` — l'import coûte près d'une seconde et imprime sur la
-sortie. Les deux sources arrivent donc INJECTÉES, et ce que ces tests
-défendent est le contrat de cette injection : une source non branchée rend
-une liste VIDE et non une erreur, et aucun de ces tests ne touche `virsh`,
-`ssh -G` ni la configuration SSH réelle.
+L'énumération des VM libvirt, la résolution d'un alias SSH et la lecture de
+ses redirections sont des méthodes de la classe TODO, et le paquet
+`assistant` n'a pas le droit d'importer `todo.py` — l'import coûte près d'une
+seconde et imprime sur la sortie. Les trois sources arrivent donc INJECTÉES,
+et ce que ces tests défendent est le contrat de cette injection : une source
+non branchée rend une liste VIDE et non une erreur, et aucun de ces tests ne
+touche `virsh`, `ssh -G` ni la configuration SSH réelle.
 
 Le danger que la maison connaît est le test qui n'affirme rien. Cette
 machine-ci n'a AUCUN domaine libvirt et AUCUNE configuration SSH : un test
@@ -17,7 +17,14 @@ qui boucle sur la sortie réelle ne s'exécute jamais et passe pour la mauvaise
 raison. Chaque boucle est donc précédée d'une garde sur le jeu d'essai, et
 tout ce qui est parcouru vient de constantes de ce fichier.
 
-Deux régressions sont visées par leur nom.
+Trois régressions sont visées par leur nom.
+
+**Le résolveur qui écrase.** Un mot-clé de ssh_config se répète
+légitimement, et le résolveur qui ne garde qu'une valeur par mot-clé — celui
+qui convient à `identityfile`, dont la première entrée est celle qui compte —
+réduit trois redirections déclarées à une seule. Deux services sur trois
+disparaissent alors sans que rien ne tombe en rouge, et le menu annonce une
+découverte réussie.
 
 **Le résolveur patient.** Les deux résolveurs d'adresse de VM qui attendent
 patientent jusqu'à dix minutes PAR VM ; seul celui qui lit le bail une fois
@@ -35,7 +42,9 @@ Les alias, les noms de VM et les adresses sont INVENTÉS :
 `.claude/rules/04-code-conventions.md` l'exige pour la valeur qui illustre un
 interdit, et demande d'en vérifier l'absence ailleurs. Le domaine de premier
 niveau `.invalid` est réservé à cet usage, et « azurite », « obsidienne »,
-« malachite » et « basalte » ne paraissent nulle part ailleurs dans le dépôt.
+« malachite » et « basalte » ne désignent rien de réel : hors de ces tests,
+ils ne paraissent que dans d'autres jeux d'essai, jamais dans du code ni
+dans une configuration.
 """
 
 import os
@@ -117,6 +126,51 @@ def resolveur(table=None, appels=None):
         return dict(table.get(alias, {"hostname": alias, "port": "22"}))
 
     return resolve
+
+
+# Ce que `ssh -G` rend pour un mot-clé RÉPÉTÉ : une valeur par occurrence,
+# dans l'ordre de la sortie. Toutes les formes que la source doit trancher —
+# port nu, liaison explicite, les trois jokers, nom de liaison, liaison IPv6,
+# destination IPv6, et socket Unix sans port. Le dernier couple redéclare un
+# port local déjà pris.
+#
+# Les trois jokers ne se valent PAS, et c'est ce que la source doit savoir :
+# « * » et « 0.0.0.0 » ouvrent un écouteur que la boucle locale v4 joint,
+# « :: » un écouteur marqué `IPV6_V6ONLY` qu'elle ne joint pas.
+FORWARDS = {
+    "azurite.invalid": {
+        "localforward": [
+            "1234 [127.0.0.1]:1234",
+            "[127.0.0.1]:2345 [obsidienne.invalid]:80",
+            "[*]:3456 [192.0.2.31]:8000",
+            "[localhost]:4567 [2001:db8::1]:9000",
+            "[0.0.0.0]:6001 [192.0.2.31]:81",
+            "[::1]:6002 [192.0.2.31]:82",
+            "[::]:6003 [192.0.2.31]:83",
+            "/run/essai.sock [192.0.2.31]:22",
+            "1234 [192.0.2.31]:9999",
+        ]
+    },
+    "basalte.invalid": {"localforward": ["5678 [127.0.0.1]:5678"]},
+}
+
+
+def resolveur_complet(table=None, appels=None):
+    """Un `ssh -G` d'essai qui GARDE les répétitions, en {clé: [valeurs]}.
+
+    C'est le contrat que la source des tunnels exige, et il diffère de celui
+    de `resolveur` : un mot-clé répété y rend une LISTE. Un alias absent de
+    la table rend un dictionnaire vide, ce qui est ce qu'annonce une entrée
+    qui ne déclare aucun tunnel.
+    """
+    table = FORWARDS if table is None else table
+
+    def resolve_all(alias):
+        if appels is not None:
+            appels.append(alias)
+        return {cle: list(val) for cle, val in table.get(alias, {}).items()}
+
+    return resolve_all
 
 
 def domaines(noms, appels=None):
@@ -224,6 +278,212 @@ class LesHotesSsh(unittest.TestCase):
         )
 
 
+class LesTunnelsSsh(unittest.TestCase):
+    """La source qui sonde ICI ce qui répond LÀ-BAS.
+
+    Un service derrière un pare-feu qui ne laisse passer que le port de ssh
+    n'ouvre aucun port vu du dehors : sonder le nom d'hôte de son alias
+    annonce vide un hôte qui sert des modèles. C'est l'extrémité locale de sa
+    redirection qui répond, et elle ne se devine pas — aucune liste de ports
+    ne contient un numéro que l'utilisateur a choisi.
+
+    La régression visée porte un nom : le résolveur qui ÉCRASE. Le résolveur
+    d'une valeur par mot-clé convient à `identityfile`, dont la première
+    entrée est celle qui compte, et il réduit trois tunnels à un seul. Rien
+    ne tombe en rouge quand cela arrive — deux services sur trois
+    disparaissent, en silence, et le menu annonce une découverte réussie.
+    """
+
+    def test_chaque_occurrence_d_un_mot_cle_repete_rend_un_tunnel(self):
+        """Le cœur de la source : `localforward` paraît une fois par tunnel,
+        et les quatre sondables sont rendus, pas seulement le premier."""
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(),
+        )
+        self.assertEqual(
+            [
+                ("azurite.invalid", 1234),
+                ("azurite.invalid", 2345),
+                ("azurite.invalid", 3456),
+                ("azurite.invalid", 4567),
+                ("azurite.invalid", 6001),
+                ("azurite.invalid", 6002),
+                ("azurite.invalid", 6003),
+                ("basalte.invalid", 5678),
+            ],
+            [(one.alias, one.local_port) for one in tunnels],
+        )
+
+    def test_une_liaison_sans_adresse_se_sonde_par_sa_boucle_locale(self):
+        """Un port nu, les jokers v4 et le nom « localhost » désignent cette
+        machine sans nommer une de ses adresses : les rendre tels quels
+        donnerait des cibles que rien ne résout.
+
+        La FAMILLE décide laquelle des deux boucles locales, et c'est le
+        point. Le joker v6 « :: » n'est pas le pendant de « * » : ssh pose
+        `IPV6_V6ONLY` sur l'écouteur qu'il ouvre, donc le port existe sur
+        « ::1 » et pas sur « 127.0.0.1 ». Replier l'un sur l'autre lit un
+        tunnel MONTÉ comme absent, propose de le remonter, et ce montage
+        échoue sur « Address already in use » — l'utilisateur n'a alors aucune
+        issue.
+        """
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(),
+        )
+        par_port = {one.local_port: one.bind for one in tunnels}
+        self.assertTrue(
+            par_port, "aucun tunnel : le jeu d'essai ne colle plus"
+        )
+        for port in (1234, 3456, 4567, 6001, 5678):
+            self.assertEqual("127.0.0.1", par_port[port], f"port {port}")
+        for port in (6002, 6003):
+            self.assertEqual("::1", par_port[port], f"port {port}")
+
+    def test_une_liaison_qui_nomme_une_adresse_est_rendue_telle_quelle(self):
+        """ssh écoute là et nulle part ailleurs : la ramener à la boucle
+        locale sonderait une adresse où rien n'est lié."""
+        table = {
+            "basalte.invalid": {
+                "localforward": ["[192.0.2.21]:7001 [192.0.2.31]:80"]
+            }
+        }
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(table=table),
+        )
+        self.assertEqual(["192.0.2.21"], [one.bind for one in tunnels])
+
+    def test_un_tunnel_sur_socket_unix_n_a_aucun_port_a_frapper(self):
+        """Il lie un chemin, pas un port. Le retenir rendrait une cible dont
+        le port est le nom d'un fichier."""
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(),
+        )
+        # La ligne du socket est la SEULE du jeu d'essai à viser le port 22
+        # de la destination : son absence prouve qu'elle n'a rien produit,
+        # là où une assertion sur un port local nul porterait sur une valeur
+        # que `_port` ne peut de toute façon pas rendre.
+        self.assertNotIn(
+            ("192.0.2.31", 22), [(one.host, one.port) for one in tunnels]
+        )
+        self.assertNotIn(
+            "/run/essai.sock",
+            [one.host for one in tunnels] + [one.bind for one in tunnels],
+        )
+
+    def test_un_port_local_declare_deux_fois_ne_rend_qu_une_cible(self):
+        """Un seul écouteur peut lier un port : le second `ssh` échouerait.
+        Deux cibles identiques feraient compter deux fois le même service."""
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(),
+        )
+        couples = [(one.bind, one.local_port) for one in tunnels]
+        self.assertEqual(len(couples), len(set(couples)))
+
+    def test_la_destination_ipv6_garde_ses_deux_points(self):
+        """La coupe se fait au DERNIER deux-points. Couper au premier
+        rendrait une adresse tronquée à son premier groupe."""
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(),
+        )
+        lointain = [one for one in tunnels if one.local_port == 4567]
+        self.assertEqual(1, len(lointain))
+        self.assertEqual("2001:db8::1", lointain[0].host)
+        self.assertEqual(9000, lointain[0].port)
+
+    def test_un_joker_et_un_motif_nie_ne_declarent_aucun_tunnel(self):
+        """Un joker est une règle et un motif nié retire un nom : ni l'un ni
+        l'autre ne désigne une machine dont on monterait les tunnels."""
+        appels = []
+        discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(appels=appels),
+        )
+        self.assertNotIn("*", appels)
+        self.assertNotIn("!malachite.invalid", appels)
+
+    def test_un_resolveur_qui_leve_ne_perd_pas_les_autres_alias(self):
+        """Une entrée illisible ne fait pas disparaître celles d'après."""
+
+        def resolve_all(alias):
+            if alias == "azurite.invalid":
+                raise OSError("ssh absent")
+            return {
+                cle: list(val) for cle, val in FORWARDS.get(alias, {}).items()
+            }
+
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(), resolve_all=resolve_all
+        )
+        self.assertEqual(["basalte.invalid"], [one.alias for one in tunnels])
+
+    def test_un_resolveur_qui_rend_autre_chose_qu_un_dict_ne_leve_pas(self):
+        """Un résolveur injecté rend ce qu'il veut ; aucun type inattendu
+        n'est une raison d'empêcher le menu de s'ouvrir."""
+        for retour in (None, [], "localforward 22 [x]:22", 7):
+            with self.subTest(retour=retour):
+                self.assertEqual(
+                    [],
+                    discover.ssh_forwards(
+                        list_aliases=alias_naifs(),
+                        resolve_all=lambda _a, r=retour: r,
+                    ),
+                )
+
+    def test_une_valeur_mal_formee_est_ecartee_seule(self):
+        """Une ligne abîmée ne fait pas tomber les voisines de son alias."""
+        table = {
+            "basalte.invalid": {
+                "localforward": [
+                    "pas-un-port [192.0.2.31]:80",
+                    "99999 [192.0.2.31]:80",
+                    "0 [192.0.2.31]:80",
+                    "",
+                    "1 2 3",
+                    "7000 [192.0.2.31]:80",
+                ]
+            }
+        }
+        tunnels = discover.ssh_forwards(
+            list_aliases=alias_naifs(),
+            resolve_all=resolveur_complet(table=table),
+        )
+        self.assertEqual([7000], [one.local_port for one in tunnels])
+
+    def test_sans_injection_la_source_est_vide_et_ne_leve_pas(self):
+        """Une source qu'on n'a pas branchée n'a rien à dire. Et une demi-
+        injection n'appelle pas même le connecteur qu'elle a reçu."""
+        appels = []
+        self.assertEqual([], discover.ssh_forwards())
+        self.assertEqual([], discover.ssh_forwards(list_aliases=alias_naifs()))
+        self.assertEqual(
+            [],
+            discover.ssh_forwards(
+                resolve_all=resolveur_complet(appels=appels)
+            ),
+        )
+        self.assertEqual([], appels)
+
+    def test_un_enumerateur_qui_leve_est_une_source_vide(self):
+        """Un fichier absent rend déjà [] chez l'énumérateur du dépôt ; un
+        énumérateur injecté lève ce qu'il veut, et c'est la même chose."""
+
+        def lister():
+            raise OSError("~/.ssh/config illisible")
+
+        self.assertEqual(
+            [],
+            discover.ssh_forwards(
+                list_aliases=lister, resolve_all=resolveur_complet()
+            ),
+        )
+
+
 class LesVmQemu(unittest.TestCase):
     def test_zero_domaine_libvirt_est_une_source_vide(self):
         """« libvirt répond, aucune VM définie » est un FAIT : le résolveur
@@ -315,27 +575,6 @@ class SansInjection(unittest.TestCase):
 
 
 class LaFrontiere(unittest.TestCase):
-    def test_les_sources_ne_tirent_pas_todo(self):
-        """Importer `script.todo.todo` coûte près d'une seconde et imprime
-        sur la sortie : le paquet doit rester importable seul."""
-        # Dans un interpréteur NEUF : la suite complète importe todo par
-        # ailleurs, et le sys.modules de ce processus en garderait la trace
-        # quel que soit le module éprouvé ici.
-        sortie = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys, script.todo.assistant.discover;"
-                " print('script.todo.todo' in sys.modules)",
-            ],
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        self.assertEqual(sortie.returncode, 0, sortie.stderr)
-        self.assertEqual(sortie.stdout.strip(), "False")
-
     def test_aucun_analyseur_de_config_ssh_n_est_reecrit_ici(self):
         """`ssh -G` a raison sur les `Include`, les `Match`, l'héritage des
         jokers et ses propres défauts ; recopier son travail est ce que

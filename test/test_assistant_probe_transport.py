@@ -25,10 +25,12 @@ contre les mêmes octets.
 """
 
 import socketserver
+from urllib.parse import urlsplit
 import time
 import unittest
 
 from llm_fake_server import (
+    CATALOGUE_LONG,
     FIXTURES,
     HOST,
     Cut,
@@ -40,6 +42,8 @@ from llm_fake_server import (
 
 from script.todo.assistant.fingerprint import (
     BODY_CAP,
+    CATALOG_CAP,
+    CATALOG_PATHS,
     collect,
     identify,
     probe_plan,
@@ -81,7 +85,23 @@ FAMILIES = (
     "tabbyapi",
     "textgen_webui",
     "vllm",
+    "exo",
 )
+
+
+def _http_get_compteur(frappes):
+    """Le transport réel, qui note chaque URL frappée.
+
+    Compter les frappes est la seule façon de prouver qu'une lecture est
+    ÉTROITE : le résultat serait le même si tout le plan partait.
+    """
+    from script.todo.assistant.fingerprint import _http_get
+
+    def http_get(url, timeout):
+        frappes.append(url)
+        return _http_get(url, timeout)
+
+    return http_get
 
 
 class Transport(unittest.TestCase):
@@ -110,6 +130,95 @@ class Transport(unittest.TestCase):
         self.assertEqual(len(bodies["/props"][1]), 4096)
         # Le plafond par défaut est celui du module, pas un nombre du test.
         self.assertGreater(BODY_CAP, 0)
+
+    def test_un_catalogue_traverse_le_transport_sans_etre_coupe(self):
+        """Le plafond dépend du CHEMIN, et le prouver demande le transport.
+
+        Un catalogue coupé au plafond d'empreinte s'arrête au milieu d'une
+        entrée : son JSON ne s'analyse plus, aucun modèle n'est lu, et le
+        serveur se conclut muet à l'instant où il énumérait son offre.
+        """
+        self.assertGreater(
+            len(CATALOGUE_LONG), BODY_CAP, "catalogue trop court"
+        )
+        self.assertIn("/v1/models", CATALOG_PATHS)
+        with FakeLLM("exo") as serveur:
+            bodies = collect(serveur.host, serveur.port, budget=5.0)
+        self.assertEqual(len(CATALOGUE_LONG), len(bodies["/v1/models"][1]))
+        empreinte = identify(bodies, port=serveur.port)
+        self.assertEqual("exo", empreinte.software)
+        self.assertEqual(100, len(empreinte.models))
+
+    def test_le_plafond_de_catalogue_se_baisse_pour_couper_partout(self):
+        """Les deux plafonds sont réglables séparément, sans quoi un test qui
+        veut voir une coupure ne pourrait plus en provoquer sur un
+        catalogue."""
+        with FakeLLM("exo") as serveur:
+            bodies = collect(
+                serveur.host,
+                serveur.port,
+                budget=5.0,
+                max_bytes=512,
+                catalog_bytes=512,
+            )
+        self.assertEqual(512, len(bodies["/v1/models"][1]))
+        # Le plafond par défaut est celui du module, pas un nombre du test.
+        self.assertGreater(CATALOG_CAP, BODY_CAP)
+
+    def test_une_cible_ipv6_donne_une_url_lisible(self):
+        """Sans crochets, les deux-points de l'adresse ne se distinguent pas
+        de celui du port : l'analyse d'URL LÈVE, et la cible passe pour
+        illisible au lieu de simplement ne pas répondre. Un tunnel lié en
+        IPv6 sur cette machine y mène sans qu'on ait rien tapé.
+        """
+        import urllib.parse
+
+        from script.todo.assistant.fingerprint import _authority
+
+        self.assertEqual("127.0.0.1:8000", _authority("127.0.0.1", 8000))
+        for adresse in ("::1", "2001:db8::1"):
+            with self.subTest(adresse=adresse):
+                url = f"http://{_authority(adresse, 8000)}/v1/models"
+                parts = urllib.parse.urlsplit(url)
+                self.assertEqual(adresse, parts.hostname)
+                self.assertEqual(8000, parts.port)
+
+    def test_la_lecture_de_ce_qui_est_servi_ne_frappe_qu_un_chemin(self):
+        """Rouvrir une conversation ne doit pas coûter une reconnaissance.
+
+        Ce qu'un moteur tient chargé change pendant qu'on s'en sert, donc la
+        question se repose à chaque ouverture ; la reposer par le plan entier
+        ferait payer seize requêtes pour une réponse.
+        """
+        from script.todo.assistant.fingerprint import (
+            EXO_INSTANCES,
+            collect_served,
+        )
+
+        frappes = []
+
+        with FakeLLM("exo") as serveur:
+            vrai = _http_get_compteur(frappes)
+            servis = collect_served(
+                "exo", serveur.host, serveur.port, http_get=vrai, budget=5.0
+            )
+        self.assertEqual(("famille-inventee/modele-007",), servis)
+        self.assertEqual(
+            [EXO_INSTANCES], [urlsplit(url).path for url in frappes]
+        )
+
+    def test_un_logiciel_qui_ne_distingue_rien_ne_frappe_pas(self):
+        """Une requête pour apprendre ce qu'on sait déjà est une requête de
+        trop : un serveur dont le catalogue ne nomme que des modèles chargés
+        n'a rien de plus à dire."""
+        from script.todo.assistant.fingerprint import collect_served
+
+        frappes = []
+        vrai = _http_get_compteur(frappes)
+        self.assertEqual(
+            (), collect_served("vllm", HOST, 9, http_get=vrai, budget=1.0)
+        )
+        self.assertEqual([], frappes)
 
     def test_un_serveur_muet_est_borne_par_le_delai(self):
         # L'écouteur accepte la connexion et ne répond jamais : « le port est

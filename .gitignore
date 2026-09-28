@@ -50,8 +50,20 @@ requirement/ignore_requirements.txt
 screenshots
 screencasts
 private/todo/todo_override_private.json
+
+# Le journal des tours de conversation LLM : une ligne par question posée,
+# donc un fichier qui grossit à chaque séance. Le suivre ferait d'un simple
+# usage du menu une modification à committer, et son contenu ne décrit que
+# cette machine-ci — durées, débits, modèles servis.
+private/assistant/mesures-*.jsonl
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+
+# Les réglages Claude Code PERSONNELS d'un clone. Le nom « .local.json » est
+# réservé à ce qui ne se partage pas, et ce fichier porte des permissions :
+# ce qu'un contributeur s'accorde deviendrait public avec le dépôt. Le
+# partagé va dans .claude/settings.json, qui est suivi exprès.
+.claude/settings.local.json
 
 # Working notes, kept out of tracked files by the code conventions.
 tasks/

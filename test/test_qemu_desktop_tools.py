@@ -295,10 +295,12 @@ class TestMobileBuild(unittest.TestCase):
         depuis une ligne de commande."""
         got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
         self.assertEqual(
-            ["mobile", "forgejo", "aidev", "nixanywhere", "avd"], got
+            ["mobile", "forgejo", "apertus", "aidev", "nixanywhere", "avd"],
+            got,
         )
         # Forgejo est là pour la même raison que la compilation : un
-        # service ne demande pas d'écran.
+        # service ne demande pas d'écran. Apertus non plus — il répond sur
+        # une API HTTP, et c'est par elle qu'on s'en sert.
 
     def test_it_is_bounded_to_apt(self):
         """install-android.sh du dépôt mobile commence par « sudo apt install

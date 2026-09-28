@@ -35,6 +35,27 @@ import threading
 
 HOST = "127.0.0.1"
 
+# Un catalogue plus LONG que le plafond d'une réponse d'empreinte. Il existe
+# parce qu'un catalogue est la seule réponse dont la taille suit ce que le
+# serveur OFFRE : coupé au plafond d'empreinte, son JSON s'arrête au milieu
+# d'une entrée, ne s'analyse plus, aucun modèle n'est lu, et le serveur se
+# conclut MUET à l'instant où il énumérait son offre. Cent entrées suffisent
+# à dépasser les huit kilooctets ; les noms sont inventés.
+CATALOGUE_LONG = json.dumps(
+    {
+        "object": "list",
+        "data": [
+            {
+                "id": f"famille-inventee/modele-{rang:03d}",
+                "object": "model",
+                "owned_by": "exo",
+                "context_length": 32768,
+            }
+            for rang in range(100)
+        ],
+    }
+).encode()
+
 # Corps de référence par famille. Chemin -> (statut, octets). Un chemin absent
 # de la table rend 404 : c'est ce qui distingue les familles entre elles, et
 # c'est donc une donnée du test autant que les corps eux-mêmes.
@@ -182,6 +203,38 @@ FIXTURES: dict[str, dict[str, tuple[int, bytes]]] = {
         # Aucun point de terminaison propre : GPT4All ne s'atteint que par
         # élimination, sur son port, quand rien d'autre n'a répondu.
         "/v1/models": (200, b'{"object":"list","data":[{"id":"un-modele"}]}'),
+    },
+    "exo": {
+        # Un moteur d'inférence RÉPARTI. `/node_id` rend l'identifiant du
+        # pair dans la grappe — une chaîne JSON nue, là où tout le reste de
+        # l'échelle rend des objets — et son schéma OpenAPI porte le titre
+        # par défaut du cadre web qui le sert, donc l'étage Jan ne s'y
+        # accorde pas.
+        "/node_id": (200, b'"pair-invente-pour-le-test"'),
+        # Ce qu'il tient CHARGÉ, par opposition à son catalogue : une seule
+        # instance, dont le catalogue ci-dessous porte aussi le nom. C'est
+        # l'écart entre les deux que la lecture doit rendre.
+        "/state/instances": (
+            200,
+            json.dumps(
+                {
+                    "instance-inventee": {
+                        "MlxRingInstance": {
+                            "instanceId": "instance-inventee",
+                            "shardAssignments": {
+                                "modelId": "famille-inventee/modele-007",
+                                "runnerToShard": {},
+                            },
+                        }
+                    }
+                }
+            ).encode(),
+        ),
+        "/openapi.json": (
+            200,
+            b'{"info":{"title":"FastAPI","version":"0.1.0"}}',
+        ),
+        "/v1/models": (200, CATALOGUE_LONG),
     },
     "routeur": {
         # Une page d'administration sur 8080 répond volontiers, en HTML, à

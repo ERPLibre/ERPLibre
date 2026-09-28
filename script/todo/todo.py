@@ -299,7 +299,7 @@ class TODO(
 
         while True:
             help_info = f"""{self._menu_header()}
-[1] {t("AI question - Ask a model, local or remote")}
+[1] {t("AI - Agents, models and telemetry")}
 [2] {t("mail_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
@@ -307,7 +307,7 @@ class TODO(
             if status == "0":
                 return
             if status == "1":
-                self.prompt_assistant_llm()
+                self.prompt_assistant_ia()
             elif status == "2":
                 prompt_execute_mail(self)
             else:
@@ -333,14 +333,13 @@ class TODO(
 [10] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[11] {t("GPT code - AI assistant tools")}
-[12] {t("Automation - Demonstration of developed features")}
+[11] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[13] {t("Deploy - Deploy ERPLibre locally")}
-[14] {t("Network - Network tools")}
-[15] {t("Security - Dependency security audit")}
-[16] {t("Docker / Podman - Container engines")}
+[12] {t("Deploy - Deploy ERPLibre locally")}
+[13] {t("Network - Network tools")}
+[14] {t("Security - Dependency security audit")}
+[15] {t("Docker / Podman - Container engines")}
 [0] {t("Back")}
 """
         while True:
@@ -389,26 +388,22 @@ class TODO(
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_gpt_code()
-                if status is not False:
-                    return
-            elif status == "12":
                 status = self.prompt_execute_function()
                 if status is not False:
                     return
-            elif status == "13":
+            elif status == "12":
                 status = self.prompt_execute_deploy()
                 if status is not False:
                     return
-            elif status == "14":
+            elif status == "13":
                 status = self.prompt_execute_network()
                 if status is not False:
                     return
-            elif status == "15":
+            elif status == "14":
                 status = self.prompt_execute_security()
                 if status is not False:
                     return
-            elif status == "16":
+            elif status == "15":
                 status = self.prompt_execute_container()
                 if status is not False:
                     return
@@ -666,10 +661,31 @@ class TODO(
         "run": "TODO",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
+        "prompt_assistant_ia": "IA",
+        "_agents_hooks": "Hooks",
+        "_agents_disque": "Disk",
+        "_agents_mcp": "MCP",
         "prompt_assistant_llm": "LLM",
+        "_apertus_menu": "Apertus",
+        "_panorama": "Panorama",
+        "_apertus_cible": "Target",
+        "_apertus_moteur": "Engine",
+        "_apertus_modele": "Model",
+        "_apertus_reprise": "Resume",
+        "_llm_reprendre": "Conversations",
+        "_llm_dossier": "Folder",
+        "_llm_specialistes": "Specialists",
+        "_llm_courses": "Background",
+        "_llm_specialiste_agir": "Agent",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
+        "_llm_models": "Models",
+        "_llm_deploy": "Deploy",
+        "_llm_deploy_cible": "Target",
+        "_llm_deploy_alias": "SSH",
+        "_llm_deploy_methode": "Method",
+        "_llm_transfert_choix": "Transfer",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
@@ -681,10 +697,12 @@ class TODO(
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_actions": "Actions",
-        "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
+        "prompt_opencode_seances": "Open Code",
+        "_opencode_cout": "Cost",
+        "_claude_gerer": "Manage",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
@@ -803,6 +821,22 @@ class TODO(
                 ("tui", "TUI, collapsible blocks per VM"),
             ),
         ),
+        "chat_ui": (
+            "Chat interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
+        "apertus_progress": (
+            "Display while installing Apertus",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
         "migration_ui": (
             "Odoo migration interface",
             (
@@ -866,6 +900,18 @@ class TODO(
                     )
                 },
                 {"prompt_description": t("Fork - Open TODO in a new tab")},
+                {
+                    "prompt_description": (
+                        f"{t('Display while installing Apertus')}  "
+                        f"({self._pref_label('apertus_progress')})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Chat interface')}  "
+                        f"({self._pref_label('chat_ui')})"
+                    )
+                },
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -886,6 +932,10 @@ class TODO(
                     "make todo", source_erplibre=True
                 )
             elif status == "6":
+                self._pref_edit("apertus_progress")
+            elif status == "7":
+                self._pref_edit("chat_ui")
+            elif status == "8":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:
@@ -2262,11 +2312,20 @@ class TODO(
         return hosts
 
     @staticmethod
-    def _ssh_resolve(alias):
-        """Configuration RÉSOLUE de l'alias, telle que ssh la voit (ssh -G).
+    def _ssh_resolve_all(alias):
+        """Configuration RÉSOLUE de l'alias, TOUTES ses valeurs (ssh -G).
+
+        Rend {mot-clé en minuscules: [valeurs, dans l'ordre de la sortie]},
+        et {} quand ssh ne répond pas, expire ou refuse l'alias.
 
         On délègue à ssh au lieu de relire le fichier : lui seul connaît les
         Include, les Match, l'ordre des motifs et ses propres défauts.
+
+        Les LISTES sont ce qui sépare ce lecteur de `_ssh_resolve`. Plusieurs
+        mots-clés de ssh_config se répètent légitimement : `identityfile`
+        déclare plusieurs clés, `localforward` plusieurs tunnels. Une seule
+        valeur par mot-clé fait disparaître tout ce qui suit la première, et
+        un hôte qui ouvre trois tunnels n'en annonce alors qu'un.
         """
         try:
             res = subprocess.run(
@@ -2283,10 +2342,23 @@ class TODO(
         out = {}
         for ligne in res.stdout.splitlines():
             cle, _, val = ligne.strip().partition(" ")
-            # ssh -G répète « identityfile » : la PREMIÈRE est celle qui compte.
-            if cle and val and cle.lower() not in out:
-                out[cle.lower()] = val
+            if cle and val:
+                out.setdefault(cle.lower(), []).append(val)
         return out
+
+    @staticmethod
+    def _ssh_resolve(alias):
+        """Configuration résolue de l'alias, UNE valeur par mot-clé.
+
+        La PREMIÈRE gagne, et c'est ce qu'attendent ses lecteurs : devant un
+        `identityfile` répété, la première entrée est celle que ssh présente
+        en premier. Ce qui a besoin des répétitions appelle
+        `_ssh_resolve_all`, dont cette vue n'est que le premier élément.
+        """
+        return {
+            cle: valeurs[0]
+            for cle, valeurs in TODO._ssh_resolve_all(alias).items()
+        }
 
     def _sshfs_command(self, alias, mount_point, resolved=None):
         """(commande sshfs, alias contourné ?) pour monter cet alias.
@@ -3297,50 +3369,6 @@ class TODO(
             cmd,
             source_erplibre=False,
         )
-
-    def prompt_execute_gpt_code(self):
-        print(f"🤖 {t('AI assistant tools for development!')}")
-        choices = [
-            {"prompt_description": t("Configure Claude Code configurations")},
-            {
-                "prompt_description": t(
-                    "Add an automation with Claude in todo.py"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "RTK - CLI proxy to reduce LLM token consumption"
-                )
-            },
-            {"prompt_description": t("Show the context given to Claude")},
-            {
-                "prompt_description": t(
-                    "Claude Code plugins - marketplaces and ERPLibre list"
-                )
-            },
-            {"prompt_description": t("Claude Code - local sessions")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_claude_configs()
-            elif status == "2":
-                self._claude_add_automation()
-            elif status == "3":
-                self.prompt_execute_rtk()
-            elif status == "4":
-                self._show_claude_context()
-            elif status == "5":
-                self.prompt_execute_claude_plugins()
-            elif status == "6":
-                self.prompt_claude_sessions()
-            else:
-                print(t("Command not found !"))
 
     def _prompt_claude_configs(self):
         print(f"🤖 {t('Deploy Claude Code commands!')}")

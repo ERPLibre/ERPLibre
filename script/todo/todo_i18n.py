@@ -43,6 +43,18 @@ TRANSLATIONS = {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
         "en": "🔀 Fork - Open TODO in a new tab",
     },
+    "Agent started": {
+        "fr": "Lancé",
+        "en": "Agent started",
+    },
+    "failed calls": {
+        "fr": "échoués",
+        "en": "failed calls",
+    },
+    "interrupted calls": {
+        "fr": "interrompus",
+        "en": "interrupted calls",
+    },
     "Quit": {
         "fr": "Quitter",
         "en": "Quit",
@@ -7496,6 +7508,166 @@ TRANSLATIONS = {
     "Installations": {"fr": "Installations", "en": "Installations"},
     "Total": {"fr": "Total", "en": "Total"},
     "succeeded": {"fr": "réussies", "en": "succeeded"},
+    "Latest tool calls, newest first": {
+        "fr": "Derniers appels d'outil, du plus récent",
+        "en": "Latest tool calls, newest first",
+    },
+    "Prompt for the new agent:": {
+        "fr": "Invite du nouvel agent :",
+        "en": "Prompt for the new agent:",
+    },
+    "Pick a detached agent first.": {
+        "fr": "Choisis d'abord un agent détaché.",
+        "en": "Pick a detached agent first.",
+    },
+    "Output": {
+        "fr": "Sortie",
+        "en": "Output",
+    },
+    "Shown, not kept: nothing of this was written.": {
+        "fr": "Montré, pas gardé : rien de ceci n'a été écrit.",
+        "en": "Shown, not kept: nothing of this was written.",
+    },
+    "Enter to go back to the screen…": {
+        "fr": "Entrée pour revenir à l'écran…",
+        "en": "Enter to go back to the screen…",
+    },
+    "This terminal cannot suspend the screen.": {
+        "fr": "Ce terminal ne sait pas suspendre l'écran.",
+        "en": "This terminal cannot suspend the screen.",
+    },
+    "The agent did not report an identifier.": {
+        "fr": "L'agent n'a pas rapporté d'identifiant.",
+        "en": "The agent did not report an identifier.",
+    },
+    "Nothing was said.": {
+        "fr": "Rien n'a été dit.",
+        "en": "Nothing was said.",
+    },
+    "The work in progress is cut. Type yes:": {
+        "fr": "Le travail en cours est coupé. Tape oui :",
+        "en": "The work in progress is cut. Type yes:",
+    },
+    "This deletes the session and its worktree. Retype:": {
+        "fr": "Ceci supprime la séance et son arbre. Retape :",
+        "en": "This deletes the session and its worktree. Retype:",
+    },
+    "start agent": {
+        "fr": "Lancer",
+        "en": "Start",
+    },
+    "stop agent": {
+        "fr": "Arrêter",
+        "en": "Stop",
+    },
+    "restart agent": {
+        "fr": "Relancer",
+        "en": "Restart",
+    },
+    "Delete": {
+        "fr": "Supprimer",
+        "en": "Delete",
+    },
+    "Attach": {
+        "fr": "Attacher",
+        "en": "Attach",
+    },
+    "Detached agents running now": {
+        "fr": "Agents détachés qui tournent en ce moment",
+        "en": "Detached agents running now",
+    },
+    "No detached agent. Press n to start one.": {
+        "fr": "Aucun agent détaché. « n » en lance un.",
+        "en": "No detached agent. Press n to start one.",
+    },
+    "agent": {
+        "fr": "agent",
+        "en": "agent",
+    },
+    "state": {
+        "fr": "état",
+        "en": "state",
+    },
+    "pid": {
+        "fr": "pid",
+        "en": "pid",
+    },
+    "busy": {
+        "fr": "occupé",
+        "en": "busy",
+    },
+    "idle": {
+        "fr": "au repos",
+        "en": "idle",
+    },
+    "This pane shows conversation content.": {
+        "fr": "Ce volet montre du contenu de conversation.",
+        "en": "This pane shows conversation content.",
+    },
+    "This call was not found in the transcript.": {
+        "fr": "Cet appel est introuvable dans la transcription.",
+        "en": "This call was not found in the transcript.",
+    },
+    "Pick a tool call in the stream first.": {
+        "fr": "Choisis d'abord un appel dans le flux.",
+        "en": "Pick a tool call in the stream first.",
+    },
+    "No answer yet.": {
+        "fr": "Pas encore de réponse.",
+        "en": "No answer yet.",
+    },
+    "The command answered nothing.": {
+        "fr": "La commande n'a rien répondu.",
+        "en": "The command answered nothing.",
+    },
+    "The tool reported an error.": {
+        "fr": "L'outil a signalé une erreur.",
+        "en": "The tool reported an error.",
+    },
+    "the identifier in full": {
+        "fr": "l'identifiant en entier",
+        "en": "the identifier in full",
+    },
+    "Reading everything again…": {
+        "fr": "Tout est relu…",
+        "en": "Reading everything again…",
+    },
+    "content": {
+        "fr": "contenu",
+        "en": "content",
+    },
+    "command": {
+        "fr": "commande",
+        "en": "command",
+    },
+    "failure": {
+        "fr": "échec",
+        "en": "failure",
+    },
+    "interruption": {
+        "fr": "interruption",
+        "en": "interruption",
+    },
+    "no ending": {
+        "fr": "sans clôture",
+        "en": "no ending",
+    },
+    "time": {
+        "fr": "heure",
+        "en": "time",
+    },
+    "duration": {
+        "fr": "durée",
+        "en": "duration",
+    },
+    "outcome": {
+        "fr": "fin",
+        "en": "outcome",
+    },
+    "session": {
+        "fr": "session",
+        "en": "session",
+    },
     "failed": {"fr": "échouées", "en": "failed"},
     "Period": {"fr": "Période", "en": "Period"},
     "days": {"fr": "jours", "en": "days"},
@@ -7515,7 +7687,6 @@ TRANSLATIONS = {
     "stopped": {"fr": "arrêtées", "en": "stopped"},
     "Disk used": {"fr": "Disque utilisé", "en": "Disk used"},
     "image": {"fr": "image", "en": "image"},
-    "failure": {"fr": "échec", "en": "failure"},
     "Reset the statistics": {
         "fr": "Réinitialiser les statistiques",
         "en": "Reset the statistics",
@@ -9697,10 +9868,6 @@ TRANSLATIONS = {
         "fr": "terminée",
         "en": "finished",
     },
-    "duration": {
-        "fr": "durée",
-        "en": "duration",
-    },
     "Panels": {
         "fr": "Panneaux",
         "en": "Panels",
@@ -10511,10 +10678,6 @@ TRANSLATIONS = {
     "unknown to this database": {
         "fr": "inconnu de cette base",
         "en": "unknown to this database",
-    },
-    "state": {
-        "fr": "état",
-        "en": "state",
     },
     "author": {
         "fr": "auteur",
@@ -12494,7 +12657,6 @@ TRANSLATIONS = {
         "fr": "ouvrir le projet une fois puis fermer PyCharm : le .idea qu'il écrit est ce que l'installation configure",
         "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
     },
-    "command": {"fr": "commande", "en": "command"},
     "release feed unreachable: unified build, it will ask for a JetBrains account": {
         "fr": "flux des versions injoignable : build unifié, il demandera un compte JetBrains",
         "en": "release feed unreachable: unified build, it will ask for a JetBrains account",
@@ -13978,6 +14140,65 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Agents IA (script/todo/assistant/harness/, assistant_menu.py). Les
+    # verdicts d'un harnais : le binaire manque, ou l'adaptateur n'a pas été
+    # mesuré, et les deux n'appellent pas le même geste.
+    "AI - Agents, models and telemetry": {
+        "fr": "🤖 IA - Agents, modèles et télémétrie",
+        "en": "🤖 AI - Agents, models and telemetry",
+    },
+    "An agent, a model, a conversation.": {
+        "fr": "Un agent, un modèle, une conversation.",
+        "en": "An agent, a model, a conversation.",
+    },
+    "Agents": {
+        "fr": "🤖 Agents",
+        "en": "🤖 Agents",
+    },
+    "Direct model": {
+        "fr": "💬 Modèle direct",
+        "en": "💬 Direct model",
+    },
+    "Tooling": {
+        "fr": "🛠 Outillage",
+        "en": "🛠 Tooling",
+    },
+    "LLM servers": {
+        "fr": "💬 Serveurs LLM",
+        "en": "💬 LLM servers",
+    },
+    "Other harnesses…": {
+        "fr": "🔎 Autres harnais…",
+        "en": "🔎 Other harnesses…",
+    },
+    "binary not found": {
+        "fr": "binaire introuvable",
+        "en": "binary not found",
+    },
+    "binary found, its configuration directory is not": {
+        "fr": "binaire trouvé, son répertoire de configuration non",
+        "en": "binary found, its configuration directory is not",
+    },
+    "no adapter measured against this software yet": {
+        "fr": "aucun adaptateur mesuré contre ce logiciel",
+        "en": "no adapter measured against this software yet",
+    },
+    "This harness is not usable here:": {
+        "fr": "Ce harnais n'est pas utilisable ici :",
+        "en": "This harness is not usable here:",
+    },
+    "Installing it makes it appear on its own.": {
+        "fr": "L'installer le fait apparaître de lui-même.",
+        "en": "Installing it makes it appear on its own.",
+    },
+    "Installing one makes it appear on its own.": {
+        "fr": "En installer un le fait apparaître de lui-même.",
+        "en": "Installing one makes it appear on its own.",
+    },
+    "The harnesses this repository knows by name": {
+        "fr": "Les harnais que ce dépôt connaît de nom",
+        "en": "The harnesses this repository knows by name",
+    },
     # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
         "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
@@ -14175,9 +14396,314 @@ TRANSLATIONS = {
         "fr": "en usage",
         "en": "in use",
     },
-    "11 ports, instant": {
-        "fr": "11 ports, instantané",
-        "en": "11 ports, instant",
+    "instant": {
+        "fr": "instantané",
+        "en": "instant",
+    },
+    "tunnel": {
+        "fr": "tunnel",
+        "en": "tunnel",
+    },
+    "tunnels": {
+        "fr": "tunnels",
+        "en": "tunnels",
+    },
+    "SSH tunnels": {
+        "fr": "tunnels SSH",
+        "en": "SSH tunnels",
+    },
+    "turn": {
+        "fr": "tour",
+        "en": "turn",
+    },
+    "answer": {
+        "fr": "réponse",
+        "en": "answer",
+    },
+    "tok/s": {
+        "fr": "j/s",
+        "en": "tok/s",
+    },
+    "first token": {
+        "fr": "1er jeton",
+        "en": "first token",
+    },
+    "end": {
+        "fr": "fin",
+        "en": "end",
+    },
+    "error": {
+        "fr": "erreur",
+        "en": "error",
+    },
+    "cut": {
+        "fr": "coupé",
+        "en": "cut",
+    },
+    "no turn yet": {
+        "fr": "aucun tour pour l'instant",
+        "en": "no turn yet",
+    },
+    "%s total": {
+        "fr": "%s au total",
+        "en": "%s total",
+    },
+    "token": {
+        "fr": "jeton",
+        "en": "token",
+    },
+    "%s without a count": {
+        "fr": "%s sans compte",
+        "en": "%s without a count",
+    },
+    "%s tok/s": {
+        "fr": "%s j/s",
+        "en": "%s tok/s",
+    },
+    "first at %s": {
+        "fr": "1er à %s",
+        "en": "first at %s",
+    },
+    "fragment": {
+        "fr": "fragment",
+        "en": "fragment",
+    },
+    "fragments": {
+        "fr": "fragments",
+        "en": "fragments",
+    },
+    "character": {
+        "fr": "caractère",
+        "en": "character",
+    },
+    "Your question": {
+        "fr": "Votre question",
+        "en": "Your question",
+    },
+    "back": {
+        "fr": "retour",
+        "en": "back",
+    },
+    "agents": {
+        "fr": "agents",
+        "en": "agents",
+    },
+    "%s can write": {
+        "fr": "%s écrivent",
+        "en": "%s can write",
+    },
+    "Background agents": {
+        "fr": "🛰 Agents en arrière-plan",
+        "en": "🛰 Background agents",
+    },
+    "No background agent has been started.": {
+        "fr": "Aucun agent n'a été lancé en arrière-plan.",
+        "en": "No background agent has been started.",
+    },
+    "Ask a question": {
+        "fr": "Poser une question",
+        "en": "Ask a question",
+    },
+    "Run it in the background": {
+        "fr": "Lancer en arrière-plan",
+        "en": "Run it in the background",
+    },
+    "Running in the background": {
+        "fr": "Lancé en arrière-plan",
+        "en": "Running in the background",
+    },
+    "Its answer lands in": {
+        "fr": "Sa réponse arrivera dans",
+        "en": "Its answer lands in",
+    },
+    "%s running": {
+        "fr": "%s en cours",
+        "en": "%s running",
+    },
+    "returned": {
+        "fr": "revenu",
+        "en": "returned",
+    },
+    "returned-plural": {
+        "fr": "revenus",
+        "en": "returned",
+    },
+    "Specialised agents": {
+        "fr": "🧑‍🔧 Agents spécialisés",
+        "en": "🧑‍🔧 Specialised agents",
+    },
+    "No specialised agent is declared here.": {
+        "fr": "Aucun agent spécialisé n'est déclaré ici.",
+        "en": "No specialised agent is declared here.",
+    },
+    "default model": {
+        "fr": "modèle par défaut",
+        "en": "default model",
+    },
+    "read-only": {
+        "fr": "lecture seule",
+        "en": "read-only",
+    },
+    "May write here: %s": {
+        "fr": "Peut écrire ici : %s",
+        "en": "May write here: %s",
+    },
+    "Folders": {
+        "fr": "Dossiers",
+        "en": "Folders",
+    },
+    "New conversation here": {
+        "fr": "✨ Nouvelle conversation dans ce dossier",
+        "en": "✨ New conversation here",
+    },
+    "This conversation is not being kept.": {
+        "fr": "Cette conversation n'est pas gardée.",
+        "en": "This conversation is not being kept.",
+    },
+    "Could not file this conversation.": {
+        "fr": "Impossible de ranger cette conversation.",
+        "en": "Could not file this conversation.",
+    },
+    "Filed under %s": {
+        "fr": "Rangée dans %s",
+        "en": "Filed under %s",
+    },
+    "Taken out of its folder.": {
+        "fr": "Sortie de son dossier.",
+        "en": "Taken out of its folder.",
+    },
+    "file this conversation: /dossier <name>, empty to take it out": {
+        "fr": (
+            "ranger cette conversation : /dossier <nom>, vide pour l'en"
+            " sortir"
+        ),
+        "en": (
+            "file this conversation: /dossier <name>, empty to take it out"
+        ),
+    },
+    "Start a new conversation": {
+        "fr": "✨ Nouvelle conversation",
+        "en": "✨ New conversation",
+    },
+    "Resume": {
+        "fr": "Reprendre",
+        "en": "Resume",
+    },
+    "%s resumed": {
+        "fr": "%s repris",
+        "en": "%s resumed",
+    },
+    "Every turn is written under ~/.erplibre, and nowhere else.": {
+        "fr": (
+            "Chaque tour est écrit sous ~/.erplibre, et nulle part ailleurs."
+        ),
+        "en": "Every turn is written under ~/.erplibre, and nowhere else.",
+    },
+    "theme": {
+        "fr": "thème",
+        "en": "theme",
+    },
+    "question colour": {
+        "fr": "couleur des questions",
+        "en": "question colour",
+    },
+    "answer colour": {
+        "fr": "couleur des réponses",
+        "en": "answer colour",
+    },
+    "show reasoning": {
+        "fr": "montrer le raisonnement",
+        "en": "show reasoning",
+    },
+    "timings at start": {
+        "fr": "durées au démarrage",
+        "en": "timings at start",
+    },
+    "time of each turn": {
+        "fr": "heure de chaque tour",
+        "en": "time of each turn",
+    },
+    "text colour": {
+        "fr": "couleur du texte",
+        "en": "text colour",
+    },
+    "column": {
+        "fr": "colonne",
+        "en": "column",
+    },
+    "options": {
+        "fr": "options",
+        "en": "options",
+    },
+    "Colour in hexadecimal, or empty": {
+        "fr": "Couleur en hexadécimal, ou vide",
+        "en": "Colour in hexadecimal, or empty",
+    },
+    "h: type a colour · enter: cycle · escape: close": {
+        "fr": "h : saisir une couleur · entrée : faire tourner · échap : fermer",
+        "en": "h: type a colour · enter: cycle · escape: close",
+    },
+    "timings": {
+        "fr": "durées",
+        "en": "timings",
+    },
+    "interrupt": {
+        "fr": "interrompre",
+        "en": "interrupt",
+    },
+    "open the live screen, with the timings of each turn": {
+        "fr": "ouvrir l'écran vivant, avec les durées de chaque tour",
+        "en": "open the live screen, with the timings of each turn",
+    },
+    "loaded": {
+        "fr": "chargé",
+        "en": "loaded",
+    },
+    "Which model": {
+        "fr": "Quel modèle",
+        "en": "Which model",
+    },
+    "No model under that name on this server.": {
+        "fr": "Aucun modèle de ce nom sur ce serveur.",
+        "en": "No model under that name on this server.",
+    },
+    "%s is not loaded; this server serves %s.": {
+        "fr": "%s n'est pas chargé ; ce serveur sert %s.",
+        "en": "%s is not loaded; this server serves %s.",
+    },
+    "This server does not serve %s.": {
+        "fr": "Ce serveur ne sert pas %s.",
+        "en": "This server does not serve %s.",
+    },
+    "It serves: %s": {
+        "fr": "Il sert : %s",
+        "en": "It serves: %s",
+    },
+    "/model changes it, /model <text> filters": {
+        "fr": "/model en change, /model <texte> filtre",
+        "en": "/model changes it, /model <text> filters",
+    },
+    "change model on this server, history CLEARED; /model <text> filters": {
+        "fr": (
+            "changer de modèle sur ce serveur, historique VIDÉ ;"
+            " /model <texte> filtre"
+        ),
+        "en": (
+            "change model on this server, history CLEARED;"
+            " /model <text> filters"
+        ),
+    },
+    "declared tunnel without an answer": {
+        "fr": "tunnel déclaré sans réponse",
+        "en": "declared tunnel without an answer",
+    },
+    "declared tunnels without an answer": {
+        "fr": "tunnels déclarés sans réponse",
+        "en": "declared tunnels without an answer",
+    },
+    "Mount the tunnels of %s?": {
+        "fr": "Monter les tunnels de %s ?",
+        "en": "Mount the tunnels of %s?",
     },
     "The QEMU VMs of this machine (virsh)": {
         "fr": "🖥 Les VM QEMU de cette machine (virsh)",
@@ -14385,6 +14911,604 @@ TRANSLATIONS = {
     "Produce or fix a .base.md, its header and its language blocks": {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
+    },
+    # Contexte et environnement d'une session (agents/contexte.py et
+    # agents/environnement.py). Une valeur d'environnement ne s'affiche
+    # que si son nom est déclaré ET que sa valeur a la forme attendue.
+    "Inspect": {
+        "fr": "Inspecter",
+        "en": "Inspect",
+    },
+    "Context and environment of a session": {
+        "fr": "📇 Contexte et environnement d'une session",
+        "en": "📇 Context and environment of a session",
+    },
+    "No transcript for this session.": {
+        "fr": "Aucune transcription pour cette session.",
+        "en": "No transcript for this session.",
+    },
+    "CONTEXT": {
+        "fr": "CONTEXTE",
+        "en": "CONTEXT",
+    },
+    "knowledge cutoff": {
+        "fr": "coupure de connaissances",
+        "en": "knowledge cutoff",
+    },
+    "machine": {
+        "fr": "machine",
+        "en": "machine",
+    },
+    "git repository": {
+        "fr": "· dépôt git",
+        "en": "· git repository",
+    },
+    "skills": {
+        "fr": "skills",
+        "en": "skills",
+    },
+    "permissions": {
+        "fr": "permissions",
+        "en": "permissions",
+    },
+    "announcements": {
+        "fr": "annonces",
+        "en": "announcements",
+    },
+    "latest": {
+        "fr": "dernière",
+        "en": "latest",
+    },
+    "instructions": {
+        "fr": "instructions",
+        "en": "instructions",
+    },
+    "hook": {
+        "fr": "hook",
+        "en": "hook",
+    },
+    "not carried by this CLI version": {
+        "fr": "non porté par cette version du CLI",
+        "en": "not carried by this CLI version",
+    },
+    "Unmask one variable (empty to skip):": {
+        "fr": "Démasquer une variable (vide pour passer) :",
+        "en": "Unmask one variable (empty to skip):",
+    },
+    "No masked variable by that name.": {
+        "fr": "Aucune variable masquée de ce nom.",
+        "en": "No masked variable by that name.",
+    },
+    "A secret is never unmasked here.": {
+        "fr": "Un secret ne se démasque jamais ici.",
+        "en": "A secret is never unmasked here.",
+    },
+    "unreadable, nothing will be written": {
+        "fr": "illisible, rien ne sera écrit",
+        "en": "unreadable, nothing will be written",
+    },
+    "ENVIRONMENT": {
+        "fr": "ENVIRONNEMENT",
+        "en": "ENVIRONMENT",
+    },
+    "unreadable: the process is gone": {
+        "fr": "illisible : le processus n'existe plus",
+        "en": "unreadable: the process is gone",
+    },
+    "total · in clear · masked · secret": {
+        "fr": "total · en clair · masquées · secrètes",
+        "en": "total · in clear · masked · secret",
+    },
+    "The process carries the login shell environment,": {
+        "fr": "Le processus porte l'environnement du shell de connexion,",
+        "en": "The process carries the login shell environment,",
+    },
+    "frozen at exec; Claude Code sets its own in children.": {
+        "fr": "figé à l'exec ; Claude Code pose les siennes dans ses enfants.",
+        "en": "frozen at exec; Claude Code sets its own in children.",
+    },
+    # Serveurs MCP (script/todo/assistant/agents/mcp.py). Deux populations :
+    # les déclarations locales se lisent, les connecteurs du compte se
+    # demandent — et la demande attend le réseau.
+    "MCP servers": {
+        "fr": "🔌 Serveurs MCP",
+        "en": "🔌 MCP servers",
+    },
+    "to be queried": {
+        "fr": "à interroger",
+        "en": "to be queried",
+    },
+    "declared": {
+        "fr": "déclarés",
+        "en": "declared",
+    },
+    "no server declared here": {
+        "fr": "aucun serveur déclaré ici",
+        "en": "no server declared here",
+    },
+    "Locally declared MCP servers": {
+        "fr": "Serveurs MCP déclarés ici",
+        "en": "Locally declared MCP servers",
+    },
+    "Account connectors live in no file here.": {
+        "fr": "Les connecteurs du compte ne vivent dans aucun fichier ici.",
+        "en": "Account connectors live in no file here.",
+    },
+    "Query the servers (network)": {
+        "fr": "🔍 Interroger les serveurs (réseau)",
+        "en": "🔍 Query the servers (network)",
+    },
+    "Detail one server (network)": {
+        "fr": "📇 Détailler un serveur (réseau)",
+        "en": "📇 Detail one server (network)",
+    },
+    "Server name": {
+        "fr": "Nom du serveur",
+        "en": "Server name",
+    },
+    "Checking over the network…": {
+        "fr": "Interrogation par le réseau…",
+        "en": "Checking over the network…",
+    },
+    # Disque et ménage (script/todo/assistant/agents/disque.py). L'écran
+    # descend sous le total : une session, et son plus gros fichier capturé.
+    "Disk and cleanup": {
+        "fr": "💾 Disque et ménage",
+        "en": "💾 Disk and cleanup",
+    },
+    "What Claude Code occupies": {
+        "fr": "Ce que Claude Code occupe",
+        "en": "What Claude Code occupies",
+    },
+    "File history, per session": {
+        "fr": "Historique des fichiers, par session",
+        "en": "File history, per session",
+    },
+    "largest": {
+        "fr": "plus gros",
+        "en": "largest",
+    },
+    "alive, not offered": {
+        "fr": "vivante, non proposée",
+        "en": "alive, not offered",
+    },
+    "removable": {
+        "fr": "retirable",
+        "en": "removable",
+    },
+    "Nothing can be removed:": {
+        "fr": "Rien ne peut être retiré :",
+        "en": "Nothing can be removed:",
+    },
+    "every session with a history is alive.": {
+        "fr": "toute session qui porte un historique est vivante.",
+        "en": "every session with a history is alive.",
+    },
+    "not asked: the listing did not answer": {
+        "fr": "non demandé : le listage n'a pas répondu",
+        "en": "not asked: the listing did not answer",
+    },
+    "the listing did not answer, so nothing is offered.": {
+        "fr": "le listage n'a pas répondu, donc rien n'est proposé.",
+        "en": "the listing did not answer, so nothing is offered.",
+    },
+    "Remove one session's file history": {
+        "fr": "🗑 Retirer l'historique des fichiers d'une session",
+        "en": "🗑 Remove one session's file history",
+    },
+    "This loses the ability to restore a file": {
+        "fr": "Ceci fait perdre la restauration d'un fichier",
+        "en": "This loses the ability to restore a file",
+    },
+    "to an earlier version within that session.": {
+        "fr": "à une version antérieure, dans cette session.",
+        "en": "to an earlier version within that session.",
+    },
+    "freed": {
+        "fr": "libérés",
+        "en": "freed",
+    },
+    "file": {
+        "fr": "fichier",
+        "en": "file",
+    },
+    # Les hooks de télémétrie (script/todo/assistant/agents/pose.py). Deux
+    # endroits qui ne se remplacent pas : le global mesure la machine, celui
+    # du dépôt mesure ce dépôt pour tout clone.
+    "Telemetry hooks": {
+        "fr": "🪝 Hooks de télémétrie",
+        "en": "🪝 Telemetry hooks",
+    },
+    "Where the telemetry hooks are installed": {
+        "fr": "Où les hooks de télémétrie sont posés",
+        "en": "Where the telemetry hooks are installed",
+    },
+    "none installed": {
+        "fr": "aucun posé",
+        "en": "none installed",
+    },
+    "Interrupted; back to the screen.": {
+        "fr": "Interrompu ; retour à l'écran.",
+        "en": "Interrupted; back to the screen.",
+    },
+    "Sent, waiting for the answer…": {
+        "fr": "Envoyé, en attente de la réponse…",
+        "en": "Sent, waiting for the answer…",
+    },
+    "Open Code rows carry a database cost, stable over the whole session.": {
+        "fr": (
+            "Les rangées Open Code portent un coût de base, stable sur toute"
+            " la séance."
+        ),
+        "en": (
+            "Open Code rows carry a database cost, stable over the whole"
+            " session."
+        ),
+    },
+    "Act": {
+        "fr": "Agir",
+        "en": "Act",
+    },
+    "Keys": {
+        "fr": "Touches",
+        "en": "Keys",
+    },
+    "Keys and actions": {
+        "fr": "Touches et actions",
+        "en": "Keys and actions",
+    },
+    "Display": {
+        "fr": "Affichage",
+        "en": "Display",
+    },
+    "On the highlighted row": {
+        "fr": "Sur la ligne surlignée",
+        "en": "On the highlighted row",
+    },
+    "A number acts · Esc closes": {
+        "fr": "Un chiffre agit · Échap ferme",
+        "en": "A number acts · Esc closes",
+    },
+    "Quit the screen": {
+        "fr": "Quitter l'écran",
+        "en": "Quit the screen",
+    },
+    "Freeze the display; the reads go on underneath": {
+        "fr": "Geler l'affichage ; les lectures continuent dessous",
+        "en": "Freeze the display; the reads go on underneath",
+    },
+    "Read everything again from the start": {
+        "fr": "Tout relire depuis le début",
+        "en": "Read everything again from the start",
+    },
+    "Switch the bottom panel": {
+        "fr": "Permuter le panneau du bas",
+        "en": "Switch the bottom panel",
+    },
+    "Show this panel": {
+        "fr": "Afficher ce panneau",
+        "en": "Show this panel",
+    },
+    "Detail of the highlighted call (shows content)": {
+        "fr": "Détail de l'appel surligné (montre du contenu)",
+        "en": "Detail of the highlighted call (shows content)",
+    },
+    "Raw output of the agent (shows content)": {
+        "fr": "Sortie brute de l'agent (montre du contenu)",
+        "en": "Raw output of the agent (shows content)",
+    },
+    "Start a detached agent": {
+        "fr": "Lancer un agent détaché",
+        "en": "Start a detached agent",
+    },
+    "Stop the highlighted agent": {
+        "fr": "Arrêter l'agent surligné",
+        "en": "Stop the highlighted agent",
+    },
+    "Restart it on the current binary (confirms)": {
+        "fr": "Le relancer sur le binaire courant (confirme)",
+        "en": "Restart it on the current binary (confirms)",
+    },
+    "Delete it and its worktree (retype the identifier)": {
+        "fr": "Le supprimer avec son arbre de travail (retaper l'identifiant)",
+        "en": "Delete it and its worktree (retype the identifier)",
+    },
+    "Attach to it — this closes the screen": {
+        "fr": "S'y attacher — ferme cet écran",
+        "en": "Attach to it — this closes the screen",
+    },
+    "unreadable settings": {
+        "fr": "réglages illisibles",
+        "en": "unreadable settings",
+    },
+    "both": {
+        "fr": "les deux",
+        "en": "both",
+    },
+    "global": {
+        "fr": "global",
+        "en": "global",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "Install into ~/.claude (this machine)": {
+        "fr": "🪝 Poser dans ~/.claude (cette machine)",
+        "en": "🪝 Install into ~/.claude (this machine)",
+    },
+    "Install into the repository (every clone)": {
+        "fr": "🪝 Poser dans le dépôt (tout clone)",
+        "en": "🪝 Install into the repository (every clone)",
+    },
+    "Remove from ~/.claude": {
+        "fr": "🗑 Retirer de ~/.claude",
+        "en": "🗑 Remove from ~/.claude",
+    },
+    "Remove from the repository": {
+        "fr": "🗑 Retirer du dépôt",
+        "en": "🗑 Remove from the repository",
+    },
+    "That file is tracked by git.": {
+        "fr": "Ce fichier est suivi par git.",
+        "en": "That file is tracked by git.",
+    },
+    "The log lives under": {
+        "fr": "Le journal vit sous",
+        "en": "The log lives under",
+    },
+    # « days » existe déjà plus haut, avec la même traduction : réutilisée.
+    "Per tool": {
+        "fr": "Par outil",
+        "en": "Per tool",
+    },
+    "tool": {
+        "fr": "outil",
+        "en": "tool",
+    },
+    "calls": {
+        "fr": "appels",
+        "en": "calls",
+    },
+    "median": {
+        "fr": "médiane",
+        "en": "median",
+    },
+    "peak": {
+        "fr": "pointe",
+        "en": "peak",
+    },
+    "unfinished": {
+        "fr": "inachevés",
+        "en": "unfinished",
+    },
+    "No hook installed: the per-tool figures need one.": {
+        "fr": "Aucun hook posé : les chiffres par outil en demandent un.",
+        "en": "No hook installed: the per-tool figures need one.",
+    },
+    # Télémétrie des agents (script/todo/assistant/agents/). Chaque chiffre
+    # dit sa source : les jetons sont sommés, le coût est lu.
+    "Measure": {
+        "fr": "📊 Mesure",
+        "en": "📊 Measure",
+    },
+    "Agent telemetry (TUI)": {
+        "fr": "📊 Télémétrie des agents (TUI)",
+        "en": "📊 Agent telemetry (TUI)",
+    },
+    "Agent telemetry": {
+        "fr": "Télémétrie des agents",
+        "en": "Agent telemetry",
+    },
+    "Freeze": {
+        "fr": "Geler",
+        "en": "Freeze",
+    },
+    "frozen": {
+        "fr": "gelé",
+        "en": "frozen",
+    },
+    "Read again": {
+        "fr": "Tout relire",
+        "en": "Read again",
+    },
+    "sessions": {
+        "fr": "sessions",
+        "en": "sessions",
+    },
+    # « project » existe déjà plus haut, avec exactement cette traduction :
+    # une clé répétée écrase la précédente en silence, donc elle est réutilisée
+    # plutôt que redéclarée.
+    "turns": {
+        "fr": "tours",
+        "en": "turns",
+    },
+    "prompt": {
+        "fr": "invite",
+        "en": "prompt",
+    },
+    "output": {
+        "fr": "sortie",
+        "en": "output",
+    },
+    "thinking": {
+        "fr": "réflexion",
+        "en": "thinking",
+    },
+    "cache": {
+        "fr": "cache",
+        "en": "cache",
+    },
+    "context": {
+        "fr": "contexte",
+        "en": "context",
+    },
+    "growth": {
+        "fr": "croissance",
+        "en": "growth",
+    },
+    "cost": {
+        "fr": "coût",
+        "en": "cost",
+    },
+    "attention": {
+        "fr": "attention",
+        "en": "attention",
+    },
+    "tokens": {
+        "fr": "jetons",
+        "en": "tokens",
+    },
+    "cache read": {
+        "fr": "cache lu",
+        "en": "cache read",
+    },
+    "Sessions opened from this directory": {
+        "fr": "🧊 Séances ouvertes depuis ce répertoire",
+        "en": "🧊 Sessions opened from this directory",
+    },
+    "None here. The listing sees this directory only.": {
+        "fr": "Aucune ici. Le listage ne voit que ce répertoire.",
+        "en": "None here. The listing sees this directory only.",
+    },
+    "What one session cost": {
+        "fr": "💰 Ce qu'une séance a coûté",
+        "en": "💰 What one session cost",
+    },
+    "Statistics, by tool and by model (all projects)": {
+        "fr": "📊 Statistiques, par outil et par modèle (tous projets)",
+        "en": "📊 Statistics, by tool and by model (all projects)",
+    },
+    "No session to read here.": {
+        "fr": "Aucune séance à lire ici.",
+        "en": "No session to read here.",
+    },
+    "This session could not be read.": {
+        "fr": "Cette séance n'a pas pu être lue.",
+        "en": "This session could not be read.",
+    },
+    "Open Code cut its own output.": {
+        "fr": "Open Code a coupé sa propre sortie.",
+        "en": "Open Code cut its own output.",
+    },
+    "Sessions everywhere on this machine": {
+        "fr": "🧊 Séances de toute la machine",
+        "en": "🧊 Sessions everywhere on this machine",
+    },
+    "Every directory of this machine": {
+        "fr": "🌐 Tous les répertoires de la machine",
+        "en": "🌐 Every directory of this machine",
+    },
+    "This directory only": {
+        "fr": "📁 Ce répertoire seulement",
+        "en": "📁 This directory only",
+    },
+    "None in this directory.": {
+        "fr": "Aucune dans ce répertoire.",
+        "en": "None in this directory.",
+    },
+    "No Open Code session on this machine.": {
+        "fr": "Aucune séance Open Code sur cette machine.",
+        "en": "No Open Code session on this machine.",
+    },
+    "read from": {
+        "fr": "lu depuis",
+        "en": "read from",
+    },
+    "its database": {
+        "fr": "sa base",
+        "en": "its database",
+    },
+    "its command line": {
+        "fr": "sa ligne de commande",
+        "en": "its command line",
+    },
+    "The database is not readable.": {
+        "fr": "La base n'est pas lisible.",
+        "en": "The database is not readable.",
+    },
+    "It happens past roughly 60 kB of export.": {
+        "fr": "Cela arrive au-delà d'une soixantaine de ko d'export.",
+        "en": "It happens past roughly 60 kB of export.",
+    },
+    "nothing here": {
+        "fr": "rien ici",
+        "en": "nothing here",
+    },
+    "session here": {
+        "fr": "séance ici",
+        "en": "session here",
+    },
+    "sessions here": {
+        "fr": "séances ici",
+        "en": "sessions here",
+    },
+    "tools": {
+        "fr": "outils",
+        "en": "tools",
+    },
+    "Tokens are summed from each message. Cost and durations are read from"
+    " the last cost-state, which a compaction resets.": {
+        "fr": (
+            "Les jetons sont sommés message par message. Le coût et les"
+            " durées sont lus dans le dernier cost-state, qu'une compaction"
+            " remet à zéro."
+        ),
+        "en": (
+            "Tokens are summed from each message. Cost and durations are read"
+            " from the last cost-state, which a compaction resets."
+        ),
+    },
+    # Agents d'arrière-plan (script/todo/assistant/harness/claude.py). Les
+    # cinq sous-commandes ne coûtent pas la même chose : « stop » garde la
+    # conversation, « respawn » coupe le travail, « rm » détruit l'arbre.
+    "Background": {
+        "fr": "Arrière-plan",
+        "en": "Background",
+    },
+    "Attach a background agent": {
+        "fr": "🔗 Attacher un agent d'arrière-plan",
+        "en": "🔗 Attach a background agent",
+    },
+    "Read a background agent's output": {
+        "fr": "📜 Lire la sortie d'un agent d'arrière-plan",
+        "en": "📜 Read a background agent's output",
+    },
+    "Stop, restart or delete a background agent…": {
+        "fr": "🛑 Arrêter, relancer ou supprimer un agent…",
+        "en": "🛑 Stop, restart or delete a background agent…",
+    },
+    "no background agent": {
+        "fr": "aucun agent en arrière-plan",
+        "en": "no background agent",
+    },
+    "The work in progress is cut.": {
+        "fr": "Le travail en cours est coupé.",
+        "en": "The work in progress is cut.",
+    },
+    "Restart it? (y/N)": {
+        "fr": "La relancer ? (o/N)",
+        "en": "Restart it? (y/N)",
+    },
+    "This deletes the session and its worktree.": {
+        "fr": "Ceci supprime la session ET son arbre de travail.",
+        "en": "This deletes the session and its worktree.",
+    },
+    "Type the session identifier in full to delete it:": {
+        "fr": "Tape l'identifiant de session en entier pour la supprimer :",
+        "en": "Type the session identifier in full to delete it:",
+    },
+    "Stop it, keeping its conversation": {
+        "fr": "🛑 L'arrêter, en gardant sa conversation",
+        "en": "🛑 Stop it, keeping its conversation",
+    },
+    "Restart it on the current binary": {
+        "fr": "🔄 La relancer sur le binaire courant",
+        "en": "🔄 Restart it on the current binary",
+    },
+    "Delete it, and its worktree": {
+        "fr": "🗑 La supprimer, et son arbre de travail",
+        "en": "🗑 Delete it, and its worktree",
     },
     # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {
@@ -15882,6 +17006,521 @@ TRANSLATIONS = {
     "forced: the name only, the space stays": {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
+    },
+    "Models on a server": {
+        "fr": "📦 Modèles sur un serveur",
+        "en": "Models on a server",
+    },
+    "Install ERPLibre on a target": {
+        "fr": "🚀 Installer ERPLibre sur une cible",
+        "en": "Install ERPLibre on a target",
+    },
+    "nothing offered here": {
+        "fr": "rien d'offert ici",
+        "en": "nothing offered here",
+    },
+    "Install a model": {
+        "fr": "Poser un modèle",
+        "en": "Install a model",
+    },
+    "Remove a model": {
+        "fr": "Retirer un modèle",
+        "en": "Remove a model",
+    },
+    "No model on this server.": {
+        "fr": "Aucun modèle sur ce serveur.",
+        "en": "No model on this server.",
+    },
+    "Model name": {
+        "fr": "Nom du modèle",
+        "en": "Model name",
+    },
+    "Type the model name in full to remove it:": {
+        "fr": "Tape le nom du modèle en entier pour le retirer :",
+        "en": "Type the model name in full to remove it:",
+    },
+    "Pulling — Ctrl+C interrupts": {
+        "fr": "Pose en cours — Ctrl+C interrompt",
+        "en": "Pulling — Ctrl+C interrupts",
+    },
+    "A path on this machine": {
+        "fr": "Un chemin sur cette machine",
+        "en": "A path on this machine",
+    },
+    "A host of ~/.ssh/config": {
+        "fr": "Un hôte de ~/.ssh/config",
+        "en": "A host of ~/.ssh/config",
+    },
+    "Type a name": {
+        "fr": "Taper un nom",
+        "en": "Type a name",
+    },
+    "SSH": {
+        "fr": "SSH",
+        "en": "SSH",
+    },
+    "Clone from git": {
+        "fr": "Cloner depuis git",
+        "en": "Clone from git",
+    },
+    "Copy this checkout": {
+        "fr": "Copier ce checkout",
+        "en": "Copy this checkout",
+    },
+    "Path on the target": {
+        "fr": "Chemin sur la cible",
+        "en": "Path on the target",
+    },
+    "Branch to clone": {
+        "fr": "Branche à cloner",
+        "en": "Branch to clone",
+    },
+    "Type the target path in full to install there:": {
+        "fr": "Tape le chemin de la cible en entier pour y installer :",
+        "en": "Type the target path in full to install there:",
+    },
+    "An ERPLibre is already there — nothing was touched:": {
+        "fr": "Un ERPLibre est déjà là — rien n'a été touché :",
+        "en": "An ERPLibre is already there — nothing was touched:",
+    },
+    "Something is already there — nothing was touched:": {
+        "fr": "Quelque chose est déjà là — rien n'a été touché :",
+        "en": "Something is already there — nothing was touched:",
+    },
+    "The probe said nothing — the path counts as occupied:": {
+        "fr": "La sonde n'a rien dit — le chemin compte pour occupé :",
+        "en": "The probe said nothing — the path counts as occupied:",
+    },
+    "Transfer": {
+        "fr": "Transfert",
+        "en": "Transfer",
+    },
+    "Transfer the LLM configuration to the new installation?": {
+        "fr": "Transférer la configuration LLM vers la nouvelle installation ?",
+        "en": "Transfer the LLM configuration to the new installation?",
+    },
+    "Everything": {
+        "fr": "Tout",
+        "en": "Everything",
+    },
+    "Choose…": {
+        "fr": "Choisir…",
+        "en": "Choose…",
+    },
+    "points at the target own loopback": {
+        "fr": "désigne la boucle locale de la cible",
+        "en": "points at the target own loopback",
+    },
+    "The Claude Code commands": {
+        "fr": "Les commandes Claude Code",
+        "en": "The Claude Code commands",
+    },
+    "posed from the target own checkout": {
+        "fr": "posées depuis le checkout de la cible",
+        "en": "posed from the target own checkout",
+    },
+    "The forbidden-names list": {
+        "fr": "La liste des noms interdits",
+        "en": "The forbidden-names list",
+    },
+    "carries client, database and host names; without it no third-party send is allowed": {
+        "fr": "porte des noms de clients, de bases et d'hôtes ; sans elle aucun envoi vers un tiers n'est permis",
+        "en": "carries client, database and host names; without it no third-party send is allowed",
+    },
+    "Not found": {
+        "fr": "Introuvable",
+        "en": "Not found",
+    },
+    "Model posed.": {
+        "fr": "Modèle posé.",
+        "en": "Model posed.",
+    },
+    "Model removed.": {
+        "fr": "Modèle retiré.",
+        "en": "Model removed.",
+    },
+    "The pull is running at the server.": {
+        "fr": "La pose continue chez le serveur.",
+        "en": "The pull is running at the server.",
+    },
+    "The server refused:": {
+        "fr": "Le serveur a refusé :",
+        "en": "The server refused:",
+    },
+    "The server said nothing.": {
+        "fr": "Le serveur n'a rien dit.",
+        "en": "The server said nothing.",
+    },
+    "No model name given.": {
+        "fr": "Aucun nom de modèle donné.",
+        "en": "No model name given.",
+    },
+    "This server does not offer model management.": {
+        "fr": "Ce serveur n'offre pas la gestion des modèles.",
+        "en": "This server does not offer model management.",
+    },
+    "This server needs a key — set it on the server card.": {
+        "fr": "Ce serveur exige une clé — pose-la sur la fiche du serveur.",
+        "en": "This server needs a key — set it on the server card.",
+    },
+    "Jan installs its models from its own desktop application.": {
+        "fr": "Jan installe ses modèles depuis sa propre application de bureau.",
+        "en": "Jan installs its models from its own desktop application.",
+    },
+    "GPT4All serves what its desktop application already loaded.": {
+        "fr": "GPT4All sert ce que son application de bureau a déjà chargé.",
+        "en": "GPT4All serves what its desktop application already loaded.",
+    },
+    "KoboldCpp serves one model chosen when its process started.": {
+        "fr": "KoboldCpp sert un modèle choisi au lancement de son processus.",
+        "en": "KoboldCpp serves one model chosen when its process started.",
+    },
+    "Text generation web UI downloads its models from its own host.": {
+        "fr": "Text generation web UI télécharge ses modèles depuis son propre hôte.",
+        "en": "Text generation web UI downloads its models from its own host.",
+    },
+    "vLLM serves one model chosen when its process started.": {
+        "fr": "vLLM sert un modèle choisi au lancement de son processus.",
+        "en": "vLLM serves one model chosen when its process started.",
+    },
+    "A remote provider serves its own models.": {
+        "fr": "Un fournisseur distant sert ses propres modèles.",
+        "en": "A remote provider serves its own models.",
+    },
+    "Only ~/ is expanded — give a full path.": {
+        "fr": "Seul ~/ est développé — donne un chemin complet.",
+        "en": "Only ~/ is expanded — give a full path.",
+    },
+    "A name cannot begin with a dash.": {
+        "fr": "Un nom ne peut pas commencer par un tiret.",
+        "en": "A name cannot begin with a dash.",
+    },
+    "The install failed — nothing was transferred.": {
+        "fr": "L'installation a échoué — rien n'a été transféré.",
+        "en": "The install failed — nothing was transferred.",
+    },
+    "The stream stopped before the end.": {
+        "fr": "Le flux s'est arrêté avant la fin.",
+        "en": "The stream stopped before the end.",
+    },
+    "LM Studio has no endpoint that deletes weights.": {
+        "fr": "LM Studio n'a aucun point de terminaison qui supprime des poids.",
+        "en": "LM Studio has no endpoint that deletes weights.",
+    },
+    "TabbyAPI has no endpoint that deletes weights.": {
+        "fr": "TabbyAPI n'a aucun point de terminaison qui supprime des poids.",
+        "en": "TabbyAPI has no endpoint that deletes weights.",
+    },
+    "EXO removes the model card, never the weights it downloaded.": {
+        "fr": "EXO retire la fiche du modèle, jamais les poids téléchargés.",
+        "en": "EXO removes the model card, never the weights it downloaded.",
+    },
+    # Apertus (script/todo/assistant_menu.py, script/todo/assistant/apertus*.py).
+    # Les libellés d'étape servent AUSSI de clé de reprise côté
+    # `apertus.py` : les renommer invalide les progressions gardées.
+    "Display while installing Apertus": {
+        "fr": "Affichage pendant l'installation d'Apertus",
+        "en": "Display while installing Apertus",
+    },
+    "Save the conversation": {
+        "fr": "Sauver la conversation",
+        "en": "Save the conversation",
+    },
+    "New conversation": {
+        "fr": "Nouvelle conversation",
+        "en": "New conversation",
+    },
+    "Chat interface": {
+        "fr": "Interface de la conversation",
+        "en": "Chat interface",
+    },
+    "parameters": {
+        "fr": "paramètres",
+        "en": "parameters",
+    },
+    "licence": {
+        "fr": "licence",
+        "en": "licence",
+    },
+    "engines": {
+        "fr": "moteurs",
+        "en": "engines",
+    },
+    "formats": {
+        "fr": "formats",
+        "en": "formats",
+    },
+    "Open models - engines, licences and resources": {
+        "fr": "🗺 Modèles ouverts - moteurs, licences et ressources",
+        "en": "🗺 Open models - engines, licences and resources",
+    },
+    "A survey has a shelf life; this one carries its date.": {
+        "fr": "Un relevé périme ; celui-ci porte sa date.",
+        "en": "A survey has a shelf life; this one carries its date.",
+    },
+    "Surveyed on %s, %s days ago.": {
+        "fr": "Relevé du %s, il y a %s jours.",
+        "en": "Surveyed on %s, %s days ago.",
+    },
+    "survey is fresh": {
+        "fr": "✅ relevé frais",
+        "en": "✅ survey is fresh",
+    },
+    "survey should be re-read": {
+        "fr": "⚠️ relevé à relire",
+        "en": "⚠️ survey should be re-read",
+    },
+    "survey is stale — check before trusting it": {
+        "fr": "⛔ relevé périmé — vérifier avant de s'y fier",
+        "en": "⛔ survey is stale — check before trusting it",
+    },
+    "The engines": {
+        "fr": "⚙️ Les moteurs",
+        "en": "⚙️ The engines",
+    },
+    "The open models": {
+        "fr": "🧠 Les modèles ouverts",
+        "en": "🧠 The open models",
+    },
+    "The full guide": {
+        "fr": "📖 Le guide complet",
+        "en": "📖 The full guide",
+    },
+    "Not surveyed yet: %s": {
+        "fr": "Pas encore relevés : %s",
+        "en": "Not surveyed yet: %s",
+    },
+    "platforms": {
+        "fr": "plateformes",
+        "en": "platforms",
+    },
+    "minimum for Apertus": {
+        "fr": "minimum pour Apertus",
+        "en": "minimum for Apertus",
+    },
+    "weights": {
+        "fr": "poids",
+        "en": "weights",
+    },
+    "KV cache per token": {
+        "fr": "cache KV par jeton",
+        "en": "KV cache per token",
+    },
+    "coding": {
+        "fr": "codage",
+        "en": "coding",
+    },
+    "Check the platform": {
+        "fr": "Vérifier la plateforme",
+        "en": "Check the platform",
+    },
+    "Convert the model": {
+        "fr": "Convertir le modèle",
+        "en": "Convert the model",
+    },
+    "This engine needs %s; this target runs something else.": {
+        "fr": "Ce moteur exige %s ; cette cible tourne autre chose.",
+        "en": "This engine needs %s; this target runs something else.",
+    },
+    "No MLX build is published; the model is converted locally.": {
+        "fr": "Aucun build MLX n'est publié ; le modèle se convertit sur place.",
+        "en": "No MLX build is published; the model is converted locally.",
+    },
+    "Apertus (open LLM)": {
+        "fr": "Apertus (LLM ouvert)",
+        "en": "Apertus (open LLM)",
+    },
+    "local model answering on :11434, no account": {
+        "fr": "modèle local qui répond sur :11434, sans compte",
+        "en": "local model answering on :11434, no account",
+    },
+    "%s tokens of context": {
+        "fr": "%s jetons de contexte",
+        "en": "%s tokens of context",
+    },
+    "Apertus - The open LLM, here or on a server": {
+        "fr": "🇨🇭 Apertus - Le LLM ouvert, ici ou sur un serveur",
+        "en": "🇨🇭 Apertus - The open LLM, here or on a server",
+    },
+    "Apertus, the open LLM of the Swiss Confederation.": {
+        "fr": "Apertus, le LLM ouvert de la Confédération suisse.",
+        "en": "Apertus, the open LLM of the Swiss Confederation.",
+    },
+    "Understand": {
+        "fr": "📖 Comprendre",
+        "en": "📖 Understand",
+    },
+    "Prepare": {
+        "fr": "🎯 Préparer",
+        "en": "🎯 Prepare",
+    },
+    "Use": {
+        "fr": "💬 Utiliser",
+        "en": "💬 Use",
+    },
+    "Guide - what Apertus is, and how to use it": {
+        "fr": "📖 Guide - ce qu'est Apertus, et comment s'en servir",
+        "en": "📖 Guide - what Apertus is, and how to use it",
+    },
+    "Target - the machine to install on": {
+        "fr": "🎯 Cible - la machine où installer",
+        "en": "🎯 Target - the machine to install on",
+    },
+    "Engine - how to serve the model": {
+        "fr": "⚙️ Moteur - comment servir le modèle",
+        "en": "⚙️ Engine - how to serve the model",
+    },
+    "Model - full 8B, or distilled Mini": {
+        "fr": "🧠 Modèle - 8B complet, ou Mini distillé",
+        "en": "🧠 Model - full 8B, or distilled Mini",
+    },
+    "Install or resume": {
+        "fr": "📦 Installer ou reprendre",
+        "en": "📦 Install or resume",
+    },
+    "Check and keep the server": {
+        "fr": "🩺 Vérifier et retenir le serveur",
+        "en": "🩺 Check and keep the server",
+    },
+    "Chat with the model": {
+        "fr": "💬 Discuter avec le modèle",
+        "en": "💬 Chat with the model",
+    },
+    "Uninstall": {
+        "fr": "🧹 Désinstaller",
+        "en": "🧹 Uninstall",
+    },
+    "never run": {
+        "fr": "jamais lancé",
+        "en": "never run",
+    },
+    "installed on %s": {
+        "fr": "installé le %s",
+        "en": "installed on %s",
+    },
+    "step %s/%s - failed": {
+        "fr": "étape %s/%s - échec",
+        "en": "step %s/%s - failed",
+    },
+    "no target chosen": {
+        "fr": "aucune cible choisie",
+        "en": "no target chosen",
+    },
+    "Where should I install Apertus?": {
+        "fr": "Où installer Apertus ?",
+        "en": "Where should I install Apertus?",
+    },
+    "Which engine should serve the model?": {
+        "fr": "Quel moteur doit servir le modèle ?",
+        "en": "Which engine should serve the model?",
+    },
+    "Which model?": {
+        "fr": "Quel modèle ?",
+        "en": "Which model?",
+    },
+    "Run these %s steps?": {
+        "fr": "Lancer ces %s étapes ?",
+        "en": "Run these %s steps?",
+    },
+    "Step %s/%s (%s) failed with code %s.": {
+        "fr": "L'étape %s/%s (%s) a échoué, code %s.",
+        "en": "Step %s/%s (%s) failed with code %s.",
+    },
+    "Resume at step %s": {
+        "fr": "▶️ Reprendre à l'étape %s",
+        "en": "▶️ Resume at step %s",
+    },
+    "Start over": {
+        "fr": "🔄 Tout recommencer",
+        "en": "🔄 Start over",
+    },
+    "See the full last output": {
+        "fr": "📜 Voir la dernière sortie complète",
+        "en": "📜 See the full last output",
+    },
+    "%s/%s steps, %s elapsed, %s attempts.": {
+        "fr": "%s/%s étapes, %s écoulées, %s tentatives.",
+        "en": "%s/%s steps, %s elapsed, %s attempts.",
+    },
+    "Last error: %s": {
+        "fr": "Dernière erreur : %s",
+        "en": "Last error: %s",
+    },
+    "Interrupted install on %s.": {
+        "fr": "Installation interrompue le %s.",
+        "en": "Interrupted install on %s.",
+    },
+    "Apertus answers on this target.": {
+        "fr": "✅ Apertus répond sur cette cible.",
+        "en": "✅ Apertus answers on this target.",
+    },
+    "%s %s is too old; Apertus needs %s (xIELU activation).": {
+        "fr": "%s %s est trop ancien ; Apertus exige %s (activation xIELU).",
+        "en": "%s %s is too old; Apertus needs %s (xIELU activation).",
+    },
+    "Not enough space: %s needed, %s free.": {
+        "fr": "Place insuffisante : %s requis, %s libres.",
+        "en": "Not enough space: %s needed, %s free.",
+    },
+    "This host needs an interactive sudo password.": {
+        "fr": "Cet hôte exige un mot de passe sudo interactif.",
+        "en": "This host needs an interactive sudo password.",
+    },
+    "Distilled Mini - lighter, 4096 tokens only": {
+        "fr": "Mini distillé - plus léger, 4096 jetons seulement",
+        "en": "Distilled Mini - lighter, 4096 tokens only",
+    },
+    "No official GGUF exists; this build is community-made.": {
+        "fr": "Aucun GGUF officiel n'existe ; cette version est communautaire.",
+        "en": "No official GGUF exists; this build is community-made.",
+    },
+    "Apertus is not installed on this target.": {
+        "fr": "Apertus n'est pas installé sur cette cible.",
+        "en": "Apertus is not installed on this target.",
+    },
+    "Retype the target in full to remove it": {
+        "fr": "Retapez la cible en entier pour la retirer",
+        "en": "Retype the target in full to remove it",
+    },
+    "Removed.": {
+        "fr": "Retiré.",
+        "en": "Removed.",
+    },
+    "Reach the target": {
+        "fr": "Atteindre la cible",
+        "en": "Reach the target",
+    },
+    "Check sudo": {
+        "fr": "Vérifier sudo",
+        "en": "Check sudo",
+    },
+    "Check free space": {
+        "fr": "Vérifier la place disque",
+        "en": "Check free space",
+    },
+    "Install the engine": {
+        "fr": "Installer le moteur",
+        "en": "Install the engine",
+    },
+    "Check the engine version": {
+        "fr": "Vérifier la version du moteur",
+        "en": "Check the engine version",
+    },
+    "Start the service": {
+        "fr": "Démarrer le service",
+        "en": "Start the service",
+    },
+    "Pull the model": {
+        "fr": "Tirer le modèle",
+        "en": "Pull the model",
+    },
+    "Check it listens": {
+        "fr": "Vérifier qu'il écoute",
+        "en": "Check it listens",
+    },
+    "Check it answers": {
+        "fr": "Vérifier qu'il répond",
+        "en": "Check it answers",
     },
 }
 
