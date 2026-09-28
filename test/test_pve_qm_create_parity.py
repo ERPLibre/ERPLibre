@@ -103,7 +103,9 @@ def deployer(reponses, resolv=RESOLV):
         "parse_bridge_config": lambda _o: {},
         "pick_storage": lambda _s: "local",
         "pick_bridge": lambda _p: "vmbr0",
-        "next_vmid": lambda _v: 100,
+        # `**_k` absorbe les mots-clés que l'allocateur gagnera : ce banc
+        # éprouve la commande produite, pas la signature du choix.
+        "next_vmid": lambda *_a, **_k: 100,
         "ipconfig_for": lambda _i, _v: "ip=192.0.2.10/24,gw=192.0.2.1",
         "image_fetch_cmd": lambda _u, _i, **_k: "true",
         "ip_from_ipconfig": lambda _i: "192.0.2.10",

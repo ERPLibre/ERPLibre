@@ -37,6 +37,9 @@ VMS = [
 def _todo():
     todo = TODO.__new__(TODO)
     todo._pve_host_cache = HOTE
+    # Sans moteur Set-OPS : la garde de coexistence a ses propres épreuves,
+    # et lirait sinon le plan du moteur installé sur la station.
+    todo._pve_devis = lambda: (False, None)
     return todo
 
 
@@ -115,6 +118,7 @@ class TestChangementDEtat(unittest.TestCase):
     def test_sans_hote_rien_ne_part(self):
         todo = TODO.__new__(TODO)
         todo._pve_host_cache = None
+        todo._pve_devis = lambda: (False, None)
         with (
             mock.patch.object(todo, "_pve_host", return_value=None),
             mock.patch.object(pve, "run") as run,
