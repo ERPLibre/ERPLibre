@@ -16471,6 +16471,65 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Agents IA (script/todo/assistant/harness/, assistant_menu.py). Les
+    # verdicts d'un harnais : le binaire manque, ou l'adaptateur n'a pas été
+    # mesuré, et les deux n'appellent pas le même geste.
+    "AI - Agents, models and telemetry": {
+        "fr": "🤖 IA - Agents, modèles et télémétrie",
+        "en": "🤖 AI - Agents, models and telemetry",
+    },
+    "An agent, a model, a conversation.": {
+        "fr": "Un agent, un modèle, une conversation.",
+        "en": "An agent, a model, a conversation.",
+    },
+    "Agents": {
+        "fr": "🤖 Agents",
+        "en": "🤖 Agents",
+    },
+    "Direct model": {
+        "fr": "💬 Modèle direct",
+        "en": "💬 Direct model",
+    },
+    "Tooling": {
+        "fr": "🛠 Outillage",
+        "en": "🛠 Tooling",
+    },
+    "LLM servers": {
+        "fr": "💬 Serveurs LLM",
+        "en": "💬 LLM servers",
+    },
+    "Other harnesses…": {
+        "fr": "🔎 Autres harnais…",
+        "en": "🔎 Other harnesses…",
+    },
+    "binary not found": {
+        "fr": "binaire introuvable",
+        "en": "binary not found",
+    },
+    "binary found, its configuration directory is not": {
+        "fr": "binaire trouvé, son répertoire de configuration non",
+        "en": "binary found, its configuration directory is not",
+    },
+    "no adapter measured against this software yet": {
+        "fr": "aucun adaptateur mesuré contre ce logiciel",
+        "en": "no adapter measured against this software yet",
+    },
+    "This harness is not usable here:": {
+        "fr": "Ce harnais n'est pas utilisable ici :",
+        "en": "This harness is not usable here:",
+    },
+    "Installing it makes it appear on its own.": {
+        "fr": "L'installer le fait apparaître de lui-même.",
+        "en": "Installing it makes it appear on its own.",
+    },
+    "Installing one makes it appear on its own.": {
+        "fr": "En installer un le fait apparaître de lui-même.",
+        "en": "Installing one makes it appear on its own.",
+    },
+    "The harnesses this repository knows by name": {
+        "fr": "Les harnais que ce dépôt connaît de nom",
+        "en": "The harnesses this repository knows by name",
+    },
     # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
         "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
@@ -16878,6 +16937,414 @@ TRANSLATIONS = {
     "Produce or fix a .base.md, its header and its language blocks": {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
+    },
+    # Contexte et environnement d'une session (agents/contexte.py et
+    # agents/environnement.py). Une valeur d'environnement ne s'affiche
+    # que si son nom est déclaré ET que sa valeur a la forme attendue.
+    "Inspect": {
+        "fr": "Inspecter",
+        "en": "Inspect",
+    },
+    "Context and environment of a session": {
+        "fr": "📇 Contexte et environnement d'une session",
+        "en": "📇 Context and environment of a session",
+    },
+    "No transcript for this session.": {
+        "fr": "Aucune transcription pour cette session.",
+        "en": "No transcript for this session.",
+    },
+    "CONTEXT": {
+        "fr": "CONTEXTE",
+        "en": "CONTEXT",
+    },
+    "knowledge cutoff": {
+        "fr": "coupure de connaissances",
+        "en": "knowledge cutoff",
+    },
+    "machine": {
+        "fr": "machine",
+        "en": "machine",
+    },
+    "git repository": {
+        "fr": "· dépôt git",
+        "en": "· git repository",
+    },
+    "skills": {
+        "fr": "skills",
+        "en": "skills",
+    },
+    "permissions": {
+        "fr": "permissions",
+        "en": "permissions",
+    },
+    "announcements": {
+        "fr": "annonces",
+        "en": "announcements",
+    },
+    "latest": {
+        "fr": "dernière",
+        "en": "latest",
+    },
+    "instructions": {
+        "fr": "instructions",
+        "en": "instructions",
+    },
+    "hook": {
+        "fr": "hook",
+        "en": "hook",
+    },
+    "not carried by this CLI version": {
+        "fr": "non porté par cette version du CLI",
+        "en": "not carried by this CLI version",
+    },
+    "Unmask one variable (empty to skip):": {
+        "fr": "Démasquer une variable (vide pour passer) :",
+        "en": "Unmask one variable (empty to skip):",
+    },
+    "No masked variable by that name.": {
+        "fr": "Aucune variable masquée de ce nom.",
+        "en": "No masked variable by that name.",
+    },
+    "A secret is never unmasked here.": {
+        "fr": "Un secret ne se démasque jamais ici.",
+        "en": "A secret is never unmasked here.",
+    },
+    "unreadable, nothing will be written": {
+        "fr": "illisible, rien ne sera écrit",
+        "en": "unreadable, nothing will be written",
+    },
+    "ENVIRONMENT": {
+        "fr": "ENVIRONNEMENT",
+        "en": "ENVIRONMENT",
+    },
+    "unreadable: the process is gone": {
+        "fr": "illisible : le processus n'existe plus",
+        "en": "unreadable: the process is gone",
+    },
+    "total · in clear · masked": {
+        "fr": "total · en clair · masquées",
+        "en": "total · in clear · masked",
+    },
+    "The process carries the login shell environment,": {
+        "fr": "Le processus porte l'environnement du shell de connexion,",
+        "en": "The process carries the login shell environment,",
+    },
+    "frozen at exec; Claude Code sets its own in children.": {
+        "fr": "figé à l'exec ; Claude Code pose les siennes dans ses enfants.",
+        "en": "frozen at exec; Claude Code sets its own in children.",
+    },
+    # Serveurs MCP (script/todo/assistant/agents/mcp.py). Deux populations :
+    # les déclarations locales se lisent, les connecteurs du compte se
+    # demandent — et la demande attend le réseau.
+    "MCP servers": {
+        "fr": "🔌 Serveurs MCP",
+        "en": "🔌 MCP servers",
+    },
+    "to be queried": {
+        "fr": "à interroger",
+        "en": "to be queried",
+    },
+    "declared": {
+        "fr": "déclarés",
+        "en": "declared",
+    },
+    "no server declared here": {
+        "fr": "aucun serveur déclaré ici",
+        "en": "no server declared here",
+    },
+    "Locally declared MCP servers": {
+        "fr": "Serveurs MCP déclarés ici",
+        "en": "Locally declared MCP servers",
+    },
+    "Account connectors live in no file here.": {
+        "fr": "Les connecteurs du compte ne vivent dans aucun fichier ici.",
+        "en": "Account connectors live in no file here.",
+    },
+    "Query the servers (network)": {
+        "fr": "🔍 Interroger les serveurs (réseau)",
+        "en": "🔍 Query the servers (network)",
+    },
+    "Detail one server (network)": {
+        "fr": "📇 Détailler un serveur (réseau)",
+        "en": "📇 Detail one server (network)",
+    },
+    "Server name": {
+        "fr": "Nom du serveur",
+        "en": "Server name",
+    },
+    "Checking over the network…": {
+        "fr": "Interrogation par le réseau…",
+        "en": "Checking over the network…",
+    },
+    # Disque et ménage (script/todo/assistant/agents/disque.py). L'écran
+    # descend sous le total : une session, et son plus gros fichier capturé.
+    "Disk and cleanup": {
+        "fr": "💾 Disque et ménage",
+        "en": "💾 Disk and cleanup",
+    },
+    "What Claude Code occupies": {
+        "fr": "Ce que Claude Code occupe",
+        "en": "What Claude Code occupies",
+    },
+    "File history, per session": {
+        "fr": "Historique des fichiers, par session",
+        "en": "File history, per session",
+    },
+    "largest": {
+        "fr": "plus gros",
+        "en": "largest",
+    },
+    "alive, not offered": {
+        "fr": "vivante, non proposée",
+        "en": "alive, not offered",
+    },
+    "removable": {
+        "fr": "retirable",
+        "en": "removable",
+    },
+    "Nothing can be removed:": {
+        "fr": "Rien ne peut être retiré :",
+        "en": "Nothing can be removed:",
+    },
+    "every session with a history is alive.": {
+        "fr": "toute session qui porte un historique est vivante.",
+        "en": "every session with a history is alive.",
+    },
+    "Remove one session's file history": {
+        "fr": "🗑 Retirer l'historique des fichiers d'une session",
+        "en": "🗑 Remove one session's file history",
+    },
+    "This loses the ability to restore a file": {
+        "fr": "Ceci fait perdre la restauration d'un fichier",
+        "en": "This loses the ability to restore a file",
+    },
+    "to an earlier version within that session.": {
+        "fr": "à une version antérieure, dans cette session.",
+        "en": "to an earlier version within that session.",
+    },
+    "freed": {
+        "fr": "libérés",
+        "en": "freed",
+    },
+    "file": {
+        "fr": "fichier",
+        "en": "file",
+    },
+    # Les hooks de télémétrie (script/todo/assistant/agents/pose.py). Deux
+    # endroits qui ne se remplacent pas : le global mesure la machine, celui
+    # du dépôt mesure ce dépôt pour tout clone.
+    "Telemetry hooks": {
+        "fr": "🪝 Hooks de télémétrie",
+        "en": "🪝 Telemetry hooks",
+    },
+    "Where the telemetry hooks are installed": {
+        "fr": "Où les hooks de télémétrie sont posés",
+        "en": "Where the telemetry hooks are installed",
+    },
+    "none installed": {
+        "fr": "aucun posé",
+        "en": "none installed",
+    },
+    "both": {
+        "fr": "les deux",
+        "en": "both",
+    },
+    "global": {
+        "fr": "global",
+        "en": "global",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "Install into ~/.claude (this machine)": {
+        "fr": "🪝 Poser dans ~/.claude (cette machine)",
+        "en": "🪝 Install into ~/.claude (this machine)",
+    },
+    "Install into the repository (every clone)": {
+        "fr": "🪝 Poser dans le dépôt (tout clone)",
+        "en": "🪝 Install into the repository (every clone)",
+    },
+    "Remove from ~/.claude": {
+        "fr": "🗑 Retirer de ~/.claude",
+        "en": "🗑 Remove from ~/.claude",
+    },
+    "Remove from the repository": {
+        "fr": "🗑 Retirer du dépôt",
+        "en": "🗑 Remove from the repository",
+    },
+    "That file is tracked by git.": {
+        "fr": "Ce fichier est suivi par git.",
+        "en": "That file is tracked by git.",
+    },
+    "The log lives under": {
+        "fr": "Le journal vit sous",
+        "en": "The log lives under",
+    },
+    # « days » existe déjà plus haut, avec la même traduction : réutilisée.
+    "Per tool": {
+        "fr": "Par outil",
+        "en": "Per tool",
+    },
+    "tool": {
+        "fr": "outil",
+        "en": "tool",
+    },
+    "calls": {
+        "fr": "appels",
+        "en": "calls",
+    },
+    "median": {
+        "fr": "médiane",
+        "en": "median",
+    },
+    "peak": {
+        "fr": "pointe",
+        "en": "peak",
+    },
+    "unfinished": {
+        "fr": "inachevés",
+        "en": "unfinished",
+    },
+    "No hook installed: the per-tool figures need one.": {
+        "fr": "Aucun hook posé : les chiffres par outil en demandent un.",
+        "en": "No hook installed: the per-tool figures need one.",
+    },
+    # Télémétrie des agents (script/todo/assistant/agents/). Chaque chiffre
+    # dit sa source : les jetons sont sommés, le coût est lu.
+    "Measure": {
+        "fr": "📊 Mesure",
+        "en": "📊 Measure",
+    },
+    "Agent telemetry (TUI)": {
+        "fr": "📊 Télémétrie des agents (TUI)",
+        "en": "📊 Agent telemetry (TUI)",
+    },
+    "Agent telemetry": {
+        "fr": "Télémétrie des agents",
+        "en": "Agent telemetry",
+    },
+    "Freeze": {
+        "fr": "Geler",
+        "en": "Freeze",
+    },
+    "frozen": {
+        "fr": "gelé",
+        "en": "frozen",
+    },
+    "Read again": {
+        "fr": "Tout relire",
+        "en": "Read again",
+    },
+    "sessions": {
+        "fr": "sessions",
+        "en": "sessions",
+    },
+    "session": {
+        "fr": "session",
+        "en": "session",
+    },
+    # « project » existe déjà plus haut, avec exactement cette traduction :
+    # une clé répétée écrase la précédente en silence, donc elle est réutilisée
+    # plutôt que redéclarée.
+    "turns": {
+        "fr": "tours",
+        "en": "turns",
+    },
+    "prompt": {
+        "fr": "invite",
+        "en": "prompt",
+    },
+    "output": {
+        "fr": "sortie",
+        "en": "output",
+    },
+    "thinking": {
+        "fr": "réflexion",
+        "en": "thinking",
+    },
+    "cache": {
+        "fr": "cache",
+        "en": "cache",
+    },
+    "context": {
+        "fr": "contexte",
+        "en": "context",
+    },
+    "growth": {
+        "fr": "croissance",
+        "en": "growth",
+    },
+    "cost": {
+        "fr": "coût",
+        "en": "cost",
+    },
+    "tools": {
+        "fr": "outils",
+        "en": "tools",
+    },
+    "Tokens are summed from each message. Cost and durations are read from"
+    " the last cost-state, which a compaction resets.": {
+        "fr": (
+            "Les jetons sont sommés message par message. Le coût et les"
+            " durées sont lus dans le dernier cost-state, qu'une compaction"
+            " remet à zéro."
+        ),
+        "en": (
+            "Tokens are summed from each message. Cost and durations are read"
+            " from the last cost-state, which a compaction resets."
+        ),
+    },
+    # Agents d'arrière-plan (script/todo/assistant/harness/claude.py). Les
+    # cinq sous-commandes ne coûtent pas la même chose : « stop » garde la
+    # conversation, « respawn » coupe le travail, « rm » détruit l'arbre.
+    "Background": {
+        "fr": "Arrière-plan",
+        "en": "Background",
+    },
+    "Attach a background agent": {
+        "fr": "🔗 Attacher un agent d'arrière-plan",
+        "en": "🔗 Attach a background agent",
+    },
+    "Read a background agent's output": {
+        "fr": "📜 Lire la sortie d'un agent d'arrière-plan",
+        "en": "📜 Read a background agent's output",
+    },
+    "Stop, restart or delete a background agent…": {
+        "fr": "🛑 Arrêter, relancer ou supprimer un agent…",
+        "en": "🛑 Stop, restart or delete a background agent…",
+    },
+    "no background agent": {
+        "fr": "aucun agent en arrière-plan",
+        "en": "no background agent",
+    },
+    "The work in progress is cut.": {
+        "fr": "Le travail en cours est coupé.",
+        "en": "The work in progress is cut.",
+    },
+    "Restart it? (y/N)": {
+        "fr": "La relancer ? (o/N)",
+        "en": "Restart it? (y/N)",
+    },
+    "This deletes the session and its worktree.": {
+        "fr": "Ceci supprime la session ET son arbre de travail.",
+        "en": "This deletes the session and its worktree.",
+    },
+    "Type the session identifier in full to delete it:": {
+        "fr": "Tape l'identifiant de session en entier pour la supprimer :",
+        "en": "Type the session identifier in full to delete it:",
+    },
+    "Stop it, keeping its conversation": {
+        "fr": "🛑 L'arrêter, en gardant sa conversation",
+        "en": "🛑 Stop it, keeping its conversation",
+    },
+    "Restart it on the current binary": {
+        "fr": "🔄 La relancer sur le binaire courant",
+        "en": "🔄 Restart it on the current binary",
+    },
+    "Delete it, and its worktree": {
+        "fr": "🗑 La supprimer, et son arbre de travail",
+        "en": "🗑 Delete it, and its worktree",
     },
     # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {

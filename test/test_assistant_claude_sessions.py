@@ -176,6 +176,37 @@ class LeListageDesVivantes(unittest.TestCase):
         self.assertEqual(session.version, "9.9.999")
         self.assertTrue(session.live)
 
+    def test_la_poignee_est_l_id_court_que_le_listage_porte(self):
+        """Les cinq sous-commandes n'acceptent QUE l'identifiant court.
+
+        Le listage porte les deux pour un agent détaché : « id », court, et
+        « sessionId », l'UUID complet. `claude stop <UUID>` répond « No job
+        matching » — avec un code de sortie NUL, donc sans qu'aucun appelant
+        ne le voie échouer.
+        """
+        agents = json.dumps(
+            [
+                {
+                    "pid": PID,
+                    "cwd": CHEMIN,
+                    "kind": "background",
+                    "id": "aaaaaaaa",
+                    "sessionId": VIVANTE,
+                    "status": "idle",
+                }
+            ]
+        )
+        session = self._live(agents=agents)[0]
+        self.assertEqual(session.court, "aaaaaaaa")
+        self.assertEqual(session.poignee, "aaaaaaaa")
+        self.assertNotEqual(session.poignee, session.session_id)
+
+    def test_un_listage_sans_id_court_retombe_sur_le_prefixe(self):
+        """Une version antérieure n'écrit pas « id » : le préfixe de l'UUID
+        est la forme que l'outil imprime, et vaut mieux que l'UUID entier,
+        qu'aucune sous-commande n'accepte."""
+        self.assertEqual(self._live()[0].poignee, VIVANTE[:8])
+
     def test_une_session_occupee_est_etiquetee_avant_d_etre_proposee(self):
         """L'état décide du risque : une session occupée acceptera quand même
         une écriture, et se mettra en concurrence avec elle-même."""
@@ -319,29 +350,6 @@ class LAffichage(unittest.TestCase):
     def test_un_repertoire_vide_ne_devient_pas_un_point(self):
         vide = CS.Session(session_id=VIVANTE, cwd="")
         self.assertEqual(CS.displayable(vide)["dir"], "")
-
-
-class LaFrontiere(unittest.TestCase):
-    """Le paquet doit rester importable sans le CLI."""
-
-    def test_le_listage_n_importe_pas_todo(self):
-        # Dans un interpréteur NEUF : la suite complète importe todo par
-        # ailleurs, et le sys.modules de ce processus en garderait la trace
-        # quel que soit le module éprouvé ici.
-        sortie = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys, script.todo.assistant.claude_sessions;"
-                " print('script.todo.todo' in sys.modules)",
-            ],
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        self.assertEqual(sortie.returncode, 0, sortie.stderr)
-        self.assertEqual(sortie.stdout.strip(), "False")
 
 
 if __name__ == "__main__":

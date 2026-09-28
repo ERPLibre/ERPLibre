@@ -12,8 +12,9 @@ faute de frappe s'affiche en clair à l'utilisateur sans que rien ne lève.
 
 Ce fichier est le SEUL de la famille assistant à importer `TODO` : cet import
 coûte près d'une seconde et imprime sur la sortie, et le faire payer aux neuf
-autres fichiers rendrait la boucle d'écriture inutilisable. La contrepartie est
-vérifiée ici même — le paquet, lui, doit rester importable seul.
+autres fichiers rendrait la boucle d'écriture inutilisable. La contrepartie —
+le paquet, lui, doit rester importable seul — est vérifiée dans
+`test_assistant_frontiere.py`, sur TOUS ses modules et non sur une liste.
 
 `_menu_header()` enregistre une télémétrie dans `~/.erplibre` : tout test qui
 appelle une méthode de menu la neutralise, sinon il écrit pour de vrai.
@@ -24,8 +25,6 @@ from __future__ import annotations
 import ast
 import collections
 import os
-import subprocess
-import sys
 import unittest
 from unittest.mock import patch
 
@@ -91,21 +90,22 @@ class Cablage(unittest.TestCase):
         from script.todo.todo import TODO
 
         self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
+        self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_ia"), "IA")
 
-    def test_un_dispatche_vers_le_sous_menu_llm_seulement(self):
+    def test_un_dispatche_vers_l_ecran_des_agents_seulement(self):
         """Les deux listes du menu parent sont tenues à la main et rien ne
         les rapproche : `[1]` peut afficher une entrée et appeler l'autre."""
         from script.todo.todo import TODO
 
         todo = TODO()
         with (
-            patch.object(TODO, "prompt_assistant_llm") as mock_llm,
+            patch.object(TODO, "prompt_assistant_ia") as mock_ia,
             patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
             patch("click.prompt", side_effect=["1", "0"]),
             patch("script.todo.todo_telemetry.record"),
         ):
             todo.prompt_assistant()
-        mock_llm.assert_called_once_with()
+        mock_ia.assert_called_once_with()
         mock_mail.assert_not_called()
 
     def test_deux_dispatche_toujours_vers_le_courriel_seulement(self):
@@ -113,7 +113,7 @@ class Cablage(unittest.TestCase):
 
         todo = TODO()
         with (
-            patch.object(TODO, "prompt_assistant_llm") as mock_llm,
+            patch.object(TODO, "prompt_assistant_ia") as mock_llm,
             patch("script.todo.mail.menu.prompt_execute_mail") as mock_mail,
             patch("click.prompt", side_effect=["2", "0"]),
             patch("script.todo.todo_telemetry.record"),
@@ -458,23 +458,94 @@ class SessionsClaudeCode(unittest.TestCase):
             TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
         )
 
-    def test_six_dispatche_vers_les_sessions_seulement(self):
-        """Les deux listes de `prompt_execute_gpt_code` sont tenues à la
-        main : l'entrée peut s'afficher et appeler autre chose."""
+    def _entrees(self):
+        """Les entrées affichées par « Assistant › IA », dans l'ordre.
+
+        Le rang d'une entrée n'est PAS écrit dans le test : une section de
+        plus le décale, et trois passes de cette fonctionnalité l'ont décalé
+        trois fois. Il est donc DÉRIVÉ de l'écran, et le test affirme ce qui
+        compte — l'entrée qui montre telle chose appelle telle méthode.
+        """
+        from script.todo.todo import TODO
+
+        capture = []
+
+        def fausse_aide(self, choices):
+            capture.extend(choices)
+            return ""
+
+        todo = TODO()
+        with patch.object(TODO, "fill_help_info", fausse_aide), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch("script.todo.todo_telemetry.record"):
+            todo.prompt_assistant_ia()
+        return [c["prompt_description"] for c in capture if "section" not in c]
+
+    def _rang(self, morceau):
+        """Le numéro de l'entrée qui porte ce morceau de libellé."""
+        for rang, libelle in enumerate(self._entrees(), start=1):
+            if morceau in libelle:
+                return rang
+        raise AssertionError(f"aucune entrée ne porte « {morceau} »")
+
+    def _dispatche(self, morceau, cible, *, temoin=None):
+        """L'entrée qui porte `morceau` appelle-t-elle `cible` ?
+
+        `temoin` nomme une méthode qui ne doit PAS partir, sans quoi un test
+        vert ne dirait rien d'un dispatch qui appelle tout.
+        """
+        from script.todo.todo import TODO
+
+        chiffre = str(self._rang(morceau))
+        todo = TODO()
+        with patch.object(TODO, cible) as mock_cible, patch.object(
+            TODO, temoin or "prompt_execute_rtk"
+        ) as mock_temoin, patch(
+            "click.prompt", side_effect=[chiffre, "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_assistant_ia()
+        mock_cible.assert_called_once_with()
+        mock_temoin.assert_not_called()
+
+    def test_le_harnais_claude_ouvre_ses_sessions(self):
+        self._dispatche("Claude Code", "prompt_claude_sessions")
+
+    def test_la_telemetrie_ouvre_la_tui(self):
+        self._dispatche(t("Agent telemetry (TUI)"), "_agents_telemetrie")
+
+    def test_les_hooks_ouvrent_leur_ecran(self):
+        self._dispatche(t("Telemetry hooks"), "_agents_hooks")
+
+    def test_le_disque_ouvre_son_ecran(self):
+        self._dispatche(t("Disk and cleanup"), "_agents_disque")
+
+    def test_les_greffons_au_milieu_de_la_chaine(self):
+        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
+        self._dispatche(
+            t("Claude Code plugins - marketplaces and ERPLibre list"),
+            "prompt_execute_claude_plugins",
+        )
+
+    def test_la_derniere_entree_reste_joignable(self):
+        """Un décalage d'un cran la rendrait injoignable."""
+        self._dispatche(
+            t("Add an automation with Claude in todo.py"),
+            "_claude_add_automation",
+        )
+
+    def test_un_numero_au_dela_de_la_liste_ne_lance_rien(self):
+        """Les deux listes se construisent ensemble ; rien ne doit dépasser."""
         from script.todo.todo import TODO
 
         todo = TODO()
-        with (
-            patch.object(TODO, "prompt_claude_sessions") as mock_sessions,
-            patch.object(
-                TODO, "prompt_execute_claude_plugins"
-            ) as mock_plugins,
-            patch("click.prompt", side_effect=["6", "0"]),
-            patch("script.todo.todo_telemetry.record"),
-        ):
-            todo.prompt_execute_gpt_code()
-        mock_sessions.assert_called_once_with()
-        mock_plugins.assert_not_called()
+        au_dela = str(len(self._entrees()) + 1)
+        with patch.object(TODO, "_agents_telemetrie") as mock, patch(
+            "click.prompt", side_effect=[au_dela, "0"]
+        ), patch("script.todo.todo_telemetry.record"):
+            todo.prompt_assistant_ia()
+        mock.assert_not_called()
 
     def test_le_sous_menu_s_ouvre_sans_aucune_session(self):
         """Une machine sans Claude Code n'est pas une panne du menu."""
@@ -520,37 +591,241 @@ class SessionsClaudeCode(unittest.TestCase):
         self.assertIn(t("No session on this machine."), sortie.getvalue())
 
 
-class Frontiere(unittest.TestCase):
-    """Le paquet doit vivre sans le CLI qui l'appelle."""
+class LesAgentsDetaches(unittest.TestCase):
+    """Ce que « un agent d'arrière-plan » veut dire, et ce que ça exclut.
 
-    def test_le_paquet_assistant_n_importe_pas_todo(self):
-        """Vérifié dans un processus NEUF : ce fichier-ci importe `TODO`, donc
-        `sys.modules` le porte déjà et l'assertion passerait ici pour de
-        mauvaises raisons.
+    La flotte réunit deux sources qui ne disent pas la même chose : le
+    registre annonce ce qui TOURNE, un balayage des transcriptions annonce ce
+    qui se REPREND. Une session dormante n'a donc ni genre ni processus, et
+    la compter comme un agent détaché affichait « 1 agent » sur une machine
+    qui n'en portait aucun — ce que seul le pilotage de l'écran a montré.
+    """
 
-        Ce que la frontière achète est mesurable : importer `todo.py` coûte
-        près d'une seconde et imprime sur la sortie, et neuf fichiers de test
-        le paieraient à chaque exécution.
+    def _detaches(self, *sessions):
+        from script.todo.assistant_menu import AssistantMenuMixin
+
+        return AssistantMenuMixin._claude_detaches(list(sessions))
+
+    def _session(self, cle, kind, live):
+        from script.todo.assistant.claude_sessions import Session
+
+        return Session(session_id=cle, kind=kind, live=live)
+
+    def test_a_live_background_agent_counts(self):
+        detaches = self._detaches(self._session("a", "background", True))
+        self.assertEqual([s.session_id for s in detaches], ["a"])
+
+    def test_a_terminal_never_counts(self):
+        """Proposer « arrêter » sur la fenêtre où l'on travaille serait un
+        piège, et c'est le genre qui l'écarte."""
+        self.assertEqual(
+            self._detaches(self._session("a", "interactive", True)), []
+        )
+
+    def test_a_dormant_session_is_not_an_agent(self):
+        """Ni genre ni processus : c'est un fichier, pas un agent."""
+        self.assertEqual(self._detaches(self._session("a", "", False)), [])
+
+    def test_an_exited_background_agent_is_not_listed_either(self):
+        """Il existe — `rm` sait encore nettoyer son arbre — mais il faut
+        `claude agents --all` pour le voir, et la flotte ne le demande pas."""
+        self.assertEqual(
+            self._detaches(self._session("a", "background", False)), []
+        )
+
+    def test_the_order_of_the_fleet_is_kept(self):
+        detaches = self._detaches(
+            self._session("a", "interactive", True),
+            self._session("b", "background", True),
+            self._session("c", "detached", True),
+        )
+        self.assertEqual([s.session_id for s in detaches], ["b", "c"])
+
+
+class LeCablageDesAgents(unittest.TestCase):
+    """Les trois entrées d'arrière-plan mènent-elles où elles disent ?"""
+
+    def _dispatche(self, chiffre, cible):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(TODO, cible) as mock_cible, patch.object(
+            TODO, "_claude_questionner"
+        ) as mock_temoin, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "click.prompt", side_effect=[chiffre, "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_claude_sessions()
+        mock_cible.assert_called_once_with()
+        mock_temoin.assert_not_called()
+
+    def test_quatre_attache(self):
+        self._dispatche("4", "_claude_attacher")
+
+    def test_cinq_lit_le_journal(self):
+        self._dispatche("5", "_claude_journal")
+
+    def test_six_gere(self):
+        self._dispatche("6", "_claude_gerer")
+
+
+class LaVueDUneSession(unittest.TestCase):
+    """`displayable()` fixe ce qu'une session a le droit de montrer.
+
+    L'écran ne lit donc pas la session, il lit cette vue — et une clé qui n'y
+    est pas lève un `KeyError` qui remonte jusqu'au CLI. Rien ne le signale à
+    l'écriture : les deux vocabulaires se ressemblent, `cwd` du côté de la
+    session et `dir` du côté de la vue, et seul le chemin de menu qui touche
+    la ligne fautive le découvre. Le test lit donc la SOURCE plutôt que
+    d'espérer qu'un test passe par chaque écran.
+    """
+
+    def _cles_lues(self):
+        """Les clés que la source indexe sur un nom commençant par « vue »."""
+        with open(MENU, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        cles = set()
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Subscript):
+                continue
+            cible = noeud.value
+            if not isinstance(cible, ast.Name) or cible.id != "vue":
+                continue
+            litteral = _litteral(noeud.slice)
+            if litteral is not None:
+                cles.add(litteral)
+        return cles
+
+    def test_every_key_the_screen_reads_is_one_the_view_produces(self):
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(
+            cs.Session(session_id="a" * 32, pid=1, cwd="/un/depot")
+        )
+        lues = self._cles_lues()
+        self.assertTrue(lues, "aucune lecture de vue trouvée dans la source")
+        self.assertEqual(lues - set(vue), set())
+
+
+class LeDemasquageNeLevePasUnSecret(unittest.TestCase):
+    """Le paquet tient DEUX paliers, et ils ne disent pas la même chose.
+
+    « Masqué » veut dire « ce nom n'est pas déclaré », et se lève à la
+    demande — c'est la soupape d'une liste blanche, qui masque par
+    construction toute variable neuve et utile. « Secret » veut dire « la
+    longueur même est un renseignement », et ne se lève pas. Les confondre
+    laisse taper le nom d'une clé d'API pour la voir en clair, ce qui rend
+    inutile tout le reste du module.
+
+    Le témoin est inventé, et sa présence dans l'entrée est ce qui prouve
+    qu'il ne ressort pas.
+    """
+
+    TEMOIN = "valeur-de-secret-qui-ne-doit-pas-sortir"
+
+    def _demander(self, nom):
+        """Taper `nom` à l'invite de démasquage. Rend (sorti, dévoilés)."""
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        liste = [
+            env.juger("ANTHROPIC_API_KEY", self.TEMOIN),
+            env.juger("UNE_INCONNUE", self.TEMOIN),
+        ]
+        session = collections.namedtuple("S", "pid")(1234)
+        demandes = []
+
+        def faux_devoile(pid, quoi):
+            demandes.append(quoi)
+            return self.TEMOIN
+
+        sorti = []
+        with patch("click.prompt", return_value=nom), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(
+                " ".join(str(x) for x in a)
+            ),
+        ), patch.object(env, "devoile", faux_devoile):
+            TODO._claude_devoiler(TODO(), session, liste, env)
+        return "\n".join(sorti), demandes
+
+    def test_a_secret_is_refused_and_never_read(self):
+        sorti, demandes = self._demander("ANTHROPIC_API_KEY")
+        self.assertEqual(demandes, [])
+        self.assertNotIn(self.TEMOIN, sorti)
+
+    def test_the_refusal_says_why(self):
+        """« Aucune variable de ce nom » serait faux : elle existe."""
+        sorti, _ = self._demander("ANTHROPIC_API_KEY")
+        self.assertIn(t("A secret is never unmasked here."), sorti)
+
+    def test_an_ordinary_masked_variable_still_lifts(self):
+        """Refuser trop retirerait la soupape, qui a sa raison d'être."""
+        sorti, demandes = self._demander("UNE_INCONNUE")
+        self.assertEqual(demandes, ["UNE_INCONNUE"])
+        self.assertIn(self.TEMOIN, sorti)
+
+    def test_nothing_but_secrets_opens_no_prompt(self):
+        """Un secret n'est pas un candidat au démasquage.
+
+        Proposer « démasquer une variable » sur une liste qui n'en compte que
+        d'inaccessibles invite à taper un nom pour se faire refuser : la
+        soupape ne s'ouvre que s'il y a quelque chose à lever.
         """
-        code = (
-            "import sys;"
-            "import script.todo.assistant.backends;"
-            "import script.todo.assistant.capabilities;"
-            "import script.todo.assistant.chat;"
-            "import script.todo.assistant.fingerprint;"
-            "import script.todo.assistant.servers;"
-            "print('script.todo.todo' in sys.modules)"
-        )
-        res = subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=RACINE,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": RACINE},
-            timeout=60,
-        )
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertEqual(res.stdout.strip(), "False", res.stdout)
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        liste = [env.juger("ANTHROPIC_API_KEY", self.TEMOIN)]
+        session = collections.namedtuple("S", "pid")(1234)
+        with patch("click.prompt") as invite, patch("builtins.print"):
+            TODO._claude_devoiler(TODO(), session, liste, env)
+        invite.assert_not_called()
+
+
+class LEnvironnementNEstLuQueDUnProcessusVivant(unittest.TestCase):
+    """Un pid se réemploie, et une session reprenable garde le sien.
+
+    `/proc/<pid>/environ` lu sur une session éteinte montre l'environnement
+    d'un AUTRE processus, sous le nom de celle-ci. L'écran demande donc la
+    vivacité, que la flotte établit déjà en comparant le moment de démarrage
+    du processus, et non la simple présence d'un pid.
+    """
+
+    def _contexte(self, *, live):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="a" * 32, pid=4321, live=live)
+        vus = []
+
+        def fausses_variables(pid, **kw):
+            vus.append(pid)
+            return []
+
+        todo = TODO()
+        with patch.object(
+            TODO, "_claude_choisir", return_value=session
+        ), patch.object(
+            TODO, "_claude_transcription", return_value=""
+        ), patch.object(
+            TODO, "_claude_environ_bloc"
+        ), patch.object(
+            env, "variables", fausses_variables
+        ), patch(
+            "builtins.print"
+        ):
+            todo._claude_contexte([session])
+        return vus
+
+    def test_a_dormant_session_is_not_read(self):
+        self.assertEqual(self._contexte(live=False), [])
+
+    def test_a_live_session_is_read(self):
+        self.assertEqual(self._contexte(live=True), [4321])
 
 
 if __name__ == "__main__":

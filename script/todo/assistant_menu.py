@@ -36,6 +36,7 @@ défilement piloté.
 from __future__ import annotations
 
 import os
+import shutil
 import time
 
 import click
@@ -188,6 +189,192 @@ class AssistantMenuMixin:
         if serveur.model:
             return f"{serveur.software} · {serveur.model}"
         return serveur.software
+
+    # ------------------------------------------------------------------
+    # Les agents IA
+
+    def _harnais_etats(self):
+        """L'état de chaque harnais déclaré, lu une fois par affichage."""
+        from script.todo.assistant.harness import registre as reg
+
+        return reg.etats()
+
+    @staticmethod
+    def _harnais_libelle(etat, compte=""):
+        """« ⛔ Open Code  (binaire introuvable) » — et jamais rien de moins.
+
+        Le verdict et sa raison sont sur la MÊME ligne que le nom : un écran
+        qui grise sans dire pourquoi envoie chercher une installation là où
+        c'est un adaptateur qui manque, ou l'inverse.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        marque = "" if etat.verdict == reg.OK else f"{MARQUE['no']} "
+        detail = compte or (t(etat.raison) if etat.raison else "")
+        suffixe = f"  ({detail})" if detail else ""
+        icone = etat.harnais.icone
+        return f"{marque}{icone} {etat.harnais.nom}{suffixe}"
+
+    def prompt_assistant_ia(self):
+        """Les agents, les modèles, et l'outillage qui les entoure.
+
+        Un agent et un serveur de modèle vivent dans le même écran mais dans
+        deux sections : le premier s'adresse par identifiant de session, le
+        second par port, et rien de ce qu'on sait de l'un ne s'applique à
+        l'autre. Les mêler dans une seule section ferait partager les mêmes
+        chiffres à deux modèles mentaux.
+
+        Un harnais absent garde son numéro et sa place. Le taire donnerait un
+        écran qui change de numérotation d'une machine à l'autre, et cacherait
+        justement l'information qui sert — qu'il existe, et qu'un `install`
+        suffirait.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        print(f"🤖 {t('An agent, a model, a conversation.')}")
+        while True:
+            etats = self._harnais_etats()
+            devant, autres = etats[:3], etats[3:]
+            serveur = self._llm_current()
+            # Les deux listes se construisent EN MÊME TEMPS, une action par
+            # entrée. Tenues séparément, elles se décalent d'un cran sans que
+            # rien ne lève : l'entrée s'affiche et une autre part.
+            choices = [{"section": t("Agents")}]
+            actions = []
+            for etat in devant:
+                compte = ""
+                if etat.harnais.cle == "claude" and etat.verdict == reg.OK:
+                    compte = self._claude_compte()
+                choices.append(
+                    {"prompt_description": self._harnais_libelle(etat, compte)}
+                )
+                actions.append(lambda e=etat: self._harnais_ouvrir(e))
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Other harnesses…')}  ({len(autres)})"
+                    )
+                }
+            )
+            actions.append(lambda: self._harnais_autres(autres))
+            choices.append({"section": t("Direct model")})
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('LLM servers')}  ({self._llm_label(serveur)})"
+                    )
+                }
+            )
+            actions.append(self.prompt_assistant_llm)
+            choices.append({"prompt_description": self._llm_gpt_label()})
+            actions.append(self._llm_gpt_catalogue)
+            choices.append({"section": t("Measure")})
+            choices.append({"prompt_description": t("Agent telemetry (TUI)")})
+            actions.append(self._agents_telemetrie)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Telemetry hooks')}  ({self._agents_hooks_etat()})"
+                    )
+                }
+            )
+            actions.append(self._agents_hooks)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Disk and cleanup')}  ({self._agents_volume()})"
+                    )
+                }
+            )
+            actions.append(self._agents_disque)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('MCP servers')}  ({self._agents_mcp_compte()})"
+                    )
+                }
+            )
+            actions.append(self._agents_mcp)
+            choices.append({"section": t("Tooling")})
+            for cle, methode in (
+                (
+                    "Configure Claude Code configurations",
+                    self._prompt_claude_configs,
+                ),
+                (
+                    "Claude Code plugins - marketplaces and ERPLibre list",
+                    self.prompt_execute_claude_plugins,
+                ),
+                (
+                    "RTK - CLI proxy to reduce LLM token consumption",
+                    self.prompt_execute_rtk,
+                ),
+                (
+                    "Show the context given to Claude",
+                    self._show_claude_context,
+                ),
+                (
+                    "Add an automation with Claude in todo.py",
+                    self._claude_add_automation,
+                ),
+            ):
+                choices.append({"prompt_description": t(cle)})
+                actions.append(methode)
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            try:
+                rang = int(status)
+            except ValueError:
+                print(t("Command not found !"))
+                continue
+            if 1 <= rang <= len(actions):
+                actions[rang - 1]()
+            else:
+                print(t("Command not found !"))
+
+    def _harnais_ouvrir(self, etat):
+        """L'écran d'un harnais, ou la raison pour laquelle il n'y en a pas."""
+        from script.todo.assistant.harness import registre as reg
+
+        if etat.verdict != reg.OK:
+            print(f"{MARQUE['no']} {t('This harness is not usable here:')}")
+            print(f"   {etat.harnais.nom} — {t(etat.raison)}")
+            if etat.verdict == reg.ABSENT:
+                print(f"   {t('Installing it makes it appear on its own.')}")
+            return
+        if etat.harnais.cle == "claude":
+            self.prompt_claude_sessions()
+            return
+        print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
+
+    def _harnais_autres(self, autres):
+        """Les harnais restants, en prose et sans numéro.
+
+        Aucun n'est ouvrable — ils sont là pour dire qu'ils existent et ce qui
+        leur manque. Une liste numérotée juste après un menu numéroté invite à
+        retaper une entrée de menu, et ce dépôt l'a déjà payé une fois.
+        """
+        print(f"{t('The harnesses this repository knows by name')} :")
+        for etat in autres:
+            print(
+                f"  {MARQUE['no']} {etat.harnais.icone} {etat.harnais.nom}"
+                f" — {t(etat.raison)}"
+            )
+        print(f"  {t('Installing one makes it appear on its own.')}")
+
+    def _claude_compte(self):
+        """« 6 · 5 vivantes », ou ce qui le remplace quand il n'y a rien."""
+        flotte = self._claude_flotte()
+        if not flotte:
+            return t("No session on this machine.")
+        vivantes = sum(1 for session in flotte if session.live)
+        return f"{len(flotte)} · {vivantes} {t('live')}"
 
     def prompt_assistant_llm(self):
         """Le sous-menu : parler à un serveur, ou décider auquel."""
@@ -870,6 +1057,7 @@ class AssistantMenuMixin:
                 if flotte
                 else t("No session on this machine.")
             )
+            detaches = self._claude_compte_detaches(flotte)
             choices = [
                 {
                     "prompt_description": (
@@ -880,6 +1068,24 @@ class AssistantMenuMixin:
                 {
                     "prompt_description": t(
                         "Resume a session in a new terminal"
+                    )
+                },
+                {"section": t("Background")},
+                {
+                    "prompt_description": (
+                        f"{t('Attach a background agent')}  ({detaches})"
+                    )
+                },
+                {"prompt_description": t("Read a background agent's output")},
+                {
+                    "prompt_description": t(
+                        "Stop, restart or delete a background agent…"
+                    )
+                },
+                {"section": t("Inspect")},
+                {
+                    "prompt_description": t(
+                        "Context and environment of a session"
                     )
                 },
             ]
@@ -897,8 +1103,693 @@ class AssistantMenuMixin:
                 self._claude_questionner(flotte)
             elif status == "3":
                 self._claude_reprendre(flotte)
+            elif status == "4":
+                self._claude_attacher()
+            elif status == "5":
+                self._claude_journal()
+            elif status == "6":
+                self._claude_gerer()
+            elif status == "7":
+                self._claude_contexte(flotte)
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    def _agents_mcp_compte(self):
+        """Ce que l'entrée annonce SANS toucher au réseau.
+
+        Le compte des serveurs déclarés localement, ou la mention qu'il faut
+        interroger. `claude mcp list` contrôle la santé de chaque serveur en
+        réseau : l'appeler pour afficher une entrée de menu ferait attendre à
+        chaque passage.
+        """
+        from script.todo.assistant.agents import mcp
+
+        declares = mcp.declares(depot=self._agents_racine())
+        return (
+            self._llm_count(len(declares), "declared", "declared")
+            if declares
+            else t("to be queried")
+        )
+
+    def _agents_mcp(self):
+        """Les serveurs MCP : les déclarations d'ici, et l'interrogation.
+
+        Les deux populations sont séparées à l'écran parce qu'elles ne se
+        connaissent pas de la même façon. Une déclaration locale se lit dans
+        un fichier ; un connecteur de compte n'existe dans aucun fichier et
+        ne se sait qu'en demandant.
+        """
+        from script.todo.assistant.agents import mcp
+
+        while True:
+            declares = mcp.declares(depot=self._agents_racine())
+            print(f"{t('Locally declared MCP servers')} :")
+            if declares:
+                for serveur in declares:
+                    cible = serveur.cible or "—"
+                    print(
+                        f"  {serveur.origine:<14} {serveur.nom:<20}"
+                        f" {serveur.transport:<6} {cible}"
+                    )
+            else:
+                print(f"  {t('no server declared here')}")
+            print(f"  {t('Account connectors live in no file here.')}")
+            choices = [
+                {"prompt_description": t("Query the servers (network)")},
+                {"prompt_description": t("Detail one server (network)")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._agents_mcp_lancer(mcp.argv_lister())
+            elif status == "2":
+                self._agents_mcp_detail()
+            else:
+                print(t("Command not found !"))
+
+    def _agents_mcp_detail(self):
+        """Détailler un serveur nommé. Lecture seule."""
+        from script.todo.assistant.agents import mcp
+
+        try:
+            nom = click.prompt(t("Server name")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        try:
+            argv = mcp.argv_detail(nom)
+        except ValueError as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        self._agents_mcp_lancer(argv)
+
+    def _agents_mcp_lancer(self, argv):
+        """Lancer une commande de lecture, en disant qu'elle attend le réseau."""
+        print(f"  {t('Checking over the network…')}", flush=True)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
+    @staticmethod
+    def _agents_volume():
+        """Le volume total, pour l'entrée du menu. Vide si rien n'est là."""
+        from script.todo.assistant.agents import disque
+
+        total = sum(p.octets for p in disque.mesurer())
+        return disque.octets_lisibles(total) if total else t("nothing")
+
+    def _agents_disque(self):
+        """Ce que Claude Code occupe, et ce qui se retire sans regret.
+
+        L'écran descend d'un cran sous le total : l'historique se range par
+        session, et une session porte un plus gros fichier capturé. « 10 Go »
+        n'est pas une information sur laquelle agir ; « 10 Go dont 10 Go en un
+        seul fichier » dit que quelque chose d'énorme est entré par accident.
+
+        Une session VIVANTE n'est jamais proposée. Elle écrit encore, et
+        retirer son historique sous elle laisserait une session qui croit
+        pouvoir restaurer ce qui n'existe plus.
+        """
+        from script.todo.assistant.agents import disque
+
+        while True:
+            postes = disque.mesurer()
+            # Sans l'outil, la flotte rend une liste vide, qui se lit
+            # « aucune session vivante » et rendrait tout supprimable. None
+            # dit « on n'a pas pu demander », et rien n'est alors proposé.
+            vivantes = (
+                {s.session_id for s in self._claude_flotte() if s.live}
+                if shutil.which("claude")
+                else None
+            )
+            histoires = disque.historiques(vivantes=vivantes)
+            print(f"{t('What Claude Code occupies')} :")
+            for poste in postes:
+                if not poste.present:
+                    continue
+                print(
+                    f"  {disque.octets_lisibles(poste.octets):>10}"
+                    f"  {self._llm_count(poste.fichiers, 'file', 'files'):>16}"
+                    f"  {poste.nom}"
+                )
+            print(f"\n{t('File history, per session')} :")
+            for histoire in histoires:
+                marque = MARQUE["no"] if histoire.vivante else MARQUE["ok"]
+                detail = (
+                    t("alive, not offered")
+                    if histoire.vivante
+                    else t("removable")
+                )
+                print(
+                    f"  {marque} {disque.octets_lisibles(histoire.octets):>10}"
+                    f"  {t('largest')} {disque.octets_lisibles(histoire.plus_gros)}"
+                    f"  {histoire.session[:8]}  ({detail})"
+                )
+            retirables = [h for h in histoires if h.retirable]
+            if not retirables:
+                print(f"  {MARQUE['unknown']} {t('Nothing can be removed:')}")
+                print(f"     {t('every session with a history is alive.')}")
+            choices = [
+                {"prompt_description": t("Remove one session's file history")}
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status != "1":
+                print(t("Command not found !"))
+                continue
+            if not retirables:
+                print(f"{MARQUE['unknown']} {t('Nothing can be removed:')}")
+                continue
+            self._agents_retirer_historique(retirables)
+
+    def _agents_retirer_historique(self, retirables):
+        """Retirer l'historique d'UNE session, son identifiant retapé.
+
+        Rien ne reconstitue un historique : c'est ce qui permet de restaurer
+        une version antérieure d'un fichier de cette session. Le préfixe
+        affiché ne suffit donc pas, comme pour la suppression d'un agent.
+        """
+        import shutil
+
+        from script.todo.assistant.agents import disque
+
+        for histoire in retirables:
+            print(
+                f"  {disque.octets_lisibles(histoire.octets):>10}"
+                f"  {histoire.session}"
+            )
+        print(
+            f"{MARQUE['no']} {t('This loses the ability to restore a file')}"
+        )
+        print(f"   {t('to an earlier version within that session.')}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        choisie = [h for h in retirables if h.session == frappe]
+        if not choisie:
+            print(t("Nothing has been sent."))
+            return
+        try:
+            chemin = disque.chemin_historique(choisie[0].session)
+            shutil.rmtree(chemin)
+        except (OSError, ValueError) as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        print(
+            f"{MARQUE['ok']} {disque.octets_lisibles(choisie[0].octets)}"
+            f" {t('freed')}"
+        )
+
+    def _agents_hooks_etat(self):
+        """« global », « dépôt », « les deux » ou « aucun posé ».
+
+        Les deux endroits sont nommés parce qu'ils ne se remplacent pas : le
+        global mesure toute la machine, celui du dépôt mesure ce dépôt pour
+        tout clone. Un utilisateur qui pose le global et voit ses appels
+        manquer doit pouvoir apprendre que le dépôt en portait un autre.
+        """
+        from script.todo.assistant.agents import pose
+
+        etat = pose.etat(racine_depot=self._agents_racine())
+        poses = [nom for nom, (_, actifs) in etat.items() if actifs]
+        if len(poses) == 2:
+            return t("both")
+        if poses:
+            return t("global") if poses[0] == pose.GLOBAL else t("repository")
+        return t("none installed")
+
+    @staticmethod
+    def _agents_racine():
+        """La racine du dépôt, pour le fichier de réglages qu'il porte."""
+        return os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+
+    def _agents_hooks(self):
+        """Poser ou retirer les hooks, et dire ce que chaque endroit porte.
+
+        Rien n'est écrit sans que l'écran ait d'abord montré les deux états :
+        poser à l'aveugle sur une machine où le dépôt en porte déjà ferait
+        compter deux fois chaque appel d'outil.
+        """
+        from script.todo.assistant.agents import journal, pose
+
+        while True:
+            etat = pose.etat(racine_depot=self._agents_racine())
+            print(f"{t('Where the telemetry hooks are installed')} :")
+            for endroit in (pose.GLOBAL, pose.DEPOT):
+                chemin, actifs = etat[endroit]
+                if actifs is None:
+                    # Un fichier illisible n'est pas un fichier sans hooks :
+                    # l'annoncer « aucun posé » inviterait à poser par-dessus.
+                    print(
+                        f"  {MARQUE['unknown']} {chemin}"
+                        f"  ({t('unreadable, nothing will be written')})"
+                    )
+                    continue
+                marque = MARQUE["ok"] if actifs else MARQUE["no"]
+                compte = (
+                    f"{len(actifs)}/{len(journal.EVENEMENTS)}"
+                    if actifs
+                    else t("none installed")
+                )
+                print(f"  {marque} {chemin}  ({compte})")
+            print(
+                f"  {t('The log lives under')} {journal.RACINE},"
+                f" {journal.RETENTION_JOURS} {t('days')}"
+            )
+            choices = [
+                {
+                    "prompt_description": t(
+                        "Install into ~/.claude (this machine)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "Install into the repository (every clone)"
+                    )
+                },
+                {"prompt_description": t("Remove from ~/.claude")},
+                {"prompt_description": t("Remove from the repository")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            geste = {
+                "1": (pose.poser, pose.GLOBAL),
+                "2": (pose.poser, pose.DEPOT),
+                "3": (pose.retirer, pose.GLOBAL),
+                "4": (pose.retirer, pose.DEPOT),
+            }.get(status)
+            if geste is None:
+                print(t("Command not found !"))
+                continue
+            faire, endroit = geste
+            try:
+                chemin = faire(endroit, racine_depot=self._agents_racine())
+            except OSError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                continue
+            print(f"{MARQUE['ok']} {chemin}")
+            if endroit == pose.DEPOT:
+                print(
+                    f"{MARQUE['unknown']} {t('That file is tracked by git.')}"
+                )
+
+    def _agents_telemetrie(self):
+        """L'écran vivant de la télémétrie des agents.
+
+        Textual n'est pas une dépendance dure du CLI : `ensure` répond à sa
+        place à la question « est-il là, et sinon veut-on l'installer ».
+        """
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return
+        from script.todo.assistant.agents import tui
+
+        tui.run_tui()
+
+    @staticmethod
+    def _claude_transcription(session):
+        """Le fichier de transcription d'une session, ou la chaîne vide.
+
+        Trouvé par l'identifiant et non par le nom de répertoire de projet :
+        celui-ci encode le chemin de travail en tirets, et la transformation
+        ne s'inverse pas.
+        """
+        import glob
+
+        motif = os.path.expanduser(
+            f"~/.claude/projects/*/{session.session_id}.jsonl"
+        )
+        trouves = glob.glob(motif)
+        return trouves[0] if trouves else ""
+
+    def _claude_contexte(self, flotte):
+        """Ce qu'une session porte : son contexte, puis son environnement.
+
+        Les deux blocs disent leur DISPONIBILITÉ avant leur contenu. Trois
+        causes produisent le même vide et n'appellent pas le même geste : la
+        version du CLI n'écrit pas l'enregistrement, le processus appartient à
+        un autre compte, le processus est mort. Un zéro partout transformerait
+        l'inconnu en « il n'y a rien », ce qui est le message le plus trompeur
+        d'un écran de diagnostic.
+        """
+        from script.todo.assistant.agents import contexte as ctx
+        from script.todo.assistant.agents import environnement as env
+
+        session = self._claude_choisir(flotte)
+        if session is None:
+            return
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"\n{vue['id']} · {vue['dir']} · {vue['branch']}")
+
+        chemin = self._claude_transcription(session)
+        if not chemin:
+            print(
+                f"{MARQUE['unknown']} {t('No transcript for this session.')}"
+            )
+        else:
+            self._claude_contexte_bloc(ctx.lire(chemin), ctx)
+
+        # `live` et non `pid` : une session reprenable garde le pid du
+        # processus qui l'a écrite, et un pid se réemploie. Lire
+        # /proc/<pid>/environ sur une session éteinte montre l'environnement
+        # d'un AUTRE processus, sous le nom de celle-ci.
+        liste = env.variables(session.pid) if session.live else None
+        self._claude_environ_bloc(session, liste, env)
+        if liste:
+            self._claude_devoiler(session, liste, env)
+
+    def _claude_devoiler(self, session, liste, env):
+        """Démasquer UNE variable, nommée et sur demande.
+
+        C'est la soupape de la liste blanche, qui masque par construction
+        toute variable neuve et utile. Une à la fois, et jamais le bloc : un
+        écran qui démasque tout d'un coup rend copiable ce que le noyau
+        réservait au propriétaire du processus.
+
+        Les SECRETS n'y entrent pas. Le paquet tient deux paliers, et ils ne
+        disent pas la même chose : « masqué » veut dire « ce nom n'est pas
+        déclaré », et se lève à la demande ; « secret » veut dire « la
+        longueur même est un renseignement », et ne se lève pas. Les
+        confondre laisse taper le nom d'une clé d'API pour la voir en clair,
+        ce qui rend inutile tout le reste du module.
+        """
+        masquees = [v.nom for v in liste if not v.visible and not v.secret]
+        if not masquees:
+            return
+        try:
+            nom = click.prompt(
+                t("Unmask one variable (empty to skip):"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        if nom in {v.nom for v in liste if v.secret}:
+            # Le dire plutôt que de répondre « aucune de ce nom » : la
+            # variable EXISTE, et c'est le refus qui est l'information.
+            print(f"{MARQUE['no']} {t('A secret is never unmasked here.')}")
+            return
+        if nom not in masquees:
+            print(
+                f"{MARQUE['unknown']} {t('No masked variable by that name.')}"
+            )
+            return
+        valeur = env.devoile(session.pid, nom)
+        if valeur is None:
+            print(f"{MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(f"   {nom} = {valeur}")
+
+    @staticmethod
+    def _claude_contexte_bloc(contexte, ctx):
+        """Le bloc « contexte » : ce que la session a chargé."""
+        print(f"\n {t('CONTEXT')}")
+        if contexte.modele:
+            print(
+                f"   {t('model'):<14} {contexte.modele}"
+                f"  {contexte.modele_id}"
+                f"  {t('knowledge cutoff')} {contexte.coupure}"
+            )
+        else:
+            print(
+                f"   {t('model'):<14} {t('not carried by this CLI version')}"
+            )
+        if contexte.plateforme:
+            git = t("git repository") if contexte.depot_git else ""
+            print(
+                f"   {t('machine'):<14} {contexte.plateforme}"
+                f" · {contexte.shell} {git}"
+            )
+        if contexte.skills >= 0:
+            print(f"   {t('skills'):<14} {contexte.skills}")
+        if contexte.annonces_permissions:
+            print(
+                f"   {t('permissions'):<14}"
+                f" {contexte.annonces_permissions} {t('announcements')}"
+                f" · {t('latest')} {contexte.derniere_permission}"
+            )
+        fichiers = ctx.instructions_affichables(contexte)
+        if fichiers:
+            print(f"   {t('instructions'):<14} {len(contexte.instructions)}")
+            for chem, origine, octets in fichiers:
+                print(f"       {origine:<12} {chem:<50} {octets}")
+        else:
+            print(
+                f"   {t('instructions'):<14}"
+                f" {t('not carried by this CLI version')}"
+            )
+        for nom, code, duree in contexte.hooks:
+            detail = f" · {code} · {duree} ms" if code else ""
+            print(f"   {t('hook'):<14} {nom}{detail}")
+
+    @staticmethod
+    def _claude_environ_bloc(session, liste, env):
+        """Le bloc « environnement » : les noms, et ce qu'on montre des valeurs.
+
+        Une valeur ne s'affiche que si son nom est déclaré et que sa valeur a
+        la forme attendue. Le reste montre sa FORME — le noyau réserve déjà ce
+        fichier au propriétaire du processus, et un écran qui recopie une
+        valeur en clair casse cette frontière pour de bon.
+        """
+        print(f"\n {t('ENVIRONMENT')}")
+        if liste is None:
+            print(f"   {MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(
+            f"   /proc/{session.pid}/environ · {env.resume(liste)}"
+            f"  ({t('total · in clear · masked')})"
+        )
+        for variable in liste:
+            marque = (
+                "🔒"
+                if variable.secret
+                else ("  " if variable.visible else "· ")
+            )
+            print(f"   {marque} {variable.nom:<28} {variable.forme}")
+        absentes = env.familles_absentes(liste)
+        if absentes:
+            print(
+                f"   {MARQUE['unknown']} {t('No')} "
+                + ", ".join(f"{f}*" for f in absentes)
+            )
+            print(
+                f"      {t('The process carries the login shell environment,')}"
+            )
+            print(
+                f"      {t('frozen at exec; Claude Code sets its own in children.')}"
+            )
+
+    # ------------------------------------------------------------------
+    # Les agents d'arrière-plan
+
+    @staticmethod
+    def _claude_detaches(flotte):
+        """Les agents détachés VIVANTS, dans l'ordre de la flotte.
+
+        Un agent détaché se pilote par `attach`, `logs`, `stop`, `respawn` et
+        `rm` ; un terminal se reprend par `--resume` et se questionne par une
+        copie branchée. Les mélanger ferait proposer `stop` sur la fenêtre où
+        l'on travaille.
+
+        La vivacité est exigée en plus du genre, et c'est ce qui sépare deux
+        choses que la flotte réunit : le registre annonce ce qui TOURNE, et un
+        balayage des transcriptions annonce ce qui se REPREND. Une session
+        dormante n'a ni genre ni processus — la compter comme un agent
+        d'arrière-plan afficherait un agent là où il n'y a qu'un fichier.
+
+        Un agent d'arrière-plan déjà SORTI n'est donc pas ici non plus. Il
+        existe — `rm` sait encore nettoyer son arbre de travail — mais il
+        faut `claude agents --all` pour le voir, et la flotte ne le demande
+        pas encore.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        return [s for s in flotte if s.live and adaptateur.est_arriere_plan(s)]
+
+    def _claude_compte_detaches(self, flotte):
+        """« 2 » ou « aucun » — ce que l'entrée affiche avant qu'on y entre."""
+        detaches = self._claude_detaches(flotte)
+        return str(len(detaches)) if detaches else t("no background agent")
+
+    def _claude_choisir_detache(self):
+        """L'agent détaché désigné par un rang, ou `None`.
+
+        Aucun détaché n'est une réponse et non une panne : la liste des
+        sessions montre alors ce qui tourne, et l'écran le dit plutôt que
+        d'ouvrir un choix vide.
+        """
+        detaches = self._claude_detaches(self._claude_flotte())
+        if not detaches:
+            print(f"{MARQUE['unknown']} {t('no background agent')}")
+            return None
+        return self._claude_choisir(detaches)
+
+    def _claude_lancer_action(self, sous_commande, session):
+        """Lancer UNE des cinq sous-commandes, avec la confirmation qu'elle
+        mérite.
+
+        Trois niveaux, et l'écart entre les deux derniers est tout : `respawn`
+        coupe le travail en cours et se demande, `rm` supprime la session ET
+        son arbre de travail et se fait retaper. Une frappe sur « o » se donne
+        par réflexe ; recopier un identifiant oblige à regarder ce qu'on
+        détruit.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        exigence = adaptateur.confirmation_exigee(sous_commande)
+        if exigence == "oui" and not self._claude_dit_oui(session):
+            return
+        if exigence == "id" and not self._claude_retape_id(session):
+            return
+        argv = adaptateur.argv_action(sous_commande, session.poignee)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
+    def _claude_dit_oui(self, session):
+        """Une confirmation simple, pour ce qui coupe sans détruire."""
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{MARQUE['unknown']} {t('The work in progress is cut.')}")
+        try:
+            reponse = click.prompt(
+                f"{vue['id']} — {t('Restart it? (y/N)')}",
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        return self._is_yes(reponse)
+
+    def _claude_retape_id(self, session):
+        """L'identifiant retapé en entier avant une suppression.
+
+        `claude rm` supprime la session ET son arbre de travail, et rien ne la
+        récupère. Le préfixe affiché ne suffit donc pas : c'est l'identifiant
+        complet qui se recopie.
+        """
+        print(
+            f"{MARQUE['no']} {t('This deletes the session and its worktree.')}"
+        )
+        print(f"   {session.session_id}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        if frappe != session.session_id:
+            print(t("Nothing has been sent."))
+            return False
+        return True
+
+    def _claude_attacher(self):
+        """Ouvrir un agent détaché dans une fenêtre à lui.
+
+        Comme la reprise d'une session : c'est un programme plein écran, et le
+        tube du lanceur ordinaire ne fournit pas le terminal qu'il exige. Sans
+        fenêtre possible, la commande est IMPRIMÉE plutôt que lancée là où
+        elle ne survivrait pas.
+        """
+        import shlex
+
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        argv = adaptateur.argv_action(adaptateur.ATTACHER, session.poignee)
+        commande = " ".join(shlex.quote(m) for m in argv)
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  {commande}")
+            return
+        self.execute.exec_command_live(
+            commande, source_erplibre=False, new_window=True
+        )
+
+    def _claude_journal(self):
+        """Imprimer la sortie récente d'un agent détaché. Elle ne fait que lire."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        self._claude_lancer_action(adaptateur.JOURNAL, session)
+
+    def _claude_gerer(self):
+        """Arrêter, relancer ou supprimer — trois dommages, trois questions."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        choices = [
+            {"prompt_description": t("Stop it, keeping its conversation")},
+            {"prompt_description": t("Restart it on the current binary")},
+            {"prompt_description": t("Delete it, and its worktree")},
+        ]
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{vue['id']} · {vue['dir']}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        sous = {
+            "1": adaptateur.ARRETER,
+            "2": adaptateur.RELANCER,
+            "3": adaptateur.SUPPRIMER,
+        }.get(status)
+        if status == "0":
+            return
+        if sous is None:
+            print(t("Command not found !"))
+            return
+        self._claude_lancer_action(sous, session)
 
     def _claude_flotte(self):
         """La flotte, relue à chaque tour du menu.

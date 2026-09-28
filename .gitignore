@@ -53,6 +53,12 @@ private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
 
+# Les réglages Claude Code PERSONNELS d'un clone. Le nom « .local.json » est
+# réservé à ce qui ne se partage pas, et ce fichier porte des permissions :
+# ce qu'un contributeur s'accorde deviendrait public avec le dépôt. Le
+# partagé va dans .claude/settings.json, qui est suivi exprès.
+.claude/settings.local.json
+
 # Investigation notes, dated measurements and execution traces.
 # UNVERSIONED ON PURPOSE: it holds what neither the code nor the commits
 # may hold, customer data included. Ignoring it stops a blanket stage from
