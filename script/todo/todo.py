@@ -35,7 +35,7 @@ RELAUNCH_ENV = "EL_TODO_VENV_RELAUNCHED"
 # Modules tiers que charge l'import de ce fichier et de ses mixins : un seul
 # absent fait lever l'import, ou boucler crash_diagnostic. Ceux qu'un menu
 # n'importe qu'à l'usage n'y figurent pas, ils ne bloquent pas le démarrage.
-REQUIRED_MODULES = "click colorama dotenv humanize pykeepass urwid".split()
+REQUIRED_MODULES = "click colorama dotenv humanize urwid".split()
 INSTALL_CMD = "./script/install/install_erplibre.sh"
 
 
@@ -163,7 +163,6 @@ try:
     # TODO implement rich for beautiful print and table
     # import rich
     import todo_upgrade
-    from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
