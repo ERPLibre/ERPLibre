@@ -70,6 +70,7 @@ import {
     joinWrapped,
     lastLine,
     quickAnswers,
+    retryAfter,
     sessionOf,
     stillToRead,
     terminalShown,
@@ -89,6 +90,7 @@ const STATE_LABELS = {
     connecting: "Connecting…",
     ended: "Session ended",
     full: "Too many sessions: close one first.",
+    rate: "Too many sessions opened in a minute; try again in %s s.",
     taken: "Opened in another tab.",
     gone: "This session no longer exists.",
     lost: "Connection lost.",
@@ -176,6 +178,7 @@ export class SessionsView extends Component {
             ran: false, // ce que TODO a écrit depuis la dernière réponse reste à lire
             override: null, // le choix du bouton Terminal : {phase, open}
             halt: "", // l'étape où le dernier rejeu s'est interrompu
+            retry: null, // les secondes à attendre d'un refus « rate »
         });
         this.panel = useRef("terminal");
         this.secretField = useRef("secret");
@@ -302,6 +305,9 @@ export class SessionsView extends Component {
             return "";
         }
         const label = this.env.t(STATE_LABELS[status]);
+        if (status === "rate") {
+            return label.replace("%s", () => this.state.retry);
+        }
         return status === "ended" ? `${label} (${this.env.t("exit code")} ${code})` : label;
     }
 
@@ -331,7 +337,7 @@ export class SessionsView extends Component {
             socket.send(helloMessage({csrf, lang, cols, rows, session: id, after}));
         };
         socket.onmessage = (event) => socket === this.socket && this.receive(event.data);
-        socket.onclose = (event) => socket === this.socket && this.closed(event.code);
+        socket.onclose = (event) => socket === this.socket && this.closed(event.code, event.reason);
         this.socket = socket;
         this.term.focus();
     }
@@ -414,15 +420,22 @@ export class SessionsView extends Component {
         }
     }
 
-    closed(code) {
+    // Fin de la connexion, de code `code` et de raison `reason`. Un refus
+    // « rate » ne relance rien de lui-même : ni l'ordre en attente, ni
+    // celui d'un renouvellement.
+    closed(code, reason) {
         this.socket = null;
-        const status = closedState(code, this.bye);
+        const status = closedState(code, this.bye, reason);
         // « Trop de sessions » dit déjà pourquoi le rejeu s'arrête.
-        if (this.replay && status !== "full") {
+        if (this.replay && status !== "full" && status !== "rate") {
             this.step({t: "closed"});
         }
         this.replay = null;
-        Object.assign(this.state, {status, question: null, pending: null});
+        if (status === "rate") {
+            this.deferred = null;
+            this.renewing = null;
+        }
+        Object.assign(this.state, {status, retry: retryAfter(reason), question: null, pending: null});
         Object.assign(this.state, {running: false, ran: false, override: null});
         if (status === "ended" || status === "gone") {
             this.remember(null);

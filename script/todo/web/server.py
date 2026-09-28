@@ -23,12 +23,21 @@ son jeton CSRF dans `X-CSRF-Token`. L'API exige le cookie de session, nommé
 par port ; `/api/fs`, qui lit le disque au chemin que la requête nomme,
 exige aussi le jeton CSRF en GET. Le hub n'importe jamais todo.py.
 
+Une connexion vaut LOGIN_SECONDS à partir de l'échange de son code, jamais
+prolongée, et LOGINS au plus vivent à la fois ; oubliée, son cookie rend
+403 partout, mais un WebSocket déjà ouvert continue. Une fenêtre glissante
+de RATE_WINDOW s borne les ouvertures en boucle (`Window`) : au-delà de
+RATE_LIMIT sessions neuves, le WebSocket se ferme en 1013, raison
+« rate N », N les secondes à attendre. Un code de connexion refusé ne
+compte nulle part : un bon code passe toujours.
+
     python -m script.todo.web.server --root <checkout> [--idle-seconds N]
 """
 
 import argparse
 import asyncio
 import base64
+import collections
 import datetime
 import errno
 import fcntl
@@ -37,6 +46,7 @@ import heapq
 import importlib
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -59,6 +69,15 @@ from script.todo.web import paths, sessions, tasklog
 log = logging.getLogger(__name__)
 
 CODE_TTL = 120.0
+# Secondes que vaut une connexion depuis l'échange de son code ; jetons de
+# connexion vivants au plus, le plus ancien oublié au-delà.
+LOGIN_SECONDS = 12 * 3600
+LOGINS = 16
+# Garde contre les ouvertures en boucle : au plus RATE_LIMIT sessions
+# neuves ouvertes pour un client par fenêtre glissante de RATE_WINDOW
+# secondes.
+RATE_WINDOW = 60.0
+RATE_LIMIT = 5
 # Corps HTTP et messages WebSocket : tornado accepte 100 Mo par défaut.
 MAX_BODY = 64 * 1024
 IDLE_SECONDS = 1800.0
@@ -120,6 +139,37 @@ TREE_SOURCES = (
 
 class HubRunning(Exception):
     """Un hub répond déjà sur la socket de contrôle de ce checkout."""
+
+
+def login_clock() -> float:
+    """L'heure des fins de connexion, en secondes : CLOCK_BOOTTIME, qui
+    avance pendant une mise en veille comme le `Max-Age` du cookie ;
+    time.monotonic, qui s'y arrête sous Linux, là où le système n'offre pas
+    CLOCK_BOOTTIME."""
+    if hasattr(time, "CLOCK_BOOTTIME"):
+        return time.clock_gettime(time.CLOCK_BOOTTIME)
+    return time.monotonic()
+
+
+class Window:
+    """Les instants (time.monotonic) des événements d'une fenêtre glissante
+    de RATE_WINDOW secondes, RATE_LIMIT au plus."""
+
+    def __init__(self):
+        self.times = collections.deque()
+
+    def wait(self, now) -> float:
+        """Secondes à attendre à `now` avant qu'un événement de plus tienne
+        sous RATE_LIMIT, 0 s'il tient ; ce qui a quitté la fenêtre est
+        oublié."""
+        while self.times and self.times[0] <= now - RATE_WINDOW:
+            self.times.popleft()
+        if len(self.times) < RATE_LIMIT:
+            return 0.0
+        return self.times[0] + RATE_WINDOW - now
+
+    def add(self, now):
+        self.times.append(now)
 
 
 def load_static(static_dir: Path) -> dict:
@@ -423,7 +473,7 @@ class Guard:
         l'arrêt à l'inactivité, sauf avec `touch` faux.
         """
         token = self.get_cookie(self.hub.cookie)
-        csrf = self.hub.sessions.get(token) if token else None
+        csrf = self.hub.csrf_of(token) if token else None
         if csrf is None:
             raise HTTPError(403)
         if touch:
@@ -474,7 +524,9 @@ class NotFound(Guard, tornado.web.RequestHandler):
 
 
 class Login(Guard, tornado.web.RequestHandler):
-    """Échange un code à usage unique contre le cookie de session."""
+    """Échange un code à usage unique contre le cookie de session, valable
+    LOGIN_SECONDS (`Max-Age`). Un code refusé ne compte nulle part : un bon
+    code passe toujours, quels que soient les refus qui le précèdent."""
 
     anonymous_post = True
 
@@ -490,6 +542,7 @@ class Login(Guard, tornado.web.RequestHandler):
             self.hub.open_session(),
             httponly=True,
             samesite="Strict",
+            max_age=LOGIN_SECONDS,
         )
         self.write({"ok": True})
 
@@ -669,8 +722,11 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
 
     Le premier message, texte, est `{"t": "hello", "csrf", "lang", "cols",
     "rows", "session"?, "after"?}`, sous HELLO_SECONDS, sinon 1008. Sans
-    `session`, une session s'ouvre (au-delà de MAX_SESSIONS, 1013) ; avec,
-    le client s'y rattache (inconnue, 4404) et en prend le contrôle :
+    `session`, une session s'ouvre : au-delà de MAX_SESSIONS, 1013 « try
+    again later » ; au-delà de RATE_LIMIT ouvertures en RATE_WINDOW s
+    (`Hub.openings`), 1013 « rate N », N les secondes à attendre. Avec, le
+    client s'y rattache (inconnue, 4404), sans compter comme une ouverture,
+    et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
     "truncated", "code"}`, `code` étant l'empreinte des sources que tourne
     la session (`Session.stamp`), puis la question ouverte du worker s'il en
@@ -750,6 +806,12 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
             if len(self.hub.terminals) >= sessions.MAX_SESSIONS:
                 self.close(1013, "try again later")
                 return
+            now = time.monotonic()
+            wait = self.hub.openings.wait(now)
+            if wait:
+                self.close(1013, f"rate {math.ceil(wait)}")
+                return
+            self.hub.openings.add(now)
             try:
                 session = await self.hub.open_terminal(
                     hello["lang"], cols, rows
@@ -983,6 +1045,8 @@ class Hub:
         self.csp = content_security_policy(index[0] if index else b"")
         self.codes = {}  # code -> expiration (horloge monotone)
         self.sessions = {}  # jeton du cookie -> jeton CSRF
+        self.expiry = {}  # jeton du cookie -> fin de sa validité (login_clock)
+        self.openings = Window()  # sessions neuves ouvertes pour un client
         self.stopped = asyncio.Event()
         self.stopping = None
         self.last_activity = time.monotonic()
@@ -1152,9 +1216,38 @@ class Hub:
             self.redirect_path.unlink(missing_ok=True)
 
     def open_session(self) -> str:
+        """Nouveau jeton de connexion, valable LOGIN_SECONDS ; les jetons
+        expirés sont oubliés, puis le moins récemment servi tant que LOGINS
+        vivent."""
+        now = login_clock()
+        for token in [t for t, end in self.expiry.items() if end <= now]:
+            self.forget(token)
+        while len(self.sessions) >= LOGINS:
+            self.forget(next(iter(self.sessions)))
         token = secrets.token_urlsafe(32)
         self.sessions[token] = secrets.token_urlsafe(32)
+        self.expiry[token] = now + LOGIN_SECONDS
         return token
+
+    def csrf_of(self, token):
+        """Le jeton CSRF de la connexion `token`, ou None : inconnue, ou
+        expirée, et alors oubliée. Servie, elle passe en dernier dans
+        `sessions`, que `open_session` vide par le début : sa fin ne change
+        pas."""
+        csrf = self.sessions.get(token)
+        if csrf is None:
+            return None
+        if self.expiry[token] <= login_clock():
+            self.forget(token)
+            return None
+        self.sessions[token] = self.sessions.pop(token)
+        return csrf
+
+    def forget(self, token):
+        """Oublie la connexion `token` et le relevé système de sa page."""
+        self.sessions.pop(token, None)
+        self.expiry.pop(token, None)
+        self.system.pop(token, None)
 
     async def open_terminal(self, lang, cols, rows):
         """Nouvelle session TODO, comptée dès avant son lancement : deux

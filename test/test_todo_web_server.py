@@ -301,6 +301,46 @@ class TestHttp(HubCase):
         resp = await self.fetch("/api/session", "OPTIONS", Origin=self.origin)
         self.assertEqual(resp.code, 405)
 
+    async def test_a_login_lasts_its_lifetime_from_the_code_then_ends(self):
+        resp = await self.login()
+        max_age = f"Max-Age={server.LOGIN_SECONDS}"
+        self.assertIn(max_age, resp.headers["Set-Cookie"])
+        cookie = resp.headers["Set-Cookie"].split(";")[0]
+        token = cookie.split("=", 1)[1]
+        end = self.hub.expiry[token]
+        # Une requête ne prolonge rien : la fin court depuis le code.
+        resp = await self.fetch("/api/session", Cookie=cookie)
+        self.assertEqual(resp.code, 200)
+        self.assertEqual(self.hub.expiry[token], end)
+        self.hub.expiry[token] -= server.LOGIN_SECONDS
+        resp = await self.fetch("/api/session", Cookie=cookie)
+        self.assertEqual(resp.code, 403)
+        self.assertNotIn(token, self.hub.sessions)
+        self.assertNotIn(token, self.hub.expiry)
+
+    async def test_the_least_recently_used_login_goes_beyond_the_limit(self):
+        cookies = [await self.cookie() for _ in range(server.LOGINS)]
+        # La première sert encore : la deuxième, moins récemment servie,
+        # part à la connexion de trop.
+        resp = await self.fetch("/api/session", Cookie=cookies[0])
+        self.assertEqual(resp.code, 200)
+        cookies.append(await self.cookie())
+        codes = []
+        for cookie in cookies:
+            codes.append(
+                (await self.fetch("/api/session", Cookie=cookie)).code
+            )
+        self.assertEqual(codes, [200, 403] + [200] * (server.LOGINS - 1))
+        self.assertEqual(len(self.hub.sessions), server.LOGINS)
+
+    async def test_a_good_code_is_accepted_after_refused_ones(self):
+        # Un code refusé ne compte nulle part : RATE_LIMIT refus dans la
+        # minute ne font pas refuser le bon code qui suit.
+        for n in range(server.RATE_LIMIT):
+            self.assertEqual((await self.login("forged")).code, 403, n)
+        code = await self.ctl("mint")
+        self.assertEqual((await self.login(code)).code, 200)
+
 
 class TestControl(HubCase):
     async def test_ctl_socket_mode_0600(self):
@@ -1428,6 +1468,90 @@ class TestSpare(TerminalCase):
         self.assertTrue(warming.done())
         with self.assertRaises(ProcessLookupError):
             os.kill(spare.proc.pid, 0)
+
+
+class TestOpenings(TerminalCase):
+    """La garde contre les ouvertures en boucle, et la connexion expirée."""
+
+    async def warm(self):
+        """La liste des sessions, qui lance une réserve ; rend celle-ci."""
+        resp = await self.fetch("/api/sessions", Cookie=self.session_cookie)
+        self.assertEqual(resp.code, 200)
+        return self.hub.spare
+
+    async def close(self, tab):
+        await tab.conn.write_message(json.dumps({"t": "close"}))
+        self.assertEqual(await tab.closed(), 1000)
+
+    async def refused(self):
+        """Raison de la fermeture d'une session neuve refusée en 1013."""
+        tab = await self.connect()
+        hello = {"t": "hello", "csrf": self.csrf, "lang": "en", "cols": 80}
+        await tab.conn.write_message(json.dumps({**hello, "rows": 24}))
+        self.assertEqual(await tab.closed(), 1013)
+        return tab.conn.close_reason
+
+    async def test_a_sixth_new_session_in_a_minute_is_refused(self):
+        for _ in range(server.RATE_LIMIT):
+            await self.close(await self.tab(reading=False))
+        word, seconds = (await self.refused()).split()
+        self.assertEqual(word, "rate")
+        self.assertTrue(0 < int(seconds) <= server.RATE_WINDOW, seconds)
+        self.assertEqual(self.hub.terminals, {})
+        # Le hub reste utilisable ; la fenêtre passée, une session s'ouvre.
+        await self.warm()
+        times = self.hub.openings.times
+        for n in range(len(times)):
+            times[n] -= server.RATE_WINDOW
+        await self.tab()
+
+    async def test_attaching_and_the_spare_are_no_openings(self):
+        # Chaque liste lance une réserve, que la session neuve suivante
+        # prend : RATE_LIMIT réserves lancées, RATE_LIMIT ouvertures.
+        for n in range(server.RATE_LIMIT):
+            spare = await self.warm()
+            tab = await self.tab(reading=False)
+            sid = tab.texts[0]["id"]
+            self.assertIs(self.hub.terminals[sid], spare)
+            if n == 0:
+                # Rattachements quand la fenêtre n'a qu'une ouverture :
+                # comptés, ils feraient refuser les ouvertures qui suivent.
+                for _ in range(server.RATE_LIMIT):
+                    tab = await self.tab(reading=False, session=sid, after=0)
+                    self.assertEqual(tab.texts[0]["id"], sid)
+            if n < server.RATE_LIMIT - 1:
+                await self.close(tab)
+        self.assertTrue((await self.refused()).startswith("rate "))
+
+    async def test_a_restart_is_no_opening(self):
+        # RESTART relance un worker sous la même session : aucune ouverture.
+        tab = await self.tab()
+        await tab.conn.write_message(
+            f"exit {sessions.RESTART}\n".encode(), binary=True
+        )
+        await tab.until(lambda: tab.data.count(b"ready en 90x20") >= 2)
+        self.assertEqual(len(self.hub.openings.times), 1)
+
+    async def test_an_open_websocket_outlives_its_login(self):
+        tab = await self.tab()
+        sid = tab.texts[0]["id"]
+        token = self.session_cookie.split("=", 1)[1]
+        self.hub.expiry[token] -= server.LOGIN_SECONDS
+        # Toute requête et toute poignée de main rendent 403…
+        resp = await self.fetch("/api/sessions", Cookie=self.session_cookie)
+        self.assertEqual(resp.code, 403)
+        with self.assertRaises(HTTPClientError) as ctx:
+            await self.connect()
+        self.assertEqual(ctx.exception.code, 403)
+        # … mais le WebSocket ouvert continue : ses frappes passent.
+        await tab.conn.write_message(b"big 3\n", binary=True)
+        await tab.until(lambda: b"END" in tab.data)
+        # Une connexion neuve se rattache à la session.
+        self.session_cookie = await self.cookie()
+        resp = await self.fetch("/api/session", Cookie=self.session_cookie)
+        self.csrf = json.loads(resp.body)["csrf"]
+        again = await self.tab(reading=False, session=sid, after=0)
+        self.assertEqual(again.texts[0]["id"], sid)
 
 
 class TestDeadClient(TerminalCase):

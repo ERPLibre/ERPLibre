@@ -10,8 +10,8 @@ que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
 `static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`,
-`static/src/browse.js`) tournent sous node, quand il est installé. Les mots
-de la page sont vérifiés par `test_todo_web_i18n.py`.
+`static/src/browse.js`, `static/src/api.js`) tournent sous node, quand il
+est installé. Les mots de la page sont vérifiés par `test_todo_web_i18n.py`.
 """
 
 import base64
@@ -688,6 +688,66 @@ class TestSessionProtocol(unittest.TestCase):
             self.out["written"],
             ["#view=sessions&lang=fr&session=s1", "#view=sessions"],
         )
+
+
+# Les fermetures en 1013, de raison « rate N » ou d'une autre, et l'attente
+# que dit chaque raison.
+RATE_CHECK = r"""
+console.log(JSON.stringify({
+    rated: [[1013, "rate 42"], [1013, "try again later"], [1013, "rate"],
+        [4001, "rate 3"]].map(([code, reason]) =>
+            m.closedState(code, null, reason)),
+    retry: ["rate 42", "rate", "try again later", undefined].map(m.retryAfter),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestOpeningRefusal(unittest.TestCase):
+    def test_a_refused_opening_says_how_long_to_wait(self):
+        # 1013 « rate N » : trop de sessions ouvertes en une minute ; tout
+        # autre 1013, trop de sessions ouvertes à la fois.
+        out = _node_json(RATE_CHECK, "session.js")
+        self.assertEqual(out["rated"], ["rate", "full", "full", "taken"])
+        self.assertEqual(out["retry"], [42, None, None, None])
+
+
+API_CHECK = r"""
+const calls = [];
+const reply = (status) => async () =>
+    ({ok: status < 400, status, json: async () => ({status})});
+const outcomes = [];
+m.onForbidden(() => calls.push("forbidden"));
+for (const status of [200, 403, 404, 429]) {
+    globalThis.fetch = reply(status);
+    try {
+        outcomes.push((await m.getJson("/api/x")).status);
+    } catch (error) {
+        outcomes.push(`${error.constructor.name} ${error.status}`);
+    }
+}
+m.onForbidden(null);
+globalThis.fetch = reply(403);
+try {
+    await m.postJson("/api/x", {});
+} catch (error) {
+    outcomes.push(error.status);
+}
+console.log(JSON.stringify({outcomes, calls}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestApiCalls(unittest.TestCase):
+    def test_a_forbidden_reply_tells_the_page_before_it_raises(self):
+        # La connexion a expiré : la page l'apprend de chaque 403, et d'eux
+        # seuls ; sans rappel posé, rien n'est appelé.
+        out = _node_json(API_CHECK, "api.js")
+        self.assertEqual(
+            out["outcomes"],
+            [200, "ApiError 403", "ApiError 404", "ApiError 429", 403],
+        )
+        self.assertEqual(out["calls"], ["forbidden"])
 
 
 QUICK_CHECK = r"""

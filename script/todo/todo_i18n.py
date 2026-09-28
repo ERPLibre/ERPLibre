@@ -3893,6 +3893,14 @@ TRANSLATIONS = {
         "fr": "Trop de sessions : fermez-en une d'abord.",
         "en": "Too many sessions: close one first.",
     },
+    "Too many sessions opened in a minute; try again in %s s.": {
+        "fr": "Trop de sessions ouvertes en une minute ; réessayer dans %s s.",
+        "en": "Too many sessions opened in a minute; try again in %s s.",
+    },
+    "Connection expired: reopen the interface from TODO [4].": {
+        "fr": "Connexion expirée : rouvrir l'interface depuis TODO [4].",
+        "en": "Connection expired: reopen the interface from TODO [4].",
+    },
     "Opened in another tab.": {
         "fr": "Ouverte dans un autre onglet.",
         "en": "Opened in another tab.",

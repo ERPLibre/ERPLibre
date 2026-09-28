@@ -4,8 +4,11 @@
 // rechargement, ce qui reste à lire au terminal, et quand il se replie.
 import {carriesScreen} from "./prompt.js";
 
-// Fermetures du hub autres que la fin d'une session, qu'annonce `bye`.
+// Fermetures du hub autres que la fin d'une session, qu'annonce `bye`. En
+// 1013, la raison « rate N » dit trop de sessions ouvertes en une minute,
+// N les secondes à attendre ; toute autre, trop de sessions ouvertes.
 const CLOSED = {1013: "full", 4001: "taken", 4404: "gone"};
+const RATE = /^rate (\d+)$/;
 // Avis de ce que le hub n'a pas écrit (`dropped`), selon sa raison : des
 // clés de traduction.
 const DROP_LABELS = {
@@ -39,10 +42,23 @@ export function frames(bytes) {
     return out;
 }
 
-// État d'une connexion fermée : « ended » après `bye`, sinon celui que dit
-// le code, « lost » pour tout autre.
-export function closedState(code, bye) {
-    return bye ? "ended" : CLOSED[code] || "lost";
+// État d'une connexion fermée : « ended » après `bye`, sinon celui que
+// disent le code et sa raison `reason`, « lost » pour tout autre.
+export function closedState(code, bye, reason = "") {
+    if (bye) {
+        return "ended";
+    }
+    if (code === 1013 && RATE.test(reason)) {
+        return "rate";
+    }
+    return CLOSED[code] || "lost";
+}
+
+// Les secondes à attendre que dit la raison « rate N » d'une fermeture, ou
+// null pour toute autre raison.
+export function retryAfter(reason) {
+    const match = RATE.exec(reason || "");
+    return match ? Number(match[1]) : null;
 }
 
 // L'avis d'un `dropped` de raison `reason` ; une raison que la page ne

@@ -16,8 +16,10 @@
 // Sessions tient du hub (`runs`), une bannière le dit ; son bouton ouvre
 // une session neuve. Une empreinte de session que la page n'a pas encore
 // lue la fait relire d'abord : la bannière ne juge que sur la plus récente.
+// Dès qu'une requête rend 403, la connexion a expiré : une bannière dit de
+// rouvrir l'interface depuis TODO, la page reste telle qu'elle est.
 import {Component, onMounted, onWillUnmount, useState, xml} from "@odoo/owl";
-import {getJson} from "./api.js";
+import {getJson, onForbidden} from "./api.js";
 import {HistoryView} from "./history_view.js";
 import {KanbanView} from "./kanban_view.js";
 import {ListView} from "./list_view.js";
@@ -44,6 +46,9 @@ export class TelemetryPage extends Component {
             <h1 t-esc="env.t('TODO navigation telemetry')"/>
             <span class="root" t-esc="props.root"/>
         </header>
+        <div t-if="state.expired" class="banner" role="alert">
+            <span t-esc="env.t('Connection expired: reopen the interface from TODO [4].')"/>
+        </div>
         <nav class="toolbar" t-att-aria-label="env.t('Views')">
             <t t-foreach="views" t-as="view" t-key="view">
                 <button type="button" t-att-aria-pressed="state.view === view ? 'true' : 'false'"
@@ -89,8 +94,9 @@ export class TelemetryPage extends Component {
         // l'arbre et les compteurs montrés ; `latest` : la dernière empreinte
         // lue ; `runs` : celle que tourne la session courante, ou null.
         this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions", order: null});
-        Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null});
+        Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null, expired: false});
         this.told = 0; // le rang du dernier appel de sessionRuns
+        onForbidden(() => (this.state.expired = true));
         onMounted(() => {
             this.timer = setInterval(() => {
                 if (pollsCode(this.state.view, document.visibilityState)) {
@@ -98,7 +104,10 @@ export class TelemetryPage extends Component {
                 }
             }, PERIOD);
         });
-        onWillUnmount(() => clearInterval(this.timer));
+        onWillUnmount(() => {
+            clearInterval(this.timer);
+            onForbidden(null);
+        });
     }
 
     get tree() {
