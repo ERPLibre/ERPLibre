@@ -90,6 +90,12 @@ LARGEUR = 70
 # séances anciennes se retrouvent par leur fichier plutôt que par ce menu.
 REPRISES_MAX = 15
 
+# Les outils qui touchent la machine, par opposition à ceux qui la lisent. La
+# liste est FERMÉE : un outil qu'elle ne nomme pas n'est pas réputé
+# inoffensif, il est seulement inconnu — d'où l'affichage de la liste
+# complète à côté de cet avertissement.
+OUTILS_QUI_ECRIVENT = ("Write", "Edit", "Bash", "NotebookEdit", "Agent")
+
 # Le délai d'un montage de tunnel. Il borne l'attente d'un hôte injoignable
 # ou d'une authentification qui attend une frappe : sans lui, un `ssh -f`
 # tiendrait le menu jusqu'à ce que la pile TCP renonce d'elle-même.
@@ -517,6 +523,24 @@ class AssistantMenuMixin:
             actions.append(self._panorama)
             choices.append({"prompt_description": self._llm_gpt_label()})
             actions.append(self._llm_gpt_catalogue)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Specialised agents')}"
+                        f"  ({self._llm_specialistes_label()})"
+                    )
+                }
+            )
+            actions.append(self._llm_specialistes)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Background agents')}"
+                        f"  ({self._llm_courses_label()})"
+                    )
+                }
+            )
+            actions.append(self._llm_courses)
             choices.append({"section": t("Measure")})
             choices.append({"prompt_description": t("Agent telemetry (TUI)")})
             actions.append(self._agents_telemetrie)
@@ -3249,6 +3273,234 @@ class AssistantMenuMixin:
             return None
         rang = int(reponse) - 1
         return flotte[rang] if 0 <= rang < len(flotte) else None
+
+    def _llm_courses_label(self):
+        """Ce qui tourne et ce qui attend d'être lu, avant qu'on entre."""
+        from script.todo.assistant.agents import fond as llm_fond
+
+        vues = llm_fond.courses()
+        if not vues:
+            return t("none")
+        tournent = sum(1 for un in vues if un.etat == llm_fond.EN_COURS)
+        finis = sum(1 for un in vues if un.etat == llm_fond.FINI)
+        parts = []
+        if tournent:
+            parts.append(t("%s running") % tournent)
+        if finis:
+            parts.append(self._llm_count(finis, "returned", "returned-plural"))
+        return ", ".join(parts) or t("none")
+
+    def _llm_specialistes_label(self):
+        """Combien d'agents sont déclarés, et combien peuvent écrire.
+
+        Le second compte figure DANS l'étiquette du menu : ce qui écrit se
+        dit avant qu'on entre, pas seulement une fois dedans.
+        """
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        connus = llm_specs.catalogue()
+        combien = self._llm_count(len(connus), "agent", "agents")
+        ecrivains = sum(
+            1 for un in connus if self._llm_outils_qui_ecrivent(un.outils)
+        )
+        if not ecrivains:
+            return combien
+        return f"{combien}, {t('%s can write') % ecrivains}"
+
+    def _llm_specialistes(self):
+        """Les agents spécialisés du dépôt, et ce qu'on leur confie.
+
+        Les OUTILS de chaque agent paraissent à côté de son rôle, et une
+        seconde fois avant l'envoi : plusieurs déclarent `Write` et `Edit`,
+        donc l'appel peut écrire dans l'arbre de travail. Le dire une fois
+        dans une liste qu'on parcourt ne suffit pas — on choisit un agent
+        pour ce qu'il fait, pas pour ce qu'il peut.
+        """
+        import shutil
+
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        connus = llm_specs.catalogue()
+        if not connus:
+            print(t("No specialised agent is declared here."))
+            return
+        if not shutil.which("claude"):
+            print(t("claude is not on the PATH."))
+            return
+        choices = []
+        for un in connus:
+            choices.append(
+                {"prompt_description": self._llm_ligne_specialiste(un)}
+            )
+        print(f"\n{t('Specialised agents')}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, len(connus))
+        if rang is None:
+            return
+        self._llm_specialiste_agir(connus[rang - 1])
+
+    @staticmethod
+    def _llm_ligne_specialiste(un):
+        """Un agent, en une ligne : ce qu'il fait, et ce qu'il peut."""
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        parts = [un.cle, llm_specs.role(un.description)]
+        if un.outils:
+            parts.append("(" + ", ".join(un.outils) + ")")
+        if un.origine and un.origine != "dépôt":
+            parts.append(un.origine)
+        return " · ".join(part for part in parts if part)
+
+    def _llm_specialiste_agir(self, un):
+        """Ce que l'agent peut, puis la question.
+
+        Les outils se disent une SECONDE fois ici, après la liste : on
+        choisit un agent pour ce qu'il fait, et c'est au moment de lancer
+        qu'on regarde ce qu'il peut.
+        """
+        ecrit = self._llm_outils_qui_ecrivent(un.outils)
+        print(f"\n🧑‍🔧 {un.cle} · {un.modele or t('default model')}")
+        print(f"  {t('tools')}: {', '.join(un.outils) or t('read-only')}")
+        if ecrit:
+            print(f"  ⚠ {t('May write here: %s') % ', '.join(ecrit)}")
+        choices = [
+            {"prompt_description": t("Ask a question")},
+            {"prompt_description": t("Run it in the background")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, 2)
+        if rang == 1:
+            self._llm_specialiste_question(un)
+        elif rang == 2:
+            self._llm_specialiste_fond(un)
+
+    def _llm_specialiste_fond(self, un):
+        """Détache l'agent, et dit où sa réponse arrivera.
+
+        Rien ne s'affiche à la fin : le menu ne tient plus le processus. La
+        liste des courses est le seul endroit où le résultat revient, et
+        c'est elle qu'on nomme AVANT de lancer.
+        """
+        import uuid
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant.agents import fond as llm_fond
+        from script.todo.assistant.context import repo_root as llm_racine
+
+        try:
+            question = click.prompt(t("Write your question "))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        depot = str(llm_racine())
+        argv = llm_backends.claude_argv(
+            session_id=None,
+            cwd=depot,
+            fork=False,
+            agent=un.cle,
+            outils=un.outils,
+        )
+        jour = llm_fond.maintenant()[:10]
+        cle = f"{jour}-{uuid.uuid4().hex[:8]}"
+        course = llm_fond.lancer(
+            cle, un.cle, question, argv, cwd=depot, outils=un.outils
+        )
+        if course is None:
+            print(f"⚠ {t('Could not start it:')}")
+            return
+        print(f"  → {t('Running in the background')} ({course.cle})")
+        print(f"  {t('Its answer lands in')} : {t('Background agents')}")
+
+    def _llm_courses(self):
+        """Les agents détachés : ce qui tourne, ce qui est revenu.
+
+        Un agent PERDU est parti sans rendre d'enveloppe : la machine a
+        redémarré, le processus a été tué, le binaire a refusé. Le dire
+        ainsi vaut mieux que de le laisser « en cours » pour toujours.
+        """
+        from script.todo.assistant.agents import fond as llm_fond
+
+        vues = llm_fond.courses()
+        if not vues:
+            print(t("No background agent has been started."))
+            return
+        choices = [
+            {"prompt_description": self._llm_ligne_course(vue)} for vue in vues
+        ]
+        print(f"\n{t('Background agents')}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, len(vues))
+        if rang is None:
+            return
+        vue = vues[rang - 1]
+        print(f"\n🧑‍🔧 {vue.agent} · {vue.etat}")
+        if vue.resultat:
+            print(vue.resultat)
+        if vue.cout is not None:
+            print(f"── {vue.cout} USD ──")
+
+    @staticmethod
+    def _llm_ligne_course(vue):
+        """Une course, en une ligne de liste."""
+        quand = (vue.debut or "")[:16].replace("T", " ")
+        parts = [quand, vue.agent, vue.etat]
+        if vue.cout is not None:
+            parts.append(f"{vue.cout} USD")
+        return " · ".join(part for part in parts if part)
+
+    @staticmethod
+    def _llm_outils_qui_ecrivent(outils):
+        """Ceux des outils qui touchent la machine. Fonction PURE.
+
+        La liste est FERMÉE et nommée ici : un outil inconnu ne compte pas
+        comme inoffensif, il compte comme inconnu — et c'est pourquoi la
+        ligne des outils s'affiche en entier à côté de celle-ci.
+        """
+        return tuple(un for un in outils if un in OUTILS_QUI_ECRIVENT)
+
+    def _llm_specialiste_question(self, un):
+        """Une question à l'agent, la réponse au terminal."""
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant.context import repo_root as llm_racine
+
+        try:
+            question = click.prompt(t("Write your question "))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        backend = llm_backends.ClaudeCliBackend(
+            session_id=None,
+            cwd=str(llm_racine()),
+            fork=False,
+            agent=un.cle,
+            outils=un.outils,
+        )
+        try:
+            texte, faits = backend.send(
+                [{"role": "user", "content": question}]
+            )
+        except Exception as panne:  # noqa: BLE001
+            print(f"⚠ {panne}")
+            return
+        print(texte)
+        cout = faits.get("cost_usd") or faits.get("total_cost_usd")
+        if cout:
+            print(f"── {cout} USD ──")
 
     def _claude_questionner(self, flotte):
         """Poser UNE question à une session, sans ouvrir de terminal.

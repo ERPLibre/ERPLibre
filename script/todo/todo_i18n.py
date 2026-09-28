@@ -14484,6 +14484,70 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
+    "agents": {
+        "fr": "agents",
+        "en": "agents",
+    },
+    "%s can write": {
+        "fr": "%s écrivent",
+        "en": "%s can write",
+    },
+    "Background agents": {
+        "fr": "🛰 Agents en arrière-plan",
+        "en": "🛰 Background agents",
+    },
+    "No background agent has been started.": {
+        "fr": "Aucun agent n'a été lancé en arrière-plan.",
+        "en": "No background agent has been started.",
+    },
+    "Ask a question": {
+        "fr": "Poser une question",
+        "en": "Ask a question",
+    },
+    "Run it in the background": {
+        "fr": "Lancer en arrière-plan",
+        "en": "Run it in the background",
+    },
+    "Running in the background": {
+        "fr": "Lancé en arrière-plan",
+        "en": "Running in the background",
+    },
+    "Its answer lands in": {
+        "fr": "Sa réponse arrivera dans",
+        "en": "Its answer lands in",
+    },
+    "%s running": {
+        "fr": "%s en cours",
+        "en": "%s running",
+    },
+    "returned": {
+        "fr": "revenu",
+        "en": "returned",
+    },
+    "returned-plural": {
+        "fr": "revenus",
+        "en": "returned",
+    },
+    "Specialised agents": {
+        "fr": "🧑‍🔧 Agents spécialisés",
+        "en": "🧑‍🔧 Specialised agents",
+    },
+    "No specialised agent is declared here.": {
+        "fr": "Aucun agent spécialisé n'est déclaré ici.",
+        "en": "No specialised agent is declared here.",
+    },
+    "default model": {
+        "fr": "modèle par défaut",
+        "en": "default model",
+    },
+    "read-only": {
+        "fr": "lecture seule",
+        "en": "read-only",
+    },
+    "May write here: %s": {
+        "fr": "Peut écrire ici : %s",
+        "en": "May write here: %s",
+    },
     "Folders": {
         "fr": "Dossiers",
         "en": "Folders",

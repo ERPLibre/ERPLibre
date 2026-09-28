@@ -2282,6 +2282,90 @@ class LesDossiersDeConversation(UneConversationUneSeance):
         self.assertIsNone(todo._llm_serveur_du_dossier(vu))
 
 
+class LesAgentsSpecialises(unittest.TestCase):
+    """Ce qu'un agent peut, dit AVANT qu'on le lance.
+
+    La régression visée : un agent déclare `Write`, `Edit` ou `Bash`, et
+    l'appel écrit dans l'arbre de travail. Le menu impose la lecture seule
+    partout ailleurs ; ici les outils de l'agent la remplacent, donc le
+    droit d'écrire se dit — dans l'étiquette du menu, puis sur la fiche.
+    """
+
+    class Faux:
+        def __init__(self, cle, outils):
+            self.cle = cle
+            self.nom = cle
+            self.description = "Use this invented agent. Invoke when."
+            self.modele = "modele-invente"
+            self.outils = outils
+            self.origine = "dépôt"
+            self.chemin = f"/chemin-invente/{cle}.md"
+
+    def test_les_outils_qui_ecrivent_sont_nommes_et_les_autres_non(self):
+        from script.todo.assistant_menu import AssistantMenuMixin as M
+
+        self.assertEqual(
+            ("Write", "Edit", "Bash"),
+            M._llm_outils_qui_ecrivent(
+                ("Read", "Write", "Glob", "Edit", "Grep", "Bash")
+            ),
+        )
+        self.assertEqual(
+            (), M._llm_outils_qui_ecrivent(("Read", "Glob", "Grep"))
+        )
+
+    def test_un_outil_inconnu_n_est_pas_repute_inoffensif(self):
+        """Il n'est pas compté comme écrivain, mais la ligne des outils le
+        montre en entier : c'est elle qui rattrape ce que la liste fermée
+        ne sait pas."""
+        from script.todo.assistant_menu import AssistantMenuMixin as M
+
+        self.assertEqual((), M._llm_outils_qui_ecrivent(("OutilInvente",)))
+        ligne = M._llm_ligne_specialiste(
+            self.Faux("agent-invente", ("Read", "OutilInvente"))
+        )
+        self.assertIn("OutilInvente", ligne)
+
+    def test_l_etiquette_du_menu_compte_ceux_qui_ecrivent(self):
+        """Ce qui écrit se dit avant qu'on entre, pas seulement dedans."""
+        from script.todo.assistant.agents import specialistes as llm_specs
+        from script.todo.todo import TODO
+
+        faux = [
+            self.Faux("lecteur-invente", ("Read", "Grep")),
+            self.Faux("ecrivain-invente", ("Read", "Write")),
+        ]
+        with patch.object(llm_specs, "catalogue", lambda **kw: faux):
+            etiquette = TODO()._llm_specialistes_label()
+        self.assertIn(t("%s can write") % 1, etiquette)
+
+    def test_sans_agent_qui_ecrit_l_etiquette_n_en_parle_pas(self):
+        from script.todo.assistant.agents import specialistes as llm_specs
+        from script.todo.todo import TODO
+
+        faux = [self.Faux("lecteur-invente", ("Read", "Grep"))]
+        with patch.object(llm_specs, "catalogue", lambda **kw: faux):
+            etiquette = TODO()._llm_specialistes_label()
+        self.assertNotIn(t("%s can write") % 1, etiquette)
+
+    def test_la_fiche_avertit_avant_de_demander_la_question(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.todo import TODO
+
+        sortie = io.StringIO()
+        un = self.Faux("agent-invente", ("Read", "Write", "Edit"))
+        with patch("click.prompt", side_effect=KeyboardInterrupt), patch(
+            "script.todo.todo_telemetry.record"
+        ), redirect_stdout(sortie):
+            TODO()._llm_specialiste_agir(un)
+        vu = sortie.getvalue()
+        self.assertIn("Write", vu)
+        self.assertIn("Edit", vu)
+        self.assertIn(t("May write here: %s") % "Write, Edit", vu)
+
+
 class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
     """Le menu des agents calcule cinq comptes, et chacun interroge la machine.
 
