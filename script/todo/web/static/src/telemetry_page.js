@@ -26,7 +26,17 @@ import {getJson, onForbidden} from "./api.js";
 import {HistoryView} from "./history_view.js";
 import {KanbanView} from "./kanban_view.js";
 import {ListView} from "./list_view.js";
-import {SORTS, VIEWS, codeChanged, effectiveSort, pollsCode, readFragment, rereadsFor, writeFragment} from "./model.js";
+import {
+    Rereads,
+    SORTS,
+    VIEWS,
+    codeChanged,
+    effectiveSort,
+    pollsCode,
+    readFragment,
+    rereadsFor,
+    writeFragment,
+} from "./model.js";
 import {SessionsView} from "./sessions_view.js";
 import {noticeLine, sourceRows} from "./source.js";
 import {SystemView} from "./system_view.js";
@@ -114,6 +124,7 @@ export class TelemetryPage extends Component {
         this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions", order: null});
         Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null, expired: false, source: null});
         this.told = 0; // le rang du dernier appel de sessionRuns
+        this.rereads = new Rereads(); // l'ordre des relectures de /api/telemetry
         onForbidden(() => (this.state.expired = true));
         onMounted(() => {
             this.timer = setInterval(() => {
@@ -227,10 +238,16 @@ export class TelemetryPage extends Component {
     // compteurs ne sont remplacés qu'avec `all`, au changement de vue, ou
     // quand le code a changé, et jamais par un arbre illisible (null).
     // Seule la relecture de fond (`poll=1`) ne compte pas comme activité. Un
-    // hub qui ne répond pas laisse tout tel quel jusqu'à la suivante.
+    // hub qui ne répond pas laisse tout tel quel jusqu'à la suivante. La
+    // réponse d'une relecture qu'une plus récente a devancée ne change rien
+    // (`Rereads`) : elle porterait une empreinte plus ancienne.
     async refresh(all = false) {
+        const rank = this.rereads.ask();
         try {
             const telemetry = await getJson(`/api/telemetry?lang=${this.env.lang}${all ? "" : "&poll=1"}`);
+            if (!this.rereads.answers(rank)) {
+                return;
+            }
             const changed = telemetry.code !== this.state.telemetry.code;
             this.state.latest = telemetry.code;
             if (telemetry.tree && (all || changed)) {

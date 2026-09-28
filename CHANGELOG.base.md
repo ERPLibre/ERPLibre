@@ -355,6 +355,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A combining dot (U+0307) slipped inside a password, token or bearer word no longer lets the rest of the line reach a web session's task log in clear: the quick check that decides whether a line needs masking folds the text as the search for those words does
 - In a web session's task history, cancelling a countdown from the page is logged as the default answer that TODO takes, as Ctrl+D in the terminal, and no longer as a cancelled question
 - On the TODO page, the hidden answer field no longer sends on the Enter that ends an input method composition, as the other fields already did
+- On the TODO page, a telemetry reread that returns after a newer one no longer brings back the older code stamp, which could show the code-change banner for up to 10 s
 
 <!-- [fr] -->
 
@@ -434,6 +435,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un point combinant (U+0307) glissé dans un mot password, token ou bearer ne laisse plus la fin de la ligne atteindre en clair le journal des tâches d'une session web : le contrôle rapide qui décide si une ligne est à masquer plie le texte comme la recherche de ces mots
 - Dans l'historique des tâches d'une session web, annuler un compte à rebours depuis la page se journalise comme la réponse par défaut que TODO prend, comme Ctrl+D au terminal, et non plus comme une question annulée
 - Dans la page de TODO, le champ de réponse masquée n'envoie plus sur l'Entrée qui finit une composition de la méthode de saisie, comme les autres champs déjà
+- Dans la page de TODO, une relecture de la télémétrie revenue après une plus récente ne ramène plus l'ancienne empreinte du code, qui pouvait montrer la bannière de code modifié jusqu'à 10 s
 
 <!-- [en] -->
 ## Removed

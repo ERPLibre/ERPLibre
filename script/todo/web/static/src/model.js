@@ -36,6 +36,31 @@ export function rereadsFor(runs, latest) {
     return Boolean(runs && runs !== latest);
 }
 
+// Relectures de /api/telemetry qui se chevauchent : chacune prend un rang
+// (`ask`) dans l'ordre où elle part ; sa réponse ne s'applique
+// (`answers`) que si aucune relecture partie après elle ne s'est déjà
+// appliquée. Une réponse ancienne arrivée en retard ne réécrit donc jamais
+// une empreinte plus récente.
+export class Rereads {
+    constructor() {
+        this.asked = 0;
+        this.applied = 0;
+    }
+
+    ask() {
+        this.asked += 1;
+        return this.asked;
+    }
+
+    answers(rank) {
+        if (rank < this.applied) {
+            return false;
+        }
+        this.applied = rank;
+        return true;
+    }
+}
+
 // Minuscules sans accents : « Système » et « systeme » se rejoignent.
 export function fold(text) {
     return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();

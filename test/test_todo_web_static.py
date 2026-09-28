@@ -582,6 +582,26 @@ class TestCodeBanner(unittest.TestCase):
         self.assertEqual(self.out["rereads"], [False, True, False, True])
 
 
+# Deux relectures qui se chevauchent, la plus récente revenue d'abord, puis
+# une troisième.
+REREAD_CHECK = r"""
+const rereads = new m.Rereads();
+const first = rereads.ask();
+const second = rereads.ask();
+const late = [rereads.answers(second), rereads.answers(first)];
+console.log(JSON.stringify([...late, rereads.answers(rereads.ask())]));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestRereadOrder(unittest.TestCase):
+    def test_a_late_reply_never_writes_back_an_older_stamp(self):
+        # La plus récente s'applique ; l'ancienne, arrivée après, ne change
+        # rien : son empreinte ferait croire la session sur un autre code.
+        out = _node_json(REREAD_CHECK, "model.js")
+        self.assertEqual(out, [True, False, True])
+
+
 VIEW_CHECK = r"""
 console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,
