@@ -18209,6 +18209,10 @@ TRANSLATIONS = {
         "fr": "Options avancées ? (o/N) : ",
         "en": "Advanced options? (y/N): ",
     },
+    "Start a new conversation": {
+        "fr": "✨ Nouvelle conversation",
+        "en": "✨ New conversation",
+    },
     "every sheet": {
         "fr": "toutes les feuilles",
         "en": "every sheet",
@@ -19403,9 +19407,214 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
-    # « models », « still waiting for » et « Type an address » servent aussi
-    # ici et sont définies plus haut : les redéfinir écraserait la première
-    # sans rien lever.
+    "Models on a server": {
+        "fr": "📦 Modèles sur un serveur",
+        "en": "Models on a server",
+    },
+    "Install ERPLibre on a target": {
+        "fr": "🚀 Installer ERPLibre sur une cible",
+        "en": "Install ERPLibre on a target",
+    },
+    "nothing offered here": {
+        "fr": "rien d'offert ici",
+        "en": "nothing offered here",
+    },
+    "Install a model": {
+        "fr": "Poser un modèle",
+        "en": "Install a model",
+    },
+    "Remove a model": {
+        "fr": "Retirer un modèle",
+        "en": "Remove a model",
+    },
+    "No model on this server.": {
+        "fr": "Aucun modèle sur ce serveur.",
+        "en": "No model on this server.",
+    },
+    "Model name": {
+        "fr": "Nom du modèle",
+        "en": "Model name",
+    },
+    "Type the model name in full to remove it:": {
+        "fr": "Tape le nom du modèle en entier pour le retirer :",
+        "en": "Type the model name in full to remove it:",
+    },
+    "Pulling — Ctrl+C interrupts": {
+        "fr": "Pose en cours — Ctrl+C interrompt",
+        "en": "Pulling — Ctrl+C interrupts",
+    },
+    "A path on this machine": {
+        "fr": "Un chemin sur cette machine",
+        "en": "A path on this machine",
+    },
+    "A host of ~/.ssh/config": {
+        "fr": "Un hôte de ~/.ssh/config",
+        "en": "A host of ~/.ssh/config",
+    },
+    "Type a name": {
+        "fr": "Taper un nom",
+        "en": "Type a name",
+    },
+    "SSH": {
+        "fr": "SSH",
+        "en": "SSH",
+    },
+    "Clone from git": {
+        "fr": "Cloner depuis git",
+        "en": "Clone from git",
+    },
+    "Copy this checkout": {
+        "fr": "Copier ce checkout",
+        "en": "Copy this checkout",
+    },
+    "Path on the target": {
+        "fr": "Chemin sur la cible",
+        "en": "Path on the target",
+    },
+    "Branch to clone": {
+        "fr": "Branche à cloner",
+        "en": "Branch to clone",
+    },
+    "Type the target path in full to install there:": {
+        "fr": "Tape le chemin de la cible en entier pour y installer :",
+        "en": "Type the target path in full to install there:",
+    },
+    "An ERPLibre is already there — nothing was touched:": {
+        "fr": "Un ERPLibre est déjà là — rien n'a été touché :",
+        "en": "An ERPLibre is already there — nothing was touched:",
+    },
+    "Something is already there — nothing was touched:": {
+        "fr": "Quelque chose est déjà là — rien n'a été touché :",
+        "en": "Something is already there — nothing was touched:",
+    },
+    "The probe said nothing — the path counts as occupied:": {
+        "fr": "La sonde n'a rien dit — le chemin compte pour occupé :",
+        "en": "The probe said nothing — the path counts as occupied:",
+    },
+    "Transfer": {
+        "fr": "Transfert",
+        "en": "Transfer",
+    },
+    "Transfer the LLM configuration to the new installation?": {
+        "fr": "Transférer la configuration LLM vers la nouvelle installation ?",
+        "en": "Transfer the LLM configuration to the new installation?",
+    },
+    "Everything": {
+        "fr": "Tout",
+        "en": "Everything",
+    },
+    "Choose…": {
+        "fr": "Choisir…",
+        "en": "Choose…",
+    },
+    "points at the target own loopback": {
+        "fr": "désigne la boucle locale de la cible",
+        "en": "points at the target own loopback",
+    },
+    "The Claude Code commands": {
+        "fr": "Les commandes Claude Code",
+        "en": "The Claude Code commands",
+    },
+    "posed from the target own checkout": {
+        "fr": "posées depuis le checkout de la cible",
+        "en": "posed from the target own checkout",
+    },
+    "The forbidden-names list": {
+        "fr": "La liste des noms interdits",
+        "en": "The forbidden-names list",
+    },
+    "carries client, database and host names; without it no third-party send is allowed": {
+        "fr": "porte des noms de clients, de bases et d'hôtes ; sans elle aucun envoi vers un tiers n'est permis",
+        "en": "carries client, database and host names; without it no third-party send is allowed",
+    },
+    "Not found": {
+        "fr": "Introuvable",
+        "en": "Not found",
+    },
+    "Model posed.": {
+        "fr": "Modèle posé.",
+        "en": "Model posed.",
+    },
+    "Model removed.": {
+        "fr": "Modèle retiré.",
+        "en": "Model removed.",
+    },
+    "The pull is running at the server.": {
+        "fr": "La pose continue chez le serveur.",
+        "en": "The pull is running at the server.",
+    },
+    "The server refused:": {
+        "fr": "Le serveur a refusé :",
+        "en": "The server refused:",
+    },
+    "The server said nothing.": {
+        "fr": "Le serveur n'a rien dit.",
+        "en": "The server said nothing.",
+    },
+    "No model name given.": {
+        "fr": "Aucun nom de modèle donné.",
+        "en": "No model name given.",
+    },
+    "This server does not offer model management.": {
+        "fr": "Ce serveur n'offre pas la gestion des modèles.",
+        "en": "This server does not offer model management.",
+    },
+    "This server needs a key — set it on the server card.": {
+        "fr": "Ce serveur exige une clé — pose-la sur la fiche du serveur.",
+        "en": "This server needs a key — set it on the server card.",
+    },
+    "Jan installs its models from its own desktop application.": {
+        "fr": "Jan installe ses modèles depuis sa propre application de bureau.",
+        "en": "Jan installs its models from its own desktop application.",
+    },
+    "GPT4All serves what its desktop application already loaded.": {
+        "fr": "GPT4All sert ce que son application de bureau a déjà chargé.",
+        "en": "GPT4All serves what its desktop application already loaded.",
+    },
+    "KoboldCpp serves one model chosen when its process started.": {
+        "fr": "KoboldCpp sert un modèle choisi au lancement de son processus.",
+        "en": "KoboldCpp serves one model chosen when its process started.",
+    },
+    "Text generation web UI downloads its models from its own host.": {
+        "fr": "Text generation web UI télécharge ses modèles depuis son propre hôte.",
+        "en": "Text generation web UI downloads its models from its own host.",
+    },
+    "vLLM serves one model chosen when its process started.": {
+        "fr": "vLLM sert un modèle choisi au lancement de son processus.",
+        "en": "vLLM serves one model chosen when its process started.",
+    },
+    "A remote provider serves its own models.": {
+        "fr": "Un fournisseur distant sert ses propres modèles.",
+        "en": "A remote provider serves its own models.",
+    },
+    "Only ~/ is expanded — give a full path.": {
+        "fr": "Seul ~/ est développé — donne un chemin complet.",
+        "en": "Only ~/ is expanded — give a full path.",
+    },
+    "A name cannot begin with a dash.": {
+        "fr": "Un nom ne peut pas commencer par un tiret.",
+        "en": "A name cannot begin with a dash.",
+    },
+    "The install failed — nothing was transferred.": {
+        "fr": "L'installation a échoué — rien n'a été transféré.",
+        "en": "The install failed — nothing was transferred.",
+    },
+    "The stream stopped before the end.": {
+        "fr": "Le flux s'est arrêté avant la fin.",
+        "en": "The stream stopped before the end.",
+    },
+    "LM Studio has no endpoint that deletes weights.": {
+        "fr": "LM Studio n'a aucun point de terminaison qui supprime des poids.",
+        "en": "LM Studio has no endpoint that deletes weights.",
+    },
+    "TabbyAPI has no endpoint that deletes weights.": {
+        "fr": "TabbyAPI n'a aucun point de terminaison qui supprime des poids.",
+        "en": "TabbyAPI has no endpoint that deletes weights.",
+    },
+    "EXO removes the model card, never the weights it downloaded.": {
+        "fr": "EXO retire la fiche du modèle, jamais les poids téléchargés.",
+        "en": "EXO removes the model card, never the weights it downloaded.",
+    },
     # Apertus (script/todo/assistant_menu.py, script/todo/assistant/apertus*.py).
     # Les libellés d'étape servent AUSSI de clé de reprise côté
     # `apertus.py` : les renommer invalide les progressions gardées.
