@@ -4,5 +4,10 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)"
+    ]
   }
 }

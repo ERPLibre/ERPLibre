@@ -100,7 +100,6 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Transform data": "prompt_execute_transform",
         "Git": "prompt_execute_git",
         "Doc": "prompt_execute_doc",
-        "GPT code": "prompt_execute_gpt_code",
         "Automation": "prompt_execute_function",
         "Deploy": "prompt_execute_deploy",
         "Network": "prompt_execute_network",
@@ -262,11 +261,11 @@ class MenuCoherence:
 
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Deux capacités que le menu QEMU/KVM porte et que Proxmox ne portait pas.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Changer l'état d'une VM — QEMU/KVM l'offre dans « Lister les VM » — et
+    accepter les commandes ajoutées par todo.json. Un menu qui fait la moitié
+    de ce que son vis-à-vis fait se lit comme une panne du menu.
     """
 
     @classmethod
