@@ -1427,7 +1427,51 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
-    # NTFY section
+    # Serveur VoIP Asterisk
+    "Deploy - Install Asterisk VoIP server (hardened)": {
+        "fr": "\u260e\ufe0f Déployer - Installer le serveur VoIP Asterisk (durci)",
+        "en": "\u260e\ufe0f Deploy - Install Asterisk VoIP server (hardened)",
+    },
+    "Deploy a hardened Asterisk VoIP server (no FreePBX)": {
+        "fr": "Déployer un serveur VoIP Asterisk durci (sans FreePBX)",
+        "en": "Deploy a hardened Asterisk VoIP server (no FreePBX)",
+    },
+    "SIP trunk host #%s (blank to finish): ": {
+        "fr": "Hôte du trunk SIP n°%s (vide pour terminer) : ",
+        "en": "SIP trunk host #%s (blank to finish): ",
+    },
+    "Line name (default: line%s): ": {
+        "fr": "Nom de la ligne (défaut : line%s) : ",
+        "en": "Line name (default: line%s): ",
+    },
+    "The characters | and ; are not allowed here.": {
+        "fr": "Les caractères | et ; ne sont pas autorisés ici.",
+        "en": "The characters | and ; are not allowed here.",
+    },
+    "Lines to configure: %s": {
+        "fr": "Lignes à configurer : %s",
+        "en": "Lines to configure: %s",
+    },
+    "SIP trunk username: ": {
+        "fr": "Nom d'utilisateur du trunk SIP : ",
+        "en": "SIP trunk username: ",
+    },
+    "SIP trunk password: ": {
+        "fr": "Mot de passe du trunk SIP : ",
+        "en": "SIP trunk password: ",
+    },
+    "Username and password are both required.": {
+        "fr": "Le nom d'utilisateur et le mot de passe sont tous deux requis.",
+        "en": "Username and password are both required.",
+    },
+    "Asterisk install script not found: ": {
+        "fr": "Script d'installation d'Asterisk introuvable : ",
+        "en": "Asterisk install script not found: ",
+    },
+    "Error installing Asterisk: ": {
+        "fr": "Erreur lors de l'installation d'Asterisk : ",
+        "en": "Error installing Asterisk: ",
+    },
     "Deploy - Install NTFY notification server": {
         "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
         "en": "🔔 Deploy - Install NTFY notification server",
