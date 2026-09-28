@@ -1230,6 +1230,93 @@ class TestUneSuiteVideNeReussitPas(unittest.TestCase):
         self.assertEqual((None, 0), (fait.code, fait.jouees))
 
 
+class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
+    """LE DÉFAUT D'ORIGINE, et il ne se voit qu'en bout de chaîne. Le VMID du
+    placement venait du premier numéro LIBRE de la plage — libre PRÉCISÉMENT
+    parce que le gabarit occupe celui d'avant. Le moteur refusait alors sur
+    « aucun nœud ne détient le gabarit 9001 », sans jamais dire que le numéro
+    venait de là.
+
+    Les VMID et les noms sont inventés, et rien ne sort d'ici : l'exécuteur du
+    terrain est remplacé.
+    """
+
+    CONFORME = "template: 1\nmachine: q35\nbios: ovmf\n"
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+        self.moteur = os.path.join(self.d, "Moteur")
+        os.makedirs(self.moteur)
+        self.eco = os.path.join(self.d, B.ECOSYSTEME)
+        os.makedirs(self.eco)
+
+    def placement(self):
+        chemin = os.path.join(
+            self.eco, "inventories", B.INVENTAIRE_BANC, "group_vars",
+            "proxmox.yml",
+        )
+        with open(chemin, encoding="utf-8") as fh:
+            return fh.read()
+
+    def joue(self, *suite):
+        restes = list(suite)
+        patch = mock.patch.object(
+            B, "joue_sur", lambda *a, **k: restes.pop(0)
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_the_placement_names_the_vmid_the_name_found(self):
+        """La grappe porte le gabarit en 9000 ; 9001 y est libre. C'est 9000
+        que le clonage doit lire."""
+        liste = json.dumps(
+            [{"vmid": 100, "name": "autre", "type": "qemu"},
+             {"vmid": 9000, "name": B.GABARIT, "type": "qemu"}]
+        )
+        self.joue(B.Fait(0, liste, 1), B.Fait(0, self.CONFORME, 1))
+        vu = B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        mesures = B.Mesures(
+            terrain="un-terrain", elevation=B.ELEVE,
+            liens=(B.A_POSER, B.NOTRE), index_libre=True, pont="vmbr9",
+            noeud="un-noeud", stockage="un-stockage", uplink="une-sortie",
+            adresse_api="192.0.2.10",
+        )
+        self.assertEqual("", B.ecrit_le_placement(self.moteur, mesures, vu.vmid))
+        texte = self.placement()
+        self.assertIn("proxmox_clone_vmid_modele: 9000", texte)
+        self.assertNotIn("9001", texte)
+
+    def test_an_engine_with_no_sibling_refuses_rather_than_write(self):
+        """La fédération se découvre par les dossiers FRÈRES du moteur : un
+        chemin qui n'en a pas — vide, ou la racine — ne dit pas où écrire, et
+        écrire au hasard poserait un placement que le moteur ne lit pas.
+
+        « / » dépouillé de ses séparateurs est la chaîne vide, et une chaîne
+        vide résolue rend le dossier COURANT : c'est le cas qui tranche.
+        """
+        mesures = B.Mesures(
+            terrain="t", elevation=B.ELEVE, liens=(), index_libre=True,
+            pont="vmbr9", noeud="n", stockage="s", uplink="u",
+            adresse_api="192.0.2.10",
+        )
+        for moteur in ("", "   ", os.sep):
+            with self.subTest(moteur=repr(moteur)):
+                self.assertTrue(
+                    B.ecrit_le_placement(moteur, mesures, 9000)
+                )
+
+    def test_an_unreadable_vmid_writes_nothing(self):
+        """Fermé par défaut : un placement sans VMID donnerait au moteur une
+        source qu'il ne sait pas chercher."""
+        mesures = B.Mesures(
+            terrain="t", elevation=B.ELEVE, liens=(), index_libre=True,
+            pont="vmbr9", noeud="un-noeud", stockage="s", uplink="u",
+            adresse_api="192.0.2.10",
+        )
+        self.assertTrue(B.ecrit_le_placement(self.moteur, mesures, 0))
+
+
 class TestCeQueLeBancExigeDuGabarit(unittest.TestCase):
     """La même forme qu'un préalable, joué à un autre MOMENT : la pose faite.
 
@@ -1318,29 +1405,40 @@ class TestLaRelectureDuGabaritSurLaGrappe(unittest.TestCase):
         sortie rendrait un verdict tiré d'un refus, et il se lirait comme un
         verdict tiré d'une réponse. C'est le CODE qui décide, pas le texte."""
         self.joue(B.Fait(1, self.liste((9000, B.GABARIT)), 1))
-        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+        self.assertEqual(
+            B.VuGabarit(0, None), B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        )
 
     def test_a_command_that_never_ran_concludes_nothing(self):
         """Fermé par défaut : un ssh qui n'a pas tourné n'est pas une grappe
         sans gabarit."""
         self.joue(B.Fait(None, "", 0))
-        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+        self.assertEqual(
+            B.VuGabarit(0, None), B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        )
 
     def test_an_unparsable_listing_concludes_nothing(self):
         self.joue(B.Fait(0, "pas du json", 1))
-        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+        self.assertEqual(
+            B.VuGabarit(0, None), B.mesure_le_gabarit("un-terrain", B.ELEVE)
+        )
 
     def test_no_vm_by_that_name_is_read_as_absent(self):
         self.joue(B.Fait(0, self.liste((100, "autre")), 1))
         self.assertEqual(
-            B.GABARIT_ABSENT, B.mesure_le_gabarit("un-terrain", B.ELEVE)
+            B.VuGabarit(0, B.GABARIT_ABSENT),
+            B.mesure_le_gabarit("un-terrain", B.ELEVE),
         )
 
     def test_an_unplayed_config_concludes_nothing(self):
         self.joue(
             B.Fait(0, self.liste((9000, B.GABARIT)), 1), B.Fait(1, "", 1)
         )
-        self.assertIsNone(B.mesure_le_gabarit("un-terrain", B.ELEVE))
+        # Le VMID est su, la conformité non : les deux se distinguent.
+        self.assertEqual(
+            B.VuGabarit(9000, None),
+            B.mesure_le_gabarit("un-terrain", B.ELEVE),
+        )
 
     def test_the_conformity_comes_from_the_config(self):
         self.joue(
@@ -1348,7 +1446,8 @@ class TestLaRelectureDuGabaritSurLaGrappe(unittest.TestCase):
             B.Fait(0, self.CONFORME, 1),
         )
         self.assertEqual(
-            B.GABARIT_CONFORME, B.mesure_le_gabarit("un-terrain", B.ELEVE)
+            B.VuGabarit(9000, B.GABARIT_CONFORME),
+            B.mesure_le_gabarit("un-terrain", B.ELEVE),
         )
 
     def test_the_config_read_is_that_of_the_vmid_the_name_found(self):
@@ -1601,7 +1700,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_INSTANCE),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertEqual([], self.depots())
         self.assertIn(B.LIEN_INSTANCE, montage.souci)
@@ -1614,7 +1713,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_UNDERLAY),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertIn(B.LIEN_UNDERLAY, montage.souci)
 
@@ -1623,14 +1722,14 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         lien : l'effacer détruirait son plan."""
         os.makedirs(os.path.join(self.moteur, B.LIEN_INSTANCE))
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertEqual([], self.depots())
         self.assertFalse(montage.complet)
 
     def test_an_engine_without_a_sibling_is_refused(self):
         montage = B.monte_localement(
-            "", "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            "", "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertFalse(montage.complet)
         self.assertEqual(("", "", (), ()), montage[:4])
@@ -1639,7 +1738,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         """Le contrôle positif des refus ci-dessus : un moteur SANS lien occupé
         va plus loin, et s'arrête sur ce qui manque vraiment — son modèle."""
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertNotIn(B.LIEN_INSTANCE, montage.souci)
         self.assertNotIn(B.LIEN_UNDERLAY, montage.souci)
@@ -1649,7 +1748,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         """`texte_underlay` refuse sans nœud ni pont, et l'écriture d'un texte
         vide n'est pas une écriture réussie."""
         montage = B.monte_localement(
-            self.moteur, "", "vmbr9", "local-lvm", "192.0.2.10", 9000
+            self.moteur, "", "vmbr9", "local-lvm", "192.0.2.10"
         )
         self.assertIn("underlay.yml", montage.souci)
         self.assertFalse(montage.complet)
@@ -1757,60 +1856,6 @@ class TestOnNeJouePasSansAvoirDecideComment(unittest.TestCase):
         self.assertIn(
             "hostname", B.ssh_argv("un-terrain", "hostname", B.TEL_QUEL)
         )
-
-
-class TestLeVmidDuGabaritSeLitSurLaGrappe(unittest.TestCase):
-    """Un VMID est unique à l'échelle du CLUSTER. Choisir un numéro libre sur le
-    seul nœud où l'on parle le prendrait à une VM d'un autre nœud, et la création
-    échouerait au milieu du gabarit — après le téléchargement de l'image."""
-
-    def test_the_declared_ids_are_read(self):
-        self.assertEqual(
-            (100, 9000),
-            B.lit_vmids('[{"vmid": 100, "name": "a"}, {"vmid": 9000}]'),
-        )
-
-    def test_a_cluster_without_a_vm_names_none(self):
-        """« Rien à nommer » est une réponse ; le premier numéro est alors
-        libre."""
-        self.assertEqual((), B.lit_vmids("[]"))
-        self.assertEqual(B.VMID_GABARIT_DEPART, B.gabarit_libre(()))
-
-    def test_anything_that_is_not_a_list_of_ids_refuses(self):
-        for sortie in (
-            "ipcc_send_rec failed",
-            "",
-            None,
-            '{"vmid": 100}',
-            '[{"name": "sans vmid"}]',
-            '[{"vmid": "100"}]',
-            '[{"vmid": true}]',
-            "[100, 101]",
-        ):
-            with self.subTest(sortie=str(sortie)[:32]):
-                self.assertIsNone(B.lit_vmids(sortie))
-
-    def test_the_first_free_number_is_taken(self):
-        self.assertEqual(9001, B.gabarit_libre((100, 9000)))
-
-    def test_an_unread_cluster_gives_no_number(self):
-        """Prendre un numéro sans savoir lesquels sont pris reviendrait à parier
-        sur la VM de quelqu'un d'autre. Zéro est le seul entier qu'un VMID ne
-        peut pas valoir : la grappe les compte à partir de 100."""
-        self.assertEqual(0, B.gabarit_libre(None))
-
-    def test_a_full_range_gives_no_number(self):
-        plage = tuple(range(B.VMID_GABARIT_DEPART, B.VMID_GABARIT_FIN))
-        self.assertEqual(0, B.gabarit_libre(plage))
-
-    def test_a_malformed_list_gives_no_number(self):
-        self.assertEqual(0, B.gabarit_libre(("pas un nombre",)))
-
-    def test_it_asks_the_cluster_and_not_the_node(self):
-        """`qm list` ne voit que la machine où il tourne."""
-        joint = " ".join(B.cmds_vmids())
-        self.assertIn("/cluster/", joint)
-
 
 class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
     """Le générateur d'inventaire pose un pont par hôte quand la fabric a une
@@ -2379,7 +2424,6 @@ def mesures_bonnes(**change):
         liens=(B.A_POSER, B.NOTRE),
         index_libre=True,
         pont="vmbr9",
-        vmid_gabarit=9000,
         noeud="un-noeud",
         stockage="un-stockage",
         uplink="une-sortie",
@@ -2442,7 +2486,6 @@ class TestLesPrealablesJugentSansMesurer(unittest.TestCase):
             {"liens": (B.OCCUPE, B.NOTRE)},
             {"index_libre": False},
             {"pont": ""},
-            {"vmid_gabarit": 0},
             {"noeud": ""},
             {"stockage": ""},
             {"uplink": ""},
