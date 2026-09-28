@@ -13,6 +13,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
+from script.setops import engine as setops_engine
 
 _logger = logging.getLogger(__name__)
 
@@ -63,6 +64,36 @@ def get_config():
     return args
 
 
+def drop_group(remotes, projects, group):
+    """(remotes, projects) sans les projets du groupe `group`, ni les
+    remotes que seuls ces projets utilisaient.
+
+    Le manifeste lu ici est le manifeste local fusionné, et le fichier
+    régénéré — `manifest/default.dev.xml` par défaut — en reprend les
+    projets, y compris ceux que le poste y a ajoutés : mobile, versions
+    d'Odoo installées, manifeste privé. Seuls en sortent les projets de
+    `group` — `setops`, le moteur Set-OPS, qui se rapatrie sur demande — et
+    la forge qui ne sert qu'eux : sans ce tri, un `repo init -m` qui
+    viserait ce fichier les rapatrierait sans qu'on l'ait demandé. Un
+    remote encore utilisé par un projet gardé reste.
+    """
+    gardes = {
+        k: p
+        for k, p in projects.items()
+        if group not in setops_engine.groups_of(p.get("@groups"))
+    }
+    utilises = {p.get("@remote") for p in gardes.values()}
+    orphelins = {
+        p.get("@remote")
+        for k, p in projects.items()
+        if k not in gardes and p.get("@remote") not in utilises
+    }
+    return (
+        {k: r for k, r in remotes.items() if k not in orphelins},
+        gardes,
+    )
+
+
 def main():
     config = get_config()
     git_tool = GitTool()
@@ -88,6 +119,7 @@ def main():
         remotes, projects, _ = git_tool.get_manifest_xml_info(
             repo_path=config.dir, add_root=True
         )
+        remotes, projects = drop_group(remotes, projects, setops_engine.GROUP)
     else:
         remotes = {}
         projects = {}
