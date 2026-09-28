@@ -147,5 +147,156 @@ class TestConfirmationDesTestsLongs(unittest.TestCase):
             )
 
 
+class TestLeBancDansLeMenuDesEpreuvesLongues(unittest.TestCase):
+    """Le banc n'est pas une descente : ni profondeur, ni hôte de départ. Il
+    prend un TERRAIN, qui est une grappe déjà là."""
+
+    def test_its_real_run_asks(self):
+        """Il crée de vraies VM sur une grappe : une frappe ne doit pas
+        suffire."""
+        todo, patch = menu(reponse=True)
+        with patch as confirm:
+            todo._longtest_run("setops_banc.py", "")
+        self.assertTrue(confirm.called)
+        self.assertEqual(1, len(todo.execute.commandes))
+
+    def test_its_plan_does_not_ask(self):
+        """Il ne crée rien : demander l'aurait rendue machinale."""
+        todo, patch = menu()
+        with patch as confirm:
+            todo._longtest_run("setops_banc.py", "--dry-run")
+        self.assertFalse(confirm.called)
+
+    def test_a_refusal_launches_nothing(self):
+        todo, patch = menu(reponse=False)
+        with patch:
+            todo._longtest_run("setops_banc.py", "")
+        self.assertEqual([], todo.execute.commandes)
+
+    def test_the_bench_is_in_the_undoable_scripts(self):
+        """Sans quoi l'écran de défaite ne l'appellerait pas, et ce qu'il a posé
+        ne se défairait que depuis la ligne de commande."""
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertIn("setops_banc.py", SCRIPTS_DEFAISABLES)
+
+    def test_a_named_terrain_reaches_the_command(self):
+        """NOMMÉ PLUTÔT QUE DEVINÉ, quand on veut : une grappe qu'on possède se
+        désigne, là où le banc déduit le dernier étage du labo."""
+        todo, patch = menu()
+        with (
+            patch,
+            mock.patch("builtins.input", return_value="  une-grappe-a-moi  "),
+        ):
+            args = todo._longtest_terrain_banc()
+        self.assertEqual(" --terrain une-grappe-a-moi", args)
+
+    def test_an_empty_answer_lets_the_bench_deduce(self):
+        """Le contrôle positif : sans lui, un argument toujours ajouté
+        passerait l'épreuve ci-dessus."""
+        todo, patch = menu()
+        with patch, mock.patch("builtins.input", return_value="   "):
+            self.assertEqual("", todo._longtest_terrain_banc())
+
+    def test_a_terrain_with_a_space_is_quoted(self):
+        """Il finit dans une ligne de commande : non cité, un nom à espace la
+        couperait en deux arguments."""
+        todo, patch = menu()
+        with patch, mock.patch("builtins.input", return_value="deux mots"):
+            args = todo._longtest_terrain_banc()
+        self.assertIn("'deux mots'", args)
+
+
+class TestChaqueNumeroDuMenuMeneQuelquePart(unittest.TestCase):
+    """Un numéro aiguillé mais non listé est INATTEIGNABLE ; un numéro listé mais
+    non aiguillé répond « commande introuvable ». Ce fichier porte déjà la trace
+    d'une fois où deux entrées sont devenues inatteignables parce qu'un autre
+    groupe occupait leurs numéros et était interrogé avant elles."""
+
+    def combien(self):
+        """Le nombre d'entrées que l'écran propose, lu dans son code."""
+        import inspect
+
+        from script.todo import longtest_menu
+
+        source = inspect.getsource(longtest_menu.LongTestMenuMixin)
+        debut = source.find("choices = [")
+        fin = source.find("# Le cache n", debut)
+        return source[debut:fin].count("prompt_description")
+
+    def mene(self, numero):
+        """Ce que ce numéro déclenche : la commande lancée, ou « defaire »."""
+        todo = TODO.__new__(TODO)
+        todo.execute = FauxExecute()
+        vus = []
+        with (
+            mock.patch.object(
+                TODO, "fill_help_info", return_value="?", create=True
+            ),
+            mock.patch(
+                "script.todo.longtest_menu.click.prompt",
+                side_effect=[numero, "0"],
+            ),
+            # CONFIRMÉ, et c'est ce qui rend l'épreuve possible : refusée, une
+            # vraie exécution ne lance rien — et « rien lancé » se confondrait
+            # alors avec « le numéro ne mène nulle part ». L'exécuteur est un
+            # faux, donc aucune machine n'est créée.
+            mock.patch(
+                "script.todo.longtest_menu.click.confirm", return_value=True
+            ),
+            mock.patch("builtins.input", return_value=""),
+            mock.patch.object(
+                TODO,
+                "_longtest_defaire",
+                lambda _self: vus.append("defaire"),
+                create=True,
+            ),
+            mock.patch.object(
+                TODO, "_longtest_depth", lambda _self: 1, create=True
+            ),
+            mock.patch.object(
+                TODO, "_longtest_depart", lambda _self, _s: "", create=True
+            ),
+            mock.patch.object(
+                TODO, "_longtest_depart_nixos", lambda _self: "", create=True
+            ),
+        ):
+            todo.prompt_execute_longtest()
+        return vus + [c for c in todo.execute.commandes]
+
+    def test_every_listed_number_leads_somewhere(self):
+        """LA PROPRIÉTÉ : aucune entrée listée ne répond « introuvable ». Le
+        refus de confirmation ne lance rien, donc un plan à blanc ou la défaite
+        sont les traces qu'on attend ; ce qui compte est qu'un numéro ne tombe
+        jamais dans la branche finale."""
+        muet = []
+        for numero in range(1, self.combien() + 1):
+            with self.subTest(numero=numero):
+                mene = self.mene(str(numero))
+                if not mene:
+                    muet.append(numero)
+        self.assertEqual(
+            [],
+            muet,
+            f"ces numéros sont listés mais ne mènent nulle part : {muet}",
+        )
+
+    def test_a_number_beyond_the_list_leads_nowhere(self):
+        """Le contrôle positif : sans lui, un écran qui lance toujours quelque
+        chose passerait l'épreuve ci-dessus."""
+        self.assertEqual([], self.mene(str(self.combien() + 1)))
+
+    def test_the_bench_is_reachable(self):
+        """Nommément, et non par le seul compte : c'est lui qu'on vient d'y
+        brancher."""
+        lances = [
+            c
+            for numero in range(1, self.combien() + 1)
+            for c in self.mene(str(numero))
+            if isinstance(c, str) and "setops_banc.py" in c
+        ]
+        self.assertNotEqual([], lances)
+
+
 if __name__ == "__main__":
     unittest.main()

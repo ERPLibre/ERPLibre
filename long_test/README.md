@@ -303,6 +303,136 @@ receives, not what a local checkout holds. Say it before running: a fix still
 on an unmerged branch is *not* in the VM, and the test will fail on whatever
 that fix repairs.
 
+## setops_banc.py — does the engine hold on a disposable cluster?
+
+The Set-OPS engine is driven from TODO's menu, and its gestures are guarded
+there. Nothing says they hold against a real cluster, from the golden template
+to the razing.
+
+**The terrain is named, not guessed.** `deep_proxmox.py` serves development; the
+real case is a cluster one owns. The bench takes a terrain as an argument so the
+same trial serves the rehearsal and then the real case — and it touches no lab:
+it lays down ITS bridge and ITS API user, and modifies neither.
+
+**One floor is enough**, and the shallowest is the right one: a nested Proxmox
+is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
+the engine, not the nesting.
+
+**Two repositories, not one.** The engine reaches its cluster through the vault
+of an UNDERLAY, at the hoster, and refuses without the link that names it — so a
+bench with a single repository cannot materialise a VM. The bench lays down a
+sibling pair, `SITE-…` for the fabric and `OPS-…` for the plan, and mounts both
+through the two links the engine reads BY THEIR PATH — its playbook looks at
+neither `SETOPS_UNDERLAY` nor `SETOPS_INSTANCE`. It refuses if either name is
+already taken, a dangling link included: that link is an operator's, and
+replacing it would aim their next gesture at the bench's ecosystem, whose razing
+destroys everything the inventory names. It also poses one vault key per
+repository, and undoes both LAST: a key opens the vault that carries the token,
+and the token is what joins the cluster.
+
+**The plan is activated surgically.** The shipped model declares every server
+`planifie`, and the inventory files as active only what says exactly `actif` — a
+plan copied without that flip yields an inventory with no active host, and the
+materialising and the razing then both exit zero having done nothing, which
+reads as a success. The bench flips one attribute of one line and renders the
+rest of the file as it stands, comments included.
+
+**Two passes, and they do not prove the same thing.** The first carries the token
+through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
+validates the CLUSTER. The second seals it in the bench ecosystem's vault and
+replays the loop through TODO's own doors: it validates TODO'S PATH, whose
+runner deliberately passes no `PROXMOX_*`.
+
+Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
+the tooling is missing and nothing was attempted, `30` something stopped it
+before it measured.
+
+**What is posed today are the DECISIONS, and they are all guarded** —
+prerequisites said before anything is created, the terrain, a free bridge, the
+shape of the token, the order of the undoing, the footprint. The verbs that
+create need a cluster to be proven, so a real run refuses and says so rather
+than running code nothing has checked.
+
+The menu of long trials offers it too, and the confirmation comes from the
+same place as the others: the plan asks nothing, since it creates nothing, and a
+prompt one learns to confirm without reading protects nothing the day it counts.
+The terrain can be NAMED there — the bench deduces the last floor the lab laid,
+which serves the rehearsal, while a cluster one owns is designated.
+
+```
+./long_test/setops_banc.py --dry-run          # the plan, nothing created
+./long_test/setops_banc.py --detruire         # undo what was laid down
+./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
+./long_test/setops_banc.py --passe env        # token through the environment
+```
+
+**The token's secret crosses memory only.** The cluster shows it once, at
+creation, and never again. It goes to two places — the environment of a gesture,
+or the tool that encrypts it, reached through standard input — and to nothing
+else: written in clear and encrypted afterwards, it would stay in the freed
+blocks and in any backup taken between the two gestures. Anything the bench
+prints or logs is redacted first, and the command line never carries it, since a
+command line is readable in the machine's process table by any account.
+
+**A vlan-aware bridge separates, it does not route.** The tenant's hosts come up
+with a tagged NIC in a broadcast domain where no address answers: their gateway
+stays mute, they reach only their neighbours under the same tag, and the failure
+looks like a firewall. So the bench poses one ROUTED interface per zone, and it
+does not compute which — the engine derives each zone's tag and gateway from the
+plan's single index, and the bench reads them from the GENERATED inventory. A
+second derivation written in the bench would diverge the day the engine's rule
+changes, and the bench would then route domains where nobody lives. A host
+missing one of the three values refuses the whole read: routing one zone out of
+two leaves half the fleet unreachable, and nothing in the inventory says which.
+
+**The golden template is a prerequisite, not something the bench makes.** The
+engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+configured for the legacy PCI chipset, and converting it afterwards does not
+change a setting — it replaces the virtual hardware under a system that believes
+it knows its own. Predictable interface names derive from the PCI path, so the
+machine loses its network; disk paths move; each of the failures that follow
+looks like something other than its cause. A machine is born `q35` or it will
+never be so cleanly. The bench therefore MEASURES: is a VM of the declared name
+there, is it converted to a template, and does it carry the hardware the
+procedure requires — the very check the procedure calls "the last moment when the
+correction is free". A missing key counts as non-conforming, because the
+configuration only prints what differs from the default and the defaults are
+exactly what the procedure refuses. Every refusal names the procedure, since the
+bench does not make the template and must say where its making is described.
+
+**The terrain is reached as an ordinary account, and that decides everything.**
+A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
+PATH does not carry, and its cluster daemon only talks to root. Played without
+elevation, a command does not say "refused": it says "command not found", or
+complains about its communication channel — a diagnosis that sends you looking
+for a broken daemon where there is only an account without rights. The bench
+measures once whether the session is already root and whether `sudo` answers
+WITHOUT a password: a session with no terminal cannot type one, and an
+interactive sudo does not fail, it WAITS until the deadline. Every command then
+carries that decision, and the executor refuses to run anything without one.
+
+**The loop is the engine's own, not a recomposition of its pieces.**
+`reconstruire` chains the flows, the fleet's creation, the wait, the socle's
+bootstrap and then the layered deployment. The order matters there: without the
+flows FIRST, the derived-rules directory is empty and the socle lays a firewall
+that denies by default WITH NO RULE AT ALL — the fleet comes up, ssh answers
+from administration, and everything else is a wall, a failure that shows up
+neither at creation nor in an exit code. So the bench calls the target and reads
+its verdict; it does not re-sequence the steps, which is how it would drop that
+one the day the engine adds another.
+
+The bootstrap derives ITS hosts from the plan — the certificate authority first,
+then what enrols with it — so the bench reads that list instead of writing one.
+Two hosts of the shipped model are therefore activated, and the rest of the fleet
+stays planned: `reconstruire` only creates the VMs of ACTIVE hosts.
+
+The plan announces what each step costs, and **says when a duration is only
+announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
+template, then per pass ~5 s for each of the two inventory gestures — both
+measured — and, still to be timed, ~45 min for the reconstruction and ~2 min for
+the razing. A plan that gave both in the same tone would promise a time nobody
+has clocked.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you

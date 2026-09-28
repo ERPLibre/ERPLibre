@@ -42,6 +42,7 @@ SCRIPTS = (
     "deep_qemu.py",
     "install_nixos.py",
     "qemu_cache.py",
+    "setops_banc.py",
 )
 
 # L'autorité du cache de téléchargement, telle que le service l'écrit sur

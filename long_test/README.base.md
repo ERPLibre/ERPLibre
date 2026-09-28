@@ -308,6 +308,136 @@ receives, not what a local checkout holds. Say it before running: a fix still
 on an unmerged branch is *not* in the VM, and the test will fail on whatever
 that fix repairs.
 
+## setops_banc.py — does the engine hold on a disposable cluster?
+
+The Set-OPS engine is driven from TODO's menu, and its gestures are guarded
+there. Nothing says they hold against a real cluster, from the golden template
+to the razing.
+
+**The terrain is named, not guessed.** `deep_proxmox.py` serves development; the
+real case is a cluster one owns. The bench takes a terrain as an argument so the
+same trial serves the rehearsal and then the real case — and it touches no lab:
+it lays down ITS bridge and ITS API user, and modifies neither.
+
+**One floor is enough**, and the shallowest is the right one: a nested Proxmox
+is a Proxmox, and each floor deeper runs 15 to 30 times slower. The bench tries
+the engine, not the nesting.
+
+**Two repositories, not one.** The engine reaches its cluster through the vault
+of an UNDERLAY, at the hoster, and refuses without the link that names it — so a
+bench with a single repository cannot materialise a VM. The bench lays down a
+sibling pair, `SITE-…` for the fabric and `OPS-…` for the plan, and mounts both
+through the two links the engine reads BY THEIR PATH — its playbook looks at
+neither `SETOPS_UNDERLAY` nor `SETOPS_INSTANCE`. It refuses if either name is
+already taken, a dangling link included: that link is an operator's, and
+replacing it would aim their next gesture at the bench's ecosystem, whose razing
+destroys everything the inventory names. It also poses one vault key per
+repository, and undoes both LAST: a key opens the vault that carries the token,
+and the token is what joins the cluster.
+
+**The plan is activated surgically.** The shipped model declares every server
+`planifie`, and the inventory files as active only what says exactly `actif` — a
+plan copied without that flip yields an inventory with no active host, and the
+materialising and the razing then both exit zero having done nothing, which
+reads as a success. The bench flips one attribute of one line and renders the
+rest of the file as it stands, comments included.
+
+**Two passes, and they do not prove the same thing.** The first carries the token
+through the ENVIRONMENT, which the engine's playbook accepts as a fallback: it
+validates the CLUSTER. The second seals it in the bench ecosystem's vault and
+replays the loop through TODO's own doors: it validates TODO'S PATH, whose
+runner deliberately passes no `PROXMOX_*`.
+
+Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
+the tooling is missing and nothing was attempted, `30` something stopped it
+before it measured.
+
+**What is posed today are the DECISIONS, and they are all guarded** —
+prerequisites said before anything is created, the terrain, a free bridge, the
+shape of the token, the order of the undoing, the footprint. The verbs that
+create need a cluster to be proven, so a real run refuses and says so rather
+than running code nothing has checked.
+
+The menu of long trials offers it too, and the confirmation comes from the
+same place as the others: the plan asks nothing, since it creates nothing, and a
+prompt one learns to confirm without reading protects nothing the day it counts.
+The terrain can be NAMED there — the bench deduces the last floor the lab laid,
+which serves the rehearsal, while a cluster one owns is designated.
+
+```
+./long_test/setops_banc.py --dry-run          # the plan, nothing created
+./long_test/setops_banc.py --detruire         # undo what was laid down
+./long_test/setops_banc.py --terrain <alias>  # a cluster one owns
+./long_test/setops_banc.py --passe env        # token through the environment
+```
+
+**The token's secret crosses memory only.** The cluster shows it once, at
+creation, and never again. It goes to two places — the environment of a gesture,
+or the tool that encrypts it, reached through standard input — and to nothing
+else: written in clear and encrypted afterwards, it would stay in the freed
+blocks and in any backup taken between the two gestures. Anything the bench
+prints or logs is redacted first, and the command line never carries it, since a
+command line is readable in the machine's process table by any account.
+
+**A vlan-aware bridge separates, it does not route.** The tenant's hosts come up
+with a tagged NIC in a broadcast domain where no address answers: their gateway
+stays mute, they reach only their neighbours under the same tag, and the failure
+looks like a firewall. So the bench poses one ROUTED interface per zone, and it
+does not compute which — the engine derives each zone's tag and gateway from the
+plan's single index, and the bench reads them from the GENERATED inventory. A
+second derivation written in the bench would diverge the day the engine's rule
+changes, and the bench would then route domains where nobody lives. A host
+missing one of the three values refuses the whole read: routing one zone out of
+two leaves half the fleet unreachable, and nothing in the inventory says which.
+
+**The golden template is a prerequisite, not something the bench makes.** The
+engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+configured for the legacy PCI chipset, and converting it afterwards does not
+change a setting — it replaces the virtual hardware under a system that believes
+it knows its own. Predictable interface names derive from the PCI path, so the
+machine loses its network; disk paths move; each of the failures that follow
+looks like something other than its cause. A machine is born `q35` or it will
+never be so cleanly. The bench therefore MEASURES: is a VM of the declared name
+there, is it converted to a template, and does it carry the hardware the
+procedure requires — the very check the procedure calls "the last moment when the
+correction is free". A missing key counts as non-conforming, because the
+configuration only prints what differs from the default and the defaults are
+exactly what the procedure refuses. Every refusal names the procedure, since the
+bench does not make the template and must say where its making is described.
+
+**The terrain is reached as an ordinary account, and that decides everything.**
+A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
+PATH does not carry, and its cluster daemon only talks to root. Played without
+elevation, a command does not say "refused": it says "command not found", or
+complains about its communication channel — a diagnosis that sends you looking
+for a broken daemon where there is only an account without rights. The bench
+measures once whether the session is already root and whether `sudo` answers
+WITHOUT a password: a session with no terminal cannot type one, and an
+interactive sudo does not fail, it WAITS until the deadline. Every command then
+carries that decision, and the executor refuses to run anything without one.
+
+**The loop is the engine's own, not a recomposition of its pieces.**
+`reconstruire` chains the flows, the fleet's creation, the wait, the socle's
+bootstrap and then the layered deployment. The order matters there: without the
+flows FIRST, the derived-rules directory is empty and the socle lays a firewall
+that denies by default WITH NO RULE AT ALL — the fleet comes up, ssh answers
+from administration, and everything else is a wall, a failure that shows up
+neither at creation nor in an exit code. So the bench calls the target and reads
+its verdict; it does not re-sequence the steps, which is how it would drop that
+one the day the engine adds another.
+
+The bootstrap derives ITS hosts from the plan — the certificate authority first,
+then what enrols with it — so the bench reads that list instead of writing one.
+Two hosts of the shipped model are therefore activated, and the rest of the fleet
+stays planned: `reconstruire` only creates the VMs of ACTIVE hosts.
+
+The plan announces what each step costs, and **says when a duration is only
+announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
+template, then per pass ~5 s for each of the two inventory gestures — both
+measured — and, still to be timed, ~45 min for the reconstruction and ~2 min for
+the razing. A plan that gave both in the same tone would promise a time nobody
+has clocked.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you
@@ -651,6 +781,140 @@ défaut). C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
 qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
+
+## setops_banc.py — le moteur tient-il sur une grappe jetable ?
+
+Le moteur Set-OPS se pilote depuis le menu de TODO, et ses gestes y sont gardés.
+Rien ne dit qu'ils tiennent contre une vraie grappe, du gabarit doré au rasage.
+
+**Le terrain se désigne, il ne se devine pas.** `deep_proxmox.py` sert au
+développement ; le cas réel est une grappe qu'on possède. Le banc prend un
+terrain en argument, pour que la même épreuve serve à la répétition puis au cas
+réel — et il ne touche à aucun labo : il pose SON pont et SON utilisateur d'API,
+et n'en modifie aucun.
+
+**Un seul étage suffit**, et c'est le moins profond : un Proxmox imbriqué est un
+Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
+éprouve le moteur, pas l'imbrication.
+
+**Deux dépôts, pas un.** Le moteur joint sa grappe par la voûte d'un UNDERLAY,
+chez l'hébergeur, et refuse sans le lien qui le désigne : un banc à un seul
+dépôt ne peut donc pas matérialiser de VM. Le banc pose une paire de dossiers
+frères, `SITE-…` pour la fabric et `OPS-…` pour le plan, et monte les deux par
+les liens que le moteur lit PAR LEUR CHEMIN — son playbook ne regarde ni
+`SETOPS_UNDERLAY` ni `SETOPS_INSTANCE`. Il refuse si l'un des deux noms est déjà
+pris, lien brisé compris : ce lien est celui d'un exploitant, et le remplacer
+dirigerait son geste suivant vers l'écosystème du banc, dont le rasage détruit
+tout ce que l'inventaire nomme. Il pose aussi une clé de voûte par dépôt, et les
+défait EN DERNIER : une clé ouvre la voûte qui porte le jeton, et c'est le jeton
+qui joint la grappe.
+
+**Le plan s'active chirurgicalement.** Le modèle livré déclare tous ses serveurs
+`planifie`, et l'inventaire ne range parmi les actifs que ce qui porte
+exactement `actif` : un plan recopié sans la bascule produit un inventaire sans
+aucun hôte actif, et la matérialisation comme le rasage sortent alors à zéro
+sans avoir rien fait — ce qui se lit comme une réussite. Le banc bascule un
+attribut d'une ligne et rend le reste du fichier tel quel, commentaires
+compris.
+
+**Deux passes, et elles ne prouvent pas la même chose.** La première porte le
+jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
+valide la GRAPPE. La seconde le chiffre dans la voûte de l'écosystème de banc et
+rejoue la boucle par les portes de TODO : elle valide LE CHEMIN DE TODO, dont
+l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
+
+Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure.
+
+**Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
+gardées** — préalables dits avant toute création, terrain, pont libre, forme du
+jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
+pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
+du code que rien n'a vérifié.
+
+Le menu des épreuves longues le propose aussi, et la confirmation vient du
+même endroit que pour les autres : le plan ne demande rien, puisqu'il ne crée
+rien, et une invite qu'on apprend à confirmer sans lire ne protège plus rien le
+jour où elle compte. Le terrain s'y NOMME — le banc déduit le dernier étage posé
+par le labo, ce qui sert à la répétition, là où une grappe qu'on possède se
+désigne.
+
+```
+./long_test/setops_banc.py --dry-run          # le plan, rien de créé
+./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
+./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
+./long_test/setops_banc.py --passe env        # jeton par l'environnement
+```
+
+**Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
+fois, à sa création, et jamais plus. Il ne va qu'à deux endroits — l'environnement
+d'un geste, ou l'outil qui le chiffre, atteint par l'entrée standard — et nulle
+part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libérés
+et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
+journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
+ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
+**Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
+démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse
+ne répond : leur passerelle reste muette, ils ne joignent que leurs voisines de
+la même étiquette, et la panne ressemble à un pare-feu. Le banc pose donc une
+interface ROUTÉE par zone, et il ne calcule pas lesquelles — le moteur dérive
+l'étiquette et la passerelle de chaque zone du seul index du plan, et le banc les
+LIT dans l'inventaire généré. Une seconde dérivation écrite dans le banc
+divergerait de la sienne le jour où sa règle change, et le banc routerait alors
+des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeurs
+fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
+flotte injoignable, et rien dans l'inventaire ne dit laquelle.
+
+**Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
+procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
+configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
+un réglage — elle remplace le matériel virtuel sous un système qui croit
+connaître le sien. Les noms d'interfaces prédictibles dérivent du chemin PCI,
+donc la machine perd son réseau ; les chemins de disques bougent ; et chacune des
+pannes qui suivent ressemble à autre chose qu'à sa cause. Une machine naît `q35`
+ou ne le sera jamais proprement. Le banc MESURE donc : une VM du nom déclaré
+est-elle là, est-elle convertie en modèle, et porte-t-elle le matériel que la
+procédure exige — la vérification même que la procédure appelle « le dernier
+moment où la correction est gratuite ». Une clé absente compte comme non
+conforme, la configuration n'imprimant que ce qui diffère du défaut et les
+défauts étant justement ce que la procédure refuse. Chaque refus nomme la
+procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
+est décrite.
+
+**Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
+outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
+non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée
+sans élévation, une commande ne dit pas « refusé » : elle dit « commande
+introuvable », ou se plaint de son canal de communication — un diagnostic qui
+envoie chercher un démon en panne là où il n'y a qu'un compte sans droits. Le
+banc mesure une fois si la session est déjà root et si `sudo` répond SANS mot de
+passe : une session sans terminal ne peut pas en taper un, et un sudo interactif
+n'échoue pas, il ATTEND jusqu'à la borne. Chaque commande porte ensuite cette
+décision, et l'exécuteur refuse de rien jouer sans elle.
+
+**La boucle est celle du moteur, pas une recomposition de ses morceaux.**
+`reconstruire` enchaîne les flux, la création de la flotte, l'attente,
+l'amorçage du socle puis le déploiement par couches. L'ordre y compte : sans les
+flux D'ABORD, le dossier des règles dérivées est vide et le socle pose un
+pare-feu en refus par défaut SANS AUCUNE RÈGLE — la flotte monte, ssh répond
+depuis l'administration, et tout le reste est mur, une panne qui ne se voit ni à
+la création ni dans un code de retour. Le banc appelle donc la cible et lit son
+verdict ; il ne réordonne pas les étapes, ce qui est la façon de laisser tomber
+celle-là le jour où le moteur en ajoute une.
+
+L'amorçage dérive SES hôtes du plan — l'autorité de certification d'abord, puis
+ce qui s'enrôle auprès d'elle — et le banc lit cette liste au lieu d'en écrire
+une. Deux hôtes du modèle livré sont donc activés, et le reste de la flotte
+demeure planifié : `reconstruire` ne crée que les VM des hôtes ACTIFS.
+
+Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
+qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit
+doré, puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
+chronométrés — et, encore à relever, ~45 min pour la reconstruction et ~2 min
+pour le rasage. Un plan qui donnerait les deux du même ton promettrait un temps
+que personne n'a chronométré.
 
 ## Partir d'un hôte qu'on possède déjà
 
