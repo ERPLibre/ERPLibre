@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import replace
 
 import click
 
@@ -55,6 +56,7 @@ COMMANDES_PHASE_1 = (
     "/new",
     "/gpt",
     "/srv",
+    "/model",
     "/ctx",
     "/m",
     "/save",
@@ -201,7 +203,7 @@ class AssistantMenuMixin:
                 host="127.0.0.1",
                 port=port,
                 software=empreinte.software,
-                model=empreinte.models[0] if empreinte.models else "",
+                model=self._llm_default_model(empreinte),
                 hosting="loopback",
                 secret_ref="",
             )
@@ -239,6 +241,145 @@ class AssistantMenuMixin:
         return serveur.software
 
     @staticmethod
+    def _llm_default_model(empreinte):
+        """Le modèle qu'on retient d'office pour un serveur qu'on découvre.
+
+        Un modèle SERVI d'abord, le premier du catalogue ensuite. Un moteur
+        réparti annonce tout ce qu'il SAIT faire tourner — des centaines
+        d'entrées — et n'en tient qu'une poignée chargée : en retenir une au
+        hasard ouvre une conversation dont chaque question rend un refus, et
+        le refus n'arrive qu'APRÈS la première question.
+
+        Le catalogue reste le repli parce qu'un serveur qui ne distingue pas
+        les deux n'annonce que ce qu'il sert, et parce que ne rien retenir
+        vaudrait moins qu'un nom à corriger.
+        """
+        if empreinte.served:
+            return empreinte.served[0]
+        return empreinte.models[0] if empreinte.models else ""
+
+    def _llm_resolve_model(self, serveur):
+        """Le serveur, son modèle remplacé quand il n'est plus servable.
+
+        Ce qu'un moteur tient chargé CHANGE pendant qu'on s'en sert : un
+        modèle retenu à la découverte ne désigne plus forcément celui qui
+        répond, et la question se repose donc à chaque ouverture plutôt
+        qu'une fois pour toutes.
+
+        La lecture ne frappe qu'un chemin, et seulement chez les logiciels
+        qui distinguent annoncer et servir. Partout ailleurs elle ne touche
+        pas le réseau et rend vide, ce qui se lit « il ne le dit pas » et
+        jamais « rien n'est servable » : traiter ce silence comme un refus
+        rendrait tout serveur inutilisable.
+        """
+        sert = llm_fp.collect_served(
+            serveur.software, serveur.host, serveur.port, budget=2.0
+        )
+        if not sert or serveur.model in sert:
+            return serveur
+        dit = t("%s is not loaded; this server serves %s.") % (
+            serveur.model,
+            sert[0],
+        )
+        print(f"  ℹ {dit}")
+        return replace(serveur, model=sert[0])
+
+    def _llm_pick_model(self, serveur, filtre=""):
+        """Choisir un modèle du serveur. Rend le serveur modifié, ou None.
+
+        Le catalogue n'est pas enregistré — un serveur retenu ne garde qu'UN
+        nom de modèle — donc il se relit ici. C'est une commande explicite,
+        et c'est ce qui rend la relecture acceptable là où elle ne le serait
+        pas à l'affichage d'un écran.
+
+        `filtre` retient les modèles dont le nom le contient, casse ignorée.
+        Il existe parce qu'un moteur réparti en annonce des centaines, et
+        qu'une liste de cette longueur ne se choisit pas : le menu n'a ni
+        pagination ni défilement piloté.
+
+        Les modèles SERVIS passent devant et portent une marque. L'ordre du
+        catalogue est celui du serveur, et il ne met pas en tête ce qui
+        répond.
+        """
+        empreinte = llm_fp.identify(
+            llm_fp.collect(serveur.host, serveur.port, budget=2.0),
+            port=serveur.port,
+            host=serveur.host,
+        )
+        sert = set(empreinte.served)
+        # Les servis d'abord, chacun dans l'ordre où le serveur les nomme.
+        noms = [nom for nom in empreinte.models if nom in sert]
+        noms += [nom for nom in empreinte.models if nom not in sert]
+        for nom in empreinte.served:
+            if nom not in noms:
+                # Servi sans figurer au catalogue : le serveur se contredit,
+                # et c'est le servi qui a raison puisque c'est lui qui répond.
+                noms.insert(0, nom)
+        if filtre:
+            filtre = filtre.lower()
+            noms = [nom for nom in noms if filtre in nom.lower()]
+        if not noms:
+            print(f"  {t('No model under that name on this server.')}")
+            return None
+        for rang, nom in enumerate(noms, 1):
+            marque = f"  ({t('loaded')})" if nom in sert else ""
+            print(f"  [{rang}] {nom}{marque}")
+        try:
+            reponse = click.prompt(t("Which model"))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        # `_llm_rang` rend un INDEX, pas un rang : il a déjà retiré le un.
+        index = self._llm_rang(reponse, len(noms))
+        if index is None:
+            print(t("Command not found !"))
+            return None
+        choisi = noms[index]
+        if choisi == serveur.model:
+            return None
+        return replace(serveur, model=choisi)
+
+    def _llm_remember_model(self, serveur):
+        """Écrire le modèle choisi sur le serveur ENREGISTRÉ qui lui répond.
+
+        Un choix explicite mérite de survivre au menu, mais tout serveur en
+        usage n'est pas un serveur enregistré : le repli distant n'en est pas
+        un, et celui qu'offre la sonde de la boucle locale non plus. On ne
+        touche donc que l'entrée dont l'hôte ET le port correspondent, et on
+        n'en crée aucune.
+        """
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        touche = False
+        for rang, connu in enumerate(connus):
+            if connu.host == serveur.host and connu.port == serveur.port:
+                connus[rang] = replace(connu, model=serveur.model)
+                touche = True
+        if not touche:
+            return
+        llm_servers.save(
+            llm_servers.assign_handles(connus),
+            set_config=self._llm_set_config,
+        )
+
+    def _llm_say_served(self, serveur):
+        """Après un refus, nommer ce que le serveur sert vraiment.
+
+        Une panne de réseau et un modèle absent se ressemblent dans le texte
+        d'une erreur, et la forme de ce texte appartient à chaque logiciel.
+        On repose donc au serveur la question « que sers-tu » au lieu de lire
+        son message, et on ne parle que si sa réponse contredit ce qu'on
+        demandait — un silence ne dit rien et se tait.
+        """
+        sert = llm_fp.collect_served(
+            serveur.software, serveur.host, serveur.port, budget=2.0
+        )
+        if not sert or serveur.model in sert:
+            return
+        print(f"  {t('This server does not serve %s.') % serveur.model}")
+        print(f"  {t('It serves: %s') % ', '.join(sert)}")
+        print(f"  💡 {t('/model changes it, /model <text> filters')}")
+
+    @staticmethod
     def _llm_found_label(alias, adresse, port, empreinte):
         """Le nom qu'on donne d'office à un serveur qu'on vient de trouver.
 
@@ -252,10 +393,14 @@ class AssistantMenuMixin:
         et le modèle ce qui départage. Sans tunnel, l'adresse et le port
         restent la seule chose qui sépare deux serveurs du même logiciel.
 
+        L'alias dit quelle entrée a DÉCLARÉ ce point de terminaison, et non
+        sur quelle machine le serveur tourne : l'appelant ne le fournit que
+        pour un port qu'aucune autre cible ne couvrait, sans quoi l'étiquette
+        nommerait une machine distante devant un service local.
         """
         if not alias:
             return f"{empreinte.software} ({adresse}:{port})"
-        modele = empreinte.models[0] if empreinte.models else ""
+        modele = AssistantMenuMixin._llm_default_model(empreinte)
         return f"{alias} · {empreinte.software} {modele}".rstrip()
 
     # ------------------------------------------------------------------
@@ -804,7 +949,7 @@ class AssistantMenuMixin:
                 host=host,
                 port=port,
                 software=empreinte.software or "",
-                model=empreinte.models[0] if empreinte.models else "",
+                model=self._llm_default_model(empreinte),
                 hosting=llm_caps.classify_hosting(host),
                 secret_ref="",
             )
@@ -1431,7 +1576,7 @@ class AssistantMenuMixin:
                     host=adresse,
                     port=port,
                     software=empreinte.software,
-                    model=empreinte.models[0] if empreinte.models else "",
+                    model=self._llm_default_model(empreinte),
                     hosting=llm_caps.classify_hosting(adresse),
                     secret_ref="",
                 )
@@ -2852,21 +2997,32 @@ class AssistantMenuMixin:
             systeme = "\n\n".join(
                 part for part in (outil.system, joint) if part
             )
-        backend = llm_backends.HttpBackend(
-            serveur,
-            serveur.model,
-            api_key=cle or None,
-            params=dict(outil.params) if outil is not None else None,
-        )
-        conversation = llm_chat.Conversation(backend, system=systeme)
-        # Le RADICAL du nom de fichier, et non le nom traduit : celui-ci est
-        # une phrase, et l'invite d'état est réimprimée à chaque tour. Un
-        # radical est court, stable, et désigne le fichier sans ambiguïté.
-        marque_outil = f" · {outil.stem}" if outil is not None else ""
-        invite = (
-            f"{self._llm_label(serveur)}{marque_outil}"
-            f" · {t(self._llm_hosting_key(serveur.hosting))} ▸ "
-        )
+        serveur = self._llm_resolve_model(serveur)
+
+        def ouvrir(cible):
+            """Le backend et la conversation d'un serveur, l'invite avec.
+
+            Refaite telle quelle quand le modèle change : le backend porte le
+            modèle, et l'invite le nomme à chaque tour.
+            """
+            neuf = llm_backends.HttpBackend(
+                cible,
+                cible.model,
+                api_key=cle or None,
+                params=dict(outil.params) if outil is not None else None,
+            )
+            # Le RADICAL du nom de fichier, et non le nom traduit : celui-ci
+            # est une phrase, et l'invite d'état est réimprimée à chaque tour.
+            # Un radical est court, stable, et désigne le fichier sans
+            # ambiguïté.
+            marque_outil = f" · {outil.stem}" if outil is not None else ""
+            return (
+                llm_chat.Conversation(neuf, system=systeme),
+                f"{self._llm_label(cible)}{marque_outil}"
+                f" · {t(self._llm_hosting_key(cible.hosting))} ▸ ",
+            )
+
+        conversation, invite = ouvrir(serveur)
         while True:
             try:
                 ligne = input(invite)
@@ -2893,6 +3049,20 @@ class AssistantMenuMixin:
             if commande == "/srv":
                 self._llm_servers()
                 return
+            if commande == "/model":
+                autre = self._llm_pick_model(serveur, reste)
+                if autre is None:
+                    continue
+                serveur = autre
+                self._llm_state()["serveur"] = serveur
+                self._llm_remember_model(serveur)
+                # L'historique est VIDÉ, pour la raison qui le vide sur un
+                # changement de serveur : les tours d'avant ont été écrits
+                # par un autre modèle, et les lui rejouer comme les siens lui
+                # prête des mots qu'il n'a pas dits.
+                conversation, invite = ouvrir(serveur)
+                print(f"✅ {self._llm_label(serveur)}")
+                continue
             if commande == "/ctx":
                 for message in conversation.last_sent:
                     print(f"  [{message['role']}] {message['content']}")
@@ -2910,6 +3080,7 @@ class AssistantMenuMixin:
             tour = conversation.ask(reste)
             if tour.role == "error":
                 print(f"⚠ {tour.text}")
+                self._llm_say_served(serveur)
                 continue
             print(tour.text)
             if tour.interrupted:

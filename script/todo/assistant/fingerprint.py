@@ -103,6 +103,13 @@ OPENAI_HOST = "api.openai.com"
 OLLAMA_ROOT = b"Ollama is running"
 JAN_TITLE = "Jan API Server Endpoints"
 
+# Le chemin qui dit ce qu'exo tient CHARGÉ. Son état complet le porte aussi,
+# noyé dans plusieurs centaines de kilooctets de topologie, de disques et de
+# téléchargements ; l'accesseur par sous-chemin rend les mêmes instances en
+# un peu plus d'un kilooctet, donc il est sondable là où l'état entier ne
+# l'est pas.
+EXO_INSTANCES = "/state/instances"
+
 # Un numéro de version plausible. L'étage Ollama s'en sert pour confirmer que
 # `/api/version` répond bien ce qu'Ollama y répond, et non le JSON d'autre
 # chose monté au même endroit.
@@ -123,12 +130,25 @@ class Fingerprint:
     cas normal, pas une panne. `unknown` nomme les champs que les corps ne
     portaient pas, parmi « software », « version » et « models » — de quoi
     afficher « ? » sur ceux-là plutôt que de deviner.
+
+    `models` est ce que le serveur ANNONCE, `served` ce qu'il SERT à
+    l'instant. Les deux se confondent chez la plupart : leur catalogue ne
+    nomme que ce qui est chargé. Un moteur qui répartit des modèles sur
+    plusieurs machines annonce en revanche tout ce qu'il SAIT faire tourner
+    — des centaines d'entrées — et n'en tient qu'une poignée en mémoire ;
+    demander une autre rend un refus, pas une réponse lente.
+
+    `served` VIDE signifie « le serveur ne le dit pas », jamais « rien n'est
+    servable » : l'immense majorité n'expose aucun point de terminaison qui
+    réponde à la question, et traiter leur silence comme un refus rendrait
+    tout serveur inutilisable.
     """
 
     software: str = ""
     version: str = ""
     models: tuple[str, ...] = ()
     unknown: frozenset[str] = frozenset()
+    served: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -391,11 +411,85 @@ LADDER: tuple[Probe, ...] = (
     Probe("ollama", ("/api/tags", "/", "/api/version"), _ollama),
     Probe("textgen_webui", ("/v1/internal/model/info",), _textgen_webui),
     Probe("tabbyapi", ("/v1/model", "/v1/template/list"), _tabbyapi),
-    Probe("exo", ("/node_id", "/v1/models"), _exo),
+    Probe("exo", ("/node_id", "/v1/models", EXO_INSTANCES), _exo),
     Probe("llamacpp", ("/v1/models",), _llamacpp_proxy),
     Probe("gpt4all", ("/v1/models",), _gpt4all),
     Probe("openai", (), _openai),
 )
+
+
+def _exo_served(bodies) -> tuple[str, ...]:
+    """Les modèles qu'exo tient CHARGÉS, lus dans ses instances.
+
+    Son catalogue nomme tout ce qu'il sait faire tourner ; une instance est
+    ce qui occupe vraiment de la mémoire, et une seule tourne d'ordinaire.
+    Chaque instance porte son genre, puis une assignation de tessons dont le
+    `modelId` nomme le modèle servi.
+
+    Rend les modèles dans l'ordre de lecture, sans doublon : deux instances
+    du même modèle sont un cas normal d'un moteur réparti.
+    """
+    instances = _json(bodies, EXO_INSTANCES)
+    if not isinstance(instances, dict):
+        return ()
+    found: list[str] = []
+    for instance in instances.values():
+        if not isinstance(instance, dict):
+            continue
+        for kind in instance.values():
+            if not isinstance(kind, dict):
+                continue
+            name = _text(kind.get("shardAssignments"), "modelId")
+            if name and name not in found:
+                found.append(name)
+    return tuple(found)
+
+
+# Ce qu'il faut demander à un logiciel pour savoir ce qu'il SERT, et qui le
+# lit. Un logiciel absent de la table ne distingue pas les deux : son
+# catalogue ne nomme que des modèles chargés, et l'interroger de plus
+# coûterait une requête pour apprendre ce qu'on sait déjà.
+SERVED_PATHS: dict[str, tuple[str, ...]] = {"exo": (EXO_INSTANCES,)}
+SERVED_READERS = {"exo": _exo_served}
+
+
+def served_models(software: str, bodies) -> tuple[str, ...]:
+    """Ce que `software` SERT, lu dans les corps déjà collectés. PURE.
+
+    Rend un tuple VIDE quand le logiciel ne répond pas à la question, ce qui
+    est le cas de presque tous : c'est « il ne le dit pas », et jamais « rien
+    n'est servable ».
+    """
+    lecteur = SERVED_READERS.get(software)
+    return lecteur(bodies) if lecteur else ()
+
+
+def collect_served(
+    software: str,
+    host: str,
+    port: int,
+    *,
+    http_get: Callable[[str, float], tuple[int, bytes]] | None = None,
+    budget: float = 1.0,
+) -> tuple[str, ...]:
+    """Ce que `software` sert MAINTENANT, en frappant le strict nécessaire.
+
+    Le pendant transporté de `served_models`, pour la question qui se repose
+    alors qu'une empreinte est déjà connue : ce qu'un moteur tient chargé
+    change pendant qu'on s'en sert, donc une lecture faite à la découverte ne
+    répond plus à l'ouverture d'une conversation.
+
+    Ne frappe QUE les chemins du logiciel nommé — un seul pour l'instant — au
+    lieu du plan entier, parce que rouvrir une conversation ne doit pas
+    coûter une reconnaissance complète.
+    """
+    paths = SERVED_PATHS.get(software)
+    if not paths:
+        return ()
+    return served_models(
+        software,
+        collect(host, port, http_get=http_get, budget=budget, paths=paths),
+    )
 
 
 def probe_plan() -> list[tuple[str, str]]:
@@ -471,7 +565,13 @@ def identify(
             unknown.add("version")
         if not models:
             unknown.add("models")
-        return Fingerprint(probe.software, version, models, frozenset(unknown))
+        return Fingerprint(
+            probe.software,
+            version,
+            models,
+            frozenset(unknown),
+            served_models(probe.software, bodies),
+        )
     unknown = {"software", "version"}
     if not models:
         unknown.add("models")
@@ -519,6 +619,7 @@ def collect(
     budget: float = 1.0,
     max_bytes: int = BODY_CAP,
     catalog_bytes: int = CATALOG_CAP,
+    paths: tuple[str, ...] | None = None,
 ) -> dict[str, tuple[int, bytes]]:
     """Frappe le plan et rend les corps arrivés. Le transport, et rien d'autre.
 
@@ -534,13 +635,23 @@ def collect(
     le serveur offre et doit s'analyser ENTIER pour rendre un modèle. Un test
     qui veut voir une coupure partout abaisse les deux.
 
+    `paths` restreint la frappe à ces chemins-là, dans cet ordre, au lieu du
+    plan entier. Il sert la question posée à un serveur DÉJÀ reconnu — ce
+    qu'il sert en ce moment — là où reconnaître une deuxième fois coûterait
+    seize requêtes pour une réponse.
+
     Ne lève pas pour un port mort, une page HTML, un 401, un 503 ou un corps
     coupé : ce sont des résultats, et l'appelant les lit par `identify`. Un
     chemin absent du dictionnaire n'a rien rendu.
     """
     bodies: dict[str, tuple[int, bytes]] = {}
     deadline = time.monotonic() + budget
-    for _method, path in probe_plan():
+    voulus = (
+        [("GET", path) for path in paths]
+        if paths is not None
+        else probe_plan()
+    )
+    for _method, path in voulus:
         left = deadline - time.monotonic()
         if left <= 0:
             break

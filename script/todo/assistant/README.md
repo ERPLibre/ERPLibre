@@ -28,6 +28,24 @@ ladder is verified without opening a socket. `collect()` is transport only,
 and it emits GET alone, with no body and no `Authorization` header: a scan
 must not be able to load a model or spend a token.
 
+## Announcing a model is not serving it
+
+A catalogue says what a server KNOWS how to run; it does not say what it
+currently holds in memory. A distributed engine announces hundreds of models
+and keeps one loaded at a time, so retaining the first of the catalogue opens
+a conversation whose every question returns a refusal — and the refusal only
+arrives AFTER the first question. `Fingerprint` therefore carries `models`
+and `served` apart, and an EMPTY `served` reads "the server does not say",
+never "nothing is servable": almost none expose an endpoint that answers the
+question, and taking their silence for a refusal would make every one of them
+unusable.
+
+What is loaded changes while you use it, so the question is asked again when
+a conversation opens, not once and for all. That reading knocks on one path,
+and only for the software that distinguishes the two. `/model` picks another
+model on the same server — `/model <text>` filters, because no list of
+several hundred is chosen by eye.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
