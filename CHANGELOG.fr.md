@@ -216,6 +216,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans le sélecteur de chemins, une liste qui échoue — trop de lectures à la fois, une lecture trop longue — nomme en entier le répertoire personnel quand « ~ » était demandé, et ne montre plus un segment « ~ » qui ouvrirait /~
 - Dans le sélecteur de chemins, le second clic d'un double-clic n'atteint plus aucun bouton — un segment du chemin, le parent, Ouvrir, Choisir ce répertoire, Dialogue du système ou Annuler —, comme il n'atteignait déjà aucune entrée : une rangée de segments qui passe à la ligne pouvait amener la rangée de réponse sous le pointeur
 - Exécution › Code › Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune autre réponse ne lance rien, « 01 » ou « 1 » entouré d'espaces compris. [1], la première mise à jour de `todo.json`, répondait « Commande non trouvée ! », avec plusieurs, chaque numéro lançait la précédente, et une configuration sans `update_from_makefile` arrêtait le menu avant son affichage
+- Télémétrie de navigation : le menu Configuration montre ses six commandes sous leur propre nom, Fork et la réinitialisation comprises, qui se lancent depuis la TUI et depuis la page web, et une préférence lancée depuis la TUI ouvre son propre choix ; la migration Odoo de Mise à jour s'y lance aussi. Une interface web lancée avant cette version montre [4], Configuration et Mise à jour sans leurs commandes jusqu'à ce qu'elle soit relancée ([4] › [3] l'arrête)
 
 ## Retiré
 

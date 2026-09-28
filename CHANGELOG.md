@@ -216,6 +216,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In the path picker, a listing that fails — too many reads at once, a read too long — names the home directory in full when « ~ » was asked, and no longer shows a « ~ » segment that would open /~
 - In the path picker, the second click of a double-click no longer reaches any button — a path segment, the parent, Open, Choose this directory, System dialog or Cancel — as it already reached no entry: a row of path segments that wraps could move the answer row under the pointer
 - Execute › Code › Update: each number runs the entry it shows, and no other answer runs anything, « 01 » or « 1 » between spaces included. [1], the first update of `todo.json`, answered « Command not found ! », with several, each number ran the one before, and a configuration without `update_from_makefile` stopped the menu before it showed
+- Navigation telemetry: the Configuration menu shows its six commands under their own names, Fork and the reset included, which launch from the TUI and from the web page, and a preference launched from the TUI opens its own choice; Update's Upgrade Odoo launches from the TUI too. A web interface started before this version shows [4], Configuration and Update without their commands until it is restarted ([4] › [3] stops it)
 
 ## Removed
 

@@ -59,7 +59,8 @@ def _todo_class():
 
 
 def _command_names() -> set:
-    """Méthodes que l'arbre de TODO rattache à un menu ou à une feuille.
+    """Méthodes que l'arbre de TODO rattache à un menu ou à une feuille,
+    et toutes celles que nomme un menu du registre : état, intro, suffixe.
 
     Seuls les noms qui contiennent « _ » sont gardés : « run » ou « quit »
     sont aussi des mots courants, un nom composé ne l'est jamais.
@@ -74,7 +75,12 @@ def _command_names() -> set:
 
     walk(todo_telemetry.build_code_tree())
     names |= set(todo_telemetry._menu_labels(_todo_class()))
-    return {name for name in names if "_" in name}
+    todo_dir = REPO / "script" / "todo"
+    for menu in todo_telemetry._declared_menus(todo_dir).values():
+        names |= {menu.get("name"), menu.get("state"), menu.get("intro")}
+        for item in menu.get("entries") or []:
+            names |= {item.get("action"), item.get("suffix")}
+    return {name for name in names if name and "_" in name}
 
 
 def _written(tag) -> list:
@@ -151,6 +157,8 @@ class TestWords(unittest.TestCase):
     def test_the_page_code_names_no_command(self):
         names = _command_names()
         self.assertGreater(len(names), 50)
+        # Le registre compte : une ligne d'état, un suffixe.
+        self.assertLessEqual({"_web_state", "_pref_label"}, names)
         for path in sorted(SRC.glob("*.js")):
             words = set(re.findall(r"\w+", path.read_text(encoding="utf-8")))
             self.assertFalse(words & names, path.name)

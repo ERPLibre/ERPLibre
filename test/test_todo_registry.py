@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le registre des menus, son navigateur, et l'arbre de télémétrie qui lit
-les menus déclarés.
+"""Le registre des menus, son navigateur, l'arbre de télémétrie qui lit
+les menus déclarés, et les fichiers de menus de TODO.
 
 Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
 action, état, suffixe ou intro note son appel ; les réponses viennent de
 `click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
 web. L'arbre se lit dans un répertoire temporaire : un todo.py minimal,
 une copie du module du registre et des fichiers de menus écrits par le
-test ; rien n'y est importé.
+test ; rien n'y est importé. Les fichiers de menus de TODO sont lus par
+AST, puis importés, et les méthodes qu'ils nomment ne sont jamais
+appelées : seule leur signature est liée.
 """
 
+import ast
+import importlib
+import inspect
 import io
 import shutil
 import sys
@@ -26,12 +31,13 @@ import click
 
 from script.todo import todo_i18n, todo_telemetry
 from script.todo.todo_i18n import t
-from script.todo.ui import legacy, port
+from script.todo.ui import legacy, port, registry
 from script.todo.ui.navigator import navigate
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY_PY = REPO / "script" / "todo" / "ui" / "registry.py"
+MENUS_DIR = REPO / "script" / "todo" / "menus"
 
 
 class FakeTodo:
@@ -449,6 +455,102 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertEqual(
             fields["Entry"][:4], ["key", "action", "kwargs", "suffix"]
         )
+
+
+def _rebuilt(value):
+    """L'objet du registre que décrit `value`, une valeur de `_declared` :
+    un dict qui porte "type" devient l'appel de son constructeur."""
+    if isinstance(value, list):
+        return [_rebuilt(item) for item in value]
+    if isinstance(value, dict) and "type" in value:
+        fields = {k: _rebuilt(v) for k, v in value.items() if k != "type"}
+        return getattr(registry, value["type"])(**fields)
+    return value
+
+
+def _imported_menus() -> dict:
+    """{méthode: Menu} des fichiers de menus de TODO, importés ; le paquet
+    lui-même, `__init__.py`, n'en déclare aucun."""
+    menus = {}
+    for path in sorted(MENUS_DIR.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        module = importlib.import_module(f"script.todo.menus.{path.stem}")
+        for value in vars(module).values():
+            if isinstance(value, Menu):
+                menus[value.name] = value
+    return menus
+
+
+class TestTodoMenuFiles(unittest.TestCase):
+    def test_a_menu_file_is_registry_calls_and_literals(self):
+        fields = todo_telemetry._registry_fields(REGISTRY_PY)
+        paths = sorted(MENUS_DIR.glob("*.py"))
+        self.assertEqual(
+            [p.name for p in paths], ["__init__.py", "execute.py", "main.py"]
+        )
+        for path in paths:
+            for stmt in ast.parse(path.read_text(encoding="utf-8")).body:
+                with self.subTest(file=path.name, line=stmt.lineno):
+                    if isinstance(stmt, ast.ImportFrom):
+                        self.assertEqual(
+                            stmt.module, "script.todo.ui.registry"
+                        )
+                    elif isinstance(stmt, ast.Expr):
+                        self.assertIsInstance(stmt.value, ast.Constant)
+                    else:
+                        self.assertIsInstance(stmt, ast.Assign)
+                        todo_telemetry._declared(stmt.value, fields)
+
+    def test_the_tree_reads_what_python_imports(self):
+        declared = todo_telemetry._declared_menus(REPO / "script" / "todo")
+        imported = _imported_menus()
+        self.assertEqual(
+            sorted(imported),
+            [
+                "prompt_configuration",
+                "prompt_execute_update",
+                "prompt_telemetry",
+            ],
+        )
+        rebuilt = {name: _rebuilt(v) for name, v in declared.items()}
+        self.assertEqual(rebuilt, imported)
+
+    def test_each_key_is_translated_in_both_languages(self):
+        # Les clés du registre ne sont pas des appels de `t()` : ce test
+        # tient pour elles la table de traduction.
+        keys = set()
+        for menu in _imported_menus().values():
+            keys |= {
+                item.key
+                for item in menu.entries
+                if isinstance(item, (Entry, Section))
+            }
+        self.assertGreater(len(keys), 10)
+        for key in sorted(keys):
+            with self.subTest(key=key):
+                languages = todo_i18n.TRANSLATIONS.get(key, {})
+                self.assertLessEqual({"fr", "en"}, set(languages))
+
+    def test_each_method_named_binds_its_arguments(self):
+        from script.todo.todo import TODO
+
+        menus = _imported_menus()
+        self.assertEqual(len(menus), 3)
+        for menu in menus.values():
+            calls = [(menu.name, {}), (menu.state, {}), (menu.intro, {})]
+            for item in menu.entries:
+                if isinstance(item, Entry):
+                    kwargs = item.kwargs or {}
+                    calls += [(item.action, kwargs), (item.suffix, kwargs)]
+                elif isinstance(item, FromConfig):
+                    calls.append((item.action, {item.kwarg: {}}))
+            for name, kwargs in calls:
+                if name is None:
+                    continue
+                with self.subTest(menu=menu.name, method=name):
+                    method = getattr(TODO, name)
+                    inspect.signature(method).bind(None, **kwargs)
 
 
 if __name__ == "__main__":

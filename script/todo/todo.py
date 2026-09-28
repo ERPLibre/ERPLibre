@@ -127,6 +127,8 @@ from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.menus import execute as menus_execute
+from script.todo.menus import main as menus_main
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -138,6 +140,7 @@ from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
+from script.todo.ui.navigator import navigate
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 from script.todo.web import desktop, launcher, paths
@@ -754,33 +757,12 @@ class TODO(
     def prompt_telemetry(self):
         """Télémétrie de navigation : la TUI, la page web, l'arrêt de
         l'interface web de ce checkout, ou la page dans la fenêtre
-        bureautique. Sous le fil d'Ariane, une ligne dit si le hub web
-        tourne ; elle l'interroge à chaque affichage, environ 0,3 s par
-        opération. Rien de ce que lancent [1] à [4] ne remonte : Ctrl+C,
-        Ctrl+D ou une erreur ramènent à ce menu. Rend False sur [0]."""
-        while True:
-            choices = [
-                {"prompt_description": t("Navigation telemetry (TUI)")},
-                {"prompt_description": t("Navigation telemetry (WEB)")},
-                {"prompt_description": t("Stop the web interface")},
-                {"prompt_description": t("Desktop window")},
-            ]
-            status = click.prompt(
-                self.fill_help_info(choices, state=self._web_state())
-            )
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._todo_telemetry_tui()
-            elif status == "2":
-                self._todo_telemetry_web()
-            elif status == "3":
-                self._todo_web_stop()
-            elif status == "4":
-                self._todo_desktop_window()
-            else:
-                print(t("Command not found !"))
+        bureautique (TELEMETRY, `menus/main.py`). Sous le fil d'Ariane, une
+        ligne dit si le hub web tourne ; elle l'interroge à chaque
+        affichage, environ 0,3 s par opération. Rien de ce que lancent [1]
+        à [4] ne remonte : Ctrl+C, Ctrl+D ou une erreur ramènent à ce
+        menu. Rend False sur [0]."""
+        return navigate(self, menus_main.TELEMETRY)
 
     def _todo_telemetry_tui(self):
         """Ouvre le TUI de télémétrie, `_telemetry_tui_loop`. Comme [2] et
@@ -1163,57 +1145,25 @@ class TODO(
             print(f"  ✅ {t(title)} : {self._pref_label(key)}")
 
     def prompt_configuration(self):
-        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).
-        La langue vit à part, dans env_var.sh, et garde son propre mécanisme.
+        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json),
+        déclarés dans CONFIGURATION (`menus/main.py`). La langue vit à part,
+        dans env_var.sh, et garde son propre mécanisme. Rend None sur [0].
         """
-        while True:
-            lang = "français" if get_lang() == "fr" else "English"
-            choices = [
-                {"section": t("Interface")},
-                {"prompt_description": f"{t('Language / Langue')}  ({lang})"},
-                {
-                    "prompt_description": (
-                        f"{t('QEMU deployment interface')}  "
-                        f"({self._pref_label('qemu_deploy_ui')})"
-                    )
-                },
-                {
-                    "prompt_description": (
-                        f"{t('Display while deploying')}  "
-                        f"({self._pref_label('qemu_deploy_progress')})"
-                    )
-                },
-                {
-                    "prompt_description": (
-                        f"{t('Odoo migration interface')}  "
-                        f"({self._pref_label('migration_ui')})"
-                    )
-                },
-                {"prompt_description": t("Fork - Open TODO in a new tab")},
-                {"section": t("Maintenance")},
-                {"prompt_description": t("Reset all preferences")},
-            ]
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._change_language()
-            elif status == "2":
-                self._pref_edit("qemu_deploy_ui")
-            elif status == "3":
-                self._pref_edit("qemu_deploy_progress")
-            elif status == "4":
-                self._pref_edit("migration_ui")
-            elif status == "5":
-                self.execute.exec_command_live(
-                    "make todo", source_erplibre=True
-                )
-            elif status == "6":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_main.CONFIGURATION)
+
+    def _lang_label(self):
+        """Nom de la langue de TODO, écrit dans cette langue."""
+        return "français" if get_lang() == "fr" else "English"
+
+    def _fork_todo(self):
+        """Lance un autre TODO, `make todo`, dans ce terminal."""
+        self.execute.exec_command_live("make todo", source_erplibre=True)
+
+    def _reset_preferences(self):
+        """Remet chaque préférence à son défaut et dit combien il y en
+        avait."""
+        n = todo_prefs.reset()
+        print(f"✅ {t('Preferences reset')} ({n})")
 
     def fill_help_info(self, choices, state=None):
         # Une entrée {"section": "..."} affiche un titre de section SANS
@@ -1316,8 +1266,10 @@ class TODO(
                     print(t("Command not found !"))
 
     def prompt_execute_update(self):
-        # self.execute.exec_command_live(f"make {makefile_cmd}")
-        print(f"🤖 {t('Development update')}")
+        """Mise à jour du développement (UPDATE, `menus/execute.py`) : les
+        entrées de `update_from_makefile`, puis la migration d'Odoo et la
+        mise à jour de Poetry. Dessiné une fois, à l'entrée. Rend False sur
+        [0]."""
         # TODO détecter les modules en modification pour faire la mise à jour en cours
         # TODO demander sur quel BD faire la mise à jour
         # TODO proposer les modules manuelles selon la configuration à mettre à jour
@@ -1326,51 +1278,26 @@ class TODO(
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        # L'arbre de télémétrie lit les entrées de configuration dans cette
-        # affectation (`_choices_children`) : elle reste un appel seul de
-        # get_config, et une liste absente se remplace ensuite.
-        choices = self.config_file.get_config("update_from_makefile")
-        if choices is None:
-            choices = []
-        menu_entry = {
-            "prompt_description": t("Upgrade Odoo - Migration Database"),
-        }
-        choices.append(menu_entry)
-        poetry_entry = {
-            "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
-        }
-        choices.append(poetry_entry)
-        help_info = self.fill_help_info(choices)
+        return navigate(self, menus_execute.UPDATE)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == str(len(choices) - 1):
-                upgrade = todo_upgrade.TodoUpgrade(self)
-                try:
-                    upgrade.execute_odoo_upgrade()
-                except todo_upgrade.MigrationRewind:
-                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
-                    # relancer, et l'écran de reprise repartira de l'étape
-                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
-                    # évite de la reprendre au milieu de son état local.
-                    print(
-                        f"\n⏪ {t('Rewound.')}"
-                        f" {t('Relaunch the migration to resume from there.')}"
-                    )
-            elif status == str(len(choices)):
-                self.upgrade_poetry()
-            else:
-                # [N], tel qu'affiché, est la N-ième entrée de configuration ;
-                # les deux dernières, Odoo et Poetry, ont leur branche
-                # ci-dessus.
-                shown = [str(n) for n in range(1, len(choices) - 1)]
-                if status in shown:
-                    self.execute_from_configuration(choices[int(status) - 1])
-                else:
-                    print(t("Command not found !"))
+    def _update_intro(self):
+        """La ligne qui ouvre Update, avant son menu."""
+        print(f"🤖 {t('Development update')}")
+
+    def _upgrade_odoo(self):
+        """Migre une base Odoo (`TodoUpgrade.execute_odoo_upgrade`). Un
+        rembobinage a déjà écrit l'état : il ne reste qu'à relancer, et
+        l'écran de reprise repart de l'étape choisie. Rendre la main au
+        menu plutôt que de rappeler la migration évite de la reprendre au
+        milieu de son état local."""
+        upgrade = todo_upgrade.TodoUpgrade(self)
+        try:
+            upgrade.execute_odoo_upgrade()
+        except todo_upgrade.MigrationRewind:
+            print(
+                f"\n⏪ {t('Rewound.')}"
+                f" {t('Relaunch the migration to resume from there.')}"
+            )
 
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")

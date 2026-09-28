@@ -27,6 +27,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from script.todo.ui.registry import Entry
+
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
 
@@ -451,6 +453,82 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertTrue(expected)
         self.assertEqual(leaves[: len(expected)], expected)
 
+    def test_configuration_and_update_come_from_the_registry(self):
+        # Le registre donne ce que la dérivation AST ne voit pas dans
+        # `return navigate(…)` : Fork et Reset, les kwargs de _pref_edit, la
+        # méthode d'Upgrade Odoo. Un libellé qui finit par un suffixe
+        # calculé n'a pas d'entrée fixe.
+        [configuration] = [
+            n for n in self.arbre["children"] if n["label"] == "Configuration"
+        ]
+        self.assertEqual(
+            [
+                (f["label"], f["method"], f["kwargs"], f["section"])
+                + ((f["entry"],) if "entry" in f else ())
+                for f in configuration["children"]
+            ],
+            [
+                ("Language / Langue", "_change_language", {}, "Interface", ""),
+                (
+                    "QEMU deployment interface",
+                    "_pref_edit",
+                    {"key": "qemu_deploy_ui"},
+                    "Interface",
+                    "",
+                ),
+                (
+                    "Display while deploying",
+                    "_pref_edit",
+                    {"key": "qemu_deploy_progress"},
+                    "Interface",
+                    "",
+                ),
+                (
+                    "Odoo migration interface",
+                    "_pref_edit",
+                    {"key": "migration_ui"},
+                    "Interface",
+                    "",
+                ),
+                (
+                    "Fork - Open TODO in a new tab",
+                    "_fork_todo",
+                    {},
+                    "Interface",
+                ),
+                (
+                    "Reset all preferences",
+                    "_reset_preferences",
+                    {},
+                    "Maintenance",
+                ),
+            ],
+        )
+        [update] = [
+            n
+            for n in self._noeud("Code")["children"]
+            if n["label"] == "Update"
+        ]
+        config = json.loads((TODO_DIR / "todo.json").read_text())
+        self.assertEqual(
+            [
+                (f["label"], f["method"], f["kwargs"])
+                for f in update["children"]
+            ],
+            [
+                (
+                    e.get("prompt_description_key") or e["prompt_description"],
+                    "execute_from_configuration",
+                    {"instance": e},
+                )
+                for e in config["update_from_makefile"]
+            ]
+            + [
+                ("Upgrade Odoo - Migration Database", "_upgrade_odoo", {}),
+                ("Upgrade Poetry - Dependency of Odoo", "upgrade_poetry", {}),
+            ],
+        )
+
     def test_a_computed_label_keeps_the_numbering(self):
         # fill_help_info numérote chaque entrée qui n'est pas une section,
         # son libellé écrit ou calculé : la troisième reste la troisième, et
@@ -828,7 +906,59 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
-class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
+class RegistryCoherence:
+    """Socle : un menu déclaré au registre mène-t-il où il le dit ?
+
+    Le numéro d'une entrée est sa place dans la déclaration : affichage et
+    dispatch ne peuvent pas se désaligner. Reste à dire où mène chaque
+    entrée, par le début de sa clé, et c'est EXPECTED, qu'ajouter une
+    entrée oblige à compléter. À déclarer par la sous-classe : MENU (la
+    méthode de TODO qui ouvre le menu), EXPECTED et BACK (ce que rend [0]).
+    """
+
+    MENU = ""
+    EXPECTED = {}
+    BACK = False
+
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        opened = []
+        with patch(
+            "script.todo.todo.navigate", lambda todo, menu: opened.append(menu)
+        ):
+            getattr(TODO, self.MENU)(None)
+        [self.menu] = opened
+        self.entries = [e for e in self.menu.entries if isinstance(e, Entry)]
+
+    def _key(self, label):
+        for key in self.EXPECTED:
+            if label.startswith(key):
+                return key
+        return label
+
+    def test_its_method_opens_the_menu_it_names(self):
+        self.assertEqual(self.menu.name, self.MENU)
+
+    def test_every_entry_reaches_the_method_it_names(self):
+        for entry in self.entries:
+            key = self._key(entry.key)
+            self.assertIn(
+                key,
+                self.EXPECTED,
+                f"« {entry.key} » absente d'EXPECTED : déclarez où elle mène",
+            )
+            self.assertEqual(entry.action, self.EXPECTED[key], entry.key)
+
+    def test_expected_table_has_no_stale_entry(self):
+        keys = {self._key(entry.key) for entry in self.entries}
+        self.assertEqual(set(self.EXPECTED) - keys, set())
+
+    def test_zero_goes_back(self):
+        self.assertIs(self.menu.back, self.BACK)
+
+
+class TestTelemetryMenuNumbering(RegistryCoherence, unittest.TestCase):
     """L'entrée [4] du menu principal : TUI, WEB, arrêt de l'interface web,
     fenêtre bureautique.
 
@@ -836,11 +966,7 @@ class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
     décalage entre l'affichage et le dispatch arrêterait au lieu d'ouvrir.
     """
 
-    SOURCE = TODO_DIR / "todo.py"
-    ENTRY = "def prompt_telemetry(self):"
-    END = "def _todo_telemetry_tui(self):"
-    MINIMUM = 2
-
+    MENU = "prompt_telemetry"
     EXPECTED = {
         "Navigation telemetry (TUI)": "_todo_telemetry_tui",
         "Navigation telemetry (WEB)": "_todo_telemetry_web",
@@ -848,8 +974,47 @@ class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
         "Desktop window": "_todo_desktop_window",
     }
 
-    def test_zero_goes_back(self):
-        self.assertRegex(self.body, r'if status == "0":\s*\n\s*return False')
+
+class TestConfigurationMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Configuration : la langue, trois préférences, Fork, et la remise à
+    zéro de toutes les préférences, qui ne se défait pas."""
+
+    MENU = "prompt_configuration"
+    BACK = None
+    EXPECTED = {
+        "Language / Langue": "_change_language",
+        "QEMU deployment interface": "_pref_edit",
+        "Display while deploying": "_pref_edit",
+        "Odoo migration interface": "_pref_edit",
+        "Fork - Open TODO in a new tab": "_fork_todo",
+        "Reset all preferences": "_reset_preferences",
+    }
+
+    def test_each_preference_is_the_one_its_entry_names(self):
+        from script.todo.todo import TODO
+
+        for entry in self.entries:
+            if entry.action == "_pref_edit":
+                title = TODO._PREF_CHOICES[entry.kwargs["key"]][0]
+                self.assertEqual(title, entry.key)
+
+
+class TestUpdateMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Update : les mises à jour de todo.json, puis la migration d'Odoo et
+    celle de Poetry, toujours les deux dernières."""
+
+    MENU = "prompt_execute_update"
+    EXPECTED = {
+        "Upgrade Odoo": "_upgrade_odoo",
+        "Upgrade Poetry": "upgrade_poetry",
+    }
+
+    def test_the_configured_updates_come_first(self):
+        first = self.menu.entries[0]
+        self.assertEqual(
+            (first.config_key, first.action, first.kwarg),
+            ("update_from_makefile", "execute_from_configuration", "instance"),
+        )
 
 
 class TestUpdateMenu(unittest.TestCase):
@@ -995,7 +1160,9 @@ class TestMenuLabels(unittest.TestCase):
 
         Une méthode dessine un menu quand elle appelle `fill_help_info` ou
         `_menu_header` : c'est par là que passe l'en-tête, donc c'est là que
-        l'étiquette manque ou non. Les deux fonctions elles-mêmes sortent."""
+        l'étiquette manque ou non. Les deux fonctions elles-mêmes sortent.
+        Un menu du registre s'ouvre par `navigate(self, …)`, qui les
+        appelle : sa méthode compte aussi."""
         trouves = set()
         for chemin in sorted(TODO_DIR.glob("*.py")):
             arbre = ast.parse(chemin.read_text(encoding="utf-8"))
@@ -1007,8 +1174,12 @@ class TestMenuLabels(unittest.TestCase):
                     for c in ast.walk(noeud)
                     if isinstance(c, ast.Call)
                     and isinstance(c.func, ast.Attribute)
+                } | {
+                    c.func.id
+                    for c in ast.walk(noeud)
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
                 }
-                if not {"fill_help_info", "_menu_header"} & appels:
+                if not {"fill_help_info", "_menu_header", "navigate"} & appels:
                     continue
                 if noeud.name in ("fill_help_info", "_menu_header"):
                     continue
@@ -1033,6 +1204,24 @@ class TestMenuLabels(unittest.TestCase):
     def test_the_vpn_submenu_leaves_a_crumb(self):
         """Le cas nommé : il était le seul menu invisible au contrôle."""
         self.assertIn("prompt_execute_vpn", self.labels)
+
+    def test_each_declared_menu_keeps_its_crumb(self):
+        """Un menu du registre garde l'étiquette de sa méthode, qui est son
+        `crumb` : le fil d'Ariane et la clé de télémétrie ne changent pas."""
+        from script.todo.todo import TODO
+        from script.todo.todo_telemetry import _declared_menus
+
+        declared = _declared_menus(TODO_DIR)
+        self.assertLessEqual(
+            {
+                "prompt_telemetry",
+                "prompt_configuration",
+                "prompt_execute_update",
+            },
+            set(declared),
+        )
+        for name, menu in declared.items():
+            self.assertEqual(TODO._MENU_LABELS.get(name), menu["crumb"], name)
 
     def test_no_stale_exemption(self):
         """Une exemption qui ne nomme plus un menu est à retirer."""
