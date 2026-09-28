@@ -16,6 +16,7 @@ dispatch racontent la même histoire.
 
 import ast
 import re
+import unicodedata
 import unittest
 from pathlib import Path
 
@@ -462,6 +463,85 @@ class TestLArbreDesMenus(unittest.TestCase):
         from script.todo.todo import TODO as CLASSE
 
         self.assertIn("prompt_execute_proxmox", CLASSE._MENU_LABELS)
+
+    def test_a_submenu_carries_the_entry_its_parent_shows(self):
+        # Le fil d'Ariane dit « Code », le menu Exécution montre « Code -
+        # Developer tools » : la page web cherche celle-ci pour y entrer.
+        # Écrite dans une f-string « [N] {t(…)} », dans une liste
+        # « choices », ou ajoutée par « choices.append ».
+        code = self._noeud("Code")
+        self.assertEqual(code["entry"], "Code - Developer tools")
+        deploy = self._noeud("Deploy")
+        [ssh] = [n for n in deploy["children"] if n["label"] == "SSH"]
+        self.assertEqual(ssh["entry"], "SSH (remote host)...")
+        [update] = [n for n in code["children"] if n["label"] == "Update"]
+        self.assertEqual(
+            update["entry"],
+            "Update - Update all developed staging source code",
+        )
+        # Deux menus « Actions » : leurs entrées les distinguent.
+        server = self._noeud("Git local server")
+        self.assertEqual(
+            [n["entry"] for n in server["children"]],
+            [
+                "Deploy a local git server (~/.git-server)",
+                "Deploy a production git server (/srv/git, root required)",
+            ],
+        )
+        # Une feuille n'en porte pas : son libellé est celui de son entrée.
+        self.assertNotIn("entry", self._noeud("Show code status"))
+        # Deux libellés calculés en tête du menu LLM : Search garde le sien,
+        # et une feuille que son menu ne nomme pas a une entrée vide.
+        llm = self._noeud("LLM")
+        self.assertEqual(
+            self._noeud("Search", llm)["entry"], "Search for a server…"
+        )
+        [gpt] = [
+            n
+            for n in llm["children"]
+            if n.get("method") == "_llm_gpt_catalogue"
+        ]
+        self.assertEqual(
+            (gpt["label"], gpt["entry"]), ("llm gpt catalogue", "")
+        )
+
+    def test_no_submenu_entry_is_a_sibling_leaf_label(self):
+        # La page répond à un menu l'entrée d'un sous-menu par ses lettres
+        # et ses chiffres : une feuille voisine qui s'y réduit lancerait sa
+        # commande au lieu d'ouvrir le sous-menu.
+        def reduit(libelle):
+            texte = unicodedata.normalize("NFD", libelle).lower()
+            return "".join(
+                c for c in texte if unicodedata.category(c)[0] in "LN"
+            )
+
+        def parcours(noeud):
+            feuilles = {
+                reduit(n["label"])
+                for n in noeud["children"]
+                if not n["is_menu"]
+            }
+            for enfant in noeud["children"]:
+                if enfant["is_menu"]:
+                    cle = reduit(enfant.get("entry", enfant["label"]))
+                    if cle:
+                        self.assertNotIn(cle, feuilles, enfant["label"])
+                    parcours(enfant)
+
+        parcours(self.arbre)
+
+    def test_a_help_line_names_its_entry_once(self):
+        # « [N] {t("…")} » dans une f-string ; un libellé calculé n'y entre
+        # pas, ni un numéro que la méthode écrit avec deux libellés.
+        from script.todo.todo_telemetry import _help_entries
+
+        func = ast.parse(
+            "def menu(self):\n"
+            "    print(f\"[1] {t('One')}\\n[2] {t('Two')}\\n[3] {nom}\")\n"
+            "    if autre:\n"
+            "        print(f\"[1] {t('Other')}\")\n"
+        ).body[0]
+        self.assertEqual(_help_entries(func), {2: "Two"})
 
 
 class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):

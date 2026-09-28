@@ -435,6 +435,8 @@ class TestTelemetryApi(ApiCase):
         )
         self.assertEqual(execute["path"], "TODO › Execute")
         self.assertTrue(execute["menu"])
+        # L'entrée qui ouvre le menu dans son parent, traduite.
+        self.assertEqual(execute["entry"], execute["label"])
         [leaf] = execute["children"]
         self.assertEqual(
             leaf,
@@ -443,6 +445,7 @@ class TestTelemetryApi(ApiCase):
                 "label": "Quitter",
                 "path": "TODO › Execute › Quit",
                 "menu": False,
+                "entry": "Quitter",
                 "children": [],
                 "section": todo_i18n.translate("Configuration", "fr"),
             },
@@ -450,6 +453,12 @@ class TestTelemetryApi(ApiCase):
         english = await self.get_json("/api/telemetry?lang=en")
         leaf = english["tree"]["children"][0]["children"][0]
         self.assertEqual(leaf["label"], "Quit")
+        # Une feuille que son menu ne nomme pas : une entrée vide, que la
+        # page ne cherche pas.
+        named = {"label": "leave", "is_menu": False, "children": []}
+        self.assertEqual(
+            server.localize({**named, "entry": ""}, "fr")["entry"], ""
+        )
 
     async def test_counts_come_from_the_telemetry_file(self):
         store = self.tmp / "home" / ".erplibre" / "todo_telemetry.json"

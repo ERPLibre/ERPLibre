@@ -169,6 +169,32 @@ def _choice_entries(func) -> list:
     return []
 
 
+def _help_entries(func) -> dict:
+    """{numéro: libellé} des entrées qu'un menu écrit dans une f-string, une
+    ligne « [N] {t("…")} » chacune : ce que le menu montre pour l'entrée N
+    quand il ne la tient pas d'une liste « choices ». Un libellé qui n'est
+    pas une clé littérale (une valeur calculée) n'y entre pas, ni un numéro
+    que la méthode écrit avec deux libellés (deux menus en une méthode) :
+    rien ne dit lequel ouvre l'entrée."""
+    found = {}
+    for node in ast.walk(func):
+        if not isinstance(node, ast.JoinedStr):
+            continue
+        for before, value in zip(node.values, node.values[1:]):
+            if not (
+                isinstance(before, ast.Constant)
+                and isinstance(value, ast.FormattedValue)
+            ):
+                continue
+            number = re.search(r"\[(\d+)\] ?$", str(before.value))
+            label = _str_of(value.value)
+            if number and label:
+                found.setdefault(int(number[1]), set()).add(label)
+    return {
+        num: labels.pop() for num, labels in found.items() if len(labels) == 1
+    }
+
+
 def _dispatch(func) -> dict:
     """{numéro: (nom_de_méthode, kwargs)} depuis « status == "N": self.X(...) ».
     Les kwargs LITTÉRAUX (ex. dry_run=True) sont capturés pour pouvoir rejouer
@@ -439,7 +465,13 @@ def build_code_tree(todo_path=None) -> dict | None:
     """Construit l'arbre des menus/commandes EN LISANT le code de todo.py
     (AST). Chaque menu (méthode de _MENU_LABELS) devient un nœud ; ses branches
     « status == N » deviennent des sous-menus (si la cible est un menu) ou des
-    commandes (feuilles). None si l'analyse échoue."""
+    commandes (feuilles). Un sous-menu porte aussi `entry`, le libellé de
+    l'entrée qui l'ouvre dans son parent, quand le code du parent l'écrit
+    (liste « choices » ou ligne « [N] {t("…")} ») : son `label` est son
+    segment du fil d'Ariane, que le parent montre souvent autrement. Une
+    feuille dont le parent n'écrit pas le libellé prend le nom de sa méthode
+    et un `entry` vide : aucune entrée du menu ne lui répond. None si
+    l'analyse échoue."""
     p = Path(todo_path) if todo_path else (Path(__file__).parent / "todo.py")
     todo_dir = p.parent  # todo.json est à côté de todo.py
     try:
@@ -482,29 +514,29 @@ def build_code_tree(todo_path=None) -> dict | None:
         func = methods[method]
         disp = _dispatch(func)
         centries = _choice_entries(func)
+        shown = _help_entries(func)
         for num in sorted(disp):
             target, kwargs = disp[num]
+            entry = centries[num - 1] if 0 <= num - 1 < len(centries) else None
+            # Ce que le menu montre pour l'entrée N, quand son code l'écrit.
+            said = (entry and entry["label"]) or shown.get(num)
             if target in labels:  # sous-menu
-                node["children"].append(build(target))
+                child = build(target)
+                if said:
+                    child["entry"] = said
+                node["children"].append(child)
             else:  # commande (feuille) exécutable
-                entry = (
-                    centries[num - 1] if 0 <= num - 1 < len(centries) else None
-                )
-                lab = (
-                    entry["label"]
-                    if entry and entry["label"]
-                    else target.lstrip("_").replace("_", " ")
-                )
-                node["children"].append(
-                    {
-                        "label": lab,
-                        "is_menu": False,
-                        "children": [],
-                        "method": target,
-                        "kwargs": kwargs,
-                        "section": entry["section"] if entry else None,
-                    }
-                )
+                leaf = {
+                    "label": said or target.lstrip("_").replace("_", " "),
+                    "is_menu": False,
+                    "children": [],
+                    "method": target,
+                    "kwargs": kwargs,
+                    "section": entry["section"] if entry else None,
+                }
+                if not said:
+                    leaf["entry"] = ""
+                node["children"].append(leaf)
         # Menus bâtis par « choices » (get_config + append) sans dispatch
         # littéral « status == "N" » : Code, Update, Git, Database…
         if not disp:
@@ -512,7 +544,9 @@ def build_code_tree(todo_path=None) -> dict | None:
                 _choices_children(func, todo_dir) or []
             ):
                 if tmethod in labels:  # une entrée qui ouvre un sous-menu
-                    node["children"].append(build(tmethod))
+                    child = build(tmethod)
+                    child["entry"] = lab
+                    node["children"].append(child)
                 else:
                     node["children"].append(
                         {

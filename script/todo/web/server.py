@@ -227,8 +227,11 @@ def localize(node, lang, parent=None) -> dict:
 
     `key` : libellé brut ; `label` : sa traduction dans `lang` ; `path` : le
     chemin de télémétrie, les clés jointes par « › » comme TODO les
-    enregistre ; `menu` ; `section` traduite pour une feuille qui en a une.
-    Ni méthode ni arguments : la page ne lance rien.
+    enregistre ; `menu` ; `entry` : la traduction du libellé que le menu
+    parent montre pour ce nœud, `label` à défaut, vide pour une feuille
+    qu'il ne nomme pas ; `section` traduite pour une feuille qui en a une.
+    Ni méthode ni arguments : `entry` suffit à trouver le nœud dans le menu
+    de son parent.
     """
     key = node["label"]
     path = key if parent is None else f"{parent} › {key}"
@@ -237,6 +240,7 @@ def localize(node, lang, parent=None) -> dict:
         "label": todo_i18n.translate(key, lang),
         "path": path,
         "menu": node["is_menu"],
+        "entry": todo_i18n.translate(node.get("entry", key), lang),
         "children": [localize(c, lang, path) for c in node["children"]],
     }
     if node.get("section"):
