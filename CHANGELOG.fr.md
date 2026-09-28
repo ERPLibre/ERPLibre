@@ -216,6 +216,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
 - Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
 - L'interface web de TODO borne ses connexions et ses ouvertures : une connexion vaut 12 heures à partir de son code à usage unique, jamais prolongée, et 16 au plus vivent à la fois, la moins récemment servie oubliée au-delà ; une page expirée dit de rouvrir l'interface depuis TODO [4], tandis qu'une session déjà ouverte dans un onglet continue. Une sixième session neuve en une minute est refusée avec l'attente en secondes ; se rattacher à une session et le worker de réserve ne comptent pas. Les codes de connexion refusés ne comptent dans aucune limite : un bon code est toujours accepté
+- La relance de TODO après une erreur ne construit plus de ligne de commande shell : elle lance le python du venv ERPLibre avec ses arguments en liste et l'environnement que pose `activate`, si bien qu'un argument qui porte une espace, un `;` ou un `$` passe tel quel au lieu d'être découpé ou interprété
 
 
 ## [1.8.0] - 2026-09-04

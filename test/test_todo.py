@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -197,6 +198,64 @@ class TestOnDirSelected(unittest.TestCase):
         todo = TODO()
         todo.on_dir_selected("/some/path")
         self.assertEqual(todo.dir_path, "/some/path")
+
+
+class TestRestartScript(unittest.TestCase):
+    """La relance de TODO, dans un répertoire temporaire qui porte un venv
+    vide : os.execve et os.execv sont des doubles, rien ne remplace le
+    processus du test."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(tmp.name)
+        os.makedirs(os.path.join(VENV_ERPLIBRE, "bin"))
+
+    def restart(self, argv):
+        """`restart_script` sous `argv` ; rend les doubles d'os.execve et
+        d'os.execv. `self.flushed` dit, à chaque appel d'os.execve, si la
+        sortie standard avait été vidée depuis sa dernière écriture."""
+        todo = TODO.__new__(TODO)  # sans __init__, qui lit le checkout
+        env = {"PATH": "/usr/bin", "PYTHONHOME": "/forged"}
+        out, self.flushed = MagicMock(), []
+        out.write.side_effect = lambda text: out.flush.reset_mock()
+        with (
+            patch.object(sys, "argv", argv),
+            patch.dict(os.environ, env),
+            patch.object(os, "execve") as execve,
+            patch.object(os, "execv") as execv,
+            redirect_stdout(out),
+        ):
+            execve.side_effect = lambda *a: self.flushed.append(
+                out.flush.called
+            )
+            todo.restart_script("forged error")
+        return execve, execv
+
+    def test_the_argv_list_is_passed_as_is_without_a_shell(self):
+        argv = ["script/todo/todo.py", "--name", "a b; touch forged", "$HOME"]
+        execve, execv = self.restart(argv)
+        execv.assert_not_called()
+        venv = os.path.abspath(VENV_ERPLIBRE)
+        python = os.path.join(venv, "bin", "python")
+        [(path, args, env)] = [call.args for call in execve.call_args_list]
+        self.assertEqual((path, args), (python, [python, *argv]))
+        self.assertEqual(env["VIRTUAL_ENV"], venv)
+        self.assertEqual(env["PATH"], f"{venv}/bin{os.pathsep}/usr/bin")
+        self.assertNotIn("PYTHONHOME", env)
+        # Ce qui a été imprimé part avant que le processus ne soit remplacé.
+        self.assertEqual(self.flushed, [True])
+        with open(ERROR_LOG_PATH, encoding="utf-8") as error:
+            self.assertEqual(error.read(), "forged error")
+
+    def test_an_error_already_logged_restarts_nothing(self):
+        # Une erreur qui revient à chaque démarrage ne boucle pas.
+        with open(ERROR_LOG_PATH, "w", encoding="utf-8") as error:
+            error.write("first error")
+        execve, execv = self.restart(["script/todo/todo.py"])
+        execve.assert_not_called()
+        execv.assert_not_called()
 
 
 class TestExecuteFromConfiguration(unittest.TestCase):
@@ -620,9 +679,7 @@ class TestListeCommandesClaude(unittest.TestCase):
 
     def test_etat_de_chaque_commande(self):
         sortie = self._lister("n", "n")
-        self.assertIn(
-            todo_i18n.t("up to date"), self._ligne(sortie, "commit")
-        )
+        self.assertIn(todo_i18n.t("up to date"), self._ligne(sortie, "commit"))
         self.assertIn("(+0 -1)", self._ligne(sortie, "todo_plan_max"))
         self.assertIn(
             todo_i18n.t("command not installed"),

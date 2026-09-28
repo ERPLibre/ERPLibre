@@ -6394,30 +6394,37 @@ class TODO(
         )
 
     def restart_script(self, last_error):
+        """Relance TODO par le python du venv ERPLibre, argv tel quel.
+
+        `os.execve` reçoit la LISTE `[python, *sys.argv]`, jamais une ligne
+        de shell : un argument qui porte une espace, un « ; » ou un « $ »
+        arrive tel quel. L'environnement est celui que pose `activate` :
+        VIRTUAL_ENV, PATH préfixé du `bin` du venv, PYTHONHOME retiré.
+        `last_error` est d'abord écrite dans ERROR_LOG_PATH ; ce fichier déjà
+        là, ou le venv absent, rien n'est relancé : une erreur qui revient à
+        chaque démarrage ne relance pas TODO en boucle. La sortie standard
+        est vidée avant `os.execve`, qui jetterait ce qu'elle retient encore
+        quand elle va dans un tube. Un échec de la relance s'affiche, et la
+        méthode rend la main."""
         print(f"🤖 {t('Reboot TODO ...')}")
-        # os.execv(sys.executable, ['python'] + sys.argv)
-        # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
         if os.path.exists(VENV_ERPLIBRE) and not os.path.exists(
             ERROR_LOG_PATH
         ):
-            # TODO mettre check import suivant ne vont pas planter
             try:
                 with open(ERROR_LOG_PATH, "w") as f_file:
                     f_file.write(str(last_error))
-                    pass  # The file is created and closed here, no content is written
-                print(
-                    f"Try to reopen process with before :\nsource ./{VENV_ERPLIBRE}/bin/activate && exec python "
-                    + " ".join(sys.argv)
+                venv = os.path.abspath(VENV_ERPLIBRE)
+                python = os.path.join(venv, "bin", "python")
+                argv = [python, *sys.argv]
+                env = dict(os.environ, VIRTUAL_ENV=venv)
+                env.pop("PYTHONHOME", None)
+                path = os.environ.get("PATH")
+                env["PATH"] = os.path.join(venv, "bin") + (
+                    os.pathsep + path if path else ""
                 )
-                os.execv(
-                    "/bin/bash",
-                    [
-                        "/bin/bash",
-                        "-c",
-                        f"source ./{VENV_ERPLIBRE}/bin/activate && exec python "
-                        + " ".join(sys.argv),
-                    ],
-                )
+                print(f"Try to reopen process with:\n{shlex.join(argv)}")
+                sys.stdout.flush()
+                os.execve(python, argv, env)
             except Exception as e:
                 print("Error detect at first execution.")
                 print(e)
