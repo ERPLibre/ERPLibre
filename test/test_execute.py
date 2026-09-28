@@ -915,10 +915,10 @@ class TestRedactForStorage(unittest.TestCase):
         mot guetté ne le cache pas au contrôle rapide : la ligne se masque
         comme le mot seul la masquerait, sur une ligne ou dans un texte."""
         for ligne in (
-            "paṡsword inventeWX",
-            "tȯken: inventeYZ",
-            "Beȧrer inventeAB",
-            "a\npaṡswd = inventeCD\nb",
+            "pas\u0307sword inventeWX",
+            "to\u0307ken: inventeYZ",
+            "Bea\u0307rer inventeAB",
+            "a\npas\u0307swd = inventeCD\nb",
         ):
             with self.subTest(ligne=ligne):
                 self.assertNotIn("invente", redact_for_storage(ligne))
