@@ -14,7 +14,8 @@
 # passer en silence — un test vert sans son dépôt ne prouve rien. Ce script
 # l'annonce donc avant de commencer.
 #
-#   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [fichiers...]
+#   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [--failed]
+#                                  [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
 #

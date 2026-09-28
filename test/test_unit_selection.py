@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le choix des fichiers de tests par --changed.
+"""Le choix des fichiers de tests par --changed et --failed.
 
 Chaque cas bâtit un petit dépôt git jetable : le graphe se lit dans le
 code et la liste des fichiers vient de git, les deux doivent être réels.
@@ -137,6 +137,25 @@ class TestLesFichiersModifies(Depot):
     def test_une_reference_inconnue_leve(self):
         with self.assertRaises(ValueError):
             sel.fichiers_modifies(self.racine, "n-existe-pas")
+
+
+class TestLesEchecsRetenus(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.chemin = os.path.join(tmp.name, "cache", "echecs")
+
+    def test_absent_rien_n_est_retenu(self):
+        self.assertEqual(sel.echecs_retenus(self.chemin), set())
+
+    def test_un_echec_entre_un_succes_sort_le_reste_demeure(self):
+        sel.retenir_echecs(self.chemin, passes=[], echoues=["a.py", "b.py"])
+        # c.py n'a pas tourné, b.py passe : seul a.py, non relancé, reste.
+        retenus = sel.retenir_echecs(
+            self.chemin, passes=["b.py"], echoues=["c.py"]
+        )
+        self.assertEqual(retenus, {"a.py", "c.py"})
+        self.assertEqual(sel.echecs_retenus(self.chemin), {"a.py", "c.py"})
 
 
 if __name__ == "__main__":

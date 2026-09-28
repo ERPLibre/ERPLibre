@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Choisit les fichiers de tests concernés par un changement.
+"""Choisit les fichiers de tests concernés par un changement ou un échec.
+
+Deux sélections, que `run_unit_test.py` combine par union :
 
  - `concernes()` : les fichiers de tests qui DÉPENDENT d'un fichier modifié.
    Le graphe se lit dans le code, sans rien importer : chaque fichier Python
@@ -20,6 +22,10 @@
    fichiers les désigne tous. Un test de trop coûte une seconde, un test
    oublié laisse passer ce qu'il devait arrêter.
 
+ - `echecs_retenus()` / `retenir_echecs()` : les fichiers en échec au
+   passage précédent, gardés dans un fichier hors du dépôt. Un fichier
+   quitte la liste en passant ; un fichier arrêté par Ctrl+C n'a rien
+   prouvé et garde son état.
 """
 
 import ast
@@ -192,4 +198,29 @@ def concernes(racine, tests, modifies):
         test = os.path.normpath(test)
         if test in modifies or graphe.atteignables(test) & modifies:
             retenus.append(test)
+    return retenus
+
+
+def echecs_retenus(chemin):
+    """Les noms de fichiers en échec au passage précédent."""
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            return {ligne.strip() for ligne in fh if ligne.strip()}
+    except OSError:
+        return set()
+
+
+def retenir_echecs(chemin, passes, echoues):
+    """Met à jour la liste : `echoues` y entrent, `passes` en sortent, les
+    autres gardent leur état."""
+    retenus = (echecs_retenus(chemin) - set(passes)) | set(echoues)
+    try:
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        provisoire = chemin + ".tmp"
+        with open(provisoire, "w", encoding="utf-8") as fh:
+            for nom in sorted(retenus):
+                fh.write(nom + "\n")
+        os.replace(provisoire, chemin)
+    except OSError:
+        pass
     return retenus

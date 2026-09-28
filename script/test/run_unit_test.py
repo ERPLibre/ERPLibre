@@ -7,12 +7,13 @@ Appelé par `run_unit_test.sh`, qui vérifie l'environnement et dresse la
 liste des fichiers ; ce module ne choisit rien, il exécute ce qu'on lui
 donne :
 
-    run_unit_test.py [--tui] [--changed[=REF]] [--jobs N] [--timeout S]
-                     -- fichier...
+    run_unit_test.py [--tui] [--changed[=REF]] [--failed] [--jobs N]
+                     [--timeout S] -- fichier...
 
 `--changed` ne garde que les fichiers de tests qu'un fichier modifié depuis
-REF (HEAD par défaut : ce qui n'est pas commité) peut toucher. Le choix
-est fait par unit_selection.py, qui en décrit les règles.
+REF (HEAD par défaut : ce qui n'est pas commité) peut toucher ; `--failed`,
+ceux qui ont échoué au passage précédent. Les deux s'additionnent. Le
+choix est fait par unit_selection.py, qui en décrit les règles.
 
 Chaque fichier tourne dans son propre processus, `--jobs` à la fois, les
 plus LONGS d'abord d'après les durées du passage précédent (DURATIONS) : la
@@ -82,6 +83,9 @@ DURATIONS = os.path.join(
     "erplibre",
     "run_unit_test.durations",
 )
+
+# Les fichiers en échec au passage précédent, pour --failed.
+ECHECS = os.path.join(os.path.dirname(DURATIONS), "run_unit_test.failed")
 
 # Les commandes refusées et le code d'échec que leur appelant attend.
 REFUSEES = {"sudo": 1, "pkexec": 1, "doas": 1, "virsh": 1, "ssh": 255}
@@ -447,22 +451,32 @@ def tui(lanceur):
     return bilan(lanceur)
 
 
-def choisir(fichiers, reference):
-    """Les `fichiers` que --changed retient.
+def choisir(fichiers, reference, echecs):
+    """Les `fichiers` que --changed et --failed retiennent, par union.
 
-    Annonce la sélection et ce qui l'a produite ; rend None si la
+    Annonce chaque sélection et ce qui l'a produite ; rend None si la
     référence git est illisible."""
-    try:
-        modifies = unit_selection.fichiers_modifies(".", reference)
-    except ValueError as exc:
-        print(f"  {ROUGE}--changed : {exc}{FIN}")
-        return None
-    concernes = unit_selection.concernes(".", fichiers, modifies)
-    print(
-        f"  --changed ({reference}) : {len(modifies)} fichier(s)"
-        f" modifié(s) → {len(concernes)} fichier(s) de tests"
-    )
-    return [f for f in fichiers if os.path.normpath(f) in set(concernes)]
+    choisis = set()
+    if reference:
+        try:
+            modifies = unit_selection.fichiers_modifies(".", reference)
+        except ValueError as exc:
+            print(f"  {ROUGE}--changed : {exc}{FIN}")
+            return None
+        concernes = unit_selection.concernes(".", fichiers, modifies)
+        print(
+            f"  --changed ({reference}) : {len(modifies)} fichier(s)"
+            f" modifié(s) → {len(concernes)} fichier(s) de tests"
+        )
+        choisis |= set(concernes)
+    if echecs:
+        noms = unit_selection.echecs_retenus(ECHECS)
+        echoues = [f for f in fichiers if os.path.basename(f) in noms]
+        print(
+            f"  --failed : {len(echoues)} fichier(s) en échec la dernière fois"
+        )
+        choisis |= {os.path.normpath(f) for f in echoues}
+    return [f for f in fichiers if os.path.normpath(f) in choisis]
 
 
 def main(argv=None):
@@ -470,6 +484,7 @@ def main(argv=None):
     parser.add_argument("fichiers", nargs="+")
     parser.add_argument("--tui", action="store_true")
     parser.add_argument("--changed", nargs="?", const="HEAD", metavar="REF")
+    parser.add_argument("--failed", action="store_true")
     parser.add_argument(
         "--jobs", type=int, default=int(os.environ.get("UNIT_JOBS") or 0)
     )
@@ -480,8 +495,8 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
     fichiers = args.fichiers
-    if args.changed:
-        fichiers = choisir(fichiers, args.changed)
+    if args.changed or args.failed:
+        fichiers = choisir(fichiers, args.changed, args.failed)
         if fichiers is None:
             return 2
         if not fichiers:
@@ -503,6 +518,13 @@ def main(argv=None):
         if code is None:
             code = en_ligne(lanceur)
         ecrire_durees(lanceur.fichiers)
+        unit_selection.retenir_echecs(
+            ECHECS,
+            passes=[f.nom for f in lanceur.fichiers if f.etat == OK],
+            echoues=[
+                f.nom for f in lanceur.fichiers if f.etat in (ECHEC, DELAI)
+            ],
+        )
         return code
     finally:
         lanceur.arreter()

@@ -36,6 +36,11 @@ test_unit_file:
 test_unit_changed:
 	./script/test/run_unit_test.sh --changed=$(or $(REF),HEAD)
 
+# Les seuls fichiers en échec au passage précédent.
+.PHONY: test_unit_failed
+test_unit_failed:
+	./script/test/run_unit_test.sh --failed
+
 .PHONY: open_test_coverage
 open_test_coverage:
 	-$(BROWSER) htmlcov/index.html
