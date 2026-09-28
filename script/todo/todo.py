@@ -1039,8 +1039,10 @@ class TODO(
         laisse le hub et ses sessions. Un processus sorti avant
         `desktop.SPAWN_GRACE` s n'a pas ouvert de fenêtre : sorti à 0, il a
         ouvert la page dans le navigateur à la place (le repli de
-        `desktop.main`), sinon il a échoué ; la fin de son journal s'affiche
-        dans les deux cas. Sans affichage graphique, la page s'ouvre comme
+        `desktop.main`) ; sorti en `desktop.NO_BROWSER`, aucun navigateur ne
+        l'a prise, et la page s'ouvre alors comme par [2], qui en donne le
+        lien ; sinon il a échoué. La fin de son journal s'affiche dans les
+        trois cas. Sans affichage graphique, la page s'ouvre comme
         par [2], qui dit pourquoi ; sans pywebview ou sans moteur web
         aussi, après les commandes d'installation, que rien ne lance. Dans
         une session web, ou dans un TODO lancé depuis l'une d'elles, [4]
@@ -1089,6 +1091,13 @@ class TODO(
                     " page in the browser instead. Last lines of its log:"
                 )
             )
+        elif code == desktop.NO_BROWSER:
+            print(
+                t(
+                    "The desktop window did not open, and no browser took the"
+                    " page. Last lines of its log:"
+                )
+            )
         else:
             print(
                 t("The desktop window did not start. Last lines of its log:")
@@ -1096,6 +1105,8 @@ class TODO(
         print(f"   {desktop.log_path(new_path)}")
         for line in desktop.log_tail(new_path):
             print(f"   {line}")
+        if code == desktop.NO_BROWSER:
+            self._todo_telemetry_web()
 
     # Préférences éditables depuis le menu Configuration : clé, libellé, et
     # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :

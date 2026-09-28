@@ -17,9 +17,11 @@ par un jeton que chaque fenêtre tire pour elle seule, et seulement tant que
 la fenêtre montre une page du hub.
 Sans pywebview ou sans moteur web, `main` le dit, donne les commandes
 d'installation (`install_hint`), que rien ne lance, et ouvre la page dans
-le navigateur ; sans affichage, il dit seulement « no display on this
-host » et ouvre le navigateur. En ligne de commande (messages anglais, sans
-traduction, comme le lanceur) :
+le navigateur ; sans affichage, il dit « no display on this host » et
+donne l'adresse de la page, puis, sur un terminal, le tunnel SSH et le lien
+de connexion, sans navigateur. Il sort en NO_BROWSER quand un affichage
+existe mais qu'aucun navigateur n'a pris la page. En ligne de commande
+(messages anglais, sans traduction, comme le lanceur) :
 
     python -m script.todo.web.desktop open [--view V] [--root R]
     python -m script.todo.web.desktop install [--root R]
@@ -75,6 +77,10 @@ QT_LIBRARIES = {
     "zypper": ["libxkbfile1", "libxcb-cursor0"],
 }
 QT_BINDINGS = ("PyQt6", "PySide6", "PyQt5", "PySide2")
+# Code de sortie de `main` quand, sans fenêtre, aucun navigateur n'a pris la
+# page alors qu'un affichage existe : le menu de TODO en donne alors le
+# lien. Distinct de 0, 1 et 2, que `main` rend déjà.
+NO_BROWSER = 4
 # Secondes pendant lesquelles le menu attend le processus de la fenêtre :
 # sorti avant, il n'a pas ouvert de fenêtre, et son journal dit pourquoi.
 SPAWN_GRACE = 1.5
@@ -597,9 +603,12 @@ def _falls_back(exc) -> bool:
 
 def _browser(root, view, lang) -> int:
     """La page dans le navigateur (`launcher.open_page`), le repli de
-    `main`. Le lien de connexion, et le tunnel sans affichage, ne
-    s'impriment que sur un terminal : lancée par le menu ou par le bureau,
-    la sortie de ce processus va dans un journal."""
+    `main`. L'adresse s'imprime toujours ; le lien de connexion, et le
+    tunnel sans affichage, seulement sur un terminal : lancée par le menu
+    ou par le bureau, la sortie de ce processus va dans un journal. Rend 0
+    quand un navigateur a pris la page, ou sans affichage, où l'adresse est
+    tout ce qui s'offre ; NO_BROWSER quand un affichage existe mais
+    qu'aucun navigateur ne l'a prise ; 1 si le hub ne démarre pas."""
     try:
         page = launcher.open_page(root, view=view, lang=lang)
     except launcher.LaunchError as exc:
@@ -613,7 +622,10 @@ def _browser(root, view, lang) -> int:
             port = urlsplit(page.url).port
             print(f"tunnel: ssh -L {port}:127.0.0.1:{port} <this host>")
         print(f"link: {page.link}")
-    return 0
+    if page.opened or page.headless:
+        return 0
+    print("no browser took the page", file=sys.stderr)
+    return NO_BROWSER
 
 
 def main(argv=None) -> int:
@@ -646,10 +658,12 @@ def main(argv=None) -> int:
             print(exc.log_tail, file=sys.stderr)
         if not _falls_back(exc):
             return 1
-        if exc.kind != "display":
-            print("install it with:", file=sys.stderr)
-            for line in install_hint(args.root):
-                print(f"  {line}", file=sys.stderr)
+        if exc.kind == "display":
+            print("printing the page's address instead", file=sys.stderr)
+            return _browser(args.root, args.view, lang)
+        print("install it with:", file=sys.stderr)
+        for line in install_hint(args.root):
+            print(f"  {line}", file=sys.stderr)
     print("opening the page in the browser instead", file=sys.stderr)
     return _browser(args.root, args.view, lang)
 

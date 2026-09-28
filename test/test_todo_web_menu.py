@@ -429,6 +429,24 @@ class TestDesktopWindow(MenuCase):
             ],
         )
 
+    def test_a_window_process_no_browser_took_gives_the_link(self):
+        # Sorti en NO_BROWSER : ni fenêtre ni navigateur ; le journal dit
+        # pourquoi, puis [2] donne le lien de la page.
+        log = desktop.log_path(new_path)
+        log.write_text("no browser took the page\n")
+        proc = Mock(wait=Mock(return_value=desktop.NO_BROWSER))
+        lines, _, _, web = self.window(return_value=proc)
+        web.assert_called_once_with()
+        self.assertEqual(
+            lines,
+            [
+                "⚠️ The desktop window did not open, and no browser took the"
+                " page. Last lines of its log:",
+                f"   {log}",
+                "   no browser took the page",
+            ],
+        )
+
     @unittest.skipIf(os.geteuid() == 0, "desktop.spawn refuse root")
     def test_a_window_process_that_ends_at_once_shows_its_log(self):
         python = os.path.join(self.tmp, "python")

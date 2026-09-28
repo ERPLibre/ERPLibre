@@ -31,8 +31,9 @@ todo_web_stop:
 
 # La même page dans une fenêtre native (pywebview), sur le même hub. Sans
 # pywebview ou sans moteur web, dit quoi installer et ouvre le navigateur ;
-# sans affichage, dit seulement « no display on this host » et ouvre le
-# navigateur. Fermer la fenêtre laisse le hub et ses sessions.
+# sans affichage, dit « no display on this host » et donne l'adresse de la
+# page, le tunnel SSH et le lien de connexion, sans navigateur. Fermer la
+# fenêtre laisse le hub et ses sessions.
 .PHONY: todo_desktop
 todo_desktop:
 	./.venv.erplibre/bin/python -m script.todo.web.desktop open

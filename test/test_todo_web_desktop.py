@@ -779,12 +779,13 @@ class TestOpenWindow(unittest.TestCase):
             self.assertEqual(desktop.main(["open", "--view", "X"]), 2)
         self.assertEqual(self.webview.windows, [])
 
-    def fallback(self, *argv, lang="en", out=None):
+    def fallback(self, *argv, lang="en", out=None, headless=False):
         """`main(["open", *argv])` quand il retombe sur le navigateur :
         rend les lignes de sa sortie d'erreur, puis celles de sa sortie
-        (`out`, un tuyau par défaut) ; le lanceur est simulé."""
+        (`out`, un tuyau par défaut) ; le lanceur est simulé, et la page
+        s'ouvre dans un navigateur, ou, `headless`, n'a pas d'affichage."""
         page = launcher.OpenResult(
-            ORIGIN + "/", ORIGIN + "/#login=forged", True, False
+            ORIGIN + "/", ORIGIN + "/#login=forged", not headless, headless
         )
         out = out or io.StringIO()
         err = io.StringIO()
@@ -830,16 +831,16 @@ class TestOpenWindow(unittest.TestCase):
         )
         self.assertEqual(self.webview.windows, [])
 
-    def test_without_a_display_main_opens_the_browser(self):
+    def test_without_a_display_main_prints_the_address(self):
+        # Aucun navigateur ne s'ouvre sans affichage : l'adresse, et sur un
+        # terminal le tunnel et le lien, sont ce que `main` offre.
         os.environ.pop("DISPLAY")
-        lines, _ = self.fallback("--root", str(REPO))
+        lines, out = self.fallback("--root", str(REPO), headless=True)
         self.assertEqual(
             lines,
-            [
-                "no display on this host",
-                "opening the page in the browser instead",
-            ],
+            ["no display on this host", "printing the page's address instead"],
         )
+        self.assertEqual(out, [f"url: {ORIGIN}/"])
         self.assertEqual(self.webview.windows, [])
 
     def test_an_engine_that_does_not_load_opens_the_browser(self):
@@ -933,6 +934,19 @@ class TestBrowser(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(err, ["the web hub did not start", "forged failure"])
         self.assertEqual(out, [])
+
+    def test_a_display_without_a_browser_is_no_success(self):
+        # Un affichage, mais aucun navigateur n'a pris la page : NO_BROWSER,
+        # que le menu de TODO lit pour en donner le lien lui-même.
+        page = launcher.OpenResult(
+            ORIGIN + "/", ORIGIN + "/#login=forged", False, False
+        )
+        code, err, out = self.browse(io.StringIO(), return_value=page)
+        self.assertEqual(code, desktop.NO_BROWSER)
+        self.assertEqual(err, ["no browser took the page"])
+        self.assertEqual(out, [f"url: {ORIGIN}/"])
+        # Aucun des codes que `main` rend déjà.
+        self.assertNotIn(desktop.NO_BROWSER, (0, 1, 2))
 
     def test_without_a_display_a_terminal_gets_the_tunnel(self):
         page = launcher.OpenResult(
