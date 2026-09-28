@@ -443,13 +443,19 @@ class TestJobControl(unittest.TestCase):
 # terminal de contrôle, et aucun contrôle de tâches : la commande de argv[1]
 # partage le groupe de l'enfant. Muette si argv[2] vaut « quiet » ; argv[3]
 # vaut « cli » pour `ctrl_c_stops_command`, comme todo.py, et « script »
-# sinon. Dit son code, celui de `run_end`, le nombre et la dernière de ses
-# lignes, si le terminal fait l'écho, puis « ask », et répète la ligne
-# qu'il lit ensuite : il vit encore.
+# sinon. Sous REFUSE_KILL, `terminate` et `kill` lèvent PermissionError,
+# comme sur le processus d'un autre compte. Dit son code, celui de
+# `run_end`, le nombre et la dernière de ses lignes, si le terminal fait
+# l'écho, puis « ask », et répète la ligne qu'il lit ensuite : il vit
+# encore.
 CLI_CHILD = r"""
-import fcntl, signal, sys, termios
+import fcntl, os, signal, subprocess, sys, termios
 signal.signal(signal.SIGINT, signal.default_int_handler)
 fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+if os.environ.get("REFUSE_KILL"):
+    def refuse(process):
+        raise PermissionError(1, "Operation not permitted")
+    subprocess.Popen.terminate = subprocess.Popen.kill = refuse
 from script.execute.execute import Execute
 from script.todo import todo_i18n
 todo_i18n.use_lang("en")
@@ -554,6 +560,17 @@ class TestCtrlCInTheCli(unittest.TestCase):
         self.assertIsNone(self.child.poll(), "Ctrl+C ended the CLI")
         time.sleep(0.1)
 
+    def waits(self):
+        """Attend que l'enfant dorme dans l'attente de sa commande
+        (`wait4`, que /proc/<pid>/wchan nomme do_wait)."""
+        deadline = time.monotonic() + 10
+        while True:
+            with open(f"/proc/{self.child.pid}/wchan") as f:
+                if f.read() == "do_wait":
+                    return
+            self.assertLess(time.monotonic(), deadline, "never waits")
+            time.sleep(0.01)
+
     def goes_on(self):
         """L'enfant lit encore une ligne après la commande, et finit bien ;
         rend ce qu'il a écrit jusqu'à la répéter."""
@@ -620,6 +637,26 @@ class TestCtrlCInTheCli(unittest.TestCase):
         self.ctrl_c()
         self.assertIn(b"rc=-9 end=-9 ", self.until(b"ask"))
         self.goes_on()
+
+    def test_a_fourth_ctrl_c_leaves_a_refused_kill_whose_pipe_is_read(self):
+        # Sa sortie ailleurs, la commande a fermé le tube : il ne reste que
+        # son attente. `terminate` et `kill` refusés, le troisième Ctrl+C
+        # lève dans cette attente, et le quatrième lève KeyboardInterrupt
+        # chez l'appelant, qui sinon attendrait sans fin.
+        away = "exec >/dev/null 2>&1; "
+        ignores = "trap '' INT; " + ARMED + away
+        self.spawn(ignores + "while :; do sleep 0.01; done", REFUSE_KILL="1")
+        self.waits()
+        self.ctrl_c()
+        self.ctrl_c()
+        self.ctrl_c()
+        # Popen.wait laisse un quart de seconde à la commande avant de
+        # relever KeyboardInterrupt, puis l'appelant attend de nouveau.
+        self.waits()
+        os.write(self.master, b"\x03")
+        self.until(b"KeyboardInterrupt")
+        self.assertEqual(self.child.wait(10), -signal.SIGINT)
+        self.assertNotIn(b"ask", self.pending)
 
     def test_the_output_written_while_it_stops_is_read_to_the_end(self):
         # 200 000 lignes, vingt fois le tube : sans lecteur, la commande

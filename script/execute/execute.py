@@ -436,17 +436,18 @@ class _CtrlC:
     soit connu, un Ctrl+C n'est que compté. Aucun ne lève dans la boucle
     qui lit la sortie de la commande, où une exception perdrait ou
     doublerait un morceau de cette sortie, sauf un seul (`raised`) : le
-    troisième, ou le premier qui le suit une fois `process` connu, tant
-    que la lecture n'est pas finie (`reading`). Un descendant qui ignore
-    SIGINT et SIGTERM garde le tube ouvert après la mort de la commande,
-    et la lecture n'attendrait plus que lui.
+    troisième, ou le premier qui le suit une fois `process` connu, pendant
+    la lecture de la sortie ou l'attente de la commande (`raisable`). Un
+    descendant qui ignore SIGINT et SIGTERM garde le tube ouvert après la
+    mort de la commande, et la lecture n'attendrait plus que lui ; un
+    `kill` refusé laisse l'attente sans fin, même une fois le tube fermé.
     """
 
     def __init__(self):
         self.caught = False
         self.process = None
         self.count = 0
-        self.reading = True
+        self.raisable = True
         self.raised = False
         self.tty_attrs = None
 
@@ -499,7 +500,7 @@ class _CtrlC:
                 self.process.kill()
         except OSError:
             pass  # un processus d'un autre compte : le terminal l'a atteint
-        if self.count >= 3 and self.reading and not self.raised:
+        if self.count >= 3 and self.raisable and not self.raised:
             self.raised = True
             raise KeyboardInterrupt
 
@@ -741,7 +742,7 @@ class Execute:
                     # perdait, la sortie n'étant vidée qu'au saut de ligne.
                     sys.stdout.flush()
 
-            ctrl_c.reading = False
+            ctrl_c.raisable = False
             pending += decoder.decode(b"", True)
             if pending:
                 if not quiet:
@@ -749,7 +750,11 @@ class Execute:
                     sys.stdout.flush()
                 retenir(pending)
 
+            # Tube fermé, un `kill` refusé laisserait cette attente sans
+            # fin : un Ctrl+C en lève comme de la lecture.
+            ctrl_c.raisable = True
             process.wait()
+            ctrl_c.raisable = False
             exit_code = process.returncode
             if process.returncode != 0 and not quiet:
                 print(f"Command returned error code: {process.returncode}")
@@ -763,22 +768,23 @@ class Execute:
             if not quiet:
                 print(f"Error: Command '{redact_secrets(command)}' not found.")
         except Exception as e:
-            ctrl_c.reading = False
+            ctrl_c.raisable = False
             exit_code = 1
             if not quiet:
                 print(f"An error occurred: {redact_secrets(str(e))}")
         except KeyboardInterrupt:
-            # Levé une fois par `_CtrlC` (`raised`) : la commande est tuée,
-            # et le tube qu'un descendant garde ouvert n'est plus lu. Un
-            # Ctrl+C de plus pendant l'attente lève encore et sort d'ici,
-            # comme sans `_CtrlC` : un `kill` refusé la laisserait sans fin.
+            # Levé une fois par `_CtrlC` (`raised`), pendant la lecture ou
+            # l'attente : la commande est tuée, et le tube qu'un descendant
+            # garde ouvert n'est plus lu. Un Ctrl+C de plus pendant
+            # l'attente lève encore et sort d'ici, comme sans `_CtrlC` : un
+            # `kill` refusé la laisserait sans fin.
             if not ctrl_c.raised:
                 raise
             ctrl_c.raised = False
             process.stdout.close()
             exit_code = process.wait()
         finally:
-            ctrl_c.reading = False
+            ctrl_c.raisable = False
             if tty is not None:
                 try:
                     _set_foreground(tty, os.getpgrp())
