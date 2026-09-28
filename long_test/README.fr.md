@@ -316,6 +316,140 @@ qu'un checkout local contient. À dire avant de lancer : un correctif encore
 sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
 ce que ce correctif répare.
 
+## setops_banc.py — le moteur tient-il sur une grappe jetable ?
+
+Le moteur Set-OPS se pilote depuis le menu de TODO, et ses gestes y sont gardés.
+Rien ne dit qu'ils tiennent contre une vraie grappe, du gabarit doré au rasage.
+
+**Le terrain se désigne, il ne se devine pas.** `deep_proxmox.py` sert au
+développement ; le cas réel est une grappe qu'on possède. Le banc prend un
+terrain en argument, pour que la même épreuve serve à la répétition puis au cas
+réel — et il ne touche à aucun labo : il pose SON pont et SON utilisateur d'API,
+et n'en modifie aucun.
+
+**Un seul étage suffit**, et c'est le moins profond : un Proxmox imbriqué est un
+Proxmox, et chaque étage de plus tourne 15 à 30 fois plus lentement. Le banc
+éprouve le moteur, pas l'imbrication.
+
+**Deux dépôts, pas un.** Le moteur joint sa grappe par la voûte d'un UNDERLAY,
+chez l'hébergeur, et refuse sans le lien qui le désigne : un banc à un seul
+dépôt ne peut donc pas matérialiser de VM. Le banc pose une paire de dossiers
+frères, `SITE-…` pour la fabric et `OPS-…` pour le plan, et monte les deux par
+les liens que le moteur lit PAR LEUR CHEMIN — son playbook ne regarde ni
+`SETOPS_UNDERLAY` ni `SETOPS_INSTANCE`. Il refuse si l'un des deux noms est déjà
+pris, lien brisé compris : ce lien est celui d'un exploitant, et le remplacer
+dirigerait son geste suivant vers l'écosystème du banc, dont le rasage détruit
+tout ce que l'inventaire nomme. Il pose aussi une clé de voûte par dépôt, et les
+défait EN DERNIER : une clé ouvre la voûte qui porte le jeton, et c'est le jeton
+qui joint la grappe.
+
+**Le plan s'active chirurgicalement.** Le modèle livré déclare tous ses serveurs
+`planifie`, et l'inventaire ne range parmi les actifs que ce qui porte
+exactement `actif` : un plan recopié sans la bascule produit un inventaire sans
+aucun hôte actif, et la matérialisation comme le rasage sortent alors à zéro
+sans avoir rien fait — ce qui se lit comme une réussite. Le banc bascule un
+attribut d'une ligne et rend le reste du fichier tel quel, commentaires
+compris.
+
+**Deux passes, et elles ne prouvent pas la même chose.** La première porte le
+jeton par l'ENVIRONNEMENT, ce que le playbook du moteur accepte en repli : elle
+valide la GRAPPE. La seconde le chiffre dans la voûte de l'écosystème de banc et
+rejoue la boucle par les portes de TODO : elle valide LE CHEMIN DE TODO, dont
+l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
+
+Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
+`20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
+avant qu'elle mesure.
+
+**Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
+gardées** — préalables dits avant toute création, terrain, pont libre, forme du
+jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
+pour être prouvés : un lancement réel refuse en le disant, plutôt que d'exécuter
+du code que rien n'a vérifié.
+
+Le menu des épreuves longues le propose aussi, et la confirmation vient du
+même endroit que pour les autres : le plan ne demande rien, puisqu'il ne crée
+rien, et une invite qu'on apprend à confirmer sans lire ne protège plus rien le
+jour où elle compte. Le terrain s'y NOMME — le banc déduit le dernier étage posé
+par le labo, ce qui sert à la répétition, là où une grappe qu'on possède se
+désigne.
+
+```
+./long_test/setops_banc.py --dry-run          # le plan, rien de créé
+./long_test/setops_banc.py --detruire         # défaire ce qui a été posé
+./long_test/setops_banc.py --terrain <alias>  # une grappe qu'on possède
+./long_test/setops_banc.py --passe env        # jeton par l'environnement
+```
+
+**Le secret du jeton ne traverse que la mémoire.** La grappe ne l'affiche qu'une
+fois, à sa création, et jamais plus. Il ne va qu'à deux endroits — l'environnement
+d'un geste, ou l'outil qui le chiffre, atteint par l'entrée standard — et nulle
+part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libérés
+et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
+journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
+ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
+**Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
+démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse
+ne répond : leur passerelle reste muette, ils ne joignent que leurs voisines de
+la même étiquette, et la panne ressemble à un pare-feu. Le banc pose donc une
+interface ROUTÉE par zone, et il ne calcule pas lesquelles — le moteur dérive
+l'étiquette et la passerelle de chaque zone du seul index du plan, et le banc les
+LIT dans l'inventaire généré. Une seconde dérivation écrite dans le banc
+divergerait de la sienne le jour où sa règle change, et le banc routerait alors
+des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeurs
+fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
+flotte injoignable, et rien dans l'inventaire ne dit laquelle.
+
+**Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
+procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
+configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
+un réglage — elle remplace le matériel virtuel sous un système qui croit
+connaître le sien. Les noms d'interfaces prédictibles dérivent du chemin PCI,
+donc la machine perd son réseau ; les chemins de disques bougent ; et chacune des
+pannes qui suivent ressemble à autre chose qu'à sa cause. Une machine naît `q35`
+ou ne le sera jamais proprement. Le banc MESURE donc : une VM du nom déclaré
+est-elle là, est-elle convertie en modèle, et porte-t-elle le matériel que la
+procédure exige — la vérification même que la procédure appelle « le dernier
+moment où la correction est gratuite ». Une clé absente compte comme non
+conforme, la configuration n'imprimant que ce qui diffère du défaut et les
+défauts étant justement ce que la procédure refuse. Chaque refus nomme la
+procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
+est décrite.
+
+**Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
+outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
+non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée
+sans élévation, une commande ne dit pas « refusé » : elle dit « commande
+introuvable », ou se plaint de son canal de communication — un diagnostic qui
+envoie chercher un démon en panne là où il n'y a qu'un compte sans droits. Le
+banc mesure une fois si la session est déjà root et si `sudo` répond SANS mot de
+passe : une session sans terminal ne peut pas en taper un, et un sudo interactif
+n'échoue pas, il ATTEND jusqu'à la borne. Chaque commande porte ensuite cette
+décision, et l'exécuteur refuse de rien jouer sans elle.
+
+**La boucle est celle du moteur, pas une recomposition de ses morceaux.**
+`reconstruire` enchaîne les flux, la création de la flotte, l'attente,
+l'amorçage du socle puis le déploiement par couches. L'ordre y compte : sans les
+flux D'ABORD, le dossier des règles dérivées est vide et le socle pose un
+pare-feu en refus par défaut SANS AUCUNE RÈGLE — la flotte monte, ssh répond
+depuis l'administration, et tout le reste est mur, une panne qui ne se voit ni à
+la création ni dans un code de retour. Le banc appelle donc la cible et lit son
+verdict ; il ne réordonne pas les étapes, ce qui est la façon de laisser tomber
+celle-là le jour où le moteur en ajoute une.
+
+L'amorçage dérive SES hôtes du plan — l'autorité de certification d'abord, puis
+ce qui s'enrôle auprès d'elle — et le banc lit cette liste au lieu d'en écrire
+une. Deux hôtes du modèle livré sont donc activés, et le reste de la flotte
+demeure planifié : `reconstruire` ne crée que les VM des hôtes ACTIFS.
+
+Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
+qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit
+doré, puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
+chronométrés — et, encore à relever, ~45 min pour la reconstruction et ~2 min
+pour le rasage. Un plan qui donnerait les deux du même ton promettrait un temps
+que personne n'a chronométré.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un

@@ -15,6 +15,7 @@ rien pendant tout ce temps.
 """
 
 import os
+import shlex
 
 import click
 
@@ -31,6 +32,7 @@ SCRIPTS_DEFAISABLES = (
     "deep_qemu.py",
     "qemu_cache.py",
     "install_nixos.py",
+    "setops_banc.py",
 )
 
 # Le répertoire des tests longs, à la racine du dépôt.
@@ -127,6 +129,12 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("ERPLibre on NixOS: run it")},
+            {"prompt_description": t("Set-OPS bench: plan only (dry-run)")},
+            {
+                "prompt_description": t(
+                    "Set-OPS bench: a conforming template is required"
+                )
+            },
             {"prompt_description": t("Undo what the descent created")},
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
@@ -137,6 +145,11 @@ class LongTestMenuMixin:
             "6": "",
             "7": "--hors-ligne",
         }
+        # LE BANC N'EST PAS UNE DESCENTE : ni profondeur, ni hôte de départ.
+        # Il prend un TERRAIN, qui est une grappe déjà là — celle du dernier
+        # étage posé, ou une qu'on possède. Ses entrées sont donc traitées à
+        # part, comme celles du cache.
+        banc = {"10": "--dry-run", "11": ""}
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -158,6 +171,10 @@ class LongTestMenuMixin:
             if status in cache:
                 self._longtest_run("qemu_cache.py", cache[status])
                 continue
+            if status in banc:
+                args = banc[status] + self._longtest_terrain_banc()
+                self._longtest_run("setops_banc.py", args)
+                continue
             if status in scripts:
                 script, demander = scripts[status]
                 if script == "install_nixos.py":
@@ -174,10 +191,24 @@ class LongTestMenuMixin:
                 if status in ("1", "3", "8"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "10":
+            elif status == "12":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
+
+    def _longtest_terrain_banc(self):
+        """L'argument de terrain du banc : celui qu'on nomme, ou rien.
+
+        NOMMÉ PLUTÔT QUE DEVINÉ, quand on veut : le banc déduit le dernier étage
+        posé par le labo, ce qui sert à la répétition ; une grappe qu'on possède,
+        elle, se désigne. Une réponse vide laisse le banc déduire, et son plan
+        dit alors lequel il a pris — avant de rien créer.
+        """
+        nomme = input(
+            f"\n{t('Terrain (ssh alias, empty = the last floor laid): ')}"
+        )
+        nomme = (nomme or "").strip()
+        return f" --terrain {shlex.quote(nomme)}" if nomme else ""
 
     def _longtest_defaire(self):
         """Défaire, chaque pile la sienne.
