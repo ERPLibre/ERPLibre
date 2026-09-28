@@ -12365,8 +12365,7 @@ TRANSLATIONS = {
     },
     "mail_err_token_revoked": {
         "fr": (
-            "autorisation révoquée : le compte doit être autorisé de"
-            " nouveau —"
+            "autorisation révoquée : le compte doit être autorisé de nouveau —"
         ),
         "en": "authorisation revoked: the account must be authorised again —",
     },
@@ -12422,8 +12421,7 @@ TRANSLATIONS = {
             " rafraîchissement est demandé."
         ),
         "en": (
-            "This provider accepts OAuth only: a refresh token is asked"
-            " for."
+            "This provider accepts OAuth only: a refresh token is asked for."
         ),
     },
     "mail_account_token": {
@@ -12460,8 +12458,7 @@ TRANSLATIONS = {
             " refusée"
         ),
         "en": (
-            "the redirection does not match the request: authorisation"
-            " refused"
+            "the redirection does not match the request: authorisation refused"
         ),
     },
     "mail_err_authorization_refused": {
@@ -12522,8 +12519,7 @@ TRANSLATIONS = {
     },
     "mail_trash_source_kept": {
         "fr": (
-            "le serveur n'a pas pu vider la source : le message y reste"
-            " barré"
+            "le serveur n'a pas pu vider la source : le message y reste barré"
         ),
         "en": (
             "the server could not clear the source: the message stays"
@@ -12693,6 +12689,18 @@ TRANSLATIONS = {
         "fr": "Deux comptes sociaux portent le même nom :",
         "en": "Two social accounts share the same name:",
     },
+    "social_err_cache_unreadable": {
+        "fr": "Cache social illisible :",
+        "en": "Social cache unreadable:",
+    },
+    "social_err_cache_not_open": {
+        "fr": "Le cache social n'est pas ouvert.",
+        "en": "The social cache is not open.",
+    },
+    "social_err_unknown_feed_fields": {
+        "fr": "Champs de fil inconnus :",
+        "en": "Unknown feed fields:",
+    },
     "social_preset_note_mastodon": {
         "fr": (
             "Jeton créé dans Préférences › Développement › Nouvelle"
@@ -12730,8 +12738,7 @@ TRANSLATIONS = {
     "mail_move_across_unconfirmed": {
         "fr": ("Dépôt non confirmé : le message reste ici. Cible visée :"),
         "en": (
-            "Deposit not confirmed: the message stays here. Intended"
-            " target:"
+            "Deposit not confirmed: the message stays here. Intended target:"
         ),
     },
     "mail_err_empty_failed": {
