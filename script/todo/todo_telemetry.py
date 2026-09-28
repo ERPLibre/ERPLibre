@@ -135,6 +135,13 @@ def _str_of(node) -> str | None:
     return None
 
 
+def _letterless(label) -> bool:
+    """Vrai pour un libellé qui n'a ni lettre ni chiffre : ce qui reste
+    d'une f-string calculée à l'affichage, ses parties littérales, qu'aucune
+    entrée de menu ne montre telles quelles. Faux pour None."""
+    return label is not None and not any(c.isalnum() for c in label)
+
+
 def _choice_entries(func) -> list:
     """Entrées NUMÉROTÉES d'un menu « choices = [...] », dans l'ordre : chaque
     commande est {« label », « section »}, la section étant le dernier marqueur
@@ -165,7 +172,7 @@ def _choice_entries(func) -> list:
                 lab = d.get("prompt_description") or d.get(
                     "prompt_description_key"
                 )
-                if lab is not None and not any(c.isalnum() for c in lab):
+                if _letterless(lab):
                     lab = None
                 entries.append({"label": lab, "section": section})
             return entries
@@ -361,9 +368,10 @@ def _choices_children(func, todo_dir):
     liste de (label, méthode, kwargs) dans l'ordre affiché, ou None si le motif
     ne s'applique pas. Les entrées de CONFIG rejouent via
     execute_from_configuration ; les entrées APPENDÉES via leur méthode. Une
-    entrée appendée dont le libellé n'a ni lettre ni chiffre, le reste d'une
-    f-string calculée à l'affichage, n'est pas une commande : aucune entrée
-    ne le montre. Elle garde sa place, qui situe les suivantes."""
+    entrée appendée au libellé sans lettre ni chiffre (`_letterless`) n'est
+    pas une commande quand aucune méthode ne lui répond : aucune entrée ne
+    montre ce libellé. Elle compte pourtant dans la liste : le dispatch
+    comptant depuis la fin, sa place situe les entrées qui la précèdent."""
 
     def _dict_label(dnode):
         d = {}
@@ -441,7 +449,7 @@ def _choices_children(func, todo_dir):
     for j, lab in enumerate(appended):
         pos = n_config + j  # 0-based dans la liste globale (stable)
         method = len_disp.get(n_total - 1 - pos)  # None si non mappé
-        if any(c.isalnum() for c in lab):
+        if method is not None or not _letterless(lab):
             children.append((lab, method, {}))
     return children
 

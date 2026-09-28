@@ -542,6 +542,43 @@ class TestLArbreDesMenus(unittest.TestCase):
             [("Add", "add", {}), ("Delete", "delete", {})],
         )
 
+    def test_a_computed_label_counts_for_the_entries_before_it(self):
+        # Le dispatch compte depuis la fin : l'entrée calculée entre Add et
+        # Delete situe Add, à « len(choices) - 2 ». Une méthode qui lui
+        # répond en fait une commande, gardée avec le libellé qui en reste.
+        from script.todo.todo_telemetry import _choices_children
+
+        source = (
+            "def menu(self):\n"
+            "    choices = []\n"
+            '    choices.append({"prompt_description": t("Add")})\n'
+            "    for nom in noms:\n"
+            '        choices.append({"prompt_description": f"{nom} — {x}"})\n'
+            '    choices.append({"prompt_description": t("Delete")})\n'
+            "    if status == str(len(choices) - 2):\n"
+            "        self.add()\n"
+            "    elif status == str(len(choices)):\n"
+            "        self.delete()\n"
+        )
+        func = ast.parse(source).body[0]
+        self.assertEqual(
+            _choices_children(func, TODO_DIR),
+            [("Add", "add", {}), ("Delete", "delete", {})],
+        )
+        func = ast.parse(
+            source
+            + "    elif status == str(len(choices) - 1):\n"
+            + "        self.show()\n"
+        ).body[0]
+        self.assertEqual(
+            _choices_children(func, TODO_DIR),
+            [
+                ("Add", "add", {}),
+                (" — ", "show", {}),
+                ("Delete", "delete", {}),
+            ],
+        )
+
     def test_a_label_that_is_not_a_string_leaves_the_tree_built(self):
         # « t(5) » n'est pas un libellé : son entrée garde son numéro, sans
         # libellé, et l'arbre se bâtit.
