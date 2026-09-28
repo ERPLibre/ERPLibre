@@ -2571,6 +2571,14 @@ TRANSLATIONS = {
         " son journal :",
         "en": "❌ The desktop window did not start. Last lines of its log:",
     },
+    "The desktop window did not open: its process opened the page in the"
+    " browser instead. Last lines of its log:": {
+        "fr": "⚠️ La fenêtre bureautique ne s'est pas ouverte : son processus"
+        " a ouvert la page dans le navigateur à la place. Dernières lignes de"
+        " son journal :",
+        "en": "⚠️ The desktop window did not open: its process opened the page"
+        " in the browser instead. Last lines of its log:",
+    },
     "Configuration": {
         "fr": "🔩 Configuration",
         "en": "🔩 Configuration",

@@ -1037,8 +1037,10 @@ class TODO(
         La fenêtre vit dans un processus détaché (`desktop.spawn`) : ce
         menu reste utilisable pendant qu'elle est ouverte, et la fermer
         laisse le hub et ses sessions. Un processus sorti avant
-        `desktop.SPAWN_GRACE` s n'a pas ouvert de fenêtre : la fin de son
-        journal s'affiche. Sans affichage graphique, la page s'ouvre comme
+        `desktop.SPAWN_GRACE` s n'a pas ouvert de fenêtre : sorti à 0, il a
+        ouvert la page dans le navigateur à la place (le repli de
+        `desktop.main`), sinon il a échoué ; la fin de son journal s'affiche
+        dans les deux cas. Sans affichage graphique, la page s'ouvre comme
         par [2], qui dit pourquoi ; sans pywebview ou sans moteur web
         aussi, après les commandes d'installation, que rien ne lance. Dans
         une session web, ou dans un TODO lancé depuis l'une d'elles, [4]
@@ -1063,7 +1065,7 @@ class TODO(
         try:
             launcher.ensure_running(new_path)
             proc = desktop.spawn(new_path, view="telemetry", lang=get_lang())
-            proc.wait(desktop.SPAWN_GRACE)
+            code = proc.wait(desktop.SPAWN_GRACE)
         except subprocess.TimeoutExpired:
             print(t("Desktop window launched. If it does not show, its log:"))
             print(f"   {desktop.log_path(new_path)}")
@@ -1080,7 +1082,17 @@ class TODO(
         except Exception as exc:
             print(f"{t('Command failed: ')}{exc}")
             return
-        print(t("The desktop window did not start. Last lines of its log:"))
+        if code == 0:
+            print(
+                t(
+                    "The desktop window did not open: its process opened the"
+                    " page in the browser instead. Last lines of its log:"
+                )
+            )
+        else:
+            print(
+                t("The desktop window did not start. Last lines of its log:")
+            )
         print(f"   {desktop.log_path(new_path)}")
         for line in desktop.log_tail(new_path):
             print(f"   {line}")

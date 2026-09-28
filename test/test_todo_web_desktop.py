@@ -49,7 +49,6 @@ TOKEN = secrets.token_urlsafe(32)
 # Secondes que `get_current_url` de pywebview 5.4 attend `loaded`.
 LOADED_WAIT = 20
 as_user = unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")
-as_user = unittest.skipIf(os.geteuid() == 0, "le lanceur refuse root")
 
 
 class FakeEvent:
@@ -342,18 +341,11 @@ class TestBridge(unittest.TestCase):
         )
         self.assertTrue(all(map(inspect.isfunction, functions)))
         self.assertIs(_resolve(window, "set_title"), functions[0])
-        # Sans js_api, un chemin pointé venu de la page n'atteint rien.
-        for name in (
-            "_window.gui.os.system",
-            "set_title.__globals__.__setitem__",
-            "__class__.__init__.__globals__.__setitem__",
-        ):
-            self.assertIsNone(_resolve(window, name), name)
 
     def test_the_title_is_one_clean_line(self):
         window = FakeWindow("", "", {})
         set_title, _ = self.on_the_hub(window)
-        set_title(TOKEN, "TODO › Execute\n\x1b[31m‮Forged " + "x" * 300)
+        set_title(TOKEN, "TODO › Execute\n\x1b[31m\u202eForged " + "x" * 300)
         set_title(TOKEN, " \t")
         [shown, empty] = window.titles
         self.assertTrue(shown.startswith("TODO › Execute [31m Forged xx"))
@@ -471,6 +463,7 @@ class TestBridge(unittest.TestCase):
 
     def test_a_failed_page_check_leaves_the_bridge_closed_and_logged(self):
         # Sortie d'erreur du processus de la fenêtre : son journal.
+        base = self.notify_send('echo >> "${0%/*}/calls"')
         window = FakeWindow("", "", {})
         _, notify = desktop.bridge(window, ORIGIN, TOKEN)
         err = io.StringIO()
@@ -484,6 +477,7 @@ class TestBridge(unittest.TestCase):
             err.getvalue(), "desktop window: page check failed: RuntimeError\n"
         )
         self.assertFalse(notify(TOKEN, "TODO", "body"))
+        self.assertFalse((base / "calls").exists())
 
     def test_a_foreign_document_reaches_nothing_before_before_load(self):
         """Le canal qui porte les fonctions exposées écoute toute page dès
@@ -500,10 +494,14 @@ class TestBridge(unittest.TestCase):
     def test_the_page_notifies_once_a_second_at_most(self):
         base = self.notify_send('echo >> "${0%/*}/calls"')
         _, notify = self.on_the_hub(FakeWindow("", "", {}))
-        with patch.object(desktop, "NOTIFY_INTERVAL", 0.2):
+        clock = [1000.0]
+        with patch.object(
+            desktop.time, "monotonic", side_effect=lambda: clock[0]
+        ):
             self.assertTrue(notify(TOKEN, "TODO", "first"))
+            clock[0] += desktop.NOTIFY_INTERVAL / 2
             self.assertFalse(notify(TOKEN, "TODO", "too soon"))
-            time.sleep(0.25)
+            clock[0] += desktop.NOTIFY_INTERVAL / 2
             self.assertTrue(notify(TOKEN, "TODO", "later"))
         self.assertEqual((base / "calls").read_text(), "\n\n")
 
@@ -577,12 +575,19 @@ class TestOpenWindow(unittest.TestCase):
         self.assertTrue(window.url.startswith(f"http://127.0.0.1:{port}/#"))
         self.assertEqual(_login(port, code), 200)
         self.assertEqual(window.title, "ERPLibre TODO")
-        # Deux fonctions exposées par leur nom, aucun js_api.
+        # Deux fonctions exposées par leur nom, aucun js_api : un chemin
+        # pointé venu de la page n'atteint rien.
         self.assertNotIn("js_api", window.options)
         self.assertEqual(
             sorted(func.__name__ for func in window.exposed),
             ["notify", "set_title"],
         )
+        for name in (
+            "_window.gui.os.system",
+            "set_title.__globals__.__setitem__",
+            "__class__.__init__.__globals__.__setitem__",
+        ):
+            self.assertIsNone(_resolve(window, name), name)
         # Le jeton du fragment ouvre le pont de cette fenêtre ; aucun
         # fichier ne le porte, et la fenêtre suivante en tire un autre.
         set_title = _resolve(window, "set_title")
@@ -762,6 +767,51 @@ class TestOpenWindow(unittest.TestCase):
         self.assertIn("-m script.todo.web.desktop open", out)
 
 
+class TestBrowser(unittest.TestCase):
+    """`_browser`, le repli de `main`, le lanceur simulé."""
+
+    def browse(self, out, **launch):
+        """Code de `_browser`, puis les lignes de ses sorties d'erreur et
+        standard ; `launch` configure `launcher.open_page`."""
+        err = io.StringIO()
+        with (
+            patch.object(launcher, "open_page", **launch) as open_page,
+            contextlib.redirect_stderr(err),
+            contextlib.redirect_stdout(out),
+        ):
+            code = desktop._browser(REPO, "telemetry", "en")
+        open_page.assert_called_once_with(REPO, view="telemetry", lang="en")
+        return code, err.getvalue().splitlines(), out.getvalue().splitlines()
+
+    def test_a_hub_that_does_not_start_is_reported(self):
+        failure = launcher.LaunchError(
+            "the web hub did not start", "forged failure"
+        )
+        code, err, out = self.browse(Terminal(), side_effect=failure)
+        self.assertEqual(code, 1)
+        self.assertEqual(err, ["the web hub did not start", "forged failure"])
+        self.assertEqual(out, [])
+
+    def test_without_a_display_a_terminal_gets_the_tunnel(self):
+        page = launcher.OpenResult(
+            ORIGIN + "/", ORIGIN + "/#login=forged", False, True
+        )
+        code, err, out = self.browse(Terminal(), return_value=page)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, [])
+        self.assertEqual(
+            out,
+            [
+                f"url: {ORIGIN}/",
+                "tunnel: ssh -L 43817:127.0.0.1:43817 <this host>",
+                f"link: {ORIGIN}/#login=forged",
+            ],
+        )
+        # Dans un journal, ni tunnel ni lien.
+        _, _, out = self.browse(io.StringIO(), return_value=page)
+        self.assertEqual(out, [f"url: {ORIGIN}/"])
+
+
 @as_user
 class TestSpawn(unittest.TestCase):
     def setUp(self):
@@ -777,9 +827,13 @@ class TestSpawn(unittest.TestCase):
             f'echo "$TODO_LANG" > {out}/lang\n'
             f"readlink /proc/$$/fd/0 > {out}/stdin\n"
             "echo log-marker\n"
+            "echo err-marker >&2\n"
             f"touch {out}/done\n"
             "exec sleep 30",
         )
+        # Le journal d'un lancement précédent.
+        log = desktop.log_path(REPO)
+        log.write_text("stale-marker\n")
         with patch.object(launcher, "venv_python", return_value=str(fake)):
             proc = desktop.spawn(REPO, lang="en")
         self.addCleanup(proc.wait)
@@ -794,9 +848,9 @@ class TestSpawn(unittest.TestCase):
         # Sa propre session : Ctrl+C dans le terminal de TODO ne l'atteint
         # pas.
         self.assertEqual(os.getsid(proc.pid), proc.pid)
-        log = desktop.log_path(REPO)
+        # Vidé à ce lancement, il reçoit ses deux sorties.
         self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
-        self.assertEqual(log.read_text(), "log-marker\n")
+        self.assertEqual(log.read_text(), "log-marker\nerr-marker\n")
         # Fermée, la fenêtre ne reste pas zombie : personne ne l'attend ici.
         proc.kill()
         self.assertTrue(_wait(lambda: proc.returncode is not None))
@@ -804,10 +858,11 @@ class TestSpawn(unittest.TestCase):
     def test_root_or_a_bad_argument_starts_nothing(self):
         with (
             patch("os.geteuid", return_value=0),
-            patch.object(desktop.subprocess, "Popen") as popen,
+            patch.object(desktop.subprocess, "Popen") as as_root,
             self.assertRaisesRegex(launcher.LaunchError, "root"),
         ):
             desktop.spawn(REPO)
+        as_root.assert_not_called()
         with patch.object(desktop.subprocess, "Popen") as popen:
             with self.assertRaises(ValueError):
                 desktop.spawn(REPO, view="x --root /")

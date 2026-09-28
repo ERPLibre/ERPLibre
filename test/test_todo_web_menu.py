@@ -406,6 +406,30 @@ class TestDesktopWindow(MenuCase):
             ],
         )
 
+    def test_a_window_process_that_opened_the_browser_says_so(self):
+        # Sorti à 0 avant SPAWN_GRACE s : sans fenêtre, `desktop.main` a
+        # ouvert la page dans le navigateur, et le journal dit pourquoi.
+        log = desktop.log_path(new_path)
+        log.write_text(
+            "pywebview did not start: RuntimeError: forged\n"
+            "opening the page in the browser instead\n"
+        )
+        proc = Mock(wait=Mock(return_value=0))
+        lines, _, _, web = self.window(return_value=proc)
+        proc.wait.assert_called_once_with(desktop.SPAWN_GRACE)
+        web.assert_not_called()
+        self.assertEqual(
+            lines,
+            [
+                "⚠️ The desktop window did not open: its process opened the"
+                " page in the browser instead. Last lines of its log:",
+                f"   {log}",
+                "   pywebview did not start: RuntimeError: forged",
+                "   opening the page in the browser instead",
+            ],
+        )
+
+    @unittest.skipIf(os.geteuid() == 0, "desktop.spawn refuse root")
     def test_a_window_process_that_ends_at_once_shows_its_log(self):
         python = os.path.join(self.tmp, "python")
         with open(python, "w") as script:

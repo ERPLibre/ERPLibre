@@ -30,14 +30,17 @@ todo_web_stop:
 	./.venv.erplibre/bin/python -m script.todo.web.launcher stop
 
 # La même page dans une fenêtre native (pywebview), sur le même hub. Sans
-# pywebview, sans moteur web ou sans affichage, dit quoi installer et ouvre
-# le navigateur. Fermer la fenêtre laisse le hub et ses sessions.
+# pywebview ou sans moteur web, dit quoi installer et ouvre le navigateur ;
+# sans affichage, dit seulement « no display on this host » et ouvre le
+# navigateur. Fermer la fenêtre laisse le hub et ses sessions.
 .PHONY: todo_desktop
 todo_desktop:
 	./.venv.erplibre/bin/python -m script.todo.web.desktop open
 
 # Entrée « ERPLibre TODO » de ce checkout dans le menu des applications du
-# bureau (~/.local/share/applications, 0600) : elle lance todo_desktop.
+# bureau, un fichier 0600 sous $XDG_DATA_HOME/applications, sinon sous
+# ~/.local/share/applications : elle lance le python de .venv.erplibre,
+# « -m script.todo.web.desktop open », depuis la racine du checkout.
 .PHONY: todo_desktop_install
 todo_desktop_install:
 	./.venv.erplibre/bin/python -m script.todo.web.desktop install
