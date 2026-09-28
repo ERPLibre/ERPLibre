@@ -223,7 +223,13 @@ class TestLeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
-            for nom, corps in (stubs or {}).items():
+            # Le PATH ci-dessous remplace celui de l'appelant : sans doublure,
+            # « sudo » serait le vrai, qui demande un mot de passe ou élève
+            # sans rien dire. Même en --dry-run, le script lit sous sudo
+            # (« test -d » de l'ESP, « dpkg -C ») : la doublure exécute donc
+            # la commande avec les droits de l'utilisateur, jamais plus.
+            stubs = {"sudo": 'exec "$@"', **(stubs or {})}
+            for nom, corps in stubs.items():
                 (bin_dir / nom).write_text(f"#!/bin/bash\n{corps}\n")
                 (bin_dir / nom).chmod(0o755)
             osrel = pathlib.Path(tmp) / "os-release"
