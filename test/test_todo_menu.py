@@ -1926,11 +1926,24 @@ class TestPremiereEntreeJoignable(unittest.TestCase):
         return source[start : source.index(fin, start)]
 
     def test_update_ne_soustrait_pas_deux_fois(self):
+        """Le menu Update joue ses entrées par le repli partagé, et ce repli
+        joue le rang 1 : c'est lui que la double soustraction perdait."""
         corps = self._repli(
             "prompt_execute_update", "def _update_odoo_migration"
         )
-        self.assertIn("int_cmd = int(status)\n", corps)
-        self.assertNotIn("int_cmd = int(status) - 1", corps)
+        self.assertIn("_menu_dispatch_extra(", corps)
+
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        joues = []
+        todo.execute_from_configuration = joues.append
+        premiere = {"prompt_description": "Banc - premiere"}
+        self.assertTrue(todo._menu_dispatch_extra([premiere], "1"))
+        self.assertEqual(joues, [premiere])
 
     def test_code_ne_soustrait_pas_deux_fois(self):
         corps = self._repli("prompt_execute_code", "_GIT_HOOKS = (")
