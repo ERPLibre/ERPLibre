@@ -208,6 +208,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In a web session's task history, cancelling a countdown from the page is logged as the default answer that TODO takes, as Ctrl+D in the terminal, and no longer as a cancelled question
 - On the TODO page, the hidden answer field no longer sends on the Enter that ends an input method composition, as the other fields already did
 - On the TODO page, a telemetry reread that returns after a newer one no longer brings back the older code stamp, which could show the code-change banner for up to 10 s
+- In a web session, the rest of a menu entry label written on two lines no longer shows a second time among the menu's notes, under the entry's button that already carries it
 
 ## Removed
 

@@ -208,6 +208,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans l'historique des tâches d'une session web, annuler un compte à rebours depuis la page se journalise comme la réponse par défaut que TODO prend, comme Ctrl+D au terminal, et non plus comme une question annulée
 - Dans la page de TODO, le champ de réponse masquée n'envoie plus sur l'Entrée qui finit une composition de la méthode de saisie, comme les autres champs déjà
 - Dans la page de TODO, une relecture de la télémétrie revenue après une plus récente ne ramène plus l'ancienne empreinte du code, qui pouvait montrer la bannière de code modifié jusqu'à 10 s
+- Dans une session web, la suite du libellé d'une entrée de menu écrit sur deux lignes ne paraît plus une seconde fois parmi les notes du menu, sous le bouton de l'entrée qui la porte déjà
 
 ## Retiré
 

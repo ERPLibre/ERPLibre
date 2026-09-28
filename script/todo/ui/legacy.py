@@ -275,18 +275,24 @@ def _menu_of(text, choices) -> dict:
     return {"items": items, "crumbs": crumbs, "sections": sections}
 
 
-def _screen_notes(text) -> list:
+def _screen_notes(text, items=()) -> list:
     """Les lignes de `text`, le texte d'un menu, que ses entrées ne disent
     pas, sans leurs blancs : une ligne d'état, une note. Ni fil d'Ariane,
-    ni section, ni entrée, ni la ligne « Command: » de l'en-tête de TODO,
-    dans la langue de la session, ni une ligne sans mot, comme l'invite
-    « : »."""
+    ni section, ni entrée, ni la suite d'un libellé de `items` écrit sur
+    plusieurs lignes, que le bouton de l'entrée montre déjà, ni la ligne
+    « Command: » de l'en-tête de TODO, dans la langue de la session, ni une
+    ligne sans mot, comme l'invite « : »."""
     header = t("Command:")
+    rest = {
+        line.strip()
+        for item in items
+        for line in str(item["label"]).splitlines()[1:]
+    }
     return [
         line.strip()
         for line in text.splitlines()
         if re.search(r"\w", line)
-        and line.strip() != header
+        and line.strip() not in (header, *rest)
         and not (CRUMB.match(line) or SECTION.match(line) or ENTRY.match(line))
     ]
 
@@ -317,7 +323,7 @@ def _question(prompt, note=None) -> str:
                 text,
                 source="fill_help_info",
                 printed=bool(before.strip()),
-                notes=_screen_notes(text),
+                notes=_screen_notes(text, menu["items"]),
                 **menu,
             )
             return target.menu(view)
@@ -331,9 +337,8 @@ def _question(prompt, note=None) -> str:
         start, read = _read_screen(screen.splitlines())
         if read is not None:
             printed = _printed(before, screen, start)
-            view = port.menu_view(
-                text, printed=printed, notes=_screen_notes(text), **read
-            )
+            notes = _screen_notes(text, read["items"])
+            view = port.menu_view(text, printed=printed, notes=notes, **read)
             return target.menu(view)
         return target.ask(text, default, "text")
     finally:

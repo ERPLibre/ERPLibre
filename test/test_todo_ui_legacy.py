@@ -623,6 +623,21 @@ class TestMenus(CaptureCase):
             [["Forged state: on"], [], ["[Enter] Nothing"]],
         )
 
+    def test_the_rest_of_a_label_on_two_lines_is_no_note(self):
+        # La suite du libellé d'une entrée est dans son bouton : la redire
+        # en note la montrerait deux fois. La ligne d'état reste une note.
+        choices = [
+            {"prompt_description": "Two\nlines"},
+            {"prompt_description": "Stop"},
+        ]
+        scripted = self.capture("0")
+        click.prompt(
+            self.wrapped().fill_help_info(choices, state="Forged state: on")
+        )
+        [menu] = scripted.events
+        self.assertEqual(menu["items"][0]["label"], "Two\nlines")
+        self.assertEqual(menu["notes"], ["Forged state: on"])
+
     def test_a_menu_text_prompt_gives_its_exact_entries(self):
         choices = [
             {"section": "Development"},
