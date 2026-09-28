@@ -342,7 +342,7 @@ class TestCacheSizeAndPurge(unittest.TestCase):
     cache corrompu — les deux tuaient tout le CLI avant ce correctif.
 
     `Store(account)` sans `base` retombe sur `~/.erplibre/mail` : on détourne
-    `$HOME`, comme `TestComposeScreenMounted` (test_mail_compose.py), plutôt
+    `$HOME`, comme `ComposeScreenCase` (test_mail_compose.py), plutôt
     que d'ajouter un paramètre `base` qu'aucun appelant réel n'utilise.
     """
 
