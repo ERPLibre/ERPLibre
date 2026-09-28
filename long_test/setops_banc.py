@@ -280,6 +280,7 @@ class Mesures(NamedTuple):
     noeud: str = ""
     stockage: str = ""
     uplink: str = ""
+    resolveur: str = ""
     adresse_api: str = ""
 
 
@@ -463,6 +464,13 @@ def prealables(mesures):
             dit=""
             if (vu.uplink or "").strip()
             else "aucune route par défaut : le masquage viserait dans le vide",
+        ),
+        Prealable(
+            quoi="le terrain nomme un résolveur joignable d'ailleurs",
+            tenu=bool((vu.resolveur or "").strip()),
+            dit=""
+            if (vu.resolveur or "").strip()
+            else "seule une adresse de boucle, qui ne résout rien pour la flotte",
         ),
     )
 
@@ -1270,6 +1278,61 @@ def index_libre(instances, voulu, siens=(ECOSYSTEME, UNDERLAY_BANC)):
         return None
 
 
+# Le fichier que le BANC possède dans les group_vars du locataire. Son numéro
+# passe après celui du modèle : ansible fusionne ces fichiers dans l'ordre
+# alphabétique, et le dernier lu l'emporte. Le banc ajoute donc son placement
+# sans réécrire ce que le modèle déclare.
+INTRANTS_BANC = "15-placement-banc.yml"
+
+
+def cmds_resolveur():
+    """La commande qui nomme le résolveur par lequel le terrain sort.
+
+    Le fichier que le démon de résolution tient d'abord, `/etc/resolv.conf`
+    ensuite : sur un hôte à résolveur local, le second ne porte qu'une adresse
+    de boucle, qui ne résout rien pour une VM d'un autre réseau.
+    """
+    return [
+        "cat /run/systemd/resolve/resolv.conf 2>/dev/null"
+        " || cat /etc/resolv.conf"
+    ]
+
+
+def lit_resolveur(sortie):
+    """La première adresse de résolveur UTILISABLE d'ailleurs, ou « ».
+
+    LES ADRESSES DE BOUCLE SONT ÉCARTÉES. Un hôte à résolveur local annonce
+    127.0.0.53 ; déclarée à la flotte, elle la renvoie vers elle-même, et le
+    premier `apt` échoue sur « impossible de résoudre » — un message qui parle
+    du miroir, jamais du résolveur qu'on lui a donné.
+    """
+    for ligne in (sortie or "").splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) >= 2 and morceaux[0] == "nameserver":
+            adresse = morceaux[1].strip()
+            if adresse and not adresse.startswith(("127.", "::1")):
+                return adresse
+    return ""
+
+
+def texte_intrants_du_banc(resolveur):
+    """Le `group_vars` que le banc ajoute au locataire, ou « ».
+
+    `dns_amorcage` EST UN PLACEMENT, pas une intention : c'est l'adresse d'un
+    résolveur joignable depuis la fabric, et le modèle du moteur n'en déclare
+    aucune. Sans elle, le socle saute la tâche qui écrit `/etc/resolv.conf` —
+    que la capture du gabarit a VIDÉ — et le premier `apt` échoue sur le cache,
+    en ne disant rien du nom qu'il n'a pas résolu.
+    """
+    if not (resolveur or "").strip():
+        return ""
+    return f"""---
+# Le placement que le BANC ajoute. Il passe après les intrants du modèle, et
+# n'en réécrit aucun.
+dns_amorcage: "{resolveur.strip()}"
+"""
+
+
 def texte_underlay(noeud, pont, index=INDEX_UNDERLAY):
     """Le `underlay.yml` du dépôt d'underlay du banc, ou « ».
 
@@ -1554,7 +1617,7 @@ def amorcage_du_plan(moteur, instance):
     return lit_amorcage(vu.sortie) if vu.code == 0 else None
 
 
-def monte_localement(moteur, noeud, pont, stockage, hote_api):
+def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     """Pose les deux dépôts du banc et les deux liens du moteur. Rend un `Montage`.
 
     LES LIENS SE JUGENT AVANT QUE RIEN NE SOIT CRÉÉ. Un lien occupé est celui
@@ -1613,6 +1676,23 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api):
         except (OSError, shutil.Error) as souci:
             return pose._replace(souci=f"{ECOSYSTEME} : {souci}")
     pose = pose._replace(ecosysteme=eco)
+
+    # LE PLACEMENT QUE LE BANC AJOUTE, dans un fichier qu'il possède : le
+    # modèle du moteur ne déclare aucun résolveur d'amorçage, et le socle saute
+    # alors la tâche qui écrit `/etc/resolv.conf` — que la capture du gabarit a
+    # vidé. Le premier `apt` échoue ensuite sur le cache, sans dire un mot du
+    # nom qu'il n'a pas résolu.
+    groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars",
+                          "all")
+    try:
+        os.makedirs(groupe, exist_ok=True)
+    except OSError as souci:
+        return pose._replace(souci=f"{INTRANTS_BANC} : {souci.strerror}")
+    souci = _ecrit(
+        os.path.join(groupe, INTRANTS_BANC), texte_intrants_du_banc(resolveur)
+    )
+    if souci:
+        return pose._replace(souci=souci)
 
     hotes = amorcage_du_plan(moteur, eco)
     if not hotes:
@@ -2337,6 +2417,9 @@ def mesure_le_terrain(moteur, terrain):
     dehors = joue_sur(terrain, cmds_sortie(), elevation)
     dedans = lit_sortie(dehors.sortie) if dehors.reussi else None
 
+    nommeur = joue_sur(terrain, cmds_resolveur(), elevation)
+    resolveur = lit_resolveur(nommeur.sortie) if nommeur.reussi else ""
+
     return vide._replace(
         index_libre=index_libre(instances_freres(moteur), INDEX_ECOSYSTEME),
         pont=pont,
@@ -2348,6 +2431,7 @@ def mesure_le_terrain(moteur, terrain):
         stockage=(portants or ("",))[0] if portants else "",
         uplink=(dedans or ("", ""))[0],
         adresse_api=(dedans or ("", ""))[1],
+        resolveur=resolveur,
     )
 
 
@@ -2568,6 +2652,7 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
         mesures.pont,
         mesures.stockage,
         mesures.adresse_api,
+        mesures.resolveur,
     )
     if not montage.complet:
         return montage.souci or "le montage local n'est pas complet", secret

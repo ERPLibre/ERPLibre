@@ -468,6 +468,15 @@ ce qui s'enrôle auprès d'elle — et le banc lit cette liste au lieu d'en écr
 une. Deux hôtes du modèle livré sont donc activés, et le reste de la flotte
 demeure planifié : `reconstruire` ne crée que les VM des hôtes ACTIFS.
 
+**Le banc déclare le résolveur d'amorçage, parce que le modèle n'en déclare
+aucun.** La capture du gabarit VIDE `/etc/resolv.conf` ; le socle l'écrit au
+déploiement depuis l'intrant `dns_amorcage`, avant le premier `apt`. Sans cet
+intrant la tâche est sautée, et le cache apt échoue ensuite sans un mot sur le
+nom qu'il n'a pas résolu. Le banc lit l'adresse par laquelle le terrain
+lui-même résout — LA BOUCLE EXCLUE, l'adresse d'un résolveur local renvoyant la
+flotte vers elle-même — et la déclare dans un fichier de group_vars qui est le
+sien, numéroté après celui du modèle pour ajouter au lieu de réécrire.
+
 Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
 qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit
 doré, puis par passe ~5 s pour chacun des deux gestes d'inventaire — les deux
