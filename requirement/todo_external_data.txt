@@ -14,7 +14,7 @@ openpyxl==3.1.5
 xlsxwriter==3.2.9
 xlrd==2.0.1
 access-parser==0.0.6
-chardet==5.2.0
+chardet==7.6.0
 defusedxml==0.7.1
 # SANS Pillow, openpyxl retire xl/media/ en silence et ws._images reste
 # toujours vide : les images disparaissent de la copie sans que rien ne
