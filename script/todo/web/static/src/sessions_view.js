@@ -11,6 +11,12 @@
 // selon son genre (QuestionView) ; répondre par eux ou par le terminal
 // revient au même : le worker prend la première réponse, puis `answered`
 // ferme le widget. Un genre que la page ne connaît pas reste au terminal.
+// Le terminal se replie sous un menu dont les boutons tiennent tout
+// l'écran (`carriesScreen`) ; il reste montré sous toute autre question, dont
+// le contexte n'est que là, sous la première question après une commande,
+// pendant une commande, en écran alternatif et à l'invite d'un programme
+// (`terminalShown`). Le bouton Terminal l'ouvre ou le ferme pour la phase
+// en cours.
 //
 // L'état du terminal vient du hub (`tty_state`), jamais du texte : l'écho
 // coupé en mode canonique ouvre un champ masqué, dont la valeur part au
@@ -28,12 +34,15 @@ import {QuestionView} from "./question_view.js";
 import {
     asksSecret,
     closedState,
+    foldPhase,
     frames,
+    heldOverride,
     helloMessage,
     joinWrapped,
     lastLine,
     quickAnswers,
     sessionOf,
+    terminalShown,
     withSession,
 } from "./session.js";
 
@@ -83,6 +92,9 @@ export class SessionsView extends Component {
                     <button type="button" t-on-click="() => this.send({t: 'close'})" t-esc="env.t('Close')"/>
                     <button type="button" t-att-aria-pressed="state.raw ? 'true' : 'false'" t-on-click="toggleRaw"
                         t-esc="env.t('Raw mode')"/>
+                    <button type="button" aria-controls="session-terminal"
+                        t-att-aria-expanded="terminalOpen ? 'true' : 'false'" t-on-click="toggleTerminal"
+                        t-esc="env.t('Terminal')"/>
                     <button t-if="state.tty.altscreen" type="button"
                         t-att-aria-pressed="state.windowed ? 'false' : 'true'" t-on-click="toggleWindowed"
                         t-esc="env.t('Full screen')"/>
@@ -114,7 +126,8 @@ export class SessionsView extends Component {
                     pending="state.pending === structured.qid" visible="props.visible"
                     answer.bind="reply" cancel.bind="cancel"/>
             </div>
-            <div class="terminal" t-ref="terminal"/>
+            <div id="session-terminal" class="terminal" t-ref="terminal"
+                t-att-hidden="terminalOpen ? undefined : 'hidden'"/>
         </section>`;
 
     setup() {
@@ -131,6 +144,9 @@ export class SessionsView extends Component {
             notice: "",
             question: null, // la dernière question du worker, jusqu'à `answered`
             pending: null, // le qid auquel la page a répondu
+            running: false, // entre `run_start` et `run_end`
+            ran: false, // une commande a fini depuis la dernière réponse
+            override: null, // le choix du bouton Terminal : {phase, open}
         });
         this.panel = useRef("terminal");
         this.secretField = useRef("secret");
@@ -194,6 +210,16 @@ export class SessionsView extends Component {
         return this.state.status === "open" && asksSecret(this.state.tty) && !this.structured;
     }
 
+    // Ce dont dépend le repli du terminal.
+    get fold() {
+        const {running, ran, tty} = this.state;
+        return {question: this.structured, running, altscreen: tty.altscreen, ran, tty};
+    }
+
+    get terminalOpen() {
+        return terminalShown({...this.fold, override: this.state.override});
+    }
+
     // La question du worker que la page montre en widget, ou null.
     get structured() {
         const question = this.state.question;
@@ -226,6 +252,7 @@ export class SessionsView extends Component {
         const raw = Boolean(id) && id === this.state.id && this.state.raw;
         Object.assign(this.state, {id, status: "connecting", code: null, tty: {...TTY}, answers: [], raw});
         Object.assign(this.state, {prompt: "", windowed: false, notice: "", question: null, pending: null});
+        Object.assign(this.state, {running: false, ran: false, override: null});
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -258,6 +285,7 @@ export class SessionsView extends Component {
             // La question ouverte, s'il y en a une, suit ce message.
             this.offset = message.offset;
             Object.assign(this.state, {id: message.id, status: "open", question: null, pending: null});
+            Object.assign(this.state, {running: false, ran: false});
             this.remember(message.id);
             if (message.truncated) {
                 this.term.write(`\r\n[${this.env.t("Output truncated")}]\r\n`);
@@ -278,6 +306,10 @@ export class SessionsView extends Component {
             if (this.state.question?.qid === message.qid) {
                 Object.assign(this.state, {question: null, pending: null});
             }
+            this.state.ran = false;
+        } else if (message.t === "run_start" || message.t === "run_end") {
+            const running = message.t === "run_start";
+            Object.assign(this.state, {running, ran: !running});
         } else if (message.t === "dropped") {
             this.state.notice = Object.hasOwn(DROP_LABELS, message.reason) ? message.reason : "unread";
             clearTimeout(this.noticeTimer);
@@ -288,12 +320,17 @@ export class SessionsView extends Component {
         } else if (message.t === "open_view") {
             this.props.openView(message.view);
         }
+        // Le choix du bouton Terminal s'oublie dès que sa phase change.
+        if (this.state.override) {
+            this.state.override = heldOverride(this.state.override, foldPhase(this.fold));
+        }
     }
 
     closed(code) {
         this.socket = null;
         const status = closedState(code, this.bye);
         Object.assign(this.state, {status, question: null, pending: null});
+        Object.assign(this.state, {running: false, ran: false, override: null});
         if (status === "ended" || status === "gone") {
             this.remember(null);
         }
@@ -395,6 +432,12 @@ export class SessionsView extends Component {
         this.state.raw = !this.state.raw;
         this.send({t: "raw", on: this.state.raw});
         this.term.focus();
+    }
+
+    // Ouvre ou ferme le terminal jusqu'au changement de phase : une autre
+    // question, une commande qui commence ou finit, l'écran alternatif.
+    toggleTerminal() {
+        this.state.override = {phase: foldPhase(this.fold), open: !this.terminalOpen};
     }
 
     // Plein écran pressé : la vue couvre la fenêtre ; relâché, la page et

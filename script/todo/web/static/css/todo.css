@@ -129,7 +129,8 @@ body {
     cursor: pointer;
 }
 
-.toolbar button[aria-pressed="true"] {
+.toolbar button[aria-pressed="true"],
+.toolbar button[aria-expanded="true"] {
     border-color: var(--accent);
     color: var(--accent);
     font-weight: 600;

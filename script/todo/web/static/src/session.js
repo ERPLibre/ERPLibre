@@ -1,6 +1,8 @@
 // Protocole de /ws vu de la page, sans OWL ni DOM : le premier message,
-// les trames des frappes, l'état que dit une fermeture, et l'identifiant de
-// session que le fragment de l'URL garde pour un rechargement.
+// les trames des frappes, l'état que dit une fermeture, l'identifiant de
+// session que le fragment de l'URL garde pour un rechargement, et quand le
+// terminal se replie.
+import {carriesScreen} from "./prompt.js";
 
 // Fermetures du hub autres que la fin d'une session, qu'annonce `bye`.
 const CLOSED = {1013: "full", 4001: "taken", 4404: "gone"};
@@ -93,4 +95,36 @@ export function lastLine(lines) {
 // Un texte « password: » avec l'écho actif n'en est jamais un.
 export function asksSecret(tty) {
     return tty.echo === false && tty.canon === true;
+}
+
+// Phase de la vue d'une session : la question structurée ouverte (son qid),
+// une commande en cours, l'écran alternatif. Le choix du bouton Terminal ne
+// vaut que pour la phase où il a été fait.
+export function foldPhase({question, running, altscreen}) {
+    return `${question?.qid ?? 0}|${Boolean(running)}|${Boolean(altscreen)}`;
+}
+
+// Le choix du bouton Terminal ({phase, open}) quand la vue est à la phase
+// `phase` : gardé dans la sienne, oublié dès qu'elle change, pour qu'une
+// phase semblable plus tard — une autre commande, un autre moment sans
+// question — ne le retrouve pas.
+export function heldOverride(override, phase) {
+    return override?.phase === phase ? override : null;
+}
+
+// Vrai quand le terminal se montre. L'invite d'un programme que TODO
+// lance (un lecteur, ou l'écho coupé, sans question structurée) le montre
+// toujours. Sinon le choix du bouton Terminal (`override`) l'emporte dans
+// sa phase ; sinon il se montre pendant une commande (`run_start` …
+// `run_end`), en écran alternatif, sous la première question après une
+// commande (`ran`), dont la sortie resterait à lire, et sous toute
+// question qui ne porte pas tout son écran (`carriesScreen`).
+export function terminalShown({question, running, altscreen, ran, tty, override}) {
+    if (!question && tty && (tty.reader === true || asksSecret(tty))) {
+        return true;
+    }
+    if (override && override.phase === foldPhase({question, running, altscreen})) {
+        return override.open;
+    }
+    return Boolean(running || altscreen || ran || !carriesScreen(question));
 }

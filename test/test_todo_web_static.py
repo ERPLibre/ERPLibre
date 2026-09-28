@@ -775,5 +775,84 @@ class TestQuestionWidgets(unittest.TestCase):
         )
 
 
+# Le repli d'un état, puis des suites de pas depuis un moment sans question :
+# un état qui change, ou le bouton Terminal pressé (« click »), dont le
+# choix s'oublie quand la phase change, comme dans SessionsView.receive.
+FOLD_CHECK = r"""
+const tty = {echo: true, canon: true, reader: false, altscreen: false};
+const items = [{key: "1"}, {key: "0"}];
+const menu = {qid: 7, t: "menu", text: "[1] Entry\n[0] Back\n", items};
+const read = {qid: 8, t: "menu", text: "Choice [1]: ", items};
+const idle = {question: null, running: false, altscreen: false, ran: false,
+    tty, override: null};
+const walk = (steps) => {
+    let state = idle;
+    return steps.map((step) => {
+        if (step === "click") {
+            const open = !m.terminalShown(state);
+            state = {...state, override: {phase: m.foldPhase(state), open}};
+        } else {
+            state = {...state, ...step};
+            const override = m.heldOverride(state.override, m.foldPhase(state));
+            state = {...state, override};
+        }
+        return m.terminalShown(state);
+    });
+};
+console.log(JSON.stringify({
+    phase: m.foldPhase({...idle, question: menu}),
+    auto: [idle, {...idle, question: menu},
+        {...idle, question: menu, running: true},
+        {...idle, question: menu, altscreen: true},
+        {...idle, question: menu, ran: true}, {...idle, question: read},
+        {...idle, question: {qid: 9, t: "ask", kind: "text"}},
+    ].map(m.terminalShown),
+    walks: [
+        walk([{question: menu}, "click", {question: null},
+            {question: {...menu, qid: 8}}]),
+        walk([{running: true}, "click", {running: false, ran: true},
+            {question: menu}, {question: null, ran: false}, {running: true}]),
+        walk(["click", {question: menu}, {question: null}]),
+        walk(["click", {tty: {...tty, reader: true}},
+            {tty: {...tty, echo: false}}]),
+    ],
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestTerminalFold(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(FOLD_CHECK, "session.js")
+
+    def test_only_a_menu_that_carries_its_screen_folds_the_terminal(self):
+        # Rien d'ouvert ; un menu qui porte tout son écran ; pendant une
+        # commande ; en écran alternatif ; la première question après une
+        # commande ; un menu lu sur la sortie qui précède son invite ; une
+        # question texte. Ces deux derniers n'ont que leur invite : ce que
+        # TODO a écrit avant elle est au terminal.
+        self.assertEqual(
+            self.out["auto"], [True, False, True, True, True, True, True]
+        )
+
+    def test_the_button_holds_only_for_its_phase(self):
+        self.assertEqual(self.out["phase"], "7|false|false")
+        # Ouvert sous un menu : la réponse, puis le menu suivant, rendent
+        # la main à la règle.
+        self.assertEqual(self.out["walks"][0], [False, True, True, False])
+        # Replié pendant une commande : la commande suivante se voit.
+        self.assertEqual(
+            self.out["walks"][1], [True, False, True, True, True, True]
+        )
+        # Replié sans question : un autre moment sans question le montre.
+        self.assertEqual(self.out["walks"][2], [False, False, True])
+
+    def test_a_program_prompt_always_shows_the_terminal(self):
+        # Un lecteur, puis l'écho coupé, sans question structurée : le
+        # bouton ne cache pas l'invite d'un programme.
+        self.assertEqual(self.out["walks"][3], [False, True, True])
+
+
 if __name__ == "__main__":
     unittest.main()

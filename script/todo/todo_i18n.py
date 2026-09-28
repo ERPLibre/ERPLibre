@@ -3910,6 +3910,7 @@ TRANSLATIONS = {
         "en": "Time left: %s s",
     },
     "Validate": {"fr": "Valider", "en": "Validate"},
+    "Terminal": {"fr": "Terminal", "en": "Terminal"},
     "Hidden answer not sent: a control character, or too long.": {
         "fr": "Réponse masquée non envoyée : un caractère de contrôle, ou "
         "trop longue.",
