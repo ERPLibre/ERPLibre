@@ -44,11 +44,16 @@ class BancProxy(unittest.TestCase):
         self,
         reponses,
         cible=("vm-essai", "u", "10.0.0.1", "vm-essai", True),
+        occupes=(),
     ):
-        """Déroule la commande sur des réponses écrites d'avance."""
+        """Déroule la commande sur des réponses écrites d'avance.
+
+        Les ports `occupes` sont pris, tous les autres libres : sans cela,
+        le résultat dépendrait de ce qui écoute sur le poste qui teste."""
         todo = TODO.__new__(TODO)
         todo.execute = ExecuteFactice()
         todo._ask_ssh_target = lambda: cible
+        todo._port_is_free = lambda port: int(port) not in occupes
         suite = iter(reponses)
         ancien = builtins.input
         builtins.input = lambda *a, **k: next(suite, "")
@@ -81,6 +86,24 @@ class TestLaCommande(BancProxy):
         )
         self.assertIn(" bond", commandes[0])
         self.assertNotIn("@", commandes[0])
+
+    def test_un_defaut_occupe_propose_le_suivant_libre(self):
+        commandes, _ = self.joue([""], occupes={1080, 1081})
+        self.assertEqual(["ssh -D 1082 -N -C vm-essai"], commandes)
+
+    def test_un_port_choisi_occupe_passe_au_suivant_et_le_dit(self):
+        commandes, sortie = self.joue(["9050"], occupes={9050})
+        self.assertEqual(["ssh -D 9051 -N -C vm-essai"], commandes)
+        self.assertIn("9050", sortie)
+        # Le mode d'emploi donne au navigateur le port RÉELLEMENT ouvert.
+        self.assertIn("127.0.0.1, port 9051", sortie)
+
+    def test_sans_port_libre_proche_on_demande_et_non_renonce(self):
+        occupes = set(range(9050, 9071))
+        commandes, _ = self.joue(["9050", ""], occupes=occupes)
+        self.assertEqual([], commandes)
+        commandes, _ = self.joue(["9050", "o"], occupes=occupes)
+        self.assertEqual(["ssh -D 9050 -N -C vm-essai"], commandes)
 
     def test_renoncer_a_l_adresse_ne_lance_rien(self):
         todo = TODO.__new__(TODO)
