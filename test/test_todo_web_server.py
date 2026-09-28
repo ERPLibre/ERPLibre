@@ -534,6 +534,30 @@ class TestTelemetryApi(ApiCase):
             await self.get_json("/api/telemetry?lang=en")
             self.assertEqual(spy.call_count, 3)
 
+    async def test_the_code_stamp_changes_when_a_source_does(self):
+        first = (await self.get_json("/api/telemetry?lang=en"))["code"]
+        self.assertRegex(first, "^[0-9a-f]{16}$")
+        again = (await self.get_json("/api/telemetry?lang=en"))["code"]
+        self.assertEqual(again, first)
+        # Une date de modification seule suffit : un fichier enregistré
+        # sans changement de taille change aussi l'empreinte.
+        st = self.todo_py.stat()
+        os.utime(self.todo_py, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+        self.assertNotEqual(self.hub.code_tree.stamp(), first)
+        later = (await self.get_json("/api/telemetry?lang=en"))["code"]
+        self.assertNotEqual(later, first)
+        self.assertEqual(later, self.hub.code_tree.stamp())
+
+    async def test_a_background_reread_is_not_activity(self):
+        # La page ouverte relit l'arbre toutes les 10 s : cette relecture
+        # (`poll=1`) ne repousse pas l'arrêt du hub à l'inactivité.
+        before = self.hub.last_activity
+        await asyncio.sleep(0.01)
+        await self.get_json("/api/telemetry?lang=en&poll=1")
+        self.assertEqual(self.hub.last_activity, before)
+        await self.get_json("/api/telemetry?lang=en")
+        self.assertGreater(self.hub.last_activity, before)
+
     async def test_an_unreadable_tree_is_null_not_an_error(self):
         self.todo_py.unlink()
         data = await self.get_json("/api/telemetry?lang=en")
@@ -732,6 +756,7 @@ class TestTerminal(TerminalCase):
                 "id": reply["id"],
                 "offset": 0,
                 "truncated": False,
+                "code": self.hub.code_tree.stamp(),
             },
         )
         await tab.until(lambda: b"ready en 90x20" in tab.data)
@@ -1111,6 +1136,24 @@ class TestSpare(TerminalCase):
         await tab.until(lambda: b"ready en 90x20" in tab.data)
         await self.sessions_list()
         self.assertIsNot(self.hub.spare, spare)
+
+    async def test_a_spare_from_before_a_code_change_is_not_adopted(self):
+        # La réserve a importé todo_i18n à son lancement : après un
+        # changement des sources de l'arbre, la session part d'un worker
+        # neuf, et la réserve est fermée.
+        await self.sessions_list()
+        spare = self.hub.spare
+        self.assertTrue(spare.ready)
+        i18n_py = self.root / "script" / "todo" / "todo_i18n.py"
+        i18n_py.parent.mkdir(parents=True)
+        i18n_py.write_text("# une traduction de plus\n")
+        tab = await self.tab()
+        self.assertIsNot(self.hub.terminals[tab.texts[0]["id"]], spare)
+        # La page apprend que la session tourne le code d'après.
+        self.assertEqual(tab.texts[0]["code"], self.hub.code_tree.stamp())
+        self.assertNotEqual(tab.texts[0]["code"], spare.stamp)
+        await asyncio.wait_for(spare.ended.wait(), 10)
+        await tab.until(lambda: b"ready en 90x20" in tab.data)
 
     async def test_no_spare_beyond_the_session_limit(self):
         for _ in range(sessions.MAX_SESSIONS):

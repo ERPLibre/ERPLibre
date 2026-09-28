@@ -12,6 +12,23 @@ export const SORTS = {
     kanban: ["usage", "name", "code"],
 };
 
+// Vues pendant lesquelles la page relit /api/telemetry : celles de l'arbre,
+// et Sessions, sous laquelle la bannière dit que le code a changé.
+export const CODE_VIEWS = ["tree", "list", "kanban", "sessions"];
+
+// Vrai quand la page relit /api/telemetry : une vue de CODE_VIEWS, la page
+// visible (`visibility`, celle de document.visibilityState).
+export function pollsCode(view, visibility) {
+    return CODE_VIEWS.includes(view) && visibility === "visible";
+}
+
+// Vrai quand l'empreinte `code` des sources de l'arbre n'est plus
+// `baseline`, celle du code que tourne la session courante de la page. Une
+// empreinte absente, ou pas de session, ne dit rien.
+export function codeChanged(baseline, code) {
+    return Boolean(baseline && code && baseline !== code);
+}
+
 // Minuscules sans accents : « Système » et « systeme » se rejoignent.
 export function fold(text) {
     return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();

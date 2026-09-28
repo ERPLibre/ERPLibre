@@ -162,6 +162,28 @@ body {
     color: var(--muted);
 }
 
+/* Le code de TODO a changé sous les sessions ouvertes. */
+.banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.5rem;
+}
+
+.banner button {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.4rem;
+    background: var(--bg);
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+}
+
 /* Kanban : les colonnes côte à côte, qui défilent de côté. */
 .kanban {
     display: flex;

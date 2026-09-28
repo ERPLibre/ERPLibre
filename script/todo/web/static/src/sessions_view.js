@@ -41,7 +41,11 @@
 // dernière ; ce qui suit est à l'utilisateur. Tout autre message que le menu
 // attendu arrête le rejeu, et la barre dit l'étape où le chemin s'est
 // interrompu, jusqu'à la réponse suivante de l'utilisateur, qui arrête
-// aussi un rejeu en cours.
+// aussi un rejeu en cours. L'ordre `reopen`, quand le code de TODO a
+// changé, ferme la session courante si elle attend à un menu, et en ouvre
+// une neuve. La page apprend du hub l'empreinte du code que tourne la
+// session courante (`runs`, le `code` du message `session`), null sans
+// session.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {endsLongRun, runEndBody} from "./desktop.js";
@@ -193,7 +197,7 @@ export class SessionsView extends Component {
         this.offset = 0; // décalage absolu du prochain octet attendu
         this.replay = null; // le rejeu d'un nœud lancé, en cours
         this.deferred = null; // l'ordre qui attend la question d'un rattachement
-        this.renewing = null; // l'ordre qui attend la fin de la session que renew ferme
+        this.renewing = null; // l'ordre qui attend la fin de la session que renew ferme, true sans rejeu
         this.encoder = new TextEncoder();
         onMounted(() => {
             window.addEventListener("pagehide", this.onPageHide);
@@ -294,6 +298,7 @@ export class SessionsView extends Component {
     // Ouvre une session (`id` null) ou s'y rattache ; `after` > 0 garde
     // l'écran et ne demande que la suite.
     connect(id, after = 0) {
+        this.props.runs(null);
         this.drop();
         if (!after) {
             this.term.reset();
@@ -341,6 +346,7 @@ export class SessionsView extends Component {
             Object.assign(this.state, {id: message.id, status: "open", question: null, pending: null});
             Object.assign(this.state, {running: false, ran: false});
             this.remember(message.id);
+            this.props.runs(message.code ?? null);
             if (message.truncated) {
                 this.term.write(`\r\n[${this.env.t("Output truncated")}]\r\n`);
             }
@@ -404,6 +410,7 @@ export class SessionsView extends Component {
         Object.assign(this.state, {running: false, ran: false, override: null});
         if (status === "ended" || status === "gone") {
             this.remember(null);
+            this.props.runs(null);
         }
         this.poll();
         // Un rattachement refusé : l'ordre en attente part dans une neuve.
@@ -415,7 +422,9 @@ export class SessionsView extends Component {
             const order = this.renewing;
             this.renewing = null;
             this.connect(null);
-            this.replay = startReplay(order.route, order.root);
+            if (order !== true) {
+                this.replay = startReplay(order.route, order.root);
+            }
         }
     }
 
@@ -468,9 +477,13 @@ export class SessionsView extends Component {
     // nœud, le menu principal ayant pour fil d'Ariane `root`. Pendant un
     // rattachement, l'ordre attend la question ouverte de la session
     // (`receive`) ; une session neuve qui s'ouvre le rejoue depuis son menu
-    // principal.
+    // principal. `reopen` : ouvrir une session neuve (`renew`).
     follow(order) {
         this.state.halt = "";
+        if (order.reopen) {
+            this.renew();
+            return;
+        }
         if (this.state.status === "connecting") {
             this.deferred = this.state.id ? order : null;
             this.replay = this.state.id ? null : startReplay(order.route, order.root);
@@ -494,20 +507,23 @@ export class SessionsView extends Component {
         this.step(question);
     }
 
-    // Ouvre une session neuve pour l'ordre `order` : une session oisive à
-    // un menu se ferme d'abord — laissée derrière, elle garderait une des
-    // places, comptées, du hub — et la neuve n'ouvre qu'une fois qu'elle a
-    // vraiment fini (`closed`), pour ne pas s'y heurter encore avant que le
-    // hub ait rendu sa place. Une session à une question ou en pleine
-    // commande reste, rattachable : la neuve s'ouvre à côté, tout de suite.
+    // Ouvre une session neuve pour l'ordre `order`, ou seule, sans rejeu, s'il
+    // est absent (le bouton de la bannière) : une session oisive à un menu se
+    // ferme d'abord — laissée derrière, elle garderait une des places,
+    // comptées, du hub — et la neuve n'ouvre qu'une fois qu'elle a vraiment
+    // fini (`closed`), pour ne pas s'y heurter encore avant que le hub ait
+    // rendu sa place. Une session à une question ou en pleine commande
+    // reste, rattachable : la neuve s'ouvre à côté, tout de suite.
     renew(order) {
         if (this.idleAtMenu) {
-            this.renewing = order;
+            this.renewing = order ?? true;
             this.send({t: "close"});
             return;
         }
         this.connect(null);
-        this.replay = startReplay(order.route, order.root);
+        if (order) {
+            this.replay = startReplay(order.route, order.root);
+        }
     }
 
     // Donne `message` au rejeu en cours : la réponse qu'il demande part, et

@@ -152,6 +152,13 @@ def content_security_policy(index_html) -> str:
     return CSP.format(import_map=extra)
 
 
+def fingerprint(signature) -> str:
+    """Empreinte courte d'une signature de `CodeTree` : elle change dès
+    qu'une source change, s'ajoute ou disparaît."""
+    text = json.dumps(sorted(signature.items()))
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
 class CodeTree:
     """Arbre des menus de `build_code_tree`, refait quand une source change.
 
@@ -161,13 +168,16 @@ class CodeTree:
     redémarrer le hub. Un todo_i18n.py modifié est rechargé, et ses libellés
     nouveaux arrivent traduits : le hub l'importe depuis la racine qu'il
     sert. L'analyse AST, coûteuse, tourne dans un thread, une à la fois : la
-    boucle continue de répondre, socket de contrôle comprise.
+    boucle continue de répondre, socket de contrôle comprise. `code` est
+    l'empreinte de la signature de l'arbre servi (`fingerprint`), que la
+    page compare pour savoir que le code de TODO a changé.
     """
 
     def __init__(self, root):
         self.root = Path(root)
         self.i18n_py = str(self.root / "script" / "todo" / "todo_i18n.py")
         self.signature = None
+        self.code = None
         self.tree = None
         self.lock = asyncio.Lock()
         # Estampille du todo_i18n.py que le hub vient d'importer.
@@ -199,7 +209,13 @@ class CodeTree:
             log.exception("building the menu tree failed")
             self.tree = None
         self.signature = signature
+        self.code = fingerprint(signature)
         return self.tree
+
+    def stamp(self) -> str:
+        """L'empreinte des sources telles qu'elles sont sur le disque, sans
+        rien analyser : celle que `code` prendra à la requête suivante."""
+        return fingerprint(self._signature())
 
     async def refresh(self):
         """L'arbre à jour, ou None si l'analyse échoue ou lève ; la table de
@@ -300,17 +316,18 @@ class Guard:
         host = (self.request.headers.get("Host") or "").lower()
         return origin == f"http://{host}"
 
-    def require_session(self) -> str:
+    def require_session(self, touch=True) -> str:
         """Jeton CSRF de la session du cookie ; 403 sans session.
 
         Une requête authentifiée compte comme activité : elle repousse
-        l'arrêt à l'inactivité.
+        l'arrêt à l'inactivité, sauf avec `touch` faux.
         """
         token = self.get_cookie(self.hub.cookie)
         csrf = self.hub.sessions.get(token) if token else None
         if csrf is None:
             raise HTTPError(403)
-        self.hub.touch()
+        if touch:
+            self.hub.touch()
         return csrf
 
     def int_argument(self, name, default, most) -> int:
@@ -378,11 +395,14 @@ class Session(Guard, tornado.web.RequestHandler):
 
 
 class Telemetry(Guard, tornado.web.RequestHandler):
-    """`{tree, counts, updated}` : l'arbre des menus traduit, les compteurs
-    de navigation par chemin et l'heure de leur dernière écriture."""
+    """`{tree, counts, updated, code}` : l'arbre des menus traduit, les
+    compteurs de navigation par chemin, l'heure de leur dernière écriture
+    et l'empreinte des sources de l'arbre (`CodeTree.code`). `?poll=1`, la
+    relecture de fond d'une page ouverte, ne compte pas comme activité :
+    une page qui reste ouverte ne garde pas le hub en vie."""
 
     async def get(self):
-        self.require_session()
+        self.require_session(touch=self.get_argument("poll", None) != "1")
         lang = self.lang_argument()
         tree = await self.hub.code_tree.refresh()
         # load() attend le verrou que TODO tient en écrivant : hors boucle.
@@ -393,6 +413,7 @@ class Telemetry(Guard, tornado.web.RequestHandler):
                 "tree": localize(tree, lang) if tree else None,
                 "counts": counts if isinstance(counts, dict) else {},
                 "updated": data.get("updated"),
+                "code": self.hub.code_tree.code,
             }
         )
 
@@ -487,9 +508,10 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     `session`, une session s'ouvre (au-delà de MAX_SESSIONS, 1013) ; avec,
     le client s'y rattache (inconnue, 4404) et en prend le contrôle :
     l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
-    "truncated"}`, puis la question ouverte du worker s'il en a une, puis
-    `dropped` pour ce que la session a jeté d'un collage sans client
-    (`Session.unreported`), puis trames binaires. Textes du client :
+    "truncated", "code"}`, `code` étant l'empreinte des sources que tourne
+    la session (`Session.stamp`), puis la question ouverte du worker s'il en
+    a une, puis `dropped` pour ce que la session a jeté d'un collage sans
+    client (`Session.unreported`), puis trames binaires. Textes du client :
     `resize`, `interrupt`, `close`, `raw`, `secret`, `answer`, `cancel` ;
     du hub : `bye`, `tty_state`, `dropped`, et les messages du worker
     (`menu`, `ask`, `answered`, `notice`, `run_start`, `run_end`,
@@ -589,6 +611,7 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
                 "id": session.id,
                 "offset": offset,
                 "truncated": truncated,
+                "code": session.stamp,
             }
         )
         if session.asking is not None:
@@ -970,13 +993,17 @@ class Hub:
     async def open_terminal(self, lang, cols, rows):
         """Nouvelle session TODO, comptée dès avant son lancement : deux
         `hello` simultanés ne dépassent pas MAX_SESSIONS. Le worker de
-        réserve, s'il vit, la devient ; sinon un worker neuf est lancé.
-        OSError si elle ne démarre pas, ou si le hub s'arrête."""
+        réserve la devient s'il vit et que les sources de l'arbre n'ont pas
+        changé depuis son lancement (`stamp`) : il a déjà importé
+        todo_i18n, et tournerait ses anciennes traductions. Sinon un worker
+        neuf est lancé, qui porte l'empreinte des sources du moment. OSError
+        si elle ne démarre pas, ou si le hub s'arrête."""
         if self.stopping is not None:
             raise OSError("the hub is stopping")
         sid = secrets.token_urlsafe(6)
+        stamp = self.code_tree.stamp()
         spare, self.spare = self.spare, None
-        if spare is not None and spare.ready:
+        if spare is not None and spare.ready and spare.stamp == stamp:
             spare.adopt(sid, lang, cols, rows, self._terminal_ended)
             spare.recorder = self._recorder(sid)
             self.terminals[sid] = spare
@@ -987,6 +1014,7 @@ class Hub:
             sid, self.root, lang, cols, rows, on_end=self._terminal_ended
         )
         session.recorder = self._recorder(sid)
+        session.stamp = stamp
         self.terminals[sid] = session
         self.opening += 1
         try:
@@ -1018,6 +1046,7 @@ class Hub:
         spare = sessions.Session(
             None, self.root, None, 80, 24, on_end=self._spare_ended
         )
+        spare.stamp = self.code_tree.stamp()
         self.spare = spare
         self.opening += 1
         try:

@@ -3957,6 +3957,18 @@ TRANSLATIONS = {
         "fr": "Chemin interrompu à : %s",
         "en": "Path interrupted at: %s",
     },
+    # Page web : le code de TODO a changé sous les sessions ouvertes.
+    "TODO's code changed: open sessions still run the old one. Reopen a "
+    "session to use it.": {
+        "fr": "Le code de TODO a changé : les sessions ouvertes tournent "
+        "encore l'ancien. Rouvrir une session pour l'utiliser.",
+        "en": "TODO's code changed: open sessions still run the old one. "
+        "Reopen a session to use it.",
+    },
+    "Reopen a session": {
+        "fr": "Rouvrir une session",
+        "en": "Reopen a session",
+    },
     # Page web dans la fenêtre bureautique : notification de fin de commande.
     "Command ended: exit code %s, %s s": {
         "fr": "Commande terminée : code de sortie %s, %s s",

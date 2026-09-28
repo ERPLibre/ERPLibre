@@ -273,6 +273,7 @@ class Session:
         self.gap = PROBE_GAP  # délai minimal entre deux sondes
         self.asking = None  # question du worker qui attend sa réponse
         self.recorder = None  # journal des tâches, posé par le hub
+        self.stamp = None  # empreinte des sources à son lancement, du hub
 
     async def start(self):
         """Lance le worker ; OSError si le PTY ou le processus manquent. Un

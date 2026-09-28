@@ -513,6 +513,34 @@ class TestKanban(unittest.TestCase):
         )
 
 
+# La relecture de /api/telemetry : par vue et visibilité, puis l'empreinte
+# du code comparée à celle de départ.
+CODE_CHECK = r"""
+console.log(JSON.stringify({
+    polls: [["tree", "visible"], ["kanban", "visible"], ["sessions", "visible"],
+        ["system", "visible"], ["history", "visible"], ["tree", "hidden"]]
+        .map(([view, visibility]) => m.pollsCode(view, visibility)),
+    changed: [["a1", "a1"], ["a1", "b2"], [undefined, "b2"], ["a1", null]]
+        .map(([baseline, code]) => m.codeChanged(baseline, code)),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestCodeBanner(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(CODE_CHECK, "model.js")
+
+    def test_the_page_rereads_only_while_a_tree_or_sessions_shows(self):
+        self.assertEqual(
+            self.out["polls"], [True, True, True, False, False, False]
+        )
+
+    def test_only_a_known_stamp_that_differs_is_a_change(self):
+        self.assertEqual(self.out["changed"], [False, True, False, False])
+
+
 VIEW_CHECK = r"""
 console.log(JSON.stringify({
     view: m.readFragment("#view=system").view,
