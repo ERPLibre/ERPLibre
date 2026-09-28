@@ -2,9 +2,10 @@
 // la vue choisie. La vue et le tri vivent dans le fragment de l'URL, qu'un
 // rechargement retrouve ; la recherche n'y entre pas. Une vue qui n'offre
 // aucun tri n'offre pas de recherche non plus. La vue Sessions, une fois
-// ouverte, reste montée : cachée, sa session continue. La vue Historique
-// relit les journaux de tâches. Les libellés viennent de `env.t`, la table
-// de traduction de la page.
+// ouverte, reste montée : cachée, sa session continue. Lancer un nœud de
+// l'arbre ou de la liste ouvre la vue Sessions, qui le rejoue (`order`). La
+// vue Historique relit les journaux de tâches. Les libellés viennent de
+// `env.t`, la table de traduction de la page.
 import {Component, useState, xml} from "@odoo/owl";
 import {HistoryView} from "./history_view.js";
 import {ListView} from "./list_view.js";
@@ -44,18 +45,21 @@ export class TelemetryPage extends Component {
         </nav>
         <p t-if="state.view !== 'sessions' and state.view !== 'history'" class="summary" t-esc="summary"/>
         <TreeView t-if="state.view === 'tree'" t-key="sort + '|' + state.query" tree="tree" counts="counts"
-            query="state.query" sort="sort"/>
-        <ListView t-elif="state.view === 'list'" tree="tree" counts="counts" query="state.query" sort="sort"/>
+            query="state.query" sort="sort" launch.bind="launch"/>
+        <ListView t-elif="state.view === 'list'" tree="tree" counts="counts" query="state.query" sort="sort"
+            launch.bind="launch"/>
         <SystemView t-elif="state.view === 'system'"/>
         <HistoryView t-elif="state.view === 'history'"/>
-        <SessionsView t-if="state.terminal" visible="state.view === 'sessions'" openView.bind="openView"/>`;
+        <SessionsView t-if="state.terminal" visible="state.view === 'sessions'" openView.bind="openView"
+            order="state.order"/>`;
 
     setup() {
         this.views = VIEWS;
         this.viewLabels = VIEW_LABELS;
         this.sortLabels = SORT_LABELS;
         const fragment = readFragment(window.location.hash);
-        this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions"});
+        // `order` : le dernier nœud lancé, que la vue Sessions rejoue.
+        this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions", order: null});
     }
 
     get tree() {
@@ -91,6 +95,14 @@ export class TelemetryPage extends Component {
         this.state.view = view;
         this.state.terminal ||= view === "sessions";
         this.remember();
+    }
+
+    // Lance un nœud : la vue Sessions rejoue son plan de route `route`, le
+    // menu principal ayant pour fil d'Ariane la clé de la racine. Un ordre
+    // neuf à chaque appel, même pour le même nœud.
+    launch(route) {
+        this.state.order = {route, root: this.tree.key};
+        this.show("sessions");
     }
 
     // Vue que le TODO d'une session demande à la page d'ouvrir.

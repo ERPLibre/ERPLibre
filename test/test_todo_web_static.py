@@ -9,8 +9,8 @@ provenance note les empreintes. La page, elle, est servie depuis la table
 que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
-`static/src/history.js`, `static/src/prompt.js`) tournent sous node, quand
-il est installé. Les mots de la page sont vérifiés par
+`static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`)
+tournent sous node, quand il est installé. Les mots de la page sont vérifiés par
 `test_todo_web_i18n.py`.
 """
 
@@ -227,12 +227,16 @@ class TestPage(unittest.TestCase):
         named = re.findall(r"^\s+(\w+): \"", block[1], re.M)
         self.assertEqual(tuple(named), protocol.DROP_REASONS)
 
-    def test_the_tree_toggle_is_named_after_its_node(self):
-        # Le bouton ne montre que ▸ ou ▾ : un lecteur d'écran annonce son
-        # nom accessible, le libellé du nœud.
+    def test_the_tree_buttons_are_named_after_their_node(self):
+        # L'un ne montre que ▸ ou ▾, l'autre ▶ : un lecteur d'écran annonce
+        # leur nom accessible, qui porte le libellé du nœud.
         source = (SRC / "tree_view.js").read_text(encoding="utf-8")
-        [button] = re.findall(r"<button\b[^>]*>", source)
-        self.assertIn('t-att-aria-label="props.node.label"', button)
+        toggle, launch = re.findall(r"<button\b[^>]*>", source)
+        self.assertIn('t-att-aria-label="props.node.label"', toggle)
+        self.assertIn('t-att-aria-label="launchLabel"', launch)
+        self.assertIn(
+            '`${this.env.t("Launch")} ${this.props.node.label}`', source
+        )
 
 
 # Prélude des scripts node : le module nommé en argument, importé sous `m`
@@ -961,6 +965,163 @@ class TestTerminalFold(unittest.TestCase):
         # Un lecteur, puis l'écho coupé, sans question structurée : le
         # bouton ne cache pas l'invite d'un programme.
         self.assertEqual(self.out["walks"][3], [False, True, True])
+
+
+# Nœuds de /api/telemetry et menus d'une session, factices : Code a pour
+# segment « Code » dans l'arbre et le fil d'Ariane, mais son parent le
+# montre autrement (`entry`). `play` donne des messages au rejeu et rend ses
+# réponses, puis son arrêt ou sa fin.
+LAUNCH_CHECK = r"""
+const node = (key, label, entry) =>
+    ({key, label, entry, menu: true, children: []});
+const execute = node("Execute", "🧰 Exécution", "🧰 Exécution");
+const code = node("Code", "Code", "💻 Code - Outil pour développeur");
+const status = {key: "Show code status", label: "🔍 Afficher le statut",
+    menu: false, children: []};
+const route = m.launchRoute([execute, code, status]);
+const menu = (qid, crumbs, labels) => ({t: "menu", qid, crumbs,
+    items: [...labels.map((label, n) => ({key: String(n + 1), label})),
+        {key: "0", label: "🔙 Retour"}]});
+const main = menu(1, ["TODO"], ["🧰 Exécution", "📦 Installation"]);
+const exec = menu(2, ["TODO", "Execute"],
+    ["🔧 Config", "💻 Code - Outil pour développeur"]);
+const codeMenu = menu(3, ["TODO", "Execute", "Code"],
+    ["📦 Remiser", "🔍  afficher le STATUT"]);
+const play = (messages, at = 0) => {
+    let replay = m.startReplay(route, "TODO", at);
+    const answers = [];
+    for (const message of messages) {
+        const step = m.advance(replay, message);
+        replay = step.replay;
+        if (step.answer) answers.push(step.answer);
+        if (step.halt !== undefined) return {answers, halt: step.halt};
+        if (!replay) break;
+    }
+    return {answers, done: replay === null};
+};
+console.log(JSON.stringify({
+    keys: ["🔍 Afficher  le Statut du CODE", "  ()", " — ", "Élève 2"]
+        .map(m.entryKey),
+    route,
+    refused: [m.launchRoute([]), m.launchRoute([execute, node("x", "  ()")])],
+    match: [
+        m.matchEntry(main.items, "🧰 exécution"),
+        m.matchEntry(main.items, "Retour"),
+        m.matchEntry([{key: "1", label: "A b"}, {key: "2", label: "ab"}], "AB"),
+        m.matchEntry(main.items, "Absent"),
+        m.matchEntry(main.items, "  ()"),
+    ],
+    full: play([{t: "session"}, {t: "tty_state"}, main, {t: "answered"},
+        {t: "dropped"}, exec, codeMenu, {t: "run_start"}]),
+    ask: play([main, {t: "ask", qid: 9, kind: "confirm"}]),
+    missing: play([main, menu(2, ["TODO", "Execute"], ["🔧 Config"])]),
+    stray: play([main, menu(2, ["TODO", "Install"],
+        ["💻 Code - Outil pour développeur"])]),
+    elsewhere: play([main, menu(2, ["TODO", "Install", "Execute"],
+        ["💻 Code - Outil pour développeur"])]),
+    noCrumbs: play([main, menu(2, [], ["💻 Code - Outil pour développeur"])]),
+    notice: play([main, {t: "notice"}]),
+    notMain: play([exec]),
+    ran: play([main, exec, {t: "run_start"}]),
+    closed: play([main, {t: "closed"}]),
+    resumed: play([codeMenu], 2),
+    resume: [[main, null], [exec, null], [codeMenu, null], [codeMenu, 3],
+        [{t: "ask", qid: 4, crumbs: ["TODO"]}, null],
+        [menu(5, ["TODO", "Install"], []), null],
+        [menu(6, ["TODO", "Install", "Code"], []), null], [null, null]]
+        .map(([question, pending]) =>
+            m.resumeAt(question, pending, route, "TODO")),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestLaunch(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(LAUNCH_CHECK, "launch.js")
+
+    def test_a_label_counts_by_its_letters_and_digits(self):
+        # Casse, accents, icône, ponctuation et espaces ne comptent pas ; un
+        # libellé calculé à l'affichage, que l'arbre lit « () », est vide.
+        self.assertEqual(
+            self.out["keys"], ["afficherlestatutducode", "", "", "eleve2"]
+        )
+
+    def test_the_route_follows_what_each_parent_shows(self):
+        execute, code, status = self.out["route"]
+        self.assertEqual(execute["entry"], "🧰 Exécution")
+        self.assertEqual(
+            code,
+            {
+                "label": "Code",
+                "entry": "💻 Code - Outil pour développeur",
+                "key": "Code",
+            },
+        )
+        # Un nœud sans `entry` : son libellé.
+        self.assertEqual(status["entry"], status["label"])
+        # Ni un chemin vide, ni un chemin dont une étape ne se retrouve.
+        self.assertEqual(self.out["refused"], [None, None])
+
+    def test_one_entry_matches_never_zero_nor_two(self):
+        # « Retour » est l'entrée 0 : le rejeu ne la choisit jamais.
+        self.assertEqual(self.out["match"], ["1", None, None, None, None])
+
+    def test_each_menu_gets_its_entry_up_to_the_last(self):
+        # Les messages du hub et `answered` passent ; la dernière étape
+        # répondue, le rejeu finit : la commande qui suit n'est plus à lui.
+        self.assertEqual(
+            self.out["full"],
+            {
+                "answers": [
+                    {"qid": 1, "key": "1"},
+                    {"qid": 2, "key": "2"},
+                    {"qid": 3, "key": "2"},
+                ],
+                "done": True,
+            },
+        )
+
+    def test_anything_but_the_expected_menu_stops_it(self):
+        first = [{"qid": 1, "key": "1"}]
+        # Une question après Exécution n'est jamais répondue.
+        self.assertEqual(
+            self.out["ask"], {"answers": first, "halt": "🧰 Exécution"}
+        )
+        # L'entrée cherchée manque : arrêt à l'étape cherchée.
+        self.assertEqual(
+            self.out["missing"], {"answers": first, "halt": "Code"}
+        )
+        # Un autre menu que celui répondu, fût-il du même nom sous un autre
+        # parent, ou sans fil d'Ariane ; un avis ; un autre que le menu
+        # principal au départ.
+        for case in ("stray", "elsewhere", "noCrumbs", "notice"):
+            self.assertEqual(
+                self.out[case], {"answers": first, "halt": "🧰 Exécution"}
+            )
+        self.assertEqual(
+            self.out["notMain"], {"answers": [], "halt": "🧰 Exécution"}
+        )
+        # Une commande avant le dernier menu ; la session qui se ferme.
+        two = first + [{"qid": 2, "key": "2"}]
+        self.assertEqual(self.out["ran"], {"answers": two, "halt": "Code"})
+        self.assertEqual(
+            self.out["closed"], {"answers": first, "halt": "🧰 Exécution"}
+        )
+
+    def test_a_session_resumes_at_a_menu_of_the_path(self):
+        # Le menu principal, Exécution ou Code, que TODO rend après une
+        # commande : l'étape qui s'y répond. Ni un menu déjà répondu, ni
+        # une question, ni un menu hors du chemin, fût-il du même nom.
+        self.assertEqual(
+            self.out["resume"], [0, 1, 2, None, None, None, None, None]
+        )
+        # Repris au menu Code : seule la feuille y est répondue.
+        self.assertEqual(
+            self.out["resumed"],
+            {"answers": [{"qid": 3, "key": "2"}], "done": True},
+        )
 
 
 if __name__ == "__main__":

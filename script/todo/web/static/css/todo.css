@@ -189,8 +189,21 @@ body {
     color: var(--muted);
 }
 
-.dropped {
+.dropped,
+.halt {
     color: var(--error);
+}
+
+.launch {
+    margin-left: 0.4rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
 }
 
 .secret label {

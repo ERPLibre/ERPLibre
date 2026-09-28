@@ -3950,6 +3950,12 @@ TRANSLATIONS = {
         "en": "Hidden answer not sent: a control character, or too long.",
     },
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
+    # Page web : lancer un nœud de la télémétrie dans une session.
+    "Launch": {"fr": "Lancer", "en": "Launch"},
+    "Path interrupted at: %s": {
+        "fr": "Chemin interrompu à : %s",
+        "en": "Path interrupted at: %s",
+    },
     # Page web dans la fenêtre bureautique : notification de fin de commande.
     "Command ended: exit code %s, %s s": {
         "fr": "Commande terminée : code de sortie %s, %s s",

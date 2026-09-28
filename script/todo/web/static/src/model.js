@@ -1,7 +1,7 @@
 // Ce que montrent les vues Arbre et Liste, sans OWL ni DOM : recherche et tri
 // de l'arbre des menus, vue et tri tirés du fragment de l'URL. Un nœud est
-// celui de /api/telemetry : {key, label, path, menu, children, section?} ;
-// `counts` associe un chemin à son compteur.
+// celui de /api/telemetry : {key, label, entry, path, menu, children,
+// section?} ; `counts` associe un chemin à son compteur.
 
 export const VIEWS = ["tree", "list", "system", "sessions", "history"];
 // Tris offerts par vue ; le premier est celui de la vue quand le fragment
@@ -56,12 +56,14 @@ export function sortTree(node, counts, sort) {
     return {...node, children};
 }
 
-// Feuilles sous `node`, dans l'ordre du code : {node, path}, `path` joignant
-// les libellés traduits depuis le premier niveau, racine exclue.
+// Feuilles sous `node`, dans l'ordre du code : {node, nodes, path}, `nodes`
+// les nœuds du premier niveau jusqu'à la feuille, racine exclue, et `path`
+// leurs libellés traduits joints.
 export function leaves(node, trail = []) {
     return node.children.flatMap((child) => {
-        const here = [...trail, child.label];
-        return child.menu ? leaves(child, here) : [{node: child, path: here.join(" › ")}];
+        const here = [...trail, child];
+        const path = here.map((step) => step.label).join(" › ");
+        return child.menu ? leaves(child, here) : [{node: child, nodes: here, path}];
     });
 }
 

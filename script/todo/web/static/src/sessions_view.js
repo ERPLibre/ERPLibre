@@ -32,9 +32,20 @@
 // Dans la fenêtre bureautique, le titre de la fenêtre suit le fil d'Ariane
 // de chaque menu, et la fin d'une commande longue se notifie (`env.desktop`,
 // sans effet dans un navigateur).
+//
+// Un nœud lancé depuis la télémétrie (`order`, son plan de route) se rejoue
+// dans la session courante quand elle attend à un menu du chemin — le menu
+// principal, ou celui que TODO rend après la commande d'une feuille —,
+// sinon dans une neuve, la courante fermée si elle attendait à un menu :
+// chaque menu reçoit l'entrée de l'étape suivante (`launch.js`), jusqu'à la
+// dernière ; ce qui suit est à l'utilisateur. Tout autre message que le menu
+// attendu arrête le rejeu, et la barre dit l'étape où le chemin s'est
+// interrompu, jusqu'à la réponse suivante de l'utilisateur, qui arrête
+// aussi un rejeu en cours.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {endsLongRun, runEndBody} from "./desktop.js";
+import {advance, resumeAt, startReplay} from "./launch.js";
 import {MenuView} from "./menu_view.js";
 import {ASK_KINDS, answerable} from "./prompt.js";
 import {QuestionView} from "./question_view.js";
@@ -90,6 +101,7 @@ export class SessionsView extends Component {
             <div t-if="state.id or state.status" class="toolbar session-bar">
                 <code t-esc="state.id"/>
                 <span class="state" t-esc="stateText"/>
+                <span t-if="state.halt" class="halt" role="status" t-esc="haltText"/>
                 <t t-if="state.status === 'open'">
                     <button type="button" t-on-click="() => this.send({t: 'interrupt'})" t-esc="env.t('Stop')"/>
                     <button type="button" t-on-click="() => this.send({t: 'close'})" t-esc="env.t('Close')"/>
@@ -124,10 +136,10 @@ export class SessionsView extends Component {
             <div t-if="structured" class="prompt-panel">
                 <MenuView t-if="structured.t === 'menu' or (structured.kind === 'choose' and !structured.multi)"
                     t-key="structured.qid" question="structured" pending="state.pending === structured.qid"
-                    visible="props.visible" answer.bind="reply" cancel.bind="cancel"/>
+                    visible="props.visible" answer.bind="choose" cancel.bind="cancel"/>
                 <QuestionView t-else="" t-key="structured.qid" question="structured"
                     pending="state.pending === structured.qid" visible="props.visible"
-                    answer.bind="reply" cancel.bind="cancel"/>
+                    answer.bind="choose" cancel.bind="cancel"/>
             </div>
             <div id="session-terminal" class="terminal" t-ref="terminal"
                 t-att-hidden="terminalOpen ? undefined : 'hidden'"/>
@@ -150,6 +162,7 @@ export class SessionsView extends Component {
             running: false, // entre `run_start` et `run_end`
             ran: false, // ce que TODO a écrit depuis la dernière réponse reste à lire
             override: null, // le choix du bouton Terminal : {phase, open}
+            halt: "", // l'étape où le dernier rejeu s'est interrompu
         });
         this.panel = useRef("terminal");
         this.secretField = useRef("secret");
@@ -178,6 +191,8 @@ export class SessionsView extends Component {
         this.socket = null;
         this.bye = null;
         this.offset = 0; // décalage absolu du prochain octet attendu
+        this.replay = null; // le rejeu d'un nœud lancé, en cours
+        this.deferred = null; // l'ordre qui attend la question d'un rattachement
         this.encoder = new TextEncoder();
         onMounted(() => {
             window.addEventListener("pagehide", this.onPageHide);
@@ -205,6 +220,16 @@ export class SessionsView extends Component {
             this.drop();
             this.term.dispose();
         });
+        // Chaque ordre neuf de la page (`order`) ; après onMounted, qui crée
+        // le terminal.
+        useEffect(
+            (order) => {
+                if (order) {
+                    this.follow(order);
+                }
+            },
+            () => [this.props.order]
+        );
     }
 
     // Ajuste le terminal à son panneau, dont la hauteur suit celle du
@@ -252,6 +277,10 @@ export class SessionsView extends Component {
         return this.state.notice ? this.env.t(this.state.notice) : "";
     }
 
+    get haltText() {
+        return this.env.t("Path interrupted at: %s").replace("%s", () => this.state.halt);
+    }
+
     get stateText() {
         const {status, code} = this.state;
         if (!STATE_LABELS[status]) {
@@ -273,7 +302,9 @@ export class SessionsView extends Component {
         const raw = Boolean(id) && id === this.state.id && this.state.raw;
         Object.assign(this.state, {id, status: "connecting", code: null, tty: {...TTY}, answers: [], raw});
         Object.assign(this.state, {prompt: "", windowed: false, notice: "", question: null, pending: null});
-        Object.assign(this.state, {running: false, ran: false, override: null});
+        Object.assign(this.state, {running: false, ran: false, override: null, halt: ""});
+        this.replay = null;
+        this.deferred = null;
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -350,17 +381,33 @@ export class SessionsView extends Component {
         if (this.state.override) {
             this.state.override = heldOverride(this.state.override, foldPhase(this.fold));
         }
+        // La question ouverte d'un rattachement suit `session` : ce qui
+        // vient ensuite dit où l'ordre en attente se rejoue.
+        if (this.deferred && message.t !== "session") {
+            this.resume(this.deferred);
+        } else if (this.replay) {
+            this.step(message);
+        }
     }
 
     closed(code) {
         this.socket = null;
         const status = closedState(code, this.bye);
+        // « Trop de sessions » dit déjà pourquoi le rejeu s'arrête.
+        if (this.replay && status !== "full") {
+            this.step({t: "closed"});
+        }
+        this.replay = null;
         Object.assign(this.state, {status, question: null, pending: null});
         Object.assign(this.state, {running: false, ran: false, override: null});
         if (status === "ended" || status === "gone") {
             this.remember(null);
         }
         this.poll();
+        // Un rattachement refusé : l'ordre en attente part dans une neuve.
+        if (this.deferred) {
+            this.resume(this.deferred);
+        }
     }
 
     remember(id) {
@@ -387,8 +434,79 @@ export class SessionsView extends Component {
         this.settle(qid, {t: "answer", value});
     }
 
+    // Réponse d'un widget : l'utilisateur reprend la main, le rejeu en
+    // cours s'arrête.
+    choose(qid, value) {
+        this.state.halt = "";
+        this.replay = null;
+        this.reply(qid, value);
+    }
+
     cancel(qid) {
+        this.state.halt = "";
+        this.replay = null;
         this.settle(qid, {t: "cancel"});
+    }
+
+    // Vrai quand la session courante attend à un menu, sans réponse de la
+    // page ni commande en cours : la fermer n'interrompt rien.
+    get idleAtMenu() {
+        const {status, question, pending, running} = this.state;
+        return status === "open" && question?.t === "menu" && pending !== question.qid && !running;
+    }
+
+    // Suit un ordre de la page : rejouer le plan de route `route` d'un
+    // nœud, le menu principal ayant pour fil d'Ariane `root`. Pendant un
+    // rattachement, l'ordre attend la question ouverte de la session
+    // (`receive`) ; une session neuve qui s'ouvre le rejoue depuis son menu
+    // principal.
+    follow(order) {
+        this.state.halt = "";
+        if (this.state.status === "connecting") {
+            this.deferred = this.state.id ? order : null;
+            this.replay = this.state.id ? null : startReplay(order.route, order.root);
+            return;
+        }
+        this.resume(order);
+    }
+
+    // Rejoue `route` dans la session courante à partir de sa question
+    // ouverte, quand c'est un menu du chemin (`resumeAt`) ; sinon dans une
+    // session neuve (`renew`).
+    resume({route, root}) {
+        this.deferred = null;
+        const {status, question, pending} = this.state;
+        const at = status === "open" ? resumeAt(question, pending, route, root) : null;
+        if (at === null) {
+            this.renew();
+        }
+        this.replay = startReplay(route, root, at ?? 0);
+        if (at !== null) {
+            this.step(question);
+        }
+    }
+
+    // Ouvre une session neuve, après avoir fermé la courante si elle attend
+    // oisive à un menu : laissée derrière, elle garderait une des places,
+    // comptées, du hub.
+    renew() {
+        if (this.idleAtMenu) {
+            this.send({t: "close"});
+        }
+        this.connect(null);
+    }
+
+    // Donne `message` au rejeu en cours : la réponse qu'il demande part, et
+    // son arrêt se dit dans la barre de la session.
+    step(message) {
+        const {replay, answer, halt} = advance(this.replay, message);
+        this.replay = replay;
+        if (answer) {
+            this.reply(answer.qid, answer.key);
+        }
+        if (halt !== undefined) {
+            this.state.halt = halt;
+        }
     }
 
     // Frappes et collages : des octets UTF-8, en trames binaires.
