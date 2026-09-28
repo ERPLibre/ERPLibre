@@ -193,6 +193,7 @@ export class SessionsView extends Component {
         this.offset = 0; // décalage absolu du prochain octet attendu
         this.replay = null; // le rejeu d'un nœud lancé, en cours
         this.deferred = null; // l'ordre qui attend la question d'un rattachement
+        this.renewing = null; // l'ordre qui attend la fin de la session que renew ferme
         this.encoder = new TextEncoder();
         onMounted(() => {
             window.addEventListener("pagehide", this.onPageHide);
@@ -305,6 +306,7 @@ export class SessionsView extends Component {
         Object.assign(this.state, {running: false, ran: false, override: null, halt: ""});
         this.replay = null;
         this.deferred = null;
+        this.renewing = null;
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -407,6 +409,13 @@ export class SessionsView extends Component {
         // Un rattachement refusé : l'ordre en attente part dans une neuve.
         if (this.deferred) {
             this.resume(this.deferred);
+        } else if (this.renewing) {
+            // La session que `renew` a fermée a fini : le hub a rendu sa
+            // place, la neuve peut s'ouvrir sans s'y heurter.
+            const order = this.renewing;
+            this.renewing = null;
+            this.connect(null);
+            this.replay = startReplay(order.route, order.root);
         }
     }
 
@@ -478,22 +487,27 @@ export class SessionsView extends Component {
         const {status, question, pending} = this.state;
         const at = status === "open" ? resumeAt(question, pending, route, root) : null;
         if (at === null) {
-            this.renew();
+            this.renew({route, root});
+            return;
         }
-        this.replay = startReplay(route, root, at ?? 0);
-        if (at !== null) {
-            this.step(question);
-        }
+        this.replay = startReplay(route, root, at);
+        this.step(question);
     }
 
-    // Ouvre une session neuve, après avoir fermé la courante si elle attend
-    // oisive à un menu : laissée derrière, elle garderait une des places,
-    // comptées, du hub.
-    renew() {
+    // Ouvre une session neuve pour l'ordre `order` : une session oisive à
+    // un menu se ferme d'abord — laissée derrière, elle garderait une des
+    // places, comptées, du hub — et la neuve n'ouvre qu'une fois qu'elle a
+    // vraiment fini (`closed`), pour ne pas s'y heurter encore avant que le
+    // hub ait rendu sa place. Une session à une question ou en pleine
+    // commande reste, rattachable : la neuve s'ouvre à côté, tout de suite.
+    renew(order) {
         if (this.idleAtMenu) {
+            this.renewing = order;
             this.send({t: "close"});
+            return;
         }
         this.connect(null);
+        this.replay = startReplay(order.route, order.root);
     }
 
     // Donne `message` au rejeu en cours : la réponse qu'il demande part, et
