@@ -528,6 +528,7 @@ def run_tui(
     seance="",
     depart=0,
     journal=None,
+    archiver=None,
     horloge=None,
     montre=None,
     prefs=None,
@@ -565,6 +566,10 @@ def run_tui(
 
     mesures = [] if mesures is None else mesures
     journal = ms.ecrire if journal is None else journal
+    # L'écran pose des tours dans la MÊME conversation que l'invite texte :
+    # sans archiviste, ceux-là seuls manqueraient à la séance gardée, et la
+    # relecture montrerait un trou là où l'on avait basculé d'écran.
+    archiver = (lambda _tour: None) if archiver is None else archiver
     horloge = time.monotonic if horloge is None else horloge
     # Deux horloges, et elles ne sont pas interchangeables. `horloge` est
     # MONOTONE et mesure des durées : celle du mur recule à un changement
@@ -988,6 +993,11 @@ def run_tui(
                 erreur=erreur,
             )
             self._noter_heures()
+            if tour is not None and tour.role != "error":
+                from script.todo.assistant.chat import Turn
+
+                archiver(Turn("user", question))
+                archiver(tour)
             mesures.append(prise)
             try:
                 journal(prise)

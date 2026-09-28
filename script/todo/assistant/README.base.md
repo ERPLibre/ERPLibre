@@ -95,6 +95,27 @@ timings, counts, model served, tool, end reason. It carries NO text of the
 exchange — a short fingerprint of the question groups repeats instead, and
 `private/` becomes public along with a public fork.
 
+## Conversations are kept, and resumed
+
+The exchange itself is written AS IT HAPPENS, one turn per line, under
+`~/.erplibre/assistant/sessions/` — outside the repository, the directory in
+0700 and the files in 0600, because `~/.erplibre` is readable by every account
+on the machine and a conversation carries what was typed into it. Writing only
+on the way out writes almost never: a conversation rarely ends through the
+door — the terminal closes, the link drops, someone interrupts.
+
+A session's file name carries the DATE and a session identifier. The date so
+the list sorts and reads; the identifier so two sessions never land on each
+other — a name taken from the turn count alone, which is what the export used,
+silently overwrites any conversation of the same length.
+
+`Free question` therefore opens on the kept sessions, most recent first, each
+shown by its date, its model and the QUESTION that opened it: a date and a
+model do not tell two conversations of the same afternoon apart. Resuming
+loads the turns back into the history — the model receives, on the next turn,
+what it would have received without the interruption — and the rest is
+appended to the SAME file.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -537,6 +558,7 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
 | `mesure.py` | what a turn cost, and the line it writes under `private/` |
 | `perf_tui.py` | the live screen: the turns table, the stream, the input |
+| `sessions.py` | conversations kept under `~/.erplibre`, and resumed |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
@@ -656,6 +678,27 @@ Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
 `private/` : durées, comptes, modèle servi, outil, raison de fin. Il ne porte
 AUCUN texte d'échange — une empreinte courte de la question y regroupe les
 répétitions — et `private/` devient public avec un fork public.
+
+## Les conversations sont gardées, et se reprennent
+
+L'échange lui-même s'écrit AU FIL, un tour par ligne, sous
+`~/.erplibre/assistant/sessions/` — hors du dépôt, le dossier en 0700 et les
+fichiers en 0600, parce que `~/.erplibre` est lisible par tous les comptes de
+la machine et qu'une conversation porte ce qu'on y a tapé. N'écrire qu'à la
+sortie n'écrit presque jamais : une conversation se termine rarement par la
+porte — on ferme le terminal, on perd la connexion, on interrompt.
+
+Le nom d'une séance porte la DATE et un identifiant. La date pour que la liste
+se trie et se lise ; l'identifiant pour que deux séances ne se marchent jamais
+dessus — un nom tiré du seul nombre de tours, ce que faisait l'export, écrase
+en silence toute conversation de la même longueur.
+
+« Question libre » ouvre donc sur les séances gardées, la plus récente
+d'abord, chacune montrée par sa date, son modèle et la QUESTION qui l'a
+ouverte : une date et un modèle ne distinguent pas deux conversations du même
+après-midi. Reprendre recharge les tours dans l'historique — le modèle reçoit
+au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
+s'ajoute au MÊME fichier.
 
 ## Une adresse ne devient jamais du texte de prompt
 
@@ -1154,6 +1197,7 @@ nul ».
 | `discover.py` | quels couples (hôte, port) méritent une reconnaissance, et la frappe |
 | `mesure.py` | ce qu'un tour a coûté, et la ligne qu'il écrit sous `private/` |
 | `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
+| `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |

@@ -90,6 +90,27 @@ timings, counts, model served, tool, end reason. It carries NO text of the
 exchange — a short fingerprint of the question groups repeats instead, and
 `private/` becomes public along with a public fork.
 
+## Conversations are kept, and resumed
+
+The exchange itself is written AS IT HAPPENS, one turn per line, under
+`~/.erplibre/assistant/sessions/` — outside the repository, the directory in
+0700 and the files in 0600, because `~/.erplibre` is readable by every account
+on the machine and a conversation carries what was typed into it. Writing only
+on the way out writes almost never: a conversation rarely ends through the
+door — the terminal closes, the link drops, someone interrupts.
+
+A session's file name carries the DATE and a session identifier. The date so
+the list sorts and reads; the identifier so two sessions never land on each
+other — a name taken from the turn count alone, which is what the export used,
+silently overwrites any conversation of the same length.
+
+`Free question` therefore opens on the kept sessions, most recent first, each
+shown by its date, its model and the QUESTION that opened it: a date and a
+model do not tell two conversations of the same afternoon apart. Resuming
+loads the turns back into the history — the model receives, on the next turn,
+what it would have received without the interruption — and the rest is
+appended to the SAME file.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -532,6 +553,7 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
 | `mesure.py` | what a turn cost, and the line it writes under `private/` |
 | `perf_tui.py` | the live screen: the turns table, the stream, the input |
+| `sessions.py` | conversations kept under `~/.erplibre`, and resumed |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |

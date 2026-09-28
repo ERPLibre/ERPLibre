@@ -95,6 +95,27 @@ Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
 AUCUN texte d'échange — une empreinte courte de la question y regroupe les
 répétitions — et `private/` devient public avec un fork public.
 
+## Les conversations sont gardées, et se reprennent
+
+L'échange lui-même s'écrit AU FIL, un tour par ligne, sous
+`~/.erplibre/assistant/sessions/` — hors du dépôt, le dossier en 0700 et les
+fichiers en 0600, parce que `~/.erplibre` est lisible par tous les comptes de
+la machine et qu'une conversation porte ce qu'on y a tapé. N'écrire qu'à la
+sortie n'écrit presque jamais : une conversation se termine rarement par la
+porte — on ferme le terminal, on perd la connexion, on interrompt.
+
+Le nom d'une séance porte la DATE et un identifiant. La date pour que la liste
+se trie et se lise ; l'identifiant pour que deux séances ne se marchent jamais
+dessus — un nom tiré du seul nombre de tours, ce que faisait l'export, écrase
+en silence toute conversation de la même longueur.
+
+« Question libre » ouvre donc sur les séances gardées, la plus récente
+d'abord, chacune montrée par sa date, son modèle et la QUESTION qui l'a
+ouverte : une date et un modèle ne distinguent pas deux conversations du même
+après-midi. Reprendre recharge les tours dans l'historique — le modèle reçoit
+au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
+s'ajoute au MÊME fichier.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des
@@ -592,6 +613,7 @@ nul ».
 | `discover.py` | quels couples (hôte, port) méritent une reconnaissance, et la frappe |
 | `mesure.py` | ce qu'un tour a coûté, et la ligne qu'il écrit sous `private/` |
 | `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
+| `sessions.py` | les conversations gardées sous `~/.erplibre`, et reprises |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
