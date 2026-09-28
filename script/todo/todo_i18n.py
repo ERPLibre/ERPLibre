@@ -1427,6 +1427,1036 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
+    # NTFY section
+    # Services VoIP : erplibre_sip_go et Asterisk
+    'voip_announce_other': {
+        "fr": 'Un autre fichier...',
+        "en": 'Another file...',
+    },
+    'voip_announce_none': {
+        "fr": 'Aucune annonce',
+        "en": 'No announcement',
+    },
+    'voip_handset_ask': {
+        "fr": 'Relier le micro et les haut-parleurs (vrai telephone) ?',
+        "en": 'Connect microphone and speakers (real phone)?',
+    },
+    'voip_handset_echo': {
+        "fr": "Aucun traitement d'echo : si les haut-parleurs sont ouverts pres du micro, le correspondant s'entendra revenir. Un casque regle le probleme.",
+        "en": 'No echo cancellation: with speakers open near the microphone, the other party will hear themselves come back. A headset solves it.',
+    },
+    'voip_handset_hint': {
+        "fr": "Pendant l'appel : [m] ouvre ou ferme le micro, [q] raccroche. Les deux barres montrent ce qui circule — la votre et la sienne.",
+        "en": "During the call: [m] toggles the microphone, [q] hangs up. The two bars show what is flowing — yours and theirs.",
+    },
+    'modem_audio_try': {
+        "fr": '🎤 Essayer le combine SANS appeler (micro, touches)',
+        "en": '🎤 Try the handset WITHOUT calling (mic, keys)',
+    },
+    'modem_audio_try_intro': {
+        "fr": ("Aucun appel ne part. On verifie ce qui n en depend pas : que"
+               " le micro est capte, que les touches repondent, que la carte"
+               " accepte les deux sens. La barre « lui » reste a zero hors"
+               " appel, c est normal — le modem ne transporte rien."),
+        "en": ("No call is placed. This checks what does not depend on the"
+               " line: that the mic is picked up, that keys respond, that"
+               " the card accepts both directions. The \"them\" bar stays at"
+               " zero outside a call, which is expected."),
+    },
+    'voip_mic_ask': {
+        "fr": 'Ouvrir le micro des le decroche ? (sinon [m] pendant l appel)',
+        "en": 'Open the microphone on answer? (otherwise [m] during the call)',
+    },
+    'voip_not_installed': {
+        "fr": 'non installe',
+        "en": 'not installed',
+    },
+    'voip_configured': {
+        "fr": 'configure',
+        "en": 'configured',
+    },
+    'voip_no_trunk': {
+        "fr": 'installe, aucun trunk configure',
+        "en": 'installed, no trunk configured',
+    },
+    'voip_no_trunk_help': {
+        "fr": 'Aucun trunk configure. Renseignez le fichier :',
+        "en": 'No trunk configured. Fill in the file:',
+    },
+    'voip_install': {
+        "fr": '📦 Installer un service VoIP (au choix)',
+        "en": '📦 Install a VoIP service (choice)',
+    },
+    'voip_status': {
+        "fr": '🚦 Etat des services VoIP',
+        "en": '🚦 VoIP services status',
+    },
+    'modem_probe_audio': {
+        "fr": '📈 Sonder le chemin audio (trouve le bon mode PCM)',
+        "en": '📈 Probe the audio path (finds the right PCM mode)',
+    },
+    'modem_probe_intro': {
+        "fr": ("Un appel va partir, pour essayer UN mode PCM : le modem fige"
+               " son routage voix des que la voix s etablit, donc un mode par"
+               " appel. Decrochez, ecoutez si l annonce arrive, puis PARLEZ"
+               " pendant les 8 s d ecoute."),
+        "en": ("A call will be placed to try ONE PCM mode: the modem freezes"
+               " its voice routing once voice is up, so one mode per call."
+               " Answer, listen for the announcement, then SPEAK during the"
+               " 8 s listening window."),
+    },
+    'modem_probe_result': {
+        "fr": 'Mode retenu : %s. Il devient le defaut des prochains appels.',
+        "en": 'Selected mode: %s. It becomes the default for further calls.',
+    },
+    'modem_tui_tab_keys': {
+        "fr": '🔢 Clavier',
+        "en": '🔢 Keypad',
+    },
+    'modem_tui_tab_audio': {
+        "fr": '🎛 Son',
+        "en": '🎛 Audio',
+    },
+    'Ajouter un appel': {
+        "fr": 'Ajouter',
+        "en": 'Add call',
+    },
+    'Repondre': {
+        "fr": '📞 Repondre',
+        "en": '📞 Answer',
+    },
+    'Veille': {
+        "fr": '👂 Veille',
+        "en": '👂 Standby',
+    },
+    'modem_tui_ringing': {
+        "fr": 'APPEL ENTRANT : %s',
+        "en": 'INCOMING CALL: %s',
+    },
+    'modem_tui_standby_on': {
+        "fr": ("Veille : la ligne est tenue, on decroche sur commande. Rien"
+               " d autre ne pourra composer ni interroger le modem."),
+        "en": ("Standby: the line is held, answering on command. Nothing else"
+               " can dial or query the modem meanwhile."),
+    },
+    'Fusionner': {
+        "fr": 'Fusionner',
+        "en": 'Merge',
+    },
+    'modem_tui_merge_hint': {
+        "fr": ("La fusion se fait DANS LE RESEAU : elle echoue si l abonnement"
+               " ne porte pas la conference, et aucun reglage local n y change"
+               " rien."),
+        "en": ("Merging happens IN THE NETWORK: it fails if the subscription"
+               " does not carry conferencing, and no local setting changes"
+               " that."),
+    },
+    'modem_tui_typing': {
+        "fr": ("Composez au clavier ou avec les touches. Entree appelle,"
+               " Retour arriere efface, F1/F2/F3 changent de vue."),
+        "en": ("Dial with the keyboard or the on-screen keys. Enter calls,"
+               " Backspace erases, F1/F2/F3 switch views."),
+    },
+    'modem_tui_tab_signal': {
+        "fr": '📶 Signal',
+        "en": '📶 Signal',
+    },
+    # Libelle d'onglet, distinct du nom complet : quatre onglets se
+    # partagent la largeur, et « Answering machine » y serait tronque.
+    'modem_tui_tab_answering': {
+        "fr": '📼 Repondeur',
+        "en": '📼 Answering',
+    },
+    'modem_tui_net': {
+        "fr": 'Reseau',
+        "en": 'Network',
+    },
+    'modem_tui_refresh_done': {
+        "fr": 'Peripheriques relus : %d entrees, %d sorties.',
+        "en": 'Devices re-read: %d inputs, %d outputs.',
+    },
+    'modem_tui_refresh_lost': {
+        "fr": ("Le peripherique choisi (%s) a disparu : retour a celui du"
+               " systeme."),
+        "en": ("The chosen device (%s) is gone: falling back to the system"
+               " one."),
+    },
+    'modem_tui_ring': {
+        "fr": 'Sonnerie',
+        "en": 'Ringer',
+    },
+    'modem_tui_clean': {
+        "fr": 'Nettoyage',
+        "en": 'Clean-up',
+    },
+    'modem_tui_micgain': {
+        "fr": 'Gain mic',
+        "en": 'Mic gain',
+    },
+    'modem_tui_ecogain': {
+        "fr": 'Gain eco',
+        "en": 'Rx gain',
+    },
+    'modem_tui_echo': {
+        "fr": 'Anti-echo',
+        "en": 'Anti-echo',
+    },
+    'modem_tui_clvl': {
+        "fr": 'Vol. modem',
+        "en": 'Modem vol.',
+    },
+    'modem_tui_fns': {
+        "fr": 'Anti-bruit',
+        "en": 'Noise cut',
+    },
+    'modem_tui_quality_mic': {
+        "fr": 'Qual. micro',
+        "en": 'Mic qual.',
+    },
+    'modem_tui_quality_hp': {
+        "fr": 'Qual. ecoute',
+        "en": 'Rx qual.',
+    },
+    'modem_tui_mic': {
+        "fr": 'Micro',
+        "en": 'Mic',
+    },
+    'modem_tui_hp': {
+        "fr": 'Ecoute',
+        "en": 'Speaker',
+    },
+    'modem_tui_in': {
+        "fr": 'Entree',
+        "en": 'Input',
+    },
+    'modem_tui_out': {
+        "fr": 'Sortie',
+        "en": 'Output',
+    },
+    'Un appel est deja en cours': {
+        "fr": 'Un appel est deja en cours',
+        "en": 'A call is already in progress',
+    },
+    'Appel terminé': {
+        "fr": 'Appel terminé',
+        "en": 'Call ended',
+    },
+    'modem_audio_rule': {
+        "fr": '🎧 Regle audio : laisser la carte du modem au modem',
+        "en": '🎧 Audio rule: leave the modem card to the modem',
+    },
+    'modem_call_interrupted': {
+        "fr": 'Interrompu : la ligne a ete raccrochee.',
+        "en": 'Interrupted: the line was hung up.',
+    },
+    'modem_audio_state': {
+        "fr": 'Etat de la regle',
+        "en": 'Rule state',
+    },
+    'modem_audio_set': {
+        "fr": 'posee',
+        "en": 'installed',
+    },
+    'modem_audio_unset': {
+        "fr": 'absente',
+        "en": 'absent',
+    },
+    'modem_audio_unchanged': {
+        "fr": 'Rien de change.',
+        "en": 'Nothing changed.',
+    },
+    'modem_audio_rule_ask_off_warn': {
+        "fr": ("Retirer la regle rend la carte au serveur audio : il en"
+               " refera le micro par defaut et la tiendra ouverte. Les"
+               " appels perdront le son."),
+        "en": ("Removing the rule gives the card back to the audio server:"
+               " it will make it the default microphone again and hold it"
+               " open. Calls will lose their audio."),
+    },
+    'modem_audio_rule_on': {
+        "fr": 'Regle posee : le serveur audio ne prend plus la carte.',
+        "en": 'Rule installed: the audio server no longer grabs the card.',
+    },
+    'modem_audio_rule_off': {
+        "fr": 'Regle retiree : le serveur audio peut reprendre la carte.',
+        "en": 'Rule removed: the audio server may grab the card again.',
+    },
+    'modem_audio_rule_ask_on': {
+        "fr": ("Poser la regle ? Le serveur audio cesse d adopter la carte du"
+               " modem comme micro, ce qui la libere pour les appels."),
+        "en": ("Install the rule? The audio server stops adopting the modem"
+               " card as a microphone, freeing it for calls."),
+    },
+    'modem_audio_rule_ask_off': {
+        "fr": 'Retirer la regle ?',
+        "en": 'Remove the rule?',
+    },
+    'modem_audio_busy': {
+        "fr": 'carte prise par un autre programme (%s)',
+        "en": 'card held by another program (%s)',
+    },
+    'modem_probe_mode': {
+        "fr": 'Mode PCM a essayer, 0 a 2 (vide = %s)',
+        "en": 'PCM mode to try, 0 to 2 (empty = %s)',
+    },
+    'modem_probe_down': {
+        "fr": 'Descente (voix du correspondant)',
+        "en": 'Downlink (the other party voice)',
+    },
+    'modem_probe_heard': {
+        "fr": 'Le correspondant a-t-il entendu l annonce ?',
+        "en": 'Did the other party hear the announcement?',
+    },
+    'modem_probe_no_bridge': {
+        "fr": ("Le mode %s n a pas pu etre pose : la mesure ne dit donc rien"
+               " de ce mode. Essayez-en un autre."),
+        "en": ("Mode %s could not be set, so the measurement says nothing"
+               " about it. Try another one."),
+    },
+    'modem_probe_none_mode': {
+        "fr": ("Rien n a circule en mode %s, ni dans un sens ni dans l autre."
+               " Essayez un autre mode ; si les trois echouent, cette carte"
+               " ne porte pas la voix de la ligne."),
+        "en": ("Nothing flowed in mode %s, in either direction. Try another"
+               " mode; if all three fail, this card does not carry the"
+               " line's voice."),
+    },
+    'voip_call': {
+        "fr": '🎵 Appeler avec une annonce audio (musique, message)',
+        "en": '🎵 Call with an audio announcement (music, message)',
+    },
+    'voip_go_pitch': {
+        "fr": 'binaire Go statique, sans dependance C, ~500 lignes',
+        "en": 'static Go binary, no C dependency, ~500 lines',
+    },
+    'voip_ast_pitch': {
+        "fr": 'PBX complet, compile depuis les sources sur Debian 12+',
+        "en": 'full PBX, built from source on Debian 12+',
+    },
+    'voip_go_install_note': {
+        "fr": "Compile et installe dans ~/.local/bin. Aucun droit d'administration requis.",
+        "en": 'Builds and installs into ~/.local/bin. No admin rights required.',
+    },
+    'voip_script_missing': {
+        "fr": "Script d'installation introuvable :",
+        "en": 'Install script not found:',
+    },
+    'voip_binary': {
+        "fr": 'Binaire',
+        "en": 'Binary',
+    },
+    'voip_config': {
+        "fr": 'Configuration',
+        "en": 'Configuration',
+    },
+    'voip_trunk': {
+        "fr": 'Trunk',
+        "en": 'Trunk',
+    },
+    'voip_user': {
+        "fr": 'Utilisateur',
+        "en": 'Username',
+    },
+    'voip_secret': {
+        "fr": 'Secret pose',
+        "en": 'Secret in place',
+    },
+    'voip_announce': {
+        "fr": "Fichier d'annonce WAV (vide pour aucun)",
+        "en": 'WAV announcement file (blank for none)',
+    },
+    'voip_announce_missing': {
+        "fr": "Fichier d'annonce introuvable.",
+        "en": 'Announcement file not found.',
+    },
+    'voip_call_ok': {
+        "fr": 'Appel termine.',
+        "en": 'Call completed.',
+    },
+    'voip_call_fail': {
+        "fr": "L'appel a echoue — voir le journal ci-dessus.",
+        "en": 'The call failed — see the log above.',
+    },
+    # Modem cellulaire USB
+    'modem_port_open': {
+        "fr": "Port ouvrable",
+        "en": "Port openable",
+    },
+    'modem_udev': {
+        "fr": '🔌 Regle udev : reserver un port AT',
+        "en": '🔌 udev rule: reserve an AT port',
+    },
+    'modem_udev_file': {
+        "fr": 'Fichier',
+        "en": 'File',
+    },
+    'modem_udev_state': {
+        "fr": 'Etat',
+        "en": 'State',
+    },
+    'modem_udev_absent': {
+        "fr": 'absente',
+        "en": 'absent',
+    },
+    'modem_udev_ok': {
+        "fr": 'posee et a jour',
+        "en": 'installed and up to date',
+    },
+    'modem_udev_stale': {
+        "fr": 'posee mais DIFFERENTE de celle du depot',
+        "en": 'installed but DIFFERENT from the repository copy',
+    },
+    'modem_udev_install': {
+        "fr": 'Poser / mettre a jour la regle',
+        "en": 'Install / update the rule',
+    },
+    'modem_udev_remove': {
+        "fr": 'Retirer la regle',
+        "en": 'Remove the rule',
+    },
+    'modem_udev_removed': {
+        "fr": 'Regle retiree.',
+        "en": 'Rule removed.',
+    },
+    'modem_at_port': {
+        "fr": 'Port AT',
+        "en": 'AT port',
+    },
+    'modem_port_reserved': {
+        "fr": 'reserve →',
+        "en": 'reserved →',
+    },
+    'modem_port_shared': {
+        "fr": 'partage avec ModemManager',
+        "en": 'shared with ModemManager',
+    },
+    'modem_uac_toggle': {
+        "fr": '🔊 Activer / eteindre la carte son USB (UAC)',
+        "en": '🔊 Enable / disable the USB sound card (UAC)',
+    },
+    'modem_uac_state': {
+        "fr": "Etat actuel de l'UAC",
+        "en": 'Current UAC state',
+    },
+    'modem_uac_on': {
+        "fr": 'actif',
+        "en": 'on',
+    },
+    'modem_uac_off': {
+        "fr": 'eteint',
+        "en": 'off',
+    },
+    'modem_uac_unreadable': {
+        "fr": "usbcfg illisible : le modem n'a pas repondu.",
+        "en": 'usbcfg unreadable: the modem did not answer.',
+    },
+    'modem_uac_absent': {
+        "fr": "usbcfg n'a que %d parametres : ce micrologiciel ne connait pas l'UAC.",
+        "en": 'usbcfg has only %d parameters: this firmware does not know UAC.',
+    },
+    'modem_uac_warn': {
+        "fr": "Ecriture de configuration suivie d'un REDEMARRAGE du modem : il quitte le bus USB et y revient en une trentaine de secondes. La connexion de donnees sera coupee pendant ce temps.",
+        "en": 'Configuration write followed by a modem RESET: it leaves the USB bus and comes back in about thirty seconds. The data connection drops meanwhile.',
+    },
+    'modem_uac_enable': {
+        "fr": "Activer l'UAC et redemarrer le modem ?",
+        "en": 'Enable UAC and reset the modem?',
+    },
+    'modem_uac_disable': {
+        "fr": "Eteindre l'UAC et redemarrer le modem ?",
+        "en": 'Disable UAC and reset the modem?',
+    },
+    'modem_uac_next': {
+        "fr": 'Attendez le retour du modem, puis relancez [1] : la ligne Voix doit annoncer une carte son.',
+        "en": 'Wait for the modem to return, then run [1] again: the Voice line should report a sound card.',
+    },
+    'modem_menu': {
+        "fr": '📶 Modem - Ligne cellulaire USB, appels et Asterisk',
+        "en": '📶 Modem - USB cellular line, calls and Asterisk',
+    },
+    'modem_absent': {
+        "fr": "Aucun modem detecte. Verifiez qu'il est branche et que ModemManager tourne.",
+        "en": 'No modem detected. Check that it is plugged in and ModemManager is running.',
+    },
+    'modem_line': {
+        "fr": 'Ligne',
+        "en": 'Line',
+    },
+    'modem_signal': {
+        "fr": 'Signal',
+        "en": 'Signal',
+    },
+    'modem_voice': {
+        "fr": 'Voix',
+        "en": 'Voice',
+    },
+    'modem_voice_ok': {
+        "fr": 'carte son detectee',
+        "en": 'sound card detected',
+    },
+    'modem_voice_none': {
+        "fr": "AUCUNE carte son — un appel n'aura pas de son",
+        "en": 'NO sound card — a call will carry no audio',
+    },
+    'modem_status': {
+        "fr": '📊 Etat detaille du modem',
+        "en": '📊 Detailed modem status',
+    },
+    'modem_diag': {
+        "fr": '🔬 Diagnostic AT (capacites voix)',
+        "en": '🔬 AT diagnostic (voice capabilities)',
+    },
+    'modem_diag_warn': {
+        "fr": "Ce diagnostic arrete ModemManager quelques secondes : la connexion de donnees du modem sera coupee le temps de l'interrogation.",
+        "en": "This diagnostic stops ModemManager for a few seconds: the modem's data connection drops while it runs.",
+    },
+    'modem_continue': {
+        "fr": 'Continuer ?',
+        "en": 'Continue?',
+    },
+    'modem_raw': {
+        "fr": 'Reponse brute du modem',
+        "en": 'Raw modem response',
+    },
+    'modem_dialer': {
+        "fr": '🔢 Clavier de composition (TUI)',
+        "en": '🔢 Dial pad (TUI)',
+    },
+    'modem_call': {
+        "fr": '📞 Appeler par commande AT (aucun son)',
+        "en": '📞 Call with a raw AT command (no audio)',
+    },
+    'modem_hangup': {
+        "fr": '⛔ Raccrocher',
+        "en": '⛔ Hang up',
+    },
+    'modem_calls_list': {
+        "fr": '📋 Appels en cours',
+        "en": '📋 Calls in progress',
+    },
+    'modem_sms_send': {
+        "fr": '📤 Envoyer un SMS',
+        "en": '📤 Send an SMS',
+    },
+    'modem_sms_list': {
+        "fr": '📥 Lire les SMS',
+        "en": '📥 Read SMS messages',
+    },
+    'modem_tui_dtmf': {
+        "fr": 'touche envoyee :',
+        "en": 'tone sent:',
+    },
+    'modem_ans_erplibre': {
+        "fr": '📼 Repondeur ERPLibre',
+        "en": '📼 ERPLibre answering machine',
+    },
+    'modem_ans_operator': {
+        "fr": '📞 Boite vocale de l\'operateur',
+        "en": '📞 Operator voicemail',
+    },
+    'modem_ans_count': {
+        "fr": '%s message(s)',
+        "en": '%s message(s)',
+    },
+    'modem_ans_operator_how': {
+        "fr": ('Le clavier s\'ouvre sur la messagerie (%s). Appuyez sur '
+               'Appeler ; une fois en ligne, les touches partent en tonalites '
+               'pour le mot de passe et les choix du menu.'),
+        "en": ('The dialer opens on the voicemail (%s). Press Call; once '
+               'connected, keys are sent as tones for the password and the '
+               'menu choices.'),
+    },
+    'modem_ans_pin': {
+        "fr": '🔑 Code de la boite vocale de l\'operateur',
+        "en": '🔑 Operator voicemail code',
+    },
+    'modem_ans_pin_set': {
+        "fr": 'defini dans le coffre',
+        "en": 'stored in the vault',
+    },
+    'modem_ans_pin_unset': {
+        "fr": 'non defini',
+        "en": 'not set',
+    },
+    'modem_ans_pin_locked': {
+        "fr": 'coffre ferme',
+        "en": 'vault locked',
+    },
+    'modem_ans_pin_why': {
+        "fr": ('Le code sert a recuperer automatiquement les messages de '
+               'l\'operateur. Il est range dans le coffre du CLI, comme les '
+               'mots de passe courriel, et n\'est jamais affiche.'),
+        "en": ('The code is used to fetch operator messages automatically. It '
+               'is kept in the CLI vault, like mail passwords, and is never '
+               'displayed.'),
+    },
+    'modem_ans_pin_enter': {
+        "fr": 'Saisir ou remplacer le code',
+        "en": 'Enter or replace the code',
+    },
+    'modem_ans_pin_delete': {
+        "fr": 'Effacer le code du coffre',
+        "en": 'Delete the code from the vault',
+    },
+    'modem_ans_pin_ask': {
+        "fr": 'Code de la boite vocale : ',
+        "en": 'Voicemail code: ',
+    },
+    'modem_ans_pin_confirm': {
+        "fr": 'Confirmez le code : ',
+        "en": 'Confirm the code: ',
+    },
+    'modem_ans_pin_mismatch': {
+        "fr": 'Les deux saisies different : rien n\'est enregistre.',
+        "en": 'The two entries differ: nothing saved.',
+    },
+    'modem_ans_pin_saved': {
+        "fr": 'Code enregistre dans le coffre (%s).',
+        "en": 'Code saved in the vault (%s).',
+    },
+    'modem_ans_pin_keyring': {
+        "fr": 'trousseau du systeme',
+        "en": 'system keyring',
+    },
+    'modem_ans_pin_deleted': {
+        "fr": 'Code efface du coffre.',
+        "en": 'Code deleted from the vault.',
+    },
+    'modem_ans_fetched': {
+        "fr": '💾 Messages recuperes de l\'operateur',
+        "en": '💾 Messages fetched from the operator',
+    },
+    'modem_ans_full_kept': {
+        "fr": 'L\'enregistrement complet de l\'appel est garde : %s',
+        "en": 'The full call recording is kept: %s',
+    },
+    'modem_ans_fetch': {
+        "fr": '📥 Recuperer les messages de l\'operateur',
+        "en": '📥 Fetch operator messages',
+    },
+    'modem_ans_fetch_reperage': {
+        "fr": ('Reperage : appel de la messagerie, code puis #, puis 1, et '
+               'ecoute de 90 s. Rien n\'est efface. Le service erplibre-sip-go '
+               'doit etre arrete.'),
+        "en": ('Survey: voicemail call, code then #, then 1, and 90 s of '
+               'listening. Nothing is deleted. The erplibre-sip-go service '
+               'must be stopped.'),
+    },
+    'modem_ans_fetch_silence_risk': {
+        "fr": ('Limite : le 7 part apres %s s de silence, pour attendre la fin du '
+               'menu. Si l\'appelant a laisse un silence de plus de %s s dans son '
+               'message, le 7 partira au milieu : le debut est enregistre, mais le '
+               'message est EFFACE chez l\'operateur et la suite est perdue. En cas '
+               'de doute, utilisez le reperage, qui n\'efface rien.'),
+        "en": ('Limit: key 7 is sent after %s s of silence, to wait for the end of '
+               'the menu. If the caller left a silence longer than %s s in the '
+               'message, 7 will be sent mid-message: the beginning is recorded, but '
+               'the message is DELETED at the operator and the rest is lost. When '
+               'in doubt, use the survey, which deletes nothing.'),
+    },
+    'modem_ans_fetch_one': {
+        "fr": 'Recuperer un message, puis l\'effacer chez l\'operateur',
+        "en": 'Fetch one message, then delete it at the operator',
+    },
+    'modem_ans_fetch_survey': {
+        "fr": 'Reperage : ecouter sans rien effacer',
+        "en": 'Survey: listen without deleting anything',
+    },
+    'modem_ans_fetch_no_flag': {
+        "fr": 'La SIM ne signale aucun message en attente.',
+        "en": 'The SIM reports no waiting message.',
+    },
+    'modem_ans_fetch_delete_warn': {
+        "fr": ('Le message sera enregistre, PUIS efface chez l\'operateur (touche '
+               '7). L\'effacement n\'a lieu que si l\'annonce, le message et le '
+               'menu ont ete entendus ; sinon l\'appel s\'arrete sans effacer.'),
+        "en": ('The message will be recorded, THEN deleted at the operator (key '
+               '7). Deletion only happens if the announcement, the message and '
+               'the menu were heard; otherwise the call stops without deleting.'),
+    },
+    'modem_ans_fetch_message': {
+        "fr": 'Message extrait : %s',
+        "en": 'Extracted message: %s',
+    },
+    'modem_ans_uploaded': {
+        "fr": 'Message televerse dans Odoo.',
+        "en": 'Message uploaded to Odoo.',
+    },
+    'modem_ans_not_uploaded': {
+        "fr": ('Non televerse dans Odoo (%s). Le fichier reste ici, et le '
+               'televersement se rejouera.'),
+        "en": ('Not uploaded to Odoo (%s). The file stays here, and the upload '
+               'will be replayed.'),
+    },
+    'modem_tui_ans_uploaded': {
+        "fr": 'Televerse dans Odoo.',
+        "en": 'Uploaded to Odoo.',
+    },
+    'modem_tui_ans_not_uploaded': {
+        "fr": 'Non televerse dans Odoo : %s',
+        "en": 'Not uploaded to Odoo: %s',
+    },
+    'modem_ans_fetch_empty': {
+        "fr": ('Aucun message dans la boite : rien n\'a ete efface. La garde a '
+               'arrete l\'appel avant la touche 7.'),
+        "en": ('No message in the box: nothing was deleted. The guard stopped '
+               'the call before key 7.'),
+    },
+    'modem_ans_fetch_no_cut': {
+        "fr": ('Decoupe non reconnue : l\'enregistrement complet ci-dessus est '
+               'la copie a garder.'),
+        "en": ('Cut not recognised: the full recording above is the copy to '
+               'keep.'),
+    },
+    'modem_ans_fetch_running': {
+        "fr": 'Appel en cours, jusqu\'a deux minutes et demie...',
+        "en": 'Call in progress, up to two and a half minutes...',
+    },
+    'modem_ans_fetch_file': {
+        "fr": 'Enregistrement : %s',
+        "en": 'Recording: %s',
+    },
+    'modem_ans_fetch_no_code': {
+        "fr": 'Aucun code de messagerie : saisissez-le d\'abord par [6].',
+        "en": 'No voicemail code: enter it first with [6].',
+    },
+    'modem_ans_fetch_no_port': {
+        "fr": 'Port AT reserve absent : posez la regle udev du modem.',
+        "en": 'Reserved AT port missing: install the modem udev rule.',
+    },
+    'modem_ans_fetch_no_binary': {
+        "fr": 'Service introuvable : %s',
+        "en": 'Service not found: %s',
+    },
+    'modem_tui_refresh': {
+        "fr": '⟳ Rafraichir',
+        "en": '⟳ Refresh',
+    },
+    'modem_tui_sms': {
+        "fr": '💬 SMS',
+        "en": '💬 SMS',
+    },
+    'modem_tui_sms_to': {
+        "fr": 'Numero',
+        "en": 'Number',
+    },
+    'modem_tui_sms_body': {
+        "fr": 'Message',
+        "en": 'Message',
+    },
+    'modem_tui_sms_send': {
+        "fr": '📤 Envoyer',
+        "en": '📤 Send',
+    },
+    'modem_tui_sms_sending': {
+        "fr": 'Envoi en cours...',
+        "en": 'Sending...',
+    },
+    'modem_tui_sms_sent': {
+        "fr": 'SMS envoye.',
+        "en": 'SMS sent.',
+    },
+    'modem_tui_sms_empty': {
+        "fr": 'Message vide : rien n\'est envoye.',
+        "en": 'Empty message: nothing is sent.',
+    },
+    'modem_tui_sms_list': {
+        "fr": 'SMS du modem',
+        "en": 'Modem SMS',
+    },
+    'modem_tui_sms_reading': {
+        "fr": 'Lecture des SMS...',
+        "en": 'Reading SMS...',
+    },
+    'modem_tui_vault': {
+        "fr": '🔑 Coffre',
+        "en": '🔑 Vault',
+    },
+    'modem_tui_vault_ask': {
+        "fr": 'Mot de passe du fichier KeePass :',
+        "en": 'KeePass file password:',
+    },
+    'modem_tui_vault_ok': {
+        "fr": 'Code de la messagerie lu dans le coffre.',
+        "en": 'Voicemail code read from the vault.',
+    },
+    'modem_tui_answering': {
+        "fr": '📼 Repondeur',
+        "en": '📼 Answering machine',
+    },
+    'modem_tui_ans_erase_after': {
+        "fr": 'Effacer chez l\'operateur apres extraction',
+        "en": 'Delete at the operator after extraction',
+    },
+    'modem_tui_ans_fetch': {
+        "fr": '📥 Recuperer',
+        "en": '📥 Fetch',
+    },
+    'modem_tui_ans_saved': {
+        "fr": 'Messages recuperes',
+        "en": 'Fetched messages',
+    },
+    'modem_tui_ans_play': {
+        "fr": '▶ Ecouter',
+        "en": '▶ Play',
+    },
+    'modem_tui_ans_erase': {
+        "fr": '🗑 Effacer ici',
+        "en": '🗑 Delete here',
+    },
+    'modem_tui_ans_no_code': {
+        "fr": ('Code de la messagerie indisponible : ouvrez le coffre depuis '
+               'le menu Repondeur avant d\'ouvrir le clavier.'),
+        "en": ('Voicemail code unavailable: open the vault from the Answering '
+               'menu before opening the dialer.'),
+    },
+    'modem_tui_voicemail': {
+        "fr": '📮 Messagerie',
+        "en": '📮 Voicemail',
+    },
+    'modem_tui_voicemail_unknown': {
+        "fr": 'Aucun numero de messagerie inscrit sur la SIM.',
+        "en": 'No voicemail number stored on the SIM.',
+    },
+    'modem_tui_voicemail_hint': {
+        "fr": ('Une fois en ligne, les touches partent en tonalites : mot de '
+               'passe, puis choix du menu.'),
+        "en": ('Once connected, keys are sent as tones: password, then menu '
+               'choices.'),
+    },
+    # Sous-menus du menu Modem
+    'modem_menu_state': {
+        "fr": '📊 Etat et diagnostic',
+        "en": '📊 State and diagnosis',
+    },
+    'modem_menu_calls': {
+        "fr": '📞 Appels',
+        "en": '📞 Calls',
+    },
+    'modem_menu_sms': {
+        "fr": '💬 SMS',
+        "en": '💬 SMS',
+    },
+    'modem_menu_audio': {
+        "fr": '🔊 Son et peripheriques',
+        "en": '🔊 Sound and devices',
+    },
+    'modem_menu_voip': {
+        "fr": '🌐 Services VoIP',
+        "en": '🌐 VoIP services',
+    },
+    'modem_answering_short': {
+        "fr": 'Repondeur',
+        "en": 'Answering machine',
+    },
+    'modem_audio_rule_short': {
+        "fr": 'Regle audio',
+        "en": 'Audio rule',
+    },
+    # Boite vocale de l'operateur
+    'modem_voicemail': {
+        "fr": 'Boite vocale',
+        "en": 'Voicemail',
+    },
+    'modem_voicemail_waiting': {
+        "fr": '📬 MESSAGE EN ATTENTE chez l\'operateur',
+        "en": '📬 MESSAGE WAITING at the operator',
+    },
+    'modem_voicemail_empty': {
+        "fr": '📭 aucun message',
+        "en": '📭 no message',
+    },
+    'modem_voicemail_unknown': {
+        "fr": '❔ etat inconnu',
+        "en": '❔ state unknown',
+    },
+    'modem_voicemail_from_service': {
+        "fr": 'lu par le service il y a %s',
+        "en": 'read by the service %s ago',
+    },
+    'modem_voicemail_stale': {
+        "fr": 'ANCIEN, le service ne lit peut-etre plus',
+        "en": 'STALE, the service may have stopped reading',
+    },
+    # Repondeur du modem
+    'modem_answering': {
+        "fr": '📼 Repondeur — messages, annonce, sonneries',
+        "en": '📼 Answering machine — messages, greeting, rings',
+    },
+    'modem_ans_menu': {
+        "fr": 'Repondeur du modem',
+        "en": 'Modem answering machine',
+    },
+    'modem_ans_list': {
+        "fr": '📋 Ecouter les messages',
+        "en": '📋 Listen to messages',
+    },
+    'modem_ans_greeting': {
+        "fr": '🎙️  Enregistrer l\'annonce',
+        "en": '🎙️  Record the greeting',
+    },
+    'modem_ans_greeting_play': {
+        "fr": '🔊 Ecouter l\'annonce',
+        "en": '🔊 Play the greeting',
+    },
+    'modem_ans_rings': {
+        "fr": '🔔 Nombre de sonneries avant de decrocher',
+        "en": '🔔 Rings before answering',
+    },
+    'modem_ans_toggle': {
+        "fr": '⏻ Activer ou desactiver le repondeur',
+        "en": '⏻ Turn the answering machine on or off',
+    },
+    'modem_ans_none': {
+        "fr": 'Aucun message.',
+        "en": 'No messages.',
+    },
+    'modem_ans_play': {
+        "fr": 'Numero du message a ecouter (0 pour revenir)',
+        "en": 'Number of the message to play (0 to go back)',
+    },
+    'modem_ans_delete': {
+        "fr": 'Effacer ce message ? (o/N)',
+        "en": 'Delete this message? (y/N)',
+    },
+    'modem_ans_deleted': {
+        "fr": 'Message efface.',
+        "en": 'Message deleted.',
+    },
+    'modem_ans_rings_ask': {
+        "fr": 'Sonneries avant de decrocher (1 a 5)',
+        "en": 'Rings before answering (1 to 5)',
+    },
+    'modem_ans_rings_why': {
+        "fr": ('La boite vocale de l\'operateur prend l\'appel vers trente '
+               'secondes, et une sonnerie en dure six : au-dela de cinq, le '
+               'repondeur ne decrocherait jamais.'),
+        "en": ('The operator voicemail takes the call at about thirty seconds, '
+               'and one ring lasts six: past five, the answering machine would '
+               'never pick up.'),
+    },
+    'modem_ans_recording': {
+        "fr": 'Parlez apres le signal — %s secondes.',
+        "en": 'Speak after the tone — %s seconds.',
+    },
+    'modem_ans_recorded': {
+        "fr": 'Annonce enregistree : %s',
+        "en": 'Greeting recorded: %s',
+    },
+    'modem_ans_seconds': {
+        "fr": 'Duree de l\'annonce en secondes',
+        "en": 'Greeting length in seconds',
+    },
+    'modem_ans_restart': {
+        "fr": ('Le service lit ses reglages au demarrage : relancez '
+               'erplibre-sip-go pour qu\'ils prennent effet.'),
+        "en": ('The service reads its settings at startup: restart '
+               'erplibre-sip-go for them to take effect.'),
+    },
+    'modem_gateway_agent': {
+        "fr": '🔗 Passerelle SMS — demonstration de bout en bout',
+        "en": '🔗 SMS gateway — end-to-end demonstration',
+    },
+    'modem_number': {
+        "fr": 'Numero',
+        "en": 'Number',
+    },
+    'modem_number_invalid': {
+        "fr": 'Numero invalide (plan nord-americain attendu).',
+        "en": 'Invalid number (North American plan expected).',
+    },
+    'modem_call_confirm': {
+        "fr": 'Composer reellement',
+        "en": 'Really dial',
+    },
+    'modem_sms_text': {
+        "fr": 'Texte du message',
+        "en": 'Message text',
+    },
+    'modem_no_call': {
+        "fr": 'Aucun appel en cours.',
+        "en": 'No call in progress.',
+    },
+    'modem_no_sms': {
+        "fr": 'Aucun message.',
+        "en": 'No messages.',
+    },
+    'modem_out': {
+        "fr": 'sortant',
+        "en": 'outgoing',
+    },
+    'modem_in': {
+        "fr": 'entrant',
+        "en": 'incoming',
+    },
+    'modem_tui_missing': {
+        "fr": "Textual n'est pas installe : utilisez [4] pour composer.",
+        "en": 'Textual is not installed: use [4] to dial.',
+    },
+    'asterisk_absent': {
+        "fr": "Asterisk n'est pas installe.",
+        "en": 'Asterisk is not installed.',
+    },
+    'asterisk_running': {
+        "fr": 'en service',
+        "en": 'running',
+    },
+    'asterisk_stopped': {
+        "fr": 'arrete',
+        "en": 'stopped',
+    },
+    'asterisk_lines': {
+        "fr": 'Lignes',
+        "en": 'Lines',
+    },
+    'asterisk_install': {
+        "fr": 'Installer / reconfigurer Asterisk',
+        "en": 'Install / reconfigure Asterisk',
+    },
+    'asterisk_status': {
+        "fr": "Etat d'Asterisk",
+        "en": 'Asterisk status',
+    },
+    'asterisk_secrets': {
+        "fr": 'Secrets poses',
+        "en": 'Secrets in place',
+    },
+    'Appeler': {
+        "fr": 'Appeler',
+        "en": 'Call',
+    },
+    'Raccrocher': {
+        "fr": 'Raccrocher',
+        "en": 'Hang up',
+    },
+    'Clavier du modem': {
+        "fr": 'Clavier du modem',
+        "en": 'Modem dial pad',
+    },
+    'Numéro valide': {
+        "fr": 'Numéro valide',
+        "en": 'Valid number',
+    },
+    'Numéro incomplet': {
+        "fr": 'Numéro incomplet',
+        "en": 'Incomplete number',
+    },
+    'Numéro invalide, appel refusé': {
+        "fr": 'Numéro invalide, appel refusé',
+        "en": 'Invalid number, call refused',
+    },
+    'Appel de': {
+        "fr": 'Appel de',
+        "en": 'Calling',
+    },
+    'Appel lancé': {
+        "fr": 'Appel lancé',
+        "en": 'Call placed',
+    },
+    'Raccroché': {
+        "fr": 'Raccroché',
+        "en": 'Hung up',
+    },
     # Serveur VoIP Asterisk
     "Deploy - Install Asterisk VoIP server (hardened)": {
         "fr": "\u260e\ufe0f Déployer - Installer le serveur VoIP Asterisk (durci)",
@@ -1435,6 +2465,20 @@ TRANSLATIONS = {
     "Deploy a hardened Asterisk VoIP server (no FreePBX)": {
         "fr": "Déployer un serveur VoIP Asterisk durci (sans FreePBX)",
         "en": "Deploy a hardened Asterisk VoIP server (no FreePBX)",
+    },
+    "No web admin panel is installed: it is the main attack surface"
+    " of a PBX. Anonymous SIP is refused and the dial plan accepts"
+    " North American numbers only.": {
+        "fr": "Aucun panneau d'administration web n'est installé : c'est la"
+        " principale surface d'attaque d'un PBX. Le SIP anonyme est refusé et"
+        " le plan de numérotation n'accepte que les numéros nord-américains.",
+        "en": "No web admin panel is installed: it is the main attack surface"
+        " of a PBX. Anonymous SIP is refused and the dial plan accepts"
+        " North American numbers only.",
+    },
+    "SIP trunk host (blank to install without): ": {
+        "fr": "Hôte du trunk SIP (vide pour installer sans) : ",
+        "en": "SIP trunk host (blank to install without): ",
     },
     "SIP trunk host #%s (blank to finish): ": {
         "fr": "Hôte du trunk SIP n°%s (vide pour terminer) : ",
@@ -1463,6 +2507,14 @@ TRANSLATIONS = {
     "Username and password are both required.": {
         "fr": "Le nom d'utilisateur et le mot de passe sont tous deux requis.",
         "en": "Username and password are both required.",
+    },
+    "No trunk: the server will install but cannot call out."
+    " That is deliberate — a mute PBX beats an open one.": {
+        "fr": "Sans trunk : le serveur s'installe mais ne peut appeler"
+        " personne. C'est volontaire — mieux vaut un PBX muet qu'un PBX"
+        " ouvert.",
+        "en": "No trunk: the server will install but cannot call out."
+        " That is deliberate — a mute PBX beats an open one.",
     },
     "Asterisk install script not found: ": {
         "fr": "Script d'installation d'Asterisk introuvable : ",
@@ -12333,6 +13385,10 @@ TRANSLATIONS = {
     "mail_menu": {
         "fr": "📧 Courriel - Lire et envoyer du courriel",
         "en": "📧 Mail - Read and send email",
+    },
+    "mail_ai_question": {
+        "fr": "🤖 Question IA - Poser une question à un modèle",
+        "en": "🤖 AI question - Ask a model a question",
     },
     "mail_open_tui": {
         "fr": "📬 Ouvrir le client courriel (TUI)",

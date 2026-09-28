@@ -295,6 +295,7 @@ class TODO(
     def prompt_assistant(self):
         """Ce qui s'adresse à l'humain : une question, son courriel, ses SMS."""
         from script.todo.mail.menu import prompt_execute_mail
+        from script.todo.modem.menu import prompt_execute_modem
         from script.todo.sms.menu import prompt_execute_sms
 
         while True:
@@ -302,6 +303,7 @@ class TODO(
 [1] {t("AI question - Ask a model, local or remote")}
 [2] {t("mail_menu")}
 [3] {t("sms_menu")}
+[4] {t("modem_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
             print()
@@ -313,6 +315,8 @@ class TODO(
                 prompt_execute_mail(self)
             elif status == "3":
                 prompt_execute_sms(self)
+            elif status == "4":
+                prompt_execute_modem(self)
             else:
                 print(t("Command not found !"))
 
