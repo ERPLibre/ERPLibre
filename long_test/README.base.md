@@ -390,8 +390,8 @@ changes, and the bench would then route domains where nobody lives. A host
 missing one of the three values refuses the whole read: routing one zone out of
 two leaves half the fleet unreachable, and nothing in the inventory says which.
 
-**The golden template is a prerequisite, not something the bench makes.** The
-engine's procedure installs it from the ISO on purpose: `genericcloud` ships
+**The golden template is required after the pose, and the bench does not make
+it.** The engine's procedure installs it from the ISO on purpose: `genericcloud` ships
 configured for the legacy PCI chipset, and converting it afterwards does not
 change a setting — it replaces the virtual hardware under a system that believes
 it knows its own. Predictable interface names derive from the PCI path, so the
@@ -404,6 +404,16 @@ correction is free". A missing key counts as non-conforming, because the
 configuration only prints what differs from the default and the defaults are
 exactly what the procedure refuses. Every refusal names the procedure, since the
 bench does not make the template and must say where its making is described.
+
+It is required AFTER the site is posed, and not among the prerequisites,
+because the template is an artefact OF the site: the preparation the engine
+applies to it demands an artefact server and a resolver that the SITE's plan
+declares, and the site exists only once posed. Requiring it first would refuse
+on the opening round what only that round makes possible. The state is READ
+again on the cluster at that point, never carried over from a measure taken
+before the pose — in between, the operator may have built it. A refusal there
+leaves the pose standing, which `--detruire` takes back, and answers "not
+conclusive" rather than "nothing was attempted": the loop is what did not run.
 
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
@@ -867,7 +877,7 @@ des domaines où personne n'habite. Un hôte à qui manque l'une des trois valeu
 fait refuser toute la lecture : router une zone sur deux laisse la moitié de la
 flotte injoignable, et rien dans l'inventaire ne dit laquelle.
 
-**Le gabarit doré est un préalable, pas une chose que le banc fabrique.** La
+**Le gabarit doré est exigé après la pose, et le banc ne le fabrique pas.** La
 procédure du moteur l'installe depuis l'ISO exprès : `genericcloud` est livrée
 configurée pour le chipset PCI hérité, et la convertir après coup ne change pas
 un réglage — elle remplace le matériel virtuel sous un système qui croit
@@ -882,6 +892,16 @@ conforme, la configuration n'imprimant que ce qui diffère du défaut et les
 défauts étant justement ce que la procédure refuse. Chaque refus nomme la
 procédure, le banc ne fabriquant pas le gabarit et devant dire où sa fabrication
 est décrite.
+
+Il est exigé APRÈS la pose du site, et non parmi les préalables, parce que le
+gabarit est un artefact DU site : la préparation que le moteur lui applique
+réclame un serveur d'artefacts et un résolveur que le plan du SITE déclare, et
+le site n'existe qu'une fois posé. L'exiger avant refuserait au premier tour ce
+que ce tour est seul à rendre possible. L'état est RELU sur la grappe à ce
+moment-là, jamais repris d'une mesure d'avant-pose — entre les deux,
+l'exploitant a pu le bâtir. Un refus y laisse la pose en place, que `--detruire`
+reprend, et rend « non concluante » plutôt que « rien n'a été tenté » : c'est la
+boucle qui n'a pas joué.
 
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
