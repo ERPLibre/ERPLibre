@@ -26,7 +26,9 @@ import sys
 import threading
 import time
 import unittest
+import urllib.parse
 from contextlib import redirect_stderr
+from pathlib import Path
 from unittest.mock import patch
 
 from compression import zstd
@@ -672,6 +674,171 @@ class TestSystemApi(ApiCase):
         self.assertEqual(
             fulls, [True, False, False, False, False] * 2 + [True]
         )
+
+
+class TestFilesApi(ApiCase):
+    """/api/fs sur un répertoire temporaire : des fichiers, des
+    répertoires, des liens."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.base = Path(os.path.realpath(self.tmp)) / "files"
+        self.base.mkdir()
+        (self.base / "b.txt").write_text("forged content")
+        (self.base / "A.zip").write_bytes(b"")
+        (self.base / "c_dir").mkdir()
+        (self.base / "B_dir").mkdir()
+        (self.base / "link_dir").symlink_to(self.base / "c_dir")
+        (self.base / "gone").symlink_to(self.base / "absent")
+        self.csrf = (await self.get_json("/api/session"))["csrf"]
+
+    async def listing(self, path, dirs="0"):
+        """La réponse de /api/fs à `path`, sans `path` pour None, cookie et
+        jeton CSRF envoyés."""
+        query = {} if path is None else {"path": path, "dirs": dirs}
+        resp = await self.fetch(
+            f"/api/fs?{urllib.parse.urlencode(query)}",
+            Cookie=self.session_cookie,
+            **{"X-CSRF-Token": self.csrf},
+        )
+        self.assertEqual(resp.code, 200, path)
+        self.assertNotIn(b"forged content", resp.body)
+        return json.loads(resp.body)
+
+    async def test_names_kinds_and_sizes_directories_first(self):
+        listing = await self.listing(self.base)
+        self.assertEqual(
+            (listing["path"], listing["parent"], listing["truncated"]),
+            (str(self.base), str(self.base.parent), False),
+        )
+        self.assertEqual(
+            [(e["name"], e["dir"], e["size"]) for e in listing["entries"]],
+            [
+                ("B_dir", True, None),
+                ("c_dir", True, None),
+                ("link_dir", True, None),
+                ("A.zip", False, 0),
+                ("b.txt", False, 14),
+                ("gone", False, None),
+            ],
+        )
+        self.assertNotIn("error", listing)
+        folders = await self.listing(self.base, dirs="1")
+        self.assertEqual(
+            [e["name"] for e in folders["entries"]],
+            ["B_dir", "c_dir", "link_dir"],
+        )
+
+    async def test_the_path_is_normalised_and_links_resolved(self):
+        messy = f"{self.base}/./c_dir/../link_dir"
+        listing = await self.listing(messy)
+        self.assertEqual(listing["path"], str(self.base / "c_dir"))
+        home = os.path.realpath(os.environ["HOME"])
+        self.assertEqual((await self.listing("~"))["path"], home)
+        self.assertEqual((await self.listing(None))["path"], home)
+        self.assertIsNone((await self.listing("/"))["parent"])
+
+    async def test_a_path_that_does_not_list_is_an_error_not_a_500(self):
+        cases = {
+            f"{self.base}/absent": False,
+            f"{self.base}/b.txt": True,
+            "forged/relative": False,
+        }
+        for path, is_file in cases.items():
+            listing = await self.listing(path)
+            self.assertTrue(listing["error"], path)
+            self.assertIs(listing["file"], is_file, path)
+            self.assertEqual(listing["entries"], [], path)
+        null = server.list_directory(f"{self.base}/b.txt\x00")
+        self.assertEqual((null["file"], null["entries"]), (False, []))
+        self.assertIn("null", null["error"])
+        # Un lien vers un fichier revient sous le chemin demandé, comme le
+        # clic sur son entrée le nomme.
+        (self.base / "latest.zip").symlink_to(self.base / "A.zip")
+        link = await self.listing(f"{self.base}/latest.zip")
+        self.assertEqual(
+            (link["path"], link["parent"], link["file"]),
+            (f"{self.base}/latest.zip", str(self.base), True),
+        )
+
+    async def test_a_name_the_protocol_cannot_carry_is_still_listed(self):
+        # Un retour à la ligne, un octet qui n'est pas de l'UTF-8 : le hub
+        # les liste tels quels, et la page refuse de les envoyer
+        # (`sendable`).
+        (self.base / "forged\nline").touch()
+        raw = os.fsencode(self.base) + b"/forged\xff.zip"
+        try:
+            os.close(os.open(raw, os.O_CREAT | os.O_WRONLY, 0o600))
+        except OSError as exc:
+            if exc.errno != errno.EILSEQ:
+                raise
+            self.skipTest("ce système de fichiers n'admet que l'UTF-8")
+        listing = await self.listing(self.base)
+        names = [entry["name"] for entry in listing["entries"]]
+        self.assertIn("forged\nline", names)
+        self.assertIn("forged\udcff.zip", names)
+
+    @unittest.skipIf(os.geteuid() == 0, "root lit tout répertoire")
+    async def test_a_directory_it_cannot_read_says_so(self):
+        locked = self.base / "locked"
+        locked.mkdir(mode=0)
+        self.addCleanup(locked.chmod, 0o700)
+        listing = await self.listing(locked)
+        self.assertEqual(listing["error"], "Permission denied")
+        self.assertEqual(listing["parent"], str(self.base))
+
+    async def test_the_listing_stops_at_its_limit(self):
+        with patch.object(server, "FS_LIMIT", 3):
+            listing = await self.listing(self.base)
+        self.assertEqual(
+            [e["name"] for e in listing["entries"]],
+            ["B_dir", "c_dir", "link_dir"],
+        )
+        self.assertIs(listing["truncated"], True)
+
+    async def test_a_cookie_its_csrf_token_and_a_known_dirs_value(self):
+        query = urllib.parse.urlencode({"path": self.base})
+        csrf = {"X-CSRF-Token": self.csrf}
+        resp = await self.fetch(f"/api/fs?{query}", **csrf)
+        self.assertEqual(resp.code, 403)
+        # Le cookie seul, qu'une autre page de 127.0.0.1 enverrait aussi.
+        cookie = {"Cookie": self.session_cookie}
+        resp = await self.fetch(f"/api/fs?{query}", **cookie)
+        self.assertEqual(resp.code, 403)
+        forged = {"X-CSRF-Token": "forged"}
+        resp = await self.fetch(f"/api/fs?{query}", **cookie, **forged)
+        self.assertEqual(resp.code, 403)
+        resp = await self.fetch(f"/api/fs?{query}&dirs=2", **cookie, **csrf)
+        self.assertEqual(resp.code, 400)
+
+    async def test_a_listing_that_hangs_is_an_error_and_frees_the_hub(self):
+        # Un montage réseau mort : aucune lecture ne revient avant `gate`.
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        hang = patch.object(
+            server, "list_directory", lambda *args: gate.wait(10) and {}
+        )
+        readers = server.FS_READERS
+        with hang, patch.object(server, "FS_TIMEOUT", 0.2):
+            listings = await asyncio.gather(
+                *(self.listing(self.base) for _ in range(readers + 1))
+            )
+            self.assertEqual(
+                sorted(listing["error"] for listing in listings),
+                ["busy"] + ["timed out"] * readers,
+            )
+            system = await asyncio.wait_for(
+                self.fetch("/api/system", Cookie=self.session_cookie), 5
+            )
+            self.assertEqual(system.code, 200)
+        # Les lectures revenues rendent leur place.
+        gate.set()
+        for _ in range(500):
+            if not self.hub.fs_readers:
+                break
+            await asyncio.sleep(0.01)
+        self.assertEqual(self.hub.fs_readers, 0)
+        self.assertNotIn("error", await self.listing(self.base))
 
 
 class Tab:

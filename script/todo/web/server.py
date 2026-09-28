@@ -20,7 +20,8 @@ exigé, contre le rebinding DNS) ; hors GET et HEAD, comme pour toute poignée
 de main WebSocket, une Origin égale à `http://<Host>` (absente = refus) ;
 hors GET, HEAD et OPTIONS, sauf pour le POST de la connexion, la session et
 son jeton CSRF dans `X-CSRF-Token`. L'API exige le cookie de session, nommé
-par port. Le hub n'importe jamais todo.py.
+par port ; `/api/fs`, qui lit le disque au chemin que la requête nomme,
+exige aussi le jeton CSRF en GET. Le hub n'importe jamais todo.py.
 
     python -m script.todo.web.server --root <checkout> [--idle-seconds N]
 """
@@ -32,6 +33,7 @@ import datetime
 import errno
 import fcntl
 import hashlib
+import heapq
 import importlib
 import json
 import logging
@@ -41,6 +43,7 @@ import secrets
 import signal
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -79,6 +82,13 @@ PURGE_SECONDS = 6 * 3600.0
 # d'une page de journal.
 TASKS_LIMIT = 200
 LINES_LIMIT = 1000
+# /api/fs : entrées au plus d'un répertoire listé ; lectures en cours au
+# plus, et secondes qu'attend chacune. Une lecture sans réponse (un montage
+# réseau mort) retient un fil démon et une place jusqu'à son retour, jamais
+# la boucle, les fils des autres handlers ni l'arrêt du hub.
+FS_LIMIT = 2000
+FS_READERS = 4
+FS_TIMEOUT = 10.0
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -265,6 +275,93 @@ def localize(node, lang, parent=None) -> dict:
     return out
 
 
+def _is_dir(entry) -> bool:
+    """Vrai pour un répertoire, ou un lien vers un répertoire."""
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def _file_size(path):
+    """La taille du fichier `path`, lien suivi ; None pour un lien cassé ou
+    illisible."""
+    try:
+        return os.stat(path).st_size
+    except OSError:
+        return None
+
+
+def _sort_keys(scan, dirs):
+    """La clé de tri de chaque entrée de `scan` : `(fichier, nom sans casse,
+    nom)`, les répertoires d'abord ; aucun fichier avec `dirs`."""
+    for entry in scan:
+        is_dir = _is_dir(entry)
+        if is_dir or not dirs:
+            yield (not is_dir, entry.name.casefold(), entry.name)
+
+
+def _fs_error(path, reason) -> dict:
+    """La réponse de /api/fs pour `path` quand il ne se liste pas : `reason`
+    dit pourquoi."""
+    return {
+        "path": path,
+        "parent": None,
+        "entries": [],
+        "truncated": False,
+        "error": reason,
+        "file": False,
+    }
+
+
+def list_directory(path, dirs=False, limit=FS_LIMIT) -> dict:
+    """Le répertoire `path` pour le sélecteur de chemins de la page.
+
+    `path`, `~` développé, doit être absolu ; il est normalisé par
+    `os.path.realpath` (liens et `..` résolus). Rend `{path, parent,
+    entries, truncated}` : `parent`, le répertoire au-dessus, None à la
+    racine ; `entries`, des {name, dir, size}, les répertoires d'abord (un
+    lien vers un répertoire en est un), puis les fichiers, aucun avec
+    `dirs`, chaque groupe trié sans casse, au plus `limit` ; `truncated`,
+    vrai au-delà. `size` : les octets d'un fichier, None pour un répertoire
+    ou un lien cassé. Seul le répertoire est lu : aucun fichier n'est
+    ouvert, et seules les `limit` premières entrées restent en mémoire,
+    quelle que soit la taille du répertoire. Un chemin qui ne se liste pas
+    (relatif, absent, un fichier, refusé, un octet nul) rend `{path,
+    parent, entries: [], truncated: false, error, file}` au lieu de lever :
+    `error`, la raison du système ; `file`, vrai pour un fichier qui
+    existe, rendu sous le chemin demandé, lien non suivi, comme le clic sur
+    son entrée le nomme."""
+    listing = {"path": path, "parent": None, "entries": [], "truncated": False}
+    real = None
+    try:
+        expanded = os.path.expanduser(path)
+        if not os.path.isabs(expanded):
+            raise ValueError("not an absolute path")
+        real = os.path.realpath(expanded)
+        up = os.path.dirname(real)
+        listing.update(path=real, parent=up if up != real else None)
+        with os.scandir(real) as scan:
+            found = heapq.nsmallest(limit + 1, _sort_keys(scan, dirs))
+    except (OSError, ValueError) as exc:
+        reason = getattr(exc, "strerror", None) or str(exc)
+        is_file = real is not None and os.path.isfile(real)
+        if is_file:
+            asked = os.path.abspath(expanded)
+            listing.update(path=asked, parent=os.path.dirname(asked))
+        return {**listing, "error": reason, "file": is_file}
+    listing["entries"] = [
+        {
+            "name": name,
+            "dir": not is_file,
+            "size": _file_size(os.path.join(real, name)) if is_file else None,
+        }
+        for is_file, _, name in found[:limit]
+    ]
+    listing["truncated"] = len(found) > limit
+    return listing
+
+
 class Guard:
     """Contrôles communs à chaque handler ; mélangé avant la classe tornado."""
 
@@ -302,10 +399,7 @@ class Guard:
         # recevra, sauf le POST anonyme de la connexion.
         writes = method not in ("GET", "HEAD", "OPTIONS")
         if writes and not (self.anonymous_post and method == "POST"):
-            csrf = self.require_session()
-            sent = self.request.headers.get("X-CSRF-Token", "")
-            if not secrets.compare_digest(sent.encode(), csrf.encode()):
-                raise HTTPError(403)
+            self.require_csrf()
 
     def check_origin(self, origin):
         """Origin d'une poignée de main WebSocket : `http://<Host>` exacte.
@@ -330,6 +424,14 @@ class Guard:
         if touch:
             self.hub.touch()
         return csrf
+
+    def require_csrf(self) -> None:
+        """La session du cookie (`require_session`) et son jeton CSRF dans
+        l'en-tête `X-CSRF-Token` ; 403 sinon."""
+        csrf = self.require_session()
+        sent = self.request.headers.get("X-CSRF-Token", "")
+        if not secrets.compare_digest(sent.encode(), csrf.encode()):
+            raise HTTPError(403)
 
     def int_argument(self, name, default, most) -> int:
         """`?name=`, un entier de 1 à `most`, `default` sans lui ; 400
@@ -457,6 +559,62 @@ class System(Guard, tornado.web.RequestHandler):
             todo_telemetry.system_snapshot, state["prev"], full
         )
         self.write({"metrics": metrics, "full": full})
+
+
+class Files(Guard, tornado.web.RequestHandler):
+    """`?path=&dirs=` : le répertoire `path` pour le sélecteur de chemins
+    (`list_directory`, FS_LIMIT entrées au plus), `~` sans `path`, ses
+    sous-répertoires seuls avec `dirs=1` ; 400 pour un autre `dirs`. Le hub
+    tourne sous le compte de l'utilisateur, dont la page lance déjà les
+    commandes : il n'y lit rien que TODO ne lise.
+
+    Un GET qui lit le disque au chemin qu'il nomme exige, en plus du
+    cookie, le jeton CSRF dans `X-CSRF-Token` (403 sinon) : SameSite ne
+    sépare pas les ports, et une autre page de 127.0.0.1 enverrait le
+    cookie, jamais cet en-tête, qu'une requête sans CORS ne porte pas et
+    qu'aucune réponse du hub n'autorise en CORS.
+
+    Chaque lecture a son fil démon, FS_READERS au plus à la fois : au-delà,
+    la réponse est l'erreur `busy`. Une lecture qui ne revient pas en
+    FS_TIMEOUT s rend l'erreur `timed out` ; son fil garde sa place jusqu'à
+    son retour, et une exception de la lecture devient une erreur nommée
+    par son type."""
+
+    async def get(self):
+        self.require_csrf()
+        path = self.get_argument("path", "", strip=False) or "~"
+        dirs = self.get_argument("dirs", "0")
+        if dirs not in ("0", "1"):
+            raise HTTPError(400)
+        hub = self.hub
+        if hub.fs_readers >= FS_READERS:
+            self.write(_fs_error(path, "busy"))
+            return
+        hub.fs_readers += 1
+        loop = asyncio.get_running_loop()
+        done = loop.create_future()
+
+        def finish(listing):
+            hub.fs_readers -= 1
+            if not done.done():
+                done.set_result(listing)
+
+        def read():
+            try:
+                listing = list_directory(path, dirs == "1", FS_LIMIT)
+            except Exception as exc:
+                listing = _fs_error(path, type(exc).__name__)
+            try:
+                loop.call_soon_threadsafe(finish, listing)
+            except RuntimeError:
+                pass  # boucle fermée : le hub s'est arrêté entre-temps
+
+        threading.Thread(target=read, name="todo-fs", daemon=True).start()
+        try:
+            listing = await asyncio.wait_for(done, FS_TIMEOUT)
+        except TimeoutError:
+            listing = _fs_error(path, "timed out")
+        self.write(listing)
 
 
 def _size(message):
@@ -825,6 +983,7 @@ class Hub:
         self.last_activity = time.monotonic()
         self.code_tree = CodeTree(self.root)
         self.system = {}  # jeton du cookie -> {"prev", "calls"}
+        self.fs_readers = 0  # lectures de /api/fs pas encore revenues
         self.terminals = {}  # identifiant -> sessions.Session ouverte
         self.opening = 0  # `open_terminal` ou `warm` en cours
         self.spare = None  # worker de réserve, sans session encore
@@ -845,6 +1004,7 @@ class Hub:
             (r"/api/telemetry", Telemetry),
             (r"/api/i18n", I18n),
             (r"/api/system", System),
+            (r"/api/fs", Files),
             (r"/api/sessions", SessionList),
             (r"/api/tasks", Tasks),
             (r"/api/tasks/purge", TasksPurge),

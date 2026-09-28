@@ -7,7 +7,8 @@
 // la session ne se détache pas. Ce module ne nomme aucune commande.
 //
 // Un menu de TODO (`menu`) et un choix simple s'affichent au-dessus du
-// terminal en boutons natifs (MenuView), toute autre question en widget
+// terminal en boutons natifs (MenuView), le choix d'un chemin dans le
+// sélecteur de la page (PathPicker), toute autre question en widget
 // selon son genre (QuestionView) ; répondre par eux ou par le terminal
 // revient au même : le worker prend la première réponse, puis `answered`
 // ferme le widget. Un genre que la page ne connaît pas reste au terminal.
@@ -55,6 +56,7 @@ import {getJson} from "./api.js";
 import {endsLongRun, runEndBody} from "./desktop.js";
 import {advance, answeredByHand, lands, movingAfter, planOrder, startReplay} from "./launch.js";
 import {MenuView} from "./menu_view.js";
+import {PathPicker} from "./path_view.js";
 import {ASK_KINDS, answerable} from "./prompt.js";
 import {QuestionView} from "./question_view.js";
 import {
@@ -93,7 +95,7 @@ const STATE_LABELS = {
 };
 
 export class SessionsView extends Component {
-    static components = {MenuView, QuestionView};
+    static components = {MenuView, PathPicker, QuestionView};
     static template = xml`
         <section class="sessions"
             t-att-class="{fullscreen: state.status === 'open' and state.tty.altscreen and !state.windowed}"
@@ -145,6 +147,9 @@ export class SessionsView extends Component {
                 <MenuView t-if="structured.t === 'menu' or (structured.kind === 'choose' and !structured.multi)"
                     t-key="structured.qid" question="structured" pending="state.pending === structured.qid"
                     visible="props.visible" answer.bind="choose" cancel.bind="cancel"/>
+                <PathPicker t-elif="structured.kind === 'path'" t-key="structured.qid" question="structured"
+                    pending="state.pending === structured.qid" visible="props.visible"
+                    answer.bind="choose" cancel.bind="cancel"/>
                 <QuestionView t-else="" t-key="structured.qid" question="structured"
                     pending="state.pending === structured.qid" visible="props.visible"
                     answer.bind="choose" cancel.bind="cancel"/>

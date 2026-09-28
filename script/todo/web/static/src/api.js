@@ -1,5 +1,6 @@
 // Appels JSON au hub, sur la même origine. Le cookie de session part seul ;
-// le jeton CSRF, rendu par /api/session, accompagne chaque POST.
+// le jeton CSRF, rendu par /api/session, accompagne chaque POST, et le GET
+// qui le demande (`csrf`) : /api/fs l'exige.
 let csrfToken = "";
 
 export class ApiError extends Error {
@@ -20,8 +21,9 @@ async function parse(response) {
     return response.json();
 }
 
-export async function getJson(path) {
-    return parse(await fetch(path, {credentials: "same-origin"}));
+export async function getJson(path, {csrf = false} = {}) {
+    const headers = csrf ? {"X-CSRF-Token": csrfToken} : {};
+    return parse(await fetch(path, {credentials: "same-origin", headers}));
 }
 
 export async function postJson(path, body) {

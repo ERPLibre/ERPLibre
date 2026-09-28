@@ -9,9 +9,9 @@ provenance note les empreintes. La page, elle, est servie depuis la table
 que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
-`static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`)
-tournent sous node, quand il est installé. Les mots de la page sont
-vérifiés par `test_todo_web_i18n.py`.
+`static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`,
+`static/src/browse.js`) tournent sous node, quand il est installé. Les mots
+de la page sont vérifiés par `test_todo_web_i18n.py`.
 """
 
 import base64
@@ -998,6 +998,92 @@ class TestQuestionWidgets(unittest.TestCase):
         self.assertEqual(
             self.out["texts"],
             ["Which?", "Type forged:", "💬 Name:", "Choice [1]:"],
+        )
+
+
+# Un répertoire factice, comme /api/fs le rend, et ce que le sélecteur de
+# chemins en fait : l'adresse qui le liste, le fil du chemin, les chemins
+# des entrées et d'un chemin tapé, la réponse d'un chemin tapé, le filtre.
+BROWSE_CHECK = r"""
+const entries = [{name: "Été", dir: true, size: null},
+    {name: "backup.zip", dir: false, size: 10},
+    {name: "Notes.txt", dir: false, size: 3}];
+const listing = {path: "/srv/forged", parent: "/srv", entries,
+    truncated: false};
+const file = {path: "/srv/a.zip", parent: "/srv", entries: [],
+    truncated: false, error: "Not a directory", file: true};
+const absent = {...file, path: "/srv/absent", file: false};
+const names = (list) => list.map((entry) => entry.name);
+console.log(JSON.stringify({
+    urls: [m.listingUrl("/srv/forged dir/é&x", false),
+        m.listingUrl("~", true)],
+    crumbs: ["/", "/srv/forged/", "/srv//forged"].map(m.pathCrumbs),
+    children: [m.childPath("/", "srv"), m.childPath("/srv", "a.zip"),
+        m.childPath("/srv/", "x")],
+    typed: ["a.zip", "/etc/x", "~", "~/x", "~x", "  ", "../up"].map(
+        (typed) => m.typedPath("/srv", typed)),
+    outcomes: [m.typedOutcome(file, false), m.typedOutcome(file, true),
+        m.typedOutcome(absent, false), m.typedOutcome(listing, false)],
+    filtered: ["ete", "NOTES", " ", "zzz"].map(
+        (query) => names(m.filterEntries(entries, query))),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestPathPicker(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(BROWSE_CHECK, "browse.js")
+
+    def test_a_directory_is_listed_by_its_encoded_path(self):
+        self.assertEqual(
+            self.out["urls"],
+            [
+                "/api/fs?path=%2Fsrv%2Fforged%20dir%2F%C3%A9%26x&dirs=0",
+                "/api/fs?path=~&dirs=1",
+            ],
+        )
+
+    def test_each_segment_of_the_path_is_a_crumb(self):
+        root = {"label": "/", "path": "/"}
+        forged = [
+            root,
+            {"label": "srv", "path": "/srv"},
+            {"label": "forged", "path": "/srv/forged"},
+        ]
+        self.assertEqual(self.out["crumbs"], [[root], forged, forged])
+
+    def test_entries_and_typed_paths_are_absolute(self):
+        self.assertEqual(
+            self.out["children"], ["/srv", "/srv/a.zip", "/srv/x"]
+        )
+        # « ~ » part au hub, qui le développe ; le reste est relatif au
+        # répertoire montré ; un texte blanc n'ouvre rien.
+        self.assertEqual(
+            self.out["typed"],
+            [
+                "/srv/a.zip",
+                "/etc/x",
+                "~",
+                "~/x",
+                "/srv/~x",
+                None,
+                "/srv/../up",
+            ],
+        )
+
+    def test_a_typed_file_answers_only_when_a_file_is_wanted(self):
+        file, as_folder, absent, listing = self.out["outcomes"]
+        self.assertEqual(file, {"answer": "/srv/a.zip"})
+        self.assertEqual(as_folder["show"]["error"], "Not a directory")
+        self.assertEqual(absent["show"]["path"], "/srv/absent")
+        self.assertEqual(listing["show"]["path"], "/srv/forged")
+
+    def test_the_filter_ignores_case_and_accents(self):
+        self.assertEqual(
+            self.out["filtered"],
+            [["Été"], ["Notes.txt"], ["Été", "backup.zip", "Notes.txt"], []],
         )
 
 

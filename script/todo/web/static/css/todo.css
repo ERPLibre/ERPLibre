@@ -394,6 +394,39 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* Sélecteur de chemins : le fil du chemin, puis une colonne d'entrées qui
+   défile seule. */
+.path-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+}
+
+.path-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 18rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.path-entries .entry {
+    justify-content: space-between;
+    width: 100%;
+}
+
+.path-entries .dir {
+    color: var(--accent);
+}
+
+.path-entries .size {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* La vue Sessions montrée tient dans la fenêtre : une colonne où le
    terminal prend la hauteur que laissent l'en-tête, les barres et le
    panneau de la question. Celui-ci défile seul, plafonné tant que le

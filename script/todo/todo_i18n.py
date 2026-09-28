@@ -3969,6 +3969,26 @@ TRANSLATIONS = {
         "fr": "Rouvrir une session",
         "en": "Reopen a session",
     },
+    # Page web : le sélecteur de chemins d'une question de TODO.
+    "Path": {"fr": "Chemin", "en": "Path"},
+    "Open": {"fr": "Ouvrir", "en": "Open"},
+    "Choose this directory": {
+        "fr": "Choisir ce répertoire",
+        "en": "Choose this directory",
+    },
+    "Parent directory": {"fr": "Répertoire parent", "en": "Parent directory"},
+    "Cannot list this directory: %s": {
+        "fr": "Impossible de lister ce répertoire : %s",
+        "en": "Cannot list this directory: %s",
+    },
+    "Only the first %s entries are shown.": {
+        "fr": "Seules les %s premières entrées sont montrées.",
+        "en": "Only the first %s entries are shown.",
+    },
+    "Path not sent: a control character, or too long.": {
+        "fr": "Chemin non envoyé : un caractère de contrôle, ou trop long.",
+        "en": "Path not sent: a control character, or too long.",
+    },
     # Page web dans la fenêtre bureautique : notification de fin de commande.
     "Command ended: exit code %s, %s s": {
         "fr": "Commande terminée : code de sortie %s, %s s",
