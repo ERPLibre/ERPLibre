@@ -135,7 +135,10 @@ def _str_of(node) -> str | None:
 def _choice_entries(func) -> list:
     """Entrées NUMÉROTÉES d'un menu « choices = [...] », dans l'ordre : chaque
     commande est {« label », « section »}, la section étant le dernier marqueur
-    {"section": …} rencontré (fill_help_info ne numérote pas les sections)."""
+    {"section": …} rencontré (fill_help_info ne numérote pas les sections).
+    Toute autre entrée prend son numéro, même quand son libellé se calcule à
+    l'affichage : son « label » est alors None, et les suivantes gardent le
+    leur."""
     for node in ast.walk(func):
         if (
             isinstance(node, ast.Assign)
@@ -153,14 +156,13 @@ def _choice_entries(func) -> list:
                 for k, v in zip(el.keys, el.values):
                     if isinstance(k, ast.Constant):
                         d[k.value] = _str_of(v)
-                if d.get("section"):
+                if "section" in d:
                     section = d["section"]
                     continue
                 lab = d.get("prompt_description") or d.get(
                     "prompt_description_key"
                 )
-                if lab:
-                    entries.append({"label": lab, "section": section})
+                entries.append({"label": lab, "section": section})
             return entries
     return []
 
@@ -488,7 +490,7 @@ def build_code_tree(todo_path=None) -> dict | None:
                 )
                 lab = (
                     entry["label"]
-                    if entry
+                    if entry and entry["label"]
                     else target.lstrip("_").replace("_", " ")
                 )
                 node["children"].append(

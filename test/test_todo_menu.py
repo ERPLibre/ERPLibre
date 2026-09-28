@@ -426,6 +426,31 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_a_computed_label_keeps_the_numbering(self):
+        # fill_help_info numérote chaque entrée qui n'est pas une section,
+        # son libellé écrit ou calculé : la troisième reste la troisième, et
+        # une section au titre calculé n'en prend aucun.
+        from script.todo.todo_telemetry import _choice_entries
+
+        func = ast.parse(
+            "def menu(self):\n"
+            "    choices = [\n"
+            '        {"section": titre},\n'
+            '        {"prompt_description": parler},\n'
+            '        {"prompt_description": t("Second")},\n'
+            '        {"section": t("Server")},\n'
+            '        {"prompt_description_key": "Third"},\n'
+            "    ]\n"
+        ).body[0]
+        self.assertEqual(
+            _choice_entries(func),
+            [
+                {"label": None, "section": None},
+                {"label": "Second", "section": None},
+                {"label": "Third", "section": "Server"},
+            ],
+        )
+
     def test_the_breadcrumb_names_the_proxmox_menu(self):
         # Sans étiquette, le fil d'Ariane sautait le menu Proxmox : on lisait
         # « TODO › Execute › Deploy » en étant deux niveaux plus bas.

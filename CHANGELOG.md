@@ -193,6 +193,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The production image compiles pykcs11 with the `PyInt_FromLong` alias that `install_locally.sh` already gives the host: SWIG 4.3 dropped it, and the Odoo 14, 15 and 17 images stopped at `poetry install`. A test fails if the two definitions diverge
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
 - Navigation telemetry › TUI: Ctrl+C, Ctrl+D or an error comes back to its menu instead of leaving TODO, and a command launched from it records the path of its own menu, not the telemetry's
+- Navigation telemetry: a menu entry whose label is computed on display, such as the LLM menu's conversation, no longer shifts the next ones; each command and submenu of the tree bears the label of its own number, not its neighbour's
 
 ## Removed
 
