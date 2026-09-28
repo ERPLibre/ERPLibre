@@ -351,6 +351,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
 - Navigation telemetry › TUI: Ctrl+C, Ctrl+D or an error comes back to its menu instead of leaving TODO, and a command launched from it records the path of its own menu, not the telemetry's
 - Navigation telemetry: a menu entry whose label is computed on display, such as the LLM menu's conversation, no longer shifts the next ones; each command of the tree bears the label of its own number, not its neighbour's
+- The yes/no questions of the QEMU deployment and of the libvirt network recreation are asked on the terminal again when the script's standard input is redirected: opening `/dev/tty` in text mode always failed, a terminal being unseekable, and the question fell back to that input, where an end of file answered in the user's place. With the keyboard as standard input, as under the TODO menu, the question still goes through the standard output, after the lines that precede it
 
 <!-- [fr] -->
 
@@ -426,6 +427,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les Dockerfile écrivent `ENV clé=valeur` : buildkit ne signale plus le format hérité à chaque construction
 - Télémétrie de navigation › TUI : Ctrl+C, Ctrl+D ou une erreur ramènent à son menu au lieu de quitter TODO, et une commande lancée depuis elle enregistre le chemin de son propre menu, et non celui de la télémétrie
 - Télémétrie de navigation : une entrée de menu dont le libellé se calcule à l'affichage, comme la conversation du menu LLM, ne décale plus les suivantes ; chaque commande de l'arbre porte le libellé de son propre numéro, et non celui de sa voisine
+- Les questions oui/non du déploiement QEMU et de la recréation du réseau libvirt sont de nouveau posées sur le terminal quand l'entrée standard du script est redirigée : ouvrir `/dev/tty` en mode texte échouait toujours, un terminal ne permettant pas de s'y déplacer, et la question retombait sur cette entrée, où une fin de fichier répondait à la place de l'utilisateur. Le clavier pour entrée standard, comme sous le menu TODO, la question passe toujours par la sortie standard, après les lignes qui la précèdent
 
 <!-- [en] -->
 ## Removed

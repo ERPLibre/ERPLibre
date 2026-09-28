@@ -203,6 +203,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Dockerfiles write `ENV key=value`: buildkit no longer warns about the legacy form at every build
 - Navigation telemetry › TUI: Ctrl+C, Ctrl+D or an error comes back to its menu instead of leaving TODO, and a command launched from it records the path of its own menu, not the telemetry's
 - Navigation telemetry: a menu entry whose label is computed on display, such as the LLM menu's conversation, no longer shifts the next ones; each command of the tree bears the label of its own number, not its neighbour's
+- The yes/no questions of the QEMU deployment and of the libvirt network recreation are asked on the terminal again when the script's standard input is redirected: opening `/dev/tty` in text mode always failed, a terminal being unseekable, and the question fell back to that input, where an end of file answered in the user's place. With the keyboard as standard input, as under the TODO menu, the question still goes through the standard output, after the lines that precede it
 
 ## Removed
 

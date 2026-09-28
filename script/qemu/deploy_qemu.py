@@ -1069,21 +1069,45 @@ def missing_tools() -> list[str]:
     return missing
 
 
+def read_tty_line(prompt: str) -> str | None:
+    """La ligne tapée sur le terminal de contrôle (/dev/tty) après
+    `prompt`, sans sa fin de ligne ; None sans terminal de contrôle.
+
+    Le terminal s'ouvre en binaire, sans tampon : en texte, « r+ » exige un
+    fichier où l'on peut se déplacer, ce qu'un terminal n'est pas, et
+    l'ouverture lève toujours io.UnsupportedOperation. La sortie standard
+    est vidée d'abord : ce qu'elle retenait part avant la question.
+    `prompt` part en UTF-8, en entier même écrit par morceaux, la ligne
+    revient décodée, un octet invalide remplacé ; Ctrl+D sur une ligne vide
+    rend ""."""
+    sys.stdout.flush()
+    try:
+        with open("/dev/tty", "r+b", buffering=0) as tty:
+            data = prompt.encode("utf-8")
+            while data:
+                data = data[tty.write(data) :]
+            line = tty.readline()
+    except OSError:
+        return None
+    return line.decode("utf-8", "replace").rstrip("\r\n")
+
+
 def prompt_yes_no(question: str, default: bool = True) -> bool:
-    """Question oui/non. Lit /dev/tty pour rester visible même si stdout est
-    redirigé (cas d'un lancement depuis le menu todo)."""
+    """Question oui/non. Entrée standard au clavier, par `input` : la
+    question part sur la sortie standard, après les lignes qui la
+    précèdent, même quand un tube les relaie, comme sous le menu TODO.
+    Entrée standard redirigée, elle se lit sur /dev/tty (`read_tty_line`),
+    où une fin de fichier ne prend pas le défaut sans rien demander ; sans
+    terminal de contrôle, par `input` encore."""
     suffix = " [O/n] " if default else " [o/N] "
     prompt = question + suffix
-    try:
-        with open("/dev/tty", "r+") as tty:
-            tty.write(prompt)
-            tty.flush()
-            ans = tty.readline().strip().lower()
-    except OSError:
+    ans = None if sys.stdin.isatty() else read_tty_line(prompt)
+    if ans is None:
         try:
-            ans = input(prompt).strip().lower()
+            ans = input(prompt)
         except EOFError:
             return default
+    ans = ans.strip().lower()
     if not ans:
         return default
     return ans in ("o", "oui", "y", "yes")
