@@ -26,6 +26,13 @@ le même défaut sur trois VM de suite.
   ./long_test/deep_proxmox.py --depth 5        # en demander plus, sciemment
   ./long_test/deep_proxmox.py --dry-run        # le plan, rien de créé
   ./long_test/deep_proxmox.py --detruire       # défaire ce qui a été posé
+
+Un étage qui doit à son tour HÉBERGER des invités en demande plus qu'un
+hyperviseur nu, et la profondeur ne le dit pas — deux invités de 2 Gio coûtent
+la même chose au premier étage qu'au cinquième. La table de coûts dit le nu ;
+l'usage se déclare :
+
+  ./long_test/deep_proxmox.py --depth 1 --ram-cible 8192 --disque-cible 40
 """
 
 import os

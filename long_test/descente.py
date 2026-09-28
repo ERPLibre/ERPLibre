@@ -946,7 +946,30 @@ def mener(argv, description, famille, classe, couts=None):
     parseur.add_argument(
         "--jump", default="", help="rebond ssh pour joindre --hote"
     )
+    # CE QUE REÇOIT L'ÉTAGE LE PLUS PROFOND. La table de coûts dit ce qu'un
+    # hyperviseur NU demande ; un étage qui doit à son tour héberger des
+    # invités en demande davantage, et la profondeur ne le dit pas. Zéro laisse
+    # la table décider.
+    parseur.add_argument(
+        "--ram-cible",
+        type=int,
+        default=0,
+        help="Mo pour l'étage le plus profond (0 : ce que la table déclare)",
+    )
+    parseur.add_argument(
+        "--disque-cible",
+        type=int,
+        default=0,
+        help="Go pour l'étage le plus profond (0 : ce que la table déclare)",
+    )
     args = parseur.parse_args(argv)
+
+    couts, souci = nesting.couts_ajustes(
+        couts or nesting.COUTS_PVE, args.ram_cible, args.disque_cible
+    )
+    if souci:
+        print(f"\n  ✗ {souci}\n")
+        return 1
 
     journal = os.path.expanduser(
         f"~/.erplibre/longtest/{famille.nom_base}"
