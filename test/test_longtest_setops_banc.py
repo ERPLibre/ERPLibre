@@ -1230,6 +1230,68 @@ class TestUneSuiteVideNeReussitPas(unittest.TestCase):
         self.assertEqual((None, 0), (fait.code, fait.jouees))
 
 
+class TestLeResolveurQueLeBancDeclare(unittest.TestCase):
+    """La capture du gabarit VIDE `/etc/resolv.conf` : le socle l'écrit au
+    déploiement depuis `dns_amorcage`, et le modèle du moteur n'en déclare
+    aucun. Sans lui la tâche est sautée, et le premier `apt` échoue sur le
+    cache — en ne disant rien du nom qu'il n'a pas résolu.
+
+    Les adresses appartiennent au bloc que la RFC 5737 réserve.
+    """
+
+    def test_a_loopback_answer_is_no_answer(self):
+        """LE CAS QUI TRANCHE. Un hôte à résolveur local annonce 127.0.0.53 ;
+        déclarée à la flotte, elle la renvoie vers elle-même."""
+        self.assertEqual("", B.lit_resolveur("nameserver 127.0.0.53\n"))
+        self.assertEqual("", B.lit_resolveur("nameserver ::1\n"))
+
+    def test_the_first_usable_one_wins(self):
+        """Le fichier du démon en liste plusieurs, la boucle d'abord."""
+        self.assertEqual(
+            "192.0.2.53",
+            B.lit_resolveur(
+                "nameserver 127.0.0.53\nnameserver 192.0.2.53\n"
+                "nameserver 192.0.2.54\n"
+            ),
+        )
+
+    def test_nothing_readable_names_nothing(self):
+        for sortie in ("", "   ", None, "search exemple.invalid\n",
+                       "nameserver\n"):
+            with self.subTest(sortie=repr(sortie)):
+                self.assertEqual("", B.lit_resolveur(sortie))
+
+    def test_the_daemon_file_is_read_before_the_stub(self):
+        """`/etc/resolv.conf` d'un hôte à résolveur local ne porte que la
+        boucle : lire le fichier du démon d'abord est ce qui donne l'amont."""
+        cmd = B.cmds_resolveur()[0]
+        self.assertLess(
+            cmd.index("/run/systemd/resolve/resolv.conf"),
+            cmd.index("/etc/resolv.conf"),
+        )
+
+    def test_without_a_resolver_it_declares_nothing(self):
+        """Fermé par défaut : un fichier vide vaudrait un `dns_amorcage` vide,
+        et le socle sauterait la tâche sans que rien ne le dise."""
+        for vu in ("", "   ", None):
+            with self.subTest(vu=repr(vu)):
+                self.assertEqual("", B.texte_intrants_du_banc(vu))
+        # Contrôle positif : refuser toujours passerait les trois précédents.
+        self.assertIn(
+            "dns_amorcage", B.texte_intrants_du_banc("192.0.2.53")
+        )
+
+    def test_the_bench_file_is_read_after_the_model_intrants(self):
+        """Ansible fusionne les group_vars dans l'ordre alphabétique : un nom
+        qui passerait AVANT celui du modèle se ferait écraser par lui."""
+        self.assertGreater(B.INTRANTS_BANC, "10-intrants.yml")
+
+    def test_a_loopback_resolver_stops_it_before_anything_is_created(self):
+        vus = B.prealables(mesures_bonnes(resolveur=""))
+        dit = " ".join(p.dit for p in B.manquants(vus))
+        self.assertIn("boucle", dit)
+
+
 class TestLeSautVersLaFlotte(unittest.TestCase):
     """La flotte vit derrière le terrain : ses adresses sont celles du réseau
     interne que le banc a posé, et la station n'y route pas. Un `ansible -m
@@ -1750,7 +1812,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_INSTANCE),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertEqual([], self.depots())
         self.assertIn(B.LIEN_INSTANCE, montage.souci)
@@ -1763,7 +1825,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_UNDERLAY),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertIn(B.LIEN_UNDERLAY, montage.souci)
 
@@ -1772,14 +1834,14 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         lien : l'effacer détruirait son plan."""
         os.makedirs(os.path.join(self.moteur, B.LIEN_INSTANCE))
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertEqual([], self.depots())
         self.assertFalse(montage.complet)
 
     def test_an_engine_without_a_sibling_is_refused(self):
         montage = B.monte_localement(
-            "", "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
+            "", "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertFalse(montage.complet)
         self.assertEqual(("", "", (), ()), montage[:4])
@@ -1788,7 +1850,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         """Le contrôle positif des refus ci-dessus : un moteur SANS lien occupé
         va plus loin, et s'arrête sur ce qui manque vraiment — son modèle."""
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10"
+            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertNotIn(B.LIEN_INSTANCE, montage.souci)
         self.assertNotIn(B.LIEN_UNDERLAY, montage.souci)
@@ -1798,7 +1860,7 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         """`texte_underlay` refuse sans nœud ni pont, et l'écriture d'un texte
         vide n'est pas une écriture réussie."""
         montage = B.monte_localement(
-            self.moteur, "", "vmbr9", "local-lvm", "192.0.2.10"
+            self.moteur, "", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
         )
         self.assertIn("underlay.yml", montage.souci)
         self.assertFalse(montage.complet)
@@ -2478,6 +2540,7 @@ def mesures_bonnes(**change):
         stockage="un-stockage",
         uplink="une-sortie",
         adresse_api="192.0.2.10",
+        resolveur="192.0.2.53",
     )
     champs.update(change)
     return B.Mesures(**champs)

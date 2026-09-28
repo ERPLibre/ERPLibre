@@ -457,6 +457,15 @@ then what enrols with it — so the bench reads that list instead of writing one
 Two hosts of the shipped model are therefore activated, and the rest of the fleet
 stays planned: `reconstruire` only creates the VMs of ACTIVE hosts.
 
+**The bench declares the bootstrap resolver, because the model declares none.**
+Capturing the template EMPTIES `/etc/resolv.conf`; the socle writes it at
+deployment from the `dns_amorcage` input, before the first `apt`. Without that
+input the task is skipped, and the apt cache then fails without a word about
+the name it could not resolve. The bench reads the address the terrain itself
+resolves through — LOOPBACK EXCLUDED, since a local resolver's address sends
+the fleet back to itself — and declares it in a group_vars file of its own,
+numbered after the model's so that it adds rather than rewrites.
+
 The plan announces what each step costs, and **says when a duration is only
 announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
 template, then per pass ~5 s for each of the two inventory gestures — both
@@ -959,6 +968,15 @@ L'amorçage dérive SES hôtes du plan — l'autorité de certification d'abord,
 ce qui s'enrôle auprès d'elle — et le banc lit cette liste au lieu d'en écrire
 une. Deux hôtes du modèle livré sont donc activés, et le reste de la flotte
 demeure planifié : `reconstruire` ne crée que les VM des hôtes ACTIFS.
+
+**Le banc déclare le résolveur d'amorçage, parce que le modèle n'en déclare
+aucun.** La capture du gabarit VIDE `/etc/resolv.conf` ; le socle l'écrit au
+déploiement depuis l'intrant `dns_amorcage`, avant le premier `apt`. Sans cet
+intrant la tâche est sautée, et le cache apt échoue ensuite sans un mot sur le
+nom qu'il n'a pas résolu. Le banc lit l'adresse par laquelle le terrain
+lui-même résout — LA BOUCLE EXCLUE, l'adresse d'un résolveur local renvoyant la
+flotte vers elle-même — et la déclare dans un fichier de group_vars qui est le
+sien, numéroté après celui du modèle pour ajouter au lieu de réécrire.
 
 Le plan annonce ce que chaque étape coûte, et **dit quand une durée n'est
 qu'annoncée** : ~30 s pour le pont, ~10 s pour le jeton, ~10 min pour le gabarit

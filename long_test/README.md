@@ -452,6 +452,15 @@ then what enrols with it — so the bench reads that list instead of writing one
 Two hosts of the shipped model are therefore activated, and the rest of the fleet
 stays planned: `reconstruire` only creates the VMs of ACTIVE hosts.
 
+**The bench declares the bootstrap resolver, because the model declares none.**
+Capturing the template EMPTIES `/etc/resolv.conf`; the socle writes it at
+deployment from the `dns_amorcage` input, before the first `apt`. Without that
+input the task is skipped, and the apt cache then fails without a word about
+the name it could not resolve. The bench reads the address the terrain itself
+resolves through — LOOPBACK EXCLUDED, since a local resolver's address sends
+the fleet back to itself — and declares it in a group_vars file of its own,
+numbered after the model's so that it adds rather than rewrites.
+
 The plan announces what each step costs, and **says when a duration is only
 announced**: ~30 s for the bridge, ~10 s for the token, ~10 min for the golden
 template, then per pass ~5 s for each of the two inventory gestures — both
