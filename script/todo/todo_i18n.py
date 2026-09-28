@@ -16905,6 +16905,134 @@ TRANSLATIONS = {
         "fr": "tunnels SSH",
         "en": "SSH tunnels",
     },
+    "turn": {
+        "fr": "tour",
+        "en": "turn",
+    },
+    "answer": {
+        "fr": "réponse",
+        "en": "answer",
+    },
+    "tok/s": {
+        "fr": "j/s",
+        "en": "tok/s",
+    },
+    "first token": {
+        "fr": "1er jeton",
+        "en": "first token",
+    },
+    "end": {
+        "fr": "fin",
+        "en": "end",
+    },
+    "error": {
+        "fr": "erreur",
+        "en": "error",
+    },
+    "cut": {
+        "fr": "coupé",
+        "en": "cut",
+    },
+    "no turn yet": {
+        "fr": "aucun tour pour l'instant",
+        "en": "no turn yet",
+    },
+    "%s total": {
+        "fr": "%s au total",
+        "en": "%s total",
+    },
+    "token": {
+        "fr": "jeton",
+        "en": "token",
+    },
+    "%s without a count": {
+        "fr": "%s sans compte",
+        "en": "%s without a count",
+    },
+    "%s tok/s": {
+        "fr": "%s j/s",
+        "en": "%s tok/s",
+    },
+    "first at %s": {
+        "fr": "1er à %s",
+        "en": "first at %s",
+    },
+    "fragment": {
+        "fr": "fragment",
+        "en": "fragment",
+    },
+    "fragments": {
+        "fr": "fragments",
+        "en": "fragments",
+    },
+    "character": {
+        "fr": "caractère",
+        "en": "character",
+    },
+    "Your question": {
+        "fr": "Votre question",
+        "en": "Your question",
+    },
+    "back": {
+        "fr": "retour",
+        "en": "back",
+    },
+    "theme": {
+        "fr": "thème",
+        "en": "theme",
+    },
+    "question colour": {
+        "fr": "couleur des questions",
+        "en": "question colour",
+    },
+    "answer colour": {
+        "fr": "couleur des réponses",
+        "en": "answer colour",
+    },
+    "show reasoning": {
+        "fr": "montrer le raisonnement",
+        "en": "show reasoning",
+    },
+    "timings at start": {
+        "fr": "durées au démarrage",
+        "en": "timings at start",
+    },
+    "time of each turn": {
+        "fr": "heure de chaque tour",
+        "en": "time of each turn",
+    },
+    "text colour": {
+        "fr": "couleur du texte",
+        "en": "text colour",
+    },
+    "column": {
+        "fr": "colonne",
+        "en": "column",
+    },
+    "options": {
+        "fr": "options",
+        "en": "options",
+    },
+    "Colour in hexadecimal, or empty": {
+        "fr": "Couleur en hexadécimal, ou vide",
+        "en": "Colour in hexadecimal, or empty",
+    },
+    "h: type a colour · enter: cycle · escape: close": {
+        "fr": "h : saisir une couleur · entrée : faire tourner · échap : fermer",
+        "en": "h: type a colour · enter: cycle · escape: close",
+    },
+    "timings": {
+        "fr": "durées",
+        "en": "timings",
+    },
+    "interrupt": {
+        "fr": "interrompre",
+        "en": "interrupt",
+    },
+    "open the live screen, with the timings of each turn": {
+        "fr": "ouvrir l'écran vivant, avec les durées de chaque tour",
+        "en": "open the live screen, with the timings of each turn",
+    },
     "loaded": {
         "fr": "chargé",
         "en": "loaded",

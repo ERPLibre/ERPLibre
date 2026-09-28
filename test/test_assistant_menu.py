@@ -18,6 +18,12 @@ le paquet, lui, doit rester importable seul — est vérifiée dans
 
 `_menu_header()` enregistre une télémétrie dans `~/.erplibre` : tout test qui
 appelle une méthode de menu la neutralise, sinon il écrit pour de vrai.
+
+Un SECOND écrivain a le même piège, et il est plus discret : un tour de
+conversation ajoute une ligne au journal des mesures, sous `private/`. Un test
+qui fait tourner la boucle sans neutraliser `mesure.ecrire` y laisse des tours
+qui n'ont jamais eu lieu — durée nulle, comptes absents — au milieu de vraies
+mesures, et rien ne les distingue à la relecture.
 """
 
 from __future__ import annotations
@@ -1627,6 +1633,7 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
 
         from script.todo.assistant import backends as llm_backends
         from script.todo.assistant import fingerprint as llm_fp
+        from script.todo.assistant import mesure as llm_mesure
 
         modeles = []
 
@@ -1652,6 +1659,8 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
             llm_backends, "HttpBackend", FauxBackend
         ), patch.object(
             llm_fp, "collect_served", lambda *a, **kw: servis
+        ), patch.object(
+            llm_mesure, "ecrire", lambda *a, **kw: None
         ), patch(
             "builtins.input", lire
         ), patch(
@@ -1771,6 +1780,7 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
 
         from script.todo.assistant import backends as llm_backends
         from script.todo.assistant import fingerprint as llm_fp
+        from script.todo.assistant import mesure as llm_mesure
         from script.todo.assistant.backends import BackendError
 
         class Refus:
@@ -1792,6 +1802,8 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
         sortie = io.StringIO()
         with patch.object(llm_backends, "HttpBackend", Refus), patch.object(
             llm_fp, "collect_served", lambda *a, **kw: servis
+        ), patch.object(
+            llm_mesure, "ecrire", lambda *a, **kw: None
         ), patch.object(
             todo_module.TODO, "_llm_resolve_model", lambda self, s: s
         ), patch(

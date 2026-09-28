@@ -46,6 +46,50 @@ and only for the software that distinguishes the two. `/model` picks another
 model on the same server — `/model <text>` filters, because no list of
 several hundred is chosen by eye.
 
+## What a turn costs, and where that goes
+
+The answer arrives IN A STREAM, token by token, and that is what makes the
+first-token delay observable — the one measure that separates a slow server
+from a slow model, and that no after-the-fact timing recovers. A footer closes
+every answer with its duration, its token counts, its throughput and that
+delay.
+
+Two of those numbers come from HERE and two come from the SERVER, and the
+difference decides what may be shown. The duration and the first-token delay
+are read off this machine's clock and always exist. The token counts come from
+the server, which does not always send them: a stream carries them only when
+the option asked for them, and not every piece of software honours it. A
+missing count is UNKNOWN and shows as a dash, never as a zero — a zero would
+read as a server standing still just after it answered.
+
+`/tui` opens the live screen: the table of timings, the conversation itself —
+questions AND answers, the current one filling in as it arrives — and an input
+to ask the next. The generation runs on a THREAD, never on the event loop — a
+generation lasts minutes, and on the loop the whole screen freezes, keys
+included, with nothing to say it is alive. While an answer streams, the screen
+counts FRAGMENTS and characters, which it observes itself; the token count and
+the throughput appear only once the server has sent them.
+
+Its shortcuts avoid bare letters, and that is not a taste: the input keeps the
+focus for the screen's whole life, since that is where questions are typed, so
+a bare letter is written into the field instead of reaching its action — and
+the shortcut passes for dead with nothing to say so. `escape` goes back,
+`ctrl+t` folds the timings away, `f2` opens the settings, `ctrl+c` leaves.
+
+`f2` keeps what you choose in your own preferences, never in the repository:
+the theme among those Textual ships, a colour for questions and one for
+answers — a theme role or a typed hex, so a shade picked on a dark background
+does not vanish on a light one — which timing columns to show, the time of
+each turn, and whether the REASONING of a model that thinks is displayed.
+Those thinking tokens are counted and paid in the answer's token count while
+being invisible: a short answer can cost ten times its length, and the
+throughput then describes work nothing on screen accounts for.
+
+Each turn also appends one line to a monthly JSONL journal under `private/`:
+timings, counts, model served, tool, end reason. It carries NO text of the
+exchange — a short fingerprint of the question groups repeats instead, and
+`private/` becomes public along with a public fork.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -486,6 +530,8 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `backends.py` | speaking to one destination: an HTTP server, or the `claude` CLI |
 | `chat.py` | the turns of a conversation, and the commands that drive it |
 | `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
+| `mesure.py` | what a turn cost, and the line it writes under `private/` |
+| `perf_tui.py` | the live screen: the turns table, the stream, the input |
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
