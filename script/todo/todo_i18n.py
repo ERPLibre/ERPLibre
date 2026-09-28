@@ -1369,7 +1369,7 @@ TRANSLATIONS = {
     "never run against the real tool: only unit tests cover it": {
         "fr": "jamais confronté au vrai outil : seules des épreuves"
         " unitaires le couvrent",
-        "en": "never run against the real tool: only unit tests cover" " it",
+        "en": "never run against the real tool: only unit tests cover it",
     },
     "Automatic (decided by the system)": {
         "fr": "Automatique (décidé par le système)",
@@ -1760,8 +1760,7 @@ TRANSLATIONS = {
     },
     "authority: the one you start again from when the station burns": {
         "fr": "autorité : celle dont on repart quand la station brûle",
-        "en": "authority: the one you start again from when the station"
-        " burns",
+        "en": "authority: the one you start again from when the station burns",
     },
     "AUTHORITY": {"fr": "AUTORITÉ", "en": "AUTHORITY"},
     "Another profile is already the authority:": {
@@ -5244,6 +5243,62 @@ TRANSLATIONS = {
         "fr": "Défaire ce que la descente a créé",
         "en": "Undo what the descent created",
     },
+    "The plan declares {n} active host(s). If the trial above saw none, the state may not have been READ: an empty API answer does not differ from an empty fleet.": {
+        "fr": "Le plan déclare {n} hôte(s) actif(s). Si l'essai ci-dessus n'en a vu aucun, l'état n'a peut-être pas été LU : une réponse d'API vide ne se distingue pas d'une flotte vide.",
+        "en": "The plan declares {n} active host(s). If the trial above saw none, the state may not have been READ: an empty API answer does not differ from an empty fleet.",
+    },
+    "DESTRUCTIVE tier: a retype is demanded": {
+        "fr": "palier destructeur : une retape est demandée",
+        "en": "DESTRUCTIVE tier: a retype is demanded",
+    },
+    "This gesture is in the DESTRUCTIVE tier.": {
+        "fr": "Ce geste est du PALIER DESTRUCTEUR.",
+        "en": "This gesture is in the DESTRUCTIVE tier.",
+    },
+    "A trial runs first: the engine says what it would do.": {
+        "fr": "Un essai part d'abord : le moteur dit ce qu'il ferait.",
+        "en": "A trial runs first: the engine says what it would do.",
+    },
+    "Retype the name of the MOUNTED ecosystem:": {
+        "fr": "Retapez le nom de l'écosystème MONTÉ :",
+        "en": "Retype the name of the MOUNTED ecosystem:",
+    },
+    "Retype the name of the MOUNTED site:": {
+        "fr": "Retapez le nom du site MONTÉ :",
+        "en": "Retype the name of the MOUNTED site:",
+    },
+    "Retype the number of ACTIVE hosts the plan declares:": {
+        "fr": "Retapez le nombre d'hôtes ACTIFS que le plan déclare :",
+        "en": "Retype the number of ACTIVE hosts the plan declares:",
+    },
+    "What was typed does not match. Nothing was run.": {
+        "fr": "Ce qui est tapé ne concorde pas. Rien n'a été lancé.",
+        "en": "What was typed does not match. Nothing was run.",
+    },
+    "Nothing to ask for: it could not be read.": {
+        "fr": "Rien à demander : la valeur ne s'est pas lue.",
+        "en": "Nothing to ask for: it could not be read.",
+    },
+    "Another gesture holds this engine lock.": {
+        "fr": "Un autre geste tient le verrou de ce moteur.",
+        "en": "Another gesture holds this engine lock.",
+    },
+    "Now for real:": {
+        "fr": "Maintenant pour de vrai :",
+        "en": "Now for real:",
+    },
+    "Set-OPS bench: plan only (dry-run)": {
+        "fr": "Banc du moteur Set-OPS : le plan seulement (à blanc)",
+        "en": "Set-OPS bench: plan only (dry-run)",
+    },
+    "Set-OPS bench: a conforming template is required": {
+        "fr": "Banc du moteur Set-OPS : exige un gabarit conforme",
+        "en": "Set-OPS bench: a conforming template is required",
+    },
+    "Terrain (ssh alias, empty = the last floor laid): ": {
+        "fr": "Terrain (alias ssh, vide = le dernier étage posé) : ",
+        "en": "Terrain (ssh alias, empty = the last floor laid): ",
+    },
     "Script not found:": {
         "fr": "Script introuvable :",
         "en": "Script not found:",
@@ -5583,6 +5638,66 @@ TRANSLATIONS = {
     "Free them?": {
         "fr": "Les libérer ?",
         "en": "Free them?",
+    },
+    # Proxmox : une liste de VM illisible n'est pas une liste vide
+    # (script/todo/proxmox_menu.py, script/todo/qemu_manage.py)
+    "Unreadable VM list: « qm list » failed.": {
+        "fr": "Liste des VM illisible : « qm list » a échoué.",
+        "en": "Unreadable VM list: « qm list » failed.",
+    },
+    "Unreadable cluster VM list.": {
+        "fr": "Liste des VM de la grappe illisible.",
+        "en": "Unreadable cluster VM list.",
+    },
+    "Unreadable volume list.": {
+        "fr": "Liste des volumes illisible.",
+        "en": "Unreadable volume list.",
+    },
+    "Without it, no volume can be shown to be orphaned: nothing is offered.": {
+        "fr": "Sans elle, aucun volume ne se prouve orphelin : rien n'est proposé.",
+        "en": "Without it, no volume can be shown to be orphaned: nothing is offered.",
+    },
+    "Without it the next free VMID is unknown: nothing is created.": {
+        "fr": "Sans elle, le prochain VMID libre est inconnu : rien n'est créé.",
+        "en": "Without it the next free VMID is unknown: nothing is created.",
+    },
+    "~/.ssh/config left as is: an entry may lead to a VM of the host.": {
+        "fr": (
+            "~/.ssh/config laissé tel quel : une entrée peut mener à une VM"
+            " de l'hôte."
+        ),
+        "en": "~/.ssh/config left as is: an entry may lead to a VM of the host.",
+    },
+    "Volumes freed:": {
+        "fr": "Volumes libérés :",
+        "en": "Volumes freed:",
+    },
+    "Not freed:": {
+        "fr": "Non libérés :",
+        "en": "Not freed:",
+    },
+    "VMs destroyed:": {
+        "fr": "VM détruites :",
+        "en": "VMs destroyed:",
+    },
+    "VMs not destroyed:": {
+        "fr": "VM non détruites :",
+        "en": "VMs not destroyed:",
+    },
+    "exit code 0, unreadable output": {
+        "fr": "code de retour 0, sortie illisible",
+        "en": "exit code 0, unreadable output",
+    },
+    "Outcome unknown (timeout):": {
+        "fr": "Issue inconnue (délai dépassé) :",
+        "en": "Outcome unknown (timeout):",
+    },
+    "The command may still be running on the host: check with « {cmd} ».": {
+        "fr": (
+            "La commande tourne peut-être encore sur l'hôte : vérifier par"
+            " « {cmd} »."
+        ),
+        "en": "The command may still be running on the host: check with « {cmd} ».",
     },
     "no address, skipped": {
         "fr": "pas d'adresse, ignorée",
@@ -6830,8 +6945,7 @@ TRANSLATIONS = {
     },
     "admin password drawn into /etc/forgejo/admin-password": {
         "fr": (
-            "mot de passe admin tiré au sort dans"
-            " /etc/forgejo/admin-password"
+            "mot de passe admin tiré au sort dans /etc/forgejo/admin-password"
         ),
         "en": "admin password drawn into /etc/forgejo/admin-password",
     },
@@ -17509,6 +17623,1014 @@ TRANSLATIONS = {
     "The forge refused the call.": {
         "fr": "La forge a refusé l'appel.",
         "en": "The forge refused the call.",
+    },
+    # Set-OPS — entrée du menu Deploy (script/todo/todo.py), sous-menu et
+    # écran (script/todo/setops_menu.py)
+    "Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)": {
+        "fr": "🏗️ Set-OPS - Écosystème souverain (plan, Ansible, Proxmox)",
+        "en": "🏗️ Set-OPS - Sovereign ecosystem (plan, Ansible, Proxmox)",
+    },
+    "Set-OPS - State of the integration, line by line": {
+        "fr": "🔎 Set-OPS - État de l'intégration, ligne par ligne",
+        "en": "🔎 Set-OPS - State of the integration, line by line",
+    },
+    "Set-OPS integration, line by line": {
+        "fr": "🏗️ Intégration de Set-OPS, ligne par ligne",
+        "en": "🏗️ Set-OPS integration, line by line",
+    },
+    "Each « to set up here » line names the gesture that settles it; this screen launches nothing.": {
+        "fr": (
+            "Chaque ligne « à régler ici » nomme le geste qui la règle ;"
+            " cet écran ne lance rien."
+        ),
+        "en": (
+            "Each « to set up here » line names the gesture that settles"
+            " it; this screen launches nothing."
+        ),
+    },
+    # Set-OPS — état de l'intégration (script/setops/state.py)
+    "Platform": {
+        "fr": "Plateforme",
+        "en": "Platform",
+    },
+    "Engine manifest": {
+        "fr": "Manifeste du moteur",
+        "en": "Engine manifest",
+    },
+    "Private location": {
+        "fr": "Emplacement privé",
+        "en": "Private location",
+    },
+    "Google Repo": {
+        "fr": "Google Repo",
+        "en": "Google Repo",
+    },
+    "Engine": {
+        "fr": "Moteur",
+        "en": "Engine",
+    },
+    "Ansible environment": {
+        "fr": "Environnement Ansible",
+        "en": "Ansible environment",
+    },
+    "Mounted ecosystem": {
+        "fr": "Écosystème monté",
+        "en": "Mounted ecosystem",
+    },
+    "Mounted site": {
+        "fr": "Site monté",
+        "en": "Mounted site",
+    },
+    "Ecosystem vault key": {
+        "fr": "Clé de voûte de l'écosystème",
+        "en": "Ecosystem vault key",
+    },
+    "Station tools": {
+        "fr": "Outils du poste",
+        "en": "Station tools",
+    },
+    "{os}: the engine assumes bash and the GNU tools": {
+        "fr": "{os} : le moteur suppose bash et l'outillage GNU",
+        "en": "{os}: the engine assumes bash and the GNU tools",
+    },
+    "{path} pinned at {sha}": {
+        "fr": "{path} épinglé à {sha}",
+        "en": "{path} pinned at {sha}",
+    },
+    "no Set-OPS manifest declared": {
+        "fr": "aucun manifeste Set-OPS déclaré",
+        "en": "no Set-OPS manifest declared",
+    },
+    "revision « {rev} » is not a pinned commit": {
+        "fr": "la révision « {rev} » n'est pas un commit épinglé",
+        "en": "revision « {rev} » is not a pinned commit",
+    },
+    "{parent} is ignored by git: ecosystems placed next to the engine stay private": {
+        "fr": (
+            "{parent} est ignoré par git : les écosystèmes posés à côté du"
+            " moteur restent privés"
+        ),
+        "en": (
+            "{parent} is ignored by git: ecosystems placed next to the"
+            " engine stay private"
+        ),
+    },
+    "{parent} is NOT ignored by git: an ecosystem placed next to the engine would be committed": {
+        "fr": (
+            "{parent} n'est PAS ignoré par git : un écosystème posé à côté"
+            " du moteur serait commité"
+        ),
+        "en": (
+            "{parent} is NOT ignored by git: an ecosystem placed next to"
+            " the engine would be committed"
+        ),
+    },
+    "cannot tell whether {parent} is ignored by git": {
+        "fr": "impossible de savoir si {parent} est ignoré par git",
+        "en": "cannot tell whether {parent} is ignored by git",
+    },
+    "repo and .repo/ present": {
+        "fr": "repo et .repo/ présents",
+        "en": "repo and .repo/ present",
+    },
+    "repo missing: {cmd}": {
+        "fr": "repo absent : {cmd}",
+        "en": "repo missing: {cmd}",
+    },
+    ".repo/ not initialized: {cmd} initializes it": {
+        "fr": ".repo/ non initialisé : {cmd} l'initialise",
+        "en": ".repo/ not initialized: {cmd} initializes it",
+    },
+    "managed by Google Repo, at the pin, clean tree": {
+        "fr": "géré par Google Repo, à l'épingle, arbre propre",
+        "en": "managed by Google Repo, at the pin, clean tree",
+    },
+    "absent: {cmd}": {
+        "fr": "absent : {cmd}",
+        "en": "absent: {cmd}",
+    },
+    "manual clone: move it aside ({cmd}), then fetch it through the manifest": {
+        "fr": (
+            "clone manuel : le mettre de côté ({cmd}), puis le rapatrier par"
+            " le manifeste"
+        ),
+        "en": "manual clone: move it aside ({cmd}), then fetch it through the manifest",
+    },
+    "{path} is not a readable folder: move it aside ({cmd}), then fetch it through the manifest": {
+        "fr": (
+            "{path} n'est pas un dossier lisible : le mettre de côté ({cmd}),"
+            " puis rapatrier le moteur par le manifeste"
+        ),
+        "en": (
+            "{path} is not a readable folder: move it aside ({cmd}), then"
+            " fetch it through the manifest"
+        ),
+    },
+    "cannot tell whether Google Repo manages {path}": {
+        "fr": "impossible de savoir si Google Repo gère {path}",
+        "en": "cannot tell whether Google Repo manages {path}",
+    },
+    "{n} commit(s) ahead of the pin": {
+        "fr": "{n} commit(s) en avance sur l'épingle",
+        "en": "{n} commit(s) ahead of the pin",
+    },
+    "{n} commit(s) behind the pin: resynchronize": {
+        "fr": "{n} commit(s) en retard sur l'épingle : resynchroniser",
+        "en": "{n} commit(s) behind the pin: resynchronize",
+    },
+    "HEAD does not descend from the pin": {
+        "fr": "HEAD ne descend pas de l'épingle",
+        "en": "HEAD does not descend from the pin",
+    },
+    "the pin is unknown to this clone: resynchronize": {
+        "fr": "l'épingle est inconnue de ce clone : resynchroniser",
+        "en": "the pin is unknown to this clone: resynchronize",
+    },
+    "cannot tell where HEAD stands against the pin": {
+        "fr": "impossible de savoir où HEAD se tient face à l'épingle",
+        "en": "cannot tell where HEAD stands against the pin",
+    },
+    "{n} modified file(s): some engine targets rewrite tracked files": {
+        "fr": (
+            "{n} fichier(s) modifié(s) : certaines cibles du moteur"
+            " réécrivent des fichiers suivis"
+        ),
+        "en": "{n} modified file(s): some engine targets rewrite tracked files",
+    },
+    "git cannot read the engine": {
+        "fr": "git ne sait pas lire le moteur",
+        "en": "git cannot read the engine",
+    },
+    "the Set-OPS plan could not be read": {
+        "fr": "le plan Set-OPS n'a pas pu être lu",
+        "en": "the Set-OPS plan could not be read",
+    },
+    "a VMID chosen blind may be one the fleet claims.": {
+        "fr": "un VMID choisi à l'aveugle peut être celui que la flotte"
+        " réclame.",
+        "en": "a VMID chosen blind may be one the fleet claims.",
+    },
+    "Nothing is created.": {
+        "fr": "Rien n'est créé.",
+        "en": "Nothing is created.",
+    },
+    "VMID collisions between the cluster and a Set-OPS plan": {
+        "fr": "🧨 Collisions de VMID entre la grappe et un plan Set-OPS",
+        "en": "🧨 VMID collisions between the cluster and a Set-OPS plan",
+    },
+    "Set-OPS is not set up here; nothing to compare.": {
+        "fr": "Set-OPS n'est pas posé ici ; rien à comparer.",
+        "en": "Set-OPS is not set up here; nothing to compare.",
+    },
+    "the plan": {
+        "fr": "le plan",
+        "en": "the plan",
+    },
+    "the cluster VM list": {
+        "fr": "la liste des VM de la grappe",
+        "en": "the cluster VM list",
+    },
+    "{side} could not be read; no verdict": {
+        "fr": "impossible de lire {side} ; aucun verdict",
+        "en": "{side} could not be read; no verdict",
+    },
+    "no collision: {n} planned VMID(s) checked against the cluster": {
+        "fr": "aucune collision : {n} VMID du plan comparés à la grappe",
+        "en": "no collision: {n} planned VMID(s) checked against the cluster",
+    },
+    "{n} collision(s):": {
+        "fr": "{n} collision(s) :",
+        "en": "{n} collision(s):",
+    },
+    "planned for": {
+        "fr": "prévu pour",
+        "en": "planned for",
+    },
+    "held by": {
+        "fr": "occupé par",
+        "en": "held by",
+    },
+    "unnamed": {
+        "fr": "sans nom",
+        "en": "unnamed",
+    },
+    "no pool": {
+        "fr": "hors pool",
+        "en": "no pool",
+    },
+    "A fleet does not rename around a taken VMID.": {
+        "fr": "Une flotte ne se renomme pas pour contourner un VMID pris.",
+        "en": "A fleet does not rename around a taken VMID.",
+    },
+    "Change the fleet index and regenerate:": {
+        "fr": "Changer l'index de la flotte et régénérer :",
+        "en": "Change the fleet index and regenerate:",
+    },
+    "back up": {
+        "fr": "sauvegarder",
+        "en": "back up",
+    },
+    "raze": {
+        "fr": "raser",
+        "en": "raze",
+    },
+    "change the index": {
+        "fr": "changer l'index",
+        "en": "change the index",
+    },
+    "deploy": {
+        "fr": "déployer",
+        "en": "deploy",
+    },
+    "restore": {
+        "fr": "restaurer",
+        "en": "restore",
+    },
+    "Budget about two hours.": {
+        "fr": "Compter environ deux heures.",
+        "en": "Budget about two hours.",
+    },
+    "ownership could not be read": {
+        "fr": "l'appartenance n'a pas pu être lue",
+        "en": "ownership could not be read",
+    },
+    "administered by Set-OPS ({owner})": {
+        "fr": "administrée par Set-OPS ({owner})",
+        "en": "administered by Set-OPS ({owner})",
+    },
+    "its VMID has the shape Set-OPS derives": {
+        "fr": "son VMID a la forme que Set-OPS dérive",
+        "en": "its VMID has the shape Set-OPS derives",
+    },
+    "Set-OPS is its master; use the engine instead.": {
+        "fr": "Set-OPS en est le maître ; passer par le moteur.",
+        "en": "Set-OPS is its master; use the engine instead.",
+    },
+    "no name to confirm with; refused": {
+        "fr": "aucun nom pour confirmer ; refusé",
+        "en": "no name to confirm with; refused",
+    },
+    "Retype « {name} » to go on anyway: ": {
+        "fr": "Retaper « {name} » pour passer outre : ",
+        "en": "Retype « {name} » to go on anyway: ",
+    },
+    "Runbooks": {
+        "fr": "Runbooks",
+        "en": "Runbooks",
+    },
+    "Set-OPS - Runbooks (the engine's sequences, in order)": {
+        "fr": "📖 Set-OPS - Runbooks (les séquences du moteur, dans l'ordre)",
+        "en": "📖 Set-OPS - Runbooks (the engine's sequences, in order)",
+    },
+    "{n} of {m} steps can be driven from here": {
+        "fr": "{n} étapes sur {m} se conduisent d'ici",
+        "en": "{n} of {m} steps can be driven from here",
+    },
+    "Which sequence? (number, empty to leave): ": {
+        "fr": "Quelle séquence ? (numéro, vide pour sortir) : ",
+        "en": "Which sequence? (number, empty to leave): ",
+    },
+    "Which step? (number, empty to leave): ": {
+        "fr": "Quelle étape ? (numéro, vide pour sortir) : ",
+        "en": "Which step? (number, empty to leave): ",
+    },
+    "optional": {
+        "fr": "facultative",
+        "en": "optional",
+    },
+    "destructive: the engine keeps this one": {
+        "fr": "destructive : le moteur la garde",
+        "en": "destructive: the engine keeps this one",
+    },
+    "type it yourself: it waits for an answer todo cannot give": {
+        "fr": (
+            "à taper soi-même : elle attend une réponse que todo ne peut pas"
+            " donner"
+        ),
+        "en": "type it yourself: it waits for an answer todo cannot give",
+    },
+    "the engine demands its own confirmation": {
+        "fr": "le moteur exige sa propre confirmation",
+        "en": "the engine demands its own confirmation",
+    },
+    "no ecosystem mounted": {
+        "fr": "aucun écosystème monté",
+        "en": "no ecosystem mounted",
+    },
+    "no site mounted": {
+        "fr": "aucun site monté",
+        "en": "no site mounted",
+    },
+    "unreadable step": {
+        "fr": "étape illisible",
+        "en": "unreadable step",
+    },
+    "This step takes variables:": {
+        "fr": "Cette étape prend des variables :",
+        "en": "This step takes variables:",
+    },
+    "{name} is required; nothing was run.": {
+        "fr": "{name} est exigée ; rien n'a été lancé.",
+        "en": "{name} is required; nothing was run.",
+    },
+    "This step WRITES.": {
+        "fr": "Cette étape ÉCRIT.",
+        "en": "This step WRITES.",
+    },
+    "The engine does not gate it, so TODO asks here.": {
+        "fr": "Le moteur ne la garde pas, donc TODO demande ici.",
+        "en": "The engine does not gate it, so TODO asks here.",
+    },
+    "Run it? (y/N): ": {
+        "fr": "La lancer ? (o/N) : ",
+        "en": "Run it? (y/N): ",
+    },
+    "Ecosystems": {
+        "fr": "Écosystèmes",
+        "en": "Ecosystems",
+    },
+    "Set-OPS - Ecosystems discovered beside the engine": {
+        "fr": "🌐 Set-OPS - Écosystèmes découverts à côté du moteur",
+        "en": "🌐 Set-OPS - Ecosystems discovered beside the engine",
+    },
+    "Set-OPS - Switch the active ecosystem": {
+        "fr": "🔀 Set-OPS - Basculer l'écosystème actif",
+        "en": "🔀 Set-OPS - Switch the active ecosystem",
+    },
+    "Set-OPS - Create an ecosystem from a template": {
+        "fr": "➕ Set-OPS - Créer un écosystème depuis un modèle",
+        "en": "➕ Set-OPS - Create an ecosystem from a template",
+    },
+    "Active ecosystem": {
+        "fr": "Écosystème actif",
+        "en": "Active ecosystem",
+    },
+    "none mounted": {
+        "fr": "aucun monté",
+        "en": "none mounted",
+    },
+    "unreadable answer; replay the line above by hand": {
+        "fr": "réponse illisible ; rejouer la ligne ci-dessus à la main",
+        "en": "unreadable answer; replay the line above by hand",
+    },
+    "the engine refused (code {code}); its own words:": {
+        "fr": "le moteur a refusé (code {code}) ; ses propres mots :",
+        "en": "the engine refused (code {code}); its own words:",
+    },
+    "the engine refused (code {code}).": {
+        "fr": "le moteur a refusé (code {code}).",
+        "en": "the engine refused (code {code}).",
+    },
+    "no ecosystem beside the engine yet": {
+        "fr": "aucun écosystème à côté du moteur pour l'instant",
+        "en": "no ecosystem beside the engine yet",
+    },
+    "production": {
+        "fr": "production",
+        "en": "production",
+    },
+    "not production": {
+        "fr": "hors production",
+        "en": "not production",
+    },
+    "federated": {
+        "fr": "fédéré",
+        "en": "federated",
+    },
+    "local": {
+        "fr": "local",
+        "en": "local",
+    },
+    "Which one? (number, empty to cancel): ": {
+        "fr": "Lequel ? (numéro, vide pour annuler) : ",
+        "en": "Which one? (number, empty to cancel): ",
+    },
+    "Done.": {
+        "fr": "Fait.",
+        "en": "Done.",
+    },
+    "the gesture could not run at all": {
+        "fr": "le geste n'a pas pu tourner du tout",
+        "en": "the gesture could not run at all",
+    },
+    "the engine offers no template": {
+        "fr": "le moteur ne propose aucun modèle",
+        "en": "the engine offers no template",
+    },
+    "Name of the new ecosystem: ": {
+        "fr": "Nom du nouvel écosystème : ",
+        "en": "Name of the new ecosystem: ",
+    },
+    "Templates the engine offers:": {
+        "fr": "Modèles que le moteur propose :",
+        "en": "Templates the engine offers:",
+    },
+    "Which template? (number): ": {
+        "fr": "Quel modèle ? (numéro) : ",
+        "en": "Which template? (number): ",
+    },
+    "Federated indexes already taken": {
+        "fr": "Index fédérés déjà pris",
+        "en": "Federated indexes already taken",
+    },
+    "no free index left in range": {
+        "fr": "aucun index libre dans les bornes",
+        "en": "no free index left in range",
+    },
+    "Index? (empty for {free}): ": {
+        "fr": "Index ? (vide pour {free}) : ",
+        "en": "Index? (empty for {free}): ",
+    },
+    "Set-OPS - Ansible environment (set it up)": {
+        "fr": "⚙️ Set-OPS - Environnement Ansible (le poser)",
+        "en": "⚙️ Set-OPS - Ansible environment (set it up)",
+    },
+    "{venv} absent: « {geste} » sets it up": {
+        "fr": "{venv} absent : « {geste} » le pose",
+        "en": "{venv} absent: « {geste} » sets it up",
+    },
+    "{venv}: ansible-core {version}, within {spec}; python3 {mineur};"
+    " {n} libraries and {m} collections at the pin": {
+        "fr": "{venv} : ansible-core {version}, dans {spec} ; python3"
+        " {mineur} ; {n} bibliothèques et {m} collections à l'épingle",
+        "en": "{venv}: ansible-core {version}, within {spec}; python3"
+        " {mineur}; {n} libraries and {m} collections at the pin",
+    },
+    "python3 on the gesture PATH is {lu}, the target runs {cible}": {
+        "fr": "python3 du PATH du geste rend {lu}, la cible tourne en {cible}",
+        "en": "python3 on the gesture PATH is {lu}, the target runs {cible}",
+    },
+    "{kind} {name}: {pinned} pinned, {found} installed": {
+        "fr": "{kind} {name} : {pinned} épinglée, {found} posée",
+        "en": "{kind} {name}: {pinned} pinned, {found} installed",
+    },
+    "library": {
+        "fr": "bibliothèque",
+        "en": "library",
+    },
+    "collection": {
+        "fr": "collection",
+        "en": "collection",
+    },
+    "unreadable": {
+        "fr": "illisible",
+        "en": "unreadable",
+    },
+    "the engine is not here yet; see the state screen": {
+        "fr": "le moteur n'est pas encore là ; voir l'écran d'état",
+        "en": "the engine is not here yet; see the state screen",
+    },
+    "Range": {
+        "fr": "Plage",
+        "en": "Range",
+    },
+    "Interpreter": {
+        "fr": "Interpréteur",
+        "en": "Interpreter",
+    },
+    "Already installed": {
+        "fr": "Déjà posé",
+        "en": "Already installed",
+    },
+    "Nothing to do; the state screen says the rest.": {
+        "fr": "Rien à faire ; l'écran d'état dit le reste.",
+        "en": "Nothing to do; the state screen says the rest.",
+    },
+    "ansible-core {version}": {
+        "fr": "ansible-core {version}",
+        "en": "ansible-core {version}",
+    },
+    "no readable ansible-core": {
+        "fr": "aucun ansible-core lisible",
+        "en": "no readable ansible-core",
+    },
+    "What will run:": {
+        "fr": "Ce qui va tourner :",
+        "en": "What will run:",
+    },
+    "Set it up? (y/N): ": {
+        "fr": "Le poser ? (o/N) : ",
+        "en": "Set it up? (y/N): ",
+    },
+    "step {n} failed (code {code}); stopping": {
+        "fr": "l'étape {n} a échoué (code {code}) ; on s'arrête",
+        "en": "step {n} failed (code {code}); stopping",
+    },
+    "no python{minor} on this station": {
+        "fr": "aucun python{minor} sur ce poste",
+        "en": "no python{minor} on this station",
+    },
+    "install python{minor}, or mise, then come back": {
+        "fr": "poser python{minor}, ou mise, puis revenir",
+        "en": "install python{minor}, or mise, then come back",
+    },
+    "Verification:": {
+        "fr": "Vérification :",
+        "en": "Verification:",
+    },
+    "python3 on the gesture PATH: {lu} (target {cible})": {
+        "fr": "python3 du PATH du geste : {lu} (cible {cible})",
+        "en": "python3 on the gesture PATH: {lu} (target {cible})",
+    },
+    "{venv}: ansible-core {version}, outside {spec}": {
+        "fr": "{venv} : ansible-core {version}, hors de {spec}",
+        "en": "{venv}: ansible-core {version}, outside {spec}",
+    },
+    "{venv}: the ansible-core version is unreadable": {
+        "fr": "{venv} : la version d'ansible-core est illisible",
+        "en": "{venv}: the ansible-core version is unreadable",
+    },
+    "the engine's pinned requirements are unreadable": {
+        "fr": "les épingles du moteur sont illisibles",
+        "en": "the engine's pinned requirements are unreadable",
+    },
+    "the engine's ansible-core range is unreadable": {
+        "fr": "la plage ansible-core du moteur est illisible",
+        "en": "the engine's ansible-core range is unreadable",
+    },
+    "{name}: plan present": {
+        "fr": "{name} : plan présent",
+        "en": "{name}: plan present",
+    },
+    "no ecosystem mounted: {cmd}": {
+        "fr": "aucun écosystème monté : {cmd}",
+        "en": "no ecosystem mounted: {cmd}",
+    },
+    "{name} has no plan/serveurs.yml": {
+        "fr": "{name} n'a pas de plan/serveurs.yml",
+        "en": "{name} has no plan/serveurs.yml",
+    },
+    "« instance » is a real folder, not a link: the engine refuses to switch": {
+        "fr": (
+            "« instance » est un vrai dossier, pas un lien : le moteur refuse"
+            " de basculer"
+        ),
+        "en": "« instance » is a real folder, not a link: the engine refuses to switch",
+    },
+    "no site mounted: {cmd}": {
+        "fr": "aucun site monté : {cmd}",
+        "en": "no site mounted: {cmd}",
+    },
+    "key present": {
+        "fr": "clé présente",
+        "en": "key present",
+    },
+    "missing: {cmd} names it": {
+        "fr": "absente : {cmd} la nomme",
+        "en": "missing: {cmd} names it",
+    },
+    "unreadable verdict (code {code})": {
+        "fr": "verdict illisible (code {code})",
+        "en": "unreadable verdict (code {code})",
+    },
+    "first: {segment}": {
+        "fr": "d'abord : {segment}",
+        "en": "first: {segment}",
+    },
+    "all present": {
+        "fr": "tous présents",
+        "en": "all present",
+    },
+    "missing: {tools}": {
+        "fr": "absents : {tools}",
+        "en": "missing: {tools}",
+    },
+    "optional, absent: {tools}": {
+        "fr": "facultatifs absents : {tools}",
+        "en": "optional, absent: {tools}",
+    },
+    "; ": {
+        "fr": " ; ",
+        "en": "; ",
+    },
+    ".repo/ not initialized: set aside what occupies the engine's path ({mv}), then {cmd} initializes it": {
+        "fr": (
+            ".repo/ non initialisé : mettre de côté ce qui occupe le chemin"
+            " du moteur ({mv}), puis {cmd} l'initialise"
+        ),
+        "en": (
+            ".repo/ not initialized: set aside what occupies the engine's"
+            " path ({mv}), then {cmd} initializes it"
+        ),
+    },
+    "underlay.yml leads to no file: {cmd}": {
+        "fr": "underlay.yml ne mène à aucun fichier : {cmd}",
+        "en": "underlay.yml leads to no file: {cmd}",
+    },
+    "Keys and vaults": {
+        "fr": "Clés et voûtes",
+        "en": "Keys and vaults",
+    },
+    "Set-OPS - Keys and vaults (what this machine can open)": {
+        "fr": "🔑 Set-OPS - Clés et voûtes (ce que cette machine peut ouvrir)",
+        "en": "🔑 Set-OPS - Keys and vaults (what this machine can open)",
+    },
+    "missing: « {geste} » shows it and poses it": {
+        "fr": "absente : « {geste} » la montre et la pose",
+        "en": "missing: « {geste} » shows it and poses it",
+    },
+    "unreadable verdict (code {code}): « {geste} » shows the report": {
+        "fr": (
+            "verdict illisible (code {code}) : « {geste} » montre le rapport"
+        ),
+        "en": "unreadable verdict (code {code}): « {geste} » shows the report",
+    },
+    "this machine opens it": {
+        "fr": "cette machine l'ouvre",
+        "en": "this machine opens it",
+    },
+    "KEY MISSING — this machine configures nothing": {
+        "fr": "CLÉ ABSENTE — cette machine ne configure rien",
+        "en": "KEY MISSING — this machine configures nothing",
+    },
+    "this machine does not open it, and must not": {
+        "fr": "cette machine ne l'ouvre pas, et ne le doit pas",
+        "en": "this machine does not open it, and must not",
+    },
+    "nothing to name: no ecosystem mounted, and no underlay": {
+        "fr": "rien à nommer : aucun écosystème monté, et aucun underlay",
+        "en": "nothing to name: no ecosystem mounted, and no underlay",
+    },
+    (
+        "A key missing above is not a fault: it is a separation that holds."
+        " Posing one here would open nothing — the secret of that vault"
+        " already exists elsewhere."
+    ): {
+        "fr": (
+            "Une clé absente ci-dessus n'est pas une faute : c'est une"
+            " séparation qui tient. En poser une ici n'ouvrirait rien — le"
+            " secret de cette voûte existe déjà ailleurs."
+        ),
+        "en": (
+            "A key missing above is not a fault: it is a separation that"
+            " holds. Posing one here would open nothing — the secret of that"
+            " vault already exists elsewhere."
+        ),
+    },
+    "Type these in your own terminal — they ask for a passphrase:": {
+        "fr": (
+            "À taper dans son propre terminal — elles demandent une phrase de"
+            " passe :"
+        ),
+        "en": "Type these in your own terminal — they ask for a passphrase:",
+    },
+    "Pose a NEW key for {nom}": {
+        "fr": "Poser une clé NEUVE pour {nom}",
+        "en": "Pose a NEW key for {nom}",
+    },
+    "what exists only on this station (writes nothing)": {
+        "fr": "ce qui n'existe QUE sur ce poste (n'écrit rien)",
+        "en": "what exists only on this station (writes nothing)",
+    },
+    "Which gesture? (number, empty to leave): ": {
+        "fr": "Quel geste ? (numéro, vide pour sortir) : ",
+        "en": "Which gesture? (number, empty to leave): ",
+    },
+    (
+        "A new key only opens a vault that holds nothing yet. If this"
+        " ecosystem already has encrypted files, bring its key back from its"
+        " archive instead."
+    ): {
+        "fr": (
+            "Une clé neuve n'ouvre qu'une voûte qui ne porte encore rien. Si"
+            " cet écosystème a déjà des fichiers chiffrés, ramener plutôt sa"
+            " clé depuis son archive."
+        ),
+        "en": (
+            "A new key only opens a vault that holds nothing yet. If this"
+            " ecosystem already has encrypted files, bring its key back from"
+            " its archive instead."
+        ),
+    },
+    "Pose a new key for {nom}? (y/N): ": {
+        "fr": "Poser une clé neuve pour {nom} ? (o/N) : ",
+        "en": "Pose a new key for {nom}? (y/N): ",
+    },
+    "key posed, readable by you alone": {
+        "fr": "clé posée, lisible par vous seul",
+        "en": "key posed, readable by you alone",
+    },
+    (
+        "a key is already there and was NOT replaced: replacing it would make"
+        " that vault unreadable for good"
+    ): {
+        "fr": (
+            "une clé est déjà là et n'a PAS été remplacée : la remplacer"
+            " rendrait cette voûte définitivement illisible"
+        ),
+        "en": (
+            "a key is already there and was NOT replaced: replacing it would"
+            " make that vault unreadable for good"
+        ),
+    },
+    "the engine named no path for that key": {
+        "fr": "le moteur n'a nommé aucun chemin pour cette clé",
+        "en": "the engine named no path for that key",
+    },
+    "the file could not be written": {
+        "fr": "le fichier n'a pas pu être écrit",
+        "en": "the file could not be written",
+    },
+    "Set-OPS - Advance the pin (what the forge carries)": {
+        "fr": "📌 Set-OPS - Faire avancer l'épingle (ce que la forge porte)",
+        "en": "📌 Set-OPS - Advance the pin (what the forge carries)",
+    },
+    "pinned": {
+        "fr": "épinglé",
+        "en": "pinned",
+    },
+    "the clone against the pin": {
+        "fr": "le clone face à l'épingle",
+        "en": "the clone against the pin",
+    },
+    "the manifest declares no engine": {
+        "fr": "le manifeste ne déclare aucun moteur",
+        "en": "the manifest declares no engine",
+    },
+    "Ask the forge what it carries (network; writes nothing here)": {
+        "fr": "Demander à la forge ce qu'elle porte (réseau ; n'écrit rien ici)",
+        "en": "Ask the forge what it carries (network; writes nothing here)",
+    },
+    "the clone declares no remote": {
+        "fr": "le clone ne déclare aucun remote",
+        "en": "the clone declares no remote",
+    },
+    "the forge carries": {
+        "fr": "la forge porte",
+        "en": "the forge carries",
+    },
+    "could not ask the forge": {
+        "fr": "n'a pas pu demander à la forge",
+        "en": "could not ask the forge",
+    },
+    "that branch is NO LONGER on the forge: a fresh station cannot fetch this pin": {
+        "fr": "cette branche n'est PLUS sur la forge : un poste neuf ne peut pas rapatrier cette épingle",
+        "en": "that branch is NO LONGER on the forge: a fresh station cannot fetch this pin",
+    },
+    "no remote answered; the lag is unknown": {
+        "fr": "aucun remote n'a répondu ; le retard est inconnu",
+        "en": "no remote answered; the lag is unknown",
+    },
+    "the pin is already the forge tip": {
+        "fr": "l'épingle est déjà la pointe de la forge",
+        "en": "the pin is already the forge tip",
+    },
+    "bringing the objects down to read what separates them": {
+        "fr": "rapatriement des objets pour lire ce qui les sépare",
+        "en": "bringing the objects down to read what separates them",
+    },
+    "the objects could not be fetched": {
+        "fr": "les objets n'ont pas pu être rapatriés",
+        "en": "the objects could not be fetched",
+    },
+    "the range between the two could not be read": {
+        "fr": "la plage entre les deux n'a pas pu être lue",
+        "en": "the range between the two could not be read",
+    },
+    "{n} commit(s) the pin would gain": {
+        "fr": "{n} commit(s) que l'épingle gagnerait",
+        "en": "{n} commit(s) the pin would gain",
+    },
+    "This rewrites one attribute of:": {
+        "fr": "Ceci réécrit un attribut de :",
+        "en": "This rewrites one attribute of:",
+    },
+    "The commit stays yours; nothing is committed here.": {
+        "fr": "Le commit reste le tien ; rien n'est commité ici.",
+        "en": "The commit stays yours; nothing is committed here.",
+    },
+    "Advance the pin to {sha}? (y/N): ": {
+        "fr": "Faire avancer l'épingle vers {sha} ? (o/N) : ",
+        "en": "Advance the pin to {sha}? (y/N): ",
+    },
+    "the manifest does not carry exactly one revision": {
+        "fr": "le manifeste ne porte pas exactement une révision",
+        "en": "the manifest does not carry exactly one revision",
+    },
+    "the pin now reads": {
+        "fr": "l'épingle porte désormais",
+        "en": "the pin now reads",
+    },
+    "read the diff, then commit it yourself.": {
+        "fr": "relis le diff, puis commite-le toi-même.",
+        "en": "read the diff, then commit it yourself.",
+    },
+    "Web console": {
+        "fr": "Console web",
+        "en": "Web console",
+    },
+    "Set-OPS - Web console (loopback only, no authentication)": {
+        "fr": (
+            "🌐 Set-OPS - Console web (boucle locale seulement, aucune"
+            " authentification)"
+        ),
+        "en": "🌐 Set-OPS - Web console (loopback only, no authentication)",
+    },
+    (
+        "This console has NO authentication: whatever reaches its port reads"
+        " the whole inventory and triggers its gestures."
+    ): {
+        "fr": (
+            "Cette console n'a AUCUNE authentification : ce qui atteint son"
+            " port lit tout l'inventaire et déclenche ses gestes."
+        ),
+        "en": (
+            "This console has NO authentication: whatever reaches its port"
+            " reads the whole inventory and triggers its gestures."
+        ),
+    },
+    "To reach it from elsewhere, forward the port over SSH:": {
+        "fr": "Pour l'atteindre d'ailleurs, rediriger le port par SSH :",
+        "en": "To reach it from elsewhere, forward the port over SSH:",
+    },
+    "not running here": {
+        "fr": "pas lancée d'ici",
+        "en": "not running here",
+    },
+    "running, started from here": {
+        "fr": "en cours, lancée d'ici",
+        "en": "running, started from here",
+    },
+    "started from here, but nothing answers on the port": {
+        "fr": "lancée d'ici, mais rien ne répond sur le port",
+        "en": "started from here, but nothing answers on the port",
+    },
+    "something todo did not start holds that port; not stopped here": {
+        "fr": (
+            "ce port est tenu par autre chose que todo n'a pas lancé ; il ne"
+            " s'arrête pas d'ici"
+        ),
+        "en": (
+            "something todo did not start holds that port; not stopped here"
+        ),
+    },
+    "cannot tell; nothing is offered": {
+        "fr": "impossible de trancher ; rien n'est offert",
+        "en": "cannot tell; nothing is offered",
+    },
+    "the record is there but unreadable:": {
+        "fr": "le suivi est là mais illisible :",
+        "en": "the record is there but unreadable:",
+    },
+    "the record could not be written:": {
+        "fr": "le suivi n'a pas pu être écrit :",
+        "en": "the record could not be written:",
+    },
+    "todo will not offer to stop it; do it by hand.": {
+        "fr": "todo n'offrira pas de l'arrêter ; le faire à la main.",
+        "en": "todo will not offer to stop it; do it by hand.",
+    },
+    "the port could not be probed; state unknown.": {
+        "fr": "le port n'a pas pu être sondé ; état inconnu.",
+        "en": "the port could not be probed; state unknown.",
+    },
+    "process group": {
+        "fr": "groupe de processus",
+        "en": "process group",
+    },
+    "Start it": {
+        "fr": "La lancer",
+        "en": "Start it",
+    },
+    "Stop it": {
+        "fr": "L'arrêter",
+        "en": "Stop it",
+    },
+    "it did not come up; the log says why:": {
+        "fr": "elle n'a pas démarré ; le journal dit pourquoi :",
+        "en": "it did not come up; the log says why:",
+    },
+    "signal sent to the whole group": {
+        "fr": "signal envoyé au groupe entier",
+        "en": "signal sent to the whole group",
+    },
+    "still there after the signal": {
+        "fr": "toujours là après le signal",
+        "en": "still there after the signal",
+    },
+    "refused: that PID no longer carries the console": {
+        "fr": "refus : ce PID ne porte plus la console",
+        "en": "refused: that PID no longer carries the console",
+    },
+    "the signal could not be sent": {
+        "fr": "le signal n'a pas pu être envoyé",
+        "en": "the signal could not be sent",
+    },
+    "Write gestures": {
+        "fr": "Gestes d'écriture",
+        "en": "Write gestures",
+    },
+    "Set-OPS - Generate the inventory, diff first": {
+        "fr": "📝 Set-OPS - Générer l'inventaire, le diff d'abord",
+        "en": "📝 Set-OPS - Generate the inventory, diff first",
+    },
+    "Set-OPS - Take the generated inventory": {
+        "fr": "📝 Set-OPS - Prendre l'inventaire généré",
+        "en": "📝 Set-OPS - Take the generated inventory",
+    },
+    "Set-OPS - Deploy one host, layer by layer": {
+        "fr": "📝 Set-OPS - Déployer un hôte, couche par couche",
+        "en": "📝 Set-OPS - Deploy one host, layer by layer",
+    },
+    "Set-OPS - Deploy one group across the fleet": {
+        "fr": "📝 Set-OPS - Déployer un groupe sur toute la flotte",
+        "en": "📝 Set-OPS - Deploy one group across the fleet",
+    },
+    "Set-OPS - Apply one group to the fleet": {
+        "fr": "📝 Set-OPS - Appliquer un groupe à la flotte",
+        "en": "📝 Set-OPS - Apply one group to the fleet",
+    },
+    "Set-OPS - Create one VM and wait for it": {
+        "fr": "📝 Set-OPS - Créer une VM et l'attendre",
+        "en": "📝 Set-OPS - Create one VM and wait for it",
+    },
+    "Set-OPS - Create the fleet's missing VMs": {
+        "fr": "📝 Set-OPS - Créer les VM manquantes de la flotte",
+        "en": "📝 Set-OPS - Create the fleet's missing VMs",
+    },
+    "Set-OPS - Regenerate the flows and the firewall rules": {
+        "fr": "📝 Set-OPS - Régénérer les flux et les règles de pare-feu",
+        "en": "📝 Set-OPS - Regenerate the flows and the firewall rules",
+    },
+    "Set-OPS - Regenerate the site playbook": {
+        "fr": "📝 Set-OPS - Régénérer le playbook du site",
+        "en": "📝 Set-OPS - Regenerate the site playbook",
+    },
+    "Set-OPS - Record the parentage in the instance": {
+        "fr": "📝 Set-OPS - Inscrire la parenté dans l'instance",
+        "en": "📝 Set-OPS - Record the parentage in the instance",
+    },
+    "Set-OPS - Proxmox assistant (asks you for a secret)": {
+        "fr": "📝 Set-OPS - Assistant Proxmox (il demande un secret)",
+        "en": "📝 Set-OPS - Proxmox assistant (asks you for a secret)",
+    },
+    "This step asks you questions itself.": {
+        "fr": "Cette étape pose elle-même des questions.",
+        "en": "This step asks you questions itself.",
+    },
+    "The terminal is handed over; nothing is captured.": {
+        "fr": "Le terminal lui est rendu ; rien n'est capturé.",
+        "en": "The terminal is handed over; nothing is captured.",
+    },
+    "{name} is a switch, not a value:": {
+        "fr": "{name} est un interrupteur, pas une valeur :",
+        "en": "{name} is a switch, not a value:",
+    },
+    "any value at all turns it on, « 0 » included.": {
+        "fr": "n'importe quelle valeur l'active, « 0 » compris.",
+        "en": "any value at all turns it on, « 0 » included.",
+    },
+    "Turn {name} on? (y/N): ": {
+        "fr": "Activer {name} ? (o/N) : ",
+        "en": "Turn {name} on? (y/N): ",
+    },
+    "takes": {
+        "fr": "dure",
+        "en": "takes",
+    },
+    "the registry declares no single « {cible} »": {
+        "fr": "le registre ne déclare pas un seul « {cible} »",
+        "en": "the registry declares no single « {cible} »",
     },
 }
 
