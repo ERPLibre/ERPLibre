@@ -40,16 +40,20 @@
 // chaque menu reçoit l'entrée de l'étape suivante (`launch.js`), jusqu'à la
 // dernière ; ce qui suit est à l'utilisateur. Tout autre message que le menu
 // attendu arrête le rejeu, et la barre dit l'étape où le chemin s'est
-// interrompu, jusqu'à la réponse suivante de l'utilisateur, qui arrête
-// aussi un rejeu en cours. L'ordre `reopen`, quand le code de TODO a
-// changé, ferme la session courante si elle attend à un menu, et en ouvre
-// une neuve. La page apprend du hub l'empreinte du code que tourne la
-// session courante (`runs`, le `code` du message `session`), null sans
-// session.
+// interrompu, jusqu'à la réponse suivante de l'utilisateur, par un widget
+// ou au terminal, qui arrête aussi un rejeu en cours. L'ordre `reopen`,
+// quand le code de TODO a changé, ferme la session courante si elle attend
+// à un menu, et en ouvre une neuve. Un ordre donné pendant un rejeu ou une
+// réponse en chemin attend que la session arrive quelque part ; pendant
+// qu'une session se ferme pour une neuve, il remplace celui que la neuve
+// suivra. `planOrder` (`launch.js`) décide de chaque ordre ; cette vue
+// applique sa décision. La page apprend du hub l'empreinte du code que
+// tourne la session courante (`runs`, le `code` du message `session`), null
+// sans session.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {endsLongRun, runEndBody} from "./desktop.js";
-import {advance, resumeAt, startReplay} from "./launch.js";
+import {advance, answeredByHand, lands, movingAfter, planOrder, startReplay} from "./launch.js";
 import {MenuView} from "./menu_view.js";
 import {ASK_KINDS, answerable} from "./prompt.js";
 import {QuestionView} from "./question_view.js";
@@ -196,8 +200,9 @@ export class SessionsView extends Component {
         this.bye = null;
         this.offset = 0; // décalage absolu du prochain octet attendu
         this.replay = null; // le rejeu d'un nœud lancé, en cours
-        this.deferred = null; // l'ordre qui attend la question d'un rattachement
-        this.renewing = null; // l'ordre qui attend la fin de la session que renew ferme, true sans rejeu
+        this.deferred = null; // {order, act} : l'ordre qui attend où la session arrive (`lands`)
+        this.renewing = null; // l'ordre qui attend la fin de la session que renew ferme
+        this.moving = false; // une réponse prise, que rien n'a encore suivie (`movingAfter`)
         this.encoder = new TextEncoder();
         onMounted(() => {
             window.addEventListener("pagehide", this.onPageHide);
@@ -312,6 +317,7 @@ export class SessionsView extends Component {
         this.replay = null;
         this.deferred = null;
         this.renewing = null;
+        this.moving = false;
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
         socket.binaryType = "arraybuffer";
         socket.onopen = () => {
@@ -366,6 +372,11 @@ export class SessionsView extends Component {
                 this.env.desktop.title(message.crumbs);
             }
         } else if (message.t === "answered") {
+            // Une réponse au terminal vaut celle d'un widget (`choose`).
+            if (answeredByHand(message, this.state.pending)) {
+                this.state.halt = "";
+                this.replay = null;
+            }
             if (this.state.question?.qid === message.qid) {
                 Object.assign(this.state, {question: null, pending: null});
             }
@@ -389,10 +400,10 @@ export class SessionsView extends Component {
         if (this.state.override) {
             this.state.override = heldOverride(this.state.override, foldPhase(this.fold));
         }
-        // La question ouverte d'un rattachement suit `session` : ce qui
-        // vient ensuite dit où l'ordre en attente se rejoue.
-        if (this.deferred && message.t !== "session") {
-            this.resume(this.deferred);
+        this.moving = movingAfter(this.moving, message);
+        // L'ordre en attente se rejoue dès que la session dit où elle est.
+        if (this.deferred && lands(message, this.deferred.act === "attach")) {
+            this.land();
         } else if (this.replay) {
             this.step(message);
         }
@@ -413,16 +424,17 @@ export class SessionsView extends Component {
             this.props.runs(null);
         }
         this.poll();
-        // Un rattachement refusé : l'ordre en attente part dans une neuve.
+        // Un rattachement refusé, une session finie en chemin : l'ordre en
+        // attente part dans une neuve.
         if (this.deferred) {
-            this.resume(this.deferred);
+            this.land();
         } else if (this.renewing) {
             // La session que `renew` a fermée a fini : le hub a rendu sa
             // place, la neuve peut s'ouvrir sans s'y heurter.
             const order = this.renewing;
             this.renewing = null;
             this.connect(null);
-            if (order !== true) {
+            if (!order.reopen) {
                 this.replay = startReplay(order.route, order.root);
             }
         }
@@ -466,62 +478,63 @@ export class SessionsView extends Component {
         this.settle(qid, {t: "cancel"});
     }
 
-    // Vrai quand la session courante attend à un menu, sans réponse de la
-    // page ni commande en cours : la fermer n'interrompt rien.
-    get idleAtMenu() {
-        const {status, question, pending, running} = this.state;
-        return status === "open" && question?.t === "menu" && pending !== question.qid && !running;
-    }
-
     // Suit un ordre de la page : rejouer le plan de route `route` d'un
-    // nœud, le menu principal ayant pour fil d'Ariane `root`. Pendant un
-    // rattachement, l'ordre attend la question ouverte de la session
-    // (`receive`) ; une session neuve qui s'ouvre le rejoue depuis son menu
-    // principal. `reopen` : ouvrir une session neuve (`renew`).
+    // nœud, le menu principal ayant pour fil d'Ariane `root`, ou, avec
+    // `reopen`, ouvrir une session neuve.
     follow(order) {
         this.state.halt = "";
-        if (order.reopen) {
-            this.renew();
-            return;
-        }
-        if (this.state.status === "connecting") {
-            this.deferred = this.state.id ? order : null;
-            this.replay = this.state.id ? null : startReplay(order.route, order.root);
-            return;
-        }
-        this.resume(order);
+        this.apply(order);
     }
 
-    // Rejoue `route` dans la session courante à partir de sa question
-    // ouverte, quand c'est un menu du chemin (`resumeAt`) ; sinon dans une
-    // session neuve (`renew`).
-    resume({route, root}) {
+    // L'ordre en attente, la session ayant dit où elle est.
+    land() {
+        const {order} = this.deferred;
         this.deferred = null;
-        const {status, question, pending} = this.state;
-        const at = status === "open" ? resumeAt(question, pending, route, root) : null;
-        if (at === null) {
-            this.renew({route, root});
-            return;
-        }
-        this.replay = startReplay(route, root, at);
-        this.step(question);
+        this.apply(order);
     }
 
-    // Ouvre une session neuve pour l'ordre `order`, ou seule, sans rejeu, s'il
-    // est absent (le bouton de la bannière) : une session oisive à un menu se
+    // Applique à `order` ce que `planOrder` décide pour la session courante.
+    apply(order) {
+        const {status, id, question, pending, running} = this.state;
+        const plan = planOrder(order, {
+            ...{status, id, question, pending, running},
+            moving: this.moving,
+            replaying: Boolean(this.replay),
+            renewing: this.renewing,
+            waiting: this.deferred?.act,
+        });
+        if (plan.act === "queue") {
+            this.renewing = order;
+        } else if (plan.act === "attach" || plan.act === "wait") {
+            this.replay = null;
+            this.deferred = {order, act: plan.act};
+        } else if (plan.act === "start") {
+            this.replay = startReplay(order.route, order.root);
+        } else if (plan.act === "resume") {
+            this.replay = startReplay(order.route, order.root, plan.at);
+            this.step(question);
+        } else if (plan.act === "here") {
+            this.replay = null;
+        } else {
+            this.renew(order, plan.close);
+        }
+    }
+
+    // Ouvre une session neuve pour `order`, sans rejeu pour `reopen` (le
+    // bouton de la bannière). `close` : la courante, oisive à un menu, se
     // ferme d'abord — laissée derrière, elle garderait une des places,
     // comptées, du hub — et la neuve n'ouvre qu'une fois qu'elle a vraiment
     // fini (`closed`), pour ne pas s'y heurter encore avant que le hub ait
-    // rendu sa place. Une session à une question ou en pleine commande
-    // reste, rattachable : la neuve s'ouvre à côté, tout de suite.
-    renew(order) {
-        if (this.idleAtMenu) {
-            this.renewing = order ?? true;
+    // rendu sa place. Sinon la neuve s'ouvre à côté, tout de suite.
+    renew(order, close) {
+        if (close) {
+            this.replay = null;
+            this.renewing = order;
             this.send({t: "close"});
             return;
         }
         this.connect(null);
-        if (order) {
+        if (!order.reopen) {
             this.replay = startReplay(order.route, order.root);
         }
     }

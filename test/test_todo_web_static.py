@@ -10,8 +10,8 @@ que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
 `static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`)
-tournent sous node, quand il est installé. Les mots de la page sont vérifiés par
-`test_todo_web_i18n.py`.
+tournent sous node, quand il est installé. Les mots de la page sont
+vérifiés par `test_todo_web_i18n.py`.
 """
 
 import base64
@@ -522,6 +522,8 @@ console.log(JSON.stringify({
         .map(([view, visibility]) => m.pollsCode(view, visibility)),
     changed: [["a1", "a1"], ["a1", "b2"], [undefined, "b2"], ["a1", null]]
         .map(([baseline, code]) => m.codeChanged(baseline, code)),
+    rereads: [["a1", "a1"], ["b2", "a1"], [null, "a1"], ["b2", null]]
+        .map(([runs, latest]) => m.rereadsFor(runs, latest)),
 }));
 """
 
@@ -539,6 +541,12 @@ class TestCodeBanner(unittest.TestCase):
 
     def test_only_a_known_stamp_that_differs_is_a_change(self):
         self.assertEqual(self.out["changed"], [False, True, False, False])
+
+    def test_a_session_stamp_not_yet_read_rereads_before_the_banner(self):
+        # Une session ouverte après un changement que la relecture de fond
+        # n'a pas vu : la page relit avant d'en juger, sans quoi la
+        # bannière la dirait sur l'ancien code.
+        self.assertEqual(self.out["rereads"], [False, True, False, True])
 
 
 VIEW_CHECK = r"""
@@ -1128,6 +1136,56 @@ const exec = menu(2, ["TODO", "Execute"],
     ["🔧 Config", "💻 Code - Outil pour développeur"]);
 const codeMenu = menu(3, ["TODO", "Execute", "Code"],
     ["📦 Remiser", "🔍  afficher le STATUT"]);
+// L'état d'une session ouverte qui attend à `question`, pour planOrder.
+const session = (question, more = {}) => ({status: "open", id: "s1", question,
+    pending: null, running: false, moving: false, replaying: false,
+    renewing: null, waiting: null, ...more});
+const orders = () => {
+    const go = {route, root: "TODO"};
+    const toCode = {route: m.launchRoute([execute, code]), root: "TODO"};
+    const reopen = {reopen: true};
+    const ask = {t: "ask", qid: 4, kind: "confirm"};
+    const plan = (order, view) => m.planOrder(order, view);
+    return {
+        plans: {
+            resume: [main, exec, codeMenu].map((q) => plan(go, session(q))),
+            here: plan(toCode, session(codeMenu)),
+            off: plan(go, session(menu(5, ["TODO", "Install"], ["x"]))),
+            busy: [session(ask), session(null, {running: true}),
+                {...session(null), status: "ended"},
+                {...session(null), status: null}]
+                .map((view) => plan(go, view)),
+            reopen: [session(codeMenu), session(ask)]
+                .map((view) => plan(reopen, view)),
+            connecting: [[go, "s1"], [go, null], [reopen, "s1"]]
+                .map(([order, id]) =>
+                    plan(order, {...session(null), status: "connecting", id})),
+            queue: [go, reopen].map((order) =>
+                plan(order, session(codeMenu, {renewing: go}))),
+            wait: [plan(go, session(codeMenu, {pending: 3})),
+                plan(go, session(null, {replaying: true})),
+                plan(go, session(null, {moving: true})),
+                plan(reopen, session(exec, {pending: 2}))],
+            held: [[go, "wait"], [reopen, "wait"], [go, "attach"]]
+                .map(([order, waiting]) =>
+                    plan(order, session(null, {waiting}))),
+        },
+        lands: {
+            attaching: ["session", "tty_state", "dropped", "menu"]
+                .map((t) => m.lands({t}, true)),
+            waiting: ["answered", "tty_state", "dropped", "notice", "run_end",
+                "menu", "ask", "run_start"].map((t) => m.lands({t}, false)),
+        },
+        moving: [[false, "answered"], [true, "tty_state"], [true, "notice"],
+            [true, "menu"], [true, "ask"], [true, "run_start"],
+            [true, "session"], [false, "menu"]]
+            .map(([was, t]) => m.movingAfter(was, {t})),
+        byHand: [[3, 3], [3, null], [3, 2]]
+            .map(([qid, pending]) =>
+                m.answeredByHand({t: "answered", qid}, pending))
+            .concat(m.answeredByHand({t: "menu", qid: 3}, null)),
+    };
+};
 const play = (messages, at = 0) => {
     let replay = m.startReplay(route, "TODO", at);
     const answers = [];
@@ -1172,6 +1230,7 @@ console.log(JSON.stringify({
         [menu(6, ["TODO", "Install", "Code"], []), null], [null, null]]
         .map(([question, pending]) =>
             m.resumeAt(question, pending, route, "TODO")),
+    ...orders(),
 }));
 """
 
@@ -1263,6 +1322,92 @@ class TestLaunch(unittest.TestCase):
             self.out["resumed"],
             {"answers": [{"qid": 3, "key": "2"}], "done": True},
         )
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestLaunchOrders(unittest.TestCase):
+    """Ce que la vue Sessions fait d'un ordre (`planOrder`), et quand un
+    ordre en attente se rejoue (`lands`, `movingAfter`)."""
+
+    @classmethod
+    def setUpClass(cls):
+        out = _node_json(LAUNCH_CHECK, "launch.js")
+        cls.plans = out["plans"]
+        cls.out = out
+
+    def test_a_session_at_a_menu_of_the_path_resumes_there(self):
+        self.assertEqual(
+            self.plans["resume"],
+            [{"act": "resume", "at": at} for at in (0, 1, 2)],
+        )
+
+    def test_a_session_already_at_the_launched_menu_stays(self):
+        # ▶ sur Code, la session attend à Code : rien à rejouer, et pas
+        # de session neuve.
+        self.assertEqual(self.plans["here"], {"act": "here"})
+
+    def test_a_new_session_closes_the_current_only_idle_at_a_menu(self):
+        self.assertEqual(self.plans["off"], {"act": "renew", "close": True})
+        # À une question, en pleine commande, finie ou absente : la neuve
+        # s'ouvre à côté, et la courante reste rattachable.
+        self.assertEqual(
+            self.plans["busy"], [{"act": "renew", "close": False}] * 4
+        )
+        self.assertEqual(
+            self.plans["reopen"],
+            [
+                {"act": "renew", "close": True},
+                {"act": "renew", "close": False},
+            ],
+        )
+
+    def test_a_connecting_session_holds_the_order(self):
+        # Un rattachement attend la question ouverte ; une session neuve
+        # rejoue depuis son menu principal ; reopen en ouvre une autre.
+        self.assertEqual(
+            self.plans["connecting"],
+            [
+                {"act": "attach"},
+                {"act": "start"},
+                {"act": "renew", "close": False},
+            ],
+        )
+
+    def test_an_order_during_a_renew_waits_for_the_new_session(self):
+        # La session que renew ferme attend encore à Code, un menu du
+        # chemin : l'ordre ne s'y rejoue jamais, il remplace celui que la
+        # neuve suivra.
+        self.assertEqual(self.plans["queue"], [{"act": "queue"}] * 2)
+
+    def test_an_order_while_the_session_moves_waits_for_where_it_lands(self):
+        # Une réponse de la page en attente, un rejeu en cours, une réponse
+        # prise que rien n'a encore suivie : ni reprise ni session neuve,
+        # qui laisserait la courante arriver oisive à un menu.
+        self.assertEqual(self.plans["wait"], [{"act": "wait"}] * 4)
+        # Un ordre qui attend déjà : le nouveau prend sa place, et attend
+        # de même.
+        self.assertEqual(
+            self.plans["held"],
+            [{"act": "wait"}, {"act": "wait"}, {"act": "attach"}],
+        )
+        # Un rattachement se rejoue au premier message après `session` ;
+        # une attente, à une question ou à une commande qui commence.
+        self.assertEqual(
+            self.out["lands"],
+            {
+                "attaching": [False, True, True, True],
+                "waiting": [False] * 5 + [True] * 3,
+            },
+        )
+        self.assertEqual(
+            self.out["moving"],
+            [True, True, True, False, False, False, False, False],
+        )
+
+    def test_only_an_answer_the_page_did_not_send_is_by_hand(self):
+        # Une réponse au terminal efface l'étape où le rejeu s'est
+        # interrompu ; celle de la page (le rejeu, un widget) non.
+        self.assertEqual(self.out["byHand"], [False, True, True, False])
 
 
 if __name__ == "__main__":

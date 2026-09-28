@@ -14,13 +14,14 @@
 // qui ne se relisent qu'au changement de vue. Quand l'empreinte du code
 // (`code`) n'est plus celle que tourne la session courante, que la vue
 // Sessions tient du hub (`runs`), une bannière le dit ; son bouton ouvre
-// une session neuve.
+// une session neuve. Une empreinte de session que la page n'a pas encore
+// lue la fait relire d'abord : la bannière ne juge que sur la plus récente.
 import {Component, onMounted, onWillUnmount, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {HistoryView} from "./history_view.js";
 import {KanbanView} from "./kanban_view.js";
 import {ListView} from "./list_view.js";
-import {SORTS, VIEWS, codeChanged, effectiveSort, pollsCode, readFragment, writeFragment} from "./model.js";
+import {SORTS, VIEWS, codeChanged, effectiveSort, pollsCode, readFragment, rereadsFor, writeFragment} from "./model.js";
 import {SessionsView} from "./sessions_view.js";
 import {SystemView} from "./system_view.js";
 import {TreeView} from "./tree_view.js";
@@ -89,6 +90,7 @@ export class TelemetryPage extends Component {
         // lue ; `runs` : celle que tourne la session courante, ou null.
         this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions", order: null});
         Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null});
+        this.told = 0; // le rang du dernier appel de sessionRuns
         onMounted(() => {
             this.timer = setInterval(() => {
                 if (pollsCode(this.state.view, document.visibilityState)) {
@@ -159,9 +161,17 @@ export class TelemetryPage extends Component {
     }
 
     // L'empreinte du code que tourne la session courante de la vue
-    // Sessions, null quand elle n'en a pas.
-    sessionRuns(code) {
-        this.state.runs = code;
+    // Sessions, null quand elle n'en a pas. Une empreinte qui n'est pas la
+    // dernière lue (`rereadsFor`) ne compte qu'après une relecture de fond,
+    // et seulement si aucun appel plus récent ne l'a remplacée entre-temps.
+    async sessionRuns(code) {
+        const told = ++this.told;
+        if (rereadsFor(code, this.state.latest)) {
+            await this.refresh();
+        }
+        if (told === this.told) {
+            this.state.runs = code;
+        }
     }
 
     // Relit /api/telemetry : son empreinte va à la bannière ; l'arbre et les

@@ -29,6 +29,13 @@ export function codeChanged(baseline, code) {
     return Boolean(baseline && code && baseline !== code);
 }
 
+// Vrai quand l'empreinte `runs` d'une session qui s'ouvre ou se rattache
+// n'est pas `latest`, la dernière lue : la page relit /api/telemetry avant
+// d'en juger, `latest` datant de la relecture précédente.
+export function rereadsFor(runs, latest) {
+    return Boolean(runs && runs !== latest);
+}
+
 // Minuscules sans accents : « Système » et « systeme » se rejoignent.
 export function fold(text) {
     return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
