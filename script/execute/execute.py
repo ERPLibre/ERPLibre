@@ -441,7 +441,23 @@ class _CtrlC:
     descendant qui ignore SIGINT et SIGTERM garde le tube ouvert après la
     mort de la commande, et la lecture n'attendrait plus que lui ; un
     `kill` refusé laisse l'attente sans fin, même une fois le tube fermé.
+
+    Une commande interrompue finie sans qu'un KeyboardInterrupt ne
+    s'échappe (`raised` faux), `release` laisse SIGINT à ce gestionnaire
+    et ouvre un délai de grâce (`ended`) : un Ctrl+C dans les `GRACE`
+    secondes qui suivent est perdu. Sans lui, le Ctrl+C répété pendant que
+    la commande meurt tombe à la question suivante et quitte l'appelant.
+    Le délai se lit à l'arrivée du Ctrl+C, sans fil ni minuterie : le
+    premier qui le dépasse rend SIGINT au gestionnaire par défaut et lève
+    KeyboardInterrupt comme lui, et la commande suivante pose son propre
+    compteur à sa place (`catch`). D'ici là, `signal.getsignal` rend ce
+    gestionnaire : asyncio.run, qui ne pose le sien qu'à la place du
+    gestionnaire par défaut, le laisse lever KeyboardInterrupt.
     """
+
+    # Secondes, depuis la fin d'une commande interrompue, où un Ctrl+C est
+    # perdu.
+    GRACE = 1.0
 
     def __init__(self):
         self.caught = False
@@ -450,16 +466,21 @@ class _CtrlC:
         self.raisable = True
         self.raised = False
         self.tty_attrs = None
+        self.ended = None
 
     def catch(self):
         """Se pose en gestionnaire de SIGINT, dans le fil principal et à la
-        place du gestionnaire par défaut seulement : ailleurs, SIGINT est
+        place du gestionnaire par défaut, ou du compteur d'une commande
+        interrompue avant elle (`ended`), seulement : ailleurs, SIGINT est
         ignoré ou tenu par un autre (la boucle d'asyncio), qui le garde, et
         `signal.signal` lève hors du fil principal. Retient les modes du
         terminal de l'entrée standard, que `restore` remet."""
         main = threading.current_thread() is threading.main_thread()
-        default = signal.getsignal(signal.SIGINT) is signal.default_int_handler
-        if not (main and default):
+        held = signal.getsignal(signal.SIGINT)
+        free = held is signal.default_int_handler or (
+            isinstance(held, _CtrlC) and held.ended is not None
+        )
+        if not (main and free):
             return
         signal.signal(signal.SIGINT, self)
         self.caught = True
@@ -471,8 +492,14 @@ class _CtrlC:
 
     def release(self):
         """Rend SIGINT au gestionnaire par défaut, si `catch` l'avait pris ;
-        `caught` reste vrai."""
-        if self.caught:
+        `caught` reste vrai. Après une commande interrompue dont aucun
+        KeyboardInterrupt ne s'échappe, garde SIGINT et ouvre le délai de
+        grâce."""
+        if not self.caught:
+            return
+        if self.count and not self.raised:
+            self.ended = time.monotonic()
+        else:
             signal.signal(signal.SIGINT, signal.default_int_handler)
 
     def restore(self):
@@ -490,6 +517,11 @@ class _CtrlC:
             pass  # pas d'entrée standard, ou pas un terminal
 
     def __call__(self, signum, frame):
+        if self.ended is not None:
+            if time.monotonic() - self.ended < self.GRACE:
+                return
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+            return signal.default_int_handler(signum, frame)
         self.count += 1
         if self.process is None:
             return
@@ -519,7 +551,8 @@ class Execute:
     # Posé par le CLI de TODO (todo.py lancé comme script), jamais par le
     # worker d'une session web ni par un script qui importe ce module. Vrai
     # et sans contrôle de tâches, Ctrl+C pendant une commande n'arrête
-    # qu'elle (`_CtrlC`), et l'appelant continue. Faux, Ctrl+C lève
+    # qu'elle (`_CtrlC`), et l'appelant continue ; un Ctrl+C répété dans
+    # la seconde qui suit sa fin est perdu. Faux, Ctrl+C lève
     # KeyboardInterrupt chez l'appelant, qui s'arrête avec la commande : un
     # script que TODO lance meurt de son Ctrl+C, et la chaîne `&&` qui le
     # porte s'arrête avec lui.
@@ -813,9 +846,10 @@ class Execute:
                 secs = round(time.time() - process_start_time, 3)
                 self._event({"t": "run_end", "rc": exit_code, "secs": secs})
             finally:
-                # Rendu en dernier : un Ctrl+C tombé dans ce `finally` n'est
-                # que compté, et `run_end` part. Le bloc de `tty`, hors de ce
-                # `try`, ne tourne jamais sous `_CtrlC`.
+                # Rendu, ou gardé pour le délai de grâce, en dernier : un
+                # Ctrl+C tombé dans ce `finally` n'est que compté, et
+                # `run_end` part. Le bloc de `tty`, hors de ce `try`, ne
+                # tourne jamais sous `_CtrlC`.
                 ctrl_c.release()
         if ctrl_c.caught:
             Execute.interrupted = bool(ctrl_c.count)

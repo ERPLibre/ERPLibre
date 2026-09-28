@@ -604,6 +604,23 @@ class TestCtrlCInTheCli(unittest.TestCase):
         self.assertIn(b"Command interrupted (Ctrl+C).", out)
         self.goes_on()
 
+    def test_a_second_ctrl_c_while_it_dies_leaves_the_caller_asking(self):
+        # Le double Ctrl+C réflexe : la commande meurt au premier, et le
+        # second, 0,2 s après, tombe à la question suivante sans arrêter
+        # l'appelant. Deux secondes plus tard, Ctrl+C y lève
+        # KeyboardInterrupt, comme le gestionnaire par défaut.
+        self.spawn(ARMED + TICKS)
+        os.write(self.master, b"\x03")
+        first = time.monotonic()
+        self.assertIn(b"rc=-2 end=-2 ", self.until(b"ask"))
+        time.sleep(max(0.0, first + 0.2 - time.monotonic()))
+        self.ctrl_c()
+        time.sleep(2)
+        self.assertIsNone(self.child.poll(), "the second Ctrl+C ended it")
+        os.write(self.master, b"\x03")
+        self.until(b"KeyboardInterrupt")
+        self.assertEqual(self.child.wait(10), -signal.SIGINT)
+
     def test_outside_the_cli_ctrl_c_still_stops_the_caller(self):
         # Un script qui importe Execute, lancé seul ou par TODO : il meurt
         # de Ctrl+C avec sa commande, au lieu de continuer sur un résultat
@@ -752,6 +769,63 @@ class TestCtrlCInTheCli(unittest.TestCase):
         self.assertEqual(during(cli), signal.SIG_IGN)
         self.assertEqual(signal.getsignal(signal.SIGINT), signal.SIG_IGN)
         self.assertEqual(codes, [0, 0, 0, 0, 0])
+
+    def test_the_grace_after_an_interrupted_command(self):
+        """Une commande interrompue laisse son compteur tenir SIGINT : un
+        Ctrl+C dans le délai de grâce est perdu, le premier après lève
+        KeyboardInterrupt et rend SIGINT au gestionnaire par défaut, et la
+        commande suivante pose le sien à sa place."""
+        before = signal.signal(signal.SIGINT, signal.default_int_handler)
+        self.addCleanup(signal.signal, signal.SIGINT, before)
+        self.enterContext(patch.object(Execute, "ctrl_c_stops_command", True))
+        self.enterContext(patch.object(Execute, "interrupted", None))
+
+        def interrupted():
+            """Un compteur qui a compté un Ctrl+C, rendu à sa fin."""
+            counter = execute._CtrlC()
+            counter.catch()
+            counter.count = 1
+            counter.release()
+            return counter
+
+        counter = interrupted()
+        self.assertIs(signal.getsignal(signal.SIGINT), counter)
+        self.assertIsNone(counter(signal.SIGINT, None))
+        self.assertIs(signal.getsignal(signal.SIGINT), counter)
+        counter.ended -= counter.GRACE
+        with self.assertRaises(KeyboardInterrupt):
+            counter(signal.SIGINT, None)
+        self.assertIs(
+            signal.getsignal(signal.SIGINT), signal.default_int_handler
+        )
+
+        counter = interrupted()
+        with patch("shutil.which", return_value=None):
+            exe = Execute()
+        real_read, seen = os.read, []
+        started, real_popen = [], subprocess.Popen
+
+        def read(fd, size):
+            seen.append(signal.getsignal(signal.SIGINT))
+            return real_read(fd, size)
+
+        def popen(*args, **kwargs):
+            started.append(real_popen(*args, **kwargs))
+            return started[-1]
+
+        with (
+            patch("os.read", side_effect=read),
+            patch("subprocess.Popen", side_effect=popen),
+        ):
+            self.assertEqual(
+                exe.exec_command_live("true", False, quiet=True), 0
+            )
+        started[0].stdout.close()
+        self.assertIsInstance(seen[-1], execute._CtrlC)
+        self.assertIsNot(seen[-1], counter)
+        self.assertIs(
+            signal.getsignal(signal.SIGINT), signal.default_int_handler
+        )
 
     def test_each_loop_of_commands_stops_after_a_ctrl_c(self):
         """Une boucle de script/todo qui lance une commande par élément lit
