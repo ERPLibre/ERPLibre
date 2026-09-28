@@ -8,6 +8,8 @@ rend la main de `start` aussitôt, comme une fenêtre qu'on ferme : ni
 affichage ni moteur web n'est nécessaire. Une fausse fenêtre joue les
 chargements de page que pywebview signale (`before_load`, puis `loaded`).
 Le hub est vrai quand un test le dit, HOME et XDG_RUNTIME_DIR temporaires.
+Le pont de la page (`static/src/desktop.js`) tourne sous node, quand il
+est installé.
 """
 
 import contextlib
@@ -28,6 +30,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from test_todo_web_launcher import _login
+from test_todo_web_static import _node_json
 from todo_web_env import private_env
 
 from script.todo import todo_i18n, todo_install
@@ -615,6 +618,90 @@ class TestOpenWindow(unittest.TestCase):
             check=True,
         ).stdout
         self.assertIn("-m script.todo.web.desktop open", out)
+
+
+# Le pont dans un navigateur, puis dans une fenêtre dont l'API arrive
+# après le pont, avec `pywebviewready` ; enfin une API qui échoue.
+BRIDGE_CHECK = r"""
+const calls = [];
+const record = (name) => (...args) => {
+    calls.push([name, ...args]);
+    return Promise.resolve(null);
+};
+const dropped = (target) => {
+    const event = new Event("drop", {cancelable: true});
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+};
+const browser = new EventTarget();
+const plain = m.desktopBridge(browser, "ERPLibre TODO");
+plain.title(["TODO"]);
+plain.notify("body");
+browser.dispatchEvent(new Event("pywebviewready"));
+const win = new EventTarget();
+const bridge = m.desktopBridge(win, "ERPLibre TODO");
+bridge.title(["TODO", "Execute"]);
+win.pywebview = {api: {set_title: record("set_title"), notify: record("notify")}};
+win.dispatchEvent(new Event("pywebviewready"));
+bridge.title(["TODO", "Execute"]);
+bridge.title(["TODO"]);
+bridge.notify("Command ended");
+bridge.title([]);
+const broken = new EventTarget();
+broken.pywebview = {api: {
+    set_title: () => Promise.reject(new Error("forged")),
+    notify: () => { throw new Error("forged"); },
+}};
+const failing = m.desktopBridge(broken, "ERPLibre TODO");
+failing.title(["TODO"]);
+failing.notify("body");
+await new Promise((resolve) => setTimeout(resolve, 0));
+const t = (key) => key;
+console.log(JSON.stringify({
+    browser: "pywebview" in browser,
+    calls,
+    dropped: [dropped(browser), dropped(win)],
+    long: [{t: "run_end", secs: 10}, {t: "run_end", secs: 10.5},
+        {t: "run_start", secs: 60}, {t: "run_end"}].map(m.endsLongRun),
+    bodies: [m.runEndBody(t, {rc: 2, secs: 11.6}),
+        m.runEndBody(t, {rc: null, secs: 42})],
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestPageBridge(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(BRIDGE_CHECK, "desktop.js")
+
+    def test_the_page_calls_the_bridge_only_when_it_exists(self):
+        # Dans un navigateur, rien ne part et rien n'apparaît.
+        self.assertIs(self.out["browser"], False)
+        self.assertEqual(
+            self.out["calls"],
+            [
+                ["set_title", "TODO › Execute — ERPLibre TODO"],
+                ["set_title", "TODO — ERPLibre TODO"],
+                ["notify", "TODO — ERPLibre TODO", "Command ended"],
+                ["set_title", "ERPLibre TODO"],
+            ],
+        )
+
+    def test_a_drop_is_refused_in_the_window_only(self):
+        # Le moteur chargerait le lien ou le fichier déposé à la place de
+        # la page ; un navigateur garde son comportement.
+        self.assertEqual(self.out["dropped"], [False, True])
+
+    def test_only_a_command_longer_than_ten_seconds_notifies(self):
+        self.assertEqual(self.out["long"], [False, True, False, False])
+        self.assertEqual(
+            self.out["bodies"],
+            [
+                "Command ended: exit code 2, 12 s",
+                "Command ended: exit code —, 42 s",
+            ],
+        )
 
 
 if __name__ == "__main__":

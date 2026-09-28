@@ -28,8 +28,13 @@
 // « Plein écran », relâché, rende la page. Le hub ignore les frappes que
 // rien ne lit, sauf en mode brut, et dit ce qu'il a jeté, et pourquoi
 // (`dropped`).
+//
+// Dans la fenêtre bureautique, le titre de la fenêtre suit le fil d'Ariane
+// de chaque menu, et la fin d'une commande longue se notifie (`env.desktop`,
+// sans effet dans un navigateur).
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
+import {endsLongRun, runEndBody} from "./desktop.js";
 import {MenuView} from "./menu_view.js";
 import {ASK_KINDS, answerable} from "./prompt.js";
 import {QuestionView} from "./question_view.js";
@@ -318,12 +323,18 @@ export class SessionsView extends Component {
             this.refreshAnswers();
         } else if (message.t === "menu" || message.t === "ask") {
             Object.assign(this.state, {question: message, pending: null});
+            if (message.t === "menu") {
+                this.env.desktop.title(message.crumbs);
+            }
         } else if (message.t === "answered") {
             if (this.state.question?.qid === message.qid) {
                 Object.assign(this.state, {question: null, pending: null});
             }
         } else if (message.t === "run_start" || message.t === "run_end") {
             this.state.running = message.t === "run_start";
+            if (endsLongRun(message)) {
+                this.env.desktop.notify(runEndBody(this.env.t, message));
+            }
         } else if (message.t === "dropped") {
             this.state.notice = dropLabel(message.reason);
             clearTimeout(this.noticeTimer);

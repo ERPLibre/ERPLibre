@@ -3917,6 +3917,11 @@ TRANSLATIONS = {
         "en": "Hidden answer not sent: a control character, or too long.",
     },
     "Full screen": {"fr": "Plein écran", "en": "Full screen"},
+    # Page web dans la fenêtre bureautique : notification de fin de commande.
+    "Command ended: exit code %s, %s s": {
+        "fr": "Commande terminée : code de sortie %s, %s s",
+        "en": "Command ended: exit code %s, %s s",
+    },
     # Page web : vue Historique, les journaux des tâches des sessions.
     "History": {"fr": "Historique", "en": "History"},
     "Purge": {"fr": "Purger", "en": "Purge"},

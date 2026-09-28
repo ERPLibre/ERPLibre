@@ -5,8 +5,11 @@
 // un code déjà dépensé par la connexion qui suit, ou périmé après 120 s.
 // Puis la session donne le jeton CSRF et la langue par défaut, et la page
 // charge la table de traduction et la télémétrie avant de monter la vue.
+// Dans la fenêtre bureautique, le pont (`desktop.js`) règle d'emblée le
+// titre de la fenêtre sur celui de la page.
 import {mount} from "@odoo/owl";
 import {ApiError, getJson, postJson, setCsrfToken} from "./api.js";
+import {desktopBridge} from "./desktop.js";
 import {TelemetryPage} from "./telemetry_page.js";
 
 const LANGUAGES = ["fr", "en"];
@@ -34,6 +37,7 @@ function showError(message) {
 }
 
 async function start() {
+    const desktop = desktopBridge(window, document.title);
     const {code, lang} = takeFragment();
     if (code) {
         try {
@@ -55,11 +59,12 @@ async function start() {
         getJson(`/api/telemetry?lang=${chosen}`),
     ]);
     // `env` est partagé par tous les composants : la table de traduction, la
-    // langue, qui règle aussi le tri par nom et les unités, et le jeton CSRF,
-    // que le premier message d'un WebSocket porte.
+    // langue, qui règle aussi le tri par nom et les unités, le jeton CSRF,
+    // que le premier message d'un WebSocket porte, et le pont de la fenêtre
+    // bureautique.
     const t = (key) => terms[key] ?? key;
     await mount(TelemetryPage, document.getElementById("app"), {
-        env: {t, lang: chosen, csrf: session.csrf},
+        env: {t, lang: chosen, csrf: session.csrf, desktop},
         props: {root: session.root, telemetry},
     });
 }
