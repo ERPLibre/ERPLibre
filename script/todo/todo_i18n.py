@@ -7552,15 +7552,15 @@ TRANSLATIONS = {
         "fr": "Ceci supprime la séance et son arbre. Retape :",
         "en": "This deletes the session and its worktree. Retype:",
     },
-    "Start": {
+    "start agent": {
         "fr": "Lancer",
         "en": "Start",
     },
-    "Stop": {
+    "stop agent": {
         "fr": "Arrêter",
         "en": "Stop",
     },
-    "Restart": {
+    "restart agent": {
         "fr": "Relancer",
         "en": "Restart",
     },
