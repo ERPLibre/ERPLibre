@@ -35,9 +35,7 @@ RELAUNCH_ENV = "EL_TODO_VENV_RELAUNCHED"
 # Modules tiers que charge l'import de ce fichier et de ses mixins : un seul
 # absent fait lever l'import, ou boucler crash_diagnostic. Ceux qu'un menu
 # n'importe qu'à l'usage n'y figurent pas, ils ne bloquent pas le démarrage.
-REQUIRED_MODULES = (
-    "click colorama dotenv humanize openai pykeepass urwid".split()
-)
+REQUIRED_MODULES = "click colorama dotenv humanize pykeepass urwid".split()
 INSTALL_CMD = "./script/install/install_erplibre.sh"
 
 
@@ -156,7 +154,9 @@ try:
     import click
     import dotenv
     import humanize
-    import openai
+
+    # openai n'est chargé qu'à l'usage, par l'assistant : l'importer ici
+    # doublerait la durée de l'import de TODO, à chaque lancement.
     import todo_file_browser
 
     # import urwid
