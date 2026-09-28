@@ -622,7 +622,8 @@ class TestTaskLog(StoreCase):
         # ligne comme un retour chariot : seule la dernière version qui
         # montre quelque chose reste, et se masque seule. CSI K n'efface
         # que ce qui suit le curseur : rien de ce qui est gardé. La
-        # couleur ne change rien au texte.
+        # couleur ne change rien au texte ; un titre OSC resté ouvert
+        # finit devant la réécriture qui le suit.
         for line, shown in (
             ("Loading\x1b[1G\x1b[2Kpasswd zqwsecret", "passwd zqwsecret"),
             ("Loading\x1b[Gready", "ready"),
@@ -638,6 +639,8 @@ class TestTaskLog(StoreCase):
             ("Loading\x1b[K ready", "Loading ready"),
             ("Loading\x1b[12Gready", "Loadingready"),
             ("Loading\x1b[1G\x07", "Loading"),
+            ("\x1b]0;title\x1b[2Kready", "ready"),
+            ("\x1b]0;t i\x1b[1Gready", "ready"),
             ("\x1b[1;32mgreen\x1b[0m text", "green text"),
             ("a\x1b[32mb\x1b[0mc \x1b[4mu\x1b[24m", "abc u"),
         ):
@@ -1083,6 +1086,30 @@ class TestTaskLog(StoreCase):
                 task.output(data)
                 task.close("done")
                 self.assertLess(time.monotonic() - debut, 0.1)
+
+    def test_clean_and_cut_make_no_call_per_sequence(self):
+        # Nettoyer ou couper une ligne ne rappelle aucune fonction Python
+        # par séquence d'échappement : 1 Mio de séquences denses se lit en
+        # quelques dizaines de millisecondes.
+        size = 1024 * 1024
+        for line in (
+            "\x1b]" * (size // 2),
+            "\x1b[2K" * (size // 4),
+            "\x1b[0m" * (size // 4),
+            "\x1b[1G" * (size // 4),
+            "a \x1b[1 " * (size // 7),
+            "a \x1b]0;b c\x07 d\x1b[2K e\x1b[1G " * (size // 30),
+            "x\r" * (size // 2),
+            "\r\x1b[2" * (size // 4),
+        ):
+            for step, run in (
+                ("clean", lambda: tasklog.clean(line)),
+                ("cut", lambda: tasklog._cut(line)),
+            ):
+                with self.subTest(line=line[:12], step=step):
+                    debut = time.monotonic()
+                    run()
+                    self.assertLess(time.monotonic() - debut, 0.1)
 
     def test_the_echo_of_the_answer_stays_out_before_an_event(self):
         task = self.task()

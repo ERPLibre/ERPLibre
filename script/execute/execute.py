@@ -314,9 +314,13 @@ def holds_secret_trigger(text) -> bool:
     bout, et une valeur (`_PASSWORD_LINE` va jusqu'à la fin de ligne, une
     valeur entre guillemets peut porter un blanc) coupée au milieu ne se
     reconnaît plus dans aucun des deux morceaux. Vrai ici retarde la
-    coupure jusqu'à ce que la ligne se termine réellement.
+    coupure jusqu'à ce que la ligne se termine réellement. Le texte passe
+    une fois par casefold, pas une fois par mot.
     """
-    return bool(text) and any(word in text.casefold() for word in _TRIGGERS)
+    if not text:
+        return False
+    folded = text.casefold()
+    return any(word in folded for word in _TRIGGERS)
 
 
 new_path = os.path.normpath(

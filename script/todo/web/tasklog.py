@@ -101,26 +101,34 @@ DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 # longue : une CSI sans octet final n'est pas retirée, son ESC seul part
 # avec les contrôles. Une chaîne sans terminateur court jusqu'au prochain
 # ESC ou jusqu'à la fin de la ligne, que le terminal cache aussi.
+# Quantificateurs possessifs, ici comme dans UNFINISHED et REWRITE : les
+# classes qui se suivent sont disjointes, et aucun retour en arrière ne
+# trouverait d'autre correspondance ; sans eux, une longue suite de
+# paramètres sans octet final se relit depuis chacun. Ce module ne se
+# charge que sous le Python de l'outillage (`compression.zstd`).
 ANSI = re.compile(
-    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)?"
-    r"|[ -/]+[0-~]|[0-OQ-WYZ\\`-~])"
+    r"\x1b(?:\[[0-?]*+[ -/]*+[@-~]|[\]PX^_][^\x07\x1b]*+(?:\x07|\x1b\\)?"
+    r"|[ -/]++[0-~]|[0-OQ-WYZ\\`-~])"
 )
 # Fin d'un texte qui s'arrête dans une séquence que la suite peut encore
 # achever : ESC seul (celui d'un ST compris) ou suivi d'intermédiaires, CSI
-# sans octet final, chaîne sans terminateur. Chaque départ essayé s'arrête
-# au prochain ESC ou au premier octet hors de sa classe : la recherche
-# reste linéaire.
+# sans octet final, chaîne sans terminateur. Aucune branche ne porte d'ESC
+# après le premier : seul le dernier ESC d'un texte peut en commencer une,
+# et `_unfinished` n'essaie que lui.
 UNFINISHED = re.compile(
-    r"\x1b(?:[ -/]*|\[[0-?]*[ -/]*|[\]PX^_][^\x07\x1b]*)\Z"
+    r"\x1b(?:[ -/]*+|\[[0-?]*+[ -/]*+|[\]PX^_][^\x07\x1b]*+)\Z"
 )
 # Séquences qui réécrivent la ligne comme un retour chariot : le curseur en
 # colonne 1 (CSI G, 0G, 1G), la ligne effacée jusqu'au curseur ou entière
 # (CSI 1K, 2K). CSI K n'efface que ce qui suit le curseur, rien de ce qui
 # est gardé ; en colonne 1, il suit une réécriture qui a déjà tout pris.
-REWRITE = re.compile(r"\x1b\[0*(?:1?G|[12]K)")
+REWRITE = re.compile(r"\x1b\[0*+(?:1?G|[12]K)")
 # Contrôles C0 hors tabulation, saut de ligne et retour chariot, qui sépare
-# les versions d'une ligne ; DEL et C1.
-CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+# les versions d'une ligne ; DEL et C1. Table de `str.translate`, qui les
+# retire en un passage, sans une correspondance par contrôle isolé.
+CONTROL = dict.fromkeys(
+    [*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20), *range(0x7F, 0xA0)]
+)
 # Début d'un enregistrement tel que `_line` l'écrit : son numéro et son genre
 # se lisent sans décoder le reste de la ligne.
 HEAD = re.compile(r'\{"n": ([0-9]{1,18}), "t": [^,]*, "s": "(out|event)", ')
@@ -166,17 +174,19 @@ def _execute():
     return execute
 
 
-def _version(match) -> str:
-    """Rien pour une séquence ANSI, un retour chariot pour celle qui
-    réécrit la ligne (REWRITE)."""
-    return "\r" if REWRITE.fullmatch(match[0]) else ""
-
-
 def _screen(line) -> str:
     """Ce que montre `line`, version par version : sans séquence ANSI ni
     contrôle, chaque version séparée de la suivante par un « \\r », qu'y
-    met un retour chariot ou une séquence REWRITE."""
-    return CONTROL.sub("", ANSI.sub(_version, line))
+    met un retour chariot ou une séquence REWRITE.
+
+    Aucune fonction n'est rappelée par séquence : chaque REWRITE devient
+    « \\x07\\r » avant qu'ANSI retire le reste. L'ESC d'une REWRITE
+    n'appartient à aucune séquence qui la précède, et ANSI y trouve une
+    séquence de même étendue : le découpage du reste de la ligne n'en
+    change pas, sauf pour une chaîne OSC restée ouverte devant elle, que
+    cet ESC terminait et que le BEL termine de même. Le BEL, un contrôle,
+    part avec les autres."""
+    return ANSI.sub("", REWRITE.sub("\x07\r", line)).translate(CONTROL)
 
 
 def _versions(line) -> tuple:
@@ -243,9 +253,10 @@ def _dropped(text, lead="") -> bool:
 
 def _unfinished(text) -> int:
     """Position de la séquence que `text` laisse inachevée à sa fin
-    (UNFINISHED), ou -1."""
-    found = UNFINISHED.search(text)
-    return -1 if found is None else found.start()
+    (UNFINISHED), ou -1. Aucune branche d'UNFINISHED ne porte d'ESC après
+    le sien : seul le dernier ESC de `text` peut en commencer une."""
+    at = text.rfind("\x1b")
+    return at if at >= 0 and UNFINISHED.match(text, at) else -1
 
 
 def _redact(text) -> str:
@@ -286,28 +297,25 @@ def _cut(line, lead="", tainted=False) -> tuple:
     coupure s'y place, `gardé` reprenant les deux mots complets devant le
     mot en cours ; sans ces trois blancs, aucune coupure.
 
-    Seul compte un blanc hors de toute séquence ANSI, et avant celle que
-    la suite peut encore achever (UNFINISHED) : un blanc peut être le texte
-    d'une chaîne (un titre OSC) ou un octet intermédiaire, et une moitié
-    qui en commencerait une au milieu en montrerait le reste, collé à ce
-    qui la suit. Chaque moitié se nettoie alors seule comme dans la ligne
-    entière."""
+    Les deux moitiés se rendent nettoyées (`_screen`), leurs versions
+    séparées par « \\r » : le texte d'un titre OSC ou un octet
+    intermédiaire en est retiré, un blanc qui y reste est hors de toute
+    séquence ANSI, et chaque moitié se relit comme dans la ligne entière.
+    Seule reste brute, au bout de `gardé`, la séquence que la suite peut
+    encore achever (UNFINISHED), où aucune coupure ne tombe."""
     if tainted or _at_risk(lead + line):
         return None, line
-    if _at_risk(lead + _screen(line).replace("\r", "")):
-        return None, line
     end = _unfinished(line)
-    # Les séquences recouvertes d'ESC, de même longueur : un blanc qui
-    # reste est hors séquence, à la même position que dans `line`.
-    shadow = ANSI.sub(
-        lambda m: "\x1b" * len(m[0]), line if end < 0 else line[:end]
-    )
-    cut = len(shadow)
+    screen = _screen(line if end < 0 else line[:end])
+    if _at_risk(lead + screen.replace("\r", "")):
+        return None, line
+    cut = len(screen)
     for _ in range(3):
-        cut = shadow.rfind(" ", 0, cut)
+        cut = screen.rfind(" ", 0, cut)
         if cut < 0:
             return None, line
-    return line[: cut + 1], line[cut + 1 :]
+    rest = screen[cut + 1 :] + ("" if end < 0 else line[end:])
+    return screen[: cut + 1], rest
 
 
 class Lines:
