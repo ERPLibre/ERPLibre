@@ -7,7 +7,12 @@ Appelé par `run_unit_test.sh`, qui vérifie l'environnement et dresse la
 liste des fichiers ; ce module ne choisit rien, il exécute ce qu'on lui
 donne :
 
-    run_unit_test.py [--tui] [--jobs N] [--timeout S] fichier...
+    run_unit_test.py [--tui] [--changed[=REF]] [--jobs N] [--timeout S]
+                     -- fichier...
+
+`--changed` ne garde que les fichiers de tests qu'un fichier modifié depuis
+REF (HEAD par défaut : ce qui n'est pas commité) peut toucher. Le choix
+est fait par unit_selection.py, qui en décrit les règles.
 
 Chaque fichier tourne dans son propre processus, `--jobs` à la fois, les
 plus LONGS d'abord d'après les durées du passage précédent (DURATIONS) : la
@@ -52,6 +57,8 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import unit_selection
 
 ROUGE = "\033[0;31m"
 VERT = "\033[0;32m"
@@ -440,10 +447,29 @@ def tui(lanceur):
     return bilan(lanceur)
 
 
+def choisir(fichiers, reference):
+    """Les `fichiers` que --changed retient.
+
+    Annonce la sélection et ce qui l'a produite ; rend None si la
+    référence git est illisible."""
+    try:
+        modifies = unit_selection.fichiers_modifies(".", reference)
+    except ValueError as exc:
+        print(f"  {ROUGE}--changed : {exc}{FIN}")
+        return None
+    concernes = unit_selection.concernes(".", fichiers, modifies)
+    print(
+        f"  --changed ({reference}) : {len(modifies)} fichier(s)"
+        f" modifié(s) → {len(concernes)} fichier(s) de tests"
+    )
+    return [f for f in fichiers if os.path.normpath(f) in set(concernes)]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("fichiers", nargs="+")
     parser.add_argument("--tui", action="store_true")
+    parser.add_argument("--changed", nargs="?", const="HEAD", metavar="REF")
     parser.add_argument(
         "--jobs", type=int, default=int(os.environ.get("UNIT_JOBS") or 0)
     )
@@ -453,8 +479,16 @@ def main(argv=None):
         default=int(os.environ.get("UNIT_TIMEOUT") or 300),
     )
     args = parser.parse_args(argv)
+    fichiers = args.fichiers
+    if args.changed:
+        fichiers = choisir(fichiers, args.changed)
+        if fichiers is None:
+            return 2
+        if not fichiers:
+            print("  Aucun fichier de tests à lancer.")
+            return 0
     lanceur = Lanceur(
-        args.fichiers,
+        fichiers,
         py=sys.executable,
         jobs=args.jobs or os.cpu_count() or 4,
         delai=args.timeout,

@@ -14,7 +14,7 @@
 # passer en silence — un test vert sans son dépôt ne prouve rien. Ce script
 # l'annonce donc avant de commencer.
 #
-#   ./script/test/run_unit_test.sh [--tui] [fichiers...]
+#   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
 #
@@ -69,4 +69,6 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
     mapfile -t FILES < <(ls test/test_*.py 2>/dev/null)
 fi
 
-exec "${PY}" script/test/run_unit_test.py "${OPTIONS[@]}" "${FILES[@]}"
+# « -- » : une option à valeur facultative, --changed, ne doit jamais
+# prendre le premier fichier pour sa valeur.
+exec "${PY}" script/test/run_unit_test.py "${OPTIONS[@]}" -- "${FILES[@]}"

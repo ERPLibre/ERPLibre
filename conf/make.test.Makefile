@@ -30,6 +30,12 @@ test_unit:
 test_unit_file:
 	./script/test/run_unit_test.sh $(F)
 
+# Les seuls tests qu'un changement non commité peut toucher — ou depuis une
+# référence : make test_unit_changed REF=master
+.PHONY: test_unit_changed
+test_unit_changed:
+	./script/test/run_unit_test.sh --changed=$(or $(REF),HEAD)
+
 .PHONY: open_test_coverage
 open_test_coverage:
 	-$(BROWSER) htmlcov/index.html
