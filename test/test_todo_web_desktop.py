@@ -476,6 +476,29 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(window.titles, ["ERPLibre TODO"])
         self.assertFalse((base / "calls").exists())
 
+    def test_a_call_spanning_a_page_load_is_refused(self):
+        """`loaded` retombe entre le contrôle du drapeau et la lecture de
+        l'URL : `get_current_url` attend la fin du chargement suivant, une
+        page du hub, et rend son URL. Un chargement a fini pendant la
+        lecture (`loads`) : l'appel est refusé, son titre n'est pas gardé,
+        et la page rechargée garde le titre de base."""
+        window = FakeWindow("", "", {})
+        set_title, *_ = self.on_the_hub(window)
+        read = window.get_current_url
+
+        def spanning():
+            window.get_current_url = read
+            window.load_url(ORIGIN + "/")
+            threading.Thread(
+                target=window.load, args=(ORIGIN + "/",), daemon=True
+            ).start()
+            return read()
+
+        window.get_current_url = spanning
+        set_title(TOKEN, "Forged")
+        self.assertTrue(_wait(lambda: window.titles))
+        self.assertEqual(window.titles, ["ERPLibre TODO"])
+
     def test_a_failed_page_check_leaves_the_bridge_closed_and_logged(self):
         # Sortie d'erreur du processus de la fenêtre : son journal.
         base = self.notify_send('echo >> "${0%/*}/calls"')

@@ -251,8 +251,9 @@ def bridge(window, origin, secret):
     qu'il se relève, puis rend l'URL de la page suivante. Un appel reçu
     drapeau baissé est donc refusé aussitôt ; un appel dont le drapeau
     retombe entre ce contrôle et la lecture de l'URL attend la fin du
-    chargement dans `get_current_url`, puis est refusé à son tour, la
-    lecture ayant vu le drapeau retomber. Le drapeau `hub` suit le
+    chargement dans `get_current_url`, puis est refusé à son tour :
+    `loads`, que `before_load` compte et que l'appel relève avant ce
+    contrôle, a changé pendant la lecture. Le drapeau `hub` suit le
     chargement : `events.before_load` le baisse (au chargement fini, avant
     que pywebview n'injecte son API) ; au signal `events.loaded`, un fil
     démon lit l'URL courante — une page du hub reçoit le dernier titre
@@ -280,21 +281,27 @@ def bridge(window, origin, secret):
 
     def accepted(token):
         """Vrai si `token` est celui de la fenêtre et si une page du hub y
-        est chargée à l'instant de l'appel. Refusé sans attente quand
-        `loaded` est déjà baissé ; baissé pendant la lecture de l'URL, il
-        fait attendre `get_current_url` jusqu'au chargement suivant."""
+        est chargée à l'instant de l'appel, aucun chargement ne finissant
+        pendant l'appel (`loads`). Refusé sans attente quand `loaded` est
+        déjà baissé ; baissé pendant la lecture de l'URL, il fait attendre
+        `get_current_url` jusqu'à la fin du chargement suivant, qui change
+        `loads` : l'appel est refusé aussi."""
         if not isinstance(token, str):
             return False
         given = token.encode("utf-8", "surrogatepass")
         if not hmac.compare_digest(given, expected):
             return False
+        with lock:
+            load = state["loads"]
         if not loaded.is_set():
             return False
         try:
             url = window.get_current_url() or ""
         except Exception:
             return False
-        return loaded.is_set() and on_hub(url)
+        with lock:
+            same = state["loads"] == load
+        return same and loaded.is_set() and on_hub(url)
 
     def on_before_load():
         with lock:
