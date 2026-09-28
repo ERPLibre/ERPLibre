@@ -253,7 +253,8 @@ class TestPage(unittest.TestCase):
     def test_every_picker_button_ignores_a_second_click(self):
         # Le second clic d'un double-clic ne visait que ce que l'écran
         # montrait sous le premier : chaque bouton du sélecteur de chemins
-        # passe par `clicked`, qui le laisse à `clickCounts`.
+        # passe par `clicked`, dont le seul geste, `act()`, est sous le
+        # `if` de `clickCounts`.
         source = (SRC / "path_view.js").read_text(encoding="utf-8")
         [template] = TEMPLATE.findall(source)
         clicks = [
@@ -269,7 +270,10 @@ class TestPage(unittest.TestCase):
         body = re.search(
             r"^    clicked\(event, act\) \{\n(.*?)^    \}", source, re.M | re.S
         )
-        self.assertIn("clickCounts(event)", body[1])
+        self.assertRegex(
+            body[1],
+            r"\A\s*if \(clickCounts\(event\)\) \{\s*act\(\);\s*\}\s*\Z",
+        )
 
     def test_the_page_says_each_reason_of_a_drop(self):
         # Une raison que la page ne nomme pas s'afficherait comme `unread`.
