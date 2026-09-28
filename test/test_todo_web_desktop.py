@@ -421,6 +421,9 @@ class TestOpenWindow(unittest.TestCase):
         self.addCleanup(launcher.stop, REPO)
         os.environ["DISPLAY"] = ":0"
         self.webview = _fake_webview(self)
+        engine = patch.object(desktop, "engine", return_value="qt")
+        engine.start()
+        self.addCleanup(engine.stop)
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
 
@@ -518,6 +521,22 @@ class TestOpenWindow(unittest.TestCase):
                 "opening the page in the browser instead",
             ],
         )
+
+    def test_without_an_engine_main_opens_the_browser(self):
+        with patch.object(desktop, "engine", return_value=None):
+            lines, _ = self.fallback("--root", str(REPO))
+        self.assertEqual(
+            lines[:2], ["pywebview finds no web engine", "install it with:"]
+        )
+        self.assertEqual(lines[2], "  " + desktop.install_hint(REPO)[0])
+        self.assertEqual(
+            lines[3:],
+            [
+                "  sudo apt-get install -y libxkbfile1 libxcb-cursor0",
+                "opening the page in the browser instead",
+            ],
+        )
+        self.assertEqual(self.webview.windows, [])
 
     def test_without_a_display_main_opens_the_browser(self):
         os.environ.pop("DISPLAY")

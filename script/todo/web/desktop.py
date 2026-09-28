@@ -320,6 +320,10 @@ def open_window(root, view="telemetry", lang=None) -> int:
         raise launcher.LaunchError(
             "pywebview is not installed", kind="missing", pkg="pywebview"
         )
+    if engine() is None:
+        raise launcher.LaunchError(
+            "pywebview finds no web engine", kind="engine"
+        )
     info = launcher.ensure_running(root)
     origin = f"http://127.0.0.1:{info['port']}"
     fragment = {"login": launcher.mint_code(root), "view": view}
