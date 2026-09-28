@@ -105,7 +105,6 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Deploy": "prompt_execute_deploy",
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
-        "Language": "_change_language",
     }
 
     def _entry_key(self, label):
