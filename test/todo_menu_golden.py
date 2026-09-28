@@ -94,17 +94,23 @@ todo_telemetry.record = keys.append
 
 class Walk(port.ScriptedPort):
     # Une étape [clé] répond l'entrée dont le libellé est t(clé) ; une
-    # question qui n'est pas un menu, ou une entrée absente, arrête tout.
+    # question qui n'est pas un menu arrête tout. Une entrée absente aussi,
+    # par une EOFError qui nomme la clé, gardée dans `lost`.
+    lost = None
+
     def _answer(self, message):
         if message["t"] != "menu" or not self.answers:
             self.answers = [EOFError(message.get("text"))]
         elif isinstance(self.answers[0], list):
+            key = self.answers[0][0]
             found = [
                 item["key"]
                 for item in message["items"]
-                if item["label"] == todo_i18n.t(self.answers[0][0])
+                if item["label"] == todo_i18n.t(key)
             ]
-            self.answers[0] = found[0] if found else EOFError(found)
+            if not found:
+                self.lost = key
+            self.answers[0] = found[0] if found else EOFError(key)
         return super()._answer(message)
 
 
@@ -114,12 +120,17 @@ sys.path.insert(0, os.path.join(os.getcwd(), "script", "todo"))
 import todo
 todo.lang_is_configured = lambda: True
 legacy.wrap_menus(todo.TODO)
+# Le rapport s'écrit aussi quand TODO sort par SystemExit.
 try:
     todo.TODO().run()
 except (EOFError, click.exceptions.Abort):
     pass
-with open(report, "w") as out:
-    json.dump({"events": scripted.events, "keys": keys}, out)
+finally:
+    with open(report, "w") as out:
+        json.dump(
+            {"events": scripted.events, "keys": keys, "lost": scripted.lost},
+            out,
+        )
 """
 
 
@@ -166,9 +177,16 @@ def terminal(method, lang) -> dict:
             patch.object(config_file, "CONFIG_OVERRIDE_FILE", absent),
             patch.object(config_file, "CONFIG_OVERRIDE_PRIVATE_FILE", absent),
             patch("click.termui.visible_prompt_func", typed),
-            # Un menu qui lirait l'entrée standard bloquerait le test dans
-            # un terminal : il lève à la place.
+            # Un menu qui lirait le terminal bloquerait le test : `input`,
+            # une question masquée (`click.prompt(hide_input=True)`,
+            # `getpass`) lèvent, et l'entrée standard est vide.
             patch("builtins.input", side_effect=AssertionError("input")),
+            patch(
+                "click.termui.hidden_prompt_func",
+                side_effect=AssertionError("hidden_prompt_func"),
+            ),
+            patch("getpass.getpass", side_effect=AssertionError("getpass")),
+            patch.object(sys, "stdin", io.StringIO()),
         ):
             stack.enter_context(patcher)
         probe = stack.enter_context(
@@ -197,7 +215,8 @@ def session(lang) -> dict:
     """Ce que voit la capture de la session web quand le vrai TODO, en
     `lang`, suit WALK : `crumbs`, le fil d'Ariane de chaque menu traversé ;
     `menus`, les messages `menu` des trois menus ; `keys`, les clés de
-    télémétrie enregistrées."""
+    télémétrie enregistrées. EOFError, qui nomme sa clé, pour une étape
+    de WALK dont le menu n'a pas l'entrée."""
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         config = base / "todo.json"
@@ -216,6 +235,8 @@ def session(lang) -> dict:
         if result.returncode:
             raise RuntimeError(result.stderr[-2000:])
         seen = json.loads(report.read_text())
+    if seen["lost"] is not None:
+        raise EOFError(f"no menu entry for the WALK step {seen['lost']!r}")
     menus = [event for event in seen["events"] if event["t"] == "menu"]
     return {
         "crumbs": [" › ".join(menu["crumbs"]) for menu in menus],

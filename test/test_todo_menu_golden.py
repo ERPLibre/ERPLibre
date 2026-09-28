@@ -12,11 +12,20 @@ préférences, hub arrêté, HOME temporaire) et les réécrit. La session web
 se compare par ses messages `menu`, le fil d'Ariane de chaque menu
 traversé et les clés de télémétrie, le vrai TODO tournant à part sous la
 capture, comme dans le worker.
+
+`TestCapture` tient les garde-fous de la capture sur un menu factice mis
+à la place de [4] : une question au terminal lève au lieu de bloquer, et
+une étape de WALK absente de son menu est nommée.
 """
 
+import getpass
+import io
 import json
+import sys
 import unittest
+from unittest.mock import patch
 
+import click
 import todo_menu_golden as golden
 
 
@@ -49,6 +58,47 @@ class TestGolden(unittest.TestCase):
                 self.assertEqual(
                     golden.session(lang), self.reference["session"][lang]
                 )
+
+
+class TestCapture(unittest.TestCase):
+    def captured(self, menu) -> dict:
+        """Ce que `golden.terminal` rend quand `menu(todo)` tient la place
+        de l'entrée [4]."""
+        from script.todo.todo import TODO
+
+        with patch.object(TODO, "prompt_telemetry", menu):
+            return golden.terminal("prompt_telemetry", "en")
+
+    def test_a_question_on_the_terminal_raises_instead_of_blocking(self):
+        for name, menu in (
+            ("input", lambda todo: input("Forged: ")),
+            (
+                "hidden_prompt",
+                lambda todo: click.prompt("Forged", hide_input=True),
+            ),
+            ("getpass", lambda todo: getpass.getpass("Forged: ")),
+        ):
+            with (
+                self.subTest(name),
+                self.assertRaisesRegex(AssertionError, name),
+            ):
+                self.captured(menu)
+
+    def test_the_standard_input_is_empty_during_the_capture(self):
+        seen, stdin = [], sys.stdin
+        self.captured(lambda todo: seen.append(sys.stdin))
+        [during] = seen
+        self.assertIsInstance(during, io.StringIO)
+        self.assertEqual(during.read(), "")
+        self.assertIs(sys.stdin, stdin)
+
+    def test_a_step_absent_from_its_menu_is_named(self):
+        # Le menu principal n'a aucune entrée de ce libellé : la session
+        # s'arrête là, sans répondre à rien.
+        walk = (["Forged absent step"], "0")
+        with patch.object(golden, "WALK", walk):
+            with self.assertRaisesRegex(EOFError, "Forged absent step"):
+                golden.session("en")
 
 
 if __name__ == "__main__":
