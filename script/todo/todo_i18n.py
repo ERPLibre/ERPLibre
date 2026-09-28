@@ -12689,6 +12689,30 @@ TRANSLATIONS = {
         "fr": "Deux comptes sociaux portent le même nom :",
         "en": "Two social accounts share the same name:",
     },
+    "social_err_unreachable": {
+        "fr": "Instance injoignable :",
+        "en": "Instance unreachable:",
+    },
+    "social_err_answer_not_json": {
+        "fr": "La réponse de l'instance n'est pas du JSON.",
+        "en": "The answer from the instance is not JSON.",
+    },
+    "social_err_answer_not_a_feed": {
+        "fr": "La réponse de l'instance n'est pas une liste de billets.",
+        "en": "The answer from the instance is not a list of posts.",
+    },
+    "social_err_token_refused": {
+        "fr": "jeton refusé — le compte doit être autorisé de nouveau :",
+        "en": "token refused — the account must be authorised again:",
+    },
+    "social_err_rate_limited": {
+        "fr": "l'instance demande d'attendre :",
+        "en": "the instance asks to wait:",
+    },
+    "social_err_refused": {
+        "fr": "l'instance a refusé :",
+        "en": "the instance refused:",
+    },
     "social_err_cache_unreadable": {
         "fr": "Cache social illisible :",
         "en": "Social cache unreadable:",
