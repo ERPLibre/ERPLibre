@@ -202,6 +202,50 @@ COUTS_QEMU = Couts(
 )
 
 
+def couts_ajustes(couts, ram_cible=0, disque_cible=0):
+    """`couts` dont l'étage le plus PROFOND reçoit ces valeurs.
+
+    Rend `(couts, None)`, ou `(None, raison)` quand une valeur ne tient pas.
+
+    CE QUE LA TABLE DÉCLARE EST LE COÛT D'UN HYPERVISEUR NU : cinq démons et
+    de quoi créer un enfant. Un étage qui doit à son tour HÉBERGER des invités
+    en demande davantage, et la profondeur ne le dit pas — deux invités de
+    2 Gio coûtent la même chose au premier étage qu'au cinquième. C'est donc
+    l'usage qui décide, et il se déclare ici.
+
+    Zéro laisse la valeur de la table : l'appelant qui n'ajuste qu'une des deux
+    n'a pas à recopier l'autre, et une recopie dériverait de la table le jour
+    où elle change.
+
+    REFUSE sous le plancher que la table déclare, en le NOMMANT. Un étage qui
+    n'a pas de quoi tenir démarre puis meurt à l'installation, et le diagnostic
+    parle alors de l'installateur — jamais de la taille qu'on lui a donnée.
+    """
+    ram = int(ram_cible or 0) or couts.ram_cible
+    disque = int(disque_cible or 0) or couts.disque_cible
+    if ram < couts.ram_min:
+        return None, (
+            f"{ram} Mo pour l'étage le plus profond, sous le plancher de"
+            f" {couts.ram_min} Mo que la table déclare"
+        )
+    if disque < couts.disque_min:
+        return None, (
+            f"{disque} Go pour l'étage le plus profond, sous le plancher de"
+            f" {couts.disque_min} Go que la table déclare"
+        )
+    return (
+        Couts(
+            ram_par_etage=couts.ram_par_etage,
+            disque_par_etage=couts.disque_par_etage,
+            ram_cible=ram,
+            disque_cible=disque,
+            ram_min=couts.ram_min,
+            disque_min=couts.disque_min,
+        ),
+        None,
+    )
+
+
 def nesting_plan(
     profondeur: int,
     cpu_hote: int,

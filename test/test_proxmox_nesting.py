@@ -257,6 +257,60 @@ class TestLePlanDesEtages(unittest.TestCase):
             self.assertLessEqual(plan["atteignable"], max(0, profondeur))
 
 
+class TestAjusterCeQueRecoitLeFond(unittest.TestCase):
+    """La table dit le coût d'un hyperviseur NU. Un étage qui doit à son tour
+    héberger des invités en demande davantage, et la profondeur ne le dit pas :
+    deux invités de 2 Gio coûtent la même chose au premier étage qu'au
+    cinquième. C'est donc l'usage qui le déclare.
+    """
+
+    def test_zero_leaves_the_table_deciding(self):
+        """Ajuster une seule des deux ne doit pas obliger à recopier l'autre :
+        une recopie dériverait de la table le jour où elle change."""
+        for ram, disque, attendu_ram, attendu_disque in (
+            (0, 0, nesting.PVE_RAM_CIBLE_MO, nesting.PVE_DISQUE_CIBLE_GO),
+            (8192, 0, 8192, nesting.PVE_DISQUE_CIBLE_GO),
+            (0, 60, nesting.PVE_RAM_CIBLE_MO, 60),
+        ):
+            with self.subTest(ram=ram, disque=disque):
+                vus, souci = nesting.couts_ajustes(
+                    nesting.COUTS_PVE, ram, disque
+                )
+                self.assertIsNone(souci)
+                self.assertEqual(attendu_ram, vus.ram_cible)
+                self.assertEqual(attendu_disque, vus.disque_cible)
+
+    def test_below_the_declared_floor_it_refuses_and_names_it(self):
+        """Un étage sans de quoi tenir démarre puis meurt à l'installation, et
+        le diagnostic parle alors de l'installateur — jamais de sa taille."""
+        vus, souci = nesting.couts_ajustes(nesting.COUTS_PVE, 512, 0)
+        self.assertIsNone(vus)
+        self.assertIn(str(nesting.COUTS_PVE.ram_min), souci)
+        vus, souci = nesting.couts_ajustes(nesting.COUTS_PVE, 0, 2)
+        self.assertIsNone(vus)
+        self.assertIn(str(nesting.COUTS_PVE.disque_min), souci)
+
+    def test_what_is_not_adjusted_survives_untouched(self):
+        """Le surcoût par étage et les planchers font les étages du DESSUS :
+        une table reconstruite sans eux casserait toute descente profonde."""
+        vus, _s = nesting.couts_ajustes(nesting.COUTS_PVE, 8192, 60)
+        for champ in ("ram_par_etage", "disque_par_etage", "ram_min",
+                      "disque_min"):
+            with self.subTest(champ=champ):
+                self.assertEqual(
+                    getattr(nesting.COUTS_PVE, champ), getattr(vus, champ)
+                )
+
+    def test_the_adjusted_target_reaches_the_deepest_floor(self):
+        """Le contrôle positif : sans lui, une fonction qui rend la table
+        inchangée passerait les trois épreuves ci-dessus."""
+        couts, _s = nesting.couts_ajustes(nesting.COUTS_PVE, 8192, 60)
+        plan = nesting.nesting_plan(1, 16, 40000, 200, couts)
+        self.assertEqual(1, plan["atteignable"], plan)
+        self.assertEqual(8192, plan["niveaux"][-1]["ram"])
+        self.assertEqual(60, plan["niveaux"][-1]["disque"])
+
+
 class TestCompterLesRebonds(unittest.TestCase):
     """La profondeur se lit dans ~/.ssh/config : un ProxyJump par étage.
 
