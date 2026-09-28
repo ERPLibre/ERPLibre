@@ -440,6 +440,9 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
 
         appels = []
         d.creer_etage1 = lambda res: "deep-pve-1"
+        # L'UUID se lit par virsh : sans ce bouchon, un poste qui porte un
+        # domaine de ce nom glisserait son UUID réel dans le rapport.
+        d.uuid_libvirt = lambda nom: "UUID-ESSAI"
         d.preparer_parent = lambda parent: {"stockage": "local-lvm"}
 
         def creer_enfant(parent, niveau, res, prep, noter=None):
@@ -1000,6 +1003,9 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
             chemin,
         )
         d.creer_etage1 = lambda res: "deep-pve-1"
+        # L'UUID se lit par virsh : sans ce bouchon, un poste qui porte un
+        # domaine de ce nom glisserait son UUID réel dans le rapport.
+        d.uuid_libvirt = lambda nom: "UUID-ESSAI"
         d.preparer_parent = lambda parent: (
             "local-lvm",
             "vmbr1",

@@ -6,33 +6,33 @@
 #
 # Ils lisent le code et exécutent les fragments de shell que todo.py génère,
 # avec « sudo », « pgrep » et « pkill » bouchonnés — c'est ce qui les rend
-# lançables partout et en quelques secondes, là où « make test » demande une
-# base et plusieurs minutes.
+# lançables partout, là où « make test » demande une base et plusieurs
+# minutes.
 #
 # DÉPENDANCE DÉCLARÉE : les tests du transfert mobile lisent
 # mobile/erplibre_home_mobile. Absent, ils se disent ignorés plutôt que de
 # passer en silence — un test vert sans son dépôt ne prouve rien. Ce script
 # l'annonce donc avant de commencer.
 #
-#   ./script/test/run_unit_test.sh [fichiers...]
+#   ./script/test/run_unit_test.sh [--tui] [fichiers...]
+#   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
+#   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
 #
-# TOUT test/test_*.py, et non une liste de préfixes. La liste disait prendre
-# test_qemu_, test_todo_, test_proxmox_… « le reste demandant une base de
-# données ». Mesuré : les 3670 tests du répertoire passent avec PostgreSQL
-# injoignable, et la liste laissait 2400 d'entre eux hors de la suite —
-# écrits, verts, jamais lancés. Un glob n'oublie personne ; une liste, si.
+# --tui ouvre un tableau des fichiers — en attente, en cours, finis, avec
+# leur durée — et le journal de celui qu'on sélectionne. L'exécution
+# elle-même — parallèle, isolée de l'hôte, bornée dans le temps — est dans
+# run_unit_test.py, qui en décrit les garanties.
 #
-# La frontière est donc un RÉPERTOIRE, pas un nom : ce qui doit rester hors
-# de la suite vit ailleurs que dans test/. Une famille de tests nouvelle n'a
-# rien à déclarer ici.
+# TOUT test/test_*.py, et non une liste de préfixes : une liste oublie les
+# familles qu'elle ne nomme pas, un glob n'oublie personne. La frontière de
+# la suite est donc un RÉPERTOIRE, pas un nom : ce qui doit rester hors de la
+# suite vit ailleurs que dans test/.
 #
-# Un fichier n'est vu que s'il finit par le bloc habituel :
+# Un fichier n'est vu que s'il finit par le bloc habituel, EN DERNIER — tout
+# ce qui suit l'appel est défini trop tard et ne tourne jamais :
 #
 #     if __name__ == "__main__":
 #         unittest.main()
-#
-# EN DERNIER, sinon tout ce qui suit est défini après l'appel et ne tourne
-# jamais. C'est arrivé quatre fois ici, pour 87 tests.
 set -uo pipefail
 
 Red='\033[0;31m'
@@ -56,34 +56,17 @@ else
     echo "    (les tests du transfert mobile s'en passeront et le diront)"
 fi
 
-FILES=("$@")
+OPTIONS=()
+FILES=()
+for arg in "$@"; do
+    case "${arg}" in
+        --*) OPTIONS+=("${arg}") ;;
+        *) FILES+=("${arg}") ;;
+    esac
+done
 if [[ ${#FILES[@]} -eq 0 ]]; then
-    # Aucun argument : tout le répertoire. Mesuré sans PostgreSQL.
+    # Aucun fichier : tout le répertoire.
     mapfile -t FILES < <(ls test/test_*.py 2>/dev/null)
 fi
 
-fail=0
-total=0
-for f in "${FILES[@]}"; do
-    out=$(PYTHONPATH=. "${PY}" "${f}" 2>&1)
-    ran=$(echo "${out}" | grep -oE 'Ran [0-9]+' | grep -oE '[0-9]+' | tail -1)
-    skipped=$(echo "${out}" | grep -oE 'skipped=[0-9]+' | tail -1)
-    if echo "${out}" | grep -qE '^OK'; then
-        state="${Green}OK${Color_Off}"
-    else
-        state="${Red}ÉCHEC${Color_Off}"
-        fail=1
-    fi
-    total=$((total + ${ran:-0}))
-    printf "  %-42s %5s tests %-14s %b\n" \
-        "$(basename "${f}")" "${ran:-?}" "${skipped:-}" "${state}"
-    [[ "${state}" == *"ÉCHEC"* ]] && echo "${out}" | tail -12
-done
-
-echo "  ─────"
-if [[ ${fail} -eq 0 ]]; then
-    echo -e "  ${Green}${total} tests, tout vert${Color_Off}"
-else
-    echo -e "  ${Red}des échecs ci-dessus${Color_Off}"
-fi
-exit ${fail}
+exec "${PY}" script/test/run_unit_test.py "${OPTIONS[@]}" "${FILES[@]}"

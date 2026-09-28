@@ -792,14 +792,6 @@ TRANSLATIONS = {
         "fr": "⚗  Tests unitaires ERPLibre",
         "en": "⚗  ERPLibre unit tests",
     },
-    "Mail unit tests": {
-        "fr": "📧 Tests unitaires courriel",
-        "en": "📧 Mail unit tests",
-    },
-    "Analyse unit tests": {
-        "fr": "🔍 Tests unitaires analyse",
-        "en": "🔍 Analyse unit tests",
-    },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
         "en": "Running unit tests",
@@ -2579,6 +2571,10 @@ TRANSLATIONS = {
     "Local port already in use:": {
         "fr": "Port local déjà occupé :",
         "en": "Local port already in use:",
+    },
+    "using port": {
+        "fr": "on prend le port",
+        "en": "using port",
     },
     "Try anyway? (y/N): ": {
         "fr": "Essayer quand même ? (o/N, défaut : non) : ",

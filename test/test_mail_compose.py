@@ -435,7 +435,7 @@ class TestDeliver(DeliverCase):
         self.assertNotIn(b"secret@y.ca", transport.appended[0])
 
 
-class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
+class ComposeScreenCase(unittest.IsolatedAsyncioTestCase):
     """Monte l'écran de composition pour de vrai, via `run_test()`.
 
     `MailApp` et `ComposeScreen` sont des classes locales à `run_tui` : rien
@@ -521,6 +521,15 @@ class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
         finally:
             textual.app.App.__init__ = orig_init
         return captured[-1]
+
+
+class TestComposeScreenMounted(ComposeScreenCase):
+    """Envoi, échec d'envoi et transfert, sur l'écran monté.
+
+    Les classes voisines héritent de `ComposeScreenCase` et non d'ici :
+    unittest rejoue chaque test hérité dans chaque sous-classe, et ces trois
+    tests-ci tourneraient autant de fois qu'il y a de voisines.
+    """
 
     async def test_send_failure_keeps_the_screen_up_with_the_error(self):
         from textual.screen import ModalScreen
@@ -667,7 +676,7 @@ class TestComposeScreenMounted(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(forwarded["Subject"], "Rapport trimestriel")
 
 
-class TestExternalEditorSuspendsTerminal(TestComposeScreenMounted):
+class TestExternalEditorSuspendsTerminal(ComposeScreenCase):
     """`vim`/`nano` tourne par `subprocess` et a besoin du terminal —
     Textual le tient encore et continue d'y dessiner tant qu'on ne le lui a
     pas repris. Ce test ne peut pas vérifier la reprise RÉELLE du terminal
@@ -758,7 +767,7 @@ class TestExternalEditorSuspendsTerminal(TestComposeScreenMounted):
         self.assertEqual(len(calls), 1)
 
 
-class TestBrowseFilesButton(TestComposeScreenMounted):
+class TestBrowseFilesButton(ComposeScreenCase):
     """Le bouton Parcourir ouvre `todo_file_browser.FileBrowser` sous
     `App.suspend()` — urwid et Textual ne peuvent pas se partager le
     terminal. Le sélecteur urwid lui-même n'est pas testable ici (il a
@@ -849,7 +858,7 @@ class TestBrowseFilesButton(TestComposeScreenMounted):
             self.assertIn("terminal incompatible", str(status.content))
 
 
-class TestSyncSurfacesResync(TestComposeScreenMounted):
+class TestSyncSurfacesResync(ComposeScreenCase):
     """`Syncer.sync()` rend `report.purged` (dossiers vidés parce que le
     serveur a changé l'UIDVALIDITY) : `MailApp._sync` doit le montrer, pas
     seulement le calculer — sinon l'utilisateur ne sait jamais qu'une
@@ -888,7 +897,7 @@ class TestSyncSurfacesResync(TestComposeScreenMounted):
             self.assertIn("INBOX", str(status.content))
 
 
-class TestSyncSurfacesErrors(TestComposeScreenMounted):
+class TestSyncSurfacesErrors(ComposeScreenCase):
     """`report.errors` porte le texte exact de l'échec (`"dossier : exc"`,
     voir `imap_sync.Syncer.sync`) : avant ce correctif, `MailApp._sync` n'en
     affichait que le COMPTE (`"— 1 erreurs"`), perdant le texte que
@@ -966,7 +975,7 @@ class TestSyncSurfacesErrors(TestComposeScreenMounted):
             self.assertIn("+1", text)
 
 
-class TestSyncLogsTotalFailure(TestComposeScreenMounted):
+class TestSyncLogsTotalFailure(ComposeScreenCase):
     """Quand `session.sync()` lève directement (connexion totalement
     perdue, pas un simple dossier récalcitrant), `MailApp._sync` affichait
     déjà le message d'erreur — mais sans jamais le journaliser."""
@@ -996,7 +1005,7 @@ class TestSyncLogsTotalFailure(TestComposeScreenMounted):
             await pilot.pause()
 
 
-class TestSyncSerializesAccess(TestComposeScreenMounted):
+class TestSyncSerializesAccess(ComposeScreenCase):
     """L'auto-refresh et un `r`/`R` manuel lancent chacun `_sync` via
     `run_worker(thread=True)`, avec `exclusive=False` : deux passes peuvent
     donc tourner en vrais threads en même temps, et `imaplib` n'est pas
@@ -1072,7 +1081,7 @@ class TestSyncSerializesAccess(TestComposeScreenMounted):
         self.assertFalse(overlap.is_set())
 
 
-class TestPreviewShowsFullDate(TestComposeScreenMounted):
+class TestPreviewShowsFullDate(ComposeScreenCase):
     """`format_date` reste compact pour la colonne de la liste — l'aperçu
     d'un message doit montrer la date PLEINE, sans avoir à deviner l'année
     ou le jour à partir de la date du jour."""
@@ -1115,7 +1124,7 @@ class TestPreviewShowsFullDate(TestComposeScreenMounted):
             self.assertIn(format_date_full(meta.date), str(preview.content))
 
 
-class TestPreviewNeverParsesTheMessageAsMarkup(TestComposeScreenMounted):
+class TestPreviewNeverParsesTheMessageAsMarkup(ComposeScreenCase):
     """Signalé sur un VRAI courriel (une infolettre Netflix) : le corps
     portait un jeton de suivi entre crochets, que Textual analysait comme
     une balise — `MarkupError`, et le message devenait illisible.
@@ -1222,7 +1231,7 @@ class TestPreviewNeverParsesTheMessageAsMarkup(TestComposeScreenMounted):
             )
 
 
-class TestSearchClear(TestComposeScreenMounted):
+class TestSearchClear(ComposeScreenCase):
     """Le champ de recherche (`/`) n'avait aucun moyen de se vider : ni
     bouton, ni raccourci. Le bouton ✕ et Échap doivent vider `self.query`
     EN PLUS du champ — sinon la liste resterait filtrée par une requête
