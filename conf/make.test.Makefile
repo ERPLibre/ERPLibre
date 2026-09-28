@@ -9,8 +9,9 @@
 ###########################
 # Ni base de données, ni Odoo, ni VM : ils lisent le code et exécutent les
 # fragments de shell que todo.py génère, « sudo », « pgrep » et « pkill »
-# bouchonnés. Une dizaine de secondes, là où « make test » demande une base et
-# plusieurs minutes — d'où une cible à part, faite pour être lancée souvent.
+# bouchonnés. Les fichiers tournent en parallèle, un par cœur (UNIT_JOBS pour
+# en changer), là où « make test » demande une base et plusieurs minutes —
+# d'où une cible à part, faite pour être lancée souvent.
 #
 # DÉPENDANCE : les tests du transfert mobile lisent
 # mobile/erplibre_home_mobile. Le lanceur l'annonce présent ou absent avant de
