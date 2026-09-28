@@ -23,13 +23,13 @@ import hashlib
 import os
 import shutil
 import sqlite3
-import stat
 import threading
 import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
+from script.todo import cache_dirs
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
@@ -310,14 +310,9 @@ def default_base() -> Path:
     return Path(os.path.expanduser("~/.erplibre/mail"))
 
 
-def ephemeral_base() -> Path:
-    """/dev/shm quand il est inscriptible, sinon le dossier temporaire."""
-    shm = Path("/dev/shm")
-    if shm.is_dir() and os.access(shm, os.W_OK):
-        return shm
-    import tempfile
-
-    return Path(tempfile.gettempdir())
+# Réexporté : `cache_dirs` le tient désormais pour tous les caches, et les
+# appelants de ce module continuent de le trouver ici.
+ephemeral_base = cache_dirs.ephemeral_base
 
 
 def cache_root(account, mode: str, base: Path | None = None) -> Path:
@@ -350,41 +345,13 @@ def folder_dirname(imap_name: str) -> str:
     return DEGENERATE_DIRNAMES.get(quoted, quoted)
 
 
-def _assert_private_dir(path: Path) -> None:
-    """Refuse un dossier qu'on ne possède pas, ou qui est un lien symbolique."""
-    info = os.lstat(path)
-    if stat.S_ISLNK(info.st_mode):
-        raise StoreError(f"{path} {t('mail_err_symlink_refused')}")
-    if info.st_uid != os.getuid():
-        raise StoreError(f"{path} {t('mail_err_owned_by_other_user')}")
-
-
 def sweep_orphan_ephemeral(base: Path | None = None) -> int:
-    """Efface les caches éphémères dont le processus n'existe plus.
+    """Efface les caches courriel éphémères dont le processus n'existe plus.
 
-    `atexit` et les gestionnaires de signaux couvrent les sorties normales ;
-    un SIGKILL, lui, laisse un résidu. Ce balayage au démarrage est le filet.
+    Le préfixe borne le ménage à CE cache : les dossiers éphémères de tous
+    les caches vivent au même endroit.
     """
-    base = Path(base) if base else ephemeral_base()
-    removed = 0
-    if not base.is_dir():
-        return 0
-    for path in base.glob(f"{EPHEMERAL_PREFIX}*"):
-        if not path.is_dir():
-            continue
-        raw_pid = path.name[len(EPHEMERAL_PREFIX) :]
-        if not raw_pid.isdigit():
-            continue
-        pid = int(raw_pid)
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            shutil.rmtree(path, ignore_errors=True)
-            removed += 1
-        except PermissionError:
-            # Le PID existe et appartient à quelqu'un d'autre : on n'y touche pas.
-            continue
-    return removed
+    return cache_dirs.sweep_orphan_ephemeral(EPHEMERAL_PREFIX, base)
 
 
 class Store:
@@ -500,26 +467,11 @@ class Store:
         self.close()
 
     def _prepare_root(self) -> None:
-        """Crée la racine, en 0700 à chaque niveau qui nous appartient.
-
-        `mkdir(parents=True)` crée les dossiers intermédiaires SANS appliquer
-        le mode — c'est documenté dans la stdlib. En éphémère la racine vit
-        sous `/dev/shm`, qui est en 1777 et partagé avec tous les utilisateurs
-        locaux : un dossier par PID laissé à l'umask y rendrait les noms de
-        comptes lisibles par n'importe qui, et un dossier pré-créé par un tiers
-        à un chemin devinable lui permettrait de glisser un lien symbolique
-        sous `write_body`.
-        """
-        parent = self.root.parent
-        if self.mode == "ephemeral":
-            parent.parent.mkdir(parents=True, exist_ok=True)
-            parent.mkdir(mode=0o700, exist_ok=True)
-            _assert_private_dir(parent)
-        else:
-            parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(parent, 0o700)
-        self.root.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
+        cache_dirs.prepare_private_root(
+            self.root,
+            ephemeral=self.mode == "ephemeral",
+            erreur=StoreError,
+        )
 
     def _resolve_key(self) -> bytes | None:
         if self.mode == "clear":
