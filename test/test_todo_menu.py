@@ -437,6 +437,7 @@ class TestLArbreDesMenus(unittest.TestCase):
             "    choices = [\n"
             '        {"section": titre},\n'
             '        {"prompt_description": parler},\n'
+            '        {"prompt_description": f"{t(\'A\')}  ({x})"},\n'
             '        {"prompt_description": t("Second")},\n'
             '        {"section": t("Server")},\n'
             '        {"prompt_description_key": "Third"},\n'
@@ -445,6 +446,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertEqual(
             _choice_entries(func),
             [
+                {"label": None, "section": None},
                 {"label": None, "section": None},
                 {"label": "Second", "section": None},
                 {"label": "Third", "section": "Server"},

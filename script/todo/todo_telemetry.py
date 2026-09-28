@@ -162,6 +162,8 @@ def _choice_entries(func) -> list:
                 lab = d.get("prompt_description") or d.get(
                     "prompt_description_key"
                 )
+                if lab is not None and not any(c.isalnum() for c in lab):
+                    lab = None
                 entries.append({"label": lab, "section": section})
             return entries
     return []
