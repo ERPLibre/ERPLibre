@@ -29,6 +29,9 @@ boundary.
 | `qemu_manage.py` | lifecycle, disks, hardware, cleanup, addresses |
 | `qemu_access.py` | SSH, tunnels, consoles, Android emulator |
 | `proxmox_menu.py` | the same, on a REMOTE Proxmox VE host |
+| `setops_menu.py` | the Set-OPS menu: a gesture there launches the engine, never a copy of it; the state of the integration |
+| `state_screen.py` | the render shared by the state screens: three states, one line per segment, one count |
+| `script/setops/` | outside the menu: the engine as the manifest declares it, and the survey the Set-OPS lines are decided on — see [../setops/README.md](../setops/README.md) |
 
 The two deployment forms — libvirt here, Proxmox over there — ask the same
 questions, so they share a foundation rather than each holding a copy:
@@ -73,6 +76,9 @@ frontière.
 | `qemu_manage.py` | cycle de vie, disques, matériel, nettoyage, adresses |
 | `qemu_access.py` | SSH, tunnels, consoles, émulateur Android |
 | `proxmox_menu.py` | la même chose, sur un hôte Proxmox VE DISTANT |
+| `setops_menu.py` | le menu Set-OPS : un geste y lance le moteur, jamais une copie de lui ; l'état de l'intégration |
+| `state_screen.py` | le rendu commun des écrans d'état : trois états, une ligne par segment, un compte |
+| `script/setops/` | hors du menu : le moteur tel que le manifeste le déclare, et le relevé sur lequel se décident les lignes de Set-OPS — voir [../setops/README.fr.md](../setops/README.fr.md) |
 
 Les deux formulaires de déploiement — libvirt ici, Proxmox ailleurs — posent
 les mêmes questions : ils partagent donc un socle au lieu d'en garder chacun
