@@ -354,6 +354,7 @@ def tui(lanceur):
     """Le tableau Textual. Rend None si Textual manque : l'appelant
     retombe alors sur l'affichage en ligne."""
     try:
+        from rich.text import Text
         from textual.app import App
         from textual.containers import Vertical
         from textual.widgets import DataTable, Footer, Header, Static
@@ -410,10 +411,17 @@ def tui(lanceur):
             ligne_choisie = table.cursor_row
             if 0 <= ligne_choisie < len(lanceur.fichiers):
                 f = lanceur.fichiers[ligne_choisie]
-                texte = _lire(f.log, fin=40) if f.log else "(pas démarré)"
-                self.query_one("#journal", Static).update(
-                    f"{f.nom} — {f.etat}\n{texte}"
-                )
+                journal = self.query_one("#journal", Static)
+                # La FIN du journal, à la hauteur du panneau : c'est là que
+                # unittest écrit l'erreur et le verdict.
+                hauteur = max(3, journal.size.height - 1)
+                texte = _lire(f.log, fin=hauteur) if f.log else "(pas démarré)"
+                # Du texte brut, jamais du balisage : un journal porte des
+                # crochets et des codes ANSI, que le balisage de Textual
+                # prendrait pour les siens et refuserait.
+                contenu = Text(f"{f.nom} — {f.etat}\n", style="bold")
+                contenu.append_text(Text.from_ansi(texte))
+                journal.update(contenu)
 
         def action_quitter(self):
             lanceur.arreter()
