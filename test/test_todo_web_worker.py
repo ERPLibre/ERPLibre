@@ -27,6 +27,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import termios
 import time
 import types
@@ -679,6 +680,46 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(
             self.out.getvalue(), "Which?\n[1] alpha\n[2] beta\n: 2 → beta\n"
         )
+
+    def test_a_path_is_asked_over_the_channel_and_checked(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = tmp.name
+        Path(base, "forged.zip").touch()
+        future, asked = self.asking(self.port.pick_path, base)
+        self.assertEqual(
+            (asked["t"], asked["kind"], asked["start"], asked["directory"]),
+            ("ask", "path", base, False),
+        )
+        absent = os.path.join(base, "absent.zip")
+        self.reply(t="answer", qid=asked["qid"], value=absent)
+        self.assertEqual(
+            self.received(), {"t": "answered", "qid": asked["qid"]}
+        )
+        text = f"No such file: {absent}"
+        self.assertEqual(
+            self.received(), {"t": "notice", "text": text, "level": "error"}
+        )
+        # La même question revient, sous un qid neuf ; un chemin relatif
+        # part de `start`.
+        again = self.received()
+        self.assertEqual(
+            (again["kind"], again["qid"]), ("path", asked["qid"] + 1)
+        )
+        self.reply(t="answer", qid=again["qid"], value="forged.zip")
+        self.assertEqual(future.result(10), os.path.join(base, "forged.zip"))
+        invite = f"📂 {base}\nFile path (empty to cancel): "
+        self.assertEqual(
+            self.out.getvalue(),
+            f"{invite}{absent}\n{text}\n{invite}forged.zip\n",
+        )
+        # Annuler rend None, comme « q » dans le navigateur d'urwid.
+        future, asked = self.asking(self.port.pick_path, base, True)
+        self.assertIs(asked["directory"], True)
+        self.reply(t="cancel", qid=asked["qid"])
+        self.assertIsNone(future.result(10))
+        closed = {"t": "answered", "qid": asked["qid"], "end": "cancel"}
+        self.assertEqual(self.received(), closed)
 
     def test_the_end_of_a_menu_names_the_entry_chosen(self):
         items = [{"key": "1", "label": "Execute", "section": None}]

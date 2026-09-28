@@ -88,6 +88,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The replay only answers menus: at a question, a missing or doubled entry or an unexpected menu, it stops where it is, and the Sessions view says at which step until the next answer. Navigation telemetry counts the menus it goes through, as for a navigation by hand
 - The TODO page gains a Kanban view: one column per menu that holds commands, in code order or by use, each command a card, with its ▶ button when the replay can reach it; search and sort are those of the other views
 - When TODO's code changes under an open TODO page — a menu file, todo.json or the translations — the page reads the new tree within 10 s, and a banner says that its session still runs the old code, with a button that closes that session if it waits at a menu and opens a new one; a new session no longer starts from a worker prepared before the change. Counts are reread on a change of view, never under the pointer, and this reading in the background does not keep the web interface from stopping when idle
+- In a web session, choosing a file or a directory — a backup to restore, a file to read, a VPN profile… — no longer draws TODO's full-screen browser in the terminal panel: TODO asks for the path, which a field of the page or the terminal answers, relative to the directory it names; an empty answer gives up, and a path that does not exist, or is not of the kind asked, is asked again
 
 ## Changed
 

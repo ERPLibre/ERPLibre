@@ -4,12 +4,13 @@
 """La capture héritée : les questions de TODO passent par le port lié.
 
 Un ScriptedPort répond et garde ce qu'on lui a demandé ; aucune question
-ne lit un vrai terminal. L'ordre d'import (les `ask=input` liés à
-l'import, le sys.stdout d'urwid) et les menus du vrai TODO se vérifient
-dans un processus à part, HOME temporaire, la capture posée avant tout
-import de TODO comme dans le worker. Deux gardes lisent le code : les
-écrans qui numérotent sans crochets, épinglés, et les formes que la
-capture ne voit pas.
+ne lit un vrai terminal, et le navigateur de fichiers n'ouvre jamais la
+boucle d'urwid. L'ordre d'import (les `ask=input` liés à l'import, le
+sys.stdout d'urwid, le navigateur que todo.py importe sous son nom court)
+et les menus du vrai TODO se vérifient dans un processus à part, HOME
+temporaire, la capture posée avant tout import de TODO comme dans le
+worker. Deux gardes lisent le code : les écrans qui numérotent sans
+crochets, épinglés, et les formes que la capture ne voit pas.
 """
 
 import ast
@@ -21,15 +22,17 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 import click
+import urwid
 from todo_web_env import private_env
 
-from script.todo import auto_ask, todo_i18n, ui
+from script.todo import auto_ask, todo_file_browser, todo_i18n, ui
 from script.todo.todo_i18n import t
 from script.todo.ui import legacy, port
 
@@ -61,6 +64,8 @@ bound = {
     "vault.ensure_vault": vault.VpnVault.ensure_vault.__defaults__[0],
 }
 report = {name: ask is hooked for name, ask in bound.items()}
+browser = todo.todo_file_browser.FileBrowser.run_main_frame
+report["todo_file_browser"] = browser is legacy._run_main_frame
 defaults = raw.Screen.__init__.__defaults__
 report["urwid"] = not any(isinstance(d, legacy.Tee) for d in defaults)
 try:
@@ -411,18 +416,21 @@ class TestInstall(CaptureCase):
             (click.termui, "visible_prompt_func"),
             (click.termui, "hidden_prompt_func"),
             (auto_ask, "ask"),
+            (todo_file_browser.FileBrowser, "run_main_frame"),
             (sys, "stdout"),
         ]
         before = [getattr(owner, name) for owner, name in hooked]
         uninstall = legacy.install(port.ScriptedPort())
         try:
             self.assertIs(ui.current().__class__, port.ScriptedPort)
+            self.assertIs(sys.modules["todo_file_browser"], todo_file_browser)
             with self.assertRaises(RuntimeError):
                 legacy.install(port.ScriptedPort())
         finally:
             uninstall()
         after = [getattr(owner, name) for owner, name in hooked]
         self.assertEqual(before, after)
+        self.assertNotIn("todo_file_browser", sys.modules)
         self.assertIs(ui.current(), ui.TERMINAL)
         # Une seconde fois, même après une nouvelle capture : rien.
         again = legacy.install(port.ScriptedPort())
@@ -446,6 +454,68 @@ class TestInstall(CaptureCase):
         with patch.dict(os.environ, {auto_ask.ENV_ENABLED: "1"}):
             self.assertEqual(auto_ask.ask("Go? (Y/n) ", "y", 0.05), "y")
         self.assertIn("⏱0.05s Go? (Y/n) ", self.out.getvalue())
+
+
+class TestFileBrowser(CaptureCase):
+    """Un vrai FileBrowser sous la capture : la boucle d'urwid ne tourne
+    plus, le port lié fait choisir le chemin, et le rappel du navigateur
+    le reçoit."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = tmp.name
+        Path(self.base, "forged.zip").touch()
+        Path(self.base, "forged_dir").mkdir()
+        self.chosen = []
+        refused = AssertionError("the urwid loop ran")
+        self.enterContext(patch.object(urwid, "MainLoop", side_effect=refused))
+
+    def browse(self, callback=None, open_dir=False):
+        callback = callback or self.chosen.append
+        browser = todo_file_browser.FileBrowser(self.base, callback, open_dir)
+        browser.run_main_frame()
+
+    def test_the_choice_goes_to_the_callback(self):
+        zipped = os.path.join(self.base, "forged.zip")
+        scripted = self.capture(zipped, "forged_dir")
+        self.browse()
+        self.browse(open_dir=True)
+        folder = os.path.join(self.base, "forged_dir")
+        self.assertEqual(self.chosen, [zipped, folder])
+        asked = [
+            (e["kind"], e["start"], e["directory"]) for e in scripted.events
+        ]
+        self.assertEqual(
+            asked, [("path", self.base, False), ("path", self.base, True)]
+        )
+
+    def test_giving_up_never_calls_back(self):
+        # Annuler, comme Ctrl+D, ou une réponse vide : comme « q ».
+        self.capture(EOFError(), "")
+        self.browse()
+        self.browse()
+        self.assertEqual(self.chosen, [])
+
+    def test_a_callback_that_closes_urwid_ends_quietly(self):
+        # Les rappels de TodoUpgrade ferment eux-mêmes l'écran d'urwid.
+        def close(path):
+            self.chosen.append(path)
+            todo_file_browser.exit_program()
+
+        self.capture("forged.zip")
+        self.browse(close)
+        self.assertEqual(self.chosen, [os.path.join(self.base, "forged.zip")])
+
+    def test_the_next_question_reads_a_fresh_screen(self):
+        # Ce qui précède le navigateur ne fait pas un menu de la question
+        # qui le suit.
+        scripted = self.capture("forged.zip", "forged")
+        print("[1] Stale entry")
+        self.browse()
+        self.assertEqual(input("Name: "), "forged")
+        self.assertEqual(scripted.events[-1]["t"], "ask")
+        self.assertEqual(scripted.events[-1]["kind"], "text")
 
 
 class Menus:

@@ -65,6 +65,12 @@ def choose(text, options, multi=False):
     return current().choose(text, options, multi)
 
 
+def pick_path(start, directory=False):
+    """Le chemin d'un fichier, ou d'un répertoire, choisi à partir de
+    `start` ; None si l'utilisateur renonce."""
+    return current().pick_path(start, directory)
+
+
 def notice(text, level="info") -> None:
     current().notice(text, level)
 

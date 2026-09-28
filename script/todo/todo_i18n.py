@@ -11652,6 +11652,24 @@ TRANSLATIONS = {
         "en": "Path to the backup .zip (empty to cancel): ",
     },
     "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    # Choix d'un chemin, dans le terminal d'une session web.
+    "No such directory: ": {
+        "fr": "Répertoire introuvable : ",
+        "en": "No such directory: ",
+    },
+    "Not a file: ": {"fr": "Pas un fichier : ", "en": "Not a file: "},
+    "Not a directory: ": {
+        "fr": "Pas un répertoire : ",
+        "en": "Not a directory: ",
+    },
+    "File path (empty to cancel): ": {
+        "fr": "Chemin du fichier (vide pour annuler) : ",
+        "en": "File path (empty to cancel): ",
+    },
+    "Directory path (empty to cancel): ": {
+        "fr": "Chemin du répertoire (vide pour annuler) : ",
+        "en": "Directory path (empty to cancel): ",
+    },
     "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
     "Odoo backup .zip to inspect, without restoring it": {
         "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",

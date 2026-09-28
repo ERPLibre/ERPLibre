@@ -161,7 +161,7 @@ export function sendable(value) {
 
 // Genres de question (`ask.kind`) que la page montre en widget ; un autre
 // genre reste au terminal, qui répond à tout.
-export const ASK_KINDS = ["text", "secret", "confirm", "typed", "countdown", "choose"];
+export const ASK_KINDS = ["text", "secret", "confirm", "typed", "countdown", "choose", "path"];
 
 // La réponse d'une touche à une confirmation, sans casse : « y » pour y ou
 // o, « n » pour n ; null pour toute autre.

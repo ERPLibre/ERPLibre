@@ -4,13 +4,16 @@
 """Le port d'interaction de TODO : la façade `ui`, ses ports et `shell`.
 
 Aucun test ne lance TODO ni ne lit un vrai terminal : les fonctions
-d'origine de TerminalPort sont des doubles posés dans `port.ORIGINAL`.
+d'origine de TerminalPort sont des doubles posés dans `port.ORIGINAL`, et
+la boucle d'urwid du navigateur de fichiers est simulée (`FakeLoop`).
 """
 
 import io
+import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
@@ -18,10 +21,50 @@ from pathlib import Path
 from unittest.mock import patch
 
 from script.execute import execute
-from script.todo import ui
+from script.todo import todo_i18n, ui
 from script.todo.ui import port
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+class FakeLoop:
+    """`urwid.MainLoop` simulé : `run` presse le bouton d'étiquette `press`
+    du navigateur qu'il montre, ou tape « q » sans lui, comme
+    l'utilisateur ; une ExitMainLoop le finit, comme la boucle d'urwid."""
+
+    press = None
+
+    def __init__(self, frame, palette, unhandled_input):
+        self.browser, self.key = frame.body, unhandled_input
+
+    def run(self):
+        import urwid
+
+        try:
+            if self.press is None:
+                self.key("q")
+            for widget in list(self.browser.list_walker):
+                if getattr(widget, "label", None) == self.press:
+                    widget.keypress((40,), "enter")
+        except urwid.ExitMainLoop:
+            pass
+
+
+def _english(test):
+    """TODO parle anglais le temps du test `test`."""
+    saved = todo_i18n._current_lang
+    test.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+    todo_i18n.use_lang("en")
+
+
+def _forged_dir(test) -> str:
+    """Un répertoire temporaire qui porte `forged.zip` et `forged_dir/`,
+    retiré au nettoyage de `test`."""
+    tmp = tempfile.TemporaryDirectory()
+    test.addCleanup(tmp.cleanup)
+    Path(tmp.name, "forged.zip").touch()
+    Path(tmp.name, "forged_dir").mkdir()
+    return tmp.name
 
 
 class TestFacade(unittest.TestCase):
@@ -142,6 +185,21 @@ class TestTerminalPort(unittest.TestCase):
         self.assertEqual(out.getvalue(), "forged notice\n")
         self.assertFalse(port.TerminalPort().open_view("telemetry"))
 
+    def test_a_path_is_chosen_in_the_urwid_browser(self):
+        from script.todo import todo_file_browser
+
+        base = _forged_dir(self)
+        loop = patch.object(todo_file_browser.urwid, "MainLoop", FakeLoop)
+        with loop, patch.object(FakeLoop, "press", "forged.zip"):
+            chosen = port.TerminalPort().pick_path(base)
+        with loop:
+            cancelled = port.TerminalPort().pick_path(base)
+        with loop, patch.object(FakeLoop, "press", "."):
+            folder = port.TerminalPort().pick_path(base, directory=True)
+        self.assertEqual(chosen, os.path.join(base, "forged.zip"))
+        self.assertIsNone(cancelled)
+        self.assertEqual(folder, base)
+
 
 class TestScriptedPort(unittest.TestCase):
     def test_answers_in_order_then_end_of_file(self):
@@ -217,6 +275,47 @@ class TestScriptedPort(unittest.TestCase):
             ("ask", "typed", "forged", "Type forged:"),
         )
         self.assertEqual(asked["requires"], ["typed"])
+
+    def test_a_path_is_checked_on_disk_and_asked_again(self):
+        _english(self)
+        base = _forged_dir(self)
+        folder = os.path.join(base, "forged_dir")
+        answers = ["absent.zip", "forged_dir", "forged.zip", " ", EOFError()]
+        scripted = port.ScriptedPort(
+            [*answers, "forged.zip", "~/forged_dir", ".."]
+        )
+        with ui.bind(scripted), patch.dict(os.environ, {"HOME": base}):
+            chosen = ui.pick_path(base)
+            blank = ui.pick_path(base)
+            cancelled = ui.pick_path(base, directory=True)
+            home = ui.pick_path(base, directory=True)
+            parent = ui.pick_path(folder, directory=True)
+        self.assertEqual(chosen, os.path.join(base, "forged.zip"))
+        self.assertEqual((blank, cancelled), (None, None))
+        self.assertEqual((home, parent), (folder, base))
+        asked = [e for e in scripted.events if e["t"] == "ask"]
+        self.assertEqual(
+            [(e["kind"], e["start"], e["directory"]) for e in asked],
+            [("path", base, False)] * 4
+            + [("path", base, True)] * 3
+            + [("path", folder, True)],
+        )
+        self.assertEqual(
+            asked[0]["text"], f"📂 {base}\nFile path (empty to cancel): "
+        )
+        self.assertEqual(
+            asked[-1]["speak"], "Directory path (empty to cancel)"
+        )
+        self.assertEqual(asked[0]["requires"], ["free_text"])
+        notices = [e["text"] for e in scripted.events if e["t"] == "notice"]
+        self.assertEqual(
+            notices,
+            [
+                f"No such file: {base}/absent.zip",
+                f"Not a file: {folder}",
+                f"Not a directory: {base}/forged.zip",
+            ],
+        )
 
 
 class TestMessages(unittest.TestCase):

@@ -6,13 +6,14 @@ les questions de TODO, et deux ports qui le font.
 
 Un port répond à `menu(view)`, `ask(text, default, kind, timeout)`,
 `secret(text)`, `confirm(text, default, typed)`, `choose(text, options,
-multi)`, `notice(text, level)`, `run(cmd, **opts)` et `open_view(view)`.
-`menu` et `ask` sont les deux primitives : elles montrent leur texte tel
-quel et rendent la ligne répondue, sans son saut de ligne. Une ligne vide
-rend "" et laisse le défaut à l'appelant, comme `input` ; seul le compte à
-rebours (`kind="countdown"`) rend `default` à l'échéance. `menu` pose un
-message déjà fait : un `menu`, ou l'`ask` que construit `choose`.
-`BasePort` en déduit les autres questions.
+multi)`, `pick_path(start, directory)`, `notice(text, level)`, `run(cmd,
+**opts)` et `open_view(view)`. `menu` et `ask` sont les deux primitives :
+elles montrent leur texte tel quel et rendent la ligne répondue, sans son
+saut de ligne. Une ligne vide rend "" et laisse le défaut à l'appelant,
+comme `input` ; seul le compte à rebours (`kind="countdown"`) rend
+`default` à l'échéance. `menu` pose un message déjà fait : un `menu`, ou
+l'`ask` que construisent `choose` et `pick_path`. `BasePort` en déduit
+les autres questions.
 
 Chaque question est aussi un message `todo.v1` (`question`, `menu_view`) :
 `speak`, un libellé court pour la voix ; `requires`, les capacités qu'un
@@ -22,14 +23,17 @@ toujours `pty` : le terminal de la session répond à toute question.
 `TerminalPort` appelle les fonctions d'origine, gardées dans ORIGINAL
 avant toute capture ; `ScriptedPort` répond depuis une liste et garde ses
 événements. Ce module n'importe aucune bibliothèque d'interface à son
-chargement : auto_ask et Execute le sont à l'appel.
+chargement : auto_ask, Execute et le navigateur urwid le sont à l'appel.
 """
 
 import builtins
 import getpass
+import os
 import re
 import shlex
 from string.templatelib import Interpolation, Template
+
+from script.todo.todo_i18n import t
 
 # Capacités sans lesquelles un client ne répond pas à une question de ce
 # genre ; `pty`, le terminal, répond à toutes.
@@ -40,6 +44,7 @@ REQUIRES = {
     "typed": ["typed"],
     "countdown": [],
     "choose": [],
+    "path": ["free_text"],
 }
 FALLBACK = "pty"
 SPEAK_LIMIT = 80
@@ -52,7 +57,8 @@ _CONVERT = {None: lambda value: value, "r": repr, "s": str, "a": ascii}
 
 # Fonctions d'origine, prises avant toute capture : TerminalPort les
 # appelle, jamais les crochets qui les remplacent. `legacy.install` y
-# ajoute `auto_ask.ask` avant de le remplacer.
+# ajoute `auto_ask.ask` et `FileBrowser.run_main_frame` avant de les
+# remplacer.
 ORIGINAL = {"input": builtins.input, "getpass": getpass.getpass}
 
 
@@ -84,6 +90,21 @@ def question(kind, text, default=None, timeout=None, **fields) -> dict:
         message["timeout_s"] = timeout
     message.update(fields)
     return message
+
+
+def path_question(start, directory=False) -> dict:
+    """Message `ask` de genre `path` : le chemin d'un fichier, ou avec
+    `directory` d'un répertoire, à choisir à partir du répertoire `start`,
+    absolu. Le message porte `start` et `directory` pour la page ; son
+    texte, pour le terminal, nomme `start`, d'où part un chemin relatif
+    tapé, et dit qu'une ligne vide renonce."""
+    if directory:
+        invite = t("Directory path (empty to cancel): ")
+    else:
+        invite = t("File path (empty to cancel): ")
+    return question(
+        "path", f"📂 {start}\n{invite}", start=start, directory=bool(directory)
+    )
 
 
 def menu_view(
@@ -197,6 +218,34 @@ class BasePort:
                 if len(picked) == 1:
                     return picked[0]
 
+    def pick_path(self, start, directory=False):
+        """Le chemin absolu d'un fichier, ou avec `directory` d'un
+        répertoire, choisi à partir du répertoire `start` ; None quand
+        l'utilisateur renonce : Annuler (EOFError, comme Ctrl+D) ou une
+        réponse blanche. La question est un `ask` de genre `path`
+        (`path_question`), posé par `menu`. Un chemin relatif part de
+        `start`, `~` du répertoire de l'utilisateur ; un chemin qui
+        n'existe pas, ou d'un autre genre, se dit par `notice` et la même
+        question revient."""
+        start = os.path.abspath(start)
+        message = path_question(start, directory)
+        while True:
+            try:
+                answer = self.menu(message)
+            except EOFError:
+                return None
+            if not answer.strip():
+                return None
+            path = os.path.join(start, os.path.expanduser(answer))
+            path = os.path.abspath(path)
+            if os.path.isdir(path) if directory else os.path.isfile(path):
+                return path
+            if os.path.exists(path):
+                wrong = ("Not a file: ", "Not a directory: ")
+            else:
+                wrong = ("No such file: ", "No such directory: ")
+            self.notice(f"{t(wrong[bool(directory)])}{path}", "error")
+
 
 class TerminalPort(BasePort):
     """Le terminal, comme au CLI : `input`, `getpass` et le compte à
@@ -214,6 +263,19 @@ class TerminalPort(BasePort):
             countdown = ORIGINAL.get("auto_ask.ask", auto_ask.ask)
             return countdown(text, default or "", timeout)
         return ORIGINAL["input"](text)
+
+    def pick_path(self, start, directory=False):
+        """Le navigateur urwid de TODO, plein écran, par sa boucle
+        d'origine : le chemin choisi, ou None pour `q`."""
+        from script.todo import todo_file_browser
+
+        browser = todo_file_browser.FileBrowser
+        run = ORIGINAL.get(
+            "FileBrowser.run_main_frame", browser.run_main_frame
+        )
+        chosen = []
+        run(browser(start, chosen.append, open_dir=directory))
+        return chosen[-1] if chosen else None
 
     def notice(self, text, level="info") -> None:
         print(text)

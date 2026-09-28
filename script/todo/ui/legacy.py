@@ -23,7 +23,9 @@ Ce que devient chaque question, dans cet ordre :
   des sections `── X ──`) : un menu ; un écran qui numérote aussi
   autrement (`1.`, `1)`, `1 -`) reste du texte ;
 - tout le reste : une question texte, avec son défaut.
-`auto_ask.ask` en mode auto devient un compte à rebours.
+`auto_ask.ask` en mode auto devient un compte à rebours, et le navigateur
+de fichiers urwid (`FileBrowser.run_main_frame`) le choix d'un chemin
+(`pick_path`), dont le rappel du navigateur reçoit la réponse.
 
 click garde sa boucle : les enveloppes de `click.prompt` et
 `click.confirm` notent le défaut, `hide_input` et le menu, puis appellent
@@ -402,10 +404,39 @@ def _auto_ask(prompt, default="", seconds=None):
     return answer or default
 
 
+def _run_main_frame(browser):
+    """`FileBrowser.run_main_frame` sous la capture : le port lié fait
+    choisir un chemin (`pick_path`) à partir du répertoire que montre
+    `browser`, un répertoire s'il en cherche un (`open_dir`). Le chemin
+    choisi va au rappel de `browser`, comme le bouton d'urwid le lui
+    donne ; renoncer ne l'appelle pas, comme `q`. Un rappel qui ferme
+    l'écran d'urwid (`exit_program`) n'a plus de boucle à fermer : son
+    ExitMainLoop s'arrête ici. L'écran que lit la question suivante
+    repart vide."""
+    import urwid
+
+    try:
+        path = ui.pick_path(browser.current_path, browser.open_dir)
+    finally:
+        if _tee is not None:
+            _tee.clear()
+    if path is not None:
+        try:
+            browser.callback(path)
+        except urwid.ExitMainLoop:
+            pass
+
+
 def install(target):
     """Pose la capture et lie `target` au contexte courant ; rend la
     fonction qui défait tout, liens et Tee compris, et qui ne fait plus
-    rien une fois la capture défaite."""
+    rien une fois la capture défaite.
+
+    Le navigateur de fichiers (`script.todo.todo_file_browser`) s'importe
+    ici, avant le Tee, et avec lui urwid s'il ne l'est pas encore. Sans
+    urwid, il n'y a pas de navigateur à capturer. todo.py l'importe aussi
+    sous son nom court, en mode script : ce nom désigne alors le même
+    module, dont le navigateur est capturé."""
     global _tee
     import click
     import click.termui
@@ -414,6 +445,10 @@ def install(target):
 
     if _saved:
         raise RuntimeError("the legacy capture is already installed")
+    try:
+        from script.todo import todo_file_browser
+    except ImportError:
+        todo_file_browser = None
     port.ORIGINAL.setdefault("auto_ask.ask", auto_ask.ask)
     hooks = [
         (builtins, "input", _input),
@@ -424,6 +459,15 @@ def install(target):
         (click.termui, "hidden_prompt_func", _hidden_prompt),
         (auto_ask, "ask", _auto_ask),
     ]
+    alias = None
+    if todo_file_browser is not None:
+        browser = todo_file_browser.FileBrowser
+        port.ORIGINAL.setdefault(
+            "FileBrowser.run_main_frame", browser.run_main_frame
+        )
+        hooks.append((browser, "run_main_frame", _run_main_frame))
+        if "todo_file_browser" not in sys.modules:
+            alias = sys.modules["todo_file_browser"] = todo_file_browser
     for owner, name, hook in hooks:
         _saved[name] = getattr(owner, name)
         setattr(owner, name, hook)
@@ -440,5 +484,7 @@ def install(target):
         _tee = None
         for owner, name, _ in hooks:
             setattr(owner, name, _saved.pop(name))
+        if alias is not None and sys.modules.get("todo_file_browser") is alias:
+            del sys.modules["todo_file_browser"]
 
     return uninstall
