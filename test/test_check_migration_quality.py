@@ -21,6 +21,7 @@ import os
 import sys
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "script", "analyse"))
@@ -2342,6 +2343,14 @@ class TestKeepingWhatARunWrote(Base):
 
 class TestSwitchingTheCheckoutFirst(Base):
     """Lancer un outil sur une base d'un autre palier ÉCRIT dedans."""
+
+    def setUp(self):
+        super().setUp()
+        # La version du checkout est fixée : lue dans « .odoo-version »,
+        # fichier non versionné, elle manquerait dans un clone neuf.
+        patch = mock.patch.object(quality, "checkout_version", lambda: 18)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def dct(self):
         return {

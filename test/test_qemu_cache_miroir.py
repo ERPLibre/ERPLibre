@@ -192,6 +192,37 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(depots_des_manifestes(tempfile.mkdtemp()), [])
 
 
+def version_du_checkout():
+    """La version que porte « .odoo-version », fichier non versionné.
+
+    Absent dans un clone neuf : un test qui vérifie que le code la LIT n'a
+    alors rien à vérifier, et se déclare ignoré en le disant."""
+    try:
+        return (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
+    except OSError:
+        raise unittest.SkipTest(
+            ".odoo-version absent : aucune version active à lire"
+        )
+
+
+def version_par_defaut():
+    """La version active, ou à défaut celle que le dépôt déclare par défaut
+    dans conf/supported_version_erplibre.json."""
+    try:
+        return (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
+    except OSError:
+        import json
+
+        with open(
+            RACINE / "conf" / "supported_version_erplibre.json",
+            encoding="utf-8",
+        ) as fh:
+            versions = json.load(fh)
+        return next(
+            v["odoo_version"] for v in versions.values() if v.get("default")
+        )
+
+
 class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
     """Sans version donnée, le verdict prend celle que le checkout porte.
 
@@ -203,6 +234,8 @@ class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
 
     def test_le_verdict_est_borne_par_defaut(self):
         from script.todo.deploy_form_lib import _depots_declares
+
+        version_du_checkout()
 
         tous = depots_des_manifestes(str(RACINE))
         bornes = _depots_declares()
@@ -219,9 +252,7 @@ class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
         changer de version d'Odoo doit changer le verdict."""
         from script.todo.deploy_form_lib import _depots_declares
 
-        version = (
-            (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
-        )
+        version = version_du_checkout()
         self.assertEqual(
             sorted(_depots_declares()),
             sorted(depots_des_manifestes(str(RACINE), version)),
@@ -234,9 +265,7 @@ class TestLaBaseReelle(unittest.TestCase):
     qu'une installation par défaut ne clone jamais."""
 
     def test_la_base_ne_porte_pas_lextra(self):
-        version = (
-            (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
-        )
+        version = version_par_defaut()
         base = set(depots_des_manifestes(str(RACINE), version))
         extra = set(
             depots_des_manifestes(
