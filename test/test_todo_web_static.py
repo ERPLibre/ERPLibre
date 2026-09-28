@@ -250,6 +250,27 @@ class TestPage(unittest.TestCase):
         self.assertIn(("sessions_view.js", "onSecretKey"), fields)
         self.assertGreaterEqual(len(fields), 6)
 
+    def test_every_picker_button_ignores_a_second_click(self):
+        # Le second clic d'un double-clic ne visait que ce que l'écran
+        # montrait sous le premier : chaque bouton du sélecteur de chemins
+        # passe par `clicked`, qui le laisse à `clickCounts`.
+        source = (SRC / "path_view.js").read_text(encoding="utf-8")
+        [template] = TEMPLATE.findall(source)
+        clicks = [
+            re.search(r't-on-click="([^"]*)"', tag)[1]
+            for tag in TAG.findall(template)
+            if "t-on-click=" in tag
+        ]
+        self.assertGreaterEqual(len(clicks), 7)
+        for handler in clicks:
+            self.assertTrue(
+                handler.startswith("(ev) => this.clicked(ev, () => "), handler
+            )
+        body = re.search(
+            r"^    clicked\(event, act\) \{\n(.*?)^    \}", source, re.M | re.S
+        )
+        self.assertIn("clickCounts(event)", body[1])
+
     def test_the_page_says_each_reason_of_a_drop(self):
         # Une raison que la page ne nomme pas s'afficherait comme `unread`.
         source = (SRC / "session.js").read_text(encoding="utf-8")

@@ -17,7 +17,8 @@
 // répond que pour le qid qu'il montre (`answer(qid, valeur)`,
 // `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ni
 // dans celles qui suivent chaque nouvelle liste (`shownListing`), et le
-// deuxième clic d'un double-clic ne compte pas (`clickCounts`). Une liste
+// deuxième clic d'un double-clic ne compte sur aucun de ses boutons
+// (`clicked`). Une liste
 // qui arrive après une autre, plus récente, est jetée ; une liste ou un
 // dialogue qui revient après le démontage ne répond plus.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
@@ -41,20 +42,25 @@ export class PathPicker extends Component {
             t-att-aria-label="props.question.speak or env.t('TODO question')">
             <nav class="path-crumbs" t-att-aria-label="env.t('Path')">
                 <t t-foreach="crumbs" t-as="crumb" t-key="crumb.path">
-                    <button type="button" t-att-disabled="locked" t-on-click="() => this.open(crumb.path)"
+                    <button type="button" t-att-disabled="locked"
+                        t-on-click="(ev) => this.clicked(ev, () => this.open(crumb.path))"
                         t-esc="crumb.label"/>
                 </t>
             </nav>
             <div class="answer-row">
                 <input type="text" class="field" autocomplete="off" spellcheck="false" t-ref="field"
                     t-model="state.typed" t-att-aria-label="env.t('Path')" t-on-keydown="onFieldKey"/>
-                <button type="button" t-att-disabled="locked or !state.typed.trim()" t-on-click="openTyped"
+                <button type="button" t-att-disabled="locked or !state.typed.trim()"
+                    t-on-click="(ev) => this.clicked(ev, () => this.openTyped())"
                     t-esc="env.t('Open')"/>
                 <button t-if="directory" type="button" t-att-disabled="locked or !here or listing.error"
-                    t-on-click="() => this.send(here)" t-esc="env.t('Choose this directory')"/>
-                <button t-if="state.canPick" type="button" t-att-disabled="locked" t-on-click="systemDialog"
+                    t-on-click="(ev) => this.clicked(ev, () => this.send(here))"
+                    t-esc="env.t('Choose this directory')"/>
+                <button t-if="state.canPick" type="button" t-att-disabled="locked"
+                    t-on-click="(ev) => this.clicked(ev, () => this.systemDialog())"
                     t-esc="env.t('System dialog')"/>
-                <button type="button" t-att-disabled="locked" t-on-click="cancel" t-esc="env.t('Cancel')"/>
+                <button type="button" t-att-disabled="locked"
+                    t-on-click="(ev) => this.clicked(ev, () => this.cancel())" t-esc="env.t('Cancel')"/>
             </div>
             <input type="search" class="filter" t-model="state.filter" t-att-aria-label="env.t('Filter entries')"
                 t-att-placeholder="env.t('Filter entries')"/>
@@ -64,12 +70,13 @@ export class PathPicker extends Component {
             <ul class="path-entries">
                 <li t-if="listing.parent">
                     <button type="button" class="entry" t-att-disabled="locked"
-                        t-att-aria-label="env.t('Parent directory')" t-on-click="() => this.open(listing.parent)"
+                        t-att-aria-label="env.t('Parent directory')"
+                        t-on-click="(ev) => this.clicked(ev, () => this.open(listing.parent))"
                         t-esc="'..'"/>
                 </li>
                 <li t-foreach="entries" t-as="entry" t-key="entry.name">
                     <button type="button" class="entry" t-att-class="{dir: entry.dir}" t-att-disabled="locked"
-                        t-on-click="(ev) => this.pick(entry, ev)">
+                        t-on-click="(ev) => this.clicked(ev, () => this.pick(entry))">
                         <span t-esc="entry.dir ? entry.name + '/' : entry.name"/>
                         <span t-if="!entry.dir and entry.size !== null" class="size" t-esc="sizeText(entry.size)"/>
                     </button>
@@ -197,6 +204,17 @@ export class PathPicker extends Component {
         this.shown();
     }
 
+    // Un clic d'un bouton du sélecteur : `act`, sauf pour le second clic
+    // d'un double-clic (`clickCounts`), qui ne visait que ce que l'écran
+    // montrait sous le premier. La liste que le premier ouvre peut mettre
+    // une autre entrée sous le pointeur, et, quand la rangée du fil passe à
+    // la ligne, un bouton de la rangée de réponse.
+    clicked(event, act) {
+        if (clickCounts(event)) {
+            act();
+        }
+    }
+
     openTyped() {
         const path = typedPath(this.here || "/", this.state.typed);
         if (path !== null && !this.locked) {
@@ -208,8 +226,8 @@ export class PathPicker extends Component {
     // dont le chemin ne partirait pas comme réponse (`sendable`) ne
     // s'ouvre pas non plus, et le widget le dit : l'adresse de /api/fs ne
     // le porterait pas intact.
-    pick(entry, event) {
-        if (this.locked || !clickCounts(event)) {
+    pick(entry) {
+        if (this.locked) {
             return;
         }
         const path = childPath(this.here, entry.name);

@@ -361,6 +361,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: an entry that a menu computes on display, one per known LLM server, is no longer a pseudo-command « — » in the tree, which no menu entry shows
 - In the path picker of a web session, a path that TODO refuses — a broken link, a file gone meanwhile, a typo in the terminal — brings the question back on the nearest existing directory that holds it, or on the directory itself when one was given for a file, where the picker reopens, instead of its starting point; an answer is read as typed, then without the blanks at its ends, so blanks typed around a path no longer get it refused, and a name that really ends with a space can still be chosen
 - In the path picker, a listing that fails — too many reads at once, a read too long — names the home directory in full when « ~ » was asked, and no longer shows a « ~ » segment that would open /~
+- In the path picker, the second click of a double-click no longer reaches any button — a path segment, the parent, Open, Choose this directory, System dialog or Cancel — as it already reached no entry: a row of path segments that wraps could move the answer row under the pointer
 
 <!-- [fr] -->
 
@@ -446,6 +447,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : une entrée qu'un menu calcule à l'affichage, une par serveur LLM connu, n'est plus une pseudo-commande « — » dans l'arbre, qu'aucune entrée de menu ne montre
 - Dans le sélecteur de chemins d'une session web, un chemin que TODO refuse — un lien cassé, un fichier disparu entre-temps, une faute de frappe au terminal — fait revenir la question sur le plus proche répertoire existant qui le contient, ou sur le répertoire même donné pour un fichier, où le sélecteur rouvre, au lieu de son point de départ ; une réponse se lit telle quelle, puis sans les blancs de ses bouts : des blancs tapés autour d'un chemin ne le font plus refuser, et un nom qui finit vraiment par une espace se choisit encore
 - Dans le sélecteur de chemins, une liste qui échoue — trop de lectures à la fois, une lecture trop longue — nomme en entier le répertoire personnel quand « ~ » était demandé, et ne montre plus un segment « ~ » qui ouvrirait /~
+- Dans le sélecteur de chemins, le second clic d'un double-clic n'atteint plus aucun bouton — un segment du chemin, le parent, Ouvrir, Choisir ce répertoire, Dialogue du système ou Annuler —, comme il n'atteignait déjà aucune entrée : une rangée de segments qui passe à la ligne pouvait amener la rangée de réponse sous le pointeur
 
 <!-- [en] -->
 ## Removed
