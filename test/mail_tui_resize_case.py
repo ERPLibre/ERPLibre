@@ -9,6 +9,7 @@ unitaire ne la prend pas pour un fichier de tests.
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,8 +18,11 @@ from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
-class ResizeCase(unittest.IsolatedAsyncioTestCase):
+
+class ResizeCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné — même motif que
     `test_mail_tui_layout.py`.
     """

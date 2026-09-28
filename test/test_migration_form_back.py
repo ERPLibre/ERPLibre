@@ -11,11 +11,16 @@ quatre autres actions.
 """
 
 import json
+import os
+import sys
 import unittest
 
 from script.todo import todo_i18n
 from script.todo.migration_form import run_resume_tui
 from script.todo.todo_upgrade import TodoUpgrade
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 def context():
@@ -62,7 +67,7 @@ class TestBackIsOffered(unittest.TestCase):
         )
 
 
-class TestBackWorks(unittest.IsolatedAsyncioTestCase):
+class TestBackWorks(AsyncCase):
     """Piloté dans un terminal simulé : la touche mène bien au choix."""
 
     def setUp(self):

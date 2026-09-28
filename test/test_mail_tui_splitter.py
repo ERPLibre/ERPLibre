@@ -17,6 +17,7 @@ pousse) — cibler à nouveau la barre par sélecteur dériverait.
 """
 
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,8 +26,11 @@ from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.store import Store
 from script.todo.mail.tui import PANE_SIZE_MIN, Session
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
-class SplitterCase(unittest.IsolatedAsyncioTestCase):
+
+class SplitterCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné — même motif que
     `test_mail_tui_resize.py`.
     """

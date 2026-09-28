@@ -18,6 +18,7 @@ l'application montée pour de vrai, et sur ce qui est RÉELLEMENT rendu
 
 import os
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +27,9 @@ from script.todo import todo_i18n
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.store import Store
 from script.todo.mail.tui import Session
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from async_case import AsyncCase  # noqa: E402
 
 
 def collapse(text: str) -> str:
@@ -39,7 +43,7 @@ def collapse(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
-class HelpCase(unittest.IsolatedAsyncioTestCase):
+class HelpCase(AsyncCase):
     """Monte `MailApp` pour de vrai, `$HOME` détourné vers un dossier
     jetable — même motif que `test_mail_tui_log.py` : `on_mount` lit
     `todo_prefs`, qui crée `~/.erplibre` s'il est absent.

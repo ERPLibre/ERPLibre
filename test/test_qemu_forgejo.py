@@ -31,6 +31,14 @@ SCRIPT = (
 )
 
 
+# Le PATH des doublures remplace celui de l'appelant : sans elle, « sudo »
+# serait le vrai, qui demande un mot de passe ou élève sans rien dire. Celle-ci
+# refuse en le disant ; un test qui veut un sudo qui réussit passe le sien.
+SUDO_REFUSE = {
+    "sudo": 'echo "sudo refusé par le test : $*" >&2; exit 1',
+}
+
+
 class TestTheCheckbox(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
@@ -207,6 +215,7 @@ class TestTheScript(unittest.TestCase):
     def _run_with_stubs(self, stubs, env=None):
         """Lance le script avec un PATH bouchonné. Les chemins testés ici
         s'arrêtent AVANT tout sudo : rien n'est installé nulle part."""
+        stubs = {**SUDO_REFUSE, **stubs}
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
@@ -265,6 +274,7 @@ class TestHostAddress(unittest.TestCase):
         start = body.index("host_address() {")
         end = body.index("\n}", start) + 2
         fn = body[start:end]
+        stubs = {**SUDO_REFUSE, **stubs}
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
