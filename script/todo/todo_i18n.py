@@ -14396,9 +14396,33 @@ TRANSLATIONS = {
         "fr": "en usage",
         "en": "in use",
     },
-    "11 ports, instant": {
-        "fr": "11 ports, instantané",
-        "en": "11 ports, instant",
+    "instant": {
+        "fr": "instantané",
+        "en": "instant",
+    },
+    "tunnel": {
+        "fr": "tunnel",
+        "en": "tunnel",
+    },
+    "tunnels": {
+        "fr": "tunnels",
+        "en": "tunnels",
+    },
+    "SSH tunnels": {
+        "fr": "tunnels SSH",
+        "en": "SSH tunnels",
+    },
+    "declared tunnel without an answer": {
+        "fr": "tunnel déclaré sans réponse",
+        "en": "declared tunnel without an answer",
+    },
+    "declared tunnels without an answer": {
+        "fr": "tunnels déclarés sans réponse",
+        "en": "declared tunnels without an answer",
+    },
+    "Mount the tunnels of %s?": {
+        "fr": "Monter les tunnels de %s ?",
+        "en": "Mount the tunnels of %s?",
     },
     "The QEMU VMs of this machine (virsh)": {
         "fr": "🖥 Les VM QEMU de cette machine (virsh)",

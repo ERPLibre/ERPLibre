@@ -45,9 +45,10 @@ from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
 from script.todo.todo_i18n import t
 
-# Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
-# « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
-# qu'il existe promettrait une entrée qui n'aboutit pas.
+# Les commandes que cette boucle sert, DANS L'ORDRE où « /? » les liste. Elle
+# décide de ce qui paraît ; `chat.COMMANDS` fournit le texte de chaque ligne.
+# Un nom qui figure ici sans figurer là-bas fait lever le premier « /? », donc
+# les deux s'ajoutent ensemble.
 COMMANDES_PHASE_1 = (
     "/?",
     "/q",
@@ -75,6 +76,11 @@ MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 # largeur du terminal ; soixante-dix caractères tiennent partout, indentation
 # comprise.
 LARGEUR = 70
+
+# Le délai d'un montage de tunnel. Il borne l'attente d'un hôte injoignable
+# ou d'une authentification qui attend une frappe : sans lui, un `ssh -f`
+# tiendrait le menu jusqu'à ce que la pile TCP renonce d'elle-même.
+DELAI_TUNNEL = 40
 
 # Le serveur distant que le coffre sait déjà servir. Il porte une poignée comme
 # les autres : c'est elle, et non son adresse, qui a le droit de circuler.
@@ -109,16 +115,59 @@ class AssistantMenuMixin:
                 "contextes": set(),
                 "gpt": None,
                 "gpts": None,
+                "tunnels": None,
             }
         return self._llm_session
+
+    def _llm_tunnels(self):
+        """Les tunnels que déclare la configuration SSH, lus une fois.
+
+        Lire coûte un sous-processus par alias, d'où le résultat gardé pour
+        la session. Ce qui vieillit dans cette lecture est la DÉCLARATION, et
+        elle vit dans un fichier que le menu ne modifie pas ; l'ÉTAT du
+        tunnel — monté ou non — n'en fait pas partie et se resonde à chaque
+        balayage.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        state = self._llm_state()
+        # `get` et non `[]` : une case de CACHE absente se lit comme « pas
+        # encore lu », qui est exactement ce qu'elle veut dire.
+        if state.get("tunnels") is None:
+            state["tunnels"] = llm_disc.ssh_forwards(
+                list_aliases=self._ssh_config_hosts,
+                resolve_all=self._ssh_resolve_all,
+            )
+        return state["tunnels"]
+
+    def _llm_loopback_ports(self):
+        """Les ports à frapper sur la boucle locale, sans doublon.
+
+        Les ports connus, puis l'extrémité locale de chaque tunnel déclaré.
+        Un tunnel porte le port qu'on lui a donné, et aucune liste ne le
+        devine : la configuration SSH est le seul endroit qui le nomme, et
+        sans elle un service n'est joignable que par un port dont personne
+        n'a entendu parler.
+        """
+        ports = list(llm_fp.PORTS)
+        for tunnel in self._llm_tunnels():
+            if tunnel.local_port not in ports:
+                ports.append(tunnel.local_port)
+        return ports
 
     def _llm_probe_loopback(self):
         """Ce qui écoute sur la boucle locale, sondé une fois par session.
 
-        Les onze ports se testent en quelques millisecondes : la sonde est
+        Les ports connus se testent en quelques millisecondes : la sonde est
         donc gratuite et ne mérite aucune question. Son résultat nourrit les
         étiquettes du menu, pour qu'une première utilisation n'ait pas à
         choisir entre configurer et abandonner.
+
+        Les extrémités des tunnels déclarés n'en font PAS partie, et c'est ce
+        qui borne le coût : les lire demande un sous-processus par alias, et
+        cette sonde-ci tourne pendant qu'un écran s'affiche, où rien n'a le
+        droit de lancer quoi que ce soit. Les tunnels rejoignent la boucle
+        locale quand une RECHERCHE est demandée, qui est une action.
         """
         state = self._llm_state()
         if state["sonde"] is not None:
@@ -188,6 +237,26 @@ class AssistantMenuMixin:
         if serveur.model:
             return f"{serveur.software} · {serveur.model}"
         return serveur.software
+
+    @staticmethod
+    def _llm_found_label(alias, adresse, port, empreinte):
+        """Le nom qu'on donne d'office à un serveur qu'on vient de trouver.
+
+        Il n'est PAS demandé : une découverte en rend plusieurs d'un coup, et
+        trois invites de nommage entre la trouvaille et l'usage font
+        abandonner. Il se corrige ensuite comme n'importe quel nom.
+
+        Derrière un tunnel, l'adresse ne distingue rien — tout est sur la
+        boucle locale, seul le port change — et trois lignes identiques à un
+        chiffre près ne se choisissent pas. L'alias est alors ce qui sépare,
+        et le modèle ce qui départage. Sans tunnel, l'adresse et le port
+        restent la seule chose qui sépare deux serveurs du même logiciel.
+
+        """
+        if not alias:
+            return f"{empreinte.software} ({adresse}:{port})"
+        modele = empreinte.models[0] if empreinte.models else ""
+        return f"{alias} · {empreinte.software} {modele}".rstrip()
 
     # ------------------------------------------------------------------
     # Les agents IA
@@ -808,10 +877,16 @@ class AssistantMenuMixin:
 
         while True:
             reseaux = llm_disc.local_networks()
+            # Le compte est CALCULÉ et non écrit : les tunnels déclarés
+            # s'ajoutent aux ports connus, donc un nombre figé dans
+            # l'étiquette annoncerait moins de travail qu'il n'y en a.
+            ports_ici = self._llm_loopback_ports()
             choices = [
                 {
                     "prompt_description": (
-                        f"{t('Here (127.0.0.1)')}  ({t('11 ports, instant')})"
+                        f"{t('Here (127.0.0.1)')}"
+                        f"  ({self._llm_count(len(ports_ici), 'port', 'ports')}"
+                        f", {t('instant')})"
                     )
                 },
                 {
@@ -857,7 +932,9 @@ class AssistantMenuMixin:
                 continue
             if rang == 1:
                 self._llm_state()["sonde"] = None
-                self._llm_probe_and_keep(["127.0.0.1"])
+                self._llm_probe_and_keep(
+                    ["127.0.0.1"], tunnels=self._llm_tunnels()
+                )
             elif rang == 2:
                 self._llm_search_qemu()
             elif rang == 3:
@@ -906,6 +983,13 @@ class AssistantMenuMixin:
 
         Une entrée sans `HostName` n'est jamais écartée : `ssh -G` rend alors
         l'alias comme nom d'hôte, et le DNS ou /etc/hosts le résout souvent.
+
+        Les TUNNELS déclarés par ces mêmes entrées sont sondés avec elles, et
+        c'est souvent eux qui répondent : un service derrière un pare-feu qui
+        ne laisse passer que le port de ssh n'ouvre aucun port vu du dehors,
+        et ne se joint que par l'extrémité locale de sa redirection. Sonder
+        les seuls noms d'hôte annonce alors vide un hôte qui sert des
+        modèles.
         """
         from script.todo.assistant import discover as llm_disc
 
@@ -913,10 +997,13 @@ class AssistantMenuMixin:
             list_aliases=self._ssh_config_hosts,
             resolve=self._ssh_resolve,
         )
-        if not hotes:
+        tunnels = self._llm_tunnels()
+        if not hotes and not tunnels:
             print(t("~/.ssh/config absent — nothing to probe"))
             return
-        self._llm_probe_and_keep([hote for _, hote, _ in hotes])
+        self._llm_probe_and_keep(
+            [hote for _, hote, _ in hotes], tunnels=tunnels
+        )
 
     def _llm_search_cidr(self):
         """Balayer un réseau que la machine ne porte pas.
@@ -1101,7 +1188,9 @@ class AssistantMenuMixin:
 
         return imprimer
 
-    def _llm_probe_and_keep(self, adresses, *, cible=None, restreint=False):
+    def _llm_probe_and_keep(
+        self, adresses, *, cible=None, restreint=False, tunnels=()
+    ):
         """Frapper, reconnaître, puis proposer de garder.
 
         Le balayage n'ouvre que des connexions ; la reconnaissance, elle,
@@ -1112,6 +1201,13 @@ class AssistantMenuMixin:
         `cible` nomme. L'absence de trouvaille se dit alors autrement : un
         réseau dont on n'a vu qu'une adresse n'est pas un réseau vide, et
         l'annoncer comme tel est un faux négatif.
+
+        `tunnels` porte des extrémités locales à frapper EN PLUS du produit
+        adresses × ports. Ce sont des couples précis et non un produit : un
+        tunnel nomme son port, et le croiser avec les autres adresses
+        frapperait des portes que personne n'a déclarées. Un tunnel déclaré
+        dont le port ne répond pas n'est pas une absence de serveur mais un
+        tunnel à monter, et il est proposé comme tel.
         """
         from script.todo.assistant import discover as llm_disc
 
@@ -1119,17 +1215,33 @@ class AssistantMenuMixin:
         jobs = [
             (adresse, port) for adresse in adresses for port in llm_fp.PORTS
         ]
-        etiquette = cible or ", ".join(adresses[:3])
+        # Ce que le produit couvrait DÉJÀ. Un tunnel qui y tombe n'ajoute
+        # aucune cible, et surtout il n'en nomme aucune : le port aurait été
+        # frappé sans lui, donc ce qui répond peut tout aussi bien être un
+        # service local qui occupe ce port — celui-là même qui empêche le
+        # tunnel de se lier. Seuls les tunnels HORS du produit prêtent leur
+        # alias à l'étiquette.
+        produit = set(jobs)
+        propres = []
+        for tunnel in tunnels:
+            couple = (tunnel.bind, tunnel.local_port)
+            if couple in produit:
+                continue
+            produit.add(couple)
+            propres.append(tunnel)
+            jobs.append(couple)
+        etiquette = cible or ", ".join(adresses[:3]) or t("SSH tunnels")
         combien = self._llm_count(len(adresses), "host", "hosts")
         combien_ports = self._llm_count(len(llm_fp.PORTS), "port", "ports")
+        entete = f"🔎 {etiquette} · {combien} × {combien_ports}"
+        if tunnels:
+            entete += (
+                f" · {self._llm_count(len(tunnels), 'tunnel', 'tunnels')}"
+            )
         # Vidée avant que la piscine démarre : un balayage silencieux de
         # plusieurs secondes se lit comme un blocage, et l'en-tête est ce qui
         # dit ce qu'on attend et comment l'interrompre.
-        print(
-            f"🔎 {etiquette} · {combien} × {combien_ports}"
-            f" · {t('Ctrl+C interrupts')}",
-            flush=True,
-        )
+        print(f"{entete} · {t('Ctrl+C interrupts')}", flush=True)
         debut = time.monotonic()
         try:
             touches = llm_disc.sweep(
@@ -1137,6 +1249,7 @@ class AssistantMenuMixin:
                 on_event=self._llm_sweep_printer(),
                 **self._llm_sweep_tuning(),
             )
+            touches = touches + self._llm_mount_tunnels(tunnels, touches)
         except KeyboardInterrupt:
             print(f"\n⏹ {t('answer interrupted')}")
             return
@@ -1148,9 +1261,17 @@ class AssistantMenuMixin:
             if not empreinte.software:
                 print(f"  ⚠ {adresse}:{port} {t('Answered, not identified')}")
                 continue
+            # La version est jointe par un espace SEULEMENT si elle existe :
+            # la moitié des étages n'en publient aucune, et une ligne qui
+            # porte deux espaces d'affilée se lit comme un champ vide qu'on a
+            # oublié de remplir.
+            nomme = " ".join(
+                part
+                for part in (empreinte.software, empreinte.version)
+                if part
+            )
             print(
-                f"  → {adresse}:{port} · {empreinte.software}"
-                f" {empreinte.version} ·"
+                f"  → {adresse}:{port} · {nomme} ·"
                 f" {self._llm_count(len(empreinte.models), 'model', 'models')}"
             )
             trouves.append((adresse, port, empreinte))
@@ -1179,9 +1300,104 @@ class AssistantMenuMixin:
             f" {self._llm_count(len(adresses), 'host swept', 'hosts swept')}"
             f" ({self._fmt_dur(duree)})"
         )
-        self._llm_keep(trouves)
+        self._llm_keep(trouves, tunnels=propres)
 
-    def _llm_keep(self, trouves):
+    def _llm_mount_tunnels(self, tunnels, touches):
+        """Proposer de monter les tunnels déclarés qui ne répondent pas.
+
+        Rend les couples qui ont accepté APRÈS montage, à joindre à ceux du
+        balayage. Rien n'est lancé sans un oui.
+
+        Un port de tunnel fermé ne dit pas la même chose qu'un port fermé
+        ordinaire : la déclaration prouve que quelqu'un a désigné ce service,
+        et seul le processus qui porte la redirection manque. Le taire
+        laisserait l'utilisateur devant un « aucun serveur » qu'un mot
+        corrige.
+
+        Les tunnels sont groupés par ALIAS parce que c'est l'unité que ssh
+        monte : une commande ouvre toutes les redirections d'une entrée, et
+        poser la question par port en poserait trois pour un seul oui.
+
+        Le compte annoncé est celui des tunnels SANS RÉPONSE, et non « aucun
+        n'est monté » : une entrée dont deux redirections sur trois tournent
+        déjà est le cas exact où la troisième vient d'être ajoutée au
+        fichier, et affirmer qu'aucune ne tient y serait faux.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        vivants = set(touches)
+        morts = {}
+        for tunnel in tunnels:
+            if (tunnel.bind, tunnel.local_port) not in vivants:
+                morts.setdefault(tunnel.alias, []).append(tunnel)
+        repris = []
+        for alias, dormants in morts.items():
+            combien = self._llm_count(
+                len(dormants),
+                "declared tunnel without an answer",
+                "declared tunnels without an answer",
+            )
+            print(f"  ⚠ {alias} — {combien}")
+            try:
+                reponse = click.prompt(
+                    f"{t('Mount the tunnels of %s?') % alias} (o/N)"
+                )
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return repris
+            if not self._is_yes(reponse):
+                continue
+            if not self._llm_mount_tunnel(alias):
+                continue
+            repris += llm_disc.sweep(
+                [(one.bind, one.local_port) for one in dormants],
+                on_event=self._llm_sweep_printer(),
+                **self._llm_sweep_tuning(),
+            )
+        return repris
+
+    def _llm_mount_tunnel(self, alias):
+        """Monter les redirections d'un alias par un ssh détaché. Vrai si
+        elles tiennent.
+
+        `ExitOnForwardFailure` est ce qui rend le code de retour croyable :
+        sans lui, un ssh détaché rend 0 alors qu'aucune redirection n'a pu
+        être liée, et le menu annoncerait un tunnel monté devant un port
+        fermé. Le port déjà pris par un tunnel oublié est le cas courant, et
+        c'est exactement celui-là qu'il attrape.
+
+        Sa contrepartie est que le montage est TOUT OU RIEN : une entrée dont
+        une redirection est déjà liée échoue en entier, y compris pour les
+        ports libres. Le message d'erreur de ssh nomme alors le port en
+        cause, et c'est lui qu'on rapporte — l'issue est de défaire le tunnel
+        partiel, ce que ce menu ne fait pas à la place de l'utilisateur :
+        tuer un processus que quelqu'un d'autre utilise ne se devine pas.
+
+        Aucune redirection n'est passée en argument : les `LocalForward` de
+        l'entrée suffisent, et les recopier ici les ferait diverger du
+        fichier au premier changement.
+        """
+        import subprocess
+
+        commande = ["ssh", "-f", "-N", "-o", "ExitOnForwardFailure=yes", alias]
+        try:
+            res = subprocess.run(
+                commande,
+                capture_output=True,
+                text=True,
+                timeout=DELAI_TUNNEL,
+            )
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⚠ {souci}")
+            return False
+        if res.returncode:
+            # Tronqué : ssh raconte volontiers la négociation entière, et le
+            # menu n'a pas de pagination.
+            print(f"  ⚠ {res.stderr.strip()[:200]}")
+            return False
+        return True
+
+    def _llm_keep(self, trouves, tunnels=()):
         """Proposer de garder ce qui a été reconnu.
 
         Seuls les serveurs RETENUS descendent sur le disque. Aucun rapport de
@@ -1197,12 +1413,21 @@ class AssistantMenuMixin:
         if not self._is_yes(reponse):
             print(t("nothing kept"))
             return
+        alias_de = {
+            (tunnel.bind, tunnel.local_port): tunnel.alias
+            for tunnel in tunnels
+        }
         connus = llm_servers.load(get_config=self._llm_get_config)
         for adresse, port, empreinte in trouves:
             connus.append(
                 llm_servers.Server(
                     handle="",
-                    label=f"{empreinte.software} ({adresse}:{port})",
+                    label=self._llm_found_label(
+                        alias_de.get((adresse, port), ""),
+                        adresse,
+                        port,
+                        empreinte,
+                    ),
                     host=adresse,
                     port=port,
                     software=empreinte.software,

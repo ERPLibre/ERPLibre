@@ -24,9 +24,10 @@ une empreinte sans logiciel plutôt qu'une exception.
 
 import unittest
 
-from llm_fake_server import FIXTURES
+from llm_fake_server import CATALOGUE_LONG, FIXTURES
 
 from script.todo.assistant.fingerprint import (
+    BODY_CAP,
     GPT4ALL_PORT,
     OPENAI_HOST,
     PORTS,
@@ -50,6 +51,7 @@ EXPECTED = {
     "open_webui": "open_webui",
     "textgen_webui": "textgen_webui",
     "tabbyapi": "tabbyapi",
+    "exo": "exo",
 }
 
 
@@ -188,6 +190,90 @@ class Signatures(unittest.TestCase):
         ailleurs = {"/api/version": (200, b'{"version":"0.0.0"}')}
         self.assertEqual(identify(ailleurs).software, "")
 
+    def test_exo_se_nomme_par_son_pair_ou_par_son_catalogue(self):
+        """Deux lectures l'accordent, et chacune couvre ce que l'autre ne
+        couvre pas.
+
+        `/node_id` tient en quelques dizaines d'octets, donc il survit à un
+        catalogue trop gros pour être analysé. `owned_by` survit au
+        mandataire inverse qui ne publie que `/v1`. Une seule des deux
+        laisserait un déploiement courant sans nom.
+        """
+        seul_pair = {"/node_id": FIXTURES["exo"]["/node_id"]}
+        self.assertEqual(identify(seul_pair).software, "exo")
+        seul_catalogue = {"/v1/models": FIXTURES["exo"]["/v1/models"]}
+        self.assertEqual(identify(seul_catalogue).software, "exo")
+        # Une chaîne JSON nue est ce qui accorde l'étage : un objet sur ce
+        # chemin est autre chose, et ne doit rien nommer.
+        objet = {"/node_id": (200, b'{"id":"autre chose"}')}
+        self.assertEqual(identify(objet).software, "")
+
+    def test_le_titre_par_defaut_du_cadre_web_n_est_pas_celui_de_jan(self):
+        """L'étage Jan lit le même `/openapi.json` et passe AVANT. Accorder
+        Jan sur un titre générique nommerait « jan » tout serveur bâti sur ce
+        cadre."""
+        self.assertEqual(identify(FIXTURES["exo"]).software, "exo")
+
+    def test_un_catalogue_plus_long_que_le_plafond_rend_ses_modeles(self):
+        """Le mode de défaillance que le plafond de catalogue empêche.
+
+        Coupé au plafond d'empreinte, le JSON s'arrête au milieu d'une entrée
+        et ne s'analyse plus : aucun modèle n'est lu, et un étage qui lit le
+        catalogue ne reconnaît plus rien. Le serveur se conclut muet à
+        l'instant où il énumérait son offre.
+        """
+        self.assertGreater(
+            len(CATALOGUE_LONG), BODY_CAP, "catalogue trop court"
+        )
+        fp = identify(FIXTURES["exo"])
+        self.assertEqual(100, len(fp.models))
+        self.assertNotIn("models", fp.unknown)
+        # Le même catalogue coupé au plafond d'empreinte : plus un modèle.
+        coupe = {"/v1/models": (200, CATALOGUE_LONG[:BODY_CAP])}
+        self.assertEqual((), identify(coupe).models)
+
+    def test_un_gros_catalogue_se_lit_en_temps_lineaire(self):
+        """Le dédoublonnage passe par un ENSEMBLE, pas par la liste en cours.
+
+        Le mode de défaillance est un menu figé, pas un mauvais résultat :
+        `identify` est PUR et tourne HORS du budget de `collect`, qui ne
+        borne que le transport. Un « in » sur la liste rend la fonction
+        quadratique, et le plafond d'un catalogue borne le nombre de noms
+        bien plus haut que celui d'une réponse d'empreinte — un catalogue
+        d'un mégaoctet demandait alors quinze secondes de calcul.
+        """
+        import json
+        import time
+
+        gros = json.dumps(
+            {
+                "object": "list",
+                "data": [{"id": f"{n:06x}"} for n in range(60000)],
+            }
+        ).encode()
+        debut = time.monotonic()
+        fp = identify({"/v1/models": (200, gros)}, port=8080)
+        ecoule = time.monotonic() - debut
+        self.assertEqual(60000, len(fp.models))
+        # Linéaire tient en une fraction de seconde ; quadratique met plus de
+        # dix secondes. Le seuil est LARGE exprès : il sépare deux ordres de
+        # grandeur, il ne mesure pas la machine.
+        self.assertLess(
+            ecoule, 3.0, f"{ecoule:.1f}s : dédoublonnage linéaire ?"
+        )
+
+    def test_le_plafond_d_un_catalogue_reste_dimensionne(self):
+        """Le monter sans fin coûte des deux côtés : le corps vient d'un
+        tiers, et les noms qu'on en tire sont retenus par le balayage pour
+        chaque hôte reconnu."""
+        from script.todo.assistant.fingerprint import CATALOG_CAP
+
+        self.assertGreater(CATALOG_CAP, BODY_CAP)
+        # Quatre fois la plus grande offre observée suffit ; au-delà, aucun
+        # serveur de plus ne devient lisible.
+        self.assertGreater(CATALOG_CAP, 4 * len(CATALOGUE_LONG))
+        self.assertLessEqual(CATALOG_CAP, 1 << 20)
+
     def test_un_401_sur_le_chemin_model_singulier_est_un_accord(self):
         fp = identify(FIXTURES["tabbyapi"])
         self.assertEqual(fp.software, "tabbyapi")
@@ -278,7 +364,7 @@ class Plan(unittest.TestCase):
         self,
     ):
         self.assertEqual(len(PORTS), len(set(PORTS)))
-        self.assertEqual(len(PORTS), 11)
+        self.assertEqual(len(PORTS), 12)
         self.assertIn(GPT4ALL_PORT, PORTS)
 
 
