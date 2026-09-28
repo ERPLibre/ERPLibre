@@ -23,24 +23,32 @@ premier enregistrement : une tâche dont rien n'est gardé n'en laisse aucun.
 La sortie arrive en octets bruts du PTY. Chaque ligne est décodée en UTF-8
 (`replace`), débarrassée des séquences ANSI et des caractères de contrôle ;
 d'une ligne réécrite par retour chariot (barre de progression), retour du
-curseur en colonne 1 ou effacement de la ligne, reste la dernière version ;
-elle passe entière par `redact_for_storage`, puis s'écrit par morceaux de
+curseur en colonne 1 ou effacement de la ligne, reste la dernière version
+(`clean`). Un mot de `execute.SECRET_WORDS`, cherché sans casse et sans
+borne de mot dans chaque version, marque la ligne : la version gardée ne
+garde rien après son premier mot guetté, et une version remplacée qui en
+portait un — une valeur écrite seule par-dessus son étiquette — la fait
+écrire entière en `***` (`_stored`). La version gardée passe entière par
+`redact_for_storage`, qui porte cette règle, puis s'écrit par morceaux de
 LINE_LIMIT caractères. Une ligne sans fin passé PARTIAL_LIMIT caractères
 s'écrit en deux, mais seulement à un blanc hors séquence ANSI, là où
-chaque moitié se masque seule comme la ligne entière l'aurait été
-(`_cut`) ; faute d'une telle coupure, elle attend son `\n`, ou le plafond
-CAP. Au-delà de CAP octets bruts, seuls les TAIL derniers restent, écrits
-à la clôture derrière l'événement `omitted {bytes}` ; la ligne que coupe
-le plafond et celle que la fin retenue commence au milieu partent
-entières : un secret coupé ne s'y reconnaîtrait plus.
+chaque moitié se masque seule comme la ligne entière l'aurait été, et
+jamais quand elle porte déjà un mot guetté (`_cut`) ; faute d'une telle
+coupure, elle attend son `\n`, ou le plafond CAP. Au-delà de CAP octets
+bruts, seuls les TAIL derniers restent, écrits à la clôture derrière
+l'événement `omitted {bytes}` ; la ligne que coupe le plafond et celle que
+la fin retenue commence au milieu partent entières : un secret coupé ne
+s'y reconnaîtrait plus.
 
 Un événement suit la sortie qui le précède. Le début d'une ligne inachevée
-s'écrit devant lui, une fois par ligne, s'il ne porte aucun mot guetté et
-ne finit pas dans une séquence ANSI que la suite peut encore achever
-(`Lines.flush`) ; sinon la ligne reste entière et s'écrit après
-l'événement. La suite d'un début écrit se masque seule, puis derrière lui
-(`TaskLog._outs`) : elle se relit seule, dans un enregistrement à elle, et
-peut réécrire la ligne plutôt que la continuer. Au-delà de CAP,
+s'écrit devant lui, une fois par ligne, si aucune de ses versions, même
+retirée, ne porte de mot guetté et qu'il ne finit pas dans une séquence
+ANSI que la suite peut encore achever (`Lines.flush`) ; sinon la ligne
+reste entière et s'écrit après l'événement. La suite d'un début écrit se
+masque seule, puis derrière lui (`_stored`) : elle se relit seule, dans un
+enregistrement à elle, et peut réécrire la ligne plutôt que la continuer.
+Le texte d'une question ou d'un avis et une commande se masquent ligne à
+ligne de la même façon (`_redact`). Au-delà de CAP,
 un événement attend la clôture et y prend sa place entre les lignes de la
 fin retenue ; celui dont la sortie qui suit est omise s'écrit aussitôt,
 devant `omitted`, comme le plus ancien quand ceux qui attendent passent
@@ -110,8 +118,9 @@ UNFINISHED = re.compile(
 # (CSI 1K, 2K). CSI K n'efface que ce qui suit le curseur, rien de ce qui
 # est gardé ; en colonne 1, il suit une réécriture qui a déjà tout pris.
 REWRITE = re.compile(r"\x1b\[0*(?:1?G|[12]K)")
-# Contrôles C0 hors tabulation et saut de ligne, DEL et C1.
-CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# Contrôles C0 hors tabulation, saut de ligne et retour chariot, qui sépare
+# les versions d'une ligne ; DEL et C1.
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 # Début d'un enregistrement tel que `_line` l'écrit : son numéro et son genre
 # se lisent sans décoder le reste de la ligne.
 HEAD = re.compile(r'\{"n": ([0-9]{1,18}), "t": [^,]*, "s": "(out|event)", ')
@@ -148,22 +157,88 @@ def day_of(task_id) -> str:
     return "-".join(match.groups())
 
 
+def _execute():
+    """Le module execute, importé au premier appel, pas au chargement :
+    execute.py pose logging.basicConfig à son import, sans effet une fois
+    le journal du hub en place."""
+    from script.execute import execute
+
+    return execute
+
+
 def _version(match) -> str:
     """Rien pour une séquence ANSI, un retour chariot pour celle qui
     réécrit la ligne (REWRITE)."""
     return "\r" if REWRITE.fullmatch(match[0]) else ""
 
 
+def _screen(line) -> str:
+    """Ce que montre `line`, version par version : sans séquence ANSI ni
+    contrôle, chaque version séparée de la suivante par un « \\r », qu'y
+    met un retour chariot ou une séquence REWRITE."""
+    return CONTROL.sub("", ANSI.sub(_version, line))
+
+
+def _versions(line) -> tuple:
+    """`(avant, réécrite, montrée)` de `line` : sa dernière version qui
+    montre quelque chose (`_screen`), les versions qui la précèdent,
+    séparées par « \\r », et vrai si elle en suit au moins une. Une version
+    faite de seuls contrôles (une sonnerie) n'en efface pas une."""
+    before, rewrite, shown = _screen(line).rstrip("\r").rpartition("\r")
+    return before, bool(rewrite), shown
+
+
 def clean(line) -> str:
     """Ce que montre `line`, décodée et sans son saut de ligne : sans
     séquence ANSI ni caractère de contrôle, et d'une ligne réécrite, par
     un retour chariot ou une séquence REWRITE, la dernière version qui
-    montre quelque chose ; une version faite de seuls contrôles (une
-    sonnerie) n'en efface pas une. Cette version se lit seule : le texte
-    qu'elle remplace ne se colle pas devant elle."""
-    parts = ANSI.sub(_version, line).split("\r")
-    versions = [part for part in (CONTROL.sub("", p) for p in parts) if part]
-    return versions[-1] if versions else ""
+    montre quelque chose. Cette version se lit seule : le texte qu'elle
+    remplace ne se colle pas devant elle."""
+    return _versions(line)[2]
+
+
+def _stored(line, lead="", tainted=False) -> tuple:
+    """`(montrée, gardée)` de `line`, une ligne ou le morceau d'une ligne :
+    `clean(line)`, et ce qui s'en écrit sur disque. `lead`, le début de la
+    ligne déjà écrit devant un événement, précède la première version de
+    `line` ; `tainted` dit qu'une version déjà retirée de la ligne
+    (`Lines`) portait un mot de SECRET_WORDS.
+
+    Une version montrée qui en remplace une qui portait un tel mot — une
+    valeur écrite seule par-dessus son étiquette — part entière :
+    TAINT_MASK, comme sous `tainted`. Sinon `redact_for_storage` la masque,
+    rien ne restant après son premier mot guetté. Derrière `lead`, une
+    version qui le continue se masque seule, puis derrière lui, dont le
+    masque ne rend que la suite : seule, pour un déplacement du curseur
+    qu'aucune REWRITE ne dit ; derrière lui, pour un mot que l'événement a
+    coupé. `lead` ne porte aucun mot de `_TRIGGERS` (`Lines.flush`), et
+    aucun masque ne remplace rien avant la fin de son propre mot : il en
+    ressort inchangé."""
+    execute = _execute()
+    before, rewritten, shown = _versions(line)
+    if not shown:
+        return shown, ""
+    if tainted or (rewritten and execute.holds_secret_word(lead + before)):
+        return shown, execute.TAINT_MASK
+    stored = execute.redact_for_storage(shown)
+    if lead and not rewritten:
+        both = execute.redact_for_storage(lead + stored)
+        stored = both[len(lead) :]
+        if not both.startswith(lead):
+            stored = execute.TAINT_MASK
+    return shown, stored
+
+
+def _dropped(text, lead="") -> bool:
+    """Vrai si `text`, les versions qu'un retour chariot retire de la ligne
+    en cours avant sa fin, portait un mot de SECRET_WORDS : nettoyé,
+    derrière `lead` dont il continue le début, ou brut. Brut, pour une
+    chaîne OSC que ce retour chariot coupe : son début, retiré, ne se
+    nettoie plus comme dans la ligne entière."""
+    execute = _execute()
+    return execute.holds_secret_word(
+        lead + _screen(text)
+    ) or execute.holds_secret_word(text)
 
 
 def _unfinished(text) -> int:
@@ -173,60 +248,43 @@ def _unfinished(text) -> int:
     return -1 if found is None else found.start()
 
 
-def _redact(text, shown=False) -> str:
-    """`redact_for_storage(text)` ; avec `shown`, `redact_secrets(text)`, le
-    masque de l'affichage, qui garde une commande entière."""
-    # Importé au premier appel, pas au chargement : execute.py pose
-    # logging.basicConfig à son import, sans effet une fois le journal du
-    # hub en place.
-    from script.execute import execute
-
-    if shown:
-        return execute.redact_secrets(text)
-    return execute.redact_for_storage(text)
-
-
-def _redact_command(cmd) -> str:
-    """Le masque de l'affichage (`redact_secrets`), qui garde une commande
-    lisible, puis celui du stockage, qui rattrape ce qu'il guette seul
-    (« password= » sans option ni « -- ») sans retoucher une valeur que le
-    premier a déjà réduite à « '***' » (`keep_masked`). Pour `run_start.cmd`
-    seulement : une ligne de sortie brute n'a jamais cette valeur à
-    préserver, `_redact` seul lui suffit."""
-    # Même import différé que _redact, même raison.
-    from script.execute import execute
-
-    return execute.redact_for_storage(
-        execute.redact_secrets(cmd), keep_masked=True
-    )
+def _redact(text) -> str:
+    """Ce qu'un texte d'événement ou une commande garde sur disque : chaque
+    ligne masquée comme une ligne de sortie (`_stored`). Une valeur entre
+    guillemets que le masque de l'affichage cache d'une ligne à l'autre
+    retire des fins de ligne : les lignes ainsi masquées se lisent alors
+    à la place des lignes brutes."""
+    lines = text.split("\n")
+    shown = _execute().redact_secrets(text).split("\n")
+    if len(shown) != len(lines):
+        lines = shown
+    return "\n".join(_stored(line)[1] for line in lines)
 
 
 def _at_risk(text) -> bool:
-    # Même import différé que _redact, même raison.
-    from script.execute.execute import holds_secret_trigger
-
-    return holds_secret_trigger(text)
+    return _execute().holds_secret_trigger(text)
 
 
-def _cut(line, lead="") -> tuple:
+def _cut(line, lead="", tainted=False) -> tuple:
     """`(écrit, gardé)`, les deux moitiés de `line`, une ligne sans fin,
     telles que chacune se masque seule comme la ligne entière l'aurait
     été : `écrit` part aussitôt, `gardé` attend la suite. `(None, line)` si
     aucune coupure n'est sûre. `lead`, le début de la ligne déjà écrit
     devant un événement (`Lines.flush`), se lit comme s'il la précédait
-    encore.
+    encore ; `tainted`, une version retirée de la ligne portait un mot de
+    SECRET_WORDS, et rien d'elle ne s'écrira que TAINT_MASK.
 
-    Aucune ne l'est si `line` porte déjà un mot que `redact_for_storage`
-    guette, brut ou une fois retirés, comme le fait `clean`, les séquences
-    ANSI et les contrôles qui peuvent en séparer les deux moitiés : la
-    valeur qui le suit peut continuer plus loin (un mot de passe imprimé va
-    jusqu'à la fin de la ligne, une valeur entre guillemets peut porter un
-    blanc). Sinon, tout mot guetté à venir, sans blanc, tombe après le
-    dernier blanc de `line` ; or chaque motif de `redact_for_storage`
-    commence dans le mot où tombe son mot guetté, sauf « mot de passe », qui
-    commence deux mots plus tôt. La coupure se place donc au troisième blanc
-    depuis la fin, `gardé` reprenant les deux mots complets devant le mot
-    en cours ; sans ces trois blancs, aucune coupure.
+    Aucune ne l'est sous `tainted`, ni si `line` porte déjà un mot que
+    `redact_for_storage` guette, brut ou nettoyé (`_screen`) de ce qui peut
+    en séparer les deux moitiés : la valeur qui le suit peut continuer plus
+    loin (un mot de passe imprimé va jusqu'à la fin de la ligne, une valeur
+    entre guillemets peut porter un blanc). Sinon, un mot guetté que la
+    suite achèvera commence après le troisième blanc depuis la fin de
+    `line` : « mot de passe », le seul à porter deux blancs, commence au
+    plus deux mots avant le mot en cours, et chaque motif de
+    `redact_for_storage` commence dans le mot où tombe son mot guetté. La
+    coupure s'y place, `gardé` reprenant les deux mots complets devant le
+    mot en cours ; sans ces trois blancs, aucune coupure.
 
     Seul compte un blanc hors de toute séquence ANSI, et avant celle que
     la suite peut encore achever (UNFINISHED) : un blanc peut être le texte
@@ -234,8 +292,9 @@ def _cut(line, lead="") -> tuple:
     qui en commencerait une au milieu en montrerait le reste, collé à ce
     qui la suit. Chaque moitié se nettoie alors seule comme dans la ligne
     entière."""
-    plain = CONTROL.sub("", ANSI.sub("", line))
-    if _at_risk(lead + line) or _at_risk(lead + plain):
+    if tainted or _at_risk(lead + line):
+        return None, line
+    if _at_risk(lead + _screen(line).replace("\r", "")):
         return None, line
     end = _unfinished(line)
     # Les séquences recouvertes d'ESC, de même longueur : un blanc qui
@@ -252,24 +311,27 @@ def _cut(line, lead="") -> tuple:
 
 
 class Lines:
-    """Découpe un flux d'octets en lignes nettoyées et entières ; la
-    dernière, sans fin, attend la suite en morceaux non joints (`pieces`)
-    tant qu'aucun n'apporte de saut de ligne ni de retour chariot : les
-    rejoindre et les relire à chaque envoi coûterait, pour une ligne qui
-    grossit sans jamais se terminer, un temps total au carré de sa
-    longueur. Ils ne se joignent (`partial`) que passé PARTIAL_LIMIT
-    caractères, pour chercher où couper (`_cut`) ; une coupure refusée tient
-    la ligne (`held`) jusqu'à sa coupure réelle suivante, sans chercher de
-    nouveau à chaque morceau reçu. Une barre de progression qui ne finit pas
-    sa ligne n'y garde que sa dernière version.
+    """Découpe un flux d'octets en lignes entières, rendues en paires
+    `(montrée, gardée)` (`_stored`) ; la dernière, sans fin, attend la
+    suite en morceaux non joints (`pieces`) tant qu'aucun n'apporte de
+    saut de ligne ni de retour chariot : les rejoindre et les relire à
+    chaque envoi coûterait, pour une ligne qui grossit sans jamais se
+    terminer, un temps total au carré de sa longueur. Ils ne se joignent
+    (`partial`) que passé PARTIAL_LIMIT caractères, pour chercher où couper
+    (`_cut`) ; une coupure refusée tient la ligne (`held`) jusqu'à sa
+    coupure réelle suivante, sans chercher de nouveau à chaque morceau
+    reçu. Une barre de progression qui ne finit pas sa ligne n'y garde que
+    sa dernière version ; si une version ainsi retirée portait un mot de
+    SECRET_WORDS, la ligne en reste marquée (`tainted`) jusqu'à sa fin, et
+    rien d'elle ne s'écrit que TAINT_MASK.
 
     `flush` rend le début de la ligne en cours, qu'un événement suit ; il
     reste dans `lead` jusqu'à ce que la ligne finisse, et `feed` vide
     `lead` dès qu'il rend une ligne : sa première en est la suite. Une
     ligne n'a qu'un `lead` : il ne grandit pas d'un événement à l'autre, et
     rien ne se relit en entier à chacun. Un refus de `flush` se retient de
-    même : une ligne qui porte un mot guetté, qu'un morceau ajouté ne
-    retire pas, ou qui finit dans une séquence inachevée (`risky`) reste
+    même : une ligne marquée, qui porte un mot guetté, qu'un morceau ajouté
+    ne retire pas, ou qui finit dans une séquence inachevée (`risky`) reste
     refusée, sans relecture, jusqu'à ce que `_keep` la remplace ; refusée,
     elle ne fait que s'écrire entière après l'événement. Une ligne qui ne
     montre rien, ou que l'écho écarté (`bare`), ne se relit qu'une fois
@@ -282,6 +344,7 @@ class Lines:
         self.held = False  # `_cut` l'a refusée : attend \n, ou le CAP
         self.pending_cr = False  # elle finit par un \r pas encore tranché
         self.lead = ""  # début de la ligne en cours, déjà rendu par `flush`
+        self.tainted = False  # une version retirée portait un mot guetté
         self.risky = False  # refusée par `flush` (mot guetté, séquence)
         self.bare = -1  # `length` quand `flush` n'y a rien lu à montrer
 
@@ -293,39 +356,41 @@ class Lines:
             self.pieces = ["".join(self.pieces)]
         return self.pieces[0] if self.pieces else ""
 
-    def _keep(self, rest, held=False):
+    def _keep(self, rest, held=False, tainted=False):
         """Ce qui reste ouvert après une coupure : `rest` seul, en attente
         d'un morceau neuf pour continuer, ou rien si la ligne est partie ;
-        `held` si `_cut` vient de refuser de le couper."""
+        `held` si `_cut` vient de refuser de le couper, `tainted` si la
+        ligne qu'il continue est marquée."""
         self.pieces = [rest] if rest else []
         self.length = len(rest)
         self.pending_cr = rest.endswith("\r")
         self.held = held
+        self.tainted = tainted
         self.risky = False
         self.bare = -1
 
     def flush(self, skip=()) -> str:
         """Le début de la ligne en cours, nettoyé, à écrire devant un
         événement, gardé dans `lead` ; "" si rien n'en paraît ou s'il est
-        dans `skip`, si la ligne a déjà son `lead`, si elle porte un mot
-        guetté, sa valeur pouvant continuer plus loin, ou si elle finit dans
-        une séquence inachevée (UNFINISHED), dont la suite, lue seule,
-        montrerait le reste collé au texte qui la suit : elle reste alors
-        entière. Un refus ne relit pas la ligne avant qu'elle change
-        (`risky`, `bare`)."""
+        dans `skip`, si la ligne a déjà son `lead`, si elle est marquée ou
+        porte un mot guetté, sa valeur pouvant continuer plus loin, ou si
+        elle finit dans une séquence inachevée (UNFINISHED), dont la suite,
+        lue seule, montrerait le reste collé au texte qui la suit : elle
+        reste alors entière. Un refus ne relit pas la ligne avant qu'elle
+        change (`risky`, `bare`)."""
         if not self.pieces or self.held or self.lead or self.risky:
             return ""
         if self.length == self.bare:
             return ""
         line = self.partial
-        if (
-            _at_risk(line)
-            or _at_risk(CONTROL.sub("", ANSI.sub("", line)))
-            or _unfinished(line) >= 0
-        ):
+        if self.tainted or _unfinished(line) >= 0 or _at_risk(line):
             self.risky = True
             return ""
-        shown = clean(line)
+        screen = _screen(line)
+        if _at_risk(screen.replace("\r", "")):
+            self.risky = True
+            return ""
+        shown = screen.rstrip("\r").rpartition("\r")[2]
         if not shown.strip() or shown.strip() in skip:
             self.bare = self.length
             return ""
@@ -334,6 +399,8 @@ class Lines:
         return shown
 
     def feed(self, data, final=False) -> list:
+        """Les paires `(montrée, gardée)` des lignes que `data` finit, ou
+        coupe passé PARTIAL_LIMIT ; avec `final`, la dernière aussi."""
         lines = self._split(data, final)
         if lines:
             self.lead = ""
@@ -341,6 +408,7 @@ class Lines:
 
     def _split(self, data, final) -> list:
         added = self.decoder.decode(data, final)
+        lead, tainted = self.lead, self.tainted
         if (
             not final
             and not self.pending_cr
@@ -354,26 +422,33 @@ class Lines:
             self.length += len(added)
             if self.held or self.length <= PARTIAL_LIMIT:
                 return []
-            shown, rest = _cut(self.partial, self.lead)
-            self._keep(rest, held=shown is None)
-            return [] if shown is None else [clean(shown)]
+            shown, rest = _cut(self.partial, lead, tainted)
+            self._keep(rest, shown is None, tainted)
+            return [] if shown is None else [_stored(shown, lead)]
         text = self.partial + added
         *done, rest = text.split("\n")
+        lines = []
+        if done:
+            # La ligne en cours finit ; ce qui suit en commence une neuve.
+            lines.append(_stored(done[0], lead, tainted))
+            lines += [_stored(line) for line in done[1:]]
+            lead, tainted = "", False
         cut = rest.rfind("\r", 0, len(rest) - 1)
         if cut > 0:
+            tainted = tainted or _dropped(rest[:cut], lead)
             rest = rest[cut:]
         held = False
         if final:
             if rest:
-                done.append(rest)
+                lines.append(_stored(rest, lead, tainted))
                 rest = ""
         elif len(rest) > PARTIAL_LIMIT:
-            shown, rest = _cut(rest, self.lead)
+            shown, rest = _cut(rest, lead, tainted)
             held = shown is None
             if not held:
-                done.append(shown)
-        self._keep(rest, held)
-        return [clean(line) for line in done]
+                lines.append(_stored(shown, lead))
+        self._keep(rest, held, tainted)
+        return lines
 
 
 class Summary:
@@ -499,27 +574,29 @@ class TaskLog:
         self._write([*self._blanks(), self._event(data)])
 
     def _feed(self, data, final=False):
-        lead = self.lines.lead
-        self._write_lines(self.lines.feed(data, final), lead)
+        continued = bool(self.lines.lead)
+        self._write_lines(self.lines.feed(data, final), continued)
 
     def _flush(self) -> list:
         """Les enregistrements du début de la ligne inachevée, écrit devant
         un événement (`Lines.flush`) ; rien en tête de tâche pour l'écho de
-        la réponse, qui attend sa fin pour être écarté."""
+        la réponse, qui attend sa fin pour être écarté. Sans mot de
+        `_TRIGGERS`, ce début n'a rien que `redact_for_storage` masquerait :
+        il s'écrit tel quel."""
         shown = self.lines.flush(self.skip if self.first else ())
         if not shown:
             return []
         self.first = False
         return [*self._blanks(), *self._outs(shown)]
 
-    def _write_lines(self, lines, lead=""):
-        """Écrit `lines` ; la première continue `lead`, le début déjà écrit
-        de sa ligne : vide, elle n'en était que la fin."""
+    def _write_lines(self, lines, continued=False):
+        """Écrit `lines`, des paires `(montrée, gardée)` (`Lines.feed`) ; la
+        première, si `continued`, suit le début déjà écrit de sa ligne :
+        vide, elle n'en était que la fin."""
         records = []
-        for line in lines:
-            prefix, lead = lead, ""
-            text = line.strip()
-            if prefix and not text:
+        for at, (shown, stored) in enumerate(lines):
+            text = shown.strip()
+            if continued and not at and not text:
                 continue
             if self.first and (not text or text in self.skip):
                 continue
@@ -528,27 +605,16 @@ class TaskLog:
                 continue
             self.first = False
             records += self._blanks()
-            records += self._outs(line, prefix)
+            records += self._outs(stored)
         self._write(records)
 
-    def _outs(self, line, prefix="") -> list:
-        """Les enregistrements de `line`, masquée entière, puis coupée : un
-        secret à cheval sur deux morceaux se reconnaît encore.
-
-        Derrière `prefix`, le début de sa ligne déjà écrit devant un
-        événement, `line` se masque pour ses deux lectures : seule, d'abord,
-        car elle s'écrit dans un enregistrement à elle et a pu réécrire la
-        ligne (retour chariot, effacement) plutôt que la continuer ; puis
-        derrière `prefix`, dont le masque ne rend que la suite, pour un mot
-        guetté que l'événement a coupé. `prefix` ne porte aucun mot guetté
-        (`Lines.flush`) et chaque motif de `redact_for_storage` ne remplace
-        que ce qui suit le sien : ce début en ressort inchangé."""
-        shown = _redact(line)
-        if prefix:
-            shown = _redact(prefix + shown)[len(prefix) :]
+    def _outs(self, text) -> list:
+        """Les enregistrements de `text`, déjà masqué entier, en morceaux
+        de LINE_LIMIT caractères : un secret à cheval sur deux morceaux
+        s'est reconnu avant la coupure."""
         return [
-            self._record("out", shown[at : at + LINE_LIMIT])
-            for at in range(0, len(shown), LINE_LIMIT)
+            self._record("out", text[at : at + LINE_LIMIT])
+            for at in range(0, len(text), LINE_LIMIT)
         ]
 
     def _blanks(self) -> list:
@@ -1076,7 +1142,8 @@ class Recorder:
         kind = message.get("t")
         # Masqué entier, puis coupé : coupé d'abord, un « Password: »
         # perdrait son début, et la valeur qui le suit ne se reconnaîtrait
-        # plus.
+        # plus. Une commande se masque de même : rien ne reste après un mot
+        # guetté, ni sur disque, ni dans l'index.
         text = _redact(str(message.get("text") or ""))[-TEXT_LIMIT:]
         if kind == "ask":
             self.asks[message.get("qid")] = message
@@ -1087,11 +1154,7 @@ class Recorder:
             level = message.get("level")
             self._event({"t": "notice", "level": level, "text": text})
         elif kind == "run_start":
-            # Les deux masques (_redact_command) : celui de l'affichage
-            # garde la commande lisible, celui du stockage rattrape un mot
-            # de passe imprimé sans option ni tiret (« password= »), que le
-            # premier ne guette pas seul.
-            cmd = _redact_command(str(message.get("cmd") or ""))
+            cmd = _redact(str(message.get("cmd") or ""))
             self._event({"t": "run_start", "cmd": cmd})
         elif kind == "run_end":
             rc, secs = message.get("rc"), message.get("secs")
@@ -1105,7 +1168,7 @@ class Recorder:
         réponse ; au terminal, `answered`, sans valeur, que l'écho montre
         déjà dans la sortie ; par la page, sa valeur, ou MASK quand le
         masque de stockage toucherait la ligne de l'invite qu'elle
-        complète."""
+        complète (`_stored`)."""
         if end in ("cancel", "timeout"):
             return {"t": end}
         if given is not None and given.get("t") == "cancel":
@@ -1116,10 +1179,8 @@ class Recorder:
             return {"t": "answered"}
         value = str(given.get("value"))
         line = str(ask.get("text") or "").rsplit("\n", 1)[-1] + value
-        return {
-            "t": "answer",
-            "value": value if _redact(line) == line else MASK,
-        }
+        shown, stored = _stored(line)
+        return {"t": "answer", "value": value if stored == shown else MASK}
 
     def _event(self, data):
         """Retient l'événement à sa place dans la sortie."""

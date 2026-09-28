@@ -5,6 +5,7 @@
 reprise, puis les bornes d'une tâche lues des messages du canal
 (`Recorder`), sur un HOME temporaire. Les secrets sont inventés."""
 
+import contextlib
 import datetime
 import errno
 import json
@@ -63,6 +64,24 @@ class StoreCase(unittest.TestCase):
         data = zstd.decompress(packed.read_bytes())
         return self.texts(task.info["id"]), data
 
+    def kept(self, chunks, event=None, **patches):
+        """`chunks` reçus un à un, `event` entre deux s'il est donné, sous
+        `patches` (attributs de tasklog), puis la tâche close : ses
+        enregistrements, task_start excepté, et son journal compressé,
+        décompressé."""
+        task = self.task()
+        guard = patch.multiple(tasklog, **patches) if patches else None
+        with guard or contextlib.nullcontext():
+            for at, chunk in enumerate(chunks):
+                if at and event is not None:
+                    task.event(event)
+                task.output(chunk)
+            task.close("done")
+        page = tasklog.read(self.base, task.info["id"], 2, 1000)
+        records = [(r["s"], r["d"]) for r in page["lines"]]
+        packed = task.path.with_name(task.path.name + ".zst")
+        return records, zstd.decompress(packed.read_bytes())
+
 
 class TestTaskLog(StoreCase):
     def test_directories_are_0700_and_files_0600(self):
@@ -95,7 +114,7 @@ class TestTaskLog(StoreCase):
             "green text",
             "",
             "100%",
-            "Password: ***",
+            "Password ***",
             "clone https://u:***@forge.example/r",
             "café �",
             "no newline",
@@ -190,7 +209,7 @@ class TestTaskLog(StoreCase):
             ["".join(texts[:2]), "".join(texts[2:])],
             [
                 "x" * (width - 14) + " https://u:***@forge.example",
-                "q" * (width - 11) + " Password: ***",
+                "q" * (width - 11) + " Password ***",
             ],
         )
         self.assertEqual([len(t) for t in texts[::2]], [width, width])
@@ -212,7 +231,7 @@ class TestTaskLog(StoreCase):
             self.texts(task.info["id"]),
             [
                 "x" * 30 + " https://u:***@forge.example/r",
-                "y" * 30 + " Password: ***",
+                "y" * 30 + " Password ***",
             ],
         )
         packed = task.path.with_name(task.path.name + ".zst")
@@ -239,7 +258,7 @@ class TestTaskLog(StoreCase):
                 "x" * 29 + " ",
                 "a b https://u:***@forge.example/r",
                 "y" * 34 + " ",
-                "a b Password: ***",
+                "a b Password ***",
             ],
         )
         self.assertNotIn(b"invente", packed)
@@ -251,16 +270,16 @@ class TestTaskLog(StoreCase):
         # \n entière plutôt que de laisser la valeur hors de l'étiquette.
         y = b"y" * 30
         cases = (
-            ([y + b" Pa", b"ssword: inventeEF", b"\r\n"], "Password: ***"),
+            ([y + b" Pa", b"ssword: inventeEF", b"\r\n"], "Password ***"),
             ([y + b" --pa", b"ssword inventeGH", b"\r\n"], "--password ***"),
             (
                 [y + b" Au", b"thorization: Bearer inventeIJ", b"\r\n"],
-                "Authorization: Bearer '***'",
+                "Authorization ***",
             ),
-            ([y + b" Pa", b"ssword: inventeKL\r", b"\n"], "Password: ***"),
+            ([y + b" Pa", b"ssword: inventeKL\r", b"\n"], "Password ***"),
             (
                 [y + b" Pa\x1b[0m", b"ssword: inventeMN", b"\r\n"],
-                "Password: ***",
+                "Password ***",
             ),
         )
         for chunks, masked in cases:
@@ -275,7 +294,7 @@ class TestTaskLog(StoreCase):
         texts, packed = self.stored(
             [b"y" * 33 + b" mot de pa", b"sse : inventeOP\r\n"]
         )
-        self.assertEqual(texts, ["y" * 33 + " ", "mot de passe : ***"])
+        self.assertEqual(texts, ["y" * 33 + " ", "mot de passe ***"])
         self.assertNotIn(b"invente", packed)
 
     def test_a_tainted_line_survives_many_tiny_chunks_past_the_limit(self):
@@ -366,8 +385,8 @@ class TestTaskLog(StoreCase):
         # coupé par l'événement se reconnaît encore.
         cases = (
             (b"Database password: ", b"hunter2\r\n", None),
-            (b"x pa", b"ssword: hunter2\r\n", ("x pa", "ssword: ***")),
-            (b"mot de ", b"passe : hunter2\r\n", ("mot de ", "passe : ***")),
+            (b"x pa", b"ssword: hunter2\r\n", ("x pa", "ssword ***")),
+            (b"mot de ", b"passe : hunter2\r\n", ("mot de ", "passe ***")),
             (
                 b"clone https:/",
                 b"/u:hunter2@forge.example/r\r\n",
@@ -383,7 +402,7 @@ class TestTaskLog(StoreCase):
                 task.close("done")
                 event = ("event", {"t": "answered"})
                 if split is None:
-                    whole = "Database password: ***"
+                    whole = "Database password ***"
                     expected = [event, ("out", whole)]
                 else:
                     expected = [("out", split[0]), event, ("out", split[1])]
@@ -398,19 +417,19 @@ class TestTaskLog(StoreCase):
         # ligne, et la version gardée se lit seule. Elle se masque seule
         # comme derrière ce début, avec ou sans événement entre les deux.
         cases = (
-            (b"Loading", b"\rpassword: hunter2\r\n", "password: ***"),
-            (b"Loading", b"\rtoken: hunter2\r\n", "token: ***"),
+            (b"Loading", b"\rpassword: hunter2\r\n", "password ***"),
+            (b"Loading", b"\rtoken: hunter2\r\n", "token ***"),
             (
                 b"Loading",
                 b"\r\x1b[2Kpassword: hunter2\r\n",
-                "password: ***",
+                "password ***",
             ),
-            (b"50", b"\rsecret=hunter2\r\n", "secret=***"),
+            (b"50", b"\rsecret=hunter2\r\n", "secret ***"),
             (b"Loading", b"\rpasswd hunter2\r\n", "passwd ***"),
             (
                 b"Loading",
                 b"\rmot de passe : hunter2\r\n",
-                "mot de passe : ***",
+                "mot de passe ***",
             ),
         )
         event = {"t": "answered"}
@@ -441,7 +460,9 @@ class TestTaskLog(StoreCase):
         # mot guetté, ne montre rien ou finit dans une séquence
         # d'échappement inachevée (un titre OSC), ne se relit pas à chaque
         # événement : ce qui en est lu ne croît pas avec leur nombre. Une
-        # version nouvelle de la ligne (retour chariot) se lit de nouveau.
+        # version nouvelle de la ligne (retour chariot) se lit de nouveau ;
+        # celle qu'elle remplace portait-elle un mot guetté, la ligne
+        # s'écrit entière en « *** » après l'événement.
         read = []
 
         def counted(function):
@@ -452,10 +473,12 @@ class TestTaskLog(StoreCase):
             return wrapper
 
         event = {"t": "run_end", "rc": 0, "secs": 1}
-        for partial in (
-            b"Database password: " + b"x" * 65536,
-            b" " * 65536,
-            b"\x1b]0;" + b"t " * 32768,
+        ready = [("out", "ready"), ("event", event)]
+        masked = [("event", event), ("out", "***")]
+        for partial, end in (
+            (b"Database password: " + b"x" * 65536, masked),
+            (b" " * 65536, ready),
+            (b"\x1b]0;" + b"t " * 32768, ready),
         ):
             with self.subTest(partial=partial[:10]):
                 task = self.task()
@@ -463,7 +486,8 @@ class TestTaskLog(StoreCase):
                 with patch.multiple(
                     tasklog,
                     _at_risk=counted(tasklog._at_risk),
-                    clean=counted(tasklog.clean),
+                    _screen=counted(tasklog._screen),
+                    _unfinished=counted(tasklog._unfinished),
                 ):
                     task.output(partial)
                     task.event(event)
@@ -476,9 +500,7 @@ class TestTaskLog(StoreCase):
                     task.event(event)
                     task.close("done")
                 self.assertEqual(
-                    self.records(task),
-                    [("event", event)] * 61
-                    + [("out", "ready"), ("event", event)],
+                    self.records(task), [("event", event)] * 61 + end
                 )
 
     def test_a_line_is_split_once_and_its_rest_waits_for_its_end(self):
@@ -499,7 +521,7 @@ class TestTaskLog(StoreCase):
                 ("out", "step x pa"),
                 ("event", {"t": "run_start", "cmd": "a"}),
                 ("event", {"t": "run_end", "rc": 0, "secs": 1}),
-                ("out", "ssword: ***"),
+                ("out", "ssword ***"),
             ],
         )
         packed = task.path.with_name(task.path.name + ".zst")
@@ -521,7 +543,7 @@ class TestTaskLog(StoreCase):
             (
                 b"Loading\r\x1b[2",
                 b"KMot de passe : zqwsecret\r\n",
-                "Mot de passe : ***",
+                "Mot de passe ***",
             ),
             (
                 b"Loading\r\x1b[2",
@@ -624,7 +646,7 @@ class TestTaskLog(StoreCase):
         for data, masked in (
             (b"Loading\x1b[1G\x1b[2Kpasswd zqwsecret\r\n", "passwd ***"),
             (b"Loading\x1b[2Kpasswd zqwsecret\r\n", "passwd ***"),
-            (b"50%\x1b[0Gmot de passe : zqwsecret\n", "mot de passe : ***"),
+            (b"50%\x1b[0Gmot de passe : zqwsecret\n", "mot de passe ***"),
         ):
             with self.subTest(data=data):
                 task = self.task()
@@ -667,12 +689,17 @@ class TestTaskLog(StoreCase):
         # Fuzz déterministe : des lignes qui impriment une valeur inventée
         # derrière une étiquette, sous la forme d'un mot ou d'une clé,
         # précédées d'un retour chariot, d'un effacement, d'un retour en
-        # colonne 1, d'une couleur ou d'un titre OSC, l'étiquette elle-même
-        # en couleur, suivie d'un effacement ou d'un titre (deux de ces
-        # habillages, tirés d'une graine fixe, par forme et par début).
-        # Chacune arrive coupée en deux à chaque position, puis en trois à
-        # des positions tirées, un événement entre les morceaux ou non. Le
-        # .zst décompressé ne garde jamais la valeur.
+        # colonne 1, d'une couleur, d'un titre OSC, d'un mot collé, d'un
+        # déplacement du curseur (recul, origine, sauvegarde et reprise,
+        # retours arrière, CSI en C1), d'une CSI avortée ou d'un retour
+        # chariot dans un titre ; l'étiquette elle-même en couleur, suivie
+        # d'un effacement, d'un titre, d'un retour chariot ou d'un retour
+        # en colonne 1 qui la sépare de sa valeur (deux de ces habillages,
+        # tirés d'une graine fixe, par forme et par début). Chacune arrive
+        # coupée en deux à chaque position, puis en trois à des positions
+        # tirées, un événement entre les morceaux ou non ; puis octet par
+        # octet, PARTIAL_LIMIT tiré, un événement après des octets tirés.
+        # Le .zst décompressé ne garde jamais la valeur.
         value = "inventeWX"
         forms = (
             ("passwd", " "),
@@ -681,6 +708,11 @@ class TestTaskLog(StoreCase):
             ("mot de passe", " : "),
             ("token", ": "),
             ("accessToken", "="),
+            ("-token", " = "),
+            ("x-ypasswd", " = "),
+            ("Authorization: Bearer", " "),
+            ("API key", ": "),
+            ("Paſſphrase", ": "),
         )
         befores = (
             "",
@@ -696,11 +728,29 @@ class TestTaskLog(StoreCase):
             "\x1b[1;32m",
             "\x1b]0;a b c\x07",
             "Loading \x1b]2;t i t l e\x1b\\",
+            "Loading",
+            "x-y",
+            "Loading\x1b[1000D",
+            "Loading\x1b[H",
+            "\x1b7Loading\x1b8",
+            "Loading\b\b\b\b\b\b\b",
+            "Loading\x9b2K",
+            "\x1b[2\x1b[0m",
+            "Loading\x1b[?2K",
+            "\x1b]0;a\rb\x07",
         )
-        arounds = ("{}", "\x1b[1;32m{}\x1b[0m", "{}\x1b[K", "{}\x1b]0;x y\x07")
+        arounds = (
+            "{}",
+            "\x1b[1;32m{}\x1b[0m",
+            "{}\x1b[K",
+            "{}\x1b]0;x y\x07",
+            "{}\x1b[2K",
+            "{}\r",
+            "{}\x1b[1G",
+        )
         rng = random.Random(6)
         for label, sep in forms:
-            cases = []
+            cases, bytewise = [], []
             for before in befores:
                 for around in rng.sample(arounds, 2):
                     line = before + around.format(label) + sep + value
@@ -712,21 +762,33 @@ class TestTaskLog(StoreCase):
                         one, two = sorted(rng.sample(range(1, len(data)), 2))
                         chunks = [data[:one], data[one:two], data[two:]]
                         cases.append((chunks, rng.random() < 0.75))
+                    events = {
+                        at for at in range(len(data)) if rng.random() < 0.2
+                    }
+                    bytewise.append(([bytes([b]) for b in data], events))
             with self.subTest(label=label):
                 self.assertIsNone(self.leak(cases, value))
+            for limit in (4, 8, 15):
+                with self.subTest(label=label, limit=limit):
+                    with patch.object(tasklog, "PARTIAL_LIMIT", limit):
+                        self.assertIsNone(self.leak(bytewise, value))
 
     def leak(self, cases, value):
         """Le premier cas de `cases` dont le .zst garde `value`, ou None.
         Un cas : `(morceaux, événement)`, un événement entre deux morceaux
-        si `événement`. Chaque ligne finit : les cas passent par une seule
-        tâche, puis, si elle garde `value`, chacun par une tâche à lui."""
+        si `événement` est vrai, ou devant chaque morceau dont il tient
+        l'indice si c'est un ensemble. Chaque ligne finit : les cas passent
+        par une seule tâche, puis, si elle garde `value`, chacun par une
+        tâche à lui."""
         event = {"t": "answered"}
 
         def kept(group):
             task = self.task()
             for chunks, between in group:
                 for at, chunk in enumerate(chunks):
-                    if at and between:
+                    if at and (
+                        at in between if isinstance(between, set) else between
+                    ):
                         task.event(event)
                     task.output(chunk)
             task.close("done")
@@ -778,6 +840,249 @@ class TestTaskLog(StoreCase):
                     debut = time.monotonic()
                     run()
                     self.assertLess(time.monotonic() - debut, 0.05)
+
+    def test_a_secret_word_taints_the_rest_of_its_line(self):
+        # Un mot guetté masque la fin de sa ligne où qu'il tombe : collé au
+        # mot qui le précède, derrière un déplacement du curseur que la
+        # ligne gardée ne rejoue pas, une CSI avortée ou une C1, ou derrière
+        # un tiret. Ce qui le précède reste. Une ligne dont casefold change
+        # la longueur ne situe pas son mot : elle part entière.
+        for data, masked in (
+            (b"Loadingpasswd inventeWX", "Loadingpasswd ***"),
+            (b"LoadingPassword for user x: inventeWX", "LoadingPassword ***"),
+            (b"Loadingmot de passe : inventeWX", "Loadingmot de passe ***"),
+            (b"x-ymot de passe: inventeWX", "x-ymot de passe ***"),
+            (b"\xc3\xa9tapeMot de passe: inventeWX", "étapeMot de passe ***"),
+            (
+                b"Loading\x1b[1;32mMot de passe\x1b[0m: inventeWX",
+                "LoadingMot de passe ***",
+            ),
+            (
+                b"LoadingAuthorization: Bearer inventeWX",
+                "LoadingAuthorization ***",
+            ),
+            (b"Loading\x1b[1000Dpasswd inventeWX", "Loadingpasswd ***"),
+            (b"Loading\x1b[7Dpasswd inventeWX", "Loadingpasswd ***"),
+            (b"Loading\x1b[Hpasswd inventeWX", "Loadingpasswd ***"),
+            (b"Loading\x1b[2J\x1b[Hpasswd inventeWX", "Loadingpasswd ***"),
+            (b"\x1b7Loading\x1b8passwd inventeWX", "Loadingpasswd ***"),
+            (b"\x1b[sLoading\x1b[upasswd inventeWX", "Loadingpasswd ***"),
+            (
+                b"Loading" + b"\b" * 7 + b"passwd inventeWX",
+                "Loadingpasswd ***",
+            ),
+            (b"Loading\xc2\x9b2Kpasswd inventeWX", "Loading2Kpasswd ***"),
+            (b"Loading\x1b[?2Kpasswd inventeWX", "Loadingpasswd ***"),
+            (b"Loading\x1bEpasswd inventeWX", "Loadingpasswd ***"),
+            (b"Loading\x1b[Kpasswd inventeWX", "Loadingpasswd ***"),
+            (b"\x1b[2\x1b[0mpasswd inventeWX", "[2passwd ***"),
+            (b"-token = inventeWX", "-token ***"),
+            (b"x-ypasswd = inventeWX", "x-ypasswd ***"),
+            (b"my-secret: inventeWX", "my-secret ***"),
+            (b"LoadingPGPASSWORD=inventeWX", "LoadingPGPASSWORD ***"),
+            (b"abaccessToken=inventeWX", "abaccessToken ***"),
+            (b"API key: inventeWX", "API key ***"),
+            (b"Bearer inventeWX", "Bearer ***"),
+            (b"Pa\xc5\xbf\xc5\xbfphrase: inventeWX", "Paſſphrase ***"),
+            (b"Stra\xc3\x9fe token: inventeWX", "***"),
+        ):
+            with self.subTest(data=data):
+                records, packed = self.kept([data + b"\r\n"])
+                self.assertEqual(records, [("out", masked)])
+                self.assertNotIn(b"invente", packed)
+
+    def test_a_secret_word_in_a_replaced_version_masks_the_line(self):
+        # La valeur peut s'écrire seule par-dessus son étiquette : retour
+        # chariot, retour en colonne 1 ou effacement entre les deux. Une
+        # version remplacée qui portait un mot guetté masque la ligne
+        # entière, même quand un morceau reçu plus tôt l'a déjà retirée de
+        # la ligne en cours, qu'un événement la suive, qu'elle passe
+        # PARTIAL_LIMIT ou le plafond.
+        event = {"t": "answered"}
+        pad = b" a b c d e" * 4
+        for chunks, patches in (
+            ([b"Password: \x1b[2KinventeWX\r\n"], {}),
+            ([b"password: \x1b[1GinventeWX\r\n"], {}),
+            ([b"password: \rinventeWX\r\n"], {}),
+            ([b"Password: \rinve", b"nteWX\r\n"], {}),
+            ([b"Password: ", b"\rinve", b"nteWX\r\n"], {}),
+            (
+                [b"Password: \r" + pad, b" inventeWX\r\n"],
+                {"PARTIAL_LIMIT": 20},
+            ),
+            (
+                [b"Password: \rx" + pad, b" inventeWX\r\n"],
+                {"PARTIAL_LIMIT": 20},
+            ),
+            ([b"\x1b]0;token\rinve", b"nteWX\x07 done\r\n"], {}),
+        ):
+            for between in (None, event):
+                with self.subTest(chunks=chunks, event=bool(between)):
+                    records, packed = self.kept(chunks, between, **patches)
+                    events = [("event", event)] * (len(chunks) - 1)
+                    expected = [*events, ("out", "***")] if between else []
+                    self.assertEqual(records, expected or [("out", "***")])
+                    for piece in (b"inve", b"nteWX"):
+                        self.assertNotIn(piece, packed)
+
+    def test_a_carriage_return_inside_a_split_title_hides_nothing(self):
+        # Un retour chariot dans une chaîne OSC que la suite achève dans un
+        # autre morceau : la version gardée porte le mot guetté.
+        records, packed = self.kept(
+            [b"\x1b]0;a\rb", b"c\x07passwd inventeWX\r\n"]
+        )
+        self.assertEqual(records, [("out", "bcpasswd ***")])
+        self.assertNotIn(b"invente", packed)
+
+    def test_a_line_without_a_secret_word_is_stored_unchanged(self):
+        # Ni « pass », ni « pwd », ni « auth » seuls, ni un mot qui ne fait
+        # que ressembler à un mot guetté : la ligne s'écrit telle quelle,
+        # d'un bloc ou coupée par un événement à chaque position.
+        event = {"t": "answered"}
+        for line in (
+            "Tests passed: 12",
+            "pwd",
+            "author: x",
+            "passport number 12",
+            "bypass mode on",
+            "Passports: 3 checked",
+            "authentication done",
+            "keyboard: us",
+            "Loading 50% done",
+        ):
+            with self.subTest(line=line):
+                data = (line + "\r\n").encode()
+                records, _ = self.kept([data])
+                self.assertEqual(records, [("out", line)])
+                for at in range(1, len(data) - 2):
+                    records, _ = self.kept([data[:at], data[at:]], event)
+                    texts = "".join(d for s, d in records if s == "out")
+                    self.assertEqual(texts, line)
+
+    def test_a_cut_never_lets_the_rest_of_a_secret_line_through(self):
+        # PARTIAL_LIMIT ne coupe pas une ligne qui porte un mot guetté,
+        # d'un bloc, octet par octet, un événement entre les morceaux ou
+        # non : ce qui suit le mot ne s'écrit jamais en clair.
+        event = {"t": "answered"}
+        for line in (
+            b"x" * 30 + b" a b password: inventeWX y z w",
+            b"x" * 30 + b" a b Loadingtoken = inventeWX y z w",
+            b"a b c d e f g h i j k l m secret inventeWX n o p",
+        ):
+            data = line + b"\r\n"
+            for chunks in ([data], [bytes([b]) for b in data]):
+                for between in (None, event):
+                    with self.subTest(line=line, n=len(chunks), ev=between):
+                        records, packed = self.kept(
+                            chunks, between, PARTIAL_LIMIT=12
+                        )
+                        self.assertNotIn(b"invente", packed)
+                        self.assertIn("***", records[-1][1])
+
+    def test_the_minimal_leaking_splits_keep_no_value(self):
+        # Les lignes où une coupure en deux ou trois morceaux, un
+        # événement entre chacun, laissait passer la valeur : aucune ne la
+        # garde plus, quelle que soit la coupure.
+        value = b"inventeWX"
+        event = {"t": "answered"}
+        for line in (
+            b"x-ypasswd = " + value,
+            b" x-ypasswd = " + value,
+            b"x-y\x1b[1mpasswd\x1b[0m = " + value,
+            b"abpasswd = " + value,
+            b"ab_passwd = " + value,
+            b"abpassword: " + value,
+            b"x-ytoken: " + value,
+            b"x-ymot de passe : " + value,
+            b"LoadingPGPASSWORD=" + value,
+            b"abaccessToken=" + value,
+            b"my-secret: " + value,
+            b"--db-password=" + value,
+        ):
+            data = line + b"\r\n"
+            cases = []
+            for one in range(1, len(data)):
+                cases.append(([data[:one], data[one:]], True))
+                for two in range(one + 1, len(data), 3):
+                    chunks = [data[:one], data[one:two], data[two:]]
+                    cases.append((chunks, True))
+            with self.subTest(line=line):
+                self.assertIsNone(self.leak(cases, value.decode()))
+
+    def test_an_event_text_or_a_command_keeps_nothing_after_a_secret_word(
+        self,
+    ):
+        # Le texte d'un avis ou d'une question et une commande suivent la
+        # même règle que la sortie : lus sans séquence d'échappement, une
+        # version remplacée comprise, ils ne gardent rien après un mot
+        # guetté ; l'index non plus.
+        rec = tasklog.Recorder(self.base, "s1")
+        rec.worker(dict(MENU, qid=1))
+        rec.worker({"t": "answered", "qid": 1, "key": "1"})
+        for message in (
+            {
+                "t": "notice",
+                "level": "info",
+                "text": "Loadingpasswd inventeWX",
+            },
+            {
+                "t": "notice",
+                "level": "info",
+                "text": "Password: \x1b[2KinventeWX",
+            },
+            {
+                "t": "ask",
+                "qid": 2,
+                "kind": "text",
+                "text": "\x1b[1mToken\x1b[0m: inventeWX\nNext: ",
+            },
+            {"t": "run_start", "cmd": "tool -token = inventeWX"},
+        ):
+            rec.worker(message)
+        rec.end()
+        [entry] = tasklog.entries(self.base)
+        page = tasklog.read(self.base, entry["id"], 2, 100)
+        texts = [r["d"].get("text", r["d"].get("cmd")) for r in page["lines"]]
+        self.assertEqual(
+            texts,
+            [
+                "Loadingpasswd ***",
+                "***",
+                "Token ***\nNext: ",
+                "tool -token ***",
+            ],
+        )
+        self.assertEqual(entry["commands"][0]["cmd"], "tool -token ***")
+        self.assertNotIn("invente", json.dumps(entry))
+        for path in self.base.rglob("*.zst"):
+            self.assertNotIn(b"invente", zstd.decompress(path.read_bytes()))
+
+    def test_the_secret_word_scan_is_linear(self):
+        # Chaque ligne gardée se lit une fois par mot guetté, sans casse
+        # et sans borne de mot : 64 Kio faits de mots guettés, de leurs
+        # débuts, de versions ou de blancs s'écrivent en quelques dizaines
+        # de millisecondes.
+        size = 64 * 1024
+        for line in (
+            "password" * (size // 8),
+            "passw" * (size // 5),
+            "mot de pass" * (size // 11),
+            "api ke" * (size // 6),
+            "Password: \r" * (size // 11),
+            "Password: \x1b[2K" * (size // 14),
+            "tokenx " * (size // 7),
+            " " * size + "token x",
+            "\b" * size + "passwd x",
+            "\x1b[1000D" * (size // 7) + "passwd x",
+            "ß" * size + "token x",
+        ):
+            data = (line + "\r\n").encode()
+            with self.subTest(line=line[:12]):
+                task = self.task()
+                debut = time.monotonic()
+                task.output(data)
+                task.close("done")
+                self.assertLess(time.monotonic() - debut, 0.1)
 
     def test_the_echo_of_the_answer_stays_out_before_an_event(self):
         task = self.task()
@@ -1145,34 +1450,41 @@ class TestRecorder(StoreCase):
         rec.settle(waiting)
         self.assertIsNone(rec.task)
 
-    def test_a_command_is_masked_as_shown_whole(self):
+    def test_a_command_keeps_nothing_after_a_secret_word(self):
+        # Une commande ne garde rien après son premier mot guetté, option
+        # ou « password= » sans tiret ; sans mot guetté, le masque de
+        # l'affichage y cache encore un identifiant d'URL ou MASTER_PWD. Un
+        # mot guetté dans une valeur que ce masque cache la fait partir
+        # entière.
         self.start()
-        run = "mysql --password inventeAB -h db.example base"
-        self.rec.worker({"t": "run_start", "cmd": run})
+        runs = (
+            (
+                "mysql --password inventeAB -h db.example base",
+                "mysql --password ***",
+            ),
+            (
+                'psql "host=db.example password=hunter2" base',
+                'psql "host=db.example password ***',
+            ),
+            (
+                "git clone https://u:inventeCD@forge.example/r",
+                "git clone https://u:***@forge.example/r",
+            ),
+            ("MASTER_PWD=inventeEF odoo", "MASTER_PWD='***' odoo"),
+            ("MASTER_PWD=secretGH odoo", "***"),
+        )
+        for run, _ in runs:
+            self.rec.worker({"t": "run_start", "cmd": run})
         self.rec.end()
         entry, records = self.records()
-        shown = "mysql --password '***' -h db.example base"
-        self.assertEqual(entry["commands"][0]["cmd"], shown)
+        shown = [masked for _, masked in runs]
+        self.assertEqual([c["cmd"] for c in entry["commands"]], shown)
         self.assertEqual(
-            records, [("event", {"t": "run_start", "cmd": shown})]
+            records, [("event", {"t": "run_start", "cmd": c}) for c in shown]
         )
-
-    def test_a_command_a_conninfo_password_hides_too(self):
-        # « password= » sans option ni tiret : le masque de l'affichage n'y
-        # touche pas seul (aucun « --password »), celui du stockage le
-        # rattrape sans couper ce qu'il a déjà masqué ailleurs sur la ligne.
-        self.start()
-        run = 'psql "host=db.example password=hunter2" base'
-        self.rec.worker({"t": "run_start", "cmd": run})
-        self.rec.end()
-        entry, records = self.records()
-        shown = 'psql "host=db.example password=***'
-        self.assertEqual(entry["commands"][0]["cmd"], shown)
-        self.assertEqual(
-            records, [("event", {"t": "run_start", "cmd": shown})]
-        )
-        self.assertNotIn("hunter2", repr(entry))
-        self.assertNotIn("hunter2", repr(records))
+        for secret in ("invente", "hunter2"):
+            self.assertNotIn(secret, repr(entry))
+            self.assertNotIn(secret, repr(records))
 
     def test_a_secret_answer_is_never_kept(self):
         self.start()
@@ -1250,7 +1562,7 @@ class TestRecorder(StoreCase):
             self.rec.worker({"t": kind, "qid": 2, "text": text})
         self.rec.end()
         texts = [d["text"] for s, d in self.records()[1]]
-        self.assertEqual(texts, ["Password: ***", "Password: ***"])
+        self.assertEqual(texts, ["Password ***", "Password ***"])
         for path in self.base.rglob("*.zst"):
             self.assertNotIn(b"hunter2", zstd.decompress(path.read_bytes()))
 

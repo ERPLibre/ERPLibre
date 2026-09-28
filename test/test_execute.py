@@ -489,21 +489,31 @@ class TestRedactSecrets(unittest.TestCase):
         """`shlex.quote` écrit une apostrophe en segments collés
         (« 'it'"'"'s ») : la valeur court jusqu'au premier blanc hors
         guillemets, pour l'option comme pour la variable, et un guillemet
-        jamais refermé emporte le reste du mot."""
+        jamais refermé emporte le reste du mot. Sur disque, rien ne reste
+        après le mot guetté que porte le nom d'une option."""
         mot = shlex.quote("it's9inventeAB")
-        for ligne, attendu in (
-            (f"tool --password {mot} -v", "tool --password '***' -v"),
-            (f"tool --token=\"a b\"'c'{mot} -v", "tool --token='***' -v"),
-            (f"MASTER_PWD={mot} odoo", "MASTER_PWD='***' odoo"),
-            ("tool --password 'inventeCD", "tool --password '***'"),
-            ("tool --password ab'inventeEF -v", "tool --password '***' -v"),
+        cut = "tool --password ***"
+        for ligne, attendu, stocke in (
+            (f"tool --password {mot} -v", "tool --password '***' -v", cut),
+            (
+                f"tool --token=\"a b\"'c'{mot} -v",
+                "tool --token='***' -v",
+                "tool --token ***",
+            ),
+            (f"MASTER_PWD={mot} odoo", "MASTER_PWD='***' odoo", None),
+            ("tool --password 'inventeCD", "tool --password '***'", cut),
+            (
+                "tool --password ab'inventeEF -v",
+                "tool --password '***' -v",
+                cut,
+            ),
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_secrets(ligne), attendu)
-                stored = redact_for_storage(ligne)
-                self.assertNotIn("invente", stored)
+                stocke = stocke or attendu
+                self.assertEqual(redact_for_storage(ligne), stocke)
                 self.assertEqual(
-                    redact_for_storage(redact_secrets(ligne), True), attendu
+                    redact_for_storage(redact_secrets(ligne), True), stocke
                 )
 
     def test_a_long_word_or_run_of_dashes_is_fast(self):
@@ -661,25 +671,26 @@ class TestRedactUrlCredentials(unittest.TestCase):
 class TestRedactForStorage(unittest.TestCase):
     """Ce qu'une ligne de sortie devient avant d'être gardée sur disque :
     `redact_secrets`, puis le reste d'une ligne qui imprime un mot de passe
-    après son mot. Valeurs inventées."""
+    après son mot, puis tout ce qui suit le premier mot guetté
+    (SECRET_WORDS), séparateur compris. Valeurs inventées."""
 
     def test_a_printed_password_is_masked_after_its_word(self):
         for ligne, attendu in (
-            ("Password: inventeAB", "Password: ***"),
-            ("admin password=inventeCD", "admin password=***"),
+            ("Password: inventeAB", "Password ***"),
+            ("admin password=inventeCD", "admin password ***"),
             ("passwd inventeEF", "passwd ***"),
-            ("Mot de passe : inventeGH", "Mot de passe : ***"),
-            ("PASSWORD:inventeIJ et la suite", "PASSWORD:***"),
-            ("a\nPassword: inventeKL\nb", "a\nPassword: ***\nb"),
+            ("Mot de passe : inventeGH", "Mot de passe ***"),
+            ("PASSWORD:inventeIJ et la suite", "PASSWORD ***"),
+            ("a\nPassword: inventeKL\nb", "a\nPassword ***\nb"),
             # Une clé de configuration ou de JSON, et l'espace insécable
             # de la typographie française.
-            ("admin_passwd = inventeMN", "admin_passwd = ***"),
-            ("db_password = inventeOP", "db_password = ***"),
-            ("POSTGRES_PASSWORD: inventeQR", "POSTGRES_PASSWORD: ***"),
-            ('{"password": "inventeST"}', '{"password": ***'),
-            ("{'password': 'inventeUV'}", "{'password': ***"),
-            ("Mot de passe : inventeWX", "Mot de passe : ***"),
-            ("Password? inventeYZ", "Password? ***"),
+            ("admin_passwd = inventeMN", "admin_passwd ***"),
+            ("db_password = inventeOP", "db_password ***"),
+            ("POSTGRES_PASSWORD: inventeQR", "POSTGRES_PASSWORD ***"),
+            ('{"password": "inventeST"}', '{"password ***'),
+            ("{'password': 'inventeUV'}", "{'password ***"),
+            ("Mot de passe : inventeWX", "Mot de passe ***"),
+            ("Password? inventeYZ", "Password ***"),
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
@@ -689,17 +700,17 @@ class TestRedactForStorage(unittest.TestCase):
         majuscules préfixé, un suffixe collé, ou les clés passphrase,
         api_key, token et secret, suivis de « : », « = » ou « ? »."""
         for ligne, attendu in (
-            ("PGPASSWORD: inventeAB", "PGPASSWORD: ***"),
-            ("new_password1 = inventeCD", "new_password1 = ***"),
-            ("password_confirm: inventeEF", "password_confirm: ***"),
-            ("passphrase: inventeGH", "passphrase: ***"),
-            ("api_key: inventeIJ", "api_key: ***"),
-            ("apikey = inventeKL", "apikey = ***"),
-            ('{"api-key": "inventeMN"}', '{"api-key": ***'),
-            ("token: inventeOP", "token: ***"),
-            ("GITHUB_TOKEN = inventeQR", "GITHUB_TOKEN = ***"),
-            ("client_secret: inventeST", "client_secret: ***"),
-            ("Secret? inventeUV", "Secret? ***"),
+            ("PGPASSWORD: inventeAB", "PGPASSWORD ***"),
+            ("new_password1 = inventeCD", "new_password ***"),
+            ("password_confirm: inventeEF", "password ***"),
+            ("passphrase: inventeGH", "passphrase ***"),
+            ("api_key: inventeIJ", "api_key ***"),
+            ("apikey = inventeKL", "apikey ***"),
+            ('{"api-key": "inventeMN"}', '{"api-key ***'),
+            ("token: inventeOP", "token ***"),
+            ("GITHUB_TOKEN = inventeQR", "GITHUB_TOKEN ***"),
+            ("client_secret: inventeST", "client_secret ***"),
+            ("Secret? inventeUV", "Secret ***"),
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
@@ -708,29 +719,31 @@ class TestRedactForStorage(unittest.TestCase):
         """Le mot d'un secret se trouve n'importe où dans le nom de la clé :
         derrière une minuscule (camelCase) ou collé à un préfixe."""
         for ligne, attendu in (
-            ("accessToken: inventeAB", "accessToken: ***"),
-            ("refreshToken=inventeCD", "refreshToken=***"),
-            ("clientSecret: inventeEF", "clientSecret: ***"),
-            ("adminPassword: inventeGH", "adminPassword: ***"),
-            ("apiKey: inventeIJ", "apiKey: ***"),
-            ("pgpassword=inventeKL", "pgpassword=***"),
-            ('{"accessToken": "inventeMN"}', '{"accessToken": ***'),
+            ("accessToken: inventeAB", "accessToken ***"),
+            ("refreshToken=inventeCD", "refreshToken ***"),
+            ("clientSecret: inventeEF", "clientSecret ***"),
+            ("adminPassword: inventeGH", "adminPassword ***"),
+            ("apiKey: inventeIJ", "apiKey ***"),
+            ("pgpassword=inventeKL", "pgpassword ***"),
+            ('{"accessToken": "inventeMN"}', '{"accessToken ***'),
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
 
-    def test_an_ordinary_word_is_not_a_key(self):
-        """Sans « : », « = » ni « ? » derrière elle, une clé n'en est pas
-        une ; un mot qui ne fait que commencer comme elle non plus."""
-        for ligne in (
-            "passport number 12",
-            "tokenizer output ready",
-            "token expired, sign in again",
-            "the secret ingredient",
-            "Passports: 3 checked",
+    def test_a_word_that_holds_a_secret_word_masks_the_rest(self):
+        """Sans séparateur derrière elle, une clé n'en est pas une pour les
+        motifs ; le mot guetté qu'elle porte, en tête d'un mot plus long ou
+        seul, masque pourtant ce qui le suit. « passport » n'en porte
+        aucun."""
+        for ligne, attendu in (
+            ("passport number 12", "passport number 12"),
+            ("tokenizer output ready", "token ***"),
+            ("token expired, sign in again", "token ***"),
+            ("the secret ingredient", "the secret ***"),
+            ("Passports: 3 checked", "Passports: 3 checked"),
         ):
             with self.subTest(ligne=ligne):
-                self.assertEqual(redact_for_storage(ligne), ligne)
+                self.assertEqual(redact_for_storage(ligne), attendu)
 
     def test_a_long_key_like_word_is_fast(self):
         """Une clé se lit mot par mot, séparateur et valeur vérifiés avant
@@ -799,6 +812,83 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(ligne=ligne):
                 self.assertNotIn("invente", redact_for_storage(ligne))
 
+    def test_a_secret_word_masks_the_rest_of_its_line(self):
+        """Un mot guetté, sans casse et sans borne de mot, masque la fin de
+        sa ligne où qu'il tombe : collé au mot qui le précède, derrière un
+        tiret, sans séparateur, un « i » écrit « ı » ou « İ » compris. Rien
+        ne suit le mot : rien à masquer. Une ligne dont casefold change la
+        longueur ne situe pas son mot : elle part entière."""
+        for ligne, attendu in (
+            ("Loadingpasswd inventeAB", "Loadingpasswd ***"),
+            ("x-ypasswd = inventeCD", "x-ypasswd ***"),
+            ("-token = inventeEF", "-token ***"),
+            ("tool -token = inventeGH", "tool -token ***"),
+            ("abaccessToken=inventeIJ", "abaccessToken ***"),
+            ("Bearer inventeKL", "Bearer ***"),
+            ("API key: inventeMN", "API key ***"),
+            ("passphrase inventeOP", "passphrase ***"),
+            ("Loadingmot de passe inventeQR", "Loadingmot de passe ***"),
+            ("Paſſword inventeST", "Paſſword ***"),
+            ("Loadingapıkey inventeYZ", "Loadingapıkey ***"),
+            ("Authorİzation inventeAB", "Authorİzation ***"),
+            ("a\nLoadingpasswd inventeUV\nb", "a\nLoadingpasswd ***\nb"),
+            ("Straße token inventeWX", "***"),
+            ("Enter the password", "Enter the password"),
+            ("OPENAI_API_KEY=inventeCD run", "OPENAI_API_KEY ***"),
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), attendu)
+
+    def test_a_secret_word_inside_a_masked_value_masks_the_line(self):
+        """Le mot guetté se cherche dans la ligne avant les motifs : dans la
+        valeur qu'un motif cache (identifiant d'URL, MASTER_PWD=), ou
+        derrière une telle valeur, il ne se situe plus dans la ligne
+        masquée, qui part entière."""
+        for ligne in (
+            "MASTER_PWD=secretAB inventeCD",
+            "git clone https://u:tokenEF@forge.example/r inventeGH",
+            "clone https://u:inventeIJ@forge.example/r token inventeKL",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), "***")
+
+    def test_a_line_without_a_secret_word_is_unchanged(self):
+        """« pass », « pwd » et « auth » seuls ne sont pas des mots
+        guettés, ni un mot qui ne fait que ressembler à l'un d'eux."""
+        for ligne in (
+            "Tests passed: 12",
+            "pwd",
+            "author: x",
+            "passport number 12",
+            "bypass mode on",
+            "Passports: 3 checked",
+            "authentication done",
+            "keyboard: us",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), ligne)
+
+    def test_the_secret_word_scan_is_linear(self):
+        """Chaque mot guetté se cherche une fois dans la ligne passée par
+        casefold : 64 Kio de mots guettés, de leurs débuts ou de blancs
+        se masquent en quelques millisecondes."""
+        size = 64 * 1024
+        for ligne in (
+            "password" * (size // 8),
+            "passw" * (size // 5),
+            "mot de pass" * (size // 11),
+            "api ke" * (size // 6),
+            "tokenx " * (size // 7),
+            " " * size + "token x",
+            "ß" * size + "token x",
+            "a\n" * (size // 2),
+            "token x\n" * (size // 8),
+        ):
+            with self.subTest(debut=ligne[:10]):
+                debut = time.monotonic()
+                redact_for_storage(ligne)
+                self.assertLess(time.monotonic() - debut, 0.05)
+
     def test_redact_secrets_comes_first(self):
         ligne = "Cloning https://u:inventeMN@forge.example/o/r.git"
         self.assertEqual(
@@ -806,17 +896,19 @@ class TestRedactForStorage(unittest.TestCase):
             "Cloning https://u:***@forge.example/o/r.git",
         )
 
-    def test_a_prompt_and_other_words_survive(self):
-        for ligne in (
-            "Password: ",
-            "[sudo] password:",
-            "Passwords rotate daily",
-            "passwordless login",
-            "make test_unit",
-            "",
+    def test_a_prompt_keeps_its_word_and_other_lines_survive(self):
+        """Une invite perd ce qui suit son mot guetté, séparateur compris ;
+        une ligne sans mot guetté reste entière."""
+        for ligne, attendu in (
+            ("Password: ", "Password ***"),
+            ("[sudo] password:", "[sudo] password ***"),
+            ("Passwords rotate daily", "Password ***"),
+            ("passwordless login", "password ***"),
+            ("make test_unit", "make test_unit"),
+            ("", ""),
         ):
             with self.subTest(ligne=ligne):
-                self.assertEqual(redact_for_storage(ligne), ligne)
+                self.assertEqual(redact_for_storage(ligne), attendu)
         self.assertIsNone(redact_for_storage(None))
 
 
@@ -831,6 +923,7 @@ class TestHoldsSecretTrigger(unittest.TestCase):
             "clone https://",
             "PGPASSWORD=",
             "Mot de passe : inv",
+            "Bearer x",
         ):
             with self.subTest(texte=texte):
                 self.assertTrue(holds_secret_trigger(texte))

@@ -199,31 +199,110 @@ _PASSWORD_LINE_KEEP_MASKED = re.compile(
 # Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,
 # cherchés dans la ligne passée par casefold, qui rend comme la comparaison
 # sans casse des motifs « ſ » en « s ». Aucun ne porte de « i » : le « ı »
-# sans point l'égale sans casse, et casefold ne le rend pas.
-_TRIGGERS = ("pass", "pwd", "secret", "token", "key", "auth", "://")
+# sans point l'égale sans casse, et casefold ne le rend pas. Chaque mot de
+# SECRET_WORDS en contient un.
+_TRIGGERS = ("pass", "pwd", "secret", "token", "key", "auth", "bearer", "://")
+# Mots dont la présence masque le reste de leur ligne sur disque, où qu'ils
+# tombent : sans casse (casefold) et sans borne de mot, collés au mot qui
+# les précède (« Loadingpasswd ») comme seuls. Ni « pass », ni « pwd », ni
+# « auth » seuls : « Tests passed », la commande pwd et « author » y
+# perdraient leur fin.
+SECRET_WORDS = (
+    "password",
+    "passwd",
+    "passphrase",
+    "mot de passe",
+    "secret",
+    "token",
+    "apikey",
+    "api_key",
+    "api-key",
+    "api key",
+    "authorization",
+    "bearer",
+)
+# Ce qui remplace la fin d'une ligne derrière son premier mot guetté, ou la
+# ligne entière.
+TAINT_MASK = "***"
+
+
+def _fold(text) -> str:
+    """`text` passé par casefold, le « ı » sans point rendu « i » et le
+    point que casefold ajoute à « İ » retiré : un mot de SECRET_WORDS s'y
+    trouve comme les motifs, sans casse, le trouvent."""
+    return text.casefold().replace("ı", "i").replace("\u0307", "")
+
+
+def _first_secret_word(folded) -> int:
+    """Fin du premier mot de SECRET_WORDS dans `folded` (`_fold`), ou -1.
+    Chaque mot se cherche une fois, et, dès qu'un mot est trouvé,
+    seulement dans ce qui le précède."""
+    start, end = -1, -1
+    for word in SECRET_WORDS:
+        stop = len(folded) if start < 0 else start + len(word) - 1
+        at = folded.find(word, 0, stop)
+        if at >= 0:
+            start, end = at, at + len(word)
+    return end
+
+
+def holds_secret_word(text) -> bool:
+    """Vrai si `text` porte un mot de SECRET_WORDS, sans casse."""
+    return bool(text) and _first_secret_word(_fold(text)) >= 0
+
+
+def _taint(line, masked) -> str:
+    """Ce qu'une ligne garde sur disque : `line` jusqu'à la fin de son
+    premier mot de SECRET_WORDS, suivie de « *** » si quelque chose le
+    suivait ; sans aucun mot, `masked`, ce que les motifs en ont fait.
+
+    TAINT_MASK seul quand le mot ne se situe plus : `_fold` change la
+    longueur de `line` (« ß » en « ss »), ou un motif a remplacé quelque
+    chose avant la fin du mot (un mot dans la valeur d'un identifiant
+    d'URL ou de MASTER_PWD=, qu'un motif cache déjà)."""
+    folded = _fold(line)
+    end = _first_secret_word(folded)
+    if end < 0:
+        return masked
+    if len(folded) != len(line) or masked[:end] != line[:end]:
+        return TAINT_MASK
+    if end == len(line):
+        return line
+    return line[:end] + " " + TAINT_MASK
 
 
 def redact_for_storage(text, keep_masked=False):
     """`redact_secrets(text)`, puis, sur chaque ligne qui imprime un mot de
-    passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** ». Avec
-    `keep_masked`, une valeur déjà réduite à « '***' » n'est pas reprise et
-    ce qui la suit sur la ligne reste (`_PASSWORD_LINE_KEEP_MASKED`).
+    passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** » ; puis
+    chaque ligne qui porte un mot de SECRET_WORDS coupée après le premier
+    (`_taint`). Avec `keep_masked`, `_PASSWORD_LINE_KEEP_MASKED` ne reprend
+    pas une valeur déjà réduite à « '***' ».
 
     Pour ce que le hub garde sur disque, jamais pour l'affichage : à
     l'écran, « No password needed » se lit en entier ; dans un journal, il
-    devient « No password *** », et un mot de passe imprimé n'y reste pas.
-    Un texte sans aucun mot de `_TRIGGERS` est rendu tel quel sans essayer
-    de motif : le hub passe chaque ligne de sortie d'une session dans sa
-    boucle, que les autres sessions attendent.
+    devient « No password *** », et un mot de passe imprimé n'y reste pas,
+    quelle que soit la forme de son étiquette. Le mot se cherche dans la
+    ligne telle que `text` la porte, les motifs attrapant seuls ce qu'aucun
+    mot ne nomme (un identifiant d'URL, MASTER_PWD=). Une valeur entre
+    guillemets que les motifs masquent d'une ligne à l'autre en retire des
+    fins de ligne : chaque ligne masquée se lit alors seule. Un texte sans
+    aucun mot de `_TRIGGERS` est rendu tel quel sans essayer de motif : le
+    hub passe chaque ligne de sortie d'une session dans sa boucle, que les
+    autres sessions attendent.
     """
     if not text:
         return text
     folded = text.casefold()
     if not any(word in folded for word in _TRIGGERS):
         return text
-    text = redact_secrets(text)
     pattern = _PASSWORD_LINE_KEEP_MASKED if keep_masked else _PASSWORD_LINE
-    return pattern.sub(lambda m: m.group("head") + "***", text)
+    masked = pattern.sub(
+        lambda m: m.group("head") + "***", redact_secrets(text)
+    ).split("\n")
+    lines = text.split("\n")
+    if len(lines) != len(masked):
+        lines = masked
+    return "\n".join(_taint(*pair) for pair in zip(lines, masked))
 
 
 def holds_secret_trigger(text) -> bool:
