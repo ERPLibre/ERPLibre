@@ -99,7 +99,7 @@ async def repos(pilote, tours=30, delai=0.05):
         await pilote.pause()
 
 
-def scene(conversation, gestes, *, apres=None):
+def scene(conversation, gestes, *, apres=None, archiver=None):
     """Ouvre l'écran, tape `gestes`, et rend les bulles."""
 
     async def scenario():
@@ -107,6 +107,7 @@ def scene(conversation, gestes, *, apres=None):
             conversation,
             "serveur ▸ ",
             on_save=None if apres is None else apres,
+            archiver=archiver,
             aide=[("/q", "quitter")],
             run_app=False,
         )
@@ -125,6 +126,56 @@ def scene(conversation, gestes, *, apres=None):
             return bulles(app), app
 
     return asyncio.run(scenario())
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class LaSeanceGardeCeQuiSeDitIci(unittest.TestCase):
+    """L'écran et la boucle en ligne parlent à la MÊME conversation.
+
+    La boucle seule écrivait la séance : un échange tenu ici ne laissait rien,
+    et le fil se coupait à l'endroit où l'on avait changé d'écran. Ce qui est
+    éprouvé est le contrat — un tour rendu, un tour archivé — et non
+    l'écriture elle-même, qui appartient au menu.
+    """
+
+    def _gardes(self, conversation, gestes):
+        gardes = []
+        scene(conversation, gestes, archiver=gardes.append)
+        return [(tour.role, tour.text) for tour in gardes]
+
+    def test_la_question_et_la_reponse_rejoignent_la_seance(self):
+        gardes = self._gardes(
+            FausseConversation(["bon", "jour"]), ["une question inventée"]
+        )
+        self.assertEqual(
+            [("user", "une question inventée"), ("assistant", "bonjour")],
+            gardes,
+        )
+
+    def test_une_panne_ne_laisse_rien(self):
+        """Un tour en panne n'entre pas dans l'historique en mémoire ; le
+        garder ici ferait repartir une question sans sa réponse."""
+        gardes = self._gardes(
+            FausseConversation([], erreur="404 inventé"),
+            ["une question inventée"],
+        )
+        self.assertEqual([], gardes)
+
+    def test_une_reponse_vide_ne_fait_pas_un_echange(self):
+        """Rien n'est arrivé : la paire serait écartée à la relecture, et
+        n'encombre donc pas le fichier."""
+        gardes = self._gardes(
+            FausseConversation([]), ["une question inventée"]
+        )
+        self.assertEqual([], gardes)
+
+    def test_l_ecran_tient_sans_archiviste(self):
+        """Le menu peut l'ouvrir sans séance à nourrir, et l'écran ne doit
+        pas en dépendre pour afficher."""
+        bulles_vues, _app = scene(
+            FausseConversation(["bon", "jour"]), ["une question inventée"]
+        )
+        self.assertTrue(any("bonjour" in b for b in bulles_vues))
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")

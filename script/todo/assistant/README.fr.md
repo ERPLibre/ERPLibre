@@ -116,6 +116,14 @@ après-midi. Reprendre recharge les tours dans l'historique — le modèle reço
 au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
 s'ajoute au MÊME fichier.
 
+TOUS les écrans écrivent, parce qu'ils parlent à la même conversation : la
+boucle en ligne, l'écran des durées et le formulaire plein écran. Celui qui
+ne le ferait pas couperait le fil à l'endroit exact où l'on a changé d'écran,
+sans que rien ne le dise. Ce qui s'écrit est ce qui ENTRE dans l'historique
+et rien d'autre : un tour en panne laisse sa question sur le disque sans
+jamais la rendre, et une réponse coupée avant son premier mot n'est pas un
+échange.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des

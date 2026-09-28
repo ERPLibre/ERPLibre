@@ -116,6 +116,13 @@ loads the turns back into the history — the model receives, on the next turn,
 what it would have received without the interruption — and the rest is
 appended to the SAME file.
 
+EVERY screen writes, because they all speak to the same conversation: the
+line-by-line loop, the timings screen and the full-screen form. One that did
+not would cut the thread exactly where the screen was changed, and nothing
+would say so. What is written is what ENTERS the history and nothing else — a
+failed turn leaves the question on disk but never returns it, and an answer
+cut before its first word is not an exchange.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines
@@ -777,6 +784,14 @@ ouverte : une date et un modèle ne distinguent pas deux conversations du même
 après-midi. Reprendre recharge les tours dans l'historique — le modèle reçoit
 au tour suivant ce qu'il aurait reçu sans l'interruption — et la suite
 s'ajoute au MÊME fichier.
+
+TOUS les écrans écrivent, parce qu'ils parlent à la même conversation : la
+boucle en ligne, l'écran des durées et le formulaire plein écran. Celui qui
+ne le ferait pas couperait le fil à l'endroit exact où l'on a changé d'écran,
+sans que rien ne le dise. Ce qui s'écrit est ce qui ENTRE dans l'historique
+et rien d'autre : un tour en panne laisse sa question sur le disque sans
+jamais la rendre, et une réponse coupée avant son premier mot n'est pas un
+échange.
 
 ## Une adresse ne devient jamais du texte de prompt
 

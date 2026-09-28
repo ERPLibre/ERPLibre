@@ -45,6 +45,7 @@ def run_chat(
     invite,
     *,
     on_save=None,
+    archiver=None,
     aide=(),
     run_app: bool = True,
 ):
@@ -54,6 +55,11 @@ def run_chat(
     ligne d'état — serveur, modèle, hébergement — affichée en titre.
     `on_save()` écrit la transcription ; `aide` est une suite de
     `(commande, explication)` pour `/?`.
+
+    `archiver(tour)` garde un tour dans la séance. Sans lui, une conversation
+    tenue ICI ne laisse rien : l'écran et la boucle en ligne parlent à la
+    même conversation, mais la boucle seule écrivait, et le fil se coupait
+    à l'endroit où l'on avait changé d'écran.
 
     Rend le nombre de tours de la conversation à la fermeture. `run_app=False`
     rend l'application sans la lancer, pour un contrôle sans terminal.
@@ -152,9 +158,9 @@ def run_chat(
                 self.call_from_thread(self._peindre)
 
             tour = conversation.ask(texte, on_chunk=fragment)
-            self.call_from_thread(self._fini, tour)
+            self.call_from_thread(self._fini, tour, texte)
 
-        def _fini(self, tour):
+        def _fini(self, tour, question=""):
             self._occupe = False
             if tour.role == "error":
                 if self._bulle is not None:
@@ -168,6 +174,12 @@ def run_chat(
                 self._peindre()
                 if tour.interrupted:
                     self._noter(f"⏹ {t('answer interrupted')}")
+            # Ce qui entre dans l'historique, et rien d'autre : une panne n'y
+            # laisse rien, et une coupure d'avant le premier mot non plus.
+            # Garder une paire que la relecture écarte ne ferait qu'encombrer.
+            if archiver is not None and tour.role != "error" and tour.text:
+                archiver(llm_chat.Turn("user", question))
+                archiver(tour)
             self._bulle = None
             saisie = self.query_one("#saisie", Input)
             saisie.disabled = False

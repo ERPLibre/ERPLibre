@@ -3772,10 +3772,14 @@ class AssistantMenuMixin:
             from script.todo.chat_form import run_chat
         except ImportError:
             return False
+        from script.todo.assistant import sessions as llm_seances
+
+        fichier = self._llm_state().get("seance_fichier")
         run_chat(
             conversation,
             invite,
             on_save=lambda: self._llm_save(conversation),
+            archiver=lambda tour: llm_seances.noter(fichier, tour),
             aide=[
                 (nom, t(llm_chat.COMMANDS[nom])) for nom in COMMANDES_PHASE_1
             ],

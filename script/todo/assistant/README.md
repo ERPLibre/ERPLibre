@@ -111,6 +111,13 @@ loads the turns back into the history — the model receives, on the next turn,
 what it would have received without the interruption — and the rest is
 appended to the SAME file.
 
+EVERY screen writes, because they all speak to the same conversation: the
+line-by-line loop, the timings screen and the full-screen form. One that did
+not would cut the thread exactly where the screen was changed, and nothing
+would say so. What is written is what ENTERS the history and nothing else — a
+failed turn leaves the question on disk but never returns it, and an answer
+cut before its first word is not an exchange.
+
 ## An address never becomes prompt text
 
 An SSH alias, a host name, an IP address, a VM name all designate machines

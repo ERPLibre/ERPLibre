@@ -993,7 +993,7 @@ def run_tui(
                 erreur=erreur,
             )
             self._noter_heures()
-            if tour is not None and tour.role != "error":
+            if tour is not None and tour.role != "error" and tour.text:
                 from script.todo.assistant.chat import Turn
 
                 archiver(Turn("user", question))
