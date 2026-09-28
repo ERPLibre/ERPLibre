@@ -1,0 +1,566 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Les séquences du moteur, lues dans son registre, et ce que todo en conduit.
+
+Le Makefile du moteur porte plus de cent trente cibles documentées et ne dit
+NULLE PART dans quel ordre les jouer. Le registre des runbooks le dit : il
+range les cibles en dix-sept séquences, chacune avec son but, et donne à
+chaque étape son « pourquoi », qui n'a de sens qu'à sa place dans la suite.
+
+**RIEN N'EST MASQUÉ.** Une séquence dont on retirerait les étapes que todo ne
+lance pas mentirait par omission : huit des dix-sept en ont, et l'une
+commencerait à son étape 2. Chaque étape est donc affichée, et ce qui ne se
+lance pas d'ici porte la RAISON pour laquelle il ne se lance pas. C'est le
+même parti que l'écran d'état, qui montre ses dix lignes avec trois marques
+plutôt que la seule liste de ce qui est prêt.
+
+**LA RÈGLE DE PÉRIMÈTRE EST ÉCRITE UNE FOIS**, dans `barriere()`. Deux
+copies diraient tôt ou tard deux choses différentes du même geste.
+
+Rien ici ne lance quoi que ce soit : le texte arrive de l'exécuteur.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import NamedTuple
+
+# La commande qui rend le registre assemblé. Le moteur l'expose depuis la
+# contribution `--json` ; sans elle, il faudrait analyser un arbre fait pour
+# l'œil, qui dérive au premier changement de mise en page.
+ARGV_REGISTRE = (
+    "python3",
+    "-B",
+    "scripts/runbooks.py",
+    "lister",
+    "--json",
+)
+
+# Les natures que le registre déclare, et ce qu'elles valent pour todo.
+MESURE = "mesure"
+ECRITURE = "ecriture"
+DESTRUCTIF = "destructif"
+NATURES = (MESURE, ECRITURE, DESTRUCTIF)
+
+# Les portées du registre. `poste` et `toute` ne demandent rien ; `tenant`
+# veut un écosystème monté, `site` veut l'underlay du site.
+TENANT = "tenant"
+SITE = "site"
+POSTE = "poste"
+TOUTE = "toute"
+PORTEES = (TENANT, SITE, POSTE, TOUTE)
+
+# Les raisons de ne pas conduire une étape depuis ici. Vocabulaire CLOS : une
+# raison de plus s'ajoute ici, et l'écran la traduit — jamais l'inverse.
+DESTRUCTIVE = "destructive"
+A_REMETTRE = "a-remettre"
+CONFIRMATION_MOTEUR = "confirmation-moteur"
+SANS_ECOSYSTEME = "sans-ecosysteme"
+SANS_SITE = "sans-site"
+FORME_INCONNUE = "forme-inconnue"
+BARRIERES = (
+    DESTRUCTIVE,
+    A_REMETTRE,
+    CONFIRMATION_MOTEUR,
+    SANS_ECOSYSTEME,
+    SANS_SITE,
+    FORME_INCONNUE,
+)
+
+# La variable que les applicateurs du moteur lisent pour écrire au lieu de
+# simuler. Une étape qui l'exige est réservée aux phases d'écriture assumée.
+CONFIRMER = "CONFIRMER"
+
+
+class Ecart(NamedTuple):
+    """Ce que todo sait d'une cible et que le registre ne dit pas ENCORE.
+
+    `remis` : la cible se tape SOI-MÊME, todo ne la conduit jamais. Deux
+    familles y tombent, et pour la même raison de fond : elle attend une
+    réponse à une invite — une phrase de passe gpg, un secret — que l'exécuteur
+    ne peut pas lui donner, puisqu'il ferme l'entrée de tout geste. Conduite
+    quand même, elle lirait une entrée close, rendrait « EOF » et n'aurait rien
+    fait : un refus que rien n'explique. Le moteur en marque d'ailleurs une
+    partie « À LANCER SOI-MÊME, PAS PAR UN AGENT ».
+
+    `variable` : ce qu'une cible remise exige sur sa ligne. Remise sans elle,
+    la ligne se fait refuser par le moteur et la remise n'aurait rien donné.
+
+    `ecrit` : elle touche au système alors que sa nature déclarée dit le
+    contraire. Todo pose sa propre confirmation dessus.
+
+    `drapeau` : le nom d'une variable qui est un INTERRUPTEUR et non une
+    valeur. La recette la lit par `$(if $(NOM),…)`, où GNU make tient toute
+    chaîne non vide pour vraie : « 0 » force donc autant que « 1 ». Todo ne
+    demande jamais sa valeur — il pose une question fermée et passe « 1 », ou
+    ne passe rien du tout.
+    """
+
+    remis: bool = False
+    variable: str = ""
+    ecrit: bool = False
+    drapeau: str = ""
+    pourquoi: str = ""
+
+
+# LES ÉCARTS SONT NOMMÉS, PAS DISPERSÉS. Chacun est un manque du registre en
+# amont, et une épreuve rougit le jour où le registre le dit lui-même : l'entrée
+# doit alors partir, sans quoi elle masquerait la correction. C'est la seule
+# façon qu'une table de dérogations ne vieillisse pas en silence.
+ECARTS = {
+    "config": Ecart(
+        remis=True,
+        ecrit=True,
+        pourquoi=(
+            "assistant qui écrit la configuration Proxmox et sème la voûte,"
+            " en demandant un secret par une invite muette"
+        ),
+    ),
+    "cles-exporter": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="gpg demande une phrase de passe ; le moteur la réserve à un humain",
+    ),
+    "cles-compagnons": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="même famille que l'export : une phrase de passe gpg",
+    ),
+    "cles-restaurer": Ecart(
+        remis=True,
+        variable="ARCHIVE",
+        pourquoi="remet des clés en place, et gpg demande une phrase de passe",
+    ),
+    "remise-paquet": Ecart(
+        remis=True,
+        variable="VERS",
+        pourquoi="gpg demande une phrase de passe ; le moteur la réserve à un humain",
+    ),
+    "instancier-appliquer": Ecart(
+        drapeau="FORCE",
+        pourquoi=(
+            "son libellé enseigne « FORCE=1 », mais la recette lit toute"
+            " chaîne non vide : « 0 » passe outre le diff tout autant"
+        ),
+    ),
+}
+
+
+# LES ONZE PORTES des gestes d'écriture, et le nom de chacune à l'écran. Le
+# libellé de la PORTE appartient à todo — court, stable, traduit, il doit tenir
+# sur une ligne de menu ; TOUT ce qui décrit le geste vient du registre, relu à
+# chaque visite : libellé complet, pourquoi, nature, portée, durée, variables et
+# leurs invites. Une seule source, onze portes d'entrée.
+#
+# Une porte dont la cible n'est pas déclarée au registre ne mène nulle part, et
+# une épreuve la refuse.
+PORTE_INSTANCIER = "Set-OPS - Generate the inventory, diff first"
+PORTE_INSTANCIER_APPLIQUER = "Set-OPS - Take the generated inventory"
+PORTE_DEPLOYER = "Set-OPS - Deploy one host, layer by layer"
+PORTE_DEPLOYER_GROUPE = "Set-OPS - Deploy one group across the fleet"
+PORTE_APPLIQUER = "Set-OPS - Apply one group to the fleet"
+PORTE_CREER_VM = "Set-OPS - Create one VM and wait for it"
+PORTE_FLOTTE_CREER = "Set-OPS - Create the fleet's missing VMs"
+PORTE_FLUX = "Set-OPS - Regenerate the flows and the firewall rules"
+PORTE_SITE = "Set-OPS - Regenerate the site playbook"
+PORTE_GENOME_INSCRIRE = "Set-OPS - Record the parentage in the instance"
+PORTE_CONFIG = "Set-OPS - Proxmox assistant (asks you for a secret)"
+
+PORTES = {
+    "instancier": PORTE_INSTANCIER,
+    "instancier-appliquer": PORTE_INSTANCIER_APPLIQUER,
+    "deployer": PORTE_DEPLOYER,
+    "deployer-groupe": PORTE_DEPLOYER_GROUPE,
+    "appliquer": PORTE_APPLIQUER,
+    "creer-vm": PORTE_CREER_VM,
+    "flotte-creer": PORTE_FLOTTE_CREER,
+    "flux": PORTE_FLUX,
+    "site": PORTE_SITE,
+    "genome-inscrire": PORTE_GENOME_INSCRIRE,
+    "config": PORTE_CONFIG,
+}
+
+
+def methode(cible) -> str:
+    """Le nom de la méthode qui ouvre la porte de `cible`.
+
+    DÉRIVÉ de la cible, et non écrit à côté : une épreuve retrouve ainsi la
+    méthode de chaque porte sans table à tenir à jour, et une porte sans
+    méthode se voit.
+    """
+    return "_setops_geste_" + (cible or "").strip().replace("-", "_")
+
+
+def trouve(runbooks, cible):
+    """L'`Etape` que le registre déclare pour `cible`, ou None.
+
+    Une cible peut figurer dans plusieurs séquences. Tant que ces déclarations
+    sont IDENTIQUES, la porte en ouvre une sans ambiguïté. Si elles divergent,
+    la porte ne peut pas choisir à la place de l'opérateur et rend None : une
+    porte qui trancherait au hasard lancerait parfois l'autre geste.
+    """
+    cible = (cible or "").strip()
+    vues = [
+        etape
+        for runbook in runbooks or ()
+        for etape in runbook.etapes
+        if etape.cible == cible
+    ]
+    if not vues or len(set(vues)) > 1:
+        return None
+    return vues[0]
+
+
+def ecart(cible):
+    """L'`Ecart` de `cible`, ou un écart vide. Jamais None : l'appelant lit
+    toujours des champs, et un None ferait un test de plus à chaque usage."""
+    return ECARTS.get((cible or "").strip(), Ecart())
+
+
+class Variable(NamedTuple):
+    """Une variable qu'une étape attend, telle que le registre la décrit.
+
+    `invite` est le texte que le MOTEUR a écrit pour la demander : le
+    reformuler ici ferait deux libellés pour la même question, et celui du
+    moteur est celui que sa console affiche déjà.
+    """
+
+    nom: str
+    invite: str
+    facultative: bool
+
+
+class Etape(NamedTuple):
+    """Une étape d'un runbook, telle que le registre l'écrit."""
+
+    cible: str
+    libelle: str
+    portee: str
+    nature: str
+    pourquoi: str
+    duree: str
+    variables: tuple
+    exige_confirmation: bool
+    facultative: bool
+
+
+class Runbook(NamedTuple):
+    """Une séquence du moteur, dans son ordre."""
+
+    id: str
+    titre: str
+    portee: str
+    but: str
+    etapes: tuple
+
+
+def _etape(brut):
+    """Une `Etape` depuis une entrée du registre, ou None.
+
+    Les champs sur lesquels todo DÉCIDE — la cible, la nature, la portée —
+    sont exigés ; ceux qui ne servent qu'à l'affichage tolèrent le vide.
+    """
+    if not isinstance(brut, dict):
+        return None
+    cible = brut.get("cible")
+    nature = brut.get("nature")
+    if not isinstance(cible, str) or not cible.strip():
+        return None
+    if nature not in NATURES:
+        return None
+    # LA PORTÉE EST EXIGÉE, comme la cible et la nature : c'est sur elle que
+    # `barriere` décide du périmètre. Tolérée absente, elle laissait une étape
+    # d'écriture se conduire SANS écosystème monté — donc sur ce qui se trouve
+    # être monté, ou sur rien. Une valeur inconnue était refusée et une valeur
+    # manquante ne l'était pas : l'inverse d'un lecteur fermé.
+    portee = brut.get("portee")
+    if portee not in PORTEES:
+        return None
+    variables = brut.get("variables")
+    if variables is not None and not isinstance(variables, list):
+        return None
+    # LES VARIABLES SONT DES TABLES, PAS DES NOMS. Le registre écrit
+    # {nom, invite, facultatif} : les traiter comme des chaînes ferait
+    # demander une valeur pour « {'nom': 'HOTE', …} », et passerait cette
+    # table à `make` comme nom de variable.
+    attendues = []
+    for variable in variables or ():
+        if not isinstance(variable, dict):
+            return None
+        nom = variable.get("nom")
+        if not isinstance(nom, str) or not nom.strip():
+            return None
+        attendues.append(
+            Variable(
+                nom=nom.strip(),
+                invite=str(variable.get("invite") or ""),
+                facultative=bool(variable.get("facultatif")),
+            )
+        )
+    fixes = brut.get("fixes")
+    if fixes is not None and not isinstance(fixes, dict):
+        return None
+    return Etape(
+        cible=cible.strip(),
+        libelle=str(brut.get("libelle") or ""),
+        portee=portee,
+        nature=nature,
+        pourquoi=str(brut.get("pourquoi") or ""),
+        duree=str(brut.get("duree") or ""),
+        variables=tuple(attendues),
+        exige_confirmation=CONFIRMER in (fixes or {}),
+        facultative=bool(brut.get("facultative")),
+    )
+
+
+def lit_registre(sortie):
+    """Les runbooks que le registre déclare, ou None si la forme change.
+
+    La recette `make` n'est pas en cause ici — le script est appelé
+    directement — mais la lecture commence tout de même à la première
+    accolade : un avertissement de Python sur la sortie ne doit pas rendre
+    le registre illisible.
+
+    Fermé par défaut : une étape dont la nature ou la cible ne se lisent pas
+    fait rendre None pour TOUT le registre. Une séquence partielle serait
+    pire qu'une absence, puisque son ordre est ce qu'on vient y chercher.
+    """
+    texte = sortie or ""
+    debut = texte.find("[")
+    if debut < 0:
+        return None
+    try:
+        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
+    except ValueError:
+        return None
+    if not isinstance(lu, list) or not lu:
+        return None
+    trouves = []
+    for bloc in lu:
+        if not isinstance(bloc, dict):
+            return None
+        rid = bloc.get("id")
+        portee = bloc.get("portee")
+        if not isinstance(rid, str) or not rid.strip():
+            return None
+        if portee not in PORTEES:
+            return None
+        brutes = bloc.get("etapes")
+        if not isinstance(brutes, list) or not brutes:
+            return None
+        etapes = []
+        for brute in brutes:
+            lue = _etape(brute)
+            if lue is None:
+                return None
+            etapes.append(lue)
+        trouves.append(
+            Runbook(
+                id=rid.strip(),
+                titre=str(bloc.get("titre") or ""),
+                portee=portee,
+                but=str(bloc.get("but") or ""),
+                etapes=tuple(etapes),
+            )
+        )
+    return tuple(trouves)
+
+
+# CE QU'ON FAIT RETAPER avant qu'un geste du palier écrive, dérivé de sa PORTÉE.
+# Vocabulaire CLOS. « » n'en fait pas partie : il dit que le geste n'est pas du
+# palier, donc qu'il n'y a rien à retaper.
+# LA CIBLE QUI LISTE LES SERVEURS DU PLAN, nommée une fois. Le palier s'en sert
+# pour le compte qu'il fait retaper. Le registre la déclare MESURE, donc la
+# conduire ne touche rien — et une épreuve le vérifie CHEZ LE MOTEUR, parce
+# qu'une mesure devenue écriture serait dès lors jouée avant chaque destruction,
+# sans que rien ne le dise.
+CIBLE_SERVEURS = "serveurs"
+
+RETAPE_ECOSYSTEME = "ecosysteme"
+RETAPE_SITE = "site"
+RETAPE_HOTES = "hotes"
+RETAPES = (RETAPE_ECOSYSTEME, RETAPE_SITE, RETAPE_HOTES)
+
+
+def destructeur(etape) -> bool:
+    """Ce geste est-il du PALIER destructeur ?
+
+    DÉRIVÉ, jamais listé : la nature que le registre DÉCLARE, ou la confirmation
+    qu'il EXIGE. Une liste écrite ici vieillirait, et du mauvais côté — elle
+    laisserait passer sans garde le geste que l'amont vient de rendre
+    destructeur.
+
+    LES DEUX CRITÈRES NE SE RECOUVRENT PAS, et c'est la raison d'être de la
+    disjonction. Le registre ne déclare destructeurs qu'une poignée de gestes ;
+    d'autres exigent une confirmation sans être déclarés tels, et leur effet est
+    le même — l'un réécrit toute une flotte, l'autre recrée ses machines. Ce que
+    le moteur PROTÈGE est ce qui compte, pas ce qu'il nomme.
+    """
+    if etape is None:
+        return False
+    return etape.nature == DESTRUCTIF or bool(etape.exige_confirmation)
+
+
+def retape(etape):
+    """Ce que l'opérateur doit retaper pour ce geste, ou « ».
+
+    DÉRIVÉ DE LA PORTÉE, parce que la plupart des gestes du palier ne nomment
+    aucune variable : il n'y a rien à leur emprunter. La portée, elle, dit
+    toujours SUR QUOI le geste porte, et c'est cela qu'on fait relire.
+
+    Un geste de POSTE fait retaper un NOMBRE — celui des hôtes qu'il touche — et
+    non un nom : à cette portée, il n'y a pas d'objet unique à nommer, et un
+    nombre qu'on recopie prouve qu'on a regardé combien de machines sont en jeu.
+
+    « » pour ce qui n'est pas du palier : rien à retaper n'est pas « n'importe
+    quoi convient », et l'appelant ne doit pas confondre les deux.
+    """
+    if not destructeur(etape):
+        return ""
+    return {
+        "tenant": RETAPE_ECOSYSTEME,
+        "site": RETAPE_SITE,
+        "poste": RETAPE_HOTES,
+    }.get(etape.portee, "")
+
+
+def attendu_retape(quoi, ecosysteme="", site="", hotes=None):
+    """Ce qu'il faut retaper, tel quel. Ou « » si on ne sait pas quoi demander.
+
+    « » ARRÊTE LE GESTE chez l'appelant. Sans savoir ce qu'on demande, on ne peut
+    pas comparer — et un garde qui accepte n'importe quoi parce qu'il n'attend
+    rien est pire que pas de garde, puisqu'il donne l'assurance d'en être un.
+
+    `hotes` à None dit que le compte ne s'est pas lu. Zéro est un compte : un
+    geste qui ne toucherait aucune machine se fait confirmer par « 0 », ce qui
+    est justement l'information utile.
+    """
+    if quoi == RETAPE_ECOSYSTEME:
+        return (ecosysteme or "").strip()
+    if quoi == RETAPE_SITE:
+        return (site or "").strip()
+    if quoi == RETAPE_HOTES:
+        if isinstance(hotes, bool) or not isinstance(hotes, int) or hotes < 0:
+            return ""
+        return str(hotes)
+    return ""
+
+
+def retape_concorde(attendu, tape) -> bool:
+    """Ce que l'opérateur a tapé est-il EXACTEMENT ce qu'on attendait ?
+
+    STRICT, casse comprise. Le but n'est pas de vérifier qu'il sait écrire mais
+    qu'il a REGARDÉ : une comparaison indulgente laisse confirmer de mémoire, et
+    c'est précisément ce que ce garde existe pour empêcher. Seuls les blancs de
+    bordure sont pardonnés, parce qu'ils viennent du copier-coller et non de la
+    mémoire.
+
+    Un attendu VIDE refuse toujours : il dit qu'on n'a pas su quoi demander.
+    """
+    voulu = (attendu or "").strip()
+    return bool(voulu) and (tape or "").strip() == voulu
+
+
+def barriere(etape, ecosysteme="", site="", confirme=False):
+    """Ce qui empêche todo de conduire `etape` d'ici, ou « » s'il peut.
+
+    LA RÈGLE DE PÉRIMÈTRE EST ICI, ET NULLE PART AILLEURS. Deux copies
+    diraient tôt ou tard deux choses différentes du même geste.
+
+    L'ordre des refus va du plus général au plus circonstanciel : ce qui
+    détruit ne se conduit pas d'ici quel que soit le poste, alors qu'une
+    portée manquante se règle en montant un écosystème.
+
+    `confirme` LÈVE LES DEUX REFUS DU PALIER, ET EUX SEULS. Il ne lève ni la
+    forme, ni le geste remis à l'amont, ni la portée : un geste de site sans
+    site monté reste barré, confirmé ou non — c'est une IMPOSSIBILITÉ et non une
+    précaution, et lever une précaution ne fait pas apparaître le site.
+
+    SON DÉFAUT EST FAUX, et c'est ce qui rend l'ajout sûr : aucun appelant
+    existant n'élargit son périmètre sans l'avoir écrit. Un défaut vrai aurait
+    ouvert d'un coup tous les gestes du palier à tous les écrans qui demandent
+    « celui-ci se conduit-il ? ».
+    """
+    if etape is None or etape.nature not in NATURES:
+        return FORME_INCONNUE
+    if remis(etape):
+        return A_REMETTRE
+    if not confirme:
+        if etape.nature == DESTRUCTIF:
+            return DESTRUCTIVE
+        if etape.exige_confirmation:
+            return CONFIRMATION_MOTEUR
+    if etape.portee == TENANT and not ecosysteme:
+        return SANS_ECOSYSTEME
+    if etape.portee == SITE and not site:
+        return SANS_SITE
+    return ""
+
+
+def conduisible(etape, ecosysteme="", site="", confirme=False):
+    """`etape` se lance-t-elle d'ici ?"""
+    return not barriere(etape, ecosysteme, site, confirme)
+
+
+def ecrit(etape):
+    """`etape` touche-t-elle au système ?
+
+    Une écriture que le moteur ne garde pas lui-même est celle où todo pose
+    sa PROPRE confirmation : la ligne affichée porte `CONFIRMER=false`, et
+    pour ces cibles-là le drapeau ne veut rien dire — elles écrivent quand
+    même. Sans cette question, la ligne enseignerait qu'un `false` protège.
+
+    Une nature DÉCLARÉE `mesure` ne suffit pas à conclure : un assistant qui
+    sème une voûte écrit, quoi que le registre en dise, et `ECARTS` le nomme.
+    """
+    if etape is None:
+        return False
+    return etape.nature == ECRITURE or ecart(etape.cible).ecrit
+
+
+def remis(etape):
+    """`etape` se tape-t-elle soi-même ?"""
+    return etape is not None and ecart(etape.cible).remis
+
+
+def remises():
+    """Les cibles que todo ne conduit jamais, et la variable de chacune.
+
+    UNE SEULE LISTE, et c'est le point. Une seconde, tenue ailleurs, laissait
+    l'écran des voûtes remettre trois cibles que l'écran des séquences
+    conduisait — et elle en oubliait une quatrième que le moteur réserve
+    pareillement.
+    """
+    return {cible: vu.variable for cible, vu in ECARTS.items() if vu.remis}
+
+
+def drapeau(etape):
+    """Le nom du drapeau-INTERRUPTEUR de `etape`, ou « ».
+
+    Sa valeur ne se demande jamais : la recette la lit par `$(if $(NOM),…)`,
+    et GNU make tient toute chaîne non vide pour vraie. Demander « FORCE= »
+    ferait forcer celui qui répond « 0 » pour dire non.
+    """
+    return ecart(etape.cible).drapeau if etape is not None else ""
+
+
+def compte(runbook, ecosysteme="", site=""):
+    """(conduisibles, total) des étapes de `runbook` depuis ici.
+
+    Affiché en tête de chaque séquence : une liste dont on ne sait pas
+    combien elle offre se parcourt en entier pour le découvrir.
+
+    LE MÊME JUGEMENT QUE L'AFFICHAGE, palier compris. Un en-tête qui compterait
+    autrement que la liste qu'il annonce mentirait par ARITHMÉTIQUE : on lirait
+    « une sur cinq » devant deux étapes qu'on peut choisir, et c'est le genre
+    d'écart qu'on met longtemps à voir parce que chacune des deux moitiés a
+    l'air juste.
+    """
+    etapes = runbook.etapes if runbook is not None else ()
+    ouvertes = sum(
+        1
+        for e in etapes
+        if conduisible(e, ecosysteme, site, confirme=destructeur(e))
+    )
+    return ouvertes, len(etapes)
