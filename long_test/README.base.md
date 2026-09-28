@@ -415,6 +415,13 @@ before the pose — in between, the operator may have built it. A refusal there
 leaves the pose standing, which `--detruire` takes back, and answers "not
 conclusive" rather than "nothing was attempted": the loop is what did not run.
 
+The tenant's placement — the file the cloning reads to know WHERE it lands —
+names the template's VMID, so it is written at that same moment. A VMID taken
+from anywhere else, the first FREE one of the range for instance, is free
+PRECISELY because the template occupies the one before it; the engine then
+refuses on "no node holds the template", and nothing says the number came
+from there.
+
 **The terrain is reached as an ordinary account, and that decides everything.**
 A hypervisor's tools live in `/usr/sbin`, which a non-interactive ssh session's
 PATH does not carry, and its cluster daemon only talks to root. Played without
@@ -902,6 +909,12 @@ moment-là, jamais repris d'une mesure d'avant-pose — entre les deux,
 l'exploitant a pu le bâtir. Un refus y laisse la pose en place, que `--detruire`
 reprend, et rend « non concluante » plutôt que « rien n'a été tenté » : c'est la
 boucle qui n'a pas joué.
+
+Le placement du locataire — le fichier que le clonage lit pour savoir OÙ il se
+pose — nomme le VMID du gabarit, et s'écrit donc au même moment. Un VMID pris
+ailleurs, le premier LIBRE de la plage par exemple, est libre PRÉCISÉMENT parce
+que le gabarit occupe celui d'avant ; le moteur refuse alors sur « aucun nœud ne
+détient le gabarit », et rien ne dit que le numéro venait de là.
 
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
