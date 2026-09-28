@@ -277,15 +277,31 @@ class Mesures(NamedTuple):
     liens: tuple
     index_libre: bool | None
     pont: str
-    vmid_gabarit: int
     noeud: str = ""
     stockage: str = ""
     uplink: str = ""
     adresse_api: str = ""
 
 
+class VuGabarit(NamedTuple):
+    """Ce que la grappe dit du gabarit : son VMID et sa conformité.
+
+    LES DEUX ENSEMBLE parce qu'ils sortent des deux mêmes commandes, et parce
+    que le placement du locataire a besoin du VMID que la conformité valide.
+    Écrire un VMID sans savoir si ce qu'il porte est clonable donnerait au
+    moteur une source où il ne trouverait rien — et son refus parlerait alors
+    du nœud qui « ne détient pas le gabarit », jamais du numéro écrit.
+
+    `vmid` vaut 0 quand aucune VM ne porte le nom, ou quand la grappe n'a pas
+    répondu : `etat` distingue les deux.
+    """
+
+    vmid: int
+    etat: str | None
+
+
 def mesure_le_gabarit(terrain, elevation):
-    """L'état du gabarit sur la grappe, ou None si on n'a pas lu.
+    """Le `VuGabarit` que la grappe déclare. `etat` à None si on n'a pas lu.
 
     HORS DES PRÉALABLES, ET APRÈS LA POSE. Le gabarit est un artefact du
     SITE : la préparation que le moteur lui applique exige un serveur
@@ -297,18 +313,50 @@ def mesure_le_gabarit(terrain, elevation):
     gabarit peut naître entre les deux, et une valeur gardée dirait alors le
     contraire de ce qui est là.
     """
+    vide = VuGabarit(0, None)
     ressources = joue_sur(terrain, cmds_vmids(), elevation)
     if not ressources.reussi:
-        return None
+        return vide
     trouve = lit_gabarit(ressources.sortie)
     if trouve is None:
-        return None
+        return vide
     if trouve == 0:
-        return GABARIT_ABSENT
+        return vide._replace(etat=GABARIT_ABSENT)
     config = joue_sur(terrain, cmds_config_vm(trouve), elevation)
     if not config.reussi:
-        return None
-    return lit_conformite_gabarit(config.sortie)
+        return vide._replace(vmid=trouve)
+    return VuGabarit(trouve, lit_conformite_gabarit(config.sortie))
+
+
+def ecrit_le_placement(moteur, mesures, vmid_modele):
+    """Écrit OÙ le locataire se pose. Rend le souci, ou « ».
+
+    APRÈS LA PORTE DU GABARIT, et c'est tout le sujet : ce fichier nomme le
+    VMID du gabarit, et le clonage du moteur cherche ce nœud-là. Un VMID pris
+    ailleurs — le premier LIBRE de la plage, par exemple — désigne un numéro
+    qui est libre PRÉCISÉMENT parce que le gabarit occupe celui d'avant, et le
+    moteur refuse alors sur « aucun nœud ne détient le gabarit », sans jamais
+    dire que le numéro venait de là.
+
+    Le dossier n'existe pas encore quand la pose se termine : le générateur
+    d'inventaire le créera, mais le clonage lit ce fichier, donc il est écrit
+    ici.
+    """
+    chemins = chemins_du_banc(moteur)
+    if chemins is None:
+        return "le moteur n'a pas de dossier frère"
+    _freres, _site, eco = chemins
+    groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars")
+    try:
+        os.makedirs(groupe, exist_ok=True)
+    except OSError as souci:
+        return f"{INVENTAIRE_BANC} : {souci.strerror}"
+    return _ecrit(
+        os.path.join(groupe, "proxmox.yml"),
+        texte_placement(
+            mesures.noeud, mesures.stockage, mesures.pont, vmid_modele
+        ),
+    )
 
 
 def exigence_du_gabarit(etat):
@@ -393,11 +441,6 @@ def prealables(mesures):
             dit=""
             if (vu.pont or "").strip()
             else "aucun nom libre, ou la configuration réseau n'a pas été lue",
-        ),
-        Prealable(
-            quoi="un VMID de gabarit est libre sur la grappe",
-            tenu=bool(vu.vmid_gabarit),
-            dit="" if vu.vmid_gabarit else "la grappe n'a pas dit ses VMID",
         ),
         Prealable(
             quoi="la grappe nomme un nœud en ligne",
@@ -848,8 +891,6 @@ def cmds_pont(nom, cidr, uplink=""):
 # Où le banc commence à chercher un VMID libre pour son gabarit. 9000 est la
 # convention du moteur pour un modèle, et sa valeur par défaut ; le banc part de
 # là et monte, parce qu'une grappe qu'on possède en a peut-être déjà un.
-VMID_GABARIT_DEPART = 9000
-VMID_GABARIT_FIN = 9100
 
 
 def cmds_vmids():
@@ -860,63 +901,6 @@ def cmds_vmids():
     localement le prendrait à une VM d'un autre nœud.
     """
     return ["pvesh get /cluster/resources --type vm --output-format json"]
-
-
-def lit_vmids(sortie):
-    """Les VMID que la grappe déclare, ou None.
-
-    Fermé par défaut : ce qui n'est pas une liste d'objets portant un VMID
-    entier fait refuser TOUTE la lecture. Une lecture partielle ferait croire
-    un numéro libre alors qu'il est pris, et `qm create` échouerait au milieu
-    du gabarit — après le téléchargement de l'image.
-
-    Une grappe sans aucune VM rend `()` : « rien à nommer » est une réponse.
-    """
-    texte = sortie or ""
-    debut = texte.find("[")
-    if debut < 0:
-        return None
-    try:
-        lu, _fin = json.JSONDecoder().raw_decode(texte[debut:])
-    except ValueError:
-        return None
-    if not isinstance(lu, list):
-        return None
-    vus = []
-    for entree in lu:
-        if not isinstance(entree, dict):
-            return None
-        vmid = entree.get("vmid")
-        if isinstance(vmid, bool) or not isinstance(vmid, int):
-            return None
-        vus.append(vmid)
-    return tuple(vus)
-
-
-def gabarit_libre(vmids, depart=VMID_GABARIT_DEPART):
-    """Le premier VMID libre à partir de `depart`, ou 0.
-
-    LU sur la grappe, jamais supposé. `vmids` à None — la grappe n'a pas
-    répondu — rend 0 : prendre un numéro sans savoir lesquels sont pris
-    reviendrait à parier sur la VM de quelqu'un d'autre.
-
-    0 dit « pas de numéro », et c'est le seul entier qu'un VMID ne peut pas
-    valoir : la grappe les compte à partir de 100.
-    """
-    # ÉCRIT POUR SE LIRE, et non porteur : le cas None retomberait de toute
-    # façon dans le `except` en dessous — parcourir None lève une TypeError. Le
-    # dire ici évite de faire dériver l'intention du hasard d'une exception ;
-    # aucune mutation de cette seule ligne ne peut donc changer la réponse.
-    if vmids is None:
-        return 0
-    try:
-        pris = {int(vu) for vu in vmids}
-    except (TypeError, ValueError):
-        return 0
-    for numero in range(max(0, int(depart)), VMID_GABARIT_FIN):
-        if numero not in pris:
-            return numero
-    return 0
 
 
 def texte_placement(noeud, stockage, pont, vmid_modele, gabarit=GABARIT):
@@ -1570,7 +1554,7 @@ def amorcage_du_plan(moteur, instance):
     return lit_amorcage(vu.sortie) if vu.code == 0 else None
 
 
-def monte_localement(moteur, noeud, pont, stockage, hote_api, vmid_modele):
+def monte_localement(moteur, noeud, pont, stockage, hote_api):
     """Pose les deux dépôts du banc et les deux liens du moteur. Rend un `Montage`.
 
     LES LIENS SE JUGENT AVANT QUE RIEN NE SOIT CRÉÉ. Un lien occupé est celui
@@ -1578,12 +1562,14 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, vmid_modele):
     l'écosystème du banc, dont le rasage détruit tout ce que l'inventaire nomme.
     Créer les dépôts puis refuser laisserait deux dossiers que rien ne nomme.
 
-    `vmid_modele` VIENT DE LA GRAPPE, pas d'une constante : il est choisi parmi
-    les numéros qu'elle ne porte pas, comme le pont est choisi parmi les noms
-    qu'elle ne déclare pas. L'appelant l'a donc déjà sondée.
+    LE PLACEMENT N'EST PAS ÉCRIT ICI. Il nomme le VMID du gabarit, et le
+    gabarit n'est exigé qu'une fois cette pose faite : l'écrire ici obligerait
+    à inventer un numéro, ou à refuser une pose qui doit justement avoir lieu
+    pour que le gabarit devienne préparable. `ecrit_le_placement` s'en charge
+    quand ce VMID est connu ET conforme.
 
-    L'ORDRE : l'underlay, puis le locataire, puis son index, ses hôtes
-    d'amorçage et son placement, puis les liens. L'amorçage se lit AVANT les liens, par la
+    L'ORDRE : l'underlay, puis le locataire, puis son index et ses hôtes
+    d'amorçage, puis les liens. L'amorçage se lit AVANT les liens, par la
     variable d'instance ; les clés se posent APRÈS eux, le moteur nommant celle
     de l'hébergeur en résolvant son lien.
 
@@ -1638,21 +1624,6 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, vmid_modele):
         souci = _recrit(os.path.join(eco, "plan", fichier), transforme)
         if souci:
             return pose._replace(souci=souci)
-
-    # LE PLACEMENT, et le modèle n'en livre aucun : il dit ce que l'écosystème
-    # VEUT, pas sur quelle grappe il se pose. Le dossier n'existe pas encore —
-    # le générateur d'inventaire le créera, mais le clonage lit ce fichier.
-    groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars")
-    try:
-        os.makedirs(groupe, exist_ok=True)
-    except OSError as souci:
-        return pose._replace(souci=f"{INVENTAIRE_BANC} : {souci.strerror}")
-    souci = _ecrit(
-        os.path.join(groupe, "proxmox.yml"),
-        texte_placement(noeud, stockage, pont, vmid_modele),
-    )
-    if souci:
-        return pose._replace(souci=souci)
 
     liens = []
     for nom, cible in cibles_des_liens():
@@ -2323,14 +2294,9 @@ def mesure_le_terrain(moteur, terrain):
     dehors = joue_sur(terrain, cmds_sortie(), elevation)
     dedans = lit_sortie(dehors.sortie) if dehors.reussi else None
 
-    ressources = joue_sur(terrain, cmds_vmids(), elevation)
-    vmids = lit_vmids(ressources.sortie) if ressources.reussi else None
-    vmid = gabarit_libre(vmids)
-
     return vide._replace(
         index_libre=index_libre(instances_freres(moteur), INDEX_ECOSYSTEME),
         pont=pont,
-        vmid_gabarit=vmid,
         # LE PREMIER, et le banc n'en CHOISIT pas : une grappe de banc n'a qu'un
         # nœud et qu'un stockage à images. Sur une grappe qui en a plusieurs,
         # choisir pour l'exploitant serait deviner où il veut se poser — et c'est
@@ -2559,7 +2525,6 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
         mesures.pont,
         mesures.stockage,
         mesures.adresse_api,
-        mesures.vmid_gabarit,
     )
     if not montage.complet:
         return montage.souci or "le montage local n'est pas complet", secret
@@ -2840,7 +2805,8 @@ def principal(argv=None):
     # préparation possible. Refuser maintenant laisse la pose en place, que
     # `--detruire` reprend, et rend NON_CONCLUANTE — la boucle n'a pas joué.
     print("\n── le gabarit ──")
-    exige = exigence_du_gabarit(mesure_le_gabarit(terrain, mesures.elevation))
+    vu = mesure_le_gabarit(terrain, mesures.elevation)
+    exige = exigence_du_gabarit(vu.etat)
     marque = "✓" if exige.tenu else ("✗" if exige.tenu is False else "?")
     print(f"  {marque} {exige.quoi}")
     if exige.dit:
@@ -2850,6 +2816,15 @@ def principal(argv=None):
         print("\n  ⛔ la boucle clone ce gabarit : sans lui elle ne part pas.")
         print(f"     ce qui est posé est nommé dans {chantier.chemin}")
         return verdict
+
+    # LE PLACEMENT NOMME CE VMID-LÀ, celui que le nom vient de trouver et que
+    # la conformité vient de valider. C'est le clonage du moteur qui le lit.
+    souci = ecrit_le_placement(moteur, mesures, vu.vmid)
+    if souci:
+        print(f"\n  ⛔ {souci}")
+        print(f"     ce qui est posé est nommé dans {chantier.chemin}")
+        return SORTIE_NON_CONCLUANTE
+    print(f"  · placement : le gabarit est en {vu.vmid}")
 
     for passe in passes:
         print(f"\n── passe « {passe} » ──")
