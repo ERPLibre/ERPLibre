@@ -319,6 +319,17 @@ class TestHttp(HubCase):
         self.assertNotIn(token, self.hub.sessions)
         self.assertNotIn(token, self.hub.expiry)
 
+    async def test_a_new_login_forgets_the_expired_ones(self):
+        # Une connexion expirée que plus rien ne sert part à la connexion
+        # suivante, bien en deçà de LOGINS.
+        token = (await self.cookie()).split("=", 1)[1]
+        later = server.login_clock() + server.LOGIN_SECONDS
+        with patch.object(server, "login_clock", lambda: later):
+            await self.cookie()
+        self.assertNotIn(token, self.hub.sessions)
+        self.assertNotIn(token, self.hub.expiry)
+        self.assertEqual(len(self.hub.sessions), 1)
+
     async def test_the_least_recently_used_login_goes_beyond_the_limit(self):
         cookies = [await self.cookie() for _ in range(server.LOGINS)]
         # La première sert encore : la deuxième, moins récemment servie,
@@ -1673,10 +1684,11 @@ class TestOpenings(TerminalCase):
                 # Rattachements quand la fenêtre n'a qu'une ouverture :
                 # comptés, ils feraient refuser les ouvertures qui suivent.
                 for _ in range(server.RATE_LIMIT):
-                    tab = await self.tab(reading=False, session=sid, after=0)
-                    self.assertEqual(tab.texts[0]["id"], sid)
-            if n < server.RATE_LIMIT - 1:
-                await self.close(tab)
+                    again = await self.tab(reading=False, session=sid, after=0)
+                    self.assertEqual(again.texts[0]["id"], sid)
+                    self.assertEqual(await tab.closed(), 4001)
+                    tab = again
+            await self.close(tab)
         self.assertTrue((await self.refused()).startswith("rate "))
 
     async def test_a_restart_is_no_opening(self):
@@ -1708,6 +1720,8 @@ class TestOpenings(TerminalCase):
         self.csrf = json.loads(resp.body)["csrf"]
         again = await self.tab(reading=False, session=sid, after=0)
         self.assertEqual(again.texts[0]["id"], sid)
+        self.assertEqual(await tab.closed(), 4001)
+        await self.close(again)
 
 
 class TestDeadClient(TerminalCase):

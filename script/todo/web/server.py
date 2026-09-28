@@ -72,12 +72,12 @@ log = logging.getLogger(__name__)
 
 CODE_TTL = 120.0
 # Secondes que vaut une connexion depuis l'échange de son code ; jetons de
-# connexion vivants au plus, le plus ancien oublié au-delà.
+# connexion vivants au plus : au-delà, le moins récemment servi est oublié.
 LOGIN_SECONDS = 12 * 3600
 LOGINS = 16
 # Garde contre les ouvertures en boucle : au plus RATE_LIMIT sessions
-# neuves ouvertes pour un client par fenêtre glissante de RATE_WINDOW
-# secondes.
+# neuves ouvertes par `/ws` en RATE_WINDOW secondes glissantes, une seule
+# fenêtre pour tout le hub, toutes connexions confondues.
 RATE_WINDOW = 60.0
 RATE_LIMIT = 5
 # Corps HTTP et messages WebSocket : tornado accepte 100 Mo par défaut.
@@ -852,17 +852,16 @@ class Terminal(Guard, tornado.websocket.WebSocketHandler):
     again later » ; au-delà de RATE_LIMIT ouvertures en RATE_WINDOW s
     (`Hub.openings`), 1013 « rate N », N les secondes à attendre. Avec, le
     client s'y rattache (inconnue, 4404), sans compter comme une ouverture,
-    et en prend le contrôle :
-    l'ancien est fermé en 4001. Réponse `{"t": "session", "id", "offset",
-    "truncated", "code"}`, `code` étant l'empreinte des sources que tourne
-    la session (`Session.stamp`), puis la question ouverte du worker s'il en
-    a une, puis `dropped` pour ce que la session a jeté d'un collage sans
-    client (`Session.unreported`), puis trames binaires. Textes du client :
-    `resize`, `interrupt`, `close`, `raw`, `secret`, `answer`, `cancel` ;
-    du hub : `bye`, `tty_state`, `dropped`, et les messages du worker
-    (`menu`, `ask`, `answered`, `notice`, `run_start`, `run_end`,
-    `open_view`). Un type inconnu est ignoré, comme une réponse qui n'est
-    pas celle de la question ouverte (`Session.answer`).
+    et en prend le contrôle : l'ancien est fermé en 4001. Réponse
+    `{"t": "session", "id", "offset", "truncated", "code"}`, `code` étant
+    l'empreinte des sources que tourne la session (`Session.stamp`), puis la
+    question ouverte du worker s'il en a une, puis `dropped` pour ce que la
+    session a jeté d'un collage sans client (`Session.unreported`), puis trames
+    binaires. Textes du client : `resize`, `interrupt`, `close`, `raw`,
+    `secret`, `answer`, `cancel` ; du hub : `bye`, `tty_state`, `dropped`, et
+    les messages du worker (`menu`, `ask`, `answered`, `notice`, `run_start`,
+    `run_end`, `open_view`). Un type inconnu est ignoré, comme une réponse qui
+    n'est pas celle de la question ouverte (`Session.answer`).
 
     Une trame binaire du client passe par `Session.gate`, sauf en mode brut
     (`{"t": "raw", "on": true}`) ; `dropped {bytes, reason}` dit combien
@@ -1172,7 +1171,8 @@ class Hub:
         self.codes = {}  # code -> expiration (horloge monotone)
         self.sessions = {}  # jeton du cookie -> jeton CSRF
         self.expiry = {}  # jeton du cookie -> fin de sa validité (login_clock)
-        self.openings = Window()  # sessions neuves ouvertes pour un client
+        # Sessions neuves ouvertes par `/ws`, une fenêtre pour tout le hub.
+        self.openings = Window()
         self.stopped = asyncio.Event()
         self.stopping = None
         self.last_activity = time.monotonic()
