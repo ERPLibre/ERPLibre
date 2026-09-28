@@ -208,7 +208,8 @@ def _wait(predicate, timeout=5.0) -> bool:
 
 def _at_once(test, function, *args):
     """`function(*args)` dans un fil, qui doit rendre en moins d'une
-    seconde : un appel du pont n'attend jamais le chargement d'une page."""
+    seconde : un appel du pont reçu `loaded` baissé n'attend pas le
+    chargement d'une page."""
     result = []
     thread = threading.Thread(
         target=lambda: result.append(function(*args)), daemon=True

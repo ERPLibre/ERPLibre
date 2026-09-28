@@ -246,11 +246,13 @@ def bridge(window, origin, secret):
     sans ce jeton est refusé sans rien toucher.
 
     En défense de plus, un appel n'agit que si la fenêtre montre une page
-    de `origin` (`http://127.0.0.1:P`), lue sans attendre : `load_url`
-    baisse `events.loaded` avant que le moteur ne change de page, et
-    `get_current_url` attendrait qu'il se relève, puis rendrait l'URL de la
-    page suivante. Un appel reçu drapeau baissé est donc refusé, comme
-    celui dont la lecture l'a vu retomber. Le drapeau `hub` suit le
+    de `origin` (`http://127.0.0.1:P`) : `load_url` baisse `events.loaded`
+    avant que le moteur ne change de page, et `get_current_url` attend
+    qu'il se relève, puis rend l'URL de la page suivante. Un appel reçu
+    drapeau baissé est donc refusé aussitôt ; un appel dont le drapeau
+    retombe entre ce contrôle et la lecture de l'URL attend la fin du
+    chargement dans `get_current_url`, puis est refusé à son tour, la
+    lecture ayant vu le drapeau retomber. Le drapeau `hub` suit le
     chargement : `events.before_load` le baisse (au chargement fini, avant
     que pywebview n'injecte son API) ; au signal `events.loaded`, un fil
     démon lit l'URL courante — une page du hub reçoit le dernier titre
@@ -278,7 +280,9 @@ def bridge(window, origin, secret):
 
     def accepted(token):
         """Vrai si `token` est celui de la fenêtre et si une page du hub y
-        est chargée à l'instant de l'appel ; jamais d'attente."""
+        est chargée à l'instant de l'appel. Refusé sans attente quand
+        `loaded` est déjà baissé ; baissé pendant la lecture de l'URL, il
+        fait attendre `get_current_url` jusqu'au chargement suivant."""
         if not isinstance(token, str):
             return False
         given = token.encode("utf-8", "surrogatepass")
