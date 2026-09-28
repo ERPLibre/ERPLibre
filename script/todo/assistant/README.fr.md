@@ -275,6 +275,65 @@ motifs employé ailleurs dans le dépôt ne convient pas ici : il ne reconnaît
 que `NOM=valeur` collé, et en deux colonnes alignées il laisse passer presque
 tout.
 
+## Un second harnais répond à une autre question
+
+Open Code voisine avec Claude Code dans le menu, et les deux se ressemblent
+assez pour tromper. Trois différences décident de la forme de son écran, et
+chacune a été mesurée contre l'outil plutôt que supposée.
+
+**Son listage est cadré sur le RÉPERTOIRE COURANT.** `claude agents` répond
+« ce qui tourne sur cette machine » ; `opencode session list` répond « ce qui
+s'est passé ICI », et aucun drapeau n'élargit la portée. L'écran dit donc sa
+portée et imprime le répertoire avant de lister quoi que ce soit — sans quoi
+il annoncerait « aucune séance » à qui en a vingt dans le dossier d'à côté.
+
+**Le titre d'une séance est ENGENDRÉ par le modèle** à partir de la
+conversation. Il a la forme d'un champ structurel et n'en est pas un, donc il
+ne sort pas de l'adaptateur — la même règle qui garde hors de l'écran le titre
+d'une session de Claude Code. Ce qui situe une séance sans la citer est son
+identifiant et sa date ; la colonne du répertoire disparaît, puisqu'elle
+répète celui que l'en-tête vient d'imprimer.
+
+**Deux sources répondent, et elles ne pèsent pas pareil.** La base SQLite que
+l'outil tient porte tout — coût, jetons, cache, lignes touchées, modèle,
+agent, dates — en une lecture de moins d'une milliseconde, sur TOUTES les
+séances. Les deux commandes du CLI demandent près de deux secondes pour moins,
+et l'une des deux se tronque. La base est donc lue d'abord et le CLI sert de
+repli, son schéma étant celui d'un tiers que personne ne promet stable.
+L'écran nomme celle qui a répondu, car seule la base sait sortir du répertoire
+courant.
+
+**Ce même fichier porte des secrets, et c'est ce qui borne la lecture.** Il
+tient les jetons d'accès et de rafraîchissement du compte, son adresse, et les
+invites tapées par l'utilisateur. Une seule table est donc nommée, ses
+colonnes énumérées une à une, l'ouverture en lecture seule, et un test refuse
+toute autre table comme toute colonne d'authentification. `immutable=1` est
+refusé aussi : il ignore le journal d'écriture anticipée, qui pèse ici
+plusieurs mégaoctets, et rend ZÉRO ligne sur une base pleine — une réponse
+fausse plutôt qu'une erreur, ce qui est pire.
+
+**Seule la lecture est déclarée.** `opencode run` écrit dans l'arbre de
+travail sans demander — une consigne de trois mots suffit à faire créer un
+fichier — donc une entrée « question libre » y serait un piège. Elle reste au
+CLI, où l'on va exprès, comme `delete`, `uninstall` et `upgrade`.
+
+Deux formes de sortie piègent le décodage, et l'écran nomme le coupable au
+lieu de s'accuser. Un listage VIDE n'est pas `[]`, donc le décoder lève ; et
+`export` tronque sa propre sortie au-delà d'une soixantaine de kilooctets, en
+sortant avant d'avoir vidé son tampon — trois exécutions du même export
+rendent trois tailles, toutes coupées au milieu d'une chaîne. L'écran dit
+qu'Open Code a coupé, ce qu'il faut savoir pour cesser de chercher un défaut
+ici.
+
+L'écran vivant de télémétrie montre les deux harnais dans un seul tableau,
+chaque ligne marquée de l'icône du sien. Ce qu'Open Code ne mesure pas — les
+tours, le contexte et sa pente, les durées d'API et d'outils — affiche un
+TIRET et jamais un zéro : une colonne à zéro se lit « mesuré, et nul », ce qui
+est faux et décourage de chercher ailleurs ce que l'autre harnais donne. La
+ligne de résumé garde les deux séparés plutôt que de les fondre en un total,
+le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
+zéro là où celui d'Open Code est un champ de base stable.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -291,6 +350,7 @@ tout.
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
 | `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
 | `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
+| `harness/opencode.py` | les séances d'Open Code et leur coût, en lecture seule, et les trois formes que prend sa sortie |
 | `agents/statistiques.py` | ce qu'une transcription dit d'une session : jetons, coût, durées, contexte |
 | `agents/tui.py` | l'écran vivant, rafraîchi sans relire ce qu'il a déjà replié |
 | `agents/journal.py` | le journal des appels d'outils : une ligne par événement, et leur appariement |

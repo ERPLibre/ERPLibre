@@ -243,8 +243,11 @@ class AssistantMenuMixin:
             actions = []
             for etat in devant:
                 compte = ""
-                if etat.harnais.cle == "claude" and etat.verdict == reg.OK:
-                    compte = self._claude_compte()
+                if etat.verdict == reg.OK:
+                    if etat.harnais.cle == "claude":
+                        compte = self._claude_compte()
+                    elif etat.harnais.cle == "opencode":
+                        compte = self._opencode_compte()
                 choices.append(
                     {"prompt_description": self._harnais_libelle(etat, compte)}
                 )
@@ -351,7 +354,216 @@ class AssistantMenuMixin:
         if etat.harnais.cle == "claude":
             self.prompt_claude_sessions()
             return
+        if etat.harnais.cle == "opencode":
+            self.prompt_opencode_seances()
+            return
         print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
+
+    # Ce que l'écran nomme comme source de ce qu'il montre. Les deux ne
+    # portent pas la même chose : la base sait sortir du répertoire courant,
+    # le CLI non, et l'écran ne doit pas offrir une portée qu'il n'a pas.
+    SOURCES = {"base": "its database", "cli": "its command line"}
+
+    @staticmethod
+    def _opencode_lancer(argv):
+        """La sortie d'une lecture, ou "" quand l'outil ne répond pas.
+
+        Capturée et non diffusée : le listage se décode avant de s'afficher,
+        là où les statistiques se montrent telles quelles.
+        """
+        import subprocess
+
+        try:
+            fini = subprocess.run(
+                argv, capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return fini.stdout if fini.returncode == 0 else ""
+
+    def _opencode_seances(self, *, partout=False):
+        """Les séances, les plus récentes d'abord, et LA SOURCE qui a répondu.
+
+        La base d'abord : une lecture de moins d'une milliseconde qui porte
+        déjà le coût de chaque séance, là où le CLI demande deux commandes et
+        près de deux secondes pour moins, et se tronque au-delà de 60 ko.
+
+        Le CLI en repli, parce que le schéma de la base est celui d'un
+        logiciel tiers que personne ne promet stable. Il ne sait pas sortir du
+        répertoire courant : `partout` est donc sans effet sur lui, et l'écran
+        le dit plutôt que d'annoncer une portée qu'il n'a pas.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        ici = None if partout else os.getcwd()
+        seances = oc.lire_base(repertoire=ici)
+        if seances is not None:
+            return seances, "base"
+        return oc.decoder_liste(self._opencode_lancer(oc.argv_lister())), "cli"
+
+    def _opencode_compte(self):
+        """Ce que l'entrée du menu annonce, sans mentir sur la portée."""
+        seances, _ = self._opencode_seances()
+        if not seances:
+            return t("nothing here")
+        return self._llm_count(len(seances), "session here", "sessions here")
+
+    def prompt_opencode_seances(self):
+        """Les séances d'Open Code, et ce qu'elles ont coûté.
+
+        **L'écran DIT sa portée avant de lister.** Le listage d'Open Code ne
+        voit que le répertoire d'où il est lancé, là où celui de Claude Code
+        voit la machine entière. Présenter les deux de la même façon
+        annoncerait « aucune séance » à quelqu'un qui en a vingt dans le
+        répertoire d'à côté, et le laisserait chercher une panne.
+
+        **Aucun titre n'est affiché.** Celui d'une séance est engendré par le
+        modèle à partir de la conversation : c'est du contenu résumé, pas un
+        champ structurel, et il n'a pas plus sa place ici que le titre d'une
+        session de Claude Code.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        partout = False
+        while True:
+            seances, source = self._opencode_seances(partout=partout)
+            elargi = partout and source == "base"
+            titre = (
+                "Sessions everywhere on this machine"
+                if elargi
+                else "Sessions opened from this directory"
+            )
+            print(f"{t(titre)} :")
+            if not elargi:
+                print(f"  {os.getcwd()}")
+            if not seances:
+                # Trois vides qui n'appellent pas le même geste : la machine
+                # n'en porte aucune, ce répertoire n'en porte aucune, ou le
+                # CLI ne sait regarder que là. Le troisième invite à changer
+                # de répertoire, les deux autres non.
+                if elargi:
+                    vide = "No Open Code session on this machine."
+                elif source == "base":
+                    vide = "None in this directory."
+                else:
+                    vide = "None here. The listing sees this directory only."
+                print(f"  {MARQUE['unknown']} {t(vide)}")
+            for seance in seances:
+                print(f"  {self._opencode_ligne(seance)}")
+            print(f"  {t('read from')} {t(self.SOURCES[source])}")
+            choices = [
+                {"prompt_description": t("What one session cost")},
+                {
+                    "prompt_description": t(
+                        "Statistics, by tool and by model (all projects)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "This directory only"
+                        if elargi
+                        else "Every directory of this machine"
+                    )
+                },
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._opencode_cout(seances)
+            elif status == "2":
+                self.execute.exec_command_live(
+                    " ".join(oc.argv_statistiques()), source_erplibre=False
+                )
+            elif status == "3":
+                # Le CLI ne sait pas sortir du répertoire courant : basculer
+                # alors qu'il a répondu afficherait la même liste sous un
+                # autre titre, ce qui se lit comme un écran cassé.
+                if source != "base":
+                    print(
+                        f"{MARQUE['no']} {t('The database is not readable.')}"
+                    )
+                else:
+                    partout = not partout
+            else:
+                print(t("Command not found !"))
+
+    @staticmethod
+    def _opencode_ligne(seance):
+        """« <id>  AAAA-MM-JJ hh:mm » — ce qui DISTINGUE une séance.
+
+        La date et non le répertoire. Le listage étant cadré sur le répertoire
+        courant, celui d'une séance vaut presque toujours celui que l'en-tête
+        vient d'afficher : en colonne, il est constant et n'aide à rien, alors
+        que sans la date deux séances du même dossier sont identiques à
+        l'écran. Il reparaît quand il diffère, qui est le seul cas où il
+        apprend quelque chose.
+        """
+        ligne = f"{seance.identifiant}  {seance.quand}".rstrip()
+        ailleurs = seance.repertoire and seance.repertoire != os.getcwd()
+        return f"{ligne}  {seance.repertoire}" if ailleurs else ligne
+
+    def _opencode_cout(self, seances):
+        """Le coût d'une séance choisie : jetons, cache, lignes touchées."""
+        from script.todo.assistant.harness import opencode as oc
+
+        if not seances:
+            print(f"{MARQUE['unknown']} {t('No session to read here.')}")
+            return
+        choices = [
+            {"prompt_description": self._opencode_ligne(s)} for s in seances
+        ]
+        try:
+            rang = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if rang == "0":
+            return
+        if not rang.isdigit() or not 1 <= int(rang) <= len(seances):
+            print(t("Command not found !"))
+            return
+        seance = seances[int(rang) - 1]
+        # La base rend le résumé avec la séance : quand il est là, aucune
+        # commande n'est lancée, et la troncature de l'export ne peut pas
+        # frapper. Le repli ne sert que lorsque la base n'a pas répondu.
+        resume = seance.resume
+        brut = ""
+        if resume is None:
+            try:
+                argv = oc.argv_exporter(seance.identifiant)
+            except ValueError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                return
+            brut = self._opencode_lancer(argv)
+            resume = oc.decoder_export(brut)
+        if resume is None:
+            # None n'est pas un résumé à zéro : le dire évite de chercher une
+            # séance gratuite là où rien n'a pu être lu. Et nommer QUI a
+            # failli évite de chercher le défaut ici : sur une longue séance,
+            # c'est l'outil qui sort avant d'avoir vidé son tampon.
+            if oc.semble_tronque(brut):
+                print(f"{MARQUE['no']} {t('Open Code cut its own output.')}")
+                print(f"   {t('It happens past roughly 60 kB of export.')}")
+            else:
+                print(f"{MARQUE['no']} {t('This session could not be read.')}")
+            return
+        print(f"  {resume.modele} · {resume.fournisseur} · {resume.agent}")
+        print(f"  {t('cost')} {resume.cout:.4f} $")
+        print(
+            f"  {t('tokens')} {resume.jetons}"
+            f"  ({t('cache read')} {resume.cache_lu})"
+        )
+        print(
+            f"  +{resume.lignes_ajoutees} −{resume.lignes_retirees}"
+            f"  {self._llm_count(resume.fichiers, 'file', 'files')}"
+        )
 
     def _harnais_autres(self, autres):
         """Les harnais restants, en prose et sans numéro.
