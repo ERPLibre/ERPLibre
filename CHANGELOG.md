@@ -90,6 +90,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - When TODO's code changes under an open TODO page — a menu file, todo.json or the translations — the page reads the new tree within 10 s, and a banner says that its session still runs the old code, with a button that closes that session if it waits at a menu and opens a new one; a new session no longer starts from a worker prepared before the change. Counts are reread on a change of view, never under the pointer, and this reading in the background does not keep the web interface from stopping when idle
 - In a web session, choosing a file or a directory — a backup to restore, a file to read, a VPN profile… — no longer draws TODO's full-screen browser in the terminal panel: TODO asks for the path, which a field of the page or the terminal answers, relative to the directory it names; an empty answer gives up, and a path that does not exist, or is not of the kind asked, is asked again
 - In the Sessions view of the TODO page, that path question is a picker: the path in clickable segments, the parent, directories then files with their size, a filter, the path field to open another directory or answer a file, and Choose this directory when TODO wants one. The local hub lists a directory for it, names and sizes only, 2,000 entries at most
+- In the desktop window, the path picker also offers the system's file dialog, reached through the window's bridge with its token, like the title and the notification
 
 ## Changed
 

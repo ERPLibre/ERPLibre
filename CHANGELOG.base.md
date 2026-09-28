@@ -110,6 +110,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - When TODO's code changes under an open TODO page — a menu file, todo.json or the translations — the page reads the new tree within 10 s, and a banner says that its session still runs the old code, with a button that closes that session if it waits at a menu and opens a new one; a new session no longer starts from a worker prepared before the change. Counts are reread on a change of view, never under the pointer, and this reading in the background does not keep the web interface from stopping when idle
 - In a web session, choosing a file or a directory — a backup to restore, a file to read, a VPN profile… — no longer draws TODO's full-screen browser in the terminal panel: TODO asks for the path, which a field of the page or the terminal answers, relative to the directory it names; an empty answer gives up, and a path that does not exist, or is not of the kind asked, is asked again
 - In the Sessions view of the TODO page, that path question is a picker: the path in clickable segments, the parent, directories then files with their size, a filter, the path field to open another directory or answer a file, and Choose this directory when TODO wants one. The local hub lists a directory for it, names and sizes only, 2,000 entries at most
+- In the desktop window, the path picker also offers the system's file dialog, reached through the window's bridge with its token, like the title and the notification
 
 <!-- [fr] -->
 
@@ -192,6 +193,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Quand le code de TODO change sous une page de TODO ouverte — un fichier de menus, todo.json ou les traductions —, la page lit le nouvel arbre en 10 s au plus, et une bannière dit que sa session tourne encore l'ancien code, avec un bouton qui ferme cette session si elle attend à un menu et en ouvre une neuve ; une session neuve ne part plus d'un worker préparé avant le changement. Les compteurs se relisent au changement de vue, jamais sous le pointeur, et cette lecture de fond n'empêche pas l'interface web de s'arrêter faute d'activité
 - Dans une session web, choisir un fichier ou un répertoire — une sauvegarde à restaurer, un fichier à lire, un profil VPN… — ne dessine plus le navigateur plein écran de TODO dans le panneau terminal : TODO demande le chemin, auquel un champ de la page ou le terminal répond, relatif au répertoire qu'il nomme ; une réponse vide renonce, et un chemin qui n'existe pas, ou d'un autre genre que celui demandé, est redemandé
 - Dans la vue Sessions de la page de TODO, cette question de chemin est un sélecteur : le chemin en segments cliquables, le parent, les répertoires puis les fichiers avec leur taille, un filtre, le champ du chemin pour ouvrir un autre répertoire ou répondre un fichier, et Choisir ce répertoire quand TODO en veut un. Le hub local lui liste un répertoire, noms et tailles seulement, 2 000 entrées au plus
+- Dans la fenêtre bureautique, le sélecteur de chemins offre aussi le dialogue de fichiers du système, atteint par le pont de la fenêtre avec son jeton, comme le titre et la notification
 
 <!-- [en] -->
 ## Changed

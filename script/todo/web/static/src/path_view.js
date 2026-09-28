@@ -10,11 +10,13 @@
 // fichier répond son chemin absolu ; le worker vérifie qu'il existe et
 // qu'il est du bon genre, sinon la même question revient. Un chemin que le
 // hub ne porterait pas (un caractère de contrôle dans un nom) ne part pas,
-// et le widget le dit. Annuler fait ce que fait « q » dans le navigateur
-// urwid : rien n'est choisi. Comme les autres widgets, il ne répond que
-// pour le qid qu'il montre (`answer(qid, valeur)`, `cancel(qid)`), jamais
-// dans les ARM ms qui suivent son apparition ; une liste qui arrive après
-// une autre, plus récente, est jetée.
+// et le widget le dit. Dans la fenêtre bureautique, « Dialogue du
+// système » ouvre le dialogue de fichiers du système (`env.desktop`), dont
+// le chemin choisi répond de même. Annuler fait ce que fait « q » dans le
+// navigateur urwid : rien n'est choisi. Comme les autres widgets, il ne
+// répond que pour le qid qu'il montre (`answer(qid, valeur)`,
+// `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ; une
+// liste qui arrive après une autre, plus récente, est jetée.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {childPath, filterEntries, listingUrl, pathCrumbs, typedOutcome, typedPath} from "./browse.js";
@@ -38,6 +40,8 @@ export class PathPicker extends Component {
                     t-esc="env.t('Open')"/>
                 <button t-if="directory" type="button" t-att-disabled="locked or !here or listing.error"
                     t-on-click="() => this.send(here)" t-esc="env.t('Choose this directory')"/>
+                <button t-if="state.canPick" type="button" t-att-disabled="locked" t-on-click="systemDialog"
+                    t-esc="env.t('System dialog')"/>
                 <button type="button" t-att-disabled="locked" t-on-click="cancel" t-esc="env.t('Cancel')"/>
             </div>
             <input type="search" class="filter" t-model="state.filter" t-att-aria-label="env.t('Filter entries')"
@@ -65,7 +69,11 @@ export class PathPicker extends Component {
 
     setup() {
         const start = this.props.question.start ?? "~";
-        this.state = useState({listing: null, typed: start, filter: "", armed: false, refused: false});
+        // Le pont de la fenêtre bureautique peut n'arriver qu'après la
+        // question, avec `pywebviewready`.
+        const canPick = this.env.desktop.canPick();
+        this.state = useState({listing: null, typed: start, filter: "", armed: false, refused: false, canPick});
+        this.onReady = () => (this.state.canPick = this.env.desktop.canPick());
         this.root = useRef("root");
         this.field = useRef("field");
         this.shownAt = Infinity;
@@ -82,9 +90,13 @@ export class PathPicker extends Component {
         onMounted(() => {
             this.shownAt = performance.now();
             this.arming = setTimeout(() => (this.state.armed = true), ARM);
+            window.addEventListener("pywebviewready", this.onReady);
             this.open(start);
         });
-        onWillUnmount(() => clearTimeout(this.arming));
+        onWillUnmount(() => {
+            clearTimeout(this.arming);
+            window.removeEventListener("pywebviewready", this.onReady);
+        });
     }
 
     // Vrai tant que rien ne part : une réponse attend `answered`, ou le
@@ -167,6 +179,18 @@ export class PathPicker extends Component {
             this.open(path);
         } else {
             this.send(path);
+        }
+    }
+
+    // Le dialogue de fichiers du système, ouvert sur le répertoire montré :
+    // le chemin choisi répond, comme un clic dans la liste.
+    async systemDialog() {
+        if (this.locked) {
+            return;
+        }
+        const chosen = await this.env.desktop.pickPath(this.here || this.props.question.start, this.directory);
+        if (chosen) {
+            this.send(chosen);
         }
     }
 

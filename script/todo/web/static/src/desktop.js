@@ -1,8 +1,9 @@
 // Pont de la fenêtre bureautique, sans OWL ni DOM. Dans la fenêtre
-// pywebview, `window.pywebview.api` porte les deux méthodes du pont,
-// `set_title` et `notify` ; pywebview l'injecte une fois la page chargée et
-// le dit par l'évènement `pywebviewready`. Dans un navigateur, il n'existe
-// jamais : rien ne part, et la page ne change rien d'autre.
+// pywebview, `window.pywebview.api` porte les trois méthodes du pont,
+// `set_title`, `notify` et `pick_path` ; pywebview l'injecte une fois la
+// page chargée et le dit par l'évènement `pywebviewready`. Dans un
+// navigateur, il n'existe jamais : rien ne part, et la page ne change rien
+// d'autre.
 
 // Secondes au-delà desquelles la fin d'une commande se notifie.
 export const LONG_RUN = 10;
@@ -58,7 +59,10 @@ export function runEndBody(t, message) {
 // Pont de la page `win` (son objet `window`), de titre de départ `base` et
 // de jeton `token` (`takeToken`). `title(crumbs)` règle le titre de la
 // fenêtre, s'il change ; `notify(body)` envoie une notification titrée
-// comme la fenêtre. Chaque appel porte d'abord `token`, que le pont exige ;
+// comme la fenêtre ; `canPick()` dit si la fenêtre offre le dialogue de
+// fichiers du système, que `pickPath(start, directory)` ouvre, et dont il
+// rend le chemin choisi, ou null : renoncé, refusé, hors de la fenêtre ou
+// en échec. Chaque appel porte d'abord `token`, que le pont exige ;
 // sans jeton, rien ne part. Seule une méthode que l'API porte est appelée ;
 // son erreur, ou sa promesse rejetée, est ignorée : un titre ou une
 // notification perdus n'arrêtent pas la page. Le titre courant part aussi
@@ -84,6 +88,7 @@ export function desktopBridge(win, base, token) {
     const ready = () => call("set_title", current);
     win.addEventListener("pywebviewready", ready);
     ready();
+    const canPick = () => Boolean(token) && typeof win.pywebview?.api?.pick_path === "function";
     return {
         title(crumbs) {
             const text = windowTitle(base, crumbs);
@@ -94,6 +99,18 @@ export function desktopBridge(win, base, token) {
         },
         notify(body) {
             call("notify", current, body);
+        },
+        canPick,
+        async pickPath(start, directory) {
+            if (!canPick()) {
+                return null;
+            }
+            try {
+                const chosen = await win.pywebview.api.pick_path(token, start, directory);
+                return typeof chosen === "string" && chosen ? chosen : null;
+            } catch {
+                return null;
+            }
         },
     };
 }

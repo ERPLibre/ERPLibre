@@ -3989,6 +3989,8 @@ TRANSLATIONS = {
         "fr": "Chemin non envoyé : un caractère de contrôle, ou trop long.",
         "en": "Path not sent: a control character, or too long.",
     },
+    # Page web dans la fenêtre bureautique : le dialogue de fichiers.
+    "System dialog": {"fr": "Dialogue du système", "en": "System dialog"},
     # Page web dans la fenêtre bureautique : notification de fin de commande.
     "Command ended: exit code %s, %s s": {
         "fr": "Commande terminée : code de sortie %s, %s s",

@@ -11,9 +11,10 @@ passer par un argv ni par un fichier. Fermer la fenêtre termine ce
 processus seulement : le hub et ses sessions restent, et la fenêtre
 suivante les retrouve dans la vue Sessions.
 
-La page n'atteint que les deux fonctions de `bridge`, le titre de la
-fenêtre et une notification de bureau, par un jeton que chaque fenêtre tire
-pour elle seule, et seulement tant que la fenêtre montre une page du hub.
+La page n'atteint que les trois fonctions de `bridge`, le titre de la
+fenêtre, une notification de bureau et le dialogue de fichiers du système,
+par un jeton que chaque fenêtre tire pour elle seule, et seulement tant que
+la fenêtre montre une page du hub.
 Sans pywebview ou sans moteur web, `main` le dit, donne les commandes
 d'installation (`install_hint`), que rien ne lance, et ouvre la page dans
 le navigateur ; sans affichage, il dit seulement « no display on this
@@ -224,11 +225,11 @@ def send_notification(title, body) -> bool:
 
 
 def bridge(window, origin, secret):
-    """Les deux fonctions que la page de `window` atteint, `set_title` et
-    `notify`, à passer à `window.expose` : pywebview ne les trouve que par
-    leur nom exact. Un `js_api` n'est jamais donné, car pywebview y suit
-    tout chemin pointé que la page envoie, `_privé` et `__dunder__`
-    compris.
+    """Les trois fonctions que la page de `window` atteint, `set_title`,
+    `notify` et `pick_path`, à passer à `window.expose` : pywebview ne les
+    trouve que par leur nom exact. Un `js_api` n'est jamais donné, car
+    pywebview y suit tout chemin pointé que la page envoie, `_privé` et
+    `__dunder__` compris.
 
     Le canal qui les porte reste ouvert à tout document de la fenêtre dès
     son premier script, chargement en cours compris. Chaque appel porte
@@ -256,7 +257,13 @@ def bridge(window, origin, secret):
     if not secret:
         raise ValueError("the bridge needs a secret")
     expected = secret.encode()
-    state = {"hub": False, "title": TITLE, "notified": None}
+    state = {
+        "hub": False,
+        "title": TITLE,
+        "notified": None,
+        "picking": False,
+        "loads": 0,
+    }
     lock = threading.Lock()
     loaded = window.events.loaded
 
@@ -281,7 +288,7 @@ def bridge(window, origin, secret):
 
     def on_before_load():
         with lock:
-            state.update(hub=False, title=TITLE)
+            state.update(hub=False, title=TITLE, loads=state["loads"] + 1)
 
     def check():
         try:
@@ -328,7 +335,51 @@ def bridge(window, origin, secret):
             state["notified"] = now
         return send_notification(title, body)
 
-    return set_title, notify
+    def pick_path(token, start, directory):
+        """Le dialogue de fichiers du système, ouvert sur le répertoire
+        `start` : un fichier à ouvrir, ou un répertoire quand `directory`
+        est vrai (`OPEN_DIALOG`, `FOLDER_DIALOG` de pywebview). Rend le
+        chemin choisi, ou None : renoncé, refusé, ou un dialogue déjà
+        ouvert, la page n'en ouvrant qu'un à la fois. Le dialogue, modal,
+        peut rester ouvert longtemps : le chemin n'est rendu que si la page
+        qui l'a demandé est encore là quand il se ferme, aucun chargement
+        fini entre-temps (`loads`, que `before_load` compte) et une page du
+        hub encore montrée (`accepted`). Un dialogue qui lève rend None, et
+        le type de l'exception va au journal de la fenêtre."""
+        if not accepted(token):
+            return None
+        with lock:
+            if not state["hub"] or state["picking"]:
+                return None
+            state["picking"] = True
+            load = state["loads"]
+        try:
+            webview = _webview()
+            if directory is True:
+                kind = webview.FOLDER_DIALOG
+            else:
+                kind = webview.OPEN_DIALOG
+            folder = start if isinstance(start, str) else ""
+            chosen = window.create_file_dialog(kind, directory=folder)
+        except Exception as exc:
+            print(
+                f"desktop window: file dialog failed: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+            return None
+        finally:
+            with lock:
+                state["picking"] = False
+                still = state["hub"] and state["loads"] == load
+        if not still or not accepted(token):
+            return None
+        if isinstance(chosen, str):
+            return chosen
+        if chosen and isinstance(chosen[0], str):
+            return chosen[0]
+        return None
+
+    return set_title, notify, pick_path
 
 
 def open_window(root, view="telemetry", lang=None) -> int:
@@ -342,7 +393,7 @@ def open_window(root, view="telemetry", lang=None) -> int:
     cette fenêtre (`bridge`), et ne quitte pas ce processus. pywebview
     choisit son moteur, en mode privé (aucun cookie gardé d'une fenêtre à
     l'autre), ses données sous `paths.data_dir(root)/desktop` (0700). La
-    page n'atteint que les deux fonctions de `bridge`. Fermer la fenêtre
+    page n'atteint que les trois fonctions de `bridge`. Fermer la fenêtre
     n'envoie rien au hub.
 
     `ValueError` pour une vue ou une langue invalide. `LaunchError` sous
