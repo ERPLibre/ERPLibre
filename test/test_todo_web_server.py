@@ -761,6 +761,41 @@ class TestFilesApi(ApiCase):
             (f"{self.base}/latest.zip", str(self.base), True),
         )
 
+    async def test_a_file_behind_a_link_then_dot_dot_is_the_one_checked(self):
+        # « .. » après un lien remonte du répertoire où le lien mène, comme
+        # le noyau le lit : le fichier rendu est celui qui a été vérifié,
+        # jamais son homonyme au-dessus du lien, lui absent.
+        deep = self.base / "c_dir" / "deep"
+        deep.mkdir()
+        (self.base / "c_dir" / "forged.zip").touch()
+        (self.base / "hop").symlink_to(deep)
+        listing = await self.listing(f"{self.base}/hop/../forged.zip")
+        self.assertEqual(
+            (listing["path"], listing["parent"], listing["file"]),
+            (
+                f"{self.base}/c_dir/forged.zip",
+                str(self.base / "c_dir"),
+                True,
+            ),
+        )
+        # Un fichier suivi d'une barre revient sans elle.
+        slash = await self.listing(f"{self.base}/b.txt/")
+        self.assertEqual(
+            (slash["path"], slash["file"]), (f"{self.base}/b.txt", True)
+        )
+
+    async def test_a_listing_that_raises_is_an_error_named_by_its_type(self):
+        def broken(*args):
+            raise RuntimeError("forged")
+
+        with patch.object(server, "list_directory", broken):
+            listing = await self.listing(self.base)
+        self.assertEqual(
+            (listing["error"], listing["entries"], listing["file"]),
+            ("RuntimeError", [], False),
+        )
+        self.assertEqual(self.hub.fs_readers, 0)
+
     async def test_a_name_the_protocol_cannot_carry_is_still_listed(self):
         # Un retour à la ligne, un octet qui n'est pas de l'UTF-8 : le hub
         # les liste tels quels, et la page refuse de les envoyer

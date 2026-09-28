@@ -330,14 +330,20 @@ def list_directory(path, dirs=False, limit=FS_LIMIT) -> dict:
     (relatif, absent, un fichier, refusé, un octet nul) rend `{path,
     parent, entries: [], truncated: false, error, file}` au lieu de lever :
     `error`, la raison du système ; `file`, vrai pour un fichier qui
-    existe, rendu sous le chemin demandé, lien non suivi, comme le clic sur
-    son entrée le nomme."""
+    existe. Un fichier revient sous son répertoire résolu et son dernier
+    nom tel quel, lien non suivi, comme le clic sur son entrée le nomme :
+    c'est ce chemin-là qui est vérifié, et « lien/../x » y désigne le `x`
+    où le lien mène, comme pour le noyau."""
     listing = {"path": path, "parent": None, "entries": [], "truncated": False}
-    real = None
+    asked = None
     try:
         expanded = os.path.expanduser(path)
         if not os.path.isabs(expanded):
             raise ValueError("not an absolute path")
+        bare = expanded.rstrip("/") or "/"
+        asked = os.path.join(
+            os.path.realpath(os.path.dirname(bare)), os.path.basename(bare)
+        )
         real = os.path.realpath(expanded)
         up = os.path.dirname(real)
         listing.update(path=real, parent=up if up != real else None)
@@ -345,9 +351,8 @@ def list_directory(path, dirs=False, limit=FS_LIMIT) -> dict:
             found = heapq.nsmallest(limit + 1, _sort_keys(scan, dirs))
     except (OSError, ValueError) as exc:
         reason = getattr(exc, "strerror", None) or str(exc)
-        is_file = real is not None and os.path.isfile(real)
+        is_file = asked is not None and os.path.isfile(asked)
         if is_file:
-            asked = os.path.abspath(expanded)
             listing.update(path=asked, parent=os.path.dirname(asked))
         return {**listing, "error": reason, "file": is_file}
     listing["entries"] = [
