@@ -129,6 +129,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - factur-x requires 6.8 outside s390x, the version already locked, so a regeneration can no longer fall back to an untested 4.x or 5.x
 - The interface chooser of the QEMU deployment and of the Odoo migration, and its preferences in `TODO › Configuration`, mark the TUI form with 📋 and the line by line questions with 💬
 - Entry 4 of the TODO main menu, Navigation telemetry, asks whether to open the telemetry in the terminal (TUI) or in the browser (WEB), and can stop the web interface; a line under its breadcrumb says whether that interface runs. The browser page gains a List and a System view, a search that ignores case and accents, and sorts by usage, name or code order
+- The web interface reads the menu tree of TODO with the tree reader as it is on disk: one left running across an update of TODO serves the menus of the new code without a restart. One started before this version still needs a restart once ([4] › [3] stops it)
 
 ## Fixed
 

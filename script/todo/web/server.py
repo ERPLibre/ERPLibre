@@ -45,6 +45,7 @@ import fcntl
 import hashlib
 import heapq
 import importlib
+import importlib.util
 import json
 import logging
 import math
@@ -270,23 +271,37 @@ class CodeTree:
     La signature est {chemin: (mtime_ns, taille)} de chaque fichier de
     TREE_SOURCES : une entrée ajoutée ou retirée d'un menu, dans le code ou
     dans todo.json, change l'arbre servi à la requête suivante sans
-    redémarrer le hub. Un todo_i18n.py modifié est rechargé, et ses libellés
-    nouveaux arrivent traduits : le hub l'importe depuis la racine qu'il
-    sert. L'analyse AST, coûteuse, tourne dans un thread, une à la fois : la
-    boucle continue de répondre, socket de contrôle comprise. `code` est
-    l'empreinte de la signature de l'arbre servi (`fingerprint`), que la
-    page compare pour savoir que le code de TODO a changé.
+    redémarrer le hub. Un todo_i18n.py modifié est rechargé en place, et ses
+    libellés nouveaux arrivent traduits. Un todo_telemetry.py modifié
+    s'exécute dans un module neuf, qui devient le lecteur de l'arbre s'il
+    s'exécute jusqu'au bout (`_load_reader`) : l'arbre se lit avec le
+    lecteur tel qu'il est sur le disque, et non avec celui que le hub a
+    importé à son lancement, et le module importé, dont d'autres threads se
+    servent, ne change jamais. Le hub importe les deux depuis la racine
+    qu'il sert. L'analyse AST, coûteuse, tourne dans un thread, une à la
+    fois : la boucle continue de répondre, socket de contrôle comprise.
+    `code` est l'empreinte de la signature de l'arbre servi
+    (`fingerprint`), que la page compare pour savoir que le code de TODO a
+    changé.
     """
 
     def __init__(self, root):
         self.root = Path(root)
         self.i18n_py = str(self.root / "script" / "todo" / "todo_i18n.py")
+        self.reader_py = str(
+            self.root / "script" / "todo" / "todo_telemetry.py"
+        )
+        # Le lecteur de l'arbre : le todo_telemetry importé au lancement, puis
+        # chaque version de son fichier qui s'exécute jusqu'au bout.
+        self.reader = todo_telemetry
         self.signature = None
         self.code = None
         self.tree = None
         self.lock = asyncio.Lock()
-        # Estampille du todo_i18n.py que le hub vient d'importer.
-        self.i18n_stamp = self._signature().get(self.i18n_py)
+        # Estampilles des fichiers que le hub vient d'importer.
+        signature = self._signature()
+        self.i18n_stamp = signature.get(self.i18n_py)
+        self.reader_stamp = signature.get(self.reader_py)
 
     def _signature(self) -> dict:
         entries = {}
@@ -307,9 +322,13 @@ class CodeTree:
         if stamp != self.i18n_stamp:
             _reload_i18n()
             self.i18n_stamp = stamp
+        stamp = signature.get(self.reader_py)
+        if stamp != self.reader_stamp:
+            self.reader = _load_reader(self.reader_py) or self.reader
+            self.reader_stamp = stamp
         todo_py = self.root / "script" / "todo" / "todo.py"
         try:
-            self.tree = todo_telemetry.build_code_tree(todo_py)
+            self.tree = self.reader.build_code_tree(todo_py)
         except Exception:
             log.exception("building the menu tree failed")
             self.tree = None
@@ -323,8 +342,10 @@ class CodeTree:
         return fingerprint(self._signature())
 
     async def refresh(self):
-        """L'arbre à jour, ou None si l'analyse échoue ou lève ; la table de
-        traduction est rechargée au passage si todo_i18n.py a changé.
+        """L'arbre à jour, ou None si l'analyse échoue ou lève. Au passage,
+        todo_i18n est rechargé en place si son fichier a changé, et un
+        todo_telemetry.py changé devient le lecteur de l'arbre s'il
+        s'exécute jusqu'au bout (`_load_reader`).
 
         Une exception de build_code_tree va au journal et ne remonte pas :
         /api/telemetry et /api/i18n répondent, l'arbre nul, et l'analyse
@@ -341,6 +362,25 @@ def _reload_i18n():
         importlib.reload(todo_i18n)
     except Exception:
         log.exception("reloading todo_i18n.py failed")
+
+
+def _load_reader(path):
+    """todo_telemetry exécuté depuis `path` dans un module neuf, ou None
+    s'il ne s'exécute pas jusqu'au bout : l'erreur va au journal. Le module
+    importé n'est jamais modifié : `load` et `system_snapshot`, qui tournent
+    dans d'autres threads, ne le voient jamais à moitié rechargé, et un
+    fichier à moitié écrit laisse servir le dernier lecteur chargé, jusqu'à
+    l'enregistrement suivant, qui change son estampille."""
+    spec = importlib.util.spec_from_file_location(
+        todo_telemetry.__name__, path
+    )
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        log.exception("loading %s failed", path)
+        return None
+    return module
 
 
 def localize(node, lang, parent=None) -> dict:

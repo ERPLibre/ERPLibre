@@ -24,6 +24,7 @@ import socket
 import stat
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 import unittest
@@ -625,6 +626,53 @@ class TestTelemetryApi(ApiCase):
             path = str(getattr(sys.modules[name], "__file__", None) or "")
             self.assertFalse(path.startswith(str(self.root)), name)
             self.assertFalse(name.startswith("script.todo.menus"), name)
+
+    async def test_a_changed_tree_reader_is_reloaded(self):
+        # Le lecteur tel qu'il est sur le disque de la racine servie : le vrai
+        # todo_telemetry.py, suivi d'un build_code_tree qui ajoute une feuille.
+        reader = self.root / "script" / "todo" / "todo_telemetry.py"
+        newer = textwrap.dedent(
+            """
+            _build = build_code_tree
+
+
+            def build_code_tree(todo_path=None):
+                tree = _build(todo_path)
+                tree["children"].append(
+                    {"label": "Newer", "is_menu": False, "children": []}
+                )
+                return tree
+            """
+        )
+        imported = todo_telemetry.build_code_tree
+        seen = []
+        for text in (None, Path(todo_telemetry.__file__).read_text() + newer):
+            if text:
+                reader.write_text(text)
+            data = await self.get_json("/api/telemetry?lang=en")
+            seen.append([c["key"] for c in data["tree"]["children"]])
+        self.assertEqual(seen, [["Execute"], ["Execute", "Newer"]])
+        # Le module importé, dont d'autres threads se servent, reste entier.
+        self.assertIs(todo_telemetry.build_code_tree, imported)
+
+    async def test_a_reader_that_does_not_load_keeps_the_last_one(self):
+        # Coupé au milieu d'une instruction, ou qui lève après avoir redéfini
+        # build_code_tree : l'erreur va au journal, et l'arbre se lit avec le
+        # lecteur déjà chargé.
+        reader = self.root / "script" / "todo" / "todo_telemetry.py"
+        halves = (
+            "def build_code_tree(\n",
+            "def build_code_tree(todo_path=None):\n    return None\n"
+            "raise NameError('defined further down')\n",
+        )
+        for text in halves:
+            with self.assertLogs(server.log, "ERROR") as logs:
+                reader.write_text(text)
+                data = await self.get_json("/api/telemetry?lang=en")
+            self.assertEqual(
+                [c["key"] for c in data["tree"]["children"]], ["Execute"]
+            )
+            self.assertEqual(len(logs.records), 1)
 
     async def test_the_code_stamp_changes_when_a_source_does(self):
         first = (await self.get_json("/api/telemetry?lang=en"))["code"]
