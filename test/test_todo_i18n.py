@@ -6,6 +6,7 @@ import ast
 import collections
 import os
 import re
+import string
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -31,6 +32,72 @@ class TestTranslations(unittest.TestCase):
 
     def test_translations_not_empty(self):
         self.assertGreater(len(todo_i18n.TRANSLATIONS), 0)
+
+
+def champs_de_format(gabarit):
+    """Les noms des champs `{…}` que `str.format` remplit dans `gabarit`, ou
+    None pour un texte que `str.format` refuserait d'analyser."""
+    try:
+        return frozenset(
+            nom
+            for _texte, nom, _spec, _conv in string.Formatter().parse(gabarit)
+            if nom is not None
+        )
+    except ValueError:
+        return None
+
+
+def entrees_aux_champs_disparates(table):
+    """Les clés de `table` dont la clé, `fr` et `en` ne remplissent pas les
+    mêmes champs."""
+    return sorted(
+        cle
+        for cle, entree in table.items()
+        if not (
+            champs_de_format(cle)
+            == champs_de_format(entree["fr"])
+            == champs_de_format(entree["en"])
+        )
+    )
+
+
+class TestLesChampsDeFormatSontLesMemesPartout(unittest.TestCase):
+    """Chaque entrée de TRANSLATIONS remplit les mêmes champs `{…}` dans sa
+    clé, en français et en anglais.
+
+    L'appelant formate `t(clé)` avec les champs de la CLÉ. `str.format`
+    ignore un argument nommé que le gabarit ne demande pas : une valeur qui
+    perd son `{cmd}` s'affiche sans erreur, amputée du geste qu'elle devait
+    nommer, et dans une seule langue. Un champ en trop lève `KeyError`, lui
+    aussi dans la seule langue qui l'ajoute.
+    """
+
+    def test_every_entry_fills_the_same_fields_in_key_fr_and_en(self):
+        self.assertEqual(
+            [], entrees_aux_champs_disparates(todo_i18n.TRANSLATIONS)
+        )
+
+    def test_the_table_does_carry_templates(self):
+        """Sur une table sans aucun gabarit, la garde passerait sans rien
+        tenir."""
+        gabarits = [c for c in todo_i18n.TRANSLATIONS if champs_de_format(c)]
+        self.assertGreater(len(gabarits), 10)
+
+    def test_a_lost_an_extra_or_a_renamed_field_is_caught(self):
+        """Contrôle positif, sur une table inventée : chaque défaut rougit,
+        et l'entrée saine, comme le texte sans champ, passent."""
+        table = {
+            "perdu {cmd}": {"fr": "perdu", "en": "perdu {cmd}"},
+            "en trop": {"fr": "en trop {cmd}", "en": "en trop"},
+            "renomme {cmd}": {"fr": "renomme {commande}", "en": "x {cmd}"},
+            "illisible {cmd}": {"fr": "illisible {cmd", "en": "x {cmd}"},
+            "sain {n} {cmd}": {"fr": "{cmd} sain {n}", "en": "x {n} {cmd}"},
+            "sans champ": {"fr": "sans champ", "en": "sans champ"},
+        }
+        self.assertEqual(
+            ["en trop", "illisible {cmd}", "perdu {cmd}", "renomme {cmd}"],
+            entrees_aux_champs_disparates(table),
+        )
 
 
 class TestAucuneCleAffichableNEchappeALaTable(unittest.TestCase):
