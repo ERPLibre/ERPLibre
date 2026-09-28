@@ -427,6 +427,12 @@ l'exploitant a pu le bâtir. Un refus y laisse la pose en place, que `--detruire
 reprend, et rend « non concluante » plutôt que « rien n'a été tenté » : c'est la
 boucle qui n'a pas joué.
 
+Le placement du locataire — le fichier que le clonage lit pour savoir OÙ il se
+pose — nomme le VMID du gabarit, et s'écrit donc au même moment. Un VMID pris
+ailleurs, le premier LIBRE de la plage par exemple, est libre PRÉCISÉMENT parce
+que le gabarit occupe celui d'avant ; le moteur refuse alors sur « aucun nœud ne
+détient le gabarit », et rien ne dit que le numéro venait de là.
+
 **Le terrain se joint par un compte ordinaire, et cela décide de tout.** Les
 outils d'un hyperviseur vivent dans `/usr/sbin`, que le PATH d'une session ssh
 non interactive ne porte pas, et son démon de grappe ne parle qu'à root. Jouée
