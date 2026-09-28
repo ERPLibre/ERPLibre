@@ -18,13 +18,14 @@
 // `cancel(qid)`), jamais dans les ARM ms qui suivent son apparition ni
 // dans celles qui suivent chaque nouvelle liste (`shownListing`), et le
 // deuxième clic d'un double-clic ne compte sur aucun de ses boutons
-// (`clicked`). Une liste
-// qui arrive après une autre, plus récente, est jetée ; une liste ou un
-// dialogue qui revient après le démontage ne répond plus.
+// (`clicked`). Une liste qui arrive après une autre, plus récente, est
+// jetée ; une liste ou un dialogue qui revient après le démontage ne
+// répond plus.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {getJson} from "./api.js";
 import {
     childPath,
+    failedListing,
     filterEntries,
     listingErrorKey,
     listingUrl,
@@ -181,8 +182,8 @@ export class PathPicker extends Component {
     // Liste `path` ; tapé (`typed`), un fichier qui existe répond quand
     // TODO en demande un. Seule la dernière demande se montre, et chaque
     // liste montrée désarme le widget. Une demande qui échoue se montre
-    // sous le nom de son erreur : `URIError` pour un chemin que l'adresse
-    // ne peut porter, sinon son message (`HTTP 403`).
+    // sous le nom de son erreur (`failedListing`) : `URIError` pour un
+    // chemin que l'adresse ne peut porter, sinon son message (`HTTP 403`).
     async open(path, typed = false) {
         const ticket = ++this.ticket;
         let listing;
@@ -190,7 +191,7 @@ export class PathPicker extends Component {
             listing = await getJson(listingUrl(path, this.directory), {csrf: true});
         } catch (error) {
             const reason = error instanceof URIError ? error.name : error.message;
-            listing = {path, parent: null, entries: [], truncated: false, error: reason, file: false};
+            listing = failedListing(path, this.here, reason);
         }
         if (ticket !== this.ticket) {
             return;

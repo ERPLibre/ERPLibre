@@ -737,9 +737,9 @@ class Files(Guard, tornado.web.RequestHandler):
     sous-répertoires seuls avec `dirs=1` ; 400 pour un autre `dirs`. `~`
     se développe dès la requête : une liste en erreur rend le chemin
     développé, dont la page fait ses segments, et jamais un « ~ » qui s'y
-    lirait comme un répertoire de la racine. Le hub
-    tourne sous le compte de l'utilisateur, dont la page lance déjà les
-    commandes : il n'y lit rien que TODO ne lise.
+    lirait comme un répertoire de la racine. Le hub tourne sous le compte
+    de l'utilisateur, dont la page lance déjà les commandes : il n'y lit
+    rien que TODO ne lise.
 
     Un GET qui lit le disque au chemin qu'il nomme exige, en plus du
     cookie, le jeton CSRF dans `X-CSRF-Token` (403 sinon) : SameSite ne

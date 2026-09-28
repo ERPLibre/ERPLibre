@@ -37,14 +37,20 @@ export function rereadsFor(runs, latest) {
 }
 
 // Relectures de /api/telemetry qui se chevauchent : chacune prend un rang
-// (`ask`) dans l'ordre où elle part ; sa réponse ne s'applique
-// (`answers`) que si aucune relecture partie après elle ne s'est déjà
-// appliquée. Une réponse ancienne arrivée en retard ne réécrit donc jamais
-// une empreinte plus récente.
+// (`ask`) dans l'ordre où elle part, et `reply` dit ce que fait sa réponse.
+// Elle donne l'empreinte (`stamp`) si aucune relecture partie après elle
+// n'a déjà donné la sienne : une réponse ancienne arrivée en retard ne
+// réécrit jamais une empreinte plus récente. Elle remplace l'arbre et les
+// compteurs (`tree`), complète (`all`) ou d'une empreinte qui n'est pas
+// celle de l'arbre montré, si son arbre se lit, si son empreinte est la
+// dernière lue et si aucun arbre d'une relecture partie après elle ne se
+// montre. La relecture complète d'un changement de vue, devancée par une
+// relecture de fond de même empreinte, montre donc encore ses compteurs.
 export class Rereads {
     constructor() {
         this.asked = 0;
-        this.applied = 0;
+        this.applied = 0; // le rang de la dernière empreinte donnée
+        this.shown = 0; // le rang de l'arbre montré
     }
 
     ask() {
@@ -52,12 +58,21 @@ export class Rereads {
         return this.asked;
     }
 
-    answers(rank) {
-        if (rank < this.applied) {
-            return false;
+    // La réponse de rang `rank` : `code`, son empreinte ; `all`, une
+    // relecture complète ; `readable`, un arbre qui se lit ; `latest`, la
+    // dernière empreinte lue ; `shown`, celle de l'arbre montré. Rend
+    // {stamp, tree}.
+    reply(rank, {all, code, latest, shown, readable}) {
+        const stamp = rank >= this.applied;
+        if (stamp) {
+            this.applied = rank;
         }
-        this.applied = rank;
-        return true;
+        const newest = stamp ? code : latest;
+        const tree = readable && (all || code !== shown) && code === newest && rank >= this.shown;
+        if (tree) {
+            this.shown = rank;
+        }
+        return {stamp, tree};
     }
 }
 

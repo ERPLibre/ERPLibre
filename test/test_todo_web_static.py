@@ -603,24 +603,63 @@ class TestCodeBanner(unittest.TestCase):
         self.assertEqual(self.out["rereads"], [False, True, False, True])
 
 
-# Deux relectures qui se chevauchent, la plus récente revenue d'abord, puis
-# une troisième.
+# Relectures qui se chevauchent, chaque réponse rendue en [empreinte,
+# arbre] : deux relectures de fond, la plus récente revenue d'abord, puis
+# une troisième ; la relecture complète d'un changement de vue devancée par
+# une relecture de fond de même empreinte, puis par une qui en lit une
+# nouvelle ; deux relectures complètes revenues dans le désordre ; un
+# arbre illisible.
 REREAD_CHECK = r"""
-const rereads = new m.Rereads();
-const first = rereads.ask();
-const second = rereads.ask();
-const late = [rereads.answers(second), rereads.answers(first)];
-console.log(JSON.stringify([...late, rereads.answers(rereads.ask())]));
+const said = (rereads, rank, all, code, latest, shown, readable = true) => {
+    const {stamp, tree} = rereads.reply(rank, {all, code, latest, shown, readable});
+    return [stamp, tree];
+};
+const [polls, view, moved, full] = [1, 2, 3, 4].map(() => new m.Rereads());
+const [p1, p2, v1, v2, c1, c2, f1, f2] = [polls, polls, view, view, moved,
+    moved, full, full].map((rereads) => rereads.ask());
+console.log(JSON.stringify({
+    polls: [said(polls, p2, false, "b2", "a1", "a1"),
+        said(polls, p1, false, "a1", "b2", "b2"),
+        said(polls, polls.ask(), false, "b2", "b2", "b2")],
+    view: [said(view, v2, false, "a1", "a1", "a1"),
+        said(view, v1, true, "a1", "a1", "a1")],
+    moved: [said(moved, c2, false, "b2", "a1", "a1"),
+        said(moved, c1, true, "a1", "b2", "b2")],
+    full: [said(full, f2, true, "a1", "a1", "a1"),
+        said(full, f1, true, "a1", "a1", "a1")],
+    unreadable: said(new m.Rereads(), 1, true, "a1", "a1", "a1", false),
+}));
 """
 
 
 @unittest.skipUnless(shutil.which("node"), "node absent")
 class TestRereadOrder(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.out = _node_json(REREAD_CHECK, "model.js")
+
     def test_a_late_reply_never_writes_back_an_older_stamp(self):
         # La plus récente s'applique ; l'ancienne, arrivée après, ne change
         # rien : son empreinte ferait croire la session sur un autre code.
-        out = _node_json(REREAD_CHECK, "model.js")
-        self.assertEqual(out, [True, False, True])
+        # La troisième, de même empreinte, ne remplace pas l'arbre.
+        self.assertEqual(
+            self.out["polls"], [[True, True], [False, False], [True, False]]
+        )
+
+    def test_a_view_change_keeps_its_counts_behind_a_background_reread(self):
+        # La relecture de fond, partie après, revient d'abord sans changer
+        # l'arbre ; la relecture complète, de la même empreinte, montre
+        # encore les compteurs qu'elle rapporte.
+        self.assertEqual(self.out["view"], [[True, False], [False, True]])
+
+    def test_a_late_full_reread_of_an_older_stamp_or_tree_is_dropped(self):
+        # Son empreinte n'est plus la dernière lue, ou l'arbre d'une
+        # relecture partie après elle se montre déjà.
+        self.assertEqual(self.out["moved"], [[True, True], [False, False]])
+        self.assertEqual(self.out["full"], [[True, True], [False, False]])
+
+    def test_an_unreadable_tree_gives_its_stamp_only(self):
+        self.assertEqual(self.out["unreadable"], [True, False])
 
 
 VIEW_CHECK = r"""
@@ -1252,6 +1291,8 @@ console.log(JSON.stringify({
     filtered: ["ete", "NOTES", " ", "zzz"].map(
         (query) => names(m.filterEntries(entries, query))),
     shown: m.shownListing(listing),
+    failed: [["~/x", "/srv/forged"], ["/etc/x", "/srv/forged"], ["~", ""]].map(
+        ([path, here]) => m.failedListing(path, here, "HTTP 403")),
     errors: ["busy", "timed out", "not an absolute path", "HTTP 403",
         "URIError", "Permission denied", "HTTP 400", "toString"].map(
         m.listingErrorKey),
@@ -1331,6 +1372,26 @@ class TestPathPicker(unittest.TestCase):
                 "armed": False,
             },
         )
+
+    def test_a_failed_request_never_makes_a_crumb_of_a_raw_tilde(self):
+        # Seul le hub développe « ~ » : une demande qui échoue (403, hub
+        # arrêté) garde le répertoire montré pour le fil du chemin, où un
+        # segment « ~ » ouvrirait « /~ ». Un chemin absolu y reste.
+        tilde, absolute, first = self.out["failed"]
+        self.assertEqual(
+            tilde,
+            {
+                "path": "/srv/forged",
+                "parent": None,
+                "entries": [],
+                "truncated": False,
+                "error": "HTTP 403",
+                "file": False,
+            },
+        )
+        self.assertEqual((absolute["path"], first["path"]), ("/etc/x", ""))
+        source = (SRC / "path_view.js").read_text(encoding="utf-8")
+        self.assertIn("failedListing(path, this.here, reason)", source)
 
     def test_the_fixed_errors_of_a_listing_are_translated(self):
         # Les jetons du hub et ceux que la page pose ont chacun leur clé ;

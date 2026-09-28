@@ -72,6 +72,16 @@ export function filterEntries(entries, query) {
     return wanted ? entries.filter((entry) => fold(entry.name).includes(wanted)) : entries;
 }
 
+// La liste que montre une demande à /api/fs qui échoue pour `path`, sous
+// `reason`, le nom de son erreur : vide, et sous `path` s'il est absolu.
+// Un chemin qui part de « ~ », que seul le hub développe, ne l'est pas, et
+// son segment « ~ » ouvrirait « /~ » : la liste garde alors le répertoire
+// montré, `here`.
+export function failedListing(path, here, reason) {
+    const shown = path.startsWith("/") ? path : here;
+    return {path: shown, parent: null, entries: [], truncated: false, error: reason, file: false};
+}
+
 // L'état du sélecteur qui montre `listing` : le champ du chemin suit le
 // répertoire, le filtre et le refus s'effacent, et le widget se désarme.
 // Chaque liste est un nouvel écran de boutons : le second clic d'un

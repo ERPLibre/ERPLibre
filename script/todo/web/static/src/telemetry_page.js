@@ -239,18 +239,25 @@ export class TelemetryPage extends Component {
     // quand le code a changé, et jamais par un arbre illisible (null).
     // Seule la relecture de fond (`poll=1`) ne compte pas comme activité. Un
     // hub qui ne répond pas laisse tout tel quel jusqu'à la suivante. La
-    // réponse d'une relecture qu'une plus récente a devancée ne change rien
-    // (`Rereads`) : elle porterait une empreinte plus ancienne.
+    // réponse d'une relecture qu'une plus récente a devancée ne donne pas
+    // son empreinte, plus ancienne peut-être ; complète, elle remplace
+    // encore l'arbre et les compteurs quand son empreinte est la dernière
+    // lue (`Rereads`).
     async refresh(all = false) {
         const rank = this.rereads.ask();
         try {
             const telemetry = await getJson(`/api/telemetry?lang=${this.env.lang}${all ? "" : "&poll=1"}`);
-            if (!this.rereads.answers(rank)) {
-                return;
+            const {stamp, tree} = this.rereads.reply(rank, {
+                all,
+                code: telemetry.code,
+                latest: this.state.latest,
+                shown: this.state.telemetry.code,
+                readable: Boolean(telemetry.tree),
+            });
+            if (stamp) {
+                this.state.latest = telemetry.code;
             }
-            const changed = telemetry.code !== this.state.telemetry.code;
-            this.state.latest = telemetry.code;
-            if (telemetry.tree && (all || changed)) {
+            if (tree) {
                 this.state.telemetry = telemetry;
             }
         } catch {
