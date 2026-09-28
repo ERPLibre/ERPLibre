@@ -220,6 +220,22 @@ class TestExecCommandLive(unittest.TestCase):
         # -1, qui n'est d'ailleurs pas un code de sortie valide.
         self.assertEqual(result, 1)
 
+    def test_a_command_never_launched_is_not_interrupted(self):
+        # Rendue sans lancer la commande, la main ne porte pas l'interruption
+        # d'une commande précédente : une mise à jour d'Odoo qui lit le
+        # drapeau montre son erreur au lieu de quitter TODO.
+        self.enterContext(patch.object(Execute, "ctrl_c_stops_command", True))
+        self.enterContext(patch.object(Execute, "interrupted", True))
+        with patch("os.path.exists", return_value=False):
+            result = self.exe.exec_command_live(
+                "echo test",
+                source_erplibre=False,
+                single_source_odoo=True,
+                quiet=True,
+            )
+        self.assertEqual(result, 1)
+        self.assertIs(Execute.interrupted, False)
+
     def test_single_source_odoo_with_version(self):
         status, cmd = self.exe.exec_command_live(
             "echo test",

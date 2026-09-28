@@ -525,11 +525,14 @@ class Execute:
     # porte s'arrête avec lui.
     ctrl_c_stops_command = False
     # Vrai quand Ctrl+C a interrompu la dernière commande lancée sous
-    # `_CtrlC`, faux quand elle a fini d'elle-même ; aucune autre commande
-    # ne l'écrit. Écrit sur la classe, il vaut pour le processus, quelle que
-    # soit l'instance qui a lancé la commande. L'appelant le lit juste après
-    # son appel : une boucle qui lance une commande par élément, et qu'un
-    # échec fait passer à l'élément suivant, s'arrête là.
+    # `_CtrlC`, faux quand elle a fini d'elle-même. Sous
+    # `ctrl_c_stops_command`, chaque appel d'`exec_command_live` le remet
+    # d'abord à faux, même celui qui rend la main sans rien lancer ; sans
+    # ce drapeau, rien ne l'écrit. Écrit sur la classe, il vaut pour le
+    # processus, quelle que soit l'instance qui a lancé la commande.
+    # L'appelant le lit juste après son appel : une boucle qui lance une
+    # commande par élément, et qu'un échec fait passer à l'élément suivant,
+    # s'arrête là.
     interrupted = False
     # Crochet posé par le worker d'une session web et par le mode
     # enregistrement, jamais par le CLI : reçoit `run_start` (la commande
@@ -589,6 +592,8 @@ class Execute:
             command (str): The command to execute.
         """
 
+        if self.ctrl_c_stops_command:
+            Execute.interrupted = False
         my_env = os.environ.copy()
         if new_env:
             my_env.update(new_env)
