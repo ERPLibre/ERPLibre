@@ -506,12 +506,10 @@ class QemuInstallMixin:
             # ERREUR, alors que son étape finale écrit encore l'autorité, les
             # variables et le sudoers : attendre l'unité, faute de quoi elles
             # arrivent après cette session, qui vivra sans elles.
-            + attente_cloud_final()
-            + "; "
+            + attente_cloud_final() + "; "
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
-            + cache_env_reload()
-            + "; "
+            + cache_env_reload() + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
             # est écrit par cloud-init lui aussi : mesuré sur une VM, la
             # session ssh est acceptée une seconde avant qu'il existe, donc
@@ -1012,7 +1010,11 @@ class QemuInstallMixin:
             "arches": ("amd64", "arm64"),
             "desktops": (),
             "needs_desktop": False,
-            "families": (),
+            # Les quatre gestionnaires de paquets, comme ses voisins : la pose
+            # passe par le dépôt de la distribution ou par un installateur
+            # amont, et ni l'un ni l'autre ne survit à la reconstruction d'un
+            # système déclaratif.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "after",
         },
         # Ni bureau ni famille de paquets : l'essentiel vient d'installateurs
