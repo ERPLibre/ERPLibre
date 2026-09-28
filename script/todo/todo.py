@@ -3015,7 +3015,12 @@ class TODO(
         #         [0] Retour
         # """
 
+        # L'arbre de télémétrie lit les entrées de configuration dans cette
+        # affectation (`_choices_children`) : elle reste un appel seul de
+        # get_config, et une liste absente se remplace ensuite.
         choices = self.config_file.get_config("code_from_makefile")
+        if choices is None:
+            choices = []
 
         menu_entry = {
             "prompt_description": t("Open SHELL"),

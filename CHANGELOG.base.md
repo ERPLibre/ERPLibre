@@ -368,6 +368,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In the path picker, the second click of a double-click no longer reaches any button — a path segment, the parent, Open, Choose this directory, System dialog or Cancel — as it already reached no entry: a row of path segments that wraps could move the answer row under the pointer
 - Execute › Code › Update: each number runs the entry it shows, and no other answer runs anything, « 01 » or « 1 » between spaces included. [1], the first update of `todo.json`, answered « Command not found ! », with several, each number ran the one before, and a configuration without `update_from_makefile` stopped the menu before it showed
 - Navigation telemetry: the Configuration menu shows its six commands under their own names, Fork and the reset included. Fork launches from the TUI and from the web page; the reset, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice. A preference launched from the TUI opens its own choice; Update's Upgrade Odoo launches from the TUI too. A web interface started before this version shows [4], Configuration and Update without their commands until it is restarted ([4] › [3] stops it)
+- Execute › Code opens when `todo.json` has no `code_from_makefile` list, with Open SHELL, Upgrade Module, Debug and Update, instead of stopping on an error before its menu
 
 <!-- [fr] -->
 
@@ -456,6 +457,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans le sélecteur de chemins, le second clic d'un double-clic n'atteint plus aucun bouton — un segment du chemin, le parent, Ouvrir, Choisir ce répertoire, Dialogue du système ou Annuler —, comme il n'atteignait déjà aucune entrée : une rangée de segments qui passe à la ligne pouvait amener la rangée de réponse sous le pointeur
 - Exécution › Code › Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune autre réponse ne lance rien, « 01 » ou « 1 » entouré d'espaces compris. [1], la première mise à jour de `todo.json`, répondait « Commande non trouvée ! », avec plusieurs, chaque numéro lançait la précédente, et une configuration sans `update_from_makefile` arrêtait le menu avant son affichage
 - Télémétrie de navigation : le menu Configuration montre ses six commandes sous leur propre nom, Fork et la réinitialisation comprises. Fork se lance depuis la TUI et depuis la page web ; la réinitialisation, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis. Une préférence lancée depuis la TUI ouvre son propre choix ; la migration Odoo de Mise à jour s'y lance aussi. Une interface web lancée avant cette version montre [4], Configuration et Mise à jour sans leurs commandes jusqu'à ce qu'elle soit relancée ([4] › [3] l'arrête)
+- Exécution › Code s'ouvre quand `todo.json` n'a pas de liste `code_from_makefile`, avec Ouvrir le SHELL, Mise à jour de module, Débogage et Mise à jour, au lieu de s'arrêter sur une erreur avant son menu
 
 <!-- [en] -->
 ## Removed
