@@ -541,7 +541,7 @@ class TestRedactSecrets(unittest.TestCase):
             with self.subTest(debut=ligne[:4]):
                 debut = time.monotonic()
                 redact_secrets(ligne)
-                self.assertLess(time.monotonic() - debut, 0.5)
+                self.assertLess(time.monotonic() - debut, LINEAR_SECONDS)
 
     def test_a_path_is_not_a_secret(self):
         """Rien ne disparaît d'une commande qui ne porte aucun secret."""
@@ -820,7 +820,7 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(debut=ligne[:10], fin=ligne[-5:]):
                 debut = time.monotonic()
                 redact_for_storage(ligne)
-                self.assertLess(time.monotonic() - debut, 0.5)
+                self.assertLess(time.monotonic() - debut, LINEAR_SECONDS)
 
     def test_a_run_of_blanks_is_read_once(self):
         """Une clé commence par un caractère de nom : une suite de blancs,
