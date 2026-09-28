@@ -48,11 +48,15 @@ reste entière et s'écrit après l'événement. La suite d'un début écrit se
 masque seule, puis derrière lui (`_stored`) : elle se relit seule, dans un
 enregistrement à elle, et peut réécrire la ligne plutôt que la continuer.
 Le texte d'une question ou d'un avis et une commande se masquent ligne à
-ligne de la même façon (`_redact`). Au-delà de CAP,
-un événement attend la clôture et y prend sa place entre les lignes de la
-fin retenue ; celui dont la sortie qui suit est omise s'écrit aussitôt,
-devant `omitted`, comme le plus ancien quand ceux qui attendent passent
-LATER octets.
+ligne de la même façon ; des lignes qu'une valeur entre guillemets joint
+partent entières si l'une portait un mot guetté (`_redact`). Une question
+dont une ligne, pas seulement la dernière, porte un mot guetté ne garde
+pas sa réponse : ni l'événement de sa fin, ni la sortie, où chaque ligne
+qui finit entre la question et sa fin, puis la première qui finit après,
+s'écrit TAINT_MASK (HIDE, SHOW). Au-delà de CAP, un événement attend la
+clôture et y prend sa place entre les lignes de la fin retenue ; celui
+dont la sortie qui suit est omise s'écrit aussitôt, devant `omitted`,
+comme le plus ancien quand ceux qui attendent passent LATER octets.
 
 `purge` retire des jours entiers ; d'un jour qui tient un `.log` pas encore
 à l'index, seul ce `.log` reste. Un `.log` que rien n'a clos — son hub tué,
@@ -147,6 +151,12 @@ SETTLE_SECONDS = 2.0
 # Caractères gardés du texte d'une question ou d'un avis.
 TEXT_LIMIT = 4096
 MASK = "•••"
+# Marques que `Recorder` retient parmi les événements, à leur place dans la
+# sortie, autour de la réponse d'une question qui ne se garde pas
+# (`_hides`) : HIDE derrière la question, SHOW derrière sa fin. `TaskLog`
+# les rend à `Lines` (`hide`, `show`), sans les écrire.
+HIDE = {"t": "hide"}
+SHOW = {"t": "show"}
 
 
 def new_id(now) -> str:
@@ -239,12 +249,13 @@ def _stored(line, lead="", tainted=False) -> tuple:
     return shown, stored
 
 
-def _dropped(text, lead="") -> bool:
-    """Vrai si `text`, les versions qu'un retour chariot retire de la ligne
-    en cours avant sa fin, portait un mot de SECRET_WORDS : nettoyé,
-    derrière `lead` dont il continue le début, ou brut. Brut, pour une
-    chaîne OSC que ce retour chariot coupe : son début, retiré, ne se
-    nettoie plus comme dans la ligne entière."""
+def _secret(text, lead="") -> bool:
+    """Vrai si `text` porte un mot de SECRET_WORDS : nettoyé (`_screen`),
+    derrière `lead` dont il continue le début, ou brut. Nettoyé, pour un
+    mot qu'une séquence coupe ; brut, pour un mot qu'une séquence mange
+    (l'octet final d'une CSI), ou pour une chaîne OSC qu'un retour chariot
+    coupe, dont le début, séparé du reste, ne se nettoie plus comme dans
+    la ligne entière."""
     execute = _execute()
     return execute.holds_secret_word(
         lead + _screen(text)
@@ -261,19 +272,42 @@ def _unfinished(text) -> int:
 
 def _redact(text) -> str:
     """Ce qu'un texte d'événement ou une commande garde sur disque : chaque
-    ligne masquée comme une ligne de sortie (`_stored`). Une valeur entre
-    guillemets que le masque de l'affichage cache d'une ligne à l'autre
-    retire des fins de ligne : les lignes ainsi masquées se lisent alors
-    à la place des lignes brutes."""
-    lines = text.split("\n")
-    shown = _execute().redact_secrets(text).split("\n")
-    if len(shown) != len(lines):
-        lines = shown
-    return "\n".join(_stored(line)[1] for line in lines)
+    ligne masquée comme une ligne de sortie (`_stored`).
+
+    Le masque de l'affichage lit le texte entier (`redact_secrets_by_line`),
+    où une valeur peut finir sur une autre ligne que son nom : entre
+    guillemets, elle joint les lignes qu'elle couvre ; derrière une option
+    en fin de ligne, elle est la ligne suivante. Une ligne qu'il laisse
+    telle quelle, ou masque comme la ligne brute seule, se lit brute : son
+    propre masque (`_stored`) en cache au moins autant. Les autres partent
+    entières, TAINT_MASK, si l'une de leurs lignes brutes porte un mot de
+    SECRET_WORDS (`_secret`), que la marque « '***' » ou une séquence
+    ouverte plus tôt peut cacher dans la ligne masquée ; sinon, elles se
+    lisent masquées."""
+    execute = _execute()
+    lines, at, stored = text.split("\n"), 0, []
+    for masked, count in execute.redact_secrets_by_line(text):
+        raw, at = lines[at : at + count], at + count
+        if count == 1 and (
+            masked == raw[0] or execute.redact_secrets(raw[0]) == masked
+        ):
+            stored.append(_stored(raw[0])[1])
+        elif any(_secret(line) for line in raw):
+            stored.append(execute.TAINT_MASK)
+        else:
+            stored.append(_stored(masked)[1])
+    return "\n".join(stored)
 
 
 def _at_risk(text) -> bool:
     return _execute().holds_secret_trigger(text)
+
+
+def _hides(ask) -> bool:
+    """Vrai si la réponse à `ask`, une question qui n'est pas un secret, ne
+    se garde pas : une ligne de son texte, et pas seulement la dernière,
+    porte un mot de SECRET_WORDS (`_secret`)."""
+    return ask.get("kind") != "secret" and _secret(str(ask.get("text") or ""))
 
 
 def _cut(line, lead="", tainted=False) -> tuple:
@@ -343,18 +377,39 @@ class Lines:
     refusée, sans relecture, jusqu'à ce que `_keep` la remplace ; refusée,
     elle ne fait que s'écrire entière après l'événement. Une ligne qui ne
     montre rien, ou que l'écho écarté (`bare`), ne se relit qu'une fois
-    grandie."""
+    grandie.
 
-    def __init__(self):
+    Entre `hide` et `show`, puis jusqu'à la première fin de ligne après
+    `show`, chaque ligne est marquée comme la ligne en cours l'est par une
+    version retirée : rien n'en reste que TAINT_MASK. `hiding` et
+    `tainted` donnent à une Lines neuve (au-delà de CAP) ce que `hide` et
+    `show` ont posé sur la précédente."""
+
+    def __init__(self, hiding=False, tainted=False):
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.pieces = []  # morceaux de la ligne en cours, pas encore joints
         self.length = 0  # somme de leurs longueurs, sans les joindre
         self.held = False  # `_cut` l'a refusée : attend \n, ou le CAP
         self.pending_cr = False  # elle finit par un \r pas encore tranché
         self.lead = ""  # début de la ligne en cours, déjà rendu par `flush`
-        self.tainted = False  # une version retirée portait un mot guetté
+        self.tainted = tainted  # marquée : version retirée guettée, `hide`
         self.risky = False  # refusée par `flush` (mot guetté, séquence)
         self.bare = -1  # `length` quand `flush` n'y a rien lu à montrer
+        self.hiding = hiding  # `hide` sans `show` : chaque ligne marquée
+
+    def hide(self):
+        """Marque la ligne en cours et chaque ligne qui la suit, jusqu'à
+        `show`."""
+        self.hiding = self.tainted = True
+
+    def show(self):
+        """Fin de `hide` : la ligne en cours, ou, sans ligne en cours, la
+        prochaine, reste marquée jusqu'à sa fin ; les suivantes ne le sont
+        plus. La réponse d'une question s'écrit sur la ligne en cours, ou
+        sur la prochaine quand elle ne paraît qu'après : transcription
+        d'une réponse de la page, que le port écrit après `answered`, ou
+        écho d'un collage au terminal, que le hub peut lire après lui."""
+        self.hiding = False
 
     @property
     def partial(self) -> str:
@@ -439,11 +494,11 @@ class Lines:
         if done:
             # La ligne en cours finit ; ce qui suit en commence une neuve.
             lines.append(_stored(done[0], lead, tainted))
-            lines += [_stored(line) for line in done[1:]]
-            lead, tainted = "", False
+            lines += [_stored(line, tainted=self.hiding) for line in done[1:]]
+            lead, tainted = "", self.hiding
         cut = rest.rfind("\r", 0, len(rest) - 1)
         if cut > 0:
-            tainted = tainted or _dropped(rest[:cut], lead)
+            tainted = tainted or _secret(rest[:cut], lead)
             rest = rest[cut:]
         held = False
         if final:
@@ -534,11 +589,16 @@ class TaskLog:
                 self.fresh = head.endswith(b"\n")
             if len(data) == len(head):
                 return
-            # La ligne que le plafond coupe ne s'écrit pas.
+            # La ligne que le plafond coupe ne s'écrit pas. HIDE et SHOW
+            # valent encore dans la fin retenue : cachée si elle l'était,
+            # et, sans ligne coupée, sa première ligne marquée si celle qui
+            # allait commencer l'était (celle que `show` laisse marquée).
+            old = self.lines
             if not self.fresh:
-                self.omitted += len(self.lines.partial.encode())
+                self.omitted += len(old.partial.encode())
                 self.clipped = True
-            self.lines = Lines()
+            tainted = old.tainted if self.fresh else old.hiding
+            self.lines = Lines(old.hiding, tainted)
             self.tail, data = bytearray(), data[len(head) :]
         self.tail += data
         self.past += len(data)
@@ -569,17 +629,37 @@ class TaskLog:
 
     def _put(self, data):
         """Écrit l'événement `data` aussitôt, derrière le début de la ligne
-        inachevée qui le précède."""
-        self._write([*self._flush(), *self._blanks(), self._event(data)])
+        inachevée qui le précède ; une marque (`_mark`) ne s'écrit pas."""
+        if not self._mark(data):
+            self._write([*self._flush(), *self._blanks(), self._event(data)])
 
     def _event(self, data) -> bytes:
         return self._record("event", data)
 
     def _release_one(self):
-        """Écrit le plus ancien événement retenu au-delà de CAP."""
-        data = self.later.pop(0)[1]
+        """Écrit le plus ancien événement retenu au-delà de CAP. Poussé par
+        LATER quand la fin retenue tient encore de la sortie venue avant
+        lui, il sort avant sa place : une marque SHOW n'en a alors plus, et
+        la fin retenue reste cachée plutôt que de montrer des lignes venues
+        avant elle."""
+        offset, data = self.later.pop(0)
         self.later_size -= len(_line(data))
-        self._write([*self._blanks(), self._event(data)])
+        early = offset >= self.past - len(self.tail)
+        if not self._mark(data, early):
+            self._write([*self._blanks(), self._event(data)])
+
+    def _mark(self, data, early=False) -> bool:
+        """Vrai si `data` est une marque de `Recorder`, rendue à `Lines`
+        plutôt qu'écrite : HIDE (`hide`), ou SHOW (`show`), que `early`
+        fait oublier."""
+        if data is HIDE:
+            self.lines.hide()
+        elif data is SHOW:
+            if not early:
+                self.lines.show()
+        else:
+            return False
+        return True
 
     def _feed(self, data, final=False):
         continued = bool(self.lines.lead)
@@ -1014,12 +1094,13 @@ class Recorder:
     @_safe
     def page(self, message):
         """Retient la réponse de la page à une question de la tâche ; d'un
-        secret, rien que son genre, jamais sa valeur."""
+        secret, ou d'une question dont la réponse ne se garde pas
+        (`_hides`), rien que son genre, jamais sa valeur."""
         qid = message.get("qid")
         ask = self.asks.get(qid)
         if ask is None:
             return
-        if ask.get("kind") == "secret":
+        if ask.get("kind") == "secret" or _hides(ask):
             message = {"t": message.get("t")}
         self.given[qid] = message
 
@@ -1123,6 +1204,8 @@ class Recorder:
         elif self.task is not None and qid in self.asks:
             ask, given = self.asks.pop(qid), self.given.pop(qid, None)
             self._event(self._answer(ask, given, message.get("end")))
+            if _hides(ask):
+                self.held.append(SHOW)
 
     def _open(self, menu, key):
         labels = {
@@ -1158,6 +1241,8 @@ class Recorder:
             self._event(
                 {"t": "ask", "kind": message.get("kind"), "text": text}
             )
+            if _hides(message):
+                self.held.append(HIDE)
         elif kind == "notice":
             level = message.get("level")
             self._event({"t": "notice", "level": level, "text": text})
@@ -1174,8 +1259,10 @@ class Recorder:
         (`end`, `cancel` ou `timeout`, dans `answered`), `timeout` à son
         échéance. Répondue : un secret, `answer` MASK, d'où que vienne la
         réponse ; au terminal, `answered`, sans valeur, que l'écho montre
-        déjà dans la sortie ; par la page, sa valeur, ou MASK quand le
-        masque de stockage toucherait la ligne de l'invite qu'elle
+        déjà dans la sortie, où HIDE et SHOW la cachent sous `_hides` ; par
+        la page, sa valeur, ou MASK quand une
+        ligne du texte de la question porte un mot guetté (`_hides`), ou
+        quand le masque de stockage toucherait la ligne de l'invite qu'elle
         complète (`_stored`)."""
         if end in ("cancel", "timeout"):
             return {"t": end}
@@ -1185,6 +1272,8 @@ class Recorder:
             return {"t": "answer", "value": MASK}
         if given is None:
             return {"t": "answered"}
+        if _hides(ask):
+            return {"t": "answer", "value": MASK}
         value = str(given.get("value"))
         line = str(ask.get("text") or "").rsplit("\n", 1)[-1] + value
         shown, stored = _stored(line)

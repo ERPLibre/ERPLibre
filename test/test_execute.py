@@ -15,6 +15,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+from script.execute import execute
 from script.execute.execute import (
     Execute,
     holds_secret_trigger,
@@ -512,9 +513,6 @@ class TestRedactSecrets(unittest.TestCase):
                 self.assertEqual(redact_secrets(ligne), attendu)
                 stocke = stocke or attendu
                 self.assertEqual(redact_for_storage(ligne), stocke)
-                self.assertEqual(
-                    redact_for_storage(redact_secrets(ligne), True), stocke
-                )
 
     def test_a_long_word_or_run_of_dashes_is_fast(self):
         """Une option ne commence ni après un caractère de mot ni après un
@@ -668,6 +666,58 @@ class TestRedactUrlCredentials(unittest.TestCase):
         self.assertLess(time.monotonic() - debut, 1.0)
 
 
+class TestRedactSecretsByLine(unittest.TestCase):
+    """Les lignes de `redact_secrets(texte)`, chacune avec le nombre de
+    lignes du texte qu'elle couvre : une valeur entre guillemets que la
+    marque remplace en retire les fins de ligne. Valeurs inventées."""
+
+    def test_a_quoted_value_joins_the_lines_it_spans(self):
+        for texte, attendu in (
+            ("", [("", 1)]),
+            ("a\nb", [("a", 1), ("b", 1)]),
+            (
+                "a\nTOKEN='inve\nnteAB' b\nc",
+                [("a", 1), ("TOKEN='***' b", 2), ("c", 1)],
+            ),
+            (
+                "A_TOKEN='x\ny' B_TOKEN='z\nw' c\nd",
+                [("A_TOKEN='***' B_TOKEN='***' c", 3), ("d", 1)],
+            ),
+            (
+                'tool --password "inve\n\nnteCD" -v\nd',
+                [("tool --password '***' -v", 3), ("d", 1)],
+            ),
+            (
+                "MASTER_PWD='a\nb' --token 'c\nd'\ne",
+                [("MASTER_PWD='***' --token '***'", 3), ("e", 1)],
+            ),
+            # La valeur d'une option en fin de ligne est la ligne suivante :
+            # masquée, sans rien joindre.
+            ("--password\ninventeEF", [("--password", 1), ("'***'", 1)]),
+        ):
+            with self.subTest(texte=texte):
+                lignes = execute.redact_secrets_by_line(texte)
+                self.assertEqual(lignes, attendu)
+                self.assertEqual(
+                    "\n".join(ligne for ligne, _ in lignes),
+                    redact_secrets(texte),
+                )
+
+    def test_the_lines_are_counted_in_linear_time(self):
+        size = 64 * 1024
+        for texte in (
+            "TOKEN='" + "\n" * size + "'",
+            "TOKEN='a\nb' " * (size // 12),
+            "--password '\n' " * (size // 15),
+            "--password\n" * (size // 11),
+            "a\n" * (size // 2),
+        ):
+            with self.subTest(debut=texte[:12]):
+                debut = time.monotonic()
+                execute.redact_secrets_by_line(texte)
+                self.assertLess(time.monotonic() - debut, 0.05)
+
+
 class TestRedactForStorage(unittest.TestCase):
     """Ce qu'une ligne de sortie devient avant d'être gardée sur disque :
     `redact_secrets`, puis le reste d'une ligne qui imprime un mot de passe
@@ -750,21 +800,21 @@ class TestRedactForStorage(unittest.TestCase):
         d'y chercher le mot d'un secret : un mot qui en répète un, sans
         valeur ou avec une valeur déjà masquée, coûte un temps
         proportionnel à sa longueur."""
-        for ligne, keep_masked in (
-            ("PASSWORD" * 8192 + ":", False),
-            ("PASSWORD_" * 8192 + ": x", False),
-            ("PASSWORD" * 8192 + "='***'", True),
-            ("token" * 13107 + " = ", False),
-            ("A_" * 32768 + "x: y", False),
-            ("password-" * 8192 + ":", False),
-            ("a-" * 32768 + "x: y", False),
-            ("xpassword" * 7282 + ":", False),
-            ("aToken" * 10922 + ": x", False),
-            ("pgPasswor" * 7282 + ": x", False),
+        for ligne in (
+            "PASSWORD" * 8192 + ":",
+            "PASSWORD_" * 8192 + ": x",
+            "PASSWORD" * 8192 + "='***'",
+            "token" * 13107 + " = ",
+            "A_" * 32768 + "x: y",
+            "password-" * 8192 + ":",
+            "a-" * 32768 + "x: y",
+            "xpassword" * 7282 + ":",
+            "aToken" * 10922 + ": x",
+            "pgPasswor" * 7282 + ": x",
         ):
             with self.subTest(debut=ligne[:10], fin=ligne[-5:]):
                 debut = time.monotonic()
-                redact_for_storage(ligne, keep_masked)
+                redact_for_storage(ligne)
                 self.assertLess(time.monotonic() - debut, 0.5)
 
     def test_a_run_of_blanks_is_read_once(self):
@@ -773,21 +823,20 @@ class TestRedactForStorage(unittest.TestCase):
         une fois, par le nom qui la précède, jamais depuis chacun de ses
         blancs. 64 Kio se lisent en quelques millisecondes."""
         run = 64 * 1024
-        for ligne, keep_masked in (
-            ("token" + " " * run + "x", False),
-            ("token" + " " * run + "x", True),
-            ("pass" + "\t" * run, False),
-            ("pass" + "\t" * run + "x", False),
-            ("key" + " \t" * (run // 2) + "| 12", False),
-            ("| key |" + " " * run + "| 12 |", False),
-            ("password" + " " * run, False),
-            ("token:" + " " * run, False),
-            ("key" + " " * run + ":" + " " * run, False),
-            ("secret " * (run // 7), False),
+        for ligne in (
+            "token" + " " * run + "x",
+            "pass" + "\t" * run,
+            "pass" + "\t" * run + "x",
+            "key" + " \t" * (run // 2) + "| 12",
+            "| key |" + " " * run + "| 12 |",
+            "password" + " " * run,
+            "token:" + " " * run,
+            "key" + " " * run + ":" + " " * run,
+            "secret " * (run // 7),
         ):
             with self.subTest(debut=ligne[:6], fin=ligne[-3:]):
                 debut = time.monotonic()
-                redact_for_storage(ligne, keep_masked)
+                redact_for_storage(ligne)
                 self.assertLess(time.monotonic() - debut, 0.05)
 
     def test_each_mask_passes_the_fast_path(self):
@@ -817,7 +866,8 @@ class TestRedactForStorage(unittest.TestCase):
         sa ligne où qu'il tombe : collé au mot qui le précède, derrière un
         tiret, sans séparateur, un « i » écrit « ı » ou « İ » compris. Rien
         ne suit le mot : rien à masquer. Une ligne dont casefold change la
-        longueur ne situe pas son mot : elle part entière."""
+        longueur avant la fin de son mot ne l'y situe pas : elle part
+        entière."""
         for ligne, attendu in (
             ("Loadingpasswd inventeAB", "Loadingpasswd ***"),
             ("x-ypasswd = inventeCD", "x-ypasswd ***"),
@@ -838,6 +888,37 @@ class TestRedactForStorage(unittest.TestCase):
         ):
             with self.subTest(ligne=ligne):
                 self.assertEqual(redact_for_storage(ligne), attendu)
+
+    def test_the_cut_falls_where_the_folded_prefix_ends(self):
+        """La coupure se place dans la ligne quand ce qui précède la fin du
+        mot garde sa longueur une fois passé par casefold : des « ß » qui
+        allongent le début et autant de points combinants qui raccourcissent
+        la fin ne la déplacent pas dans la valeur, qui part alors avec la
+        ligne entière. Ce qui suit le mot peut changer de longueur."""
+        for ligne, attendu in (
+            ("ßßßßpasswd inventeWX" + "\u0307" * 4, "***"),
+            ("ß" * 12 + "token inventeWX" + "\u0307" * 12, "***"),
+            ("\u0307" * 4 + "passwd inventeWX", "***"),
+            ("passwd inventeWX Straße", "passwd ***"),
+            ("token inventeWX" + "\u0307" * 3, "token ***"),
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertEqual(redact_for_storage(ligne), attendu)
+
+    def test_a_line_joined_by_a_quoted_value_hides_no_secret_word(self):
+        """Une valeur entre guillemets que `redact_secrets` masque d'une
+        ligne à l'autre joint ces lignes en une : si l'une portait un mot
+        guetté, que la marque « '***' » peut avoir emporté avec la valeur,
+        la ligne jointe part entière ; sinon elle s'écrit masquée. Les
+        autres lignes gardent leur forme."""
+        for texte, attendu in (
+            ("MASTER_PWD='a\n'api_key -> inventeWX", "***"),
+            ("a\nGITHUB_TOKEN='inve\nnteAB' b\nc", "a\n***\nc"),
+            ("MASTER_PWD='inve\nnteCD' odoo\nd", "MASTER_PWD='***' odoo\nd"),
+            ("--password\ninventeEF", "--password\n'***'"),
+        ):
+            with self.subTest(texte=texte):
+                self.assertEqual(redact_for_storage(texte), attendu)
 
     def test_a_secret_word_inside_a_masked_value_masks_the_line(self):
         """Le mot guetté se cherche dans la ligne avant les motifs : dans la

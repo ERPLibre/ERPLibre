@@ -849,7 +849,8 @@ class TestTaskLog(StoreCase):
         # mot qui le précède, derrière un déplacement du curseur que la
         # ligne gardée ne rejoue pas, une CSI avortée ou une C1, ou derrière
         # un tiret. Ce qui le précède reste. Une ligne dont casefold change
-        # la longueur ne situe pas son mot : elle part entière.
+        # la longueur avant la fin de son mot ne l'y situe pas : elle part
+        # entière.
         for data, masked in (
             (b"Loadingpasswd inventeWX", "Loadingpasswd ***"),
             (b"LoadingPassword for user x: inventeWX", "LoadingPassword ***"),
@@ -888,6 +889,7 @@ class TestTaskLog(StoreCase):
             (b"Bearer inventeWX", "Bearer ***"),
             (b"Pa\xc5\xbf\xc5\xbfphrase: inventeWX", "Paſſphrase ***"),
             (b"Stra\xc3\x9fe token: inventeWX", "***"),
+            (("ßßßßpasswd inventeWX" + "\u0307" * 4).encode(), "***"),
         ):
             with self.subTest(data=data):
                 records, packed = self.kept([data + b"\r\n"])
@@ -987,7 +989,6 @@ class TestTaskLog(StoreCase):
         # événement entre chacun, laissait passer la valeur : aucune ne la
         # garde plus, quelle que soit la coupure.
         value = b"inventeWX"
-        event = {"t": "answered"}
         for line in (
             b"x-ypasswd = " + value,
             b" x-ypasswd = " + value,
@@ -1176,6 +1177,81 @@ class TestTaskLog(StoreCase):
                 ("out", "line 11"),
             ],
         )
+
+    def played(self, steps, **patches):
+        """Les enregistrements d'une tâche qui reçoit `steps` dans l'ordre,
+        des octets de sortie ou des événements (dict), sous `patches`, puis
+        se clôt ; son journal compressé ne garde pas « inve »."""
+        task = self.task()
+        guard = patch.multiple(tasklog, **patches) if patches else None
+        with guard or contextlib.nullcontext():
+            for step in steps:
+                if isinstance(step, dict):
+                    task.event(step)
+                else:
+                    task.output(step)
+            task.close("done")
+        packed = task.path.with_name(task.path.name + ".zst")
+        self.assertNotIn(b"inve", zstd.decompress(packed.read_bytes()))
+        return self.records(task)
+
+    def test_every_line_between_hide_and_show_keeps_nothing(self):
+        # Entre HIDE et SHOW, chaque ligne finie, plusieurs dans un même
+        # morceau comprises, ne garde que TAINT_MASK, comme la ligne que
+        # SHOW trouve en cours ou, sans ligne en cours, la suivante ; celle
+        # d'après reste. Aucune marque ne s'écrit.
+        hide, show = tasklog.HIDE, tasklog.SHOW
+        for name, steps, expected in (
+            (
+                "in-progress",
+                [b"top\r\n", hide, b"a\r\ninventeWX\r\nin", show, b"veWX\r\n"],
+                ["top", "***", "***", "***"],
+            ),
+            ("next", [hide, b"a\r\n", show, b"inventeWX\r\n"], ["***", "***"]),
+        ):
+            with self.subTest(name=name):
+                records = self.played([*steps, b"Saved\r\nDone\r\n"])
+                expected = [*expected, "Saved", "Done"]
+                self.assertEqual(records, [("out", t) for t in expected])
+
+    def test_hidden_lines_stay_hidden_past_the_cap(self):
+        # HIDE vaut encore au-delà du plafond : la fin retenue ne garde que
+        # TAINT_MASK des lignes venues avant SHOW, retenu à sa place entre
+        # ses lignes, ou jusqu'au bout quand LATER le pousse dehors avant
+        # elles ; HIDE poussé ainsi cache la fin retenue dès son début.
+        # SHOW dont la sortie qui suit est omise vaut dès le début de la
+        # fin retenue. SHOW posé juste au plafond, sans ligne en cours,
+        # cache encore la ligne qui commence la fin retenue.
+        prompt = b"Paste your API token below\r\n> "
+        fill = b"x" * 100
+        echo = b"\r\ninventeWX\r\n"
+        exact = b"Your API token:\r\n" + b"x" * 71 + b"\r\n"
+        self.assertEqual(len(exact), 90)
+        hide, show = tasklog.HIDE, tasklog.SHOW
+        omitted = [prompt, hide, fill + echo, show, b"line 1\r\n" * 8]
+        for name, steps, later, last in (
+            ("show", [prompt, hide, fill + echo, show], 1024, "*** Done"),
+            ("early", [prompt, hide, fill + echo, show], 0, "*** ***"),
+            ("early-hide", [fill, prompt, hide, echo, show], 0, "*** ***"),
+            ("omitted", omitted, 1024, "Saved Done"),
+            (
+                "at-cap",
+                [exact, hide, show, b"inventeWX\r\n"],
+                1024,
+                "Saved Done",
+            ),
+        ):
+            with self.subTest(name=name):
+                records = self.played(
+                    [*steps, b"Saved\r\nDone\r\n"],
+                    CAP=90,
+                    TAIL=40,
+                    LATER=later,
+                )
+                texts = [text for _, text in records[-2:]]
+                self.assertEqual(texts, last.split())
+                self.assertNotIn("hide", repr(records))
+                self.assertNotIn("show", repr(records))
 
     def test_a_closed_log_reads_back_page_by_page(self):
         task = self.task()
@@ -1592,6 +1668,177 @@ class TestRecorder(StoreCase):
         self.assertEqual(texts, ["Password ***", "Password ***"])
         for path in self.base.rglob("*.zst"):
             self.assertNotIn(b"hunter2", zstd.decompress(path.read_bytes()))
+
+    def assertKeepsNoValue(self, base=None):
+        """Ni un journal compressé ni un index sous `base` (`self.base` par
+        défaut) ne gardent la valeur inventée « inventeWX », ni son début
+        ni sa fin."""
+        base = base or self.base
+        found = [zstd.decompress(p.read_bytes()) for p in base.rglob("*.zst")]
+        found += [p.read_bytes() for p in base.rglob("index.jsonl")]
+        self.assertTrue(found)
+        for data in found:
+            for piece in (b"inve", b"teWX"):
+                self.assertNotIn(piece, data)
+
+    def test_a_folded_prefix_of_another_length_keeps_no_value(self):
+        # Des « ß » devant le mot guetté et autant de points combinants
+        # derrière sa valeur rendent à la ligne sa longueur une fois passée
+        # par casefold : une ligne de sortie, un avis et une commande qui la
+        # portent partent entiers.
+        line = "ß" * 12 + "token inventeWX" + "\u0307" * 12
+        self.start()
+        self.rec.output((line + "\r\n").encode())
+        self.rec.worker({"t": "notice", "level": "info", "text": line})
+        self.rec.worker({"t": "run_start", "cmd": line})
+        self.rec.end()
+        entry, records = self.records()
+        self.assertEqual(
+            records,
+            [
+                ("out", "***"),
+                ("event", {"t": "notice", "level": "info", "text": "***"}),
+                ("event", {"t": "run_start", "cmd": "***"}),
+            ],
+        )
+        self.assertEqual(entry["commands"][0]["cmd"], "***")
+        self.assertKeepsNoValue()
+
+    def test_a_value_the_display_mask_carries_across_lines_is_dropped(self):
+        # Le masque de l'affichage lit le texte entier : une valeur entre
+        # guillemets y joint les lignes qu'elle couvre, et la valeur d'une
+        # option en fin de ligne y est la ligne suivante. Une ligne jointe
+        # dont une ligne brute porte un mot guetté part entière, même quand
+        # la marque « '***' » ou une séquence le cache dans la ligne
+        # jointe ; les autres lignes gardent leur forme. Ni un avis, ni une
+        # commande, ni l'index ne gardent la valeur.
+        texts = (
+            ("\x1b[1;32TOKEN='a\n'api_key -> inventeWX", "***"),
+            ("MASTER_PWD='a\nb pass\x1b[0mword' x inventeWX", "***"),
+            (
+                "Connecting\nPGPASSWORD='inve\nnteWX' psql\ndone",
+                "Connecting\n***\ndone",
+            ),
+            ("Run --password\ninventeWX now", "Run --password\n'***' now"),
+        )
+        self.start()
+        for text, _ in texts:
+            self.rec.worker({"t": "notice", "level": "info", "text": text})
+            self.rec.worker({"t": "run_start", "cmd": text})
+        self.rec.end()
+        entry, records = self.records()
+        stored = [d.get("text", d.get("cmd")) for _, d in records]
+        self.assertEqual(
+            stored, [kept for _, kept in texts for _ in ("text", "cmd")]
+        )
+        self.assertEqual(
+            [command["cmd"] for command in entry["commands"]],
+            [kept for _, kept in texts],
+        )
+        self.assertKeepsNoValue()
+
+    def asked(self, name, prompt, value, source, first="pty"):
+        """Une tâche sous `self.base / name` où le port pose `prompt`, une
+        question `text`, puis écrit « Saved » et « Done » : son texte paraît
+        dans le PTY (ONLCR compris) avant son message, ou après si `first`
+        vaut `channel`. `value` y répond depuis `source` : `page`, dont la
+        transcription suit `answered`, `terminal`, dont l'écho le précède,
+        ou `paste`, un collage au terminal dont le hub lit l'écho après
+        `answered`. Rend l'entrée et les enregistrements de la tâche."""
+        base = self.base / name
+        rec = tasklog.Recorder(base, "s1")
+        rec.worker(dict(MENU, qid=1))
+        rec.worker({"t": "answered", "qid": 1, "key": "1"})
+        rec.output(b"1\r\n")
+        ask = {"t": "ask", "qid": 2, "kind": "text", "text": prompt}
+        if first == "channel":
+            rec.worker(ask)
+        rec.output(prompt.replace("\n", "\r\n").encode())
+        if first == "pty":
+            rec.worker(ask)
+        echo = (value + "\r\n").encode()
+        if source == "terminal":
+            rec.output(echo)
+        if source == "page":
+            rec.page({"t": "answer", "qid": 2, "value": value})
+        rec.worker({"t": "answered", "qid": 2})
+        if source != "terminal":
+            rec.output(echo)
+        rec.output(b"Saved\r\nDone\r\n")
+        rec.end()
+        [entry] = tasklog.entries(base)
+        page = tasklog.read(base, entry["id"], 2, 100)
+        return entry, [(r["s"], r["d"]) for r in page["lines"]]
+
+    def test_an_answer_below_a_secret_word_is_never_kept(self):
+        # Une ligne du texte d'une question, pas seulement la dernière,
+        # porte un mot guetté : sa réponse ne se garde ni dans l'événement
+        # ni dans la sortie, où le port la montre sur la ligne de l'invite
+        # ou sur la suivante. Que la page réponde ou le terminal, que le
+        # texte paraisse dans le PTY avant le message ou après, qu'un
+        # collage montre sa réponse après `answered`, la sortie suivante
+        # reste : la première ligne qui finit après la question part avec
+        # elle, la réponse pouvant encore s'y écrire.
+        answer = {"page": {"t": "answer", "value": "•••"}}
+        for prompt in ("Paste your API token below\n> ", "Your API token:\n"):
+            for source in ("page", "terminal", "paste"):
+                for first in ("pty", "channel"):
+                    name = f"{len(prompt)}-{source}-{first}"
+                    with self.subTest(prompt=prompt, name=name):
+                        _, records = self.asked(
+                            name, prompt, "inventeWX", source, first
+                        )
+                        self.assertKeepsNoValue(self.base / name)
+                        self.assertEqual(records[-1], ("out", "Done"))
+                        ends = [
+                            d
+                            for s, d in records
+                            if s == "event" and d["t"] != "ask"
+                        ]
+                        expected = answer.get(source, {"t": "answered"})
+                        self.assertEqual(ends, [expected])
+        _, records = self.asked(
+            "exact", "Paste your API token below\n> ", "inventeWX", "page"
+        )
+        text = "Paste your API token ***\n> "
+        self.assertEqual(
+            records,
+            [
+                ("out", "Paste your API token ***"),
+                ("out", "> "),
+                ("event", {"t": "ask", "kind": "text", "text": text}),
+                ("event", {"t": "answer", "value": "•••"}),
+                ("out", "***"),
+                ("out", "Saved"),
+                ("out", "Done"),
+            ],
+        )
+
+    def test_the_page_keeps_no_value_of_an_answer_below_a_secret_word(self):
+        self.start()
+        prompt = "Paste your API token below\n> "
+        self.rec.worker({"t": "ask", "qid": 2, "kind": "text", "text": prompt})
+        self.rec.page({"t": "answer", "qid": 2, "value": "inventeWX"})
+        self.assertNotIn("inve", repr(self.rec.given))
+
+    def test_an_answer_to_a_plain_question_stays(self):
+        # Sans mot guetté dans son texte, une question garde sa réponse :
+        # dans l'événement, venue de la page, et dans la sortie, où la
+        # transcription ou l'écho la montrent derrière l'invite.
+        ask = {"t": "ask", "kind": "text", "text": "Name of the base\n> "}
+        for source, events in (
+            ("page", [{"t": "answer", "value": "forged"}]),
+            ("terminal", [{"t": "answered"}]),
+        ):
+            with self.subTest(source=source):
+                _, records = self.asked(source, ask["text"], "forged", source)
+                self.assertEqual(
+                    [d for s, d in records if s == "event"], [ask, *events]
+                )
+                self.assertEqual(
+                    [d for s, d in records if s == "out"],
+                    ["Name of the base", "> ", "forged", "Saved", "Done"],
+                )
 
     def test_a_failing_disk_drops_the_task_not_the_session(self):
         self.start()

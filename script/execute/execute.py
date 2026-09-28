@@ -23,7 +23,7 @@ import time
 
 try:
     import humanize
-except ModuleNotFoundError as e:
+except ModuleNotFoundError:
     humanize = None
 
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -109,6 +109,18 @@ _SECRET_URL_TOKEN = re.compile(
     r"(?=(?::[^\s/@]*)?@)",
     re.IGNORECASE,
 )
+# Les motifs de `redact_secrets` dans l'ordre où ils s'appliquent, chacun
+# avec son remplacement : le groupe qui précède la valeur, puis la marque.
+# Seule la valeur (`val`) disparaît. Une fonction plutôt qu'un gabarit
+# (« \g<opt> ») : sans correspondance, elle ne coûte rien à `sub`, qui
+# chercherait le gabarit compilé à chaque appel.
+_DISPLAY_MASKS = (
+    (_SECRET_OPTION, lambda m: m.group("opt") + "'***'"),
+    (_SECRET_ENV, lambda m: m.group("var") + "'***'"),
+    (_SECRET_HEADER, lambda m: m.group("schema") + "'***'"),
+    (_SECRET_URL_PASSWORD, lambda m: m.group("head") + "***"),
+    (_SECRET_URL_TOKEN, lambda m: m.group("head") + "***"),
+)
 
 
 def redact_secrets(text):
@@ -122,11 +134,52 @@ def redact_secrets(text):
     """
     if not text:
         return text
-    text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
-    text = _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
-    text = _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
-    text = _SECRET_URL_PASSWORD.sub(lambda m: m.group("head") + "***", text)
-    return _SECRET_URL_TOKEN.sub(lambda m: m.group("head") + "***", text)
+    for pattern, mask in _DISPLAY_MASKS:
+        text = pattern.sub(mask, text)
+    return text
+
+
+def redact_secrets_by_line(text) -> list:
+    """Les lignes de `redact_secrets(text)`, chacune en paire avec le
+    nombre de lignes de `text` qu'elle couvre, dans l'ordre : leur somme
+    est ce nombre de lignes. Une valeur entre guillemets qui porte des fins
+    de ligne les emporte avec elle, et les lignes qu'elle couvrait n'en
+    font plus qu'une.
+
+    Chaque motif se lit deux fois, par finditer pour compter les fins de
+    ligne de ses valeurs, puis par sub : les deux trouvent les mêmes
+    correspondances. Chaque fin de ligne se compte une fois par motif, et
+    chaque ligne se joint une fois : le temps reste linéaire. Une valeur
+    ne porte de fin de ligne qu'entre guillemets (`_VALUE`) : un texte
+    d'une ligne, ou sans guillemet, ne se lit qu'une fois, par
+    `redact_secrets`, et un texte sans mot de `_TRIGGERS`, qu'aucun motif
+    ne masque, pas du tout."""
+    if not holds_secret_trigger(text):
+        return [(line, 1) for line in text.split("\n")]
+    if "\n" not in text or ("'" not in text and '"' not in text):
+        return [(line, 1) for line in redact_secrets(text).split("\n")]
+    spans = [1] * (text.count("\n") + 1)
+    for pattern, mask in _DISPLAY_MASKS:
+        # `line` : ligne de `text` où commence la valeur ; `done` : lignes
+        # déjà rendues à `joined`, dont la dernière peut se joindre encore.
+        joined, done, line, at = [], 0, 0, 0
+        for match in pattern.finditer(text):
+            start, end = match.span("val")
+            lost = text.count("\n", start, end)
+            if not lost:
+                continue
+            line += text.count("\n", at, start)
+            at = end
+            if line < done:
+                joined[-1] += sum(spans[done : line + lost + 1])
+            else:
+                joined += spans[done:line]
+                joined.append(sum(spans[line : line + lost + 1]))
+            line += lost
+            done = line + 1
+        spans = joined + spans[done:]
+        text = pattern.sub(mask, text)
+    return list(zip(text.split("\n"), spans))
 
 
 # Une ligne de sortie qui imprime un mot de passe le fait sans nom d'option ni
@@ -178,24 +231,14 @@ _PASSWORD_LINE = re.compile(
     r"(?P<val>\S.*)",
     re.IGNORECASE,
 )
-# Le même motif, qui laisse intacte une valeur déjà réduite à « '***' » — la
-# marque que pose `redact_secrets` sur une option, une variable ou un
-# en-tête (jamais sur un identifiant d'URL, jamais entre guillemets ailleurs
-# qu'ici). `redact_for_storage(keep_masked=True)` s'en sert pour une commande
-# déjà passée par `redact_secrets` : ce qui suit une option de secret reste
-# lisible, plutôt que d'être à son tour effacé comme pour une ligne de
-# sortie brute, où rien n'est déjà masqué à préserver.
-_KEEP = r"(?!'\*\*\*')"
-_PASSWORD_LINE_KEEP_MASKED = re.compile(
-    r"(?P<head>"
-    + _PASSWORD_WORD
-    + "|"
-    + _secret_key(_KEEP + r"\S")
-    + ")"
-    + _KEEP
-    + r"(?P<val>\S.*)",
-    re.IGNORECASE,
-)
+
+
+def _head(match) -> str:
+    """Remplacement de `_PASSWORD_LINE` : le mot ou la clé, puis « *** » à
+    la place du reste de la ligne."""
+    return match.group("head") + "***"
+
+
 # Mots sans lesquels aucun motif de `redact_for_storage` ne masque rien,
 # cherchés dans la ligne passée par casefold, qui rend comme la comparaison
 # sans casse des motifs « ſ » en « s ». Aucun ne porte de « i » : le « ı »
@@ -256,27 +299,31 @@ def _taint(line, masked) -> str:
     premier mot de SECRET_WORDS, suivie de « *** » si quelque chose le
     suivait ; sans aucun mot, `masked`, ce que les motifs en ont fait.
 
-    TAINT_MASK seul quand le mot ne se situe plus : `_fold` change la
-    longueur de `line` (« ß » en « ss »), ou un motif a remplacé quelque
+    Le mot finit en `end` dans `_fold(line)`, et la coupure suit
+    `line[:end]` : `_fold` pliant chaque caractère seul, `_fold(line[:end])`
+    commence `_fold(line)`, et le mot y finit exactement s'il compte `end`
+    caractères. Sinon (un « ß » devant le mot, plié en « ss »), la coupure
+    tomberait ailleurs que derrière le mot, et la ligne part entière :
+    TAINT_MASK. La longueur de la ligne entière ne le dit pas : des points
+    combinants que `_fold` retire derrière le mot rendent ce qu'un « ß »
+    ajoute devant. TAINT_MASK aussi quand un motif a remplacé quelque
     chose avant la fin du mot (un mot dans la valeur d'un identifiant
     d'URL ou de MASTER_PWD=, qu'un motif cache déjà)."""
-    folded = _fold(line)
-    end = _first_secret_word(folded)
+    end = _first_secret_word(_fold(line))
     if end < 0:
         return masked
-    if len(folded) != len(line) or masked[:end] != line[:end]:
+    if len(_fold(line[:end])) != end or masked[:end] != line[:end]:
         return TAINT_MASK
     if end == len(line):
         return line
     return line[:end] + " " + TAINT_MASK
 
 
-def redact_for_storage(text, keep_masked=False):
+def redact_for_storage(text):
     """`redact_secrets(text)`, puis, sur chaque ligne qui imprime un mot de
     passe (`_PASSWORD_LINE`), ce qui suit le mot remplacé par « *** » ; puis
     chaque ligne qui porte un mot de SECRET_WORDS coupée après le premier
-    (`_taint`). Avec `keep_masked`, `_PASSWORD_LINE_KEEP_MASKED` ne reprend
-    pas une valeur déjà réduite à « '***' ».
+    (`_taint`).
 
     Pour ce que le hub garde sur disque, jamais pour l'affichage : à
     l'écran, « No password needed » se lit en entier ; dans un journal, il
@@ -284,10 +331,13 @@ def redact_for_storage(text, keep_masked=False):
     quelle que soit la forme de son étiquette. Le mot se cherche dans la
     ligne telle que `text` la porte, les motifs attrapant seuls ce qu'aucun
     mot ne nomme (un identifiant d'URL, MASTER_PWD=). Une valeur entre
-    guillemets que les motifs masquent d'une ligne à l'autre en retire des
-    fins de ligne : chaque ligne masquée se lit alors seule. Un texte sans
-    aucun mot de `_TRIGGERS` est rendu tel quel sans essayer de motif : le
-    hub passe chaque ligne de sortie d'une session dans sa boucle, que les
+    guillemets que les motifs masquent d'une ligne à l'autre joint ces
+    lignes en une (`redact_secrets_by_line`) : TAINT_MASK si l'une d'elles
+    portait un mot de SECRET_WORDS, que la marque « '***' » peut avoir
+    emporté avec la valeur ; sinon, la ligne masquée. Un texte sans aucun
+    mot de `_TRIGGERS` est rendu tel quel sans essayer de motif, et une
+    ligne seule, sans rien à joindre, sans compter ses lignes : le hub
+    passe chaque ligne de sortie d'une session dans sa boucle, que les
     autres sessions attendent.
     """
     if not text:
@@ -295,14 +345,22 @@ def redact_for_storage(text, keep_masked=False):
     folded = text.casefold()
     if not any(word in folded for word in _TRIGGERS):
         return text
-    pattern = _PASSWORD_LINE_KEEP_MASKED if keep_masked else _PASSWORD_LINE
-    masked = pattern.sub(
-        lambda m: m.group("head") + "***", redact_secrets(text)
+    if "\n" not in text:
+        return _taint(text, _PASSWORD_LINE.sub(_head, redact_secrets(text)))
+    joined = redact_secrets_by_line(text)
+    masked = _PASSWORD_LINE.sub(
+        _head, "\n".join(line for line, _ in joined)
     ).split("\n")
-    lines = text.split("\n")
-    if len(lines) != len(masked):
-        lines = masked
-    return "\n".join(_taint(*pair) for pair in zip(lines, masked))
+    lines, at, stored = text.split("\n"), 0, []
+    for (_, count), line in zip(joined, masked):
+        raw, at = lines[at : at + count], at + count
+        if count == 1:
+            stored.append(_taint(raw[0], line))
+        elif any(holds_secret_word(part) for part in raw):
+            stored.append(TAINT_MASK)
+        else:
+            stored.append(line)
+    return "\n".join(stored)
 
 
 def holds_secret_trigger(text) -> bool:
@@ -382,7 +440,7 @@ class Execute:
                 f"gnome-terminal -- bash -c 'source"
                 f" ./{VENV_ERPLIBRE}/bin/activate;%s'"
             )
-            self.cmd_source_default = f"gnome-terminal -- bash -c '%s'"
+            self.cmd_source_default = "gnome-terminal -- bash -c '%s'"
         else:
             exec_path_tell = shutil.which("osascript")
             if exec_path_tell:
