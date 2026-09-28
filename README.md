@@ -226,6 +226,7 @@ time make test_full_fast
 | [DEVELOPMENT](doc/DEVELOPMENT.md) | Development environment setup |
 | [PRODUCTION](doc/PRODUCTION.md) | Production server deployment |
 | [DEPLOY_SSH](doc/DEPLOY_SSH.md) | Deploying over SSH: the named target |
+| [SETOPS](doc/SETOPS.md) | Driving the Set-OPS engine from TODO |
 | [RUN](doc/RUN.md) | Execution modes and use cases |
 | [CODE_GENERATOR](doc/CODE_GENERATOR.md) | Odoo module code generation |
 | [MIGRATION](doc/MIGRATION.md) | Database migration between versions |
