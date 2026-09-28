@@ -15,6 +15,7 @@ l'import de son disque : plusieurs minutes d'un bloc vide.
 
 import asyncio
 import sys
+import time
 import unittest
 
 sys.argv = ["todo.py"]
@@ -28,6 +29,21 @@ except Exception:  # pragma: no cover - dépend de l'environnement
     TEXTUAL = False
 
 
+async def attendre(pilote, condition, plafond=10.0):
+    """Rend dès que `condition()` est vraie, en laissant l'application
+    avancer entre deux regards.
+
+    Une attente sur CONDITION et non sur une durée : la durée fixe devait
+    couvrir le pire cas d'une machine chargée, et tous les passages la
+    payaient. Le plafond ne sert qu'à échouer en le disant."""
+    fin = time.monotonic() + plafond
+    while not condition():
+        if time.monotonic() > fin:
+            raise AssertionError(f"condition non atteinte en {plafond} s")
+        await pilote.pause(0.05)
+    await pilote.pause()
+
+
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLeFlux(unittest.TestCase):
     def test_the_lines_appear_while_the_job_runs(self):
@@ -39,29 +55,33 @@ class TestLeFlux(unittest.TestCase):
                 [
                     "bash",
                     "-c",
-                    "for i in $(seq 1 6); do echo ligne $i; sleep 1; done",
+                    "for i in $(seq 1 6); do echo ligne $i; sleep 0.3; done",
                 ],
             )
         ]
-        vu = []
+        vu = {}
 
         async def scenario():
             from textual.widgets import RichLog
 
             app = run_deploy_progress(jobs, 1, run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
                 journal = app.query_one(RichLog)
-                for _ in range(3):
-                    await asyncio.sleep(1.5)
-                    await pilote.pause()
-                    vu.append(len(journal.lines))
-                vu.append(len(app._reussies))
+                await attendre(pilote, lambda: len(journal.lines) > 0)
+                vu["premieres"] = len(journal.lines)
+                vu["fini_a_la_premiere"] = app._done
+                await attendre(
+                    pilote, lambda: len(journal.lines) > vu["premieres"]
+                )
+                await attendre(pilote, lambda: app._done)
+                vu["toutes"] = len(journal.lines)
 
         asyncio.run(scenario())
-        # Au moins une ligne AVANT la fin, et de plus en plus.
-        self.assertGreater(vu[0], 0, "rien à l'écran pendant le travail")
-        self.assertGreater(vu[2], vu[0], "l'affichage n'avance pas")
+        # Une ligne à l'écran AVANT la fin du travail, puis de plus en plus.
+        self.assertEqual(
+            vu["fini_a_la_premiere"], 0, "rien à l'écran pendant le travail"
+        )
+        self.assertEqual(vu["toutes"], 6)
 
     def test_the_output_is_not_written_twice(self):
         # `_finish` réécrivait tout : la sortie apparaîtrait en double.
@@ -73,9 +93,7 @@ class TestLeFlux(unittest.TestCase):
 
             app = run_deploy_progress(jobs, 1, run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
-                await asyncio.sleep(1.5)
-                await pilote.pause()
+                await attendre(pilote, lambda: app._done)
                 vu["lignes"] = len(app.query_one(RichLog).lines)
 
         asyncio.run(scenario())
@@ -92,9 +110,7 @@ class TestLeFlux(unittest.TestCase):
 
             app = run_deploy_progress(jobs, 1, run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
-                await asyncio.sleep(1.0)
-                await pilote.pause()
+                await attendre(pilote, lambda: app._done)
                 vu["lignes"] = len(app.query_one(RichLog).lines)
                 vu["resultats"] = list(app._reussies)
 
@@ -116,9 +132,7 @@ class TestLaToucheSsh(unittest.TestCase):
         async def scenario():
             app = run_deploy_progress(jobs, 1, run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
-                await asyncio.sleep(1.2)
-                await pilote.pause()
+                await attendre(pilote, lambda: app._done)
                 vu["reussies"] = list(app._reussies)
 
         asyncio.run(scenario())
@@ -133,9 +147,7 @@ class TestLaToucheSsh(unittest.TestCase):
         async def scenario():
             app = run_deploy_progress(jobs, 1, run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
-                await asyncio.sleep(1.2)
-                await pilote.pause()
+                await attendre(pilote, lambda: app._done)
                 vu["reussies"] = list(app._reussies)
 
         asyncio.run(scenario())
@@ -147,10 +159,10 @@ class TestCeQuiSuit(unittest.TestCase):
     """Rapporté : on attendait devant une fenêtre « terminée » sans savoir
     que l'installation d'ERPLibre démarre en la quittant."""
 
-    def _sommaire(self, suite, attendre=3.0):
+    def _sommaire(self, suite):
         # Un travail qui DURE : sinon il finit avant le premier relevé, et le
         # test ne prouve rien de l'avant/après.
-        jobs = [("1", "vm-a", ["bash", "-c", "sleep 2; echo ok"])]
+        jobs = [("1", "vm-a", ["bash", "-c", "sleep 1; echo ok"])]
         vu = {}
 
         async def scenario():
@@ -160,8 +172,8 @@ class TestCeQuiSuit(unittest.TestCase):
             async with app.run_test(size=(140, 30)) as pilote:
                 await pilote.pause()
                 vu["pendant"] = str(app.query_one("#summary", Static).render())
-                await asyncio.sleep(attendre)
-                await pilote.pause()
+                vu["fini_pendant"] = app._done
+                await attendre(pilote, lambda: app._done)
                 vu["apres"] = str(app.query_one("#summary", Static).render())
 
         asyncio.run(scenario())
@@ -169,6 +181,7 @@ class TestCeQuiSuit(unittest.TestCase):
 
     def test_it_says_what_follows_once_everything_is_done(self):
         vu = self._sommaire("Quitter (q) pour lancer l'installation")
+        self.assertEqual(vu["fini_pendant"], 0, "relevé trop tard")
         self.assertNotIn("Quitter", vu["pendant"])
         self.assertIn("Quitter", vu["apres"])
 
@@ -195,9 +208,7 @@ class TestLaCibleSsh(unittest.TestCase):
                 jobs, 1, run_app=False, ssh_cmds=ssh_cmds
             )
             async with app.run_test(size=(140, 30)) as pilote:
-                await pilote.pause()
-                await asyncio.sleep(1.2)
-                await pilote.pause()
+                await attendre(pilote, lambda: app._done)
                 vrai = os.system
                 os.system = vu.append
                 app.suspend = lambda: contextlib.nullcontext()
