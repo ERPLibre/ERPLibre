@@ -157,9 +157,21 @@ class TestLaListe(unittest.TestCase):
 class TestCeQueLeDepotDeclare(unittest.TestCase):
     """Les harnais réels : ce qui est affirmé et ce qui ne l'est pas."""
 
-    def test_claude_is_the_only_measured_one(self):
+    def test_only_the_measured_harnesses_are_declared_so(self):
+        """« Mesuré » veut dire qu'un adaptateur a été écrit CONTRE le vrai
+        logiciel, et non qu'on en connaît le nom. Les autres restent en
+        « non vérifié », ce qui envoie chercher du code plutôt qu'une
+        installation."""
         mesures = [h.cle for h in R.HARNAIS if h.verifie]
-        self.assertEqual(mesures, ["claude"])
+        self.assertEqual(mesures, ["claude", "opencode"])
+
+    def test_a_measured_harness_declares_only_what_it_can_do(self):
+        """Open Code ne déclare que la lecture : son `run` écrit dans l'arbre
+        de travail sans demander, donc une entrée « question libre » y serait
+        un piège."""
+        par_cle = {h.cle: h for h in R.HARNAIS}
+        self.assertEqual(par_cle["opencode"].actions, (R.LISTER,))
+        self.assertIn(R.QUESTION, par_cle["claude"].actions)
 
     def test_every_harness_has_a_binary_name(self):
         for h in R.HARNAIS:
@@ -180,7 +192,7 @@ class TestCeQueLeDepotDeclare(unittest.TestCase):
     def test_a_home_is_declared_only_where_it_is_known(self):
         """Un chemin supposé afficherait une devinette comme un fait."""
         avec = {h.cle for h in R.HARNAIS if h.maison}
-        self.assertEqual(avec, {"claude", "hermes"})
+        self.assertEqual(avec, {"claude", "hermes", "opencode"})
 
     def test_an_unmeasured_harness_declares_no_action(self):
         """Déclarer une action sans adaptateur offrirait ce qui échoue."""

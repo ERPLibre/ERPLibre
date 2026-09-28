@@ -135,7 +135,9 @@ class TestLesLignes(unittest.TestCase):
             }
         )
         (ligne,) = lignes
-        self.assertEqual(ligne["id"], "aaaaaaaa")
+        # L'icône dit de quel harnais vient la ligne : le tableau en réunit
+        # deux, et deux identifiants de huit caractères ne se distinguent pas.
+        self.assertEqual(ligne["id"], f"{tui.ICONES['claude']} aaaaaaaa")
         self.assertEqual(ligne["projet"], "projet")
         self.assertEqual(ligne["tours"], "10")
         self.assertEqual(ligne["sortie"], "2 k")
@@ -206,3 +208,112 @@ class TestLApplicationSeConstruit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
+    """Deux harnais qui ne mesurent pas les mêmes choses, un seul tableau.
+
+    Ce que l'un porte et l'autre pas doit rendre un TIRET, jamais un zéro :
+    une colonne à zéro se lit « mesuré, et nul », ce qui est faux et décourage
+    de chercher ailleurs ce que l'autre harnais donne.
+    """
+
+    SANS_RESUME = object()
+
+    def _seance(self, resume=None, **champs):
+        """Une séance inventée. `resume=SANS_RESUME` rend celle du CLI, qui
+        n'en porte pas — le sentinelle distingue « pas de résumé » de « prends
+        le résumé par défaut »."""
+        from script.todo.assistant.harness import opencode as oc
+
+        defauts = {
+            "identifiant": "ses_aaaabbbbccccdddd",
+            "repertoire": "/un/depot/projet",
+            "modifie": 1_700_000_000_000,
+        }
+        defauts.update(champs)
+        if resume is self.SANS_RESUME:
+            resume = None
+        elif resume is None:
+            resume = oc.Resume(
+                entree=1_000, sortie=17, cache_lu=7_000, cout=0.5
+            )
+        return oc.Seance(resume=resume, **defauts)
+
+    def _ligne_claude(self):
+        """Une ligne de l'autre harnais, pour comparer les formes."""
+        from script.todo.assistant.agents import statistiques as st
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes({"/x/y/aaaaaaaa.jsonl": st.Lecture()})
+        return ligne
+
+    def test_a_session_becomes_a_row_of_the_same_shape(self):
+        """Les deux sources nourrissent le MÊME tableau : une clé de plus ou
+        de moins d'un côté lève au moment de peindre, pas avant."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_opencode([self._seance()])
+        self.assertEqual(set(ligne), set(self._ligne_claude()))
+        self.assertEqual(ligne["projet"], "projet")
+        self.assertEqual(ligne["sortie"], "17")
+        self.assertEqual(ligne["cout"], "0.50 $")
+
+    def test_the_icon_tells_the_two_harnesses_apart(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_opencode([self._seance()])
+        self.assertTrue(ligne["id"].startswith(t_ui.ICONES["opencode"]))
+        self.assertIn("aaaabbbb", ligne["id"])
+        self.assertNotIn("ses_", ligne["id"])
+
+    def test_what_open_code_does_not_measure_is_a_dash(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_opencode([self._seance()])
+        for absent in ("tours", "contexte", "api", "outils", "horloge"):
+            self.assertEqual(ligne[absent], "—", absent)
+
+    def test_an_unreadable_base_adds_no_row(self):
+        """None veut dire « la base n'a pas répondu », pas « zéro séance »."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.lignes_opencode(None), [])
+
+    def test_a_session_without_a_summary_is_skipped(self):
+        """Le CLI rend des séances sans résumé : une ligne toute vide dans le
+        tableau se lirait comme une session sans coût."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(
+            t_ui.lignes_opencode([self._seance(resume=self.SANS_RESUME)]), []
+        )
+
+    def test_every_column_of_the_table_is_filled(self):
+        """Une clé manquante lève au moment de peindre, pas avant."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_opencode([self._seance()])
+        for cle, _ in t_ui.COLONNES:
+            self.assertIn(cle, ligne, cle)
+
+    def test_the_summary_keeps_the_two_harnesses_apart(self):
+        """Un total fondu mêlerait un coût lu dans un `cost-state`, qu'une
+        compaction remet à zéro, et un champ de base stable."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        segment = t_ui.resume_opencode([self._seance(), self._seance()])
+        self.assertIn(t_ui.ICONES["opencode"], segment)
+        self.assertIn("2", segment)
+        self.assertIn("1.00 $", segment)
+
+    def test_the_summary_says_nothing_when_there_is_nothing(self):
+        """Un segment vide vaut mieux qu'un « 0 · 0.00 $ » sur une machine
+        qui n'a pas Open Code : zéro se lit « mesuré, et nul »."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.resume_opencode(None), "")
+        self.assertEqual(t_ui.resume_opencode([]), "")
+        self.assertEqual(
+            t_ui.resume_opencode([self._seance(resume=self.SANS_RESUME)]), ""
+        )

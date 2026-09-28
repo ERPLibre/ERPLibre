@@ -14786,6 +14786,94 @@ TRANSLATIONS = {
         "fr": "coût",
         "en": "cost",
     },
+    "tokens": {
+        "fr": "jetons",
+        "en": "tokens",
+    },
+    "cache read": {
+        "fr": "cache lu",
+        "en": "cache read",
+    },
+    "Sessions opened from this directory": {
+        "fr": "🧊 Séances ouvertes depuis ce répertoire",
+        "en": "🧊 Sessions opened from this directory",
+    },
+    "None here. The listing sees this directory only.": {
+        "fr": "Aucune ici. Le listage ne voit que ce répertoire.",
+        "en": "None here. The listing sees this directory only.",
+    },
+    "What one session cost": {
+        "fr": "💰 Ce qu'une séance a coûté",
+        "en": "💰 What one session cost",
+    },
+    "Statistics, by tool and by model (all projects)": {
+        "fr": "📊 Statistiques, par outil et par modèle (tous projets)",
+        "en": "📊 Statistics, by tool and by model (all projects)",
+    },
+    "No session to read here.": {
+        "fr": "Aucune séance à lire ici.",
+        "en": "No session to read here.",
+    },
+    "This session could not be read.": {
+        "fr": "Cette séance n'a pas pu être lue.",
+        "en": "This session could not be read.",
+    },
+    "Open Code cut its own output.": {
+        "fr": "Open Code a coupé sa propre sortie.",
+        "en": "Open Code cut its own output.",
+    },
+    "Sessions everywhere on this machine": {
+        "fr": "🧊 Séances de toute la machine",
+        "en": "🧊 Sessions everywhere on this machine",
+    },
+    "Every directory of this machine": {
+        "fr": "🌐 Tous les répertoires de la machine",
+        "en": "🌐 Every directory of this machine",
+    },
+    "This directory only": {
+        "fr": "📁 Ce répertoire seulement",
+        "en": "📁 This directory only",
+    },
+    "None in this directory.": {
+        "fr": "Aucune dans ce répertoire.",
+        "en": "None in this directory.",
+    },
+    "No Open Code session on this machine.": {
+        "fr": "Aucune séance Open Code sur cette machine.",
+        "en": "No Open Code session on this machine.",
+    },
+    "read from": {
+        "fr": "lu depuis",
+        "en": "read from",
+    },
+    "its database": {
+        "fr": "sa base",
+        "en": "its database",
+    },
+    "its command line": {
+        "fr": "sa ligne de commande",
+        "en": "its command line",
+    },
+    "The database is not readable.": {
+        "fr": "La base n'est pas lisible.",
+        "en": "The database is not readable.",
+    },
+    "It happens past roughly 60 kB of export.": {
+        "fr": "Cela arrive au-delà d'une soixantaine de ko d'export.",
+        "en": "It happens past roughly 60 kB of export.",
+    },
+    "nothing here": {
+        "fr": "rien ici",
+        "en": "nothing here",
+    },
+    "session here": {
+        "fr": "séance ici",
+        "en": "session here",
+    },
+    "sessions here": {
+        "fr": "séances ici",
+        "en": "sessions here",
+    },
     "tools": {
         "fr": "outils",
         "en": "tools",
