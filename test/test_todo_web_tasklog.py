@@ -1655,6 +1655,34 @@ class TestRecorder(StoreCase):
             ],
         )
 
+    def test_a_countdown_cancelled_by_the_page_is_its_default(self):
+        # Annuler un compte à rebours vaut Entrée, comme Ctrl+D au
+        # terminal : le worker prend le défaut, que le journal dit, masqué
+        # comme toute réponse. Une autre question annulée reste annulée.
+        self.start()
+        asks = [
+            (2, "countdown", "Upgrade now? (y/n) ", "y"),
+            (3, "countdown", "Continue? ", None),
+            (4, "countdown", "Token rotation? ", "y"),
+            (5, "text", "Name: ", "forged"),
+        ]
+        for qid, kind, text, default in asks:
+            ask = {"t": "ask", "qid": qid, "kind": kind, "text": text}
+            self.rec.worker(dict(ask, default=default, timeout_s=5))
+            self.rec.page({"t": "cancel", "qid": qid})
+            self.rec.worker({"t": "answered", "qid": qid})
+        self.rec.end()
+        ends = [d for s, d in self.records()[1] if d["t"] != "ask"]
+        self.assertEqual(
+            ends,
+            [
+                {"t": "answer", "value": "y"},
+                {"t": "answer", "value": ""},
+                {"t": "answer", "value": "•••"},
+                {"t": "cancel"},
+            ],
+        )
+
     def test_a_long_notice_is_masked_whole_then_cut(self):
         # Coupée d'abord, « Password: » perdrait son début et le secret
         # qui le suit passerait.

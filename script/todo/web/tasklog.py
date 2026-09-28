@@ -1257,17 +1257,21 @@ class Recorder:
         """L'événement de la fin de `ask`, secret compris : `cancel`
         annulée par la page, ou quand le worker la dit finie sans réponse
         (`end`, `cancel` ou `timeout`, dans `answered`), `timeout` à son
-        échéance. Répondue : un secret, `answer` MASK, d'où que vienne la
-        réponse ; au terminal, `answered`, sans valeur, que l'écho montre
-        déjà dans la sortie, où HIDE et SHOW la cachent sous `_hides` ; par
-        la page, sa valeur, ou MASK quand une
-        ligne du texte de la question porte un mot guetté (`_hides`), ou
-        quand le masque de stockage toucherait la ligne de l'invite qu'elle
-        complète (`_stored`)."""
+        échéance. Un compte à rebours annulé par la page vaut Entrée, comme
+        Ctrl+D au terminal : le worker prend le défaut de la question, que
+        l'événement donne comme la réponse de la page. Répondue : un
+        secret, `answer` MASK, d'où que vienne la réponse ; au terminal,
+        `answered`, sans valeur, que l'écho montre déjà dans la sortie, où
+        HIDE et SHOW la cachent sous `_hides` ; par la page, sa valeur, ou
+        MASK quand une ligne du texte de la question porte un mot guetté
+        (`_hides`), ou quand le masque de stockage toucherait la ligne de
+        l'invite qu'elle complète (`_stored`)."""
         if end in ("cancel", "timeout"):
             return {"t": end}
         if given is not None and given.get("t") == "cancel":
-            return {"t": "cancel"}
+            if ask.get("kind") != "countdown":
+                return {"t": "cancel"}
+            given = {"t": "answer", "value": ask.get("default") or ""}
         if ask.get("kind") == "secret":
             return {"t": "answer", "value": MASK}
         if given is None:
