@@ -270,9 +270,14 @@ class TheOrderOfTheMountingPlan(unittest.TestCase):
             "UNCONN 0 0 0.0.0.0:1701 0.0.0.0:*"
             ' users:(("xl2tpd",pid=1234,fd=5))'
         )
-        with patch(
-            "script.vpn.drivers.l2tp_ipsec.locate",
-            return_value="/usr/bin/ss",
+        # Sans terminal, le correctif proposé est refusé d'office : le test
+        # ne pose donc aucune question, qu'on le lance d'un terminal ou non.
+        with (
+            patch(
+                "script.vpn.drivers.l2tp_ipsec.locate",
+                return_value="/usr/bin/ss",
+            ),
+            patch("sys.stdin.isatty", return_value=False),
         ):
             with patch.object(runner, "cmd", return_value=(0, occupe)):
                 self.assertFalse(driver._l2tp_port_is_free(runner))
