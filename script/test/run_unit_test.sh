@@ -15,9 +15,12 @@
 # l'annonce donc avant de commencer.
 #
 #   ./script/test/run_unit_test.sh [--tui] [--changed[=REF]] [--failed]
-#                                  [fichiers...]
+#       [--watch] [--repeat=N] [--slowest=N] [--junit=FICHIER] [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
+#
+# Une option à valeur s'écrit avec « = » : tout argument sans « -- » est
+# pris pour un fichier de tests.
 #
 # --tui ouvre un tableau des fichiers — en attente, en cours, finis, avec
 # leur durée — et le journal de celui qu'on sélectionne. L'exécution
