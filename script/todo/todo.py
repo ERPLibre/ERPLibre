@@ -5583,9 +5583,9 @@ class TODO(
         choices = [
             {"prompt_description": t("Test a module")},
             {"prompt_description": t("Test a module with code coverage")},
+            # TOUT test/test_*.py : les tests du courriel et de l'analyse en
+            # font partie, et le tableau du lanceur les montre un à un.
             {"prompt_description": t("ERPLibre unit tests")},
-            {"prompt_description": t("Mail unit tests")},
-            {"prompt_description": t("Analyse unit tests")},
             # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
             # de vraies machines et durent des heures.
             {"prompt_description": t("Long tests - real VMs, hours")},
@@ -5604,10 +5604,6 @@ class TODO(
             elif status == "3":
                 self.execute_unit_tests()
             elif status == "4":
-                self.execute_unit_tests("test_mail*.py")
-            elif status == "5":
-                self.execute_unit_tests("test_analyse*.py")
-            elif status == "6":
                 self.prompt_execute_longtest()
             else:
                 print(t("Command not found !"))
@@ -5700,30 +5696,19 @@ class TODO(
                 single_source_erplibre=True,
             )
 
-    def execute_unit_tests(self, pattern="test_*.py"):
-        """Lance `unittest discover` sur un SOUS-ENSEMBLE de la suite.
+    def execute_unit_tests(self):
+        """Lance toute la suite unitaire par le lanceur.
 
-        Le motif est le seul paramètre : la suite complète dure plusieurs
-        minutes, dominées par les tests TUI montés, et attendre tout pour
-        vérifier un coin précis décourage de lancer les tests du tout. Une
-        entrée de menu supplémentaire coûte donc un motif, pas une méthode.
+        Le lanceur, et non `unittest discover` : il tient les tests à
+        l'écart de l'hôte (pas de terminal, sudo et virsh refusés), les
+        borne dans le temps et les lance en parallèle. `--tui` montre
+        chaque fichier en attente, en cours ou fini avec sa durée — ce qui
+        désigne celui qui bloque. Le tableau a besoin du terminal : la
+        commande en hérite au lieu d'être capturée.
         """
         print(f"\n--- {t('Running unit tests')} ---")
-        # `-u` : unittest écrit son verdict sur STDERR, les `print()` des
-        # tests sur STDOUT. Capturés ensemble, stderr passe sans tampon
-        # tandis que stdout est tamponné par blocs — tout le stdout se
-        # déversait donc APRÈS le « OK », qui se retrouvait noyé au milieu
-        # de la sortie au lieu d'en être le dernier mot. Sans tampon, les
-        # deux flux s'entrelacent dans l'ordre réel.
-        cmd = (
-            ".venv.erplibre/bin/python -u -m unittest discover"
-            f" -s test -p '{pattern}' -v"
-        )
-        status_code, output = self.execute.exec_command_live(
-            cmd,
-            source_erplibre=False,
-            return_status_and_output=True,
-        )
+        cmd = ["./script/test/run_unit_test.sh", "--tui"]
+        status_code = subprocess.run(cmd, check=False).returncode
         if status_code == 0:
             print(f"\n✅ {t('All unit tests passed')}")
         else:

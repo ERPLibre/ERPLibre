@@ -333,58 +333,30 @@ class TestProcessKillGitDaemon(unittest.TestCase):
 
 
 class TestExecuteUnitTests(unittest.TestCase):
-    def test_success_path(self):
+    """L'entrée passe par le lanceur unitaire, terminal hérité."""
+
+    def _cmd(self, code=0):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print") as mock_print:
+        with (
+            patch(
+                "script.todo.todo.subprocess.run",
+                return_value=MagicMock(returncode=code),
+            ) as run,
+            patch("builtins.print") as mock_print,
+        ):
             todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("unittest discover", cmd)
+        self.mock_print = mock_print
+        return run.call_args[0][0]
 
-    def test_failure_path(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (1, ["FAIL"])
-        with patch("builtins.print") as mock_print:
-            todo.execute_unit_tests()
-        # Verify it was called - error handling path
+    def test_it_runs_the_whole_suite_through_the_runner_table(self):
+        """Aucun fichier nommé : le lanceur balaie alors tout test/."""
+        cmd = self._cmd()
+        self.assertEqual(cmd, ["./script/test/run_unit_test.sh", "--tui"])
 
-    def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
-
-        unittest écrit son verdict sur stderr et les tests impriment sur
-        stdout ; capturés ensemble, le stdout tamponné se déversait après
-        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
-        résultat.
-        """
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("python -u -m unittest", cmd)
-
-    def test_the_pattern_reaches_the_command(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests("test_mail*.py")
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("-p 'test_mail*.py'", cmd)
-
-    def test_the_default_pattern_is_still_the_whole_suite(self):
-        """La signature a gagné un paramètre : l'entrée [3] ne doit pas
-        s'être mise à ne lancer qu'un sous-ensemble en silence."""
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("-p 'test_*.py'", cmd)
+    def test_a_failure_is_reported(self):
+        self._cmd(code=1)
+        sortie = " ".join(str(c) for c in self.mock_print.call_args_list)
+        self.assertIn("❌", sortie)
 
 
 class TestTestMenuDispatch(unittest.TestCase):
@@ -406,14 +378,20 @@ class TestTestMenuDispatch(unittest.TestCase):
             todo.prompt_execute_test()
         return mock_run
 
-    def test_entry_4_runs_the_mail_tests(self):
-        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
-
-    def test_entry_5_runs_the_analyse_tests(self):
-        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
-
-    def test_entry_3_still_runs_everything(self):
+    def test_entry_3_runs_everything(self):
         self.assertEqual(self._choose("3").call_args[0], ())
+
+    def test_entry_4_opens_the_long_tests(self):
+        todo = TODO()
+        with (
+            patch.object(todo, "prompt_execute_longtest") as longs,
+            patch.object(todo, "execute_unit_tests") as unitaires,
+            patch("click.prompt", side_effect=["4", "0"]),
+            patch("builtins.print"),
+        ):
+            todo.prompt_execute_test()
+        longs.assert_called_once_with()
+        unitaires.assert_not_called()
 
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
@@ -620,9 +598,7 @@ class TestListeCommandesClaude(unittest.TestCase):
 
     def test_etat_de_chaque_commande(self):
         sortie = self._lister("n", "n")
-        self.assertIn(
-            todo_i18n.t("up to date"), self._ligne(sortie, "commit")
-        )
+        self.assertIn(todo_i18n.t("up to date"), self._ligne(sortie, "commit"))
         self.assertIn("(+0 -1)", self._ligne(sortie, "todo_plan_max"))
         self.assertIn(
             todo_i18n.t("command not installed"),
