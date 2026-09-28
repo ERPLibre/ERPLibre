@@ -9,11 +9,9 @@ vieillit sans un mot : il reste lisible, personne ne le relit, et il dit
 depuis ce qui décide VRAIMENT — la table des backends éprouvés, le registre
 des postures, les profils, les cibles déclarées — et rien n'y est recopié.
 
-DEUX AXES, ET LES CONFONDRE FAIT MENTIR L'ÉCRAN. « Le dépôt sait le faire »
-et « ce site l'a réglé » sont deux questions distinctes : une forge que le
-code sait piloter sans profil déclaré n'est pas une forge en service, et le
-dire « fait » enverrait chercher une panne là où il n'y a qu'un réglage
-absent. D'où trois états et non deux.
+TROIS ÉTATS, UN RENDU PARTAGÉ. Les états, la ligne et le rendu vivent dans
+`script.todo.state_screen`, commun aux écrans d'état ; ce module n'en tire
+que ses lignes.
 
 LE RELEVÉ EST SÉPARÉ DE LA DÉCISION. `releve()` touche la configuration du
 site ; `lignes()` est PURE et se relit sans machine ni fichier. C'est ce qui
@@ -30,18 +28,21 @@ from script.posture import registry as posture_registry
 from script.posture import rules as posture_rules
 from script.remote import deploy_target
 from script.todo import vm_profiles
+
+# Le rendu commun des écrans d'état. Réexporté tel quel : le menu devstack
+# et ses épreuves lisent encore ces noms ICI.
+from script.todo.state_screen import (  # noqa: F401
+    A_REGLER,
+    ABSENT,
+    ETATS,
+    MARQUES,
+    PORTE,
+    Ligne,
+    compte,
+    render,
+)
 from script.todo.todo_i18n import t
 from script.vm import backend as vm_backend
-
-# Les trois états, et le vocabulaire est CLOS. « Partiel » n'existe pas :
-# il dirait à la fois trop et pas assez, là où « le dépôt sait, ce site n'a
-# pas réglé » nomme exactement ce qui manque et qui doit agir.
-PORTE = "porte"
-A_REGLER = "a-regler"
-ABSENT = "absent"
-ETATS = (PORTE, A_REGLER, ABSENT)
-
-MARQUES = {PORTE: "✓", A_REGLER: "◐", ABSENT: "○"}
 
 
 class Releve(NamedTuple):
@@ -61,20 +62,6 @@ class Releve(NamedTuple):
     forge_canonique: str = ""
     # Les dépôts que ce site déclare pousser vers un amont.
     miroirs_sortants: tuple = ()
-
-
-class Ligne(NamedTuple):
-    """Un segment, son état, et D'OÙ il le tient.
-
-    `source` n'est pas décoratif : c'est ce qui permet de contredire cet
-    écran sans lire ce module. Une ligne dont personne ne peut vérifier
-    l'origine est une affirmation de plus.
-    """
-
-    segment: str
-    etat: str
-    detail: str
-    source: str
 
 
 def releve(config_file=None) -> Releve:
@@ -274,32 +261,3 @@ def lignes(vu: Releve) -> tuple:
     out.append(Ligne("local-webui", etat, detail, "script.todo.vm_profiles"))
 
     return tuple(out)
-
-
-def compte(rendu) -> dict:
-    """{état: nombre}, tous les états présents même à zéro.
-
-    Un état absent de la table se lirait « aucun segment dans cet état »
-    aussi bien que « cet état n'existe pas » — et l'un est une nouvelle,
-    l'autre un défaut de rendu.
-    """
-    return {etat: sum(1 for l in rendu if l.etat == etat) for etat in ETATS}
-
-
-def render(rendu) -> list:
-    """Les lignes prêtes à imprimer. Fonction PURE."""
-    largeur = max(len(l.segment) for l in rendu)
-    out = []
-    for ligne in rendu:
-        out.append(
-            f"  {MARQUES[ligne.etat]} {ligne.segment:<{largeur}}"
-            f"  {ligne.detail}"
-        )
-        out.append(f"    {'':<{largeur}}  ↳ {ligne.source}")
-    n = compte(rendu)
-    out.append("")
-    out.append(
-        f"  {n[PORTE]} {t('carried')} · {n[A_REGLER]} {t('to set up here')}"
-        f" · {n[ABSENT]} {t('not in the repository')}"
-    )
-    return out
