@@ -24,6 +24,11 @@ from script.execute.execute import (
 )
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+# Borne d'une lecture linéaire de 64 Kio : quelques dizaines de
+# millisecondes sur un poste au repos, plusieurs fois plus sur un poste
+# chargé ; une lecture au carré de la longueur en prend des secondes. La
+# borne garde une marge large des deux côtés.
+LINEAR_SECONDS = 0.5
 
 
 class TestExecuteInit(unittest.TestCase):
@@ -715,7 +720,7 @@ class TestRedactSecretsByLine(unittest.TestCase):
             with self.subTest(debut=texte[:12]):
                 debut = time.monotonic()
                 execute.redact_secrets_by_line(texte)
-                self.assertLess(time.monotonic() - debut, 0.05)
+                self.assertLess(time.monotonic() - debut, LINEAR_SECONDS)
 
 
 class TestRedactForStorage(unittest.TestCase):
@@ -821,7 +826,7 @@ class TestRedactForStorage(unittest.TestCase):
         """Une clé commence par un caractère de nom : une suite de blancs,
         espaces, tabulations ou les deux, n'en commence aucune et se lit
         une fois, par le nom qui la précède, jamais depuis chacun de ses
-        blancs. 64 Kio se lisent en quelques millisecondes."""
+        blancs. 64 Kio se lisent sous LINEAR_SECONDS."""
         run = 64 * 1024
         for ligne in (
             "token" + " " * run + "x",
@@ -837,7 +842,7 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(debut=ligne[:6], fin=ligne[-3:]):
                 debut = time.monotonic()
                 redact_for_storage(ligne)
-                self.assertLess(time.monotonic() - debut, 0.05)
+                self.assertLess(time.monotonic() - debut, LINEAR_SECONDS)
 
     def test_each_mask_passes_the_fast_path(self):
         """Une ligne sans mot de `_TRIGGERS` n'essaie aucun motif : chaque
@@ -952,7 +957,7 @@ class TestRedactForStorage(unittest.TestCase):
     def test_the_secret_word_scan_is_linear(self):
         """Chaque mot guetté se cherche une fois dans la ligne passée par
         casefold : 64 Kio de mots guettés, de leurs débuts ou de blancs
-        se masquent en quelques millisecondes."""
+        se masquent sous LINEAR_SECONDS."""
         size = 64 * 1024
         for ligne in (
             "password" * (size // 8),
@@ -968,7 +973,7 @@ class TestRedactForStorage(unittest.TestCase):
             with self.subTest(debut=ligne[:10]):
                 debut = time.monotonic()
                 redact_for_storage(ligne)
-                self.assertLess(time.monotonic() - debut, 0.05)
+                self.assertLess(time.monotonic() - debut, LINEAR_SECONDS)
 
     def test_redact_secrets_comes_first(self):
         ligne = "Cloning https://u:inventeMN@forge.example/o/r.git"
