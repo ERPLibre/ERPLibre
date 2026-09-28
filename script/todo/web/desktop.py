@@ -76,16 +76,28 @@ def bridge(window, origin):
     compris.
 
     Elles n'agissent que tant que la fenêtre montre une page de `origin`
-    (`http://127.0.0.1:P`). Chaque chargement les coupe
-    (`events.before_load`, avant que pywebview n'injecte son API) ; une
-    fois la page chargée, un fil lit son URL (`get_current_url`) : une page
-    du hub les rouvre, et le dernier titre demandé s'applique ; toute autre
-    page, un lien ou un fichier déposé par exemple, est remplacée par
-    `origin + "/"`, que le cookie de session garde connectée. Ce fil est
-    démon : une fenêtre fermée pendant la lecture ne retient pas le
-    processus."""
+    (`http://127.0.0.1:P`). Le canal qui les porte à la page reste ouvert à
+    tout document dès son premier script, chargement en cours compris :
+    chaque appel relit donc `get_current_url` sur le fil qui l'a reçu, en
+    plus du drapeau `hub`, avant d'agir. Ce drapeau suit le chargement de
+    la page : `events.before_load` le baisse (au chargement fini, avant
+    que pywebview n'injecte son API) ; puis un fil démon lit l'URL
+    courante (`get_current_url`) au signal `events.loaded` — une page du
+    hub le relève et applique le dernier titre demandé, toute autre page,
+    un lien ou un fichier déposé par exemple, est remplacée par
+    `origin + "/"`, que le cookie de session garde connectée. Une fenêtre
+    fermée pendant la lecture ne retient pas ce fil, qui est démon."""
     state = {"hub": False, "title": TITLE, "notified": None}
     lock = threading.Lock()
+
+    def on_origin():
+        """Vrai si l'URL montrée à l'instant de l'appel est celle du hub,
+        lue en direct : le drapeau `hub` seul retarde d'un chargement."""
+        try:
+            url = window.get_current_url() or ""
+        except Exception:
+            return False
+        return url == origin or url.startswith(origin + "/")
 
     def on_before_load():
         with lock:
@@ -113,14 +125,18 @@ def bridge(window, origin):
 
     def set_title(text):
         """Titre de la fenêtre, en une ligne ; vide, TITLE."""
+        cleaned = _clean(text, TITLE_MAX) or TITLE
+        reachable = on_origin()
         with lock:
-            state["title"] = _clean(text, TITLE_MAX) or TITLE
-            if state["hub"]:
-                window.set_title(state["title"])
+            state["title"] = cleaned
+            if state["hub"] and reachable:
+                window.set_title(cleaned)
 
     def notify(title, body):
         """Notification de bureau (`send_notification`) ; rend si elle est
         partie."""
+        if not on_origin():
+            return False
         with lock:
             now = time.monotonic()
             last = state["notified"]

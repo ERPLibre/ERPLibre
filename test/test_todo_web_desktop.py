@@ -10,6 +10,7 @@ notify-send, seul programme du PATH, note ses arguments.
 
 import inspect
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -190,6 +191,18 @@ class TestBridge(unittest.TestCase):
         self.assertTrue(_wait(lambda: window.titles))
         self.assertTrue(notify("TODO", "body"))
 
+    def test_a_foreign_document_reaches_nothing_before_before_load(self):
+        """Le canal qui porte les fonctions exposées écoute toute page dès
+        son premier script ; seul `before_load` referme le pont, au
+        chargement fini. Une page étrangère qui l'atteint avant ce signal,
+        `hub` encore vrai du chargement précédent, ne trouve donc rien."""
+        window = FakeWindow("", "", {})
+        set_title, notify = self.on_the_hub(window)
+        window.current = "http://forged.invalid/"
+        self.assertFalse(notify("Forged", "body"))
+        set_title("Forged")
+        self.assertEqual(window.titles, [])
+
     def test_the_page_notifies_once_a_second_at_most(self):
         base = self.notify_send('echo >> "${0%/*}/calls"')
         _, notify = self.on_the_hub(FakeWindow("", "", {}))
@@ -219,13 +232,19 @@ class TestBridge(unittest.TestCase):
         self.assertFalse(marker.exists())
 
     def test_notify_is_silent_when_notify_send_is_absent_or_fails(self):
+        # Résolu avant que notify_send() ne restreigne PATH au faux
+        # programme, seul moyen d'y trouver encore un vrai sleep.
+        sleep = shutil.which("sleep")
         base = self.notify_send("exit 1")
         self.assertFalse(desktop.send_notification("title", "body"))
         (base / "notify-send").unlink()
         self.assertFalse(desktop.send_notification("title", "body"))
-        self.notify_send("sleep 5")
+        self.notify_send(f"exec {sleep} 5")
         with patch.object(desktop, "NOTIFY_TIMEOUT", 0.2):
+            start = time.monotonic()
             self.assertFalse(desktop.send_notification("title", "body"))
+        # Faux forcément par le délai, jamais par un code de sortie.
+        self.assertGreaterEqual(time.monotonic() - start, 0.2)
 
 
 if __name__ == "__main__":
