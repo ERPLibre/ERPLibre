@@ -92,6 +92,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
 - `make test_unit_changed` (`--changed[=REF]`) runs only the test files a change can reach, from `HEAD` by default, untracked files included: the dependencies are read in the code — imports, and the files a test names, such as the shell script it runs. A module that `TODO` loads still reaches more than half the suite, which does import it
 - `make test_unit_failed` (`--failed`) reruns only the test files that failed or timed out last time; a file leaves the list once it passes
+- The unit test runner offers `--slowest=N`, the N slowest tests across files; `--junit=FILE`, one JUnit case per test; `--repeat=N`, which names the files whose outcome varies from run to run; and `--watch`, which reruns the tests a saved file reaches. SIGTERM stops the running tests as Ctrl+C does
 
 - `TODO › Execute › Mail › Open the mail client (TUI)` — a three-pane terminal client over several accounts: read, write, reply, forward, file, trash, flag, search, page through a folder and act on several messages at once. It answers offline from a local cache, and a message body is fetched by a worker that paints it only if the cursor has not moved, so the screen never waits on the network
 - A SQLite cache per account, which an account may seal: subject, addresses, snippet and queued mail are encrypted at rest, while dates and flags stay clear because sorting and counting must not decrypt a row apiece. Message-ID values are kept as salted fingerprints, never readable, since they are what ties a conversation together. Mode `ephemeral` holds the cache in RAM for the life of the process, and one left behind by a killed process is swept at the next start
@@ -164,6 +165,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
 - `make test_unit_changed` (`--changed[=REF]`) ne lance que les fichiers de tests qu'un changement peut atteindre, depuis `HEAD` par défaut, fichiers non suivis compris : les dépendances se lisent dans le code — imports, et fichiers qu'un test nomme, comme le script shell qu'il lance. Un module que `TODO` charge atteint encore plus de la moitié de la suite, qui l'importe bel et bien
 - `make test_unit_failed` (`--failed`) ne relance que les fichiers de tests en échec ou en délai au passage précédent ; un fichier sort de la liste en passant
+- Le lanceur de tests unitaires offre `--slowest=N`, les N tests les plus lents ; `--junit=FICHIER`, un cas JUnit par test ; `--repeat=N`, qui nomme les fichiers dont l'issue varie d'un passage à l'autre ; et `--watch`, qui relance les tests qu'un fichier enregistré atteint. SIGTERM arrête les tests en cours comme Ctrl+C
 
 - `TODO › Execute › Courriel › Ouvrir le client courriel (TUI)` — un client en trois volets dans le terminal, sur plusieurs comptes : lire, écrire, répondre, transférer, ranger, jeter, suivre, chercher, parcourir un dossier par pages et agir sur plusieurs messages à la fois. Il répond hors ligne depuis un cache local, et le corps d'un message arrive par un fil de travail qui ne le peint que si le curseur n'a pas bougé : l'écran n'attend jamais le réseau
 - Un cache SQLite par compte, qu'un compte peut sceller : sujet, adresses, extrait et messages en attente sont chiffrés au repos, tandis que dates et drapeaux restent en clair — trier et compter ne doivent pas déchiffrer une ligne chacun. Les Message-ID sont gardés en empreintes salées, jamais lisibles, puisque ce sont eux qui relient une conversation. Le mode `ephemeral` tient le cache en mémoire le temps du processus, et celui qu'un processus tué laisse derrière lui est balayé au démarrage suivant
@@ -215,8 +217,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./script/test/run_unit_test.sh --tui` shows every test file pending, running or finished with its duration, and the end of the selected file's log. Without it, a file still running after `UNIT_SIGNAL` seconds (60) is announced, and Ctrl+C stops the running files and names them
 - `TODO › Test` has a single unit-test entry, which runs the whole suite through that runner and its table: the separate mail and analyse entries are gone, and the long tests move from [6] to [4]
 - The SOCKS proxy of `TODO › Deploy` offers the first free local port from 1080, and a busy port chosen by hand moves to the next free one, announced; the browser help names the port actually opened
-- TODO loads `openai` only when the assistant uses it: importing TODO takes half the time, at every launch
-- The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, and the Textual tests run without asyncio's debug mode
+- TODO loads `openai`, `urwid` and `pykeepass` only when the assistant, the file browser or the vault uses them: importing TODO takes about a sixth of the time, at every launch
+- The unit suite takes less time: the deploy progress tests wait on conditions instead of fixed sleeps, the Textual tests run without asyncio's debug mode, and the KeePass tests replace Argon2 with a fast derivation, one test keeping the real one
 
 <!-- [fr] -->
 
@@ -256,8 +258,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./script/test/run_unit_test.sh --tui` montre chaque fichier de tests en attente, en cours ou fini avec sa durée, et la fin du journal du fichier choisi. Sans lui, un fichier encore en cours après `UNIT_SIGNAL` secondes (60) est annoncé, et Ctrl+C arrête les fichiers en cours et les nomme
 - `TODO › Test` n'a plus qu'une entrée de tests unitaires, qui lance toute la suite par ce lanceur et son tableau : les entrées séparées courriel et analyse disparaissent, et les tests longs passent de [6] à [4]
 - Le proxy SOCKS de `TODO › Deploy` propose le premier port local libre dès 1080, et un port occupé choisi à la main passe au suivant libre, annoncé ; le mode d'emploi du navigateur nomme le port réellement ouvert
-- TODO ne charge `openai` que lorsque l'assistant s'en sert : l'import de TODO prend moitié moins de temps, à chaque lancement
-- La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, et les tests Textual tournent sans le mode debug d'asyncio
+- TODO ne charge `openai`, `urwid` et `pykeepass` que lorsque l'assistant, le navigateur de fichiers ou le coffre s'en servent : l'import de TODO prend environ six fois moins de temps, à chaque lancement
+- La suite unitaire prend moins de temps : les tests de progression du déploiement attendent une condition plutôt qu'une durée fixe, les tests Textual tournent sans le mode debug d'asyncio, et les tests KeePass remplacent Argon2 par une dérivation rapide, un test gardant la vraie
 
 <!-- [en] -->
 ## Fixed
