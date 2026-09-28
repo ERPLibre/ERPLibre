@@ -72,7 +72,9 @@ class LaunchError(Exception):
 
     `kind` nomme la cause, d'où un menu tire son message : `"root"` (le
     lanceur refuse root), `"missing"` (le paquet `pkg` manque au venv, lu
-    dans le journal) ou `"start"` (tout autre échec). `message` reste la
+    dans le journal) ou `"start"` (tout autre échec). La fenêtre
+    bureautique (`desktop`) y ajoute `"display"` (aucun affichage) et
+    `"engine"` (pywebview ne charge aucun moteur web). `message` reste la
     phrase anglaise de la ligne de commande.
     """
 

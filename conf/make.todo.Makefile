@@ -29,6 +29,13 @@ todo_web:
 todo_web_stop:
 	./.venv.erplibre/bin/python -m script.todo.web.launcher stop
 
+# La même page dans une fenêtre native (pywebview), sur le même hub. Sans
+# pywebview, sans moteur web ou sans affichage, dit quoi installer et ouvre
+# le navigateur. Fermer la fenêtre laisse le hub et ses sessions.
+.PHONY: todo_desktop
+todo_desktop:
+	./.venv.erplibre/bin/python -m script.todo.web.desktop open
+
 # Journal des tâches des sessions web : retire les jours de plus de 30 jours,
 # sauf une tâche en cours. « launcher purge --all » les retire tous.
 .PHONY: todo_web_purge

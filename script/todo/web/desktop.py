@@ -1,22 +1,49 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Fenêtre bureautique de TODO : le pont entre la page du hub web et la
-fenêtre native pywebview qui la montre.
+"""Fenêtre bureautique de TODO : la page du hub web dans une fenêtre
+native pywebview, sans code d'interface propre.
+
+La fenêtre charge la même page que le navigateur, sur le même hub
+(`launcher.ensure_running`), et vit dans CE processus : le lien et son code
+de connexion vont de `launcher.mint_code` à `webview.create_window` sans
+passer par un argv ni par un fichier. Fermer la fenêtre termine ce
+processus seulement : le hub et ses sessions restent, et la fenêtre
+suivante les retrouve dans la vue Sessions.
 
 La page n'atteint que les deux fonctions de `bridge`, le titre de la
 fenêtre et une notification de bureau, et seulement tant que la fenêtre
-montre une page du hub.
+montre une page du hub. Sans pywebview, sans moteur web ou sans affichage,
+`main` le dit, donne les commandes d'installation (`install_hint`), que
+rien ne lance, et ouvre la page dans le navigateur. En ligne de commande
+(messages anglais, sans traduction, comme le lanceur) :
+
+    python -m script.todo.web.desktop open [--view V] [--root R]
+
+La langue de la page vient de TODO_LANG, sinon de `todo_i18n.get_lang`.
 """
 
+import argparse
+import ctypes.util
 import html
+import importlib.util
+import os
+import re
+import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import unicodedata
+from urllib.parse import urlencode, urlsplit
 
+from script.todo import todo_i18n, todo_install
+from script.todo.web import launcher, paths
+
+ROOT = launcher.ROOT
 TITLE = "ERPLibre TODO"
+WIDTH, HEIGHT = 1200, 800
 # Longueurs gardées d'un titre et du corps d'une notification.
 TITLE_MAX = 200
 BODY_MAX = 300
@@ -24,6 +51,114 @@ NOTIFY_TIMEOUT = 5.0
 # Secondes entre deux notifications de la page : un appel plus rapproché
 # est ignoré, et la page ne lance jamais plus d'un notify-send par seconde.
 NOTIFY_INTERVAL = 1.0
+# pywebview et son moteur Qt, en roues binaires : un venv qui ne voit pas
+# les paquets Python du système n'a pas d'autre moteur sans compilation.
+# Sous macOS, pywebview prend le moteur du système (`PYWEBVIEW_MACOS`).
+PYWEBVIEW = "pywebview[qt]>=5,<6"
+PYWEBVIEW_MACOS = "pywebview>=5,<6"
+# Bibliothèques système que QtWebEngine charge et qu'un poste de bureau
+# n'a pas toujours, par famille de gestionnaire (`todo_install`).
+QT_LIBRARIES = {
+    "apt-get": ["libxkbfile1", "libxcb-cursor0"],
+    "dnf": ["libxkbfile", "xcb-util-cursor"],
+    "pacman": ["libxkbfile", "xcb-util-cursor"],
+    "zypper": ["libxkbfile1", "libxcb-cursor0"],
+}
+QT_BINDINGS = ("PyQt6", "PySide6", "PyQt5", "PySide2")
+
+
+def _webview():
+    """Le module pywebview, ou None s'il ne s'importe pas, quelle qu'en soit
+    la raison : un paquet cassé ne vaut pas mieux qu'un paquet absent."""
+    try:
+        import webview
+    except Exception:
+        return None
+    return webview
+
+
+def _found(name) -> bool:
+    """Vrai si le module `name` est installé, sans l'importer (ses paquets
+    parents, eux, s'importent) ; faux si l'un d'eux échoue."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except Exception:
+        return False
+
+
+def _qt_libraries() -> bool:
+    """Vrai si l'éditeur de liens trouve libxkbfile, sans laquelle
+    QtWebEngine ne s'importe pas, et libxcb-cursor quand Qt prendra la
+    plateforme xcb : sans elle, Qt 6.5 et plus arrête le processus
+    (SIGABRT) avant toute exception. La plateforme est QT_QPA_PLATFORM,
+    sinon wayland sous WAYLAND_DISPLAY, sinon xcb."""
+    platform = os.environ.get("QT_QPA_PLATFORM") or (
+        "wayland" if os.environ.get("WAYLAND_DISPLAY") else "xcb"
+    )
+    needed = ["xkbfile"]
+    if platform.startswith("xcb"):
+        needed.append("xcb-cursor")
+    return all(ctypes.util.find_library(name) for name in needed)
+
+
+def engine():
+    """Le moteur que pywebview prendra : `"cocoa"` sous macOS, sinon
+    `"gtk"` (PyGObject, GTK 3 et WebKit2 4.1 ou 4.0) puis `"qt"` (QtPy, un
+    QtWebEngine et ses bibliothèques système, `_qt_libraries`), dans
+    l'ordre où pywebview les essaie sous Linux ; None sans pywebview ou
+    sans moteur. Rien de graphique ne se charge : un moteur qui échoue
+    malgré tout fait lever `open_window` (`kind="engine"`)."""
+    if _webview() is None:
+        return None
+    if sys.platform == "darwin":
+        return "cocoa"
+    try:
+        import gi
+    except Exception:
+        gi = None
+    if gi is not None:
+        for version in ("4.1", "4.0"):
+            try:
+                gi.require_version("Gtk", "3.0")
+                gi.require_version("WebKit2", version)
+            except ValueError:
+                continue
+            return "gtk"
+    if (
+        _found("qtpy")
+        and any(
+            _found(f"{binding}.QtWebEngineWidgets") for binding in QT_BINDINGS
+        )
+        and _qt_libraries()
+    ):
+        return "qt"
+    return None
+
+
+def available() -> bool:
+    """Vrai si pywebview et un moteur web sont installés (`engine`)."""
+    return engine() is not None
+
+
+def has_display() -> bool:
+    """Vrai sous macOS, ou avec DISPLAY ou WAYLAND_DISPLAY."""
+    return sys.platform == "darwin" or bool(
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    )
+
+
+def install_hint(root=ROOT) -> list:
+    """Commandes à taper pour que la fenêtre s'ouvre, une par ligne : pip
+    dans le venv d'outillage de `root`, puis, quand la famille de la
+    distribution est connue, les bibliothèques que QtWebEngine charge.
+    Rien ne s'exécute ici."""
+    package = PYWEBVIEW_MACOS if sys.platform == "darwin" else PYWEBVIEW
+    pip = [launcher.venv_python(root), "-m", "pip", "install", package]
+    lines = [shlex.join(pip)]
+    system = todo_install.install_command(QT_LIBRARIES)
+    if system:
+        lines.append(shlex.join(system))
+    return lines
 
 
 def _clean(text, limit) -> str:
@@ -148,3 +283,124 @@ def bridge(window, origin):
         return send_notification(title, body)
 
     return set_title, notify
+
+
+def open_window(root, view="telemetry", lang=None) -> int:
+    """Ouvre la page `view` du hub de `root` dans une fenêtre native, et
+    rend 0 quand elle se ferme. S'appelle depuis le fil principal, comme
+    pywebview et GTK l'exigent.
+
+    Le hub est démarré ou réutilisé ; le lien
+    `http://127.0.0.1:P/#login=<code>&view=<view>[&lang=<lang>]` porte un
+    code neuf dans son fragment et ne quitte pas ce processus. pywebview
+    choisit son moteur, en mode privé (aucun cookie gardé d'une fenêtre à
+    l'autre), ses données sous `paths.data_dir(root)/desktop` (0700). La
+    page n'atteint que les deux fonctions de `bridge`. Fermer la fenêtre
+    n'envoie rien au hub.
+
+    `ValueError` pour une vue ou une langue invalide. `LaunchError` sous
+    root (`kind="root"`), avant tout fichier ; sans affichage
+    (`"display"`) ; sans pywebview (`"missing"`, `pkg="pywebview"`) ;
+    quand le hub ne démarre pas (celles de `ensure_running`, dont
+    `"missing"` avec `pkg="tornado"`) ; quand pywebview ne charge aucun
+    moteur ou échoue à démarrer (`"engine"`).
+    """
+    if not re.fullmatch(r"[a-z]+", view):
+        raise ValueError(f"invalid view: {view!r}")
+    if lang is not None and lang not in todo_i18n.LANGUAGES:
+        raise ValueError(f"unknown language: {lang!r}")
+    if os.geteuid() == 0:
+        raise launcher.LaunchError(
+            "the desktop window refuses to run as root", kind="root"
+        )
+    if not has_display():
+        raise launcher.LaunchError("no display on this host", kind="display")
+    webview = _webview()
+    if webview is None:
+        raise launcher.LaunchError(
+            "pywebview is not installed", kind="missing", pkg="pywebview"
+        )
+    info = launcher.ensure_running(root)
+    origin = f"http://127.0.0.1:{info['port']}"
+    fragment = {"login": launcher.mint_code(root), "view": view}
+    if lang:
+        fragment["lang"] = lang
+    window = webview.create_window(
+        TITLE, f"{origin}/#{urlencode(fragment)}", width=WIDTH, height=HEIGHT
+    )
+    window.expose(*bridge(window, origin))
+    storage = paths.private_dir(paths.data_dir(root) / "desktop")
+    try:
+        webview.start(private_mode=True, storage_path=str(storage))
+    except Exception as exc:
+        raise launcher.LaunchError(
+            f"pywebview did not start: {type(exc).__name__}: {exc}",
+            kind="engine",
+        ) from exc
+    return 0
+
+
+def _falls_back(exc) -> bool:
+    """Vrai pour un `LaunchError` après lequel `main` ouvre le navigateur :
+    aucun affichage, aucun moteur, ou pywebview absent. Un hub qui ne
+    démarre pas, faute de tornado aussi, ne s'ouvrirait pas mieux dans le
+    navigateur."""
+    if exc.kind in ("display", "engine"):
+        return True
+    return exc.kind == "missing" and exc.pkg == "pywebview"
+
+
+def _browser(root, view, lang) -> int:
+    """La page dans le navigateur (`launcher.open_page`), le repli de
+    `main`. Le lien de connexion, et le tunnel sans affichage, ne
+    s'impriment que sur un terminal : lancée par le menu ou par le bureau,
+    la sortie de ce processus va dans un journal."""
+    try:
+        page = launcher.open_page(root, view=view, lang=lang)
+    except launcher.LaunchError as exc:
+        print(exc.message, file=sys.stderr)
+        if exc.log_tail:
+            print(exc.log_tail, file=sys.stderr)
+        return 1
+    print(f"url: {page.url}")
+    if sys.stdout.isatty():
+        if page.headless:
+            port = urlsplit(page.url).port
+            print(f"tunnel: ssh -L {port}:127.0.0.1:{port} <this host>")
+        print(f"link: {page.link}")
+    return 0
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m script.todo.web.desktop",
+        description="Open the TODO web interface in a desktop window.",
+    )
+    parser.add_argument("action", choices=("open",))
+    parser.add_argument("--view", default="telemetry")
+    parser.add_argument("--root", default=str(ROOT), help="ERPLibre checkout")
+    args = parser.parse_args(argv)
+    if os.environ.get("TODO_LANG") in todo_i18n.LANGUAGES:
+        todo_i18n.use_lang(os.environ["TODO_LANG"])
+    lang = todo_i18n.get_lang()
+    try:
+        return open_window(args.root, args.view, lang)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    except launcher.LaunchError as exc:
+        print(exc.message, file=sys.stderr)
+        if exc.log_tail:
+            print(exc.log_tail, file=sys.stderr)
+        if not _falls_back(exc):
+            return 1
+        if exc.kind != "display":
+            print("install it with:", file=sys.stderr)
+            for line in install_hint(args.root):
+                print(f"  {line}", file=sys.stderr)
+    print("opening the page in the browser instead", file=sys.stderr)
+    return _browser(args.root, args.view, lang)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
