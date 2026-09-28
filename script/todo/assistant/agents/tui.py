@@ -700,12 +700,12 @@ TOUCHES_LIGNE = (
         "Detail of the highlighted call (shows content)",
     ),
     ("j", "journal", "Output", "Raw output of the agent (shows content)"),
-    ("n", "lancer", "Start", "Start a detached agent"),
-    ("s", "arreter", "Stop", "Stop the highlighted agent"),
+    ("n", "lancer", "start agent", "Start a detached agent"),
+    ("s", "arreter", "stop agent", "Stop the highlighted agent"),
     (
         "l",
         "relancer",
-        "Restart",
+        "restart agent",
         "Restart it on the current binary (confirms)",
     ),
     (
