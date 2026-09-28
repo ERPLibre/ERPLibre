@@ -10,8 +10,9 @@ que le hub charge au démarrage, sous une CSP qui n'autorise que l'import
 map par son hash. Les fonctions pures des vues (`static/src/model.js`,
 `static/src/metrics.js`, `static/src/session.js`,
 `static/src/history.js`, `static/src/prompt.js`, `static/src/launch.js`,
-`static/src/browse.js`, `static/src/api.js`) tournent sous node, quand il
-est installé. Les mots de la page sont vérifiés par `test_todo_web_i18n.py`.
+`static/src/browse.js`, `static/src/api.js`, `static/src/source.js`)
+tournent sous node, quand il est installé. Les mots de la page sont
+vérifiés par `test_todo_web_i18n.py`.
 """
 
 import base64
@@ -217,6 +218,15 @@ class TestPage(unittest.TestCase):
         self.assertEqual(sorted(table), [f"/static/{n}" for n in served])
         self.assertEqual(table["/static/LICENSE"][1], server.LICENSE_TYPE)
         self.assertFalse([url for url in self.table if url.endswith(".py")])
+
+    def test_each_vendored_library_offers_its_served_license(self):
+        # L'offre de source (AGPL §13) nomme chaque bibliothèque de
+        # static/lib, et le texte de sa licence est servi.
+        libraries = sorted(p.name for p in (STATIC / "lib").iterdir())
+        texts = [notice["text"] for notice in server.NOTICES]
+        self.assertEqual(sorted(t.split("/")[3] for t in texts), libraries)
+        for text in texts:
+            self.assertEqual(self.table[text][1], server.LICENSE_TYPE)
 
     def test_the_page_says_each_reason_of_a_drop(self):
         # Une raison que la page ne nomme pas s'afficherait comme `unread`.
@@ -710,6 +720,50 @@ class TestOpeningRefusal(unittest.TestCase):
         out = _node_json(RATE_CHECK, "session.js")
         self.assertEqual(out["rated"], ["rate", "full", "full", "taken"])
         self.assertEqual(out["retry"], [42, None, None, None])
+
+
+SOURCE_CHECK = r"""
+const t = (key) => `<${key}>`;
+const offer = {license: "AGPL-3.0-or-later", remote: "https://forge.example/r.git",
+    commit: "0123abc", branch: "main", modified: true,
+    notices: [{name: "OWL", version: "2.8.1", license: "LGPL-3.0-only",
+        text: "/static/lib/owl-2.8.1/LICENSE"}]};
+const bare = {...offer, remote: null, commit: null, branch: null, modified: null};
+console.log(JSON.stringify({
+    full: m.sourceRows(offer, t),
+    bare: m.sourceRows(bare, t).map((row) => row[1]),
+    clean: m.sourceRows({...offer, modified: false}, t)[4][1],
+    notice: m.noticeLine(offer.notices[0]),
+}));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestSourceOffer(unittest.TestCase):
+    def test_the_footer_says_each_field_or_that_git_did_not(self):
+        out = _node_json(SOURCE_CHECK, "source.js")
+        self.assertEqual(
+            out["full"],
+            [
+                ["<License>", "AGPL-3.0-or-later"],
+                ["<Repository>", "https://forge.example/r.git"],
+                ["<Commit>", "0123abc"],
+                ["<Branch>", "main"],
+                ["<Local changes>", "<yes>"],
+            ],
+        )
+        self.assertEqual(
+            out["bare"],
+            ["AGPL-3.0-or-later", "<none>", "<none>", "<none>", "<unknown>"],
+        )
+        self.assertEqual(out["clean"], "<no>")
+        self.assertEqual(
+            out["notice"],
+            {
+                "text": "OWL 2.8.1 — LGPL-3.0-only",
+                "href": "/static/lib/owl-2.8.1/LICENSE",
+            },
+        )
 
 
 API_CHECK = r"""

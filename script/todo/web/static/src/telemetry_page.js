@@ -17,7 +17,10 @@
 // une session neuve. Une empreinte de session que la page n'a pas encore
 // lue la fait relire d'abord : la bannière ne juge que sur la plus récente.
 // Dès qu'une requête rend 403, la connexion a expiré : une bannière dit de
-// rouvrir l'interface depuis TODO, la page reste telle qu'elle est.
+// rouvrir l'interface depuis TODO, la page reste telle qu'elle est. Le pied
+// de page offre la source (AGPL §13) : le bouton lit /api/source à chaque
+// ouverture et montre le dépôt, le commit, la branche, l'état des fichiers
+// suivis et les licences des bibliothèques vendorées.
 import {Component, onMounted, onWillUnmount, useState, xml} from "@odoo/owl";
 import {getJson, onForbidden} from "./api.js";
 import {HistoryView} from "./history_view.js";
@@ -25,6 +28,7 @@ import {KanbanView} from "./kanban_view.js";
 import {ListView} from "./list_view.js";
 import {SORTS, VIEWS, codeChanged, effectiveSort, pollsCode, readFragment, rereadsFor, writeFragment} from "./model.js";
 import {SessionsView} from "./sessions_view.js";
+import {noticeLine, sourceRows} from "./source.js";
 import {SystemView} from "./system_view.js";
 import {TreeView} from "./tree_view.js";
 
@@ -82,7 +86,21 @@ export class TelemetryPage extends Component {
         <SystemView t-elif="state.view === 'system'"/>
         <HistoryView t-elif="state.view === 'history'"/>
         <SessionsView t-if="state.terminal" visible="state.view === 'sessions'" openView.bind="openView"
-            order="state.order" runs.bind="sessionRuns"/>`;
+            order="state.order" runs.bind="sessionRuns"/>
+        <footer class="source">
+            <button type="button" t-att-aria-expanded="state.source ? 'true' : 'false'" t-on-click="toggleSource"
+                t-esc="env.t('Source (AGPL-3.0)')"/>
+            <dl t-if="state.source">
+                <t t-foreach="sourceRows" t-as="row" t-key="row_index">
+                    <dt t-esc="row[0]"/>
+                    <dd t-esc="row[1]"/>
+                </t>
+                <dt t-esc="env.t('Vendored libraries')"/>
+                <dd t-foreach="notices" t-as="notice" t-key="notice.href">
+                    <a t-att-href="notice.href" t-esc="notice.text"/>
+                </dd>
+            </dl>
+        </footer>`;
 
     setup() {
         this.views = VIEWS;
@@ -94,7 +112,7 @@ export class TelemetryPage extends Component {
         // l'arbre et les compteurs montrés ; `latest` : la dernière empreinte
         // lue ; `runs` : celle que tourne la session courante, ou null.
         this.state = useState({...fragment, query: "", terminal: fragment.view === "sessions", order: null});
-        Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null, expired: false});
+        Object.assign(this.state, {telemetry, latest: telemetry.code, runs: null, expired: false, source: null});
         this.told = 0; // le rang du dernier appel de sessionRuns
         onForbidden(() => (this.state.expired = true));
         onMounted(() => {
@@ -128,6 +146,28 @@ export class TelemetryPage extends Component {
 
     get sorts() {
         return SORTS[this.state.view] || [];
+    }
+
+    get sourceRows() {
+        return sourceRows(this.state.source, this.env.t);
+    }
+
+    get notices() {
+        return this.state.source.notices.map(noticeLine);
+    }
+
+    // Ouvre l'offre de source, relue du hub, ou la ferme ; un hub qui ne
+    // répond pas la laisse fermée.
+    async toggleSource() {
+        if (this.state.source) {
+            this.state.source = null;
+            return;
+        }
+        try {
+            this.state.source = await getJson("/api/source");
+        } catch {
+            this.state.source = null;
+        }
     }
 
     get sort() {

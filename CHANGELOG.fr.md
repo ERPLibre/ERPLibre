@@ -91,6 +91,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans une session web, choisir un fichier ou un répertoire — une sauvegarde à restaurer, un fichier à lire, un profil VPN… — ne dessine plus le navigateur plein écran de TODO dans le panneau terminal : TODO demande le chemin, auquel un champ de la page ou le terminal répond, relatif au répertoire qu'il nomme ; une réponse vide renonce, et un chemin qui n'existe pas, ou d'un autre genre que celui demandé, est redemandé
 - Dans la vue Sessions de la page de TODO, cette question de chemin est un sélecteur : le chemin en segments cliquables, le parent, les répertoires puis les fichiers avec leur taille, un filtre, le champ du chemin pour ouvrir un autre répertoire ou répondre un fichier, et Choisir ce répertoire quand TODO en veut un. Le hub local lui liste un répertoire, noms et tailles seulement, 2 000 entrées au plus
 - Dans la fenêtre bureautique, le sélecteur de chemins offre aussi le dialogue de fichiers du système, atteint par le pont de la fenêtre avec son jeton, comme le titre et la notification
+- La page de TODO offre sa source, comme le demande l'article 13 de l'AGPL : son pied de page montre, à la demande, l'adresse du dépôt du checkout sans aucun identifiant, son commit et sa branche, si des fichiers suivis diffèrent de ce commit, et chaque bibliothèque vendorée avec sa licence et son texte ; jamais un nom ni un contenu de fichier
 
 ## Modifié
 

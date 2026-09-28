@@ -91,6 +91,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In a web session, choosing a file or a directory — a backup to restore, a file to read, a VPN profile… — no longer draws TODO's full-screen browser in the terminal panel: TODO asks for the path, which a field of the page or the terminal answers, relative to the directory it names; an empty answer gives up, and a path that does not exist, or is not of the kind asked, is asked again
 - In the Sessions view of the TODO page, that path question is a picker: the path in clickable segments, the parent, directories then files with their size, a filter, the path field to open another directory or answer a file, and Choose this directory when TODO wants one. The local hub lists a directory for it, names and sizes only, 2,000 entries at most
 - In the desktop window, the path picker also offers the system's file dialog, reached through the window's bridge with its token, like the title and the notification
+- The TODO page offers its source, as section 13 of the AGPL asks: its footer shows, on demand, the address of the checkout's repository without any credential, its commit and branch, whether tracked files differ from that commit, and each vendored library with its license and the text of it; never a file name nor a file's content
 
 ## Changed
 

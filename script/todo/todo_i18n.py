@@ -3901,6 +3901,21 @@ TRANSLATIONS = {
         "fr": "Connexion expirée : rouvrir l'interface depuis TODO [4].",
         "en": "Connection expired: reopen the interface from TODO [4].",
     },
+    # Page web : l'offre de source de l'AGPL §13, au pied de la page.
+    "Source (AGPL-3.0)": {
+        "fr": "Source (AGPL-3.0)",
+        "en": "Source (AGPL-3.0)",
+    },
+    "License": {"fr": "Licence", "en": "License"},
+    "Repository": {"fr": "Dépôt", "en": "Repository"},
+    "Commit": {"fr": "Commit", "en": "Commit"},
+    "Branch": {"fr": "Branche", "en": "Branch"},
+    "Local changes": {"fr": "Modifications locales", "en": "Local changes"},
+    "unknown": {"fr": "inconnu", "en": "unknown"},
+    "Vendored libraries": {
+        "fr": "Bibliothèques vendorées",
+        "en": "Vendored libraries",
+    },
     "Opened in another tab.": {
         "fr": "Ouverte dans un autre onglet.",
         "en": "Opened in another tab.",

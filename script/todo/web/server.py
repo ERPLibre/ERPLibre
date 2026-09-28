@@ -5,7 +5,8 @@
 
 Deux entrées dans une même boucle asyncio :
 
-- HTTP tornado sur 127.0.0.1, port libre : la page et son API ;
+- HTTP tornado sur 127.0.0.1, port libre : la page et son API, dont
+  l'offre de source de l'AGPL §13 (`/api/source`, `source_offer`) ;
 - une socket Unix 0600 (`ctl.sock`), réservée au compte de l'utilisateur :
   une commande par ligne — `mint` (code de connexion à usage unique),
   `status`, `stop`, `tasks`, `purge` et `purge all` (le journal des tâches).
@@ -52,6 +53,7 @@ import re
 import secrets
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -108,6 +110,46 @@ LINES_LIMIT = 1000
 FS_LIMIT = 2000
 FS_READERS = 4
 FS_TIMEOUT = 10.0
+# /api/source : secondes qu'attend chaque commande git ; les variables
+# d'environnement par lesquelles git lirait un autre dépôt que celui du
+# répertoire qu'on lui donne ; les bibliothèques vendorées, chacune avec sa
+# licence et le chemin servi de son texte.
+GIT_SECONDS = 5.0
+GIT_ENV_REPOSITORY = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+)
+NOTICES = (
+    {
+        "name": "OWL",
+        "version": "2.8.1",
+        "license": "LGPL-3.0-only",
+        "text": "/static/lib/owl-2.8.1/LICENSE",
+    },
+    {
+        "name": "xterm.js",
+        "version": "5.5.0",
+        "license": "MIT",
+        "text": "/static/lib/xterm-5.5.0/LICENSE",
+    },
+    {
+        "name": "@xterm/addon-fit",
+        "version": "0.10.0",
+        "license": "MIT",
+        "text": "/static/lib/addon-fit-0.10.0/LICENSE",
+    },
+)
+# Ce qui précède l'hôte dans l'adresse d'un dépôt : « user:pass@ » ou
+# « user@ », jusqu'au dernier « @ » avant le premier « / » qui suit le
+# schéma (URL) ou avant le chemin (forme scp). TRANSPORT : le préfixe
+# « <transport>:: » d'une adresse que git confie à un programme
+# `git-remote-<transport>`, l'adresse à sa suite.
+URL_USERINFO = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@")
+SCP_USERINFO = re.compile(r"^[^/]*@")
+TRANSPORT = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*::)(.*)$", re.S)
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -417,6 +459,76 @@ def list_directory(path, dirs=False, limit=FS_LIMIT) -> dict:
     return listing
 
 
+def public_remote(url) -> str:
+    """`url`, l'adresse d'un dépôt git, sans ce qui peut porter un
+    identifiant : « user:pass@ » ou « user@ » devant l'hôte, dans la forme
+    URL (`https://`, `ssh://`…), dont la requête et le fragment partent
+    aussi, comme dans la forme scp (`user@hôte:chemin`, un « : » avant le
+    premier « / »). Derrière un préfixe « <transport>:: », l'adresse qui
+    suit se nettoie de même ; celle de « ext:: » est une ligne de commande,
+    qui peut nommer des chemins et des identités, et ne sort pas. Un
+    chemin local reste tel quel."""
+    prefix, match = "", TRANSPORT.match(url)
+    if match:
+        prefix, url = match.groups()
+        if prefix.lower() == "ext::":
+            return prefix
+    if "://" in url:
+        url = URL_USERINFO.sub(r"\1", url)
+        return prefix + re.split(r"[?#]", url, maxsplit=1)[0]
+    if ":" in url.split("/", 1)[0]:
+        return prefix + SCP_USERINFO.sub("", url)
+    return prefix + url
+
+
+def _git(root, *args):
+    """La sortie de `git -C root args`, sans ses blancs de fin, ou None :
+    git absent, en échec, ou plus long que GIT_SECONDS. Une liste
+    d'arguments, jamais de shell ; aucune invite, et aucun verrou
+    optionnel : `git status` ne réécrit pas l'index d'un checkout où
+    d'autres travaillent. Les variables de GIT_ENV_REPOSITORY, héritées de
+    qui a lancé le hub, sont retirées : git lit le dépôt de `root`."""
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
+    for name in GIT_ENV_REPOSITORY:
+        env.pop(name, None)
+    try:
+        done = subprocess.run(
+            ["git", "-C", os.fspath(root), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=env,
+            timeout=GIT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.rstrip() if done.returncode == 0 else None
+
+
+def source_offer(root) -> dict:
+    """L'offre de source de l'AGPL §13 pour le checkout `root` : la licence ;
+    `remote`, l'adresse de `origin`, sinon du premier remote, sans
+    identifiant (`public_remote`), None sans remote ; `commit`, HEAD ;
+    `branch`, None pour une tête détachée ; `modified`, vrai si un fichier
+    suivi diffère de HEAD ; `notices`, les bibliothèques vendorées (NOTICES).
+    Ce que git ne dit pas vaut None. Aucun nom de fichier, aucun contenu :
+    `modified` n'est qu'un booléen."""
+    names = (_git(root, "remote") or "").split()
+    name = "origin" if "origin" in names else (names[0] if names else None)
+    url = _git(root, "remote", "get-url", name) if name else None
+    status = _git(root, "status", "--porcelain", "--untracked-files=no")
+    return {
+        "license": "AGPL-3.0-or-later",
+        "remote": public_remote(url) if url else None,
+        "commit": _git(root, "rev-parse", "--verify", "--quiet", "HEAD"),
+        "branch": _git(root, "symbolic-ref", "--quiet", "--short", "HEAD"),
+        "modified": None if status is None else bool(status),
+        "notices": [dict(notice) for notice in NOTICES],
+    }
+
+
 class Guard:
     """Contrôles communs à chaque handler ; mélangé avant la classe tornado."""
 
@@ -673,6 +785,20 @@ class Files(Guard, tornado.web.RequestHandler):
         except TimeoutError:
             listing = _fs_error(path, "timed out")
         self.write(listing)
+
+
+class Source(Guard, tornado.web.RequestHandler):
+    """L'offre de source de l'AGPL §13 (`source_offer`), que le pied de page
+    affiche. git se lance dans un fil, une commande à la fois, GIT_SECONDS
+    chacune : la boucle du hub continue de répondre. Une offre se lit à la
+    fois (`Hub.source_lock`) : une rafale de clics attend son tour au lieu
+    d'occuper un fil chacun."""
+
+    async def get(self):
+        self.require_session()
+        async with self.hub.source_lock:
+            offer = await asyncio.to_thread(source_offer, self.hub.root)
+        self.write(offer)
 
 
 def _size(message):
@@ -1053,6 +1179,7 @@ class Hub:
         self.code_tree = CodeTree(self.root)
         self.system = {}  # jeton du cookie -> {"prev", "calls"}
         self.fs_readers = 0  # lectures de /api/fs pas encore revenues
+        self.source_lock = asyncio.Lock()  # une lecture de /api/source
         self.terminals = {}  # identifiant -> sessions.Session ouverte
         self.opening = 0  # `open_terminal` ou `warm` en cours
         self.spare = None  # worker de réserve, sans session encore
@@ -1074,6 +1201,7 @@ class Hub:
             (r"/api/i18n", I18n),
             (r"/api/system", System),
             (r"/api/fs", Files),
+            (r"/api/source", Source),
             (r"/api/sessions", SessionList),
             (r"/api/tasks", Tasks),
             (r"/api/tasks/purge", TasksPurge),

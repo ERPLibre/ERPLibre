@@ -22,6 +22,7 @@ import os
 import signal
 import socket
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -914,6 +915,161 @@ class TestFilesApi(ApiCase):
             await asyncio.sleep(0.01)
         self.assertEqual(self.hub.fs_readers, 0)
         self.assertNotIn("error", await self.listing(self.base))
+
+
+class TestPublicRemote(unittest.TestCase):
+    def test_no_userinfo_query_or_fragment_leaves_the_hub(self):
+        public = "https://forge.example/o/r.git"
+        for url, expected in (
+            ("https://forged:inventedPW@forge.example/o/r.git", public),
+            ("https://inventedTOKEN@forge.example/o/r.git", public),
+            ("https://forged:in@vented@forge.example/o/r.git", public),
+            (public + "?access_token=inventedQS#x", public),
+            (
+                "ssh://git@forge.example:2222/o/r.git",
+                "ssh://forge.example:2222/o/r.git",
+            ),
+            ("git@forge.example:o/r.git", "forge.example:o/r.git"),
+            ("forged:inventedPW@forge.example:o/r", "forge.example:o/r"),
+            ("forge.example:o/r.git", "forge.example:o/r.git"),
+            (public, public),
+            ("/srv/forged/r.git", "/srv/forged/r.git"),
+            (
+                "persistent-https::https://forged:inventedPW@forge.example/r",
+                "persistent-https::https://forge.example/r",
+            ),
+            ("gcrypt::forged@forge.example:o/r", "gcrypt::forge.example:o/r"),
+            ("ext::ssh -i /srv/forged/key forged@forge.example %S r", "ext::"),
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(server.public_remote(url), expected)
+
+
+class TestSourceApi(HubCase):
+    """L'offre de source de l'AGPL §13, sur un dépôt git jetable : le
+    checkout du hub. GIT_CEILING_DIRECTORIES arrête git à sa racine, qui
+    n'est un dépôt que quand le test en fait un."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        ceiling = {"GIT_CEILING_DIRECTORIES": str(self.root.parent)}
+        patcher = patch.dict(os.environ, ceiling)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.cookie_header = await self.cookie()
+
+    def git(self, *args, root=None) -> str:
+        """`git -C root args` (le checkout du hub par défaut), sans la
+        configuration de l'utilisateur ni celle du système : ni signature
+        ni invite ne l'arrêtent, et il rend en 30 s au plus."""
+        who = {"GIT_AUTHOR_NAME": "Forged", "GIT_COMMITTER_NAME": "Forged"}
+        who["GIT_AUTHOR_EMAIL"] = who["GIT_COMMITTER_EMAIL"] = (
+            "forged@example.invalid"
+        )
+        who.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        return subprocess.run(
+            ["git", "-C", str(root or self.root), *args],
+            env={**os.environ, **who},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        ).stdout.strip()
+
+    async def source(self):
+        resp = await self.fetch("/api/source", Cookie=self.cookie_header)
+        self.assertEqual(resp.code, 200)
+        self.assertEqual(resp.headers["Cache-Control"], "no-store")
+        return resp.body
+
+    async def test_the_offer_needs_the_cookie(self):
+        self.assertEqual((await self.fetch("/api/source")).code, 403)
+        forged = f"erplibre_todo_{self.hub.port}=forged"
+        resp = await self.fetch("/api/source", Cookie=forged)
+        self.assertEqual(resp.code, 403)
+
+    async def test_remote_commit_branch_and_changes_of_the_checkout(self):
+        self.git("init", "-q", "-b", "forged-branch")
+        (self.root / "tracked.txt").write_text("one\n")
+        secret = self.root / "private" / "forged_secret.txt"
+        secret.parent.mkdir()
+        secret.write_text("forged-marker\n")
+        self.git("add", "tracked.txt", "private/forged_secret.txt")
+        self.git("commit", "-q", "-m", "forged")
+        self.git("remote", "add", "mirror", "git@forge.example:o/m.git")
+        origin = "https://forged:inventedPW@forge.example/o/r.git"
+        self.git("remote", "add", "origin", origin)
+        data = json.loads(await self.source())
+        self.assertEqual(
+            data,
+            {
+                "license": "AGPL-3.0-or-later",
+                "remote": "https://forge.example/o/r.git",
+                "commit": self.git("rev-parse", "HEAD"),
+                "branch": "forged-branch",
+                "modified": False,
+                "notices": [dict(notice) for notice in server.NOTICES],
+            },
+        )
+        # Un fichier suivi qui change, fût-il sous private/ : un booléen,
+        # jamais son nom ni son contenu. Un fichier non suivi ne compte pas.
+        secret.write_text("forged-marker, changed\n")
+        (self.root / "untracked.txt").write_text("x\n")
+        body = await self.source()
+        self.assertIs(json.loads(body)["modified"], True)
+        for word in (b"private", b"forged_secret", b"forged-marker"):
+            self.assertNotIn(word, body)
+        self.assertNotIn(b"inventedPW", body)
+        # Sans origin, le premier remote ; tête détachée, aucune branche.
+        self.git("remote", "remove", "origin")
+        self.git("checkout", "-q", "--detach")
+        data = json.loads(await self.source())
+        self.assertEqual(data["remote"], "forge.example:o/m.git")
+        self.assertIsNone(data["branch"])
+
+    async def test_without_git_history_or_remote_nothing_is_made_up(self):
+        data = json.loads(await self.source())
+        self.assertEqual(
+            [data[key] for key in ("remote", "commit", "branch", "modified")],
+            [None, None, None, None],
+        )
+        self.git("init", "-q", "-b", "forged-branch")
+        data = json.loads(await self.source())
+        self.assertEqual(
+            [data[key] for key in ("remote", "commit", "branch", "modified")],
+            [None, None, "forged-branch", False],
+        )
+
+    async def test_the_hub_environment_names_no_other_repository(self):
+        # GIT_DIR et GIT_WORK_TREE, hérités de qui a lancé le hub, ne lui
+        # font pas lire un autre dépôt que son checkout, qui n'en est pas un.
+        other = self.root.parent / "forged_other"
+        other.mkdir()
+        self.git("init", "-q", "-b", "forged-other", root=other)
+        env = {"GIT_DIR": str(other / ".git"), "GIT_WORK_TREE": str(other)}
+        with patch.dict(os.environ, env):
+            data = json.loads(await self.source())
+        self.assertEqual(
+            [data[key] for key in ("remote", "commit", "branch", "modified")],
+            [None, None, None, None],
+        )
+
+    async def test_one_offer_is_read_at_a_time(self):
+        # Chaque clic lit git dans un fil : les lectures se suivent, et une
+        # rafale de clics n'occupe qu'un fil à la fois.
+        running, most = 0, 0
+
+        def offer(root):
+            nonlocal running, most
+            running += 1
+            most = max(most, running)
+            time.sleep(0.1)
+            running -= 1
+            return {"license": "AGPL-3.0-or-later"}
+
+        with patch.object(server, "source_offer", offer):
+            await asyncio.gather(*(self.source() for _ in range(3)))
+        self.assertEqual(most, 1)
 
 
 class Tab:

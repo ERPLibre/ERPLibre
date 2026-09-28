@@ -174,6 +174,30 @@ body {
     border-radius: 0.5rem;
 }
 
+/* L'offre de source (AGPL §13), au pied de la page. */
+footer.source {
+    margin-top: 1.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+footer.source dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.2rem 0.75rem;
+}
+
+footer.source dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+footer.source dd + dd {
+    grid-column: 2;
+}
+
 .banner button {
     padding: 0.25rem 0.6rem;
     border: 1px solid var(--accent);
