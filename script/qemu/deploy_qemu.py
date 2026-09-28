@@ -1071,7 +1071,8 @@ def missing_tools() -> list[str]:
 
 def read_tty_line(prompt: str) -> str | None:
     """La ligne tapée sur le terminal de contrôle (/dev/tty) après
-    `prompt`, sans sa fin de ligne ; None sans terminal de contrôle.
+    `prompt`, sans sa fin de ligne ; None seulement quand /dev/tty ne
+    s'ouvre pas, sans terminal de contrôle.
 
     Le terminal s'ouvre en binaire, sans tampon : en texte, « r+ » exige un
     fichier où l'on peut se déplacer, ce qu'un terminal n'est pas, et
@@ -1079,16 +1080,23 @@ def read_tty_line(prompt: str) -> str | None:
     est vidée d'abord : ce qu'elle retenait part avant la question.
     `prompt` part en UTF-8, en entier même écrit par morceaux, la ligne
     revient décodée, un octet invalide remplacé ; Ctrl+D sur une ligne vide
-    rend ""."""
+    rend "". Le terminal ouvert, une OSError à l'écriture ou à la lecture
+    (EIO d'un terminal raccroché, ou d'une lecture en arrière-plan quand
+    SIGTTIN est ignoré) rend "" aussi, comme une fin de fichier : la
+    réponse ne se cherche jamais dans l'entrée standard redirigée."""
     sys.stdout.flush()
     try:
-        with open("/dev/tty", "r+b", buffering=0) as tty:
+        tty = open("/dev/tty", "r+b", buffering=0)
+    except OSError:
+        return None
+    with tty:
+        try:
             data = prompt.encode("utf-8")
             while data:
                 data = data[tty.write(data) :]
             line = tty.readline()
-    except OSError:
-        return None
+        except OSError:
+            return ""
     return line.decode("utf-8", "replace").rstrip("\r\n")
 
 

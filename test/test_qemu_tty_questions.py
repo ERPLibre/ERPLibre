@@ -36,6 +36,33 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 print(repr(eval(call, {"m": module})))
 """
+# CHILD, mais un autre groupe de processus de la session, que l'enfant
+# lance, tient le premier plan du terminal, SIGTTIN et SIGTTOU ignorés :
+# l'enfant, en arrière-plan, écrit sur /dev/tty, et sa lecture lève EIO.
+BACKGROUND = r"""
+import fcntl, importlib.util, os, signal, subprocess, sys, termios
+fd = int(sys.argv[3])
+fcntl.ioctl(fd, termios.TIOCSCTTY, 0)
+signal.signal(signal.SIGTTIN, signal.SIG_IGN)
+signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+front = subprocess.Popen(
+    [sys.executable, "-c", "import time; time.sleep(60)"],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    process_group=0,
+)
+try:
+    os.tcsetpgrp(fd, front.pid)
+    name, call = sys.argv[1], sys.argv[2]
+    path = f"script/qemu/{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    print(repr(eval(call, {"m": module})))
+finally:
+    front.kill()
+    front.wait()
+"""
 # Le relais d'`exec_command_live`, en petit : chef d'une session neuve dont
 # le pty, son entrée standard, est le terminal de contrôle, il lance le
 # script argv[1], qui hérite de cette entrée, sa sortie dans un tube, et
@@ -91,15 +118,15 @@ def converse(master, child, answer, question) -> str:
     return shown.decode(errors="replace")
 
 
-def ask(module, call, answer, question):
-    """`call`, `m` étant le module `module`, dans un enfant dont un pty est
-    le terminal de contrôle et dont l'entrée standard est /dev/null ;
-    `answer` et Entrée sont tapés sur le pty dès que `question` y paraît.
-    Rend ce que l'enfant imprime et ce que le pty a montré."""
+def ask(module, call, answer, question, script=CHILD):
+    """`call`, `m` étant le module `module`, dans un enfant `script` dont un
+    pty est le terminal de contrôle et dont l'entrée standard est
+    /dev/null ; `answer` et Entrée sont tapés sur le pty dès que `question`
+    y paraît. Rend ce que l'enfant imprime et ce que le pty a montré."""
     master, slave = os.openpty()
     try:
         child = subprocess.Popen(
-            [sys.executable, "-c", CHILD, module, call, str(slave)],
+            [sys.executable, "-c", script, module, call, str(slave)],
             cwd=REPO,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -175,6 +202,20 @@ class TestYesNoOnTheTerminal(unittest.TestCase):
             "deploy_qemu", "m.read_tty_line('Nom ? ')", "forgé", "Nom ? "
         )
         self.assertEqual(out.strip(), repr("forgé"))
+
+    def test_a_failed_read_on_the_open_terminal_is_an_empty_line(self):
+        # /dev/tty s'ouvre, la question y passe, la lecture lève EIO : la
+        # ligne est vide, comme à Ctrl+D, et non None, qui ferait lire la
+        # réponse sur l'entrée standard redirigée.
+        out, shown = ask(
+            "deploy_qemu",
+            "m.read_tty_line('Forged name? ')",
+            "forged",
+            "Forged name? ",
+            script=BACKGROUND,
+        )
+        self.assertIn("Forged name? ", shown)
+        self.assertEqual(out.strip(), repr(""))
 
     def test_network_qemu_asks_and_reads_on_the_terminal(self):
         out, shown = ask(
