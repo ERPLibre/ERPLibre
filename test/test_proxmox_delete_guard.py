@@ -33,7 +33,9 @@ from script.todo.todo import TODO  # noqa: E402
 def menu_avec(vms, oui=True):
     """Une instance TODO dont la sélection et l'exécution sont des faits."""
     todo = TODO.__new__(TODO)
-    todo._pve_pick_vm = lambda titre="", multiple=False: list(vms)
+    # `**_k` absorbe les mots-clés que le choisisseur gagnera : ce banc
+    # éprouve l'effacement, pas la signature de la sélection.
+    todo._pve_pick_vm = lambda *_a, **_k: list(vms)
     todo._is_yes = lambda _rep: oui
     todo.jouees = []
     todo._pve_show = lambda cmd, timeout=120, quiet=False: (
