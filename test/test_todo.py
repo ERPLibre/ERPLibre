@@ -333,58 +333,43 @@ class TestProcessKillGitDaemon(unittest.TestCase):
 
 
 class TestExecuteUnitTests(unittest.TestCase):
-    def test_success_path(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print") as mock_print:
-            todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("unittest discover", cmd)
+    """L'entrée passe par le lanceur unitaire, terminal hérité."""
 
-    def test_failure_path(self):
+    def _cmd(self, *args, code=0):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (1, ["FAIL"])
-        with patch("builtins.print") as mock_print:
-            todo.execute_unit_tests()
-        # Verify it was called - error handling path
+        with (
+            patch(
+                "script.todo.todo.subprocess.run",
+                return_value=MagicMock(returncode=code),
+            ) as run,
+            patch("builtins.print") as mock_print,
+        ):
+            todo.execute_unit_tests(*args)
+        self.mock_print = mock_print
+        return run.call_args[0][0]
 
-    def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
-
-        unittest écrit son verdict sur stderr et les tests impriment sur
-        stdout ; capturés ensemble, le stdout tamponné se déversait après
-        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
-        résultat.
-        """
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("python -u -m unittest", cmd)
-
-    def test_the_pattern_reaches_the_command(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests("test_mail*.py")
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("-p 'test_mail*.py'", cmd)
+    def test_it_goes_through_the_unit_runner_with_its_table(self):
+        cmd = self._cmd()
+        self.assertEqual(cmd[:2], ["./script/test/run_unit_test.sh", "--tui"])
 
     def test_the_default_pattern_is_still_the_whole_suite(self):
         """La signature a gagné un paramètre : l'entrée [3] ne doit pas
         s'être mise à ne lancer qu'un sous-ensemble en silence."""
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["OK"])
-        with patch("builtins.print"):
-            todo.execute_unit_tests()
-        cmd = todo.execute.exec_command_live.call_args[0][0]
-        self.assertIn("-p 'test_*.py'", cmd)
+        fichiers = self._cmd()[2:]
+        self.assertIn("test/test_todo_menu.py", fichiers)
+        self.assertIn("test/test_mail_compose.py", fichiers)
+
+    def test_the_pattern_selects_the_files(self):
+        fichiers = self._cmd("test_mail*.py")[2:]
+        self.assertTrue(fichiers)
+        self.assertTrue(
+            all(f.startswith("test/test_mail") for f in fichiers), fichiers
+        )
+
+    def test_a_failure_is_reported(self):
+        self._cmd(code=1)
+        sortie = " ".join(str(c) for c in self.mock_print.call_args_list)
+        self.assertIn("❌", sortie)
 
 
 class TestTestMenuDispatch(unittest.TestCase):
@@ -620,9 +605,7 @@ class TestListeCommandesClaude(unittest.TestCase):
 
     def test_etat_de_chaque_commande(self):
         sortie = self._lister("n", "n")
-        self.assertIn(
-            todo_i18n.t("up to date"), self._ligne(sortie, "commit")
-        )
+        self.assertIn(todo_i18n.t("up to date"), self._ligne(sortie, "commit"))
         self.assertIn("(+0 -1)", self._ligne(sortie, "todo_plan_max"))
         self.assertIn(
             todo_i18n.t("command not installed"),

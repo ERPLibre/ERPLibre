@@ -6,6 +6,7 @@ import ast
 import configparser
 import datetime
 import difflib
+import glob
 import importlib.util
 import inspect
 import json
@@ -5690,29 +5691,23 @@ class TODO(
             )
 
     def execute_unit_tests(self, pattern="test_*.py"):
-        """Lance `unittest discover` sur un SOUS-ENSEMBLE de la suite.
+        """Lance les fichiers test/<pattern> par le lanceur unitaire.
 
-        Le motif est le seul paramètre : la suite complète dure plusieurs
-        minutes, dominées par les tests TUI montés, et attendre tout pour
-        vérifier un coin précis décourage de lancer les tests du tout. Une
-        entrée de menu supplémentaire coûte donc un motif, pas une méthode.
+        Le motif est le seul paramètre : vérifier un coin précis ne doit
+        pas obliger à attendre toute la suite. Une entrée de menu
+        supplémentaire coûte donc un motif, pas une méthode.
+
+        Le lanceur, et non `unittest discover` : il tient les tests à
+        l'écart de l'hôte (pas de terminal, sudo et virsh refusés), les
+        borne dans le temps et les lance en parallèle. `--tui` montre
+        chaque fichier en attente, en cours ou fini avec sa durée — ce qui
+        désigne celui qui bloque. Le tableau a besoin du terminal : la
+        commande en hérite au lieu d'être capturée.
         """
         print(f"\n--- {t('Running unit tests')} ---")
-        # `-u` : unittest écrit son verdict sur STDERR, les `print()` des
-        # tests sur STDOUT. Capturés ensemble, stderr passe sans tampon
-        # tandis que stdout est tamponné par blocs — tout le stdout se
-        # déversait donc APRÈS le « OK », qui se retrouvait noyé au milieu
-        # de la sortie au lieu d'en être le dernier mot. Sans tampon, les
-        # deux flux s'entrelacent dans l'ordre réel.
-        cmd = (
-            ".venv.erplibre/bin/python -u -m unittest discover"
-            f" -s test -p '{pattern}' -v"
-        )
-        status_code, output = self.execute.exec_command_live(
-            cmd,
-            source_erplibre=False,
-            return_status_and_output=True,
-        )
+        fichiers = sorted(glob.glob(os.path.join("test", pattern)))
+        cmd = ["./script/test/run_unit_test.sh", "--tui", *fichiers]
+        status_code = subprocess.run(cmd, check=False).returncode
         if status_code == 0:
             print(f"\n✅ {t('All unit tests passed')}")
         else:
