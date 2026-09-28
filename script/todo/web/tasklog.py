@@ -281,9 +281,9 @@ def _redact(text) -> str:
     telle quelle, ou masque comme la ligne brute seule, se lit brute : son
     propre masque (`_stored`) en cache au moins autant. Les autres partent
     entières, TAINT_MASK, si l'une de leurs lignes brutes porte un mot de
-    SECRET_WORDS (`_secret`), que la marque « '***' » ou une séquence
-    ouverte plus tôt peut cacher dans la ligne masquée ; sinon, elles se
-    lisent masquées."""
+    SECRET_WORDS (`_secret`) : la marque « '***' » peut avoir emporté ce
+    mot avec la valeur, et le masque de la ligne jointe ne le retrouverait
+    plus. Sinon, elles se lisent masquées."""
     execute = _execute()
     lines, at, stored = text.split("\n"), 0, []
     for masked, count in execute.redact_secrets_by_line(text):
