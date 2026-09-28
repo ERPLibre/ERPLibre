@@ -132,7 +132,12 @@ class TestLaConfrontationAuVraiBinaire(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.brut = subprocess.run(
+        # Le lanceur unitaire met en tête du PATH un « virsh » qui REFUSE :
+        # un test ne touche pas l'hôte. Il est donc PRÉSENT sans être
+        # utilisable, et la seule présence ne dit pas si l'inventaire a
+        # changé de forme — l'épreuve se dit ignorée plutôt que de prendre
+        # un refus pour un inventaire vide.
+        vu = subprocess.run(
             [
                 VIRSH,
                 "--connect",
@@ -145,7 +150,12 @@ class TestLaConfrontationAuVraiBinaire(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=30,
-        ).stdout
+        )
+        if vu.returncode != 0:
+            raise unittest.SkipTest(
+                "aucun virsh utilisable ici : " + (vu.stderr or "").strip()
+            )
+        cls.brut = vu.stdout
 
     def test_the_two_options_are_not_exclusive(self):
         """Si elles le devenaient, une seule colonne sortirait et l'écran
