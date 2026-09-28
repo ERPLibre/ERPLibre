@@ -82,6 +82,11 @@ MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 # comprise.
 LARGEUR = 70
 
+# Le nombre de séances qu'on propose de reprendre. Une liste sans fin oblige
+# à défiler pour atteindre « nouvelle conversation », qui est en tête, et les
+# séances anciennes se retrouvent par leur fichier plutôt que par ce menu.
+REPRISES_MAX = 15
+
 # Le délai d'un montage de tunnel. Il borne l'attente d'un hôte injoignable
 # ou d'une authentification qui attend une frappe : sans lui, un `ssh -f`
 # tiendrait le menu jusqu'à ce que la pile TCP renonce d'elle-même.
@@ -122,6 +127,8 @@ class AssistantMenuMixin:
                 "gpts": None,
                 "tunnels": None,
                 "seance": "",
+                "seance_fichier": None,
+                "rang_depart": 0,
                 "mesures": [],
             }
         return self._llm_session
@@ -854,7 +861,7 @@ class AssistantMenuMixin:
             if status == "0":
                 return
             elif status == "1":
-                self._llm_conversation()
+                self._llm_reprendre()
             elif status == "2":
                 self._llm_gpt_catalogue()
             elif status == "3":
@@ -2954,8 +2961,70 @@ class AssistantMenuMixin:
         state["confirmes"].add(serveur.host)
         return True
 
-    def _llm_conversation(self):
+    def _llm_reprendre(self):
+        """Reprendre une conversation gardée, ou en ouvrir une neuve.
+
+        La liste passe AVANT la conversation parce qu'une question posée à un
+        modèle en appelle une autre : reprendre un fil est le cas courant, en
+        ouvrir un sans rapport avec aucun autre l'exception.
+
+        Sans séance gardée, il n'y a rien à choisir et la conversation
+        s'ouvre directement : une liste d'une seule entrée demande une frappe
+        pour ne rien apprendre.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        gardees = llm_seances.lister(combien=REPRISES_MAX)
+        if not gardees:
+            self._llm_conversation()
+            return
+        choices = [{"prompt_description": t("New conversation")}]
+        choices.append({"section": t("Resume")})
+        for vue in gardees:
+            choices.append({"prompt_description": self._llm_ligne_seance(vue)})
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if rang == 1:
+            self._llm_conversation()
+        elif 2 <= rang <= 1 + len(gardees):
+            self._llm_conversation(reprise=gardees[rang - 2].chemin)
+        else:
+            print(t("Command not found !"))
+
+    @staticmethod
+    def _llm_ligne_seance(vue):
+        """Une séance, en une ligne de liste.
+
+        La date situe, le modèle explique ce qui a répondu, et le TITRE —
+        la première question — est ce qui fait reconnaître la séance : deux
+        conversations du même après-midi sur le même modèle ne se
+        distinguent pas autrement.
+        """
+        quand = (vue.debut or "")[:16].replace("T", " ")
+        combien = AssistantMenuMixin._llm_count(vue.tours, "turn", "turns")
+        parts = [quand, vue.modele or vue.logiciel or "?", combien]
+        if vue.outil:
+            parts.append(vue.outil)
+        ligne = " · ".join(part for part in parts if part)
+        return f"{ligne} — {vue.titre}" if vue.titre else ligne
+
+    def _llm_conversation(self, reprise=None):
         """La boucle de conversation.
+
+        `reprise` est le chemin d'une séance gardée : ses tours repartent
+        dans l'historique, et la suite s'ajoute AU MÊME fichier. Rouvrir sur
+        un fichier neuf couperait la conversation en deux au milieu.
 
         L'invite d'une ligne EST la ligne d'état : elle porte le serveur et le
         modèle, elle est réimprimée par la lecture à chaque tour, et elle ne
@@ -2984,12 +3053,9 @@ class AssistantMenuMixin:
             cle = self._llm_openai_key()
         if not self._llm_confirm_third_party(serveur):
             return
-        print(
-            t(
-                "The history lives in memory and dies with this menu. /save"
-                " writes it to a file."
-            )
-        )
+        from script.todo.assistant import sessions as llm_seances
+
+        print(t("Every turn is written under ~/.erplibre, and nowhere else."))
         print(t("Commands start with a slash. /? lists them."))
         outil = self._llm_state().get("gpt")
         systeme = ""
@@ -3003,6 +3069,27 @@ class AssistantMenuMixin:
                 part for part in (outil.system, joint) if part
             )
         serveur = self._llm_resolve_model(serveur)
+        etat = self._llm_state()
+        etat["mesures"] = []
+        if reprise is None:
+            # Un identifiant NEUF par conversation. Le garder d'une
+            # conversation à l'autre les fait tomber dans le même fichier :
+            # deux échanges sans rapport s'y suivent, la liste n'en montre
+            # qu'un, et le reprendre rejoue les deux comme s'ils n'en
+            # faisaient qu'un.
+            etat["seance"] = ""
+            etat["rang_depart"] = 0
+            etat["seance_fichier"] = llm_seances.ouvrir(
+                self._llm_seance(), serveur, outil=outil.stem if outil else ""
+            )
+        else:
+            # La reprise garde l'identifiant du fichier : les tours qui
+            # suivent appartiennent à la même séance, dans le journal des
+            # mesures comme dans la conversation.
+            vue = llm_seances.resume(reprise)
+            etat["seance"] = (vue.seance if vue else "") or self._llm_seance()
+            etat["rang_depart"] = vue.tours if vue else 0
+            etat["seance_fichier"] = reprise
 
         def ouvrir(cible):
             """Le backend et la conversation d'un serveur, l'invite avec.
@@ -3028,6 +3115,14 @@ class AssistantMenuMixin:
             )
 
         conversation, invite = ouvrir(serveur)
+        if reprise is not None:
+            # Les tours repartent dans l'historique : le modèle reçoit au
+            # tour suivant ce qu'il aurait reçu sans l'interruption.
+            conversation.turns = llm_seances.charger(reprise)
+            combien = self._llm_count(
+                len(conversation.turns) // 2, "turn", "turns"
+            )
+            print(f"  ↩ {t('%s resumed') % combien}")
         while True:
             try:
                 ligne = input(invite)
@@ -3097,9 +3192,11 @@ class AssistantMenuMixin:
             # longueur seule n'apprenait rien sous deux lignes, un débit et
             # un délai de premier jeton en apprennent autant sur une ligne
             # que sur trente.
-            lignes = len(tour.text.splitlines())
+            combien = self._llm_count(
+                len(tour.text.splitlines()), "line", "lines"
+            )
             print(
-                f"── {lignes} {t('lines')} · {llm_perf.pied(prise)}"
+                f"── {combien} · {llm_perf.pied(prise)}"
                 f" · {t('/save to write it to a file')} ──"
             )
 
@@ -3116,6 +3213,10 @@ class AssistantMenuMixin:
         """
         import time
 
+        from script.todo.assistant import chat as llm_chat
+        from script.todo.assistant import sessions as llm_seances
+
+        etat = self._llm_state()
         mesures = self._llm_mesures()
         debut = time.monotonic()
         premier = [None]
@@ -3125,7 +3226,10 @@ class AssistantMenuMixin:
                 premier[0] = time.monotonic() - debut
             print(morceau, end="", flush=True)
 
+        fichier = etat.get("seance_fichier")
+        llm_seances.noter(fichier, llm_chat.Turn("user", question))
         tour = conversation.ask(question, on_chunk=au_fil)
+        llm_seances.noter(fichier, tour)
         duree = time.monotonic() - debut
         if premier[0] is None:
             # Rien n'est passé par le fil : personne n'a encore rien imprimé.
@@ -3137,7 +3241,7 @@ class AssistantMenuMixin:
         mesures.append(
             llm_mesure.mesurer(
                 seance=self._llm_seance(),
-                rang=len(mesures) + 1,
+                rang=etat.get("rang_depart", 0) + len(mesures) + 1,
                 serveur=serveur,
                 outil=outil,
                 question=question,
@@ -3193,14 +3297,18 @@ class AssistantMenuMixin:
 
         if not textual_setup.ensure():
             return
+        from script.todo.assistant import sessions as llm_seances
+
         mesures = self._llm_mesures()
+        fichier = self._llm_state().get("seance_fichier")
         llm_ecran.run_tui(
             conversation,
             serveur,
             mesures=mesures,
             outil=outil,
             seance=self._llm_seance(),
-            depart=len(mesures),
+            depart=self._llm_state().get("rang_depart", 0) + len(mesures),
+            archiver=lambda tour: llm_seances.noter(fichier, tour),
         )
 
     @staticmethod
@@ -3255,15 +3363,18 @@ class AssistantMenuMixin:
         est lisible par tous les comptes de la machine, et une conversation
         porte ce que la session y a collé.
 
-        Le nom de fichier est tiré du compteur de tours, jamais d'une
-        horloge : une date rendrait le fichier reconnaissable dans le temps
-        sans rien apporter à qui le relit.
+        Le nom porte l'identifiant de SÉANCE, et non le nombre de tours :
+        deux conversations de la même longueur portaient le même nom, et la
+        seconde effaçait la première sans un mot. Le nombre de tours reste
+        dans le nom, parce qu'il dit d'un coup d'œil ce qu'on rouvre.
         """
         base = os.path.join(os.path.expanduser("~/.erplibre"), "assistant")
         os.makedirs(base, mode=0o700, exist_ok=True)
         os.chmod(base, 0o700)
         chemin = os.path.join(
-            base, f"conversation-{len(conversation.turns)}.md"
+            base,
+            f"conversation-{self._llm_seance()}"
+            f"-{len(conversation.turns)}.md",
         )
         drapeaux = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         with os.fdopen(os.open(chemin, drapeaux, 0o600), "w") as fichier:
