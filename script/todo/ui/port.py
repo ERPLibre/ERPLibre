@@ -231,7 +231,9 @@ class BasePort:
         autre genre, se dit par `notice`, et la question revient sur lui
         s'il est un répertoire, sinon sur le plus proche répertoire existant
         qui le contient (`_folder`), d'où part alors un chemin relatif : le
-        sélecteur de la page y rouvre, là où l'utilisateur était."""
+        sélecteur de la page y rouvre, là où l'utilisateur était. Le refus
+        et la reprise suivent la réponse telle quelle si elle existe, sinon
+        la réponse sans ses blancs."""
         start = os.path.abspath(start)
         while True:
             try:
@@ -240,11 +242,14 @@ class BasePort:
                 return None
             if not answer.strip():
                 return None
-            for text in dict.fromkeys((answer, answer.strip())):
-                path = os.path.join(start, os.path.expanduser(text))
-                path = os.path.abspath(path)
+            variants = [
+                os.path.abspath(os.path.join(start, os.path.expanduser(text)))
+                for text in dict.fromkeys((answer, answer.strip()))
+            ]
+            for path in variants:
                 if os.path.isdir(path) if directory else os.path.isfile(path):
                     return path
+            path = next(filter(os.path.exists, variants), variants[-1])
             if os.path.exists(path):
                 wrong = ("Not a file: ", "Not a directory: ")
             else:

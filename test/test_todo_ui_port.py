@@ -362,6 +362,64 @@ class TestScriptedPort(unittest.TestCase):
             ],
         )
 
+    def test_a_file_or_a_broken_link_refused_asks_again_from_its_folder(self):
+        # Un fichier donné pour un répertoire fait revenir la question sur
+        # son répertoire ; un lien dont la cible manque n'est ni un fichier
+        # ni un répertoire, et se dit absent.
+        _english(self)
+        base = _forged_dir(self)
+        folder = os.path.join(base, "forged_dir")
+        Path(folder, "inner.zip").touch()
+        os.symlink(os.path.join(base, "forged_absent"), f"{folder}/link")
+        answers = ["forged_dir/inner.zip", "link", EOFError()]
+        scripted = port.ScriptedPort(
+            [*answers, "forged_dir/link", "inner.zip"]
+        )
+        with ui.bind(scripted):
+            cancelled = ui.pick_path(base, directory=True)
+            chosen = ui.pick_path(base)
+        self.assertEqual(
+            (cancelled, chosen), (None, os.path.join(folder, "inner.zip"))
+        )
+        asked = [e["start"] for e in scripted.events if e["t"] == "ask"]
+        self.assertEqual(asked, [base, folder, folder, base, folder])
+        self.assertEqual(
+            [e["text"] for e in scripted.events if e["t"] == "notice"],
+            [
+                f"Not a directory: {folder}/inner.zip",
+                f"No such directory: {folder}/link",
+                f"No such file: {folder}/link",
+            ],
+        )
+
+    def test_a_refusal_names_the_answer_as_typed_when_it_exists(self):
+        # Un nom qui finit vraiment par une espace existe, mais pas du genre
+        # demandé : le refus le nomme tel quel, et la question revient sur
+        # lui s'il est un répertoire, sinon sur le sien, et non sur le nom
+        # sans ses blancs, qui n'existe pas.
+        _english(self)
+        base = _forged_dir(self)
+        folder = os.path.join(base, "forged_dir")
+        spaced = os.path.join(folder, "spaced ")
+        os.mkdir(spaced)
+        Path(folder, "spaced.zip ").touch()
+        scripted = port.ScriptedPort(
+            ["forged_dir/spaced ", EOFError(), "forged_dir/spaced.zip "]
+            + [EOFError()]
+        )
+        with ui.bind(scripted):
+            self.assertIsNone(ui.pick_path(base))
+            self.assertIsNone(ui.pick_path(base, directory=True))
+        asked = [e["start"] for e in scripted.events if e["t"] == "ask"]
+        self.assertEqual(asked, [base, spaced, base, folder])
+        self.assertEqual(
+            [e["text"] for e in scripted.events if e["t"] == "notice"],
+            [
+                f"Not a file: {spaced}",
+                f"Not a directory: {folder}/spaced.zip ",
+            ],
+        )
+
 
 class TestMessages(unittest.TestCase):
     def test_each_question_carries_speak_requires_and_fallback(self):
