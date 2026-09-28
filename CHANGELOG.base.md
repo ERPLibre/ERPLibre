@@ -360,6 +360,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry › [4] Desktop window no longer claims that its process opened the browser when no browser took the page: it says so, then gives the page's link as [2] does; `make todo_desktop` without a display no longer says it opens the browser
 - Navigation telemetry: an entry that a menu computes on display, one per known LLM server, is no longer a pseudo-command « — » in the tree, which no menu entry shows
 - In the path picker of a web session, a path that TODO refuses — a broken link, a file gone meanwhile, a typo in the terminal — brings the question back on the nearest existing directory that holds it, or on the directory itself when one was given for a file, where the picker reopens, instead of its starting point; an answer is read as typed, then without the blanks at its ends, so blanks typed around a path no longer get it refused, and a name that really ends with a space can still be chosen
+- In the path picker, a listing that fails — too many reads at once, a read too long — names the home directory in full when « ~ » was asked, and no longer shows a « ~ » segment that would open /~
 
 <!-- [fr] -->
 
@@ -444,6 +445,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation › [4] Fenêtre bureautique ne prétend plus que son processus a ouvert le navigateur quand aucun navigateur n'a pris la page : elle le dit, puis donne le lien de la page comme [2] ; `make todo_desktop` sans affichage ne dit plus qu'il ouvre le navigateur
 - Télémétrie de navigation : une entrée qu'un menu calcule à l'affichage, une par serveur LLM connu, n'est plus une pseudo-commande « — » dans l'arbre, qu'aucune entrée de menu ne montre
 - Dans le sélecteur de chemins d'une session web, un chemin que TODO refuse — un lien cassé, un fichier disparu entre-temps, une faute de frappe au terminal — fait revenir la question sur le plus proche répertoire existant qui le contient, ou sur le répertoire même donné pour un fichier, où le sélecteur rouvre, au lieu de son point de départ ; une réponse se lit telle quelle, puis sans les blancs de ses bouts : des blancs tapés autour d'un chemin ne le font plus refuser, et un nom qui finit vraiment par une espace se choisit encore
+- Dans le sélecteur de chemins, une liste qui échoue — trop de lectures à la fois, une lecture trop longue — nomme en entier le répertoire personnel quand « ~ » était demandé, et ne montre plus un segment « ~ » qui ouvrirait /~
 
 <!-- [en] -->
 ## Removed

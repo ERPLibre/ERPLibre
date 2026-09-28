@@ -734,7 +734,10 @@ class System(Guard, tornado.web.RequestHandler):
 class Files(Guard, tornado.web.RequestHandler):
     """`?path=&dirs=` : le répertoire `path` pour le sélecteur de chemins
     (`list_directory`, FS_LIMIT entrées au plus), `~` sans `path`, ses
-    sous-répertoires seuls avec `dirs=1` ; 400 pour un autre `dirs`. Le hub
+    sous-répertoires seuls avec `dirs=1` ; 400 pour un autre `dirs`. `~`
+    se développe dès la requête : une liste en erreur rend le chemin
+    développé, dont la page fait ses segments, et jamais un « ~ » qui s'y
+    lirait comme un répertoire de la racine. Le hub
     tourne sous le compte de l'utilisateur, dont la page lance déjà les
     commandes : il n'y lit rien que TODO ne lise.
 
@@ -753,6 +756,7 @@ class Files(Guard, tornado.web.RequestHandler):
     async def get(self):
         self.require_csrf()
         path = self.get_argument("path", "", strip=False) or "~"
+        path = os.path.expanduser(path)
         dirs = self.get_argument("dirs", "0")
         if dirs not in ("0", "1"):
             raise HTTPError(400)

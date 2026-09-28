@@ -212,6 +212,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation › [4] Fenêtre bureautique ne prétend plus que son processus a ouvert le navigateur quand aucun navigateur n'a pris la page : elle le dit, puis donne le lien de la page comme [2] ; `make todo_desktop` sans affichage ne dit plus qu'il ouvre le navigateur
 - Télémétrie de navigation : une entrée qu'un menu calcule à l'affichage, une par serveur LLM connu, n'est plus une pseudo-commande « — » dans l'arbre, qu'aucune entrée de menu ne montre
 - Dans le sélecteur de chemins d'une session web, un chemin que TODO refuse — un lien cassé, un fichier disparu entre-temps, une faute de frappe au terminal — fait revenir la question sur le plus proche répertoire existant qui le contient, ou sur le répertoire même donné pour un fichier, où le sélecteur rouvre, au lieu de son point de départ ; une réponse se lit telle quelle, puis sans les blancs de ses bouts : des blancs tapés autour d'un chemin ne le font plus refuser, et un nom qui finit vraiment par une espace se choisit encore
+- Dans le sélecteur de chemins, une liste qui échoue — trop de lectures à la fois, une lecture trop longue — nomme en entier le répertoire personnel quand « ~ » était demandé, et ne montre plus un segment « ~ » qui ouvrirait /~
 
 ## Retiré
 

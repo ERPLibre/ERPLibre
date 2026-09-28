@@ -898,6 +898,16 @@ class TestFilesApi(ApiCase):
         resp = await self.fetch(f"/api/fs?{query}&dirs=2", **cookie, **csrf)
         self.assertEqual(resp.code, 400)
 
+    async def test_an_error_listing_names_the_path_it_expanded(self):
+        # « ~ » tel quel ferait, dans la page, un segment qui ouvrirait /~ :
+        # une liste en erreur rend le chemin développé.
+        home = os.environ["HOME"]
+        with patch.object(server, "FS_READERS", 0):
+            busy = await self.listing(None)
+            deeper = await self.listing("~/forged_dir")
+        self.assertEqual((busy["path"], busy["error"]), (home, "busy"))
+        self.assertEqual(deeper["path"], os.path.join(home, "forged_dir"))
+
     async def test_a_listing_that_hangs_is_an_error_and_frees_the_hub(self):
         # Un montage réseau mort : aucune lecture ne revient avant `gate`.
         gate = threading.Event()
