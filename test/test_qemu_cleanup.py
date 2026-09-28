@@ -18,12 +18,13 @@ ouverts) vaut le coup.
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 
-# La forme RÉELLE, relevée sur la machine : le nvram porte un attribut
-# « template », et c'est ce qui l'avait fait manquer d'un premier filtre.
+# La forme que produit libvirt : le nvram porte un attribut « template »,
+# qu'un filtre sur la seule valeur de l'élément laisse passer.
 XML_MIGRATION = """<domain type='kvm'>
   <name>erplibre-ubuntu-2404-MIGRATION</name>
   <os firmware='efi'>
@@ -363,9 +364,9 @@ class TestLAdresseDUneVm(unittest.TestCase):
     """« --source arp » remonte les passerelles des ponts : la dernière
     candidate n'est pas la bonne.
 
-    Vécu sur la VM renommée : son bail porte encore l'ancien nom d'hôte, donc
-    aucune correspondance, et le repli sur « la dernière » annonçait
-    192.168.122.1 — la passerelle — au lieu de 192.168.123.170.
+    Une VM renommée, dont le bail porte encore l'ancien nom d'hôte, n'a
+    aucune correspondance : le repli sur « la dernière » lui attribue alors
+    la passerelle du pont au lieu de sa propre adresse.
     """
 
     def _todo(self, par_source):
@@ -400,11 +401,29 @@ class TestLAdresseDUneVm(unittest.TestCase):
         self.assertIsNone(self._todo({})._qemu_vm_ip_now("x"))
 
     def test_the_hosts_own_addresses_are_never_candidates(self):
-        siennes = TODO._qemu_host_addresses()
-        self.assertIn("127.0.0.1", siennes)
-        for nom in TODO.__new__(TODO)._qemu_list_domains():
-            for ips in TODO._qemu_candidates_by_source(nom).values():
-                self.assertFalse(set(ips) & siennes, nom)
+        # virsh simulé : chaque source cite l'hôte — sa passerelle et sa
+        # boucle locale — ET une adresse étrangère. Seule l'étrangère doit
+        # survivre, quelle que soit la source.
+        sortie = (
+            " vnet0 52:54:00:00:00:01 ipv4 198.51.100.1/24\n"
+            " lo    00:00:00:00:00:00 ipv4 127.0.0.1/8\n"
+            " vnet0 52:54:00:00:00:02 ipv4 192.0.2.77/24\n"
+        )
+        with (
+            mock.patch(
+                "script.todo.qemu_manage.QemuManageMixin._qemu_host_addresses",
+                return_value={"127.0.0.1", "198.51.100.1"},
+            ),
+            mock.patch(
+                "script.todo.qemu_manage.subprocess.run",
+                return_value=mock.Mock(stdout=sortie, returncode=0),
+            ),
+        ):
+            par_source = TODO._qemu_candidates_by_source("x")
+        self.assertEqual(
+            par_source,
+            {s: ["192.0.2.77"] for s in ("lease", "agent", "arp")},
+        )
 
 
 class TestLesFichiersOuverts(unittest.TestCase):
@@ -414,8 +433,15 @@ class TestLesFichiersOuverts(unittest.TestCase):
         # Sur cette machine, si une VM tourne, son disque est cité par la
         # ligne de commande de son qemu. Sinon, le test ne prouve rien et
         # doit le DIRE plutôt que de passer pour rien.
+        #
+        # virsh sans sudo, toujours : sur un hôte où libvirt n'est joignable
+        # qu'en root, sudo demanderait un mot de passe au milieu de la suite.
+        # Un refus rend une liste vide, et le test se déclare ignoré.
         todo = TODO.__new__(TODO)
-        domaines = todo._qemu_list_domains()
+        with mock.patch(
+            "script.todo.qemu_privilege.needs_sudo", return_value=False
+        ):
+            domaines = todo._qemu_list_domains()
         if not domaines:
             self.skipTest("aucune VM définie sur cette machine")
         ouverts = TODO._qemu_files_in_use()

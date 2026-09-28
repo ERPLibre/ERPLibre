@@ -2172,6 +2172,13 @@ class TestLeSuivi(unittest.TestCase):
         todo._write_ssh_config_entry = lambda *a, **k: None
         todo._ssh_private_key = lambda k: None
         todo._pve_guest_ip = lambda vmid, attente=120: ""
+        # Ni l'hôte ni la VM : la liste des domaines locaux vient de virsh,
+        # l'attente et le guide passent par ssh, l'alias périmé se lit dans
+        # ~/.ssh/config. Une VM qui répond tout de suite suffit à suivre la
+        # voie jusqu'au suivi, seul objet de ces tests.
+        todo._qemu_list_domains = lambda: []
+        todo._pve_ssh = lambda *a, **k: (0, "")
+        todo._pve_alias_perime = lambda nom, rebond: []
         spec = {
             "host": {"target": "pve1"},
             "vms": [
@@ -2234,6 +2241,10 @@ class TestLeSuivi(unittest.TestCase):
             # locaux. Sans ce bouchon, le test dépendrait de la machine qui
             # le lance.
             todo._qemu_list_domains = lambda: []
+            # Même raison pour ssh et ~/.ssh/config : la VM répond tout de
+            # suite, et aucun alias périmé n'est lu sur le poste.
+            todo._pve_ssh = lambda *a, **k: (0, "")
+            todo._pve_alias_perime = lambda nom, rebond: []
             todo._pve_guest_ip = lambda vmid, attente=120: ""
             todo._qemu_install_erplibre_monitored = lambda *a, **k: None
             todo._qemu_install_erplibre_vm = lambda *a, **k: None
@@ -2289,6 +2300,9 @@ class TestLeSuivi(unittest.TestCase):
         )
         todo._ssh_private_key = lambda k: None
         todo._pve_guest_ip = lambda vmid, attente=120: ""
+        # Ni ssh ni ~/.ssh/config du poste : la VM répond tout de suite.
+        todo._pve_ssh = lambda *a, **k: (0, "")
+        todo._pve_alias_perime = lambda nom, rebond: []
         vus = {}
         todo._qemu_install_erplibre_monitored = (
             lambda noms, br, ipmap, cmd, **k: vus.update(ipmap=ipmap)
