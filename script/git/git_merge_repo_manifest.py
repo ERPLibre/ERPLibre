@@ -24,6 +24,7 @@ from script.git.manifest_freeze import (
     FREEZE_ATTR,
     apply_freeze,
 )
+from script.setops import engine as setops_engine
 from script.version.erplibre_state import get_version_extra
 
 _logger = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
     "conf", "git_manifest_mobile.csv"
 )
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
+DEFAULT_PATH_MANIFEST_SETOPS_CONF = os.path.join(
+    "conf", "git_manifest_setops.csv"
+)
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
 )
@@ -78,6 +82,15 @@ def get_config(argv=None):
         "--with_mobile",
         action="store_true",
         help="Add mobile project manifest",
+    )
+    parser.add_argument(
+        "--with_setops",
+        action="store_true",
+        help=(
+            "Add Set-OPS engine manifest (manifest/git_manifest_setops.xml)."
+            " Without this flag, it is added only when .repo/project.list"
+            " already lists its path."
+        ),
     )
     parser.add_argument(
         "--with_extra",
@@ -125,6 +138,7 @@ def main():
         input_paths = default_input_paths(
             with_OCA=config.with_OCA,
             with_mobile=config.with_mobile,
+            with_setops=config.with_setops,
             with_extra=config.with_extra,
             with_new_manifest=config.with_new_manifest,
         )
@@ -225,6 +239,7 @@ def main():
 def default_input_paths(
     with_OCA=False,
     with_mobile=False,
+    with_setops=False,
     with_extra=False,
     with_new_manifest=False,
 ):
@@ -232,9 +247,10 @@ def default_input_paths(
 
     Sans `with_new_manifest`, les drapeaux se déduisent du checkout : la
     version d'Odoo active, les versions installées, l'application mobile,
-    les modules extra. Un fichier cité deux fois n'est gardé qu'à sa
-    PREMIÈRE place, et l'ordre est celui de la liste : lors de la fusion,
-    le dernier fichier qui définit un projet l'emporte.
+    le moteur Set-OPS que Google Repo gère déjà, les modules extra. Un
+    fichier cité deux fois n'est gardé qu'à sa PREMIÈRE place, et l'ordre
+    est celui de la liste : lors de la fusion, le dernier fichier qui
+    définit un projet l'emporte.
     """
     odoo_version = None
     if os.path.isfile(ODOO_VERSION_PATH):
@@ -249,6 +265,8 @@ def default_input_paths(
             with_mobile = True
         if odoo_version and get_version_extra(odoo_version.strip()):
             with_extra = True
+        if setops_is_managed():
+            with_setops = True
 
     input_paths = []
     if with_OCA:
@@ -295,6 +313,10 @@ def default_input_paths(
     if with_mobile:
         append_file_path_manifest(
             input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+        )
+    if with_setops:
+        append_file_path_manifest(
+            input_paths, DEFAULT_PATH_MANIFEST_SETOPS_CONF
         )
     if with_extra and odoo_version:
         path_extra = os.path.join(
@@ -367,6 +389,25 @@ def common_input_paths():
     ):
         append_file_path_manifest(chemins, conf)
     return [c for c in dict.fromkeys(chemins) if c.endswith(".xml")]
+
+
+def setops_is_managed(racine="."):
+    """Vrai seulement si Google Repo gère déjà le chemin du moteur Set-OPS.
+
+    Le chemin se lit dans le manifeste du moteur, jamais recopié ici. Seule
+    `.repo/project.list` décide : un dossier présent au même chemin peut être
+    un clone manuel, et l'ajouter au manifeste local ferait échouer le
+    prochain `repo sync` sur un chemin occupé. Une déclaration illisible ou
+    un `.repo/` absent n'allument rien.
+
+    À l'inverse, un chemin que la liste porte reste dans la fusion quoi qui
+    l'occupe : le sync suivant supprimerait sinon l'arbre qui s'y trouve,
+    s'il est propre — un clone manuel et ses commits non poussés compris.
+    """
+    decl = setops_engine.declaration(racine)
+    if decl is None:
+        return False
+    return setops_engine.managed_by_repo(racine, decl.path) is True
 
 
 def append_file_path_manifest(input_paths, path_manifest):
