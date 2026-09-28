@@ -215,6 +215,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dans le sélecteur de chemins d'une session web, un chemin que TODO refuse — un lien cassé, un fichier disparu entre-temps, une faute de frappe au terminal — fait revenir la question sur le plus proche répertoire existant qui le contient, ou sur le répertoire même donné pour un fichier, où le sélecteur rouvre, au lieu de son point de départ ; une réponse se lit telle quelle, puis sans les blancs de ses bouts : des blancs tapés autour d'un chemin ne le font plus refuser, et un nom qui finit vraiment par une espace se choisit encore
 - Dans le sélecteur de chemins, une liste qui échoue — trop de lectures à la fois, une lecture trop longue — nomme en entier le répertoire personnel quand « ~ » était demandé, et ne montre plus un segment « ~ » qui ouvrirait /~
 - Dans le sélecteur de chemins, le second clic d'un double-clic n'atteint plus aucun bouton — un segment du chemin, le parent, Ouvrir, Choisir ce répertoire, Dialogue du système ou Annuler —, comme il n'atteignait déjà aucune entrée : une rangée de segments qui passe à la ligne pouvait amener la rangée de réponse sous le pointeur
+- Exécution › Code › Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune autre réponse ne lance rien, « 01 » ou « 1 » entouré d'espaces compris. [1], la première mise à jour de `todo.json`, répondait « Commande non trouvée ! », avec plusieurs, chaque numéro lançait la précédente, et une configuration sans `update_from_makefile` arrêtait le menu avant son affichage
 
 ## Retiré
 

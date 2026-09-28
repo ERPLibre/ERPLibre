@@ -1326,7 +1326,12 @@ class TODO(
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
+        # L'arbre de télémétrie lit les entrées de configuration dans cette
+        # affectation (`_choices_children`) : elle reste un appel seul de
+        # get_config, et une liste absente se remplace ensuite.
         choices = self.config_file.get_config("update_from_makefile")
+        if choices is None:
+            choices = []
         menu_entry = {
             "prompt_description": t("Upgrade Odoo - Migration Database"),
         }
@@ -1358,16 +1363,13 @@ class TODO(
             elif status == str(len(choices)):
                 self.upgrade_poetry()
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
+                # [N], tel qu'affiché, est la N-ième entrée de configuration ;
+                # les deux dernières, Odoo et Poetry, ont leur branche
+                # ci-dessus.
+                shown = [str(n) for n in range(1, len(choices) - 1)]
+                if status in shown:
+                    self.execute_from_configuration(choices[int(status) - 1])
+                else:
                     print(t("Command not found !"))
 
     def prompt_execute_deploy(self):

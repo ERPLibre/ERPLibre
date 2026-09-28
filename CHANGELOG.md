@@ -215,6 +215,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In the path picker of a web session, a path that TODO refuses — a broken link, a file gone meanwhile, a typo in the terminal — brings the question back on the nearest existing directory that holds it, or on the directory itself when one was given for a file, where the picker reopens, instead of its starting point; an answer is read as typed, then without the blanks at its ends, so blanks typed around a path no longer get it refused, and a name that really ends with a space can still be chosen
 - In the path picker, a listing that fails — too many reads at once, a read too long — names the home directory in full when « ~ » was asked, and no longer shows a « ~ » segment that would open /~
 - In the path picker, the second click of a double-click no longer reaches any button — a path segment, the parent, Open, Choose this directory, System dialog or Cancel — as it already reached no entry: a row of path segments that wraps could move the answer row under the pointer
+- Execute › Code › Update: each number runs the entry it shows, and no other answer runs anything, « 01 » or « 1 » between spaces included. [1], the first update of `todo.json`, answered « Command not found ! », with several, each number ran the one before, and a configuration without `update_from_makefile` stopped the menu before it showed
 
 ## Removed
 

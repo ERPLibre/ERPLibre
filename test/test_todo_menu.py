@@ -15,10 +15,17 @@ dispatch racontent la même histoire.
 """
 
 import ast
+import io
+import json
+import os
 import re
+import tempfile
 import unicodedata
 import unittest
+import warnings
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -427,6 +434,23 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_update_lists_each_configured_update(self):
+        # Chaque entrée d'`update_from_makefile` est une feuille d'Update,
+        # que lance execute_from_configuration avec l'entrée elle-même.
+        config = json.loads((TODO_DIR / "todo.json").read_text())
+        expected = [
+            ("execute_from_configuration", {"instance": entry})
+            for entry in config["update_from_makefile"]
+        ]
+        [update] = [
+            n
+            for n in self._noeud("Code")["children"]
+            if n["label"] == "Update"
+        ]
+        leaves = [(f["method"], f["kwargs"]) for f in update["children"]]
+        self.assertTrue(expected)
+        self.assertEqual(leaves[: len(expected)], expected)
+
     def test_a_computed_label_keeps_the_numbering(self):
         # fill_help_info numérote chaque entrée qui n'est pas une section,
         # son libellé écrit ou calculé : la troisième reste la troisième, et
@@ -826,6 +850,85 @@ class TestTelemetryMenuNumbering(MenuCoherence, unittest.TestCase):
 
     def test_zero_goes_back(self):
         self.assertRegex(self.body, r'if status == "0":\s*\n\s*return False')
+
+
+class TestUpdateMenu(unittest.TestCase):
+    """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
+    autre réponse ne lance rien.
+
+    Les entrées de `update_from_makefile` d'abord, puis Upgrade Odoo et
+    Upgrade Poetry. Les commandes sont des doubles, aucune ne part ; HOME
+    est temporaire, la langue fixée et la télémétrie de navigation
+    neutralisée.
+    """
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "makefile_cmd": "forged_one"},
+        {"prompt_description": "Forged two", "makefile_cmd": "forged_two"},
+    ]
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo.config_file.get_config = lambda key: [
+            dict(entry) for entry in self.ENTRIES
+        ]
+
+    def answer(self, answers):
+        """(configurations lancées, migrations, mises à jour de Poetry,
+        texte affiché) quand Mise à jour reçoit `answers`, puis « 0 »."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, **options):
+            ran.append(instance.get("makefile_cmd"))
+
+        with (
+            patch.object(TODO, "execute_from_configuration", run),
+            patch("script.todo.todo.todo_upgrade", create=True) as upgrade,
+            patch.object(TODO, "upgrade_poetry") as poetry,
+            patch("click.prompt", side_effect=[*answers, "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_update(), False)
+        migration = upgrade.TodoUpgrade.return_value.execute_odoo_upgrade
+        return ran, migration.call_count, poetry.call_count, out.getvalue()
+
+    def test_each_number_runs_the_entry_it_shows(self):
+        # « 5 » n'est pas affiché ; « 01 » et « 1 » entouré de blancs ne
+        # sont pas le numéro affiché.
+        answers = ["1", "2", "3", "4", "5", "01", " 1"]
+        ran, migrations, poetry, out = self.answer(answers)
+        self.assertEqual(ran, ["forged_one", "forged_two"])
+        self.assertEqual((migrations, poetry), (1, 1))
+        self.assertEqual(out.count("Command not found !"), 3)
+
+    def test_a_list_absent_from_the_configuration_adds_no_entry(self):
+        self.todo.config_file.get_config = lambda key: None
+        ran, migrations, poetry, out = self.answer(["1"])
+        self.assertEqual((ran, migrations, poetry), ([], 1, 0))
+        self.assertNotIn("Command not found !", out)
 
 
 class TestMenuLabels(unittest.TestCase):
