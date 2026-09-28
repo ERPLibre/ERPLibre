@@ -229,7 +229,7 @@ class TestRepoInit(Banc):
 
 class TestScriptsDeManifeste(unittest.TestCase):
     def test_repo_init_passe_par_le_fragment(self):
-        self.assertEqual(len(SCRIPTS), 6, [s.name for s in SCRIPTS])
+        self.assertEqual(len(SCRIPTS), 7, [s.name for s in SCRIPTS])
         for script in SCRIPTS:
             texte = script.read_text(encoding="utf-8")
             with self.subTest(script=script.name):

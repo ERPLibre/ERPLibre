@@ -56,8 +56,11 @@ fi
 # Generate local manifest
 .venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA "${MERGE_FREEZE[@]}"
 
+# « setops » garde le moteur Set-OPS d'un poste qui l'a rapatrié : un sync
+# qui l'écarte supprime son arbre. Sur un autre poste, la fusion ne le
+# déclare pas, et le groupe ne sélectionne rien.
 . ./script/manifest/repo_init.sh
-repo_init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} -g base,code_generator
+repo_init -u git://127.0.0.1:9418/ -b "${MANIFEST_REV}" -m ${MANIFEST_TARGET} -g base,code_generator,setops
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}
