@@ -211,6 +211,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In a web session, the rest of a menu entry label written on two lines no longer shows a second time among the menu's notes, under the entry's button that already carries it
 - Navigation telemetry › [4] Desktop window no longer claims that its process opened the browser when no browser took the page: it says so, then gives the page's link as [2] does; `make todo_desktop` without a display no longer says it opens the browser
 - Navigation telemetry: an entry that a menu computes on display, one per known LLM server, is no longer a pseudo-command « — » in the tree, which no menu entry shows
+- In the path picker of a web session, a path that TODO refuses — a broken link, a file gone meanwhile, a typo in the terminal — brings the question back on the nearest existing directory that holds it, or on the directory itself when one was given for a file, where the picker reopens, instead of its starting point; an answer is read as typed, then without the blanks at its ends, so blanks typed around a path no longer get it refused, and a name that really ends with a space can still be chosen
 
 ## Removed
 

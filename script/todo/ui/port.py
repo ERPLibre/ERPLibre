@@ -224,27 +224,42 @@ class BasePort:
         l'utilisateur renonce : Annuler (EOFError, comme Ctrl+D) ou une
         réponse blanche. La question est un `ask` de genre `path`
         (`path_question`), posé par `menu`. Un chemin relatif part de
-        `start`, `~` du répertoire de l'utilisateur ; un chemin qui
-        n'existe pas, ou d'un autre genre, se dit par `notice` et la même
-        question revient."""
+        `start`, `~` du répertoire de l'utilisateur. La réponse se lit
+        telle quelle, puis sans les blancs de ses bouts : un nom qui finit
+        vraiment par une espace se choisit, et des blancs tapés autour d'un
+        chemin ne le font pas refuser. Un chemin qui n'existe pas, ou d'un
+        autre genre, se dit par `notice`, et la question revient sur lui
+        s'il est un répertoire, sinon sur le plus proche répertoire existant
+        qui le contient (`_folder`), d'où part alors un chemin relatif : le
+        sélecteur de la page y rouvre, là où l'utilisateur était."""
         start = os.path.abspath(start)
-        message = path_question(start, directory)
         while True:
             try:
-                answer = self.menu(message)
+                answer = self.menu(path_question(start, directory))
             except EOFError:
                 return None
             if not answer.strip():
                 return None
-            path = os.path.join(start, os.path.expanduser(answer))
-            path = os.path.abspath(path)
-            if os.path.isdir(path) if directory else os.path.isfile(path):
-                return path
+            for text in dict.fromkeys((answer, answer.strip())):
+                path = os.path.join(start, os.path.expanduser(text))
+                path = os.path.abspath(path)
+                if os.path.isdir(path) if directory else os.path.isfile(path):
+                    return path
             if os.path.exists(path):
                 wrong = ("Not a file: ", "Not a directory: ")
             else:
                 wrong = ("No such file: ", "No such directory: ")
             self.notice(f"{t(wrong[bool(directory)])}{path}", "error")
+            start = path if os.path.isdir(path) else _folder(path)
+
+
+def _folder(path) -> str:
+    """Le plus proche répertoire existant qui contient `path`, un chemin
+    absolu ; « / » au plus haut."""
+    folder = os.path.dirname(path)
+    while not os.path.isdir(folder):
+        folder = os.path.dirname(folder)
+    return folder
 
 
 class TerminalPort(BasePort):

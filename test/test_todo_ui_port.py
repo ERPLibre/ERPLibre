@@ -280,9 +280,9 @@ class TestScriptedPort(unittest.TestCase):
         _english(self)
         base = _forged_dir(self)
         folder = os.path.join(base, "forged_dir")
-        answers = ["absent.zip", "forged_dir", "forged.zip", " ", EOFError()]
+        answers = ["absent.zip", "forged_dir", "../forged.zip", " "]
         scripted = port.ScriptedPort(
-            [*answers, "forged.zip", "~/forged_dir", ".."]
+            [*answers, EOFError(), "forged.zip", "~/forged_dir", ".."]
         )
         with ui.bind(scripted), patch.dict(os.environ, {"HOME": base}):
             chosen = ui.pick_path(base)
@@ -296,7 +296,10 @@ class TestScriptedPort(unittest.TestCase):
         asked = [e for e in scripted.events if e["t"] == "ask"]
         self.assertEqual(
             [(e["kind"], e["start"], e["directory"]) for e in asked],
-            [("path", base, False)] * 4
+            # Un répertoire refusé pour un fichier : la question revient
+            # sur lui.
+            [("path", base, False)] * 2
+            + [("path", folder, False), ("path", base, False)]
             + [("path", base, True)] * 3
             + [("path", folder, True)],
         )
@@ -314,6 +317,48 @@ class TestScriptedPort(unittest.TestCase):
                 f"No such file: {base}/absent.zip",
                 f"Not a file: {folder}",
                 f"Not a directory: {base}/forged.zip",
+            ],
+        )
+
+    def test_a_path_is_read_as_typed_then_without_its_blanks(self):
+        # Des blancs tapés autour d'un chemin ne le font pas refuser ; un
+        # nom qui finit vraiment par une espace reste le sien.
+        base = _forged_dir(self)
+        Path(base, "forged.zip ").touch()
+        scripted = port.ScriptedPort([" forged.zip\t", "forged.zip "])
+        with ui.bind(scripted):
+            trimmed = ui.pick_path(base)
+            spaced = ui.pick_path(base)
+        self.assertEqual(trimmed, os.path.join(base, "forged.zip"))
+        self.assertEqual(spaced, os.path.join(base, "forged.zip "))
+        self.assertFalse(
+            [e for e in scripted.events if e["t"] == "notice"], "no re-ask"
+        )
+
+    def test_a_refused_path_is_asked_again_from_its_folder(self):
+        # Un chemin refusé fait revenir la question sur le plus proche
+        # répertoire existant qui le contient, où le sélecteur rouvre ;
+        # un chemin relatif en part alors. Un répertoire donné pour un
+        # fichier la fait revenir sur lui-même, où l'utilisateur est allé.
+        _english(self)
+        base = _forged_dir(self)
+        folder = os.path.join(base, "forged_dir")
+        inner = os.path.join(folder, "inner")
+        os.mkdir(inner)
+        Path(folder, "inner.zip").touch()
+        answers = ["forged_dir/absent.zip", "gone/deeper/x.zip", "inner"]
+        scripted = port.ScriptedPort([*answers, "../inner.zip"])
+        with ui.bind(scripted):
+            chosen = ui.pick_path(base)
+        self.assertEqual(chosen, os.path.join(folder, "inner.zip"))
+        asked = [e["start"] for e in scripted.events if e["t"] == "ask"]
+        self.assertEqual(asked, [base, folder, folder, inner])
+        self.assertEqual(
+            [e["text"] for e in scripted.events if e["t"] == "notice"],
+            [
+                f"No such file: {folder}/absent.zip",
+                f"No such file: {folder}/gone/deeper/x.zip",
+                f"Not a file: {inner}",
             ],
         )
 
