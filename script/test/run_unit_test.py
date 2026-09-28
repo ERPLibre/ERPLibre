@@ -7,7 +7,7 @@ Appelé par `run_unit_test.sh`, qui vérifie l'environnement et dresse la
 liste des fichiers ; ce module ne choisit rien, il exécute ce qu'on lui
 donne :
 
-    run_unit_test.py [--jobs N] [--timeout S] fichier...
+    run_unit_test.py [--tui] [--jobs N] [--timeout S] fichier...
 
 Chaque fichier tourne dans son propre processus, `--jobs` à la fois, les
 plus LONGS d'abord d'après les durées du passage précédent (DURATIONS) : la
@@ -31,10 +31,14 @@ La session a un prix : Ctrl+C n'atteint plus les tests. Le lanceur le reçoit
 seul, tue les groupes en cours et NOMME les fichiers qui tournaient — la
 question qu'on se pose justement quand on l'interrompt.
 
-L'affichage : une ligne par fichier quand il FINIT, donc dans le désordre,
-et un rappel pour tout fichier qui dure plus de SIGNAL secondes
-(UNIT_SIGNAL, 60 par défaut) ; les sorties des échecs suivent, dans
-l'ordre des noms.
+Deux affichages :
+ - en ligne (défaut) : une ligne par fichier quand il FINIT, donc dans le
+   désordre, et un rappel pour tout fichier qui dure plus de SIGNAL
+   secondes (UNIT_SIGNAL, 60 par défaut) ; les sorties des échecs suivent,
+   dans l'ordre des noms ;
+ - `--tui` : un tableau Textual, attente / en cours / fini avec la durée,
+   et la fin du journal du fichier sélectionné. Sans Textual ou sans
+   terminal, retombe sur l'affichage en ligne.
 """
 
 import argparse
@@ -346,9 +350,100 @@ def en_ligne(lanceur):
     return bilan(lanceur)
 
 
+def tui(lanceur):
+    """Le tableau Textual. Rend None si Textual manque : l'appelant
+    retombe alors sur l'affichage en ligne."""
+    try:
+        from rich.text import Text
+        from textual.app import App
+        from textual.containers import Vertical
+        from textual.widgets import DataTable, Footer, Header, Static
+    except ImportError:
+        return None
+
+    colonnes = ("Fichier", "État", "Tests", "Durée")
+
+    class Vue(App):
+        TITLE = "Tests unitaires"
+        CSS = """
+        DataTable { height: 2fr; }
+        #journal { height: 1fr; border-top: solid $accent; padding: 0 1; }
+        """
+        BINDINGS = [("q", "quitter", "Quitter (arrête les tests)")]
+
+        def compose(self):
+            yield Header()
+            with Vertical():
+                yield DataTable(cursor_type="row", zebra_stripes=True)
+                yield Static("", id="journal")
+            yield Footer()
+
+        def on_mount(self):
+            table = self.query_one(DataTable)
+            for nom in colonnes:
+                table.add_column(nom, key=nom)
+            for f in lanceur.fichiers:
+                table.add_row(*self._cellules(f), key=f.nom)
+            self.fil = threading.Thread(target=lanceur.lancer, daemon=True)
+            self.fil.start()
+            self.set_interval(0.5, self._rafraichir)
+
+        def _cellules(self, f):
+            duree = f"{f.ecoule():.0f} s" if f.etat != ATTENTE else ""
+            return (f.nom, f.etat, f.ran if f.ran != "?" else "", duree)
+
+        def _rafraichir(self):
+            table = self.query_one(DataTable)
+            for f in lanceur.fichiers:
+                for colonne, valeur in zip(colonnes, self._cellules(f)):
+                    table.update_cell(f.nom, colonne, valeur)
+            faits = sum(
+                f.etat not in (ATTENTE, EN_COURS) for f in lanceur.fichiers
+            )
+            rouges = sum(f.echoue() for f in lanceur.fichiers)
+            ecoule = time.monotonic() - lanceur.debut if lanceur.debut else 0
+            fin = "" if self.fil.is_alive() else " — terminé, q pour quitter"
+            self.sub_title = (
+                f"{faits}/{len(lanceur.fichiers)} finis,"
+                f" {len(lanceur.en_cours())} en cours, {rouges} en échec,"
+                f" {ecoule:.0f} s{fin}"
+            )
+            ligne_choisie = table.cursor_row
+            if 0 <= ligne_choisie < len(lanceur.fichiers):
+                f = lanceur.fichiers[ligne_choisie]
+                journal = self.query_one("#journal", Static)
+                # La FIN du journal, à la hauteur du panneau : c'est là que
+                # unittest écrit l'erreur et le verdict.
+                hauteur = max(3, journal.size.height - 1)
+                texte = _lire(f.log, fin=hauteur) if f.log else "(pas démarré)"
+                # Du texte brut, jamais du balisage : un journal porte des
+                # crochets et des codes ANSI, que le balisage de Textual
+                # prendrait pour les siens et refuserait.
+                contenu = Text(f"{f.nom} — {f.etat}\n", style="bold")
+                contenu.append_text(Text.from_ansi(texte))
+                journal.update(contenu)
+
+        def action_quitter(self):
+            lanceur.arreter()
+            self.exit()
+
+    Vue().run()
+    lanceur.arreter()
+    # Les fils finissent sur les groupes tués : attendre qu'ils aient posé
+    # leur état avant le bilan.
+    while lanceur.en_cours():
+        time.sleep(0.1)
+    if not lanceur.fin:
+        lanceur.fin = time.monotonic()
+    for f in lanceur.fichiers:
+        print(ligne(f, lanceur.delai))
+    return bilan(lanceur)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("fichiers", nargs="+")
+    parser.add_argument("--tui", action="store_true")
     parser.add_argument(
         "--jobs", type=int, default=int(os.environ.get("UNIT_JOBS") or 0)
     )
@@ -366,7 +461,13 @@ def main(argv=None):
         durees=lire_durees(),
     )
     try:
-        code = en_ligne(lanceur)
+        code = None
+        if args.tui and sys.stdout.isatty():
+            code = tui(lanceur)
+            if code is None:
+                print("  Textual absent : affichage en ligne.")
+        if code is None:
+            code = en_ligne(lanceur)
         ecrire_durees(lanceur.fichiers)
         return code
     finally:

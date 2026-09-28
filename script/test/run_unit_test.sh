@@ -14,12 +14,14 @@
 # passer en silence — un test vert sans son dépôt ne prouve rien. Ce script
 # l'annonce donc avant de commencer.
 #
-#   ./script/test/run_unit_test.sh [fichiers...]
+#   ./script/test/run_unit_test.sh [--tui] [fichiers...]
 #   UNIT_JOBS=1 ./script/test/run_unit_test.sh      # en série
 #   UNIT_TIMEOUT=600 UNIT_SIGNAL=30 ...             # délai, rappel (s)
 #
-# L'exécution — parallèle, isolée de l'hôte, bornée dans le temps — est
-# dans run_unit_test.py, qui en décrit les garanties.
+# --tui ouvre un tableau des fichiers — en attente, en cours, finis, avec
+# leur durée — et le journal de celui qu'on sélectionne. L'exécution
+# elle-même — parallèle, isolée de l'hôte, bornée dans le temps — est dans
+# run_unit_test.py, qui en décrit les garanties.
 #
 # TOUT test/test_*.py, et non une liste de préfixes : une liste oublie les
 # familles qu'elle ne nomme pas, un glob n'oublie personne. La frontière de
