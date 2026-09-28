@@ -315,6 +315,22 @@ class TestLesChoix(unittest.TestCase):
         )
         self.assertEqual(100, pve.next_vmid([]))
 
+    def test_a_reserved_vmid_is_skipped_like_a_taken_one(self):
+        """Un VMID qu'un plan Set-OPS DÉCLARE n'existe pas encore sur
+        l'hôte : le prendre poserait une VM là où la flotte veut la sienne,
+        et la collision ne se verrait qu'au déploiement du moteur."""
+        self.assertEqual(101, pve.next_vmid([{"vmid": 100}], reserves={100}))
+        self.assertEqual(
+            103, pve.next_vmid([{"vmid": 100}], reserves={101, 102})
+        )
+
+    def test_a_reservation_out_of_the_way_changes_nothing(self):
+        self.assertEqual(100, pve.next_vmid([], reserves={999999999}))
+
+    def test_what_is_not_a_whole_number_is_not_a_reservation(self):
+        """Une réserve illisible ne doit pas décaler le choix en silence."""
+        self.assertEqual(100, pve.next_vmid([], reserves={"100", None}))
+
     def test_the_storage_is_the_freest_active_one(self):
         st = pve.parse_storages(PVESM)
         self.assertEqual("local", pve.pick_storage(st))

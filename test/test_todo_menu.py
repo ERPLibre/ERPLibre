@@ -17,9 +17,15 @@ dispatch racontent la même histoire.
 import ast
 import json
 import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from script.setops import console, engine, state  # noqa: E402
+from script.setops import runbooks as registre  # noqa: E402
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -30,6 +36,17 @@ RE_SHOWN = re.compile(r'^\[(\d+)\] \{t\("([^"]+)"\)\}', re.M)
 RE_DISPATCH = re.compile(
     r'elif status == "(\d+)":\s*\n\s*status = self\.(\w+)\(\)'
 )
+
+
+def t_introuvable():
+    """Le « commande introuvable » du menu, dans la langue du processus.
+
+    Lu par t() plutôt qu'écrit en dur : la chaîne porte sa traduction et son
+    icône, et régler la langue ici réécrirait EL_LANG dans env_var.sh.
+    """
+    from script.todo import todo_i18n
+
+    return todo_i18n.t("Command not found !")
 
 
 def prompt_execute_source():
@@ -170,6 +187,20 @@ class MenuCoherence:
     RE_ENTRY = re.compile(
         r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
     )
+    # Une entrée dont le libellé vient d'une CONSTANTE, et non d'un littéral.
+    # Sans cette forme, `RE_ENTRY` ne la voyait pas : elle n'était ni
+    # numérotée, ni exigée dans EXPECTED — le contrôle la sautait en silence.
+    RE_ENTRY_CONSTANTE = re.compile(
+        r'"(section|prompt_description)": t\(\s*\n?\s*'
+        r"([A-Za-z_][\w]*\.[A-Z][\w]*)\s*\)"
+    )
+    # Toute occurrence, quelle que soit la forme du libellé : c'est ELLE qui
+    # dit combien d'entrées le menu porte, et donc combien les deux formes
+    # ci-dessus doivent en retrouver.
+    RE_ENTRY_BRUTE = re.compile(r'"(section|prompt_description)":')
+    # Les constantes qu'un menu peut nommer. Une constante absente d'ici fait
+    # ÉCHOUER la lecture plutôt que de disparaître du compte.
+    CONSTANTES = {}
     # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
     # une entrée expliquée devenait invisible pour ce test, qui annonçait alors
     # « 18 affichées, 17 dispatchées » sans qu'aucune entrée ne manque. Un test
@@ -187,6 +218,13 @@ class MenuCoherence:
         r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
         r'\s*"method": "(\w+)"'
     )
+    # La même chose, libellé porté par une constante. Sans elle, l'entrée
+    # passait pour numérotée alors qu'aucun numéro ne la dispatche.
+    RE_SELF_DISPATCH_CONSTANTE = re.compile(
+        r'"prompt_description": t\(\s*\n?\s*'
+        r"([A-Za-z_][\w]*\.[A-Z][\w]*)\s*\)\s*,?\s*\n"
+        r'\s*"method": "(\w+)"'
+    )
     # Le point où les entrées de todo.json entrent dans la liste. C'est LUI
     # qui coupe, et non le premier « get_config » venu : un menu peut lire une
     # préférence avant de bâtir ses choix, sans que le rang de rien ne bouge.
@@ -200,9 +238,12 @@ class MenuCoherence:
         end = source.index(self.END, start)
         self.body = source[start:end]
         self.self_dispatch = dict(self.RE_SELF_DISPATCH.findall(self.body))
+        for nom, methode in self.RE_SELF_DISPATCH_CONSTANTE.findall(self.body):
+            self.assertIn(nom, self.CONSTANTES, nom)
+            self.self_dispatch[self.CONSTANTES[nom]] = methode
         num = 0
         self.shown = []
-        for kind, label in self.RE_ENTRY.findall(self.body):
+        for kind, label in self._entrees():
             if kind == "prompt_description":
                 num += 1
                 self.shown.append((num, label))
@@ -214,6 +255,36 @@ class MenuCoherence:
         self.dispatch = [
             (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
         ]
+
+    def _entrees(self):
+        """(genre, libellé) de chaque entrée du menu, dans l'ordre du source.
+
+        Les deux formes de libellé — un littéral, une constante nommée — sont
+        lues à leur position. Une TROISIÈME forme ferait ÉCHOUER la lecture :
+        un contrôle qui saute ce qu'il ne comprend pas est vert le jour où il
+        devrait être rouge, et c'est ainsi qu'une entrée est restée hors du
+        compte pendant toute une livraison.
+        """
+        vues = []
+        for prise in self.RE_ENTRY.finditer(self.body):
+            vues.append((prise.start(), prise.group(1), prise.group(2)))
+        for prise in self.RE_ENTRY_CONSTANTE.finditer(self.body):
+            nom = prise.group(2)
+            self.assertIn(
+                nom,
+                self.CONSTANTES,
+                f"« {nom} » nomme un libellé que ce contrôle ne sait pas"
+                " résoudre : déclarez-le dans CONSTANTES",
+            )
+            vues.append((prise.start(), prise.group(1), self.CONSTANTES[nom]))
+        attendues = len(self.RE_ENTRY_BRUTE.findall(self.body))
+        self.assertEqual(
+            attendues,
+            len(vues),
+            f"{attendues} entrées dans le menu, {len(vues)} lues : une forme"
+            " de libellé échappe à ce contrôle",
+        )
+        return [(genre, label) for _pos, genre, label in sorted(vues)]
 
     def test_the_menu_was_actually_parsed(self):
         """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
@@ -421,17 +492,32 @@ class TestLaParitéProxmox(unittest.TestCase):
 
     def test_the_detail_reuses_the_list_it_was_called_from(self):
         """Redemander « qm list » renumérote sur une liste qui peut avoir
-        changé, et le numéro tapé porte alors sur la voisine. L'épreuve
-        tient le PASSAGE de la liste, que rien d'autre ne rend visible."""
-        import inspect
+        changé, et le numéro tapé porte alors sur la voisine.
+
+        L'épreuve APPELLE le détail avec une liste et regarde ce que le
+        choisisseur reçoit : lire « vms=vms » dans le source rougirait sur
+        un argument renommé et resterait vert sur un passage qui n'arrive
+        pas jusqu'au choisisseur.
+        """
         import sys
 
         sys.argv = ["todo.py"]
         from script.todo.todo import TODO as CLASSE
 
-        self.assertIn("vms", inspect.signature(CLASSE._pve_pick_vm).parameters)
-        corps = inspect.getsource(CLASSE._pve_detail)
-        self.assertIn("vms=vms", corps)
+        liste = [{"vmid": "701", "name": "banc-fictif", "status": "running"}]
+        recus = []
+        todo = CLASSE()
+        # Rendre None arrête le détail avant l'affichage : seul le passage
+        # de la liste est en jeu ici, et rien ne part vers l'hôte.
+        # Tout ce que reçoit le choisisseur, positionnel ou nommé : la
+        # liste doit ARRIVER, et le nom du paramètre peut changer sans que
+        # cette épreuve ait son mot à dire.
+        todo._pve_pick_vm = lambda *a, **kw: (
+            recus.append(list(a) + list(kw.values())) or None
+        )
+        todo._pve_detail(vms=liste)
+        self.assertEqual(1, len(recus), "le choisisseur n'est pas appelé")
+        self.assertIn(liste, recus[0])
 
     def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
         # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
@@ -442,9 +528,9 @@ class TestLaParitéProxmox(unittest.TestCase):
         )
 
     def test_the_menu_reads_its_extra_commands_from_todo_json(self):
+        # Que le menu les JOUE, numéro tapé, est prouvé par
+        # TestLaGreffeEstJouable, qui balaie tous les menus greffés.
         self.assertIn('get_config("proxmox_from_makefile")', self.src)
-        # Et le dispatch sait les lancer, sections non comptées.
-        self.assertIn("execute_from_configuration", self.src)
 
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
@@ -725,6 +811,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         # dépasse la chaîne d'elif, donc le repli lit la clé. C'est ce qui
         # permet d'ajouter une entrée sans décaler les dix-huit autres.
         "Verify a VM's egress posture": "_pve_verify_egress",
+        "VMID collisions between the cluster": "_pve_collisions",
     }
 
 
@@ -795,6 +882,12 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
             "_qemu_verify_station"
         ),
         "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
+        # Déclarée par « method », après les vérifications et avant la
+        # greffe de todo.json : son rang n'entre pas dans le calcul des
+        # « elif ». Cette table apparie libellé et méthode ; le rang
+        # affiché des entrées « method », lui, est tenu par
+        # test_setops_menu.TestDepuisDeploy.
+        "Set-OPS - Sovereign ecosystem": "prompt_execute_setops",
     }
 
 
@@ -880,6 +973,60 @@ class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
         "Lima - Open a shell in an instance": "_lima_shell",
         "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
         "Lima - Verify an instance's egress posture": "_lima_verify_egress",
+    }
+
+
+class TestSetopsMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le sous-menu Set-OPS : une section, une entrée, par « method ».
+
+    Toute entrée y porte sa destination dans « method », la seule forme
+    dont le rang ne dépend pas de ce qui est posé plus haut.
+    """
+
+    SOURCE = TODO_DIR / "setops_menu.py"
+    ENTRY = "def prompt_execute_setops(self):"
+    END = "def _setops_state(self):"
+    # Le plancher se FRANCHIT : une seule entrée demande 0.
+    MINIMUM = 0
+
+    CONSTANTES = {
+        "engine.GESTE_EPINGLE": engine.GESTE_EPINGLE,
+        "state.GESTE_ANSIBLE": state.GESTE_ANSIBLE,
+        "state.GESTE_VOUTES": state.GESTE_VOUTES,
+        "console.GESTE": console.GESTE,
+        "registre.PORTE_INSTANCIER": registre.PORTE_INSTANCIER,
+        "registre.PORTE_INSTANCIER_APPLIQUER": registre.PORTE_INSTANCIER_APPLIQUER,
+        "registre.PORTE_DEPLOYER": registre.PORTE_DEPLOYER,
+        "registre.PORTE_DEPLOYER_GROUPE": registre.PORTE_DEPLOYER_GROUPE,
+        "registre.PORTE_APPLIQUER": registre.PORTE_APPLIQUER,
+        "registre.PORTE_CREER_VM": registre.PORTE_CREER_VM,
+        "registre.PORTE_FLOTTE_CREER": registre.PORTE_FLOTTE_CREER,
+        "registre.PORTE_FLUX": registre.PORTE_FLUX,
+        "registre.PORTE_SITE": registre.PORTE_SITE,
+        "registre.PORTE_GENOME_INSCRIRE": registre.PORTE_GENOME_INSCRIRE,
+        "registre.PORTE_CONFIG": registre.PORTE_CONFIG,
+    }
+    EXPECTED = {
+        "Set-OPS - State of the integration": "_setops_state",
+        "Set-OPS - Ansible environment": "_setops_ansible_env",
+        "Set-OPS - Advance the pin": "_setops_epingle",
+        "Set-OPS - Ecosystems discovered": "_setops_ecosystems",
+        "Set-OPS - Switch the active ecosystem": "_setops_ecosystem_use",
+        "Set-OPS - Create an ecosystem": "_setops_ecosystem_create",
+        "Set-OPS - Keys and vaults": "_setops_vaults",
+        "Set-OPS - Runbooks": "_setops_runbooks",
+        "Set-OPS - Web console": "_setops_console",
+        registre.PORTE_INSTANCIER: "_setops_geste_instancier",
+        registre.PORTE_INSTANCIER_APPLIQUER: "_setops_geste_instancier_appliquer",
+        registre.PORTE_DEPLOYER: "_setops_geste_deployer",
+        registre.PORTE_DEPLOYER_GROUPE: "_setops_geste_deployer_groupe",
+        registre.PORTE_APPLIQUER: "_setops_geste_appliquer",
+        registre.PORTE_CREER_VM: "_setops_geste_creer_vm",
+        registre.PORTE_FLOTTE_CREER: "_setops_geste_flotte_creer",
+        registre.PORTE_FLUX: "_setops_geste_flux",
+        registre.PORTE_SITE: "_setops_geste_site",
+        registre.PORTE_GENOME_INSCRIRE: "_setops_geste_genome_inscrire",
+        registre.PORTE_CONFIG: "_setops_geste_config",
     }
 
 
@@ -1112,64 +1259,243 @@ class TestLaGreffeEstJouable(unittest.TestCase):
     """Une entrée de todo.json affichée mais injouable est décorative.
 
     Le rang d'une entrée greffée dépasse la chaîne d'« elif » codée en dur du
-    menu : sans le repli, la taper répond « commande introuvable ». Les
-    épreuves de TestMenuDispatchExtra exercent le repli SEUL — retirer son
-    appel du menu les laisse toutes vertes, et c'est le câblage qui compte.
+    menu : sans repli, la taper répond « commande introuvable ». L'épreuve
+    TAPE le numéro que le menu affiche devant la greffe et regarde si elle
+    part.
+
+    Lire le nom d'un repli dans le texte de la fonction ne le dit pas : un
+    menu qui le nomme sans jamais l'atteindre passe pour sain, et un menu qui
+    joue sa greffe autrement rougit pour rien.
     """
 
+    # Le libellé de la greffe est inventé et n'apparaît nulle part ailleurs
+    # dans le dépôt : il doit se reconnaître seul dans le texte du menu.
+    LIBELLE = "greffe-fictive-cassiterite"
+
+    @staticmethod
+    def lit_une_greffe(noeud):
+        """`noeud` est-il un appel `get_config("…_from_makefile")` ?"""
+        return (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "get_config"
+            and bool(noeud.args)
+            and isinstance(noeud.args[0], ast.Constant)
+            and isinstance(noeud.args[0].value, str)
+            and noeud.args[0].value.endswith("_from_makefile")
+        )
+
+    # Les menus qui greffent une clé de todo.json sans suffixe
+    # « _from_makefile » (« instance », « function ») se reconnaissent à
+    # la forme qui ajoute la greffe à leurs choix.
     GREFFE = re.compile(
         r"choices\.extend\(|choices = self\.config_file\.get_config\("
     )
-    # Deux façons de jouer une entrée greffée : le repli partagé, ou la copie
-    # que six menus portent encore en propre. L'épreuve tient sur la CAPACITÉ,
-    # pas sur le moyen — router les six est un commit à part.
-    REPLIS = ("_menu_dispatch_extra", "execute_from_configuration")
 
-    def menus_greffes(self, chemin):
-        """(nom, corps) de chaque prompt_execute_* qui lit todo.json."""
-        source = chemin.read_text(encoding="utf-8")
-        arbre = ast.parse(source)
+    def noms_greffes(self, source):
+        """Le nom de chaque fonction de `source` qui greffe todo.json à ses
+        choix : un prompt_execute_* de forme reconnue par GREFFE, ou toute
+        fonction qui lit une clé « …_from_makefile », quelle que soit la
+        forme qui ajoute la greffe."""
         trouves = []
-        for noeud in ast.walk(arbre):
-            if not isinstance(noeud, ast.FunctionDef):
-                continue
-            if not noeud.name.startswith("prompt_execute"):
+        for noeud in ast.walk(ast.parse(source)):
+            if not isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             corps = ast.get_source_segment(source, noeud) or ""
-            if self.GREFFE.search(corps):
-                trouves.append((noeud.name, corps))
+            reconnue = noeud.name.startswith(
+                "prompt_execute"
+            ) and self.GREFFE.search(corps)
+            if reconnue or any(
+                self.lit_une_greffe(n) for n in ast.walk(noeud)
+            ):
+                trouves.append(noeud.name)
         return trouves
 
-    def test_every_grafted_menu_routes_its_fallback(self):
-        greffes = []
-        for chemin in (TODO_DIR / "todo.py", TODO_DIR / "qemu_menu.py"):
-            greffes += self.menus_greffes(chemin)
-        self.assertTrue(greffes, "aucune greffe trouvée : rien n'est prouvé")
-        sans_repli = [
-            nom
-            for nom, corps in greffes
-            if not any(repli in corps for repli in self.REPLIS)
-        ]
-        self.assertEqual(
-            [],
-            sans_repli,
-            "ces menus affichent des entrées de todo.json sans pouvoir les"
-            f" jouer : {', '.join(sans_repli)}",
-        )
+    def menus_greffes(self):
+        """« fichier:menu » de chaque menu de script/todo/*.py qui greffe."""
+        trouves = []
+        for chemin in sorted(TODO_DIR.glob("*.py")):
+            source = chemin.read_text(encoding="utf-8")
+            trouves += [
+                (chemin.name, nom) for nom in self.noms_greffes(source)
+            ]
+        return trouves
 
-    def test_the_scan_would_notice_a_menu_without_the_fallback(self):
-        """Contrôle positif : sans lui, un scanner qui ne trouve aucun menu
-        greffé passerait l'épreuve ci-dessus en n'ayant rien regardé."""
-        faux = (
-            "def prompt_execute_banc(self):\n"
-            "    choices = self.config_file.get_config('banc')\n"
-            "    return choices\n"
+    def joue(self, todo, menu):
+        """Ouvre `menu`, tape le numéro affiché devant la greffe, revient.
+
+        Rend (numéro tapé ou None si la greffe ne s'affiche pas, libellés
+        joués, texte imprimé). Le menu reçoit UNE greffe : son numéro se lit
+        dans le texte affiché, jamais écrit ici, pour qu'une entrée posée
+        plus haut par l'amont ne fasse pas rougir l'épreuve.
+        """
+        import io as _io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        joues = []
+        todo.execute_from_configuration = lambda entree, **_k: joues.append(
+            entree.get("prompt_description")
         )
-        arbre = ast.parse(faux)
-        corps = ast.get_source_segment(faux, arbre.body[0])
-        self.assertTrue(self.GREFFE.search(corps))
-        for repli in self.REPLIS:
-            self.assertNotIn(repli, corps)
+        greffe = [{"prompt_description": self.LIBELLE}]
+        tapes = []
+
+        def saisie(texte, *_a, **_k):
+            if tapes:
+                return "0"
+            vus = [
+                num
+                for num, reste in re.findall(r"^\[(\d+)\] (.*)$", texte, re.M)
+                if reste == self.LIBELLE
+            ]
+            tapes.append(vus[0] if len(vus) == 1 else None)
+            return tapes[0] or "0"
+
+        vu = _io.StringIO()
+        with (
+            patch.object(todo.config_file, "get_config", return_value=greffe),
+            patch("click.prompt", side_effect=saisie),
+            redirect_stdout(vu),
+        ):
+            getattr(todo, menu)()
+        return tapes[0], joues, vu.getvalue()
+
+    @staticmethod
+    def _todo():
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO()
+
+    def test_every_grafted_menu_plays_its_graft(self):
+        """Tout script/todo/*.py est balayé, fonction par fonction : un menu
+        neuf qui greffe todo.json entre dans l'épreuve sans qu'on l'y
+        inscrive, même posé dans un fichier qui porte déjà d'autres
+        greffes."""
+        menus = self.menus_greffes()
+        self.assertTrue(menus, "aucune greffe trouvée : rien n'est prouvé")
+        for fichier, menu in menus:
+            with self.subTest(menu=f"{fichier}:{menu}"):
+                tape, joues, sortie = self.joue(self._todo(), menu)
+                self.assertIsNotNone(
+                    tape, f"{menu} n'affiche pas la greffe une seule fois"
+                )
+                self.assertEqual(
+                    [self.LIBELLE],
+                    joues,
+                    f"{menu} affiche la greffe en [{tape}] et ne la joue pas",
+                )
+                self.assertNotIn(t_introuvable(), sortie)
+
+    def test_the_drive_would_notice_a_menu_that_cannot_play_its_graft(self):
+        """Contrôle positif : la forme qu'avait Update — « int(status) - 1 »
+        puis « 0 < int_cmd » — affiche la greffe en [1] et la rend
+        injoignable. Le pilote doit la voir. Sans ce contrôle, un pilote qui
+        se trompe de numéro ou n'appuie sur rien déclarerait tous les menus
+        jouables en n'ayant rien exercé."""
+        import click
+
+        todo = self._todo()
+
+        def menu_casse():
+            choices = todo.config_file.get_config("banc_from_makefile")
+            help_info = todo.fill_help_info(choices)
+            while True:
+                status = click.prompt(help_info)
+                if status == "0":
+                    return False
+                introuvable = True
+                try:
+                    rang = int(status) - 1
+                    if 0 < rang <= len(choices):
+                        introuvable = False
+                        todo.execute_from_configuration(choices[rang - 1])
+                except ValueError:
+                    pass
+                if introuvable:
+                    print(t_introuvable())
+
+        todo.prompt_execute_banc_staurotide = menu_casse
+        tape, joues, sortie = self.joue(todo, "prompt_execute_banc_staurotide")
+        self.assertEqual("1", tape, "le pilote n'a pas lu le numéro affiché")
+        self.assertEqual([], joues)
+        self.assertIn(t_introuvable(), sortie)
+
+
+class TestLeMenuUpdate(unittest.TestCase):
+    """Les quatre rangs du menu Update mènent-ils où ils s'affichent ?
+
+    Ses deux entrées propres suivent les greffes de todo.json : leur rang
+    dépend du nombre de greffes, qu'aucune branche ne peut donc coder en dur.
+    Elles portent « method » et le repli partagé compte pour elles ; ces
+    épreuves tapent les quatre numéros et regardent ce qui part.
+    """
+
+    # Libellés inventés : ils n'apparaissent nulle part ailleurs dans le
+    # dépôt, et doivent se reconnaître seuls dans le texte du menu.
+    GREFFES = (
+        {"prompt_description": "greffe-fictive-wollastonite"},
+        {"prompt_description": "greffe-fictive-vesuvianite"},
+    )
+
+    def setUp(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.todo = TODO()
+        self.joues = []
+        self.todo.execute_from_configuration = lambda entree, **_k: (
+            self.joues.append(entree.get("prompt_description"))
+        )
+        self.todo._update_odoo_migration = lambda: self.joues.append(
+            "migration"
+        )
+        self.todo.upgrade_poetry = lambda: self.joues.append("poetry")
+
+    def joue(self, tape):
+        """Tape `tape` au menu, puis « 0 » ; rend le texte imprimé."""
+        import io as _io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        saisies = [tape, "0"]
+        vu = _io.StringIO()
+        with (
+            patch.object(
+                self.todo.config_file,
+                "get_config",
+                return_value=list(self.GREFFES),
+            ),
+            patch(
+                "click.prompt", side_effect=lambda *_a, **_k: saisies.pop(0)
+            ),
+            redirect_stdout(vu),
+        ):
+            self.assertFalse(self.todo.prompt_execute_update())
+        return vu.getvalue()
+
+    def test_each_rank_reaches_what_it_shows(self):
+        attendus = {
+            "1": "greffe-fictive-wollastonite",
+            "2": "greffe-fictive-vesuvianite",
+            "3": "migration",
+            "4": "poetry",
+        }
+        for tape, attendu in attendus.items():
+            with self.subTest(rang=tape):
+                self.joues = []
+                sortie = self.joue(tape)
+                self.assertEqual([attendu], self.joues)
+                self.assertNotIn(t_introuvable(), sortie)
+
+    def test_a_rank_past_the_last_entry_says_so(self):
+        sortie = self.joue("5")
+        self.assertEqual([], self.joues)
+        self.assertIn(t_introuvable(), sortie)
 
 
 class TestMenuDispatchExtra(unittest.TestCase):

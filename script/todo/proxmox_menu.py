@@ -24,11 +24,18 @@ import click
 from script.posture import plan as posture_plan
 from script.posture import spec as posture_spec
 from script.remote import appliance_ssh, host_memory, host_probe
+from script.setops import coexistence
 from script.todo import todo_prefs
 from script.todo.qemu_privilege import virsh_argv
 from script.todo import todo_prefs, vm_profiles
 from script.todo.todo_i18n import t
 from script.vm import backend as vm_backend
+
+# La racine d'ERPLibre, deux niveaux au-dessus de ce fichier : c'est sous
+# elle que se lisent le manifeste du moteur et le plan des écosystèmes.
+RACINE_ERPLIBRE = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
 
 
 class ProxmoxMenuMixin:
@@ -295,16 +302,8 @@ class ProxmoxMenuMixin:
         if not host:
             return 255, ""
         if not quiet:
-            # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
-            # compris. Sans « -J », la ligne copiée rendait « no route to
-            # host » — et c'est justement quand une étape échoue au milieu
-            # d'une réparation qu'on a besoin de la rejouer à la main.
-            argv = pve.ssh_argv(
-                host, pve.wrap_privilege(remote, host.get("sudo") or "")
-            )
             print(
-                f"\n{t('Will execute:')} "
-                + " ".join(shlex.quote(a) for a in argv)
+                f"\n{t('Will execute:')} {self._pve_replay_line(remote, host)}"
             )
         code, out = pve.run(host, remote, timeout)
         if out.strip() and not quiet:
@@ -312,6 +311,43 @@ class ProxmoxMenuMixin:
         if code and not quiet:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
+
+    def _pve_replay_line(self, remote, host=None):
+        """La ligne ssh que `run` lance pour `remote`, prête à copier.
+
+        La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port compris.
+        Sans « -J », une ligne copiée rend « no route to host » — et c'est
+        quand une étape échoue au milieu d'une réparation qu'on a besoin de
+        la rejouer à la main. `host` absent, l'hôte retenu est relu sans
+        rien demander ; sans hôte retenu, la commande distante seule.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        host = host or self._pve_host(ask=False)
+        if not host:
+            return remote
+        argv = pve.ssh_argv(
+            host, pve.wrap_privilege(remote, host.get("sudo") or "")
+        )
+        return " ".join(shlex.quote(a) for a in argv)
+
+    def _pve_show_failure(self, remote, code, out):
+        """Ce qu'une lecture faite en silence (quiet) n'a pas montré.
+
+        La commande telle qu'envoyée, son code et les dernières lignes de
+        sa sortie, erreur standard comprise : de quoi rejouer à la main un
+        refus qui, sans eux, ne se diagnostique qu'en lisant le source. Un
+        code 0 dit que la commande a abouti et que sa sortie ne se lit pas.
+        Chaque ligne est bornée : un document JSON tient sur une seule.
+        """
+        print(f"  {t('Command:')} {self._pve_replay_line(remote)}")
+        if code:
+            print(f"  ⚠ {t('exit code')} {code}")
+        else:
+            print(f"  ⚠ {t('exit code 0, unreadable output')}")
+        lignes = [l for l in (out or "").splitlines() if l.strip()]
+        for ligne in lignes[-5:]:
+            print(f"    {ligne[:200]}")
 
     # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
     # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
@@ -363,15 +399,35 @@ class ProxmoxMenuMixin:
         return (not manque), " ".join(manque)
 
     def _pve_vms(self):
-        """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
+        """[{vmid, name, status, …}] des VM de l'hôte ; None si « qm list »
+        échoue.
+
+        [] et None ne disent pas la même chose : [] est un hôte sans VM,
+        None une liste qu'on n'a pas. Chaque appelant lit None et refuse
+        d'agir — prise pour vide, elle rend tout disque orphelin, tout
+        VMID libre et toute entrée ~/.ssh/config morte.
+        """
+        return self._pve_vms_read()[0]
+
+    def _pve_vms_read(self):
+        """(vms, lecture) : `vms` comme `_pve_vms`, et `lecture` le triplet
+        (commande, code, sortie) de « qm list », qui dit POURQUOI la liste
+        manque à qui doit le montrer."""
         from script.proxmox import proxmox_deploy as pve
 
-        code, out = self._pve_show("qm list", quiet=True)
-        return pve.parse_qm_list(out) if code == 0 else []
+        remote = "qm list"
+        code, out = self._pve_show(remote, quiet=True)
+        vms = pve.parse_qm_list(out) if code == 0 else None
+        return vms, (remote, code, out)
 
-    def _pve_pick_vm(self, titre="", multiple=False, vms=None):
+    def _pve_pick_vm(self, titre="", multiple=False, vms=None, garde=None):
         """Choisit une VM de l'hôte (numéro de la liste, jamais le VMID à
         retaper). Renvoie un dict, une liste si `multiple`, ou None.
+
+        `garde` dit ce que le geste fera de la VM, et décide de la
+        coexistence avec Set-OPS. LE DÉFAUT EST LE PLUS STRICT : un geste
+        neuf qui ne se déclare pas hérite du refus, jamais du silence. Une
+        épreuve exige d'ailleurs que chaque appelant le déclare.
 
         `vms` réutilise une liste DÉJÀ affichée. Sans lui, l'appelant qui
         vient d'en montrer une en redemande une seconde : un aller-retour
@@ -379,7 +435,11 @@ class ProxmoxMenuMixin:
         les mêmes machines — une VM créée entre les deux décale tout ce qui
         la suit, et le numéro tapé porte alors sur la voisine.
         """
+        garde = coexistence.REFUS if garde is None else garde
         vms = self._pve_vms() if vms is None else vms
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return [] if multiple else None
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return [] if multiple else None
@@ -391,21 +451,227 @@ class ProxmoxMenuMixin:
         brut = input(t("Selection (number): ")).strip()
         if multiple:
             if brut.lower() in ("all", "*"):
-                return vms
+                return self._pve_permis(vms, garde)
             choisis = []
             for jeton in re.split(r"[\s,]+", brut):
                 if jeton.isdigit() and 1 <= int(jeton) <= len(vms):
                     choisis.append(vms[int(jeton) - 1])
-            return choisis
+            return self._pve_permis(choisis, garde)
         if brut.isdigit() and 1 <= int(brut) <= len(vms):
-            return vms[int(brut) - 1]
+            permis = self._pve_permis([vms[int(brut) - 1]], garde)
+            return permis[0] if permis else None
         print(t("Invalid selection!"))
         return None
+
+    def _pve_collisions(self):
+        """Les VMID qu'un plan Set-OPS déclare et qu'une VM étrangère occupe.
+
+        CE CONSTAT EST LE PLUS CHER DU MENU. Une flotte ne renomme pas ses
+        machines pour contourner un VMID pris : on change l'INDEX de la
+        flotte et on régénère — sauvegarder, raser, changer l'index,
+        déployer, restaurer. Le dire AVANT un déploiement coûte une minute ;
+        le découvrir pendant en coûte des heures.
+
+        L'écran ne touche à rien : il lit le plan et la grappe, et se tait
+        sur tout le reste.
+        """
+        print(
+            f"\n🤖 {t('VMID collisions between the cluster and a Set-OPS plan')}"
+        )
+        armee, devis, invites = self._pve_maitrise()
+        if not armee:
+            print(f"  {t('Set-OPS is not set up here; nothing to compare.')}")
+            return
+        vues = coexistence.collisions(invites, devis)
+        if vues is None:
+            manque = (
+                t("the plan") if devis is None else t("the cluster VM list")
+            )
+            print(
+                f"  ✗ {t('{side} could not be read; no verdict').format(side=manque)}"
+            )
+            return
+        if not vues:
+            declares = len(devis.proprietaire)
+            print(
+                f"  ✓ {t('no collision: {n} planned VMID(s) checked against the cluster').format(n=declares)}"
+            )
+            return
+        print(f"\n  ⛔ {t('{n} collision(s):').format(n=len(vues))}")
+        for vue in vues:
+            occupant = vue.occupe_par or t("unnamed")
+            pool = vue.pool_occupant or t("no pool")
+            print(
+                f"    {vue.vmid} — {t('planned for')} « {vue.nom_declare} »"
+                f" ({vue.declare_par}), {t('held by')} « {occupant} »"
+                f" ({pool})"
+            )
+        print(f"\n  {t('A fleet does not rename around a taken VMID.')}")
+        print(f"  {t('Change the fleet index and regenerate:')}")
+        for etape in (
+            t("back up"),
+            t("raze"),
+            t("change the index"),
+            t("deploy"),
+            t("restore"),
+        ):
+            print(f"    - {etape}")
+        print(f"  {t('Budget about two hours.')}")
+
+    def _pve_dire_plan_illisible(self):
+        """Refuse de créer parce que le plan des flottes ne se lit pas.
+
+        Sans lui, le VMID choisi est un PARI sur ce que la flotte ne
+        réclamera pas ; perdu, il se paie en heures et non en renommage.
+        """
+        print(f"\n  ⛔ {t('the Set-OPS plan could not be read')}")
+        print(f"    {t('a VMID chosen blind may be one the fleet claims.')}")
+        print(f"    {t('Nothing is created.')}")
+
+    def _pve_devis(self):
+        """(garde armée ?, devis des pools Set-OPS).
+
+        Séparé de la lecture de grappe parce que le déploiement n'a besoin
+        que du plan : lui imposer un aller-retour SSH de plus ne dirait rien
+        de neuf.
+        """
+        from script.setops import ansible_env, engine, runner
+
+        decl = engine.declaration(RACINE_ERPLIBRE)
+        moteur = (
+            os.path.join(RACINE_ERPLIBRE, decl.path)
+            if decl is not None and decl.path
+            else ""
+        )
+        if not moteur or not os.path.isdir(moteur):
+            return False, None
+        vu = runner.jouer(
+            runner.cible(
+                os.path.relpath(moteur, RACINE_ERPLIBRE),
+                "devis-proxmox-pools",
+                [("JSON", "1")],
+            ),
+            env=ansible_env.environnement(
+                RACINE_ERPLIBRE, moteur, runner.base()
+            ),
+            cwd=RACINE_ERPLIBRE,
+        )
+        return True, (coexistence.lit_devis(vu.sortie) if vu.reussi else None)
+
+    def _pve_reserves(self):
+        """(garde armée ?, VMID qu'un plan Set-OPS réserve).
+
+        Les réserves valent None quand le moteur est là mais que son plan ne
+        se lit pas. Créer alors une VM revient à PARIER sur un VMID que la
+        flotte réclamera peut-être, et ce pari-là se paie en heures : on ne
+        renomme pas autour d'un VMID pris, on change l'index et on régénère.
+        """
+        armee, devis = self._pve_devis()
+        if not armee:
+            return False, frozenset()
+        if devis is None:
+            return True, None
+        return True, frozenset(devis.proprietaire)
+
+    def _pve_maitrise(self):
+        """(garde armée ?, devis des pools, invités de la grappe).
+
+        LA GARDE NE S'ARME QUE SI LE MOTEUR EST SUR CE POSTE. Sans Set-OPS,
+        aucun objet n'a d'autre maître : refuser serait refuser pour
+        personne, et fermerait le menu Proxmox de tous ceux qui n'utilisent
+        pas le moteur. « Moteur présent, plan illisible » reste un refus —
+        c'est le seul cas où l'appartenance ne se prouve pas.
+
+        RIEN N'EST GARDÉ d'un écran à l'autre : l'état rendu est celui de
+        l'instant. Un relevé mis de côté dirait « libre » d'une VM que le
+        moteur vient de poser, et c'est quand les deux outils tournent en
+        même temps que la garde compte.
+        """
+        armee, devis = self._pve_devis()
+        if not armee:
+            return False, None, None
+        code, sortie = self._pve_show(pve.cluster_vms_cmd(), quiet=True)
+        bruts = pve.parse_cluster_guests(sortie) if code == 0 else None
+        invites = (
+            tuple(coexistence.Invite(*brut) for brut in bruts)
+            if bruts is not None
+            else None
+        )
+        return True, devis, invites
+
+    def _pve_permis(self, choisis, garde):
+        """Les VM choisies que la coexistence avec Set-OPS laisse toucher.
+
+        Un invité du moteur est REFUSÉ au geste destructeur et fait RETAPER
+        son nom au geste qui modifie : le palier suit le coût de l'erreur.
+        Un état inconnu — moteur là, plan ou grappe illisibles — vaut refus :
+        sans preuve d'appartenance, aucun geste.
+        """
+        if garde == coexistence.AUCUNE or not choisis:
+            return choisis
+        armee, devis, invites = self._pve_maitrise()
+        if not armee:
+            return choisis
+        par_vmid = {i.vmid: i for i in (invites or ())}
+        gardees = []
+        for vm in choisis:
+            vmid = vm.get("vmid")
+            invite = par_vmid.get(vmid) or coexistence.Invite(
+                vmid=vmid if isinstance(vmid, int) else -1,
+                nom=(vm.get("name") or "").strip(),
+                noeud="",
+                pool="",
+            )
+            etat, maitre = (
+                coexistence.etat(invite, devis)
+                if invites is not None
+                else (coexistence.INCONNU, "")
+            )
+            if etat == coexistence.LIBRE:
+                gardees.append(vm)
+            elif self._pve_dire_maitre(vm, etat, maitre, garde):
+                gardees.append(vm)
+        return gardees
+
+    def _pve_dire_maitre(self, vm, etat, maitre, garde) -> bool:
+        """Dit pourquoi cette VM n'est pas libre, et rend True si le geste
+        peut tout de même partir.
+
+        Le REFUS nomme le maître : un écran qui ferme sans dire par où
+        passer envoie chercher la réponse ailleurs.
+        """
+        nom = (vm.get("name") or "").strip()
+        ligne = f"{vm.get('vmid')} ({nom})" if nom else str(vm.get("vmid"))
+        if etat == coexistence.INCONNU:
+            raison = t("ownership could not be read")
+        elif maitre:
+            raison = t("administered by Set-OPS ({owner})").format(
+                owner=maitre
+            )
+        else:
+            raison = t("its VMID has the shape Set-OPS derives")
+        print(f"\n  ⛔ {ligne} : {raison}")
+        if garde == coexistence.REFUS:
+            print(f"    {t('Set-OPS is its master; use the engine instead.')}")
+            return False
+        if not nom:
+            print(f"    {t('no name to confirm with; refused')}")
+            return False
+        tape = input(
+            t("Retype « {name} » to go on anyway: ").format(name=nom)
+        ).strip()
+        if tape != nom:
+            print(f"    {t('Cancelled.')}")
+            return False
+        return True
 
     # -- Les commandes du menu ----------------------------------------- #
     def _pve_list(self):
         """« qm list », mis en tableau avec le total."""
         vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return
@@ -440,7 +706,7 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
 
-        vm = self._pve_pick_vm(vms=vms)
+        vm = self._pve_pick_vm(vms=vms, garde=coexistence.AUCUNE)
         if not vm:
             return
         self._pve_show(pve.status_cmd(vm["vmid"]))
@@ -452,9 +718,10 @@ class ProxmoxMenuMixin:
         qui laisse Odoo fermer ses connexions PostgreSQL. « stop » coupe le
         courant — il est offert en second, nommé pour ce qu'il est.
         """
-        from script.proxmox import proxmox_deploy as pve
-
         vms = vms if vms is not None else self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return
@@ -491,6 +758,18 @@ class ProxmoxMenuMixin:
         if not verbe:
             print(t("Cancelled."))
             return
+        # LA GARDE DE COEXISTENCE PASSE ICI AUSSI. Cet écran a sa propre
+        # sélection — « all » compris — et ne traverse pas le choisisseur :
+        # sans cette ligne, couper le courant d'un invité que Set-OPS
+        # administre se fait sans que rien ne le dise. Le palier suit le
+        # geste : « stop » coupe le courant, les deux autres se rattrapent.
+        choisies = self._pve_permis(
+            choisies,
+            coexistence.REFUS if verbe == "stop" else coexistence.RETAPER,
+        )
+        if not choisies:
+            print(t("Nothing selected."))
+            return
         print(
             f"\n  {verbe} : "
             + ", ".join(f"{vm['name']} ({vm['vmid']})" for vm in choisies)
@@ -502,9 +781,14 @@ class ProxmoxMenuMixin:
             code, _o = self._pve_show(f"qm {verbe} {vm['vmid']}", timeout=300)
             marque = "✓" if code == 0 else "✗"
             print(f"  {marque} {vm['name']}")
-        # L'état APRÈS : c'est la seule preuve que le geste a porté.
-        _c, out = self._pve_show("qm list", quiet=True)
-        for vm in pve.parse_qm_list(out):
+        # L'état APRÈS : c'est la seule preuve que le geste a porté. Illisible,
+        # il est dit tel, et non montré vide.
+        apres, lecture = self._pve_vms_read()
+        if apres is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            self._pve_show_failure(*lecture)
+            return
+        for vm in apres:
             if any(vm["vmid"] == c["vmid"] for c in choisies):
                 print(f"    {vm['name']:<34} {vm['status']}")
 
@@ -514,7 +798,7 @@ class ProxmoxMenuMixin:
         Sans agent, Proxmox ne connaît PAS l'adresse de ses invités : il ne la
         distribue pas lui-même. Le dire vaut mieux qu'afficher « rien ».
         """
-        vm = self._pve_pick_vm()
+        vm = self._pve_pick_vm(garde=coexistence.AUCUNE)
         if not vm:
             return
         # _pve_guest_ip et non l'agent seul : il enchaîne agent PUIS voisinage
@@ -536,7 +820,7 @@ class ProxmoxMenuMixin:
         l'exécuteur du dépôt, qui en a un."""
         from script.proxmox import proxmox_deploy as pve
 
-        vm = self._pve_pick_vm()
+        vm = self._pve_pick_vm(garde=coexistence.AUCUNE)
         if not vm:
             return
         host = self._pve_host()
@@ -560,7 +844,7 @@ class ProxmoxMenuMixin:
         """Agrandit un disque. Proxmox REFUSE de rétrécir : on le dit avant."""
         from script.proxmox import proxmox_deploy as pve
 
-        vm = self._pve_pick_vm()
+        vm = self._pve_pick_vm(garde=coexistence.RETAPER)
         if not vm:
             return
         print(f"\n  ⚠ {t('Proxmox can only GROW a disk, never shrink it.')}")
@@ -575,7 +859,7 @@ class ProxmoxMenuMixin:
         disques et les sauvegardes, il n'y a pas de retour."""
         from script.proxmox import proxmox_deploy as pve
 
-        vms = self._pve_pick_vm(multiple=True)
+        vms = self._pve_pick_vm(multiple=True, garde=coexistence.REFUS)
         if not vms:
             return
         noms = ", ".join(f"{v['vmid']} ({v['name']})" for v in vms)
@@ -586,30 +870,113 @@ class ProxmoxMenuMixin:
         if not self._is_yes(input(t("Confirm for real? (y/N): "))):
             print(t("Cancelled."))
             return
+        # Chaque code est lu : le garde d'identité, une VM verrouillée ou un
+        # hôte injoignable font échouer la suite, et l'écran ne dit détruite
+        # que la VM dont la suite a rendu 0. Un délai dépassé laisse l'issue
+        # inconnue : la suite peut tourner encore sur l'hôte.
+        detruites, restees, inconnues = [], [], []
         for vm in vms:
-            # Le nom PROUVE : il est en main depuis la liste, et le jeter
-            # laissait détruire ce qui porte ce VMID maintenant. UN seul
-            # appel, parce que le garde ne vaut que dans le shell qu'il
-            # peut arrêter.
+            # Le nom PROUVE : il est en main depuis la liste, et c'est lui
+            # qui empêche de détruire ce qui porte ce VMID maintenant. UN
+            # seul appel, parce que le garde ne vaut que dans le shell qu'il
+            # peut arrêter. Sans nom, rien ne part, et le bilan le compte.
             nom = (vm.get("name") or "").strip()
             if not nom:
-                print(f"  ⛔ {vm['vmid']} : {t('no identity proof; refused')}")
+                refus = f"{vm['vmid']} : {t('no identity proof; refused')}"
+                print(f"  ⛔ {refus}")
+                restees.append(refus)
                 continue
-            self._pve_show(pve.destroy_cmd(vm["vmid"], nom), timeout=300)
+            code, sortie = self._pve_show(
+                pve.destroy_cmd(vm["vmid"], nom), timeout=300
+            )
+            ligne = f"{vm['vmid']} ({nom})"
+            if pve.timed_out(code, sortie):
+                inconnues.append(ligne)
+            elif code:
+                restees.append(f"{ligne} : {t('exit code')} {code}")
+            else:
+                detruites.append(ligne)
+        if detruites:
+            print(f"\n  ✓ {t('VMs destroyed:')}")
+            for ligne in detruites:
+                print(f"    {ligne}")
+        if restees:
+            print(f"\n  ✗ {t('VMs not destroyed:')}")
+            for ligne in restees:
+                print(f"    {ligne}")
+        self._pve_report_unknown(inconnues, "qm list")
+
+    def _pve_report_unknown(self, lignes, verification):
+        """Section « issue inconnue » d'un bilan : ce dont le délai a expiré,
+        puis `verification`, la commande qui dit où l'hôte en est. Muette
+        quand `lignes` est vide."""
+        if not lignes:
+            return
+        print(f"\n  ⚠ {t('Outcome unknown (timeout):')}")
+        for ligne in lignes:
+            print(f"    {ligne}")
+        conseil = t(
+            "The command may still be running on the host:"
+            " check with « {cmd} »."
+        )
+        print(f"    {conseil.format(cmd=verification)}")
 
     def _pve_cleanup(self):
-        """Volumes de disque qu'aucune VM ne réclame plus.
+        """Volumes de disque qu'aucune VM de la GRAPPE ne réclame plus.
 
         Proxmox ne les efface pas de lui-même : une création interrompue ou un
         « destroy » sans « --purge » en laisse. On les liste et on demande.
+
+        Les volumes viennent de tous les stockages d'images, partagés
+        compris ; un stockage partagé porte aussi les disques des VM des
+        autres nœuds, que « qm list » ne voit pas. La référence est donc la
+        liste de la grappe, jointe à celle du nœud : une VM connue de l'une
+        OU de l'autre garde ses volumes. Une des deux illisible, rien n'est
+        offert — un volume n'est orphelin que si l'on SAIT qu'aucune VM ne
+        le porte.
+
+        Les volumes sont lus AVANT les VM : une VM créée entre les deux
+        lectures figure dans la seconde, et son disque, absent de la
+        première, n'est jamais pris pour orphelin.
         """
         from script.proxmox import proxmox_deploy as pve
 
+        # Chaque refus montre la lecture qui manque : elles se font toutes
+        # en silence, et un refus muet ne se diagnostique pas.
+        sans_elle = t(
+            "Without it, no volume can be shown to be orphaned:"
+            " nothing is offered."
+        )
         code, out = self._pve_show(pve.orphan_disks_cmd(), quiet=True)
         if code:
-            print(f"\n  ⚠ {t('exit code')} {code}")
+            print(f"\n  ✗ {t('Unreadable volume list.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(pve.orphan_disks_cmd(), code, out)
             return
-        vmids = [v["vmid"] for v in self._pve_vms()]
+        locales, lecture = self._pve_vms_read()
+        if locales is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(*lecture)
+            return
+        code_grappe, sortie = self._pve_show(pve.cluster_vms_cmd(), quiet=True)
+        grappe = pve.parse_cluster_vmids(sortie) if code_grappe == 0 else None
+        if grappe is None:
+            print(f"\n  ✗ {t('Unreadable cluster VM list.')}")
+            print(f"  {sans_elle}")
+            self._pve_show_failure(pve.cluster_vms_cmd(), code_grappe, sortie)
+            return
+        # UN VMID QUE LE PLAN DÉCLARE RÉCLAME SES DISQUES, même sans VM en
+        # face. Entre deux matérialisations — une flotte rasée qu'on va
+        # redéployer, une VM en cours de migration — le disque existe sans
+        # que la grappe porte encore la machine. Libéré, il emporte des
+        # données que le moteur croit à lui.
+        armee, reserves = self._pve_reserves()
+        if armee and reserves is None:
+            print(f"\n  ✗ {t('the Set-OPS plan could not be read')}")
+            print(f"  {sans_elle}")
+            return
+        vmids = grappe | {v["vmid"] for v in locales} | set(reserves or ())
         orphelins = pve.parse_orphans(out, vmids)
         if not orphelins:
             print(f"\n  ✓ {t('Nothing orphaned.')}")
@@ -622,8 +989,29 @@ class ProxmoxMenuMixin:
         if not self._is_yes(input(f"{t('Free them?')} (o/N) : ")):
             print(t("Cancelled."))
             return
+        # Chaque code est lu : un volume verrouillé ou un stockage à terre
+        # fait échouer « pvesm free », et un rapport muet laisserait croire
+        # la place rendue. Un délai dépassé n'est ni l'un ni l'autre.
+        echecs, inconnus = [], []
         for volid, _taille in orphelins:
-            self._pve_show(f"pvesm free {shlex.quote(volid)}", timeout=300)
+            code, sortie = self._pve_show(
+                f"pvesm free {shlex.quote(volid)}", timeout=300
+            )
+            if pve.timed_out(code, sortie):
+                inconnus.append(volid)
+            elif code:
+                echecs.append(volid)
+        liberes = len(orphelins) - len(echecs) - len(inconnus)
+        if liberes:
+            print(f"\n  ✓ {t('Volumes freed:')} {liberes}")
+        if echecs:
+            print(f"\n  ✗ {t('Not freed:')}")
+            for volid in echecs:
+                print(f"    {volid}")
+        stockages = sorted({v.split(":", 1)[0] for v in inconnus})
+        self._pve_report_unknown(
+            inconnus, "; ".join(f"pvesm list {s}" for s in stockages)
+        )
 
     def _pve_guest_ip(self, vmid, attente=120):
         """Adresse d'une VM Proxmox : agent invité, sinon voisinage de l'hôte.
@@ -1147,6 +1535,8 @@ class ProxmoxMenuMixin:
                 from script.todo.proxmox_deploy_form import run_proxmox_form
 
                 ctx = self._pve_form_context(mod, host)
+                if ctx is None:
+                    return
                 spec = run_proxmox_form(ctx)
             except ImportError as exc:
                 print(f"  ⚠ {t('TUI unavailable')} : {exc}")
@@ -1186,10 +1576,23 @@ class ProxmoxMenuMixin:
         Chaque lecture passe par ssh, et certaines par sudo : une invite de
         mot de passe pendant que Textual affiche casserait l'écran. On paie
         donc tout ici, une fois, terminal encore à nous.
+
+        Rend None, après l'avoir dit, quand la liste des VM est illisible :
+        l'appelant n'ouvre alors ni l'écran ni les questions.
         """
         from script.proxmox import proxmox_deploy as pve
 
         print(f"\n{t('Loading (host, storage, bridges, VMs)...')}")
+        # Les VM d'abord : sans elles, ni le prochain VMID ni les noms pris
+        # ne se savent, et l'écran proposerait une supposition.
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            sans_elle = t(
+                "Without it the next free VMID is unknown: nothing is created."
+            )
+            print(f"  {sans_elle}")
+            return None
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1207,7 +1610,6 @@ class ProxmoxMenuMixin:
                 )
             catalog[a] = entries
 
-        vms = self._pve_vms()
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
         stockages = pve.parse_storages(out)
         if not stockages:
@@ -1291,6 +1693,10 @@ class ProxmoxMenuMixin:
             print("\n" + " ".join(shlex.quote(a) for a in argv) + "\n")
             return subprocess.call(argv) == 0
 
+        armee, reserves = self._pve_reserves()
+        if armee and reserves is None:
+            self._pve_dire_plan_illisible()
+            return None
         return {
             "host": dict(host, label=self._pve_label(host)),
             "node": self._pve_node_name(),
@@ -1299,7 +1705,11 @@ class ProxmoxMenuMixin:
             "native": native,
             "names": [v["name"] for v in vms if v.get("name")],
             "vmids": [v["vmid"] for v in vms],
-            "next_vmid": pve.next_vmid(vms),
+            "next_vmid": pve.next_vmid(vms, reserves=reserves or ()),
+            # Les VMID qu'un plan Set-OPS réserve. L'écran les compte parmi
+            # les PRIS : le rang de départ qu'on tape les enjambe comme il
+            # enjambe un VMID déjà posé sur l'hôte.
+            "vmid_reserves": sorted(reserves or ()),
             "storages": [s["name"] for s in stockages if s.get("actif")],
             "storage": pve.pick_storage(stockages),
             # La place libre par stockage, en octets : « pvesm status » la
@@ -2709,7 +3119,19 @@ class ProxmoxMenuMixin:
             pont = pve.INTERNAL_BRIDGE
         # Le VMID D'ABORD : l'adresse d'un pont interne s'en déduit, et
         # l'afficher avant de l'avoir choisi ne pouvait pas marcher.
-        vmid = pve.next_vmid(self._pve_vms())
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            sans_elle = t(
+                "Without it the next free VMID is unknown: nothing is created."
+            )
+            print(f"  {sans_elle}")
+            return
+        armee, reserves = self._pve_reserves()
+        if armee and reserves is None:
+            self._pve_dire_plan_illisible()
+            return
+        vmid = pve.next_vmid(vms, reserves=reserves or ())
         ipconfig = pve.ipconfig_for(infos_ponts.get(pont, {}), vmid)
         print(
             f"\n  {t('storage')} : {stockage}   ({len(stockages)} {t('offered')})"
@@ -2854,7 +3276,11 @@ class ProxmoxMenuMixin:
         host = self._pve_host()
         if not host:
             return
-        vms = [v for v in self._pve_vms() if v["status"] == "running"]
+        vms = self._pve_vms()
+        if vms is None:
+            print(f"\n  ✗ {t('Unreadable VM list: « qm list » failed.')}")
+            return
+        vms = [v for v in vms if v["status"] == "running"]
         if not vms:
             print(f"\n{t('No running VM on this Proxmox host.')}")
             return
@@ -2897,7 +3323,7 @@ class ProxmoxMenuMixin:
         Proxmox et non de libvirt — et qu'elle n'est joignable d'ici que si son
         réseau l'est. On le dit plutôt que d'ouvrir une page vide.
         """
-        vm = self._pve_pick_vm()
+        vm = self._pve_pick_vm(garde=coexistence.AUCUNE)
         if not vm:
             return
         ip = self._pve_guest_ip(vm["vmid"], attente=30)
@@ -2938,7 +3364,7 @@ class ProxmoxMenuMixin:
         host = self._pve_host()
         if not host:
             return
-        vm = self._pve_pick_vm()
+        vm = self._pve_pick_vm(garde=coexistence.AUCUNE)
         if not vm:
             return
         alias = self._pve_alias_chaine(host, vm["name"])
@@ -3053,6 +3479,12 @@ class ProxmoxMenuMixin:
                 ),
                 "method": "_pve_verify_egress",
             },
+            {
+                "prompt_description": t(
+                    "VMID collisions between the cluster and a Set-OPS plan"
+                ),
+                "method": "_pve_collisions",
+            },
         ]
         # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
         # s'affiche à la suite et se lance par son numéro.
@@ -3106,19 +3538,8 @@ class ProxmoxMenuMixin:
             elif status == "18":
                 self._pve_forget_host()
                 self._pve_pick_host()
-            else:
-                introuvable = True
-                try:
-                    numero = int(status)
-                    # Les sections ne comptent pas dans la numérotation.
-                    reelles = [c for c in choices if not c.get("section")]
-                    if 0 < numero <= len(reelles):
-                        introuvable = False
-                        self.execute_from_configuration(reelles[numero - 1])
-                except ValueError:
-                    pass
-                if introuvable:
-                    print(t("Command not found !"))
+            elif not self._menu_dispatch_extra(choices, status):
+                print(t("Command not found !"))
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.
