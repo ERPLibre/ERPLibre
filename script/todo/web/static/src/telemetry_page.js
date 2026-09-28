@@ -51,7 +51,7 @@ export class TelemetryPage extends Component {
             <span class="root" t-esc="props.root"/>
         </header>
         <div t-if="state.expired" class="banner" role="alert">
-            <span t-esc="env.t('Connection expired: reopen the interface from TODO [4].')"/>
+            <span t-esc="env.t('Connection expired: reopen the interface from TODO › Navigation telemetry.')"/>
         </div>
         <nav class="toolbar" t-att-aria-label="env.t('Views')">
             <t t-foreach="views" t-as="view" t-key="view">

@@ -723,7 +723,8 @@ class TestOpeningRefusal(unittest.TestCase):
 
 
 SOURCE_CHECK = r"""
-const t = (key) => `<${key}>`;
+const words = new Set();
+const t = (key) => (words.add(key), `<${key}>`);
 const offer = {license: "AGPL-3.0-or-later", remote: "https://forge.example/r.git",
     commit: "0123abc", branch: "main", modified: true,
     notices: [{name: "OWL", version: "2.8.1", license: "LGPL-3.0-only",
@@ -731,9 +732,10 @@ const offer = {license: "AGPL-3.0-or-later", remote: "https://forge.example/r.gi
 const bare = {...offer, remote: null, commit: null, branch: null, modified: null};
 console.log(JSON.stringify({
     full: m.sourceRows(offer, t),
-    bare: m.sourceRows(bare, t).map((row) => row[1]),
+    bare: m.sourceRows(bare, t),
     clean: m.sourceRows({...offer, modified: false}, t)[4][1],
     notice: m.noticeLine(offer.notices[0]),
+    words: [...words],
 }));
 """
 
@@ -753,8 +755,14 @@ class TestSourceOffer(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            out["bare"],
-            ["AGPL-3.0-or-later", "<none>", "<none>", "<none>", "<unknown>"],
+            [row[1] for row in out["bare"]],
+            [
+                "AGPL-3.0-or-later",
+                "<none (masculine)>",
+                "<none (masculine)>",
+                "<none>",
+                "<unknown>",
+            ],
         )
         self.assertEqual(out["clean"], "<no>")
         self.assertEqual(
@@ -763,6 +771,37 @@ class TestSourceOffer(unittest.TestCase):
                 "text": "OWL 2.8.1 — LGPL-3.0-only",
                 "href": "/static/lib/owl-2.8.1/LICENSE",
             },
+        )
+
+    def test_each_footer_word_is_translated_and_agrees_in_french(self):
+        # Chaque mot que le pied de page passe à `t` est une clé traduite en
+        # français et en anglais ; « aucun » s'accorde à Dépôt et à Commit,
+        # « aucune » à Branche.
+        out = _node_json(SOURCE_CHECK, "source.js")
+        self.assertEqual(len(out["words"]), 10)
+        for word in out["words"]:
+            entry = todo_i18n.TRANSLATIONS.get(word, {})
+            self.assertTrue(entry.get("fr") and entry.get("en"), word)
+
+        def shown(lang):
+            """Le pied de page sans valeurs, licence ôtée, dans `lang`."""
+            return [
+                [todo_i18n.translate(cell[1:-1], lang) for cell in row]
+                for row in out["bare"][1:]
+            ]
+
+        self.assertEqual(
+            [row[1] for row in shown("en")],
+            ["none", "none", "none", "unknown"],
+        )
+        self.assertEqual(
+            shown("fr"),
+            [
+                ["Dépôt", "aucun"],
+                ["Commit", "aucun"],
+                ["Branche", "aucune"],
+                ["Modifications locales", "inconnu"],
+            ],
         )
 
 

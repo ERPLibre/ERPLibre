@@ -42,6 +42,20 @@ SHOWN = re.compile(
 CALL = re.compile(r"""\b_?t\((['"])(?:(?!\1).)*\1\)""")
 # Un littéral entre guillemets simples ou doubles.
 QUOTED = re.compile(r"""(['"])((?:(?!\1).)*)\1""")
+# Le bandeau d'une connexion expirée : il nomme l'entrée du menu principal
+# de TODO qui ouvre l'interface par son libellé, jamais par son numéro.
+EXPIRED = (
+    "Connection expired: reopen the interface from TODO › "
+    "Navigation telemetry."
+)
+
+
+def _todo_class():
+    """La classe TODO de todo.py, lue sans l'importer."""
+    source = (REPO / "script" / "todo" / "todo.py").read_text(encoding="utf-8")
+    return next(
+        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ClassDef)
+    )
 
 
 def _command_names() -> set:
@@ -59,11 +73,7 @@ def _command_names() -> set:
             walk(child)
 
     walk(todo_telemetry.build_code_tree())
-    source = (REPO / "script" / "todo" / "todo.py").read_text(encoding="utf-8")
-    cls = next(
-        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ClassDef)
-    )
-    names |= set(todo_telemetry._menu_labels(cls))
+    names |= set(todo_telemetry._menu_labels(_todo_class()))
     return {name for name in names if "_" in name}
 
 
@@ -123,6 +133,20 @@ class TestWords(unittest.TestCase):
         # Un mot en dur dans une expression affichée se voit.
         shown = """<b t-esc="n + ' s'" t-att-aria-label="env.t('Close')"/>"""
         self.assertEqual(_written(shown), [" s"])
+
+    def test_the_expired_banner_names_the_menu_by_its_current_label(self):
+        # Le libellé de l'entrée, emoji ôté, tel que TODO l'affiche dans
+        # chaque langue : un libellé renommé fait échouer ce test.
+        self.assertIn(EXPIRED, page_keys())
+        label = todo_telemetry._menu_labels(_todo_class())["prompt_telemetry"]
+        for lang in todo_i18n.LANGUAGES:
+            shown = todo_i18n.translate(label, lang).split(" ", 1)[1]
+            self.assertTrue(
+                todo_i18n.TRANSLATIONS[EXPIRED][lang].endswith(
+                    f" TODO › {shown}."
+                ),
+                lang,
+            )
 
     def test_the_page_code_names_no_command(self):
         names = _command_names()

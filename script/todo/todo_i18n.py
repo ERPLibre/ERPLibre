@@ -3897,9 +3897,9 @@ TRANSLATIONS = {
         "fr": "Trop de sessions ouvertes en une minute ; réessayer dans %s s.",
         "en": "Too many sessions opened in a minute; try again in %s s.",
     },
-    "Connection expired: reopen the interface from TODO [4].": {
-        "fr": "Connexion expirée : rouvrir l'interface depuis TODO [4].",
-        "en": "Connection expired: reopen the interface from TODO [4].",
+    "Connection expired: reopen the interface from TODO › Navigation telemetry.": {
+        "fr": "Connexion expirée : rouvrir l'interface depuis TODO › Télémétrie de navigation.",
+        "en": "Connection expired: reopen the interface from TODO › Navigation telemetry.",
     },
     # Page web : l'offre de source de l'AGPL §13, au pied de la page.
     "Source (AGPL-3.0)": {
@@ -3912,6 +3912,7 @@ TRANSLATIONS = {
     "Branch": {"fr": "Branche", "en": "Branch"},
     "Local changes": {"fr": "Modifications locales", "en": "Local changes"},
     "unknown": {"fr": "inconnu", "en": "unknown"},
+    "none (masculine)": {"fr": "aucun", "en": "none"},
     "Vendored libraries": {
         "fr": "Bibliothèques vendorées",
         "en": "Vendored libraries",
