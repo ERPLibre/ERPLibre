@@ -13,8 +13,10 @@
 // ferme le widget. Un genre que la page ne connaît pas reste au terminal.
 // Le terminal se replie sous un menu dont les boutons tiennent tout
 // l'écran (`carriesScreen`) ; il reste montré sous toute autre question, dont
-// le contexte n'est que là, sous la première question après une commande,
-// pendant une commande, en écran alternatif et à l'invite d'un programme
+// le contexte n'est que là, tant que ce que TODO a écrit depuis la dernière
+// réponse reste à lire (la sortie d'une commande, un avis du worker, ce
+// qu'un menu dit avoir au-dessus de lui : `stillToRead`), pendant une
+// commande, en écran alternatif et à l'invite d'un programme
 // (`terminalShown`). Le bouton Terminal l'ouvre ou le ferme pour la phase
 // en cours.
 //
@@ -42,6 +44,7 @@ import {
     lastLine,
     quickAnswers,
     sessionOf,
+    stillToRead,
     terminalShown,
     withSession,
 } from "./session.js";
@@ -145,7 +148,7 @@ export class SessionsView extends Component {
             question: null, // la dernière question du worker, jusqu'à `answered`
             pending: null, // le qid auquel la page a répondu
             running: false, // entre `run_start` et `run_end`
-            ran: false, // une commande a fini depuis la dernière réponse
+            ran: false, // ce que TODO a écrit depuis la dernière réponse reste à lire
             override: null, // le choix du bouton Terminal : {phase, open}
         });
         this.panel = useRef("terminal");
@@ -306,10 +309,8 @@ export class SessionsView extends Component {
             if (this.state.question?.qid === message.qid) {
                 Object.assign(this.state, {question: null, pending: null});
             }
-            this.state.ran = false;
         } else if (message.t === "run_start" || message.t === "run_end") {
-            const running = message.t === "run_start";
-            Object.assign(this.state, {running, ran: !running});
+            this.state.running = message.t === "run_start";
         } else if (message.t === "dropped") {
             this.state.notice = Object.hasOwn(DROP_LABELS, message.reason) ? message.reason : "unread";
             clearTimeout(this.noticeTimer);
@@ -320,6 +321,7 @@ export class SessionsView extends Component {
         } else if (message.t === "open_view") {
             this.props.openView(message.view);
         }
+        this.state.ran = stillToRead(this.state.ran, message);
         // Le choix du bouton Terminal s'oublie dès que sa phase change.
         if (this.state.override) {
             this.state.override = heldOverride(this.state.override, foldPhase(this.fold));

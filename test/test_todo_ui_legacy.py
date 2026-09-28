@@ -29,7 +29,8 @@ from unittest.mock import patch
 import click
 from todo_web_env import private_env
 
-from script.todo import auto_ask, ui
+from script.todo import auto_ask, todo_i18n, ui
+from script.todo.todo_i18n import t
 from script.todo.ui import legacy, port
 
 REPO = Path(__file__).resolve().parent.parent
@@ -449,10 +450,13 @@ class TestInstall(CaptureCase):
 
 class Menus:
     """Double de TODO : le format de `fill_help_info`, sous un fil
-    d'Ariane."""
+    d'Ariane, la ligne d'état `state` sous lui."""
 
     def fill_help_info(self, choices, state=None):
-        text = "📍 TODO › Execute\nCommand:\n"
+        text = "📍 TODO › Execute\n"
+        if state:
+            text += f"{state}\n"
+        text += f"{t('Command:')}\n"
         number = 0
         for choice in choices:
             if choice.get("section"):
@@ -463,7 +467,78 @@ class Menus:
         return text + "[0] Back\n"
 
 
+class Transcribing(port.ScriptedPort):
+    """ScriptedPort qui, comme PipePort après une réponse de la page,
+    écrit dans le terminal la transcription de la réponse à un menu."""
+
+    def menu(self, view):
+        answer = super().menu(view)
+        print(f"{answer} → {view['items'][0]['label']}")
+        return answer
+
+
 class TestMenus(CaptureCase):
+    def wrapped(self):
+        """`Menus` dont `fill_help_info` rend un MenuText, en anglais."""
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        original = Menus.fill_help_info
+        legacy.wrap_menus(Menus)
+        self.addCleanup(setattr, Menus, "fill_help_info", original)
+        return Menus()
+
+    def test_a_menu_says_whether_todo_printed_since_the_last_answer(self):
+        # Ni une ligne vide, ni la transcription de la réponse, ni le texte
+        # du menu lui-même : ce qu'une feuille imprime avant de rendre la
+        # main à son menu, que les boutons ne montrent pas.
+        text = self.wrapped().fill_help_info(
+            [{"prompt_description": "Test a module"}]
+        )
+        main = "📍 TODO\nCommand:\n[1] Execute\n[0] Quit\n: "
+        scripted = self.capture(target=Transcribing(["1"] * 7))
+        click.prompt(text)
+        print()
+        click.prompt(text)
+        print("Module name is required!")
+        click.prompt(text)
+        print("Command not found !")
+        input(main)
+        input(main)
+        print("📍 TODO › Test\n[1] Module")
+        input("[0] Back: ")
+        print("Compiling...\n📍 TODO › Test\n[1] Module")
+        input("[0] Back: ")
+        self.assertEqual(
+            [(e["source"], e["printed"]) for e in scripted.events],
+            [
+                ("fill_help_info", False),
+                ("fill_help_info", False),
+                ("fill_help_info", True),
+                ("text", True),
+                ("text", False),
+                ("text", False),
+                ("text", True),
+            ],
+        )
+
+    def test_a_menu_carries_the_lines_its_buttons_do_not_say(self):
+        # La ligne d'état sous le fil d'Ariane, une ligne à crochets qui
+        # n'est pas une entrée ; ni le fil, ni les sections, ni les
+        # entrées, ni « Command: », ni l'invite « : ».
+        menus = self.wrapped()
+        choices = [{"section": "Web"}, {"prompt_description": "Stop"}]
+        scripted = self.capture("0", "0", "0")
+        click.prompt(menus.fill_help_info(choices, state="Forged state: on"))
+        click.prompt(menus.fill_help_info(choices))
+        input(
+            "📍 TODO\nCommand:\n  [Enter] Nothing\n[1] Execute\n[0] Quit\n: "
+        )
+        self.assertEqual(
+            [e["notes"] for e in scripted.events],
+            [["Forged state: on"], [], ["[Enter] Nothing"]],
+        )
+
     def test_a_menu_text_prompt_gives_its_exact_entries(self):
         choices = [
             {"section": "Development"},
@@ -691,6 +766,32 @@ class TestRealTodo(unittest.TestCase):
         quit_entry = seen["events"][0]["items"][-1]
         self.assertEqual(quit_entry["label"], "🚪 Quit")
         self.assertEqual(quit_entry["speak"], "Quit")
+
+    def test_what_a_leaf_prints_flags_the_menu_that_follows(self):
+        # TODO › Execute › Test › Test a module, sans nom : « Module name is
+        # required! » précède le menu Test qui revient. Back, Back, puis
+        # Navigation telemetry, dont la ligne d'état est une note ; Back,
+        # Quit. Le logo précède le premier menu, la bannière de Test le sien.
+        seen = self.real_todo("1", "4", "1", "", "0", "0", "4", "0", "0")
+        stopped = todo_i18n.translate("Web interface: stopped", "en")
+        menus = [
+            (e["crumbs"][-1], e["printed"], e["notes"])
+            for e in seen["events"]
+            if e["t"] == "menu"
+        ]
+        self.assertEqual(
+            menus,
+            [
+                ("TODO", True, []),
+                ("Execute", False, []),
+                ("Test", True, []),
+                ("Test", True, []),
+                ("Execute", False, []),
+                ("TODO", False, []),
+                ("Navigation telemetry", False, [stopped]),
+                ("TODO", False, []),
+            ],
+        )
 
 
 if __name__ == "__main__":

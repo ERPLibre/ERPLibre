@@ -34,8 +34,13 @@ et auto_ask y mettent leur défaut. Annuler lève EOFError, que click change
 en Abort, comme Ctrl+D.
 
 `sys.stdout` passe par un `Tee`, qui rend au plus les TEE_LIMIT derniers
-caractères imprimés depuis la fin de la question précédente : l'écran que
-lit la suivante.
+caractères imprimés depuis la fin de la question précédente, dont la
+transcription de sa réponse fait partie : l'écran que lit la suivante. Un
+menu dit si ces caractères portent autre chose que des blancs avant son
+propre texte (`printed`) : ce qu'une feuille imprime avant de rendre la
+main à son menu, et que ses boutons ne montrent pas. Il porte aussi les
+lignes de son texte que ses entrées ne disent pas (`notes`), une ligne
+d'état par exemple.
 """
 
 import builtins
@@ -148,15 +153,21 @@ def read_screen(text):
     notes d'un menu écrit à la main comprises (`_prompt_block`) : une
     ligne à crochets d'une sortie antérieure, « [1] 48213 », n'en devient
     pas une."""
-    lines = text.splitlines()
+    return _read_screen(text.splitlines())[1]
+
+
+def _read_screen(lines) -> tuple:
+    """(début, menu) : le menu de `lines` que rend `read_screen`, ou None,
+    et l'indice de sa première ligne, son dernier fil d'Ariane ou la
+    première du bloc qui finit à l'invite."""
     starts = [n for n, line in enumerate(lines) if CRUMB.match(line)]
-    lines = lines[starts[-1] if starts else 0 :]
-    if any(OTHER_NUMBERING.match(line) for line in lines):
-        return None
+    start, stop = (starts[-1] if starts else 0), len(lines)
+    if any(OTHER_NUMBERING.match(line) for line in lines[start:]):
+        return start, None
     if not starts:
-        lines = _prompt_block(lines)
+        start, stop = _prompt_block(lines)
     crumbs, sections, items, section = [], [], [], None
-    for line in lines:
+    for line in lines[start:stop]:
         if match := CRUMB.match(line):
             crumbs = [crumb.strip() for crumb in match[1].split("›")]
         elif match := SECTION.match(line):
@@ -167,19 +178,19 @@ def read_screen(text):
                 {"key": match[1], "label": match[2], "section": section}
             )
     if not items:
-        return None
-    return {"items": items, "crumbs": crumbs, "sections": sections}
+        return start, None
+    return start, {"items": items, "crumbs": crumbs, "sections": sections}
 
 
-def _prompt_block(lines) -> list:
-    """Les lignes d'entrée ou de section qui finissent à l'invite, la
-    dernière ligne : celle-ci si elle porte une entrée (« [0] Retour : »),
-    et celles qui la précèdent, jusqu'à la première ligne vide ou d'un
-    autre genre. Entre les entrées et l'invite peuvent venir les notes d'un
-    menu écrit à la main (« ⚠ … », une ligne vide : `_notes`) ; des lignes
-    qui en tiennent la place sans en être rendent [] : une sortie en
-    retrait, trace d'appel ou journal, ne fait pas un menu des crochets
-    qui la précèdent."""
+def _prompt_block(lines) -> tuple:
+    """Les bornes (début, fin) des lignes d'entrée ou de section qui
+    finissent à l'invite, la dernière ligne : celle-ci si elle porte une
+    entrée (« [0] Retour : »), et celles qui la précèdent, jusqu'à la
+    première ligne vide ou d'un autre genre. Entre les entrées et l'invite
+    peuvent venir les notes d'un menu écrit à la main (« ⚠ … », une ligne
+    vide : `_notes`) ; des lignes qui en tiennent la place sans en être
+    rendent un bloc vide : une sortie en retrait, trace d'appel ou journal,
+    ne fait pas un menu des crochets qui la précèdent."""
     end = len(lines)
     if lines and not ENTRY.match(lines[-1]):
         end -= 1  # l'invite seule sur sa ligne
@@ -188,13 +199,13 @@ def _prompt_block(lines) -> list:
         gap -= 1
     entry = lines[gap - 1] if gap else ""
     if gap < end and not _notes(entry, lines[gap:end]):
-        return []
+        return gap, gap
     start = gap
     while start and (
         ENTRY.match(lines[start - 1]) or SECTION.match(lines[start - 1])
     ):
         start -= 1
-    return lines[start:gap]
+    return start, gap
 
 
 def _note(line) -> bool:
@@ -262,6 +273,29 @@ def _menu_of(text, choices) -> dict:
     return {"items": items, "crumbs": crumbs, "sections": sections}
 
 
+def _screen_notes(text) -> list:
+    """Les lignes de `text`, le texte d'un menu, que ses entrées ne disent
+    pas, sans leurs blancs : une ligne d'état, une note. Ni fil d'Ariane,
+    ni section, ni entrée, ni la ligne « Command: » de l'en-tête de TODO,
+    dans la langue de la session, ni une ligne sans mot, comme l'invite
+    « : »."""
+    header = t("Command:")
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if re.search(r"\w", line)
+        and line.strip() != header
+        and not (CRUMB.match(line) or SECTION.match(line) or ENTRY.match(line))
+    ]
+
+
+def _printed(before, screen, start) -> bool:
+    """Vrai quand `before`, le début de `screen`, porte autre chose que des
+    blancs avant la ligne `start` de `screen`, la première du menu."""
+    offset = sum(len(line) for line in screen.splitlines(True)[:start])
+    return bool(before[:offset].strip())
+
+
 def _question(prompt, note=None) -> str:
     """Pose `prompt` au port lié, selon ce qu'il est (voir le module), et
     rend la ligne répondue. L'écran lu est ce que le Tee a gardé, suivi de
@@ -269,14 +303,21 @@ def _question(prompt, note=None) -> str:
     note = note or {}
     target = ui.current()
     text = str(prompt)
-    screen = (_tee.since() if _tee is not None else "") + text
+    before = _tee.since() if _tee is not None else ""
+    screen = before + text
     default = note.get("default")
     try:
         if note.get("hide"):
             return target.ask(text, kind="secret")
         menu = note.get("menu") or getattr(prompt, "menu", None)
         if menu is not None:
-            view = port.menu_view(text, source="fill_help_info", **menu)
+            view = port.menu_view(
+                text,
+                source="fill_help_info",
+                printed=bool(before.strip()),
+                notes=_screen_notes(text),
+                **menu,
+            )
             return target.menu(view)
         line = _last_line(screen)
         if TYPED.search(line):
@@ -285,9 +326,13 @@ def _question(prompt, note=None) -> str:
             if default is None and not note.get("confirm"):
                 default = confirm_default(line)
             return target.ask(text, default, "confirm")
-        read = read_screen(screen)
+        start, read = _read_screen(screen.splitlines())
         if read is not None:
-            return target.menu(port.menu_view(text, **read))
+            printed = _printed(before, screen, start)
+            view = port.menu_view(
+                text, printed=printed, notes=_screen_notes(text), **read
+            )
+            return target.menu(view)
         return target.ask(text, default, "text")
     finally:
         if _tee is not None:

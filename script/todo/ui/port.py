@@ -86,11 +86,21 @@ def question(kind, text, default=None, timeout=None, **fields) -> dict:
     return message
 
 
-def menu_view(text, items, crumbs=(), sections=(), source="text") -> dict:
+def menu_view(
+    text,
+    items,
+    crumbs=(),
+    sections=(),
+    source="text",
+    printed=False,
+    notes=(),
+) -> dict:
     """Message `menu` : `text` s'affiche tel quel, `items` sont des dict
     `key`, `label`, `section` (None hors section) ; chacun reçoit son
     `speak`. `source` dit qui l'a produit : `fill_help_info` ou `text`
-    (un écran lu)."""
+    (un écran lu). `printed` : vrai quand le terminal montre, au-dessus du
+    menu, ce que TODO a écrit depuis la dernière réponse ; `notes` : les
+    lignes de `text` que les entrées ne disent pas (une ligne d'état)."""
     return {
         "t": "menu",
         "text": text,
@@ -98,6 +108,8 @@ def menu_view(text, items, crumbs=(), sections=(), source="text") -> dict:
         "sections": list(sections),
         "items": [dict(item, speak=speak(item["label"])) for item in items],
         "source": source,
+        "printed": bool(printed),
+        "notes": list(notes),
         "speak": speak(crumbs[-1] if crumbs else text),
         "requires": [],
         "fallback": FALLBACK,

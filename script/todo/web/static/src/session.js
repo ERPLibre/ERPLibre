@@ -1,7 +1,7 @@
 // Protocole de /ws vu de la page, sans OWL ni DOM : le premier message,
 // les trames des frappes, l'état que dit une fermeture, l'identifiant de
-// session que le fragment de l'URL garde pour un rechargement, et quand le
-// terminal se replie.
+// session que le fragment de l'URL garde pour un rechargement, ce qui
+// reste à lire au terminal, et quand il se replie.
 import {carriesScreen} from "./prompt.js";
 
 // Fermetures du hub autres que la fin d'une session, qu'annonce `bye`.
@@ -112,12 +112,28 @@ export function heldOverride(override, phase) {
     return override?.phase === phase ? override : null;
 }
 
+// Vrai quand, après le message `message` du hub, ce que TODO a écrit
+// depuis la dernière réponse reste à lire au terminal (`ran` : ce qu'il en
+// était avant) : la sortie d'une commande finie (`run_end`), un avis du
+// worker (`notice`, une erreur et la fin de sa trace), ce qu'une question
+// dit avoir au-dessus d'elle (`printed`). `answered` l'efface, comme
+// `run_start`, pendant lequel la commande se montre d'elle-même.
+export function stillToRead(ran, message) {
+    if (message.t === "answered" || message.t === "run_start") {
+        return false;
+    }
+    if (message.t === "run_end" || message.t === "notice") {
+        return true;
+    }
+    return ran || ((message.t === "menu" || message.t === "ask") && Boolean(message.printed));
+}
+
 // Vrai quand le terminal se montre. L'invite d'un programme que TODO
 // lance (un lecteur, ou l'écho coupé, sans question structurée) le montre
 // toujours. Sinon le choix du bouton Terminal (`override`) l'emporte dans
 // sa phase ; sinon il se montre pendant une commande (`run_start` …
-// `run_end`), en écran alternatif, sous la première question après une
-// commande (`ran`), dont la sortie resterait à lire, et sous toute
+// `run_end`), en écran alternatif, tant que ce que TODO a écrit depuis la
+// dernière réponse reste à lire (`ran`, voir `stillToRead`), et sous toute
 // question qui ne porte pas tout son écran (`carriesScreen`).
 export function terminalShown({question, running, altscreen, ran, tty, override}) {
     if (!question && tty && (tty.reader === true || asksSecret(tty))) {

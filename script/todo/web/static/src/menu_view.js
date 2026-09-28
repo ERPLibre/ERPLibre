@@ -1,6 +1,7 @@
-// Un menu de TODO en boutons natifs : le fil d'Ariane, l'invite d'un menu
-// lu sur la sortie qui la précède, dont le reste est dans le terminal, les
-// titres de section, un bouton « N. libellé » par entrée, l'entrée 0 à
+// Un menu de TODO en boutons natifs : le fil d'Ariane, les lignes de son
+// écran que ses entrées ne disent pas (une ligne d'état), ou l'invite d'un
+// menu lu sur la sortie qui la précède, dont le reste est dans le terminal,
+// les titres de section, un bouton « N. libellé » par entrée, l'entrée 0 à
 // part, un filtre au-delà de FILTER_FROM entrées, et le champ « Autre
 // réponse », qui envoie son texte tel quel. Un choix simple (`ask` de genre
 // `choose`) s'y montre aussi : son texte, puis ses options en entrées. Les
@@ -19,13 +20,12 @@ import {
     ARM,
     PAUSE,
     backItem,
-    carriesScreen,
     filterItems,
     keyCounts,
     menuGroups,
     menuKey,
     menuPause,
-    promptText,
+    menuText,
     sendable,
     showsFilter,
 } from "./prompt.js";
@@ -110,12 +110,11 @@ export class MenuView extends Component {
         return this.props.question.crumbs ?? [];
     }
 
-    // Le texte d'un choix, sans ses options, ou l'invite d'un menu lu sur la
-    // sortie qui la précède ; un menu qui porte tout son écran est dans ses
-    // boutons.
+    // Ce qui se lit au-dessus des entrées (`menuText`) : le texte d'un
+    // choix, l'invite d'un menu lu sur la sortie qui la précède, ou les
+    // lignes d'un menu qui porte son écran que ses boutons ne disent pas.
     get text() {
-        const question = this.props.question;
-        return question.t === "ask" || !carriesScreen(question) ? promptText(question) : "";
+        return menuText(this.props.question);
     }
 
     get keys() {

@@ -654,6 +654,15 @@ console.log(JSON.stringify({
     sendable: ["", "forged", "x".repeat(4096), "x".repeat(4097),
         "🧰".repeat(4096), "tab\t", "esc\u001b]0;x", "del\u007f",
         "c1\u009b", "half\ud800"].map(m.sendable),
+    menuTexts: [
+        {t: "menu", text: "📍 TODO\nForged state\nCommand:\n[1] Execute\n[0] Quit\n: ",
+            notes: ["Forged state"]},
+        {t: "menu", text: "📍 TODO\nCommand:\n[1] Execute\n[0] Quit\n: ", notes: []},
+        {t: "menu", text: "[1] Execute\n[0] Quit\n"},
+        {t: "menu", text: "Choice [1]: ", notes: ["Choice [1]:"]},
+    ].map((question) => m.menuText({...question, items: [{key: "1"}, {key: "0"}]})).concat(
+        m.menuText({t: "ask", kind: "choose", text: "Which?\n[1] alpha\n: ",
+            options: [{key: "1", label: "alpha"}]})),
 }));
 """
 
@@ -702,6 +711,16 @@ class TestMenuWidget(unittest.TestCase):
         # [1]: » et « [0] Back: » ne portent que leur invite ; un `ask`
         # n'est pas un menu.
         self.assertEqual(self.out["screens"], [True, False, False, False])
+
+    def test_a_menu_that_carries_its_screen_writes_its_notes(self):
+        # Au-dessus des boutons d'un menu qui porte son écran : les lignes
+        # que ses entrées ne disent pas (une ligne d'état), rien d'autre.
+        # Un menu lu sur la sortie qui précède son invite montre cette
+        # invite ; un choix, son texte sans ses options.
+        self.assertEqual(
+            self.out["menuTexts"],
+            ["Forged state", "", "", "Choice [1]:", "Which?"],
+        )
 
     def test_nothing_answers_until_the_widget_has_been_seen(self):
         # Une touche d'avant son apparition, ou de moins de 250 ms après,
@@ -799,7 +818,29 @@ const walk = (steps) => {
         return m.terminalShown(state);
     });
 };
+// Ce que la vue fait de chaque message reçu : ce qui reste à lire
+// (`stillToRead`), la question ouverte jusqu'à `answered`.
+const receive = (messages) => {
+    let state = idle;
+    return messages.map((message) => {
+        let question = state.question;
+        if (message.t === "menu" || message.t === "ask") question = message;
+        if (message.t === "answered") question = null;
+        state = {...state, question, ran: m.stillToRead(state.ran, message)};
+        return m.terminalShown(state);
+    });
+};
 console.log(JSON.stringify({
+    reads: [[false, {t: "menu", printed: true}], [false, {t: "menu", printed: false}],
+        [true, {t: "menu"}], [false, {t: "notice", level: "error"}],
+        [true, {t: "answered"}], [false, {t: "run_end"}], [true, {t: "run_start"}],
+        [true, {t: "tty_state"}]].map(([ran, message]) => m.stillToRead(ran, message)),
+    received: [
+        receive([{...menu, qid: 10, printed: true}, {t: "answered", qid: 10},
+            {...menu, qid: 11}]),
+        receive([{t: "notice", level: "error", text: "forged"}, {...menu, qid: 12},
+            {t: "answered", qid: 12}, {...menu, qid: 13}]),
+    ],
     phase: m.foldPhase({...idle, question: menu}),
     auto: [idle, {...idle, question: menu},
         {...idle, question: menu, running: true},
@@ -847,6 +888,20 @@ class TestTerminalFold(unittest.TestCase):
         )
         # Replié sans question : un autre moment sans question le montre.
         self.assertEqual(self.out["walks"][2], [False, False, True])
+
+    def test_what_todo_printed_stays_in_view_until_the_next_answer(self):
+        # Un menu `printed`, la fin d'une commande, un avis du worker :
+        # à lire ; `answered` et `run_start` l'effacent ; le reste n'y
+        # change rien.
+        self.assertEqual(
+            self.out["reads"],
+            [True, False, True, True, False, True, False, True],
+        )
+        # Un menu qui porte son écran, `printed` : le terminal se montre
+        # jusqu'à la réponse, puis se replie sous le menu suivant.
+        self.assertEqual(self.out["received"][0], [True, True, False])
+        # Un avis (une erreur et la fin de sa trace), puis un menu : de même.
+        self.assertEqual(self.out["received"][1], [True, True, True, False])
 
     def test_a_program_prompt_always_shows_the_terminal(self):
         # Un lecteur, puis l'écho coupé, sans question structurée : le

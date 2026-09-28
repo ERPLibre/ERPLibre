@@ -62,6 +62,15 @@ export function carriesScreen(question) {
     return question.items.every((item) => starts.some((line) => line.startsWith(`[${item.key}]`)));
 }
 
+// Ce que le widget d'un menu écrit au-dessus de ses entrées : pour un menu
+// qui porte tout son écran, les lignes que ses entrées ne disent pas
+// (`notes` : une ligne d'état, une note) ; pour un menu lu sur la sortie
+// qui précède son invite, cette invite ; pour un choix, son texte sans ses
+// options.
+export function menuText(question) {
+    return carriesScreen(question) ? (question.notes ?? []).join("\n") : promptText(question);
+}
+
 // Entrées dont le libellé contient `query`, sans casse ni accents, ou dont
 // la clé est `query` ; toutes quand `query` est vide.
 export function filterItems(items, query) {
