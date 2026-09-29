@@ -2,8 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
-sous-menus SSH, QEMU/KVM et QEMU cache, avec son Service, ses Exceptions
-et ses Git mirrors, Network et Security.
+sous-menus SSH, QEMU/KVM et QEMU cache, avec ses sept menus, Network et
+Security.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -244,6 +244,120 @@ CACHE_GIT_MIRRORS = Menu(
         Entry("Mirrors - Remove one", "_cache_miroir_retirer", danger=True),
     ],
     opens="_cache_miroir_git_ouvre",
+    render="once",
+)
+
+CACHE_AGE = Menu(
+    "_cache_age",
+    "Age and cleanup",
+    [
+        Entry(
+            "Age - By day",
+            "_cache_lancer",
+            kwargs={"options": "--age-report --age-par jour", "sudo": False},
+        ),
+        Entry(
+            "Age - By week",
+            "_cache_lancer",
+            kwargs={
+                "options": "--age-report --age-par semaine",
+                "sudo": False,
+            },
+        ),
+        Entry(
+            "Age - By month",
+            "_cache_lancer",
+            kwargs={"options": "--age-report --age-par mois", "sudo": False},
+        ),
+        Entry(
+            "Clean - What has not served for a while",
+            "_cache_nettoyer_age",
+            danger=True,
+        ),
+        Entry("Clean - Everything", "_cache_nettoyer_tout", danger=True),
+        Entry("Clean - Forget one URL", "_cache_oublier_url", danger=True),
+    ],
+    opens="_cache_age_ouvre",
+    render="once",
+)
+
+CACHE_TESTS = Menu(
+    "_cache_tests",
+    "Tests",
+    [
+        Entry("Test - Choose and run", "_cache_assistant"),
+        Entry(
+            "Test - The plan only (dry-run)",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": "--dry-run"},
+        ),
+        Entry(
+            "Test - Performance report",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": "--rapport"},
+        ),
+        Entry(
+            "Test - Undo the machines created",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": "--detruire"},
+            danger=True,
+        ),
+    ],
+    opens="_cache_tests_ouvre",
+    render="once",
+)
+
+CACHE_LOGS = Menu(
+    "_cache_journaux",
+    "Logs",
+    [
+        Entry("Logs - Requests, live", "_cache_voir_acces"),
+        Entry(
+            "Logs - Only requests that went to the internet, live",
+            "_cache_voir_acces",
+            kwargs={"amont": True},
+        ),
+        Entry(
+            "Logs - Last 40 requests",
+            "_cache_voir_acces",
+            kwargs={"suivre": False},
+        ),
+        Entry("Logs - Service journal, live", "_cache_journal_direct"),
+    ],
+    opens="_cache_journaux_ouvre",
+    render="once",
+)
+
+# L'état des deux réglages et du minuteur se relit avant chaque question.
+CACHE_CLEANUP = Menu(
+    "_cache_nettoyage_auto",
+    "Automatic cleanup",
+    [
+        Entry(
+            "Cleanup - Set the age limit",
+            "_cache_nettoyage_regler",
+            kwargs={"cle": "EL_PURGE_AGE"},
+        ),
+        Entry(
+            "Cleanup - Set the size ceiling",
+            "_cache_nettoyage_regler",
+            kwargs={"cle": "EL_MAX_SIZE"},
+        ),
+        Entry(
+            "Cleanup - Preview now (dry run)",
+            "_cache_nettoyage_lancer",
+            kwargs={"a_blanc": True},
+        ),
+        Entry(
+            "Cleanup - Run now",
+            "_cache_nettoyage_lancer",
+            kwargs={"a_blanc": False},
+            danger=True,
+        ),
+    ],
+    intro="Automatic cleanup of the cache",
+    mark="\n🧹",
+    before="_cache_nettoyage_etat",
     render="once",
 )
 

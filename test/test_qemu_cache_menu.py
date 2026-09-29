@@ -4,13 +4,9 @@
 
 """Le cache QEMU : son entrée dans Deploy, ses menus et leurs clés i18n.
 
-Chaque entrée mène-t-elle où elle le dit ? Deploy est déclaré au
-registre : le numéro d'une entrée y est sa place, et `entrees_de` en lit
-la déclaration. Un menu du cache écrit à la main l'est deux fois — une
-liste de `prompt_description` qui numérote l'affichage, et une chaîne
-d'`elif status == "N"` qui dispatche — et une entrée insérée au milieu de
-l'une sans l'autre envoie l'opérateur dans un autre écran sans que rien ne
-proteste.
+Chaque entrée mène-t-elle où elle le dit ? Deploy et les menus du cache
+sont déclarés au registre : le numéro d'une entrée y est sa place, et
+`entrees_de` en lit la déclaration.
 
 Le test vérifie aussi que chaque clé i18n de l'entrée résout DANS LES DEUX
 LANGUES. Une clé absente rend sa propre chaîne anglaise, donc un menu
@@ -130,35 +126,8 @@ CLES = (
     "Replay anyway?",
 )
 
+
 CACHE_PY = RACINE / "script" / "todo" / "qemu_cache_menu.py"
-
-
-def corps_de(nom, suivant):
-    """Le corps d'une méthode de qemu_cache_menu.py, dispatch compris."""
-    src = CACHE_PY.read_text(encoding="utf-8")
-    debut = src.index(f"def {nom}(self):")
-    return src[debut : src.index(f"def {suivant}(self", debut)]
-
-
-def affichage_et_dispatch(corps):
-    """Rend (nombre d'entrées affichées, numéros atteignables, triés).
-
-    Un numéro s'atteint de deux façons : une branche « status == "N" », ou
-    une entrée d'une table qui associe le numéro à un verbe. Ne compter que
-    les branches ferait passer pour un trou ce qu'une table couvre.
-
-    Le zéro sort : il ferme le menu et n'est jamais affiché.
-    """
-    affichees = len(re.findall(r'"prompt_description": t\(', corps))
-    numeros = set(re.findall(r'if status == "(\d+)":', corps))
-    # Toute table qui associe un numéro à quelque chose compte : le dispatch
-    # passe tantôt par une branche, tantôt par une table de verbes ou de
-    # granularités. N'en connaître qu'une ferait passer pour un trou ce
-    # qu'une autre couvre.
-    for table in re.findall(r"=\s*\{([^}]*)\}", corps):
-        numeros |= set(re.findall(r'"(\d+)"\s*:', table))
-    numeros.discard("0")
-    return affichees, sorted(int(n) for n in numeros)
 
 
 def entrees_de(menu):
@@ -205,12 +174,8 @@ class TestEntreeDuCache(unittest.TestCase):
 class TestSousMenusDuCache(unittest.TestCase):
     """Le nombre d'entrées de chaque menu du cache, et où mène chacune.
 
-    Un menu déclaré au registre numérote une entrée par sa place :
-    `compter` les compte. Un menu écrit à la main l'écrit deux fois — la
-    liste de `prompt_description` numérote l'écran, la chaîne d'`elif
-    status` décide où l'on va — et `verifier` relie les deux : une entrée
-    insérée au milieu de l'une sans l'autre envoie l'opérateur ailleurs
-    qu'où il a lu, ou rend la dernière entrée inatteignable.
+    Déclaré au registre, un menu numérote une entrée par sa place : une
+    entrée insérée au milieu décale ensemble l'affichage et le dispatch.
     """
 
     def compter(self, menu, attendues):
@@ -218,17 +183,6 @@ class TestSousMenusDuCache(unittest.TestCase):
             len(entrees_de(menu)),
             attendues,
             f"{menu} n'affiche pas {attendues} entrées",
-        )
-
-    def verifier(self, nom, suivant, attendues):
-        affichees, numeros = affichage_et_dispatch(corps_de(nom, suivant))
-        self.assertEqual(
-            affichees, attendues, f"{nom} n'affiche pas {attendues} entrées"
-        )
-        self.assertEqual(
-            numeros,
-            list(range(1, attendues + 1)),
-            f"{nom} : le dispatch {numeros} ne suit pas l'affichage",
         )
 
     def test_le_menu_du_cache(self):
@@ -244,12 +198,12 @@ class TestSousMenusDuCache(unittest.TestCase):
         self.compter("CACHE_GIT_MIRRORS", 5)
 
     def test_le_menu_du_nettoyage(self):
-        self.verifier("_cache_nettoyage_auto", "_cache_nettoyage_etat", 4)
+        self.compter("CACHE_CLEANUP", 4)
 
     def test_le_menu_de_lage(self):
         """Six depuis qu'on peut oublier UNE entrée : les cinq autres
         montrent l'âge ou effacent en gros, celle-là vise une URL."""
-        self.verifier("_cache_age", "_cache_lancer", 6)
+        self.compter("CACHE_AGE", 6)
 
     def test_letat_du_service_est_la_troisieme(self):
         """L'état du service suit le diagnostic, et chaque entrée qui le
@@ -1362,14 +1316,10 @@ class OublierUneUrlDepuisLeMenu(unittest.TestCase):
         self.assertIn("shlex.quote(url)", self._src())
 
     def test_the_entry_is_offered_in_the_cleanup_menu(self):
-        from pathlib import Path
-
-        racine = Path(__file__).resolve().parent.parent
-        menu = (racine / "script/todo/qemu_cache_menu.py").read_text(
-            encoding="utf-8"
+        self.assertIn(
+            ("Clean - Forget one URL", "_cache_oublier_url", {}),
+            entrees_de("CACHE_AGE"),
         )
-        self.assertIn('t("Clean - Forget one URL")', menu)
-        self.assertIn("self._cache_oublier_url()", menu)
 
 
 if __name__ == "__main__":

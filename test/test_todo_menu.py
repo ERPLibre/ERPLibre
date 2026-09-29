@@ -447,6 +447,22 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Git mirrors › Mirrors - Remove one",
                     )
                 ],
+                *[
+                    (f"{cache} › Age and cleanup › Clean - {label}", {})
+                    for label in (
+                        "What has not served for a while",
+                        "Everything",
+                        "Forget one URL",
+                    )
+                ],
+                (
+                    f"{cache} › Tests › Test - Undo the machines created",
+                    {"nom": "qemu_cache.py", "args": "--detruire"},
+                ),
+                (
+                    f"{cache} › Automatic cleanup › Cleanup - Run now",
+                    {"a_blanc": False},
+                ),
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -2408,6 +2424,10 @@ class TestMenuLabels(unittest.TestCase):
                 "_cache_service",
                 "_cache_exceptions",
                 "_cache_miroir_git",
+                "_cache_age",
+                "_cache_tests",
+                "_cache_journaux",
+                "_cache_nettoyage_auto",
             },
             set(declared),
         )

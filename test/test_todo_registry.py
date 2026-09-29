@@ -919,9 +919,13 @@ class TestTodoMenuFiles(unittest.TestCase):
         self.assertEqual(
             sorted(imported),
             [
+                "_cache_age",
                 "_cache_exceptions",
+                "_cache_journaux",
                 "_cache_miroir_git",
+                "_cache_nettoyage_auto",
                 "_cache_service",
+                "_cache_tests",
                 "_prompt_claude_configs",
                 "_prompt_git_server_local",
                 "_prompt_git_server_production",
@@ -979,7 +983,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 33)
+        self.assertEqual(len(menus), 37)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():

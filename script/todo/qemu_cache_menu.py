@@ -1003,7 +1003,8 @@ class QemuCacheMenuMixin:
         return p.stdout.split("\t")[0] if p.returncode == 0 else "?"
 
     def _cache_journaux(self):
-        """Les journaux en direct, pour regarder une installation passer.
+        """Les journaux en direct, pour regarder une installation passer
+        (CACHE_LOGS, `menus/deploy.py`). Rend False sur [0].
 
         Le journal d'ACCÈS porte une ligne par requête et dit, pour chacune,
         si elle est sortie vers l'internet : c'est lui qui prouve qu'une VM
@@ -1011,38 +1012,23 @@ class QemuCacheMenuMixin:
         coupure. Le journal du SERVICE porte ce que le service dit de
         lui-même — démarrages, erreurs, hôtes retenus en tunnel.
         """
+        return navigate(self, menus_deploy.CACHE_LOGS)
+
+    def _cache_journaux_ouvre(self):
+        """Ce qui ouvre le menu des journaux : le chemin du journal d'accès,
+        et comment finir un suivi en direct. Rend {}."""
         chemin = self._cache_journal()
         print(f"\n📜 {t('Logs of the download cache')}")
         print(f"  {t('Access log:')} {chemin or '—'}")
         print(f"  {t('Ctrl-C ends a live follow.')}\n")
-        choices = [
-            {"prompt_description": t("Logs - Requests, live")},
-            {
-                "prompt_description": t(
-                    "Logs - Only requests that went to the internet, live"
-                )
-            },
-            {"prompt_description": t("Logs - Last 40 requests")},
-            {"prompt_description": t("Logs - Service journal, live")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                self._cache_voir_acces()
-            elif status == "2":
-                self._cache_voir_acces(amont=True)
-            elif status == "3":
-                self._cache_voir_acces(suivre=False)
-            elif status == "4":
-                cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
-                print(f"{t('Will execute:')} {cmd}")
-                self.execute.exec_command_live(cmd, source_erplibre=False)
-            else:
-                print(t("Command not found !"))
+        return {}
+
+    def _cache_journal_direct(self):
+        """Le journal du service, en direct, ses vingt dernières lignes
+        d'abord."""
+        cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _cache_suivre(self, chemin, amont=False, suivre=True):
         """Le journal d'accès, mis en forme par `cache_journal.py`.
@@ -1363,7 +1349,9 @@ class QemuCacheMenuMixin:
     # ------------------------------------------------------------------
 
     def _cache_age(self):
-        """Ce qui occupe, depuis quand, et de quoi en rendre.
+        """Ce qui occupe, depuis quand, et de quoi en rendre (CACHE_AGE,
+        `menus/deploy.py`). Rend False sur [0], et None, le menu fermé, sans
+        binaire du cache.
 
         L'âge retenu est celui du dernier USAGE : le service remet la date
         d'un objet chaque fois qu'il le sert. « Vieux » veut donc dire « n'a
@@ -1371,42 +1359,17 @@ class QemuCacheMenuMixin:
         tous les jours depuis un an n'est pas à jeter, l'effacer obligerait à
         le retélécharger le lendemain.
         """
+        return navigate(self, menus_deploy.CACHE_AGE)
+
+    def _cache_age_ouvre(self):
+        """Ce qui ouvre le menu de l'âge : la place libre. Rend {}, ou None
+        sans binaire du cache."""
         print(f"\n🧭 {t('Age of the cache, and cleanup')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         print(f"  {t('Free space:')} {self._cache_place_libre()}\n")
-        choices = [
-            {"prompt_description": t("Age - By day")},
-            {"prompt_description": t("Age - By week")},
-            {"prompt_description": t("Age - By month")},
-            {
-                "prompt_description": t(
-                    "Clean - What has not served for a while"
-                )
-            },
-            {"prompt_description": t("Clean - Everything")},
-            {"prompt_description": t("Clean - Forget one URL")},
-        ]
-        grains = {"1": "jour", "2": "semaine", "3": "mois"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in grains:
-                self._cache_lancer(
-                    f"--age-report --age-par {grains[status]}", sudo=False
-                )
-            elif status == "4":
-                self._cache_nettoyer_age()
-            elif status == "5":
-                self._cache_nettoyer_tout()
-            elif status == "6":
-                self._cache_oublier_url()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_lancer(self, options, sudo=True):
         """La commande du cache, annoncée puis lancée."""
@@ -1764,26 +1727,14 @@ class QemuCacheMenuMixin:
             )
 
     def _cache_tests(self):
+        """Les tests du cache, sur de vraies VM (CACHE_TESTS,
+        `menus/deploy.py`). Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_TESTS)
+
+    def _cache_tests_ouvre(self):
+        """Ce qui ouvre le menu des tests : ce qu'ils coûtent. Rend {}."""
         print(f"\n{t('Cache tests: real VMs, several minutes')}\n")
-        choices = [
-            {"prompt_description": t("Test - Choose and run")},
-            {"prompt_description": t("Test - The plan only (dry-run)")},
-            {"prompt_description": t("Test - Performance report")},
-            {"prompt_description": t("Test - Undo the machines created")},
-        ]
-        args = {"2": "--dry-run", "3": "--rapport", "4": "--detruire"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                self._cache_assistant()
-            elif status in args:
-                self._longtest_run("qemu_cache.py", args[status])
-            else:
-                print(t("Command not found !"))
+        return {}
 
     # ------------------------------------------------------------------
     # [9] Combler ce qui a manqué hors ligne
@@ -2052,32 +2003,11 @@ class QemuCacheMenuMixin:
 
     def _cache_nettoyage_auto(self):
         """Le nettoyage automatique : un minuteur quotidien, sans effet tant
-        que ses deux réglages sont vides. Le nettoyage reste donc manuel par
-        défaut, et le régler ici suffit à l'activer, sans réinstaller."""
-        print(f"\n🧹 {t('Automatic cleanup of the cache')}")
-        choices = [
-            {"prompt_description": t("Cleanup - Set the age limit")},
-            {"prompt_description": t("Cleanup - Set the size ceiling")},
-            {"prompt_description": t("Cleanup - Preview now (dry run)")},
-            {"prompt_description": t("Cleanup - Run now")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            self._cache_nettoyage_etat()
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._cache_nettoyage_regler(cle="EL_PURGE_AGE")
-            elif status == "2":
-                self._cache_nettoyage_regler(cle="EL_MAX_SIZE")
-            elif status == "3":
-                self._cache_nettoyage_lancer(a_blanc=True)
-            elif status == "4":
-                self._cache_nettoyage_lancer(a_blanc=False)
-            else:
-                print(t("Command not found !"))
+        que ses deux réglages sont vides (CACHE_CLEANUP, `menus/deploy.py`),
+        leur état relu avant chaque question. Le nettoyage reste donc manuel
+        par défaut, et le régler ici suffit à l'activer, sans réinstaller.
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_CLEANUP)
 
     def _cache_nettoyage_etat(self):
         """Les deux réglages lus dans le fichier du service, et le minuteur."""
