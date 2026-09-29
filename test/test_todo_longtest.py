@@ -246,7 +246,7 @@ class TestLEssaiABlanc(unittest.TestCase):
         # profondeur demandée, puis celle que la machine permet — et le nom
         # d'un rapport porte la seconde où il est écrit. Deux essais de part
         # et d'autre d'une seconde laissent donc deux fichiers, un seul
-        # sinon, et compter mesurait l'horloge.
+        # sinon, et compter mesurerait l'horloge.
         for chemin in fichiers:
             self.assertIn("dryrun", chemin, fichiers)
         recent = max(fichiers, key=os.path.getmtime)
@@ -1099,10 +1099,11 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
 class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
     """Un étage qui redémarre éteint d'un coup tous ceux qu'il porte.
 
-    Attendre alors le délai entier, jusqu'à quarante minutes, un ssh qui ne
-    peut plus aboutir, puis conclure « jamais joignable en ssh », serait un
-    diagnostic faux : la machine n'est pas lente, sa MAISON n'existe plus.
-    La descente abandonne dès que le parent ne répond plus."""
+    Attendre alors le délai entier, quarante minutes au premier étage et
+    bien davantage plus bas, un ssh qui ne peut plus aboutir, puis conclure
+    « jamais joignable en ssh », serait un diagnostic faux : la machine
+    n'est pas lente, sa MAISON n'existe plus. La descente abandonne dès que
+    le parent ne répond plus."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
