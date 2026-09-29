@@ -235,6 +235,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 - Execute › Automation opens when `todo.json` has no `function` list, with [0] alone, instead of stopping on an error before its menu
 - Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
+- Execute › Git: only a number exactly as shown runs an entry: « +5 » or « 05 » answer « Command not found ! » instead of running the first entry of `todo.json`, and « 01 », « 1 » between spaces or a digit of another script no longer silently run nothing
 
 ## Removed
 

@@ -26,7 +26,7 @@ import tempfile
 import unicodedata
 import unittest
 import warnings
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
@@ -1665,6 +1665,84 @@ class TestAutomationMenu(AnsweredMenu, unittest.TestCase):
         ran, out = self.answer(answers)
         self.assertEqual(ran, ["forged_one", "forged_two"])
         self.assertEqual(out.count("Command not found !"), 6)
+
+
+class TestGitMenu(AnsweredMenu, unittest.TestCase):
+    """Git : quatre entrées fixes, les éléments de `git_from_makefile`,
+    puis Starship, Claude Code et opencode, toujours les trois
+    dernières."""
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "bash_command": "forged_one"},
+        {"prompt_description": "Forged two", "bash_command": "forged_two"},
+    ]
+    # Les méthodes des entrées fixes, dans l'ordre du menu.
+    FIXED = (
+        "prompt_execute_git_local_server",
+        "_git_add_remote",
+        "_git_install_hooks",
+        "_git_set_conflict_style",
+        "_shell_install_starship",
+        "_shell_install_claude_code",
+        "_shell_install_opencode",
+    )
+
+    def answer(self, answers):
+        """(configurations lancées, appels de chaque méthode de FIXED,
+        texte affiché) quand Git reçoit `answers`, puis « 0 »."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, **options):
+            ran.append(instance.get("bash_command"))
+
+        with ExitStack() as stack:
+            doubles = [
+                stack.enter_context(
+                    patch.object(TODO, name, return_value=False)
+                )
+                for name in self.FIXED
+            ]
+            for patcher in (
+                patch.object(TODO, "execute_from_configuration", run),
+                patch("click.prompt", side_effect=[*answers, "0"]),
+            ):
+                stack.enter_context(patcher)
+            out = stack.enter_context(redirect_stdout(io.StringIO()))
+            self.assertIs(self.todo.prompt_execute_git(), False)
+        return ran, [d.call_count for d in doubles], out.getvalue()
+
+    def test_each_number_runs_the_entry_it_shows(self):
+        # « 10 » n'est pas affiché ; « 01 », « 1 » entouré de blancs, « +5 »,
+        # « ١ » (le chiffre un en écriture arabe) et « 05 », qui écrit la
+        # place du premier élément de todo.json, ne sont pas le numéro
+        # affiché.
+        answers = [str(n) for n in range(1, 11)]
+        answers += ["01", " 1", "1 ", "+5", "١", "05"]
+        ran, fixed, out = self.answer(answers)
+        self.assertEqual(ran, ["forged_one", "forged_two"])
+        self.assertEqual(fixed, [1] * 7)
+        self.assertEqual(out.count("Command not found !"), 7)
+
+    def test_an_element_that_names_a_method_runs_it(self):
+        # Un élément de todo.json qui porte « method » lance cette méthode
+        # de TODO, sans passer par execute_from_configuration.
+        self.todo.config_file.get_config = lambda key: [
+            {"prompt_description": "Forged", "method": "_git_add_remote"}
+        ]
+        ran, fixed, _ = self.answer(["5"])
+        self.assertEqual(ran, [])
+        self.assertEqual(fixed, [0, 1, 0, 0, 0, 0, 0])
+
+    def test_a_list_absent_from_the_configuration_adds_no_entry(self):
+        # Sans la liste, Starship est [5] et opencode [7] ; « 8 » n'est
+        # pas affiché.
+        self.todo.config_file.get_config = lambda key: None
+        ran, fixed, out = self.answer(["5", "7", "8"])
+        self.assertEqual(ran, [])
+        self.assertEqual(fixed, [0, 0, 0, 0, 1, 0, 1])
+        self.assertEqual(out.count("Command not found !"), 1)
 
 
 class TestMenuLabels(unittest.TestCase):

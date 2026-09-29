@@ -235,6 +235,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 - Exécution › Automatisation s'ouvre quand `todo.json` n'a pas de liste `function`, avec [0] seul, au lieu de s'arrêter sur une erreur avant son menu
 - Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
+- Exécution › Git : seul un numéro tel qu'affiché lance une entrée : « +5 » ou « 05 » répondent « Commande non trouvée ! » au lieu de lancer la première entrée de `todo.json`, et « 01 », « 1 » entouré d'espaces ou un chiffre d'une autre écriture ne lancent plus rien en silence
 
 ## Retiré
 

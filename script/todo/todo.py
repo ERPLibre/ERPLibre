@@ -2941,20 +2941,17 @@ class TODO(
             elif status == "4":
                 self._git_set_conflict_style()
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        method = instance.get("method")
-                        if method:
-                            getattr(self, method)()
-                        else:
-                            self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
+                # [N], tel qu'affiché, au-delà des quatre entrées fixes : un
+                # élément de todo.json, ou une entrée qui porte « method ».
+                shown = [str(n) for n in range(5, len(choices) + 1)]
+                if status in shown:
+                    instance = choices[int(status) - 1]
+                    method = instance.get("method")
+                    if method:
+                        getattr(self, method)()
+                    else:
+                        self.execute_from_configuration(instance)
+                else:
                     print(t("Command not found !"))
 
     def _git_add_remote(self):

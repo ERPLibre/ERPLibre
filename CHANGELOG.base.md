@@ -385,6 +385,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 - Execute › Automation opens when `todo.json` has no `function` list, with [0] alone, instead of stopping on an error before its menu
 - Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
+- Execute › Git: only a number exactly as shown runs an entry: « +5 » or « 05 » answer « Command not found ! » instead of running the first entry of `todo.json`, and « 01 », « 1 » between spaces or a digit of another script no longer silently run nothing
 
 <!-- [fr] -->
 
@@ -490,6 +491,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 - Exécution › Automatisation s'ouvre quand `todo.json` n'a pas de liste `function`, avec [0] seul, au lieu de s'arrêter sur une erreur avant son menu
 - Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
+- Exécution › Git : seul un numéro tel qu'affiché lance une entrée : « +5 » ou « 05 » répondent « Commande non trouvée ! » au lieu de lancer la première entrée de `todo.json`, et « 01 », « 1 » entouré d'espaces ou un chiffre d'une autre écriture ne lancent plus rien en silence
 
 <!-- [en] -->
 ## Removed
