@@ -542,6 +542,37 @@ class TestChoixDeLHote(unittest.TestCase):
         todo._pve_remember_host = lambda h: None
         return todo
 
+    def test_a_host_is_picked_only_by_its_shown_number(self):
+        # « 2 » choisit la deuxième machine de la liste, affichée [2] ;
+        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas un
+        # numéro affiché : « Invalid selection! », rien n'est choisi, et
+        # TODO ne s'arrête pas sur une ValueError.
+        import contextlib
+        import io
+
+        todo = self._todo()
+        ip = {"forged-a": "192.0.2.27", "forged-b": "198.51.100.5"}
+        todo._qemu_list_domains = lambda: ["forged-a", "forged-b"]
+        todo._qemu_vm_ip_now = ip.get
+        todo._qemu_domstate = lambda nom: "running"
+        todo._ssh_config_entries = lambda chemin: [
+            ("forged-a", {}),
+            ("forged-b", {}),
+        ]
+        for method, chosen in (
+            ("_pve_host_from_qemu", "root@198.51.100.5"),
+            ("_pve_host_from_ssh_config", "forged-b"),
+        ):
+            for answer in ("2", "02", "٢", "²"):
+                with (
+                    self.subTest(method=method, answer=answer),
+                    mock.patch("builtins.input", return_value=answer),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    host = getattr(todo, method)()
+                    expected = chosen if answer == "2" else None
+                    self.assertEqual(host and host["target"], expected)
+
     def test_an_unknown_host_key_is_recognised(self):
         for texte in (
             "Host key verification failed.",

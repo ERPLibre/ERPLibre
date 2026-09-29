@@ -414,6 +414,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › Deploy - Install NTFY notification server, SSH › SSH - Install ERPLibre, SSH - Install systemd service and SSH - Configure nginx + SSL, QEMU cache › Cache - Install or reinstall, and Execute › Docker / Podman › Install Docker and Install Podman, which put packages or a service on this machine or on a remote host, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
 - Execute › Deploy › Proxmox VE: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +19 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 - Navigation telemetry: Execute › Deploy › Proxmox VE › Change the Proxmox host, launched from the TUI, asks for the new host instead of only forgetting the current one
+- Execute › Deploy › Proxmox VE: choosing the host takes a local VM or an SSH host only by its number as shown: « 02 » or a digit of another script chooses nothing, and « ² », next to « 1 » on a French keyboard, no longer ends TODO on a `ValueError`
 
 <!-- [fr] -->
 
@@ -548,6 +549,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Deploy › Déployer - Installer le serveur de notifications NTFY, SSH › SSH - Installer ERPLibre, SSH - Installer le service systemd et SSH - Configurer nginx + SSL, QEMU cache › Cache - Installer ou réinstaller, et Exécution › Docker / Podman › Installer Docker et Installer Podman, qui posent des paquets ou un service sur cette machine ou sur un hôte distant, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 - Exécution › Deploy › Proxmox VE : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +19 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › Proxmox VE › Changer d'hôte Proxmox, lancé depuis la TUI, demande le nouvel hôte au lieu d'oublier seulement celui qui était retenu
+- Exécution › Deploy › Proxmox VE : le choix de l'hôte ne prend une VM locale ou un hôte SSH que par son numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`
 
 <!-- [en] -->
 ## Removed

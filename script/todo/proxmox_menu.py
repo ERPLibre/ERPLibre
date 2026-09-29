@@ -142,7 +142,9 @@ class ProxmoxMenuMixin:
             etat = self._qemu_domstate(nom)
             print(f"  [{i}] {nom:<32} {ip or '-':<16} {etat}")
         sel = input(t("Selection (number): ")).strip()
-        if not sel.isdigit() or not 1 <= int(sel) <= len(noms):
+        # Un numéro tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
+        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
+        if sel not in [str(rang) for rang in range(1, len(noms) + 1)]:
             print(t("Invalid selection!"))
             return None
         nom = noms[int(sel) - 1]
@@ -166,7 +168,7 @@ class ProxmoxMenuMixin:
             desc = nom + (f" ({hn})" if hn != nom else "")
             print(f"  [{i}] {desc}{f' [{u}]' if u else ''}")
         sel = input(t("Select SSH host number: ")).strip()
-        if not sel.isdigit() or not 1 <= int(sel) <= len(entrees):
+        if sel not in [str(rang) for rang in range(1, len(entrees) + 1)]:
             print(t("Invalid selection!"))
             return None
         alias = entrees[int(sel) - 1][0]
