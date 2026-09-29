@@ -4327,5 +4327,80 @@ class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
         self.assertTrue(B.pose_l_annuaire(eco, "infra-pki-01"))
 
 
+class TestUneCauseSurPlusieursLignes(unittest.TestCase):
+    """Ansible imprime son objet en clair dès qu'une valeur porte un retour, et
+    la ligne de tête se réduit alors à « fatal: [hôte]: FAILED! => { ». N'en
+    garder qu'elle rend un refus qui nomme l'hôte et rien d'autre."""
+
+    BLOC = (
+        "TASK [un_role : Exiger quelque chose] ***\n"
+        "fatal: [un-hote-invente]: FAILED! => {\n"
+        '    "assertion": "une_variable | length > 0",\n'
+        '    "changed": false,\n'
+        '    "evaluated_to": false,\n'
+        '    "msg": "`une_variable` est vide, et voici pourquoi cela compte."\n'
+        "}\n"
+        "\nPLAY RECAP ***\n"
+        "make: *** Error 2"
+    )
+
+    def test_the_reason_survives_the_line_break(self):
+        """LA PROPRIÉTÉ : le refus porte la RAISON. Sans elle il ne reste que
+        l'hôte et une accolade, et il faut aller lire le journal pour savoir ce
+        qui manque — ce que le refus existe précisément pour éviter."""
+        vu = B.cause_de_l_echec(self.BLOC)
+        self.assertIn("un-hote-invente", vu)
+        self.assertIn("est vide, et voici pourquoi cela compte", vu)
+
+    def test_the_mechanics_do_not_drown_the_message(self):
+        """Un objet d'ansible porte son explication sous « msg » ; le reste est
+        de la mécanique, et la rendre noierait la phrase qui dit quoi faire."""
+        vu = B.cause_de_l_echec(self.BLOC)
+        self.assertNotIn("evaluated_to", vu)
+        self.assertNotIn("Error 2", vu)
+
+    def test_a_single_line_cause_is_unchanged(self):
+        """Le contrôle positif : le cas courant ne doit pas régresser parce que
+        le rare a été traité."""
+        vu = B.cause_de_l_echec(
+            'fatal: [un-hote]: FAILED! => {"msg": "court"}\nmake: *** Error 2'
+        )
+        self.assertIn("court", vu)
+        self.assertNotIn("Error 2", vu)
+
+    def test_a_block_that_never_closes_stops_at_the_end(self):
+        """Fermé par défaut : une sortie tronquée en plein objet ne doit pas
+        faire tourner la lecture, ni rendre le fichier entier."""
+        vu = B.cause_de_l_echec(
+            'fatal: [un-hote]: FAILED! => {\n    "a": 1,\n    "b": 2', 200
+        )
+        self.assertIn("un-hote", vu)
+        self.assertLessEqual(len(vu), 200)
+
+
+class TestLAdresseDeRecours(unittest.TestCase):
+    """Le compte d'amorçage est le seul recours quand plus rien d'autre ne
+    répond. Sans adresse joignable, « mot de passe oublié » ne mène nulle part,
+    et le rôle refuse — à juste titre."""
+
+    def test_the_bench_declares_it(self):
+        """Le modèle n'en déclare aucune : sans cet ajout le déploiement
+        s'arrête sur l'annuaire, à 172 tâches du départ."""
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertEqual(B.COURRIEL_RECOURS, lu["amorcage_acces_courriel"])
+
+    def test_the_address_can_never_reach_anyone(self):
+        """LA PROPRIÉTÉ : le domaine ne se résout NULLE PART. Une adresse réelle
+        suivrait le dépôt, et une relance enverrait du courrier à quelqu'un qui
+        n'a rien demandé. `.invalid` est réservé à cet usage."""
+        self.assertTrue(B.COURRIEL_RECOURS.endswith(".invalid"))
+        self.assertIn("@", B.COURRIEL_RECOURS)
+
+    def test_the_placement_still_carries_the_resolver(self):
+        """Le contrôle positif : ajouter une clé ne doit pas en perdre une."""
+        lu = yaml.safe_load(B.texte_intrants_du_banc("192.0.2.1"))
+        self.assertEqual("192.0.2.1", lu["dns_amorcage"])
+
+
 if __name__ == "__main__":
     unittest.main()
