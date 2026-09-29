@@ -356,6 +356,20 @@ keeps, trimmed from the head since the message of such an object comes early.
 Where there is no such line — a script's refusal — the tail is the right
 fallback, and that is what is kept.
 
+**Every step leaves its output, green or red.** A green step says nothing of
+itself, and what it did exists only at the moment it does it: keeping only the
+failing output means replaying an hour-long loop to answer "what did it lay
+down, exactly". The bench therefore drops one file per pass and target under
+`~/.erplibre/longtest/journal/`, overwritten each run — the count of files
+follows the plan, never the count of sessions, and a journal that piles up ends
+up unread. It says where before starting, not after, since the loop lasts an
+hour. The file is `0600` inside a `0700` folder and the mode is RE-IMPOSED on
+every write, because the mode protects what the bench could not name: it knows
+only the secrets IT laid down, and a list of values to strip is incomplete by
+construction. The token it does know is stripped as well — the two defences add
+up, they do not replace each other. A lost journal does not lose the run: it is
+said, and the step goes on.
+
 **What is posed today are the DECISIONS, and they are all guarded** —
 prerequisites said before anything is created, the terrain, a free bridge, the
 shape of the token, the order of the undoing, the footprint. The verbs that

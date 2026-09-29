@@ -3839,5 +3839,166 @@ class TestLeRefusNommeLaCauseEtNonLaPile(unittest.TestCase):
                 self.assertNotIn("Error 2", vu)
 
 
+class TestUnSuccesSInspecte(unittest.TestCase):
+    """Une étape VERTE ne dit rien d'elle-même, et ce qu'elle a fait n'existe
+    qu'au moment où elle le fait. Garder la sortie du seul échec oblige à
+    rejouer une boucle d'une heure pour répondre à « qu'a-t-elle posé, au
+    juste »."""
+
+    def atelier(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        return d, B.chemin_journal("env", "reconstruire", d)
+
+    def mode(self, chemin):
+        import stat as _stat
+
+        return _stat.S_IMODE(os.stat(chemin).st_mode)
+
+    # -- où le journal se pose --
+
+    def test_a_pass_and_a_target_name_one_file(self):
+        """Un fichier par (passe, cible) : le nombre de fichiers ne dépend que
+        du plan, jamais du nombre de séances. Un journal qui s'accumule finit
+        par n'être plus lu du tout."""
+        vu = B.chemin_journal("env", "reconstruire", "/f")
+        self.assertEqual("env-reconstruire.log", os.path.basename(vu))
+        self.assertEqual(B.dossier_journal("/f"), os.path.dirname(vu))
+
+    def test_without_a_pass_or_a_target_there_is_no_journal(self):
+        """Fermé par défaut : un nom à demi formé poserait « -reconstruire.log »
+        ou « env-.log », que rien ne relie à ce qui a joué."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.chemin_journal(vide, "cible", "/f"))
+                self.assertEqual("", B.chemin_journal("passe", vide, "/f"))
+
+    # -- ce que le dépôt garantit --
+
+    def test_the_journal_and_its_folder_are_closed(self):
+        """Le contrôle positif de tout ce qui suit, et la propriété qui compte :
+        la sortie du moteur se pose sur disque, donc elle se ferme."""
+        _d, chemin = self.atelier()
+        self.assertEqual("", B.ecrit_le_journal(chemin, "une sortie"))
+        self.assertEqual(0o600, self.mode(chemin))
+        self.assertEqual(0o700, self.mode(os.path.dirname(chemin)))
+
+    def test_a_file_already_there_under_a_loose_mode_is_closed_again(self):
+        """LA PROPRIÉTÉ : le mode est RÉIMPOSÉ, pas seulement demandé.
+        `O_CREAT` ne l'applique qu'à la CRÉATION ; un fichier déjà là sous un
+        mode large le garderait, et le journal deviendrait lisible par tout
+        compte de la machine."""
+        _d, chemin = self.atelier()
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        with open(chemin, "w", encoding="utf-8") as ouvert:
+            ouvert.write("ce qui restait")
+        os.chmod(chemin, 0o644)
+        self.assertEqual("", B.ecrit_le_journal(chemin, "une sortie"))
+        self.assertEqual(0o600, self.mode(chemin))
+
+    def test_the_token_is_redacted_from_what_is_written(self):
+        """Le mode protège ce qu'on n'a pas su nommer ; le jeton est retiré
+        parce qu'on le connaît. Les deux défenses se CUMULENT."""
+        _d, chemin = self.atelier()
+        secret = "UN-JETON-INVENTE-POUR-L-EPREUVE"
+        B.ecrit_le_journal(chemin, f"reçu {secret} ici", secret)
+        with open(chemin, encoding="utf-8") as lu:
+            self.assertNotIn(secret, lu.read())
+
+    def test_a_symlink_in_the_way_is_refused(self):
+        """Le dossier peut être partagé : un autre compte y pose ce NOM en lien
+        vers un fichier qu'on a le droit d'écrire, et l'ouverture le
+        TRONQUERAIT avant d'y écrire."""
+        d, chemin = self.atelier()
+        vise = os.path.join(d, "un-fichier-a-ne-pas-tronquer")
+        with open(vise, "w", encoding="utf-8") as ouvert:
+            ouvert.write("ce qui doit survivre")
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        os.symlink(vise, chemin)
+        self.assertTrue(B.ecrit_le_journal(chemin, "une sortie"))
+        with open(vise, encoding="utf-8") as lu:
+            self.assertEqual("ce qui doit survivre", lu.read())
+
+    def test_an_empty_output_still_leaves_a_file(self):
+        """Qu'une étape n'ait rien imprimé est un FAIT ; un fichier absent se
+        lirait comme une étape qui n'a pas joué."""
+        _d, chemin = self.atelier()
+        self.assertEqual("", B.ecrit_le_journal(chemin, ""))
+        self.assertTrue(os.path.exists(chemin))
+
+    def test_a_path_that_cannot_be_written_is_told_not_raised(self):
+        """Un journal perdu ne perd pas le lancement : on le dit et on
+        continue."""
+        self.assertTrue(B.ecrit_le_journal("", "une sortie"))
+        self.assertTrue(
+            B.ecrit_le_journal("/proc/un-chemin-invente/j.log", "une sortie")
+        )
+
+
+class TestLEtapeDeposeSaSortie(unittest.TestCase):
+    """Le journal se dépose que l'étape passe ou non — c'est l'étape VERTE qui
+    en avait le plus besoin."""
+
+    def atelier(self, code, sortie):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        vrai = B.runner_du_banc()
+        fait = B.Fait(code, sortie, 1)
+
+        class Faux:
+            def base(self_inner):
+                return vrai.base()
+
+            def cible(self_inner, *a, **k):
+                return ("make", "une-cible-inventee")
+
+            def cite(self_inner, argv):
+                return " ".join(argv)
+
+            def jouer(self_inner, *a, **k):
+                return fait
+
+        patch = mock.patch.object(B, "runner_du_banc", lambda: Faux())
+        patch.start()
+        self.addCleanup(patch.stop)
+        # LE DOSSIER DU LABO EST DÉTOURNÉ VERS UN TEMPORAIRE : une épreuve qui
+        # écrirait sous « ~ » laisserait sa trace dans le vrai journal, et le
+        # lancement suivant lirait la sienne.
+        detour = mock.patch.object(
+            B,
+            "chemin_journal",
+            lambda passe, cible, base="": os.path.join(
+                d, "journal", f"{passe}-{cible}.log"
+            ),
+        )
+        detour.start()
+        self.addCleanup(detour.stop)
+        return d
+
+    def joue(self, code, sortie):
+        d = self.atelier(code, sortie)
+        etape = B.Etape("une-cible", (), "~1 s", False, True)
+        souci = B.joue_une_etape(
+            "/f/moteur", {}, etape, "env", "", dire=lambda *a: None
+        )
+        return souci, os.path.join(d, "journal", "env-une-cible.log")
+
+    def test_a_green_step_leaves_its_output(self):
+        """LA PROPRIÉTÉ, et c'est celle qui manquait : sans elle, répondre à
+        « qu'a fait cette étape » coûte une boucle d'une heure."""
+        souci, chemin = self.joue(0, "ce que le moteur a dit")
+        self.assertEqual("", souci)
+        self.assertTrue(os.path.exists(chemin))
+        with open(chemin, encoding="utf-8") as lu:
+            self.assertIn("ce que le moteur a dit", lu.read())
+
+    def test_a_red_step_leaves_it_too(self):
+        """Le contrôle positif de l'épreuve précédente : un dépôt qui
+        n'écrirait que sur échec la passerait à l'envers."""
+        souci, chemin = self.joue(2, "fatal: [un-hote]: FAILED! => la raison")
+        self.assertIn("la raison", souci)
+        self.assertTrue(os.path.exists(chemin))
+
+
 if __name__ == "__main__":
     unittest.main()
