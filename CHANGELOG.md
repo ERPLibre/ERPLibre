@@ -228,6 +228,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Run › Choose your database opens nothing when no database is chosen — [0], no database, or PostgreSQL not answering — instead of starting Odoo and its web login on a database named False
 - Execute › Database › Create backup makes no backup when no database is chosen — [0], no database, or PostgreSQL not answering — instead of stopping TODO on an error, or backing up a database named False under the name typed
 - Execute › Database › Download database checks the archive where it wrote it, at the path typed, instead of reading the default path and reporting a good download as failed
+- Execute › Database › Download database: a number it lists picks that remote database, instead of downloading a database named by the number; any other text is still the name typed
 
 ## Removed
 

@@ -363,6 +363,13 @@ class DatabaseManager:
                 for index, output in enumerate(output_lines):
                     print(f"{index + 1} - {output}")
                 database_name = input("Select id of database :").strip()
+                # Un numéro affiché choisit sa base ; tout autre texte est
+                # le nom tapé.
+                shown = {
+                    str(n): name.strip()
+                    for n, name in enumerate(output_lines, 1)
+                }
+                database_name = shown.get(database_name, database_name)
             elif len(output_lines) == 1:
                 database_name = output_lines[0].strip()
             else:

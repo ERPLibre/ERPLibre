@@ -1023,6 +1023,18 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
         self.assertEqual(done, (0, "forged.zip", "forged_one"))
         self.assertEqual(read, ["forged.zip"])
 
+    def test_a_shown_number_picks_its_database(self):
+        # « 2 » est le numéro affiché de forged_two ; « 02 » n'en est pas
+        # un, et reste, comme tout autre texte, le nom tapé.
+        listed = ["forged_one", "forged_two"]
+        for typed, name in (
+            ("2", "forged_two"),
+            ("02", "02"),
+            ("forged_other", "forged_other"),
+        ):
+            done, _ = self.download(["forged", typed, ""], listed)
+            self.assertEqual(done[2], name, typed)
+
 
 class TestModuleLevelAbortExit(unittest.TestCase):
     """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
