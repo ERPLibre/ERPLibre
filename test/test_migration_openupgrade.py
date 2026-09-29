@@ -241,5 +241,24 @@ class TestLaBasculeSeRefaitALaReprise(unittest.TestCase):
         )
 
 
+class TestUnModuleDejaRetireNEstPlusPropose(unittest.TestCase):
+    """La liste d'un palier hérite du précédent, pas de la base."""
+
+    def filtrer(self, presents, manquants):
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.still_installed = lambda base, lst: presents
+        return upgrade.missing_still_in_base("base", manquants)
+
+    def test_un_module_purge_de_la_base_disparait(self):
+        self.assertEqual(
+            ["vieux_oca"], self.filtrer(["vieux_oca"], ["edi", "vieux_oca"])
+        )
+
+    def test_une_base_muette_garde_toute_la_liste(self):
+        self.assertEqual(
+            ["edi", "vieux_oca"], self.filtrer(None, ["edi", "vieux_oca"])
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
