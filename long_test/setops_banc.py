@@ -169,6 +169,12 @@ GENRES = (VM, SVI, PONT, API, LIEN, ECO, UNDERLAY, CLE)
 # un nom long oblige à regarder ce qu'on détruit.
 INSTANCE = "INSTANCE"
 
+# LA MARQUE D'UN NOM QU'ON NE CONNAÎT QU'APRÈS AVOIR DEMANDÉ. Le moteur dérive
+# lui-même le nom court de l'écosystème monté et refuse tout autre ; le banc le
+# LUI demande, et `etapes_resolues` remplace cette marque par ce qu'il a dit.
+# Une valeur écrite ici recomposerait sa règle.
+NOM_MONTE = "<nom monté>"
+
 
 class Etape(NamedTuple):
     """Une étape de la boucle : la cible du moteur, ses variables, sa durée.
@@ -203,7 +209,7 @@ ETAPES_BOUCLE = (
     Etape("instancier", (), "~5 s", False, True),
     Etape("instancier-appliquer", (("FORCE", "1"),), "~5 s", False, True),
     Etape("reconstruire", (), "~45 min", True, False),
-    Etape("raser", ((INSTANCE, ECOSYSTEME),), "~2 min", True, False),
+    Etape("raser", ((INSTANCE, NOM_MONTE),), "~2 min", True, False),
 )
 
 
@@ -1862,6 +1868,77 @@ def amorcage_du_plan(moteur, instance):
     return lit_amorcage(vu.sortie) if vu.code == 0 else None
 
 
+CIBLE_NOM_MONTE = (
+    "import sys; sys.path.insert(0, 'scripts'); "
+    "from raser import instance_active; print(instance_active()[1])"
+)
+
+# CE QUI PEUT VOYAGER EN VARIABLE DE `make` SANS SE FAIRE RECOUPER : un mot, et
+# rien qu'un shell interprète. La CASSE n'est pas gardée — le moteur minuscule
+# lui-même ce qu'il reçoit, et refuser une majuscule ferait buter le banc sur un
+# changement amont sans danger. Ce qui est gardé est le blanc et le
+# métacaractère, qui eux transforment la commande jouée.
+FORME_NOM_MONTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def lit_nom_monte(sortie):
+    """Le nom court que `sortie` porte, ou « ».
+
+    UNE SEULE LIGNE, ET SA FORME EST VÉRIFIÉE. Ce nom part en variable de `make`
+    : une valeur porteuse d'un blanc ou d'un métacaractère y serait recoupée, et
+    la cible s'en plaindrait sans dire d'où vient le mot de trop.
+    """
+    lignes = [l.strip() for l in (sortie or "").splitlines() if l.strip()]
+    if len(lignes) != 1 or not FORME_NOM_MONTE.match(lignes[0]):
+        return ""
+    return lignes[0]
+
+
+def nom_monte_du_moteur(moteur, instance):
+    """Le nom court que le moteur EXIGE pour raser `instance`. Ou « ».
+
+    DEMANDÉ À SA FONCTION, jamais recomposé. Le moteur dérive ce nom du dossier
+    monté — préfixe retiré, minuscules — et REFUSE d'en raser un autre, parce
+    que taper le nom est ce qui distingue une grappe jetable d'une production.
+    Recopier sa règle ici la ferait diverger le jour où elle change, et le refus
+    qui s'ensuit nomme ce qu'il a reçu sans dire qui l'a fabriqué.
+
+    LU AVANT QUE LE LIEN SOIT POSÉ, comme l'amorçage : `SETOPS_INSTANCE` suffit
+    au lecteur d'instance du moteur.
+    """
+    if not (moteur or "").strip() or not (instance or "").strip():
+        return ""
+    vu = runner_du_banc().jouer(
+        ("python3", "-B", "-c", CIBLE_NOM_MONTE),
+        env=dict(runner_du_banc().base(), SETOPS_INSTANCE=instance),
+        cwd=moteur,
+        fusionner=False,
+        delai=60,
+    )
+    return lit_nom_monte(vu.sortie) if vu.code == 0 else ""
+
+
+def etapes_resolues(etapes, nom):
+    """`etapes`, la marque du nom monté remplacée par `nom`. Ou () sans nom.
+
+    () REFUSE LA BOUCLE ENTIÈRE, et c'est voulu : jouer les étapes qui précèdent
+    pour buter sur celle qui porte la marque bâtirait une flotte que le banc ne
+    saurait plus raser.
+    """
+    if not (nom or "").strip():
+        return ()
+    court = nom.strip()
+    return tuple(
+        etape._replace(
+            variables=tuple(
+                (cle, court if valeur == NOM_MONTE else valeur)
+                for cle, valeur in etape.variables
+            )
+        )
+        for etape in etapes or ()
+    )
+
+
 def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     """Pose les deux dépôts du banc et les deux liens du moteur. Rend un `Montage`.
 
@@ -3050,7 +3127,19 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
     if passe == PASSE_ENV:
         env = dict(env, **environnement_api(mesures.adresse_api, secret))
 
-    for etape in (e for e in ETAPES_BOUCLE if not e.confirmer):
+    # LE NOM AVANT LA PREMIÈRE ÉTAPE. `raser` ferme la boucle et exige le nom
+    # monté ; le demander seulement à son tour ferait bâtir une flotte avant de
+    # découvrir qu'on ne sait pas la défaire.
+    chemins = chemins_du_banc(moteur)
+    if chemins is None:
+        return "le moteur n'a pas de dossier frère où vivent ses dépôts"
+    etapes = etapes_resolues(
+        ETAPES_BOUCLE, nom_monte_du_moteur(moteur, chemins[2])
+    )
+    if not etapes:
+        return "le moteur n'a pas dit le nom de l'écosystème monté"
+
+    for etape in (e for e in etapes if not e.confirmer):
         souci = joue_une_etape(moteur, env, etape, dire)
         if souci:
             return souci
@@ -3059,7 +3148,7 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
     if souci:
         return souci
 
-    for etape in (e for e in ETAPES_BOUCLE if e.confirmer):
+    for etape in (e for e in etapes if e.confirmer):
         souci = joue_une_etape(moteur, env, etape, dire)
         if souci:
             return souci
