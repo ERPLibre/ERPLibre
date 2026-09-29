@@ -361,6 +361,20 @@ keeps, trimmed from the head since the message of such an object comes early.
 Where there is no such line — a script's refusal — the tail is the right
 fallback, and that is what is kept.
 
+**Every step leaves its output, green or red.** A green step says nothing of
+itself, and what it did exists only at the moment it does it: keeping only the
+failing output means replaying an hour-long loop to answer "what did it lay
+down, exactly". The bench therefore drops one file per pass and target under
+`~/.erplibre/longtest/journal/`, overwritten each run — the count of files
+follows the plan, never the count of sessions, and a journal that piles up ends
+up unread. It says where before starting, not after, since the loop lasts an
+hour. The file is `0600` inside a `0700` folder and the mode is RE-IMPOSED on
+every write, because the mode protects what the bench could not name: it knows
+only the secrets IT laid down, and a list of values to strip is incomplete by
+construction. The token it does know is stripped as well — the two defences add
+up, they do not replace each other. A lost journal does not lose the run: it is
+said, and the step goes on.
+
 **What is posed today are the DECISIONS, and they are all guarded** —
 prerequisites said before anything is created, the terrain, a free bridge, the
 shape of the token, the order of the undoing, the footprint. The verbs that
@@ -890,6 +904,21 @@ Ansible imprime la sienne sur une ligne `fatal:`, et c'est elle que le banc
 garde, coupée par la tête puisque le message d'un tel objet vient tôt. Là où il
 n'y a pas de telle ligne — le refus d'un script — la queue est le bon repli, et
 c'est elle qui est gardée.
+
+**Chaque étape laisse sa sortie, verte ou rouge.** Une étape verte ne dit rien
+d'elle-même, et ce qu'elle a fait n'existe qu'au moment où elle le fait : garder
+la sortie du seul échec oblige à rejouer une boucle d'une heure pour répondre à
+« qu'a-t-elle posé, au juste ». Le banc dépose donc un fichier par passe et par
+cible sous `~/.erplibre/longtest/journal/`, écrasé à chaque lancement — le
+nombre de fichiers suit le plan, jamais le nombre de séances, et un journal qui
+s'accumule finit par n'être plus lu. Il dit où AVANT de partir, pas après,
+puisque la boucle dure une heure. Le fichier est en `0600` dans un dossier en
+`0700`, et le mode est RÉIMPOSÉ à chaque écriture, parce que le mode protège ce
+que le banc n'a pas su nommer : il ne connaît que les secrets QU'IL a posés, et
+une liste de valeurs à retirer est par construction incomplète. Le jeton qu'il
+connaît est retiré aussi — les deux défenses se cumulent, elles ne se
+remplacent pas. Un journal perdu ne perd pas le lancement : on le dit, et
+l'étape continue.
 
 **Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
 gardées** — préalables dits avant toute création, terrain, pont libre, forme du

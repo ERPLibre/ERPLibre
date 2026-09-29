@@ -370,6 +370,21 @@ garde, coupée par la tête puisque le message d'un tel objet vient tôt. Là o�
 n'y a pas de telle ligne — le refus d'un script — la queue est le bon repli, et
 c'est elle qui est gardée.
 
+**Chaque étape laisse sa sortie, verte ou rouge.** Une étape verte ne dit rien
+d'elle-même, et ce qu'elle a fait n'existe qu'au moment où elle le fait : garder
+la sortie du seul échec oblige à rejouer une boucle d'une heure pour répondre à
+« qu'a-t-elle posé, au juste ». Le banc dépose donc un fichier par passe et par
+cible sous `~/.erplibre/longtest/journal/`, écrasé à chaque lancement — le
+nombre de fichiers suit le plan, jamais le nombre de séances, et un journal qui
+s'accumule finit par n'être plus lu. Il dit où AVANT de partir, pas après,
+puisque la boucle dure une heure. Le fichier est en `0600` dans un dossier en
+`0700`, et le mode est RÉIMPOSÉ à chaque écriture, parce que le mode protège ce
+que le banc n'a pas su nommer : il ne connaît que les secrets QU'IL a posés, et
+une liste de valeurs à retirer est par construction incomplète. Le jeton qu'il
+connaît est retiré aussi — les deux défenses se cumulent, elles ne se
+remplacent pas. Un journal perdu ne perd pas le lancement : on le dit, et
+l'étape continue.
+
 **Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
 gardées** — préalables dits avant toute création, terrain, pont libre, forme du
 jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
