@@ -3499,5 +3499,140 @@ class TestLesNomsDeVouteSontCeuxDuMoteur(unittest.TestCase):
                 self.assertIn(nom, lus)
 
 
+class TestLePontNeSeRetirePasSousUneVmQuiTourne(unittest.TestCase):
+    """Le tap d'une VM en marche est détruit avec son pont, et rien ne le recrée
+    tant qu'elle vit : elle reste « en marche » et définitivement injoignable.
+
+    Le lancement suivant attend alors sa flotte dix minutes et refuse en LA
+    nommant, sans un mot du pont qu'on lui a retiré. `--detruire` refuse donc en
+    bloc, avant tout geste — la boucle qui suit continue sur un souci, et
+    refuser au seul pont laisserait retirer les dépôts derrière lui, avec eux le
+    moyen de raser la flotte que le refus vient de nommer."""
+
+    def test_a_bridge_carrying_nothing_refuses_nothing(self):
+        """Le contrôle positif : sans lui, un refus systématique passerait
+        chacune des épreuves ci-dessous."""
+        self.assertEqual("", B.refus_du_pont("vmbr9", ()))
+
+    def test_a_running_stranger_is_named_one_by_one(self):
+        """Le refus NOMME chaque VM : « deux VM bloquent » envoie l'opérateur
+        les chercher dans une liste où le gabarit figure aussi."""
+        refus = B.refus_du_pont("vmbr9", (("101", "a-01"), ("102", "b-01")))
+        for morceau in ("101", "a-01", "102", "b-01", "vmbr9"):
+            with self.subTest(morceau=morceau):
+                self.assertIn(morceau, refus)
+
+    def test_the_refusal_carries_the_remedy(self):
+        """Nommer ce qui bloque sans dire par quel geste s'en défaire laisse
+        l'opérateur devant un mur."""
+        refus = B.refus_du_pont("vmbr9", (("101", "a-01"),))
+        self.assertIn("raser", refus)
+
+    def test_what_the_footprint_names_does_not_block(self):
+        """LA PROPRIÉTÉ : seules les ÉTRANGÈRES bloquent. Les siennes sont
+        nommées par l'empreinte et partent AVANT le pont ; les compter ferait
+        refuser un démontage que le banc sait mener jusqu'au bout."""
+        vivantes = (("101", "a-01"), ("102", "b-01"))
+        self.assertEqual(
+            "", B.refus_du_pont("vmbr9", vivantes, {"101", "102"})
+        )
+        self.assertIn("102", B.refus_du_pont("vmbr9", vivantes, {"101"}))
+
+    def test_not_knowing_refuses_too(self):
+        """Fermé par défaut : un pont dont on ignore les locataires se traite
+        comme un pont qui en porte. Le refus nomme le pont, faute de pouvoir
+        nommer ce qui y tient."""
+        refus = B.refus_du_pont("vmbr9", None)
+        self.assertTrue(refus)
+        self.assertIn("vmbr9", refus)
+
+    def test_no_bridge_blocks_nothing(self):
+        """Une empreinte sans pont n'a pas de pont à retirer : refuser là
+        empêcherait de défaire une pose interrompue avant lui."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.refus_du_pont(vide, None))
+
+
+class TestLaLectureDesLocatairesDUnPont(unittest.TestCase):
+    """Ce que le terrain répond quand on lui demande qui tient à un pont."""
+
+    def test_an_empty_answer_names_nobody(self):
+        """Le cas NORMAL : le pont est libre. Le confondre avec « pas su lire »
+        ferait refuser tout démontage d'un pont vide."""
+        for vide in ("", "\n", None):
+            with self.subTest(vide=vide):
+                self.assertEqual((), B.lit_vms_du_pont(vide))
+
+    def test_each_line_yields_its_vmid_and_name(self):
+        """Le contrôle positif : sans lui, un lecteur qui refuserait toujours
+        passerait l'épreuve de la ligne difforme."""
+        self.assertEqual(
+            (("101", "a-01"), ("9000", "un-gabarit")),
+            B.lit_vms_du_pont("101 a-01\n9000 un-gabarit\n"),
+        )
+
+    def test_a_name_with_spaces_stays_whole(self):
+        """La coupure se fait au PREMIER blanc : un nom en deux mots est un nom,
+        et le tronquer ferait échouer l'appariement qui autorise l'effacement."""
+        self.assertEqual(
+            (("101", "un nom en trois mots"),),
+            B.lit_vms_du_pont("101 un nom en trois mots"),
+        )
+
+    def test_one_malformed_line_refuses_the_whole_read(self):
+        """Fermé par défaut : un pont dont on lit mal les locataires se traite
+        comme un pont qui en porte. Rendre les lignes comprises laisserait
+        retirer le pont sous celle qu'on n'a pas su lire."""
+        for difforme in ("pas-un-vmid un-nom", "101", "101 a-01\nseul"):
+            with self.subTest(difforme=difforme):
+                self.assertIsNone(B.lit_vms_du_pont(difforme))
+
+
+class TestLaSondeDesLocatairesDUnPont(unittest.TestCase):
+    """La commande qui demande au terrain qui tient à un pont."""
+
+    def joue(self, *suite):
+        restes = list(suite)
+        patch = mock.patch.object(B, "joue_sur", lambda *a, **k: restes.pop(0))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_no_bridge_asks_nothing(self):
+        """On n'interroge pas le terrain sur un pont qu'on n'a pas."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual([], B.cmds_vms_vivantes_du_pont(vide))
+
+    def test_the_bridge_name_is_quoted(self):
+        """Un nom porteur d'un blanc se scinderait en deux mots du shell, et la
+        commande interrogerait un pont que personne n'a nommé."""
+        cmd = B.cmds_vms_vivantes_du_pont("vm br9")[0]
+        self.assertIn("'vm br9'", cmd)
+
+    def test_a_refused_probe_concludes_nothing(self):
+        """LE CAS QUI TRANCHE. Une commande en échec imprime parfois quelque
+        chose de lisible. Juger sur sa sortie rendrait « aucun locataire » tiré
+        d'un refus, et le pont partirait sous la flotte."""
+        self.joue(B.Fait(1, "", 1))
+        self.assertIsNone(
+            B.vms_vivantes_du_pont("un-terrain", "vmbr9", B.ELEVE)
+        )
+
+    def test_an_answered_probe_names_what_it_read(self):
+        """Le contrôle positif : sans lui, une sonde qui rendrait toujours None
+        passerait l'épreuve du refus."""
+        self.joue(B.Fait(0, "101 a-01\n", 1))
+        self.assertEqual(
+            (("101", "a-01"),),
+            B.vms_vivantes_du_pont("un-terrain", "vmbr9", B.ELEVE),
+        )
+
+    def test_no_bridge_needs_no_terrain(self):
+        """Sans pont, rien n'est joué : la sonde ne demande pas au terrain de
+        répondre sur ce qui n'existe pas."""
+        self.assertEqual((), B.vms_vivantes_du_pont("un-terrain", "", B.ELEVE))
+
+
 if __name__ == "__main__":
     unittest.main()
