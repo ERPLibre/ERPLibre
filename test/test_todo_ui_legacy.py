@@ -135,7 +135,7 @@ RAW_CALLS = {
     "script/todo/kdbx_manager.py": 1,
     "script/todo/longtest_menu.py": 8,
     "script/todo/mail/menu.py": 20,
-    "script/todo/proxmox_menu.py": 23,
+    "script/todo/proxmox_menu.py": 22,
     "script/todo/qemu_access.py": 14,
     "script/todo/qemu_cache_menu.py": 18,
     "script/todo/qemu_deploy.py": 31,

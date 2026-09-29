@@ -761,14 +761,15 @@ class TestLeMenu(unittest.TestCase):
     def test_every_qemu_entry_has_its_proxmox_counterpart(self):
         """L'équivalent des dix-sept commandes, plus le choix de l'hôte.
 
-        Le menu vit dans son propre fichier : la cohérence numéro/dispatch,
-        elle, est vérifiée par test_todo_menu.py.
+        Le menu est déclaré au registre (PROXMOX, `menus/proxmox.py`) : ses
+        dix-huit entrées fixes, avant celles de `proxmox_from_makefile` ; où
+        mène chacune, test_todo_menu.py le vérifie.
         """
-        src = open("script/todo/proxmox_menu.py", encoding="utf-8").read()
-        debut = src.index("    def prompt_execute_proxmox(self):")
-        bloc = src[debut : src.index("    def _pve_fetch_image(self):")]
-        for n in range(1, 19):
-            self.assertIn(f'elif status == "{n}":', bloc, f"entrée {n}")
+        from script.todo.menus import proxmox
+        from script.todo.ui.registry import Entry
+
+        entrees = [e for e in proxmox.PROXMOX.entries if isinstance(e, Entry)]
+        self.assertEqual(len(entrees), 18)
 
     def test_the_script_is_valid_python(self):
         res = subprocess.run(

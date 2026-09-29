@@ -4,13 +4,9 @@
 
 """Les menus de TODO : les numéros affichés mènent-ils où ils le disent ?
 
-Un menu écrit à la main l'est deux fois — une liste d'entrées que
-`fill_help_info` numérote, et une chaîne d'`elif status == "7"` qui
-dispatche. Rien ne les relie : insérer une entrée au milieu oblige à décaler
-les deux à la main, et une seule erreur envoie l'utilisateur dans le mauvais
-écran sans que rien ne proteste. `MenuCoherence` relit les deux et les
-apparie. Un menu déclaré au registre n'a qu'une liste, dont la place fait le
-numéro : `RegistryCoherence` vérifie où mène chaque entrée.
+Un menu déclaré au registre n'a qu'une liste, dont la place fait le
+numéro : `RegistryCoherence` vérifie où mène chaque entrée, par le début
+de son libellé.
 
 Ces tests ne jugent pas le contenu des menus : ajouter, retirer ou
 réordonner reste libre, tant que l'affichage et le dispatch racontent la
@@ -21,7 +17,6 @@ import ast
 import io
 import json
 import os
-import re
 import tempfile
 import unicodedata
 import unittest
@@ -34,100 +29,6 @@ from script.todo.ui.registry import Entry, FromConfig
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
-
-
-class MenuCoherence:
-    """Socle : un menu écrit en liste de dictionnaires est-il cohérent ?
-
-    Ce piège-là ne dépend pas du menu : seules les entrées
-    « prompt_description » consomment un numéro (les « section » sont des
-    titres), et le dispatch les renumérote à la main. Insérer une entrée avant
-    la dernière décale tout ce qui suit sans que rien ne proteste.
-
-    Ce socle sert les menus encore écrits à la main ; un autre n'a qu'à
-    déclarer ses quatre attributs. Un menu déclaré au registre passe à
-    `RegistryCoherence`, avec le même EXPECTED.
-
-    À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
-    « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
-    EXPECTED (où mène chaque entrée, par le début de son libellé).
-    """
-
-    SOURCE = None
-    ENTRY = ""
-    END = ""
-    EXPECTED = {}
-    MINIMUM = 10
-
-    RE_ENTRY = re.compile(
-        r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
-    )
-    # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
-    # une branche qu'un commentaire explique compte comme les autres, où
-    # que le commentaire s'écrive.
-    RE_DISPATCH_CALL = re.compile(
-        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
-        r"\s*(?:status = )?self\.(\w+)\("
-    )
-
-    def setUp(self):
-        source = self.SOURCE.read_text(encoding="utf-8")
-        start = source.index(self.ENTRY)
-        end = source.index(self.END, start)
-        self.body = source[start:end]
-        num = 0
-        self.shown = []
-        for kind, label in self.RE_ENTRY.findall(self.body):
-            if kind == "prompt_description":
-                num += 1
-                self.shown.append((num, label))
-        self.dispatch = [
-            (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
-        ]
-
-    def test_the_menu_was_actually_parsed(self):
-        """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
-        self.assertGreater(len(self.shown), self.MINIMUM)
-        self.assertEqual(len(self.shown), len(self.dispatch))
-
-    def test_numbering_is_contiguous_from_one(self):
-        self.assertEqual(
-            [n for n, _ in self.shown],
-            list(range(1, len(self.shown) + 1)),
-        )
-
-    def test_every_shown_entry_has_the_matching_dispatch(self):
-        self.assertEqual(
-            [n for n, _ in self.shown], [n for n, _ in self.dispatch]
-        )
-
-    def _key(self, label):
-        for key in self.EXPECTED:
-            if label.startswith(key):
-                return key
-        return label
-
-    def test_every_entry_reaches_the_method_it_names(self):
-        dct = dict(self.dispatch)
-        for num, label in self.shown:
-            key = self._key(label)
-            self.assertIn(
-                key,
-                self.EXPECTED,
-                f"entrée [{num}] « {label} » absente d'EXPECTED :"
-                " déclarez où elle mène",
-            )
-            atteint = dct.get(num)
-            self.assertEqual(
-                atteint,
-                self.EXPECTED[key],
-                f"[{num}] « {label} » mène à {atteint}"
-                f" au lieu de {self.EXPECTED[key]}",
-            )
-
-    def test_expected_table_has_no_stale_entry(self):
-        keys = {self._key(label) for _, label in self.shown}
-        self.assertEqual(set(self.EXPECTED) - keys, set())
 
 
 class TestLaParitéProxmox(unittest.TestCase):
@@ -159,9 +60,19 @@ class TestLaParitéProxmox(unittest.TestCase):
         )
 
     def test_the_menu_reads_its_extra_commands_from_todo_json(self):
-        self.assertIn('get_config("proxmox_from_makefile")', self.src)
-        # Et le dispatch sait les lancer, sections non comptées.
-        self.assertIn("execute_from_configuration", self.src)
+        # Les entrées de `proxmox_from_makefile` suivent le catalogue, et le
+        # navigateur les lance, sections non comptées.
+        from script.todo.menus import proxmox
+
+        last = proxmox.PROXMOX.entries[-1]
+        self.assertEqual(
+            (last.config_key, last.action, last.kwarg),
+            (
+                "proxmox_from_makefile",
+                "execute_from_configuration",
+                "instance",
+            ),
+        )
 
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
@@ -209,15 +120,13 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
 
     def test_le_menu_affiche_bien_ces_entrees(self):
         """Le tableau ci-dessus ne vaut que s'il décrit le menu RÉEL : une
-        entrée renommée le laisserait figer une icône que personne ne voit."""
-        src = (TODO_DIR / "proxmox_menu.py").read_text(encoding="utf-8")
+        entrée renommée le laisserait figer une icône que personne ne voit.
+        Le menu se lit dans sa déclaration, entrées et sections."""
+        from script.todo.menus import proxmox
+
+        cles = {getattr(item, "key", None) for item in proxmox.PROXMOX.entries}
         for cle in self.ICONES:
-            # La chaîne SEULE : une entrée longue s'écrit « t( » sur une
-            # ligne et sa chaîne sur la suivante, et chercher l'appel entier
-            # ne trouverait que les courtes.
-            self.assertIn(
-                f'"{cle}"', src, f"« {cle} » n'est plus dans le menu"
-            )
+            self.assertIn(cle, cles, f"« {cle} » n'est plus dans le menu")
 
 
 class TestLArbreDesMenus(unittest.TestCase):
@@ -391,11 +300,12 @@ class TestLArbreDesMenus(unittest.TestCase):
         # Seul un nœud qui porte "danger" ne se lance ni de la TUI ni de
         # la page web : l'effacement d'une base, les actions du serveur git
         # de production, qui tournent en root, les installateurs de shell,
-        # chaque entrée de la famille QEMU qui efface ce que la TUI ne rend
-        # pas par elle-même ou qui pose des paquets ou un service, ici ou
-        # sur un hôte distant, et la remise à zéro des préférences. Les
-        # `kwargs` distinguent les actions de production de celles du
-        # serveur local, au même chemin.
+        # chaque entrée des familles QEMU et Proxmox qui efface ce que la
+        # TUI ne rend pas par elle-même, pose des paquets ou un service, ici
+        # ou sur un hôte distant, agit en root sur un hôte, écrit la
+        # configuration SSH du compte ou crée de vraies machines, et la
+        # remise à zéro des préférences. Les `kwargs` distinguent les
+        # actions de production de celles du serveur local, au même chemin.
         dangerous = []
 
         def walk(node, path):
@@ -447,6 +357,17 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Delete VM(s)",
                         "Recreate the VM subnet (stop, redefine, restart)",
                         "Clean up QEMU (orphan files)",
+                    )
+                ],
+                *[
+                    (f"{deploy} › Proxmox VE › {label}", {})
+                    for label in (
+                        "Deploy a VM on the Proxmox host",
+                        "Download a cloud image on the host",
+                        "Resize a VM disk",
+                        "Delete VM(s)",
+                        "Clean up (orphan disks)",
+                        "SSH configuration (~/.ssh/config, ProxyJump)",
                     )
                 ],
                 (f"{deploy} › Deploy - Install NTFY notification server", {}),
@@ -960,42 +881,6 @@ class TestQemuMenu(unittest.TestCase):
         self.assertEqual(out.count("Command not found !"), 6)
 
 
-class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Proxmox : dix-huit entrées, le même piège.
-
-    Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
-    c'est le même travail, et ce code n'est écrit qu'une fois. La table
-    le dit noir sur blanc : si quelqu'un les recopiait un jour, ce test
-    montrerait que la cible a changé.
-    """
-
-    SOURCE = TODO_DIR / "proxmox_menu.py"
-    ENTRY = "def prompt_execute_proxmox(self):"
-    END = "def _pve_fetch_image(self):"
-    MINIMUM = 15
-
-    EXPECTED = {
-        "Deploy a VM on the Proxmox host": "_pve_deploy",
-        "Preview a deployment": "_pve_deploy",
-        "Download a cloud image on the host": "_pve_fetch_image",
-        "Reopen": "_qemu_reopen_monitor",
-        "List VMs (qm list)": "_pve_list",
-        "Show a VM IP address": "_pve_vm_ip",
-        "Open the console on a VM": "_pve_console",
-        "Resize a VM disk": "_pve_resize",
-        "Delete VM(s)": "_pve_delete",
-        "Clean up (orphan disks)": "_pve_cleanup",
-        "Test a VM": "_pve_test_vm",
-        "Statistics (host and VMs)": "_pve_stats",
-        "SSH configuration": "_pve_ssh_config",
-        "Remote desktop tunnel": "_qemu_tunnel_menu",
-        "Android emulator": "_qemu_emulator_menu",
-        "List available images": "_qemu_list_images",
-        "Proxmox - example sequence": "_pve_example",
-        "Change the Proxmox host": "_pve_change_host",
-    }
-
-
 class TestProxmoxMenu(unittest.TestCase):
     """Proxmox VE : dix-huit entrées fixes, puis celles de
     `proxmox_from_makefile`, dont une section, qui ne prend pas de numéro.
@@ -1227,6 +1112,52 @@ class TestQemuMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(
             (last.config_key, last.action, last.kwarg),
             ("qemu_from_makefile", "execute_from_configuration", "instance"),
+        )
+
+
+class TestProxmoxMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu Proxmox VE (PROXMOX, `menus/proxmox.py`), qu'ouvre
+    `proxmox_menu.py` : dix-huit entrées, puis celles de
+    `proxmox_from_makefile`.
+
+    Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU :
+    c'est le même travail, fait par le même code. La table le dit noir sur
+    blanc : si quelqu'un les recopiait un jour, ce test montrerait que la
+    cible a changé.
+    """
+
+    MENU = "prompt_execute_proxmox"
+
+    EXPECTED = {
+        "Deploy a VM on the Proxmox host": "_pve_deploy",
+        "Preview a deployment": "_pve_deploy",
+        "Download a cloud image on the host": "_pve_fetch_image",
+        "Reopen": "_qemu_reopen_monitor",
+        "List VMs (qm list)": "_pve_list",
+        "Show a VM IP address": "_pve_vm_ip",
+        "Open the console on a VM": "_pve_console",
+        "Resize a VM disk": "_pve_resize",
+        "Delete VM(s)": "_pve_delete",
+        "Clean up (orphan disks)": "_pve_cleanup",
+        "Test a VM": "_pve_test_vm",
+        "Statistics (host and VMs)": "_pve_stats",
+        "SSH configuration": "_pve_ssh_config",
+        "Remote desktop tunnel": "_qemu_tunnel_menu",
+        "Android emulator": "_qemu_emulator_menu",
+        "List available images": "_qemu_list_images",
+        "Proxmox - example sequence": "_pve_example",
+        "Change the Proxmox host": "_pve_change_host",
+    }
+
+    def test_the_configured_entries_follow_the_catalog(self):
+        last = self.menu.entries[-1]
+        self.assertEqual(
+            (last.config_key, last.action, last.kwarg),
+            (
+                "proxmox_from_makefile",
+                "execute_from_configuration",
+                "instance",
+            ),
         )
 
 
@@ -2691,6 +2622,7 @@ class TestMenuLabels(unittest.TestCase):
                 "_container_service",
                 "_container_compose",
                 "_container_erplibre",
+                "prompt_execute_proxmox",
             },
             set(declared),
         )

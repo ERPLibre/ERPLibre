@@ -270,6 +270,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › VPN: the technology of a profile, or the one whose client packages to install, is taken by its rank only as a number as a list writes it: « 02 » or a digit of another script matches nothing, and « ² » no longer ends TODO on a `ValueError`
 - Execute › Test › Long tests: the depth of a nested descent is read only from ASCII digits: « ² », next to « 1 » on a French keyboard, keeps the default of three instead of ending TODO on a `ValueError`, and a digit of another script no longer sets a depth the prompt did not show
 - Install speaks the chosen language: the detection line, the questions on the first system installation and on PyCharm, the three installations chosen by a letter and the state of each Odoo version were shown in English whatever the language
+- Navigation telemetry: Execute › Deploy › Proxmox VE lists the entries of `todo.json` and launches them from the TUI; neither the TUI nor the page launches any more Deploy a VM on the Proxmox host, Download a cloud image on the host, Resize a VM disk, Delete VM(s), Clean up (orphan disks) or SSH configuration, which act as root on the host or rewrite the account's SSH configuration
 
 ## Removed
 

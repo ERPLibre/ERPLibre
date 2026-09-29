@@ -19,11 +19,11 @@ import shutil
 import subprocess
 import time
 
-import click
-
 from script.todo import todo_prefs
+from script.todo.menus import proxmox as menus_proxmox
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 
 class ProxmoxMenuMixin:
@@ -2764,126 +2764,26 @@ class ProxmoxMenuMixin:
         self._pve_list()
 
     def prompt_execute_proxmox(self):
-        """Sous-menu Proxmox VE : l'équivalent du menu QEMU/KVM, mais sur un
-        hôte DISTANT. La première question est donc « lequel ? » — et la
-        réponse est retenue pour toute la session."""
-        print(f"🤖 {t('Deploy a virtual machine on Proxmox VE!')}")
+        """Sous-menu Proxmox VE (PROXMOX, `menus/proxmox.py`) : l'équivalent
+        du menu QEMU/KVM, mais sur un hôte DISTANT. La première question est
+        donc « lequel ? » — et la réponse est retenue pour toute la session.
+        Dessiné une fois, à l'entrée ; les entrées de
+        `proxmox_from_makefile` suivent le catalogue. Rend False sur [0], et
+        sans hôte."""
+        return navigate(self, menus_proxmox.PROXMOX)
+
+    def _pve_ouvre(self):
+        """Ce qui ouvre Proxmox VE : l'hôte retenu, ou celui que l'on
+        choisit. Rend {} quand il y en a un, False sinon."""
         if not self._pve_host():
             return False
-        choices = [
-            {"section": t("Deployment")},
-            {"prompt_description": t("Deploy a VM on the Proxmox host")},
-            {
-                "prompt_description": t(
-                    "Preview a deployment (dry-run, nothing sent)"
-                )
-            },
-            {"prompt_description": t("Download a cloud image on the host")},
-            {
-                "prompt_description": t(
-                    "Reopen install monitoring (last run / history)"
-                )
-            },
-            {"section": t("Manage")},
-            {"prompt_description": t("List VMs (qm list)")},
-            {"prompt_description": t("Show a VM IP address")},
-            {"prompt_description": t("Open the console on a VM")},
-            {"prompt_description": t("Resize a VM disk")},
-            {"prompt_description": t("Delete VM(s)")},
-            {"prompt_description": t("Clean up (orphan disks)")},
-            {
-                "prompt_description": t(
-                    "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {"prompt_description": t("Statistics (host and VMs)")},
-            {
-                "prompt_description": t(
-                    "SSH configuration (~/.ssh/config, ProxyJump)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Remote desktop tunnel (VNC/RDP over SSH)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Android emulator (start, tunnel, scrcpy)"
-                )
-            },
-            {"section": t("Catalog")},
-            {"prompt_description": t("List available images and their specs")},
-            {"prompt_description": t("Proxmox - example sequence (dry-run)")},
-            {"section": t("Host")},
-            {"prompt_description": t("Change the Proxmox host")},
-        ]
-        # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
-        # s'affiche à la suite et se lance par son numéro.
-        supplement = self.config_file.get_config("proxmox_from_makefile")
-        if supplement:
-            choices.extend(supplement)
-        help_info = self.fill_help_info(choices)
-        # Le numéro affiché de chaque entrée de la configuration, après les
-        # entrées fixes : seul ce numéro-là la lance. int() lirait aussi
-        # « 01 », « +19 » ou un chiffre d'une autre écriture, et lancerait
-        # comme une configuration la ligne d'une entrée fixe.
-        shown = [c for c in choices if not c.get("section")]
-        configured = [c for c in supplement or [] if not c.get("section")]
-        numbers = {
-            str(n): entry
-            for n, entry in enumerate(shown, 1)
-            if n > len(shown) - len(configured)
-        }
-        while True:
-            hote = self._pve_host(ask=False)
-            print(f"\n  {t('Proxmox host:')} {self._pve_label(hote) or '-'}")
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._pve_deploy()
-            elif status == "2":
-                self._pve_deploy(dry_run=True)
-            elif status == "3":
-                self._pve_fetch_image()
-            elif status == "4":
-                self._qemu_reopen_monitor()
-            elif status == "5":
-                self._pve_list()
-            elif status == "6":
-                self._pve_vm_ip()
-            elif status == "7":
-                self._pve_console()
-            elif status == "8":
-                self._pve_resize()
-            elif status == "9":
-                self._pve_delete()
-            elif status == "10":
-                self._pve_cleanup()
-            elif status == "11":
-                self._pve_test_vm()
-            elif status == "12":
-                self._pve_stats()
-            elif status == "13":
-                self._pve_ssh_config()
-            elif status == "14":
-                # Les VM Proxmox sont dans ~/.ssh/config (entrée 13) : le
-                # tunnel du menu QEMU les y trouve, rebond compris.
-                self._qemu_tunnel_menu()
-            elif status == "15":
-                self._qemu_emulator_menu()
-            elif status == "16":
-                self._qemu_list_images()
-            elif status == "17":
-                self._pve_example()
-            elif status == "18":
-                self._pve_change_host()
-            elif status in numbers:
-                self.execute_from_configuration(numbers[status])
-            else:
-                print(t("Command not found !"))
+        return {}
+
+    def _pve_hote_montre(self):
+        """La ligne de l'hôte retenu, relue avant chaque question du menu :
+        « Change the Proxmox host » la change sans le refermer."""
+        hote = self._pve_host(ask=False)
+        print(f"\n  {t('Proxmox host:')} {self._pve_label(hote) or '-'}")
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.
