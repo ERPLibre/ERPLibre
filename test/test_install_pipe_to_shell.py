@@ -533,6 +533,70 @@ class TestLeReplisDePyenvSeDeclenche(unittest.TestCase):
         self.assertFalse(self.trace.exists())
 
 
+class TestPython27SeCompileAvecDesSondesJustes(unittest.TestCase):
+    """CPython 2.7 se compile avec -fpermissive, et lui seul.
+
+    Sous GCC 14, les sondes de son configure qui appellent exit() sans
+    <stdlib.h> échouent : Py_UNICODE devient signé et les extensions C
+    compilées ensuite corrompent l'UTF-8. pyenv est un faux qui note le
+    PYTHON_CFLAGS qu'il reçoit ; rien n'est compilé.
+    """
+
+    LIB = RACINE / "script" / "install" / "lib_python_provider.sh"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.faux = self.dir / "bin"
+        self.faux.mkdir()
+        (self.dir / "pyenv").mkdir()
+        os.symlink(shutil.which("bash"), self.faux / "bash")
+        os.symlink(shutil.which("yes"), self.faux / "yes")
+        self.trace = self.dir / "pyenv.trace"
+        for nom, corps in (
+            ("pyenv", f'echo "$1 [$PYTHON_CFLAGS]" >> "{self.trace}"\n'),
+            ("git", ""),
+            ("gcc", ""),
+        ):
+            chemin = self.faux / nom
+            chemin.write_text("#!/bin/bash\n" + corps + "exit 1\n")
+            chemin.chmod(0o755)
+
+    def drapeaux(self, version, cflags=None):
+        env = {
+            "PATH": str(self.faux),
+            "HOME": str(self.dir),
+            "PYENV_ROOT": str(self.dir / "pyenv"),
+        }
+        if cflags is not None:
+            env["PYTHON_CFLAGS"] = cflags
+        subprocess.run(
+            [
+                str(self.faux / "bash"),
+                "-c",
+                f'source "{self.LIB}"; el_pyenv_install {version}',
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        lignes = self.trace.read_text().splitlines()
+        return [ligne for ligne in lignes if ligne.startswith("install ")]
+
+    def test_python_2_7_recoit_fpermissive(self):
+        self.assertEqual(["install [-fpermissive]"], self.drapeaux("2.7.18"))
+
+    def test_un_drapeau_deja_pose_est_garde(self):
+        self.assertEqual(
+            ["install [-O2 -fpermissive]"], self.drapeaux("2.7.18", "-O2")
+        )
+
+    def test_python_3_n_est_pas_touche(self):
+        self.assertEqual(["install []"], self.drapeaux("3.12.10"))
+
+
 class TestLeReplisDeMiseSeDeclenche(unittest.TestCase):
     """La pose de mise dans une VM, composée par l'hôte.
 
