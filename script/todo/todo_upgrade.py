@@ -1964,8 +1964,7 @@ class TodoUpgrade:
 
         # La mesure de DÉPART. Sans elle, une page qui rendait déjà 500 avant
         # la migration se lit comme un dégât de la migration, et l'on cherche
-        # des heures du côté du palier. Mesuré : deux URL cassaient avant même
-        # de commencer.
+        # des heures du côté du palier.
         # Le nettoyage AVANT la mesure : interroger les pages sur une base
         # encombrée fait chercher des pannes dans des restes, et le nettoyage
         # en répare une partie de lui-même.
@@ -2951,8 +2950,8 @@ class TodoUpgrade:
                 # masque intégralement. Les comptages disent « tout est
                 # là » — et c'est vrai. Les pages publiques répondent — et
                 # c'est vrai aussi. Pourtant plus personne n'atteint les
-                # données. Mesuré sur DMS au palier 13 : 69 fichiers et
-                # 23 Mo intacts, zéro visible, pour tous les utilisateurs.
+                # données : au palier 13, la règle globale d'OCA DMS exige
+                # un groupe d'accès que la conversion depuis MuK ne crée pas.
                 self.run_tool(
                     "check_hidden_models",
                     f"{PYTHON_BIN}"
@@ -3109,8 +3108,7 @@ class TodoUpgrade:
                     wait_status = "1"
                     break
                 # Rien à réinitialiser. Reproposer « 3 » ferait tourner
-                # en rond — mesuré : « Aucune copie COW n'a dérivé »,
-                # encore et encore, sans fin.
+                # en rond sur « Aucune copie COW n'a dérivé ».
                 defaut = ""
                 continue
             if wait_status == "6" and themes:
@@ -3166,8 +3164,8 @@ class TodoUpgrade:
         # `wait_at_error=False` est OBLIGATOIRE : pour cet outil, 1 veut
         # dire « des trouvailles », pas « échec ». Sans ce drapeau,
         # `todo_upgrade_execute` y lit une panne et rouvre SON menu
-        # d'erreur par-dessus le nôtre — mesuré : la question « Les
-        # corriger ? » n'était jamais posée et le menu tournait en rond.
+        # d'erreur par-dessus le nôtre : la question « Les corriger ? »
+        # n'est jamais posée et le menu tourne en rond.
         status, _cmd = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./{outil} -d {database}",
             wait_at_error=False,
@@ -3192,8 +3190,8 @@ class TodoUpgrade:
     def prompt_purge_dead_attachments(self, database):
         """Effacer les pièces jointes dont le champ n'existe plus.
 
-        ICI et pas entre les paliers. Mesuré : entre deux versions, deux
-        à onze champs disparaissent puis REVIENNENT — `hr.employee.phone`,
+        ICI et pas entre les paliers. Entre deux versions, des champs
+        disparaissent puis REVIENNENT — `hr.employee.phone`,
         `account.move.statement_id`. « Le champ n'existe plus » est donc
         un état transitoire tant que la migration court, et purger
         dessus, c'est trancher sur ce qui va se rétablir.
@@ -3393,8 +3391,8 @@ class TodoUpgrade:
         Odoo ne signale rien quand il ne retire rien : « --uninstall » ne
         cherche que l'état « installed » et laisse filer en silence un module
         resté en « to remove » d'une tentative précédente. Le code de sortie
-        vaut donc 0 pour une désinstallation qui n'a pas eu lieu — c'est ainsi
-        que muk_web_theme a traversé quatre paliers en étant réputé retiré.
+        vaut donc 0 pour une désinstallation qui n'a pas eu lieu, et le module
+        traverse les paliers suivants en étant réputé retiré.
 
         Rendre None, et non la liste vide, quand la base ne répond pas :
         « je ne sais pas » et « rien ne reste » appellent des suites
@@ -3950,9 +3948,9 @@ class TodoUpgrade:
 
         Deux ruptures qu'aucune autre étape ne voit : un ancrage que la
         vue héritière de la CIBLE réclame et que la copie n'a jamais eu,
-        et un `t-call` vers un gabarit que la cible ne livre plus. Mesuré
-        sur une chaîne 12 → 18 : /contact rendait 500 depuis le palier
-        14 → 15, et rien ne l'a dit avant le test de fumée final.
+        et un `t-call` vers un gabarit que la cible ne livre plus. Une
+        page qui rend 500 depuis un palier intermédiaire n'est sinon
+        signalée que par le test de fumée final.
 
         On ne neutralise pas : la copie porte une page écrite par
         quelqu'un. On répare, et le contenu reste.
@@ -3975,9 +3973,9 @@ class TodoUpgrade:
         `make_index_name` a changé de convention en 17 — `table_col_index`
         est devenu `table__col_index` — et rien ne retire le premier. Les
         deux restent, et PostgreSQL les entretient TOUS LES DEUX à chaque
-        écriture. Mesuré sur deux chaînes 12 → 18 indépendantes : 414 dans
-        l'une et 414 dans l'autre, à l'index près. Ce n'est pas un accident
-        d'exécution, c'est le chemin lui-même.
+        écriture. Deux chaînes 12 → 18 indépendantes en laissent le même
+        nombre, à l'index près : c'est le chemin qui les produit, non un
+        accident d'exécution.
 
         À partir de 17 seulement : avant, la convention n'a pas changé et
         l'outil ne trouverait rien — le lancer six fois pour rien ferait
@@ -4005,8 +4003,7 @@ class TodoUpgrade:
         `account.reconciliation_model_default_rule` seulement en 12 : ils
         naissent aujourd'hui d'un événement qu'une migration ne déclenche
         jamais. La base arrive donc en 18 sans liste de prix par défaut, et
-        cela ne se découvre qu'au premier devis. Mesuré sur deux chaînes
-        indépendantes : absent des deux.
+        cela ne se découvre qu'au premier devis.
 
         AU DERNIER PALIER seulement. L'outil charge le registre Odoo — une
         quarantaine de secondes — et seul l'état final compte : recréer la
@@ -4228,10 +4225,10 @@ class TodoUpgrade:
         lst_left = self.still_installed(database_name, lst_module_to_uninstall)
         # UN SEUL nom fautif emporte tout le lot : « --uninstall » prend
         # une liste, et Odoo annule la transaction entière au premier
-        # échec. Mesuré sur une chaîne 12 → 18 : `crm_phone` échoue sur
-        # une colonne absente de res_users et fait tomber les 22 autres
-        # avec lui — dont huit modules sans code en 13, qui sont alors
-        # montés d'un palier « installed » sans rien pour les charger.
+        # échec. Un module qui échoue — `crm_phone` sur une colonne absente
+        # de res_users — fait tomber tous les autres avec lui, et ceux qui
+        # n'ont plus de code au palier suivant y montent « installed » sans
+        # rien pour les charger.
         #
         # On reprend donc un par un : ce qui peut partir part, et l'on
         # nomme précisément ce qui résiste.
@@ -4675,10 +4672,8 @@ class TodoUpgrade:
 
         Les deux premières étapes — inspecter l'archive, la restaurer —
         tournent avant qu'on ait choisi le nom de la base. Leurs journaux
-        atterrissaient donc sous « sans-nom », c'est-à-dire hors de la
-        migration à laquelle ils appartiennent : mesuré, deux fichiers
-        invisibles depuis l'écran d'état, et l'on cherchait des logs
-        manquants qui étaient simplement à côté.
+        atterrissent donc sous « sans-nom », hors de la migration à laquelle
+        ils appartiennent et invisibles depuis son écran d'état.
 
         En AJOUT si le fichier existe déjà : une reprise peut avoir écrit
         des deux côtés, et écraser perdrait le premier passage.

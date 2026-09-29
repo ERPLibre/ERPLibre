@@ -4,19 +4,18 @@
 
 """Les modèles qui ont des données que PLUS PERSONNE ne peut voir.
 
-D'où vient ce test
-------------------
-Après une migration 12 → 18, les documents DMS avaient « disparu ». Ils
-n'avaient pas disparu : 69 fichiers et 23 Mo étaient intacts en base. Ce
-qui avait changé, c'est le modèle de sécurité — OCA DMS pose une règle
-GLOBALE sur une permission accordée par un `dms.access.group`, et la
-conversion depuis MuK n'en avait créé aucun, faute d'équivalent à
-convertir.
+Le mode de défaillance
+----------------------
+Une migration peut changer le modèle de sécurité sans toucher aux données.
+OCA DMS pose une règle GLOBALE sur une permission accordée par un
+`dms.access.group`, et la conversion depuis MuK n'en crée aucun, faute
+d'équivalent à convertir : les documents restent intacts en base, et
+personne ne les voit plus.
 
-Rien ne pouvait le voir venir. Les comptages de lignes disaient « tout est
-là », et c'était vrai. Le test de fumée ouvrait des pages publiques, et
-elles répondaient. Le trou est exactement entre les deux : des données
-présentes, et une règle qui les masque intégralement.
+Les comptages de lignes disent « tout est là », et c'est vrai. Le test de
+fumée ouvre des pages publiques, et elles répondent. Le trou est
+exactement entre les deux : des données présentes, et une règle qui les
+masque intégralement.
 
 Ce qu'on cherche
 ----------------
@@ -93,9 +92,9 @@ try:
     rapport["users"] = membres.mapped("login")
     # Les témoins ORDINAIRES : ceux qui ne sont pas administrateurs.
     # Un modèle que seuls les administrateurs peuvent lire passe au vert
-    # si tous les témoins en sont — c'est exactement la forme du bug DMS,
-    # vue d'un autre angle. Mesuré sur une base réelle : les QUATRE
-    # utilisateurs internes étaient membres de base.group_system.
+    # si tous les témoins en sont — la forme du masquage DMS, vue d'un
+    # autre angle. Une base dont TOUS les utilisateurs internes sont
+    # membres de base.group_system n'a aucun témoin ordinaire.
     rapport["ordinary"] = [
         u.login for u in membres if not u.has_group("base.group_system")
     ]
@@ -108,8 +107,8 @@ try:
             .mapped("model_id.model")
         )
         # La COUVERTURE : combien de modèles portent une règle globale,
-        # et non combien on a pu éprouver. « 45 éprouvés » sans dire
-        # « sur 125 » laisse croire à un examen complet.
+        # et non combien on a pu éprouver. « 37 éprouvés » sans dire
+        # « sur 91 » laisse croire à un examen complet.
         rapport["with_rule"] = len(vus - ATTENDUS)
         for nom in sorted(vus - ATTENDUS):
             # L'Environment d'Odoo 8 et 9 n'est pas un Mapping, sans get(),

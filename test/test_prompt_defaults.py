@@ -422,10 +422,9 @@ class TestEveryPromptAnnouncesTheCountdown(EnvCase):
 class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
     """Un `input()` nu ne sait rien du mode auto : il attend, pour toujours.
 
-    Vécu à l'échelle du fichier : deux invites avaient échappé au premier
-    passage — la prédiction COW et le choix de désinstallation — parce que
-    le garde-fou ne regardait qu'`execute_odoo_upgrade`. On regarde
-    désormais TOUTES les méthodes du chemin de migration.
+    Une invite hors d'`execute_odoo_upgrade` — la prédiction COW, le choix
+    de désinstallation — échappe à un garde-fou qui ne regarde que cette
+    méthode : il regarde donc TOUTES les méthodes du chemin de migration.
     """
 
     METHODES = (

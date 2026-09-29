@@ -240,11 +240,10 @@ class TestTheOrder(unittest.TestCase):
 
 class TestOneEntryCannotSinkThePass(unittest.TestCase):
     def test_a_healthy_category_is_purged_in_ONE_call(self):
-        # LE point du correctif. `purge()` d'un module appelle
-        # button_immediate_uninstall(), qui recharge le registre ENTIER —
-        # 5984 modules à relire. En purgeant ligne par ligne j'en faisais
-        # un rechargement PAR MODULE : mesuré, dix secondes chacun,
-        # dix-sept minutes pour neuf modules, sans rien afficher.
+        # `purge()` d'un module appelle button_immediate_uninstall(), qui
+        # recharge le registre ENTIER. Purger ligne par ligne ferait un
+        # rechargement PAR MODULE, chacun de plusieurs secondes sur une
+        # base qui porte des milliers de modules, sans rien afficher.
         journal = []
         lines = [
             FakeLine("a", journal=journal),
@@ -317,9 +316,9 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
 class TestTheReportSurvivesAnything(unittest.TestCase):
     """Sans rapport, on ne sait même pas si la base a été touchée.
 
-    Vécu : `create({})` échouait, l'erreur était notée mais la transaction
-    restait AVORTÉE. La lecture de nom suivante mourait dessus, hors de tout
-    garde, et le script entier s'arrêtait — aucun rapport, juste une trace.
+    Quand `create({})` échoue, l'erreur est notée mais la transaction reste
+    AVORTÉE. Une lecture de nom faite hors de tout garde meurt alors dessus,
+    et le script entier s'arrête — aucun rapport, juste une trace.
     """
 
     def test_reading_the_names_is_inside_the_guard(self):
@@ -369,11 +368,10 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
 class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
     """Dix-sept minutes sans une ligne, et l'on croit à une boucle infinie.
 
-    Vécu, sur test_neutralize_upgrade_16 : l'outil affichait « ⧖ Nettoyage
-    de … » puis PLUS RIEN. Le processus travaillait — zéro verrou en
-    attente, des requêtes qui changeaient à chaque instantané — mais un
-    travail qui avance et un blocage se ressemblent trait pour trait quand
-    aucun des deux ne parle. On interrompt alors une réparation à moitié
+    Un outil qui affiche « ⧖ Nettoyage de … » puis PLUS RIEN peut très bien
+    travailler — aucun verrou en attente, des requêtes qui changent à chaque
+    instantané — mais un travail qui avance et un blocage se ressemblent
+    trait pour trait quand aucun des deux ne parle. On interrompt alors une réparation à moitié
     faite, ce qui est le pire des deux mondes.
     """
 
@@ -560,16 +558,12 @@ class TestTheScriptDeclaresItsEncoding(unittest.TestCase):
 
 
 class TestTheCascadeThatKilledEverything(unittest.TestCase):
-    """Vécu, sur test_neutralize_upgrade_13 : sept catégories mortes d'une.
+    """Une catégorie en échec ne doit pas emporter les six autres.
 
-       passe 1 : 0 purgés
-    ⚠️ 0 purgés ; 7 n'ont pas pu l'être :
-       - [modules] - : savepoint "10eb6971..." does not exist
-       - [columns] - : current transaction is aborted, commands ignored
-       ... et ainsi de suite jusqu'à la dernière.
-
-    Une seule panne, six victimes. La cause n'était pas dans OCA mais chez
-    nous : on n'a jamais remis la transaction d'aplomb après l'échec.
+    Une entrée qui échoue laisse la transaction avortée ; si rien ne la
+    remet d'aplomb, chaque catégorie suivante meurt sur « savepoint does
+    not exist » ou « current transaction is aborted », et le rapport
+    annonce 0 purgé sur toute la ligne pour une seule panne.
     """
 
     def build(self):
