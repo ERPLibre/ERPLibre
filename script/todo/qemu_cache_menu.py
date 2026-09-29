@@ -2165,17 +2165,9 @@ class QemuCacheMenuMixin:
             if status == "0":
                 return False
             elif status == "1":
-                self._cache_nettoyage_regler(
-                    "EL_PURGE_AGE",
-                    t("Not served since (e.g. 90j), empty to disable"),
-                    reglage_age_valide,
-                )
+                self._cache_nettoyage_regler(cle="EL_PURGE_AGE")
             elif status == "2":
-                self._cache_nettoyage_regler(
-                    "EL_MAX_SIZE",
-                    t("Size ceiling (e.g. 50G), empty to disable"),
-                    reglage_taille_valide,
-                )
+                self._cache_nettoyage_regler(cle="EL_MAX_SIZE")
             elif status == "3":
                 self._cache_nettoyage_lancer(a_blanc=True)
             elif status == "4":
@@ -2200,9 +2192,20 @@ class QemuCacheMenuMixin:
             )
         print()
 
-    def _cache_nettoyage_regler(self, cle, invite, valide):
-        """Demande une valeur, la vérifie, montre la commande et l'écrit après
-        confirmation. Une valeur vide désactive le réglage."""
+    def _cache_nettoyage_regler(self, cle):
+        """Demande la valeur du réglage `cle`, EL_PURGE_AGE ou EL_MAX_SIZE,
+        la vérifie, montre la commande et l'écrit après confirmation. Une
+        valeur vide désactive le réglage."""
+        invite, valide = {
+            "EL_PURGE_AGE": (
+                t("Not served since (e.g. 90j), empty to disable"),
+                reglage_age_valide,
+            ),
+            "EL_MAX_SIZE": (
+                t("Size ceiling (e.g. 50G), empty to disable"),
+                reglage_taille_valide,
+            ),
+        }[cle]
         valeur = click.prompt(invite, default="", show_default=False).strip()
         if valeur and not valide(valeur):
             print(f"  ✗ {t('Unreadable value:')} {valeur}\n")

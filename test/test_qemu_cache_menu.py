@@ -1283,6 +1283,37 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
         rendu = self.ecrire("EL_MAX_SIZE=50G\n", "EL_MAX_SIZE", "")
         self.assertEqual(rendu, "EL_MAX_SIZE=\n")
 
+    def test_chaque_reglage_pose_sa_question_et_sa_lecture(self):
+        # Chaque réglage se lance seul, comme depuis la TUI de télémétrie :
+        # sa question et la lecture qui refuse une valeur viennent de sa
+        # clé. La première réponse est refusée, la seconde s'écrit.
+        from script.todo import qemu_cache_menu as menu
+        from script.todo import todo_i18n as i18n
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        faux = menu.QemuCacheMenuMixin.__new__(menu.QemuCacheMenuMixin)
+        faux.execute = mock.MagicMock()
+        for cle, question, refusee, lue in (
+            ("EL_PURGE_AGE", "Not served since", "50G", "90j"),
+            ("EL_MAX_SIZE", "Size ceiling", "90j", "50G"),
+        ):
+            with (
+                self.subTest(cle=cle),
+                mock.patch("click.prompt", side_effect=[refusee, lue]) as vu,
+                mock.patch("click.confirm", return_value=True),
+                contextlib.redirect_stdout(io.StringIO()) as sortie,
+            ):
+                faux._cache_nettoyage_regler(cle=cle)
+                faux._cache_nettoyage_regler(cle=cle)
+                self.assertIn(
+                    f"Unreadable value: {refusee}", sortie.getvalue()
+                )
+                self.assertTrue(vu.call_args.args[0].startswith(question))
+                [cmd] = faux.execute.exec_command_live.call_args.args
+                self.assertIn(f"{cle}={lue}", cmd)
+
     def test_sans_reglage_rien_n_est_lance(self):
         import contextlib
         import io
