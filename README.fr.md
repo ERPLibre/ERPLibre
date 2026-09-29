@@ -34,7 +34,7 @@ version 1.8.0.
 
 | | |
 |---|---|
-| **11** versions d'Odoo | de 10.0 à 20.0, installables côte à côte |
+| **13** versions d'Odoo | de 8.0 à 20.0, installables côte à côte |
 | **3 300+** modules | installables sur Odoo 18, issus de **137** dépôts Git |
 | **23** organisations | fournissent ces dépôts ; l'OCA en fournit à elle seule **109** |
 | **10** plateformes | distributions Linux, macOS, Windows — en amd64, arm64 et s390x |
@@ -55,7 +55,7 @@ embarquent PostgreSQL 18 et PostGIS.
 
 ### Toutes les versions d'Odoo, côte à côte
 
-Odoo 10.0 à 20.0 ont chacune leur Python et leur environnement virtuel, gérés
+Odoo 8.0 à 20.0 ont chacune leur Python et leur environnement virtuel, gérés
 par mise ou pyenv. Changez avec `make switch_odoo_18` ; les autres versions
 restent installées.
 
@@ -115,6 +115,8 @@ mesure de performance et l'exécution parallèle des tests.
 | 12.0         | 3.7.17  | Deprecated |
 | 11.0         | 3.7.17  | Upstream, deprecated |
 | 10.0         | 2.7.18  | Upstream, deprecated |
+| 9.0          | 2.7.18  | Upstream, deprecated |
+| 8.0          | 2.7.18  | Upstream, deprecated |
 
 
 Les versions **Upstream** ne portent que les dépôts d'Odoo et de l'OCA, plus
@@ -291,7 +293,7 @@ make run
 
 # Migrer une base de données entre versions d'Odoo
 
-Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 10 à 20,
+Depuis un clone neuf, TODO installe toutes les versions d'Odoo de 8 à 20,
 puis ouvre la migration de base de données. Chaque ligne `>` est une touche à
 taper, suivie d'Entrée :
 
@@ -301,7 +303,7 @@ cd ERPLibre
 make
 > 2   Installer (make installe aussi ERPLibre en local et sur le système)
 > y   Installer d'abord les dépendances système (n si c'est déjà fait)
-> w   Installer toutes les versions d'Odoo, de 10 à 20
+> w   Installer toutes les versions d'Odoo, de 8 à 20
 > 1   Exécuter
 > 1   Code
 > 7   Mise à jour
