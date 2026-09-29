@@ -159,14 +159,42 @@ switch_odoo_11_update:
 install_odoo_10:
 	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --install_dev
 
+.PHONY: install_odoo_9
+install_odoo_9:
+	./script/version/update_env_version.py --erplibre_version odoo9.0_python2.7.18 --install_dev
+
+.PHONY: install_odoo_8
+install_odoo_8:
+	./script/version/update_env_version.py --erplibre_version odoo8.0_python2.7.18 --install_dev
+
 .PHONY: switch_odoo_10
 switch_odoo_10:
 	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --switch
 	./script/make.sh config_gen_all
 
+.PHONY: switch_odoo_9
+switch_odoo_9:
+	./script/version/update_env_version.py --erplibre_version odoo9.0_python2.7.18 --switch
+	./script/make.sh config_gen_all
+
+.PHONY: switch_odoo_8
+switch_odoo_8:
+	./script/version/update_env_version.py --erplibre_version odoo8.0_python2.7.18 --switch
+	./script/make.sh config_gen_all
+
 .PHONY: switch_odoo_10_update
 switch_odoo_10_update:
 	./script/version/update_env_version.py --erplibre_version odoo10.0_python2.7.18 --switch --switch_update
+	./script/make.sh config_gen_all
+
+.PHONY: switch_odoo_9_update
+switch_odoo_9_update:
+	./script/version/update_env_version.py --erplibre_version odoo9.0_python2.7.18 --switch --switch_update
+	./script/make.sh config_gen_all
+
+.PHONY: switch_odoo_8_update
+switch_odoo_8_update:
+	./script/version/update_env_version.py --erplibre_version odoo8.0_python2.7.18 --switch --switch_update
 	./script/make.sh config_gen_all
 
 ####################
@@ -214,6 +242,8 @@ install_odoo_all_version:
 	./script/make.sh install_odoo_12
 	./script/make.sh install_odoo_11
 	./script/make.sh install_odoo_10
+	./script/make.sh install_odoo_9
+	./script/make.sh install_odoo_8
 
 .PHONY: install_odoo_all_version_dev
 install_odoo_all_version_dev:

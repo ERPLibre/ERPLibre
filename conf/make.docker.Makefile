@@ -125,9 +125,25 @@ docker_build_odoo_11_clean:
 docker_build_odoo_10:
 	./script/docker/docker_build.sh --odoo_10
 
+.PHONY: docker_build_odoo_9
+docker_build_odoo_9:
+	./script/docker/docker_build.sh --odoo_9
+
+.PHONY: docker_build_odoo_8
+docker_build_odoo_8:
+	./script/docker/docker_build.sh --odoo_8
+
 .PHONY: docker_build_odoo_10_clean
 docker_build_odoo_10_clean:
 	./script/docker/docker_build.sh --odoo_10 --no-cache
+
+.PHONY: docker_build_odoo_9_clean
+docker_build_odoo_9_clean:
+	./script/docker/docker_build.sh --odoo_9 --no-cache
+
+.PHONY: docker_build_odoo_8_clean
+docker_build_odoo_8_clean:
+	./script/docker/docker_build.sh --odoo_8 --no-cache
 
 # build docker release
 .PHONY: docker_build_release

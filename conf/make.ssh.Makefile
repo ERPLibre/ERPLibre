@@ -37,6 +37,8 @@ ssh_push:
 		--exclude='addons/' \
 		--exclude='odoo11.0/' \
 		--exclude='odoo10.0/' \
+		--exclude='odoo9.0/' \
+		--exclude='odoo8.0/' \
 		--exclude='odoo12.0/' \
 		--exclude='odoo13.0/' \
 		--exclude='odoo14.0/' \
