@@ -531,11 +531,11 @@ def _declared(node, fields):
 _TEXT_FIELDS = {
     "Menu": (
         ("name", "crumb"),
-        ("crumb", "state", "intro", "opens", "before"),
+        ("crumb", "state", "intro", "opens", "before", "asks"),
         ("mark",),
     ),
     "Section": (("key",), (), ()),
-    "Entry": (("key", "action"), ("suffix", "when"), ()),
+    "Entry": (("key", "action"), ("suffix", "when", "hotkey"), ()),
     "FromConfig": (("config_key", "action", "kwarg"), (), ()),
     "FromMethod": (("method", "action", "kwarg"), (), ()),
 }
@@ -631,7 +631,9 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     ouvre un menu de `labels` porte le nœud de `build`, dont les feuilles
     gardent leur méthode, et la TUI les lance quoi que rende la garde. Un
     `FromMethod` n'y donne aucune feuille : sa liste ne se lit qu'en
-    appelant sa méthode."""
+    appelant sa méthode. Chaque enfant d'un menu `asks` porte un `entry`
+    vide : sa question n'est pas un message `menu`, où la page web
+    chercherait l'entrée qu'elle répond."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None
@@ -674,6 +676,9 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
                         "section": section,
                     }
                 )
+    if menu.get("asks"):
+        for child in children:
+            child["entry"] = ""
     return children
 
 

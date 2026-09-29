@@ -100,6 +100,47 @@ class TestRegistry(unittest.TestCase):
         with self.assertRaises(ValueError):
             Menu("forged_menu", "Forged", [], render="twice")
 
+    def test_a_hotkey_is_a_letter_of_a_menu_that_asks(self):
+        # Une touche répond à la place d'un numéro : seul un menu `asks`,
+        # qui pose sa propre question, en montre ; un chiffre y serait pris
+        # pour le numéro d'une autre entrée, une majuscule ou une lettre
+        # d'une autre écriture ne se répondrait pas, et deux entrées d'une
+        # même touche se confondraient.
+        entries = [Entry("First", "first", hotkey="q")]
+        Menu("forged_menu", "Forged", entries, asks="forged_ask")
+        for asks, hotkeys in (
+            (None, ["q"]),
+            ("forged_ask", ["1"]),
+            ("forged_ask", ["Q"]),
+            ("forged_ask", ["qq"]),
+            ("forged_ask", ["é"]),
+            ("forged_ask", ["ق"]),
+            ("forged_ask", ["q", "q"]),
+        ):
+            with self.subTest(asks=asks, hotkeys=hotkeys):
+                with self.assertRaises(ValueError):
+                    Menu(
+                        "forged_menu",
+                        "Forged",
+                        [Entry(key, "first", hotkey=key) for key in hotkeys],
+                        asks=asks,
+                    )
+
+    def test_a_menu_that_asks_takes_no_state_nor_abort(self):
+        # `asks` pose la question à la place du navigateur : la ligne
+        # d'état et l'abandon au clavier, que lit la question du
+        # navigateur, n'y serviraient pas.
+        for extra in ({"state": "forged_state"}, {"abort_closes": True}):
+            with self.subTest(extra=extra):
+                with self.assertRaises(ValueError):
+                    Menu(
+                        "forged_menu",
+                        "Forged",
+                        [],
+                        asks="forged_ask",
+                        **extra,
+                    )
+
     def test_a_declaration_is_frozen(self):
         entry = Entry("Forged", "forged_action")
         with self.assertRaises(AttributeError):
@@ -332,6 +373,50 @@ class TestNavigator(unittest.TestCase):
             ],
         )
         self.assertEqual(len(lists), 3)
+
+    def test_a_menu_asks_its_question_through_its_method(self):
+        # La méthode `asks` reçoit les entrées montrées, par leur touche ou
+        # leur numéro, et rend la réponse : rien n'est dessiné par
+        # `fill_help_info`, rien n'est demandé à `click.prompt`, et aucune
+        # ligne vide ne suit la réponse.
+        todo, asked = FakeTodo(), []
+        answers = iter(["x", "q", "2", "0"])
+        todo.forged_ask = lambda items: asked.append(items) or next(answers)
+        todo.forged_list = lambda: [
+            {"prompt_description": "One"},
+            {"prompt_description": "Two"},
+        ]
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                Entry("Quick", "quick", hotkey="q"),
+                registry.FromMethod("forged_list", "run_element", "element"),
+                Entry("Last", "last"),
+            ],
+            asks="forged_ask",
+        )
+        back, todo, texts = self.navigate(menu, [], todo)
+        self.assertIs(back, False)
+        self.assertEqual((texts, todo.drawn), ([], []))
+        self.assertEqual(
+            asked[0],
+            [
+                {"key": "q", "label": "Quick"},
+                {"key": "1", "label": "One"},
+                {"key": "2", "label": "Two"},
+                {"key": "3", "label": "Last"},
+            ],
+        )
+        self.assertEqual(len(asked), 4)
+        self.assertEqual(
+            todo.calls,
+            [
+                ("quick", {}),
+                ("run_element", {"element": {"prompt_description": "Two"}}),
+            ],
+        )
+        self.assertEqual(self.out.getvalue(), "Command not found !\n")
 
     def test_once_draws_and_reads_once(self):
         todo = FakeTodo({"forged_list": [{"prompt_description": "One"}]})
@@ -723,6 +808,24 @@ class TestDeclaredTree(unittest.TestCase):
             ["Language", "Pick", "Forged"],
         )
 
+    def test_no_child_of_a_menu_that_asks_has_an_entry(self):
+        # La question d'un menu `asks` n'est pas un message `menu` : la
+        # page web, qui lance un nœud en répondant aux menus de son
+        # chemin, n'y trouverait pas son entrée, et n'offre pas ▶ à un
+        # nœud dont l'entrée est vide.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace("back=None", 'back=None, asks="forged_ask"')
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [n["label"] for n in configuration["children"]],
+            ["Language", "Pick", "Forged", "Forged element"],
+        )
+        self.assertEqual(
+            [n.get("entry") for n in configuration["children"]],
+            ["", "", "", ""],
+        )
+
     def test_a_menu_opened_by_another_object_has_no_crumb(self):
         # Le fil d'Ariane ne lit que les cadres de TODO : un menu qu'ouvre
         # un autre objet s'affiche sous celui qui l'appelle.
@@ -783,6 +886,10 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS.replace(
                     'FromConfig("forged_list"', 'FromMethod(["forged_list"]'
                 ),
+                FAKE_MENUS.replace("back=None", "back=None, asks=1"),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", hotkey=1, kwargs'
+                ),
             )
         ):
             with self.subTest(case=n):
@@ -833,6 +940,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "opens",
                 "before",
                 "closes_on_result",
+                "asks",
             ],
         )
         self.assertEqual(
@@ -1070,6 +1178,11 @@ class TestTodoMenuFiles(unittest.TestCase):
             owner = owners.get(menu.name, TODO)
             calls = [(menu.name, {}), (menu.state, {}), (menu.opens, {})]
             calls.append((menu.before, {}))
+            # `asks` reçoit les entrées montrées, en argument positionnel.
+            if menu.asks:
+                with self.subTest(menu=menu.name, method=menu.asks):
+                    method = getattr(owner, menu.asks)
+                    inspect.signature(method).bind(None, [])
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}

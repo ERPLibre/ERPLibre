@@ -11,12 +11,13 @@ module n'importe ni TODO ni une bibliothèque d'interface.
 
 `key` (d'une `Entry` ou d'une `Section`) et `intro` (d'un `Menu`) sont
 des clés de traduction anglaises, que `t()` traduit au rendu. `action`,
-`state`, `suffix`, `when`, `opens`, `before` et `method` sont des NOMS
-de méthodes de l'objet qui ouvre le menu, TODO ou un objet de TODO,
-jamais des fonctions. Le numéro d'une entrée est sa place parmi les
-entrées numérotées montrées : une `Section` n'en prend pas, un
+`state`, `suffix`, `when`, `opens`, `before`, `asks` et `method` sont
+des NOMS de méthodes de l'objet qui ouvre le menu, TODO ou un objet de
+TODO, jamais des fonctions. Le numéro d'une entrée est sa place parmi
+les entrées numérotées montrées : une `Section` n'en prend pas, un
 `FromConfig` ou un `FromMethod` en prend un par élément de sa liste qui
-n'est pas une section, une `Entry` dont la garde `when` rend faux aucun.
+n'est pas une section, une `Entry` dont la garde `when` rend faux aucun,
+ni une `Entry` qui répond à sa touche (`hotkey`).
 """
 
 from dataclasses import dataclass
@@ -43,7 +44,8 @@ class Entry:
     télémétrie ne lit que `danger` : le nœud d'une entrée `danger=True`
     porte "danger", et ni la TUI de télémétrie ni la page web ne le
     lancent ; le menu, lui, l'affiche et le lance comme une autre
-    entrée."""
+    entrée. `hotkey`, une lettre, répond à l'entrée à la place d'un
+    numéro, dans un menu `asks` seulement."""
 
     key: str
     action: str
@@ -54,6 +56,7 @@ class Entry:
     needs: list | None = None
     interfaces: list | None = None
     glance: bool = False
+    hotkey: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,12 @@ class Menu:
     `closes_on_result` : une entrée dont l'action rend une valeur vraie
     referme le menu, qui rend cette valeur ; une valeur fausse laisse la
     question revenir.
+    `asks` nomme la méthode qui pose la question du menu à la place de
+    `fill_help_info` et de `click.prompt` : elle reçoit les entrées
+    montrées, un dict {"key", "label"} chacune, sa touche ou son numéro et
+    son libellé, et rend la réponse, « 0 » pour [0] ; le navigateur
+    n'écrit alors ni fil d'Ariane ni ligne vide après elle, et un tel menu
+    refuse `state` et `abort_closes`, que seule sa question lirait.
     """
 
     name: str
@@ -127,7 +136,23 @@ class Menu:
     opens: str | None = None
     before: str | None = None
     closes_on_result: bool = False
+    asks: str | None = None
 
     def __post_init__(self):
         if self.render not in RENDERS:
             raise ValueError(f"render is one of {RENDERS}: {self.render!r}")
+        # Une touche remplace un numéro : un chiffre en prendrait un autre,
+        # et `fill_help_info`, qui numérote chaque entrée, ne la montre pas.
+        # C'est une lettre ASCII minuscule, propre à son entrée : une
+        # question `asks` rend la réponse en minuscules, et deux entrées
+        # d'une même touche se confondraient.
+        keys = [getattr(item, "hotkey", None) for item in self.entries]
+        keys = [key for key in keys if key]
+        if keys and not self.asks:
+            raise ValueError(f"hotkey needs asks: {keys!r}")
+        if len(set(keys)) != len(keys) or not all(
+            len(key) == 1 and key.isascii() and key.islower() for key in keys
+        ):
+            raise ValueError(f"hotkey is one lowercase letter: {keys!r}")
+        if self.asks and (self.state or self.abort_closes):
+            raise ValueError("asks takes neither state nor abort_closes")
