@@ -3227,8 +3227,10 @@ class TodoUpgrade:
 
         data_vars = {}
         exec(file_content, data_vars)
-        renamed_modules = data_vars.get("renamed_modules", {})
-        merged_modules = data_vars.get("merged_modules", {})
+        renamed_modules = dict(data_vars.get("renamed_modules", {}))
+        # Jusqu'à OpenUpgrade 10.0, merged_modules est une liste de couples
+        # (ancien, nouveau) ; un dictionnaire depuis 11.0. dict() lit les deux.
+        merged_modules = dict(data_vars.get("merged_modules", {}))
         deleted_modules = data_vars.get("deleted_modules", [])
 
         lst_index_to_delete = []

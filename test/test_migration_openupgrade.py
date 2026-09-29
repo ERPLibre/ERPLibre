@@ -139,5 +139,36 @@ class TestLArbreDOpenUpgrade(unittest.TestCase):
         )
 
 
+class TestLesModulesFusionnesSelonOpenUpgrade(unittest.TestCase):
+    """merged_modules est une liste de couples jusqu'à OpenUpgrade 10.0, un
+    dictionnaire depuis 11.0 : .get() sur la liste arrêtait la migration au
+    début du saut vers 9 ou vers 10."""
+
+    def renommer(self, apriori, modules):
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        with tempfile.TemporaryDirectory() as racine:
+            chemin = os.path.join(racine, "apriori.py")
+            with open(chemin, "w") as f:
+                f.write(apriori)
+            upgrade = TodoUpgrade.__new__(TodoUpgrade)
+            upgrade.todo_upgrade_execute = lambda *a, **k: (0, "", [chemin])
+            return sorted(upgrade.get_rename_module(list(modules), 9))
+
+    def test_une_liste_de_couples_est_lue(self):
+        apriori = (
+            "renamed_modules = {'portal_claim': 'website_crm_claim'}\n"
+            "merged_modules = [('account_chart', 'account')]\n"
+        )
+        self.assertEqual(
+            ["account", "sale", "website_crm_claim"],
+            self.renommer(apriori, ["account_chart", "portal_claim", "sale"]),
+        )
+
+    def test_un_dictionnaire_aussi(self):
+        apriori = "merged_modules = {'account_chart': 'account'}\n"
+        self.assertEqual(["account"], self.renommer(apriori, ["account_chart"]))
+
+
 if __name__ == "__main__":
     unittest.main()
