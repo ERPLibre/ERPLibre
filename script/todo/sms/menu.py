@@ -41,8 +41,8 @@ def prompt_execute_sms(todo) -> None:
 [10] {t("sms_open_tui")}
 [11] {t("sms_test_number_menu")} : {state.spec.test_number or t("sms_test_number_none")}
 [12] {t("sms_mode_menu")} ({mode} / {state.spec.transport})
-[14] {t("sms_materiel_menu")} : {t("sms_materiel_" + state.spec.materiel)}
-[13] {t("sms_reset_local") if mode == "local" else t("sms_reset")}
+[13] {t("sms_materiel_menu")} : {t("sms_materiel_" + state.spec.materiel)}
+[14] {t("sms_reset_local") if mode == "local" else t("sms_reset")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -64,9 +64,12 @@ def prompt_execute_sms(todo) -> None:
             _choose_mode(state)
             _choose_transport(spec_mod.load())
         elif status == "13":
-            _reset(todo, state)
-        elif status == "14":
             _choose_materiel(state)
+        elif status == "14":
+            # Le dernier rang, et non le treizieme : l'entree qui detruit se
+            # lit en fin de liste, ou l'on ne tombe pas dessus en visant sa
+            # voisine.
+            _reset(todo, state)
         else:
             print(t("Command not found !"))
 
