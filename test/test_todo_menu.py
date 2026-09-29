@@ -2629,6 +2629,33 @@ class TestInstallMenu(unittest.TestCase):
                 self.assertNotIn(text, french)
 
 
+class TestMainMenu(AnsweredMenu, unittest.TestCase):
+    """Le menu principal, après le logo et « Opening TODO ... », la langue
+    tenue pour choisie : chaque réponse vient d'une liste, et [0] quitte
+    TODO."""
+
+    def run_todo(self, *answers):
+        """(ce que rend `run`, ce qu'il écrit) quand il reçoit `answers`."""
+        shown = io.StringIO()
+        with (
+            patch("script.todo.todo.lang_is_configured", return_value=True),
+            patch("click.prompt", side_effect=answers),
+            redirect_stdout(shown),
+        ):
+            back = self.todo.run()
+        return back, shown.getvalue()
+
+    def test_quit_writes_nothing_after_its_answer(self):
+        # [0] referme le menu sur la ligne vide qui suit toute réponse :
+        # rien de la réponse ne s'écrit après elle.
+        from script.todo.todo_i18n import t
+
+        back, shown = self.run_todo("0")
+        self.assertIsNone(back)
+        intro = t("=> Enter your choice by number and press Enter!")
+        self.assertTrue(shown.endswith(f"🤖 {intro}\n\n"), shown[-60:])
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 

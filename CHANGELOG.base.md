@@ -424,6 +424,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: neither the TUI nor the page launches any more VPN - Connect a profile, Disconnect a profile, Delete a profile or Install the client packages, under Execute › Deploy › VPN as under Execute › Network › VPN, which act as root through sudo, erase a profile or install packages
 - Navigation telemetry: Execute › Test › Long tests lists its nine tests; the four plans (dry-run) launch from the TUI and ask what they ask in the menu, and the TUI launches neither the five that create real machines nor Undo what the descent created, which destroys them with their disks
 - Navigation telemetry: Install lists its three installations chosen by a letter, declared dangerous since they install packages: neither the TUI nor the page launches them, Install alone does; an Odoo version is still chosen in Install itself, whose list depends on the machine
+- Quitting TODO from its main menu no longer writes the « 0 » it was answered
 
 <!-- [fr] -->
 
@@ -568,6 +569,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : ni la TUI ni la page ne lancent plus VPN - Connecter un profil, Déconnecter un profil, Supprimer un profil ni Installer les paquets client, sous Exécution › Deploy › VPN comme sous Exécution › Réseau › VPN, qui agissent en root par sudo, effacent un profil ou posent des paquets
 - Télémétrie de navigation : Exécution › Test › Tests longs liste ses neuf tests ; les quatre plans (à blanc) se lancent depuis la TUI et demandent ce qu'ils demandent au menu, et la TUI ne lance ni les cinq qui créent de vraies machines, ni Défaire ce que la descente a créé, qui les détruit avec leurs disques
 - Télémétrie de navigation : Installation liste ses trois installations choisies par une lettre, déclarées dangereuses puisqu'elles posent des paquets : ni la TUI ni la page ne les lancent, Installation seule le fait ; une version d'Odoo se choisit toujours dans Installation même, dont la liste dépend de la machine
+- Quitter TODO depuis son menu principal n'écrit plus le « 0 » qu'on lui a répondu
 
 <!-- [en] -->
 ## Removed

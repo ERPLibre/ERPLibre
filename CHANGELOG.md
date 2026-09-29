@@ -274,6 +274,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: neither the TUI nor the page launches any more VPN - Connect a profile, Disconnect a profile, Delete a profile or Install the client packages, under Execute › Deploy › VPN as under Execute › Network › VPN, which act as root through sudo, erase a profile or install packages
 - Navigation telemetry: Execute › Test › Long tests lists its nine tests; the four plans (dry-run) launch from the TUI and ask what they ask in the menu, and the TUI launches neither the five that create real machines nor Undo what the descent created, which destroys them with their disks
 - Navigation telemetry: Install lists its three installations chosen by a letter, declared dangerous since they install packages: neither the TUI nor the page launches them, Install alone does; an Odoo version is still chosen in Install itself, whose list depends on the machine
+- Quitting TODO from its main menu no longer writes the « 0 » it was answered
 
 ## Removed
 

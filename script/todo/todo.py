@@ -299,9 +299,6 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
-        print(status)
-        # manipuler()
-
     def prompt_assistant(self):
         """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
         from script.todo.mail.menu import prompt_execute_mail

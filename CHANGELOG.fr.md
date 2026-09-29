@@ -274,6 +274,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : ni la TUI ni la page ne lancent plus VPN - Connecter un profil, Déconnecter un profil, Supprimer un profil ni Installer les paquets client, sous Exécution › Deploy › VPN comme sous Exécution › Réseau › VPN, qui agissent en root par sudo, effacent un profil ou posent des paquets
 - Télémétrie de navigation : Exécution › Test › Tests longs liste ses neuf tests ; les quatre plans (à blanc) se lancent depuis la TUI et demandent ce qu'ils demandent au menu, et la TUI ne lance ni les cinq qui créent de vraies machines, ni Défaire ce que la descente a créé, qui les détruit avec leurs disques
 - Télémétrie de navigation : Installation liste ses trois installations choisies par une lettre, déclarées dangereuses puisqu'elles posent des paquets : ni la TUI ni la page ne les lancent, Installation seule le fait ; une version d'Odoo se choisit toujours dans Installation même, dont la liste dépend de la machine
+- Quitter TODO depuis son menu principal n'écrit plus le « 0 » qu'on lui a répondu
 
 ## Retiré
 
