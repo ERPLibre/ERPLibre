@@ -1854,11 +1854,16 @@ def _recrit(chemin, transforme):
 # banc nomme les siennes de la même façon, et dans les deux cas c'est le PLAN qui
 # donne l'HÔTE — élargir la couverture est un mot, jamais un nom de machine.
 #
-# LE MAGASIN DE COURRIEL N'Y EST PAS, et son absence est un constat, pas un oubli :
-# son rôle se lie à un annuaire, et le modèle du moteur n'en déclare aucun.
-# L'activer ferait refuser la boucle à chaque lancement, ce qui ne se distingue
-# plus d'un banc cassé.
-APPLICATIONS_COUVERTES = ("step_ca", "powerdns", "nginx")
+# LE MAGASIN DE COURRIEL Y EST, parce que le banc POSE l'annuaire auquel il se
+# lie — voir `pose_l_annuaire`. Sans cet ajout il se déploierait vers une machine
+# qu'aucun plan ne nomme, et la passe serait verte sans que rien n'authentifie.
+APPLICATIONS_COUVERTES = (
+    "step_ca",
+    "powerdns",
+    "nginx",
+    "openldap",
+    "dovecot",
+)
 
 
 def lit_applications(chemin):
@@ -1904,6 +1909,202 @@ def hotes_couverts(chemin, applications=APPLICATIONS_COUVERTES):
         if hote and hote not in vus:
             vus.append(hote)
     return tuple(vus)
+
+
+# L'ANNUAIRE QUE LE BANC AJOUTE AU PLAN, et c'est une EXTENSION assumée.
+#
+# LE MODÈLE LIVRÉ DÉCLARE UN MAGASIN DE COURRIEL ET AUCUN ANNUAIRE. Le rôle du
+# magasin se lie à un annuaire dont le plan doit nommer l'hôte ; muet, le plan
+# laisse le rôle bâtir une URI vers une machine qui n'existe nulle part, et le
+# déploiement passe au VERT sans que rien n'authentifie jamais.
+#
+# CE N'EST DONC PLUS LE MODÈLE LIVRÉ QUE LE BANC ÉPROUVE, mais le modèle ÉTENDU :
+# un lancement vert dit que le moteur tient sur CETTE topologie, pas que le
+# modèle du dépôt est complet.
+FONCTION_ANNUAIRE = "infra-idm"
+APPLICATION_ANNUAIRE = "openldap"
+GROUPE_ANNUAIRE = "serveur_openldap"
+
+
+def hote_de_fonction(fonction):
+    """L'hôte d'une fonction, selon la convention du modèle. Ou « ».
+
+    RANG 1, comme toutes les fonctions du plan livré. Le banc suit la convention
+    plutôt que d'inventer un nom, faute de quoi son hôte se lirait comme un
+    intrus dans un inventaire dont tous les autres la respectent.
+    """
+    nu = (fonction or "").strip()
+    return f"{nu}-01" if nu else ""
+
+
+def _charge(texte):
+    """Le YAML de `texte`, ou None. LU par un analyseur, ÉCRIT à la main."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        lu = yaml.safe_load(texte or "")
+    except yaml.YAMLError:
+        return None
+    return lu if isinstance(lu, dict) else None
+
+
+def lit_fonctions(texte):
+    """Les fonctions de la nomenclature : {nom: (catégorie, rang)}. Ou None.
+
+    LUE PAR UN ANALYSEUR, ÉCRITE À LA MAIN. La lecture doit comprendre le
+    fichier ; l'écriture doit en préserver les commentaires, car réécrire la
+    nomenclature entière la ferait diverger du modèle à chaque évolution.
+
+    UNE ENTRÉE MALFORMÉE FAIT REFUSER TOUTE LA LECTURE : l'adressage d'un
+    écosystème dérive de ces deux entiers, et en deviner un poserait des
+    machines dans une zone que personne n'a choisie.
+    """
+    lu = _charge(texte)
+    brut = (lu or {}).get("fonctions")
+    if not isinstance(brut, dict) or not brut:
+        return None
+    vues = {}
+    for nom, champs in brut.items():
+        if not isinstance(champs, dict):
+            return None
+        try:
+            vues[str(nom)] = (int(champs["categorie"]), int(champs["service"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+    return vues
+
+
+def categorie_de(fonctions, fonction):
+    """La zone où vit `fonction`, ou 0. Ne lève jamais."""
+    place = (fonctions or {}).get((fonction or "").strip())
+    return place[0] if place else 0
+
+
+def fonction_de(texte, hote):
+    """La fonction que `serveurs:` donne à `hote`, ou « ». Ne lève jamais."""
+    lu = _charge(texte)
+    entree = ((lu or {}).get("serveurs") or {}).get((hote or "").strip())
+    if not isinstance(entree, dict):
+        return ""
+    return str(entree.get("fonction") or "").strip()
+
+
+def place_libre(fonctions, categorie):
+    """Le premier rang libre de `categorie`. 0 si on ne sait pas.
+
+    LE PREMIER LIBRE, et non le suivant du plus grand : l'adressage dérive du
+    rang, et sauter un trou décalerait des adresses sans raison.
+    """
+    if not fonctions or not categorie:
+        return 0
+    pris = {rang for zone, rang in fonctions.values() if zone == categorie}
+    rang = 1
+    while rang in pris:
+        rang += 1
+    return rang
+
+
+def pose_sous_cle(texte, cle, nom, valeur):
+    """`texte`, « nom: valeur » ajouté à la fin du bloc `cle:`. Ou None.
+
+    CHIRURGICAL, comme les autres transformations du plan : le bloc reçoit une
+    ligne, tout le reste du fichier est rendu tel quel, commentaires compris.
+
+    REFUSE UN NOM DÉJÀ LÀ. Deux entrées de même nom produisent un plan dont le
+    lecteur n'en garde qu'une, sans dire laquelle — et le modèle qui déclarerait
+    déjà ce service n'a pas besoin que le banc l'ajoute.
+
+    AJOUTÉ À LA FIN DU BLOC : le modèle ordonne ses entrées, et s'insérer au
+    milieu l'éloignerait du livré plus qu'il ne faut.
+    """
+    if not (texte or "") or not (cle or "").strip() or not (nom or "").strip():
+        return None
+    if not (valeur or "").strip():
+        return None
+    lignes = texte.splitlines(keepends=True)
+    debuts = [
+        i
+        for i, ligne in enumerate(lignes)
+        if re.match(rf"{re.escape(cle.strip())}\s*:", ligne)
+    ]
+    if len(debuts) != 1:
+        return None
+    if re.search(rf"^\s+{re.escape(nom.strip())}\s*:", texte, re.M):
+        return None
+    fin = debuts[0] + 1
+    while fin < len(lignes) and (
+        not lignes[fin].strip() or lignes[fin][:1].isspace()
+    ):
+        fin += 1
+    # LA LIGNE D'AVANT DOIT SE TERMINER : un fichier dont la dernière ligne n'a
+    # pas de retour verrait la nôtre s'y coller, et le plan ne se lirait plus.
+    if fin > 0 and not lignes[fin - 1].endswith("\n"):
+        lignes[fin - 1] += "\n"
+    lignes.insert(fin, f"  {nom.strip()}: {valeur.strip()}\n")
+    return "".join(lignes)
+
+
+def pose_l_annuaire(eco, hote_autorite):
+    """Ajoute l'annuaire aux trois fichiers du plan. Le souci, ou « ».
+
+    DÉRIVÉ, JAMAIS ÉCRIT. La zone est celle où vit déjà l'autorité de
+    certification, et le rang le premier libre de cette zone. Un couple écrit ici
+    poserait l'annuaire dans un réseau que personne n'a choisi — tout l'adressage
+    de l'écosystème dérive de ces deux entiers.
+
+    DÉJÀ ACTIF : cet hôte n'est pas au modèle, donc aucune activation ultérieure
+    ne le nomme, et un hôte planifié n'entre dans aucun inventaire.
+
+    LES TROIS FICHIERS OU AUCUN. Une fonction sans hôte, ou un hôte sans
+    application, laisse un plan qui se lit mais ne déploie pas ce qu'il annonce.
+    """
+    plan = os.path.join(eco, "plan")
+    try:
+        with open(
+            os.path.join(plan, "nomenclature.yml"), encoding="utf-8"
+        ) as lu:
+            nomenclature = lu.read()
+        with open(os.path.join(plan, "serveurs.yml"), encoding="utf-8") as lu:
+            serveurs = lu.read()
+    except OSError as souci:
+        return f"le plan ne s'est pas lu : {souci.strerror or souci}"
+    fonctions = lit_fonctions(nomenclature)
+    if fonctions is None:
+        return "la nomenclature du plan ne s'est pas lue"
+    zone = categorie_de(fonctions, fonction_de(serveurs, hote_autorite))
+    rang = place_libre(fonctions, zone)
+    if not zone or not rang:
+        return f"aucune place au plan pour « {FONCTION_ANNUAIRE} »"
+    hote = hote_de_fonction(FONCTION_ANNUAIRE)
+    for fichier, cle, nom, valeur in (
+        (
+            "nomenclature.yml",
+            "fonctions",
+            FONCTION_ANNUAIRE,
+            f"{{ categorie: {zone}, service: {rang} }}",
+        ),
+        (
+            "serveurs.yml",
+            "serveurs",
+            hote,
+            f"{{ fonction: {FONCTION_ANNUAIRE}, etat: actif }}",
+        ),
+        (
+            "applications.yml",
+            "applications",
+            APPLICATION_ANNUAIRE,
+            f"{{ groupe: {GROUPE_ANNUAIRE}, hote: {hote} }}",
+        ),
+    ):
+        souci = _recrit(
+            os.path.join(plan, fichier),
+            lambda t, c=cle, n=nom, v=valeur: pose_sous_cle(t, c, n, v),
+        )
+        if souci:
+            return souci
+    return ""
 
 
 def amorcage_du_plan(moteur, instance):
@@ -2082,6 +2283,12 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     # certification passe avant ce qui s'enrôle auprès d'elle, et cette
     # précédence est déclarée dans le plan. Ce que le banc couvre EN PLUS vient
     # après, sans ordre propre — `active_les_hotes` ne fait que poser un état.
+    # L'ANNUAIRE AVANT LA LECTURE DES APPLICATIONS : posé après, il n'y serait
+    # pas, et le magasin de courriel se déploierait vers une machine qu'aucun
+    # plan ne nomme — en passant au vert.
+    souci = pose_l_annuaire(eco, hotes[0])
+    if souci:
+        return pose._replace(souci=souci)
     couverts = hotes_couverts(os.path.join(eco, "plan", "applications.yml"))
     if couverts is None:
         return pose._replace(
