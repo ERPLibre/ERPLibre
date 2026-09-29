@@ -226,6 +226,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Run : seul un numéro tel qu'affiché lance une entrée, comme dans Code : « 00 », « -1 », « 01 », « 2 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la dernière entrée, une entrée comptée depuis la fin ou Choisir sa base de données, et « -9 » n'arrête plus TODO sur une erreur
 - Exécution › Run s'ouvre quand `todo.json` n'a pas de liste `instance`, avec Choisir sa base de données, et Mobile quand son répertoire existe, au lieu d'arrêter TODO sur une erreur avant son menu
 - Exécution › Run › Choisir sa base de données n'ouvre rien quand aucune base n'est choisie — [0], aucune base, ou PostgreSQL qui ne répond pas — au lieu de lancer Odoo et sa connexion web sur une base nommée False
+- Exécution › Database › Créer une sauvegarde ne sauvegarde rien quand aucune base n'est choisie — [0], aucune base, ou PostgreSQL qui ne répond pas — au lieu d'arrêter TODO sur une erreur, ou de sauvegarder une base nommée False sous le nom tapé
 
 ## Retiré
 

@@ -980,6 +980,20 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         self.assertIn("--backup", cmd)
         self.assertIn("test_db", cmd)
 
+    @patch("builtins.input")
+    def test_no_database_chosen_makes_no_backup(self, mock_input):
+        # select_database rend False sur [0], sans base, ou quand
+        # PostgreSQL ne répond pas : ni nom de sauvegarde demandé, ni
+        # commande lancée, que le nom soit vide ou non.
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager.select_database = MagicMock(return_value=False)
+        for name in ("", "forged.zip"):
+            mock_input.return_value = name
+            todo.db_manager.create_backup_from_database()
+        mock_input.assert_not_called()
+        todo.db_manager._execute.exec_command_live.assert_not_called()
+
 
 class TestModuleLevelAbortExit(unittest.TestCase):
     """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and

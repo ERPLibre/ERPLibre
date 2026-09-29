@@ -273,7 +273,12 @@ class DatabaseManager:
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
+        """Sauvegarde en .zip la base que choisit `select_database`, et
+        rien quand il n'en rend pas (False sur [0], sans base, ou quand
+        PostgreSQL ne répond pas)."""
         database_name = self.select_database()
+        if not database_name:
+            return
         backup_name = input(
             "\U0001f4ac Backup name (default = name+date.zip) : "
         )
