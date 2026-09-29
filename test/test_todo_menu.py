@@ -45,7 +45,8 @@ class MenuCoherence:
     la dernière décale tout ce qui suit sans que rien ne proteste.
 
     Ce socle sert les menus encore écrits à la main ; un autre n'a qu'à
-    déclarer ses quatre attributs.
+    déclarer ses quatre attributs. Un menu déclaré au registre passe à
+    `RegistryCoherence`, avec le même EXPECTED.
 
     À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
     « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
@@ -428,6 +429,15 @@ class TestLArbreDesMenus(unittest.TestCase):
                 (f"{git} › Install Claude Code", {}),
                 (f"{git} › Install opencode", {}),
                 (f"{deploy} › SSH › SSH - Sync files (rsync)", {}),
+                *[
+                    (f"{deploy} › QEMU/KVM › {label}", {})
+                    for label in (
+                        "Resize a VM disk",
+                        "Delete VM(s)",
+                        "Recreate the VM subnet (stop, redefine, restart)",
+                        "Clean up QEMU (orphan files)",
+                    )
+                ],
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -802,40 +812,6 @@ class TestLArbreDesMenus(unittest.TestCase):
                 inspect.signature(method).bind(None, **leaf["kwargs"])
 
 
-class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu QEMU/KVM, désormais dans script/todo/qemu_menu.py."""
-
-    SOURCE = TODO_DIR / "qemu_menu.py"
-    ENTRY = "def prompt_execute_qemu(self):"
-    END = "def _qemu_stats(self):"
-
-    # Où mène chaque entrée, par le début de son libellé. Une renumérotation ne
-    # touche PAS cette table ; ajouter une entrée l'exige, et c'est le seul
-    # moment où quelqu'un doit dire où elle mène.
-    EXPECTED = {
-        "Deploy VM(s)": "_qemu_deploy",
-        "Preview a deployment": "_qemu_deploy",
-        "Download a cloud image only": "_qemu_download_image",
-        "Reopen": "_qemu_reopen_monitor",
-        "List VMs": "_qemu_list_vms",
-        "Show a VM IP address": "_qemu_show_ip",
-        "Open the console on a VM": "_qemu_console",
-        "Resize a VM disk": "_qemu_resize_disk",
-        "Delete VM(s)": "_qemu_delete_vm",
-        "Clean up QEMU": "_qemu_cleanup",
-        "Test": "_qemu_test_vm",
-        "Statistics": "_qemu_stats",
-        "SSH configuration": "_qemu_ssh_config_menu",
-        "Remote desktop tunnel": "_qemu_tunnel_menu",
-        "Android emulator": "_qemu_emulator_menu",
-        "List available images": "_qemu_list_images",
-        "Recover files from a VM disk (libguestfs)": "_qemu_recover_files",
-        "Diagnostics (report to share)": "_qemu_diagnostics",
-        "Show the libvirt network state": "_qemu_network_status",
-        "Recreate the VM subnet": "_qemu_network_recreate",
-    }
-
-
 class TestQemuMenu(unittest.TestCase):
     """QEMU/KVM : vingt entrées fixes, puis celles de `qemu_from_makefile`,
     dont une section, qui ne prend pas de numéro.
@@ -1048,6 +1024,46 @@ class TestSshMenuNumbering(RegistryCoherence, unittest.TestCase):
         "SSH - Install systemd service": "_deploy_ssh_install_systemd",
         "SSH - Configure nginx": "_deploy_ssh_install_nginx",
     }
+
+
+class TestQemuMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu QEMU/KVM (QEMU, `menus/deploy.py`), qu'ouvre `qemu_menu.py` :
+    vingt entrées, puis celles de `qemu_from_makefile`."""
+
+    MENU = "prompt_execute_qemu"
+
+    # Où mène chaque entrée, par le début de son libellé. Une renumérotation ne
+    # touche PAS cette table ; ajouter une entrée l'exige, et c'est le seul
+    # moment où quelqu'un doit dire où elle mène.
+    EXPECTED = {
+        "Deploy VM(s)": "_qemu_deploy",
+        "Preview a deployment": "_qemu_deploy",
+        "Download a cloud image only": "_qemu_download_image",
+        "Reopen": "_qemu_reopen_monitor",
+        "List VMs": "_qemu_list_vms",
+        "Show a VM IP address": "_qemu_show_ip",
+        "Open the console on a VM": "_qemu_console",
+        "Resize a VM disk": "_qemu_resize_disk",
+        "Delete VM(s)": "_qemu_delete_vm",
+        "Clean up QEMU": "_qemu_cleanup",
+        "Test": "_qemu_test_vm",
+        "Statistics": "_qemu_stats",
+        "SSH configuration": "_qemu_ssh_config_menu",
+        "Remote desktop tunnel": "_qemu_tunnel_menu",
+        "Android emulator": "_qemu_emulator_menu",
+        "List available images": "_qemu_list_images",
+        "Recover files from a VM disk (libguestfs)": "_qemu_recover_files",
+        "Diagnostics (report to share)": "_qemu_diagnostics",
+        "Show the libvirt network state": "_qemu_network_status",
+        "Recreate the VM subnet": "_qemu_network_recreate",
+    }
+
+    def test_the_configured_entries_follow_the_catalog(self):
+        last = self.menu.entries[-1]
+        self.assertEqual(
+            (last.config_key, last.action, last.kwarg),
+            ("qemu_from_makefile", "execute_from_configuration", "instance"),
+        )
 
 
 class TestNetworkMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2378,6 +2394,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_deploy_ssh",
                 "prompt_execute_network",
                 "prompt_execute_security",
+                "prompt_execute_qemu",
             },
             set(declared),
         )

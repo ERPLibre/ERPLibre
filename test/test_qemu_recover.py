@@ -208,61 +208,59 @@ class LesDiagnostics(unittest.TestCase):
 
 class LeMenu(unittest.TestCase):
     def test_the_entry_is_wired_in_the_manage_section(self):
-        from pathlib import Path
+        from script.todo.menus import deploy as menus_deploy
+        from script.todo.ui.registry import Entry
 
-        source = Path("script/todo/qemu_menu.py").read_text(encoding="utf-8")
-        self.assertIn("Recover files from a VM disk (libguestfs)", source)
-        self.assertIn("self._qemu_recover_files()", source)
+        self.assertIn(
+            (
+                "Recover files from a VM disk (libguestfs)",
+                "_qemu_recover_files",
+            ),
+            [
+                (entry.key, entry.action)
+                for entry in menus_deploy.QEMU.entries
+                if isinstance(entry, Entry)
+            ],
+        )
 
     def test_the_config_entry_still_reaches_its_command(self):
-        """L'entrée du catalogue vient de todo.json : elle n'a pas de branche
-        « elif » et dépend du repli par indice. Insérer une entrée codée en
-        dur la décale, et un décalage manqué lancerait la mauvaise. Le numéro
-        se lit sur le menu rendu plutôt qu'écrit ici en dur."""
+        """L'entrée du catalogue vient de todo.json : son numéro suit les
+        entrées déclarées, et se lit sur le menu rendu plutôt qu'écrit ici
+        en dur. Une entrée ajoutée le décale ; le numéro affiché doit
+        toujours lancer la commande de la configuration."""
         from unittest import mock as m
 
-        from script.todo.todo_i18n import set_lang
+        from script.todo import todo_i18n
 
-        set_lang("fr")
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
         todo = TODO()
         todo._menu_header = lambda state=None: "x"
         lancees = []
-        todo.execute_from_configuration = lambda e: lancees.append(e)
+        todo.execute_from_configuration = lambda instance: lancees.append(
+            instance
+        )
         # Le numéro se DÉDUIT du menu : l'entrée de config est la dernière
         # des entrées numérotées. L'écrire en dur ferait passer le test au
         # premier réarrangement de sections, sans rien prouver.
         with (
-            m.patch("script.todo.qemu_menu.click") as click,
+            m.patch("click.prompt", side_effect=["0"]) as prompt,
             m.patch.object(todo, "_qemu_ensure_tools", return_value=True),
             m.patch("builtins.print"),
         ):
-            click.prompt.side_effect = ["0"]
             todo.prompt_execute_qemu()
-            aide = click.prompt.call_args[0][0]
+            aide = prompt.call_args[0][0]
         numeros = re.findall(r"^\[(\d+)\]", aide, re.M)
         dernier = max(int(n) for n in numeros)
         with (
-            m.patch("script.todo.qemu_menu.click") as click,
+            m.patch("click.prompt", side_effect=[str(dernier), "0"]),
             m.patch.object(todo, "_qemu_ensure_tools", return_value=True),
             m.patch("builtins.print"),
         ):
-            click.prompt.side_effect = [str(dernier), "0"]
             todo.prompt_execute_qemu()
         self.assertEqual(1, len(lancees), lancees)
         self.assertIn("dry-run", lancees[0].get("bash_command", ""))
-
-    def test_the_branches_stay_in_order_and_unique(self):
-        """Insérer une entrée décale tout ce qui suit : un numéro en double
-        rendrait une commande inatteignable."""
-        import re
-        from pathlib import Path
-
-        source = Path("script/todo/qemu_menu.py").read_text(encoding="utf-8")
-        debut = source.index("def prompt_execute_qemu")
-        corps = source[debut : source.index("\n    def ", debut + 10)]
-        nums = [int(n) for n in re.findall(r'status == "(\d+)"', corps)]
-        self.assertEqual(sorted(nums), nums, nums)
-        self.assertEqual(len(set(nums)), len(nums), nums)
 
 
 if __name__ == "__main__":

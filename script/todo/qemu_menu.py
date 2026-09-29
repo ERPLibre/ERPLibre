@@ -7,9 +7,9 @@ import os
 import shutil
 from datetime import datetime
 
-import click
-
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 
 class QemuMenuMixin:
@@ -306,141 +306,22 @@ class QemuMenuMixin:
         return False
 
     def prompt_execute_qemu(self):
-        print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
+        """Déployer et gérer des VM QEMU/KVM par libvirt (QEMU,
+        `menus/deploy.py`), dessiné une fois, à l'entrée ; les entrées de
+        `qemu_from_makefile` suivent le catalogue. Rend False sur [0], et
+        sans le script de déploiement."""
+        return navigate(self, menus_deploy.QEMU)
+
+    def _qemu_ouvre(self):
+        """Ce qui ouvre QEMU/KVM : sans le script de déploiement, le dit et
+        rend False ; sinon propose d'installer les outils de libvirt quand
+        virsh manque, et rend {}."""
         script_path = self._qemu_script_path()
         if not os.path.isfile(script_path):
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
             return False
         self._qemu_ensure_tools()
-        choices = [
-            {"section": t("Deployment")},
-            {"prompt_description": t("Deploy VM(s) (one or many)")},
-            {
-                "prompt_description": t(
-                    "Preview a deployment (dry-run, no sudo)"
-                )
-            },
-            {"prompt_description": t("Download a cloud image only")},
-            {
-                "prompt_description": t(
-                    "Reopen install monitoring (last run / history)"
-                )
-            },
-            # Douze entrées sous un seul titre ne se lisent plus : on cherche
-            # à la ligne près. Quatre intentions les séparent — vivre avec ses
-            # VM, y entrer, régler le réseau qui les porte, réparer quand ça
-            # va mal.
-            {"section": t("Manage")},
-            {"prompt_description": t("List VMs (virsh list --all)")},
-            {"prompt_description": t("Show a VM IP address")},
-            {"prompt_description": t("Open the console on a VM")},
-            {"prompt_description": t("Resize a VM disk")},
-            {"prompt_description": t("Delete VM(s)")},
-            {"section": t("VM access")},
-            {
-                "prompt_description": t(
-                    "SSH configuration (~/.ssh/config, ProxyJump)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Remote desktop tunnel (VNC/RDP through SSH)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Android emulator (start, tunnel, scrcpy)"
-                )
-            },
-            {"section": t("VM network")},
-            {"prompt_description": t("Show the libvirt network state")},
-            {
-                "prompt_description": t(
-                    "Recreate the VM subnet (stop, redefine, restart)"
-                )
-            },
-            {"section": t("Troubleshoot")},
-            {"prompt_description": t("Clean up QEMU (orphan files)")},
-            {
-                "prompt_description": t(
-                    "Recover files from a VM disk (libguestfs)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {"prompt_description": t("Diagnostics (report to share)")},
-            {"prompt_description": t("Statistics (installs, durations, VMs)")},
-            {"section": t("Catalog")},
-            {"prompt_description": t("List available images and specs")},
-        ]
-        config_entries = self.config_file.get_config("qemu_from_makefile")
-        if config_entries:
-            choices.extend(config_entries)
-        help_info = self.fill_help_info(choices)
-        # Le numéro affiché de chaque entrée de la configuration, après les
-        # entrées fixes : seul ce numéro-là la lance. int() lirait aussi
-        # « 01 », « +21 » ou un chiffre d'une autre écriture, et lancerait
-        # comme une configuration la ligne d'une entrée fixe.
-        shown = [c for c in choices if not c.get("section")]
-        configured = [c for c in config_entries or [] if not c.get("section")]
-        numbers = {
-            str(n): entry
-            for n, entry in enumerate(shown, 1)
-            if n > len(shown) - len(configured)
-        }
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._qemu_deploy(dry_run=False)
-            elif status == "2":
-                self._qemu_deploy(dry_run=True)
-            elif status == "3":
-                self._qemu_download_image()
-            elif status == "4":
-                self._qemu_reopen_monitor()
-            elif status == "5":
-                self._qemu_list_vms(ask_advanced=True)
-            elif status == "6":
-                self._qemu_show_ip()
-            elif status == "7":
-                self._qemu_console()
-            elif status == "8":
-                self._qemu_resize_disk()
-            elif status == "9":
-                self._qemu_delete_vm()
-            elif status == "10":
-                self._qemu_ssh_config_menu()
-            elif status == "11":
-                self._qemu_tunnel_menu()
-            elif status == "12":
-                self._qemu_emulator_menu()
-            elif status == "13":
-                self._qemu_network_status()
-            elif status == "14":
-                self._qemu_network_recreate()
-            elif status == "15":
-                self._qemu_cleanup()
-            elif status == "16":
-                self._qemu_recover_files()
-            elif status == "17":
-                self._qemu_test_vm()
-            elif status == "18":
-                self._qemu_diagnostics()
-            elif status == "19":
-                self._qemu_stats()
-            elif status == "20":
-                self._qemu_list_images()
-            elif status in numbers:
-                self.execute_from_configuration(numbers[status])
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.

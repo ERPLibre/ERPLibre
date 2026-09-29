@@ -142,7 +142,7 @@ RAW_CALLS = {
     "script/todo/qemu_install.py": 2,
     "script/todo/qemu_install_monitor.py": 8,
     "script/todo/qemu_manage.py": 44,
-    "script/todo/qemu_menu.py": 7,
+    "script/todo/qemu_menu.py": 6,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 7,
     "script/todo/todo.py": 105,

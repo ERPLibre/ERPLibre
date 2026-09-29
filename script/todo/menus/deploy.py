@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus de la famille QEMU, ouverts depuis Execute : Deploy et son
-sous-menu SSH, Network et Security.
+"""Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
+sous-menus SSH et QEMU/KVM, Network et Security.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
 nomme la méthode publique de celui-ci : son cadre porte le fil d'Ariane.
 """
 
-from script.todo.ui.registry import Entry, Menu, Section
+from script.todo.ui.registry import Entry, FromConfig, Menu, Section
 
 DEPLOY = Menu(
     "prompt_execute_deploy",
@@ -68,6 +68,78 @@ SSH = Menu(
         Entry("SSH - Configure nginx + SSL", "_deploy_ssh_install_nginx"),
     ],
     intro="Deploy ERPLibre to a remote host over SSH!",
+    render="once",
+)
+
+QEMU = Menu(
+    "prompt_execute_qemu",
+    "QEMU/KVM",
+    [
+        Section("Deployment"),
+        Entry(
+            "Deploy VM(s) (one or many)",
+            "_qemu_deploy",
+            kwargs={"dry_run": False},
+        ),
+        Entry(
+            "Preview a deployment (dry-run, no sudo)",
+            "_qemu_deploy",
+            kwargs={"dry_run": True},
+        ),
+        Entry("Download a cloud image only", "_qemu_download_image"),
+        Entry(
+            "Reopen install monitoring (last run / history)",
+            "_qemu_reopen_monitor",
+        ),
+        # Quatre intentions séparent les entrées de gestion : vivre avec ses
+        # VM, y entrer, régler le réseau qui les porte, réparer quand ça va
+        # mal. Une VM effacée, un disque rétréci, un réseau redéfini, des
+        # fichiers orphelins effacés ne se rattrapent pas : `danger`.
+        Section("Manage"),
+        Entry(
+            "List VMs (virsh list --all)",
+            "_qemu_list_vms",
+            kwargs={"ask_advanced": True},
+        ),
+        Entry("Show a VM IP address", "_qemu_show_ip"),
+        Entry("Open the console on a VM", "_qemu_console"),
+        Entry("Resize a VM disk", "_qemu_resize_disk", danger=True),
+        Entry("Delete VM(s)", "_qemu_delete_vm", danger=True),
+        Section("VM access"),
+        Entry(
+            "SSH configuration (~/.ssh/config, ProxyJump)",
+            "_qemu_ssh_config_menu",
+        ),
+        Entry(
+            "Remote desktop tunnel (VNC/RDP through SSH)",
+            "_qemu_tunnel_menu",
+        ),
+        Entry(
+            "Android emulator (start, tunnel, scrcpy)", "_qemu_emulator_menu"
+        ),
+        Section("VM network"),
+        Entry("Show the libvirt network state", "_qemu_network_status"),
+        Entry(
+            "Recreate the VM subnet (stop, redefine, restart)",
+            "_qemu_network_recreate",
+            danger=True,
+        ),
+        Section("Troubleshoot"),
+        Entry("Clean up QEMU (orphan files)", "_qemu_cleanup", danger=True),
+        Entry(
+            "Recover files from a VM disk (libguestfs)", "_qemu_recover_files"
+        ),
+        Entry("Test a VM (open Odoo in a CLI browser)", "_qemu_test_vm"),
+        Entry("Diagnostics (report to share)", "_qemu_diagnostics"),
+        Entry("Statistics (installs, durations, VMs)", "_qemu_stats"),
+        Section("Catalog"),
+        Entry("List available images and specs", "_qemu_list_images"),
+        FromConfig(
+            "qemu_from_makefile", "execute_from_configuration", "instance"
+        ),
+    ],
+    intro="Deploy a QEMU/KVM virtual machine (libvirt)!",
+    opens="_qemu_ouvre",
     render="once",
 )
 

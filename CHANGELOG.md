@@ -256,6 +256,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
 - A declared menu that lists entries of `todo.json` or of its private override, Execute › Code, Update, Git and Automation among them, shows a section of that list without a number, as it did, and each number now runs the entry it shows instead of the one shown before it; navigation telemetry no longer lists the section as a command
 - Navigation telemetry: the TUI no longer launches Execute › Deploy › SSH › SSH - Sync files (rsync), whose `rsync --delete` erases, on the remote host, what does not exist locally
+- Navigation telemetry: Execute › Deploy › QEMU/KVM lists the entries of `todo.json` and launches them from the TUI; the TUI no longer launches Resize a VM disk, Delete VM(s), Recreate the VM subnet or Clean up QEMU, which erase
 
 ## Removed
 
