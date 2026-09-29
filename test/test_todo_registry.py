@@ -209,6 +209,21 @@ class TestNavigator(unittest.TestCase):
         self.assertEqual(len(texts), 2)
         self.assertEqual(self.out.getvalue().count("Command not found !"), 1)
 
+    def test_a_menu_closes_on_what_an_entry_gives(self):
+        # Une action qui rend une valeur fausse laisse la question revenir ;
+        # une autre referme le menu, qui rend ce qu'elle a rendu.
+        todo = FakeTodo()
+        todo.nothing = lambda: False
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("Nothing", "nothing"), Entry("Some", "some")],
+            closes_on_result=True,
+        )
+        back, todo, texts = self.navigate(menu, ["1", "2"], todo)
+        self.assertEqual(back, "<some>")
+        self.assertEqual(len(texts), 2)
+
     def test_any_other_answer_is_not_found_and_asks_again(self):
         menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
         answers = ["2", "01", " 1", "-1", "x", "0"]
@@ -742,6 +757,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "abort_closes",
                 "opens",
                 "before",
+                "closes_on_result",
             ],
         )
         self.assertEqual(

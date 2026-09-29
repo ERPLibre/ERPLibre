@@ -92,6 +92,9 @@ class Menu:
     autre valeur, que le menu rend sans se dessiner.
     `before` nomme la méthode appelée avant chaque question, que le menu
     se redessine ou non.
+    `closes_on_result` : une entrée dont l'action rend une valeur vraie
+    referme le menu, qui rend cette valeur ; une valeur fausse laisse la
+    question revenir.
     """
 
     name: str
@@ -106,6 +109,7 @@ class Menu:
     abort_closes: bool = False
     opens: str | None = None
     before: str | None = None
+    closes_on_result: bool = False
 
     def __post_init__(self):
         if self.render not in RENDERS:

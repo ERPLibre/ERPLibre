@@ -55,7 +55,8 @@ def navigate(todo, menu):
     """Affiche `menu` pour `todo` et répond à ses entrées ; rend
     `menu.back` sur « 0 ». « N » appelle la méthode de la N-ième entrée
     numérotée avec ses kwargs, puis le menu reprend, ou rend `menu.back`
-    s'il se referme (`closes`) ; toute autre réponse dit « Command not
+    s'il se referme (`closes`), ou ce que l'action a rendu de vrai
+    (`closes_on_result`) ; toute autre réponse dit « Command not
     found ! ». L'intro, `t(menu.intro)` derrière `menu.mark`, s'affiche
     une fois, à l'entrée ; la méthode `menu.opens` s'appelle ensuite, une
     fois : un dict ouvre le menu et s'ajoute aux kwargs de chaque action,
@@ -90,9 +91,11 @@ def navigate(todo, menu):
         numbers = [str(n) for n in range(1, len(actions) + 1)]
         if status in numbers:
             method, kwargs = actions[int(status) - 1]
-            getattr(todo, method)(**kwargs, **context)
+            result = getattr(todo, method)(**kwargs, **context)
             if menu.closes:
                 return menu.back
+            if menu.closes_on_result and result:
+                return result
         else:
             print(t("Command not found !"))
         if menu.render == "each":
