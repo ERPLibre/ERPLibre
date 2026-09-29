@@ -595,7 +595,9 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+            with urllib.request.urlopen(
+                index, timeout=30
+            ) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -5060,9 +5062,13 @@ def virt_install(
         ]
     else:
         cmd.append("--import")
+    # discard=unmap : un bloc que l'invité libère (fstrim, ou btrfs monté
+    # avec discard) est rendu au qcow2, donc à l'hôte. Sans lui, le qcow2 ne
+    # fait que grossir jusqu'à sa taille virtuelle, quoi que l'invité efface,
+    # et remplit le disque de l'hôte pendant une longue installation.
     cmd += [
         "--disk",
-        f"path={disk},format=qcow2,bus=virtio",
+        f"path={disk},format=qcow2,bus=virtio,discard=unmap",
     ]
     # Le seed n'existe QUE sur la voie image cloud. Sous debian-installer, le
     # preseed voyage dans l'initrd et un second disque ne ferait qu'ajouter un
