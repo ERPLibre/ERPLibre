@@ -323,9 +323,8 @@ class TestTheMigrationUsesThatName(unittest.TestCase):
 
         source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
         fenetre = source[
-            source.index("database_name_from_file(") - 400 : source.index(
-                "database_name_from_file("
-            )
+            source.index("database_name_from_file(")
+            - 400 : source.index("database_name_from_file(")
         ]
         self.assertIn('default_database_name == "test"', fenetre)
 
@@ -541,6 +540,12 @@ class TestWhatEnterDoesIsWritten(unittest.TestCase):
         source = self.source("prompt_uninstall_missing")
         self.assertIn("Enter = 1", source)
         self.assertIn('default="1"', source)
+
+    def test_without_a_present_module_enter_uninstalls_nothing(self):
+        # [1] n'est alors pas offert : l'invite ne peut pas l'annoncer.
+        source = self.source("prompt_uninstall_missing")
+        self.assertIn("Enter = 3", source)
+        self.assertIn('default="3"', source)
 
     def test_every_default_has_a_way_to_say_no(self):
         # Un défaut qui agit sans issue n'est plus un défaut, c'est un ordre.

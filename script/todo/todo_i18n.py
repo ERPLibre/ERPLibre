@@ -9096,6 +9096,10 @@ TRANSLATIONS = {
         "fr": "Entrée = 1",
         "en": "Enter = 1",
     },
+    "Enter = 3": {
+        "fr": "Entrée = 3",
+        "en": "Enter = 3",
+    },
     "Enter = all, n = none": {
         "fr": "Entrée = tous, n = aucun",
         "en": "Enter = all, n = none",

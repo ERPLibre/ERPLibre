@@ -4158,9 +4158,16 @@ class TodoUpgrade:
             )
         print(f"    [2] {t('Try the whole list anyway (it will fail)')}")
         print(f"    [3] {t('Uninstall nothing, continue')}")
-        answer = self.ask(
-            f"💬 {t('Your choice')} ({t('Enter = 1')}) : ", default="1"
-        ).strip()
+        if lst_present:
+            answer = self.ask(
+                f"💬 {t('Your choice')} ({t('Enter = 1')}) : ", default="1"
+            )
+        else:
+            # [1] n'est pas offert : Entrée ne désinstalle rien.
+            answer = self.ask(
+                f"💬 {t('Your choice')} ({t('Enter = 3')}) : ", default="3"
+            )
+        answer = answer.strip()
         if answer == "2":
             return lst_present + lst_missing
         if answer == "3" or not lst_present:
