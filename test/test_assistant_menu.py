@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import ast
 import collections
+import io
 import os
 import subprocess
 import sys
 import unittest
+import warnings
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from script.todo.todo_i18n import t
@@ -675,6 +678,77 @@ class SessionsClaudeCode(unittest.TestCase):
             ):
                 choisies.append(todo._claude_choisir([session]))
         self.assertEqual(choisies, [session, session, *[None] * 5])
+
+
+class MenusDuLLM(unittest.TestCase):
+    """Les menus du LLM ne prennent une entrée que par son numéro tel
+    qu'affiché. Deux serveurs sont connus ; aucune sonde ne part, chaque
+    réponse vient d'une liste, et ce qu'une entrée lancerait est un
+    double."""
+
+    def setUp(self):
+        from script.todo.assistant import servers as llm_servers
+        from script.todo.todo import TODO
+
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__`.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        connus = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label=label,
+                    host=host,
+                    port=port,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+                for label, host, port in (
+                    ("Forged one", "192.0.2.27", 11434),
+                    ("Forged two", "198.51.100.5", 8080),
+                )
+            ]
+        )
+        for patcher in (
+            patch.object(llm_servers, "load", return_value=connus),
+            patch("script.todo.todo_telemetry.record"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo._llm_session = {
+            "serveur": None,
+            "sonde": [],
+            "confirmes": set(),
+            "contextes": set(),
+            "gpt": None,
+            "gpts": None,
+        }
+
+    def answered(self, method, *answers):
+        """Ce qu'écrit `method` de TODO quand il reçoit `answers`."""
+        shown = io.StringIO()
+        with patch("click.prompt", side_effect=answers):
+            with redirect_stdout(shown):
+                getattr(self.todo, method)()
+        return shown.getvalue()
+
+    def test_servers_prend_un_serveur_par_son_numero_affiche(self):
+        # « 01 », « +1 », « 1 » précédé d'un blanc ou un chiffre d'une
+        # autre écriture ne désignent aucune entrée : aucun serveur n'est
+        # pris. « 2 » prend le second.
+        for answer in ("01", "+1", " 1", "١"):
+            with self.subTest(answer=answer):
+                shown = self.answered("_llm_servers", answer, "0")
+                self.assertIn(t("Command not found !"), shown)
+                self.assertIsNone(self.todo._llm_state()["serveur"])
+        self.answered("_llm_servers", "2", "0")
+        self.assertEqual(self.todo._llm_state()["serveur"].label, "Forged two")
 
 
 class Frontiere(unittest.TestCase):
