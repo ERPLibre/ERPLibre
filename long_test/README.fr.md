@@ -361,6 +361,15 @@ Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
 `20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
 avant qu'elle mesure.
 
+**Un refus porte la CAUSE, et non la pile.** Quand un geste du moteur échoue,
+chaque niveau de `make` empile son erreur par-dessus ; garder la fin de sa
+sortie rend cette pile — « Error 2 » trois fois — et ne dit rien de la tâche qui
+a échoué, coupant la cause en deux quand elle dépasse à peine la fenêtre.
+Ansible imprime la sienne sur une ligne `fatal:`, et c'est elle que le banc
+garde, coupée par la tête puisque le message d'un tel objet vient tôt. Là où il
+n'y a pas de telle ligne — le refus d'un script — la queue est le bon repli, et
+c'est elle qui est gardée.
+
 **Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
 gardées** — préalables dits avant toute création, terrain, pont libre, forme du
 jeton, ordre de la défaite, empreinte. Les verbes qui créent exigent une grappe
