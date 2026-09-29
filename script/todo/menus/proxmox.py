@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy, VPN,
-ouvert depuis Deploy et depuis Network, et Long test, ouvert depuis Test.
+ouvert depuis Deploy et depuis Network, Long test, ouvert depuis Test, et
+Install, ouvert par le menu principal.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -12,7 +13,13 @@ une configuration globale ou crée de vraies machines porte `danger` : ni
 la TUI de télémétrie ni la page web ne la lancent, son menu seul.
 """
 
-from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+from script.todo.ui.registry import (
+    Entry,
+    FromConfig,
+    FromMethod,
+    Menu,
+    Section,
+)
 
 PROXMOX = Menu(
     "prompt_execute_proxmox",
@@ -168,4 +175,40 @@ LONGTEST = Menu(
     intro="Long tests: real VMs, hours. Not the unit suite.",
     mark="⏳",
     render="once",
+)
+
+# Install pose sa propre question (`asks`) : une touche par installation,
+# [0], puis un numéro par version d'Odoo. Il se referme après une
+# installation. Chaque installation pose des paquets : `danger`.
+INSTALL = Menu(
+    "prompt_install",
+    "Install",
+    [
+        Entry(
+            "ERPLibre only without Odoo, with the required Python",
+            "_install_run",
+            kwargs={"cmd": "./script/install/install_erplibre.sh"},
+            hotkey="q",
+            danger=True,
+        ),
+        Entry(
+            "Install all Odoo version with ERPLibre",
+            "_install_run",
+            kwargs={"cmd": "make install_odoo_all_version"},
+            hotkey="w",
+            danger=True,
+        ),
+        Entry(
+            "ERPLibre with mobile home",
+            "_install_run",
+            kwargs={"cmd": "./mobile/install_and_run.sh"},
+            hotkey="m",
+            danger=True,
+        ),
+        FromMethod("_install_versions", "_install_version", "version"),
+    ],
+    back=None,
+    closes=True,
+    opens="_install_prepare",
+    asks="_install_ask",
 )

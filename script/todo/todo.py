@@ -131,6 +131,7 @@ from script.todo.menus import deploy as menus_deploy
 from script.todo.menus import execute as menus_execute
 from script.todo.menus import git as menus_git
 from script.todo.menus import main as menus_main
+from script.todo.menus import proxmox as menus_proxmox
 from script.todo.menus import run as menus_run
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -329,6 +330,16 @@ class TODO(
         return navigate(self, menus_execute.EXECUTE)
 
     def prompt_install(self):
+        """Installer ERPLibre (INSTALL, `menus/proxmox.py`) : la première
+        installation du système et PyCharm, puis ce qu'on installe, par sa
+        touche, ou une version d'Odoo, par son numéro. Se referme après une
+        installation ; rend None."""
+        return navigate(self, menus_proxmox.INSTALL)
+
+    def _install_prepare(self):
+        """Ce qui ouvre Install : propose la première installation du
+        système, puis d'ouvrir PyCharm, quand il est là et que le projet ne
+        l'a pas encore ouvert. Rend {} : Install s'ouvre toujours."""
         print(t("Detect first installation from code source."))
 
         first_installation_input = (
@@ -377,40 +388,19 @@ class TODO(
                     new_window=True,
                 )
                 print(t("Close Pycharm once it is done"))
-        # TODO detect last version supported
-        # cmd_intern = "./script/install/install_erplibre.sh"
-        key_i = 0
-        commands_begin = {
-            "q": (
-                "q",
-                "q: "
-                + t("ERPLibre only without Odoo, with the required Python"),
-                "./script/install/install_erplibre.sh",
-            ),
-            "w": (
-                "w",
-                f"w: {t('Install all Odoo version with ERPLibre')}",
-                "make install_odoo_all_version",
-            ),
-            "m": (
-                "m",
-                f"m: {t('ERPLibre with mobile home')}",
-                "./mobile/install_and_run.sh",
-            ),
-            "0": (
-                "0",
-                f"0: {t('Quit')}",
-            ),
-        }
-        commands_end = {}
+        return {}
+
+    def _install_versions(self):
+        """Les versions d'Odoo qu'Install propose, de la plus récente à la
+        plus ancienne : {"prompt_description", "erplibre_version"} chacune,
+        le libellé disant si elle est installée, active, par défaut ou
+        dépréciée."""
         versions, installed_versions, odoo_installed_version = (
             get_odoo_version()
         )
-
+        listed = []
         for version_info in versions[::-1]:
-            key_i += 1
-            key_s = str(key_i)
-            label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
+            label = f"Odoo {version_info.get('odoo_version')}"
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
             if odoo_version in installed_versions:
@@ -422,75 +412,88 @@ class TODO(
             if version_info.get("is_deprecated"):
                 label += t(" - Deprecated")
             erplibre_version = version_info.get("erplibre_version")
-            commands_begin[key_s] = (
-                key_s,
-                label,
-                f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
+            listed.append(
+                {
+                    "prompt_description": label,
+                    "erplibre_version": erplibre_version,
+                }
             )
+        return listed
 
-        # Add final command
-        install_commands = {**commands_begin, **commands_end}
-
-        # Show command
+    def _install_ask(self, items):
+        """La question d'Install sur `items`, les entrées que montre le menu,
+        {"key", "label"} chacune : une ligne « touche: libellé » par
+        installation par touche, puis [0], puis une par version, par son
+        numéro. Redemande tant que la réponse, sans blancs ni majuscules,
+        n'en nomme aucune ; rend la touche répondue, "0" pour quitter."""
+        by_key = [i for i in items if not i["key"].isdigit()]
+        numbered = [i for i in items if i["key"].isdigit()]
+        lines = [f"{i['key']}: {i['label']}" for i in by_key]
+        lines.append(f"0: {t('Quit')}")
+        lines += [f"{i['key']}: {i['label']}" for i in numbered]
+        keys = {"0", *(item["key"] for item in items)}
         odoo_version_input = ""
-        while odoo_version_input not in install_commands:
+        while odoo_version_input not in keys:
             if odoo_version_input:
                 print(
                     f"{t('Error, cannot understand value')} '{odoo_version_input}'"
                 )
             str_input_dyn_odoo_version = (
                 f"💬 {t('Choose a version:')}\n\t"
-                + "\n\t".join([a[1] for a in install_commands.values()])
+                + "\n\t".join(lines)
                 + f"\n{t('Select: ')}"
             )
             odoo_version_input = (
                 input(str_input_dyn_odoo_version).strip().lower()
             )
+        return odoo_version_input
 
-        if odoo_version_input == "0":
+    def _install_version(self, version):
+        """Installe `version`, une version de `_install_versions`, après
+        avoir demandé s'il faut ses modules extra ; rien sur [0]."""
+        erplibre_version = version.get("erplibre_version")
+        cmd_intern = (
+            "./script/version/update_env_version.py --erplibre_version"
+            f" {erplibre_version} --install_dev"
+        )
+        extra_choices = {
+            "1": (
+                "1",
+                f"1: {t('Standard install (without extra modules)')}",
+            ),
+            "2": (
+                "2",
+                "2: "
+                + t("Install with extra modules (CybroOdoo - large, slow)"),
+            ),
+            "0": ("0", f"0: {t('Back')}"),
+        }
+        extra_input = ""
+        while extra_input not in extra_choices:
+            if extra_input:
+                print(f"{t('Error, cannot understand value')} '{extra_input}'")
+            str_extra = (
+                f"💬 {t('Install type:')}\n\t"
+                + "\n\t".join([a[1] for a in extra_choices.values()])
+                + f"\n{t('Select: ')}"
+            )
+            extra_input = input(str_extra).strip()
+        if extra_input == "0":
             return
+        if extra_input == "2":
+            cmd_intern = cmd_intern + " --with_extra"
+        self._install_run(cmd_intern)
 
-        cmd_intern = install_commands.get(odoo_version_input)[2]
-
-        # For numbered version selections, offer extra modules sub-menu
-        if odoo_version_input.isdigit():
-            extra_choices = {
-                "1": (
-                    "1",
-                    f"1: {t('Standard install (without extra modules)')}",
-                ),
-                "2": (
-                    "2",
-                    f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
-                ),
-                "0": ("0", f"0: {t('Back')}"),
-            }
-            extra_input = ""
-            while extra_input not in extra_choices:
-                if extra_input:
-                    print(
-                        f"{t('Error, cannot understand value')} '{extra_input}'"
-                    )
-                str_extra = (
-                    f"💬 {t('Install type:')}\n\t"
-                    + "\n\t".join([a[1] for a in extra_choices.values()])
-                    + f"\n{t('Select: ')}"
-                )
-                extra_input = input(str_extra).strip()
-            if extra_input == "0":
-                return
-            if extra_input == "2":
-                cmd_intern = cmd_intern + " --with_extra"
-
-        print(f"{t('Will execute:')}\n{cmd_intern}")
+    def _install_run(self, cmd):
+        """Lance l'installation `cmd` par bash ; sur un échec, dit son code
+        de retour et relance TODO."""
+        print(f"{t('Will execute:')}\n{cmd}")
 
         # TODO use external script to detect terminal to use on system
         # TODO check script open_terminal_code_generator.sh
         # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
         try:
-            subprocess.run(
-                cmd_intern, shell=True, executable="/bin/bash", check=True
-            )
+            subprocess.run(cmd, shell=True, executable="/bin/bash", check=True)
         except subprocess.CalledProcessError as e:
             print(
                 f"{t('The Bash script failed with return code')} {e.returncode}."

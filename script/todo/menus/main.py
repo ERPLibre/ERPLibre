@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus ouverts par le menu principal : l'entrée [4], Navigation
-telemetry, et Configuration.
+telemetry, et Configuration. Install, qu'il ouvre aussi, est déclaré avec
+la famille Proxmox, dans `proxmox.py`.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.

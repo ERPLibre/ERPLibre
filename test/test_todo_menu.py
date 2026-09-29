@@ -203,6 +203,49 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
+    def test_install_lists_what_it_installs_by_a_key(self):
+        # Les trois installations par touche sont des feuilles sans
+        # entrée, la question d'Install n'étant pas un message `menu`, et
+        # dangereuses : elles posent des paquets. Ni la TUI ni la page web
+        # ne les lancent. Les versions d'Odoo, que rend une méthode, ne se
+        # lisent pas sans l'appeler.
+        noeud = self._noeud("Install")
+        self.assertEqual(
+            [
+                (
+                    f["label"],
+                    f["method"],
+                    f["kwargs"],
+                    f.get("entry"),
+                    f.get("danger"),
+                )
+                for f in noeud["children"]
+            ],
+            [
+                (
+                    "ERPLibre only without Odoo, with the required Python",
+                    "_install_run",
+                    {"cmd": "./script/install/install_erplibre.sh"},
+                    "",
+                    True,
+                ),
+                (
+                    "Install all Odoo version with ERPLibre",
+                    "_install_run",
+                    {"cmd": "make install_odoo_all_version"},
+                    "",
+                    True,
+                ),
+                (
+                    "ERPLibre with mobile home",
+                    "_install_run",
+                    {"cmd": "./mobile/install_and_run.sh"},
+                    "",
+                    True,
+                ),
+            ],
+        )
+
     def test_update_lists_each_configured_update(self):
         # Chaque entrée d'`update_from_makefile` est une feuille d'Update,
         # que lance execute_from_configuration avec l'entrée elle-même.
@@ -442,6 +485,24 @@ class TestLArbreDesMenus(unittest.TestCase):
                     )
                 ],
                 (f"{docker} › Compose › Stop", {"args": ["down"]}),
+                *[
+                    (f"TODO › Install › {label}", {"cmd": cmd})
+                    for label, cmd in (
+                        (
+                            "ERPLibre only without Odoo, with the required"
+                            " Python",
+                            "./script/install/install_erplibre.sh",
+                        ),
+                        (
+                            "Install all Odoo version with ERPLibre",
+                            "make install_odoo_all_version",
+                        ),
+                        (
+                            "ERPLibre with mobile home",
+                            "./mobile/install_and_run.sh",
+                        ),
+                    )
+                ],
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -1231,6 +1292,37 @@ class TestLongTestMenuNumbering(RegistryCoherence, unittest.TestCase):
         "ERPLibre on NixOS": "_longtest_nixos",
         "Undo what the descent created": "_longtest_defaire",
     }
+
+
+class TestInstallMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Install (INSTALL, `menus/proxmox.py`), qu'ouvre le menu principal :
+    trois installations par leur touche, puis une par version d'Odoo, que
+    rend `_install_versions` ; [0] quitte, et Install se referme après une
+    installation."""
+
+    MENU = "prompt_install"
+    BACK = None
+    EXPECTED = {
+        "ERPLibre only without Odoo": "_install_run",
+        "Install all Odoo version": "_install_run",
+        "ERPLibre with mobile home": "_install_run",
+    }
+
+    def test_each_installation_answers_its_key(self):
+        self.assertEqual(
+            [(entry.hotkey, entry.kwargs["cmd"]) for entry in self.entries],
+            [
+                ("q", "./script/install/install_erplibre.sh"),
+                ("w", "make install_odoo_all_version"),
+                ("m", "./mobile/install_and_run.sh"),
+            ],
+        )
+        last = self.menu.entries[-1]
+        self.assertEqual(
+            (last.method, last.action, last.kwarg),
+            ("_install_versions", "_install_version", "version"),
+        )
+        self.assertTrue(self.menu.closes)
 
 
 class TestNetworkMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2507,6 +2599,31 @@ class TestInstallMenu(unittest.TestCase):
             self.assertIsNone(self.todo.prompt_install())
         return shown.getvalue()
 
+    def test_each_key_runs_what_it_names(self):
+        # « w » lance l'installation de toutes les versions ; « 1 », la
+        # première version montrée, puis « 2 », avec ses modules extra ;
+        # « 3 », puis « 0 », rien.
+        from script.todo import todo
+
+        for answers, command in (
+            (["n", "w"], "make install_odoo_all_version"),
+            (
+                ["n", "1", "2"],
+                "./script/version/update_env_version.py --erplibre_version"
+                " odoo18.0_forged --install_dev --with_extra",
+            ),
+            (["n", "3", "0"], None),
+        ):
+            with self.subTest(answers=answers):
+                todo.subprocess.run.reset_mock()
+                self.screen("en", answers)
+                ran = [
+                    call.args[0]
+                    for call in todo.subprocess.run.call_args_list
+                    if call.kwargs.get("shell")
+                ]
+                self.assertEqual(ran, [command] if command else [])
+
     def test_it_speaks_the_chosen_language(self):
         # En français, aucun texte d'Install ne reste en anglais : la
         # détection, la question de la première installation, les trois
@@ -2697,6 +2814,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_proxmox",
                 "prompt_execute_vpn",
                 "prompt_execute_longtest",
+                "prompt_install",
             },
             set(declared),
         )
