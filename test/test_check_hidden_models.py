@@ -135,6 +135,25 @@ class TestTheReport(unittest.TestCase):
             todo_i18n.t("Every one of them is visible to someone."), texte
         )
 
+    def test_a_model_no_witness_may_read_blames_the_access_groups(self):
+        rapport = {
+            "models": [
+                {"model": "account.move", "rows": 12, "no_read_right": True}
+            ],
+            "checked": 30,
+            "users": ["a"],
+        }
+        texte = "\n".join(check.render(rapport))
+        self.assertIn("account.move", texte)
+        self.assertIn("🔒", texte)
+        self.assertIn(
+            todo_i18n.t("its access groups hide it, not a rule."), texte
+        )
+        self.assertNotIn(
+            todo_i18n.t("The data is there; a global rule hides all of it."),
+            texte,
+        )
+
     def test_every_translation_key_exists(self):
         with io.open(check.__file__, encoding="utf-8") as handle:
             src = handle.read()
@@ -346,6 +365,14 @@ class TestTheScriptCollectsWhatTheReportNeeds(unittest.TestCase):
         self.assertNotIn("env.get(", corps)
         self.assertIn("except KeyError", corps)
         self.assertNotIn("modele._abstract", corps)
+
+    def test_a_witness_without_the_read_right_proves_nothing(self):
+        """An access refusal comes before any rule: without this, a model
+        only accountants may read was blamed on a global rule."""
+        corps = self.corps()
+        self.assertIn('has_access("read")', corps)
+        self.assertIn("check_access_rights(", corps)
+        self.assertIn('"no_read_right": not droit', corps)
 
 
 if __name__ == "__main__":
