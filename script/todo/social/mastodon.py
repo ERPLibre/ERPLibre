@@ -42,6 +42,18 @@ from script.todo.todo_i18n import t
 FIL_ACCUEIL = "home"
 CHEMIN_ACCUEIL = "/api/v1/timelines/home"
 CHEMIN_IDENTITE = "/api/v1/accounts/verify_credentials"
+CHEMIN_PUBLIER = "/api/v1/statuses"
+CHEMIN_INSTANCE = "/api/v1/instance"
+
+# Ce qu'une instance accepte par défaut. DEMANDÉE plutôt que supposée : une
+# instance relève ou abaisse cette limite, et un client qui la suppose fait
+# refuser un billet sans pouvoir dire pourquoi.
+LIMITE_PAR_DEFAUT = 500
+
+# Qui voit le billet. `public` le met dans les fils publics ; `unlisted` le
+# garde hors d'eux ; `private` le réserve aux abonnés ; `direct` aux seules
+# personnes citées.
+VISIBILITES = ("public", "unlisted", "private", "direct")
 
 # Au-delà, l'instance rend ce qu'elle veut : 40 est le plafond documenté.
 PAGE_MAX = 40
@@ -61,6 +73,15 @@ class SocialAuthError(SocialError):
     À distinguer de tout le reste : aucun nouvel essai ne le répare, il faut
     refaire autoriser le compte. Les confondre ferait redemander un jeton
     valide à chaque hoquet du réseau.
+    """
+
+
+class SocialRefused(SocialError):
+    """L'instance a répondu NON, et le répéter n'y changera rien.
+
+    Un billet vide, un billet trop long, une visibilité qu'elle ne connaît
+    pas : la demande est en cause, pas le réseau. À distinguer d'une panne,
+    qui se réessaie — les confondre fait boucler sur un refus définitif.
     """
 
 
@@ -227,6 +248,12 @@ class MastodonTransport:
                 f"{t('social_err_rate_limited')} {detail}",
                 _reprise(exc.headers),
             ) from exc
+        if 400 <= exc.code < 500:
+            # L'instance a compris et refusé : la demande est en cause, pas
+            # le réseau. Réessayer la même chose boucle sur le même non.
+            raise SocialRefused(
+                f"{t('social_err_refused')} {exc.code} {detail}"
+            ) from exc
         raise SocialError(
             f"{t('social_err_refused')} {exc.code} {detail}"
         ) from exc
@@ -243,6 +270,94 @@ class MastodonTransport:
             "display_name": str(donnees.get("display_name") or ""),
             "url": str(donnees.get("url") or ""),
         }
+
+    def _post(self, url: str, champs: dict, entetes: dict) -> tuple:
+        """POST d'un formulaire. Rend `(donnees, entetes)`, comme `_get`."""
+        corps = urllib.parse.urlencode(
+            {k: v for k, v in champs.items() if v not in (None, "")}
+        ).encode()
+        tete = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        tete.update(entetes)
+        requete = urllib.request.Request(
+            url, data=corps, headers=tete, method="POST"
+        )
+        try:
+            with urllib.request.urlopen(
+                requete, timeout=self.timeout
+            ) as reponse:
+                brut = reponse.read()
+                recus = dict(reponse.headers.items())
+        except urllib.error.HTTPError as exc:
+            self._lever(exc)
+        except Exception as exc:
+            raise SocialError(f"{t('social_err_unreachable')} {exc}") from exc
+        try:
+            return json.loads(brut.decode("utf-8", "replace")), recus
+        except ValueError as exc:
+            raise SocialError(t("social_err_answer_not_json")) from exc
+
+    def limite_caracteres(self) -> int:
+        """La longueur maximale d'un billet, telle que l'instance l'annonce.
+
+        Une instance relève ou abaisse cette limite. La demander évite de
+        faire refuser un billet par le serveur sans savoir le dire d'avance
+        à qui l'écrit ; une réponse qui ne la porte pas retombe sur la
+        valeur du logiciel plutôt que d'empêcher de publier.
+        """
+        try:
+            donnees, _ = self._get(self.base_url + CHEMIN_INSTANCE)
+            valeur = (
+                (donnees or {})
+                .get("configuration", {})
+                .get("statuses", {})
+                .get("max_characters")
+            )
+            return int(valeur) if valeur else LIMITE_PAR_DEFAUT
+        except (SocialError, AttributeError, TypeError, ValueError):
+            return LIMITE_PAR_DEFAUT
+
+    def publish(
+        self,
+        texte: str,
+        *,
+        cle: str = "",
+        visibilite: str = "public",
+        repond_a: str = "",
+        avertissement: str = "",
+    ) -> PostMeta:
+        """Publie un billet. Rend celui que l'instance a créé.
+
+        `cle` est la CLÉ D'IDEMPOTENCE, et c'est elle qui rend une reprise
+        sûre : quand la réponse se perd — délai dépassé, socket coupée — le
+        billet peut être posé sans que l'appelant l'apprenne. Rejouer la
+        demande avec la MÊME clé rend le billet déjà créé au lieu d'en
+        poser un second. Une clé neuve à chaque essai reviendrait à ne pas
+        en avoir ; c'est pourquoi l'appelant la garde et la repasse.
+
+        Un refus de l'instance — billet vide, trop long, visibilité
+        inconnue — lève `SocialRefused` : le répéter n'y changera rien.
+        """
+        if visibilite not in VISIBILITES:
+            raise SocialRefused(
+                f"{t('social_err_unknown_visibility')} {visibilite!r}"
+            )
+        donnees, _ = self._post(
+            self.base_url + CHEMIN_PUBLIER,
+            {
+                "status": texte,
+                "visibility": visibilite,
+                "in_reply_to_id": repond_a,
+                "spoiler_text": avertissement,
+            },
+            {"Idempotency-Key": cle or _cle_idempotence()},
+        )
+        if not isinstance(donnees, dict):
+            raise SocialError(t("social_err_answer_not_json"))
+        return billet_depuis_statut(donnees)
 
     def home_timeline(self, cursor: str = "", limit: int = PAGE_MAX) -> tuple:
         """Une page du fil personnel. Rend `(billets, curseur_suivant)`.
@@ -269,6 +384,18 @@ class MastodonTransport:
             billet_depuis_statut(b) for b in donnees if isinstance(b, dict)
         ]
         return billets, _suivant(entetes.get("Link", ""))
+
+
+def _cle_idempotence() -> str:
+    """Une clé neuve, propre à une tentative de publication.
+
+    C'est l'appelant qui la garde d'un essai à l'autre : elle n'a de sens
+    que réutilisée, et en tirer une nouvelle à chaque reprise reviendrait à
+    ne pas en avoir.
+    """
+    import uuid
+
+    return uuid.uuid4().hex
 
 
 def _message(detail: bytes) -> str:

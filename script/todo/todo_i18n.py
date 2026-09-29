@@ -12689,6 +12689,10 @@ TRANSLATIONS = {
         "fr": "Deux comptes sociaux portent le même nom :",
         "en": "Two social accounts share the same name:",
     },
+    "social_err_unknown_visibility": {
+        "fr": "Visibilité inconnue :",
+        "en": "Unknown visibility:",
+    },
     "social_err_unreachable": {
         "fr": "Instance injoignable :",
         "en": "Instance unreachable:",

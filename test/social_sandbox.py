@@ -79,6 +79,15 @@ class EnVrac(Fault):
     """500 : l'instance a un souci. Se réessaie plus tard."""
 
 
+class PerdueApres(Fault):
+    """La demande est TRAITÉE, puis la réponse se perd.
+
+    La panne qui compte pour une publication : le billet est bel et bien
+    posé, mais le client ne l'apprend jamais. Sans clé d'idempotence, sa
+    reprise en pose un second ; avec elle, l'instance rend le premier.
+    """
+
+
 class Illisible(Fault):
     """200, mais le corps n'est pas du JSON.
 
@@ -154,7 +163,77 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if chemin.path == "/api/v1/timelines/home":
             self._fil(urllib.parse.parse_qs(chemin.query))
             return
+        if chemin.path == "/api/v1/instance":
+            self._json(
+                200,
+                {
+                    "configuration": {
+                        "statuses": {
+                            "max_characters": self.bac.limite_caracteres
+                        }
+                    }
+                },
+            )
+            return
         self._json(404, {"error": "Record not found"})
+
+    def do_POST(self) -> None:  # noqa: N802 - imposé par la stdlib
+        chemin = urllib.parse.urlparse(self.path)
+        self.bac.demandes.append(self.path)
+        longueur = int(self.headers.get("Content-Length") or 0)
+        corps = self.rfile.read(longueur) if longueur else b""
+        panne = self.bac._panne_pour(chemin.path)
+        if panne is not None and not isinstance(panne, PerdueApres):
+            self._servir_panne(panne)
+            return
+        if self.headers.get("Authorization") != f"Bearer {self.bac.jeton}":
+            self._json(401, {"error": "The access token is invalid"})
+            return
+        if chemin.path != "/api/v1/statuses":
+            self._json(404, {"error": "Record not found"})
+            return
+        champs = {
+            k: v[0]
+            for k, v in urllib.parse.parse_qs(
+                corps.decode("utf-8", "replace")
+            ).items()
+        }
+        cle = self.headers.get("Idempotency-Key") or ""
+        # Même clé, même billet : l'instance rend celui déjà posé sans en
+        # créer un second. C'est ce qui rend une reprise sûre.
+        if cle:
+            deja = next(
+                (b for b, k in self.bac.publies if k == cle and k), None
+            )
+            if deja is not None:
+                self._json(200, deja)
+                return
+        texte = champs.get("status", "")
+        if not texte.strip():
+            self._json(
+                422, {"error": "Validation failed: Text can't be blank"}
+            )
+            return
+        if len(texte) > self.bac.limite_caracteres:
+            self._json(
+                422,
+                {"error": "Validation failed: Text character limit exceeded"},
+            )
+            return
+        billet = statut(
+            str(1000 + len(self.bac.publies)),
+            texte,
+            auteur=self.bac.identite["acct"],
+            nom=self.bac.identite["display_name"],
+            repond_a=champs.get("in_reply_to_id") or None,
+        )
+        billet["visibility"] = champs.get("visibility", "public")
+        self.bac.publies.append((billet, cle))
+        if panne is not None:
+            # Le billet est POSÉ ; c'est la réponse qui se perd.
+            self._servir_panne(EnVrac())
+            return
+        self._json(200, billet)
 
     def _fil(self, params: dict) -> None:
         """Rend une page du fil, et la suite dans un en-tête `Link`.
@@ -245,6 +324,11 @@ class SocialSandbox:
         self.fil: list = []
         self.faults: list = []
         self.demandes: list = []
+        # Ce que l'instance annonce comme longueur maximale d'un billet. La
+        # valeur par défaut du logiciel ; une instance la change, et c'est
+        # pourquoi un client la DEMANDE au lieu de la supposer.
+        self.limite_caracteres = 500
+        self.publies: list = []
         self.identite = {
             "acct": "moi",
             "display_name": "Moi",
