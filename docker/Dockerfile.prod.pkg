@@ -110,12 +110,6 @@ RUN cd $ODOO_PREFIX && \
     extra="" && if [ "${EL_WITH_EXTRA}" = "1" ]; then extra="--with_extra"; fi && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install ${extra}
 
-# Odoo 8 et 9 se lancent par openerp-server : un lien odoo-bin le rend
-# joignable par ODOO_EXEC_BIN, que l'image de base pose pour toutes les
-# versions, docker exec compris.
-RUN cd $ODOO_PREFIX/odoo${ODOO_VERSION}/odoo && \
-    if [ ! -e odoo-bin ] && [ -f openerp-server ]; then ln -s openerp-server odoo-bin; fi
-
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
     source ./.venv.erplibre/bin/activate && \
@@ -130,6 +124,13 @@ RUN cd $ODOO_PREFIX && \
       ./.venv.erplibre/bin/python -c "import script.git.repo_state, script.git.repo_pull" || \
         { echo "erplibre_info_git* lance repo_state et repo_pull : un requis manque dans requirement/erplibre_require-ments-docker.txt." ; exit 1 ; } ; \
     fi
+
+# Odoo 8 et 9 se lancent par openerp-server : un lien odoo-bin le rend
+# joignable par ODOO_EXEC_BIN, que l'image de base pose pour toutes les
+# versions, docker exec compris. APRÈS la synchronisation qui crée
+# odoo<version>/odoo : avant elle, le « cd » échoue pour toute version.
+RUN cd $ODOO_PREFIX/odoo${ODOO_VERSION}/odoo && \
+    if [ ! -e odoo-bin ] && [ -f openerp-server ]; then ln -s openerp-server odoo-bin; fi
 
 # Install Poetry
 #

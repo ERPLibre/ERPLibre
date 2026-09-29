@@ -79,5 +79,20 @@ class TestLessParVersionDOdoo(unittest.TestCase):
             self.assertEqual(attendu, self._less(version), version)
 
 
+class TestLeLienOpenerpServerSuitLaSynchronisation(unittest.TestCase):
+    """Le lien odoo-bin -> openerp-server vit dans odoo<version>/odoo, que
+    crée la synchronisation des dépôts : posé avant elle, son « cd »
+    échouait et arrêtait la construction de l'image pour toute version."""
+
+    def test_le_lien_vient_apres_update_manifest_local_dev(self):
+        source = (RACINE / "docker/Dockerfile.prod.pkg").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            source.index("update_manifest_local_dev.sh"),
+            source.index("ln -s openerp-server odoo-bin"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
