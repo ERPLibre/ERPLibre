@@ -137,6 +137,18 @@ func ChargerRéglagesRépondeur(chemin string) (RéglagesRépondeur, error) {
 	if err := json.Unmarshal(brut, &réglages); err != nil {
 		return défauts, fmt.Errorf("reglages du repondeur %s : %w", chemin, err)
 	}
+	// Un dossier absent du fichier se DEDUIT, il ne fait pas echouer le
+	// repondeur.
+	//
+	// Odoo ne l'envoie pas — un chemin de cette machine n'est pas son affaire —
+	// et le CLI le comble de son cote sans forcement l'ecrire. Sans ce repli, un
+	// repondeur actif decroche, refuse d'enregistrer, et l'appelant perd son
+	// message apres avoir parle : la pire des issues, et la seule qui ne se voit
+	// pas avant d'avoir manque un appel.
+	if réglages.Dossier == "" {
+		réglages.Dossier = filepath.Join(filepath.Dir(chemin), "messages")
+		slog.Info("dossier des messages deduit", "dossier", réglages.Dossier)
+	}
 	return réglages.Normaliser(), nil
 }
 

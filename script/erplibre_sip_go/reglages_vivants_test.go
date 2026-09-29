@@ -184,3 +184,42 @@ func TestLAnnonceNEstReecriteQueSiElleChange(t *testing.T) {
 		t.Fatal("une annonce differente n'a pas remplace l'ancienne")
 	}
 }
+
+func TestUnDossierAbsentSeDeduitAuLieuDEchouer(t *testing.T) {
+	// Odoo n'envoie pas de dossier — un chemin de cette machine n'est pas son
+	// affaire — et le CLI le comble sans forcement l'ecrire. Sans repli, un
+	// repondeur actif decroche, refuse d'enregistrer, et l'appelant perd son
+	// message apres avoir parle.
+	dossier := t.TempDir()
+	chemin := filepath.Join(dossier, "repondeur.json")
+	if err := os.WriteFile(chemin,
+		[]byte(`{"actif": true, "sonneries": 3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	réglages, err := ChargerRéglagesRépondeur(chemin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if réglages.Dossier == "" {
+		t.Fatal("dossier vide : le repondeur decrocherait sans pouvoir enregistrer")
+	}
+	if attendu := filepath.Join(dossier, "messages"); réglages.Dossier != attendu {
+		t.Fatalf("dossier %q, attendu %q", réglages.Dossier, attendu)
+	}
+}
+
+func TestUnDossierEcritEstRespecte(t *testing.T) {
+	dossier := t.TempDir()
+	chemin := filepath.Join(dossier, "repondeur.json")
+	if err := os.WriteFile(chemin,
+		[]byte(`{"actif": true, "dossier": "/ailleurs/messages"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	réglages, err := ChargerRéglagesRépondeur(chemin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if réglages.Dossier != "/ailleurs/messages" {
+		t.Fatalf("le dossier du fichier a ete remplace : %q", réglages.Dossier)
+	}
+}
