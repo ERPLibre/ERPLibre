@@ -401,9 +401,25 @@ class ContainerMenuMixin:
                     print(f"  {t('A per-account unit needs linger to start')}")
                     print(f"  {t('without a login:')} loginctl enable-linger")
             elif status == "6":
-                self._container_journal(service, par_compte)
+                self._container_etat_service(
+                    fiche=fiche, par_compte=par_compte
+                )
             else:
                 print(t("Command not found !"))
+
+    def _container_etat_service(self, fiche=None, par_compte=None):
+        """L'état du service du moteur de `fiche`, puis son journal. Sans
+        fiche, comme lancée seule depuis la TUI de télémétrie, le moteur se
+        choisit parmi ceux qui sont installés ; `par_compte` se déduit de la
+        fiche quand il n'est pas donné."""
+        if fiche is None:
+            fiche = self._container_choisir_moteur()
+            if not fiche:
+                return
+        moteur = fiche["moteur"]
+        if par_compte is None:
+            par_compte = self._container_par_compte(moteur, fiche)
+        self._container_journal(UNITES[moteur][0], par_compte)
 
     def _container_systemctl(self, action, unite, par_compte):
         """Lance systemctl sur l'unité, dans la bonne portée.

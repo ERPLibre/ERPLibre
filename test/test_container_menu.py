@@ -22,6 +22,7 @@ import io
 import re
 import sys
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -735,6 +736,48 @@ class TestService(Banc):
         self.assertEqual(2, len(todo.execute.commandes))
         self.assertIn("systemctl --user status", todo.execute.commandes[0])
         self.assertIn("journalctl --user", todo.execute.commandes[1])
+
+    def test_l_etat_lance_seul_choisit_son_moteur(self):
+        """Lancé seul, depuis la TUI de télémétrie, l'état du service
+        demande le moteur, puis lit l'état et le journal de son démon."""
+        todo = self.todo()
+        todo._container_choisir_moteur = lambda: {
+            "moteur": "podman",
+            "rootless": True,
+            "docker_host": None,
+        }
+        with self.reponses():
+            todo._container_etat_service()
+        self.assertEqual(
+            [
+                "systemctl --user status podman.service --no-pager",
+                "journalctl --user -u podman.service --no-pager -n 40",
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_l_etat_du_menu_garde_le_moteur_choisi(self):
+        """Dans le menu, [6] lit le moteur choisi à son ouverture, sans
+        reposer la question."""
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        todo = self.todo()
+        choix = []
+
+        def choisir():
+            choix.append("docker")
+            return {"moteur": "docker", "rootless": True, "docker_host": None}
+
+        todo._container_choisir_moteur = choisir
+        with self.reponses(prompts=["6", "0"]):
+            todo._container_service()
+        self.assertEqual(1, len(choix))
+        self.assertIn("status docker.service", todo.execute.commandes[0])
 
     def test_activer_porte_sur_la_socket_et_demarrer_sur_le_demon(self):
         """C'est la socket qui fait naître le démon à la première connexion :

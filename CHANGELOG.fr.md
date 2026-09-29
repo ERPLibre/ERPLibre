@@ -251,6 +251,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Miroirs git › Remplir la base, Remplir l'extra et Remplir tous les manifestes, lancées depuis la TUI, remplissent les miroirs de leur liste, lue dans les manifestes à ce moment-là, au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : les trois vues du journal d'accès sous Exécution › Deploy › QEMU cache › Journaux, lancées depuis la TUI, suivent le journal que nomme à ce moment-là la configuration du service au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Nettoyage automatique › Régler l'âge limite et Régler le plafond de taille, lancées depuis la TUI, demandent leur réglage au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Docker / Podman › Service › État et journal, lancé depuis la TUI, demande le moteur et montre l'état et le journal de son service au lieu d'échouer sur un argument manquant
 
 ## Retiré
 

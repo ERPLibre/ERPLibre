@@ -251,6 +251,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › QEMU cache › Git mirrors › Fill the base, Fill the extra and Fill every manifest, launched from the TUI, fill the mirrors of their list, read from the manifests at that moment, instead of failing on a missing argument
 - Navigation telemetry: the three views of the access log under Execute › Deploy › QEMU cache › Logs, launched from the TUI, follow the log that the service configuration names at that moment instead of failing on a missing argument
 - Navigation telemetry: Execute › Deploy › QEMU cache › Automatic cleanup › Set the age limit and Set the size ceiling, launched from the TUI, ask for their setting instead of failing on a missing argument
+- Navigation telemetry: Execute › Docker / Podman › Service › Status and journal, launched from the TUI, asks for the engine and shows the state and journal of its service instead of failing on a missing argument
 
 ## Removed
 
