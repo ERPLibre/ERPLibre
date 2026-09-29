@@ -2,13 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""L'entrée « cache QEMU » du menu Déploiement mène-t-elle où elle le dit ?
+"""Le cache QEMU : son entrée dans Deploy, ses menus et leurs clés i18n.
 
-Le sous-menu est écrit deux fois — une liste de `prompt_description` qui
-numérote l'affichage, et une chaîne d'`elif status == "N"` qui dispatche.
-Insérer une entrée au milieu décale les deux, et une seule erreur envoie
-l'opérateur dans un autre écran sans que rien ne proteste : l'entrée du cache
-est arrivée en 8, ce qui a poussé le VPN en 9.
+Chaque entrée mène-t-elle où elle le dit ? Deploy est déclaré au
+registre : le numéro d'une entrée y est sa place, et `entrees_de` en lit
+la déclaration. Un menu du cache écrit à la main l'est deux fois — une
+liste de `prompt_description` qui numérote l'affichage, et une chaîne
+d'`elif status == "N"` qui dispatche — et une entrée insérée au milieu de
+l'une sans l'autre envoie l'opérateur dans un autre écran sans que rien ne
+proteste.
 
 Le test vérifie aussi que chaque clé i18n de l'entrée résout DANS LES DEUX
 LANGUES. Une clé absente rend sa propre chaîne anglaise, donc un menu
@@ -159,60 +161,37 @@ def affichage_et_dispatch(corps):
     return affichees, sorted(int(n) for n in numeros)
 
 
-def corps_du_sous_menu():
-    """Le corps de prompt_execute_deploy(), affichage et dispatch compris."""
-    src = TODO_PY.read_text(encoding="utf-8")
-    debut = src.index("def prompt_execute_deploy(self):")
-    fin = src.index("def prompt_execute_deploy_ssh(self):", debut)
-    return src[debut:fin]
+def entrees_de(menu):
+    """(clé, action, kwargs) de chaque entrée numérotée de `menu`, un menu
+    de `script/todo/menus/deploy.py`, dans l'ordre de ses numéros."""
+    from script.todo.menus import deploy as menus_deploy
+    from script.todo.ui.registry import Entry
+
+    return [
+        (entree.key, entree.action, entree.kwargs or {})
+        for entree in getattr(menus_deploy, menu).entries
+        if isinstance(entree, Entry)
+    ]
 
 
 class TestEntreeDuCache(unittest.TestCase):
     def setUp(self):
-        self.corps = corps_du_sous_menu()
-
-    def test_entree_affichee(self):
-        self.assertIn(
-            "QEMU cache - Download mirror for local VMs",
-            self.corps,
-            "l'entrée du cache ne s'affiche pas dans le menu Déploiement",
-        )
+        self.entrees = [
+            (cle, action) for cle, action, _ in entrees_de("DEPLOY")
+        ]
 
     def test_entree_dispatchee(self):
-        self.assertRegex(
-            self.corps,
-            r'elif status == "9":\s*\n\s*self\.prompt_execute_qemu_cache\(\)',
-            "l'entrée 8 ne mène pas au sous-menu du cache",
+        """[9] ouvre le menu du cache."""
+        self.assertEqual(
+            self.entrees[8],
+            (
+                "QEMU cache - Download mirror for local VMs",
+                "prompt_execute_qemu_cache",
+            ),
         )
 
     def test_vpn_reste_le_dernier(self):
-        """Toute entrée insérée avant lui le pousse : sans quoi deux entrées
-        partagent un numéro, et la seconde est inatteignable."""
-        self.assertRegex(
-            self.corps,
-            r'elif status == "10":\s*\n\s*self\.prompt_execute_vpn\(\)',
-            "le VPN n'est plus la dernière entrée du menu",
-        )
-
-    def test_numeros_sans_trou_ni_doublon(self):
-        numeros = [
-            int(n) for n in re.findall(r'elif status == "(\d+)":', self.corps)
-        ]
-        self.assertEqual(
-            numeros,
-            sorted(numeros),
-            f"les numéros du dispatch ne sont pas croissants : {numeros}",
-        )
-        self.assertEqual(
-            len(numeros),
-            len(set(numeros)),
-            f"un numéro est dispatché deux fois : {numeros}",
-        )
-        self.assertEqual(
-            numeros,
-            list(range(1, len(numeros) + 1)),
-            f"les numéros ne sont pas consécutifs à partir de 1 : {numeros}",
-        )
+        self.assertEqual(self.entrees[-1][1], "prompt_execute_vpn")
 
     def test_methode_existe(self):
         src = TODO_PY.read_text(encoding="utf-8")

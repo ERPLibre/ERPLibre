@@ -111,18 +111,19 @@ class TestLeModeDEmploi(BancProxy):
 
 class TestLeMenu(unittest.TestCase):
     def test_l_entree_ferme_la_section_locale(self):
-        """Quatrième, et la suite glisse : le VPN passe de 9 à 10."""
-        source = (RACINE / "script/todo/todo.py").read_text(encoding="utf-8")
-        debut = source.index("def prompt_execute_deploy(self)")
-        menu = source[debut : source.index("def prompt_execute_deploy_ssh")]
-        self.assertIn(
-            'elif status == "4":\n                self._deploy_socks_proxy()',
-            menu,
-        )
-        self.assertIn(
-            'elif status == "10":\n                self.prompt_execute_vpn()',
-            menu,
-        )
+        """Quatrième, elle ferme la section locale ; VPN est dixième.
+
+        Deploy est déclaré au registre : le numéro d'une entrée est sa place
+        parmi les entrées, les sections n'en prenant pas."""
+        from script.todo.menus import deploy
+        from script.todo.ui.registry import Entry, Section
+
+        declares = deploy.DEPLOY.entries
+        entrees = [e for e in declares if isinstance(e, Entry)]
+        self.assertEqual(entrees[3].action, "_deploy_socks_proxy")
+        self.assertEqual(entrees[9].action, "prompt_execute_vpn")
+        suivante = declares[declares.index(entrees[3]) + 1]
+        self.assertIsInstance(suivante, Section)
 
 
 if __name__ == "__main__":

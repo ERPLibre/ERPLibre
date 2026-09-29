@@ -127,6 +127,7 @@ from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.menus import deploy as menus_deploy
 from script.todo.menus import execute as menus_execute
 from script.todo.menus import git as menus_git
 from script.todo.menus import main as menus_main
@@ -1159,123 +1160,15 @@ class TODO(
             )
 
     def prompt_execute_deploy(self):
-        print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
-        choices = [
-            {"section": t("Local")},
-            {"prompt_description": t("Clone ERPLibre locally (git clone)")},
-            {"prompt_description": t("Configure sshfs")},
-            {
-                "prompt_description": t(
-                    "SSH port forwarding (open Odoo in the browser)"
-                )
-            },
-            {"prompt_description": t("Configure a SOCKS proxy over SSH")},
-            {"section": t("Remote & services")},
-            {"prompt_description": t("SSH (remote host)...")},
-            {
-                "prompt_description": t(
-                    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Proxmox VE - Deploy a VM on a remote host"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy - Install NTFY notification server"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "QEMU cache - Download mirror for local VMs"
-                )
-            },
-            {"section": t("VPN & tunnels")},
-            {
-                "prompt_description": t(
-                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_clone_erplibre()
-            elif status == "2":
-                self._configure_sshfs()
-            elif status == "3":
-                self._deploy_port_forward()
-            elif status == "4":
-                self._deploy_socks_proxy()
-            elif status == "5":
-                self.prompt_execute_deploy_ssh()
-            elif status == "6":
-                self.prompt_execute_qemu()
-            elif status == "7":
-                self.prompt_execute_proxmox()
-            elif status == "8":
-                self._deploy_ntfy_server()
-            elif status == "9":
-                self.prompt_execute_qemu_cache()
-            elif status == "10":
-                self.prompt_execute_vpn()
-            else:
-                print(t("Command not found !"))
+        """Déployer ERPLibre : en local, sur un hôte distant, en VM, et les
+        tunnels (DEPLOY, `menus/deploy.py`), dessiné une fois, à l'entrée.
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.DEPLOY)
 
     def prompt_execute_deploy_ssh(self):
-        """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
-        print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
-        choices = [
-            {"prompt_description": t("SSH - Check connection")},
-            {"prompt_description": t("SSH - Sync files (rsync)")},
-            {"prompt_description": t("SSH - Install ERPLibre")},
-            {"prompt_description": t("SSH - Start Odoo")},
-            {"prompt_description": t("SSH - Stop Odoo")},
-            {"prompt_description": t("SSH - Restart Odoo")},
-            {"prompt_description": t("SSH - Service status")},
-            {"prompt_description": t("SSH - View logs")},
-            {"prompt_description": t("SSH - Run make target")},
-            {"prompt_description": t("SSH - Install systemd service")},
-            {"prompt_description": t("SSH - Configure nginx + SSL")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_ssh_check()
-            elif status == "2":
-                self._deploy_ssh_push()
-            elif status == "3":
-                self._deploy_ssh_install()
-            elif status == "4":
-                self._deploy_ssh_run()
-            elif status == "5":
-                self._deploy_ssh_stop()
-            elif status == "6":
-                self._deploy_ssh_restart()
-            elif status == "7":
-                self._deploy_ssh_status()
-            elif status == "8":
-                self._deploy_ssh_logs()
-            elif status == "9":
-                self._deploy_ssh_make()
-            elif status == "10":
-                self._deploy_ssh_install_systemd()
-            elif status == "11":
-                self._deploy_ssh_install_nginx()
-            else:
-                print(t("Command not found !"))
+        """Sous-menu : opérations de déploiement sur un hôte distant via SSH
+        (SSH, `menus/deploy.py`). Rend False sur [0]."""
+        return navigate(self, menus_deploy.SSH)
 
     @staticmethod
     def _native_arch():
@@ -5062,49 +4955,10 @@ class TODO(
         return navigate(self, menus_execute.CONFIG)
 
     def prompt_execute_network(self):
-        print(f"🤖 {t('Network tools!')}")
-        choices = [
-            {"prompt_description": t("SSH port-forwarding")},
-            {
-                "prompt_description": t(
-                    "Network performance request per second"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Odoo reverse proxy (pages and websocket on one port)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Local TLS certificates for testing (HTTPS)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.generate_network_port_forwarding()
-            elif status == "2":
-                self.generate_network_performance_test()
-            elif status == "3":
-                self.prompt_execute_vpn()
-            elif status == "4":
-                self.network_reverse_proxy()
-            elif status == "5":
-                self.network_local_certificates()
-            else:
-                print(t("Command not found !"))
+        """Outils réseau : tunnels SSH, mesure de débit, VPN, mandataire
+        inverse d'Odoo et certificats locaux (NETWORK, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.NETWORK)
 
     def generate_network_port_forwarding(self, add_arg=None):
         # ssh -L local_port:localhost:remote_port SSH_connection
@@ -5224,25 +5078,9 @@ class TODO(
         )
 
     def prompt_execute_security(self):
-        print(f"🤖 {t('Dependency security audit!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "pip-audit - Check vulnerabilities on Python environments"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_pip_audit()
-            else:
-                print(t("Command not found !"))
+        """Audit de sécurité des dépendances (SECURITY, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.SECURITY)
 
     def prompt_execute_test(self):
         """Tests d'un module, de la suite unitaire, et tests longs (TEST,

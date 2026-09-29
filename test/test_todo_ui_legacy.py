@@ -145,7 +145,7 @@ RAW_CALLS = {
     "script/todo/qemu_menu.py": 7,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 7,
-    "script/todo/todo.py": 109,
+    "script/todo/todo.py": 105,
     "script/todo/todo_install.py": 1,
     "script/todo/todo_telemetry.py": 1,
     "script/todo/todo_upgrade.py": 14,

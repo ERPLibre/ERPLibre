@@ -389,9 +389,11 @@ class TestLArbreDesMenus(unittest.TestCase):
     def test_the_dangerous_nodes_are_the_declared_ones(self):
         # Seul un nœud qui porte "danger" ne se lance ni de la TUI ni de
         # la page web : l'effacement d'une base, les actions du serveur git
-        # de production, qui tournent en root, les installateurs de shell
-        # et la remise à zéro des préférences. Les `kwargs` distinguent les
-        # actions de production de celles du serveur local, au même chemin.
+        # de production, qui tournent en root, les installateurs de shell,
+        # chaque entrée de la famille QEMU qui efface ce que la TUI ne rend
+        # pas par elle-même, et la remise à zéro des préférences. Les
+        # `kwargs` distinguent les actions de production de celles du
+        # serveur local, au même chemin.
         dangerous = []
 
         def walk(node, path):
@@ -404,6 +406,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         walk(self.arbre, "TODO")
         actions = "TODO › Execute › Git › Git local server › Actions"
         git = "TODO › Execute › Git"
+        deploy = "TODO › Execute › Deploy"
         self.assertEqual(
             dangerous,
             [
@@ -424,6 +427,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                 (f"{git} › Install Starship on Shell", {}),
                 (f"{git} › Install Claude Code", {}),
                 (f"{git} › Install opencode", {}),
+                (f"{deploy} › SSH › SSH - Sync files (rsync)", {}),
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -1003,6 +1007,68 @@ class RegistryCoherence:
 
     def test_zero_goes_back(self):
         self.assertIs(self.menu.back, self.BACK)
+
+
+class TestDeployMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Deploy : cloner, monter et joindre ERPLibre en local, puis les hôtes
+    distants, les VM et le cache de leurs téléchargements, et les VPN.
+    Une entrée se reconnaît au début de son libellé."""
+
+    MENU = "prompt_execute_deploy"
+    EXPECTED = {
+        "Clone ERPLibre locally": "_deploy_clone_erplibre",
+        "Configure sshfs": "_configure_sshfs",
+        "SSH port forwarding": "_deploy_port_forward",
+        "Configure a SOCKS proxy": "_deploy_socks_proxy",
+        "SSH (remote host)": "prompt_execute_deploy_ssh",
+        "QEMU/KVM": "prompt_execute_qemu",
+        "Proxmox VE": "prompt_execute_proxmox",
+        "Deploy - Install NTFY": "_deploy_ntfy_server",
+        "QEMU cache": "prompt_execute_qemu_cache",
+        "VPN": "prompt_execute_vpn",
+    }
+
+
+class TestSshMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Deploy › SSH : les opérations sur un hôte distant, dont démarrer,
+    arrêter et redémarrer Odoo, trois entrées voisines qu'un décalage
+    confondrait."""
+
+    MENU = "prompt_execute_deploy_ssh"
+    EXPECTED = {
+        "SSH - Check connection": "_deploy_ssh_check",
+        "SSH - Sync files": "_deploy_ssh_push",
+        "SSH - Install ERPLibre": "_deploy_ssh_install",
+        "SSH - Start Odoo": "_deploy_ssh_run",
+        "SSH - Stop Odoo": "_deploy_ssh_stop",
+        "SSH - Restart Odoo": "_deploy_ssh_restart",
+        "SSH - Service status": "_deploy_ssh_status",
+        "SSH - View logs": "_deploy_ssh_logs",
+        "SSH - Run make target": "_deploy_ssh_make",
+        "SSH - Install systemd service": "_deploy_ssh_install_systemd",
+        "SSH - Configure nginx": "_deploy_ssh_install_nginx",
+    }
+
+
+class TestNetworkMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Network : tunnels SSH, mesure de débit, VPN, mandataire inverse
+    d'Odoo et certificats locaux."""
+
+    MENU = "prompt_execute_network"
+    EXPECTED = {
+        "SSH port-forwarding": "generate_network_port_forwarding",
+        "Network performance": "generate_network_performance_test",
+        "VPN": "prompt_execute_vpn",
+        "Odoo reverse proxy": "network_reverse_proxy",
+        "Local TLS certificates": "network_local_certificates",
+    }
+
+
+class TestSecurityMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Security : l'audit des dépendances Python."""
+
+    MENU = "prompt_execute_security"
+    EXPECTED = {"pip-audit": "execute_pip_audit"}
 
 
 class TestTelemetryMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2308,6 +2374,10 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_rtk",
                 "prompt_claude_sessions",
                 "prompt_execute_function",
+                "prompt_execute_deploy",
+                "prompt_execute_deploy_ssh",
+                "prompt_execute_network",
+                "prompt_execute_security",
             },
             set(declared),
         )

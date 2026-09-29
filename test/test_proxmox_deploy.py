@@ -652,25 +652,29 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("root", sortie)
 
 
+def entrees_de_deploy():
+    """Les entrées de Deploy, déclaré au registre, par leur numéro : leur
+    place parmi les entrées, les sections n'en prenant pas."""
+    from script.todo.menus import deploy
+    from script.todo.ui.registry import Entry
+
+    entrees = [e for e in deploy.DEPLOY.entries if isinstance(e, Entry)]
+    return dict(enumerate(entrees, 1))
+
+
 class TestLeMenu(unittest.TestCase):
     def test_proxmox_sits_right_under_qemu_in_the_deploy_menu(self):
-        src = open("script/todo/todo.py", encoding="utf-8").read()
-        i_qemu = src.index('"QEMU/KVM - Deploy an Ubuntu VM (libvirt)"')
-        i_pve = src.index('"Proxmox VE - Deploy a VM on a remote host"')
-        i_ntfy = src.index('"Deploy - Install NTFY notification server"')
+        cles = [e.key for e in entrees_de_deploy().values()]
+        i_qemu = cles.index("QEMU/KVM - Deploy an Ubuntu VM (libvirt)")
+        i_pve = cles.index("Proxmox VE - Deploy a VM on a remote host")
+        i_ntfy = cles.index("Deploy - Install NTFY notification server")
         self.assertLess(i_qemu, i_pve)
         self.assertLess(i_pve, i_ntfy)
 
     def test_the_dispatch_follows_the_list(self):
-        src = open("script/todo/todo.py", encoding="utf-8").read()
-        self.assertIn(
-            'elif status == "7":\n                self.prompt_execute_proxmox()',
-            src,
-        )
-        self.assertIn(
-            'elif status == "8":\n                self._deploy_ntfy_server()',
-            src,
-        )
+        entrees = entrees_de_deploy()
+        self.assertEqual(entrees[7].action, "prompt_execute_proxmox")
+        self.assertEqual(entrees[8].action, "_deploy_ntfy_server")
 
     def test_every_qemu_entry_has_its_proxmox_counterpart(self):
         """L'équivalent des dix-sept commandes, plus le choix de l'hôte.

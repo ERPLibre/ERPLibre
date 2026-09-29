@@ -405,6 +405,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Docker / Podman › Install Docker, Install Podman, Images and Containers, launched from the TUI, install their engine or list what it holds instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
 - A declared menu that lists entries of `todo.json` or of its private override, Execute › Code, Update, Git and Automation among them, shows a section of that list without a number, as it did, and each number now runs the entry it shows instead of the one shown before it; navigation telemetry no longer lists the section as a command
+- Navigation telemetry: the TUI no longer launches Execute › Deploy › SSH › SSH - Sync files (rsync), whose `rsync --delete` erases, on the remote host, what does not exist locally
 
 <!-- [fr] -->
 
@@ -530,6 +531,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Docker / Podman › Installer Docker, Installer Podman, Images et Conteneurs, lancées depuis la TUI, installent leur moteur ou listent ce qu'il détient au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Conteneur ERPLibre › Copier un fichier dans le conteneur, lancé depuis la TUI, vérifie le moteur docker et emporte la socket d'un démon par compte, comme depuis son menu, au lieu de lancer le script sans eux
 - Un menu déclaré qui liste des entrées de `todo.json` ou de sa surcharge privée, dont Exécution › Code, Update, Git et Automatisation, montre une section de cette liste sans numéro, comme avant, et chaque numéro lance désormais l'entrée qu'il montre au lieu de celle montrée avant elle ; la télémétrie de navigation ne liste plus la section comme une commande
+- Télémétrie de navigation : la TUI ne lance plus Exécution › Deploy › SSH › SSH - Synchroniser les fichiers (rsync), dont le `rsync --delete` efface, sur l'hôte distant, ce qui n'existe pas ici
 
 <!-- [en] -->
 ## Removed
