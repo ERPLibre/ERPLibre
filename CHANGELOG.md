@@ -265,6 +265,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › Proxmox VE: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +19 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 - Navigation telemetry: Execute › Deploy › Proxmox VE › Change the Proxmox host, launched from the TUI, asks for the new host instead of only forgetting the current one
 - Execute › Deploy › Proxmox VE: choosing the host takes a local VM or an SSH host only by its number as shown: « 02 » or a digit of another script chooses nothing, and « ² », next to « 1 » on a French keyboard, no longer ends TODO on a `ValueError`
+- Execute › Deploy › Proxmox VE: choosing a VM of the host, to show its address, open its console, resize its disk, delete it or test it, takes only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 
 ## Removed
 

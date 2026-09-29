@@ -441,15 +441,18 @@ class ProxmoxMenuMixin:
         if multiple:
             print(f"  [all] {t('select all')}")
         brut = input(t("Selection (number): ")).strip()
+        # Un rang tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
+        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
+        rangs = [str(rang) for rang in range(1, len(vms) + 1)]
         if multiple:
             if brut.lower() in ("all", "*"):
                 return vms
-            choisis = []
-            for jeton in re.split(r"[\s,]+", brut):
-                if jeton.isdigit() and 1 <= int(jeton) <= len(vms):
-                    choisis.append(vms[int(jeton) - 1])
-            return choisis
-        if brut.isdigit() and 1 <= int(brut) <= len(vms):
+            return [
+                vms[int(jeton) - 1]
+                for jeton in re.split(r"[\s,]+", brut)
+                if jeton in rangs
+            ]
+        if brut in rangs:
             return vms[int(brut) - 1]
         print(t("Invalid selection!"))
         return None

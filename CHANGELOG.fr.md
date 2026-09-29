@@ -265,6 +265,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › Proxmox VE : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +19 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › Proxmox VE › Changer d'hôte Proxmox, lancé depuis la TUI, demande le nouvel hôte au lieu d'oublier seulement celui qui était retenu
 - Exécution › Deploy › Proxmox VE : le choix de l'hôte ne prend une VM locale ou un hôte SSH que par son numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`
+- Exécution › Deploy › Proxmox VE : le choix d'une VM de l'hôte, pour montrer son adresse, ouvrir sa console, redimensionner son disque, l'effacer ou la tester, ne prend qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 
 ## Retiré
 

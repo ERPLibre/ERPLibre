@@ -415,6 +415,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › Proxmox VE: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +19 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 - Navigation telemetry: Execute › Deploy › Proxmox VE › Change the Proxmox host, launched from the TUI, asks for the new host instead of only forgetting the current one
 - Execute › Deploy › Proxmox VE: choosing the host takes a local VM or an SSH host only by its number as shown: « 02 » or a digit of another script chooses nothing, and « ² », next to « 1 » on a French keyboard, no longer ends TODO on a `ValueError`
+- Execute › Deploy › Proxmox VE: choosing a VM of the host, to show its address, open its console, resize its disk, delete it or test it, takes only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 
 <!-- [fr] -->
 
@@ -550,6 +551,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › Proxmox VE : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +19 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › Proxmox VE › Changer d'hôte Proxmox, lancé depuis la TUI, demande le nouvel hôte au lieu d'oublier seulement celui qui était retenu
 - Exécution › Deploy › Proxmox VE : le choix de l'hôte ne prend une VM locale ou un hôte SSH que par son numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`
+- Exécution › Deploy › Proxmox VE : le choix d'une VM de l'hôte, pour montrer son adresse, ouvrir sa console, redimensionner son disque, l'effacer ou la tester, ne prend qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 
 <!-- [en] -->
 ## Removed

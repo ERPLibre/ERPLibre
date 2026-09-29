@@ -683,6 +683,57 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("root", sortie)
 
 
+class TestLeChoixDUneVm(unittest.TestCase):
+    """Une VM de l'hôte se choisit par son rang dans la liste, jamais par
+    son VMID à retaper : Show a VM IP address, Open the console on a VM,
+    Resize a VM disk, Delete VM(s) et Test a VM passent par là."""
+
+    VMS = [
+        {"vmid": "100", "name": "forged-a", "status": "running"},
+        {"vmid": "101", "name": "forged-b", "status": "stopped"},
+    ]
+
+    def _pick(self, answer, multiple=False):
+        """Les noms des VM que rend `_pve_pick_vm` quand on répond `answer`
+        à sa question, ou None."""
+        import contextlib
+        import io
+
+        todo = TODO.__new__(TODO)
+        todo._pve_vms = lambda: [dict(vm) for vm in self.VMS]
+        with (
+            mock.patch("builtins.input", return_value=answer),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            picked = todo._pve_pick_vm(multiple=multiple)
+        if picked is None:
+            return None
+        if multiple:
+            return [vm["name"] for vm in picked]
+        return picked["name"]
+
+    def test_one_vm_is_picked_only_by_its_shown_number(self):
+        # « 2 » choisit la deuxième, affichée [2] ; « 02 », « ٢ » (deux en
+        # écriture arabe) et « ² » ne sont pas un numéro affiché : rien
+        # n'est choisi, et TODO ne s'arrête pas sur une ValueError.
+        self.assertEqual(self._pick("2"), "forged-b")
+        for answer in ("02", "٢", "²"):
+            with self.subTest(answer=answer):
+                self.assertIsNone(self._pick(answer))
+
+    def test_several_vms_are_picked_only_by_their_shown_numbers(self):
+        # Delete VM(s) : chaque rang tel qu'affiché choisit sa VM, un autre
+        # ne choisit rien.
+        for answer, names in (
+            ("1, 2", ["forged-a", "forged-b"]),
+            ("01 2", ["forged-b"]),
+            ("٢", []),
+            ("² 1", ["forged-a"]),
+        ):
+            with self.subTest(answer=answer):
+                self.assertEqual(self._pick(answer, multiple=True), names)
+
+
 def entrees_de_deploy():
     """Les entrées de Deploy, déclaré au registre, par leur numéro : leur
     place parmi les entrées, les sections n'en prenant pas."""
