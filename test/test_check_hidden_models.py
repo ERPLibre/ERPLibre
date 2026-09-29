@@ -338,6 +338,15 @@ class TestTheScriptCollectsWhatTheReportNeeds(unittest.TestCase):
         self.assertIn('hasattr(modele, "with_user")', corps)
         self.assertIn("modele.sudo(membre)", corps)
 
+    def test_odoo_8_and_9_look_a_model_up_without_get(self):
+        """The Environment of Odoo 8 and 9 is not a Mapping and their
+        models have no _abstract: either AttributeError left the whole
+        check unreported."""
+        corps = self.corps()
+        self.assertNotIn("env.get(", corps)
+        self.assertIn("except KeyError", corps)
+        self.assertNotIn("modele._abstract", corps)
+
 
 if __name__ == "__main__":
     unittest.main()
