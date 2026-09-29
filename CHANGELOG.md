@@ -78,6 +78,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The database migration chains 10 through 20: from an Odoo 10 backup, the TODO menu reaches 12 with every sale, invoice, purchase and stock move identical. A target without a published OpenUpgrade — 20 for now — is announced when it is chosen, and the migration stops cleanly before that step
 - `make install_os PG_VERSION=<N>` forces the PostgreSQL version under apt. By default the distribution's is kept when it is 16 or later, Odoo 20's minimum; otherwise 16 comes from the PGDG repository. An older cluster is left in place, not migrated
 - Odoo 8 and 9 on Python 2.7, on upstream odoo/odoo and the 75 OCA repositories that publish each branch, plus the neutralization modules of the development repository: a database that old migrates from the same checkout and the same PostgreSQL 18 as Odoo 20. They still name their package `openerp`: `odoo_bin.sh` launches `openerp-server`, sends the `shell` that Odoo 8 lacks to `erplibre_shell`, and passes its missing `--dev` through `ERPLIBRE_DEV_MODE`. Odoo 8 does not create the database named by `-d`: create it with `./odoo_bin.sh db --create`. On 8 and 9, `-i` loads demo data even on a database created without it; add `--without-demo=all`
+- The database migration starts from Odoo 8: on one Arch Linux machine with PostgreSQL 18, the TODO menu takes an Odoo 8 backup to 12 with every sale, invoice, purchase, stock move and journal item identical at each step. A module missing from the next version whose installed dependents survive — `edi` under Odoo 8's `account` — is kept for OpenUpgrade instead of being uninstalled with them, and OpenUpgrade 9.0 and 10.0 get the openupgradelib 3.13.7 they call
 
 ## Changed
 
@@ -207,6 +208,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `poetry_update` skips requirement lines naming a local file, returns 1 when `poetry add` fails, files the lock of a new version under `requirement/`, and compares two-clause constraints
 - The migration launches OpenUpgrade 9.0 and 10.0 from their own tree, with `--no-xmlrpc`: it ran `odoo-bin` with `--no-http`, which neither knows, so a hop to 9 or 10 could not start
 - Odoo 10 installs `cerberus` 1.3.4: the 1.3.5 in its lock builds only through `pyproject.toml`, which Python 2's setuptools cannot read, and installed an empty package named `UNKNOWN`
+- A resumed migration runs OpenUpgrade inside the target Odoo: it ran inside the Odoo of the backup, which the replayed step 0 had switched back to
+- The migration checks run on Odoo 8, 9 and 10: every script sent to their shell declares utf-8, which Python 2 requires as soon as one character is not ASCII, and the hidden-model probe looks models up the way Odoo 8 and 9 allow. A model no witness has the right to read is marked 🔒 and blamed on its access groups, no longer on a global rule
+- The uninstall prompt of the migration announces « Enter = 3 » when no listed module has code left, which is what Enter does
+- Python 2.7 compiled by pyenv under GCC 14 or later gets an unsigned `Py_UNICODE`: its configure probes failed, the type came out signed, and C extensions built afterwards corrupted non-ASCII UTF-8 — Odoo 8's JSON-RPC answers stopped being JSON on any accented label. Odoo 8 also installs simplejson 4.1.2 from a prebuilt wheel, so its answers are right on an interpreter compiled before this fix, which keeps its signed type until pyenv rebuilds it
 
 ## Removed
 
