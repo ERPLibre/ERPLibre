@@ -522,11 +522,25 @@ class TestDeclaredTree(unittest.TestCase):
         )
         self.assertIsNone(declared["forged_other"]["crumb"])
 
+    def test_a_mark_is_read_as_the_menu_declares_it(self):
+        # `mark` a sa valeur par défaut au registre : un menu qui ne le
+        # donne pas est lu sans lui, un menu qui le donne en chaîne avec.
+        self.assertNotIn(
+            "mark",
+            todo_telemetry._declared_menus(self.dir)["prompt_configuration"],
+        )
+        self.menus_py.write_text(
+            FAKE_MENUS.replace("back=None", 'back=None, mark="⚠️ "')
+        )
+        declared = todo_telemetry._declared_menus(self.dir)
+        self.assertEqual(declared["prompt_configuration"]["mark"], "⚠️ ")
+
     def test_a_computed_value_declares_nothing(self):
         # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
         # fichier à moitié écrit, puis un littéral du mauvais type : un nom
         # de menu, une action, des kwargs, une entrée, des kwargs que JSON
-        # n'écrit pas, un `danger` qui n'est pas un booléen, une garde.
+        # n'écrit pas, un `danger` qui n'est pas un booléen, une garde, un
+        # `mark` None ; enfin un menu qui ne donne pas son `crumb`.
         for n, text in enumerate(
             (
                 "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
@@ -548,6 +562,8 @@ class TestDeclaredTree(unittest.TestCase):
                     'kwargs={"key": "forged_key"}',
                     'kwargs={"key": "forged_key"}, when=1',
                 ),
+                FAKE_MENUS.replace("back=None", "back=None, mark=None"),
+                FAKE_MENUS + 'OTHER = Menu("forged_other", entries=[])\n',
             )
         ):
             with self.subTest(case=n):

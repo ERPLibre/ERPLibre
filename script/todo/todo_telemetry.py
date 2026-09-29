@@ -522,24 +522,28 @@ def _declared(node, fields):
     return ast.literal_eval(node)
 
 
-# Champs texte que lisent l'arbre et le navigateur, par constructeur : ceux
-# qu'un appel doit donner, puis ceux qui peuvent valoir None.
+# Champs texte que lisent l'arbre et le navigateur, par constructeur, en
+# trois groupes : ceux qu'un appel doit donner, faute de valeur par défaut
+# au registre ; ceux qui peuvent valoir None ; ceux qui ont une valeur
+# par défaut qui n'est pas None. Un champ donné est une chaîne, ou None
+# s'il est du deuxième groupe ; un champ non donné prend sa valeur par
+# défaut. `crumb`, sans valeur par défaut, se donne, et peut valoir None.
 _TEXT_FIELDS = {
-    "Menu": (("name",), ("crumb", "state", "intro", "mark")),
-    "Section": (("key",), ()),
-    "Entry": (("key", "action"), ("suffix", "when")),
-    "FromConfig": (("config_key", "action", "kwarg"), ()),
+    "Menu": (("name", "crumb"), ("crumb", "state", "intro"), ("mark",)),
+    "Section": (("key",), (), ()),
+    "Entry": (("key", "action"), ("suffix", "when"), ()),
+    "FromConfig": (("config_key", "action", "kwarg"), (), ()),
 }
 
 
 def _check_menu(menu) -> None:
     """ValueError si `menu`, le dict que `_declared` rend d'un appel de
     `Menu`, n'a pas la forme que lisent l'arbre et le navigateur : chaque
-    champ de _TEXT_FIELDS une chaîne (ou None s'il est optionnel),
-    `entries` une liste de Section, Entry et FromConfig, les `kwargs` d'une
-    Entry None ou un dict aux clés de chaîne, son `danger` None ou un
-    booléen. TypeError si ces `kwargs` ne s'écrivent pas en JSON, comme
-    l'arbre que sert le hub."""
+    champ de _TEXT_FIELDS donné s'il doit l'être, et une chaîne, ou None
+    là où _TEXT_FIELDS le permet ; `entries` une liste de Section, Entry
+    et FromConfig, les `kwargs` d'une Entry None ou un dict aux clés de
+    chaîne, son `danger` None ou un booléen. TypeError si ces `kwargs` ne
+    s'écrivent pas en JSON, comme l'arbre que sert le hub."""
     entries = menu.get("entries")
     if not isinstance(entries, list):
         raise ValueError(f"entries is not a list: {entries!r}")
@@ -550,11 +554,15 @@ def _check_menu(menu) -> None:
         )
         if kind not in kinds:
             raise ValueError(f"not one of {kinds}: {item!r}")
-        required, optional = _TEXT_FIELDS[kind]
-        for field in required + optional:
-            value = item.get(field)
+        required, nullable, defaulted = _TEXT_FIELDS[kind]
+        for field in required + nullable + defaulted:
+            if field not in item:
+                if field in required:
+                    raise ValueError(f"{kind}.{field} is missing")
+                continue
+            value = item[field]
             if not (
-                isinstance(value, str) or (value is None and field in optional)
+                isinstance(value, str) or (value is None and field in nullable)
             ):
                 raise ValueError(f"{kind}.{field} is not a string: {value!r}")
         kwargs = item.get("kwargs")
@@ -610,10 +618,12 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     entrée dont le libellé finit par un `suffix` calculé à l'affichage
     porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
     Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
-    ni la TUI ni la page web ne le lancent. Une entrée gardée (`when`) y
+    ni la TUI ni la page web ne le lancent. Une feuille gardée (`when`) y
     est, quoi que rende sa garde, mais sans méthode : seul son menu lit
     la garde, et la TUI, qui lance une feuille par sa méthode, ne la
-    lance pas."""
+    lance pas. La garde ne protège qu'une feuille : une entrée gardée qui
+    ouvre un menu de `labels` porte le nœud de `build`, dont les feuilles
+    gardent leur méthode, et la TUI les lance quoi que rende la garde."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None
