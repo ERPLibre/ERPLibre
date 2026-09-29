@@ -3786,7 +3786,14 @@ class TODO(
         except Exception as e:
             print(f"{t('Error creating file: ')}{e}")
 
+    # Les sections dont un menu lit la liste `<section>_from_makefile` de
+    # todo.json : Git, Code, Update, QEMU/KVM et Proxmox VE.
+    _AUTOMATION_SECTIONS = ("git", "code", "update", "qemu", "proxmox")
+
     def _claude_add_automation(self):
+        """Ajoute une commande bash à la liste `<section>_from_makefile` du
+        todo.json voisin, pour une section de _AUTOMATION_SECTIONS, « git »
+        sans réponse ; une autre section est refusée, todo.json intact."""
         description = input(t("Description of the command to add: ")).strip()
         if not description:
             return
@@ -3794,11 +3801,12 @@ class TODO(
         if not command:
             return
         section = (
-            input(
-                t("Menu section (git/code/config/network/process): ")
-            ).strip()
+            input(t("Menu section (git/code/update/qemu/proxmox): ")).strip()
             or "git"
         )
+        if section not in self._AUTOMATION_SECTIONS:
+            print(f"{t('No menu reads this section: ')}{section}")
+            return
         section_key = f"{section}_from_makefile"
         config_path = os.path.join(os.path.dirname(__file__), "todo.json")
         try:

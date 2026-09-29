@@ -238,6 +238,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Git: only a number exactly as shown runs an entry: « +5 » or « 05 » answer « Command not found ! » instead of running the first entry of `todo.json`, and « 01 », « 1 » between spaces or a digit of another script no longer silently run nothing
 - Execute › GPT code › Claude Code: List local sessions, Ask a question to a session and Resume a session read the sessions when they are answered, instead of those the menu drew: a session started in another terminal while the menu waits is offered, and the navigation telemetry TUI, which launches them without an argument, runs them instead of failing
 - Execute › GPT code › Claude Code: a session is chosen only by a rank as listed: « ² » no longer stops TODO on an error, and « 01 » or a digit of another script choose nothing instead of the first session
+- Execute › GPT code › Add an automation with Claude in todo.py offers the sections whose list a menu reads, git, code, update, qemu and proxmox, and refuses another one: config, network and process, offered until now, wrote a list that no menu shows, and said it succeeded
 
 ## Removed
 

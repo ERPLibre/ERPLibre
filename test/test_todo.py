@@ -766,6 +766,65 @@ class TestListeCommandesClaude(unittest.TestCase):
         self.assertEqual(nommes, set(TODO._CLAUDE_COMMAND_TEMPLATES.values()))
 
 
+class TestClaudeAddAutomation(unittest.TestCase):
+    """GPT code › Add an automation : la commande s'écrit dans une liste
+    `<section>_from_makefile` de todo.json qu'un menu lit, et nulle part
+    ailleurs. todo.json est une copie temporaire."""
+
+    def setUp(self):
+        # L'ajout écrit le todo.json voisin de todo.py, que `add` détourne
+        # vers une copie : le vrai, suivi par git, reste tel quel.
+        import script.todo.todo as module
+
+        real = Path(module.__file__).with_name("todo.json")
+        before = real.read_bytes()
+        self.addCleanup(
+            lambda: self.assertTrue(real.read_bytes() == before, real)
+        )
+
+    def add(self, *answers):
+        """(todo.json après l'ajout, texte affiché) quand l'ajout reçoit
+        `answers`, sur un todo.json qui n'a que `git_from_makefile`."""
+        import script.todo.todo as module
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "todo.json"
+            config.write_text('{"git_from_makefile": []}\n')
+            with (
+                patch.object(module, "__file__", str(Path(tmp) / "todo.py")),
+                patch("builtins.input", side_effect=answers),
+                redirect_stdout(io.StringIO()) as out,
+            ):
+                TODO()._claude_add_automation()
+            return json.loads(config.read_text()), out.getvalue()
+
+    def test_only_a_section_a_menu_reads_is_written(self):
+        # Sans réponse, la section est git ; config, network et process
+        # n'ont aucun menu.
+        config, _ = self.add("Forged", "forged_command", "")
+        added = {
+            "prompt_description": "Forged",
+            "bash_command": "forged_command",
+        }
+        self.assertEqual(config, {"git_from_makefile": [added]})
+        refused = todo_i18n.t("No menu reads this section: ")
+        for section in ("config", "network", "process", "forged"):
+            with self.subTest(section=section):
+                config, out = self.add("Forged", "forged_command", section)
+                self.assertEqual(config, {"git_from_makefile": []})
+                self.assertIn(refused + section, out)
+
+    def test_each_offered_section_is_read_by_a_menu(self):
+        # Un menu écrit à la main (get_config) ou déclaré (FromConfig)
+        # nomme sa liste en littéral, sous script/todo.
+        root = Path(__file__).resolve().parent.parent / "script" / "todo"
+        sources = [p.read_text(encoding="utf-8") for p in root.rglob("*.py")]
+        for section in TODO._AUTOMATION_SECTIONS:
+            with self.subTest(section=section):
+                key = f'"{section}_from_makefile"'
+                self.assertTrue(any(key in text for text in sources), key)
+
+
 class TestClaudePlugins(unittest.TestCase):
     """Le menu des plugins Claude Code.
 

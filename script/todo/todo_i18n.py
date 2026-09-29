@@ -1094,9 +1094,13 @@ TRANSLATIONS = {
         "fr": "Commande bash à exécuter : ",
         "en": "Bash command to execute: ",
     },
-    "Menu section (git/code/config/network/process): ": {
-        "fr": "Section du menu (git/code/config/network/process) : ",
-        "en": "Menu section (git/code/config/network/process): ",
+    "Menu section (git/code/update/qemu/proxmox): ": {
+        "fr": "Section du menu (git/code/update/qemu/proxmox) : ",
+        "en": "Menu section (git/code/update/qemu/proxmox): ",
+    },
+    "No menu reads this section: ": {
+        "fr": "Aucun menu ne lit cette section : ",
+        "en": "No menu reads this section: ",
     },
     "Automation added successfully in todo.json!": {
         "fr": "Automatisation ajoutée avec succès dans todo.json!",
