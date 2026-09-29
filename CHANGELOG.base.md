@@ -426,6 +426,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Install lists its three installations chosen by a letter, declared dangerous since they install packages: neither the TUI nor the page launches them, Install alone does; an Odoo version is still chosen in Install itself, whose list depends on the machine
 - Quitting TODO from its main menu no longer writes the « 0 » it was answered
 - Assistant › LLM › Known servers takes a server, or one of its two entries, only by its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of taking the first server
+- Assistant › LLM › Search for a server runs an entry only for its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of probing this machine
 
 <!-- [fr] -->
 
@@ -572,6 +573,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Installation liste ses trois installations choisies par une lettre, déclarées dangereuses puisqu'elles posent des paquets : ni la TUI ni la page ne les lancent, Installation seule le fait ; une version d'Odoo se choisit toujours dans Installation même, dont la liste dépend de la machine
 - Quitter TODO depuis son menu principal n'écrit plus le « 0 » qu'on lui a répondu
 - Assistant › LLM › Serveurs connus ne prend un serveur, ou l'une de ses deux entrées, que par son numéro tel qu'affiché : « 01 », « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de prendre le premier serveur
+- Assistant › LLM › Chercher un serveur ne lance une entrée que par son numéro tel qu'affiché : « 01 », « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de sonder cette machine
 
 <!-- [en] -->
 ## Removed

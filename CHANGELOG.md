@@ -276,6 +276,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Install lists its three installations chosen by a letter, declared dangerous since they install packages: neither the TUI nor the page launches them, Install alone does; an Odoo version is still chosen in Install itself, whose list depends on the machine
 - Quitting TODO from its main menu no longer writes the « 0 » it was answered
 - Assistant › LLM › Known servers takes a server, or one of its two entries, only by its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of taking the first server
+- Assistant › LLM › Search for a server runs an entry only for its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of probing this machine
 
 ## Removed
 

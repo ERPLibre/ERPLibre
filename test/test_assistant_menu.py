@@ -750,6 +750,24 @@ class MenusDuLLM(unittest.TestCase):
         self.answered("_llm_servers", "2", "0")
         self.assertEqual(self.todo._llm_state()["serveur"].label, "Forged two")
 
+    def test_search_lance_une_entree_par_son_numero_affiche(self):
+        # « 01 », « +1 », « 1 » précédé d'un blanc ou un chiffre d'une
+        # autre écriture ne lancent pas la sonde de cette machine ; « 1 »,
+        # si.
+        from script.todo.assistant import discover as llm_disc
+
+        with (
+            patch.object(llm_disc, "local_networks", return_value=[]),
+            patch.object(type(self.todo), "_llm_probe_and_keep") as sonde,
+        ):
+            for answer in ("01", "+1", " 1", "١"):
+                with self.subTest(answer=answer):
+                    shown = self.answered("_llm_search", answer, "0")
+                    self.assertIn(t("Command not found !"), shown)
+            sonde.assert_not_called()
+            self.answered("_llm_search", "1", "0")
+        sonde.assert_called_once_with(["127.0.0.1"])
+
 
 class Frontiere(unittest.TestCase):
     """Le paquet doit vivre sans le CLI qui l'appelle."""

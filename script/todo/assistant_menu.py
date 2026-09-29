@@ -430,11 +430,13 @@ class AssistantMenuMixin:
             print()
             if status == "0":
                 return
-            try:
-                rang = int(status)
-            except ValueError:
+            # Seul un numéro tel qu'affiché désigne une entrée : `int`
+            # prendrait aussi « 01 », « +1 » ou un chiffre d'une autre
+            # écriture.
+            if status not in [str(n) for n in range(1, len(reseaux) + 7)]:
                 print(t("Command not found !"))
                 continue
+            rang = int(status)
             if rang == 1:
                 self._llm_state()["sonde"] = None
                 self._llm_probe_and_keep(["127.0.0.1"])
