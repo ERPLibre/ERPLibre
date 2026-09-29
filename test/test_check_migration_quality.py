@@ -1131,24 +1131,31 @@ class TestTheFullScreen(Base):
 
 
 class TestWhereItIsOffered(Base):
+    def analyse(self):
+        """{clé: action} des entrées d'Analyse, déclaré au registre, dans
+        l'ordre affiché : le numéro d'une entrée est sa place."""
+        from script.todo.menus import run
+        from script.todo.ui.registry import Entry
+
+        return {
+            e.key: e.action
+            for e in run.ANALYSE.entries
+            if isinstance(e, Entry)
+        }
+
     def test_the_analyse_menu_offers_it(self):
-        chemin = os.path.join(REPO, "script", "todo", "todo.py")
-        with open(chemin) as handle:
-            texte = handle.read()
-        self.assertIn("Quality of a migration, step by step", texte)
-        self.assertIn("execute_analyse_migration_quality", texte)
+        self.assertEqual(
+            self.analyse()["Quality of a migration, step by step"],
+            "execute_analyse_migration_quality",
+        )
 
     def test_the_existing_menu_numbers_did_not_move(self):
         # Quelqu'un connaît « 1 », « 2 », « 3 » : les décaler pour insérer
         # une entrée au milieu se paierait à chaque usage.
-        import inspect
-
-        from script.todo.todo import TODO
-
-        source = inspect.getsource(TODO.prompt_execute_analyse)
+        cles = list(self.analyse())
         self.assertLess(
-            source.index("Tables and database size"),
-            source.index("Quality of a migration"),
+            cles.index("Tables and database size"),
+            cles.index("Quality of a migration, step by step"),
         )
 
     def test_the_state_screen_offers_it_too(self):

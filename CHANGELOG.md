@@ -232,6 +232,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Doc: Migration module coverage and What change between version ask for their version in the chosen language instead of always in English, and the second question opens its parenthesis
 - Navigation telemetry: Execute › Run lists Choose your database, which launches from the TUI and the web page, and an instance launched from the TUI asks « Do you want a new instance? » and opens its database, as in the menu
 - Navigation telemetry: Execute › Database shows its five commands; four launch from the TUI and from the web page, and Erase a database, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice
+- Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 
 ## Removed
 

@@ -65,3 +65,95 @@ ERASE = Menu(
     render="once",
     closes=True,
 )
+
+ANALYSE = Menu(
+    "prompt_execute_analyse",
+    "Analyse",
+    [
+        Section("Structure"),
+        Entry("Tables and database size", "execute_analyse_schema_size"),
+        Section("Customisation"),
+        Entry(
+            "Customised views, website copies included",
+            "execute_analyse_view_custom",
+        ),
+        Entry(
+            "Studio and hand-made x_ fields", "execute_analyse_custom_field"
+        ),
+        Section("Migration"),
+        Entry(
+            "Quality of a migration, step by step",
+            "execute_analyse_migration_quality",
+        ),
+        Section("Modules"),
+        Entry(
+            "Modules missing from the default package",
+            "execute_analyse_module_package",
+        ),
+        Entry(
+            "Dependencies between modules", "execute_analyse_module_dependency"
+        ),
+        Section("Files"),
+        Entry(
+            "Attachment files missing from the filestore",
+            "execute_analyse_filestore",
+        ),
+        Section("Instance"),
+        Entry(
+            "Monitoring - a backup, a remote copy or a live instance",
+            "execute_analyse_monitoring",
+        ),
+    ],
+    intro="Analyse a database. Reading never writes.",
+    render="once",
+)
+
+TRANSFORM = Menu(
+    "prompt_execute_transform",
+    "Transform data",
+    [
+        # « Source » et non « Source file » : l'entrée couvre un fichier et
+        # une base Odoo, et un libellé qui dit « fichier » ferait chercher
+        # ailleurs l'anonymiseur de base.
+        Section("Source"),
+        Entry("Open a file and read its report", "_transform_open_and_report"),
+        Entry(
+            "Anonymise an Odoo database or a backup",
+            "_transform_anonymise_base",
+        ),
+        Section("Environment"),
+        Entry("Install the reading environment", "_transform_install_env"),
+        Entry("What can this machine read?", "_transform_capabilities"),
+        Entry("Copies produced", "_transform_copies"),
+        Entry("Databases produced", "_transform_bases_produites"),
+    ],
+    intro="Transform your data: read, describe, then copy.",
+    mark="🪄",
+    render="once",
+)
+
+DOC = Menu(
+    "prompt_execute_doc",
+    "Doc",
+    [
+        Entry("Migration module coverage", "_doc_migration_coverage"),
+        Entry("What change between version", "_doc_version_changes"),
+        Entry(
+            "OCA guidelines",
+            "_doc_link",
+            kwargs={
+                "url": "https://github.com/OCA/odoo-community.org/blob/master"
+                "/website/Contribution/CONTRIBUTING.rst"
+            },
+        ),
+        Entry(
+            "OCA migration Odoo 19 milestone",
+            "_doc_link",
+            kwargs={
+                "url": "https://github.com/OCA/maintainer-tools/issues/658"
+            },
+        ),
+    ],
+    intro="Looking for documentation?",
+    render="once",
+)

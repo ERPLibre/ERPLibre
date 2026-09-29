@@ -4049,56 +4049,47 @@ class TODO(
         print(f"{t('Total:')} {len(trouves)}")
 
     def prompt_execute_doc(self):
-        print(f"🤖 {t('Looking for documentation?')}")
-        choices = [
-            {"prompt_description": t("Migration module coverage")},
-            {"prompt_description": t("What change between version")},
-            {"prompt_description": t("OCA guidelines")},
-            {"prompt_description": t("OCA migration Odoo 19 milestone")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Doc (DOC, `menus/run.py`) : l'adresse de pages sur la migration
+        d'Odoo et les règles de l'OCA. Dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_run.DOC)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                str_version = input(
-                    t("Select version to upgrade Odoo CE (5-17) : ")
-                )
-                try:
-                    int_version = int(str_version)
-                    print(
-                        "https://oca.github.io/OpenUpgrade/coverage_analysis/modules"
-                        f"{int_version * 10}-{(int_version + 1) * 10}.html"
-                    )
-                except ValueError:
-                    print(
-                        "https://oca.github.io/OpenUpgrade/030_coverage_analysis.html"
-                    )
-            elif status == "2":
-                str_version = input(
-                    t(
-                        "Select version to show what change for Odoo CE"
-                        " version (8-18) : "
-                    )
-                )
-                try:
-                    int_version = int(str_version)
-                    print(
-                        f"https://github.com/OCA/maintainer-tools/wiki/Migration-to-version-{int_version}.0"
-                    )
-                except ValueError:
-                    print("https://github.com/OCA/maintainer-tools/wiki")
-            elif status == "3":
-                print(
-                    "https://github.com/OCA/odoo-community.org/blob/master/website/Contribution/CONTRIBUTING.rst"
-                )
-            elif status == "4":
-                print("https://github.com/OCA/maintainer-tools/issues/658")
-            else:
-                print(t("Command not found !"))
+    def _doc_migration_coverage(self):
+        """L'analyse de couverture d'OpenUpgrade depuis la version tapée,
+        ou sa page d'ensemble pour une réponse qui n'est pas un nombre."""
+        str_version = input(t("Select version to upgrade Odoo CE (5-17) : "))
+        try:
+            int_version = int(str_version)
+            print(
+                "https://oca.github.io/OpenUpgrade/coverage_analysis/modules"
+                f"{int_version * 10}-{(int_version + 1) * 10}.html"
+            )
+        except ValueError:
+            print(
+                "https://oca.github.io/OpenUpgrade/030_coverage_analysis.html"
+            )
+
+    def _doc_version_changes(self):
+        """La page de l'OCA sur la migration vers la version tapée, ou
+        l'accueil de son wiki pour une réponse qui n'est pas un nombre."""
+        str_version = input(
+            t(
+                "Select version to show what change for Odoo CE"
+                " version (8-18) : "
+            )
+        )
+        try:
+            int_version = int(str_version)
+            print(
+                "https://github.com/OCA/maintainer-tools/wiki/"
+                f"Migration-to-version-{int_version}.0"
+            )
+        except ValueError:
+            print("https://github.com/OCA/maintainer-tools/wiki")
+
+    def _doc_link(self, url):
+        """Imprime `url`, l'adresse d'une page de documentation."""
+        print(url)
 
     def prompt_execute_database(self):
         """Database (DATABASE, `menus/run.py`) : sauvegarder, télécharger,
@@ -4122,7 +4113,8 @@ class TODO(
         self.db_manager.drop_database()
 
     def prompt_execute_analyse(self):
-        """Analyses d'une base Odoo, en lecture seule.
+        """Analyses d'une base Odoo, en lecture seule (ANALYSE,
+        `menus/run.py`). Dessiné une fois, à l'entrée. Rend False sur [0].
 
         Toute LECTURE passe par une connexion psql ouverte avec
         `default_transaction_read_only=on` : c'est le serveur qui refuse
@@ -4133,64 +4125,7 @@ class TODO(
         défaut à « non », liste à confirmer, et refus net si le checkout
         n'est pas sur la version de la base.
         """
-        print(f"🤖 {t('Analyse a database. Reading never writes.')}")
-        choices = [
-            {"section": t("Structure")},
-            {"prompt_description": t("Tables and database size")},
-            {"section": t("Customisation")},
-            {
-                "prompt_description": t(
-                    "Customised views, website copies included"
-                )
-            },
-            {"prompt_description": t("Studio and hand-made x_ fields")},
-            {"section": t("Migration")},
-            {"prompt_description": t("Quality of a migration, step by step")},
-            {"section": t("Modules")},
-            {
-                "prompt_description": t(
-                    "Modules missing from the default package"
-                )
-            },
-            {"prompt_description": t("Dependencies between modules")},
-            {"section": t("Files")},
-            {
-                "prompt_description": t(
-                    "Attachment files missing from the filestore"
-                )
-            },
-            {"section": t("Instance")},
-            {
-                "prompt_description": t(
-                    "Monitoring - a backup, a remote copy or a live instance"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.execute_analyse_schema_size()
-            elif status == "2":
-                self.execute_analyse_view_custom()
-            elif status == "3":
-                self.execute_analyse_custom_field()
-            elif status == "4":
-                self.execute_analyse_migration_quality()
-            elif status == "5":
-                self.execute_analyse_module_package()
-            elif status == "6":
-                self.execute_analyse_module_dependency()
-            elif status == "7":
-                self.execute_analyse_filestore()
-            elif status == "8":
-                self.execute_analyse_monitoring()
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_run.ANALYSE)
 
     def execute_analyse_module_package(self):
         """Ce que la base n'a pas, alors que l'installation par défaut l'a.

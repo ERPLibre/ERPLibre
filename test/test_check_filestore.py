@@ -1094,21 +1094,20 @@ class TestTheRestoreWiring(unittest.TestCase):
         self.assertNotIn("verify_filestore", src[debut:fin])
 
     def test_the_analyse_menu_offers_the_tool(self):
-        src = self.source("script/todo/todo.py")
-        self.assertIn("Attachment files missing from the filestore", src)
-        self.assertIn("self.execute_analyse_filestore()", src)
-        self.assertIn("def execute_analyse_filestore", src)
+        # Analyse est déclaré au registre : une entrée y porte la méthode
+        # qu'elle lance, et son numéro est sa place.
+        from script.todo.menus import run
+        from script.todo.todo import TODO
+        from script.todo.ui.registry import Entry
 
-    def test_the_menu_has_as_many_entries_as_branches(self):
-        src = self.source("script/todo/todo.py")
-        debut = src.index("def prompt_execute_analyse")
-        fin = src.index('print(t("Command not found !"))', debut)
-        bloc = src[debut:fin]
-        entrees = bloc.count('"prompt_description"')
-        branches = sum(
-            f'status == "{n}"' in bloc for n in range(1, entrees + 2)
-        )
-        self.assertEqual(entrees, branches)
+        actions = {
+            e.key: e.action
+            for e in run.ANALYSE.entries
+            if isinstance(e, Entry)
+        }
+        methode = actions["Attachment files missing from the filestore"]
+        self.assertEqual(methode, "execute_analyse_filestore")
+        self.assertTrue(callable(getattr(TODO, methode)))
 
 
 class TestTheExitCodes(unittest.TestCase):

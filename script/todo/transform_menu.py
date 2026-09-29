@@ -43,7 +43,9 @@ import subprocess
 import click
 
 from script.todo import transform_setup
+from script.todo.menus import run as menus_run
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 try:
     from script.todo import todo_file_browser
@@ -105,46 +107,10 @@ class TransformMenuMixin:
     # Menu
     # ------------------------------------------------------------------
     def prompt_execute_transform(self):
-        print(f"🪄 {t('Transform your data: read, describe, then copy.')}")
-        choices = [
-            # « Source » et non « Source file » : l'entrée couvre
-            # désormais un fichier ET une base Odoo, et un libellé qui
-            # dit « fichier » ferait chercher ailleurs l'anonymiseur de
-            # base.
-            {"section": t("Source")},
-            {"prompt_description": t("Open a file and read its report")},
-            {
-                "prompt_description": t(
-                    "Anonymise an Odoo database or a backup"
-                )
-            },
-            {"section": t("Environment")},
-            {"prompt_description": t("Install the reading environment")},
-            {"prompt_description": t("What can this machine read?")},
-            {"prompt_description": t("Copies produced")},
-            {"prompt_description": t("Databases produced")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._transform_open_and_report()
-            elif status == "2":
-                self._transform_anonymise_base()
-            elif status == "3":
-                self._transform_install_env()
-            elif status == "4":
-                self._transform_capabilities()
-            elif status == "5":
-                self._transform_copies()
-            elif status == "6":
-                self._transform_bases_produites()
-            else:
-                print(t("Command not found !"))
+        """Transform data (TRANSFORM, `menus/run.py`) : lire un fichier ou
+        anonymiser une base, puis l'environnement de lecture et ce qu'il a
+        produit. Dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_run.TRANSFORM)
 
     # ------------------------------------------------------------------
     # Le moteur, en sous-processus

@@ -382,6 +382,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Doc: Migration module coverage and What change between version ask for their version in the chosen language instead of always in English, and the second question opens its parenthesis
 - Navigation telemetry: Execute › Run lists Choose your database, which launches from the TUI and the web page, and an instance launched from the TUI asks « Do you want a new instance? » and opens its database, as in the menu
 - Navigation telemetry: Execute › Database shows its five commands; four launch from the TUI and from the web page, and Erase a database, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice
+- Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 
 <!-- [fr] -->
 
@@ -484,6 +485,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Doc : Couverture de migration des modules et Quels changements entre les versions demandent leur version dans la langue choisie au lieu de toujours en anglais, et la seconde question ouvre sa parenthèse
 - Télémétrie de navigation : Exécution › Run montre Choisir sa base de données, qui se lance depuis la TUI et la page web, et une instance lancée depuis la TUI demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme dans le menu
 - Télémétrie de navigation : Exécution › Database montre ses cinq commandes ; quatre se lancent depuis la TUI et depuis la page web, et Effacer une base de données, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis
+- Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 
 <!-- [en] -->
 ## Removed

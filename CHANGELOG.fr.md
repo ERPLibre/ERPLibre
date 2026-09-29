@@ -232,6 +232,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Doc : Couverture de migration des modules et Quels changements entre les versions demandent leur version dans la langue choisie au lieu de toujours en anglais, et la seconde question ouvre sa parenthèse
 - Télémétrie de navigation : Exécution › Run montre Choisir sa base de données, qui se lance depuis la TUI et la page web, et une instance lancée depuis la TUI demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme dans le menu
 - Télémétrie de navigation : Exécution › Database montre ses cinq commandes ; quatre se lancent depuis la TUI et depuis la page web, et Effacer une base de données, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis
+- Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 
 ## Retiré
 

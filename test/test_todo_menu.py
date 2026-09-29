@@ -712,32 +712,6 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
-class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Analyse, qui n'avait aucun garde.
-
-    Il en a pourtant besoin plus que les autres : ses entrées sont
-    regroupées en cinq sections, et une section ne consomme pas de numéro.
-    Ajouter « Instance » avant la dernière entrée décalait tout ce qui
-    suivait sans que rien ne proteste.
-    """
-
-    SOURCE = TODO_DIR / "todo.py"
-    ENTRY = "def prompt_execute_analyse(self):"
-    END = "def execute_analyse_module_package(self):"
-    MINIMUM = 5
-
-    EXPECTED = {
-        "Tables and database size": "execute_analyse_schema_size",
-        "Customised views": "execute_analyse_view_custom",
-        "Studio and hand-made": "execute_analyse_custom_field",
-        "Quality of a migration": "execute_analyse_migration_quality",
-        "Modules missing": "execute_analyse_module_package",
-        "Dependencies between": "execute_analyse_module_dependency",
-        "Attachment files missing": "execute_analyse_filestore",
-        "Monitoring - a backup": "execute_analyse_monitoring",
-    }
-
-
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 
@@ -1177,6 +1151,71 @@ class TestEraseMenuNumbering(RegistryCoherence, unittest.TestCase):
         # nœud pour ce menu. Qu'il en gagne un, et ni la TUI ni la page web
         # ne lancent un effacement.
         self.assertEqual({e.danger for e in self.entries}, {True})
+
+
+class TestAnalyseMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu Analyse : huit analyses en six sections, qui ne prennent
+    pas de numéro."""
+
+    MENU = "prompt_execute_analyse"
+    EXPECTED = {
+        "Tables and database size": "execute_analyse_schema_size",
+        "Customised views": "execute_analyse_view_custom",
+        "Studio and hand-made": "execute_analyse_custom_field",
+        "Quality of a migration": "execute_analyse_migration_quality",
+        "Modules missing": "execute_analyse_module_package",
+        "Dependencies between": "execute_analyse_module_dependency",
+        "Attachment files missing": "execute_analyse_filestore",
+        "Monitoring - a backup": "execute_analyse_monitoring",
+    }
+
+
+class TestTransformMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Transform data : lire un fichier ou anonymiser une base, puis
+    l'environnement de lecture et ce qu'il a produit."""
+
+    MENU = "prompt_execute_transform"
+    EXPECTED = {
+        "Open a file and read its report": "_transform_open_and_report",
+        "Anonymise an Odoo database": "_transform_anonymise_base",
+        "Install the reading environment": "_transform_install_env",
+        "What can this machine read?": "_transform_capabilities",
+        "Copies produced": "_transform_copies",
+        "Databases produced": "_transform_bases_produites",
+    }
+
+
+class TestDocMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Doc : deux adresses qui dépendent d'une version tapée, puis deux
+    pages de l'OCA."""
+
+    MENU = "prompt_execute_doc"
+    EXPECTED = {
+        "Migration module coverage": "_doc_migration_coverage",
+        "What change between version": "_doc_version_changes",
+        "OCA guidelines": "_doc_link",
+        "OCA migration Odoo 19 milestone": "_doc_link",
+    }
+
+    def test_each_link_is_the_page_its_label_names(self):
+        self.assertEqual(
+            [(e.key, e.kwargs) for e in self.entries if e.kwargs],
+            [
+                (
+                    "OCA guidelines",
+                    {
+                        "url": "https://github.com/OCA/odoo-community.org"
+                        "/blob/master/website/Contribution/CONTRIBUTING.rst"
+                    },
+                ),
+                (
+                    "OCA migration Odoo 19 milestone",
+                    {
+                        "url": "https://github.com/OCA/maintainer-tools/issues/658"
+                    },
+                ),
+            ],
+        )
 
 
 class TestUpdateMenu(unittest.TestCase):
@@ -1684,6 +1723,9 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_instance",
                 "prompt_execute_database",
                 "drop_database",
+                "prompt_execute_analyse",
+                "prompt_execute_transform",
+                "prompt_execute_doc",
             },
             set(declared),
         )

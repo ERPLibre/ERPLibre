@@ -546,24 +546,20 @@ class TestTheWiring(unittest.TestCase):
         self.assertEqual(manquantes, [])
 
     def test_the_menu_offers_the_entry_and_dispatches_it(self):
-        src = self.source("script/todo/todo.py")
-        self.assertIn("Modules missing from the default package", src)
-        self.assertIn("self.execute_analyse_module_package()", src)
-        self.assertIn("def execute_analyse_module_package", src)
+        # Analyse est déclaré au registre : une entrée y porte la méthode
+        # qu'elle lance, et son numéro est sa place.
+        from script.todo.menus import run
+        from script.todo.todo import TODO
+        from script.todo.ui.registry import Entry
 
-    def test_the_menu_has_as_many_entries_as_branches(self):
-        # Ajouter une entrée sans son aiguillage donne « Command not
-        # found » sur un choix que le menu vient d'afficher.
-        src = self.source("script/todo/todo.py")
-        debut = src.index("def prompt_execute_analyse")
-        fin = src.index("def execute_analyse_module_package")
-        self.assertLess(debut, fin)
-        bloc = src[debut:fin]
-        entrees = bloc.count('"prompt_description"')
-        branches = sum(
-            f'status == "{n}"' in bloc for n in range(1, entrees + 2)
-        )
-        self.assertEqual(entrees, branches)
+        actions = {
+            e.key: e.action
+            for e in run.ANALYSE.entries
+            if isinstance(e, Entry)
+        }
+        methode = actions["Modules missing from the default package"]
+        self.assertEqual(methode, "execute_analyse_module_package")
+        self.assertTrue(callable(getattr(TODO, methode)))
 
 
 class TestWhatCanBeInstalled(unittest.TestCase):
