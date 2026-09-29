@@ -279,6 +279,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › Search for a server runs an entry only for its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of probing this machine
 - Assistant › LLM › Search for a server › The networks of a machine over SSH sweeps a network only by its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of sweeping the first network read on that machine
 - Assistant › LLM › gpt tools takes a tool by its letter, or by its rank only as a plain number: « ² », next to « 1 » on a French keyboard, no longer ends TODO on a `ValueError`, and « 01 » or a digit of another script no longer pick the first tool
+- A list of ranks, « 1 3 » or « 1,3 », takes each option only by its number as the list writes it, or by its name: « 01 », « +1 » or a digit of another script no longer pick the first one, in Assistant › LLM › Known servers › Delete a server as in the VM choices of QEMU/KVM and Proxmox VE
 
 ## Removed
 

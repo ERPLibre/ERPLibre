@@ -1290,6 +1290,26 @@ class TestOptionsDeLAnonymiseur(unittest.TestCase):
         )
 
 
+class TestParseIndexSelection(unittest.TestCase):
+    """Une liste de rangs, « 1 3 » ou « 1,3 » : Assistant › LLM › Known
+    servers › Delete a server, et les choix de VM des familles QEMU et
+    Proxmox, y prennent une option par son numéro tel qu'une liste
+    l'écrit, ou par son nom."""
+
+    def test_a_rank_is_a_number_as_the_list_writes_it(self):
+        # « 01 », « +1 » ou un chiffre d'une autre écriture désigneraient
+        # la première option ; « 0 », « -1 » ou « 4 », sur trois, aucune.
+        parse = TODO._parse_index_selection
+        options = ["forged_a", "forged_b", "forged_c"]
+        self.assertEqual(parse("1 3", options), ["forged_a", "forged_c"])
+        self.assertEqual(
+            parse("2,forged_a,2", options), ["forged_b", "forged_a"]
+        )
+        for raw in ("01", "+1", "١", "0", "-1", "4"):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse(raw, options), [])
+
+
 class TestAttributsDeTODO(unittest.TestCase):
     """Tout `self.X` que `TODO` LIT est-il posé par TODO ou un mixin ?
 
