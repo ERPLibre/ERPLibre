@@ -225,7 +225,9 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_les_quatre_verbes_systemd(self):
-        """start, enable, disable et stop, et pas un cinquième par erreur."""
+        """Les quatre verbes systemd, start, enable, disable et stop, puis
+        l'état détaillé, « status --no-pager », et le journal, qui n'en
+        passe aucun : six entrées, et pas une septième par erreur."""
         self.assertEqual(
             [
                 kwargs.get("verbe")

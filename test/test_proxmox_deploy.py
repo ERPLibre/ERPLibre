@@ -32,7 +32,7 @@ from script.proxmox import proxmox_deploy as pve  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
-# Sorties inventées, de la forme que rendent les commandes d'un hôte
+# Sorties d'exemple, de la forme que rendent les commandes d'un hôte
 # Proxmox VE.
 PVEVERSION = (
     "pve-manager/9.2.11/f6997e698c7933ea (running kernel: 7.0.14-12-pve)"
