@@ -806,7 +806,7 @@ class TestLeReseauDuPontInterne(unittest.TestCase):
 
 
 class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
-    """« ifreload -a » en repli rechargeait TOUTES les interfaces.
+    """« ifreload -a » en repli rechargerait TOUTES les interfaces.
 
     Y compris celle qui porte la session ssh — et sur une image cloud
     l'interface principale est décrite ailleurs (interfaces.d, netplan), donc
@@ -911,7 +911,7 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         d'utilisable, et le diagnostic conclurait l'inverse — renvoyant vers
         journalctl au lieu de /etc/hosts."""
         for adresses in (
-            ["fe80::5054:ff:fecf:bba9", "fe80::fc54:ff:fe79:78a4"],
+            ["fe80::5054:ff:fe0f:e0d", "fe80::fc54:ff:fe0f:e0e"],
             ["169.254.3.4"],
             ["127.0.1.1"],
         ):
