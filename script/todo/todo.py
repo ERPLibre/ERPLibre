@@ -124,6 +124,7 @@ from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.system_menu import SystemMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -204,6 +205,7 @@ class TODO(
     VpnMenuMixin,
     AssistantMenuMixin,
     ContainerMenuMixin,
+    SystemMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -340,6 +342,9 @@ class TODO(
 [14] {t("Network - Network tools")}
 [15] {t("Security - Dependency security audit")}
 [16] {t("Docker / Podman - Container engines")}
+
+── {t("System")} ──
+[17] {t("System - Diagnostic and disk space")}
 [0] {t("Back")}
 """
         while True:
@@ -409,6 +414,10 @@ class TODO(
                     return
             elif status == "16":
                 status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "17":
+                status = self.prompt_execute_system()
                 if status is not False:
                     return
             else:
@@ -704,6 +713,7 @@ class TODO(
         "prompt_execute_network": "Network",
         "prompt_execute_security": "Security",
         "prompt_execute_container": "Docker / Podman",
+        "prompt_execute_system": "System",
         "_container_service": "Service",
         "_container_compose": "Compose",
         "_container_erplibre": "ERPLibre container",

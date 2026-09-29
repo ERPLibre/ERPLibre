@@ -16436,6 +16436,119 @@ TRANSLATIONS = {
         "fr": "forcée : le nom seulement, l'espace reste",
         "en": "forced: the name only, the space stays",
     },
+    # Système : diagnostic
+    "System": {
+        "fr": "Système",
+        "en": "System",
+    },
+    "System - Diagnostic and disk space": {
+        "fr": "🩺 Système - Diagnostic et espace disque",
+        "en": "🩺 System - Diagnostic and disk space",
+    },
+    "System and disk space!": {
+        "fr": "Le système et son espace disque !",
+        "en": "System and disk space!",
+    },
+    "System diagnostic": {
+        "fr": "🩺 Diagnostic du système",
+        "en": "🩺 System diagnostic",
+    },
+    "Identity": {
+        "fr": "Identité",
+        "en": "Identity",
+    },
+    "Host name": {
+        "fr": "Nom d'hôte",
+        "en": "Host name",
+    },
+    "Operating system": {
+        "fr": "Système d'exploitation",
+        "en": "Operating system",
+    },
+    "Kernel": {
+        "fr": "Noyau",
+        "en": "Kernel",
+    },
+    "Chassis": {
+        "fr": "Châssis",
+        "en": "Chassis",
+    },
+    "Virtualization": {
+        "fr": "Virtualisation",
+        "en": "Virtualization",
+    },
+    "Hardware": {
+        "fr": "Matériel",
+        "en": "Hardware",
+    },
+    "Processor and memory": {
+        "fr": "Processeur et mémoire",
+        "en": "Processor and memory",
+    },
+    "Processor": {
+        "fr": "Processeur",
+        "en": "Processor",
+    },
+    "Cores (physical / logical)": {
+        "fr": "Cœurs (physiques / logiques)",
+        "en": "Cores (physical / logical)",
+    },
+    "available of": {
+        "fr": "disponibles sur",
+        "en": "available of",
+    },
+    "Swap": {
+        "fr": "Swap",
+        "en": "Swap",
+    },
+    "Graphics": {
+        "fr": "Carte graphique",
+        "en": "Graphics",
+    },
+    "lspci not installed": {
+        "fr": "lspci non installé",
+        "en": "lspci not installed",
+    },
+    "Disks": {
+        "fr": "Disques",
+        "en": "Disks",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "Load": {
+        "fr": "Charge",
+        "en": "Load",
+    },
+    "Load (1, 5, 15 min)": {
+        "fr": "Charge (1, 5, 15 min)",
+        "en": "Load (1, 5, 15 min)",
+    },
+    "Uptime": {
+        "fr": "Démarré depuis",
+        "en": "Uptime",
+    },
+    "Active venv": {
+        "fr": "Venv actif",
+        "en": "Active venv",
+    },
+    "Venvs": {
+        "fr": "Venvs",
+        "en": "Venvs",
+    },
+    "unavailable": {
+        "fr": "indisponible",
+        "en": "unavailable",
+    },
+    "Save this report in private/diagnostic/? (y/N): ": {
+        "fr": "Enregistrer ce rapport dans private/diagnostic/ ? (o/N) : ",
+        "en": "Save this report in private/diagnostic/? (y/N): ",
+    },
+    "Report saved:": {
+        "fr": "Rapport enregistré :",
+        "en": "Report saved:",
+    },
 }
 
 
