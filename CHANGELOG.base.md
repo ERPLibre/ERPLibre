@@ -384,6 +384,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Database shows its five commands; four launch from the TUI and from the web page, and Erase a database, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice
 - Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 - Execute › Automation opens when `todo.json` has no `function` list, with [0] alone, instead of stopping on an error before its menu
+- Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
 
 <!-- [fr] -->
 
@@ -488,6 +489,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Database montre ses cinq commandes ; quatre se lancent depuis la TUI et depuis la page web, et Effacer une base de données, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis
 - Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 - Exécution › Automatisation s'ouvre quand `todo.json` n'a pas de liste `function`, avec [0] seul, au lieu de s'arrêter sur une erreur avant son menu
+- Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
 
 <!-- [en] -->
 ## Removed

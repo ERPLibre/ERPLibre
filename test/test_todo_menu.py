@@ -1657,6 +1657,15 @@ class TestAutomationMenu(AnsweredMenu, unittest.TestCase):
         self.assertEqual(ran, [])
         self.assertEqual(out.count("Command not found !"), 1)
 
+    def test_each_number_runs_the_entry_it_shows(self):
+        # « 3 » n'est pas affiché ; « 01 », « 1 » entouré de blancs, « +1 »
+        # et « ١ » (le chiffre un en écriture arabe) ne sont pas le numéro
+        # affiché.
+        answers = ["1", "2", "3", "01", " 1", "1 ", "+1", "١"]
+        ran, out = self.answer(answers)
+        self.assertEqual(ran, ["forged_one", "forged_two"])
+        self.assertEqual(out.count("Command not found !"), 6)
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.

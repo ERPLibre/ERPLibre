@@ -234,6 +234,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Database montre ses cinq commandes ; quatre se lancent depuis la TUI et depuis la page web, et Effacer une base de données, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis
 - Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
 - Exécution › Automatisation s'ouvre quand `todo.json` n'a pas de liste `function`, avec [0] seul, au lieu de s'arrêter sur une erreur avant son menu
+- Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
 
 ## Retiré
 

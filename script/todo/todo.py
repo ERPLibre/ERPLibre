@@ -1137,18 +1137,12 @@ class TODO(
             print()
             if status == "0":
                 return False
+            # [N], tel qu'affiché, est la N-ième entrée de configuration.
+            shown = [str(n) for n in range(1, len(choices) + 1)]
+            if status in shown:
+                self.execute_from_configuration(choices[int(status) - 1])
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
-                        cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+                print(t("Command not found !"))
 
     def prompt_execute_update(self):
         """Mise à jour du développement (UPDATE, `menus/execute.py`) : les

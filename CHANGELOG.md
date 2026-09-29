@@ -234,6 +234,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Database shows its five commands; four launch from the TUI and from the web page, and Erase a database, declared dangerous, launches only from its menu: the page shows it without ▶, and the TUI answers it with a notice
 - Navigation telemetry: Execute › Doc shows its four commands, which launch from the TUI and the web page
 - Execute › Automation opens when `todo.json` has no `function` list, with [0] alone, instead of stopping on an error before its menu
+- Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
 
 ## Removed
 
