@@ -117,6 +117,15 @@ class Repli(unittest.TestCase):
         lances, _, _ = self._lancer()
         self.assertIn("model.acceleration.accel3d=on", " ".join(lances[0]))
 
+    def test_the_system_disk_gives_freed_blocks_back(self):
+        # Sans discard=unmap, le qcow2 garde tout ce que l'invité a effacé
+        # et grossit jusqu'à remplir le disque de l'hôte.
+        lances, _, _ = self._lancer()
+        self.assertIn(
+            "path=/tmp/d.qcow2,format=qcow2,bus=virtio,discard=unmap",
+            lances[0],
+        )
+
     def test_a_second_attempt_runs_without_the_3d(self):
         lances, exc, rendu = self._lancer()
         self.assertIsNone(exc, rendu)
