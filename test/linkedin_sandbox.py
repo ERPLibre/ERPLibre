@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Un serveur jetable qui parle comme l'API de partage d'un réseau pro.
 
-Le troisième réseau du paquet, et le seul qui ne PROPOSE RIEN contre le
-double envoi. Le premier accepte une clé d'idempotence, le second une adresse
+Le troisième réseau du paquet, et le seul qui ne propose aucune garantie
+contre le double envoi. Le premier accepte une clé d'idempotence, le second une adresse
 d'enregistrement à réécrire ; celui-ci n'a ni l'une ni l'autre, et deux
 demandes identiques créent deux publications.
 
@@ -103,7 +103,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             # Publié ; c'est la réponse qui se perd.
             self._servir_panne(EnVrac())
             return
-        self._json(201, {"id": urn}, {"x-restli-id": urn})
+        # CE QUE LE SERVICE RÉPOND VRAIMENT : 201, AUCUN CORPS, et
+        # l'identifiant dans un en-tête — en casse mixte, comme sa
+        # documentation l'écrit. Inventer un corps `{"id": …}` ferait passer
+        # au vert un client incapable de lire une vraie réponse.
+        self._brut(201, b"", "application/json", {"X-RestLi-Id": urn})
 
     def _servir_panne(self, panne: Fault) -> None:
         if isinstance(panne, Refuse):

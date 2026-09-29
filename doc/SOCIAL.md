@@ -55,7 +55,7 @@ first clone. Each platform offers a path where you obtain your own token.
 |---|---|
 | Mastodon | Preferences > Development > New application, scopes `read` and `write` |
 | Bluesky | an app password created in the settings — never the account password |
-| LinkedIn | an application you register, which LinkedIn approves |
+| LinkedIn | an application in the developer portal carrying BOTH products: *Share on LinkedIn* (`w_member_social`, to publish) and *Sign In with LinkedIn using OpenID Connect* (`openid`, `profile`, to learn the member URN publishing requires). Both are self-serve; one alone gives a client that never publishes. |
 
 The token goes into the vault, exactly like a mail password, and
 `~/.erplibre/social/accounts.json` keeps only a reference to it. The file is
@@ -104,8 +104,11 @@ twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to
 honour it would suggest a privacy that does not exist.
 
-LinkedIn offers NEITHER: two identical requests make two publications, and
-nothing can prevent it. So when the answer is lost the client does not retry
+LinkedIn offers NEITHER: no key to send, no address to rewrite. It refuses a
+byte-identical repeat for about ten minutes with a 422 naming the post that
+already exists — an anti-spam guard that expires, not a replay guarantee, and
+changing one character defeats it. So when the answer is lost the client does
+not retry
 — it says it does not know, and asks you to check before sending again. That
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.

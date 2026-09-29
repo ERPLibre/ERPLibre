@@ -12851,6 +12851,18 @@ TRANSLATIONS = {
             " password."
         ),
     },
+    "social_err_missing_product": {
+        "fr": (
+            "accès refusé — il manque sans doute un produit ou une portée à"
+            " l'application, ce qui se règle au portail développeur et non"
+            " en réautorisant le compte :"
+        ),
+        "en": (
+            "access refused — a product or scope is likely missing from the"
+            " application, which is fixed in the developer portal and not by"
+            " authorising the account again:"
+        ),
+    },
     "social_err_no_feed_here": {
         "fr": (
             "Ce réseau ne sert pas le fil d'un membre : l'autorisation ne"
@@ -12863,12 +12875,12 @@ TRANSLATIONS = {
     },
     "social_err_no_reply_here": {
         "fr": (
-            "Ce réseau ne distingue pas une réponse d'un partage : le"
-            " billet partirait comme un message public."
+            "Une réponse est ici un commentaire, un objet à part sur un"
+            " point d'entrée que ce transport n'appelle pas."
         ),
         "en": (
-            "This network does not tell a reply from a share: the post"
-            " would go out as a public message."
+            "A reply here is a comment — a separate object on an endpoint"
+            " this transport does not call."
         ),
     },
     "social_err_unknown_outcome": {

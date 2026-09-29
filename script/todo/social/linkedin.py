@@ -13,8 +13,10 @@ limite connue pour une panne.
 
 Non à la reprise automatique. Les deux autres réseaux offrent de quoi rejouer
 un envoi sans publier deux fois — une clé d'idempotence ici, une adresse
-d'enregistrement là. Celui-ci n'offre RIEN : deux demandes identiques font
-deux publications. Quand la réponse se perd, le client ne peut donc pas
+d'enregistrement là. Celui-ci n'offre ni l'une ni l'autre : il refuse une
+répétition identique à l'octet pendant quelques minutes, ce qui est un
+garde-fou anti-spam et non une garantie de rejeu — il expire, et un caractère
+changé le contourne. Quand la réponse se perd, le client ne peut donc pas
 savoir, et il le DIT au lieu de réessayer. `SocialUnknownOutcome` existe pour
 cela : ce n'est ni un refus — qu'on corrige — ni une panne — qu'on réessaie —
 mais un doute, que seule la personne peut lever en allant regarder.
@@ -45,6 +47,14 @@ LIMITE_CARACTERES = 3000
 # La version du protocole REST que l'API attend dans un en-tête. Sans elle,
 # elle répond par une forme plus ancienne que ce module ne lit pas.
 PROTOCOLE = "2.0.0"
+
+# Les deux seules portées que ce réseau connaît, et ce qu'il en fait. Rien
+# n'y correspond à une visibilité restreinte à des personnes nommées : un
+# appelant qui en demande une se voit refuser plutôt qu'élargi en silence.
+VISIBILITES = {"public": "PUBLIC", "private": "CONNECTIONS"}
+
+# L'adresse consultable d'un billet, que l'URN seul ne donne pas.
+CONSULTER = "https://www.linkedin.com/feed/update/{urn}/"
 
 
 class SocialUnknownOutcome(SocialError):
@@ -93,7 +103,14 @@ class LinkedInTransport:
                 requete, timeout=self.timeout
             ) as reponse:
                 brut = reponse.read()
-                entetes = dict(reponse.headers.items())
+                # Les en-têtes HTTP ne sont pas sensibles à la casse, et le
+                # service écrit `X-RestLi-Id` là où ce module cherchait
+                # `x-restli-id`. `dict(...)` jetait cette insensibilité :
+                # on la reconstruit en repliant les noms.
+                entetes = {
+                    nom.lower(): valeur
+                    for nom, valeur in reponse.headers.items()
+                }
         except urllib.error.HTTPError as exc:
             self._lever(exc)
         except Exception as exc:
@@ -101,6 +118,12 @@ class LinkedInTransport:
             # panne ordinaire ; c'est l'appelant qui sait si sa demande
             # écrivait, et `publish` le traduit alors autrement.
             raise SocialError(f"{t('social_err_unreachable')} {exc}") from exc
+        if not brut.strip():
+            # Une CRÉATION ne rend aucun corps : le service met
+            # l'identifiant dans un en-tête. Exiger du JSON ici faisait
+            # échouer tout envoi RÉUSSI, et le faisait passer pour un
+            # doute — sur le seul réseau où l'on ne peut pas réessayer.
+            return {}, entetes
         try:
             return json.loads(brut.decode("utf-8", "replace")), entetes
         except ValueError as exc:
@@ -119,14 +142,28 @@ class LinkedInTransport:
                 exc.close()
             except Exception:
                 pass
-        if exc.code in (401, 403):
+        if exc.code == 401:
             raise SocialAuthError(
                 f"{t('social_err_token_refused')} {detail}"
+            ) from exc
+        if exc.code == 403:
+            # PAS un jeton à renouveler : le plus souvent un produit ou une
+            # portée absents de l'application. Envoyer la personne vers
+            # l'écran de consentement ne répare rien ; c'est au portail
+            # développeur qu'il faut aller.
+            raise SocialRefused(
+                f"{t('social_err_missing_product')} {detail}"
             ) from exc
         if exc.code == 429:
             raise SocialRateLimited(
                 f"{t('social_err_rate_limited')} {detail}",
                 _reprise(exc.headers),
+            ) from exc
+        if exc.code == 409:
+            # Conflit d'écriture interne : le service demande de RECOMMENCER.
+            # Le ranger parmi les refus contredirait sa propre consigne.
+            raise SocialError(
+                f"{t('social_err_refused')} {exc.code} {detail}"
             ) from exc
         if 400 <= exc.code < 500:
             raise SocialRefused(
@@ -176,8 +213,9 @@ class LinkedInTransport:
     ) -> PostMeta:
         """Publie un partage. Rend celui que l'API a créé.
 
-        `cle` est ACCEPTÉE et sans effet : ce service n'offre rien pour
-        reconnaître une demande déjà reçue. La garder au dossier de la
+        `cle` est ACCEPTÉE et sans effet : ce service n'offre aucun moyen
+        de reconnaître une demande déjà reçue — son refus des doublons
+        exacts expire et se contourne, donc ne garantit rien. La garder au dossier de la
         signature évite à l'appelant de distinguer les réseaux, mais elle ne
         promet rien ici, et le docstring le dit plutôt que de le taire.
 
@@ -194,6 +232,15 @@ class LinkedInTransport:
             raise SocialRefused(f"{t('social_compose_too_long')} {len(texte)}")
         if repond_a:
             raise SocialRefused(t("social_err_no_reply_here"))
+        if visibilite not in VISIBILITES:
+            # REFUSER plutôt que replier sur un défaut. Ce réseau ne connaît
+            # que deux portées ; faire tomber « direct » — qui ailleurs ne
+            # vise que les personnes citées — sur l'ensemble des relations
+            # élargirait la diffusion sans que rien ne l'ait demandé.
+            raise SocialRefused(
+                f"{t('social_err_unknown_visibility')} {visibilite!r}"
+                f" {t('mail_err_expected')} {tuple(VISIBILITES)})"
+            )
         if not self.urn:
             self.verify()
         charge = {
@@ -206,9 +253,9 @@ class LinkedInTransport:
                 }
             },
             "visibility": {
-                "com.linkedin.ugc.MemberNetworkVisibility": (
-                    "PUBLIC" if visibilite == "public" else "CONNECTIONS"
-                )
+                "com.linkedin.ugc.MemberNetworkVisibility": VISIBILITES[
+                    visibilite
+                ]
             },
         }
         try:
@@ -234,7 +281,9 @@ class LinkedInTransport:
             author=self.account.handle,
             author_name=self.account.display_name or self.account.handle,
             text=texte,
-            url=urn,
+            # L'URN identifie, il ne s'ouvre pas : l'adresse consultable se
+            # construit autour de lui.
+            url=CONSULTER.format(urn=urn) if urn else "",
             uri=urn,
         )
 

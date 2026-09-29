@@ -72,7 +72,7 @@ first clone. Each platform offers a path where you obtain your own token.
 |---|---|
 | Mastodon | Preferences > Development > New application, scopes `read` and `write` |
 | Bluesky | an app password created in the settings — never the account password |
-| LinkedIn | an application you register, which LinkedIn approves |
+| LinkedIn | an application in the developer portal carrying BOTH products: *Share on LinkedIn* (`w_member_social`, to publish) and *Sign In with LinkedIn using OpenID Connect* (`openid`, `profile`, to learn the member URN publishing requires). Both are self-serve; one alone gives a client that never publishes. |
 
 The token goes into the vault, exactly like a mail password, and
 `~/.erplibre/social/accounts.json` keeps only a reference to it. The file is
@@ -121,8 +121,11 @@ twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to
 honour it would suggest a privacy that does not exist.
 
-LinkedIn offers NEITHER: two identical requests make two publications, and
-nothing can prevent it. So when the answer is lost the client does not retry
+LinkedIn offers NEITHER: no key to send, no address to rewrite. It refuses a
+byte-identical repeat for about ten minutes with a 422 naming the post that
+already exists — an anti-spam guard that expires, not a replay guarantee, and
+changing one character defeats it. So when the answer is lost the client does
+not retry
 — it says it does not know, and asks you to check before sending again. That
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.
@@ -194,7 +197,7 @@ premier clone. Chaque plateforme offre un chemin où l'on obtient le sien.
 |---|---|
 | Mastodon | Préférences > Développement > Nouvelle application, portées `read` et `write` |
 | Bluesky | un mot de passe d'application créé dans les réglages — jamais celui du compte |
-| LinkedIn | une application qu'on enregistre, et que LinkedIn approuve |
+| LinkedIn | une application du portail développeur portant les DEUX produits : *Share on LinkedIn* (`w_member_social`, pour publier) et *Sign In with LinkedIn using OpenID Connect* (`openid`, `profile`, pour connaître l'URN du membre qu'exige la publication). Les deux s'obtiennent en libre-service ; un seul donne un client qui ne publie jamais. |
 
 Le jeton va au coffre, exactement comme un mot de passe courriel, et
 `~/.erplibre/social/accounts.json` n'en garde qu'une référence. Le fichier
@@ -245,8 +248,11 @@ de visibilité : le champ est accepté pour que l'appelant n'ait pas à
 distinguer les réseaux, et ignoré, prétendre l'honorer laissant croire à une
 confidentialité qui n'existe pas.
 
-LinkedIn n'offre NI L'UN NI L'AUTRE : deux demandes identiques font deux
-publications, et rien ne peut l'empêcher. Aussi, quand la réponse se perd, le
+LinkedIn n'offre NI L'UN NI L'AUTRE : aucune clé à envoyer, aucune adresse à
+réécrire. Il refuse une répétition identique à l'octet pendant une dizaine de
+minutes, par un 422 qui nomme le billet déjà là — un garde-fou anti-spam qui
+expire, non une garantie de rejeu, et qu'un caractère changé suffit à
+contourner. Aussi, quand la réponse se perd, le
 client ne réessaie pas — il dit qu'il ne sait pas, et demande d'aller
 vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
 qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule

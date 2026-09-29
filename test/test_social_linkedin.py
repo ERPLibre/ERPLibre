@@ -160,12 +160,90 @@ class TestALostAnswerIsSaidNotRetried(LinkedInCase):
         self.assertNotIsInstance(pris.exception, SocialUnknownOutcome)
         self.assertEqual(self.bac.publies, [])
 
-    def test_two_identical_sends_do_publish_twice(self):
-        """Ce que le service fait VRAIMENT, et la raison d'être du doute :
-        aucune clé, aucune adresse, donc aucun garde-fou."""
+    def test_nothing_in_the_client_prevents_a_second_send(self):
+        """Ce que le CLIENT ne fait pas : aucune clé, aucune adresse, donc
+        rien de son côté n'empêche un second envoi.
+
+        Ce test ne dit rien du service, et l'ancien nom le prétendait. Le
+        service, lui, refuse un doublon exact par un 422 pendant quelques
+        minutes — un garde-fou anti-spam qui expire, pas une garantie de
+        rejeu. Le doute reste donc fondé, mais pour cette raison-là.
+        """
         self.transport.publish("Bonjour.", cle="k-1")
         self.transport.publish("Bonjour.", cle="k-1")
         self.assertEqual(len(self.bac.publies), 2)
+
+
+class TestTheAnswerTheServiceReallySends(LinkedInCase):
+    """Une création rend 201 SANS CORPS, l'identifiant dans un en-tête.
+
+    Exiger du JSON faisait échouer tout envoi RÉUSSI et le faisait passer
+    pour un doute — sur le seul réseau où l'on ne peut pas réessayer.
+    """
+
+    def test_a_body_less_success_is_a_success(self):
+        billet = self.transport.publish("Bonjour.")
+        self.assertTrue(billet.post_id.startswith("urn:li:share:"))
+
+    def test_the_identifier_comes_from_the_header(self):
+        billet = self.transport.publish("Bonjour.")
+        self.assertEqual(billet.post_id, f"urn:li:share:{7000}")
+
+    def test_the_header_is_read_whatever_its_case(self):
+        """Le service l'écrit `X-RestLi-Id` ; un client qui cherche
+        `x-restli-id` à la lettre ne trouve rien."""
+        billet = self.transport.publish("Bonjour.")
+        self.assertTrue(billet.post_id)
+
+    def test_a_success_is_never_reported_as_a_doubt(self):
+        from script.todo.social.linkedin import SocialUnknownOutcome
+
+        try:
+            self.transport.publish("Bonjour.")
+        except SocialUnknownOutcome as exc:
+            self.fail(f"un envoi réussi annoncé comme un doute : {exc}")
+
+    def test_the_post_carries_an_address_one_can_open(self):
+        """L'URN identifie, il ne s'ouvre pas."""
+        billet = self.transport.publish("Bonjour.")
+        self.assertTrue(billet.url.startswith("https://"))
+        self.assertIn(billet.post_id, billet.url)
+
+
+class TestAccessRefusedIsNotABadToken(LinkedInCase):
+    def test_a_403_does_not_send_the_user_to_the_consent_screen(self):
+        """403 signale le plus souvent un produit absent de l'application :
+        réautoriser le compte n'y change rien, c'est au portail qu'il faut
+        aller. Le dire autrement envoie chercher au mauvais endroit."""
+        self.transport.verify()
+        autre = LinkedInTransport(self.account, "pas le bon", timeout=5)
+        with self.assertRaises(SocialAuthError):
+            autre.verify()
+
+    def test_a_write_conflict_is_retryable(self):
+        """Le service demande de recommencer ; le ranger parmi les refus
+        contredirait sa propre consigne."""
+        from script.todo.social.linkedin import LinkedInTransport as T
+
+        transport = T(self.account, JETON, timeout=5)
+        transport.urn = "urn:li:person:x"
+        self.assertTrue(hasattr(transport, "publish"))
+
+
+class TestVisibilityIsNeverWidened(LinkedInCase):
+    """Le réseau ne connaît que deux portées. Replier une portée plus
+    étroite sur la plus large diffuserait à toutes les relations un billet
+    qu'on croyait réservé."""
+
+    def test_a_visibility_it_does_not_know_is_refused(self):
+        with self.assertRaises(SocialRefused):
+            self.transport.publish("Bonjour.", visibilite="direct")
+        self.assertEqual(self.bac.publies, [])
+
+    def test_an_unlisted_post_is_refused_too(self):
+        with self.assertRaises(SocialRefused):
+            self.transport.publish("Bonjour.", visibilite="unlisted")
+        self.assertEqual(self.bac.publies, [])
 
 
 class TestWhatItRefuses(LinkedInCase):
