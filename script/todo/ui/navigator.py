@@ -59,7 +59,8 @@ def navigate(todo, menu):
     found ! ». L'intro, `t(menu.intro)` derrière `menu.mark`, s'affiche
     une fois, à l'entrée ; la méthode `menu.opens` s'appelle ensuite, une
     fois : un dict ouvre le menu et s'ajoute aux kwargs de chaque action,
-    toute autre valeur est rendue sans que le menu se dessine.
+    toute autre valeur est rendue sans que le menu se dessine. La méthode
+    `menu.before` s'appelle avant chaque question.
     Un menu `render="each"` se redessine après chaque réponse, sa
     configuration relue ; un menu "once" garde son premier dessin. Ctrl+C
     ou Ctrl+D à la question remontent, sauf dans un menu `abort_closes`,
@@ -74,6 +75,8 @@ def navigate(todo, menu):
             return context
     text, actions = _draw(todo, menu)
     while True:
+        if menu.before:
+            getattr(todo, menu.before)()
         try:
             status = click.prompt(text)
         except (KeyboardInterrupt, click.exceptions.Abort):

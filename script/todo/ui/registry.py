@@ -11,11 +11,12 @@ module n'importe ni TODO ni une bibliothèque d'interface.
 
 `key` (d'une `Entry` ou d'une `Section`) et `intro` (d'un `Menu`) sont
 des clés de traduction anglaises, que `t()` traduit au rendu. `action`,
-`state`, `suffix`, `when` et `opens` sont des NOMS de méthodes de l'objet
-qui ouvre le menu, TODO ou un objet de TODO, jamais des fonctions. Le
-numéro d'une entrée est sa place parmi les entrées numérotées montrées :
-une `Section` n'en prend pas, un `FromConfig` en prend un par élément de
-sa liste, une `Entry` dont la garde `when` rend faux aucun.
+`state`, `suffix`, `when`, `opens` et `before` sont des NOMS de méthodes
+de l'objet qui ouvre le menu, TODO ou un objet de TODO, jamais des
+fonctions. Le numéro d'une entrée est sa place parmi les entrées
+numérotées montrées : une `Section` n'en prend pas, un `FromConfig` en
+prend un par élément de sa liste, une `Entry` dont la garde `when` rend
+faux aucun.
 """
 
 from dataclasses import dataclass
@@ -89,6 +90,8 @@ class Menu:
     avant le premier dessin : elle rend un dict pour ouvrir le menu, dont
     les clés s'ajoutent aux kwargs de l'action de chaque entrée, ou toute
     autre valeur, que le menu rend sans se dessiner.
+    `before` nomme la méthode appelée avant chaque question, que le menu
+    se redessine ou non.
     """
 
     name: str
@@ -102,6 +105,7 @@ class Menu:
     closes: bool = False
     abort_closes: bool = False
     opens: str | None = None
+    before: str | None = None
 
     def __post_init__(self):
         if self.render not in RENDERS:

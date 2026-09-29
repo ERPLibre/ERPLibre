@@ -177,6 +177,23 @@ class TestNavigator(unittest.TestCase):
                     self.assertIs(back, given)
                     self.assertEqual((todo.calls, todo.drawn), ([], []))
 
+    def test_a_method_is_called_before_each_question(self):
+        # Avant la première question et après chaque réponse, le menu
+        # dessiné une fois.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            before="forged_before",
+            render="once",
+        )
+        _, todo, texts = self.navigate(menu, ["1", "9", "0"])
+        self.assertEqual(
+            [name for name, _ in todo.calls],
+            ["forged_before", "first", "forged_before", "forged_before"],
+        )
+        self.assertEqual((len(texts), len(todo.drawn)), (3, 1))
+
     def test_a_closing_menu_gives_back_after_one_entry(self):
         # Une réponse sans entrée ne le referme pas : la question revient.
         menu = Menu(
@@ -675,6 +692,7 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS.replace("back=None", "back=None, mark=None"),
                 FAKE_MENUS + 'OTHER = Menu("forged_other", entries=[])\n',
                 FAKE_MENUS.replace("back=None", "back=None, opens=1"),
+                FAKE_MENUS.replace("back=None", "back=None, before=1"),
             )
         ):
             with self.subTest(case=n):
@@ -723,6 +741,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "closes",
                 "abort_closes",
                 "opens",
+                "before",
             ],
         )
         self.assertEqual(
@@ -934,6 +953,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         for menu in menus.values():
             owner = owners.get(menu.name, TODO)
             calls = [(menu.name, {}), (menu.state, {}), (menu.opens, {})]
+            calls.append((menu.before, {}))
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}

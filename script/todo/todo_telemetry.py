@@ -531,7 +531,7 @@ def _declared(node, fields):
 _TEXT_FIELDS = {
     "Menu": (
         ("name", "crumb"),
-        ("crumb", "state", "intro", "opens"),
+        ("crumb", "state", "intro", "opens", "before"),
         ("mark",),
     ),
     "Section": (("key",), (), ()),
