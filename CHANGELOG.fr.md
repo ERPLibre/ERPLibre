@@ -223,6 +223,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Test › Tests unitaires courriel et Tests unitaires analyse, lancés depuis la TUI, lancent leurs propres tests au lieu de toute la suite unitaire
 - Exécution › Run : une instance de `todo.json` qui ne nomme aucune base lance ses propres commandes et dit qu'Odoo n'est pas lancé, au lieu de lancer Odoo et sa connexion web sur une base nommée None
 - Exécution › Run : la dernière instance de `todo.json` demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme les autres, au lieu de lancer sa seule cible make
+- Exécution › Run : seul un numéro tel qu'affiché lance une entrée, comme dans Code : « 00 », « -1 », « 01 », « 2 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la dernière entrée, une entrée comptée depuis la fin ou Choisir sa base de données, et « -9 » n'arrête plus TODO sur une erreur
 
 ## Retiré
 

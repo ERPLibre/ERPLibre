@@ -1352,6 +1352,20 @@ class TestRunMenu(unittest.TestCase):
         )
         self.assertEqual(calls, (2, 0, 0))
 
+    def test_each_number_runs_the_entry_it_shows(self):
+        # Avec Mobile, [4]. « 5 » n'est pas affiché ; « 00 », « -1 »,
+        # « 01 », « 2 » entouré de blancs, « +2 », « ٢ » (le chiffre deux
+        # en écriture arabe) et « -9 » ne sont pas le numéro affiché.
+        os.mkdir(self.mobile)
+        answers = ["1", "2", "3", "4", "5", "00", "-1", "01", " 2", "2 "]
+        answers += ["+2", "٢", "-9"]
+        ran, calls, out = self.answer(answers)
+        self.assertEqual(
+            ran, [("forged_one", True, False), ("forged_two", True, False)]
+        )
+        self.assertEqual(calls, (2, 1, 1))
+        self.assertEqual(out.count("Command not found !"), 9)
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.

@@ -1121,40 +1121,29 @@ class TODO(
         }
         choices.insert(0, menu_entry)
         help_info = self.fill_help_info(choices)
+        # Seul un numéro tel qu'affiché lance une entrée : int() lit aussi
+        # « 01 », « +2 », un chiffre d'une autre écriture, et « -1 », qui
+        # compterait depuis la fin de la liste.
+        numbers = [str(n) for n in range(1, len(choices) + 1)]
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
+            elif status not in numbers:
+                print(t("Command not found !"))
+            # « Choose your database » est [1] : les instances de la
+            # configuration sont [2] à [init_len + 1].
+            elif 1 < int(status) <= init_len + 1:
+                new = click.confirm(t("Do you want a new instance?"))
+                self.execute_from_configuration(
+                    choices[int(status) - 1],
+                    exec_run_db=True,
+                    ignore_makefile=not new,
+                )
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    # « Choose your database » est [1] : les instances de la
-                    # configuration sont [2] à [init_len + 1].
-                    if 1 < int_cmd <= init_len + 1:
-                        cmd_no_found = False
-                        status = click.confirm(
-                            t("Do you want a new instance?")
-                        )
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(
-                            instance,
-                            exec_run_db=True,
-                            ignore_makefile=not bool(status),
-                        )
-                    elif int_cmd <= len(choices) or 1 == int_cmd:
-                        cmd_no_found = False
-                        # Execute dynamic instance
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(
-                            instance,
-                        )
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+                self.execute_from_configuration(choices[int(status) - 1])
 
     def prompt_execute_function(self):
         choices = self.config_file.get_config("function")
