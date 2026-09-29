@@ -4000,5 +4000,107 @@ class TestLEtapeDeposeSaSortie(unittest.TestCase):
         self.assertTrue(os.path.exists(chemin))
 
 
+class TestLaPorteeDuBanc(unittest.TestCase):
+    """Le banc nomme les APPLICATIONS qu'il couvre ; c'est le PLAN qui donne
+    l'hôte. Élargir la couverture est alors un mot, jamais un nom de machine —
+    et un modèle qui renomme ses serveurs n'oblige à rien ici."""
+
+    REGISTRE = (
+        "---\napplications:\n"
+        "  step_ca:  { groupe: g1, hote: un-pki-invente }\n"
+        "  nginx:    { groupe: g2, hote: un-edge-invente }\n"
+        "  powerdns: { groupe: g3, hote: un-dns-invente }\n"
+        "  dovecot:  { groupe: g4, hote: un-mail-invente }\n"
+    )
+
+    def pose(self, texte):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        chemin = os.path.join(d, "applications.yml")
+        with open(chemin, "w", encoding="utf-8") as ouvert:
+            ouvert.write(texte)
+        return chemin
+
+    def test_the_plan_gives_the_host_for_each_covered_application(self):
+        """Le contrôle positif : sans lui, une dérivation qui ne rendrait jamais
+        rien passerait chacun des refus ci-dessous."""
+        vu = B.hotes_couverts(self.pose(self.REGISTRE), ("step_ca", "nginx"))
+        self.assertEqual(("un-pki-invente", "un-edge-invente"), vu)
+
+    def test_an_application_outside_the_plan_is_not_a_failure(self):
+        """La portée du banc est la sienne, le plan est celui du moteur : un
+        modèle qui ne déclare pas l'une d'elles se couvre simplement moins."""
+        vu = B.hotes_couverts(
+            self.pose(self.REGISTRE), ("step_ca", "une-app-inventee")
+        )
+        self.assertEqual(("un-pki-invente",), vu)
+
+    def test_two_applications_on_one_host_activate_it_once(self):
+        """Deux applications partagent parfois un hôte ; l'activer deux fois
+        n'ajoute rien et ferait douter de la liste."""
+        texte = (
+            "---\napplications:\n"
+            "  step_ca:  { hote: un-hote-invente }\n"
+            "  nginx:    { hote: un-hote-invente }\n"
+        )
+        vu = B.hotes_couverts(self.pose(texte), ("step_ca", "nginx"))
+        self.assertEqual(("un-hote-invente",), vu)
+
+    def test_an_entry_without_a_host_names_nobody(self):
+        """`.get('hote')` rend None quand l'application est au plan sans hôte ;
+        le laisser passer poserait un état sur la chaîne vide."""
+        texte = "---\napplications:\n  step_ca: { groupe: g1 }\n"
+        self.assertEqual((), B.hotes_couverts(self.pose(texte), ("step_ca",)))
+
+    def test_a_registry_that_does_not_read_concludes_nothing(self):
+        """Fermé par défaut : un plan dont le registre ne se lit pas ne dit plus
+        quel hôte porte quoi. Rendre () se lirait « rien à couvrir » et la pose
+        continuerait sur un plan qu'on n'a pas su lire."""
+        for texte in (
+            "",
+            "pas: un: yaml: valide: [",
+            "---\nune-liste:\n  - a\n",
+            # LE REGISTRE EST LÀ MAIS N'EST PAS UN DICTIONNAIRE. Le laisser
+            # passer ferait heurter `.get` sur une liste, et le refus parlerait
+            # d'un attribut manquant au lieu d'un plan mal formé.
+            "---\napplications:\n  - une-liste\n",
+            "---\napplications: une-chaine\n",
+        ):
+            with self.subTest(texte=texte[:20]):
+                self.assertIsNone(B.hotes_couverts(self.pose(texte)))
+        self.assertIsNone(B.hotes_couverts("/f/un-chemin-invente.yml"))
+
+    def test_the_bench_names_no_machine_of_the_plan(self):
+        """LA PROPRIÉTÉ QUI PORTE TOUT LE RESTE. Le banc déclare des
+        APPLICATIONS ; les hôtes viennent du plan. Un nom de machine écrit ici
+        ferait diverger le banc le jour où un modèle renomme ses serveurs, et
+        le refus parlerait d'un hôte introuvable sans dire qui l'a inventé."""
+        with open(B.__file__, encoding="utf-8") as lu:
+            self.assertNotIn("infra-", lu.read())
+
+    def test_the_mail_store_is_deliberately_outside_the_scope(self):
+        """Son rôle se lie à un annuaire que le modèle du moteur ne déclare pas.
+        L'activer ferait refuser la boucle à chaque lancement, ce qui ne se
+        distingue plus d'un banc cassé."""
+        self.assertNotIn("dovecot", B.APPLICATIONS_COUVERTES)
+
+    def test_the_scope_goes_past_the_bootstrap(self):
+        """LA PROPRIÉTÉ : le banc couvre PLUS que l'amorçage. Réduit à lui, il
+        ne prouve que le socle du socle — la moitié du modèle reste hors
+        d'atteinte, et rien dans un lancement vert ne le dirait."""
+        amorcage = {"step_ca", "powerdns"}
+        self.assertTrue(
+            amorcage < set(B.APPLICATIONS_COUVERTES),
+            "la portée ne dépasse plus l'amorçage",
+        )
+
+    def test_the_bootstrap_applications_stay_covered(self):
+        """L'amorçage est le socle de tout le reste : le retirer de la portée
+        laisserait la boucle sans autorité de certification."""
+        for app in ("step_ca", "powerdns"):
+            with self.subTest(app=app):
+                self.assertIn(app, B.APPLICATIONS_COUVERTES)
+
+
 if __name__ == "__main__":
     unittest.main()
