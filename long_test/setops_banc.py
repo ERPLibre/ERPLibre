@@ -3155,6 +3155,36 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
     return ""
 
 
+# CE QUI DIT POURQUOI, et ce n'est pas la fin de la sortie. Ansible imprime sa
+# cause sur une ligne « fatal: [hôte]: FAILED! => {…} », puis chaque niveau de
+# `make` empile la sienne par-dessus. Les derniers caractères portent donc la
+# pile — « Error 2 » trois fois — et taisent la tâche qui a échoué. Pire, ils
+# coupent au milieu de la cause quand elle dépasse à peine la fenêtre.
+MARQUES_CAUSE = ("fatal:", "failed:")
+
+
+def cause_de_l_echec(sortie, taille=400):
+    """La cause que `sortie` porte, ou sa queue à défaut. Rend « » si vide.
+
+    LA DERNIÈRE CAUSE, pas la première : un jeu de rôles qui rattrape une tâche
+    et échoue plus loin en imprime plusieurs, et c'est celle qui a arrêté le
+    geste qui explique le code de retour.
+
+    COUPÉE PAR LA TÊTE, là où la queue est prise à défaut de mieux. Une ligne
+    d'ansible est un objet dont le message vient tôt ; en garder la fin rendrait
+    l'accolade fermante.
+    """
+    texte = (sortie or "").strip()
+    if not texte:
+        return ""
+    causes = [
+        ligne.strip()
+        for ligne in texte.splitlines()
+        if ligne.lstrip().lower().startswith(MARQUES_CAUSE)
+    ]
+    return causes[-1][:taille] if causes else texte[-taille:]
+
+
 def joue_une_etape(moteur, env, etape, dire=print):
     """Joue une cible du moteur et LIT son verdict. Rend le souci, ou « ».
 
@@ -3168,7 +3198,7 @@ def joue_une_etape(moteur, env, etape, dire=print):
     dire(f"    {runner_du_banc().cite(argv)}")
     vu = runner_du_banc().jouer(argv, env=env, cwd=moteur, delai=DELAI_ETAPE)
     if vu.code != 0:
-        return f"make {etape.cible} : {vu.sortie.strip()[-400:]}"
+        return f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
     return ""
 
 
