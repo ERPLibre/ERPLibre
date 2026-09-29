@@ -352,6 +352,15 @@ Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
 the tooling is missing and nothing was attempted, `30` something stopped it
 before it measured.
 
+**A refusal carries the CAUSE, not the stack.** When a gesture of the engine
+fails, each level of `make` piles its own error on top; keeping the end of its
+output returns that pile — "Error 2" three times — and says nothing of the task
+that failed, cutting the cause in half when it barely overruns the window.
+Ansible prints its cause on a `fatal:` line, and that line is what the bench
+keeps, trimmed from the head since the message of such an object comes early.
+Where there is no such line — a script's refusal — the tail is the right
+fallback, and that is what is kept.
+
 **What is posed today are the DECISIONS, and they are all guarded** —
 prerequisites said before anything is created, the terrain, a free bridge, the
 shape of the token, the order of the undoing, the footprint. The verbs that
@@ -872,6 +881,15 @@ l'exécuteur ne transmet exprès aucun `PROXMOX_*`.
 Codes de sortie, et le vocabulaire est clos : `0` l'épreuve est allée au bout,
 `20` l'outillage manque et rien n'a été tenté, `30` quelque chose l'a arrêtée
 avant qu'elle mesure.
+
+**Un refus porte la CAUSE, et non la pile.** Quand un geste du moteur échoue,
+chaque niveau de `make` empile son erreur par-dessus ; garder la fin de sa
+sortie rend cette pile — « Error 2 » trois fois — et ne dit rien de la tâche qui
+a échoué, coupant la cause en deux quand elle dépasse à peine la fenêtre.
+Ansible imprime la sienne sur une ligne `fatal:`, et c'est elle que le banc
+garde, coupée par la tête puisque le message d'un tel objet vient tôt. Là où il
+n'y a pas de telle ligne — le refus d'un script — la queue est le bon repli, et
+c'est elle qui est gardée.
 
 **Ce qui est posé aujourd'hui, ce sont les DÉCISIONS, et elles sont toutes
 gardées** — préalables dits avant toute création, terrain, pont libre, forme du
