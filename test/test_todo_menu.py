@@ -28,7 +28,7 @@ import unittest
 import warnings
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from script.todo.ui.registry import Entry
 
@@ -1264,6 +1264,93 @@ class TestCodeMenu(unittest.TestCase):
         self.assertEqual(ran, ["forged_one", "forged_two"])
         self.assertEqual(fixed, [1, 1, 1, 1])
         self.assertEqual(out.count("Command not found !"), 7)
+
+
+class TestRunMenu(unittest.TestCase):
+    """Run : « Choose your database », les instances de `instance`, puis
+    Mobile, quand son répertoire existe.
+
+    Les commandes sont des doubles, aucune ne part ; HOME est temporaire,
+    le répertoire de Mobile absent, la langue fixée et la télémétrie de
+    navigation neutralisée.
+    """
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "makefile_cmd": "forged_one"},
+        {"prompt_description": "Forged two", "makefile_cmd": "forged_two"},
+    ]
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        self.mobile = os.path.join(home.name, "mobile")
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+            patch("script.todo.todo.MOBILE_HOME_PATH", self.mobile),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo.config_file.get_config = lambda key: [
+            dict(entry) for entry in self.ENTRIES
+        ]
+
+    def answer(self, answers, new=True):
+        """(instances lancées, questions « nouvelle instance ? », appels de
+        « Choose your database » et de Mobile, texte affiché) quand Run
+        reçoit `answers`, puis « 0 », la question rendant `new` ; chaque
+        question posée est « Do you want a new instance? ». Une instance
+        lancée est (makefile_cmd, exec_run_db, ignore_makefile)."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, exec_run_db=False, ignore_makefile=False):
+            # Comme execute_from_configuration : une entrée qui ne porte
+            # qu'un rappel l'appelle.
+            if instance.get("callback"):
+                instance["callback"](instance)
+                return
+            command = instance["makefile_cmd"]
+            ran.append((command, exec_run_db, ignore_makefile))
+
+        with (
+            patch.object(TODO, "execute_from_configuration", run),
+            patch.object(TODO, "callback_execute_custom_database") as db,
+            patch.object(TODO, "callback_make_mobile_home") as mobile,
+            patch("click.confirm", return_value=new) as confirm,
+            patch("click.prompt", side_effect=[*answers, "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_instance(), False)
+        self.assertEqual(
+            confirm.call_args_list,
+            [call("Do you want a new instance?")] * confirm.call_count,
+        )
+        calls = (confirm.call_count, db.call_count, mobile.call_count)
+        return ran, calls, out.getvalue()
+
+    def test_each_instance_asks_for_a_new_one_and_opens_its_database(self):
+        # [1] est « Choose your database » : les instances sont [2] et [3].
+        ran, calls, out = self.answer(["2", "3"], new=False)
+        self.assertEqual(
+            ran, [("forged_one", True, True), ("forged_two", True, True)]
+        )
+        self.assertEqual(calls, (2, 0, 0))
 
 
 class TestMenuLabels(unittest.TestCase):

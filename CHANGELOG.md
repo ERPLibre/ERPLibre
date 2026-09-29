@@ -222,6 +222,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code: only a number exactly as shown runs an entry of `todo.json`, as in Update: « 01 », « 1 » between spaces, « +2 » or a digit of another script answer « Command not found ! » instead of running it, and the number of a fixed entry written with a leading zero, « 05 » say, no longer silently runs nothing
 - Navigation telemetry: Execute › Test › Mail unit tests and Analyse unit tests, launched from the TUI, run their own tests instead of the whole unit suite
 - Execute › Run: an instance of `todo.json` that names no database runs its own commands and says that Odoo is not started, instead of starting Odoo and its web login on a database named None
+- Execute › Run: the last instance of `todo.json` asks « Do you want a new instance? » and opens its database, as the others do, instead of running its make target alone
 
 ## Removed
 

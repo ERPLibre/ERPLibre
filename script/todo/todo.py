@@ -1131,7 +1131,9 @@ class TODO(
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 1 < int_cmd <= init_len:
+                    # « Choose your database » est [1] : les instances de la
+                    # configuration sont [2] à [init_len + 1].
+                    if 1 < int_cmd <= init_len + 1:
                         cmd_no_found = False
                         status = click.confirm(
                             t("Do you want a new instance?")
