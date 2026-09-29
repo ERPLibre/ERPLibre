@@ -389,6 +389,18 @@ et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
 
+**Les secrets du locataire se forgent, ils ne se demandent pas.** Le modèle de
+base du moteur n'en déclare aucun, et chacun de ses rôles assertionne le sien
+non vide : le déploiement s'arrête sur le nom d'un secret sans dire qui aurait
+dû le poser. Le banc en forge sept et les scelle dans la voûte du LOCATAIRE, qui
+n'est pas celle de l'hébergeur — la seconde porte le jeton et l'emporte là où
+les deux sont lues, la première porte ce qu'exigent ses rôles et ne sort pas de
+son dépôt. Une FORME se forge, pas une longueur : l'assertion ne mesure qu'une
+longueur, si bien qu'une chaîne au hasard là où un rôle présente une clé ssh la
+passe et échoue trois rôles plus loin, sur un message qui parle du format de la
+clé et jamais de sa source. Une forme que le banc ne sait pas forger le fait
+refuser EN LA NOMMANT, plutôt que sceller au hasard.
+
 **Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
 démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse
 ne répond : leur passerelle reste muette, ils ne joignent que leurs voisines de
