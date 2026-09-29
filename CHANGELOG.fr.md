@@ -242,6 +242,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Git › Ajouter un remote vers un dépôt local passe à git le nom et l'adresse tels que tapés : un blanc ne les coupe plus, et un caractère du shell comme « ; » ne termine plus la commande pour lancer ce qui suit
 - Exécution › Git › Ajouter un remote vers un dépôt local dit l'échec de git, un remote qui existe déjà par exemple, avec son code de sortie, au lieu d'annoncer l'ajout
 - Télémétrie de navigation : Exécution › GPT code › Claude configs et Plugins lancent chacune de leurs commandes depuis la TUI avec ses arguments, au lieu d'échouer sur un argument manquant, et Todo Add Command + Plan Max y déploie ses deux commandes
+- Télémétrie de navigation : Exécution › Git montre ses entrées de `todo.json` et ses trois outils de shell, qui se lancent depuis la TUI et la page web, et les actions du serveur de production de Git local server, lancées depuis la TUI, déploient en mode production au lieu du mode local
 
 ## Retiré
 

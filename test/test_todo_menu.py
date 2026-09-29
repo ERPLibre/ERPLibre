@@ -30,7 +30,7 @@ from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
-from script.todo.ui.registry import Entry
+from script.todo.ui.registry import Entry, FromConfig
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
 TODO_PY = TODO_DIR / "todo.py"
@@ -702,6 +702,59 @@ class TestLArbreDesMenus(unittest.TestCase):
         ).body[0]
         self.assertEqual(_help_entries(func), {2: "Two"})
 
+    def test_git_lists_its_configured_entries_and_shell_tools(self):
+        # Les éléments de `git_from_makefile` suivent les quatre entrées
+        # fixes, chacun lancé par `_git_from_configuration`, et les trois
+        # outils de shell ferment la liste.
+        config = json.loads((TODO_DIR / "todo.json").read_text())
+        git = self._noeud("Git")
+        self.assertEqual(
+            [
+                (n["label"], n["method"], n["kwargs"])
+                for n in git["children"]
+                if not n["is_menu"]
+            ],
+            [
+                ("Add a remote to a local repository", "_git_add_remote", {}),
+                (
+                    "Install git hooks (commit-msg, pre-commit)",
+                    "_git_install_hooks",
+                    {},
+                ),
+                (
+                    "Set merge.conflictStyle to zdiff3 (global)",
+                    "_git_set_conflict_style",
+                    {},
+                ),
+            ]
+            + [
+                (
+                    e["prompt_description_key"],
+                    "_git_from_configuration",
+                    {"instance": e},
+                )
+                for e in config["git_from_makefile"]
+            ]
+            + [
+                ("Install Starship on Shell", "_shell_install_starship", {}),
+                ("Install Claude Code", "_shell_install_claude_code", {}),
+                ("Install opencode", "_shell_install_opencode", {}),
+            ],
+        )
+
+    def test_each_actions_menu_passes_its_mode(self):
+        # [4] › [1] lance une feuille par sa méthode et ses kwargs : sans
+        # `production_ready`, une action du serveur de production se
+        # lancerait en mode local.
+        server = self._noeud("Git local server")
+        self.assertEqual(
+            [
+                {n["kwargs"].get("production_ready") for n in m["children"]}
+                for m in server["children"]
+            ],
+            [{False}, {True}],
+        )
+
 
 class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu QEMU/KVM, désormais dans script/todo/qemu_menu.py."""
@@ -770,32 +823,6 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
-    }
-
-
-class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Git, le seul dont todo.json suit des entrées codées en dur.
-
-    Ses premières entrées sont écrites à la main, les suivantes viennent de
-    `git_from_makefile` et le repli générique les renumérote tout seul :
-    ajouter une entrée codée en dur pousse celles de todo.json d'un rang sans
-    que rien ne le dise. Une entrée codée en dur oubliée dans le dispatch
-    ferait lancer la commande du voisin sous le libellé attendu.
-    """
-
-    SOURCE = TODO_DIR / "todo.py"
-    ENTRY = "def prompt_execute_git(self):"
-    END = "def _git_install_hooks(self):"
-    MINIMUM = 2
-
-    EXPECTED = {
-        "Local git server": "prompt_execute_git_local_server",
-        "Add a remote to a local repository": "_git_add_remote",
-        "Install git hooks": "_git_install_hooks",
-        "Set merge.conflictStyle": "_git_set_conflict_style",
-        "Install Starship on Shell": "_shell_install_starship",
-        "Install Claude Code": "_shell_install_claude_code",
-        "Install opencode": "_shell_install_opencode",
     }
 
 
@@ -1241,6 +1268,76 @@ class TestDocMenuNumbering(RegistryCoherence, unittest.TestCase):
                 ),
             ],
         )
+
+
+class TestGitMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu Git : quatre entrées fixes, les éléments de
+    `git_from_makefile`, puis trois outils de shell, dont la place suit le
+    nombre de ces éléments : la déclaration les numérote tous."""
+
+    MENU = "prompt_execute_git"
+    EXPECTED = {
+        "Local git server": "prompt_execute_git_local_server",
+        "Add a remote to a local repository": "_git_add_remote",
+        "Install git hooks": "_git_install_hooks",
+        "Set merge.conflictStyle": "_git_set_conflict_style",
+        "Install Starship on Shell": "_shell_install_starship",
+        "Install Claude Code": "_shell_install_claude_code",
+        "Install opencode": "_shell_install_opencode",
+    }
+
+    def test_the_configured_entries_follow_the_fixed_ones(self):
+        [configured] = [
+            e for e in self.menu.entries if isinstance(e, FromConfig)
+        ]
+        self.assertIs(self.menu.entries[4], configured)
+        self.assertEqual(
+            (configured.config_key, configured.action, configured.kwarg),
+            ("git_from_makefile", "_git_from_configuration", "instance"),
+        )
+
+
+class TestGitLocalServerMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Git local server : les actions du serveur local, puis celles du
+    serveur de production, chacune son menu."""
+
+    MENU = "prompt_execute_git_local_server"
+    EXPECTED = {
+        "Deploy a local git server": "_prompt_git_server_local",
+        "Deploy a production git server": "_prompt_git_server_production",
+    }
+
+
+class TestGitServerLocalMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Actions du serveur git local : les cinq étapes du déploiement, en
+    mode local."""
+
+    MENU = "_prompt_git_server_local"
+    PRODUCTION = False
+    EXPECTED = {
+        "Run all": "_deploy_git_server",
+        "Init": "_deploy_git_server",
+        "Remote": "_deploy_git_server",
+        "Push": "_deploy_git_server",
+        "Serve": "_deploy_git_server",
+    }
+
+    def test_each_entry_passes_its_step_and_mode(self):
+        self.assertEqual(
+            [entry.kwargs for entry in self.entries],
+            [
+                {"production_ready": self.PRODUCTION, "action": action}
+                for action in ("all", "init", "remote", "push", "serve")
+            ],
+        )
+
+
+class TestGitServerProductionMenuNumbering(TestGitServerLocalMenuNumbering):
+    """Actions du serveur git de production : les mêmes cinq étapes, en
+    mode production."""
+
+    MENU = "_prompt_git_server_production"
+    PRODUCTION = True
 
 
 class TestUpdateMenu(unittest.TestCase):
@@ -1904,6 +2001,10 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_analyse",
                 "prompt_execute_transform",
                 "prompt_execute_doc",
+                "prompt_execute_git",
+                "prompt_execute_git_local_server",
+                "_prompt_git_server_local",
+                "_prompt_git_server_production",
             },
             set(declared),
         )

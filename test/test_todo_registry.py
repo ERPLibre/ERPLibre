@@ -773,7 +773,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         paths = sorted(MENUS_DIR.glob("*.py"))
         self.assertEqual(
             [p.name for p in paths],
-            ["__init__.py", "execute.py", "main.py", "run.py"],
+            ["__init__.py", "execute.py", "git.py", "main.py", "run.py"],
         )
         for path in paths:
             for stmt in ast.parse(path.read_text(encoding="utf-8")).body:
@@ -794,6 +794,8 @@ class TestTodoMenuFiles(unittest.TestCase):
         self.assertEqual(
             sorted(imported),
             [
+                "_prompt_git_server_local",
+                "_prompt_git_server_production",
                 "drop_database",
                 "prompt_configuration",
                 "prompt_execute",
@@ -802,6 +804,8 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_config",
                 "prompt_execute_database",
                 "prompt_execute_doc",
+                "prompt_execute_git",
+                "prompt_execute_git_local_server",
                 "prompt_execute_instance",
                 "prompt_execute_process",
                 "prompt_execute_test",
@@ -835,7 +839,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 14)
+        self.assertEqual(len(menus), 18)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():

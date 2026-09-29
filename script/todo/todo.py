@@ -128,6 +128,7 @@ from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.menus import execute as menus_execute
+from script.todo.menus import git as menus_git
 from script.todo.menus import main as menus_main
 from script.todo.menus import run as menus_run
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -593,7 +594,8 @@ class TODO(
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
-        "_prompt_git_server_actions": "Actions",
+        "_prompt_git_server_local": "Actions",
+        "_prompt_git_server_production": "Actions",
         "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
         "prompt_execute_claude_plugins": "Plugins",
@@ -2877,78 +2879,20 @@ class TODO(
     _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
 
     def prompt_execute_git(self):
-        print(f"🤖 {t('Git and shell management tools!')}")
-        choices = [
-            {"prompt_description": t("Local git server")},
-            {"prompt_description": t("Add a remote to a local repository")},
-            {
-                "prompt_description": t(
-                    "Install git hooks (commit-msg, pre-commit)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Set merge.conflictStyle to zdiff3 (global)"
-                )
-            },
-        ]
+        """Outils git et shell (GIT, `menus/git.py`) : quatre entrées, les
+        éléments de `git_from_makefile`, puis trois outils de shell.
+        Dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.GIT)
 
-        # Append config-driven entries
-        config_entries = self.config_file.get_config("git_from_makefile")
-        if config_entries:
-            choices.extend(config_entries)
-
-        # Starship ferme la liste : c'est un outil de shell, pas de git. Son
-        # rang dépend du nombre d'entrées venues de todo.json, donc « method »
-        # porte la destination dans l'entrée elle-même — un numéro codé en dur
-        # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
-        choices.append(
-            {
-                "prompt_description": t("Install Starship on Shell"),
-                "method": "_shell_install_starship",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Install Claude Code"),
-                "method": "_shell_install_claude_code",
-            }
-        )
-        choices.append(
-            {
-                "prompt_description": t("Install opencode"),
-                "method": "_shell_install_opencode",
-            }
-        )
-
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.prompt_execute_git_local_server()
-            elif status == "2":
-                self._git_add_remote()
-            elif status == "3":
-                self._git_install_hooks()
-            elif status == "4":
-                self._git_set_conflict_style()
-            else:
-                # [N], tel qu'affiché, au-delà des quatre entrées fixes : un
-                # élément de todo.json, ou une entrée qui porte « method ».
-                shown = [str(n) for n in range(5, len(choices) + 1)]
-                if status in shown:
-                    instance = choices[int(status) - 1]
-                    method = instance.get("method")
-                    if method:
-                        getattr(self, method)()
-                    else:
-                        self.execute_from_configuration(instance)
-                else:
-                    print(t("Command not found !"))
+    def _git_from_configuration(self, instance):
+        """Lance `instance`, un élément de `git_from_makefile` : la méthode
+        de TODO que nomme sa clé « method », sans argument, sinon
+        `execute_from_configuration`."""
+        method = instance.get("method")
+        if method:
+            getattr(self, method)()
+        else:
+            self.execute_from_configuration(instance)
 
     def _git_add_remote(self):
         """Ajoute un remote au dépôt du répertoire courant : son nom,
@@ -3256,85 +3200,19 @@ class TODO(
         print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):
-        print(f"🤖 {t('Manage local git repository server!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Deploy a local git server (~/.git-server)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Deploy a production git server (/srv/git, root required)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
+        """Le serveur git local (GIT_LOCAL_SERVER, `menus/git.py`) : ses
+        actions en mode local ou de production. Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_LOCAL_SERVER)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_git_server_actions(production_ready=False)
-            elif status == "2":
-                self._prompt_git_server_actions(production_ready=True)
-            else:
-                print(t("Command not found !"))
+    def _prompt_git_server_local(self):
+        """Actions du serveur git local, sous ~/.git-server
+        (GIT_SERVER_LOCAL, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_SERVER_LOCAL)
 
-    def _prompt_git_server_actions(self, production_ready=False):
-        mode = (
-            t("Production mode (/srv/git, root required)")
-            if production_ready
-            else t("Local mode (~/.git-server)")
-        )
-        print(f"🤖 {mode}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Run all (init + remote + push + serve)"
-                )
-            },
-            {"prompt_description": t("Init - Create bare repos")},
-            {"prompt_description": t("Remote - Add local remotes")},
-            {"prompt_description": t("Push - Push to local server")},
-            {"prompt_description": t("Serve - Start git daemon")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="all",
-                )
-            elif status == "2":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="init",
-                )
-            elif status == "3":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="remote",
-                )
-            elif status == "4":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="push",
-                )
-            elif status == "5":
-                self._deploy_git_server(
-                    production_ready=production_ready,
-                    action="serve",
-                )
-            else:
-                print(t("Command not found !"))
+    def _prompt_git_server_production(self):
+        """Actions du serveur git de production, sous /srv/git
+        (GIT_SERVER_PRODUCTION, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.GIT_SERVER_PRODUCTION)
 
     def _deploy_git_server(self, production_ready=False, action="all"):
         print(t("Starting git server deployment..."))
