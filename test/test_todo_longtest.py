@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from script.todo.todo import TODO
 
@@ -443,6 +444,13 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         self.dp = deep_proxmox
         self.dossier = tempfile.mkdtemp(prefix="longtest-rapport-")
         self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        # Rien ne part de la descente : un programme qu'elle lancerait
+        # (sudo, virsh) fait échouer le test au lieu de partir.
+        self.enterContext(
+            patch.object(
+                moteur.subprocess, "run", side_effect=AssertionError("run")
+            )
+        )
 
     def _descente_tuee(self, a_l_etage):
         """Une descente dont l'installation MEURT à l'étage donné.
@@ -460,6 +468,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
 
         appels = []
         d.creer_etage1 = lambda res: "deep-pve-1"
+        d.uuid_libvirt = lambda nom: "forged-uuid"
         d.preparer_parent = lambda parent: {"stockage": "local-lvm"}
 
         def creer_enfant(parent, niveau, res, prep, noter=None):
@@ -1004,6 +1013,13 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
         self.dp = deep_proxmox
         self.dossier = tempfile.mkdtemp(prefix="longtest-vmid-")
         self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        # Rien ne part de la descente : un programme qu'elle lancerait
+        # (sudo, virsh) fait échouer le test au lieu de partir.
+        self.enterContext(
+            patch.object(
+                moteur.subprocess, "run", side_effect=AssertionError("run")
+            )
+        )
 
     def test_a_creation_that_dies_midway_still_names_the_vm(self):
         niveaux = [
@@ -1017,6 +1033,7 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
             chemin,
         )
         d.creer_etage1 = lambda res: "deep-pve-1"
+        d.uuid_libvirt = lambda nom: "forged-uuid"
         d.preparer_parent = lambda parent: (
             "local-lvm",
             "vmbr1",
