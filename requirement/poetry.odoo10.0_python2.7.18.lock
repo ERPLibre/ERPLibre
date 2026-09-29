@@ -147,14 +147,11 @@ python-versions = "*"
 
 [[package]]
 name = "cerberus"
-version = "1.3.5"
-description = "Lightweight, extensible schema and data validation tool for Pythondictionaries."
+version = "1.3.4"
+description = "Lightweight, extensible schema and data validation tool for Python dictionaries."
 category = "main"
 optional = false
-python-versions = "*"
-
-[package.dependencies]
-importlib-metadata = {version = "*", markers = "python_version < \"3.8\""}
+python-versions = ">=2.7"
 
 [[package]]
 name = "certifi"
@@ -1571,7 +1568,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=2.7.18,<2.8"
-content-hash = "cac34fd8e1e70bb4fbcabb6dbdc74782485bc94eb6feebdfea10a8fcf00c81a0"
+content-hash = "d86899ac3195bb036db08e808f4c26bed047a3624ca2c21e8ed770265c5f5301"
 
 [metadata.files]
 acme = [
@@ -1635,8 +1632,7 @@ cachetools = [
     {file = "cachetools-3.1.1.tar.gz", hash = "sha256:8ea2d3ce97850f31e4a08b0e2b5e6c34997d7216a9d2c98e0f3978630d4da69a"},
 ]
 cerberus = [
-    {file = "Cerberus-1.3.5-py3-none-any.whl", hash = "sha256:7649a5815024d18eb7c6aa5e7a95355c649a53aacfc9b050e9d0bf6bfa2af372"},
-    {file = "Cerberus-1.3.5.tar.gz", hash = "sha256:81011e10266ef71b6ec6d50e60171258a5b134d69f8fb387d16e4936d0d47642"},
+    {file = "Cerberus-1.3.4.tar.gz", hash = "sha256:d1b21b3954b2498d9a79edf16b3170a3ac1021df88d197dc2ce5928ba519237c"},
 ]
 certifi = [
     {file = "certifi-2021.10.8-py2.py3-none-any.whl", hash = "sha256:d62a0163eb4c2344ac042ab2bdf75399a71a2d8c7d47eac2e2ee91b9d6339569"},
