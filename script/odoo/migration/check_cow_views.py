@@ -167,6 +167,8 @@ def find_module_dir(odoo_version, module_name):
     lst_pattern = [
         os.path.join(odoo_version, "odoo", "addons", module_name),
         os.path.join(odoo_version, "odoo", "odoo", "addons", module_name),
+        # Odoo 8 et 9 : paquet openerp.
+        os.path.join(odoo_version, "odoo", "openerp", "addons", module_name),
         os.path.join(odoo_version, "addons", "*", module_name),
     ]
     for pattern in lst_pattern:

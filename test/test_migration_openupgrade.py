@@ -9,6 +9,7 @@ qu'après sa sortie : la cible est proposée quand même, la migration prévient
 dès le choix, et s'arrête avant l'étape plutôt que de lancer un chemin vide.
 """
 
+import os
 import sys
 import tempfile
 import unittest
@@ -17,7 +18,11 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
-from script.todo.todo_upgrade import openupgrade_declared  # noqa: E402
+from script.todo.todo_upgrade import (  # noqa: E402
+    http_off_option,
+    odoo_tree_layout,
+    openupgrade_declared,
+)
 
 AVEC = """<manifest>
     <project name="OpenUpgrade.git" revision="19.0"
@@ -97,6 +102,40 @@ class TestLOdooOrdinaireNeVoitPlusOpenUpgrade(unittest.TestCase):
         # Aucune autre génération de configuration entre les deux.
         self.assertNotIn(
             "generate_config.sh", source[sans_openupgrade + 60 : mise_a_jour]
+        )
+
+
+class TestLArbreDOpenUpgrade(unittest.TestCase):
+    """Jusqu'à 13, OpenUpgrade est un Odoo complet : son lanceur et son cœur
+    d'addons suivent le nom du paquet, openerp en 9.0 et avant."""
+
+    def test_un_arbre_openerp_se_lance_par_openerp_server(self):
+        with tempfile.TemporaryDirectory() as racine:
+            os.mkdir(os.path.join(racine, "openerp"))
+            self.assertEqual(
+                (
+                    os.path.join(racine, "openerp-server"),
+                    os.path.join(racine, "openerp", "addons"),
+                ),
+                odoo_tree_layout(racine),
+            )
+
+    def test_un_arbre_odoo_se_lance_par_odoo_bin(self):
+        with tempfile.TemporaryDirectory() as racine:
+            os.mkdir(os.path.join(racine, "odoo"))
+            self.assertEqual(
+                (
+                    os.path.join(racine, "odoo-bin"),
+                    os.path.join(racine, "odoo", "addons"),
+                ),
+                odoo_tree_layout(racine),
+            )
+
+    def test_le_http_s_eteint_selon_la_version(self):
+        """OpenUpgrade 9.0 et 10.0 ne connaissent que --no-xmlrpc."""
+        self.assertEqual(
+            ["--no-xmlrpc", "--no-xmlrpc", "--no-http", "--no-http"],
+            [http_off_option(v) for v in (9, 10, 11, 13)],
         )
 
 
