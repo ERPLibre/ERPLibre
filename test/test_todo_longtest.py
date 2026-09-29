@@ -27,9 +27,9 @@ from script.todo.todo import TODO  # noqa: E402
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
 
-# Le moteur vit dans son propre module depuis qu'il est partagé entre
-# deep_proxmox et deep_qemu. Bouchonner « deep_proxmox.dernier_rapport » ne
-# ferait plus rien : c'est descente.detruire qui appelle descente.dernier_rapport.
+# Le moteur vit dans son propre module, partagé entre deep_proxmox et
+# deep_qemu : bouchonner « deep_proxmox.dernier_rapport » ne ferait rien,
+# c'est descente.detruire qui appelle descente.dernier_rapport.
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
 import descente as moteur  # noqa: E402
 
@@ -49,12 +49,12 @@ class TestLaFrontiere(unittest.TestCase):
         self.assertNotIn("long_test", lanceur)
 
     def test_the_runner_only_looks_under_test(self):
-        """Le lanceur balaie TOUT test/test_*.py depuis qu'une liste de
-        préfixes a laissé 2400 tests hors de la suite.
+        """Le lanceur balaie TOUT test/test_*.py : une liste de préfixes
+        laisserait hors de la suite chaque fichier qu'elle ne nomme pas.
 
-        La frontière n'est donc plus un nom mais un RÉPERTOIRE : ce qui doit
-        rester hors de la suite doit vivre ailleurs que dans test/. C'est
-        exactement pourquoi long_test est à la racine."""
+        La frontière n'est donc pas un nom mais un RÉPERTOIRE : ce qui doit
+        rester hors de la suite vit ailleurs que dans test/, et c'est
+        pourquoi long_test est à la racine."""
         with open(
             os.path.join(RACINE, "script/test/run_unit_test.sh"),
             encoding="utf-8",
@@ -117,8 +117,8 @@ class TestLEssaiABlanc(unittest.TestCase):
         # disque ou les cœurs de la machine qui exécute la suite la bornent, et
         # le script REFUSE alors de planifier — ce qui est juste. Exiger quatre
         # étages ferait de ce contrôle une mesure du disque de l'hôte plutôt
-        # que du code : il a échoué le jour où un cache de dépôts git a occupé
-        # quinze gigaoctets, sans qu'une ligne du programme ait changé.
+        # que du code : il échouerait dès qu'un cache occupe le disque, sans
+        # qu'une ligne du programme ait changé.
         #
         # On retombe donc sur ce que la machine permet, et l'invariant se
         # vérifie là. Sous deux étages il n'y a plus d'invariant à vérifier —
@@ -149,10 +149,10 @@ class TestLEssaiABlanc(unittest.TestCase):
     def test_it_announces_the_plan_before_anything(self):
         """Les LIGNES du plan, pas les chiffres.
 
-        La version d'avant cherchait « 1 », « 2 », « 3 », « 4 » dans la
-        sortie : l'en-tête « 28 cœurs, 29128 Mo, 138 Go » et l'horodatage du
-        journal les fournissent tous. Elle passait même à --depth 1, avec une
-        seule ligne de plan — elle ne prouvait rien."""
+        Chercher « 1 », « 2 », « 3 », « 4 » dans la sortie ne prouverait
+        rien : l'en-tête (cœurs, Mo, Go) et l'horodatage du journal les
+        fournissent tous, et le contrôle passerait même à --depth 1, avec une
+        seule ligne de plan."""
         import re
 
         plan = re.findall(
@@ -166,8 +166,7 @@ class TestLEssaiABlanc(unittest.TestCase):
         self.assertIn("dry-run", self.res.stdout)
 
     def test_it_shows_the_commands_it_would_send(self):
-        # Une étape affichée est une étape rejouable à la main : c'est ainsi
-        # que les pannes de ce module ont été diagnostiquées.
+        # Une étape affichée est une étape rejouable à la main.
         self.assertIn("qm create", self.res.stdout)
         self.assertIn("install_proxmox.sh", self.res.stdout)
 
@@ -175,10 +174,10 @@ class TestLEssaiABlanc(unittest.TestCase):
         """Le script porte « set -euo pipefail » et un shebang bash.
 
         Sur Debian /bin/sh est dash, qui répond « set: Illegal option -o
-        pipefail » et sort à la PREMIÈRE ligne — vérifié. Lancé par sh, chaque
-        étage aurait échoué sur l'installation, à tous les coups."""
+        pipefail » et sort à la PREMIÈRE ligne : lancé par sh, chaque étage
+        échouerait sur l'installation, à tous les coups."""
         # Sur la LIGNE, pas dans le texte : « bash /tmp/… » contient
-        # « sh /tmp/… », donc un assertNotIn naïf échouait sur lui-même.
+        # « sh /tmp/… », donc un assertNotIn naïf échouerait sur lui-même.
         lignes = [
             ligne.strip()
             for ligne in self.res.stdout.splitlines()
@@ -192,12 +191,12 @@ class TestLEssaiABlanc(unittest.TestCase):
             )
 
     def test_the_first_level_gets_an_ssh_entry(self):
-        """La CLI QEMU/KVM n'écrit PAS d'entrée ~/.ssh/config.
+        """La CLI QEMU/KVM n'écrit PAS d'entrée ~/.ssh/config : l'étage 1
+        écrit la sienne.
 
-        Sans elle, « ssh deep-pve-1 » rend « Name or service not known » et la
-        descente attendait son plein délai avant de conclure « jamais
-        joignable » — sur une VM qui répondait parfaitement à son adresse.
-        Trouvé au premier lancement réel, pas par l'attaque."""
+        Sans elle, « ssh deep-pve-1 » rend « Name or service not known », et
+        la descente attendrait son plein délai avant de conclure « jamais
+        joignable » — sur une VM qui répond parfaitement à son adresse."""
         import inspect
         import sys as _sys
 
@@ -211,8 +210,8 @@ class TestLEssaiABlanc(unittest.TestCase):
         self.assertIn("créée mais sans adresse", src)
 
     def test_the_dry_run_claims_nothing_reached(self):
-        """Le rapport d'un essai à blanc était indiscernable d'une réussite —
-        JSON compris — et « --detruire » s'en servait."""
+        """Le rapport d'un essai à blanc se distingue d'une réussite, JSON
+        compris : « --detruire », qui lit les rapports, ne s'en sert pas."""
         import glob
         import json
 
@@ -243,7 +242,7 @@ class TestLEssaiABlanc(unittest.TestCase):
         imbriqué, se surengage de cent pour cent, l'hyperviseur à servir
         par-dessus."""
         # Par expression exacte : la ligne « machine : … Mo … Go » du haut
-        # contient les mêmes unités et décalait l'index d'un cran.
+        # contient les mêmes unités et décalerait l'index d'un cran.
         import re
 
         plan = re.findall(
@@ -280,11 +279,10 @@ class TestLEssaiABlanc(unittest.TestCase):
 class TestLaProfondeurParDefaut(unittest.TestCase):
     """Trois, et c'est une MESURE, pas une prudence.
 
-    Sur la machine où ce test a été écrit, les trois premiers étages coûtent
-    280, 495 et 1 064 secondes — une demi-heure en tout. Le quatrième a demandé
-    7 h 18 d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
-    jours. Un défaut à dix promettait ce qu'aucune machine ne peut tenir : la
-    profondeur reste un paramètre, mais le défaut doit marcher."""
+    Les trois premiers étages se montent en une demi-heure ; au quatrième,
+    chaque étape devient quinze à trente fois plus lente, et les suivants se
+    comptent en jours (long_test/README.md). La profondeur reste un
+    paramètre, mais le défaut doit tenir sur la machine qui le lance."""
 
     def test_the_script_defaults_to_three(self):
         import inspect
@@ -328,12 +326,13 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
 
 
 class TestDefaireSansEffacerAutreChose(unittest.TestCase):
-    """« --detruire » effaçait par SOUS-CHAÎNE de nom, dans le mauvais ordre,
-    sans confirmation et sans honorer --dry-run.
+    """« --detruire » n'efface que ce que la descente a créé : par nom exact,
+    du plus profond au moins profond, après confirmation, et jamais sous
+    --dry-run.
 
-    Quatre défauts trouvés en attaquant le code écrit, chacun capable
-    d'emporter une machine qui n'appartient pas au test. « qm destroy --purge »
-    emporte les disques ET les entrées de sauvegarde."""
+    Chacune de ces quatre règles empêche d'emporter une machine qui
+    n'appartient pas au test. « qm destroy --purge » emporte les disques ET
+    les entrées de sauvegarde."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -342,11 +341,11 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
         self.dp = deep_proxmox
 
     def test_the_deepest_level_goes_first(self):
-        """Le tri comptait les « + » de l'alias — or alias_etage remplace le
-        « + » du parent par un « - », donc chaque alias en portait
-        exactement UN. Le tri ne triait rien, et la destruction partait du
-        plus HAUT : « qm destroy --purge » sur l'étage 2 emportait le disque
-        contenant les étages 3 et suivants."""
+        """L'étage le plus profond part d'abord, trié par niveau :
+        alias_etage remplace le « + » du parent par un « - », et chaque alias
+        en porte exactement UN, si bien que compter les « + » ne trierait
+        rien. Partir du plus HAUT, « qm destroy --purge » sur l'étage 2
+        emporterait le disque qui contient les étages 3 et suivants."""
         rapport = {
             "etages": [
                 {"niveau": 2, "vmid": 100, "parent_alias": "a"},
@@ -375,8 +374,9 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
         self.assertEqual(alias.count("+"), 1, alias)
 
     def test_an_exact_name_is_required(self):
-        """Le filtre était « NOM_BASE in name » : une VM de labo appelée
-        « deep-pve-lab » sur un hyperviseur de production tombait dedans."""
+        """Le nom se compare en entier : un filtre « NOM_BASE in name »
+        prendrait une VM de labo appelée « deep-pve-lab », sur un hyperviseur
+        de production."""
         import inspect
 
         src = inspect.getsource(self.dp.detruire_une)
@@ -396,11 +396,11 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
 
         src = inspect.getsource(self.dp.detruire)
         self.assertIn("dry_run", src)
-        # Une confirmation explicite, pas un « o/N » : le menu lançait cette
+        # Une confirmation explicite, pas un « o/N » : le menu lance cette
         # option d'une seule touche.
         self.assertIn("OUI", src)
-        # La ligne de commande vit dans le moteur depuis qu'elle est
-        # identique d'une pile à l'autre.
+        # La ligne de commande vit dans le moteur : elle est identique d'une
+        # pile à l'autre.
         self.assertIn("dry_run=args.dry_run", inspect.getsource(moteur.mener))
 
 
@@ -481,9 +481,9 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         )
 
     def test_the_report_exists_as_soon_as_the_first_vm_does(self):
-        """Tuée pendant l'installation de l'étage 1, il n'y a aucun VMID à
-        noter — mais le domaine libvirt existe, et sans rapport « --detruire »
-        ne le regardait même pas."""
+        """Tuée pendant l'installation de l'étage 1, une descente n'a aucun
+        VMID à noter, mais le domaine libvirt existe : le rapport existe
+        aussi, sans quoi « --detruire » ne le regarderait même pas."""
         rapport = self._descente_tuee(a_l_etage=1)
         self.assertTrue(rapport["etages"])
         self.assertEqual(self.dp.a_defaire(rapport, self.dp.NOM_BASE), [])
@@ -512,12 +512,9 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
 
 
 class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
-    """Le correctif du rapport partiel a CRÉÉ ce danger.
-
-    Avant, la descente en cours n'avait aucun rapport sur le disque et
-    « --detruire » retombait sur la précédente, terminée. Depuis qu'il s'écrit
-    VM par VM, le rapport de la descente VIVANTE est le plus récent : détruire
-    aurait emporté l'arbre sous le processus qui installait encore."""
+    """Le rapport s'écrit VM par VM : celui de la descente VIVANTE est donc
+    le plus récent. « --detruire » l'écarte, et le dit, sans quoi il
+    emporterait l'arbre sous le processus qui installe encore."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -530,9 +527,9 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self._vrai = os.environ.get("HOME")
         os.environ["HOME"] = self.maison
         self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
-        # Un bouchon posé par un test et non repris fausse les SUIVANTS : la
-        # première version de ce fichier remplaçait dernier_rapport et le
-        # laissait en place, et le test d'après lisait le bouchon.
+        # Un bouchon posé par un test et non repris fausse les SUIVANTS : un
+        # dernier_rapport remplacé et laissé en place se lirait au test
+        # d'après. tearDown reprend chacun.
         self._vrais = {
             nom: getattr(deep_proxmox, nom)
             for nom in ("autre_descente", "dernier_rapport")
@@ -581,8 +578,8 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
         `executable` sépare le binaire RÉELLEMENT lancé de ce que la ligne de
         commande annonce : c'est elle que /proc publie, et donc elle que le
-        contrôle lit. Le faire par « sh -c 'exec -a …' » n'éprouvait rien — la
-        ligne de commande restait celle du shell, et le test passait à vide.
+        contrôle lit. Un « sh -c 'exec -a …' » n'éprouverait rien : la ligne
+        de commande resterait celle du shell, et le test passerait à vide.
         """
         import subprocess
 
@@ -600,12 +597,11 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         return faux
 
     def test_a_file_whose_name_merely_ends_like_one_is_not_a_descent(self):
-        """« endswith » prenait « test_longtest_install_nixos.py » pour
-        « install_nixos.py » : le fichier de tests se déclarait descente en
-        cours, et « --detruire » refusait de travailler tant qu'il tournait.
-
-        Le piège n'est pas propre à ce nom-là : tout script dont le nom
-        termine celui d'un test long y tombait."""
+        """Un script dont le nom termine celui d'un test long n'en est pas
+        un : un « endswith » prendrait « test_longtest_install_nixos.py »
+        pour « install_nixos.py », le fichier de tests passerait pour une
+        descente en cours, et « --detruire » refuserait de travailler tant
+        qu'il tourne."""
         faux = self._argv0("/tmp/test_longtest_install_nixos.py")
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
 
@@ -643,9 +639,9 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertIn(pid, self.dp.autre_descente())
 
     def test_the_report_of_a_living_descent_is_skipped(self):
-        """Sans ce filtre, « --detruire » choisissait le rapport de la
-        descente EN COURS — le plus récent — et détruisait l'arbre sous le
-        processus qui installait encore."""
+        """Sans ce filtre, « --detruire » choisirait le rapport de la
+        descente EN COURS — le plus récent — et détruirait l'arbre sous le
+        processus qui installe encore."""
         pid = self._fausse_descente()
         self._ecrire(
             "deep-pve-20260101-000000.json",
@@ -670,10 +666,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
     def test_an_empty_later_report_never_masks_one_that_names_vms(self):
         """Un second lancement qui meurt à l'étage 1 — « le disque existe
-        déjà » — écrivait un rapport VIDE sous un horodatage plus tardif.
-        « --detruire » annonçait « 0 VM imbriquée(s) » puis effaçait le disque
-        de l'étage 1, où vivaient les étages 2 et suivants : jamais arrêtés,
-        jamais nommés."""
+        déjà » — laisse un rapport VIDE sous un horodatage plus tardif. S'il
+        masquait le précédent, « --detruire » annoncerait « 0 VM
+        imbriquée(s) » puis effacerait le disque de l'étage 1, où vivent les
+        étages 2 et suivants : jamais arrêtés, jamais nommés."""
         self._ecrire(
             "deep-pve-20260101-000000.json",
             {
@@ -727,11 +723,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
     """« virsh undefine --remove-all-storage » efface un disque pour de bon.
 
-    Il partait sur le NOM fixe deep-pve-1, quel que soit le domaine qui le
-    porte : la VM d'une descente précédente qu'on voulait garder, ou une
-    machine sans rapport. C'est la famille de défauts la plus tenace de ce
-    travail — une ressource liée à une machine par son nom au lieu de ce qui
-    l'identifie vraiment."""
+    L'étage 1 se désigne par l'UUID que note le rapport, et non par le NOM
+    fixe deep-pve-1 : ce nom peut porter la VM d'une descente précédente
+    qu'on veut garder, ou une machine sans rapport. Une ressource se lie à
+    une machine par ce qui l'identifie vraiment, jamais par son nom."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -741,8 +736,8 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         self.vrai_run = deep_proxmox.subprocess.run
         # LE staticmethod, pas la fonction qu'il enveloppe : le rendre nu en
         # ferait une méthode d'instance, et « self.uuid_libvirt(nom) »
-        # passerait deux arguments à une fonction qui en prend un. La fuite
-        # tombait sur les tests SUIVANTS.
+        # passerait deux arguments à une fonction qui en prend un, et
+        # l'erreur tomberait sur les tests SUIVANTS.
         # Le crochet vit sur la classe de BASE, dans descente.py : c'est
         # elle qu'il faut détourner, pas la sous-classe Proxmox.
         self.moteur = moteur
@@ -812,7 +807,7 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             )
 
     def test_the_name_comes_from_the_report_not_from_the_level(self):
-        """Le déduire du numéro d'étage supposait que nom_etage ne changera
+        """Le déduire du numéro d'étage supposerait que nom_etage ne change
         jamais : un rapport ancien nommerait alors d'autres machines."""
         rapport = {
             "etages": [
@@ -842,10 +837,10 @@ class TestLaCauseDUnMontageAbsent(unittest.TestCase):
     façon de dire la cause à quelqu'un dont le seul accès à l'hôte est cet
     outil », dit son propre commentaire dans proxmox_deploy.py.
 
-    reparer_pmxcfs le jetait. Quand le montage échouait ensuite, il ne restait
-    qu'un « /etc/pve : ABSENT » sans cause, et il fallait retourner sur la
-    machine pour la chercher — sur un hyperviseur imbriqué mesuré 36 fois plus
-    lent que son hôte."""
+    reparer_pmxcfs le garde : quand le montage échoue ensuite, la ligne
+    « /etc/pve : ABSENT » vient avec sa cause, qu'il faudrait sinon aller
+    chercher sur la machine — un hyperviseur imbriqué, bien plus lent que
+    son hôte."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -889,7 +884,7 @@ class TestLaCauseDUnMontageAbsent(unittest.TestCase):
         self.assertIn("quorum_initialize failed", texte)
 
     def test_all_units_up_and_still_no_mount_is_said_so(self):
-        # Le silence ici se lisait « on n'a pas regardé ».
+        # Le silence ici se lirait « on n'a pas regardé ».
         res, texte = self._monter("ABSENT")
         self.assertFalse(res)
         self.assertIn("toutes les unités PVE sont debout", texte)
@@ -905,9 +900,9 @@ class TestLaCauseDUnMontageAbsent(unittest.TestCase):
 class TestUneLectureRateeNeConclutRien(unittest.TestCase):
     """De l'absence de pont, preparer_parent RECONFIGURE le réseau du parent.
 
-    Les codes de retour des lectures étaient jetés. Un « ip link show » qui
-    échoue — hoquet ssh, sudo pas encore prêt — se lisait « pas de pont », et
-    on posait un pont et un NAT sur une machine qui en avait déjà un."""
+    Une lecture ratée ne conclut donc rien : un « ip link show » qui échoue
+    — hoquet ssh, sudo pas encore prêt — ne se lit pas « pas de pont », qui
+    ferait poser un pont et un NAT sur une machine qui en a déjà un."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -973,12 +968,13 @@ class TestUneLectureRateeNeConclutRien(unittest.TestCase):
 
 
 class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
-    """Le VMID ne remontait qu'au RETOUR de creer_enfant.
+    """Le VMID se note AVANT les six commandes que creer_enfant enchaîne sur
+    le parent.
 
-    Or celle-ci enchaîne six commandes sur le parent. Un échec à la quatrième
-    — « qm resize » sur un stockage plein — laissait une VM allumée et un
-    disque alloué que le rapport ne nommait nulle part : « --detruire » ne
-    pouvait pas la défaire, et il fallait la retrouver par son NOM."""
+    Noté à son retour seulement, un échec à la quatrième — « qm resize »
+    sur un stockage plein — laisserait une VM allumée et un disque alloué
+    que le rapport ne nomme nulle part : « --detruire » ne pourrait pas la
+    défaire, et il faudrait la retrouver par son NOM."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -1042,13 +1038,12 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
 
 
 class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
-    """L'étage 1 a redémarré pendant l'installation de l'étage 4, éteignant
-    les étages 2, 3 et 4 d'un coup.
+    """Un étage qui redémarre éteint d'un coup tous ceux qu'il porte.
 
-    La descente a attendu son délai entier — quarante minutes — un ssh qui ne
-    pouvait plus aboutir, puis a conclu « jamais joignable en ssh ». Le
-    diagnostic était faux : la machine n'était pas lente, sa MAISON n'existait
-    plus."""
+    Attendre alors le délai entier, jusqu'à quarante minutes, un ssh qui ne
+    peut plus aboutir, puis conclure « jamais joignable en ssh », serait un
+    diagnostic faux : la machine n'est pas lente, sa MAISON n'existe plus.
+    La descente abandonne dès que le parent ne répond plus."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -1089,8 +1084,8 @@ class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
             res = self.d.attendre_ssh(enfant, 45, parent)
         self.assertIsNone(res)
         # DEUX sondes, et c'est tout : l'enfant, puis sa maison. Sans le
-        # garde-fou la liste comptait autant d'« enfant » que le délai le
-        # permet, et la descente attendait pour rien.
+        # garde-fou la liste compterait autant d'« enfant » que le délai le
+        # permet, et la descente attendrait pour rien.
         self.assertEqual(appels, ["enfant", "parent"])
         self.assertIn("ne répond plus", sortie.getvalue())
 
@@ -1302,8 +1297,8 @@ class TestAucuneEtapeNeRepondNone(unittest.TestCase):
         self.assertEqual(chutes, [])
 
     def test_the_real_path_of_preparer_systeme_answers_true(self):
-        """Éprouvé sur le vrai chemin, pas seulement à blanc : c'est l'essai à
-        blanc qui masquait le défaut, en sortant avant."""
+        """Éprouvé sur le vrai chemin, pas seulement à blanc : l'essai à
+        blanc sort avant l'étape, et ne verrait pas qu'elle rend None."""
         d = moteur.Descente.__new__(moteur.Descente)
         d.dry_run = False
         d.journal = None
@@ -1347,9 +1342,10 @@ class TestPartirDunHoteExistant(unittest.TestCase):
     coûte cinq minutes ET un étage d'imbrication — donc de la lenteur."""
 
     def test_the_remote_capacity_is_read_as_the_machine_writes_it(self):
-        # Sortie RÉELLE, prise sur un hôte du parc.
-        vrai = "COEURS=8\nMEM=MemAvailable:    7056288 kB\nDISQUE=   7G\n"
-        self.assertEqual(moteur.parse_capacite(vrai), (8, 6890, 7))
+        # La forme qu'écrit la sonde de capacité : les cœurs, la mémoire
+        # disponible en kB, le disque en Go, une ligne chacun.
+        sortie = "COEURS=6\nMEM=MemAvailable:    5120000 kB\nDISQUE=   9G\n"
+        self.assertEqual(moteur.parse_capacite(sortie), (6, 5000, 9))
 
     def test_a_missing_line_reads_as_zero_not_as_a_guess(self):
         """Un plan dimensionné sur une capacité SUPPOSÉE annoncerait des
@@ -1386,8 +1382,8 @@ class TestPartirDunHoteExistant(unittest.TestCase):
 
     def test_the_delays_count_the_absolute_depth(self):
         """Un enfant de niveau 1 posé dans une racine DÉJÀ au troisième étage
-        est en réalité au quatrième. Sans cela il héritait des délais du
-        premier : quatre fois trop courts."""
+        est en réalité au quatrième : il prend les délais du quatrième, et non
+        ceux du premier, quatre fois trop courts."""
         d = moteur.Descente.__new__(moteur.Descente)
         d.niveau_courant = 1
         d.profondeur_racine = 0
@@ -1433,8 +1429,8 @@ class TestPartirDunHoteExistant(unittest.TestCase):
 class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
     """Le dossier des rapports et le motif « *.json » sont PARTAGÉS.
 
-    Depuis qu'il y a deux tests longs, « deep_qemu --detruire » prendrait le
-    rapport le plus récent — pouvant être celui d'une descente Proxmox — et
+    Avec deux tests longs, « deep_qemu --detruire » prendrait sans filtre le
+    rapport le plus récent — celui d'une descente Proxmox, peut-être — et
     lancerait « virsh undefine » d'après des VMID de Proxmox."""
 
     def setUp(self):
@@ -1482,8 +1478,8 @@ class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
         )
 
     def test_an_older_report_without_a_tool_is_placed_by_its_filename(self):
-        """Les rapports écrits avant que ce champ existe n'ont pas d'outil.
-        Les refuser les rendrait indéfaisables ; les accepter sans regarder
+        """Un rapport sans le champ de l'outil ne dit pas de quelle pile il
+        vient. Le refuser le rendrait indéfaisable ; l'accepter sans regarder
         ramènerait le danger. Le nom de fichier tranche."""
         self._ecrire(
             "deep-pve-20260101-000000.json",
@@ -1519,9 +1515,9 @@ class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
 class TestNeDetruirePasCeQuOnNaPasCree(unittest.TestCase):
     """Une descente peut PARTIR d'une machine existante.
 
-    Ce qui protégeait jusqu'ici un hôte non créé était un effet de bord :
-    a_defaire exigeait deux clés que seule une descente écrit. Depuis qu'un
-    hôte emprunté peut figurer au rapport, il faut le DIRE."""
+    Un hôte emprunté peut figurer au rapport : le rapport DIT ce que la
+    descente a créé, et a_defaire ne détruit que cela, sans compter sur
+    l'absence des clés qu'une descente écrit."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
@@ -1553,7 +1549,7 @@ class TestNeDetruirePasCeQuOnNaPasCree(unittest.TestCase):
 
     def test_a_borrowed_root_is_not_undefined_by_name(self):
         """Une descente partie d'un hôte existant n'a JAMAIS d'UUID libvirt
-        local. Le repli par le nom aurait effacé un homonyme, disques
+        local : un repli par le nom effacerait un homonyme, disques
         compris."""
         lances = []
 
@@ -1600,9 +1596,9 @@ class TestNeDetruirePasCeQuOnNaPasCree(unittest.TestCase):
         self.assertEqual(vus["drop"], ("mon-proxmox+deep-pve-2",))
 
     def test_destroying_the_level_one_requires_a_name(self):
-        """« virsh undefine --remove-all-storage » ne devine pas sa cible. Le
-        repli nom_etage(1) désignait la machine numéro 1 de la pile, quelle
-        que soit celle dont parlait le rapport."""
+        """« virsh undefine --remove-all-storage » ne devine pas sa cible :
+        un repli sur nom_etage(1) désignerait la machine numéro 1 de la pile,
+        quelle que soit celle dont parle le rapport."""
         import inspect
 
         signature = inspect.signature(moteur.detruire_etage1)
@@ -1612,23 +1608,22 @@ class TestNeDetruirePasCeQuOnNaPasCree(unittest.TestCase):
 
 
 class TestLeDecompteDeLaDestruction(unittest.TestCase):
-    """« if not detruire_etage1(…) : faits -= 1 » — un succès de l'étage 1
-    n'ajoutait RIEN, alors que le total est len(liste) + 1.
+    """Le total d'une destruction est len(liste) + 1, l'étage 1 compris, et
+    un succès de l'étage 1 compte comme les autres.
 
-    Le décompte était décalé de un dans TOUS les cas : une destruction
-    complète annonçait « il reste des machines » et sortait 1. Le seul
-    avertissement censé prévenir qu'un disque de plusieurs dizaines de Go
-    reste alloué s'affichait toujours — on apprend à ne plus le lire."""
+    Un décompte décalé de un annoncerait « il reste des machines » après une
+    destruction complète, et sortirait 1 ; le seul avertissement qui dit
+    qu'un disque de plusieurs dizaines de Go reste alloué s'afficherait
+    toujours, et on apprendrait à ne plus le lire."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
-        # Pris ET rendus sur le MOTEUR. La première version les prenait sur
-        # deep_proxmox et les rendait là aussi, alors qu'elle les posait sur
-        # descente : les bouchons fuyaient sur tous les tests suivants, qui
-        # inspectaient une lambda au lieu de la vraie fonction.
+        # Pris ET rendus sur le MOTEUR, là où ils sont posés : pris et rendus
+        # sur un autre module, les bouchons fuiraient sur les tests suivants,
+        # qui inspecteraient une lambda au lieu de la vraie fonction.
         self._vrais = {
             nom: getattr(moteur, nom)
             for nom in (
@@ -1700,8 +1695,8 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         self.assertIn("l'étage 1 est DEBOUT", texte)
 
     def test_the_ssh_aliases_of_a_destroyed_descent_are_removed(self):
-        """Elles survivaient aux machines : des entrées mortes dont le
-        ProxyJump désigne un hôte qui n'existe plus."""
+        """Les alias partent avec les machines : restés, ce seraient des
+        entrées mortes dont le ProxyJump désigne un hôte qui n'existe plus."""
         retires = []
         moteur.retirer_alias = lambda rapport, journal=None, nom_base="": (
             retires.append([e.get("alias") for e in rapport["etages"]])
