@@ -171,6 +171,27 @@ SUFFIXE_MAX = len("_neutralize_upgrade_18")
 NOM_BASE_MAX = 63 - SUFFIXE_MAX
 
 
+def odoo_tree_layout(racine):
+    """Le lanceur et le dossier d'addons du cœur d'un arbre Odoo complet.
+
+    OpenUpgrade jusqu'à 13 est un tel arbre. En 9.0 et avant, le paquet
+    s'appelle openerp : lanceur openerp-server, cœur openerp/addons. Depuis
+    10.0 : odoo-bin et odoo/addons. Les chemins gardent la forme de racine.
+    """
+    if os.path.isdir(os.path.join(racine, "openerp")):
+        return (
+            os.path.join(racine, "openerp-server"),
+            os.path.join(racine, "openerp", "addons"),
+        )
+    return os.path.join(racine, "odoo-bin"), os.path.join(racine, "odoo", "addons")
+
+
+def http_off_option(version):
+    """L'option qui éteint le serveur HTTP : --no-xmlrpc jusqu'à Odoo 10,
+    --no-http depuis 11, qui garde l'ancienne forme en alias caché."""
+    return "--no-xmlrpc" if version <= 10 else "--no-http"
+
+
 def openupgrade_declared(version, racine="."):
     """Vrai si le manifeste de développement d'Odoo <version>.0 déclare
     OpenUpgrade.
@@ -2586,9 +2607,11 @@ class TodoUpgrade:
                     )
                 elif os.path.exists(f"{stem}.py"):
                     file_path_fix_migration = f"{stem}.py"
+                    # odoo_bin.sh : le lanceur de la version, son shell, et
+                    # le config.conf du dépôt.
                     cmd_fix_migration = (
                         f"cat ./{file_path_fix_migration} |"
-                        f" ./odoo{next_version}.0/odoo/odoo-bin shell"
+                        f" ./odoo_bin.sh shell"
                         f" -d {database_name_upgrade}"
                     )
                 if file_path_fix_migration:
@@ -2660,7 +2683,8 @@ class TodoUpgrade:
                     "--ignore-odoo-path " if next_version <= 13 else ""
                 )
                 extra_addons_path_extra = (
-                    f",{path_addons_openupgrade}/addons,{path_addons_openupgrade}/odoo/addons"
+                    f",{path_addons_openupgrade}/addons,"
+                    f"{odoo_tree_layout(path_addons_openupgrade)[1]}"
                     if next_version <= 13
                     else ""
                 )
@@ -2692,7 +2716,10 @@ class TodoUpgrade:
                     erplibre_version = self.install_OCA_openupgrade(
                         next_version
                     )
-                    cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
+                    lanceur = odoo_tree_layout(
+                        f"./odoo{next_version}.0/OCA_OpenUpgrade"
+                    )[0]
+                    cmd_upgrade = f".venv.{erplibre_version}/bin/python {lanceur} -c ./config.conf --update all {http_off_option(next_version)} --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`

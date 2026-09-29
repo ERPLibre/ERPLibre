@@ -179,5 +179,22 @@ class TestMainBadConfig(unittest.TestCase):
         self.assertEqual(result, -1)
 
 
+
+class TestManifesteOpenerp(unittest.TestCase):
+    """Odoo 8 et 9 ne lisent que __openerp__.py : un module qui n'a que lui
+    existe, et la migration d'une base 8 ne doit pas le déclarer absent."""
+
+    def test_un_module_openerp_est_trouve(self):
+        racine = tempfile.mkdtemp()
+        os.makedirs(os.path.join(racine, "vieux_module"))
+        with open(os.path.join(racine, "vieux_module", "__openerp__.py"), "w") as f:
+            f.write("{}")
+        config = os.path.join(racine, "config.conf")
+        with open(config, "w") as f:
+            f.write(f"[options]\naddons_path = {racine}\n")
+        with patch("sys.argv", ["prog", "-m", "vieux_module", "-c", config]):
+            self.assertEqual(0, main())
+
+
 if __name__ == "__main__":
     unittest.main()

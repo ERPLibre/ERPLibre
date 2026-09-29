@@ -82,18 +82,27 @@ START = "ERPLIBRE_CLEANUP_START"
 END = "ERPLIBRE_CLEANUP_END"
 
 SHELL_SCRIPT = """# -*- coding: utf-8 -*-
-# Exécuté par « odoo-bin shell » de la version active, Odoo 10 compris : la
-# syntaxe reste celle de Python 2.7 — ni f-string, ni print(..., flush=).
+# Exécuté par le shell de la version active, Odoo 8 compris : la syntaxe
+# reste celle de Python 2.7 — ni f-string, ni print(..., flush=).
 from __future__ import print_function
 
 import json
 import sys
 
+# openerp d'abord : en Odoo 8 et 9, le répertoire de lancement porte aussi
+# un script odoo.py, qu'« import odoo » prendrait pour le paquet. UserError
+# date d'Odoo 9 ; Odoo 8 lève openerp.exceptions.Warning.
 try:
-    from odoo.exceptions import UserError
+    from openerp.exceptions import UserError
 except Exception:
-    class UserError(Exception):
-        pass
+    try:
+        from openerp.exceptions import Warning as UserError
+    except Exception:
+        try:
+            from odoo.exceptions import UserError
+        except Exception:
+            class UserError(Exception):
+                pass
 
 ORDER = %(order)r
 MAX_ROUND = %(max_round)d
