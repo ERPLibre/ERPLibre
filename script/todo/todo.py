@@ -1124,7 +1124,12 @@ class TODO(
         return os.path.exists(MOBILE_HOME_PATH)
 
     def prompt_execute_function(self):
+        # L'arbre de télémétrie lit les entrées de configuration dans cette
+        # affectation (`_choices_children`) : elle reste un appel seul de
+        # get_config, et une liste absente se remplace ensuite.
         choices = self.config_file.get_config("function")
+        if choices is None:
+            choices = []
         help_info = self.fill_help_info(choices)
 
         while True:

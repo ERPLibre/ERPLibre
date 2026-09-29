@@ -233,6 +233,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Run montre Choisir sa base de données, qui se lance depuis la TUI et la page web, et une instance lancée depuis la TUI demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme dans le menu
 - Télémétrie de navigation : Exécution › Database montre ses cinq commandes ; quatre se lancent depuis la TUI et depuis la page web, et Effacer une base de données, déclarée dangereuse, se lance depuis son menu seulement : la page la montre sans ▶, et la TUI y répond par un avis
 - Télémétrie de navigation : Exécution › Doc montre ses quatre commandes, qui se lancent depuis la TUI et la page web
+- Exécution › Automatisation s'ouvre quand `todo.json` n'a pas de liste `function`, avec [0] seul, au lieu de s'arrêter sur une erreur avant son menu
 
 ## Retiré
 

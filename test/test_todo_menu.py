@@ -1587,6 +1587,77 @@ class TestEraseMenu(unittest.TestCase):
         self.assertEqual((every.call_count, one.call_count), (0, 0))
 
 
+class AnsweredMenu:
+    """Socle d'un test qui répond à un menu de TODO : `self.todo` tourne
+    sur un HOME temporaire, en anglais, sa télémétrie de navigation
+    neutralisée, et `get_config` y rend une copie d'ENTRIES pour toute
+    clé. Chaque test pose ses doubles : aucune commande ne part."""
+
+    ENTRIES = []
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo.config_file.get_config = lambda key: [
+            dict(entry) for entry in self.ENTRIES
+        ]
+
+
+class TestAutomationMenu(AnsweredMenu, unittest.TestCase):
+    """Automation : une entrée par élément de `function`, que lance
+    execute_from_configuration."""
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "command": "forged_one"},
+        {"prompt_description": "Forged two", "command": "forged_two"},
+    ]
+
+    def answer(self, answers):
+        """(configurations lancées, texte affiché) quand Automation reçoit
+        `answers`, puis « 0 »."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, **options):
+            ran.append(instance.get("command"))
+
+        with (
+            patch.object(TODO, "execute_from_configuration", run),
+            patch("click.prompt", side_effect=[*answers, "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_function(), False)
+        return ran, out.getvalue()
+
+    def test_a_list_absent_from_the_configuration_adds_no_entry(self):
+        # Sans la liste, le menu n'a que [0] : « 1 » n'y est pas.
+        self.todo.config_file.get_config = lambda key: None
+        ran, out = self.answer(["1"])
+        self.assertEqual(ran, [])
+        self.assertEqual(out.count("Command not found !"), 1)
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 
