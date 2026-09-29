@@ -54,11 +54,12 @@ def navigate(todo, menu):
     `menu.back` sur « 0 ». « N » appelle la méthode de la N-ième entrée
     numérotée avec ses kwargs, puis le menu reprend, ou rend `menu.back`
     s'il se referme (`closes`) ; toute autre réponse dit « Command not
-    found ! ». L'intro s'affiche une fois, à l'entrée.
+    found ! ». L'intro, `t(menu.intro)` derrière `menu.mark`, s'affiche
+    une fois, à l'entrée.
     Un menu `render="each"` se redessine après chaque réponse, sa
     configuration relue ; un menu "once" garde son premier dessin."""
     if menu.intro:
-        getattr(todo, menu.intro)()
+        print(f"{menu.mark} {t(menu.intro)}")
     text, actions = _draw(todo, menu)
     while True:
         status = click.prompt(text)

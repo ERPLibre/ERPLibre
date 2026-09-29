@@ -69,7 +69,7 @@ CODE = Menu(
             "prompt_execute_update",
         ),
     ],
-    intro="_code_intro",
+    intro="What do you need for development?",
     render="once",
 )
 
@@ -88,7 +88,7 @@ CONFIG = Menu(
         Section("Advanced"),
         Entry("Setup queue job for parallelism", "generate_config_queue_job"),
     ],
-    intro="_config_intro",
+    intro="Manage ERPLibre and Odoo configuration!",
     render="once",
 )
 
@@ -99,7 +99,7 @@ PROCESS = Menu(
         Entry("Kill Odoo process from actual port", "process_kill_from_port"),
         Entry("Kill git daemon server process", "process_kill_git_daemon"),
     ],
-    intro="_process_intro",
+    intro="Manage execution processes!",
     render="once",
 )
 
@@ -130,7 +130,7 @@ TEST = Menu(
         # de vraies machines et durent des heures.
         Entry("Long tests - real VMs, hours", "prompt_execute_longtest"),
     ],
-    intro="_test_intro",
+    intro="Test an Odoo module on a temporary database!",
     render="once",
 )
 
@@ -144,6 +144,6 @@ UPDATE = Menu(
         Entry("Upgrade Odoo - Migration Database", "_upgrade_odoo"),
         Entry("Upgrade Poetry - Dependency of Odoo", "upgrade_poetry"),
     ],
-    intro="_update_intro",
+    intro="Development update",
     render="once",
 )

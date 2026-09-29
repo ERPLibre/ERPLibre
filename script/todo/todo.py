@@ -1187,10 +1187,6 @@ class TODO(
 
         return navigate(self, menus_execute.UPDATE)
 
-    def _update_intro(self):
-        """La ligne qui ouvre Update, avant son menu."""
-        print(f"🤖 {t('Development update')}")
-
     def _upgrade_odoo(self):
         """Migre une base Odoo (`TodoUpgrade.execute_odoo_upgrade`). Un
         rembobinage a déjà écrit l'état : il ne reste qu'à relancer, et
@@ -2906,10 +2902,6 @@ class TODO(
         `code_from_makefile`, puis Open SHELL, Upgrade Module, Debug et
         Update. Dessiné une fois, à l'entrée. Rend False sur [0]."""
         return navigate(self, menus_execute.CODE)
-
-    def _code_intro(self):
-        """La ligne qui ouvre Code, avant son menu."""
-        print(f"🤖 {t('What do you need for development?')}")
 
     # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
     # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
@@ -5267,10 +5259,6 @@ class TODO(
         sur [0]."""
         return navigate(self, menus_execute.PROCESS)
 
-    def _process_intro(self):
-        """La ligne qui ouvre Process, avant son menu."""
-        print(f"🤖 {t('Manage execution processes!')}")
-
     def process_kill_git_daemon(self):
         self.execute.exec_command_live(
             "pkill -f 'git daemon'",
@@ -5462,10 +5450,6 @@ class TODO(
         Rend False sur [0]."""
         return navigate(self, menus_execute.CONFIG)
 
-    def _config_intro(self):
-        """La ligne qui ouvre Config, avant son menu."""
-        print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
-
     def prompt_execute_network(self):
         print(f"🤖 {t('Network tools!')}")
         choices = [
@@ -5653,10 +5637,6 @@ class TODO(
         """Tests d'un module, de la suite unitaire, et tests longs (TEST,
         `menus/execute.py`). Rend False sur [0]."""
         return navigate(self, menus_execute.TEST)
-
-    def _test_intro(self):
-        """La ligne qui ouvre Test, avant son menu."""
-        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
 
     def execute_test_module(self, coverage=False):
         # Module name

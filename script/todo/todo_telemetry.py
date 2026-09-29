@@ -525,7 +525,7 @@ def _declared(node, fields):
 # Champs texte que lisent l'arbre et le navigateur, par constructeur : ceux
 # qu'un appel doit donner, puis ceux qui peuvent valoir None.
 _TEXT_FIELDS = {
-    "Menu": (("name",), ("crumb", "state", "intro")),
+    "Menu": (("name",), ("crumb", "state", "intro", "mark")),
     "Section": (("key",), ()),
     "Entry": (("key", "action"), ("suffix", "when")),
     "FromConfig": (("config_key", "action", "kwarg"), ()),

@@ -6,7 +6,7 @@ les menus déclarés, la TUI de télémétrie qui en lance les feuilles, et
 les fichiers de menus de TODO.
 
 Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
-action, état, suffixe ou intro note son appel ; les réponses viennent de
+action, état, suffixe ou garde note son appel ; les réponses viennent de
 `click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
 web. L'arbre se lit dans un répertoire temporaire : un todo.py minimal,
 une copie du module du registre et des fichiers de menus écrits par le
@@ -212,36 +212,50 @@ class TestNavigator(unittest.TestCase):
         self.assertEqual(todo.calls, [("run_element", {"instance": element})])
         self.assertEqual(texts[0], "[1] 🔙 Back\n[0] Back\n")
 
-    def test_once_draws_and_reads_once_and_the_intro_shows_once(self):
+    def test_once_draws_and_reads_once(self):
         todo = FakeTodo({"forged_list": [{"prompt_description": "One"}]})
         menu = Menu(
             "forged_menu",
             "Forged",
             [FromConfig("forged_list", "run_element", "element")],
-            intro="forged_intro",
             render="once",
         )
         _, _, texts = self.navigate(menu, ["9", "1", "0"], todo)
         self.assertEqual(len(set(texts)), 1)
         self.assertEqual((len(texts), len(todo.drawn), todo.reads), (3, 1, 1))
-        self.assertEqual(todo.calls[0], ("forged_intro", {}))
-        self.assertEqual(
-            [name for name, _ in todo.calls], ["forged_intro", "run_element"]
-        )
+        self.assertEqual([name for name, _ in todo.calls], ["run_element"])
+
+    def test_the_intro_says_its_key_once_after_its_mark(self):
+        # Une marque qui n'est pas 🤖 se déclare ; « ⚠️ » en garde deux
+        # espaces, comme les lignes écrites à la main.
+        for mark, said in ((None, "🤖 🔙 Back"), ("⚠️ ", "⚠️  🔙 Back")):
+            with self.subTest(mark=mark):
+                self.out.seek(0)
+                self.out.truncate()
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry("First", "first")],
+                    intro="Back",
+                    **({"mark": mark} if mark else {}),
+                )
+                _, todo, _ = self.navigate(menu, ["1", "0"])
+                self.assertEqual(todo.calls, [("first", {})])
+                lines = self.out.getvalue().split("\n")
+                self.assertEqual(lines[0], said)
+                self.assertEqual(self.out.getvalue().count("🔙 Back"), 1)
 
     def test_a_suffix_is_asked_with_the_entry_kwargs(self):
         menu = Menu(
             "forged_menu",
             "Forged",
             [Entry("Pick", "pick", kwargs={"key": "k"}, suffix="pick_label")],
-            intro="forged_intro",
         )
         _, todo, texts = self.navigate(menu, ["1", "0"])
         self.assertEqual(texts[0], "[1] Pick  (<pick_label>)\n[0] Back\n")
         self.assertEqual(
             todo.calls,
             [
-                ("forged_intro", {}),
                 ("pick_label", {"key": "k"}),
                 ("pick", {"key": "k"}),
                 ("pick_label", {"key": "k"}),
@@ -576,6 +590,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "entries",
                 "state",
                 "intro",
+                "mark",
                 "back",
                 "render",
                 "closes",
@@ -750,6 +765,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         # tient pour elles la table de traduction.
         keys = set()
         for menu in _imported_menus().values():
+            keys |= {menu.intro} - {None}
             keys |= {
                 item.key
                 for item in menu.entries
@@ -767,7 +783,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         menus = _imported_menus()
         self.assertEqual(len(menus), 8)
         for menu in menus.values():
-            calls = [(menu.name, {}), (menu.state, {}), (menu.intro, {})]
+            calls = [(menu.name, {}), (menu.state, {})]
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}
