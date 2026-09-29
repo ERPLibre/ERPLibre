@@ -715,6 +715,16 @@ TRANSLATIONS = {
         "fr": "🎯 Migration OCA Odoo 19 - Jalons",
         "en": "🎯 OCA migration Odoo 19 milestone",
     },
+    "Select version to upgrade Odoo CE (5-17) : ": {
+        "fr": "Version d'Odoo CE à migrer (5-17) : ",
+        "en": "Select version to upgrade Odoo CE (5-17) : ",
+    },
+    "Select version to show what change for Odoo CE version (8-18) : ": {
+        "fr": "Version d'Odoo CE dont voir les changements (8-18) : ",
+        "en": (
+            "Select version to show what change for Odoo CE version (8-18) : "
+        ),
+    },
     "Download database to create backup (.zip)": {
         "fr": (
             "⬇  Télécharger une base de données pour créer une"

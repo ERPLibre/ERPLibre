@@ -1391,6 +1391,46 @@ class TestRunMenu(unittest.TestCase):
         self.assertEqual([c.args for c in run.call_args_list], [("forged",)])
 
 
+class TestDocMenu(unittest.TestCase):
+    """Doc : ses deux questions de version, puis l'adresse de la page de
+    cette version. HOME est temporaire et la télémétrie de navigation
+    neutralisée."""
+
+    def test_the_version_questions_are_in_the_chosen_language(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("fr")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        with (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+            patch("builtins.input", return_value="17") as asked,
+            patch("click.prompt", side_effect=["1", "2", "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(TODO().prompt_execute_doc(), False)
+        self.assertEqual(
+            [c.args for c in asked.call_args_list],
+            [
+                ("Version d'Odoo CE à migrer (5-17) : ",),
+                ("Version d'Odoo CE dont voir les changements (8-18) : ",),
+            ],
+        )
+        self.assertIn("coverage_analysis/modules170-180.html", out.getvalue())
+        self.assertIn("wiki/Migration-to-version-17.0", out.getvalue())
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 

@@ -379,6 +379,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Database › Create backup makes no backup when no database is chosen — [0], no database, or PostgreSQL not answering — instead of stopping TODO on an error, or backing up a database named False under the name typed
 - Execute › Database › Download database checks the archive where it wrote it, at the path typed, instead of reading the default path and reporting a good download as failed
 - Execute › Database › Download database: a number it lists picks that remote database, instead of downloading a database named by the number; any other text is still the name typed
+- Execute › Doc: Migration module coverage and What change between version ask for their version in the chosen language instead of always in English, and the second question opens its parenthesis
 
 <!-- [fr] -->
 
@@ -478,6 +479,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Database › Créer une sauvegarde ne sauvegarde rien quand aucune base n'est choisie — [0], aucune base, ou PostgreSQL qui ne répond pas — au lieu d'arrêter TODO sur une erreur, ou de sauvegarder une base nommée False sous le nom tapé
 - Exécution › Database › Télécharger une base vérifie l'archive là où il l'a écrite, au chemin tapé, au lieu de lire le chemin par défaut et de dire en échec un téléchargement réussi
 - Exécution › Database › Télécharger une base : un numéro qu'il liste choisit cette base distante, au lieu de télécharger une base nommée par ce numéro ; tout autre texte reste le nom tapé
+- Exécution › Doc : Couverture de migration des modules et Quels changements entre les versions demandent leur version dans la langue choisie au lieu de toujours en anglais, et la seconde question ouvre sa parenthèse
 
 <!-- [en] -->
 ## Removed

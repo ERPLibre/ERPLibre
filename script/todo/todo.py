@@ -4100,7 +4100,7 @@ class TODO(
                 return False
             elif status == "1":
                 str_version = input(
-                    "Select version to upgrade Odoo CE (5-17) : "
+                    t("Select version to upgrade Odoo CE (5-17) : ")
                 )
                 try:
                     int_version = int(str_version)
@@ -4114,7 +4114,10 @@ class TODO(
                     )
             elif status == "2":
                 str_version = input(
-                    "Select version to show what change for Odoo CE version 8-18) : "
+                    t(
+                        "Select version to show what change for Odoo CE"
+                        " version (8-18) : "
+                    )
                 )
                 try:
                     int_version = int(str_version)
