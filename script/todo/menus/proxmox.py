@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy.
+"""Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy, et
+VPN, ouvert depuis Deploy et depuis Network.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -70,4 +71,40 @@ PROXMOX = Menu(
     render="once",
     opens="_pve_ouvre",
     before="_pve_hote_montre",
+)
+
+VPN = Menu(
+    "prompt_execute_vpn",
+    "VPN",
+    [
+        # Monter ou descendre un tunnel agit en root, par sudo, sur la
+        # configuration réseau du système et sa table de routage : `danger`.
+        Section("Connection"),
+        Entry("VPN - Connect a profile", "_vpn_connect", danger=True),
+        Entry("VPN - Disconnect a profile", "_vpn_disconnect", danger=True),
+        Entry("VPN - Status and diagnosis", "_vpn_diagnose"),
+        Section("Profiles & secrets"),
+        Entry("VPN - Create a profile from a site preset", "_vpn_from_preset"),
+        Entry(
+            "VPN - Import an AnyConnect profile (.xml)",
+            "_vpn_import_anyconnect",
+        ),
+        Entry("VPN - Add or edit a profile", "_vpn_edit_profile"),
+        Entry("VPN - Store secrets in the vault", "_vpn_store_secrets"),
+        Entry(
+            "VPN - Show the rendered configuration (dry-run)",
+            "_vpn_show_config",
+        ),
+        # Un profil effacé ne se rattrape pas : `danger`.
+        Entry("VPN - Delete a profile", "_vpn_delete_profile", danger=True),
+        # Installer le client pose des paquets, par sudo : `danger`.
+        Section("Host"),
+        Entry(
+            "VPN - Install the client packages", "_vpn_install", danger=True
+        ),
+        Entry("VPN - What can this machine do?", "_vpn_check"),
+    ],
+    intro="VPN tunnels: connect, profiles, vault secrets",
+    mark="🔐",
+    render="once",
 )

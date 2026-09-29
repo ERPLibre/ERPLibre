@@ -320,6 +320,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         git = "TODO › Execute › Git"
         deploy = "TODO › Execute › Deploy"
         cache = f"{deploy} › QEMU cache"
+        network = "TODO › Execute › Network"
         docker = "TODO › Execute › Docker / Podman"
         self.assertEqual(
             dangerous,
@@ -396,6 +397,16 @@ class TestLArbreDesMenus(unittest.TestCase):
                     f"{cache} › Automatic cleanup › Cleanup - Run now",
                     {"a_blanc": False},
                 ),
+                *[
+                    (f"{vpn} › VPN - {label}", {})
+                    for vpn in (f"{deploy} › VPN", f"{network} › VPN")
+                    for label in (
+                        "Connect a profile",
+                        "Disconnect a profile",
+                        "Delete a profile",
+                        "Install the client packages",
+                    )
+                ],
                 (f"{docker} › Install Docker", {"moteur": "docker"}),
                 (f"{docker} › Install Podman", {"moteur": "podman"}),
                 *[
@@ -1159,6 +1170,27 @@ class TestProxmoxMenuNumbering(RegistryCoherence, unittest.TestCase):
                 "instance",
             ),
         )
+
+
+class TestVpnMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu VPN (VPN, `menus/proxmox.py`), qu'ouvre `vpn_menu.py`
+    depuis Deploy et depuis Network : se connecter, tenir ses profils et
+    leurs secrets, équiper la machine."""
+
+    MENU = "prompt_execute_vpn"
+    EXPECTED = {
+        "VPN - Connect a profile": "_vpn_connect",
+        "VPN - Disconnect a profile": "_vpn_disconnect",
+        "VPN - Status and diagnosis": "_vpn_diagnose",
+        "VPN - Create a profile from a site preset": "_vpn_from_preset",
+        "VPN - Import an AnyConnect profile": "_vpn_import_anyconnect",
+        "VPN - Add or edit a profile": "_vpn_edit_profile",
+        "VPN - Store secrets in the vault": "_vpn_store_secrets",
+        "VPN - Show the rendered configuration": "_vpn_show_config",
+        "VPN - Delete a profile": "_vpn_delete_profile",
+        "VPN - Install the client packages": "_vpn_install",
+        "VPN - What can this machine do?": "_vpn_check",
+    }
 
 
 class TestNetworkMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2623,6 +2655,7 @@ class TestMenuLabels(unittest.TestCase):
                 "_container_compose",
                 "_container_erplibre",
                 "prompt_execute_proxmox",
+                "prompt_execute_vpn",
             },
             set(declared),
         )

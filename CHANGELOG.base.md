@@ -421,6 +421,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Test › Long tests: the depth of a nested descent is read only from ASCII digits: « ² », next to « 1 » on a French keyboard, keeps the default of three instead of ending TODO on a `ValueError`, and a digit of another script no longer sets a depth the prompt did not show
 - Install speaks the chosen language: the detection line, the questions on the first system installation and on PyCharm, the three installations chosen by a letter and the state of each Odoo version were shown in English whatever the language
 - Navigation telemetry: Execute › Deploy › Proxmox VE lists the entries of `todo.json` and launches them from the TUI; neither the TUI nor the page launches any more Deploy a VM on the Proxmox host, Download a cloud image on the host, Resize a VM disk, Delete VM(s), Clean up (orphan disks) or SSH configuration, which act as root on the host or rewrite the account's SSH configuration
+- Navigation telemetry: neither the TUI nor the page launches any more VPN - Connect a profile, Disconnect a profile, Delete a profile or Install the client packages, under Execute › Deploy › VPN as under Execute › Network › VPN, which act as root through sudo, erase a profile or install packages
 
 <!-- [fr] -->
 
@@ -562,6 +563,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Test › Tests longs : la profondeur d'une descente imbriquée ne se lit que dans des chiffres ASCII : « ² », voisin de « 1 » sur un clavier français, garde le défaut de trois au lieu d'arrêter TODO sur une `ValueError`, et un chiffre d'une autre écriture ne fixe plus une profondeur que l'invite n'a pas montrée
 - Installation parle la langue choisie : la ligne de détection, les questions sur la première installation du système et sur PyCharm, les trois installations choisies par une lettre et l'état de chaque version d'Odoo s'affichaient en anglais quelle que soit la langue
 - Télémétrie de navigation : Exécution › Deploy › Proxmox VE liste les entrées de `todo.json` et les lance depuis la TUI ; ni la TUI ni la page ne lancent plus Déployer une VM sur l'hôte Proxmox, Télécharger une image cloud sur l'hôte, Redimensionner le disque d'une VM, Effacer une ou plusieurs VM, Nettoyer (disques orphelins) ni Configuration SSH, qui agissent en root sur l'hôte ou réécrivent la configuration SSH du compte
+- Télémétrie de navigation : ni la TUI ni la page ne lancent plus VPN - Connecter un profil, Déconnecter un profil, Supprimer un profil ni Installer les paquets client, sous Exécution › Deploy › VPN comme sous Exécution › Réseau › VPN, qui agissent en root par sudo, effacent un profil ou posent des paquets
 
 <!-- [en] -->
 ## Removed

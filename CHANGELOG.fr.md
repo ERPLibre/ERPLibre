@@ -271,6 +271,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Test › Tests longs : la profondeur d'une descente imbriquée ne se lit que dans des chiffres ASCII : « ² », voisin de « 1 » sur un clavier français, garde le défaut de trois au lieu d'arrêter TODO sur une `ValueError`, et un chiffre d'une autre écriture ne fixe plus une profondeur que l'invite n'a pas montrée
 - Installation parle la langue choisie : la ligne de détection, les questions sur la première installation du système et sur PyCharm, les trois installations choisies par une lettre et l'état de chaque version d'Odoo s'affichaient en anglais quelle que soit la langue
 - Télémétrie de navigation : Exécution › Deploy › Proxmox VE liste les entrées de `todo.json` et les lance depuis la TUI ; ni la TUI ni la page ne lancent plus Déployer une VM sur l'hôte Proxmox, Télécharger une image cloud sur l'hôte, Redimensionner le disque d'une VM, Effacer une ou plusieurs VM, Nettoyer (disques orphelins) ni Configuration SSH, qui agissent en root sur l'hôte ou réécrivent la configuration SSH du compte
+- Télémétrie de navigation : ni la TUI ni la page ne lancent plus VPN - Connecter un profil, Déconnecter un profil, Supprimer un profil ni Installer les paquets client, sous Exécution › Deploy › VPN comme sous Exécution › Réseau › VPN, qui agissent en root par sudo, effacent un profil ou posent des paquets
 
 ## Retiré
 

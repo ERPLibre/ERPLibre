@@ -21,8 +21,6 @@ Deux chemins d'exécution, pour une raison :
 import getpass
 import os
 
-import click
-
 try:
     from script.todo import todo_file_browser
 except Exception:
@@ -30,7 +28,9 @@ except Exception:
     # directe reste. Un menu qui ne s'ouvre plus serait pire.
     todo_file_browser = None
 
+from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 from script.vpn import anyconnect_xml, presets, profiles
 from script.vpn.drivers import DRIVERS, get_driver
 from script.vpn.vault import VaultError, VpnVault, secrets_to_env
@@ -189,66 +189,10 @@ class VpnMenuMixin:
     # Menu
     # ------------------------------------------------------------------
     def prompt_execute_vpn(self):
-        print(f"🔐 {t('VPN tunnels: connect, profiles, vault secrets')}")
-        choices = [
-            {"section": t("Connection")},
-            {"prompt_description": t("VPN - Connect a profile")},
-            {"prompt_description": t("VPN - Disconnect a profile")},
-            {"prompt_description": t("VPN - Status and diagnosis")},
-            {"section": t("Profiles & secrets")},
-            {
-                "prompt_description": t(
-                    "VPN - Create a profile from a site preset"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "VPN - Import an AnyConnect profile (.xml)"
-                )
-            },
-            {"prompt_description": t("VPN - Add or edit a profile")},
-            {"prompt_description": t("VPN - Store secrets in the vault")},
-            {
-                "prompt_description": t(
-                    "VPN - Show the rendered configuration (dry-run)"
-                )
-            },
-            {"prompt_description": t("VPN - Delete a profile")},
-            {"section": t("Host")},
-            {"prompt_description": t("VPN - Install the client packages")},
-            {"prompt_description": t("VPN - What can this machine do?")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._vpn_connect()
-            elif status == "2":
-                self._vpn_disconnect()
-            elif status == "3":
-                self._vpn_diagnose()
-            elif status == "4":
-                self._vpn_from_preset()
-            elif status == "5":
-                self._vpn_import_anyconnect()
-            elif status == "6":
-                self._vpn_edit_profile()
-            elif status == "7":
-                self._vpn_store_secrets()
-            elif status == "8":
-                self._vpn_show_config()
-            elif status == "9":
-                self._vpn_delete_profile()
-            elif status == "10":
-                self._vpn_install()
-            elif status == "11":
-                self._vpn_check()
-            else:
-                print(t("Command not found !"))
+        """Les tunnels VPN (VPN, `menus/proxmox.py`) : se connecter, tenir
+        ses profils et leurs secrets, équiper la machine. Dessiné une fois,
+        à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_proxmox.VPN)
 
     # ------------------------------------------------------------------
     # Actions déléguées au CLI
