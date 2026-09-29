@@ -75,16 +75,17 @@ RUN cd $ODOO_PREFIX && \
     source ./.venv.erplibre/bin/activate && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
 
-# Odoo 8 et 9 se lancent par openerp-server : un lien odoo-bin le rend
-# joignable par ODOO_EXEC_BIN, que l'image de base pose pour toutes les
-# versions, docker exec compris.
-RUN cd $ODOO_PREFIX/odoo${ODOO_VERSION}/odoo && \
-    if [ ! -e odoo-bin ] && [ -f openerp-server ]; then ln -s openerp-server odoo-bin; fi
-
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
     source ./.venv.erplibre/bin/activate && \
     ./script/manifest/update_manifest_local_dev.sh
+
+# Odoo 8 et 9 se lancent par openerp-server : un lien odoo-bin le rend
+# joignable par ODOO_EXEC_BIN, que l'image de base pose pour toutes les
+# versions, docker exec compris. APRÈS la synchronisation qui crée
+# odoo<version>/odoo : avant elle, le « cd » échoue pour toute version.
+RUN cd $ODOO_PREFIX/odoo${ODOO_VERSION}/odoo && \
+    if [ ! -e odoo-bin ] && [ -f openerp-server ]; then ln -s openerp-server odoo-bin; fi
 
 RUN apt update && \
     apt install -y libgirepository1.0-dev && \
