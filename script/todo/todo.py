@@ -1103,7 +1103,12 @@ class TODO(
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
+        # L'arbre de télémétrie lit les entrées de configuration dans cette
+        # affectation (`_choices_children`) : elle reste un appel seul de
+        # get_config, et une liste absente se remplace ensuite.
         choices = self.config_file.get_config("instance")
+        if choices is None:
+            choices = []
         init_len = len(choices)
 
         # Support mobile ERPLibre

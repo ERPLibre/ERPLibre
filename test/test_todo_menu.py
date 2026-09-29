@@ -1366,6 +1366,13 @@ class TestRunMenu(unittest.TestCase):
         self.assertEqual(calls, (2, 1, 1))
         self.assertEqual(out.count("Command not found !"), 9)
 
+    def test_a_list_absent_from_the_configuration_adds_no_entry(self):
+        # Sans la liste, et sans Mobile, Run ne montre que [1].
+        self.todo.config_file.get_config = lambda key: None
+        ran, calls, out = self.answer(["1", "2"])
+        self.assertEqual((ran, calls), ([], (0, 1, 0)))
+        self.assertEqual(out.count("Command not found !"), 1)
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.

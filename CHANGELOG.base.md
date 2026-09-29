@@ -374,6 +374,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Run: an instance of `todo.json` that names no database runs its own commands and says that Odoo is not started, instead of starting Odoo and its web login on a database named None
 - Execute › Run: the last instance of `todo.json` asks « Do you want a new instance? » and opens its database, as the others do, instead of running its make target alone
 - Execute › Run: only a number exactly as shown runs an entry, as in Code: « 00 », « -1 », « 01 », « 2 » between spaces, « +2 » or a digit of another script answer « Command not found ! » instead of running the last entry, one counted from the end, or Choose your database, and « -9 » no longer stops TODO on an error
+- Execute › Run opens when `todo.json` has no `instance` list, with Choose your database, and Mobile when its directory exists, instead of stopping TODO on an error before its menu
 
 <!-- [fr] -->
 
@@ -468,6 +469,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Run : une instance de `todo.json` qui ne nomme aucune base lance ses propres commandes et dit qu'Odoo n'est pas lancé, au lieu de lancer Odoo et sa connexion web sur une base nommée None
 - Exécution › Run : la dernière instance de `todo.json` demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme les autres, au lieu de lancer sa seule cible make
 - Exécution › Run : seul un numéro tel qu'affiché lance une entrée, comme dans Code : « 00 », « -1 », « 01 », « 2 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la dernière entrée, une entrée comptée depuis la fin ou Choisir sa base de données, et « -9 » n'arrête plus TODO sur une erreur
+- Exécution › Run s'ouvre quand `todo.json` n'a pas de liste `instance`, avec Choisir sa base de données, et Mobile quand son répertoire existe, au lieu d'arrêter TODO sur une erreur avant son menu
 
 <!-- [en] -->
 ## Removed
