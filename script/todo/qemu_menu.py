@@ -380,6 +380,17 @@ class QemuMenuMixin:
         if config_entries:
             choices.extend(config_entries)
         help_info = self.fill_help_info(choices)
+        # Le numéro affiché de chaque entrée de la configuration, après les
+        # entrées fixes : seul ce numéro-là la lance. int() lirait aussi
+        # « 01 », « +21 » ou un chiffre d'une autre écriture, et lancerait
+        # comme une configuration la ligne d'une entrée fixe.
+        shown = [c for c in choices if not c.get("section")]
+        configured = [c for c in config_entries or [] if not c.get("section")]
+        numbers = {
+            str(n): entry
+            for n, entry in enumerate(shown, 1)
+            if n > len(shown) - len(configured)
+        }
 
         while True:
             status = click.prompt(help_info)
@@ -426,20 +437,10 @@ class QemuMenuMixin:
                 self._qemu_stats()
             elif status == "20":
                 self._qemu_list_images()
+            elif status in numbers:
+                self.execute_from_configuration(numbers[status])
             else:
-                cmd_no_found = True
-                try:
-                    int_cmd = int(status)
-                    # Ignore les entrées de section pour mapper le numéro
-                    # affiché sur la bonne commande (config incluse).
-                    real = [c for c in choices if not c.get("section")]
-                    if 0 < int_cmd <= len(real):
-                        cmd_no_found = False
-                        self.execute_from_configuration(real[int_cmd - 1])
-                except ValueError:
-                    pass
-                if cmd_no_found:
-                    print(t("Command not found !"))
+                print(t("Command not found !"))
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.

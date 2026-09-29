@@ -799,6 +799,82 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestQemuMenu(unittest.TestCase):
+    """QEMU/KVM : vingt entrées fixes, puis celles de `qemu_from_makefile`,
+    dont une section, qui ne prend pas de numéro.
+
+    Les commandes sont des doubles, aucune ne part ; virsh est tenu pour
+    présent, HOME est temporaire, la langue fixée et la télémétrie de
+    navigation neutralisée.
+    """
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "bash_command": "forged_one"},
+        {"section": "Forged section"},
+        {"prompt_description": "Forged two", "bash_command": "forged_two"},
+    ]
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+            patch.object(TODO, "_qemu_ensure_tools", return_value=True),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo.config_file.get_config = lambda key: [
+            dict(entry) for entry in self.ENTRIES
+        ]
+
+    def answer(self, answers):
+        """(configurations lancées, appels de [1] et de [20], texte
+        affiché) quand QEMU/KVM reçoit `answers`, puis « 0 »."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, **options):
+            ran.append(instance.get("bash_command"))
+
+        with (
+            patch.object(TODO, "execute_from_configuration", run),
+            patch.object(TODO, "_qemu_deploy") as deploy,
+            patch.object(TODO, "_qemu_list_images") as images,
+            patch("click.prompt", side_effect=[*answers, "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_qemu(), False)
+        return ran, [deploy.call_count, images.call_count], out.getvalue()
+
+    def test_each_number_runs_the_entry_it_shows(self):
+        # [21] et [22] lancent les deux entrées de la configuration, que
+        # sépare une section. « 23 » n'est pas affiché ; « 01 », « 1 »
+        # entouré de blancs, « +21 », « ٢١ » (vingt et un en écriture arabe)
+        # et « 021 » ne sont pas un numéro affiché.
+        answers = ["1", "20", "21", "22", "23"]
+        answers += ["01", " 1 ", "+21", "٢١", "021"]
+        ran, fixed, out = self.answer(answers)
+        self.assertEqual(ran, ["forged_one", "forged_two"])
+        self.assertEqual(fixed, [1, 1])
+        self.assertEqual(out.count("Command not found !"), 6)
+
+
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 
