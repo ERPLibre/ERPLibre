@@ -37,7 +37,7 @@ const (
 // VeillerSurLesEntrants présente au softphone les appels qui arrivent.
 func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 	hôte string, registre *Registre, dialogues *sipgo.DialogClientCache,
-	répondeur RéglagesRépondeur) {
+	vivants *RéglagesVivants) {
 
 	if err := m.AnnoncerAppelant(); err != nil {
 		// Sans CLIP l'appel se présente sans numéro : on continue, un appel
@@ -89,6 +89,10 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 			messagerieLueÀ = time.Now()
 			attente, err := m.LireAttenteMessagerie()
 			messagerie.Observer(attente, err, messagerieLueÀ)
+			// Les reglages voyagent dans la meme respiration : un tour de plus
+			// n'ajoute rien au port du modem, et un nombre de sonneries change
+			// a l'ecran s'applique alors en moins d'une minute.
+			vivants.Relire()
 		}
 
 		numéro := m.AppelEntrant()
@@ -103,6 +107,15 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 		}
 		enCours = true
 		slog.Info("appel entrant", "de", numéro)
+		// Une ligne tenue longtemps saute les lectures periodiques : on relit
+		// ici si les valeurs sont vieilles, sous un delai court. La boite
+		// vocale de l'operateur prend l'appel au bout d'une trentaine de
+		// secondes, et ce chemin ne doit pas manger ce budget.
+		vivants.RelireSiVieux(ÂgeRéglagesTolérable, DélaiRéglagesÀLAppel)
+		// Une COPIE pour toute la duree de l'appel : des valeurs qui
+		// changeraient en cours de route feraient decrocher selon un reglage
+		// et enregistrer selon un autre.
+		répondeur := vivants.Valeurs()
 		if err := présenterAuSoftphone(ctx, m, o, hôte, registre, dialogues,
 			numéro, répondeur); err != nil {
 			slog.Error("appel entrant non presente", "de", numéro, "err", err)
@@ -447,7 +460,7 @@ func raccrocherLAppelant(ctx context.Context, session *sipgo.DialogClientSession
 	slog.Info("softphone raccroché : la ligne est retombée")
 }
 
-// ConstruireByeSortant prépare le BYE d'un appel que NOUS avons présenté.
+// ConstruireByeSortant prépare le BYE d'un appel présenté par ce service.
 //
 // Le dernier de la famille : INVITE, acquittement et maintenant raccrochage
 // visent tous le contact du softphone, en « .invalid », et partent en

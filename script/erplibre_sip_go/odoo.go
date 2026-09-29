@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -127,6 +128,11 @@ func (l *LienOdoo) envoyerComme(route string, charge map[string]any,
 	return rendu, nil
 }
 
+// errSansOdoo dit qu'aucun serveur n'est configure. C'est une ERREUR pour
+// l'appelant qui veut savoir si ses valeurs sont fraiches, et une situation
+// normale par ailleurs : la TUI suffit a regler le repondeur.
+var errSansOdoo = errors.New("aucun lien Odoo configure")
+
 // RéglagesDepuisOdoo remplace ce que le disque disait, ou le laisse tel quel.
 //
 // Odoo FAIT AUTORITÉ quand il répond : c'est là que le nombre de sonneries et
@@ -136,15 +142,15 @@ func (l *LienOdoo) envoyerComme(route string, charge map[string]any,
 //
 // L'annonce est écrite À CÔTÉ de celle du disque et non par-dessus : garder
 // les deux permet de repartir sur la locale si Odoo en sert une illisible.
-func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) RéglagesRépondeur {
+func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) (RéglagesRépondeur, error) {
 	if l == nil {
-		return locaux
+		return locaux, errSansOdoo
 	}
 	rendu, err := l.envoyer("/erplibre_repondeur/reglages", map[string]any{})
 	if err != nil {
 		slog.Warn("reglages du repondeur non obtenus d'Odoo : ceux du disque"+
 			" font foi", "err", err)
-		return locaux
+		return locaux, err
 	}
 	brut, _ := json.Marshal(rendu["reglages"])
 	var distants struct {
@@ -156,7 +162,7 @@ func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) RéglagesRépo
 	}
 	if err := json.Unmarshal(brut, &distants); err != nil {
 		slog.Warn("reglages d'Odoo illisibles : ceux du disque font foi", "err", err)
-		return locaux
+		return locaux, err
 	}
 
 	fusionnés := locaux
@@ -168,7 +174,7 @@ func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) RéglagesRépo
 	}
 	slog.Info("reglages du repondeur pris dans Odoo",
 		"actif", fusionnés.Actif, "sonneries", fusionnés.Sonneries)
-	return fusionnés.Normaliser()
+	return fusionnés.Normaliser(), nil
 }
 
 // écrireAnnonce dépose l'annonce d'Odoo et rend son chemin, ou une chaîne
@@ -194,6 +200,9 @@ func écrireAnnonce(locaux RéglagesRépondeur, nom, b64 string) string {
 		nom = "annonce.wav"
 	}
 	chemin := filepath.Join(dossier, "odoo_"+filepath.Base(nom))
+	if ancien, err := os.ReadFile(chemin); err == nil && bytes.Equal(ancien, son) {
+		return chemin
+	}
 	if err := os.WriteFile(chemin, son, 0o600); err != nil {
 		slog.Warn("annonce d'Odoo non ecrite", "err", err)
 		return ""

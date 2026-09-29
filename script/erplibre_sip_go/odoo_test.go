@@ -103,12 +103,12 @@ func TestUnOdooMuetLaisseLesReglagesDuDisque(t *testing.T) {
 
 	locaux := RéglagesRépondeur{Actif: true, Sonneries: 2, Annonce: "/local.wav"}
 	lien := &LienOdoo{URL: serveur.URL, Secret: "s", Client: serveur.Client()}
-	if fusionnés := RéglagesDepuisOdoo(lien, locaux); fusionnés.Sonneries != 2 ||
+	if fusionnés, _ := RéglagesDepuisOdoo(lien, locaux); fusionnés.Sonneries != 2 ||
 		!fusionnés.Actif || fusionnés.Annonce != "/local.wav" {
 		t.Fatalf("réglages perdus quand Odoo se tait : %+v", fusionnés)
 	}
 	// Aucun lien du tout : le cas d'une installation sans Odoo.
-	if fusionnés := RéglagesDepuisOdoo(nil, locaux); fusionnés != locaux {
+	if fusionnés, _ := RéglagesDepuisOdoo(nil, locaux); fusionnés != locaux {
 		t.Fatalf("réglages modifiés sans Odoo : %+v", fusionnés)
 	}
 }
@@ -129,7 +129,7 @@ func TestOdooLEmporteQuandIlRepond(t *testing.T) {
 
 	locaux := RéglagesRépondeur{Sonneries: 2, Dossier: dossier, Annonce: "/local.wav"}
 	lien := &LienOdoo{URL: serveur.URL, Secret: "s", Client: serveur.Client()}
-	fusionnés := RéglagesDepuisOdoo(lien, locaux)
+	fusionnés, _ := RéglagesDepuisOdoo(lien, locaux)
 	if fusionnés.Sonneries != 5 || !fusionnés.Actif {
 		t.Fatalf("réglages d'Odoo ignorés : %+v", fusionnés)
 	}
@@ -159,7 +159,7 @@ func TestUneAnnonceIllisibleGardeCelleDuDisque(t *testing.T) {
 
 	locaux := RéglagesRépondeur{Sonneries: 2, Dossier: t.TempDir(), Annonce: "/local.wav"}
 	lien := &LienOdoo{URL: serveur.URL, Secret: "s", Client: serveur.Client()}
-	if fusionnés := RéglagesDepuisOdoo(lien, locaux); fusionnés.Annonce != "/local.wav" {
+	if fusionnés, _ := RéglagesDepuisOdoo(lien, locaux); fusionnés.Annonce != "/local.wav" {
 		t.Fatalf("annonce du disque perdue : %q", fusionnés.Annonce)
 	}
 }

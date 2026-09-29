@@ -118,7 +118,11 @@ func main() {
 		// C'est précisément pendant une panne du serveur que quelqu'un
 		// laisse un message, et la ligne ne doit pas devenir muette avec lui.
 		lien := OuvrirLienOdoo()
-		répondeur = RéglagesDepuisOdoo(lien, répondeur)
+		// Le porteur relira ensuite tout seul : un reglage change a l'ecran
+		// doit s'appliquer sans redemarrer le service.
+		vivants := NouveauxRéglagesVivants(lien, répondeur)
+		vivants.Relire()
+		répondeur = vivants.Valeurs()
 		if répondeur.Actif {
 			slog.Info("repondeur actif", "sonneries", répondeur.Sonneries,
 				"annonce", répondeur.Annonce, "dossier", répondeur.Dossier,
@@ -127,7 +131,7 @@ func main() {
 		// Ce qu'une panne d'Odoo a laissé sur disque monte maintenant : c'est
 		// le seul moment où l'on sait qu'il vient peut-être de revenir.
 		TéléverserCeQuiAttend(lien, répondeur.Dossier)
-		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, répondeur); err != nil {
+		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, vivants); err != nil {
 			échouer(err.Error())
 		}
 		return
