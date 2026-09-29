@@ -3,9 +3,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu Proxmox VE : déployer et gérer des VM sur un hôte DISTANT.
 
-Sorti de todo.py, qui passait 13 000 lignes. Toute la différence avec le menu
-QEMU/KVM tient en une phrase : l'hyperviseur est ailleurs. On choisit donc
-l'hôte, on le vérifie, et tout part par SSH — voir script/proxmox/README.md.
+Toute la différence avec le menu QEMU/KVM tient en une phrase :
+l'hyperviseur est ailleurs. On choisit donc l'hôte, on le vérifie, et tout
+part par SSH — voir script/proxmox/README.md.
 
 Mixin : ses méthodes vivent sur la classe TODO, elles peuvent donc appeler
 librement les helpers généraux (self._is_yes, self.fill_help_info) et ceux du
@@ -182,8 +182,8 @@ class ProxmoxMenuMixin:
 
         « Warning: Permanently added … to the list of known hosts » arrive sur
         stderr à chaque connexion d'un hôte en UserKnownHostsFile=/dev/null.
-        Affichée comme preuve d'un échec, elle envoyait chercher du côté de la
-        clé d'hôte un problème qui n'avait rien à voir — rapporté.
+        Affichée comme preuve d'un échec, elle enverrait chercher du côté de
+        la clé d'hôte un problème qui n'a rien à voir.
         """
         gardees = []
         for ligne in (sortie or "").splitlines():
@@ -196,7 +196,7 @@ class ProxmoxMenuMixin:
     def _pve_ssh_alive(self, host):
         """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
 
-        C'est la question qu'il fallait poser AVANT de conclure : une machine
+        C'est la question à poser AVANT de conclure : une machine
         qui répond mais n'a pas Proxmox n'est pas « injoignable », et les deux
         pannes ne se corrigent pas du même côté."""
         from script.proxmox import proxmox_deploy as pve
@@ -275,10 +275,10 @@ class ProxmoxMenuMixin:
                 code, out = pve.run(host, "pveversion", timeout=30)
                 version = pve.parse_pveversion(out)
         if not version:
-            # Un seul message confondait deux pannes : « ou il est
-            # injoignable » envoyait vérifier le réseau alors que la machine
-            # répondait, et la seule ligne montrée était l'avertissement de
-            # ssh sur la clé d'hôte. On demande donc à ssh s'il passe.
+            # Un seul message confondrait deux pannes : « ou il est
+            # injoignable » enverrait vérifier le réseau d'une machine qui
+            # répond, et la seule ligne montrée serait l'avertissement de ssh
+            # sur la clé d'hôte. On demande donc à ssh s'il passe.
             joignable, detail = self._pve_ssh_alive(host)
             # Ce que « pveversion » a répondu, et non ce que la sonde a dit :
             # « command not found » est LA preuve utile.
@@ -321,10 +321,10 @@ class ProxmoxMenuMixin:
         print(f"  ✓ Proxmox VE {version}")
         # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
         # bridge ni table NAT — donc aucun pont à créer et aucune VM à
-        # démarrer. Vécu sur l'hôte d'essai, où ifupdown2 répondait
-        # « Another instance of this program is already running » au lieu de
-        # « Operation not supported ». On le dit ici, une fois, plutôt que de
-        # laisser chercher.
+        # démarrer. ifupdown2 y répond « Another instance of this program is
+        # already running » au lieu de « Operation not supported », ce qui ne
+        # dit pas la cause : on la dit ici, une fois, plutôt que de laisser
+        # chercher.
         noyau = pve.parse_kernel(out)
         if noyau and "-pve" not in noyau:
             print(f"  ⚠ {t('Still on the distribution kernel:')} {noyau}")
@@ -337,8 +337,7 @@ class ProxmoxMenuMixin:
         """Exécute `remote` sur l'hôte Proxmox et montre ce qui a été lancé.
 
         La commande est AFFICHÉE avant sa sortie : c'est ce qui rend chaque
-        étape rejouable à la main, et c'est ainsi que les pannes de ce module
-        ont été diagnostiquées.
+        étape rejouable à la main.
         """
         from script.proxmox import proxmox_deploy as pve
 
@@ -347,7 +346,7 @@ class ProxmoxMenuMixin:
             return 255, ""
         if not quiet:
             # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
-            # compris. Sans « -J », la ligne copiée rendait « no route to
+            # compris. Sans « -J », la ligne copiée rendrait « no route to
             # host » — et c'est justement quand une étape échoue au milieu
             # d'une réparation qu'on a besoin de la rejouer à la main.
             argv = pve.ssh_argv(
@@ -499,7 +498,7 @@ class ProxmoxMenuMixin:
         else:
             # Par RANG, jamais par nom : deux VM du même hôte peuvent
             # porter le même nom (seul le VMID est unique sur Proxmox), et
-            # cocher l'une éteignait les deux.
+            # cocher l'une éteindrait les deux.
             rangs = self._parse_index_selection(
                 brut, [str(i) for i in range(1, len(vms) + 1)]
             )
@@ -544,10 +543,9 @@ class ProxmoxMenuMixin:
         if not vm:
             return
         # _pve_guest_ip et non l'agent seul : il enchaîne agent PUIS voisinage
-        # de l'hôte. L'image cloud Debian n'embarque pas qemu-guest-agent, et
-        # cette entrée du menu répondait « aucune adresse » alors que « ip
-        # neigh » la connaissait — deux chemins pour la même question, dont un
-        # seul savait répondre.
+        # de l'hôte. L'image cloud Debian n'embarque pas qemu-guest-agent :
+        # l'agent seul répondrait « aucune adresse » là où « ip neigh » la
+        # connaît.
         ip = self._pve_guest_ip(vm["vmid"], attente=20)
         if ip:
             print(f"\n  {vm['name']} : {ip}")
@@ -685,9 +683,9 @@ class ProxmoxMenuMixin:
         Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
         le nom du compte, son shell, son sudo et ses clés. « --ciuser » et
         « --sshkeys » de Proxmox s'en remettent au compte par DÉFAUT de
-        l'image, et une image qui en déclare un autre les ignore — mesuré sur
-        NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait avec ce
-        compte-là, sans la clé, donc injoignable.
+        l'image, et une image qui en déclare un autre les ignore : une image
+        NixOS, dont le cloud.cfg nomme « nixos », démarre avec ce compte-là,
+        sans la clé, donc injoignable.
 
         Rend "" quand la clé publique est illisible : mieux vaut retomber sur
         la forme d'avant, qui pose au moins un compte, que d'écrire un
@@ -742,10 +740,10 @@ class ProxmoxMenuMixin:
         nom résout déjà, seules les unités sont à terre).
 
         Séparer les deux décisions, et non les fondre dans une garde unique :
-        interrompue après la réécriture de /etc/hosts, la réparation laissait
-        un hôte à un « systemctl start » de fonctionner — et la garde d'avant,
-        qui sortait dès que « routables » était non vide, refusait alors de le
-        finir. L'outil savait exactement quoi faire et s'y refusait
+        interrompue après la réécriture de /etc/hosts, la réparation laisse
+        un hôte à un « systemctl start » de fonctionner, et une garde unique,
+        qui sortirait dès que « routables » n'est pas vide, refuserait alors
+        de le finir : l'outil saurait exactement quoi faire et s'y refuserait
         définitivement.
         """
         from script.proxmox import proxmox_deploy as pve
@@ -761,13 +759,13 @@ class ProxmoxMenuMixin:
 
         « Il manque le stockage » est un symptôme, pas une cause : « pvesm »
         ne parle qu'à travers /etc/pve, monté par pmxcfs. pmxcfs à terre, la
-        liste est vide et l'écran s'arrête sur le symptôme — le défaut est
-        trois étages plus bas, et il a fallu lire un journal pour le trouver.
+        liste est vide et l'écran s'arrêterait sur le symptôme — le défaut
+        est trois étages plus bas, là où seul un journal le montre.
 
         `etat`/`quoi` viennent de `_pve_cluster_state` quand l'appelant l'a
         déjà interrogé : une seule sonde, et surtout un seul verdict. Sondé
-        deux fois, on annonçait une réparation que la seconde lecture
-        refusait ensuite d'offrir — une promesse suivie de rien.
+        deux fois, l'écran annoncerait une réparation que la seconde lecture
+        refuserait ensuite d'offrir — une promesse suivie de rien.
         """
         if etat is None:
             etat, quoi = self._pve_cluster_state(host)
@@ -794,7 +792,7 @@ class ProxmoxMenuMixin:
             lignes.append(
                 f"  {t('The hostname resolves fine: only the units are down.')}"
             )
-        # La promesse UNIQUEMENT si l'offre suivra. Sinon on disait « cet écran
+        # La promesse UNIQUEMENT si l'offre suivra. Sinon on dirait « cet écran
         # peut le réparer » puis plus rien du tout.
         lignes.append(f"→ {t('This screen can repair it (see below).')}")
         return lignes
@@ -814,14 +812,14 @@ class ProxmoxMenuMixin:
     def _pve_depth_note(self, host, cpu):
         """(cpu borné, lignes à dire). Ce que la profondeur impose.
 
-        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
-        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
-        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
-        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
-        pour sa profondeur.
+        La capacité de l'HÔTE ne borne pas ce qu'un étage profond peut
+        porter : une VM imbriquée trop large ne démarre pas, son pointeur
+        d'instruction figé et plus rien de lu, alors que le même nombre de
+        vCPU convient à la machine. Le nombre se borne donc par la
+        profondeur.
 
-        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
-        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
+        Un seul levier, le vCPU : la VM gèle au même octet quelle que soit sa
+        mémoire, donc rogner la mémoire ne gagnerait rien et priverait
         l'étage suivant.
         """
         from script.proxmox import nesting
@@ -858,7 +856,7 @@ class ProxmoxMenuMixin:
         `remonte` : /etc/pve était absent, donc les dépendants qui SEMBLENT
         actifs parlaient à un pmxcfs mort. Leur état actif ne prouve rien sur
         leur lien à pmxcfs — le même raisonnement qui impose un « restart » à
-        pve-cluster vaut pour eux, et sans cela la GUI répondait
+        pve-cluster vaut pour eux, et sans cela la GUI répondrait
         « communication failure » après un ✓.
 
         La sortie de chaque unité est LUE. pve-cluster est le pivot : les
@@ -890,11 +888,11 @@ class ProxmoxMenuMixin:
         est encore à nous, donc c'est ICI qu'on peut poser la question et
         montrer ce qu'on exécute.
 
-        Pourquoi le faire au lieu de conseiller : le conseil était « rejouer
-        install_proxmox.sh sur l'hôte », et il ne pouvait PAS marcher. La VM
+        Pourquoi le faire au lieu de conseiller : le conseil serait « rejouer
+        install_proxmox.sh sur l'hôte », et il ne peut PAS marcher. La VM
         clone le dépôt distant, donc sa copie du script est celle du distant —
         c'est-à-dire, tant que le correctif n'est pas poussé, celle qui ne
-        corrige rien. Trois hôtes de suite sont tombés dessus.
+        corrige rien.
         """
         from script.proxmox import proxmox_deploy as pve
 
@@ -969,8 +967,8 @@ class ProxmoxMenuMixin:
         interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
         de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
-        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
-        la VM ne répondait plus, ni en ssh ni en ping."""
+        commande qui la configure : « ifup » ne rend plus la main, et la VM
+        ne répond plus, ni en ssh ni en ping."""
         from script.proxmox import proxmox_deploy as pve
 
         _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
@@ -985,8 +983,8 @@ class ProxmoxMenuMixin:
         personne ne rappelle rien. Le garde doit être là où la conséquence
         tombe.
 
-        Sans cette question, ifupdown2 rendait six lignes d'iptables et « code
-        de retour 1 », après avoir déjà écrit la strophe dans
+        Sans cette question, ifupdown2 rendrait six lignes d'iptables et
+        « code de retour 1 », après avoir déjà écrit la strophe dans
         /etc/network/interfaces. Rien dans ce bruit ne dit qu'il faut
         redémarrer.
 
@@ -1205,8 +1203,9 @@ class ProxmoxMenuMixin:
             # « aucun stockage », et surtout il ne pourrait pas POSER la
             # question — le terminal est encore à nous ici.
             #
-            # UNE sonde, passée aux deux : sondé deux fois, on annonçait une
-            # réparation que la seconde lecture refusait ensuite d'offrir.
+            # UNE sonde, passée aux deux : sondé deux fois, l'écran
+            # annoncerait une réparation que la seconde lecture refuserait
+            # ensuite d'offrir.
             etat_pve, quoi_pve = self._pve_cluster_state(host)
             for ligne in self._pve_cluster_reason(host, etat_pve, quoi_pve):
                 print(f"  {ligne}")
@@ -1237,7 +1236,7 @@ class ProxmoxMenuMixin:
             print(f"  {ligne}")
         # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
         # routent mais ne résolvent rien, et « apt update » échoue sans que
-        # rien ne l'explique. Mesuré sur la VM d'essai.
+        # rien ne l'explique.
         _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
         serveurs_dns = pve.parse_nameservers(resolv)
 
@@ -1318,12 +1317,12 @@ class ProxmoxMenuMixin:
             "install_profiles": self._qemu_install_profiles(),
             # Type de VM, magasin d'applications, outils, fuseau,
             # interpréteur Python : les réglages du système INVITÉ, qui ne
-            # regardent pas l'hyperviseur. Cet écran n'en portait que trois —
-            # une VM créée ici naissait sans bureau, sans outils et en UTC.
+            # regardent pas l'hyperviseur. Sans eux, une VM créée ici
+            # naîtrait sans bureau, sans outils et en UTC.
             **self._qemu_guest_context(),
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
-            # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
-            # Odoo 18, comme l'écran d'à côté avant correction.
+            # installe dessus. Un Proxmox imbriqué recevrait sinon ERPLibre
+            # et Odoo 18.
             "distro_profiles": {
                 d: self._qemu_distro_profile(d)
                 for d in self._QEMU_DISTRO_PROFILE
@@ -1384,8 +1383,8 @@ class ProxmoxMenuMixin:
         """Taille du disque à créer : celle du plan, marge comprise.
 
         La même règle que la voie libvirt, qui ajoute ERPLIBRE_EXTRA_DISK_GB à
-        la demande initiale quand ERPLibre s'installe. Ici la marge se perdait
-        entre l'écran et « qm resize ».
+        la demande initiale quand ERPLibre s'installe. Sans elle ici, la marge
+        se perdrait entre l'écran et « qm resize ».
         """
         from script.todo.deploy_form_extras import (
             extras_disk_gb,
@@ -1403,8 +1402,8 @@ class ProxmoxMenuMixin:
             marge += self.ERPLIBRE_EXTRA_DISK_GB
         # Le bureau et les outils pèsent aussi, et sur la VM QUI LES REÇOIT :
         # une VM ARM n'aura pas Android Studio, un serveur aucun des IDE. Le
-        # plan les additionne déjà à l'écran ; sans eux ici, la VM naissait
-        # avec le disque d'un serveur nu et GNOME le remplissait.
+        # plan les additionne déjà à l'écran ; sans eux ici, la VM naîtrait
+        # avec le disque d'un serveur nu et GNOME le remplirait.
         marge += extras_disk_gb(
             dict(vm, desktop=vm.get("desktop") or spec.get("desktop") or ""),
             spec.get("vm_tools") or (),
@@ -1428,10 +1427,9 @@ class ProxmoxMenuMixin:
             "memory": vm["ram"],
             "vcpus": vm["vcpus"],
             # La MARGE d'ERPLibre entre dans la taille réellement créée : le
-            # plan l'annonçait (« 25G » pour un catalogue à 20 G) et « qm
-            # resize » recevait 20 G. La VM naissait cinq gigaoctets trop
-            # petite pour ce qu'on venait de lui promettre — trouvé par
-            # l'audit, pas à l'usage.
+            # plan l'annonce (« 25G » pour un catalogue à 20 G) ; sans elle,
+            # « qm resize » recevrait 20 G et la VM naîtrait plus petite que
+            # ce que le plan lui annonce.
             "disk": self._pve_disk_with_margin(vm, spec),
             "storage": spec["storage"],
             "bridge": spec["bridge"],
@@ -1443,7 +1441,7 @@ class ProxmoxMenuMixin:
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
             # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
-            # en adresse fixe se retrouvait sans résolveur.
+            # en adresse fixe se retrouverait sans résolveur.
             "nameservers": spec.get("nameservers") or (),
             # L'accélération 3D se décide à la CRÉATION : l'écran d'une VM
             # Proxmox est un choix de « qm create », et le changer ensuite
@@ -1489,9 +1487,9 @@ class ProxmoxMenuMixin:
         debut = time.time()
 
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
-        # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
-        # téléchargeait 350 Mio d'image pour finir sur « net0: invalid format
-        # - missing key » — vécu sur l'hôte d'essai.
+        # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, un
+        # déploiement télécharge toute l'image pour finir sur « net0: invalid
+        # format - missing key ».
         for valeur, message in (
             (spec.get("storage"), t("No storage able to hold a VM disk.")),
             (spec.get("bridge"), t("No bridge on the host.")),
@@ -1538,16 +1536,15 @@ class ProxmoxMenuMixin:
         if not travaux:
             return
         # Le journal AVANT de lancer : la vue de progression se referme et
-        # emporte tout ce qu'elle montrait. Rapporté — « il manque plein
-        # d'informations qu'il y avait avant, où est le fichier de log ? ».
-        # L'ancienne voie par questions imprimait chaque commande et sa
-        # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
+        # emporte tout ce qu'elle montrait. Le journal garde chaque commande
+        # et sa sortie, ce qui vaut mieux qu'un défilement, et son chemin
+        # s'affiche avant la première.
         session = self._pve_log_dir()
         print(f"\n  {t('Log:')} {session}")
         # Comment joindre chaque VM SANS dépendre de ~/.ssh/config, qui n'est
         # écrit qu'après : par le rebond de l'hôte, explicitement. C'est ce que
-        # « s » utilise dans la vue de progression — sans quoi il partait sur
-        # le nom de la VM, donc sur une locale homonyme (rapporté).
+        # « s » utilise dans la vue de progression — sans quoi il partirait
+        # sur le nom de la VM, donc sur une locale homonyme.
         cibles_ssh = {}
         for vm in spec["vms"]:
             ip = pve.ip_from_ipconfig(vm.get("ipconfig") or "")
@@ -1617,8 +1614,7 @@ class ProxmoxMenuMixin:
         """Écrit le journal d'UNE VM et rend son chemin.
 
         Les commandes AVANT leur sortie : c'est ce qui rend l'étape rejouable
-        à la main, et c'est ainsi que les pannes de ce module ont été
-        diagnostiquées."""
+        à la main."""
         from script.proxmox import proxmox_deploy as pve
 
         chemin = os.path.join(session, f"{nom}.log")
@@ -1657,15 +1653,14 @@ class ProxmoxMenuMixin:
         """UN seul nom pour l'entrée ~/.ssh/config : « hôte+vm ».
 
         Deux noms sur la même ligne « Host » — le chaîné et le court —
-        étaient un doublon : ssh n'a besoin que d'un nom, et le second
-        n'ajoutait qu'une façon de plus d'écrire la même adresse. Rapporté.
+        seraient un doublon : ssh n'a besoin que d'un nom, et le second
+        n'ajouterait qu'une façon de plus d'écrire la même adresse.
 
         Reste à choisir lequel, et c'est le chaîné. Prendre le nom court
-        quand il se trouvait libre donnait un parc INCOHÉRENT : sur un même
-        déploiement, deux VM recevaient « hôte+vm » — leurs noms étaient pris
-        par des domaines locaux — et la troisième son nom court. Rapporté
-        aussi. Une convention qui dépend de ce qui traîne dans le fichier
-        n'est pas une convention.
+        quand il est libre donnerait un parc INCOHÉRENT : sur un même
+        déploiement, deux VM recevraient « hôte+vm » — leurs noms pris par
+        des domaines locaux — et la troisième son nom court. Une convention
+        qui dépend de ce qui traîne dans le fichier n'est pas une convention.
 
         Le chaîné est donc systématique. Il dit où la machine vit, il ne peut
         rien voler à un domaine local, et deux VM du même nom sur deux hôtes
@@ -1678,10 +1673,10 @@ class ProxmoxMenuMixin:
     def _pve_alias_perime(self, nom, rebond):
         """Le nom court à RETIRER, s'il désigne encore cette VM-ci.
 
-        La convention a changé — le nom court d'abord, puis « hôte+vm » — et
-        rien ne retirerait l'ancien bloc : il ne porte pas le nom qu'on
-        écrit. Deux entrées mèneraient alors à la même machine, ce qu'on
-        venait justement d'enlever.
+        Un ~/.ssh/config écrit sous l'ancienne convention porte le nom court
+        là où l'on écrit « hôte+vm », et rien ne retirerait ce bloc : il ne
+        porte pas le nom qu'on écrit. Deux entrées mèneraient alors à la même
+        machine, le doublon que `_pve_alias_names` évite.
 
         Le ProxyJump tranche : un bloc qui rebondit par CET hôte est le nôtre.
         Celui d'une VM locale homonyme n'en a pas, et on n'y touche donc
@@ -1694,9 +1689,9 @@ class ProxmoxMenuMixin:
 
         La voie libvirt le donne à cloud-init, qui écrit /etc/timezone au
         premier démarrage. « qm set » n'a pas d'équivalent : le cloud-init de
-        Proxmox ne règle que l'utilisateur, la clé et le réseau. Une VM créée
-        ici restait donc en UTC — et on ne s'en aperçoit qu'aux horodatages,
-        parfois des jours plus tard.
+        Proxmox ne règle que l'utilisateur, la clé et le réseau. Sans ce
+        geste, une VM créée ici resterait en UTC — ce qui ne se voit qu'aux
+        horodatages, parfois des jours plus tard.
 
         AVANT l'installation, pour que le journal porte déjà la bonne heure.
         Un nom IANA, jamais un décalage : « UTC-5 » ne dit rien de l'heure
@@ -1758,9 +1753,9 @@ class ProxmoxMenuMixin:
         POURQUOI LA MAC DE L'HÔTE, ET NON CELLE DE L'INVITÉ. Un invité
         imbriqué sort MASQUÉ derrière son hôte : sur le pont d'ici, le cache
         ne voit jamais que la MAC de l'hôte Proxmox, et c'est donc elle
-        qu'il faut excepter. Mesuré des deux côtés — sans l'exception, une
-        requête de l'invité vers cache.nixos.org rend code 000 et
-        vérification SSL 19 ; avec, code 200 et vérification 0.
+        qu'il faut excepter : sans l'exception, une requête HTTPS de
+        l'invité échoue à vérifier le certificat que le cache présente ;
+        avec, elle passe.
 
         CE QUE COÛTE L'ABSENCE DE REMÈDE. Une distribution dont le magasin de
         confiance n'a pas de forme par fichier ne peut pas recevoir
@@ -1881,7 +1876,7 @@ class ProxmoxMenuMixin:
             # ou une autorité illisible. Poser le fichier au mauvais endroit
             # ne marcherait pas.
             #
-            # Mais le silence était faux : on n'arrive ici que lorsque l'hôte
+            # Mais se taire serait faux : on n'arrive ici que lorsque l'hôte
             # Proxmox est lui-même une VM de CE pont, donc ses invités sont
             # détournés. Celui-ci n'aura rien pour reconnaître le cache, et
             # chaque téléchargement HTTPS échouera sur « self-signed
@@ -1939,12 +1934,12 @@ class ProxmoxMenuMixin:
         """Fixe le miroir apt de la VM sur celui que le cache a rempli.
 
         Le magasin range ses index sous l'HÔTE demandé : une VM qui réclame
-        « archive.ubuntu.com » ne retrouve rien de ce qu'une autre a gardé
-        depuis un miroir, et hors ligne chacun de ces index manque — la suite
-        échoue alors sur des dépendances introuvables, ce qui accuse le dépôt
-        et non le miroir. La voie libvirt écrit le miroir dans le
-        cloud-config ; « qm set » ne sait écrire aucun fichier, d'où ce
-        passage par ssh.
+        le miroir principal de sa distribution ne retrouve rien de ce qu'une
+        autre a gardé depuis un miroir, et hors ligne chacun de ces index
+        manque — la suite échoue alors sur des dépendances introuvables, ce
+        qui accuse le dépôt et non le miroir. La voie libvirt écrit le miroir
+        dans le cloud-config ; « qm set » ne sait écrire aucun fichier, d'où
+        ce passage par ssh.
 
         Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
         y réécrire une URI ubuntu ne viserait rien. Les deux formats sont
@@ -1963,8 +1958,9 @@ class ProxmoxMenuMixin:
         if not miroirs:
             return False
         miroir = miroirs[0]
-        # Les arches « ports » ne sont pas sur archive.ubuntu.com, et amd64
-        # n'est pas sur ports.ubuntu.com : le motif suit l'architecture.
+        # Les arches « ports » ont leur propre miroir, qui ne sert pas amd64,
+        # et le miroir principal ne les sert pas : le motif suit
+        # l'architecture.
         motif = (
             r"https?://ports\.ubuntu\.com/ubuntu-ports"
             if ports
@@ -2020,8 +2016,8 @@ class ProxmoxMenuMixin:
         """Pose le guide de connexion et l'identité git DANS la VM.
 
         La voie libvirt les livre par le « write_files » de cloud-init ;
-        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
-        quelle que soit sa distribution. Rapporté sur Arch.
+        « qm set » n'offre pas cela : sans ce passage par ssh, une VM Proxmox
+        n'a AUCUN guide, quelle que soit sa distribution.
 
         Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
         la source unique, comme sa docstring le promet. Un seul appel, tous les
@@ -2119,9 +2115,9 @@ class ProxmoxMenuMixin:
     def _pve_print_summary(self, spec, joignables, session):
         """Sommaire final : ce qui existe, où, et comment y entrer.
 
-        Le pendant de celui de QEMU/KVM. Sans lui, l'écran se refermait sur la
-        vue de progression et il ne restait rien à l'écran — ni l'adresse, ni
-        la commande ssh, ni le chemin du journal."""
+        Le pendant de celui de QEMU/KVM. Sans lui, l'écran se refermerait sur
+        la vue de progression et il ne resterait rien à l'écran — ni
+        l'adresse, ni la commande ssh, ni le chemin du journal."""
         print(f"\n{'═' * 60}")
         print(f"  {t('TOTAL summary')}")
         print(
@@ -2270,7 +2266,7 @@ class ProxmoxMenuMixin:
             # est derrière l'hôte Proxmox (pont interne), donc son adresse
             # n'est pas routable d'ici et seul le rebond y mène. Décochée
             # alors qu'une installation est demandée, l'installation suivie ne
-            # pouvait pas entrer — elle est donc écrite quand même, et on le
+            # pourrait pas entrer — elle est donc écrite quand même, et on le
             # dit. Sans installation ni suivi, le choix est respecté.
             besoin = bool(spec.get("install")) or spec.get("monitor", True)
             if not spec.get("add_ssh_config") and besoin:
@@ -2293,8 +2289,8 @@ class ProxmoxMenuMixin:
             # Une adresse n'est pas une machine prête : cloud-init tourne
             # encore, et sshd n'écoute pas toujours. Les quatre étapes qui
             # suivent passent TOUTES par ssh — sans cette attente, elles
-            # échouaient ensemble sur une VM qui n'avait pas fini de naître,
-            # et la machine partait sans guide, en UTC, sans autorité et sur
+            # échoueraient ensemble sur une VM qui n'a pas fini de naître,
+            # et la machine partirait sans guide, en UTC, sans autorité et sur
             # le miroir de son image.
             if vm["alias"] and not self._pve_attendre_ssh(vm["alias"]):
                 print(f"  ⚠ {t('No ssh answer: guest left as created.')}")
@@ -2341,8 +2337,8 @@ class ProxmoxMenuMixin:
         resultat = list(joignables)
         # Le suivi vient du DÉPLOIEMENT, pas de l'installation — même règle
         # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
-        # commandait rien : décochée, le tableau de bord s'ouvrait quand
-        # même ; cochée sans rien à installer, il ne s'ouvrait jamais.
+        # commanderait rien : décochée, le tableau de bord s'ouvrirait quand
+        # même ; cochée sans rien à installer, il ne s'ouvrirait jamais.
         suivi = spec.get("monitor", True)
         if not joignables or not (install or suivi):
             return resultat
@@ -2358,8 +2354,8 @@ class ProxmoxMenuMixin:
         }
         finale = cartes if self._qemu_per_vm(cartes, commun) else commun
         branche = (install or {}).get("branch") or ""
-        # Même règle pour la branche et pour le type de VM : depuis que le
-        # plan les porte PAR RANGÉE, lire la seule valeur commune revenait à
+        # Même règle pour la branche et pour le type de VM : le plan les
+        # porte PAR RANGÉE, et lire la seule valeur commune reviendrait à
         # jeter le choix. Un parc mixte — un hyperviseur imbriqué à côté de VM
         # ERPLibre — est justement ce qu'on déploie ici le plus souvent.
         branches_vm = {
@@ -2379,7 +2375,7 @@ class ProxmoxMenuMixin:
             # tableau de bord montre.
             #
             # La carte des hôtes suit : sans elle, les colonnes vivantes
-            # (état, durée, écrit/s, RAM, disque) restaient VIDES pour une VM
+            # (état, durée, écrit/s, RAM, disque) resteraient VIDES pour une VM
             # posée sur un Proxmox distant — elles viennent de virsh, qui ne
             # connaît pas cet hôte.
             cartes_pve = {
@@ -2401,8 +2397,8 @@ class ProxmoxMenuMixin:
                 branche,
                 {n: alias.get(n, n) for n in noms},
                 finale,
-                # Les réglages du système invité, qui n'atteignaient pas la
-                # commande distante : la VM naissait serveur nu, sans outils.
+                # Les réglages du système invité : sans eux, la commande
+                # distante ferait naître la VM serveur nu, sans outils.
                 prod=bool(spec.get("prod")),
                 desktop=bureau,
                 python_provider=spec.get("python_provider") or "",
@@ -2414,8 +2410,9 @@ class ProxmoxMenuMixin:
                 # La coupure TENUE, et non la case de la spec : c'est elle
                 # qui fait qu'une réussite prouve le hors ligne.
                 hors_ligne=bool(coupee),
-                # Ce que sont ces VM, pris de la SPEC. Le suivi le demandait
-                # à virsh, qui ne connaît que les domaines d'ici.
+                # Ce que sont ces VM, pris de la SPEC : le suivi le
+                # demanderait sinon à virsh, qui ne connaît que les domaines
+                # d'ici.
                 meta={
                     vm["name"]: (
                         vm.get("distro"),
@@ -2526,7 +2523,7 @@ class ProxmoxMenuMixin:
         elif not pont:
             pont = pve.INTERNAL_BRIDGE
         # Le VMID D'ABORD : l'adresse d'un pont interne s'en déduit, et
-        # l'afficher avant de l'avoir choisi ne pouvait pas marcher.
+        # l'afficher avant de l'avoir choisi ne pourrait pas marcher.
         vmid = pve.next_vmid(self._pve_vms())
         ipconfig = pve.ipconfig_for(infos_ponts.get(pont, {}), vmid)
         print(
@@ -2594,11 +2591,11 @@ class ProxmoxMenuMixin:
         if not ip:
             print(f"  ⚠ {t('No address yet. Try [6] later.')}")
             return
-        # ÉPILOGUE COMMUN avec l'écran, au lieu de le redire ici : cette voie
-        # avait vieilli en silence — pas de protection de l'alias contre un
-        # domaine local homonyme, pas de guide de connexion, pas de bloc
+        # ÉPILOGUE COMMUN avec l'écran, au lieu de le redire ici : une voie
+        # à part vieillirait en silence — pas de protection de l'alias contre
+        # un domaine local homonyme, pas de guide de connexion, pas de bloc
         # « pve » (donc aucune colonne vivante dans le suivi), pas de
-        # sommaire. Trouvé par l'audit, jamais à l'usage.
+        # sommaire.
         install = None
         if self._is_yes_default_yes(
             input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
@@ -2635,8 +2632,8 @@ class ProxmoxMenuMixin:
             "monitor": True,
             "python_provider": "",
             # La voie par questions ne demande pas le fuseau — l'écran le
-            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
-            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
+            # fait. Sans ce défaut, elle laisserait la VM en UTC, alors que la
+            # voie libvirt reprend le fuseau de l'hôte.
             "timezone": self._qemu_host_timezone(),
         }
         joignables = self._pve_after_create(
