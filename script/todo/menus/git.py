@@ -4,7 +4,8 @@
 """Menus de la famille Git : Git, qu'ouvre Execute, Git local server et
 ses deux menus Actions, l'un du serveur local, l'autre du serveur de
 production ; GPT code, qu'ouvre Execute, Claude configs, Plugins, RTK et
-Claude Code, dont la méthode vit dans `assistant_menu.py`.
+Claude Code, dont la méthode vit dans `assistant_menu.py` ; Automation,
+qu'ouvre Execute.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -265,4 +266,11 @@ CLAUDE_CODE = Menu(
     intro="Local Claude Code sessions",
     back=None,
     abort_closes=True,
+)
+
+AUTOMATION = Menu(
+    "prompt_execute_function",
+    "Automation",
+    [FromConfig("function", "execute_from_configuration", "instance")],
+    render="once",
 )

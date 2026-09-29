@@ -807,6 +807,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_config",
                 "prompt_execute_database",
                 "prompt_execute_doc",
+                "prompt_execute_function",
                 "prompt_execute_git",
                 "prompt_execute_git_local_server",
                 "prompt_execute_gpt_code",
@@ -844,7 +845,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 23)
+        self.assertEqual(len(menus), 24)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():

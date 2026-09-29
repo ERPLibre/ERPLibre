@@ -1443,6 +1443,22 @@ class TestClaudeCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestAutomationMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Automation : une entrée par élément de `function`, et aucune
+    autre."""
+
+    MENU = "prompt_execute_function"
+    EXPECTED = {}
+
+    def test_each_element_of_function_is_an_entry(self):
+        [configured] = self.menu.entries
+        self.assertEqual(
+            (configured.config_key, configured.action, configured.kwarg),
+            ("function", "execute_from_configuration", "instance"),
+        )
+        self.assertEqual(self.menu.render, "once")
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -2113,6 +2129,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_claude_plugins",
                 "prompt_execute_rtk",
                 "prompt_claude_sessions",
+                "prompt_execute_function",
             },
             set(declared),
         )

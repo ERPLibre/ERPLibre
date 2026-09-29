@@ -1122,25 +1122,11 @@ class TODO(
         return os.path.exists(MOBILE_HOME_PATH)
 
     def prompt_execute_function(self):
-        # L'arbre de télémétrie lit les entrées de configuration dans cette
-        # affectation (`_choices_children`) : elle reste un appel seul de
-        # get_config, et une liste absente se remplace ensuite.
-        choices = self.config_file.get_config("function")
-        if choices is None:
-            choices = []
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            # [N], tel qu'affiché, est la N-ième entrée de configuration.
-            shown = [str(n) for n in range(1, len(choices) + 1)]
-            if status in shown:
-                self.execute_from_configuration(choices[int(status) - 1])
-            else:
-                print(t("Command not found !"))
+        """Démonstration des fonctions développées (AUTOMATION,
+        `menus/git.py`) : une entrée par élément de `function`, que lance
+        `execute_from_configuration`. Dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_git.AUTOMATION)
 
     def prompt_execute_update(self):
         """Mise à jour du développement (UPDATE, `menus/execute.py`) : les
