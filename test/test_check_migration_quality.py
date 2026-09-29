@@ -9,11 +9,11 @@ le journal le dit — mais « qu'est-ce qui a changé en chemin ». Une
 migration laisse une base PAR PALIER, et elles existent toutes encore : on
 les compare côte à côte plutôt que de rejouer quoi que ce soit.
 
-Le point le plus délicat est le rapprochement des tables renommées. Deux
-garde-fous ont été essayés et rejetés SUR UNE VRAIE MIGRATION avant celui
-qui tient, et un faux rapprochement ne serait pas une coquetterie : il
-ferait DISPARAÎTRE une perte réelle du rapport. D'où la règle qui compte
-plus que tout ici — une perte est toujours listée, jamais retirée.
+Le point le plus délicat est le rapprochement des tables renommées. Ni
+un compte de lignes égal ni un mot commun ne suffisent à l'établir, et un
+faux rapprochement ne serait pas une coquetterie : il ferait DISPARAÎTRE
+une perte réelle du rapport. D'où la règle qui compte plus que tout ici —
+une perte est toujours listée, jamais retirée.
 """
 
 import io
@@ -151,11 +151,13 @@ class TestWhatIsGainedAndLost(Base):
 
 
 class TestNotCryingWolfOnRenames(Base):
-    """Deux garde-fous rejetés sur une VRAIE migration avant celui-ci."""
+    """Un renommage se reconnaît au compte de lignes ET à la ressemblance
+    des deux noms : ni le compte seul ni un mot commun ne suffisent."""
 
     def test_the_row_count_alone_is_not_enough(self):
-        # Il accouplait `account_account_tag_account_tax_template_rel` à
-        # `dms_directory` : les deux comptaient sept lignes.
+        # Deux tables sans rapport peuvent compter autant de lignes : le
+        # compte seul accouplerait
+        # `account_account_tag_account_tax_template_rel` à `dms_directory`.
         self.assertFalse(
             quality.looks_renamed(
                 "account_account_tag_account_tax_template_rel", "dms_directory"
@@ -222,12 +224,12 @@ class TestNotCryingWolfOnRenames(Base):
 
 
 class TestTheSemanticMap(Base):
-    """« 81 tables ont perdu des lignes » noyait les vraies questions.
+    """La carte sépare les refontes voulues par Odoo des pertes réelles.
 
-    La plus grosse d'entre elles — `ir_translation`, 32 984 lignes — est
-    une refonte voulue par Odoo en 16. Mettre les refontes et les pertes
-    réelles sur le même plan est la façon la plus sûre de ne pas voir les
-    secondes.
+    `ir_translation`, qui porte les traductions de toute la base,
+    disparaît en 16 par une refonte voulue par Odoo. Mettre les refontes
+    et les pertes réelles sur le même plan est la façon la plus sûre de
+    ne pas voir les secondes.
     """
 
     def perte(
@@ -265,7 +267,7 @@ class TestTheSemanticMap(Base):
         self.assertEqual(connu[3]["gained"], 441)
 
     def test_a_retired_table_is_explained_without_a_target(self):
-        diff = self.perte("ir_translation", 32984, 0)
+        diff = self.perte("ir_translation", 27415, 0)
         connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
         self.assertIsNotNone(connu[3])
         self.assertIsNone(connu[3]["into"])
@@ -276,18 +278,18 @@ class TestTheSemanticMap(Base):
         L'accepter ferait taire une vraie perte sous prétexte que la table
         porte le nom d'une autre, refondue trois versions plus tard.
         """
-        diff = self.perte("ir_translation", 32984, 0, version="13.0")
+        diff = self.perte("ir_translation", 27415, 0, version="13.0")
         connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
         self.assertIsNone(connu[3])
 
     def test_it_applies_AT_its_version(self):
-        diff = self.perte("ir_translation", 32984, 0, version="16.0")
+        diff = self.perte("ir_translation", 27415, 0, version="16.0")
         connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
         self.assertIsNotNone(connu[3])
 
     def test_an_explained_loss_is_STILL_in_the_list(self):
         # La règle qui vaut plus que tout : expliquer n'est pas cacher.
-        diff = self.perte("ir_translation", 32984, 0)
+        diff = self.perte("ir_translation", 27415, 0)
         self.assertIn("ir_translation", [x[0] for x in diff["rows_lost"]])
 
     def test_the_partition_loses_nothing(self):
@@ -337,33 +339,33 @@ class TestTheSemanticMap(Base):
         )
 
     def test_needaction_became_notifications_in_15(self):
-        """Vérifiée palier par palier, pas déduite d'un nom qui se ressemble.
+        """Un report à l'unité près, pas un nom qui se ressemble.
 
-        1269 lignes en 12, 13 et 14 ; la table disparaît en 15 et
-        `mail_notification` en compte exactement 1269. Pas une perdue.
-        C'est ce report à l'unité près qui autorise l'entrée — un nom
-        voisin n'aurait rien prouvé.
+        La table garde le même nombre de lignes en 12, 13 et 14, disparaît
+        en 15, et `mail_notification` en gagne autant : pas une perdue.
+        C'est ce report à l'unité près qui fonde l'entrée de la carte — un
+        nom voisin ne prouverait rien.
         """
         diff = self.perte(
             "mail_message_res_partner_needaction_rel",
-            1269,
+            3842,
             0,
             version="15.0",
             cible="mail_notification",
             cible_avant=0,
-            cible_apres=1269,
+            cible_apres=3842,
         )
         connu = diff["rows_lost"][0][3]
         self.assertIsNotNone(connu)
         self.assertEqual(connu["into"], "mail_notification")
-        self.assertEqual(connu["gained"], 1269)
+        self.assertEqual(connu["gained"], 3842)
 
     def test_it_is_not_explained_at_the_14_bump(self):
         # La table est encore pleine en 14 : une entrée qui s'appliquerait
         # plus tôt masquerait une perte survenue avant la refonte.
         diff = self.perte(
             "mail_message_res_partner_needaction_rel",
-            1269,
+            3842,
             0,
             version="14.0",
         )
@@ -393,50 +395,50 @@ class TestTheSemanticMap(Base):
     def test_properties_became_jsonb_columns_in_18(self):
         """La table ne se vide pas : elle GROSSIT, puis disparaît d'un coup.
 
-        211 lignes en 12, 457 en 17, table absente en 18. Les champs
-        qu'elle portait sont des colonnes jsonb en 18 — vérifié sur
-        res_partner.property_payment_term_id.
+        Elle gagne des lignes d'un palier à l'autre jusqu'en 17 et n'existe
+        plus en 18 : les champs qu'elle portait y sont des colonnes jsonb,
+        comme `res_partner.property_payment_term_id`.
         """
-        diff = self.perte("ir_property", 457, 0, version="18.0")
+        diff = self.perte("ir_property", 386, 0, version="18.0")
         connu = diff["rows_lost"][0][3]
         self.assertIsNotNone(connu)
         self.assertEqual(connu["kind"], "retired")
         self.assertIsNone(connu["into"])
 
     def test_properties_are_not_explained_at_the_17_bump(self):
-        # En 17 la table est à son maximum (457). Dater l'entrée plus tôt
-        # ferait passer pour attendue une perte qui ne l'est pas.
+        # En 17 la table existe encore, à son plus haut. Dater l'entrée plus
+        # tôt ferait passer pour attendue une perte qui ne l'est pas.
         diff = self.perte("ir_property", 273, 100, version="17.0")
         self.assertIsNone(diff["rows_lost"][0][3])
 
     def test_tracking_values_were_pruned_in_14(self):
         """Le champ suivi passe de varchar à clé étrangère au palier 14.
 
-        En 14 aucune ligne n'a de clé nulle ni cassée : ce qui ne se
-        résolvait pas a été supprimé. La table SURVIT — 13833 lignes — donc
-        l'explication ne doit pas prétendre qu'elle a disparu.
+        La migration supprime les lignes dont le champ ne se résout pas :
+        aucune ne garde une clé nulle ou cassée. La table SURVIT avec ses
+        autres lignes : l'explication ne prétend pas qu'elle a disparu.
         """
-        diff = self.perte("mail_tracking_value", 16169, 13833, version="14.0")
+        diff = self.perte("mail_tracking_value", 18420, 15372, version="14.0")
         table, avant, apres, connu = diff["rows_lost"][0]
-        self.assertEqual((avant, apres), (16169, 13833))
+        self.assertEqual((avant, apres), (18420, 15372))
         self.assertIsNotNone(connu)
         self.assertEqual(connu["kind"], "pruned")
 
     def test_tracking_values_are_not_explained_at_the_13_bump(self):
-        # 16167 en 12, 16169 en 13 : rien n'a encore été élagué.
-        diff = self.perte("mail_tracking_value", 16167, 10000, version="13.0")
+        # En 13 le champ suivi est encore un varchar : rien n'est élagué.
+        diff = self.perte("mail_tracking_value", 18416, 10000, version="13.0")
         self.assertIsNone(diff["rows_lost"][0][3])
 
     def test_a_pruned_loss_is_not_rendered_as_retired(self):
         # « retirée de la base » serait faux : la table est toujours là.
-        diff = self.perte("mail_tracking_value", 16169, 13833, version="14.0")
+        diff = self.perte("mail_tracking_value", 18420, 15372, version="14.0")
         texte = "\n".join(quality.render_compare(diff, False, 8))
         self.assertIn("mail_tracking_value", texte)
         self.assertNotIn(todo_i18n.t("retired from the database"), texte)
         self.assertIn(todo_i18n.t("rows dropped, the table remains"), texte)
 
     def test_the_column_counts_only_what_needs_an_answer(self):
-        # Afficher 81 quand 14 sont des refontes voulues ferait fuir le
+        # Compter les refontes voulues avec les pertes ferait fuir le
         # lecteur du seul chiffre qui demande une réponse.
         lst = [
             snapshot(
@@ -497,12 +499,12 @@ class TestTheReportItself(Base):
         self.assertIn("not found", texte)
 
     def test_missing_attachment_files_are_surfaced(self):
-        # La trouvaille faite à la main sur une vraie migration : 254
-        # fichiers absents du filestore, que rien ne signalait.
+        # Un fichier absent du filestore ne se voit nulle part ailleurs :
+        # le rapport en dit le nombre.
         texte = quality.render_text(
-            [snapshot(attachment_missing=254)], colour=False
+            [snapshot(attachment_missing=318)], colour=False
         )
-        self.assertIn("254", texte)
+        self.assertIn("318", texte)
 
     def test_it_ends_with_the_start_to_finish_comparison(self):
         texte = quality.render_text(
@@ -515,17 +517,17 @@ class TestTheReportItself(Base):
 class TestTheStatisticsCarryTheirDelta(Base):
     """Un chiffre seul ne dit rien.
 
-    « 2283 vues » est un nombre ; « +61 » est une information. C'est
-    l'écart qu'on lit, pas la valeur.
+    Un compte de vues est un nombre ; son écart au palier précédent est
+    une information. C'est l'écart qu'on lit, pas la valeur.
     """
 
     def test_each_figure_gets_its_change(self):
         lignes = qtui.statistics(
-            snapshot(view=2283, installed=["a"]),
-            snapshot(view=2222, installed=["a", "b"]),
+            snapshot(view=3150, installed=["a"]),
+            snapshot(view=3087, installed=["a", "b"]),
         )
         par_nom = {libelle: ecart for libelle, _v, ecart in lignes}
-        self.assertEqual(par_nom["views"], 61)
+        self.assertEqual(par_nom["views"], 63)
         self.assertEqual(par_nom["modules"], -1)
 
     def test_the_first_step_has_NO_delta(self):
@@ -552,21 +554,20 @@ class TestTheStatisticsCarryTheirDelta(Base):
     def test_the_pane_prints_the_sign(self):
         row = {
             "kind": "step",
-            "data": snapshot(view=2283),
-            "previous": snapshot(view=2222),
+            "data": snapshot(view=3150),
+            "previous": snapshot(view=3087),
             "diff": None,
         }
         texte = qtui.pane_text([], row)
-        self.assertIn("+61", texte)
+        self.assertIn("+63", texte)
 
 
 class TestListingTheMissingFiles(Base):
-    """« 254 fichiers absents » ne dit pas lesquels.
+    """Un compte de fichiers absents ne dit pas lesquels.
 
-    Le groupement tranche : deux cent trente-quatre drapeaux de pays sont
-    des images livrées par un module, qu'une mise à jour restaure. Une
-    pièce jointe d'événement de 255 ko, non. La liste brute mettait les
-    deux sur le même plan.
+    Le groupement tranche : les drapeaux de pays sont des images livrées
+    par un module, qu'une mise à jour restaure. La photo jointe à un
+    événement, non. Une liste brute mettrait les deux sur le même plan.
     """
 
     DETAIL = [
@@ -603,7 +604,7 @@ class TestListingTheMissingFiles(Base):
             "field": "-",
             "res_id": "1",
             "mimetype": "image/png",
-            "size": 255603,
+            "size": 187342,
             "name": "photo.png",
         },
     ]
@@ -670,8 +671,8 @@ class TestListingTheMissingFiles(Base):
         self.assertIn("Could not read", texte)
 
     def test_the_metadata_is_read_ONLY_on_demand(self):
-        # Une requête de plus par base allongerait un parcours qui tient
-        # en quatre secondes, pour ce qu'on ne regarde qu'en le demandant.
+        # Une requête de plus par base allongerait le parcours de toute la
+        # chaîne, pour ce qu'on ne regarde qu'en le demandant.
         import inspect
 
         self.assertNotIn("missing_detail", inspect.getsource(quality.inspect))
@@ -733,7 +734,7 @@ class TestTheMissingFilesButton(Base):
         # presse.
         row = {
             "kind": "step",
-            "data": snapshot(attachment_missing=254),
+            "data": snapshot(attachment_missing=318),
             "previous": None,
             "diff": None,
         }
@@ -810,7 +811,7 @@ class TestTheMenuEntryLooksLikeItsNeighbours(Base):
 
 
 class TestAttackingTheListFromTheTop(Base):
-    """Cinquante-sept pertes se parcourent par le haut, pas par ordre
+    """Une longue liste de pertes se parcourt par le haut, pas par ordre
     alphabétique : la plus grosse est celle qu'on veut voir en premier."""
 
     def test_the_biggest_loss_comes_first(self):
@@ -912,7 +913,7 @@ class TestTheFullLists(Base):
         self.assertIn("not comparable", quality.render_detail(None, "models"))
 
     def test_the_headings_carry_no_participle(self):
-        """« 28 copies COW perdus » ne s'accorde pas, et ne se traduit pas.
+        """« copies COW perdus » ne s'accorde pas, et ne se traduit pas.
 
         Le signe porte déjà le sens ; un participe devrait s'accorder avec
         une catégorie dont le genre change d'une langue à l'autre.
@@ -1023,8 +1024,8 @@ class TestItNeverWrites(Base):
         self.assertIn("default_transaction_read_only=on", source)
 
     def test_no_odoo_is_started(self):
-        # Six démarrages coûteraient une heure ET écriraient dans les
-        # bases. L'inspection en SQL prend moins d'une demi-seconde.
+        # Démarrer Odoo à chaque palier coûterait des minutes par base ET
+        # écrirait dans les bases ; l'inspection en SQL ne fait que lire.
         #
         # La garde porte sur le CODE, fonction par fonction, et non sur le
         # texte du fichier : la revue CITE « ./odoo_bin.sh shell » comme
@@ -1356,14 +1357,14 @@ class TestTheOpenUpgradeOverlay(unittest.TestCase):
 
 class TestGroupingByFieldName(unittest.TestCase):
     def test_one_mixin_field_is_one_finding(self):
-        # `__last_update` s'est compté 391 fois sur un vrai palier : c'est
-        # UN changement.
+        # Un champ retiré d'un mixin quitte chaque modèle qui en hérite :
+        # des centaines de clés, et UN changement.
         groupes = quality.group_by_field_name(
-            [f"modele{i}.zz_last_update" for i in range(391)]
+            [f"modele{i}.zz_last_update" for i in range(287)]
             + ["account.account.aa_autre"]
         )
         self.assertEqual(groupes[0][0], "zz_last_update")
-        self.assertEqual(groupes[0][1], 391)
+        self.assertEqual(groupes[0][1], 287)
 
     def test_the_most_widespread_comes_first(self):
         groupes = quality.group_by_field_name(
@@ -1409,7 +1410,7 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
     def test_id_is_set_aside_even_though_it_is_stored(self):
         # `id` porte une donnée, mais pas la SIENNE : elle appartient à
         # la ligne. Odoo 15 cesse de l'inscrire sur les modèles
-        # abstraits — 65 « pertes » d'un coup, zéro octet.
+        # abstraits : une « perte » par modèle abstrait, zéro octet.
         res = self.declare(["res.partner.id"], {"res.partner.id"})
         self.assertEqual(["res.partner.id"], res["fields"]["no_data"])
 
@@ -1472,7 +1473,7 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
         )
 
     def test_the_names_are_shown_grouped_by_field(self):
-        # C'est la LIGNE « __last_update × 101 modèle(s) » qui explique le
+        # C'est la LIGNE « __last_update × N modèle(s) » qui explique le
         # gros chiffre. Sans elle on remplace un nombre effrayant par un
         # nombre opaque, et le lecteur reste sans réponse.
         declare = {
@@ -1549,7 +1550,7 @@ class TestWhyAnAttachmentWentAway(Base):
     On ne DÉCLARE pas cette perte dans SEMANTIC_MAP : cette carte nomme
     une TABLE, et la cause n'est pas la table, ce sont ces lignes-là.
     Déclarée, elle rangerait toute perte future de ir_attachment sous
-    « changement d'Odoo » — cinq mille factures comprises.
+    « changement d'Odoo » — les pièces jointes des factures comprises.
     """
 
     def etat(self, lignes, modeles=("res.partner",)):
@@ -1834,8 +1835,8 @@ class TestTheThreeExtraSections(Base):
         self.assertIn("verdict-none", [r["kind"] for r in lst])
 
     def test_a_failed_verdict_names_its_step_in_the_label(self):
-        # « smoke_public_url » quatre fois de suite ne dit pas lequel a
-        # échoué, et c'est la seule chose qu'on veut savoir.
+        # « smoke_public_url » répété d'un palier à l'autre ne dit pas
+        # lequel a échoué, et c'est la seule chose qu'on veut savoir.
         lst = qtui.extra_rows([], {"lst_event": [evenement()]})
         ligne = [r for r in lst if r["kind"] == "verdict"][0]
         self.assertIn("14", ligne["label"])
@@ -1967,7 +1968,7 @@ class TestEveryVerdictIsListed(Base):
 
     def test_a_dialogue_answer_is_still_not_a_verdict(self):
         # Les entrées `command` à 1 sont les réponses du pilote ; les
-        # lister ferait sept faux échecs par migration.
+        # lister ferait un faux échec par réponse.
         dct = self.journal(0)
         dct["lst_event"].append(
             evenement(
