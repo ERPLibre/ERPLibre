@@ -946,7 +946,8 @@ class AssistantMenuMixin:
             )
 
     def _claude_choisir(self, flotte):
-        """La session désignée par un rang, ou `None`."""
+        """La session désignée par un rang tel que la liste l'affiche, ou
+        `None`."""
         if not flotte:
             print(t("No session on this machine."))
             return None
@@ -956,10 +957,8 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return None
-        if not reponse.isdigit():
-            return None
-        rang = int(reponse) - 1
-        return flotte[rang] if 0 <= rang < len(flotte) else None
+        rangs = [str(rang) for rang in range(1, len(flotte) + 1)]
+        return flotte[int(reponse) - 1] if reponse in rangs else None
 
     def _claude_questionner(self, flotte=None):
         """Poser UNE question à une session de `flotte`, ou, sans elle, de

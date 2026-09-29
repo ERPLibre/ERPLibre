@@ -552,6 +552,28 @@ class SessionsClaudeCode(unittest.TestCase):
             todo.prompt_claude_sessions()
         self.assertIn("[1] forged-s", sortie.getvalue())
 
+    def test_un_rang_se_choisit_tel_que_la_liste_l_affiche(self):
+        """`_claude_choisir` ne rend une session que pour un rang que la
+        liste affiche, ses blancs ôtés : « 01 », « ١ » (le chiffre un en
+        écriture arabe) et « ² », que `isdigit` accepte et qu'`int`
+        refuse, ne désignent rien, et le menu ne tombe pas."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        choisies = []
+        for reponse in ("1", " 1 ", "2", "01", "١", "²", "x"):
+            with (
+                patch("click.prompt", return_value=reponse),
+                redirect_stdout(io.StringIO()),
+            ):
+                choisies.append(todo._claude_choisir([session]))
+        self.assertEqual(choisies, [session, session, *[None] * 5])
+
 
 class Frontiere(unittest.TestCase):
     """Le paquet doit vivre sans le CLI qui l'appelle."""

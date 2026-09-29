@@ -387,6 +387,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
 - Execute › Git: only a number exactly as shown runs an entry: « +5 » or « 05 » answer « Command not found ! » instead of running the first entry of `todo.json`, and « 01 », « 1 » between spaces or a digit of another script no longer silently run nothing
 - Execute › GPT code › Claude Code: List local sessions, Ask a question to a session and Resume a session read the sessions when they are answered, instead of those the menu drew: a session started in another terminal while the menu waits is offered, and the navigation telemetry TUI, which launches them without an argument, runs them instead of failing
+- Execute › GPT code › Claude Code: a session is chosen only by a rank as listed: « ² » no longer stops TODO on an error, and « 01 » or a digit of another script choose nothing instead of the first session
 
 <!-- [fr] -->
 
@@ -494,6 +495,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
 - Exécution › Git : seul un numéro tel qu'affiché lance une entrée : « +5 » ou « 05 » répondent « Commande non trouvée ! » au lieu de lancer la première entrée de `todo.json`, et « 01 », « 1 » entouré d'espaces ou un chiffre d'une autre écriture ne lancent plus rien en silence
 - Exécution › GPT code › Claude Code : Lister les sessions locales, Poser une question à une session et Reprendre une session lisent les sessions au moment où elles répondent, et non celles que le menu a dessinées : une session ouverte dans un autre terminal pendant que le menu attend est proposée, et la TUI de la télémétrie de navigation, qui les lance sans argument, les exécute au lieu d'échouer
+- Exécution › GPT code › Claude Code : une session ne se choisit que par un rang tel que listé : « ² » n'arrête plus TODO sur une erreur, et « 01 » ou un chiffre d'une autre écriture ne choisissent rien au lieu de la première session
 
 <!-- [en] -->
 ## Removed

@@ -237,6 +237,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Automatisation : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer la première
 - Exécution › Git : seul un numéro tel qu'affiché lance une entrée : « +5 » ou « 05 » répondent « Commande non trouvée ! » au lieu de lancer la première entrée de `todo.json`, et « 01 », « 1 » entouré d'espaces ou un chiffre d'une autre écriture ne lancent plus rien en silence
 - Exécution › GPT code › Claude Code : Lister les sessions locales, Poser une question à une session et Reprendre une session lisent les sessions au moment où elles répondent, et non celles que le menu a dessinées : une session ouverte dans un autre terminal pendant que le menu attend est proposée, et la TUI de la télémétrie de navigation, qui les lance sans argument, les exécute au lieu d'échouer
+- Exécution › GPT code › Claude Code : une session ne se choisit que par un rang tel que listé : « ² » n'arrête plus TODO sur une erreur, et « 01 » ou un chiffre d'une autre écriture ne choisissent rien au lieu de la première session
 
 ## Retiré
 
