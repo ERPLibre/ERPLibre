@@ -26,16 +26,14 @@ qu'on n'a pas choisi est un outil qu'on n'ose plus lancer.
 from __future__ import annotations
 
 import getpass
+import importlib.util
 import os
 import stat
 
 from script.todo.todo_i18n import t
 
-try:
-    from pykeepass import PyKeePass, create_database
-except ModuleNotFoundError:  # pragma: no cover - dépend de l'installation
-    PyKeePass = None
-    create_database = None
+# pykeepass s'importe dans `_create`, au moment de créer un coffre : le menu
+# VPN charge ce module au démarrage de TODO, qui n'en crée aucun.
 
 # Groupe où les entrées sont rangées, pour que le coffre reste lisible dans
 # l'interface KeePassXC. Le TITRE reste unique globalement : les autres
@@ -141,7 +139,7 @@ class VpnVault:
         mais absent (on propose de le créer) ; pas configuré (on demande
         où, puis on crée si le fichier n'existe pas).
         """
-        if create_database is None:
+        if importlib.util.find_spec("pykeepass") is None:
             raise VaultError(
                 "pykeepass n'est pas installé : lancer l'installation"
                 " ERPLibre, ou `pip install pykeepass` dans"
@@ -181,6 +179,8 @@ class VpnVault:
         # fenêtre existe, elle est d'un tour de boucle ; l'alternative
         # serait de créer le fichier vide en 0600 d'abord, ce que
         # pykeepass refuse (il veut écrire un fichier neuf).
+        from pykeepass import create_database
+
         kdbx = create_database(path, password=first)
         self.protect(path)
         # La base rendue par `create_database` est déjà ouverte : la confier

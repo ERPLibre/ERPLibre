@@ -22,6 +22,9 @@ from script.todo.mail import accounts as mail_accounts
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from async_case import AsyncCase  # noqa: E402
 
+# Argon2 remplacé pour tout le module : voir argon2_rapide.py.
+from argon2_rapide import setUpModule  # noqa: E402,F401
+
 
 class FakeConfigFile:
     """Un `config_file` minimal — seuls `get_config_value`/`set_config_value`

@@ -42,6 +42,10 @@ from script.vpn.drivers.openconnect import (  # noqa: E402
     OpenconnectDriver,
 )
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Argon2 remplacé pour tout le module : voir argon2_rapide.py.
+from argon2_rapide import setUpModule  # noqa: E402,F401
+
 WG_PUBLIC = base64.b64encode(bytes(range(32, 64))).decode()
 
 

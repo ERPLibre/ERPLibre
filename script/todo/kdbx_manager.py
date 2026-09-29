@@ -9,22 +9,13 @@ from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
 
-# DEUX blocs, et c'est le point : tkinter ne sert QU'au sélecteur de fichier
-# quand aucun chemin n'est configuré. Réunis dans un seul `try`, l'absence de
-# tkinter mettait aussi `PyKeePass` à None — et le coffre devenait impossible
-# à ouvrir sur toute machine sans interface graphique, chemin et mot de passe
-# configurés ou non. C'est-à-dire sur tous les serveurs.
-try:
-    from pykeepass import PyKeePass
-    from pykeepass.exceptions import CredentialsError
-except ModuleNotFoundError:
-    PyKeePass = None
-
-    class CredentialsError(Exception):
-        """Jamais levée ici : sans pykeepass, `get_kdbx` sort avant d'ouvrir
-        quoi que ce soit. Définie pour que le `except` reste écrivable."""
-
-
+# pykeepass s'importe dans `get_kdbx`, au moment d'ouvrir le coffre : le
+# charger ici coûtait un cinquième de l'import de TODO, qui crée ce
+# gestionnaire au démarrage sans ouvrir le coffre pour autant.
+#
+# tkinter reste à part : il ne sert QU'au sélecteur de fichier quand aucun
+# chemin n'est configuré, et son absence ne doit pas empêcher d'ouvrir le
+# coffre sur une machine sans interface graphique — un serveur.
 try:
     import tkinter as tk
     from tkinter import filedialog
@@ -60,7 +51,10 @@ class KdbxManager:
             )
             return None
 
-        if PyKeePass is None:
+        try:
+            from pykeepass import PyKeePass
+            from pykeepass.exceptions import CredentialsError
+        except ModuleNotFoundError:
             _logger.error("pykeepass is not installed")
             return None
 

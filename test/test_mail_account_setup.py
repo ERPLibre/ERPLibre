@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,10 @@ from script.todo.mail.account_setup import (
 )
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.secrets import SecretError
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Argon2 remplacé pour tout le module : voir argon2_rapide.py.
+from argon2_rapide import setUpModule  # noqa: E402,F401
 
 
 class FakeConfigFile:
