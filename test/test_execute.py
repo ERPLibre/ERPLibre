@@ -460,13 +460,17 @@ class TestJobControl(unittest.TestCase):
 # partage le groupe de l'enfant. Muette si argv[2] vaut « quiet » ; argv[3]
 # vaut « cli » pour `ctrl_c_stops_command`, comme todo.py, et « script »
 # sinon. Sous REFUSE_KILL, `terminate` et `kill` lèvent PermissionError,
-# comme sur le processus d'un autre compte. Dit son code, celui de
+# comme sur le processus d'un autre compte. SIGHUP ignoré, que la commande
+# hérite : chef de sa session, l'enfant enverrait SIGHUP à la commande en
+# mourant, ce que ne fait pas un CLI lancé d'un shell ; ce qu'il abandonne
+# lui survit, quel que soit le lanceur. Dit son code, celui de
 # `run_end`, le nombre et la dernière de ses lignes, si le terminal fait
 # l'écho, puis « ask », et répète la ligne qu'il lit ensuite : il vit
 # encore.
 CLI_CHILD = r"""
 import fcntl, os, signal, subprocess, sys, termios
 signal.signal(signal.SIGINT, signal.default_int_handler)
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
 fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 if os.environ.get("REFUSE_KILL"):
     def refuse(process):
@@ -510,6 +514,25 @@ def _sigint_pending(pid):
     return bool(pending & 1 << (signal.SIGINT - 1))
 
 
+def _group_alive(pgid):
+    """Les pid vivants du groupe `pgid` dont `pgid` est aussi la session,
+    lus dans /proc/<pid>/stat. Un zombie (Z) ou un mort (X) n'y compte
+    pas : il n'attend plus que son parent."""
+    alive = []
+    for path in glob.glob("/proc/[0-9]*/stat"):
+        try:
+            with open(path) as f:
+                # Le nom entre parenthèses peut porter espaces et
+                # parenthèses : les champs se lisent après la dernière.
+                fields = f.read().rsplit(")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        state, group, session = fields[0], int(fields[2]), int(fields[3])
+        if group == session == pgid and state not in ("Z", "X"):
+            alive.append(int(path.split("/")[2]))
+    return alive
+
+
 class TestCtrlCInTheCli(unittest.TestCase):
     """Sans contrôle de tâches, Ctrl+C arrête la commande et rend la main à
     l'appelant, qui continue ; deux Ctrl+C de plus forcent une commande qui
@@ -534,11 +557,27 @@ class TestCtrlCInTheCli(unittest.TestCase):
             start_new_session=True,
         )
         os.close(slave)
-        # Nettoyages en ordre inverse : child.kill d'abord, dont la mort du
-        # chef de session envoie SIGHUP au groupe de la commande.
-        self.addCleanup(self.child.wait, 10)
-        self.addCleanup(self.child.kill)
+        # Enregistré après la fermeture du maître, donc lancé avant elle :
+        # le groupe meurt PTY encore ouvert, test réussi ou non.
+        self.addCleanup(self.leaves_no_process)
         self.until(b"armed")
+
+    def leaves_no_process(self):
+        """Tue par SIGKILL le groupe de l'enfant, qui est aussi sa session,
+        tant qu'il y reste un vivant, attend l'enfant, puis échoue si un
+        processus du groupe vit encore après dix secondes. `killpg` ne
+        part que vers un groupe où /proc montre un vivant, qui retient le
+        numéro du groupe : il n'atteint pas un autre groupe venu depuis."""
+        group = self.child.pid
+        deadline = time.monotonic() + 10
+        while _group_alive(group) and time.monotonic() < deadline:
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:  # mort entre la lecture et l'envoi
+                pass
+            time.sleep(0.01)
+        self.child.wait(10)
+        self.assertEqual(_group_alive(group), [], "the command survives")
 
     def until(self, marker, timeout=10.0):
         """Ce que l'enfant a écrit jusqu'à `marker` compris, depuis la
@@ -690,6 +729,8 @@ class TestCtrlCInTheCli(unittest.TestCase):
         self.until(b"KeyboardInterrupt")
         self.assertEqual(self.child.wait(10), -signal.SIGINT)
         self.assertNotIn(b"ask", self.pending)
+        # La commande survit à l'appelant : seul le nettoyage la tue.
+        self.assertNotEqual(_group_alive(self.child.pid), [])
 
     def test_the_output_written_while_it_stops_is_read_to_the_end(self):
         # 200 000 lignes, vingt fois le tube : sans lecteur, la commande
