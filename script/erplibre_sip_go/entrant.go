@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/emiago/sipgo"
@@ -274,8 +275,22 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 		sonnerie = minuté
 	}
 
-	session, err := sonner(sonnerie, dialogues, inscription, hôte, numéro, offre.Construire())
+	// L'appelant peut raccrocher PENDANT la sonnerie, et rien ne le disait au
+	// softphone : il sonnait jusqu'au bout de son delai, et decrocher alors ne
+	// trouvait plus personne. On surveille donc la ligne le temps qu'elle
+	// sonne.
+	raccroché := &atomic.Bool{}
+	surveillé, couper := context.WithCancel(sonnerie)
+	defer couper()
+	go surveillerLAppelant(surveillé, m, raccroché, couper)
+
+	session, err := sonner(surveillé, dialogues, inscription, hôte, numéro, offre.Construire())
 	if err != nil {
+		if raccroché.Load() {
+			// Plus de ligne a enregistrer : prendre le message ferait decrocher
+			// dans le vide, et le repondeur garderait un fichier muet.
+			return fmt.Errorf("l'appelant a raccroche pendant la sonnerie")
+		}
 		if répondeur.Actif {
 			slog.Info("le softphone n'a pas pris : le repondeur decroche",
 				"de", numéro, "sonneries", répondeur.Normaliser().Sonneries)
@@ -428,6 +443,13 @@ func sonner(ctx context.Context, dialogues *sipgo.DialogClientCache,
 	minuté, arrêter := context.WithTimeout(ctx, DélaiSonnerieSoftphone)
 	defer arrêter()
 	if err := session.WaitAnswer(minuté, sipgo.AnswerOptions{}); err != nil {
+		// On ANNULE avant de fermer : fermer ne dit rien au navigateur, qui
+		// sonnerait alors jusqu'a ce que quelqu'un decroche une ligne deja
+		// retombee.
+		annulation := ConstruireAnnulation(invite, inscription.Source)
+		if err := session.WriteRequest(annulation); err != nil {
+			slog.Warn("annulation de la sonnerie non transmise", "err", err)
+		}
 		_ = session.Close()
 		return nil, fmt.Errorf("sans reponse du softphone : %w", err)
 	}
@@ -458,6 +480,78 @@ func raccrocherLAppelant(ctx context.Context, session *sipgo.DialogClientSession
 		return
 	}
 	slog.Info("softphone raccroché : la ligne est retombée")
+}
+
+// surveillerLAppelant coupe la sonnerie dès que la ligne cellulaire retombe.
+//
+// Le modem sérialise ses commandes AT : interroger la ligne depuis ce fil est
+// sûr, et n'entrelace rien avec ce que fait la présentation.
+func surveillerLAppelant(ctx context.Context, m *Modem, raccroché *atomic.Bool,
+	couper func()) {
+
+	tic := time.NewTicker(CadenceSurveillanceEntrants)
+	defer tic.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tic.C:
+			appels, err := m.Appels()
+			// Une interrogation en échec ne prouve pas un raccrochage : couper
+			// la sonnerie dessus renverrait l'appel en boîte vocale pour un
+			// port occupé une fraction de seconde.
+			if err != nil || uneLigneTient(appels) {
+				continue
+			}
+			slog.Info("l'appelant a raccroche pendant la sonnerie")
+			raccroché.Store(true)
+			couper()
+			return
+		}
+	}
+}
+
+// ConstruireAnnulation prépare le CANCEL d'un INVITE resté sans réponse.
+//
+// Sans lui, le softphone sonne INDÉFINIMENT : la bibliothèque n'expose pas
+// d'annulation, et fermer la session côté serveur ne dit rien au navigateur.
+// Il continue donc de sonner après que l'appelant a raccroché, et décrocher
+// alors ne trouve plus personne — la ligne cellulaire est déjà retombée.
+//
+// Un CANCEL ne s'adresse pas au dialogue mais à la TRANSACTION, et trois
+// choses l'y rattachent : la même branche de Via, le même numéro de séquence,
+// et l'URI de requête de l'INVITE — pas le contact de la réponse, qui n'existe
+// pas encore. Le « To » reste donc sans étiquette.
+func ConstruireAnnulation(invite *sip.Request, destination string) *sip.Request {
+	annulation := sip.NewRequest(sip.CANCEL, *invite.Recipient.Clone())
+	annulation.SipVersion = invite.SipVersion
+
+	// La branche du Via est ce qui désigne la transaction à annuler : elle se
+	// recopie telle quelle, et une branche neuve ouvrirait une transaction
+	// inconnue du navigateur.
+	if h := invite.Via(); h != nil {
+		annulation.AppendHeader(sip.HeaderClone(h))
+	}
+	sauts := sip.MaxForwardsHeader(70)
+	annulation.AppendHeader(&sauts)
+	if h := invite.From(); h != nil {
+		annulation.AppendHeader(sip.HeaderClone(h))
+	}
+	if h := invite.To(); h != nil {
+		annulation.AppendHeader(sip.HeaderClone(h))
+	}
+	if h := invite.CallID(); h != nil {
+		annulation.AppendHeader(sip.HeaderClone(h))
+	}
+	if h := invite.CSeq(); h != nil {
+		séquence := sip.CSeqHeader{SeqNo: h.SeqNo, MethodName: sip.CANCEL}
+		annulation.AppendHeader(&séquence)
+	}
+
+	annulation.SetTransport(invite.Transport())
+	annulation.SetSource(invite.Source())
+	annulation.SetDestination(destination)
+	return annulation
 }
 
 // ConstruireByeSortant prépare le BYE d'un appel présenté par ce service.
