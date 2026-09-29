@@ -784,6 +784,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         for path in (
             ("Deploy", "QEMU cache", "Service"),
             ("Deploy", "QEMU cache", "Exceptions"),
+            ("Deploy", "QEMU cache", "Git mirrors"),
         ):
             node = self._noeud("Execute")
             for label in path:

@@ -248,6 +248,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › QEMU/KVM : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +21 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service › État détaillé, lancé depuis la TUI, montre l'état du service du cache au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Exceptions › Retirer celles dont la VM n'existe plus et En retirer une par sa MAC, lancées depuis la TUI, rendent au cache les exceptions dont la VM n'existe plus, lues à ce moment-là, ou la MAC tapée, au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Miroirs git › Remplir la base, Remplir l'extra et Remplir tous les manifestes, lancées depuis la TUI, remplissent les miroirs de leur liste, lue dans les manifestes à ce moment-là, au lieu d'échouer sur un argument manquant
 
 ## Retiré
 

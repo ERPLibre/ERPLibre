@@ -398,6 +398,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › QEMU/KVM: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +21 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 - Navigation telemetry: Execute › Deploy › QEMU cache › Service › Detailed state, launched from the TUI, shows the state of the cache service instead of failing on a missing argument
 - Navigation telemetry: Execute › Deploy › QEMU cache › Exceptions › Remove the stale ones and Remove one by its MAC, launched from the TUI, give back to the cache the exceptions whose VM is gone, read at that moment, or the MAC typed, instead of failing on a missing argument
+- Navigation telemetry: Execute › Deploy › QEMU cache › Git mirrors › Fill the base, Fill the extra and Fill every manifest, launched from the TUI, fill the mirrors of their list, read from the manifests at that moment, instead of failing on a missing argument
 
 <!-- [fr] -->
 
@@ -516,6 +517,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › QEMU/KVM : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +21 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service › État détaillé, lancé depuis la TUI, montre l'état du service du cache au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Exceptions › Retirer celles dont la VM n'existe plus et En retirer une par sa MAC, lancées depuis la TUI, rendent au cache les exceptions dont la VM n'existe plus, lues à ce moment-là, ou la MAC tapée, au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Miroirs git › Remplir la base, Remplir l'extra et Remplir tous les manifestes, lancées depuis la TUI, remplissent les miroirs de leur liste, lue dans les manifestes à ce moment-là, au lieu d'échouer sur un argument manquant
 
 <!-- [en] -->
 ## Removed

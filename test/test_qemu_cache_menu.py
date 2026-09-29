@@ -754,6 +754,47 @@ class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
 
         self.assertEqual(self.remplir("3"), depots_des_manifestes(str(RACINE)))
 
+    def remplir_seule(self, methode, **kwargs):
+        """La liste que reçoit le remplissage quand l'entrée `methode` se
+        lance seule, comme depuis la TUI de télémétrie."""
+        from script.todo.todo import TODO
+
+        vu = {}
+
+        class Faux(TODO):
+            def __init__(self):
+                pass
+
+            def _cache_miroir_remplir(self, liste):
+                vu["liste"] = list(liste)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            getattr(Faux(), methode)(**kwargs)
+        return vu.get("liste")
+
+    def test_chaque_entree_seule_relit_sa_liste(self):
+        from script.todo.qemu_cache_menu import (
+            depots_des_manifestes,
+            manifeste_extra,
+        )
+
+        v = self.version()
+        extra = depots_des_manifestes(
+            str(RACINE), fichiers=[manifeste_extra(v)]
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_version"),
+            depots_des_manifestes(str(RACINE), v),
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_version", extra=True),
+            extra or None,
+        )
+        self.assertEqual(
+            self.remplir_seule("_cache_miroir_remplir_tout"),
+            depots_des_manifestes(str(RACINE)),
+        )
+
 
 class TestLesIconesDeLAssistant(unittest.TestCase):
     """Chaque choix de l'assistant porte une icône, système compris.

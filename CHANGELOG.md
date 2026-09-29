@@ -248,6 +248,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › QEMU/KVM: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +21 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 - Navigation telemetry: Execute › Deploy › QEMU cache › Service › Detailed state, launched from the TUI, shows the state of the cache service instead of failing on a missing argument
 - Navigation telemetry: Execute › Deploy › QEMU cache › Exceptions › Remove the stale ones and Remove one by its MAC, launched from the TUI, give back to the cache the exceptions whose VM is gone, read at that moment, or the MAC typed, instead of failing on a missing argument
+- Navigation telemetry: Execute › Deploy › QEMU cache › Git mirrors › Fill the base, Fill the extra and Fill every manifest, launched from the TUI, fill the mirrors of their list, read from the manifests at that moment, instead of failing on a missing argument
 
 ## Removed
 

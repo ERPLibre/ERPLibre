@@ -1323,32 +1323,17 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Mirrors - Remove one")},
         ]
         help_info = self.fill_help_info(choices)
-        sans_version = t("No .odoo-version: no active version to fill.")
-        rien = t("Nothing declared for this version.")
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
             if status == "1":
-                if not version:
-                    print(f"  {sans_version}\n")
-                elif not base:
-                    print(f"  {rien}\n")
-                else:
-                    self._cache_miroir_remplir(base)
+                self._cache_miroir_remplir_version()
             elif status == "2":
-                if not version:
-                    print(f"  {sans_version}\n")
-                elif not extra:
-                    print(f"  {rien}\n")
-                else:
-                    print(
-                        f"  {t('Extra modules install only with --with_extra.')}"
-                    )
-                    self._cache_miroir_remplir(extra)
+                self._cache_miroir_remplir_version(extra=True)
             elif status == "3":
-                self._cache_miroir_remplir(tous)
+                self._cache_miroir_remplir_tout()
             elif status == "4":
                 self._cache_miroir_lister()
             elif status == "5":
@@ -1380,6 +1365,36 @@ class QemuCacheMenuMixin:
         if not click.confirm(t("Fill the git mirrors now?")):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_miroir_remplir_version(self, extra=False):
+        """Remplit les miroirs de la base de la version d'Odoo active, ou de
+        son extra (`extra`), leur liste lue dans les manifestes au moment de
+        l'entrée. Dit pourquoi rien ne se remplit sans version active ou
+        sans dépôt déclaré."""
+        version = version_active(RACINE_DEPOT)
+        if not version:
+            print(f"  {t('No .odoo-version: no active version to fill.')}\n")
+            return
+        if extra:
+            fichiers = [manifeste_extra(version)]
+            liste = depots_des_manifestes(RACINE_DEPOT, fichiers=fichiers)
+        else:
+            liste = depots_des_manifestes(RACINE_DEPOT, version)
+        if not liste:
+            print(f"  {t('Nothing declared for this version.')}\n")
+            return
+        if extra:
+            print(f"  {t('Extra modules install only with --with_extra.')}")
+        self._cache_miroir_remplir(liste)
+
+    def _cache_miroir_remplir_tout(self):
+        """Remplit les miroirs de tous les manifestes, toutes versions, leur
+        liste lue au moment de l'entrée."""
+        tous = depots_des_manifestes(RACINE_DEPOT)
+        if not tous:
+            print(f"  ✗ {t('No repository found in manifest/')}\n")
+            return
+        self._cache_miroir_remplir(tous)
 
     def _cache_miroir_lister(self):
         """Du plus lourd au plus léger : c'est ce qu'on cherche quand on
