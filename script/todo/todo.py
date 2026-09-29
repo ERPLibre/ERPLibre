@@ -491,7 +491,6 @@ class TODO(
 
         # TODO use external script to detect terminal to use on system
         # TODO check script open_terminal_code_generator.sh
-        # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
         try:
             subprocess.run(cmd, shell=True, executable="/bin/bash", check=True)
         except subprocess.CalledProcessError as e:

@@ -110,10 +110,9 @@ class LongTestMenuMixin:
 
     def _longtest_descente(self, script, dry_run=False):
         """Lance la descente `script`, deep_proxmox.py ou deep_qemu.py : la
-        profondeur est DEMANDÉE, c'est le réglage qui décide de la durée —
-        au-delà de trois étages, tout est 15 à 30 fois plus lent, et cinq
-        se comptent en heures —, puis d'où elle part. `dry_run` n'en montre
-        que le plan."""
+        profondeur est DEMANDÉE, c'est le réglage qui décide de la durée
+        (voir `_longtest_depth` pour ce qu'elle coûte selon l'étage), puis
+        d'où elle part. `dry_run` n'en montre que le plan."""
         args = f"--depth {self._longtest_depth()}"
         args += self._longtest_depart(script)
         if dry_run:
