@@ -29,7 +29,8 @@ def _draw(todo, menu) -> tuple:
     texte de `todo.fill_help_info`, et le (méthode, kwargs) de chaque
     entrée numérotée, dans l'ordre. Les gardes et les suffixes, puis la
     ligne d'état, sont demandés à `todo` avant l'en-tête ; une entrée
-    dont la garde rend faux n'est ni montrée ni comptée."""
+    dont la garde rend faux n'est ni montrée ni comptée, et un élément de
+    configuration qui porte une section, montrée, n'est pas compté."""
     choices, actions = [], []
     for item in menu.entries:
         if isinstance(item, Section):
@@ -37,7 +38,8 @@ def _draw(todo, menu) -> tuple:
         elif isinstance(item, FromConfig):
             for element in todo.config_file.get_config(item.config_key) or []:
                 choices.append(element)
-                actions.append((item.action, {item.kwarg: element}))
+                if not element.get("section"):
+                    actions.append((item.action, {item.kwarg: element}))
         elif not item.when or getattr(todo, item.when)():
             kwargs = dict(item.kwargs or {})
             label = t(item.key)

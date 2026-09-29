@@ -254,6 +254,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Docker / Podman › Service › État et journal, lancé depuis la TUI, demande le moteur et montre l'état et le journal de son service au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Installer Docker, Installer Podman, Images et Conteneurs, lancées depuis la TUI, installent leur moteur ou listent ce qu'il détient au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Conteneur ERPLibre › Copier un fichier dans le conteneur, lancé depuis la TUI, vérifie le moteur docker et emporte la socket d'un démon par compte, comme depuis son menu, au lieu de lancer le script sans eux
+- Un menu déclaré qui liste des entrées de `todo.json` ou de sa surcharge privée, dont Exécution › Code, Update, Git et Automatisation, montre une section de cette liste sans numéro, comme avant, et chaque numéro lance désormais l'entrée qu'il montre au lieu de celle montrée avant elle ; la télémétrie de navigation ne liste plus la section comme une commande
 
 ## Retiré
 

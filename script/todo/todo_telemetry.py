@@ -614,7 +614,8 @@ def _declared_menus(todo_dir) -> dict:
 def _declared_children(menu, todo_dir, labels, build) -> list:
     """Nœuds des entrées de `menu`, un menu déclaré : le nœud de `build`
     pour une `Entry` qui ouvre un menu de `labels`, une feuille pour une
-    autre, une feuille par élément de la liste d'un `FromConfig`. Une
+    autre, une feuille par élément de la liste d'un `FromConfig`, sauf un
+    élément qui porte une section, qui nomme celle des suivants. Une
     entrée dont le libellé finit par un `suffix` calculé à l'affichage
     porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
     Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
@@ -651,6 +652,9 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
             children.append(leaf)
         elif kind == "FromConfig":
             for element in _config_list(item.get("config_key"), todo_dir):
+                if element.get("section"):
+                    section = element["section"]
+                    continue
                 children.append(
                     {
                         "label": element.get("prompt_description_key")

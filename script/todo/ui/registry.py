@@ -60,7 +60,8 @@ class FromConfig:
     """Une entrée par élément de la liste `config_key` de todo.json et de
     ses surcharges privées, relue à chaque rendu du menu : l'élément porte
     son libellé, et y répondre appelle la méthode `action` avec
-    `{kwarg: élément}`."""
+    `{kwarg: élément}`. Un élément `{"section": …}` est un titre de
+    section, qui ne prend pas de numéro."""
 
     config_key: str
     action: str

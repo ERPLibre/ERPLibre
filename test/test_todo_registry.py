@@ -287,6 +287,32 @@ class TestNavigator(unittest.TestCase):
             [name for name, _ in todo.calls], ["last", "guarded", "last"]
         )
 
+    def test_a_section_of_a_configured_list_takes_no_number(self):
+        # Montrée sans numéro, comme par fill_help_info : « 2 » lance
+        # l'élément qui la suit, et « 3 » n'est pas affiché.
+        after = {"prompt_description": "After"}
+        todo = FakeTodo(
+            {
+                "forged_list": [
+                    {"prompt_description": "Before"},
+                    {"section": "Forged section"},
+                    after,
+                ]
+            }
+        )
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [FromConfig("forged_list", "run_element", "instance")],
+        )
+        _, _, texts = self.navigate(menu, ["2", "3", "0"], todo)
+        self.assertEqual(todo.calls, [("run_element", {"instance": after})])
+        self.assertEqual(
+            texts[0],
+            "[1] Before\n── Forged section ──\n[2] After\n[0] Back\n",
+        )
+        self.assertEqual(self.out.getvalue().count("Command not found !"), 1)
+
     def test_a_list_absent_from_the_configuration_adds_no_entry(self):
         menu = Menu(
             "forged_menu",
@@ -536,6 +562,29 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertEqual(
             (pick["label"], pick["method"], pick["kwargs"]),
             ("Pick", None, {"key": "forged_key"}),
+        )
+
+    def test_a_section_of_a_configured_list_is_no_leaf(self):
+        # Comme au menu : l'élément qui porte une section n'est pas une
+        # feuille, et nomme la section de ceux qui le suivent.
+        (self.dir / "todo.json").write_text(
+            '{"forged_list": [{"prompt_description": "Before"},'
+            ' {"section": "Forged section"},'
+            ' {"prompt_description": "After"}]}'
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [
+                (n["label"], n.get("section"))
+                for n in configuration["children"]
+            ],
+            [
+                ("Language", "Interface"),
+                ("Pick", "Interface"),
+                ("Forged", None),
+                ("Before", "Maintenance"),
+                ("After", "Forged section"),
+            ],
         )
 
     def test_a_menu_opened_by_another_object_has_no_crumb(self):

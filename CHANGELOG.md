@@ -254,6 +254,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Docker / Podman › Service › Status and journal, launched from the TUI, asks for the engine and shows the state and journal of its service instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Install Docker, Install Podman, Images and Containers, launched from the TUI, install their engine or list what it holds instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
+- A declared menu that lists entries of `todo.json` or of its private override, Execute › Code, Update, Git and Automation among them, shows a section of that list without a number, as it did, and each number now runs the entry it shows instead of the one shown before it; navigation telemetry no longer lists the section as a command
 
 ## Removed
 
