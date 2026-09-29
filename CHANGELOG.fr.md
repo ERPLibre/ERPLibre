@@ -246,6 +246,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › GPT code › Claude Code montre Lister les sessions locales sous son propre nom au lieu du nom de sa méthode
 - Télémétrie de navigation : les trois outils de shell d'Exécution › Git, qui lancent un installateur et écrivent dans le fichier du shell, et les cinq actions du serveur de production de Git local server, qui tournent en root, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 - Exécution › Deploy › QEMU/KVM : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +21 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service › État détaillé, lancé depuis la TUI, montre l'état du service du cache au lieu d'échouer sur un argument manquant
 
 ## Retiré
 

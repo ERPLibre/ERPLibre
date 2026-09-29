@@ -644,7 +644,7 @@ class QemuCacheMenuMixin:
             if status in verbes:
                 self._cache_systemctl(verbes[status])
             elif status == "5":
-                self._cache_systemctl("status --no-pager", montrer=False)
+                self._cache_systemctl(verbe="status --no-pager", montrer=False)
             elif status == "6":
                 self._cache_journal_service()
             else:

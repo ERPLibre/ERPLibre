@@ -396,6 +396,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › GPT code › Claude Code shows List local sessions under its own name instead of the name of its method
 - Navigation telemetry: Execute › Git's three shell tools, which run an installer and write to the shell's file, and the five actions of Git local server's production server, which run as root, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
 - Execute › Deploy › QEMU/KVM: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +21 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
+- Navigation telemetry: Execute › Deploy › QEMU cache › Service › Detailed state, launched from the TUI, shows the state of the cache service instead of failing on a missing argument
 
 <!-- [fr] -->
 
@@ -512,6 +513,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › GPT code › Claude Code montre Lister les sessions locales sous son propre nom au lieu du nom de sa méthode
 - Télémétrie de navigation : les trois outils de shell d'Exécution › Git, qui lancent un installateur et écrivent dans le fichier du shell, et les cinq actions du serveur de production de Git local server, qui tournent en root, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 - Exécution › Deploy › QEMU/KVM : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +21 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service › État détaillé, lancé depuis la TUI, montre l'état du service du cache au lieu d'échouer sur un argument manquant
 
 <!-- [en] -->
 ## Removed

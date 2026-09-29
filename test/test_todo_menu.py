@@ -764,6 +764,34 @@ class TestLArbreDesMenus(unittest.TestCase):
             [{False}, {True}],
         )
 
+    def test_each_leaf_of_the_qemu_family_binds_its_arguments(self):
+        # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
+        # attend un argument que l'arbre ne donne pas lève dans la TUI au
+        # lieu de lancer sa commande. Chaque menu nommé, un chemin sous
+        # Execute, lie ses feuilles et celles de ses sous-menus.
+        import inspect
+
+        from script.todo.todo import TODO
+
+        def leaves(node):
+            for child in node["children"]:
+                if child["is_menu"]:
+                    yield from leaves(child)
+                elif child.get("method"):
+                    yield child
+
+        found = []
+        for path in (("Deploy", "QEMU cache", "Service"),):
+            node = self._noeud("Execute")
+            for label in path:
+                [node] = [c for c in node["children"] if c["label"] == label]
+            found += leaves(node)
+        self.assertTrue(found)
+        for leaf in found:
+            with self.subTest(leaf=leaf["label"]):
+                method = getattr(TODO, leaf["method"])
+                inspect.signature(method).bind(None, **leaf["kwargs"])
+
 
 class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu QEMU/KVM, désormais dans script/todo/qemu_menu.py."""
