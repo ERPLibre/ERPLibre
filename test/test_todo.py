@@ -858,6 +858,15 @@ class TestGitAddRemote(unittest.TestCase):
                     shlex.split(command), ["git", "remote", "add", *arguments]
                 )
 
+    def test_a_failure_of_git_is_reported(self):
+        # La commande rend son code sans lever : un remote qui existe déjà
+        # fait sortir git en 3, et rien n'a été ajouté.
+        _, out = self.answer(["forged", "forged-address"], status=3)
+        self.assertNotIn(todo_i18n.t("Remote added successfully!"), out)
+        self.assertIn(f"{todo_i18n.t('Error adding remote: ')}3", out)
+        _, out = self.answer(["forged", "forged-address"])
+        self.assertIn(todo_i18n.t("Remote added successfully!"), out)
+
 
 class TestClaudePlugins(unittest.TestCase):
     """Le menu des plugins Claude Code.

@@ -2957,7 +2957,8 @@ class TODO(
     def _git_add_remote(self):
         """Ajoute un remote au dépôt du répertoire courant : son nom,
         « localhost » sans réponse, et son adresse arrivent à git tels que
-        tapés, chacun en un argument que le shell ne découpe pas."""
+        tapés, chacun en un argument que le shell ne découpe pas. Le succès
+        ne s'annonce que sur un code de sortie nul."""
         remote_name = (
             input(t("Remote name (default: localhost): ")).strip()
             or "localhost"
@@ -2974,10 +2975,15 @@ class TODO(
         )
         print(f"{t('Will execute:')} {cmd}")
         try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(t("Remote added successfully!"))
+            # Le code de sortie se RENVOIE : un échec de git ne lève rien.
+            status = self.execute.exec_command_live(cmd, source_erplibre=False)
         except Exception as e:
             print(f"{t('Error adding remote: ')}{e}")
+            return
+        if status:
+            print(f"{t('Error adding remote: ')}{status}")
+            return
+        print(t("Remote added successfully!"))
 
     def _git_install_hooks(self):
         """Pointer core.hooksPath sur les hooks du dépôt.

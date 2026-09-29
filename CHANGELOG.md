@@ -240,6 +240,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › GPT code › Claude Code: a session is chosen only by a rank as listed: « ² » no longer stops TODO on an error, and « 01 » or a digit of another script choose nothing instead of the first session
 - Execute › GPT code › Add an automation with Claude in todo.py offers the sections whose list a menu reads, git, code, update, qemu and proxmox, and refuses another one: config, network and process, offered until now, wrote a list that no menu shows, and said it succeeded
 - Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
+- Execute › Git › Add a remote to a local repository reports git's failure, a remote that already exists say, with its exit code, instead of announcing it was added
 
 ## Removed
 
