@@ -347,6 +347,15 @@ Exit codes, and the vocabulary is closed: `0` the trial went all the way, `20`
 the tooling is missing and nothing was attempted, `30` something stopped it
 before it measured.
 
+**A refusal carries the CAUSE, not the stack.** When a gesture of the engine
+fails, each level of `make` piles its own error on top; keeping the end of its
+output returns that pile — "Error 2" three times — and says nothing of the task
+that failed, cutting the cause in half when it barely overruns the window.
+Ansible prints its cause on a `fatal:` line, and that line is what the bench
+keeps, trimmed from the head since the message of such an object comes early.
+Where there is no such line — a script's refusal — the tail is the right
+fallback, and that is what is kept.
+
 **What is posed today are the DECISIONS, and they are all guarded** —
 prerequisites said before anything is created, the terrain, a free bridge, the
 shape of the token, the order of the undoing, the footprint. The verbs that
