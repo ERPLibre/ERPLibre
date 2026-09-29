@@ -11,12 +11,12 @@ module n'importe ni TODO ni une bibliothèque d'interface.
 
 `key` (d'une `Entry` ou d'une `Section`) et `intro` (d'un `Menu`) sont
 des clés de traduction anglaises, que `t()` traduit au rendu. `action`,
-`state`, `suffix`, `when`, `opens` et `before` sont des NOMS de méthodes
-de l'objet qui ouvre le menu, TODO ou un objet de TODO, jamais des
-fonctions. Le numéro d'une entrée est sa place parmi les entrées
-numérotées montrées : une `Section` n'en prend pas, un `FromConfig` en
-prend un par élément de sa liste qui n'est pas une section, une `Entry`
-dont la garde `when` rend faux aucun.
+`state`, `suffix`, `when`, `opens`, `before` et `method` sont des NOMS
+de méthodes de l'objet qui ouvre le menu, TODO ou un objet de TODO,
+jamais des fonctions. Le numéro d'une entrée est sa place parmi les
+entrées numérotées montrées : une `Section` n'en prend pas, un
+`FromConfig` ou un `FromMethod` en prend un par élément de sa liste qui
+n'est pas une section, une `Entry` dont la garde `when` rend faux aucun.
 """
 
 from dataclasses import dataclass
@@ -70,17 +70,31 @@ class FromConfig:
 
 
 @dataclass(frozen=True)
+class FromMethod:
+    """Une entrée par élément de la liste que rend la méthode `method`,
+    appelée sans argument à chaque rendu du menu : comme un `FromConfig`,
+    l'élément porte son libellé, un élément `{"section": …}` est un titre
+    de section, et y répondre appelle la méthode `action` avec
+    `{kwarg: élément}`. L'arbre de télémétrie, qui n'appelle rien, n'en
+    montre aucune feuille."""
+
+    method: str
+    action: str
+    kwarg: str
+
+
+@dataclass(frozen=True)
 class Menu:
     """Un menu. `name` : la méthode qui l'ouvre ; `crumb` : son segment
     du fil d'Ariane, sa valeur dans `_MENU_LABELS` et la clé de
     télémétrie, ou None pour un menu qu'ouvre un autre objet que TODO :
     le fil d'Ariane ne lit que les cadres de TODO, et ce menu s'affiche
     sous celui du menu de TODO qui l'appelle. `entries` : des `Section`,
-    `Entry` et `FromConfig`, dans l'ordre affiché. `state` nomme la
-    méthode qui rend la ligne d'état sous le fil d'Ariane. `intro` est la
-    clé de la ligne dite une fois, à l'entrée, derrière `mark`. [0] rend
-    `back`. `render` : "each" redessine le menu à chaque tour, "once" le
-    dessine une fois, avant de poser la question.
+    `Entry`, `FromConfig` et `FromMethod`, dans l'ordre affiché. `state`
+    nomme la méthode qui rend la ligne d'état sous le fil d'Ariane.
+    `intro` est la clé de la ligne dite une fois, à l'entrée, derrière
+    `mark`. [0] rend `back`. `render` : "each" redessine le menu à chaque
+    tour, "once" le dessine une fois, avant de poser la question.
     `closes` : le menu se referme après l'action d'une entrée, et rend
     alors `back`, comme sur [0].
     `abort_closes` : Ctrl+C ou Ctrl+D à sa question referment le menu,

@@ -296,6 +296,43 @@ class TestNavigator(unittest.TestCase):
         self.assertEqual(todo.calls, [("run_element", {"instance": element})])
         self.assertEqual(texts[0], "[1] 🔙 Back\n[0] Back\n")
 
+    def test_a_listed_element_is_given_to_its_action(self):
+        # La méthode d'un FromMethod rend sa liste à chaque dessin ; un
+        # élément prend un numéro, une section non, et y répondre appelle
+        # l'action avec l'élément, comme une liste configurée.
+        todo, lists = FakeTodo(), []
+
+        def forged_list():
+            lists.append(1)
+            return [
+                {"prompt_description": "One"},
+                {"section": "Forged section"},
+                {"prompt_description": "Two"},
+            ]
+
+        todo.forged_list = forged_list
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                registry.FromMethod("forged_list", "run_element", "element"),
+                Entry("Last", "last"),
+            ],
+        )
+        _, _, texts = self.navigate(menu, ["2", "3", "0"], todo)
+        self.assertEqual(
+            texts[0],
+            "[1] One\n── Forged section ──\n[2] Two\n[3] Last\n[0] Back\n",
+        )
+        self.assertEqual(
+            todo.calls,
+            [
+                ("run_element", {"element": {"prompt_description": "Two"}}),
+                ("last", {}),
+            ],
+        )
+        self.assertEqual(len(lists), 3)
+
     def test_once_draws_and_reads_once(self):
         todo = FakeTodo({"forged_list": [{"prompt_description": "One"}]})
         menu = Menu(
@@ -671,6 +708,21 @@ class TestDeclaredTree(unittest.TestCase):
             ],
         )
 
+    def test_a_method_listed_entry_is_no_leaf(self):
+        # L'arbre n'appelle rien : les entrées que rend la méthode d'un
+        # FromMethod ne s'y lisent pas, les autres entrées du menu si.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'FromConfig("forged_list", "run_element", "instance")',
+                'FromMethod("forged_list", "run_element", "instance")',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            [n["label"] for n in configuration["children"]],
+            ["Language", "Pick", "Forged"],
+        )
+
     def test_a_menu_opened_by_another_object_has_no_crumb(self):
         # Le fil d'Ariane ne lit que les cadres de TODO : un menu qu'ouvre
         # un autre objet s'affiche sous celui qui l'appelle.
@@ -728,6 +780,9 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS + 'OTHER = Menu("forged_other", entries=[])\n',
                 FAKE_MENUS.replace("back=None", "back=None, opens=1"),
                 FAKE_MENUS.replace("back=None", "back=None, before=1"),
+                FAKE_MENUS.replace(
+                    'FromConfig("forged_list"', 'FromMethod(["forged_list"]'
+                ),
             )
         ):
             with self.subTest(case=n):
@@ -783,6 +838,7 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertEqual(
             fields["FromConfig"], ["config_key", "action", "kwarg"]
         )
+        self.assertEqual(fields["FromMethod"], ["method", "action", "kwarg"])
         self.assertEqual(fields["Section"], ["key"])
         self.assertEqual(
             fields["Entry"][:5], ["key", "action", "kwargs", "suffix", "when"]
@@ -1021,6 +1077,9 @@ class TestTodoMenuFiles(unittest.TestCase):
                     calls.append((item.when, {}))
                 elif isinstance(item, FromConfig):
                     calls.append((item.action, {item.kwarg: {}}))
+                elif isinstance(item, registry.FromMethod):
+                    calls.append((item.method, {}))
+                    calls.append((item.action, {item.kwarg: {}}))
             for name, kwargs in calls:
                 if name is None:
                     continue
@@ -1047,7 +1106,7 @@ class TestTodoMenuFiles(unittest.TestCase):
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}
-                elif isinstance(item, FromConfig):
+                elif isinstance(item, (FromConfig, registry.FromMethod)):
                     kwargs = {item.kwarg: {}}
                 else:
                     continue

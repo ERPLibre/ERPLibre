@@ -537,6 +537,7 @@ _TEXT_FIELDS = {
     "Section": (("key",), (), ()),
     "Entry": (("key", "action"), ("suffix", "when"), ()),
     "FromConfig": (("config_key", "action", "kwarg"), (), ()),
+    "FromMethod": (("method", "action", "kwarg"), (), ()),
 }
 
 
@@ -544,18 +545,18 @@ def _check_menu(menu) -> None:
     """ValueError si `menu`, le dict que `_declared` rend d'un appel de
     `Menu`, n'a pas la forme que lisent l'arbre et le navigateur : chaque
     champ de _TEXT_FIELDS donné s'il doit l'être, et une chaîne, ou None
-    là où _TEXT_FIELDS le permet ; `entries` une liste de Section, Entry
-    et FromConfig, les `kwargs` d'une Entry None ou un dict aux clés de
-    chaîne, son `danger` None ou un booléen. TypeError si ces `kwargs` ne
-    s'écrivent pas en JSON, comme l'arbre que sert le hub."""
+    là où _TEXT_FIELDS le permet ; `entries` une liste de Section, Entry,
+    FromConfig et FromMethod, les `kwargs` d'une Entry None ou un dict aux
+    clés de chaîne, son `danger` None ou un booléen. TypeError si ces
+    `kwargs` ne s'écrivent pas en JSON, comme l'arbre que sert le hub."""
     entries = menu.get("entries")
     if not isinstance(entries, list):
         raise ValueError(f"entries is not a list: {entries!r}")
     for item in [menu, *entries]:
         kind = item.get("type") if isinstance(item, dict) else None
-        kinds = (
-            ("Menu",) if item is menu else ("Section", "Entry", "FromConfig")
-        )
+        kinds = ("Menu",)
+        if item is not menu:
+            kinds = ("Section", "Entry", "FromConfig", "FromMethod")
         if kind not in kinds:
             raise ValueError(f"not one of {kinds}: {item!r}")
         required, nullable, defaulted = _TEXT_FIELDS[kind]
@@ -628,7 +629,9 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     la garde, et la TUI, qui lance une feuille par sa méthode, ne la
     lance pas. La garde ne protège qu'une feuille : une entrée gardée qui
     ouvre un menu de `labels` porte le nœud de `build`, dont les feuilles
-    gardent leur méthode, et la TUI les lance quoi que rende la garde."""
+    gardent leur méthode, et la TUI les lance quoi que rende la garde. Un
+    `FromMethod` n'y donne aucune feuille : sa liste ne se lit qu'en
+    appelant sa méthode."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None

@@ -21,7 +21,7 @@ la clé de télémétrie aussi.
 import click
 
 from script.todo.todo_i18n import t
-from script.todo.ui.registry import FromConfig, Section
+from script.todo.ui.registry import FromConfig, FromMethod, Section
 
 
 def _draw(todo, menu) -> tuple:
@@ -30,13 +30,18 @@ def _draw(todo, menu) -> tuple:
     entrée numérotée, dans l'ordre. Les gardes et les suffixes, puis la
     ligne d'état, sont demandés à `todo` avant l'en-tête ; une entrée
     dont la garde rend faux n'est ni montrée ni comptée, et un élément de
-    configuration qui porte une section, montrée, n'est pas compté."""
+    configuration, ou de la liste que rend la méthode d'un `FromMethod`,
+    qui porte une section, montrée, n'est pas compté."""
     choices, actions = [], []
     for item in menu.entries:
         if isinstance(item, Section):
             choices.append({"section": t(item.key)})
-        elif isinstance(item, FromConfig):
-            for element in todo.config_file.get_config(item.config_key) or []:
+        elif isinstance(item, (FromConfig, FromMethod)):
+            if isinstance(item, FromConfig):
+                elements = todo.config_file.get_config(item.config_key)
+            else:
+                elements = getattr(todo, item.method)()
+            for element in elements or []:
                 choices.append(element)
                 if not element.get("section"):
                     actions.append((item.action, {item.kwarg: element}))
