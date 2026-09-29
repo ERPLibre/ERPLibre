@@ -389,6 +389,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › GPT code › Claude Code: List local sessions, Ask a question to a session and Resume a session read the sessions when they are answered, instead of those the menu drew: a session started in another terminal while the menu waits is offered, and the navigation telemetry TUI, which launches them without an argument, runs them instead of failing
 - Execute › GPT code › Claude Code: a session is chosen only by a rank as listed: « ² » no longer stops TODO on an error, and « 01 » or a digit of another script choose nothing instead of the first session
 - Execute › GPT code › Add an automation with Claude in todo.py offers the sections whose list a menu reads, git, code, update, qemu and proxmox, and refuses another one: config, network and process, offered until now, wrote a list that no menu shows, and said it succeeded
+- Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
 
 <!-- [fr] -->
 
@@ -498,6 +499,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › GPT code › Claude Code : Lister les sessions locales, Poser une question à une session et Reprendre une session lisent les sessions au moment où elles répondent, et non celles que le menu a dessinées : une session ouverte dans un autre terminal pendant que le menu attend est proposée, et la TUI de la télémétrie de navigation, qui les lance sans argument, les exécute au lieu d'échouer
 - Exécution › GPT code › Claude Code : une session ne se choisit que par un rang tel que listé : « ² » n'arrête plus TODO sur une erreur, et « 01 » ou un chiffre d'une autre écriture ne choisissent rien au lieu de la première session
 - Exécution › GPT code › Ajouter une automatisation avec Claude dans todo.py propose les sections dont un menu lit la liste, git, code, update, qemu et proxmox, et en refuse une autre : config, network et process, proposées jusqu'ici, écrivaient une liste qu'aucun menu ne montre, en annonçant un succès
+- Exécution › Git › Ajouter un remote vers un dépôt local passe à git le nom et l'adresse tels que tapés : un blanc ne les coupe plus, et un caractère du shell comme « ; » ne termine plus la commande pour lancer ce qui suit
 
 <!-- [en] -->
 ## Removed

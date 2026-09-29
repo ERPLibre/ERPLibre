@@ -7,6 +7,7 @@ import builtins
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -823,6 +824,39 @@ class TestClaudeAddAutomation(unittest.TestCase):
             with self.subTest(section=section):
                 key = f'"{section}_from_makefile"'
                 self.assertTrue(any(key in text for text in sources), key)
+
+
+class TestGitAddRemote(unittest.TestCase):
+    """Git › Add a remote : le nom et l'adresse tapés arrivent à git tels
+    quels, chacun en un argument ; la commande est un double."""
+
+    def answer(self, answers, status=0):
+        """(commande lancée, texte affiché) quand l'ajout reçoit
+        `answers` et que la commande rend `status`."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = status
+        with (
+            patch("builtins.input", side_effect=answers),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            todo._git_add_remote()
+        command = todo.execute.exec_command_live.call_args.args[0]
+        return command, out.getvalue()
+
+    def test_the_name_and_the_address_reach_git_as_typed(self):
+        # Un blanc ne coupe pas une réponse, un « ; » ne lance rien après
+        # git ; sans nom, le remote s'appelle localhost.
+        name, address = "forged name", "/forged dir/repo.git; forged"
+        for answers, arguments in (
+            ([name, address], [name, address]),
+            (["", "forged-address"], ["localhost", "forged-address"]),
+        ):
+            with self.subTest(answers=answers):
+                command, _ = self.answer(answers)
+                self.assertEqual(
+                    shlex.split(command), ["git", "remote", "add", *arguments]
+                )
 
 
 class TestClaudePlugins(unittest.TestCase):

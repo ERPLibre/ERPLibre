@@ -2955,6 +2955,9 @@ class TODO(
                     print(t("Command not found !"))
 
     def _git_add_remote(self):
+        """Ajoute un remote au dépôt du répertoire courant : son nom,
+        « localhost » sans réponse, et son adresse arrivent à git tels que
+        tapés, chacun en un argument que le shell ne découpe pas."""
         remote_name = (
             input(t("Remote name (default: localhost): ")).strip()
             or "localhost"
@@ -2965,7 +2968,10 @@ class TODO(
         if not remote_url:
             print(t("Repository address is required!"))
             return
-        cmd = f"git remote add {remote_name} {remote_url}"
+        cmd = (
+            f"git remote add {shlex.quote(remote_name)}"
+            f" {shlex.quote(remote_url)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         try:
             self.execute.exec_command_live(cmd, source_erplibre=False)
