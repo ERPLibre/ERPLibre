@@ -93,6 +93,52 @@ class TestWhichFileIsChosen(Base):
         self.assertEqual(0, done.returncode, done.stderr)
 
 
+class TestOpenerpServerOnlyForOdoo8And9(unittest.TestCase):
+    """Odoo 8 et 9 ne lisent qu'OPENERP_SERVER ; Odoo 19 le déclare obsolète
+    à chaque démarrage. La variable ne suit donc que le paquet « openerp »."""
+
+    def lire(self, version, paquet):
+        import shutil
+        import tempfile
+
+        racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, racine)
+        with io.open(os.path.join(racine, ".odoo-version"), "w") as handle:
+            handle.write(version)
+        os.makedirs(os.path.join(racine, "odoo" + version, "odoo", paquet))
+        with io.open(os.path.join(racine, "config.conf"), "w") as handle:
+            handle.write("[options]\n")
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("ODOO_RC", "OPENERP_SERVER")
+        }
+        done = subprocess.run(
+            [
+                "bash",
+                "-c",
+                f'source {LIB!r}; odoo_rc_resolve "$1";'
+                ' echo "${ODOO_RC:-}|${OPENERP_SERVER:-}"',
+                "bash",
+                racine,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertEqual(0, done.returncode, done.stderr)
+        return racine, done.stdout.strip()
+
+    def test_odoo_8_gets_both_variables(self):
+        racine, sortie = self.lire("8.0", "openerp")
+        config = os.path.join(racine, "config.conf")
+        self.assertEqual(f"{config}|{config}", sortie)
+
+    def test_odoo_19_gets_odoo_rc_only(self):
+        racine, sortie = self.lire("19.0", "odoo")
+        self.assertEqual(os.path.join(racine, "config.conf") + "|", sortie)
+
+
 class TestTheEntryPointUsesIt(unittest.TestCase):
     def source(self, nom):
         with io.open(os.path.join(REPO, nom), encoding="utf-8") as handle:
