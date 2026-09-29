@@ -14,6 +14,11 @@ geojson==2.5.0
 shapely==1.7.1
 evdev==1.5.0
 py-Asterisk==0.5.18
+# Le JSON-RPC d'Odoo 8 passe par simplejson. La 3.5.3 d'Odoo n'a que ses
+# sources : compilée contre un CPython 2.7 dont Py_UNICODE est signé, son
+# accélérateur C corrompt chaque octet UTF-8 non ASCII, et la réponse n'est
+# plus du JSON. La 4.1.2 a une roue manylinux cp27mu, compilée ailleurs.
+simplejson==4.1.2
 # responses 0.10.6 passe encore par l'urllib3 que requests embarque : le
 # requests épinglé par Odoo 8 et 9 n'installe pas urllib3 à part, et les
 # versions suivantes l'importent directement.
