@@ -286,6 +286,15 @@ def poser(unite, ecoute=ECOUTE_DEFAUT):
         texte = rendre(unite, ecoute)
     except (OSError, ValueError) as exc:
         return False, str(exc)
+    # Refuse tant que l'environnement n'est pas pose. « enable --now » demarre
+    # le service, et un service sans son environnement echoue aussitot : on
+    # obtient une unite en panne, une boucle de relances, et une cause enfouie
+    # a trois niveaux dans un journal. Les valeurs disponibles ne suffisent pas
+    # — c'est le FICHIER que systemd lira.
+    if not environnement_pose():
+        return False, ("environnement absent de %s : le service demarrerait sans"
+                       " savoir ou joindre Odoo, ni sous quel compte faire"
+                       " sonner le softphone." % CHEMIN_ENV)
     if unite == VOIX and not valeurs(unite)["@BINAIRE@"]:
         return False, ("erplibre-sip-go n'est pas installe : l'unite pointerait"
                        " vers un binaire absent.")

@@ -2321,10 +2321,10 @@ TRANSLATIONS = {
         "en": 'values not found: %s',
     },
     'modem_service_env_first': {
-        "fr": ('Le fichier d\'environnement n\'est pas pose : les services '
-               'demarreront sans savoir ou joindre Odoo.'),
-        "en": ('The environment file is not in place: the services will start '
-               'without knowing where to reach Odoo.'),
+        "fr": ('Posez d\'abord le fichier d\'environnement : poser une unite '
+               'la demarre, et un service sans environnement echoue aussitot.'),
+        "en": ('Write the environment file first: installing a unit starts it, '
+               'and a service without its environment fails at once.'),
     },
     'modem_menu_voip': {
         "fr": '🌐 Services VoIP',

@@ -281,7 +281,10 @@ def _service_poser():
     from script.todo.modem import service as svc_mod
 
     if not svc_mod.environnement_pose():
-        print("  " + t("modem_service_env_first"))
+        # On s'arrete : poser demarre, et un service sans environnement
+        # echouerait aussitot en boucle.
+        print("  ❌ " + t("modem_service_env_first"))
+        return
     for unite in svc_mod.UNITES:
         ok, detail = svc_mod.poser(unite)
         print("  " + ("✅ " if ok else "❌ ") + unite

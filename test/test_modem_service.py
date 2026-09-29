@@ -220,5 +220,35 @@ class TestSoftphoneOdoo(unittest.TestCase):
         self.assertIn(poste, vus["script"])
 
 
+
+class TestPoseConditionnee(unittest.TestCase):
+    """Poser une unite la DEMARRE : ce qui ne peut pas servir ne part pas."""
+
+    def test_sans_environnement_la_pose_est_refusee(self):
+        """Un service sans son environnement echoue aussitot : on obtient une
+        unite en panne, une boucle de relances, et une cause enfouie a trois
+        niveaux dans un journal."""
+        appels = []
+
+        def faux_run(args, timeout=30):
+            appels.append(args)
+            return 0, ""
+
+        with mock.patch.object(service, "environnement_pose", return_value=False), \
+                mock.patch.object(service, "_run", faux_run):
+            for unite in service.UNITES:
+                ok, detail = service.poser(unite)
+                self.assertFalse(ok, unite)
+                self.assertIn(service.CHEMIN_ENV, detail)
+        self.assertEqual(appels, [], "rien ne doit avoir ete lance")
+
+    def test_les_valeurs_disponibles_ne_suffisent_pas(self):
+        """C'est le FICHIER que systemd lira, pas l'etat du poste : les deux se
+        confondaient, et l'ecran annoncait « rien ne manque » pendant que les
+        services echouaient faute de fichier."""
+        with mock.patch.object(service, "environnement_pose", return_value=False):
+            ok, _detail = service.poser(service.AGENT)
+        self.assertFalse(ok)
+        self.assertEqual(service.variables_manquantes(service.AGENT), [])
 if __name__ == "__main__":
     unittest.main()
