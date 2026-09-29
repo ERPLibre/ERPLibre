@@ -1308,6 +1308,83 @@ class TestGitServerProductionMenuNumbering(TestGitServerLocalMenuNumbering):
     PRODUCTION = True
 
 
+class TestGptCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """GPT code : Claude configs, l'ajout d'une automatisation, RTK, le
+    contexte donné à Claude, Plugins et les sessions de Claude Code."""
+
+    MENU = "prompt_execute_gpt_code"
+    EXPECTED = {
+        "Configure Claude Code configurations": "_prompt_claude_configs",
+        "Add an automation with Claude": "_claude_add_automation",
+        "RTK": "prompt_execute_rtk",
+        "Show the context given to Claude": "_show_claude_context",
+        "Claude Code plugins": "prompt_execute_claude_plugins",
+        "Claude Code - local sessions": "prompt_claude_sessions",
+    }
+
+
+class TestClaudeConfigsMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Claude configs : quatre déploiements de commandes `/…`, dont un de
+    deux commandes, puis la liste de celles qui sont installées."""
+
+    MENU = "_prompt_claude_configs"
+    EXPECTED = {
+        "Commit": "_setup_claude_command",
+        "Git prepare merge": "_setup_claude_command",
+        "Todo Add Command + Plan Max": "_setup_claude_todo_commands",
+        "Todo Generate Code": "_setup_claude_command",
+        "Show installed custom commands": "_list_claude_commands",
+    }
+
+    def test_each_deployment_names_its_command_and_template(self):
+        # Le gabarit que nomme une entrée est celui de sa commande dans la
+        # table que lisent la liste et l'écran de contexte.
+        from script.todo.todo import TODO
+
+        deployed = [
+            entry.kwargs
+            for entry in self.entries
+            if entry.action == "_setup_claude_command"
+        ]
+        self.assertEqual(len(deployed), 3)
+        for kwargs in deployed:
+            with self.subTest(command=kwargs["command_name"]):
+                self.assertEqual(
+                    TODO._CLAUDE_COMMAND_TEMPLATES[kwargs["command_name"]],
+                    kwargs["template_filename"],
+                )
+        self.assertEqual(
+            [k.get("personalize", False) for k in deployed],
+            [True, False, False],
+        )
+
+
+class TestPluginsMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Plugins : l'inventaire, l'installation, puis la maintenance des
+    plugins et des marketplaces de Claude Code."""
+
+    MENU = "prompt_execute_claude_plugins"
+    EXPECTED = {
+        "List installed plugins": "_claude_plugin_exec",
+        "List configured marketplaces": "_claude_plugin_exec",
+        "Search a plugin": "_claude_plugin_search",
+        "Show a plugin detail": "_claude_plugin_details",
+        "Install the ERPLibre preferred list": (
+            "_claude_install_preferred_plugins"
+        ),
+        "Install a plugin by name": "_claude_plugin_install_by_name",
+        "Add a marketplace": "_claude_marketplace_add",
+        "Update the marketplaces": "_claude_plugin_update",
+        "Uninstall a plugin": "_claude_plugin_uninstall",
+    }
+
+    def test_each_listing_passes_its_subcommand(self):
+        self.assertEqual(
+            [e.kwargs for e in self.entries if e.kwargs],
+            [{"args": "list"}, {"args": "marketplace list"}],
+        )
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -1973,6 +2050,9 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_git_local_server",
                 "_prompt_git_server_local",
                 "_prompt_git_server_production",
+                "prompt_execute_gpt_code",
+                "_prompt_claude_configs",
+                "prompt_execute_claude_plugins",
             },
             set(declared),
         )

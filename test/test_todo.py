@@ -589,13 +589,21 @@ class TestClaudeCommandTemplates(unittest.TestCase):
 
     @staticmethod
     def _deployed_pairs():
-        """(commande, gabarit) de chaque appel de todo.py à
-        `_setup_claude_command` : ses deux premiers arguments, écrits en
-        position ou nommés `command_name` et `template_filename`."""
+        """(commande, gabarit) de chaque déploiement de Claude configs :
+        les `kwargs` des entrées déclarées qui mènent à
+        `_setup_claude_command`, puis les appels de todo.py à cette
+        méthode, leurs deux premiers arguments écrits en position ou
+        nommés `command_name` et `template_filename`."""
         import ast
 
+        from script.todo.menus import git as menus_git
+
+        pairs = [
+            (e.kwargs["command_name"], e.kwargs["template_filename"])
+            for e in menus_git.CLAUDE_CONFIGS.entries
+            if e.action == "_setup_claude_command"
+        ]
         source = Path("script/todo/todo.py").read_text(encoding="utf-8")
-        pairs = []
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Call):
                 continue

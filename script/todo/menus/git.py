@@ -3,14 +3,14 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Git : Git, qu'ouvre Execute, Git local server et
 ses deux menus Actions, l'un du serveur local, l'autre du serveur de
-production.
+production ; GPT code, qu'ouvre Execute, Claude configs et Plugins.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
 nomme la méthode de TODO qui l'ouvre : son cadre porte le fil d'Ariane.
 """
 
-from script.todo.ui.registry import Entry, FromConfig, Menu
+from script.todo.ui.registry import Entry, FromConfig, Menu, Section
 
 GIT = Menu(
     "prompt_execute_git",
@@ -120,5 +120,111 @@ GIT_SERVER_PRODUCTION = Menu(
         ),
     ],
     intro="Production mode (/srv/git, root required)",
+    render="once",
+)
+
+GPT_CODE = Menu(
+    "prompt_execute_gpt_code",
+    "GPT code",
+    [
+        Entry(
+            "Configure Claude Code configurations", "_prompt_claude_configs"
+        ),
+        Entry(
+            "Add an automation with Claude in todo.py",
+            "_claude_add_automation",
+        ),
+        Entry(
+            "RTK - CLI proxy to reduce LLM token consumption",
+            "prompt_execute_rtk",
+        ),
+        Entry("Show the context given to Claude", "_show_claude_context"),
+        Entry(
+            "Claude Code plugins - marketplaces and ERPLibre list",
+            "prompt_execute_claude_plugins",
+        ),
+        Entry("Claude Code - local sessions", "prompt_claude_sessions"),
+    ],
+    intro="AI assistant tools for development!",
+    render="once",
+)
+
+CLAUDE_CONFIGS = Menu(
+    "_prompt_claude_configs",
+    "Claude configs",
+    [
+        Entry(
+            "Commit - OCA/Odoo commit command",
+            "_setup_claude_command",
+            kwargs={
+                "command_name": "commit",
+                "template_filename": "template_claude_commands_commit.md",
+                "personalize": True,
+            },
+        ),
+        Entry(
+            "Git prepare merge - Git merge preparation command",
+            "_setup_claude_command",
+            kwargs={
+                "command_name": "git_prepare_merge",
+                "template_filename": (
+                    "template_claude_commands_git_prepare_merge.md"
+                ),
+            },
+        ),
+        # Deux commandes, qui vont ensemble.
+        Entry(
+            "Todo Add Command + Plan Max - Plan and add a todo.py command",
+            "_setup_claude_todo_commands",
+        ),
+        Entry(
+            "Todo Generate Code - Code by the OCA rules at high effort",
+            "_setup_claude_command",
+            kwargs={
+                "command_name": "todo_generate_code",
+                "template_filename": (
+                    "template_claude_commands_todo_generate_code.md"
+                ),
+            },
+        ),
+        Entry("Show installed custom commands", "_list_claude_commands"),
+    ],
+    intro="Deploy Claude Code commands!",
+    render="once",
+)
+
+PLUGINS = Menu(
+    "prompt_execute_claude_plugins",
+    "Plugins",
+    [
+        Section("Inventory"),
+        Entry(
+            "List installed plugins",
+            "_claude_plugin_exec",
+            kwargs={"args": "list"},
+        ),
+        Entry(
+            "List configured marketplaces",
+            "_claude_plugin_exec",
+            kwargs={"args": "marketplace list"},
+        ),
+        Entry("Search a plugin in the marketplaces", "_claude_plugin_search"),
+        Entry(
+            "Show a plugin detail and its token cost", "_claude_plugin_details"
+        ),
+        Section("Install plugins"),
+        Entry(
+            "Install the ERPLibre preferred list",
+            "_claude_install_preferred_plugins",
+        ),
+        Entry("Install a plugin by name", "_claude_plugin_install_by_name"),
+        Entry("Add a marketplace", "_claude_marketplace_add"),
+        Section("Maintenance"),
+        Entry(
+            "Update the marketplaces and the plugins", "_claude_plugin_update"
+        ),
+        Entry("Uninstall a plugin", "_claude_plugin_uninstall"),
+    ],
+    intro="Manage Claude Code plugins and marketplaces!",
     render="once",
 )

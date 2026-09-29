@@ -459,8 +459,8 @@ class SessionsClaudeCode(unittest.TestCase):
         )
 
     def test_six_dispatche_vers_les_sessions_seulement(self):
-        """Les deux listes de `prompt_execute_gpt_code` sont tenues à la
-        main : l'entrée peut s'afficher et appeler autre chose."""
+        """[6] de GPT code ouvre les sessions de Claude Code, et rien
+        d'autre."""
         from script.todo.todo import TODO
 
         todo = TODO()

@@ -3225,104 +3225,16 @@ class TODO(
         )
 
     def prompt_execute_gpt_code(self):
-        print(f"🤖 {t('AI assistant tools for development!')}")
-        choices = [
-            {"prompt_description": t("Configure Claude Code configurations")},
-            {
-                "prompt_description": t(
-                    "Add an automation with Claude in todo.py"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "RTK - CLI proxy to reduce LLM token consumption"
-                )
-            },
-            {"prompt_description": t("Show the context given to Claude")},
-            {
-                "prompt_description": t(
-                    "Claude Code plugins - marketplaces and ERPLibre list"
-                )
-            },
-            {"prompt_description": t("Claude Code - local sessions")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_claude_configs()
-            elif status == "2":
-                self._claude_add_automation()
-            elif status == "3":
-                self.prompt_execute_rtk()
-            elif status == "4":
-                self._show_claude_context()
-            elif status == "5":
-                self.prompt_execute_claude_plugins()
-            elif status == "6":
-                self.prompt_claude_sessions()
-            else:
-                print(t("Command not found !"))
+        """Outils d'assistant IA (GPT_CODE, `menus/git.py`) : Claude
+        configs, l'ajout d'une automatisation, RTK, le contexte donné à
+        Claude, Plugins et les sessions de Claude Code. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.GPT_CODE)
 
     def _prompt_claude_configs(self):
-        print(f"🤖 {t('Deploy Claude Code commands!')}")
-        choices = [
-            {"prompt_description": t("Commit - OCA/Odoo commit command")},
-            {
-                "prompt_description": t(
-                    "Git prepare merge - Git merge preparation command"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Todo Add Command + Plan Max - Plan and add a todo.py"
-                    " command"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Todo Generate Code - Code by the OCA rules at high effort"
-                )
-            },
-            {"prompt_description": t("Show installed custom commands")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._setup_claude_command(
-                    command_name="commit",
-                    template_filename="template_claude_commands_commit.md",
-                    personalize=True,
-                )
-            elif status == "2":
-                self._setup_claude_command(
-                    command_name="git_prepare_merge",
-                    template_filename=(
-                        "template_claude_commands_git_prepare_merge.md"
-                    ),
-                )
-            elif status == "3":
-                self._setup_claude_todo_commands()
-            elif status == "4":
-                self._setup_claude_command(
-                    command_name="todo_generate_code",
-                    template_filename=(
-                        "template_claude_commands_todo_generate_code.md"
-                    ),
-                )
-            elif status == "5":
-                self._list_claude_commands()
-            else:
-                print(t("Command not found !"))
+        """Le déploiement des commandes `/…` de Claude Code
+        (CLAUDE_CONFIGS, `menus/git.py`). Rend False sur [0]."""
+        return navigate(self, menus_git.CLAUDE_CONFIGS)
 
     def _setup_claude_todo_commands(self):
         """Déploie /todo_plan_max, puis /todo_add_command. Les deux vont
@@ -3734,56 +3646,10 @@ class TODO(
     _CLAUDE_MARKETPLACES_DIR = "~/.claude/plugins/marketplaces"
 
     def prompt_execute_claude_plugins(self):
-        print(f"🤖 {t('Manage Claude Code plugins and marketplaces!')}")
-        choices = [
-            {"section": t("Inventory")},
-            {"prompt_description": t("List installed plugins")},
-            {"prompt_description": t("List configured marketplaces")},
-            {"prompt_description": t("Search a plugin in the marketplaces")},
-            {
-                "prompt_description": t(
-                    "Show a plugin detail and its token cost"
-                )
-            },
-            {"section": t("Install plugins")},
-            {"prompt_description": t("Install the ERPLibre preferred list")},
-            {"prompt_description": t("Install a plugin by name")},
-            {"prompt_description": t("Add a marketplace")},
-            {"section": t("Maintenance")},
-            {
-                "prompt_description": t(
-                    "Update the marketplaces and the plugins"
-                )
-            },
-            {"prompt_description": t("Uninstall a plugin")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._claude_plugin_exec(args="list")
-            elif status == "2":
-                self._claude_plugin_exec(args="marketplace list")
-            elif status == "3":
-                self._claude_plugin_search()
-            elif status == "4":
-                self._claude_plugin_details()
-            elif status == "5":
-                self._claude_install_preferred_plugins()
-            elif status == "6":
-                self._claude_plugin_install_by_name()
-            elif status == "7":
-                self._claude_marketplace_add()
-            elif status == "8":
-                self._claude_plugin_update()
-            elif status == "9":
-                self._claude_plugin_uninstall()
-            else:
-                print(t("Command not found !"))
+        """Les plugins et les marketplaces de Claude Code (PLUGINS,
+        `menus/git.py`). Dessiné une fois, à l'entrée. Rend False sur
+        [0]."""
+        return navigate(self, menus_git.PLUGINS)
 
     def _claude_plugin_exec(self, args, quiet=False, capture=False):
         """Lance « claude plugin <args> », ou signale que claude est absent.
