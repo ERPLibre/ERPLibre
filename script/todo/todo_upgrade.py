@@ -2253,6 +2253,9 @@ class TodoUpgrade:
                 lst_module_missing_next_version = sorted(
                     list(set(lst_module_missing_next_version))
                 )
+                lst_module_missing_next_version = self.missing_still_in_base(
+                    last_database_name, lst_module_missing_next_version
+                )
 
                 self.dct_progression["state_4_len_lst_module_missing"] = len(
                     lst_module_missing_next_version
@@ -3412,6 +3415,20 @@ class TodoUpgrade:
         if status:
             return None
         return [line.strip() for line in (output or []) if line.strip()]
+
+    def missing_still_in_base(self, database_name, lst_missing):
+        """Parmi les modules sans code au palier suivant, ceux que la base porte.
+
+        La liste d'un palier vient de celle du précédent, renommages compris,
+        et non de la base : un module qu'un palier a retiré — edi, purgé
+        après le saut vers 9 — y reste, et serait proposé à la
+        désinstallation sans être là. Rend la liste entière quand la base
+        ne répond pas : mieux vaut une question de trop qu'un module oublié.
+        """
+        lst_present = self.still_installed(database_name, lst_missing)
+        if lst_present is None:
+            return list(lst_missing)
+        return [module for module in lst_missing if module in lst_present]
 
     def installed_dependents(self, database_name, module):
         """Les modules installés qui dépendent, directement ou non, de module.
