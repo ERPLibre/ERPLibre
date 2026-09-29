@@ -541,11 +541,17 @@ class TODO(
 
         if exec_run_db:
             db_name = instance.get("database")
-            self.prompt_execute_selenium_and_run_db(
-                db_name,
-                extra_cmd_web_login=extra_cmd_web_login,
-                web_login_env=web_login_env,
-            )
+            # Sans base nommée, run.sh recevrait « -d None ».
+            if db_name:
+                self.prompt_execute_selenium_and_run_db(
+                    db_name,
+                    extra_cmd_web_login=extra_cmd_web_login,
+                    web_login_env=web_login_env,
+                )
+            else:
+                print(
+                    t("This instance names no database: Odoo is not started.")
+                )
 
         bash_command = instance.get("bash_command")
         if bash_command:

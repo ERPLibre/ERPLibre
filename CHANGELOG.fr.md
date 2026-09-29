@@ -221,6 +221,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Code s'ouvre quand `todo.json` n'a pas de liste `code_from_makefile`, avec Ouvrir le SHELL, Mise à jour de module, Débogage et Mise à jour, au lieu de s'arrêter sur une erreur avant son menu
 - Exécution › Code : seul un numéro tel qu'affiché lance une entrée de `todo.json`, comme dans Mise à jour : « 01 », « 1 » entouré d'espaces, « +2 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de la lancer, et le numéro d'une entrée fixe écrit avec un zéro devant, « 05 » par exemple, ne lance plus rien en silence
 - Télémétrie de navigation : Exécution › Test › Tests unitaires courriel et Tests unitaires analyse, lancés depuis la TUI, lancent leurs propres tests au lieu de toute la suite unitaire
+- Exécution › Run : une instance de `todo.json` qui ne nomme aucune base lance ses propres commandes et dit qu'Odoo n'est pas lancé, au lieu de lancer Odoo et sa connexion web sur une base nommée None
 
 ## Retiré
 

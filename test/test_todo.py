@@ -335,6 +335,31 @@ class TestExecuteFromConfiguration(unittest.TestCase):
         todo.execute_from_configuration(dct)
         callback.assert_not_called()
 
+    def test_run_db_opens_only_a_database_the_instance_names(self):
+        # Sans « database », run.sh recevrait « -d None » : l'instance ne
+        # lance que ses commandes, et le dit.
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.prompt_execute_selenium_and_run_db = MagicMock()
+        with redirect_stdout(io.StringIO()) as out:
+            todo.execute_from_configuration(
+                {"bash_command": "forged_one"}, exec_run_db=True
+            )
+            todo.execute_from_configuration(
+                {"database": "forged"}, exec_run_db=True
+            )
+        opened = todo.prompt_execute_selenium_and_run_db.call_args_list
+        self.assertEqual([c.args[0] for c in opened], ["forged"])
+        todo.execute.exec_command_live.assert_called_once_with(
+            "forged_one", source_erplibre=False
+        )
+        self.assertIn(
+            todo_i18n.t(
+                "This instance names no database: Odoo is not started."
+            ),
+            out.getvalue(),
+        )
+
 
 class TestConstants(unittest.TestCase):
     def test_config_file_path(self):

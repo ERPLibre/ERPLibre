@@ -467,6 +467,10 @@ TRANSLATIONS = {
         "fr": "Voulez-vous une nouvelle instance?",
         "en": "Do you want a new instance?",
     },
+    "This instance names no database: Odoo is not started.": {
+        "fr": "Cette instance ne nomme aucune base : Odoo n'est pas lancé.",
+        "en": "This instance names no database: Odoo is not started.",
+    },
     "SSH port-forwarding": {
         "fr": "🚇 SSH port-forwarding",
         "en": "🚇 SSH port-forwarding",
