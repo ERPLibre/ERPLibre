@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 INSTALLED_ODOO_VERSION_FILE = os.path.join(
@@ -40,6 +41,10 @@ def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
         with open(ODOO_VERSION_FILE) as txt:
             odoo_installed_version = f"odoo{txt.read().strip()}"
 
-    versions = sorted(version_entries, key=lambda k: k.get("erplibre_version"))
+    # Tri naturel : un tri de texte rangeait « odoo8.0 » après « odoo20.0 ».
+    versions = sorted(
+        version_entries,
+        key=lambda k: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", k.get("erplibre_version"))],
+    )
 
     return versions, installed_versions, odoo_installed_version
