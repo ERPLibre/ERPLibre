@@ -4070,19 +4070,42 @@ class TestLaPorteeDuBanc(unittest.TestCase):
                 self.assertIsNone(B.hotes_couverts(self.pose(texte)))
         self.assertIsNone(B.hotes_couverts("/f/un-chemin-invente.yml"))
 
-    def test_the_bench_names_no_machine_of_the_plan(self):
+    def test_the_bench_names_no_machine_of_the_model(self):
         """LA PROPRIÉTÉ QUI PORTE TOUT LE RESTE. Le banc déclare des
-        APPLICATIONS ; les hôtes viennent du plan. Un nom de machine écrit ici
-        ferait diverger le banc le jour où un modèle renomme ses serveurs, et
-        le refus parlerait d'un hôte introuvable sans dire qui l'a inventé."""
-        with open(B.__file__, encoding="utf-8") as lu:
-            self.assertNotIn("infra-", lu.read())
+        APPLICATIONS ; les hôtes du modèle viennent du plan. Un nom de machine
+        du modèle écrit ici ferait diverger le banc le jour où celui-ci renomme
+        ses serveurs, et le refus parlerait d'un hôte introuvable sans dire qui
+        l'a inventé.
 
-    def test_the_mail_store_is_deliberately_outside_the_scope(self):
-        """Son rôle se lie à un annuaire que le modèle du moteur ne déclare pas.
-        L'activer ferait refuser la boucle à chaque lancement, ce qui ne se
-        distingue plus d'un banc cassé."""
-        self.assertNotIn("dovecot", B.APPLICATIONS_COUVERTES)
+        L'HÔTE QUE LE BANC AJOUTE NE COMPTE PAS : il n'est pas du modèle, il est
+        du banc, et le banc a le droit de nommer ce qu'il crée. La mesure porte
+        donc sur les hôtes du modèle, qu'elle lit dans SON plan — l'épreuve saute
+        là où le moteur n'est pas cloné."""
+        modele = os.path.join(
+            B.moteur_du_banc() or "",
+            "exemples",
+            "modeles",
+            "socle",
+            "plan",
+            "serveurs.yml",
+        )
+        if not os.path.isfile(modele):
+            self.skipTest("le moteur n'est pas cloné")
+        with open(modele, encoding="utf-8") as lu:
+            hotes = yaml.safe_load(lu.read())["serveurs"]
+        self.assertTrue(hotes, "le modèle ne nomme aucun hôte")
+        with open(B.__file__, encoding="utf-8") as lu:
+            source = lu.read()
+        for hote in hotes:
+            with self.subTest(hote=hote):
+                self.assertNotIn(str(hote), source)
+
+    def test_the_mail_store_comes_with_its_directory(self):
+        """Le magasin de courriel se lie à un annuaire. Le couvrir sans poser
+        l'annuaire le déploierait vers une machine qu'aucun plan ne nomme, et la
+        passe serait VERTE sans que rien n'authentifie jamais."""
+        if "dovecot" in B.APPLICATIONS_COUVERTES:
+            self.assertIn(B.APPLICATION_ANNUAIRE, B.APPLICATIONS_COUVERTES)
 
     def test_the_scope_goes_past_the_bootstrap(self):
         """LA PROPRIÉTÉ : le banc couvre PLUS que l'amorçage. Réduit à lui, il
@@ -4100,6 +4123,208 @@ class TestLaPorteeDuBanc(unittest.TestCase):
         for app in ("step_ca", "powerdns"):
             with self.subTest(app=app):
                 self.assertIn(app, B.APPLICATIONS_COUVERTES)
+
+
+class TestLAnnuaireQueLeBancAjoute(unittest.TestCase):
+    """Le modèle livré déclare un magasin de courriel et AUCUN annuaire : le rôle
+    du magasin se lierait à une machine qu'aucun plan ne nomme, et la passe
+    serait verte sans que rien n'authentifie. Le banc pose donc le service
+    manquant — et ce n'est plus le modèle livré qu'il éprouve, mais l'étendu."""
+
+    NOMENCLATURE = (
+        "---\n# un commentaire du modèle\nindex: 1\nfonctions:\n"
+        "  une-fonction-a:  { categorie: 4, service: 1 }\n"
+        "  une-fonction-b:  { categorie: 4, service: 3 }\n"
+        "  une-fonction-c:  { categorie: 1, service: 1 }\n"
+    )
+    SERVEURS = (
+        "---\n# un commentaire du modèle\nserveurs:\n"
+        "  un-hote-a-01: { fonction: une-fonction-a, etat: planifie }\n"
+    )
+
+    # -- ce qui se dérive --
+
+    def test_the_host_follows_the_model_convention(self):
+        """Le banc suit la convention plutôt que d'inventer un nom : son hôte se
+        lirait sinon comme un intrus dans un inventaire dont tous les autres la
+        respectent."""
+        self.assertEqual("une-fonction-01", B.hote_de_fonction("une-fonction"))
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.hote_de_fonction(vide))
+
+    def test_the_functions_are_read_with_their_place(self):
+        """Le contrôle positif : sans lui, une lecture qui refuserait toujours
+        passerait chacun des refus ci-dessous."""
+        vu = B.lit_fonctions(self.NOMENCLATURE)
+        self.assertEqual((4, 1), vu["une-fonction-a"])
+        self.assertEqual((1, 1), vu["une-fonction-c"])
+
+    def test_one_malformed_entry_refuses_the_whole_read(self):
+        """Fermé par défaut : tout l'adressage d'un écosystème dérive de ces deux
+        entiers, et en deviner un poserait des machines dans une zone que
+        personne n'a choisie."""
+        for brisee in (
+            "---\nfonctions:\n  f: { categorie: 4 }\n",
+            "---\nfonctions:\n  f: { categorie: quatre, service: 1 }\n",
+            "---\nfonctions:\n  f: une-chaine\n",
+            "---\nfonctions: {}\n",
+            "---\nrien-de-tel: 1\n",
+        ):
+            with self.subTest(brisee=brisee[:28]):
+                self.assertIsNone(B.lit_fonctions(brisee))
+
+    def test_the_zone_comes_from_where_the_authority_lives(self):
+        """La zone n'est pas écrite : l'annuaire va là où vit déjà l'autorité de
+        certification. Un chiffre écrit le poserait dans un réseau que personne
+        n'a choisi."""
+        fonctions = B.lit_fonctions(self.NOMENCLATURE)
+        vu = B.fonction_de(self.SERVEURS, "un-hote-a-01")
+        self.assertEqual("une-fonction-a", vu)
+        self.assertEqual(4, B.categorie_de(fonctions, vu))
+
+    def test_an_unknown_host_or_function_derives_nothing(self):
+        """Fermé par défaut : 0 et « » disent « on ne sait pas », et l'appelant
+        refuse dessus plutôt que de poser au hasard."""
+        fonctions = B.lit_fonctions(self.NOMENCLATURE)
+        self.assertEqual("", B.fonction_de(self.SERVEURS, "un-hote-invente"))
+        self.assertEqual(0, B.categorie_de(fonctions, "une-fonction-inventee"))
+        self.assertEqual(0, B.categorie_de(None, "une-fonction-a"))
+
+    def test_the_rank_is_the_first_free_not_the_next_one(self):
+        """LA PROPRIÉTÉ : l'adressage dérive du rang, et sauter un trou
+        décalerait des adresses sans raison. La zone 4 tient 1 et 3 : c'est 2
+        qu'il faut."""
+        fonctions = B.lit_fonctions(self.NOMENCLATURE)
+        self.assertEqual(2, B.place_libre(fonctions, 4))
+        self.assertEqual(2, B.place_libre(fonctions, 1))
+        self.assertEqual(0, B.place_libre(fonctions, 0))
+        self.assertEqual(0, B.place_libre(None, 4))
+
+    # -- ce qui s'écrit --
+
+    def test_the_entry_lands_at_the_end_of_its_block(self):
+        """Le contrôle positif, et la chirurgie : une ligne entre, le reste du
+        fichier est rendu tel quel, commentaires compris."""
+        vu = B.pose_sous_cle(
+            self.NOMENCLATURE, "fonctions", "une-neuve", "{ categorie: 4 }"
+        )
+        self.assertIn("  une-neuve: { categorie: 4 }", vu)
+        self.assertIn("# un commentaire du modèle", vu)
+        self.assertIn("index: 1", vu)
+        lu = yaml.safe_load(vu)
+        self.assertEqual(4, len(lu["fonctions"]))
+
+    def test_a_name_already_there_is_refused(self):
+        """Deux entrées de même nom produisent un plan dont le lecteur n'en garde
+        qu'une, sans dire laquelle — et un modèle qui déclare déjà ce service n'a
+        pas besoin que le banc l'ajoute."""
+        self.assertIsNone(
+            B.pose_sous_cle(
+                self.NOMENCLATURE, "fonctions", "une-fonction-b", "{ x: 1 }"
+            )
+        )
+
+    def test_a_key_that_is_not_there_once_is_refused(self):
+        """Fermé par défaut : sans bloc, ou avec deux, on ne sait pas où poser."""
+        self.assertIsNone(
+            B.pose_sous_cle(self.NOMENCLATURE, "une-cle-inventee", "n", "{}")
+        )
+        deux = self.NOMENCLATURE + "fonctions:\n  autre: { categorie: 9 }\n"
+        self.assertIsNone(B.pose_sous_cle(deux, "fonctions", "n", "{}"))
+
+    def test_a_file_without_a_final_newline_is_not_glued(self):
+        """Un fichier dont la dernière ligne n'a pas de retour verrait la nôtre
+        s'y coller, et le plan ne se lirait plus."""
+        vu = B.pose_sous_cle(
+            self.NOMENCLATURE.rstrip("\n"),
+            "fonctions",
+            "une-neuve",
+            "{ c: 4 }",
+        )
+        self.assertIsNotNone(vu)
+        self.assertIn("une-neuve", yaml.safe_load(vu)["fonctions"])
+
+    def test_nothing_to_write_writes_nothing(self):
+        """Une valeur vide poserait « nom: » sans valeur, que le lecteur rend
+        None — une entrée qui existe et ne dit rien."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertIsNone(
+                    B.pose_sous_cle(self.NOMENCLATURE, "fonctions", "n", vide)
+                )
+                self.assertIsNone(
+                    B.pose_sous_cle(self.NOMENCLATURE, "fonctions", vide, "{}")
+                )
+
+
+class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
+    """Une fonction sans hôte, ou un hôte sans application, laisse un plan qui se
+    lit mais ne déploie pas ce qu'il annonce."""
+
+    def modele(self):
+        source = os.path.join(
+            B.moteur_du_banc() or "", "exemples", "modeles", "socle"
+        )
+        if not os.path.isdir(source):
+            self.skipTest("le moteur n'est pas cloné")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        eco = os.path.join(d, "eco")
+        shutil.copytree(source, eco)
+        return eco
+
+    def lu(self, eco, fichier, cle):
+        with open(os.path.join(eco, "plan", fichier), encoding="utf-8") as f:
+            return (yaml.safe_load(f.read()) or {}).get(cle) or {}
+
+    def test_the_three_files_receive_their_entry(self):
+        """Le contrôle positif : sans lui, une pose qui n'écrirait jamais rien
+        passerait l'épreuve du rejeu."""
+        eco = self.modele()
+        self.assertEqual("", B.pose_l_annuaire(eco, "infra-pki-01"))
+        hote = B.hote_de_fonction(B.FONCTION_ANNUAIRE)
+        self.assertIn(
+            B.FONCTION_ANNUAIRE, self.lu(eco, "nomenclature.yml", "fonctions")
+        )
+        self.assertIn(hote, self.lu(eco, "serveurs.yml", "serveurs"))
+        self.assertIn(
+            B.APPLICATION_ANNUAIRE,
+            self.lu(eco, "applications.yml", "applications"),
+        )
+
+    def test_the_added_host_is_active_from_the_start(self):
+        """Cet hôte n'est pas au modèle, donc aucune activation ultérieure ne le
+        nomme — et un hôte planifié n'entre dans aucun inventaire."""
+        eco = self.modele()
+        B.pose_l_annuaire(eco, "infra-pki-01")
+        hote = B.hote_de_fonction(B.FONCTION_ANNUAIRE)
+        self.assertEqual(
+            "actif", self.lu(eco, "serveurs.yml", "serveurs")[hote]["etat"]
+        )
+
+    def test_the_directory_lands_where_the_authority_lives(self):
+        """La zone est DÉRIVÉE de l'autorité de certification, jamais écrite."""
+        eco = self.modele()
+        B.pose_l_annuaire(eco, "infra-pki-01")
+        fonctions = self.lu(eco, "nomenclature.yml", "fonctions")
+        self.assertEqual(
+            fonctions["infra-pki"]["categorie"],
+            fonctions[B.FONCTION_ANNUAIRE]["categorie"],
+        )
+
+    def test_an_authority_the_plan_ignores_refuses_the_pose(self):
+        """Fermé par défaut : sans zone dérivable, poser au hasard mettrait
+        l'annuaire dans un réseau que personne n'a choisi."""
+        eco = self.modele()
+        self.assertTrue(B.pose_l_annuaire(eco, "un-hote-invente"))
+
+    def test_replaying_the_pose_refuses(self):
+        """Le modèle qui déclarerait déjà cet annuaire n'a pas besoin du banc, et
+        deux entrées de même nom rendent le plan ambigu."""
+        eco = self.modele()
+        self.assertEqual("", B.pose_l_annuaire(eco, "infra-pki-01"))
+        self.assertTrue(B.pose_l_annuaire(eco, "infra-pki-01"))
 
 
 if __name__ == "__main__":
