@@ -147,9 +147,10 @@ class TestNavigator(unittest.TestCase):
 
     def test_a_menu_opens_on_what_its_method_gives(self):
         # Après l'intro, un dict ouvre le menu et s'ajoute aux kwargs de
-        # chaque action ; toute autre valeur est rendue, le menu jamais
-        # dessiné.
-        for given, drawn in (({"forged": 1}, 2), (None, 0), (False, 0)):
+        # chaque action ; toute autre valeur, vraie ou fausse, est rendue,
+        # le menu jamais dessiné.
+        cases = (({"forged": 1}, 2), (None, 0), (False, 0), (True, 0))
+        for given, drawn in cases:
             with self.subTest(given=given):
                 self.out.seek(0)
                 self.out.truncate()
@@ -223,6 +224,25 @@ class TestNavigator(unittest.TestCase):
         back, todo, texts = self.navigate(menu, ["1", "2"], todo)
         self.assertEqual(back, "<some>")
         self.assertEqual(len(texts), 2)
+
+    def test_closes_wins_over_closes_on_result(self):
+        # Un menu qui déclare les deux se referme après l'action et rend
+        # `back`, et non ce que l'action a rendu, vrai ou faux.
+        todo = FakeTodo()
+        todo.nothing = lambda: False
+        for key, action in (("Some", "some"), ("Nothing", "nothing")):
+            with self.subTest(action=action):
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry(key, action)],
+                    back=None,
+                    closes=True,
+                    closes_on_result=True,
+                )
+                back, _, texts = self.navigate(menu, ["1"], todo)
+                self.assertIsNone(back)
+                self.assertEqual(len(texts), 1)
 
     def test_any_other_answer_is_not_found_and_asks_again(self):
         menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
