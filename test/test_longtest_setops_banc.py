@@ -1256,8 +1256,13 @@ class TestLeResolveurQueLeBancDeclare(unittest.TestCase):
         )
 
     def test_nothing_readable_names_nothing(self):
-        for sortie in ("", "   ", None, "search exemple.invalid\n",
-                       "nameserver\n"):
+        for sortie in (
+            "",
+            "   ",
+            None,
+            "search exemple.invalid\n",
+            "nameserver\n",
+        ):
             with self.subTest(sortie=repr(sortie)):
                 self.assertEqual("", B.lit_resolveur(sortie))
 
@@ -1277,9 +1282,7 @@ class TestLeResolveurQueLeBancDeclare(unittest.TestCase):
             with self.subTest(vu=repr(vu)):
                 self.assertEqual("", B.texte_intrants_du_banc(vu))
         # Contrôle positif : refuser toujours passerait les trois précédents.
-        self.assertIn(
-            "dns_amorcage", B.texte_intrants_du_banc("192.0.2.53")
-        )
+        self.assertIn("dns_amorcage", B.texte_intrants_du_banc("192.0.2.53"))
 
     def test_the_bench_file_is_read_after_the_model_intrants(self):
         """Ansible fusionne les group_vars dans l'ordre alphabétique : un nom
@@ -1307,8 +1310,9 @@ class TestLeSautVersLaFlotte(unittest.TestCase):
         d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, d, True)
         if cfg is not None:
-            with open(os.path.join(d, "ansible.cfg"), "w",
-                      encoding="utf-8") as fh:
+            with open(
+                os.path.join(d, "ansible.cfg"), "w", encoding="utf-8"
+            ) as fh:
                 fh.write(cfg)
         return d
 
@@ -1365,7 +1369,10 @@ class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
 
     def placement(self):
         chemin = os.path.join(
-            self.eco, "inventories", B.INVENTAIRE_BANC, "group_vars",
+            self.eco,
+            "inventories",
+            B.INVENTAIRE_BANC,
+            "group_vars",
             "proxmox.yml",
         )
         with open(chemin, encoding="utf-8") as fh:
@@ -1373,9 +1380,7 @@ class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
 
     def joue(self, *suite):
         restes = list(suite)
-        patch = mock.patch.object(
-            B, "joue_sur", lambda *a, **k: restes.pop(0)
-        )
+        patch = mock.patch.object(B, "joue_sur", lambda *a, **k: restes.pop(0))
         patch.start()
         self.addCleanup(patch.stop)
 
@@ -1383,18 +1388,27 @@ class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
         """La grappe porte le gabarit en 9000 ; 9001 y est libre. C'est 9000
         que le clonage doit lire."""
         liste = json.dumps(
-            [{"vmid": 100, "name": "autre", "type": "qemu"},
-             {"vmid": 9000, "name": B.GABARIT, "type": "qemu"}]
+            [
+                {"vmid": 100, "name": "autre", "type": "qemu"},
+                {"vmid": 9000, "name": B.GABARIT, "type": "qemu"},
+            ]
         )
         self.joue(B.Fait(0, liste, 1), B.Fait(0, self.CONFORME, 1))
         vu = B.mesure_le_gabarit("un-terrain", B.ELEVE)
         mesures = B.Mesures(
-            terrain="un-terrain", elevation=B.ELEVE,
-            liens=(B.A_POSER, B.NOTRE), index_libre=True, pont="vmbr9",
-            noeud="un-noeud", stockage="un-stockage", uplink="une-sortie",
+            terrain="un-terrain",
+            elevation=B.ELEVE,
+            liens=(B.A_POSER, B.NOTRE),
+            index_libre=True,
+            pont="vmbr9",
+            noeud="un-noeud",
+            stockage="un-stockage",
+            uplink="une-sortie",
             adresse_api="192.0.2.10",
         )
-        self.assertEqual("", B.ecrit_le_placement(self.moteur, mesures, vu.vmid))
+        self.assertEqual(
+            "", B.ecrit_le_placement(self.moteur, mesures, vu.vmid)
+        )
         texte = self.placement()
         self.assertIn("proxmox_clone_vmid_modele: 9000", texte)
         self.assertNotIn("9001", texte)
@@ -1408,22 +1422,32 @@ class TestLePlacementNommeLeGabaritTrouve(unittest.TestCase):
         vide résolue rend le dossier COURANT : c'est le cas qui tranche.
         """
         mesures = B.Mesures(
-            terrain="t", elevation=B.ELEVE, liens=(), index_libre=True,
-            pont="vmbr9", noeud="n", stockage="s", uplink="u",
+            terrain="t",
+            elevation=B.ELEVE,
+            liens=(),
+            index_libre=True,
+            pont="vmbr9",
+            noeud="n",
+            stockage="s",
+            uplink="u",
             adresse_api="192.0.2.10",
         )
         for moteur in ("", "   ", os.sep):
             with self.subTest(moteur=repr(moteur)):
-                self.assertTrue(
-                    B.ecrit_le_placement(moteur, mesures, 9000)
-                )
+                self.assertTrue(B.ecrit_le_placement(moteur, mesures, 9000))
 
     def test_an_unreadable_vmid_writes_nothing(self):
         """Fermé par défaut : un placement sans VMID donnerait au moteur une
         source qu'il ne sait pas chercher."""
         mesures = B.Mesures(
-            terrain="t", elevation=B.ELEVE, liens=(), index_libre=True,
-            pont="vmbr9", noeud="un-noeud", stockage="s", uplink="u",
+            terrain="t",
+            elevation=B.ELEVE,
+            liens=(),
+            index_libre=True,
+            pont="vmbr9",
+            noeud="un-noeud",
+            stockage="s",
+            uplink="u",
             adresse_api="192.0.2.10",
         )
         self.assertTrue(B.ecrit_le_placement(self.moteur, mesures, 0))
@@ -1812,7 +1836,12 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_INSTANCE),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
+            self.moteur,
+            "un-noeud",
+            "vmbr9",
+            "local-lvm",
+            "192.0.2.10",
+            "192.0.2.53",
         )
         self.assertEqual([], self.depots())
         self.assertIn(B.LIEN_INSTANCE, montage.souci)
@@ -1825,7 +1854,12 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
             os.path.join(self.moteur, B.LIEN_UNDERLAY),
         )
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
+            self.moteur,
+            "un-noeud",
+            "vmbr9",
+            "local-lvm",
+            "192.0.2.10",
+            "192.0.2.53",
         )
         self.assertIn(B.LIEN_UNDERLAY, montage.souci)
 
@@ -1834,7 +1868,12 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         lien : l'effacer détruirait son plan."""
         os.makedirs(os.path.join(self.moteur, B.LIEN_INSTANCE))
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
+            self.moteur,
+            "un-noeud",
+            "vmbr9",
+            "local-lvm",
+            "192.0.2.10",
+            "192.0.2.53",
         )
         self.assertEqual([], self.depots())
         self.assertFalse(montage.complet)
@@ -1850,7 +1889,12 @@ class TestLeMontageRefuseAvantDeRienCreer(unittest.TestCase):
         """Le contrôle positif des refus ci-dessus : un moteur SANS lien occupé
         va plus loin, et s'arrête sur ce qui manque vraiment — son modèle."""
         montage = B.monte_localement(
-            self.moteur, "un-noeud", "vmbr9", "local-lvm", "192.0.2.10", "192.0.2.53"
+            self.moteur,
+            "un-noeud",
+            "vmbr9",
+            "local-lvm",
+            "192.0.2.10",
+            "192.0.2.53",
         )
         self.assertNotIn(B.LIEN_INSTANCE, montage.souci)
         self.assertNotIn(B.LIEN_UNDERLAY, montage.souci)
@@ -1968,6 +2012,7 @@ class TestOnNeJouePasSansAvoirDecideComment(unittest.TestCase):
         self.assertIn(
             "hostname", B.ssh_argv("un-terrain", "hostname", B.TEL_QUEL)
         )
+
 
 class TestLePlacementNommeLePontDuBanc(unittest.TestCase):
     """Le générateur d'inventaire pose un pont par hôte quand la fabric a une
@@ -2128,6 +2173,18 @@ class TestLeSecretNeTouchePasLeDisque(unittest.TestCase):
         for secret in ("", "   ", None):
             with self.subTest(secret=secret):
                 self.assertTrue(B.scelle_jeton(voute, identite, secret, d))
+                self.assertFalse(os.path.exists(voute))
+
+    def test_sealing_an_empty_plaintext_writes_no_vault(self):
+        """LA PROPRIÉTÉ : `scelle` refuse POUR SON PROPRE COMPTE. Ses deux
+        appelants refusent déjà en amont, mais un troisième écrirait une voûte
+        valide qui ne porte rien — elle s'ouvrirait parfaitement et laisserait
+        chaque assertion du moteur dire « absent », ce qui envoie chercher dans
+        la voûte, où il n'y a rien."""
+        d, identite, voute = self.atelier()
+        for clair in ("", "   ", None):
+            with self.subTest(clair=clair):
+                self.assertTrue(B.scelle(voute, identite, clair, (), d))
                 self.assertFalse(os.path.exists(voute))
 
     def test_a_real_secret_does_write_one(self):
@@ -3163,6 +3220,283 @@ class TestLeCompteDApiNeResteJamaisEnSilence(unittest.TestCase):
         souci = B.defait_un_geste(geste, "", B.TEL_QUEL)
         self.assertTrue(souci)
         self.assertIn(B.UTILISATEUR_API, souci)
+
+
+class TestLesSecretsDuLocataire(unittest.TestCase):
+    """Le modèle du moteur ne déclare AUCUN secret, et chacun de ses rôles en
+    assertionne un non vide. Le banc les forge et les scelle.
+
+    LA FORME COMPTE AUTANT QUE LA PRÉSENCE. L'assertion du rôle ne mesure qu'une
+    longueur : une valeur de la mauvaise forme la passe, et échoue trois rôles
+    plus loin sur un message qui parle du format et jamais de son origine."""
+
+    def setUp(self):
+        if not B.forge_cle_ssh():
+            self.skipTest("cryptography n'est pas dans cet interpréteur")
+
+    def forge(self, table=None):
+        secrets, souci = B.forge_les_secrets(table or B.SECRETS_LOCATAIRE)
+        self.assertEqual("", souci)
+        return secrets
+
+    def test_every_declared_secret_is_forged_non_empty(self):
+        """Le contrôle positif de tout ce qui suit : sans lui, une forge qui ne
+        rendrait jamais rien passerait chacune des épreuves de refus."""
+        secrets = self.forge()
+        self.assertEqual(len(B.SECRETS_LOCATAIRE), len(secrets))
+        for nom, valeur in secrets.items():
+            with self.subTest(nom=nom):
+                self.assertTrue(valeur.strip())
+
+    def test_two_poses_never_share_a_secret(self):
+        """LA PROPRIÉTÉ : imprévisible à chaque pose. Une valeur constante
+        passerait toutes les assertions du moteur en donnant la même autorité de
+        certification à deux grappes qui ne se connaissent pas."""
+        premiere, seconde = self.forge(), self.forge()
+        for nom in premiere:
+            with self.subTest(nom=nom):
+                self.assertNotEqual(premiere[nom], seconde[nom])
+
+    def test_an_unknown_shape_names_the_variable(self):
+        """Fermé par défaut : le banc ne scelle pas ce qu'il ne sait pas forger.
+        Le refus NOMME la variable — sans son nom, l'opérateur la cherche parmi
+        les sept."""
+        secrets, souci = B.forge_les_secrets(
+            (("vault_invente_pour_l_epreuve", "une-forme-qui-n-existe-pas"),)
+        )
+        self.assertEqual({}, secrets)
+        self.assertIn("vault_invente_pour_l_epreuve", souci)
+
+    def test_one_refused_shape_forges_nothing_at_all(self):
+        """LA PROPRIÉTÉ : tout ou rien. Une voûte à demi remplie passerait le
+        premier rôle et ferait échouer le troisième, sur un secret que le banc
+        savait pourtant forger."""
+        secrets, souci = B.forge_les_secrets(
+            (
+                ("vault_step_ca_password", B.FORME_OPAQUE),
+                ("vault_invente_pour_l_epreuve", "une-forme-qui-n-existe-pas"),
+            )
+        )
+        self.assertTrue(souci)
+        self.assertEqual({}, secrets)
+
+    def test_the_backup_key_is_a_real_openssh_private_key(self):
+        """LA PROPRIÉTÉ : la forme, pas la longueur. `client_backup` présente
+        cette clé à un serveur ssh, qui refuse une chaîne au hasard sur
+        « invalid format » — un message qui parle de la clé et pas de sa
+        source."""
+        from cryptography.hazmat.primitives import serialization
+
+        cle = self.forge()["vault_backup_ssh_privkey"]
+        charge = serialization.load_ssh_private_key(
+            cle.encode("ascii"), password=None
+        )
+        self.assertTrue(charge.public_key())
+
+    def test_an_opaque_secret_needs_no_quoting_in_yaml(self):
+        """L'alphabet de `token_urlsafe` n'ouvre ni ancre, ni commentaire, ni
+        suite d'échappement chez le lecteur qui relira la voûte."""
+        for _ in range(20):
+            with self.subTest():
+                self.assertRegex(B.forge_opaque(), r"^[A-Za-z0-9_-]+$")
+
+
+class TestLeClairDeLaVouteDuLocataire(unittest.TestCase):
+    """Ce qui part à l'outil de chiffrement doit se relire EXACTEMENT tel qu'il
+    a été forgé : la voûte ne se relit jamais en clair, et une valeur déformée
+    ne se découvre qu'au rôle qui la présente."""
+
+    def setUp(self):
+        if not B.forge_cle_ssh():
+            self.skipTest("cryptography n'est pas dans cet interpréteur")
+        self.secrets, souci = B.forge_les_secrets()
+        self.assertEqual("", souci)
+
+    def test_a_multiline_value_survives_the_round_trip(self):
+        """LA PROPRIÉTÉ : les retours à la ligne tiennent. Entre guillemets, la
+        clé s'aplatit et le client ssh la refuse."""
+        cle = self.secrets["vault_backup_ssh_privkey"]
+        self.assertEqual(cle, yaml.safe_load(B.bloc_yaml("k", cle))["k"])
+
+    def test_the_fragment_terminates_itself(self):
+        """LA PROPRIÉTÉ : le fragment est juste SEUL. Un scalaire littéral ne
+        rend son retour final que si sa dernière ligne en porte un ; sans lui la
+        clé revient amputée du terminateur qu'OpenSSH exige, et le fragment
+        serait juste ou faux selon ce que son appelant écrit après."""
+        cle = self.secrets["vault_backup_ssh_privkey"]
+        self.assertTrue(B.bloc_yaml("k", cle).endswith("\n"))
+        self.assertTrue(
+            yaml.safe_load(B.bloc_yaml("k", cle))["k"].endswith("\n")
+        )
+
+    def test_a_single_line_value_is_given_back_verbatim(self):
+        """Une valeur qui s'ouvrirait sur « * » ou « & » serait lue comme une
+        ancre YAML ; les guillemets la rendent telle quelle."""
+        for brut in (
+            "*pas-une-ancre",
+            "&pas-une-ancre",
+            "#pas-un-commentaire",
+        ):
+            with self.subTest(brut=brut):
+                self.assertEqual(
+                    brut, yaml.safe_load(B.bloc_yaml("k", brut))["k"]
+                )
+
+    def test_the_vault_declares_exactly_what_was_forged(self):
+        """Le contrôle positif : sans lui, un texte toujours vide passerait les
+        deux refus ci-dessous."""
+        lu = yaml.safe_load(B.texte_voute_locataire(self.secrets))
+        self.assertEqual(self.secrets, lu)
+
+    def test_one_empty_secret_refuses_the_whole_text(self):
+        """LA PROPRIÉTÉ : rien plutôt qu'une variable vide. Déclarée vide, elle
+        se charge sans bruit et l'assertion du rôle la dit « absente de la
+        voûte » — ce qui envoie chercher dans la voûte, où elle est."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                abime = dict(self.secrets)
+                abime["vault_restic_password"] = vide
+                self.assertEqual("", B.texte_voute_locataire(abime))
+
+    def test_no_secret_at_all_writes_no_text(self):
+        """Une voûte sans secret est un fichier valide qui ne porte rien : elle
+        se déchiffre et laisse chaque assertion du moteur dire « absent »."""
+        self.assertEqual("", B.texte_voute_locataire({}))
+
+    def test_the_vault_lands_where_the_inventory_loads_it_unasked(self):
+        """`group_vars/all/` d'un inventaire est lu pour TOUS ses hôtes sans
+        qu'on le déclare. Posée ailleurs, la voûte se déchiffre parfaitement
+        sans que rien ne la lise."""
+        self.assertEqual(
+            os.path.join(
+                "/f/eco",
+                "inventories",
+                B.INVENTAIRE_BANC,
+                "group_vars",
+                "all",
+                "vault.yml",
+            ),
+            B.chemin_voute_locataire("/f/eco"),
+        )
+
+    def test_no_ecosystem_names_no_vault(self):
+        """Fermé par défaut : sans dépôt, le chemin serait relatif au répertoire
+        courant, et la voûte se poserait hors de tout inventaire."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.chemin_voute_locataire(vide))
+
+
+class TestLaPlainteNeCiteAucunSecret(unittest.TestCase):
+    """La plainte d'un outil de chiffrement cite parfois ce qu'il a reçu, et ce
+    qu'il a reçu est le clair. Tout ce que le banc montre passe par l'expurge."""
+
+    def test_every_secret_is_redacted_not_just_the_first(self):
+        """LA PROPRIÉTÉ : tous. Le clair du locataire en porte sept, et n'en
+        expurger qu'un en laisse six dans un journal permanent."""
+        secrets = ("AAA-invente", "BBB-invente", "CCC-invente")
+        vu = B.expurge_tous(" puis ".join(secrets), secrets)
+        for secret in secrets:
+            with self.subTest(secret=secret):
+                self.assertNotIn(secret, vu)
+
+    def test_a_secret_that_prefixes_another_leaks_no_tail(self):
+        """LA PROPRIÉTÉ : le plus long d'abord. Expurger « ABC » avant
+        « ABCDEF » remplacerait la tête et laisserait « DEF » en clair."""
+        vu = B.expurge_tous("porte ABCDEF ici", ("ABC", "ABCDEF"))
+        self.assertNotIn("DEF", vu)
+
+    def test_nothing_to_redact_leaves_the_text_alone(self):
+        """Le contrôle positif : sans lui, un expurge qui effacerait tout
+        passerait les deux épreuves ci-dessus."""
+        self.assertEqual("une plainte", B.expurge_tous("une plainte", ()))
+
+
+class TestLIdentiteSuitLeRole(unittest.TestCase):
+    """Deux voûtes, deux rôles, deux contenus. Celle de l'hébergeur porte le
+    jeton d'API et l'emporte chez les lecteurs qui les superposent ; celle du
+    locataire porte les secrets de ses rôles et ne sort pas de son dépôt."""
+
+    def attelage(self):
+        from script.setops.vaults import Identite, Voute
+
+        voutes = (
+            Voute("hebergeur", "site-invente", "presente", "/c/cle-site"),
+            Voute("instance", "eco-invente", "presente", "/c/cle-eco"),
+        )
+        identites = (
+            Identite("etiq-eco-inventee", "/c/cle-eco"),
+            Identite("etiq-site-inventee", "/c/cle-site"),
+        )
+        return voutes, identites
+
+    def test_each_role_gets_its_own_key(self):
+        """Le contrôle positif : sans lui, un appariement qui ne rendrait jamais
+        rien passerait l'épreuve du rôle absent."""
+        voutes, identites = self.attelage()
+        self.assertEqual(
+            "/c/cle-site",
+            B.identite_de_role(voutes, identites, "hebergeur").cle,
+        )
+        self.assertEqual(
+            "/c/cle-eco",
+            B.identite_de_role(voutes, identites, "instance").cle,
+        )
+
+    def test_the_pairing_is_by_key_path_not_by_order(self):
+        """LA PROPRIÉTÉ : le chemin apparie. Les deux recensements du moteur ne
+        rendent pas leurs lignes dans le même ordre, et apparier par position
+        donnerait à chaque voûte la clé de l'autre."""
+        voutes, identites = self.attelage()
+        vu = B.identite_de_role(voutes, identites, "hebergeur")
+        self.assertNotEqual(identites[0].cle, vu.cle)
+
+    def test_a_role_the_engine_does_not_hold_names_no_identity(self):
+        """Fermé par défaut : sans voûte pour ce rôle, rien à chiffrer sous
+        elle. Rendre une autre identité scellerait le secret sous une clé que
+        son lecteur n'ouvre pas."""
+        voutes, identites = self.attelage()
+        self.assertIsNone(B.identite_de_role(voutes, identites, "voisin"))
+        self.assertIsNone(B.identite_de_role((), identites, "hebergeur"))
+
+    def test_a_vault_whose_key_was_never_listed_names_no_identity(self):
+        """Le recensement des états et celui des identités sont deux lectures :
+        une voûte connue sans identité lue ne se chiffre pas."""
+        voutes, _identites = self.attelage()
+        self.assertIsNone(B.identite_de_role(voutes, (), "hebergeur"))
+
+
+class TestLesNomsDeVouteSontCeuxDuMoteur(unittest.TestCase):
+    """Le nom d'une variable de voûte est l'INTERFACE du moteur : le banc ne
+    peut que le recopier, et une copie dérive. Un nom que plus aucun rôle ne lit
+    scelle un secret qui ne sert à rien, pendant que le rôle qui attend le nom
+    neuf échoue en le disant absent de la voûte."""
+
+    def roles_du_moteur(self):
+        moteur = B.moteur_du_banc()
+        roles = os.path.join(moteur, "roles") if moteur else ""
+        if not roles or not os.path.isdir(roles):
+            self.skipTest("le moteur n'est pas cloné")
+        return roles
+
+    def test_every_sealed_name_is_one_a_role_reads(self):
+        """L'épreuve saute là où le moteur n'est pas cloné : elle mesure une
+        concordance entre deux dépôts, pas une propriété du banc seul."""
+        roles = self.roles_du_moteur()
+        lus = set()
+        for base, _dossiers, fichiers in os.walk(roles):
+            for fichier in fichiers:
+                if not fichier.endswith((".yml", ".yaml", ".j2")):
+                    continue
+                chemin = os.path.join(base, fichier)
+                with open(
+                    chemin, encoding="utf-8", errors="replace"
+                ) as ouvert:
+                    lus.update(re.findall(r"vault_[a-z0-9_]+", ouvert.read()))
+        self.assertTrue(lus, "aucun nom de voûte lu chez le moteur")
+        for nom, _forme in B.SECRETS_LOCATAIRE:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, lus)
 
 
 if __name__ == "__main__":

@@ -826,13 +826,25 @@ def expurge(texte, secret):
     return (texte or "").replace(secret.strip(), EXPURGE)
 
 
+def expurge_tous(texte, secrets):
+    """`texte`, chaque secret de `secrets` remplacé par une marque.
+
+    LE PLUS LONG D'ABORD. Deux secrets dont l'un est le préfixe de l'autre
+    laisseraient la queue du long en clair si le court passait en premier.
+    """
+    vu = texte or ""
+    for secret in sorted(secrets or (), key=len, reverse=True):
+        vu = expurge(vu, secret)
+    return vu
+
+
 def cmds_constater_pont(nom):
     """La commande qui dit si le pont est debout et s'il filtre les VLAN.
 
     `ip -d link show` ET NON UNE LECTURE DE /sys : c'est la commande que le
     dépôt lit déjà pour les ponts, et sa ligne de détail porte
-    « vlan_filtering 0|1 » — mesuré sur un Proxmox. Un second chemin vers le
-    même fait dériverait du premier.
+    « vlan_filtering 0|1 ». Un second chemin vers le même fait dériverait du
+    premier.
     """
     return [f"ip -d link show dev {shlex.quote(str(nom))}"]
 
@@ -1439,6 +1451,136 @@ proxmox_api_token_secret: {secret.strip()}
 """
 
 
+# La FORME d'un secret, vocabulaire CLOS. Elle dit ce qu'un rôle FAIT de la
+# valeur : une phrase de passe se compare, une clé se présente à un serveur ssh.
+# Sceller l'une là où l'autre est attendue passe l'assertion qui ne mesure que la
+# longueur, et échoue plus loin sur un message qui parle du format de la clé sans
+# rien dire de son origine.
+FORME_OPAQUE = "opaque"
+FORME_CLE_SSH = "cle_ssh"
+
+# Les variables de voûte que les rôles du socle EXIGENT non vides, chacune sous
+# sa forme. Chaque nom est celui qu'assertionne le rôle qui le lit.
+#
+# LA TABLE PENCHE VERS LE TROP : une variable qu'aucun rôle joué ne lit ne coûte
+# rien, tandis qu'une variable absente arrête le déploiement sur une assertion
+# qui nomme le secret et pas le plan qui aurait dû le porter.
+SECRETS_LOCATAIRE = (
+    ("vault_step_ca_password", FORME_OPAQUE),
+    ("vault_step_ca_provisioner_password", FORME_OPAQUE),
+    ("vault_sysadmin_amorcage", FORME_OPAQUE),
+    ("vault_openldap_admin", FORME_OPAQUE),
+    ("vault_icinga_api_depot", FORME_OPAQUE),
+    ("vault_restic_password", FORME_OPAQUE),
+    ("vault_backup_ssh_privkey", FORME_CLE_SSH),
+)
+
+
+def forge_opaque(octets=32):
+    """Une phrase de passe imprévisible, d'un alphabet sûr en YAML.
+
+    `token_urlsafe` ne rend que des lettres, des chiffres, « - » et « _ » : rien
+    qui ouvre une ancre, un commentaire ou une suite d'échappement chez le
+    lecteur YAML qui la relira.
+    """
+    import secrets
+
+    return secrets.token_urlsafe(octets)
+
+
+def forge_cle_ssh():
+    """Une clé privée ed25519 au format OpenSSH, forgée en MÉMOIRE. Ou « ».
+
+    NE TOUCHE PAS LE DISQUE, là où `ssh-keygen` exige un fichier : la clé va de
+    la mémoire à l'entrée standard de l'outil qui la chiffre, et rien ne
+    subsiste dans les blocs libérés ni dans une sauvegarde prise entre-temps.
+
+    Rend « » quand l'interpréteur qui joue le banc n'a pas `cryptography` —
+    l'appelant refuse alors en NOMMANT la variable, ce qu'une chaîne au hasard
+    aurait caché jusqu'au premier rôle qui présente la clé.
+    """
+    try:
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+    except ImportError:
+        return ""
+    return (
+        ed25519.Ed25519PrivateKey.generate()
+        .private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.OpenSSH,
+            serialization.NoEncryption(),
+        )
+        .decode("ascii")
+    )
+
+
+FORGES = {FORME_OPAQUE: forge_opaque, FORME_CLE_SSH: forge_cle_ssh}
+
+
+def forge_les_secrets(table=SECRETS_LOCATAIRE):
+    """Un secret NEUF par entrée de `table`. Rend (secrets, souci).
+
+    TOUT OU RIEN : la première forme inconnue, ou la première forge qui ne rend
+    rien, vide le résultat et nomme la variable. Une voûte à demi remplie
+    passerait le premier rôle et ferait échouer le troisième.
+    """
+    faits = {}
+    for nom, forme in table:
+        forge = FORGES.get(forme)
+        if forge is None:
+            return {}, f"« {nom} » : forme « {forme} » inconnue du banc"
+        valeur = forge()
+        if not (valeur or "").strip():
+            return {}, f"« {nom} » ne s'est pas forgée sous cet interpréteur"
+        faits[nom] = valeur
+    return faits, ""
+
+
+def bloc_yaml(nom, valeur):
+    """`nom: valeur` en YAML, TERMINÉ. Littéral dès qu'il y a plusieurs lignes.
+
+    UN SCALAIRE LITTÉRAL (« | ») POUR CE QUI EN A PLUSIEURS : une clé privée
+    mise entre guillemets perd ses retours à la ligne, et le client ssh la
+    refuse sur « invalid format », qui ne dit rien du YAML qui l'a aplatie.
+
+    LE FRAGMENT SE TERMINE LUI-MÊME. Un scalaire littéral ne rend son retour
+    final que si sa dernière ligne en porte un : sans lui, la clé revient
+    amputée de son terminateur, que le format OpenSSH exige — et le fragment
+    serait alors juste ou faux selon ce que son appelant écrit après.
+    """
+    texte = (valeur or "").rstrip("\n")
+    if "\n" not in texte:
+        return f"{nom}: {json.dumps(texte)}\n"
+    return f"{nom}: |\n" + "".join(
+        f"  {ligne}\n" for ligne in texte.split("\n")
+    )
+
+
+def texte_voute_locataire(secrets):
+    """Le CLAIR de la voûte du locataire, à chiffrer. Rend « » sans secret.
+
+    NE SE POSE JAMAIS EN CLAIR SUR LE DISQUE : comme `texte_voute`, il part par
+    l'entrée standard de l'outil qui chiffre.
+
+    UN SECRET VIDE FAIT REFUSER TOUT LE TEXTE, plutôt que d'écrire une voûte où
+    une variable déclarée est la chaîne vide — elle passerait le chargement et
+    échouerait sur l'assertion du rôle, qui la dirait « absente de la voûte ».
+    """
+    if not secrets:
+        return ""
+    blocs = [
+        "---\n",
+        "# Secrets du locataire du BANC, forgés à la pose et jamais relus en\n",
+        "# clair. La grappe est jetable : rien ici ne vaut au-delà d'elle.\n",
+    ]
+    for nom, valeur in secrets.items():
+        if not (valeur or "").strip():
+            return ""
+        blocs.append(bloc_yaml(nom, valeur))
+    return "".join(blocs)
+
+
 def lit_amorcage(sortie):
     """Les hôtes d'amorçage du socle, dans l'ORDRE du moteur. Ou None.
 
@@ -1682,8 +1824,9 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     # alors la tâche qui écrit `/etc/resolv.conf` — que la capture du gabarit a
     # vidé. Le premier `apt` échoue ensuite sur le cache, sans dire un mot du
     # nom qu'il n'a pas résolu.
-    groupe = os.path.join(eco, "inventories", INVENTAIRE_BANC, "group_vars",
-                          "all")
+    groupe = os.path.join(
+        eco, "inventories", INVENTAIRE_BANC, "group_vars", "all"
+    )
     try:
         os.makedirs(groupe, exist_ok=True)
     except OSError as souci:
@@ -1724,6 +1867,25 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
 # cherche à côté d'`underlay.yml`, dans le dépôt de l'hébergeur.
 OUTIL_VOUTE = "ansible-vault"
 VOUTE_UNDERLAY = "underlay.vault.yml"
+
+# La voûte du LOCATAIRE, dont le chemin n'est déclaré nulle part : un inventaire
+# charge `group_vars/all/` pour tous ses hôtes sans qu'on le lui demande, et une
+# voûte posée ailleurs se déchiffrerait sans que rien ne la lise.
+VOUTE_LOCATAIRE = "vault.yml"
+
+
+def chemin_voute_locataire(eco):
+    """Le chemin de la voûte du locataire sous `eco`, ou « »."""
+    if not (eco or "").strip():
+        return ""
+    return os.path.join(
+        eco.strip(),
+        "inventories",
+        INVENTAIRE_BANC,
+        "group_vars",
+        "all",
+        VOUTE_LOCATAIRE,
+    )
 
 
 def ssh_args_du_moteur(moteur):
@@ -1839,21 +2001,21 @@ def lire_jeton(terrain, elevation):
     return lit_jeton(fait.sortie) if fait.reussi else ""
 
 
-def scelle_jeton(voute, identite, secret, moteur):
-    """Chiffre `secret` dans `voute` sous `identite`. Rend le souci, ou « ».
+def scelle(voute, identite, clair, secrets, moteur):
+    """Chiffre `clair` dans `voute` sous `identite`. Rend le souci, ou « ».
 
-    Le secret PASSE PAR L'ENTRÉE STANDARD de l'outil, jamais par un fichier ni
+    Le clair PASSE PAR L'ENTRÉE STANDARD de l'outil, jamais par un fichier ni
     par une ligne de commande — une ligne de commande se lit dans la table des
     processus de la machine, par n'importe quel compte.
 
-    Le souci rendu est EXPURGÉ : la plainte d'un outil de chiffrement cite
-    parfois ce qu'il a reçu, et ce qu'il a reçu est le secret.
+    Le souci rendu est EXPURGÉ de `secrets` : la plainte d'un outil de
+    chiffrement cite parfois ce qu'il a reçu, et ce qu'il a reçu est le clair.
 
     `moteur` sert à bâtir l'environnement de l'outil, qui ne vit pas dans le PATH
     ordinaire, et à lui donner son répertoire de travail.
     """
-    if not (secret or "").strip():
-        return "aucun secret à sceller"
+    if not (clair or "").strip():
+        return "aucun clair à sceller"
     argv = argv_chiffrer(voute, identite)
     if argv is None:
         return "la voûte ou son identité manque"
@@ -1861,12 +2023,30 @@ def scelle_jeton(voute, identite, secret, moteur):
         argv,
         env=env_ansible(moteur),
         cwd=moteur or None,
-        entree=texte_voute(secret),
+        entree=clair,
         delai=120,
     )
     if vu.code == 0:
         return ""
-    return f"{OUTIL_VOUTE} : {expurge(vu.sortie, secret).strip()[-200:]}"
+    plainte = expurge_tous(vu.sortie, secrets).strip()[-200:]
+    return f"{OUTIL_VOUTE} : {plainte}"
+
+
+def scelle_jeton(voute, identite, secret, moteur):
+    """Chiffre le jeton d'API dans `voute` sous `identite`. Le souci, ou « »."""
+    if not (secret or "").strip():
+        return "aucun secret à sceller"
+    return scelle(voute, identite, texte_voute(secret), (secret,), moteur)
+
+
+def scelle_les_secrets(voute, identite, secrets, moteur):
+    """Chiffre les secrets du locataire dans `voute`. Le souci, ou « »."""
+    if not secrets:
+        return "aucun secret à sceller"
+    clair = texte_voute_locataire(secrets)
+    if not clair:
+        return "un secret du locataire est vide"
+    return scelle(voute, identite, clair, tuple(secrets.values()), moteur)
 
 
 # L'ÉTAT DU GABARIT, vocabulaire CLOS. Le banc ne le fabrique pas : sa procédure
@@ -2551,24 +2731,13 @@ def voutes_du_moteur(moteur):
     return vaults.lit_etat(vu.sortie)
 
 
-def identite_hebergeur(moteur, voutes):
-    """L'identité de la voûte de l'HÉBERGEUR, ou None. Ne lève jamais.
+def identites_du_moteur(moteur):
+    """Les identités de voûte que le moteur recense, ou (). Ne lève jamais.
 
-    APPARIÉE PAR LE CHEMIN DE LA CLÉ, jamais par l'étiquette : l'étiquette dérive
-    du nom du dépôt, et deviner cette dérivation reviendrait à la recopier. Le
-    chemin, lui, vient des deux recensements du moteur — celui des états et celui
-    des identités — donc l'appariement est le SIEN.
-
-    C'est la voûte de l'hébergeur parce que c'est elle qui porte le jeton : celle
-    du locataire est lue AVANT elle par les deux lecteurs du moteur, et la sienne
-    l'emporte quand les deux portent la clé.
+    LUES UNE FOIS pour tous les rôles : le recensement est un appel au moteur, et
+    le refaire par voûte ferait dépendre le nombre d'appels du nombre de voûtes.
     """
     vaults = vaults_du_banc()
-    hebergeur = next(
-        (v for v in voutes or () if v.role == vaults.HEBERGEUR), None
-    )
-    if hebergeur is None:
-        return None
     vu = runner_du_banc().jouer(
         vaults.ARGV_IDENTITES,
         env=env_ansible(moteur),
@@ -2576,10 +2745,26 @@ def identite_hebergeur(moteur, voutes):
         fusionner=False,
         delai=60,
     )
-    identites = vaults.lit_identites(vu.sortie)
-    if not identites:
+    return tuple(vaults.lit_identites(vu.sortie) or ())
+
+
+def identite_de_role(voutes, identites, role):
+    """L'identité de la voûte tenue par `role`, ou None. Ne lève jamais.
+
+    APPARIÉE PAR LE CHEMIN DE LA CLÉ, jamais par l'étiquette : l'étiquette dérive
+    du nom du dépôt, et deviner cette dérivation reviendrait à la recopier. Le
+    chemin, lui, vient des deux recensements du moteur — celui des états et celui
+    des identités — donc l'appariement est le SIEN.
+
+    LE RÔLE DÉCIDE DE CE QUE LA VOÛTE PORTE. Celle de l'hébergeur porte le jeton
+    d'API, parce que les deux lecteurs du moteur superposent les deux voûtes et
+    que la sienne l'emporte. Celle du locataire porte les secrets que ses rôles
+    exigent, et ne sort pas de son dépôt.
+    """
+    voute = next((v for v in voutes or () if v.role == role), None)
+    if voute is None:
         return None
-    return next((i for i in identites if i.cle == hebergeur.chemin), None)
+    return next((i for i in identites or () if i.cle == voute.chemin), None)
 
 
 def pose_le_banc(moteur, mesures, chantier, dire=print):
@@ -2637,7 +2822,7 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
     chemins = chemins_du_banc(moteur)
     if chemins is None:
         return "le moteur n'a pas de dossier frère", secret
-    _freres, site, _eco = chemins
+    _freres, site, eco = chemins
     souci = chantier.nomme(
         liens=tuple(
             os.path.join(moteur, nom) for nom, _c in cibles_des_liens()
@@ -2673,13 +2858,32 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
                 secret,
             )
 
-    identite = identite_hebergeur(moteur, voutes)
+    identites = identites_du_moteur(moteur)
+    identite = identite_de_role(voutes, identites, vaults.HEBERGEUR)
     if identite is None:
         return "l'identité de la voûte de l'hébergeur ne s'est pas lue", secret
     dire(f"  · le jeton scellé dans {VOUTE_UNDERLAY}")
+    souci = scelle_jeton(
+        os.path.join(site, VOUTE_UNDERLAY), identite, secret, moteur
+    )
+    if souci:
+        return souci, secret
+
+    # LES SECRETS QUE LE LOCATAIRE EXIGE, forgés ici parce que le modèle du
+    # moteur n'en déclare aucun : ses rôles assertionnent chacun le sien non
+    # vide, et l'assertion nomme le secret sans dire qui aurait dû le poser.
+    # La voûte du locataire n'est pas celle de l'hébergeur : la seconde porte le
+    # jeton et l'emporte sur la première, qui ne sort pas de son dépôt.
+    identite = identite_de_role(voutes, identites, vaults.INSTANCE)
+    if identite is None:
+        return "l'identité de la voûte du locataire ne s'est pas lue", secret
+    secrets, souci = forge_les_secrets()
+    if souci:
+        return f"les secrets du locataire : {souci}", secret
+    dire(f"  · les {len(secrets)} secrets du locataire scellés")
     return (
-        scelle_jeton(
-            os.path.join(site, VOUTE_UNDERLAY), identite, secret, moteur
+        scelle_les_secrets(
+            chemin_voute_locataire(eco), identite, secrets, moteur
         ),
         secret,
     )
