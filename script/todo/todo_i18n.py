@@ -9096,6 +9096,66 @@ TRANSLATIONS = {
         "fr": "Entrée = 1",
         "en": "Enter = 1",
     },
+    "This backup comes from PostgreSQL": {
+        "fr": "Cette sauvegarde vient de PostgreSQL",
+        "en": "This backup comes from PostgreSQL",
+    },
+    "it does not restore into PostgreSQL 16;": {
+        "fr": "elle ne se restaure pas dans PostgreSQL 16 ;",
+        "en": "it does not restore into PostgreSQL 16;",
+    },
+    "the migration stays on the system server.": {
+        "fr": "la migration reste sur le serveur du système.",
+        "en": "the migration stays on the system server.",
+    },
+    "PostgreSQL 16 server binaries not found.": {
+        "fr": "Binaires du serveur PostgreSQL 16 introuvables.",
+        "en": "PostgreSQL 16 server binaries not found.",
+    },
+    "Install them with": {
+        "fr": "Les installer par",
+        "en": "Install them with",
+    },
+    "The migration PostgreSQL cluster does not start.": {
+        "fr": "Le cluster PostgreSQL de la migration ne démarre pas.",
+        "en": "The migration PostgreSQL cluster does not start.",
+    },
+    "Migration on the PostgreSQL 16 cluster": {
+        "fr": "Migration sur le cluster PostgreSQL 16",
+        "en": "Migration on the PostgreSQL 16 cluster",
+    },
+    "No PostgreSQL version in this backup.": {
+        "fr": "Aucune version de PostgreSQL dans cette sauvegarde.",
+        "en": "No PostgreSQL version in this backup.",
+    },
+    "PostgreSQL of the migration": {
+        "fr": "PostgreSQL de la migration",
+        "en": "PostgreSQL of the migration",
+    },
+    "The system server": {
+        "fr": "Le serveur du système",
+        "en": "The system server",
+    },
+    "PostgreSQL 16 cluster of the migration": {
+        "fr": "Cluster PostgreSQL 16 de la migration",
+        "en": "PostgreSQL 16 cluster of the migration",
+    },
+    "The system server already holds": {
+        "fr": "Le serveur du système porte déjà",
+        "en": "The system server already holds",
+    },
+    "both servers share the filestore by database name,": {
+        "fr": "les deux serveurs partagent le filestore par nom de base,",
+        "en": "both servers share the filestore by database name,",
+    },
+    "and restoring here would delete its files.": {
+        "fr": "et restaurer ici effacerait ses fichiers.",
+        "en": "and restoring here would delete its files.",
+    },
+    "Choose another name.": {
+        "fr": "Choisissez un autre nom.",
+        "en": "Choose another name.",
+    },
     "Enter = 3": {
         "fr": "Entrée = 3",
         "en": "Enter = 3",

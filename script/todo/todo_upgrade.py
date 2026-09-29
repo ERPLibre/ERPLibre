@@ -17,6 +17,7 @@ from script.todo import (
     auto_ask,
     migration_status,
     todo_file_browser,
+    todo_prefs,
 )
 from script.todo.version_manager import get_odoo_version
 
@@ -33,6 +34,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.database import migration_cluster
 from script.execute import execute
 from script.git.git_tool import GitTool
 
@@ -99,6 +101,9 @@ GLOBAL_PROGRESSION_KEY = frozenset(
         "date_update",
         "migration_file",
         "target_odoo_version",
+        # Le cluster PostgreSQL de la migration, fixé à son début : une
+        # reprise, même rembobinée, se rebranche sur le même.
+        "config_pg_cluster",
     }
 )
 
@@ -1615,6 +1620,9 @@ class TodoUpgrade:
                 f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version * 10}-{(next_version + 1) * 10}.html"
             )
 
+        if not self.use_migration_cluster():
+            return
+
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
         self.print_step(msg)
@@ -1739,13 +1747,26 @@ class TodoUpgrade:
 
         database_name = self.dct_progression.get("config_database_name")
         if not database_name:
-            database_name = (
-                self.ask(
-                    f"💬 {t('Which database name do you want to work with?')}"
-                    f" {t('Default')} ({default_database_name}) : "
-                ).strip()
-                or default_database_name
-            )
+            for _essai in range(3):
+                database_name = (
+                    self.ask(
+                        f"💬 {t('Which database name do you want to work with?')}"
+                        f" {t('Default')} ({default_database_name}) : "
+                    ).strip()
+                    or default_database_name
+                )
+                lst_pris = self.names_on_system_server(database_name)
+                if not lst_pris:
+                    break
+                print(
+                    f"⚠️ {t('The system server already holds')}"
+                    f" {', '.join(lst_pris)} :"
+                    f" {t('both servers share the filestore by database name,')}"
+                    f" {t('and restoring here would delete its files.')}"
+                    f" {t('Choose another name.')}"
+                )
+            else:
+                return
             self.dct_progression["config_database_name"] = database_name
             self.write_config()
 
@@ -4394,6 +4415,107 @@ class TodoUpgrade:
             )
 
         return lst_module_missing, lst_module_duplicate
+
+    def use_migration_cluster(self):
+        """Branche la migration sur le cluster PostgreSQL 16, si demandé.
+
+        Le choix se fixe au début d'une migration, d'après la préférence
+        migration_postgresql, et se garde dans config_pg_cluster : une
+        reprise se rebranche sur le même cluster. Une sauvegarde produite
+        par un PostgreSQL plus récent que 16 ne s'y restaure pas ; la
+        migration reste alors sur le serveur du système, et le dit.
+
+        Exporte PGHOST et PGPORT, que suivent Odoo, psql et pg_dump tant
+        que config.conf laisse db_host et db_port à False. Rend False quand
+        la migration doit s'arrêter : binaires absents, cluster qui ne
+        démarre pas.
+        """
+        dct = self.dct_progression.get("config_pg_cluster")
+        if dct is None:
+            dct = {}
+            if todo_prefs.get("migration_postgresql", "system") == "16":
+                origine = migration_cluster.version_du_dump(self.file_path)
+                if origine is None or origine > migration_cluster.VERSION:
+                    print(
+                        f"⚠️ {t('This backup comes from PostgreSQL')}"
+                        f" {origine or '?'} :"
+                        f" {t('it does not restore into PostgreSQL 16;')}"
+                        f" {t('the migration stays on the system server.')}"
+                    )
+                else:
+                    dct = {
+                        "root": migration_cluster.RACINE,
+                        "port": migration_cluster.PORT,
+                    }
+            self.dct_progression["config_pg_cluster"] = dct
+            self.write_config()
+        if not dct:
+            return True
+        bindir = migration_cluster.trouver_bindir()
+        if not bindir:
+            print(f"❌ {t('PostgreSQL 16 server binaries not found.')}")
+            print(
+                f"   {t('Install them with')}"
+                " ./script/install/install_postgresql_migration.sh"
+            )
+            return False
+        if migration_cluster.demarrer(bindir, dct["root"], dct["port"]):
+            print(
+                f"❌ {t('The migration PostgreSQL cluster does not start.')}"
+                f" {migration_cluster.chemins(dct['root'])[2]}"
+            )
+            return False
+        os.environ.update(
+            migration_cluster.environnement(dct["root"], dct["port"])
+        )
+        print(
+            f"✅ {t('Migration on the PostgreSQL 16 cluster')}"
+            f" ({os.environ['PGHOST']}, {t('port')} {os.environ['PGPORT']})"
+        )
+        return True
+
+    def names_on_system_server(self, database_name):
+        """Les bases du serveur du système nommées database_name ou
+        database_name_…, quand la migration tourne sur son cluster.
+
+        Odoo range le filestore par nom de base sous un data_dir commun aux
+        deux serveurs : restaurer ou supprimer une base du cluster efface les
+        fichiers de sa jumelle du système. Rend [] hors cluster, pour un nom
+        qui n'est pas un identifiant, ou quand le serveur ne répond pas.
+        """
+        if not self.dct_progression.get("config_pg_cluster"):
+            return []
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", database_name or ""):
+            return []
+        motif = database_name.replace("_", "\\_")
+        environ = {
+            cle: valeur
+            for cle, valeur in os.environ.items()
+            if cle not in ("PGHOST", "PGPORT")
+        }
+        try:
+            done = subprocess.run(
+                [
+                    "psql",
+                    "-X",
+                    "-w",
+                    "-d",
+                    "postgres",
+                    "-tAc",
+                    "SELECT datname FROM pg_database WHERE datname ="
+                    f" '{database_name}' OR datname LIKE '{motif}\\_%'"
+                    " ORDER BY datname",
+                ],
+                env=environ,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if done.returncode:
+            return []
+        return [ligne for ligne in done.stdout.split() if ligne]
 
     def switch_odoo_for_bump(self, lst_switch_odoo, index, next_version):
         """Rend actif Odoo next_version pour la montée de rang index.
