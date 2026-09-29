@@ -21,8 +21,7 @@ import tempfile
 import time
 import unittest
 
-sys.argv = ["todo.py"]
-from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo import TODO
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
@@ -64,6 +63,28 @@ class TestLaFrontiere(unittest.TestCase):
         # Aucun chemin du lanceur ne sort de test/ : sinon long_test y
         # entrerait par la porte de service.
         self.assertNotIn("long_test", lanceur)
+
+    def test_importing_this_file_keeps_the_command_line(self):
+        # unittest.main lit sys.argv : un fichier qui le remplace à
+        # l'import lance tous ses tests quand on n'en nomme qu'un.
+        code = (
+            "import sys; sys.argv = ['forged', 'Forged.test_forged'];"
+            " import test_todo_longtest; print(sys.argv)"
+        )
+        chemins = os.pathsep.join((RACINE, os.path.join(RACINE, "test")))
+        res = subprocess.run(
+            [PYTHON, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=RACINE,
+            env=dict(os.environ, PYTHONPATH=chemins),
+        )
+        self.assertEqual(
+            res.stdout.strip(),
+            "['forged', 'Forged.test_forged']",
+            res.stderr[-800:],
+        )
 
     def test_the_script_is_executable_and_documented(self):
         script = os.path.join(RACINE, "long_test/deep_proxmox.py")
@@ -1125,9 +1146,6 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
     une option et répond « commande inconnue »."""
 
     def setUp(self):
-        sys.argv = ["todo.py"]
-        from script.todo.todo import TODO
-
         self.todo = TODO.__new__(TODO)
 
     def test_every_listed_choice_has_a_branch(self):
