@@ -2241,6 +2241,92 @@ TRANSLATIONS = {
         "fr": '🔊 Son et peripheriques',
         "en": '🔊 Sound and devices',
     },
+    # Section Service : les unites systemd du modem.
+    # Section Service : les unites systemd du modem.
+    'voip_softphone_odoo': {
+        "fr": 'Declarer le softphone dans Odoo (serveur et poste)',
+        "en": 'Declare the softphone in Odoo (server and endpoint)',
+    },
+    'voip_softphone_db': {
+        "fr": 'Base de donnees [%s] : ',
+        "en": 'Database [%s]: ',
+    },
+    'voip_softphone_running': {
+        "fr": 'Ecriture dans %s...',
+        "en": 'Writing into %s...',
+    },
+    'modem_menu_service': {
+        "fr": '🛠 Service — unites systemd, demarrage automatique',
+        "en": '🛠 Service — systemd units, start at boot',
+    },
+    'modem_service_state': {
+        "fr": 'Etat des services',
+        "en": 'Service state',
+    },
+    'modem_service_env': {
+        "fr": 'Poser le fichier d\'environnement (demande sudo)',
+        "en": 'Write the environment file (asks for sudo)',
+    },
+    'modem_service_install': {
+        "fr": 'Installer ou mettre a jour les unites (demande sudo)',
+        "en": 'Install or update the units (asks for sudo)',
+    },
+    'modem_service_start': {
+        "fr": 'Demarrer les services',
+        "en": 'Start the services',
+    },
+    'modem_service_stop': {
+        "fr": 'Arreter les services',
+        "en": 'Stop the services',
+    },
+    'modem_service_log': {
+        "fr": 'Journal des services',
+        "en": 'Service log',
+    },
+    'modem_service_remove': {
+        "fr": 'Retirer les unites (demande sudo)',
+        "en": 'Remove the units (asks for sudo)',
+    },
+    'modem_service_env_label': {
+        "fr": 'Fichier d\'environnement',
+        "en": 'Environment file',
+    },
+    'modem_service_present': {
+        "fr": 'pose',
+        "en": 'in place',
+    },
+    'modem_service_absent': {
+        "fr": 'absent',
+        "en": 'absent',
+    },
+    'modem_service_running': {
+        "fr": 'actif',
+        "en": 'running',
+    },
+    'modem_service_stopped': {
+        "fr": 'arrete',
+        "en": 'stopped',
+    },
+    # Actif et « au demarrage » ne se confondent pas : un service lance a la
+    # main est actif et disparait au prochain demarrage.
+    'modem_service_enabled': {
+        "fr": 'repart au demarrage',
+        "en": 'starts at boot',
+    },
+    'modem_service_not_enabled': {
+        "fr": 'NE repart PAS au demarrage',
+        "en": 'does NOT start at boot',
+    },
+    'modem_service_missing_vars': {
+        "fr": 'valeurs introuvables : %s',
+        "en": 'values not found: %s',
+    },
+    'modem_service_env_first': {
+        "fr": ('Le fichier d\'environnement n\'est pas pose : les services '
+               'demarreront sans savoir ou joindre Odoo.'),
+        "en": ('The environment file is not in place: the services will start '
+               'without knowing where to reach Odoo.'),
+    },
     'modem_menu_voip': {
         "fr": '🌐 Services VoIP',
         "en": '🌐 VoIP services',

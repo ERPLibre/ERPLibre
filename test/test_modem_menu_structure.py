@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""La structure du menu Modem : sept entrees, et rien d'inatteignable.
+"""La structure du menu Modem : huit entrees, et rien d'inatteignable.
 
 Un menu se reorganise rarement, et c'est justement le moment ou une entree se
 perd : elle disparait de l'ecran sans que rien ne le signale.
@@ -23,11 +23,12 @@ ACTIONS = {
     "_lister_appels", "_appel_voip", "_envoyer_sms", "_lister_sms",
     "_passerelle", "_repondeur", "_sonder_audio", "_essai_combine",
     "_basculer_uac", "_regle_audio", "_regle_udev", "_installer_voip",
-    "_etat_voip",
+    "_etat_voip", "_service_etat", "_service_environnement", "_service_poser",
+    "_service_commander", "_service_journal", "_service_retirer",
 }
 
 SOUS_MENUS = ("_sous_menu_etat", "_sous_menu_appels", "_sous_menu_sms",
-              "_sous_menu_audio", "_sous_menu_voip")
+              "_sous_menu_audio", "_sous_menu_voip", "_sous_menu_service")
 
 
 def entrees_du_sous_menu(nom, todo=None):
@@ -44,7 +45,7 @@ def entrees_du_sous_menu(nom, todo=None):
 
 
 class TestStructure(unittest.TestCase):
-    def test_le_premier_ecran_tient_en_sept_entrees(self):
+    def test_le_premier_ecran_tient_en_huit_entrees(self):
         """Dix-huit entrees demandaient de lire l'ecran pour en trouver une."""
         source = open(menu.__file__, encoding="utf-8").read()
         debut = source.index("def prompt_execute_modem")
@@ -52,7 +53,7 @@ class TestStructure(unittest.TestCase):
         corps = source[debut:fin]
         numeros = {ligne.split("]")[0].strip("[")
                    for ligne in corps.splitlines() if ligne.startswith("[")}
-        self.assertEqual(numeros, {"1", "2", "3", "4", "5", "6", "7", "0"})
+        self.assertEqual(numeros, {"1", "2", "3", "4", "5", "6", "7", "8", "0"})
 
     def test_rien_ne_s_est_perdu_dans_le_rangement(self):
         atteignables = {"_clavier", "_repondeur"}

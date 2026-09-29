@@ -1,0 +1,34 @@
+# Agent de la passerelle : relaie les SMS d'Odoo par la carte SIM, et
+# rapporte les appels entrants.
+#
+# Gabarit : les @JETONS@ sont remplaces a la pose par script/todo/modem/service.py.
+#
+# Il lit la ligne par ModemManager, qui tient ses propres ports : cet agent et
+# le service de voix tournent donc EN MEME TEMPS sans se disputer le port AT.
+[Unit]
+Description=ERPLibre — agent de la passerelle SMS du modem
+Documentation=file://@DEPOT@/script/todo/modem/passerelle.py
+After=network-online.target ModemManager.service
+Wants=network-online.target
+# Le plafond de relances vit dans [Unit] : place dans [Service], systemd
+# l'ignore en le signalant seulement dans son journal.
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=simple
+User=@UTILISATEUR@
+WorkingDirectory=@DEPOT@
+EnvironmentFile=-@ENV@
+ExecStart=@PYTHON@ -m script.todo.modem.passerelle
+
+# L'agent rend 1 sur une configuration incomplete, et c'est voulu : une
+# variable absente doit se voir. « on-failure » le relancerait sans fin sur
+# cette panne-la et noierait la cause, d'ou le plafond declare plus haut.
+Restart=on-failure
+RestartSec=30
+
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -144,6 +144,7 @@ def prompt_execute_modem(todo) -> None:
 [5] {t("modem_answering")}
 [6] {t("modem_menu_audio")}
 [7] {t("modem_menu_voip")}
+[8] {t("modem_menu_service")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -163,6 +164,8 @@ def prompt_execute_modem(todo) -> None:
             _sous_menu_audio()
         elif status == "7":
             _sous_menu_voip(todo)
+        elif status == "8":
+            _sous_menu_service()
         else:
             print(t("Command not found !"))
 
@@ -229,11 +232,202 @@ def _sous_menu_audio():
     ))
 
 
+def _sous_menu_service():
+    _sous_menu(t("modem_menu_service"), (
+        (t("modem_service_state"), _service_etat),
+        (t("modem_service_env"), _service_environnement),
+        (t("modem_service_install"), _service_poser),
+        (t("modem_service_start"), lambda: _service_commander("start")),
+        (t("modem_service_stop"), lambda: _service_commander("stop")),
+        (t("modem_service_log"), _service_journal),
+        (t("modem_service_remove"), _service_retirer),
+    ))
+
+
+def _service_etat():
+    """Ce qui tourne, et surtout ce qui repartira apres un redemarrage.
+
+    Les deux ne se confondent pas : un service demarre a la main est actif et
+    disparait au prochain demarrage, ce qui est la panne meme que ces unites
+    ferment.
+    """
+    from script.todo.modem import service as svc_mod
+
+    print("  " + t("modem_service_env_label") + " : "
+          + (t("modem_service_present") if svc_mod.environnement_pose()
+             else t("modem_service_absent")))
+    for unite, pose, actif, demarrage, manquantes in svc_mod.etat():
+        print()
+        print("  " + unite)
+        if pose != "posee":
+            print("    " + t("modem_service_absent"))
+        else:
+            print("    " + (t("modem_service_running") if actif
+                            else t("modem_service_stopped")))
+            print("    " + (t("modem_service_enabled") if demarrage
+                            else t("modem_service_not_enabled")))
+        if manquantes:
+            print("    " + t("modem_service_missing_vars") % ", ".join(manquantes))
+
+
+def _service_environnement():
+    from script.todo.modem import service as svc_mod
+
+    ok, detail = svc_mod.poser_environnement()
+    print("  " + ("✅ " if ok else "❌ ") + detail)
+
+
+def _service_poser():
+    from script.todo.modem import service as svc_mod
+
+    if not svc_mod.environnement_pose():
+        print("  " + t("modem_service_env_first"))
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.poser(unite)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + detail.strip()[:300]))
+
+
+def _service_commander(action):
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.commander(unite, action)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + (detail or "")[:200]))
+
+
+def _service_journal():
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        print()
+        print("  " + unite)
+        for ligne in (svc_mod.journal(unite, 20) or "").splitlines():
+            print("    " + ligne)
+
+
+def _service_retirer():
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.retirer(unite)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + detail.strip()[:200]))
+
+
 def _sous_menu_voip(todo):
     _sous_menu(t("modem_menu_voip"), (
         (t("voip_install"), lambda: _installer_voip(todo)),
         (t("voip_status"), _etat_voip),
     ))
+
+
+def _sous_menu_service():
+    _sous_menu(t("modem_menu_service"), (
+        (t("modem_service_state"), _service_etat),
+        (t("modem_service_env"), _service_environnement),
+        (t("modem_service_install"), _service_poser),
+        (t("modem_service_start"), lambda: _service_commander("start")),
+        (t("modem_service_stop"), lambda: _service_commander("stop")),
+        (t("modem_service_log"), _service_journal),
+        (t("modem_service_remove"), _service_retirer),
+    ))
+
+
+def _service_etat():
+    """Ce qui tourne, et surtout ce qui repartira apres un redemarrage.
+
+    Les deux ne se confondent pas : un service demarre a la main est actif et
+    disparait au prochain demarrage, ce qui est la panne meme que ces unites
+    ferment.
+    """
+    from script.todo.modem import service as svc_mod
+
+    print("  " + t("modem_service_env_label") + " : "
+          + (t("modem_service_present") if svc_mod.environnement_pose()
+             else t("modem_service_absent")))
+    for unite, pose, actif, demarrage, manquantes in svc_mod.etat():
+        print()
+        print("  " + unite)
+        if pose != "posee":
+            print("    " + t("modem_service_absent"))
+        else:
+            print("    " + (t("modem_service_running") if actif
+                            else t("modem_service_stopped")))
+            print("    " + (t("modem_service_enabled") if demarrage
+                            else t("modem_service_not_enabled")))
+        if manquantes:
+            print("    " + t("modem_service_missing_vars") % ", ".join(manquantes))
+
+
+def _service_environnement():
+    from script.todo.modem import service as svc_mod
+
+    ok, detail = svc_mod.poser_environnement()
+    print("  " + ("✅ " if ok else "❌ ") + detail)
+
+
+def _service_poser():
+    from script.todo.modem import service as svc_mod
+
+    if not svc_mod.environnement_pose():
+        print("  " + t("modem_service_env_first"))
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.poser(unite)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + detail.strip()[:300]))
+
+
+def _service_commander(action):
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.commander(unite, action)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + (detail or "")[:200]))
+
+
+def _service_journal():
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        print()
+        print("  " + unite)
+        for ligne in (svc_mod.journal(unite, 20) or "").splitlines():
+            print("    " + ligne)
+
+
+def _service_retirer():
+    from script.todo.modem import service as svc_mod
+
+    for unite in svc_mod.UNITES:
+        ok, detail = svc_mod.retirer(unite)
+        print("  " + ("✅ " if ok else "❌ ") + unite
+              + ("" if ok else " — " + detail.strip()[:200]))
+
+
+def _sous_menu_voip(todo):
+    _sous_menu(t("modem_menu_voip"), (
+        (t("voip_install"), lambda: _installer_voip(todo)),
+        (t("voip_status"), _etat_voip),
+    ))
+
+
+def _declarer_softphone():
+    """Declare dans Odoo le serveur et le poste du softphone.
+
+    Sans eux, le navigateur ne s'inscrit nulle part : un appel entrant laisse
+    une trace dans Odoo et aucun telephone ne sonne.
+    """
+    from script.todo.modem import softphone as soft_mod
+    from script.todo.sms import spec as spec_mod
+
+    base = spec_mod.load().spec.db_name
+    defaut = input(t("voip_softphone_db") % base).strip() or base
+    print("  " + t("voip_softphone_running") % defaut)
+    ok, detail = soft_mod.configurer(defaut)
+    print("  " + ("✅ " if ok else "❌ ") + detail)
 
 
 def _index_ou_plainte():
