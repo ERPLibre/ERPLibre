@@ -448,8 +448,13 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
                 ecran.query_one("#acc_email", Input).value = "moi@x.ca"
                 # Le formulaire défile : le bouton est sous la ligne de
                 # flottaison d'un terminal de test, comme il le serait d'un
-                # petit terminal réel.
-                ecran.query_one("#acc_authorize", Button).scroll_visible()
+                # petit terminal réel. `animate=False` mène le défilement à
+                # son terme TOUT DE SUITE : animé, il dure plusieurs images,
+                # et le clic qui suit tombe hors de l'écran — `OutOfBounds`
+                # — dès que la machine est chargée.
+                ecran.query_one("#acc_authorize", Button).scroll_visible(
+                    animate=False
+                )
                 await pilot.pause()
                 await pilot.click("#acc_authorize")
                 await pilot.pause()
@@ -480,7 +485,9 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
         with patch("script.todo.mail.oauth.authorize", refuse):
             async with app.run_test() as pilot:
                 ecran = await self._ouvrir(pilot, app, "outlook")
-                ecran.query_one("#acc_authorize", Button).scroll_visible()
+                ecran.query_one("#acc_authorize", Button).scroll_visible(
+                    animate=False
+                )
                 await pilot.pause()
                 await pilot.click("#acc_authorize")
                 await pilot.pause()
