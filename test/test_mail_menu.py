@@ -220,6 +220,42 @@ class TestAddAccountPreset(unittest.TestCase):
         self.assertEqual(self.preset("1"), keys[0])
 
 
+class TestMailLinesSpeakTheChosenLanguage(unittest.TestCase):
+    """List accounts et Cache size and purge écrivent leurs lignes dans la
+    langue choisie : un mot d'une autre langue au milieu d'un écran se
+    lirait comme une donnée du compte."""
+
+    def test_a_disabled_account_and_a_size_in_english(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        import script.todo.mail.menu as menu
+        from script.todo import todo_i18n
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        account = account_from_preset(
+            "forged_a", "a@forged.invalid", "generic"
+        )
+        account.enabled = False
+        row = {"name": "forged_a", "mode": "clear", "size": 2048}
+        shown = io.StringIO()
+        with (
+            patch.object(menu.mail_accounts, "load", return_value=[account]),
+            patch.object(menu, "cache_summary", return_value=[row]),
+            patch.object(menu, "_pick_account", return_value=(None, [])),
+            redirect_stdout(shown),
+        ):
+            menu._list_accounts()
+            menu._cache_size_and_purge(None)
+        self.assertIn(
+            "  forged_a (disabled) — a@forged.invalid", shown.getvalue()
+        )
+        self.assertIn("  forged_a — clear — 2 KB\n", shown.getvalue())
+
+
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
     """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
     sans compte (`mail_no_account`) rendrait cet écran inatteignable."""

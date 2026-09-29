@@ -282,6 +282,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A list of ranks, « 1 3 » or « 1,3 », takes each option only by its number as the list writes it, or by its name: « 01 », « +1 » or a digit of another script no longer pick the first one, in Assistant › LLM › Known servers › Delete a server as in the VM choices of QEMU/KVM and Proxmox VE
 - Assistant › Mail picks an account only by its number as the list writes it: « 0 », typed to go back, no longer picks the last account, which Delete an account erased without another question, and « -1 », « 01 » or a digit of another script pick none
 - Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
+- Assistant › Mail › Accounts › List accounts and Cache › Cache size and purge write their lines in the chosen language: a disabled account and the size of a cache were marked in French whatever the language
 
 ## Removed
 

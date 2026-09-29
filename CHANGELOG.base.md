@@ -432,6 +432,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A list of ranks, « 1 3 » or « 1,3 », takes each option only by its number as the list writes it, or by its name: « 01 », « +1 » or a digit of another script no longer pick the first one, in Assistant › LLM › Known servers › Delete a server as in the VM choices of QEMU/KVM and Proxmox VE
 - Assistant › Mail picks an account only by its number as the list writes it: « 0 », typed to go back, no longer picks the last account, which Delete an account erased without another question, and « -1 », « 01 » or a digit of another script pick none
 - Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
+- Assistant › Mail › Accounts › List accounts and Cache › Cache size and purge write their lines in the chosen language: a disabled account and the size of a cache were marked in French whatever the language
 
 <!-- [fr] -->
 
@@ -584,6 +585,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une liste de rangs, « 1 3 » ou « 1,3 », ne prend chaque option que par son numéro tel que la liste l'écrit, ou par son nom : « 01 », « +1 » ou un chiffre d'une autre écriture ne prennent plus la première, dans Assistant › LLM › Serveurs connus › Supprimer un serveur comme dans les choix de VM de QEMU/KVM et de Proxmox VE
 - Assistant › Courriel ne choisit un compte que par son numéro tel que la liste l'écrit : « 0 », tapé pour revenir, ne prend plus le dernier compte, que Supprimer un compte effaçait sans autre question, et « -1 », « 01 » ou un chiffre d'une autre écriture n'en prennent aucun
 - Assistant › Courriel › Comptes › Ajouter un compte ne prend un fournisseur que par son numéro tel que la liste l'écrit : « 01 », « +1 », « -1 » ou un chiffre d'une autre écriture gardent le fournisseur générique, qui demande les serveurs, au lieu de donner au compte les serveurs d'un fournisseur que personne n'a choisi
+- Assistant › Courriel › Comptes › Lister les comptes et Cache › Taille du cache et purge écrivent leurs lignes dans la langue choisie : un compte désactivé et la taille d'un cache s'y marquaient en français quelle que soit la langue
 
 <!-- [en] -->
 ## Removed

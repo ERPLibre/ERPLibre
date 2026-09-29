@@ -224,7 +224,7 @@ def _list_accounts() -> None:
         print(t("mail_no_account"))
         return
     for account in accounts:
-        mark = "" if account.enabled else " (désactivé)"
+        mark = "" if account.enabled else f" ({t('disabled')})"
         print(
             f"  {account.name}{mark} — {account.email}"
             f" — {account.imap.host} / {account.smtp.host}"
@@ -522,7 +522,8 @@ def _cache_size_and_purge(todo) -> None:
         print(t("mail_no_account"))
         return
     for row in cache_summary(accounts):
-        print(f"  {row['name']} — {row['mode']} — {row['size'] // 1024} ko")
+        size = f"{row['size'] // 1024} {t('mail_size_kb')}"
+        print(f"  {row['name']} — {row['mode']} — {size}")
     account, _ = _pick_account()
     if account is None:
         return

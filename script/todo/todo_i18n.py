@@ -12251,6 +12251,7 @@ TRANSLATIONS = {
         "fr": "Compte supprimé.",
         "en": "Account deleted.",
     },
+    "mail_size_kb": {"fr": "ko", "en": "KB"},
     "mail_connection_ok": {
         "fr": "Connexion réussie.",
         "en": "Connection succeeded.",

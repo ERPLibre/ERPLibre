@@ -282,6 +282,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une liste de rangs, « 1 3 » ou « 1,3 », ne prend chaque option que par son numéro tel que la liste l'écrit, ou par son nom : « 01 », « +1 » ou un chiffre d'une autre écriture ne prennent plus la première, dans Assistant › LLM › Serveurs connus › Supprimer un serveur comme dans les choix de VM de QEMU/KVM et de Proxmox VE
 - Assistant › Courriel ne choisit un compte que par son numéro tel que la liste l'écrit : « 0 », tapé pour revenir, ne prend plus le dernier compte, que Supprimer un compte effaçait sans autre question, et « -1 », « 01 » ou un chiffre d'une autre écriture n'en prennent aucun
 - Assistant › Courriel › Comptes › Ajouter un compte ne prend un fournisseur que par son numéro tel que la liste l'écrit : « 01 », « +1 », « -1 » ou un chiffre d'une autre écriture gardent le fournisseur générique, qui demande les serveurs, au lieu de donner au compte les serveurs d'un fournisseur que personne n'a choisi
+- Assistant › Courriel › Comptes › Lister les comptes et Cache › Taille du cache et purge écrivent leurs lignes dans la langue choisie : un compte désactivé et la taille d'un cache s'y marquaient en français quelle que soit la langue
 
 ## Retiré
 
