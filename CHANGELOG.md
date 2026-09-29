@@ -268,6 +268,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › Proxmox VE: choosing a VM of the host, to show its address, open its console, resize its disk, delete it or test it, takes only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 - Execute › Deploy › VPN: choosing a profile, to connect, disconnect, diagnose, show, store the secrets of or delete it, and choosing a site preset take only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 - Execute › Deploy › VPN: the technology of a profile, or the one whose client packages to install, is taken by its rank only as a number as a list writes it: « 02 » or a digit of another script matches nothing, and « ² » no longer ends TODO on a `ValueError`
+- Execute › Test › Long tests: the depth of a nested descent is read only from ASCII digits: « ² », next to « 1 » on a French keyboard, keeps the default of three instead of ending TODO on a `ValueError`, and a digit of another script no longer sets a depth the prompt did not show
 
 ## Removed
 

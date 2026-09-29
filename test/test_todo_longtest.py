@@ -328,6 +328,25 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
         # Et l'invite le DIT : un défaut caché se subit, il ne se choisit pas.
         self.assertIn("Depth (default 3): ", src)
 
+    def test_what_is_not_a_number_keeps_the_default(self):
+        # « ² », voisin de « 1 » sur un clavier français, et « ٤ » (quatre
+        # en écriture arabe) gardent le défaut au lieu d'arrêter TODO sur
+        # une ValueError ; « 04 » demande quatre étages.
+        todo = TODO.__new__(TODO)
+        for answer, depth in (
+            ("²", 3),
+            ("٤", 3),
+            ("", 3),
+            ("0", 3),
+            ("04", 4),
+            ("5", 5),
+        ):
+            with (
+                self.subTest(answer=answer),
+                patch("builtins.input", return_value=answer),
+            ):
+                self.assertEqual(todo._longtest_depth(), depth)
+
     def test_the_prompt_is_translated(self):
         from script.todo.todo_i18n import TRANSLATIONS
 

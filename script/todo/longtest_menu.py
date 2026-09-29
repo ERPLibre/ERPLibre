@@ -281,6 +281,11 @@ class LongTestMenuMixin:
         étape devient quinze à trente fois plus lente, et les suivants se
         comptent en jours (long_test/README.md). Un défaut plus profond
         promettrait ce qu'aucune machine ne tient.
+
+        Des chiffres ASCII seulement : isdigit() accepte aussi « ² » ou un
+        chiffre d'une autre écriture, sur lesquels int() lève ou lit un
+        nombre que l'invite n'a pas montré.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
-        return int(brut) if brut.isdigit() and int(brut) > 0 else 3
+        chiffres = brut.isascii() and brut.isdigit()
+        return int(brut) if chiffres and int(brut) > 0 else 3

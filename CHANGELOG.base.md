@@ -418,6 +418,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › Proxmox VE: choosing a VM of the host, to show its address, open its console, resize its disk, delete it or test it, takes only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 - Execute › Deploy › VPN: choosing a profile, to connect, disconnect, diagnose, show, store the secrets of or delete it, and choosing a site preset take only a number as shown: « 02 » or a digit of another script chooses nothing, and « ² » no longer ends TODO on a `ValueError`
 - Execute › Deploy › VPN: the technology of a profile, or the one whose client packages to install, is taken by its rank only as a number as a list writes it: « 02 » or a digit of another script matches nothing, and « ² » no longer ends TODO on a `ValueError`
+- Execute › Test › Long tests: the depth of a nested descent is read only from ASCII digits: « ² », next to « 1 » on a French keyboard, keeps the default of three instead of ending TODO on a `ValueError`, and a digit of another script no longer sets a depth the prompt did not show
 
 <!-- [fr] -->
 
@@ -556,6 +557,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › Proxmox VE : le choix d'une VM de l'hôte, pour montrer son adresse, ouvrir sa console, redimensionner son disque, l'effacer ou la tester, ne prend qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 - Exécution › Deploy › VPN : le choix d'un profil, pour le connecter, le déconnecter, le diagnostiquer, le montrer, ranger ses secrets ou l'effacer, et le choix d'un préréglage de site ne prennent qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 - Exécution › Deploy › VPN : la technologie d'un profil, ou celle dont installer les paquets du client, ne se prend par son rang que sous la forme d'un numéro tel qu'une liste l'écrit : « 02 » ou un chiffre d'une autre écriture ne désignent rien, et « ² » n'arrête plus TODO sur une `ValueError`
+- Exécution › Test › Tests longs : la profondeur d'une descente imbriquée ne se lit que dans des chiffres ASCII : « ² », voisin de « 1 » sur un clavier français, garde le défaut de trois au lieu d'arrêter TODO sur une `ValueError`, et un chiffre d'une autre écriture ne fixe plus une profondeur que l'invite n'a pas montrée
 
 <!-- [en] -->
 ## Removed
