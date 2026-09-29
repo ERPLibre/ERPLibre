@@ -2259,32 +2259,32 @@ TRANSLATIONS = {
         "en": '🛠 Service — systemd units, start at boot',
     },
     'modem_service_state': {
-        "fr": 'Etat des services',
-        "en": 'Service state',
+        "fr": '📊 Etat des services',
+        "en": '📊 Service state',
     },
     'modem_service_env': {
-        "fr": 'Poser le fichier d\'environnement (demande sudo)',
-        "en": 'Write the environment file (asks for sudo)',
+        "fr": '🔑 Poser le fichier d\'environnement (demande sudo)',
+        "en": '🔑 Write the environment file (asks for sudo)',
     },
     'modem_service_install': {
-        "fr": 'Installer ou mettre a jour les unites (demande sudo)',
-        "en": 'Install or update the units (asks for sudo)',
+        "fr": '⚙ Installer ou mettre a jour les unites (demande sudo)',
+        "en": '⚙ Install or update the units (asks for sudo)',
     },
     'modem_service_start': {
-        "fr": 'Demarrer les services',
-        "en": 'Start the services',
+        "fr": '▶ Demarrer les services',
+        "en": '▶ Start the services',
     },
     'modem_service_stop': {
-        "fr": 'Arreter les services',
-        "en": 'Stop the services',
+        "fr": '⏹ Arreter les services',
+        "en": '⏹ Stop the services',
     },
     'modem_service_log': {
-        "fr": 'Journal des services',
-        "en": 'Service log',
+        "fr": '📜 Journal des services',
+        "en": '📜 Service log',
     },
     'modem_service_remove': {
-        "fr": 'Retirer les unites (demande sudo)',
-        "en": 'Remove the units (asks for sudo)',
+        "fr": '🗑 Retirer les unites (demande sudo)',
+        "en": '🗑 Remove the units (asks for sudo)',
     },
     'modem_service_env_label': {
         "fr": 'Fichier d\'environnement',
@@ -12935,32 +12935,32 @@ TRANSLATIONS = {
         "en": "SMS gateway",
     },
     "sms_run_all": {
-        "fr": "Tout enchainer, en s'arretant au premier echec",
-        "en": "Run everything, stopping at the first failure",
+        "fr": "⛓ Tout enchainer, en s'arretant au premier echec",
+        "en": "⛓ Run everything, stopping at the first failure",
     },
     "sms_reset_local": {
-        "fr": "Repartir de zero - arrete Odoo et supprime la base",
-        "en": "Start over - stops Odoo and drops the database",
+        "fr": "🧨 Repartir de zero - arrete Odoo et supprime la base",
+        "en": "🧨 Start over - stops Odoo and drops the database",
     },
     "sms_step_vm": {
-        "fr": "Creer la VM de demonstration",
-        "en": "Create the demonstration VM",
+        "fr": "🖥 Creer la VM de demonstration",
+        "en": "🖥 Create the demonstration VM",
     },
     "sms_step_odoo": {
-        "fr": "Installer Odoo et le module de passerelle",
-        "en": "Install Odoo and the gateway module",
+        "fr": "📦 Installer Odoo et le module de passerelle",
+        "en": "📦 Install Odoo and the gateway module",
     },
     "sms_step_gateway": {
-        "fr": "Configurer la passerelle et son secret",
-        "en": "Configure the gateway and its secret",
+        "fr": "🔑 Configurer la passerelle et son secret",
+        "en": "🔑 Configure the gateway and its secret",
     },
     "sms_step_agent": {
-        "fr": "Lancer l'agent passerelle du modem",
-        "en": "Start the modem gateway agent",
+        "fr": "🔗 Lancer l'agent passerelle du modem",
+        "en": "🔗 Start the modem gateway agent",
     },
     "sms_materiel_menu": {
-        "fr": "Materiel qui porte la carte SIM",
-        "en": "Device holding the SIM card",
+        "fr": "🔌 Materiel qui porte la carte SIM",
+        "en": "🔌 Device holding the SIM card",
     },
     "sms_materiel_current": {
         "fr": "Materiel actuel",
@@ -13009,20 +13009,20 @@ TRANSLATIONS = {
         "en": "The agent stopped immediately; see the log.",
     },
     "sms_step_mobile": {
-        "fr": "Relier l'application mobile",
-        "en": "Link the mobile application",
+        "fr": "📱 Relier l'application mobile",
+        "en": "📱 Link the mobile application",
     },
     "sms_step_verify": {
-        "fr": "Verifier la chaine par un envoi d'essai",
-        "en": "Verify the chain with a test message",
+        "fr": "✉ Verifier la chaine par un envoi d'essai",
+        "en": "✉ Verify the chain with a test message",
     },
     "sms_status": {
         "fr": "Etat de la demonstration",
         "en": "Demonstration status",
     },
     "sms_open_tui": {
-        "fr": "Ouvrir le tableau de bord (TUI)",
-        "en": "Open the dashboard (TUI)",
+        "fr": "📊 Ouvrir le tableau de bord (TUI)",
+        "en": "📊 Open the dashboard (TUI)",
     },
     "sms_manual_hint": {
         "fr": "demande le telephone en main",
@@ -13137,12 +13137,12 @@ TRANSLATIONS = {
         "en": "Press Enter to return to the dashboard... ",
     },
     "sms_step_env": {
-        "fr": "Verifier l'environnement local",
-        "en": "Check the local environment",
+        "fr": "🧰 Verifier l'environnement local",
+        "en": "🧰 Check the local environment",
     },
     "sms_mode_menu": {
-        "fr": "Mode de la demonstration",
-        "en": "Demonstration mode",
+        "fr": "🧭 Mode de la demonstration",
+        "en": "🧭 Demonstration mode",
     },
     "sms_mode_local": {
         "fr": "Local - sur ce poste, sans VM ni sudo (recommande)",
@@ -13231,8 +13231,8 @@ TRANSLATIONS = {
         ),
     },
     "sms_step_confirm": {
-        "fr": "Confirmer que le SMS est bien parti",
-        "en": "Confirm the message actually went out",
+        "fr": "🏁 Confirmer que le SMS est bien parti",
+        "en": "🏁 Confirm the message actually went out",
     },
     "sms_confirm_livre": {
         "fr": "Remis au destinataire (accuse du reseau)",
@@ -13257,8 +13257,8 @@ TRANSLATIONS = {
         "en": "Nothing to confirm: run the previous step first.",
     },
     "sms_phone_menu": {
-        "fr": "Lire les SMS du telephone",
-        "en": "Read the phone's messages",
+        "fr": "📥 Lire les SMS du telephone",
+        "en": "📥 Read the phone's messages",
     },
     "sms_phone_sent": {"fr": "Envoyes", "en": "Sent"},
     "sms_phone_inbox": {"fr": "Recus", "en": "Received"},
@@ -13342,8 +13342,8 @@ TRANSLATIONS = {
         ),
     },
     "sms_test_number_menu": {
-        "fr": "Numero d'essai",
-        "en": "Test number",
+        "fr": "🔢 Numero d'essai",
+        "en": "🔢 Test number",
     },
     "sms_test_number_none": {"fr": "non defini", "en": "not set"},
     "sms_test_number_current": {
@@ -13377,8 +13377,8 @@ TRANSLATIONS = {
         "en": "Also editable by hand in",
     },
     "sms_call_menu": {
-        "fr": "Passer un appel d'essai",
-        "en": "Place a test call",
+        "fr": "📞 Passer un appel d'essai",
+        "en": "📞 Place a test call",
     },
     "sms_call_no_number": {
         "fr": "Aucun numero d'essai defini : voir « Numero d'essai ».",
@@ -13463,8 +13463,8 @@ TRANSLATIONS = {
         ),
     },
     "sms_reset": {
-        "fr": "Repartir de zero - detruit la VM de demonstration",
-        "en": "Start over - destroys the demonstration VM",
+        "fr": "🧨 Repartir de zero - detruit la VM de demonstration",
+        "en": "🧨 Start over - destroys the demonstration VM",
     },
     # Courriel
     "mail_menu": {
