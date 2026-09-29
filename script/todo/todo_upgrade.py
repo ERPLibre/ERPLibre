@@ -2490,6 +2490,9 @@ class TodoUpgrade:
                             database_name_upgrade,
                             next_version - 1,
                         )
+                        self.forget_modules(
+                            database_name_upgrade, lst_module_to_delete
+                        )
 
                     if not is_delete_all:
                         msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose auto-fix (not implemented yet)"
@@ -4280,6 +4283,65 @@ class TodoUpgrade:
             )
             self.print_uninstall_reason(lst_detail)
         return list(dict.fromkeys(list(extra) + lst_file))
+
+    FORGET_SCRIPT = """
+import json
+rapport = {{"forgotten": []}}
+try:
+    modules = env["ir.module.module"].search(
+        [("name", "in", {noms!r}), ("state", "=", "uninstalled")]
+    )
+    rapport["forgotten"] = sorted(modules.mapped("name"))
+    modules.unlink()
+    env.cr.commit()
+except Exception as exc:
+    rapport["error"] = "%s: %s" % (type(exc).__name__, exc)
+print({debut!r})
+print(json.dumps(rapport))
+print({fin!r})
+"""
+
+    def forget_modules(self, database_name, lst_module):
+        """Retire de la base la fiche des modules désinstallés de lst_module.
+
+        La fiche d'un module désinstallé garde son drapeau auto_install :
+        dans la version suivante, qui n'a pas son code, installer un module
+        dont il dépend le remet d'office « to install », et il ne se charge
+        jamais. Sans fiche, rien ne le ramène ; update_list la recrée si le
+        code revient. Passe par l'ORM, qui retire aussi leurs xmlid. Rend
+        les noms retirés, ou None quand le shell n'a pas répondu.
+        """
+        noms = sorted(
+            {m for m in lst_module if re.fullmatch(r"[A-Za-z0-9_]+", m or "")}
+        )
+        if not noms:
+            return []
+        from script.odoo.migration import database_cleanup
+
+        script = self.FORGET_SCRIPT.format(
+            noms=noms,
+            debut=database_cleanup.START,
+            fin=database_cleanup.END,
+        )
+        try:
+            rapport = database_cleanup.run_shell(
+                database_name, "config.conf", script
+            )
+        except RuntimeError as exc:
+            print(f"⚠️  {t('Could not forget the removed modules:')} {exc}")
+            return None
+        if rapport.get("error"):
+            print(
+                f"⚠️  {t('Could not forget the removed modules:')}"
+                f" {rapport['error']}"
+            )
+            return None
+        if rapport.get("forgotten"):
+            print(
+                f"🧹 {t('Forgotten, so nothing installs them again:')}"
+                f" {', '.join(rapport['forgotten'])}"
+            )
+        return rapport.get("forgotten", [])
 
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version

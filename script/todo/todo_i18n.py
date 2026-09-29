@@ -9156,6 +9156,14 @@ TRANSLATIONS = {
         "fr": "Choisissez un autre nom.",
         "en": "Choose another name.",
     },
+    "Could not forget the removed modules:": {
+        "fr": "Impossible d'oublier les modules retirés :",
+        "en": "Could not forget the removed modules:",
+    },
+    "Forgotten, so nothing installs them again:": {
+        "fr": "Oubliés, pour que rien ne les réinstalle :",
+        "en": "Forgotten, so nothing installs them again:",
+    },
     "Enter = 3": {
         "fr": "Entrée = 3",
         "en": "Enter = 3",
