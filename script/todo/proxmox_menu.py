@@ -67,6 +67,13 @@ class ProxmoxMenuMixin:
         self._pve_host_cache = host
         todo_prefs.set(self._PVE_PREF_KEY, host)
 
+    def _pve_change_host(self):
+        """Oublie l'hôte retenu, puis en fait choisir un autre : l'entrée
+        « Change the Proxmox host », du menu comme de la TUI de
+        télémétrie."""
+        self._pve_forget_host()
+        self._pve_pick_host()
+
     @staticmethod
     def _pve_label(host):
         """« root@hyperviseur (par rebond) », pour l'afficher en tête de
@@ -2867,8 +2874,7 @@ class ProxmoxMenuMixin:
             elif status == "17":
                 self._pve_example()
             elif status == "18":
-                self._pve_forget_host()
-                self._pve_pick_host()
+                self._pve_change_host()
             elif status in numbers:
                 self.execute_from_configuration(numbers[status])
             else:

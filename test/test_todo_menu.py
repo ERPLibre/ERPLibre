@@ -826,6 +826,30 @@ class TestLArbreDesMenus(unittest.TestCase):
             [{False}, {True}],
         )
 
+    def test_changing_the_proxmox_host_from_the_tui_picks_another(self):
+        # La TUI lance une feuille par sa méthode et ses kwargs : celle de
+        # « Change the Proxmox host » oublie l'hôte retenu PUIS en fait
+        # choisir un autre, comme le menu ; oublier seul laisserait Proxmox
+        # VE sans hôte.
+        from script.todo.todo import TODO
+
+        [leaf] = [
+            child
+            for child in self._noeud("Proxmox VE")["children"]
+            if child["label"] == "Change the Proxmox host"
+        ]
+        calls = []
+        with (
+            patch.object(
+                TODO, "_pve_forget_host", lambda todo: calls.append("forget")
+            ),
+            patch.object(
+                TODO, "_pve_pick_host", lambda todo: calls.append("pick")
+            ),
+        ):
+            getattr(TODO.__new__(TODO), leaf["method"])(**leaf["kwargs"])
+        self.assertEqual(calls, ["forget", "pick"])
+
     def test_each_leaf_of_the_qemu_family_binds_its_arguments(self):
         # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
         # attend un argument que l'arbre ne donne pas lève dans la TUI au
@@ -968,7 +992,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "Android emulator": "_qemu_emulator_menu",
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
-        "Change the Proxmox host": "_pve_forget_host",
+        "Change the Proxmox host": "_pve_change_host",
     }
 
 
