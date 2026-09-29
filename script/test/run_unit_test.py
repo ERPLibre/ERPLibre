@@ -178,20 +178,43 @@ def ordonner(fichiers, durees):
     )
 
 
-def poser_doublures(dossier):
+# Les doublures vivent à un chemin FIXE, hors du dépôt, et non dans le
+# répertoire temporaire de chaque passage : le PATH des tests est alors le
+# même d'un passage à l'autre. Un outil qui met ses résultats en cache selon
+# l'environnement — « go test », qui retient le PATH d'un test qui lance des
+# commandes — retrouve ainsi son cache au lieu de tout refaire.
+DOUBLURES = os.path.join(os.path.dirname(DURATIONS), "run_unit_test.bin")
+
+
+def poser_doublures(dossier=DOUBLURES):
     """Écrit les commandes refusées dans `dossier`, qui ira en tête du
-    PATH. Chacune écrit pourquoi sur la sortie d'erreur du test."""
+    PATH. Chacune écrit pourquoi sur la sortie d'erreur du test.
+
+    Un fichier déjà identique n'est pas réécrit : sa date reste la même, et
+    un cache qui la compare n'est pas invalidé. L'écriture passe par un
+    fichier provisoire renommé, pour que deux lanceurs simultanés ne se
+    voient jamais une doublure à moitié écrite."""
     os.makedirs(dossier, exist_ok=True)
     for cmd, code in REFUSEES.items():
         chemin = os.path.join(dossier, cmd)
-        with open(chemin, "w", encoding="utf-8") as fh:
-            fh.write(
-                "#!/bin/sh\n"
-                f'echo "run_unit_test : « {cmd} $* » refusé, un test'
-                " unitaire ne touche pas l'hôte\" >&2\n"
-                f"exit {code}\n"
-            )
-        os.chmod(chemin, 0o755)
+        contenu = (
+            "#!/bin/sh\n"
+            f'echo "run_unit_test : « {cmd} $* » refusé, un test'
+            " unitaire ne touche pas l'hôte\" >&2\n"
+            f"exit {code}\n"
+        )
+        try:
+            with open(chemin, encoding="utf-8") as fh:
+                if fh.read() == contenu and os.access(chemin, os.X_OK):
+                    continue
+        except OSError:
+            pass
+        provisoire = f"{chemin}.{os.getpid()}.tmp"
+        with open(provisoire, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        os.chmod(provisoire, 0o755)
+        os.replace(provisoire, chemin)
+    return dossier
 
 
 class Lanceur:
@@ -220,12 +243,9 @@ class Lanceur:
         self.debut = 0.0
         self.fin = 0.0
         self.travail = tempfile.mkdtemp(prefix="run_unit_test.")
-        poser_doublures(os.path.join(self.travail, "bin"))
         self.env = dict(
             os.environ,
-            PATH=os.path.join(self.travail, "bin")
-            + os.pathsep
-            + os.environ.get("PATH", ""),
+            PATH=poser_doublures() + os.pathsep + os.environ.get("PATH", ""),
             PYTHONPATH=".",
         )
 
