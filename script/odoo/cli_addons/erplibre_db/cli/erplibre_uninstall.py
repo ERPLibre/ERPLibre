@@ -69,7 +69,11 @@ def desinstaller(env, noms):
     )
     if not modules:
         return []
-    modules |= modules.downstream_dependencies()
+    dependants = modules.downstream_dependencies()
+    if not hasattr(dependants, "mapped"):
+        # Odoo 8 et 9 : méthode de l'ancienne API, qui rend des identifiants.
+        dependants = modules.browse(dependants)
+    modules |= dependants
     retires = sorted(modules.mapped("name"))
     modules.button_immediate_uninstall()
     return retires

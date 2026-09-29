@@ -264,6 +264,70 @@ class TestLaDispositionOpenerp(unittest.TestCase):
         self.assertEqual(str(self.racine / "config.conf"), sortie.stdout.strip())
 
 
+class TestDesinstallerSelonLApi(unittest.TestCase):
+    """downstream_dependencies() rend des enregistrements depuis Odoo 10, des
+    identifiants en 8 et 9 (ancienne API) : les unir tels quels levait
+    « Mixing apples and oranges », et le module restait installé."""
+
+    DESINSTALLE = []
+
+    class Modules(object):
+        NOMS = {1: "crm", 2: "sale_crm", 3: "base"}
+
+        def __init__(self, ids, ancienne_api):
+            self.ids = list(ids)
+            self.ancienne_api = ancienne_api
+
+        def search(self, domaine):
+            noms = domaine[0][2]
+            return self.browse([i for i, n in self.NOMS.items() if n in noms])
+
+        def browse(self, ids):
+            return type(self)(ids, self.ancienne_api)
+
+        def __bool__(self):
+            return bool(self.ids)
+
+        def __or__(self, autre):
+            if not isinstance(autre, type(self)):
+                raise TypeError("Mixing apples and oranges")
+            return self.browse(sorted(set(self.ids) | set(autre.ids)))
+
+        def mapped(self, champ):
+            return [self.NOMS[i] for i in self.ids]
+
+        def downstream_dependencies(self):
+            return [2] if self.ancienne_api else self.browse([2])
+
+        def button_immediate_uninstall(self):
+            TestDesinstallerSelonLApi.DESINSTALLE.append(self.mapped("name"))
+
+    def desinstaller(self):
+        import ast
+
+        source = (COMMANDE.parent / "erplibre_uninstall.py").read_text(
+            encoding="utf-8"
+        )
+        arbre = ast.parse(source)
+        fonction = [
+            n for n in arbre.body
+            if isinstance(n, ast.FunctionDef) and n.name == "desinstaller"
+        ][0]
+        espace = {}
+        exec(compile(ast.Module([fonction], []), "erplibre_uninstall", "exec"), espace)
+        return espace["desinstaller"]
+
+    def test_les_identifiants_d_odoo_8_et_9_deviennent_des_enregistrements(self):
+        TestDesinstallerSelonLApi.DESINSTALLE = []
+        env = {"ir.module.module": self.Modules([], ancienne_api=True)}
+        self.assertEqual(["crm", "sale_crm"], self.desinstaller()(env, ["crm"]))
+        self.assertEqual([["crm", "sale_crm"]], TestDesinstallerSelonLApi.DESINSTALLE)
+
+    def test_les_enregistrements_d_odoo_10_et_suivants_passent_tels_quels(self):
+        env = {"ir.module.module": self.Modules([], ancienne_api=False)}
+        self.assertEqual(["crm", "sale_crm"], self.desinstaller()(env, ["crm"]))
+
+
 def _charger_commande(api):
     """Charge erplibre_db.py contre un faux paquet odoo portant l'API
     demandée : « legacy » (odoo.service.db) ou « moderne » (odoo.modules.db).
