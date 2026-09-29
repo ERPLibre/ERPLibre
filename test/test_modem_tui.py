@@ -19,6 +19,7 @@ l'affichage suit l'état publié plutôt qu'une copie locale.
 import asyncio
 import os
 import sys
+import time
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -59,6 +60,21 @@ COMMANDES_SIGNAL = ("#clvl_moins", "#clvl_plus", "#sw_fns", "#sw_echo",
 #: donc toute cible controlee apres lui serait declaree recouverte.
 COMMANDES_REPONDEUR = ("#sw_effacer", "#recuperer", "#messages", "#ecouter",
                        "#effacer_local", "#coffre")
+
+
+async def attendre(condition, limite=5.0):
+    """Attend que `condition()` soit vraie, plutot qu'un delai fixe.
+
+    Une action de la TUI passe par un fil : dormir une duree choisie parie sur
+    la charge de la machine, et l'essai se met a echouer le jour ou un service
+    de plus tourne a cote.
+    """
+    echeance = time.monotonic() + limite
+    while time.monotonic() < echeance:
+        if condition():
+            return True
+        await asyncio.sleep(0.02)
+    return condition()
 
 
 class PiloteInerte:
@@ -592,8 +608,46 @@ class PosteTelephonique(unittest.TestCase):
                 self.assertTrue(appels)
 
         asyncio.run(essai())
-        source = open(tui_mod.__file__, encoding="utf-8").read()
-        self.assertIn("set_interval(CADENCE_MESSAGERIE_S", source)
+
+    def test_la_veille_de_la_boite_ne_se_pose_qu_une_fois(self):
+        """Elle se posait a CHAQUE lecture de la SIM : les minuteries
+        s'empilaient, et la veille finissait par battre dix fois par periode."""
+        app = construire()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app._poser_messagerie({"messagerie_connue": True})
+                premier = app.veille_messagerie
+                self.assertIsNotNone(premier, "aucune veille posee")
+                app._poser_messagerie({"messagerie_connue": True})
+                await pilote.pause()
+                self.assertIs(app.veille_messagerie, premier,
+                              "une seconde minuterie a ete posee")
+
+        asyncio.run(essai())
+
+    def test_une_lecture_vide_n_effacce_pas_le_numero_connu(self):
+        """Le service de voix tient le port AT en permanence : la lecture de la
+        TUI revient alors vide, et effacer le numero rendrait le bouton
+        inutilisable juste apres une recuperation, sans rien dire."""
+        app = construire({"messagerie_numero": "+15145550199"})
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app._poser_messagerie({"messagerie_numero": "",
+                                       "messagerie_connue": True})
+                await pilote.pause()
+                self.assertEqual(app.dernier_etat.get("messagerie_numero"),
+                                 "+15145550199")
+                # Une SIM qui annonce vraiment un numero le remplace.
+                app._poser_messagerie({"messagerie_numero": "+15145550123"})
+                await pilote.pause()
+                self.assertEqual(app.dernier_etat.get("messagerie_numero"),
+                                 "+15145550123")
+
+        asyncio.run(essai())
 
     def test_la_liste_sms_montre_le_sens_et_l_horodatage(self):
         """Un message recu porte « timestamp », un envoye l'accuse de remise :
@@ -721,6 +775,14 @@ class PosteTelephonique(unittest.TestCase):
         app = construire({"messagerie_numero": "+15145550199"})
         app.code_messagerie = "1234"
         recettes = []
+        # La SIM est relue apres chaque recuperation : sans ce bouchon, l'essai
+        # depend de ce que le vrai modem repond, et il ne repond rien quand le
+        # service de voix tient le port AT.
+        sim = mock.patch.object(tui_mod, "etat_messagerie",
+                                return_value={"messagerie_numero": "+15145550199",
+                                              "messagerie_connue": True})
+        sim.start()
+        self.addCleanup(sim.stop)
 
         async def essai():
             async with app.run_test(size=TAILLE) as pilote:
@@ -734,10 +796,13 @@ class PosteTelephonique(unittest.TestCase):
                     await pilote.click("#tab_repondeur")
                     await pilote.pause()
                     await pilote.click("#recuperer")
-                    await asyncio.sleep(0.1)
+                    await attendre(lambda: len(recettes) >= 1)
                     app.query_one("#sw_effacer", Switch).value = False
-                    await pilote.click("#recuperer")
-                    await asyncio.sleep(0.1)
+                    # `press()` et non un second clic : deux clics de suite au
+                    # meme endroit tombent dans la fenetre du double-clic du
+                    # pilote, et le second n'atteint pas le bouton.
+                    app.query_one("#recuperer", Button).press()
+                    await attendre(lambda: len(recettes) >= 2)
                     await pilote.pause()
 
         asyncio.run(essai())

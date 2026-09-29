@@ -316,6 +316,8 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             self.code_messagerie = code_messagerie
             self.messages = []
             self.sms = []
+            #: Minuteur de la veille de la messagerie, pose une seule fois.
+            self.veille_messagerie = None
             self.index_modem = index_modem
             self.pilote = None
             self.vue = "clavier"
@@ -1244,14 +1246,28 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
         def _poser_messagerie(self, etat):
             if not self._vivante():
                 return
+            # Un numero VIDE ne remplace pas un numero connu : une lecture qui
+            # n'aboutit pas rend un champ vide, indistinguable d'une SIM sans
+            # messagerie. Le service de voix tient le port AT en permanence,
+            # donc cette lecture revient vide chaque fois qu'il tourne — et
+            # effacer le numero rendrait le bouton inutilisable juste apres une
+            # recuperation, sans rien dire.
+            etat = dict(etat)
+            if not etat.get("messagerie_numero"):
+                etat.pop("messagerie_numero", None)
             self.messagerie.update(etat)
             self.dernier_etat.update(etat)
             self._resumer(self.dernier_etat)
             self._maj_boutons()
-            # Sans cette relecture, un message laisse pendant que le clavier
-            # est ouvert ne se verrait qu'au prochain lancement : l'etat n'est
-            # lu qu'au demarrage et a la fin d'un appel.
-            self.set_interval(CADENCE_MESSAGERIE_S, self._veiller_arriere_plan)
+            # Une SEULE fois : cette methode tourne a chaque lecture de la SIM,
+            # et reposer le minuteur a chaque passage les empile — la veille
+            # finirait par battre dix fois par periode.
+            if self.veille_messagerie is None:
+                # Sans cette relecture, un message laisse pendant que le clavier
+                # est ouvert ne se verrait qu'au prochain lancement : l'etat
+                # n'est lu qu'au demarrage et a la fin d'un appel.
+                self.veille_messagerie = self.set_interval(
+                    CADENCE_MESSAGERIE_S, self._veiller_arriere_plan)
 
         def _appeler_messagerie(self):
             """Compose la messagerie de l'operateur et appelle.
