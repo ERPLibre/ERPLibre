@@ -126,6 +126,14 @@ class PosteTelephonique(unittest.TestCase):
         """
         app = construire()
         self.assertIsNotNone(app, "l'application ne s'est pas construite")
+        # Les messages du repondeur viennent du DISQUE : sans cela, l'essai
+        # passait ou echouait selon ce que la machine avait garde. Aucun
+        # message est le cas le plus dur, la liste gardant alors un index qui
+        # ne designe plus rien.
+        vide = mock.patch("script.todo.modem.recuperation.lister_messages",
+                          return_value=[])
+        vide.start()
+        self.addCleanup(vide.stop)
 
         def couvert_par(app, cible):
             """Rend le widget reellement touche au centre de `cible`."""

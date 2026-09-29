@@ -1085,10 +1085,19 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
                 liste.value = 0
 
         def _message_choisi(self):
+            """Le message designe par la liste, ou None.
+
+            La valeur est controlee contre la LISTE et pas seulement contre
+            « aucun choix » : elle porte un index, et une liste videe depuis le
+            dernier affichage — les messages effaces — laisse un index qui ne
+            designe plus rien. Ecouter levait alors au lieu de dire qu'il n'y a
+            rien a ecouter.
+            """
             liste = self.query_one("#messages", Select)
-            if liste.value is None or liste.value is Select.BLANK:
+            index = liste.value
+            if not isinstance(index, int) or not 0 <= index < len(self.messages):
                 return None
-            return self.messages[liste.value]
+            return self.messages[index]
 
         def _ecouter_message(self):
             """Joue le message sur la sortie audio de la MACHINE.
