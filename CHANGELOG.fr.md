@@ -262,6 +262,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Docker / Podman › Service liste ses cinq gestes et les lance depuis la TUI, en demandant le moteur ; la TUI ne lance plus les trois nettoyages de Docker / Podman, qui effacent
 - Télémétrie de navigation : Exécution › Docker / Podman › Compose et Conteneur ERPLibre listent leurs entrées et les lancent depuis la TUI, en demandant au moteur ce qu'il leur faut ; la TUI ne lance plus Compose › Arrêter, qui efface les conteneurs de la composition
 - Télémétrie de navigation : Exécution › Deploy › Déployer - Installer le serveur de notifications NTFY, SSH › SSH - Installer ERPLibre, SSH - Installer le service systemd et SSH - Configurer nginx + SSL, QEMU cache › Cache - Installer ou réinstaller, et Exécution › Docker / Podman › Installer Docker et Installer Podman, qui posent des paquets ou un service sur cette machine ou sur un hôte distant, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
+- Exécution › Deploy › Proxmox VE : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +19 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 
 ## Retiré
 

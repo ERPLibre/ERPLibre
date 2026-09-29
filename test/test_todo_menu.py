@@ -972,6 +972,98 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestProxmoxMenu(unittest.TestCase):
+    """Proxmox VE : dix-huit entrées fixes, puis celles de
+    `proxmox_from_makefile`, dont une section, qui ne prend pas de numéro.
+
+    Les commandes sont des doubles, aucune ne part ; l'hôte est tenu pour
+    retenu, HOME est temporaire, la langue fixée et la télémétrie de
+    navigation neutralisée.
+    """
+
+    ENTRIES = [
+        {"prompt_description": "Forged one", "bash_command": "forged_one"},
+        {"section": "Forged section"},
+        {"prompt_description": "Forged two", "bash_command": "forged_two"},
+    ]
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        host = {"target": "root@forged-pve", "jump": ""}
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch("script.todo.todo_telemetry.record"),
+            patch.object(TODO, "_pve_host", return_value=host),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+        self.todo.config_file.get_config = lambda key: [
+            dict(entry) for entry in self.ENTRIES
+        ]
+
+    def answer(self, answers):
+        """(configurations lancées, appels de [1] et de [17], texte
+        affiché) quand Proxmox VE reçoit `answers`, puis « 0 »."""
+        from script.todo.todo import TODO
+
+        ran = []
+
+        def run(todo, instance, **options):
+            ran.append(instance.get("bash_command"))
+
+        with (
+            patch.object(TODO, "execute_from_configuration", run),
+            patch.object(TODO, "_pve_deploy") as deploy,
+            patch.object(TODO, "_pve_example") as example,
+            patch("click.prompt", side_effect=[*answers, "0"]),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_proxmox(), False)
+        return ran, [deploy.call_count, example.call_count], out.getvalue()
+
+    def test_each_number_runs_the_entry_it_shows(self):
+        # [19] et [20] lancent les deux entrées de la configuration, que
+        # sépare une section. « 21 » n'est pas affiché ; « 01 », « 1 »
+        # entouré de blancs, « +19 », « ١٩ » (dix-neuf en écriture arabe)
+        # et « 019 » ne sont pas un numéro affiché.
+        answers = ["1", "17", "19", "20", "21"]
+        answers += ["01", " 1 ", "+19", "١٩", "019"]
+        ran, fixed, out = self.answer(answers)
+        self.assertEqual(ran, ["forged_one", "forged_two"])
+        self.assertEqual(fixed, [1, 1])
+        self.assertEqual(out.count("Command not found !"), 6)
+
+    def test_without_a_host_it_neither_draws_nor_asks(self):
+        # Sans hôte retenu ni choisi, Proxmox VE rend False sans dessiner
+        # son menu ni poser sa question.
+        from script.todo.todo import TODO
+
+        with (
+            patch.object(TODO, "_pve_host", return_value=None),
+            patch("click.prompt", side_effect=AssertionError("prompt")),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertIs(self.todo.prompt_execute_proxmox(), False)
+        self.assertEqual(
+            out.getvalue(), "🤖 Deploy a virtual machine on Proxmox VE!\n"
+        )
+
+
 class RegistryCoherence:
     """Socle : un menu déclaré au registre mène-t-il où il le dit ?
 

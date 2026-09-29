@@ -262,6 +262,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Docker / Podman › Service lists its five gestures and launches them from the TUI, asking for the engine; the TUI no longer launches the three cleanups of Docker / Podman, which erase
 - Navigation telemetry: Execute › Docker / Podman › Compose and ERPLibre container list their entries and launch them from the TUI, asking the engine for what they need; the TUI no longer launches Compose › Stop, which removes the containers of the composition
 - Navigation telemetry: Execute › Deploy › Deploy - Install NTFY notification server, SSH › SSH - Install ERPLibre, SSH - Install systemd service and SSH - Configure nginx + SSL, QEMU cache › Cache - Install or reinstall, and Execute › Docker / Podman › Install Docker and Install Podman, which put packages or a service on this machine or on a remote host, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
+- Execute › Deploy › Proxmox VE: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +19 » or a digit of another script answer « Command not found ! » instead of running the line of a fixed entry as a configuration, or an entry of `todo.json`
 
 ## Removed
 

@@ -2812,6 +2812,17 @@ class ProxmoxMenuMixin:
         if supplement:
             choices.extend(supplement)
         help_info = self.fill_help_info(choices)
+        # Le numéro affiché de chaque entrée de la configuration, après les
+        # entrées fixes : seul ce numéro-là la lance. int() lirait aussi
+        # « 01 », « +19 » ou un chiffre d'une autre écriture, et lancerait
+        # comme une configuration la ligne d'une entrée fixe.
+        shown = [c for c in choices if not c.get("section")]
+        configured = [c for c in supplement or [] if not c.get("section")]
+        numbers = {
+            str(n): entry
+            for n, entry in enumerate(shown, 1)
+            if n > len(shown) - len(configured)
+        }
         while True:
             hote = self._pve_host(ask=False)
             print(f"\n  {t('Proxmox host:')} {self._pve_label(hote) or '-'}")
@@ -2858,19 +2869,10 @@ class ProxmoxMenuMixin:
             elif status == "18":
                 self._pve_forget_host()
                 self._pve_pick_host()
+            elif status in numbers:
+                self.execute_from_configuration(numbers[status])
             else:
-                introuvable = True
-                try:
-                    numero = int(status)
-                    # Les sections ne comptent pas dans la numérotation.
-                    reelles = [c for c in choices if not c.get("section")]
-                    if 0 < numero <= len(reelles):
-                        introuvable = False
-                        self.execute_from_configuration(reelles[numero - 1])
-                except ValueError:
-                    pass
-                if introuvable:
-                    print(t("Command not found !"))
+                print(t("Command not found !"))
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.
