@@ -684,7 +684,7 @@ TRANSLATIONS = {
         "en": "Install all Odoo version with ERPLibre",
     },
     "ERPLibre with mobile home": {
-        "fr": "ERPLibre avec l'accueil mobile",
+        "fr": "ERPLibre avec l'application mobile",
         "en": "ERPLibre with mobile home",
     },
     " - Installed": {"fr": " - Installée", "en": " - Installed"},
