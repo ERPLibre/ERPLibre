@@ -260,5 +260,24 @@ class TestUnModuleDejaRetireNEstPlusPropose(unittest.TestCase):
         )
 
 
+class TestLaListeDuPalierPartDeLaBase(unittest.TestCase):
+    """Un module auto_install installé en route doit être porté aussi."""
+
+    def liste(self, base, precedente):
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.modules_of_database = lambda nom: base
+        upgrade.get_rename_module = lambda lst, version: sorted(lst)
+        return upgrade.modules_for_bump("base", precedente, 19)
+
+    def test_un_module_installe_en_route_est_dans_la_liste(self):
+        self.assertEqual(
+            ["module_auto", "sale"],
+            self.liste(["sale", "module_auto"], ["sale"]),
+        )
+
+    def test_une_base_muette_garde_la_liste_precedente(self):
+        self.assertEqual(["sale"], self.liste(None, ["sale"]))
+
+
 if __name__ == "__main__":
     unittest.main()
