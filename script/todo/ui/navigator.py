@@ -57,7 +57,9 @@ def navigate(todo, menu):
     numérotée avec ses kwargs, puis le menu reprend, ou rend `menu.back`
     s'il se referme (`closes`) ; toute autre réponse dit « Command not
     found ! ». L'intro, `t(menu.intro)` derrière `menu.mark`, s'affiche
-    une fois, à l'entrée.
+    une fois, à l'entrée ; la méthode `menu.opens` s'appelle ensuite, une
+    fois : un dict ouvre le menu et s'ajoute aux kwargs de chaque action,
+    toute autre valeur est rendue sans que le menu se dessine.
     Un menu `render="each"` se redessine après chaque réponse, sa
     configuration relue ; un menu "once" garde son premier dessin. Ctrl+C
     ou Ctrl+D à la question remontent, sauf dans un menu `abort_closes`,
@@ -65,6 +67,11 @@ def navigate(todo, menu):
     remonte toujours."""
     if menu.intro:
         print(f"{menu.mark} {t(menu.intro)}")
+    context = {}
+    if menu.opens:
+        context = getattr(todo, menu.opens)()
+        if not isinstance(context, dict):
+            return context
     text, actions = _draw(todo, menu)
     while True:
         try:
@@ -80,7 +87,7 @@ def navigate(todo, menu):
         numbers = [str(n) for n in range(1, len(actions) + 1)]
         if status in numbers:
             method, kwargs = actions[int(status) - 1]
-            getattr(todo, method)(**kwargs)
+            getattr(todo, method)(**kwargs, **context)
             if menu.closes:
                 return menu.back
         else:

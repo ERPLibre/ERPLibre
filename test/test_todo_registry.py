@@ -145,6 +145,38 @@ class TestNavigator(unittest.TestCase):
             menu = Menu("forged_menu", "Forged", [], back=back)
             self.assertIs(self.navigate(menu, ["0"])[0], back)
 
+    def test_a_menu_opens_on_what_its_method_gives(self):
+        # Après l'intro, un dict ouvre le menu et s'ajoute aux kwargs de
+        # chaque action ; toute autre valeur est rendue, le menu jamais
+        # dessiné.
+        for given, drawn in (({"forged": 1}, 2), (None, 0), (False, 0)):
+            with self.subTest(given=given):
+                self.out.seek(0)
+                self.out.truncate()
+                todo = FakeTodo()
+                todo.forged_opens = lambda: print("opened") or given
+                menu = Menu(
+                    "forged_menu",
+                    "Forged",
+                    [Entry("First", "first", kwargs={"key": "a"})],
+                    intro="Back",
+                    opens="forged_opens",
+                )
+                back, _, texts = self.navigate(menu, ["1", "0"][:drawn], todo)
+                self.assertEqual(len(texts), drawn)
+                self.assertEqual(
+                    self.out.getvalue().split("\n")[:2],
+                    ["🤖 🔙 Back", "opened"],
+                )
+                if drawn:
+                    self.assertIs(back, False)
+                    self.assertEqual(
+                        todo.calls, [("first", {"key": "a", "forged": 1})]
+                    )
+                else:
+                    self.assertIs(back, given)
+                    self.assertEqual((todo.calls, todo.drawn), ([], []))
+
     def test_a_closing_menu_gives_back_after_one_entry(self):
         # Une réponse sans entrée ne le referme pas : la question revient.
         menu = Menu(
@@ -642,6 +674,7 @@ class TestDeclaredTree(unittest.TestCase):
                 ),
                 FAKE_MENUS.replace("back=None", "back=None, mark=None"),
                 FAKE_MENUS + 'OTHER = Menu("forged_other", entries=[])\n',
+                FAKE_MENUS.replace("back=None", "back=None, opens=1"),
             )
         ):
             with self.subTest(case=n):
@@ -689,6 +722,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "render",
                 "closes",
                 "abort_closes",
+                "opens",
             ],
         )
         self.assertEqual(
@@ -899,7 +933,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():
             owner = owners.get(menu.name, TODO)
-            calls = [(menu.name, {}), (menu.state, {})]
+            calls = [(menu.name, {}), (menu.state, {}), (menu.opens, {})]
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}
