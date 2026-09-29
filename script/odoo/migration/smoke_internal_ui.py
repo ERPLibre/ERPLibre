@@ -222,9 +222,11 @@ class Session:
                 f" {error_from_page(body)}"
             )
         match = RE_CSRF.search(body)
-        if not match:
+        if not match and not RE_LOGIN_FORM.search(body or ""):
             # Sans jeton, Odoo refuse le POST et rend la page de connexion
             # avec un statut 200 : on croirait à un mot de passe refusé.
+            # Un formulaire SANS jeton est celui d'Odoo 8, qui n'a pas de
+            # protection CSRF : la connexion s'y tente sans lui.
             return False, t("No CSRF token on the login page")
         fields = {
             "login": login,
@@ -258,17 +260,22 @@ class Session:
         """Faire rendre les arch côté serveur. C'est LE test.
 
         `get_views` depuis la 16, `load_views` avant, et la 18 n'a plus que
-        le premier. On essaie le moderne, on retombe sur l'ancien.
+        le premier. On essaie le moderne, on retombe sur l'ancien. Odoo 8
+        et 9 n'ont ni l'un ni l'autre : fields_view_get, vue par vue, dont
+        le résultat prend la forme de `load_views`.
         """
         kwargs = {"views": lst_view, "options": {}, "context": context or {}}
         lst_try = (
             [self._views_method]
             if self._views_method
-            else ["get_views", "load_views"]
+            else ["get_views", "load_views", "fields_view_get"]
         )
         last = None
         for method in lst_try:
-            result, error = self.call_kw(model, method, [], dict(kwargs))
+            if method == "fields_view_get":
+                result, error = self._fields_views(model, lst_view, context)
+            else:
+                result, error = self.call_kw(model, method, [], dict(kwargs))
             if error is None:
                 self._views_method = method
                 return result, None
@@ -276,6 +283,25 @@ class Session:
                 return None, error
             last = error
         return None, last
+
+    def _fields_views(self, model, lst_view, context):
+        """Chaque vue par fields_view_get, rangée comme le rend load_views."""
+        dct = {}
+        for view_id, view_type in lst_view:
+            result, error = self.call_kw(
+                model,
+                "fields_view_get",
+                [],
+                {
+                    "view_id": view_id or False,
+                    "view_type": view_type,
+                    "context": context or {},
+                },
+            )
+            if error is not None:
+                return None, error
+            dct[view_type] = result
+        return {"fields_views": dct}, None
 
     def first_page(self, model, domain, context, limit, lst_field=None):
         """Charger la première page d'enregistrements.
@@ -300,8 +326,14 @@ class Session:
 
     def known_fields(self, model, context=None):
         """Les champs que le modèle porte VRAIMENT, d'après le serveur."""
+        # Par mot-clé : dans l'ancienne API d'Odoo 8, le second argument
+        # positionnel de fields_get est « context », que call_kw fournit
+        # déjà — « got multiple values for keyword argument 'context' ».
         result, error = self.call_kw(
-            model, "fields_get", [[], ["type"]], {"context": context or {}}
+            model,
+            "fields_get",
+            [],
+            {"allfields": [], "attributes": ["type"], "context": context or {}},
         )
         if error:
             return None, error
@@ -582,6 +614,13 @@ def check_entry(session, app, menu, limit=DEFAULT_RECORD_LIMIT):
     lst_read = [name for name in lst_arch if name in lst_known]
     resultat["fields_read"] = len(lst_read)
 
+    # Une action qui s'ouvre sur un formulaire — un tableau de bord, un
+    # assistant — ne lit aucune page : le client ouvre un enregistrement
+    # vierge. En lire une ferait échouer un modèle sans table, comme le
+    # board.board d'Odoo 8, là où le client s'ouvre sans erreur.
+    premiere_vue = (action.get("view_mode") or "").split(",")[0].strip()
+    if premiere_vue == "form":
+        return resultat
     _rows, error = session.first_page(
         model,
         domain,

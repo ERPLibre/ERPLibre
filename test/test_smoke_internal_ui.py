@@ -221,6 +221,97 @@ class TestReadingTheFieldsOfAPage(unittest.TestCase):
         self.assertEqual(ui.arch_fields(ancien), ["order_line"])
 
 
+class TestLaConnexionSansJetonCsrf(unittest.TestCase):
+    """Odoo 8 n'a pas de jeton CSRF sur son formulaire : exiger le jeton
+    empêchait de parcourir le back-office. Sans formulaire, le refus reste."""
+
+    def session(self, page):
+        envois = []
+        session = ui.Session.__new__(ui.Session)
+        session.open = lambda chemin, data=None, headers=None: (
+            envois.append(data) or (200, page)
+        )
+        session.rpc = lambda chemin, params: ({"uid": 2}, None)
+        return session, envois
+
+    def test_un_formulaire_sans_jeton_se_soumet_sans_lui(self):
+        page = '<form><input name="login"/><input name="password"/></form>'
+        session, envois = self.session(page)
+        ok, _message = session.log_in("base", "test", "test")
+        self.assertTrue(ok)
+        self.assertNotIn(b"csrf_token", envois[-1])
+
+    def test_une_page_sans_formulaire_ni_jeton_est_refusee(self):
+        session, _envois = self.session("<html>rien</html>")
+        ok, message = session.log_in("base", "test", "test")
+        self.assertFalse(ok)
+        self.assertIn("CSRF", message)
+
+
+class TestLesVuesDOdoo8Et9(unittest.TestCase):
+    """load_views n'existe que depuis Odoo 10 : avant, chaque vue se rend
+    par fields_view_get, et le résultat prend la forme de load_views."""
+
+    def test_fields_view_get_prend_le_relais(self):
+        appels = []
+
+        def call_kw(model, method, args, kwargs):
+            appels.append(method)
+            if method in ("get_views", "load_views"):
+                return None, {
+                    "name": "exceptions.AttributeError",
+                    "message": "'x' object has no attribute '%s'" % method,
+                }
+            return {"arch": '<tree><field name="%s"/></tree>' % kwargs["view_type"]}, None
+
+        session = ui.Session.__new__(ui.Session)
+        session._views_method = None
+        session.call_kw = call_kw
+        vues, erreur = session.views_of("res.partner", [[False, "tree"], [7, "form"]])
+        self.assertIsNone(erreur)
+        self.assertEqual(["tree", "form"], sorted(vues["fields_views"], reverse=True))
+        self.assertEqual(["tree", "form"], ui.arch_fields(vues))
+        self.assertEqual("fields_view_get", session._views_method)
+
+
+class TestUneActionFormulaireNeLitAucunePage(unittest.TestCase):
+    """Un tableau de bord s'ouvre sur un formulaire vierge : le client ne lit
+    aucune page. En lire une faisait échouer board.board d'Odoo 8, modèle
+    sans table, alors que le client s'y ouvre sans erreur."""
+
+    def session(self, view_mode):
+        lectures = []
+        session = ui.Session.__new__(ui.Session)
+        session.call_kw = lambda model, method, args, kwargs=None: (
+            [{"res_model": "board.board", "view_mode": view_mode}],
+            None,
+        )
+        session.views_of = lambda model, vues, contexte=None: (
+            {"fields_views": {"form": {"arch": "<form/>"}}},
+            None,
+        )
+        session.known_fields = lambda model, contexte=None: ([], None)
+        session.first_page = lambda *a, **k: lectures.append(a) or ([], None)
+        return session, lectures
+
+    def test_un_formulaire_d_abord_ne_lit_rien(self):
+        session, lectures = self.session("form")
+        entree = ui.check_entry(
+            session, {"name": "Reporting"},
+            {"name": "My Dashboard", "action": "ir.actions.act_window,7"},
+        )
+        self.assertEqual([], lectures)
+        self.assertFalse(entree.get("error"))
+
+    def test_une_liste_d_abord_lit_sa_premiere_page(self):
+        session, lectures = self.session("tree,form")
+        ui.check_entry(
+            session, {"name": "Sales"},
+            {"name": "Customers", "action": "ir.actions.act_window,8"},
+        )
+        self.assertEqual(1, len(lectures))
+
+
 class TestTheThreeStatesOfTheTestUser(unittest.TestCase):
     """« je ne sais pas » n'est pas « il n'y en a pas ».
 
