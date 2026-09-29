@@ -279,5 +279,54 @@ class TestLaListeDuPalierPartDeLaBase(unittest.TestCase):
         self.assertEqual(["sale"], self.liste(None, ["sale"]))
 
 
+class TestUnModuleRetireEstOublie(unittest.TestCase):
+    """La fiche d'un module désinstallé garde son auto_install : sans elle,
+    rien ne le réinstalle dans une version qui n'a pas son code."""
+
+    def oublier(self, noms, rapport=None, erreur=None):
+        from script.odoo.migration import database_cleanup
+
+        appels = []
+
+        def run_shell(base, config, script, **kw):
+            appels.append((base, script))
+            if erreur:
+                raise RuntimeError(erreur)
+            return rapport or {"forgotten": []}
+
+        ancien = database_cleanup.run_shell
+        database_cleanup.run_shell = run_shell
+        self.addCleanup(setattr, database_cleanup, "run_shell", ancien)
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        with open(os.devnull, "w") as muet:
+            sortie, sys.stdout = sys.stdout, muet
+            try:
+                rendu = upgrade.forget_modules("base_x", noms)
+            finally:
+                sys.stdout = sortie
+        return rendu, appels
+
+    def test_seuls_les_noms_de_module_entrent_dans_le_script(self):
+        _rendu, appels = self.oublier(["module_auto", "x' or 1=1"])
+        self.assertEqual("base_x", appels[0][0])
+        self.assertIn("['module_auto']", appels[0][1])
+        self.assertNotIn("or 1=1", appels[0][1])
+
+    def test_sans_module_rien_n_est_lance(self):
+        rendu, appels = self.oublier([])
+        self.assertEqual([], rendu)
+        self.assertEqual([], appels)
+
+    def test_le_rapport_du_shell_est_rendu(self):
+        rendu, _ = self.oublier(
+            ["module_auto"], rapport={"forgotten": ["module_auto"]}
+        )
+        self.assertEqual(["module_auto"], rendu)
+
+    def test_un_shell_muet_rend_none(self):
+        rendu, _ = self.oublier(["module_auto"], erreur="pas de rapport")
+        self.assertIsNone(rendu)
+
+
 if __name__ == "__main__":
     unittest.main()
