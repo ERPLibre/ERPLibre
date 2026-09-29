@@ -3,8 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Rendus de référence de menus de TODO : l'entrée [4] (Navigation
 telemetry), Configuration, la famille Execute : Execute, Code, Config,
-Process, Test et Update, et la famille Run : Run, Database et son menu
-d'effacement, Analyse, Transform data et Doc.
+Process, Test et Update, la famille Run : Run, Database et son menu
+d'effacement, Analyse, Transform data et Doc, et la famille Git : Git,
+Git local server et ses deux menus Actions, GPT code, Claude configs,
+Plugins, Claude Code, RTK et Automation.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -19,8 +21,9 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
   répond qu'à des menus, jamais à une feuille : une étape nomme l'entrée
   d'un sous-menu par sa clé de traduction, ou est « 0 ». Le répertoire
   de Mobile y est absent.
-La configuration est CONFIG, les préférences celles d'un HOME vide, et le
-hub web ne tourne pas (`launcher.status` rend None).
+La configuration est CONFIG, les préférences celles d'un HOME vide, le
+hub web ne tourne pas (`launcher.status` rend None) et Claude Code n'a
+aucune session (`claude_sessions.fleet` rend []).
 
     python3 test/todo_menu_golden.py   (depuis la racine du dépôt)
 
@@ -57,6 +60,14 @@ MENUS = (
     "prompt_execute_analyse",
     "prompt_execute_transform",
     "prompt_execute_doc",
+    "prompt_execute_git",
+    "prompt_execute_git_local_server",
+    "prompt_execute_gpt_code",
+    "_prompt_claude_configs",
+    "prompt_execute_claude_plugins",
+    "prompt_claude_sessions",
+    "prompt_execute_rtk",
+    "prompt_execute_function",
 )
 CRUMBS = (
     "Navigation telemetry",
@@ -72,10 +83,32 @@ CRUMBS = (
     "Analyse",
     "Transform data",
     "Doc",
+    "Git",
+    "Git local server",
+    "Actions",
+    "GPT code",
+    "Claude configs",
+    "Plugins",
+    "Claude Code",
+    "RTK",
+    "Automation",
 )
 ANSWERS = ("", "9", "0")
 # Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
-ANSWERS_OF = {"prompt_execute": ("", "17", "0")}
+# Git en montre neuf avec CONFIG, Plugins neuf : « 9 » y lancerait une
+# feuille. Git local server entre dans chacun de ses deux menus Actions,
+# qui reçoit une réponse vide et un numéro sans entrée, puis en sort.
+ANSWERS_OF = {
+    "prompt_execute": ("", "17", "0"),
+    "prompt_execute_git": ("", "10", "0"),
+    "prompt_execute_git_local_server": (
+        *("", "9"),
+        *("1", "", "9", "0"),
+        *("2", "", "9", "0"),
+        "0",
+    ),
+    "prompt_execute_claude_plugins": ("", "10", "0"),
+}
 # Largeur au-delà de laquelle le fichier de référence ouvre une liste ou
 # un dict, un élément par ligne.
 WIDTH = 200
@@ -105,6 +138,20 @@ CONFIG = {
         },
         {"prompt_description": "Forged instance", "makefile_cmd": "forged"},
     ],
+    "git_from_makefile": [
+        {
+            "prompt_description_key": "Configure git local editor to vim",
+            "bash_command": "forged_editor",
+        },
+        {"prompt_description": "Forged git", "bash_command": "forged"},
+    ],
+    "function": [
+        {
+            "prompt_description_key": "Open ERPLibre with TODO 🤖",
+            "command": "forged_command",
+        },
+        {"prompt_description": "Forged function", "command": "forged"},
+    ],
 }
 WALK = (
     ["Configuration"],
@@ -132,6 +179,26 @@ WALK = (
     "0",
     ["Doc - Documentation search"],
     "0",
+    ["Git - Git and shell tools"],
+    ["Local git server"],
+    ["Deploy a local git server (~/.git-server)"],
+    "0",
+    ["Deploy a production git server (/srv/git, root required)"],
+    "0",
+    "0",
+    "0",
+    ["GPT code - AI assistant tools"],
+    ["Configure Claude Code configurations"],
+    "0",
+    ["RTK - CLI proxy to reduce LLM token consumption"],
+    "0",
+    ["Claude Code plugins - marketplaces and ERPLibre list"],
+    "0",
+    ["Claude Code - local sessions"],
+    "0",
+    "0",
+    ["Automation - Demonstration of developed features"],
+    "0",
     "0",
     "0",
 )
@@ -145,6 +212,7 @@ import click
 import urwid
 from script.config import config_file
 from script.todo import todo_i18n, todo_telemetry
+from script.todo.assistant import claude_sessions
 from script.todo.ui import legacy, port
 from script.todo.web import launcher
 
@@ -154,6 +222,7 @@ config_file.CONFIG_FILE = config
 config_file.CONFIG_OVERRIDE_FILE = config + ".absent"
 config_file.CONFIG_OVERRIDE_PRIVATE_FILE = config + ".absent"
 launcher.status = lambda root: None
+claude_sessions.fleet = lambda **kwargs: []
 keys = []
 todo_telemetry.record = keys.append
 
@@ -258,6 +327,11 @@ def terminal(method, lang) -> dict:
             ),
             patch("getpass.getpass", side_effect=AssertionError("getpass")),
             patch.object(sys, "stdin", io.StringIO()),
+            # Claude Code lit sa flotte par `claude agents` : aucune
+            # session, comme sur une machine sans Claude Code.
+            patch(
+                "script.todo.assistant.claude_sessions.fleet", return_value=[]
+            ),
         ):
             stack.enter_context(patcher)
         probe = stack.enter_context(

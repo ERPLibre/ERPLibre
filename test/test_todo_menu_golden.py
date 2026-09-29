@@ -3,8 +3,10 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
 (Navigation telemetry), Configuration, la famille Execute : Execute,
-Code, Config, Process, Test et Update, et la famille Run : Run, Database
-et son menu d'effacement, Analyse, Transform data et Doc.
+Code, Config, Process, Test et Update, la famille Run : Run, Database et
+son menu d'effacement, Analyse, Transform data et Doc, et la famille
+Git : Git, Git local server et ses deux menus Actions, GPT code, Claude
+configs, Plugins, Claude Code, RTK et Automation.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
