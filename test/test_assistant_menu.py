@@ -768,6 +768,30 @@ class MenusDuLLM(unittest.TestCase):
             self.answered("_llm_search", "1", "0")
         sonde.assert_called_once_with(["127.0.0.1"])
 
+    def test_over_ssh_balaie_un_reseau_par_son_numero_affiche(self):
+        # Les réseaux lus sur l'hôte distant : « 01 », « +1 », « 1 »
+        # précédé d'un blanc ou un chiffre d'une autre écriture n'en
+        # balaient aucun ; « 2 » balaie le second.
+        from script.todo.assistant import discover as llm_disc
+
+        reseaux = [
+            llm_disc.Interface("forged0", "192.0.2.0/24", False),
+            llm_disc.Interface("forged1", "198.51.100.0/24", False),
+        ]
+        with (
+            patch.object(llm_disc, "remote_networks", return_value=reseaux),
+            patch.object(type(self.todo), "_llm_sweep_cidr") as balayage,
+        ):
+            for answer in ("01", "+1", " 1", "١"):
+                with self.subTest(answer=answer):
+                    shown = self.answered(
+                        "_llm_search_remote", "forged-remote", answer
+                    )
+                    self.assertIn(t("Command not found !"), shown)
+            balayage.assert_not_called()
+            self.answered("_llm_search_remote", "forged-remote", "2")
+        balayage.assert_called_once_with("198.51.100.0/24")
+
 
 class Frontiere(unittest.TestCase):
     """Le paquet doit vivre sans le CLI qui l'appelle."""

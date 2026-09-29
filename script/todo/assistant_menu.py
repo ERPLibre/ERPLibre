@@ -560,13 +560,10 @@ class AssistantMenuMixin:
         print()
         if status == "0":
             return
-        try:
-            rang = int(status)
-        except ValueError:
-            print(t("Command not found !"))
-            return
-        if 1 <= rang <= len(reseaux):
-            self._llm_sweep_cidr(reseaux[rang - 1].cidr)
+        # Seul un numéro tel qu'affiché désigne un réseau : `int` prendrait
+        # aussi « 01 », « +1 » ou un chiffre d'une autre écriture.
+        if status in [str(n) for n in range(1, len(reseaux) + 1)]:
+            self._llm_sweep_cidr(reseaux[int(status) - 1].cidr)
         else:
             print(t("Command not found !"))
 

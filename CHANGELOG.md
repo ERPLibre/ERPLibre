@@ -277,6 +277,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Quitting TODO from its main menu no longer writes the « 0 » it was answered
 - Assistant › LLM › Known servers takes a server, or one of its two entries, only by its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of taking the first server
 - Assistant › LLM › Search for a server runs an entry only for its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of probing this machine
+- Assistant › LLM › Search for a server › The networks of a machine over SSH sweeps a network only by its number as shown: « 01 », « +1 » or a digit of another script answer « Command not found ! » instead of sweeping the first network read on that machine
 
 ## Removed
 
