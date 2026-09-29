@@ -6090,7 +6090,7 @@ class TODO(
         http_port = cfg.getint("options", "http_port")
 
         status = self.execute.exec_command_live(
-            f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",
+            f"./script/process/kill_process_by_port.py {http_port} --kill-tree",
             source_erplibre=False,
         )
 
