@@ -2242,7 +2242,6 @@ TRANSLATIONS = {
         "en": '🔊 Sound and devices',
     },
     # Section Service : les unites systemd du modem.
-    # Section Service : les unites systemd du modem.
     'voip_softphone_odoo': {
         "fr": 'Declarer le softphone dans Odoo (serveur et poste)',
         "en": 'Declare the softphone in Odoo (server and endpoint)',

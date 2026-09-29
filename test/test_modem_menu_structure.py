@@ -23,7 +23,7 @@ ACTIONS = {
     "_lister_appels", "_appel_voip", "_envoyer_sms", "_lister_sms",
     "_passerelle", "_repondeur", "_sonder_audio", "_essai_combine",
     "_basculer_uac", "_regle_audio", "_regle_udev", "_installer_voip",
-    "_etat_voip", "_service_etat", "_service_environnement", "_service_poser",
+    "_etat_voip", "_declarer_softphone", "_service_etat", "_service_environnement", "_service_poser",
     "_service_commander", "_service_journal", "_service_retirer",
 }
 

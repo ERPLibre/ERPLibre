@@ -172,5 +172,53 @@ class TestCommandes(unittest.TestCase):
 
 
 
+class TestSoftphoneOdoo(unittest.TestCase):
+    """Ce qu'on ecrit dans Odoo pour que le navigateur s'inscrive."""
+
+    def setUp(self):
+        from script.todo.modem import softphone
+
+        self.soft = softphone
+
+    def test_le_serveur_se_retrouve_au_lieu_de_se_dedoubler(self):
+        script = self.soft.render_setup_script("1001", "secret", "127.0.0.1:8189")
+        self.assertIn("search(", script)
+        self.assertIn("pbx.write(valeurs)", script)
+
+    def test_le_mode_est_production(self):
+        """Le defaut du module est « test », ou l'appel n'est pas place : le
+        softphone s'inscrit alors et ne sonne jamais."""
+        self.assertEqual(self.soft.MODE, "prod")
+        self.assertIn("'prod'",
+                      self.soft.render_setup_script("1001", "s", "127.0.0.1:8189"))
+
+    def test_le_domaine_est_l_hote_seul(self):
+        """C'est le « realm » que le service annonce dans son defi : un ecart y
+        fait refuser un mot de passe juste."""
+        script = self.soft.render_setup_script("1001", "s", "127.0.0.1:8189")
+        self.assertIn('"domain": \'127.0.0.1\'', script)
+        self.assertIn('"ws_server": \'ws://127.0.0.1:8189\'', script)
+
+    def test_un_utilisateur_absent_se_dit_au_lieu_de_passer(self):
+        script = self.soft.render_setup_script("1001", "s", "127.0.0.1:8189",
+                                               login="absent")
+        self.assertIn("RESULTAT_ERREUR", script)
+
+    def test_le_compte_vient_du_meme_fichier_que_le_service(self):
+        """Les deux cotes doivent porter le meme mot de passe ; une valeur
+        saisie deux fois finit par differer."""
+        vus = {}
+
+        def faux_lancer(base, script):
+            vus["base"], vus["script"] = base, script
+            return 0, "RESULTAT_PBX=1\nRESULTAT_WS=ws://x\nRESULTAT_POSTE=1001\n"
+
+        poste, _, mot = service.postes().partition(":")
+        ok, detail = self.soft.configurer("une_base", lancer=faux_lancer)
+        self.assertTrue(ok, detail)
+        self.assertIn(mot, vus["script"])
+        self.assertIn(poste, vus["script"])
+
+
 if __name__ == "__main__":
     unittest.main()
