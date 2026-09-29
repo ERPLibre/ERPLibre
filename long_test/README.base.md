@@ -379,6 +379,17 @@ blocks and in any backup taken between the two gestures. Anything the bench
 prints or logs is redacted first, and the command line never carries it, since a
 command line is readable in the machine's process table by any account.
 
+**The tenant's secrets are forged, not asked for.** The engine's base model
+declares none, and each of its roles asserts its own non-empty: the deployment
+stops on the name of a secret without saying who should have posed it. The bench
+forges seven and seals them in the TENANT's vault, which is not the hoster's —
+the latter carries the token and wins where both are read, the former carries
+what its roles demand and never leaves its repository. A SHAPE is forged, not a
+length: the assertion measures only a length, so a random string where a role
+presents an ssh key passes it and fails three roles later, on a message about
+the key format that says nothing of its origin. A shape the bench cannot forge
+makes it refuse BY NAME rather than seal something at random.
+
 **A vlan-aware bridge separates, it does not route.** The tenant's hosts come up
 with a tagged NIC in a broadcast domain where no address answers: their gateway
 stays mute, they reach only their neighbours under the same tag, and the failure
@@ -889,6 +900,18 @@ part ailleurs : écrit en clair puis chiffré, il resterait dans les blocs libé
 et dans toute sauvegarde prise entre les deux gestes. Ce que le banc affiche ou
 journalise est expurgé d'abord, et la ligne de commande ne le porte jamais — une
 ligne de commande se lit dans la table des processus, par n'importe quel compte.
+
+**Les secrets du locataire se forgent, ils ne se demandent pas.** Le modèle de
+base du moteur n'en déclare aucun, et chacun de ses rôles assertionne le sien
+non vide : le déploiement s'arrête sur le nom d'un secret sans dire qui aurait
+dû le poser. Le banc en forge sept et les scelle dans la voûte du LOCATAIRE, qui
+n'est pas celle de l'hébergeur — la seconde porte le jeton et l'emporte là où
+les deux sont lues, la première porte ce qu'exigent ses rôles et ne sort pas de
+son dépôt. Une FORME se forge, pas une longueur : l'assertion ne mesure qu'une
+longueur, si bien qu'une chaîne au hasard là où un rôle présente une clé ssh la
+passe et échoue trois rôles plus loin, sur un message qui parle du format de la
+clé et jamais de sa source. Une forme que le banc ne sait pas forger le fait
+refuser EN LA NOMMANT, plutôt que sceller au hasard.
 
 **Un pont conscient des VLAN sépare, il ne route pas.** Les hôtes du locataire
 démarrent avec une carte étiquetée dans un domaine de diffusion où aucune adresse

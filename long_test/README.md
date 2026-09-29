@@ -374,6 +374,17 @@ blocks and in any backup taken between the two gestures. Anything the bench
 prints or logs is redacted first, and the command line never carries it, since a
 command line is readable in the machine's process table by any account.
 
+**The tenant's secrets are forged, not asked for.** The engine's base model
+declares none, and each of its roles asserts its own non-empty: the deployment
+stops on the name of a secret without saying who should have posed it. The bench
+forges seven and seals them in the TENANT's vault, which is not the hoster's —
+the latter carries the token and wins where both are read, the former carries
+what its roles demand and never leaves its repository. A SHAPE is forged, not a
+length: the assertion measures only a length, so a random string where a role
+presents an ssh key passes it and fails three roles later, on a message about
+the key format that says nothing of its origin. A shape the bench cannot forge
+makes it refuse BY NAME rather than seal something at random.
+
 **A vlan-aware bridge separates, it does not route.** The tenant's hosts come up
 with a tagged NIC in a broadcast domain where no address answers: their gateway
 stays mute, they reach only their neighbours under the same tag, and the failure
