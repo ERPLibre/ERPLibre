@@ -28,7 +28,7 @@ import unittest
 import warnings
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import call, patch
+from unittest.mock import Mock, call, patch
 
 from script.todo.ui.registry import Entry
 
@@ -419,7 +419,7 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
-    def test_reset_is_the_only_dangerous_node(self):
+    def test_only_the_reset_and_the_erase_are_dangerous_nodes(self):
         # Seul un nœud qui porte "danger" ne se lance ni de la TUI ni de
         # la page web.
         dangerous = []
@@ -433,7 +433,11 @@ class TestLArbreDesMenus(unittest.TestCase):
 
         walk(self.arbre, "TODO")
         self.assertEqual(
-            dangerous, ["TODO › Configuration › Reset all preferences"]
+            dangerous,
+            [
+                "TODO › Execute › Database › Erase a database",
+                "TODO › Configuration › Reset all preferences",
+            ],
         )
 
     def test_a_computed_label_keeps_the_numbering(self):
@@ -734,38 +738,6 @@ class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
-class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Database, qui manie des bases entières.
-
-    Il n'avait aucun garde, et c'est celui où une renumérotation coûte le
-    plus cher : sa dernière entrée EFFACE une base. Insérer « Dupliquer »
-    avant elle décale « Effacer » de [4] à [5] — si le dispatch ne suit
-    pas, taper [4] efface au lieu de copier.
-    """
-
-    SOURCE = TODO_DIR / "todo.py"
-    ENTRY = "def prompt_execute_database(self):"
-    END = "def prompt_execute_analyse(self):"
-    MINIMUM = 4
-
-    # Ce menu délègue à `self.db_manager.methode()`, pas à `self.methode()`.
-    # Le motif du socle ne voit que la forme courte : sans cette surcharge
-    # il lit ZÉRO dispatch et ne compare plus rien — un garde qui passe au
-    # vert sans rien garder.
-    RE_DISPATCH_CALL = re.compile(
-        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
-        r"\s*(?:status = )?self\.(?:\w+\.)*(\w+)\("
-    )
-
-    EXPECTED = {
-        "Create backup": "create_backup_from_database",
-        "Download database": "download_database_backup_cli",
-        "Restore from backup": "restore_from_database",
-        "Duplicate a database": "duplicate_database",
-        "Erase a database": "drop_database",
-    }
-
-
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 
@@ -835,21 +807,30 @@ class RegistryCoherence:
     dispatch ne peuvent pas se désaligner. Reste à dire où mène chaque
     entrée, par le début de sa clé, et c'est EXPECTED, qu'ajouter une
     entrée oblige à compléter. À déclarer par la sous-classe : MENU (la
-    méthode de TODO qui ouvre le menu), EXPECTED et BACK (ce que rend [0]).
+    méthode qui ouvre le menu, de TODO sauf si `_owner` rend une autre
+    classe), EXPECTED et BACK (ce que rend [0]).
     """
 
     MENU = ""
     EXPECTED = {}
     BACK = False
 
-    def setUp(self):
+    def _owner(self):
+        """La classe dont MENU est une méthode."""
         from script.todo.todo import TODO
 
+        return TODO
+
+    def setUp(self):
+        # `navigate` se remplace dans le module qui définit la méthode :
+        # todo.py, un mixin ou database_manager.py.
+        method = getattr(self._owner(), self.MENU)
         opened = []
         with patch(
-            "script.todo.todo.navigate", lambda todo, menu: opened.append(menu)
+            f"{method.__module__}.navigate",
+            lambda todo, menu: opened.append(menu),
         ):
-            getattr(TODO, self.MENU)(None)
+            method(None)
         [self.menu] = opened
         self.entries = [e for e in self.menu.entries if isinstance(e, Entry)]
 
@@ -1143,6 +1124,59 @@ class TestRunMenuNumbering(RegistryCoherence, unittest.TestCase):
             ],
             [("_run_instance", instance) for instance in instances],
         )
+
+
+class TestDatabaseMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu Database, qui manie des bases entières.
+
+    C'est celui où une renumérotation coûte le plus cher : sa dernière
+    entrée EFFACE une base. Chaque entrée nomme la méthode de TODO qui
+    passe la main à celle de même nom de `db_manager`.
+    """
+
+    MENU = "prompt_execute_database"
+    EXPECTED = {
+        "Create backup": "create_backup_from_database",
+        "Download database": "download_database_backup_cli",
+        "Restore from backup": "restore_from_database",
+        "Duplicate a database": "duplicate_database",
+        "Erase a database": "drop_database",
+    }
+
+    def test_each_entry_hands_over_to_the_database_manager(self):
+        from script.todo.todo import TODO
+
+        for entry in self.entries:
+            todo = Mock()
+            getattr(TODO, entry.action)(todo)
+            called = getattr(todo.db_manager, entry.action)
+            self.assertEqual(called.call_args_list, [call()], entry.action)
+
+
+class TestEraseMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Database › Erase a database, que DatabaseManager ouvre : toutes les
+    bases, ou une seule, puis le menu se referme."""
+
+    MENU = "drop_database"
+    BACK = None
+    EXPECTED = {
+        "Erase ALL databases": "_drop_all_databases",
+        "Erase a single database": "_drop_single_database",
+    }
+
+    def _owner(self):
+        from script.todo.database_manager import DatabaseManager
+
+        return DatabaseManager
+
+    def test_it_closes_once_an_entry_has_run(self):
+        self.assertIs(self.menu.closes, True)
+
+    def test_each_entry_is_dangerous(self):
+        # `drop_database` n'est pas dans `_MENU_LABELS` : l'arbre n'a pas de
+        # nœud pour ce menu. Qu'il en gagne un, et ni la TUI ni la page web
+        # ne lancent un effacement.
+        self.assertEqual({e.danger for e in self.entries}, {True})
 
 
 class TestUpdateMenu(unittest.TestCase):
@@ -1473,6 +1507,47 @@ class TestDocMenu(unittest.TestCase):
         self.assertIn("wiki/Migration-to-version-17.0", out.getvalue())
 
 
+class TestEraseMenu(unittest.TestCase):
+    """Database › Erase a database, qu'ouvre DatabaseManager : les deux
+    effacements sont des doubles, HOME est temporaire, la langue fixée et
+    la télémétrie de navigation relevée."""
+
+    def test_it_shows_under_the_crumb_of_database(self):
+        # Database › Erase a database › [0] › [0] : le menu d'effacement
+        # n'ajoute pas de segment ; son en-tête et sa clé de télémétrie
+        # sont ceux de Database.
+        from script.todo import todo_i18n
+        from script.todo.database_manager import DatabaseManager
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        keys = []
+        with (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch.object(DatabaseManager, "_drop_all_databases") as every,
+            patch.object(DatabaseManager, "_drop_single_database") as one,
+            patch("script.todo.todo_telemetry.record", keys.append),
+            patch("click.prompt", side_effect=["5", "0", "0"]) as prompt,
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIs(TODO().prompt_execute_database(), False)
+        erase = prompt.call_args_list[1].args[0]
+        self.assertTrue(erase.startswith("📍 Database\nCommand:\n[1] Erase"))
+        self.assertEqual(keys, ["Database", "Database"])
+        self.assertEqual((every.call_count, one.call_count), (0, 0))
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 
@@ -1491,7 +1566,10 @@ class TestMenuLabels(unittest.TestCase):
     ACTIONS qui posent une question — un choix de méthode d'installation, un
     « aller plus loin » après un rapport — et non des écrans où l'on
     navigue. Leur donner un segment mettrait une miette sur une invite
-    passagère.
+    passagère. Deux autres, `select_database` et `drop_database`, sont
+    celles de DatabaseManager : le fil d'Ariane ne lit que les cadres de
+    TODO et ne peut pas leur donner de segment ; elles s'affichent sous le
+    menu de TODO qui les ouvre.
     """
 
     ECRANS_EXEMPTES = {
@@ -1500,6 +1578,8 @@ class TestMenuLabels(unittest.TestCase):
         "generate_config_from_preconfiguration",
         "debug_ide",
         "execute_odoo_upgrade",
+        "select_database",
+        "drop_database",
     }
 
     def setUp(self):
@@ -1528,8 +1608,9 @@ class TestMenuLabels(unittest.TestCase):
         self.assertIn("prompt_execute_analyse", self.labels)
 
     @staticmethod
-    def _menus_du_paquet():
-        """Toute méthode qui dessine un menu, dans tout script/todo/*.py.
+    def _menus_par_fichier():
+        """(fichier, méthode) de toute méthode qui dessine un menu, dans tout
+        script/todo/*.py.
 
         Une méthode dessine un menu quand elle appelle `fill_help_info` ou
         `_menu_header` : c'est par là que passe l'en-tête, donc c'est là que
@@ -1556,8 +1637,13 @@ class TestMenuLabels(unittest.TestCase):
                     continue
                 if noeud.name in ("fill_help_info", "_menu_header"):
                     continue
-                trouves.add(noeud.name)
+                trouves.add((chemin.name, noeud.name))
         return trouves
+
+    @classmethod
+    def _menus_du_paquet(cls):
+        """Les noms de méthode de `_menus_par_fichier`."""
+        return {nom for _, nom in cls._menus_par_fichier()}
 
     def test_the_package_menus_were_found(self):
         """Le détecteur voit bien des menus : sinon tout passerait."""
@@ -1596,11 +1682,23 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_test",
                 "prompt_execute_update",
                 "prompt_execute_instance",
+                "prompt_execute_database",
+                "drop_database",
             },
             set(declared),
         )
         for name, menu in declared.items():
             self.assertEqual(TODO._MENU_LABELS.get(name), menu["crumb"], name)
+
+    def test_the_database_manager_exemptions_hold_in_its_file_only(self):
+        """`select_database` et `drop_database` ne sont exemptées que dans
+        database_manager.py : une méthode de même nom qui dessinerait un
+        menu ailleurs resterait sans segment sans que rien ne le dise."""
+        noms = {"select_database", "drop_database"}
+        self.assertEqual(
+            {(f, n) for f, n in self._menus_par_fichier() if n in noms},
+            {("database_manager.py", n) for n in noms},
+        )
 
     def test_no_stale_exemption(self):
         """Une exemption qui ne nomme plus un menu est à retirer."""

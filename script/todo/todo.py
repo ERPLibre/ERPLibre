@@ -4101,41 +4101,25 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_execute_database(self):
-        print(f"🤖 {t('Make changes to databases!')}")
-        choices = [
-            {"section": t("Backup")},
-            {"prompt_description": t("Create backup (.zip)")},
-            {
-                "prompt_description": t(
-                    "Download database to create backup (.zip)"
-                )
-            },
-            {"section": t("Restore")},
-            {"prompt_description": t("Restore from backup (.zip)")},
-            {"section": t("Duplicate")},
-            {"prompt_description": t("Duplicate a database")},
-            {"section": t("Danger zone")},
-            {"prompt_description": t("Erase a database")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Database (DATABASE, `menus/run.py`) : sauvegarder, télécharger,
+        restaurer, dupliquer ou effacer une base par `db_manager`. Dessiné
+        une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_run.DATABASE)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.db_manager.create_backup_from_database()
-            elif status == "2":
-                self.db_manager.download_database_backup_cli()
-            elif status == "3":
-                self.db_manager.restore_from_database()
-            elif status == "4":
-                self.db_manager.duplicate_database()
-            elif status == "5":
-                self.db_manager.drop_database()
-            else:
-                print(t("Command not found !"))
+    def create_backup_from_database(self):
+        self.db_manager.create_backup_from_database()
+
+    def download_database_backup_cli(self):
+        self.db_manager.download_database_backup_cli()
+
+    def restore_from_database(self):
+        self.db_manager.restore_from_database()
+
+    def duplicate_database(self):
+        self.db_manager.duplicate_database()
+
+    def drop_database(self):
+        self.db_manager.drop_database()
 
     def prompt_execute_analyse(self):
         """Analyses d'une base Odoo, en lecture seule.

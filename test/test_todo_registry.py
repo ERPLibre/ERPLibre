@@ -764,10 +764,12 @@ class TestTodoMenuFiles(unittest.TestCase):
         self.assertEqual(
             sorted(imported),
             [
+                "drop_database",
                 "prompt_configuration",
                 "prompt_execute",
                 "prompt_execute_code",
                 "prompt_execute_config",
+                "prompt_execute_database",
                 "prompt_execute_instance",
                 "prompt_execute_process",
                 "prompt_execute_test",
@@ -796,11 +798,15 @@ class TestTodoMenuFiles(unittest.TestCase):
                 self.assertLessEqual({"fr", "en"}, set(languages))
 
     def test_each_method_named_binds_its_arguments(self):
+        from script.todo.database_manager import DatabaseManager
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 9)
+        self.assertEqual(len(menus), 11)
+        # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
+        owners = {"drop_database": DatabaseManager}
         for menu in menus.values():
+            owner = owners.get(menu.name, TODO)
             calls = [(menu.name, {}), (menu.state, {})]
             for item in menu.entries:
                 if isinstance(item, Entry):
@@ -813,7 +819,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 if name is None:
                     continue
                 with self.subTest(menu=menu.name, method=name):
-                    method = getattr(TODO, name)
+                    method = getattr(owner, name)
                     inspect.signature(method).bind(None, **kwargs)
 
 

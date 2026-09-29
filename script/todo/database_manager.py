@@ -8,6 +8,7 @@ import logging
 import os
 import zipfile
 
+from script.todo.menus import run as menus_run
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -16,15 +17,18 @@ try:
     import click
 
     from script.todo import todo_file_browser
+    from script.todo.ui.navigator import navigate
 except Exception:
     click = None
     todo_file_browser = None
+    navigate = None
 
 
 class DatabaseManager:
     def __init__(self, execute, fill_help_info) -> None:
         self._execute = execute
-        self._fill_help_info = fill_help_info
+        # Celui de TODO : `navigate` dessine ERASE par lui.
+        self.fill_help_info = fill_help_info
         self._dir_path: str | None = None
 
     def _on_dir_selected(self, path: str) -> None:
@@ -63,7 +67,7 @@ class DatabaseManager:
             return False
 
         choices = [{"prompt_description": a} for a in databases]
-        help_info = self._fill_help_info(choices)
+        help_info = self.fill_help_info(choices)
         valid_choices = [str(a + 1) for a in range(len(databases))]
 
         while True:
@@ -87,30 +91,9 @@ class DatabaseManager:
         return answer in ("oui", "yes")
 
     def drop_database(self) -> None:
-        print(f"⚠️  {t('Erase a database — irreversible operation!')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Erase ALL databases (make db_drop_all)"
-                )
-            },
-            {"prompt_description": t("Erase a single database")},
-        ]
-        help_info = self._fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._drop_all_databases()
-                return
-            elif status == "2":
-                self._drop_single_database()
-                return
-            else:
-                print(t("Command not found !"))
+        """Effacer toutes les bases, ou une seule (ERASE, `menus/run.py`) :
+        le menu se referme après l'une ou l'autre, et sur [0]."""
+        return navigate(self, menus_run.ERASE)
 
     def _drop_all_databases(self) -> None:
         if not self._confirm_drop(
