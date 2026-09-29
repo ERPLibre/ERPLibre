@@ -159,9 +159,10 @@ def match_driver(answer, names):
 
     Trois formes, dans cet ordre : la lettre affichée ; le rang, parce que
     quelqu'un tapera un chiffre et qu'il a raison de le faire vu le menu qui
-    précède ; et un début de libellé, parce que devant « L2TP/IPsec PSK » on
-    tape « L ». « open » désigne deux pilotes : celui-là est refusé en le
-    nommant.
+    précède, écrit comme une liste le numérote (« 2 », et non « 02 » ni un
+    chiffre d'une autre écriture) ; et un début de libellé, parce que
+    devant « L2TP/IPsec PSK » on tape « L ». « open » désigne deux pilotes :
+    celui-là est refusé en le nommant.
     """
     answer = (answer or "").strip().lower()
     if not answer:
@@ -170,9 +171,8 @@ def match_driver(answer, names):
         index = DRIVER_LETTERS.index(answer)
         if index < len(names):
             return names[index]
-    if answer.isdigit():
-        index = int(answer) - 1
-        return names[index] if 0 <= index < len(names) else ""
+    if answer in [str(rank) for rank in range(1, len(names) + 1)]:
+        return names[int(answer) - 1]
     matches = [
         name
         for name in names

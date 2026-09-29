@@ -108,6 +108,14 @@ class MatchDriver(unittest.TestCase):
             with self.subTest(rang=index):
                 self.assertEqual(match_driver(str(index), self.names), name)
 
+    def test_a_rank_is_only_its_number(self):
+        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas le
+        # rang 2 : rien ne correspond, et TODO ne s'arrête pas sur une
+        # ValueError.
+        for answer in ("02", "٢", "²"):
+            with self.subTest(answer=answer):
+                self.assertEqual(match_driver(answer, self.names), "")
+
     def test_the_start_of_the_label(self):
         """« L » pour « L2TP/IPsec PSK » : le début du libellé choisit la
         technologie."""

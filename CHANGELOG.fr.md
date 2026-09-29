@@ -267,6 +267,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › Proxmox VE : le choix de l'hôte ne prend une VM locale ou un hôte SSH que par son numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`
 - Exécution › Deploy › Proxmox VE : le choix d'une VM de l'hôte, pour montrer son adresse, ouvrir sa console, redimensionner son disque, l'effacer ou la tester, ne prend qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 - Exécution › Deploy › VPN : le choix d'un profil, pour le connecter, le déconnecter, le diagnostiquer, le montrer, ranger ses secrets ou l'effacer, et le choix d'un préréglage de site ne prennent qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
+- Exécution › Deploy › VPN : la technologie d'un profil, ou celle dont installer les paquets du client, ne se prend par son rang que sous la forme d'un numéro tel qu'une liste l'écrit : « 02 » ou un chiffre d'une autre écriture ne désignent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 
 ## Retiré
 
