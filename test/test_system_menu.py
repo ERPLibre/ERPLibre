@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le menu Système : le diagnostic et son rapport.
+"""Le menu Système : le diagnostic et son rapport, le choix de l'espace à
+récupérer, au formulaire comme en ligne.
 
 Les faits du poste sont fabriqués : un test ne dépend ni du matériel ni des
 commandes installées là où il tourne.
 """
 
+import asyncio
 import os
 import sys
 import tempfile
@@ -14,6 +16,7 @@ import unittest
 from unittest import mock
 
 sys.argv = ["todo.py"]
+from script.todo import system_cleanup as sc  # noqa: E402
 from script.todo import system_diagnostic as sd  # noqa: E402
 from script.todo import system_menu as sm  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
@@ -104,6 +107,86 @@ class TestLesFichiersDuSysteme(unittest.TestCase):
         parts = sd.partitions(racine, mounts)
         self.assertEqual([p["mountpoint"] for p in parts], ["/"])
         self.assertTrue(parts[0]["repo"])
+
+
+class TestLeChoixEnLigne(unittest.TestCase):
+    def candidats(self):
+        return [
+            sc.Candidat("cache", ".cache/pip", ["/a"], 3000, coche=True),
+            sc.Candidat("filestore", "orpheline", ["/b"], 2000),
+            sc.Candidat(
+                "venv", ".venv.odoo16", ["/c"], 1000, mise_en_garde="reinstall"
+            ),
+        ]
+
+    def choisir(self, reponse):
+        with (
+            mock.patch("builtins.input", return_value=reponse),
+            mock.patch("builtins.print"),
+        ):
+            return sm.choisir_en_ligne(self.candidats())
+
+    def test_enter_takes_the_checked_ones(self):
+        self.assertEqual(self.choisir(""), [0])
+
+    def test_numbers_pick_those_ones(self):
+        self.assertEqual(self.choisir("2, 3"), [1, 2])
+
+    def test_out_of_range_numbers_are_ignored(self):
+        self.assertEqual(self.choisir("0,4,2"), [1])
+
+    def test_c_cancels(self):
+        self.assertIsNone(self.choisir("c"))
+
+    def test_the_label_says_size_category_and_warning(self):
+        ligne = sm.libelle(self.candidats()[2])
+        self.assertIn("1000 o", ligne)
+        self.assertIn("Venv d'une autre version d'Odoo", ligne)
+        self.assertIn("réinstaller", ligne)
+
+
+class TestLeFormulaire(unittest.TestCase):
+    def test_the_checked_boxes_are_returned(self):
+        candidats = [
+            sc.Candidat("cache", ".cache/pip", ["/a"], 3000, coche=True),
+            sc.Candidat("filestore", "orpheline", ["/b"], 2000),
+        ]
+        app = sm.formulaire(candidats)
+        if app is None:
+            self.skipTest("Textual absent")
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import SelectionList
+
+            async with app.run_test(size=(120, 20)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                vu["avant"] = list(liste.selected)
+                liste.select(1)
+                await pilote.click("#effacer")
+                await pilote.pause()
+            vu["rendu"] = app.return_value
+
+        asyncio.run(scenario())
+        self.assertEqual(vu["avant"], [0])
+        self.assertEqual(sorted(vu["rendu"]), [0, 1])
+
+    def test_cancel_returns_none(self):
+        app = sm.formulaire(
+            [sc.Candidat("cache", ".cache/pip", ["/a"], 3000, coche=True)]
+        )
+        if app is None:
+            self.skipTest("Textual absent")
+
+        async def scenario():
+            async with app.run_test(size=(120, 20)) as pilote:
+                await pilote.pause()
+                await pilote.click("#annuler")
+                await pilote.pause()
+
+        asyncio.run(scenario())
+        self.assertIsNone(app.return_value)
 
 
 class TestLeRapport(unittest.TestCase):
