@@ -1286,7 +1286,8 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
     def test_chaque_reglage_pose_sa_question_et_sa_lecture(self):
         # Chaque réglage se lance seul, comme depuis la TUI de télémétrie :
         # sa question et la lecture qui refuse une valeur viennent de sa
-        # clé. La première réponse est refusée, la seconde s'écrit.
+        # clé. La première réponse est refusée, la seconde s'écrit : une
+        # seule écriture, la valeur refusée n'en lance aucune.
         from script.todo import qemu_cache_menu as menu
         from script.todo import todo_i18n as i18n
 
@@ -1294,11 +1295,11 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
         self.addCleanup(setattr, i18n, "_current_lang", saved)
         i18n.use_lang("en")
         faux = menu.QemuCacheMenuMixin.__new__(menu.QemuCacheMenuMixin)
-        faux.execute = mock.MagicMock()
         for cle, question, refusee, lue in (
             ("EL_PURGE_AGE", "Not served since", "50G", "90j"),
             ("EL_MAX_SIZE", "Size ceiling", "90j", "50G"),
         ):
+            faux.execute = mock.MagicMock()
             with (
                 self.subTest(cle=cle),
                 mock.patch("click.prompt", side_effect=[refusee, lue]) as vu,
@@ -1311,6 +1312,7 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
                     f"Unreadable value: {refusee}", sortie.getvalue()
                 )
                 self.assertTrue(vu.call_args.args[0].startswith(question))
+                faux.execute.exec_command_live.assert_called_once()
                 [cmd] = faux.execute.exec_command_live.call_args.args
                 self.assertIn(f"{cle}={lue}", cmd)
 
