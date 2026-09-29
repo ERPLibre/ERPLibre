@@ -11,9 +11,11 @@ sur une réponse vide, même `Abort` sur Ctrl+C ou Ctrl+D. `click.prompt`
 se lit à chaque question : la capture d'une session web, qui remplace cet
 attribut, y répond.
 
-Le cadre de `navigate` ne porte pas de `self` : le fil d'Ariane, que
-`_menu_header` lit dans la pile, reste celui des méthodes de TODO qui
-l'appellent, et la clé de télémétrie aussi.
+`todo` est l'objet qui ouvre le menu : TODO, ou un objet de TODO dont
+le `fill_help_info` est celui de TODO (`DatabaseManager`). Le cadre de
+`navigate` ne porte pas de `self` : le fil d'Ariane, que `_menu_header`
+lit dans la pile, reste celui des méthodes de TODO qui l'appellent, et
+la clé de télémétrie aussi.
 """
 
 import click

@@ -11,11 +11,11 @@ module n'importe ni TODO ni une bibliothèque d'interface.
 
 `key` (d'une `Entry` ou d'une `Section`) est une clé de traduction
 anglaise, que `t()` traduit au rendu. `action`, `state`, `intro`,
-`suffix` et `when` sont des NOMS de méthodes de TODO, jamais des
-fonctions. Le numéro d'une entrée est sa place parmi les entrées
-numérotées montrées : une `Section` n'en prend pas, un `FromConfig` en
-prend un par élément de sa liste, une `Entry` dont la garde `when` rend
-faux aucun.
+`suffix` et `when` sont des NOMS de méthodes de l'objet qui ouvre le
+menu, TODO ou un objet de TODO, jamais des fonctions. Le numéro d'une
+entrée est sa place parmi les entrées numérotées montrées : une
+`Section` n'en prend pas, un `FromConfig` en prend un par élément de sa
+liste, une `Entry` dont la garde `when` rend faux aucun.
 """
 
 from dataclasses import dataclass
@@ -69,19 +69,22 @@ class FromConfig:
 
 @dataclass(frozen=True)
 class Menu:
-    """Un menu. `name` : la méthode de TODO qui l'ouvre ; `crumb` : son
-    segment du fil d'Ariane, sa valeur dans `_MENU_LABELS` et la clé de
-    télémétrie. `entries` : des `Section`, `Entry` et `FromConfig`, dans
-    l'ordre affiché. `state` nomme la méthode qui rend la ligne d'état
-    sous le fil d'Ariane ; `intro`, celle qui s'affiche une fois, à
-    l'entrée. [0] rend `back`. `render` : "each" redessine le menu à
-    chaque tour, "once" le dessine une fois, avant de poser la question.
+    """Un menu. `name` : la méthode qui l'ouvre ; `crumb` : son segment
+    du fil d'Ariane, sa valeur dans `_MENU_LABELS` et la clé de
+    télémétrie, ou None pour un menu qu'ouvre un autre objet que TODO :
+    le fil d'Ariane ne lit que les cadres de TODO, et ce menu s'affiche
+    sous celui du menu de TODO qui l'appelle. `entries` : des `Section`,
+    `Entry` et `FromConfig`, dans l'ordre affiché. `state` nomme la
+    méthode qui rend la ligne d'état sous le fil d'Ariane ; `intro`,
+    celle qui s'affiche une fois, à l'entrée. [0] rend `back`. `render` :
+    "each" redessine le menu à chaque tour, "once" le dessine une fois,
+    avant de poser la question.
     `closes` : le menu se referme après l'action d'une entrée, et rend
     alors `back`, comme sur [0].
     """
 
     name: str
-    crumb: str
+    crumb: str | None
     entries: list
     state: str | None = None
     intro: str | None = None

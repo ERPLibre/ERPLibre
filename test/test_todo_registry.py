@@ -495,6 +495,19 @@ class TestDeclaredTree(unittest.TestCase):
             ("Pick", None, {"key": "forged_key"}),
         )
 
+    def test_a_menu_opened_by_another_object_has_no_crumb(self):
+        # Le fil d'Ariane ne lit que les cadres de TODO : un menu qu'ouvre
+        # un autre objet s'affiche sous celui qui l'appelle.
+        self.menus_py.write_text(
+            FAKE_MENUS
+            + 'OTHER = Menu("forged_other", None, [Entry("First", "first")])\n'
+        )
+        declared = todo_telemetry._declared_menus(self.dir)
+        self.assertEqual(
+            sorted(declared), ["forged_other", "prompt_configuration"]
+        )
+        self.assertIsNone(declared["forged_other"]["crumb"])
+
     def test_a_computed_value_declares_nothing(self):
         # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
         # fichier à moitié écrit, puis un littéral du mauvais type : un nom
