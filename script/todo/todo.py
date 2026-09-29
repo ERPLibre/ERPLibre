@@ -717,10 +717,19 @@ class TODO(
         la ligne « Commande : ». Le fil situe le menu courant et se copie pour
         décrire sans ambiguïté où l'on se trouve."""
         crumbs = []
-        for frame_info in reversed(inspect.stack()):
-            if frame_info.frame.f_locals.get("self") is not self:
+        # Les cadres remontés à la main, et non `inspect.stack()` : celui-ci
+        # relit la source de chaque niveau et parcourt tous les modules
+        # chargés pour la trouver, à chaque menu affiché — et réveille au
+        # passage les anciens noms de modules d'urwid, qui avertissent.
+        cadres = []
+        cadre = inspect.currentframe()
+        while cadre is not None:
+            cadres.append(cadre)
+            cadre = cadre.f_back
+        for cadre in reversed(cadres):
+            if cadre.f_locals.get("self") is not self:
                 continue
-            label = self._MENU_LABELS.get(frame_info.function)
+            label = self._MENU_LABELS.get(cadre.f_code.co_name)
             if label and (not crumbs or crumbs[-1] != label):
                 crumbs.append(label)
         header = ""
