@@ -53,3 +53,7 @@ regex==2020.10.28
 pycups==1.9.73
 # delivery_roulier : la 1.0 importe abc.ABC, qui date de Python 3.4.
 roulier==0.3.9
+# account_statement_base_import (8), account_move_base_import (9) importent
+# xlrd sans le déclarer ; Odoo 9 importe tout addon au premier appel web.
+# La 1.0.0 est celle qu'épingle Odoo 10.
+xlrd==1.0.0

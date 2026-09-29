@@ -41,3 +41,7 @@ regex==2020.10.28
 # La 2.0 est une extension C écrite pour Python 3 (PyModuleDef) ; la 1.9.73
 # est celle que verrouille Odoo 10.
 pycups==1.9.73
+# account_statement_base_import (8), account_move_base_import (9) importent
+# xlrd sans le déclarer ; Odoo 9 importe tout addon au premier appel web.
+# La 1.0.0 est celle qu'épingle Odoo 10.
+xlrd==1.0.0
