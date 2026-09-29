@@ -6109,7 +6109,12 @@ class TODO(
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
     def callback_execute_custom_database(self, config):
+        """« Choose your database » de Run : ouvre la base que choisit
+        `select_database`, et rien quand il n'en rend pas (False sur [0],
+        sans base, ou quand PostgreSQL ne répond pas)."""
         database_name = self.db_manager.select_database()
+        if not database_name:
+            return
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def process_kill_from_port(self):

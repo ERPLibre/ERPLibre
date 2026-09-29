@@ -225,6 +225,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Run: the last instance of `todo.json` asks « Do you want a new instance? » and opens its database, as the others do, instead of running its make target alone
 - Execute › Run: only a number exactly as shown runs an entry, as in Code: « 00 », « -1 », « 01 », « 2 » between spaces, « +2 » or a digit of another script answer « Command not found ! » instead of running the last entry, one counted from the end, or Choose your database, and « -9 » no longer stops TODO on an error
 - Execute › Run opens when `todo.json` has no `instance` list, with Choose your database, and Mobile when its directory exists, instead of stopping TODO on an error before its menu
+- Execute › Run › Choose your database opens nothing when no database is chosen — [0], no database, or PostgreSQL not answering — instead of starting Odoo and its web login on a database named False
 
 ## Removed
 

@@ -1373,6 +1373,23 @@ class TestRunMenu(unittest.TestCase):
         self.assertEqual((ran, calls), ([], (0, 1, 0)))
         self.assertEqual(out.count("Command not found !"), 1)
 
+    def test_choose_your_database_opens_only_a_chosen_database(self):
+        # select_database rend False sur [0], sans base, ou quand
+        # PostgreSQL ne répond pas.
+        from script.todo.todo import TODO
+
+        chosen = [False, "forged"]
+        with (
+            patch.object(
+                self.todo.db_manager, "select_database", side_effect=chosen
+            ),
+            patch.object(TODO, "prompt_execute_selenium_and_run_db") as run,
+            patch("click.prompt", side_effect=["1", "1", "0"]),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIs(self.todo.prompt_execute_instance(), False)
+        self.assertEqual([c.args for c in run.call_args_list], [("forged",)])
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
