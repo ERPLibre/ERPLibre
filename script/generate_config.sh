@@ -24,7 +24,12 @@ printf "db_password = False\n" >> "${EL_CONFIG_FILE}"
 printf "xmlrpc_port = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
-printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
+# Les modules du cœur : odoo/addons depuis Odoo 10, openerp/addons en 8 et 9,
+# qui refusent un répertoire d'addons inexistant.
+EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/odoo/addons"
+[[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/openerp/addons"
+
+printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_ODOO_CORE_ADDONS},${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
@@ -171,6 +176,7 @@ fi
 
 # Update and fix the config.conf
 # Fix only the configuration if installation is done
-if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
+if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] \
+  && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" -o -f "./odoo$(< .odoo-version)/odoo/openerp-server" ]; then
     make config_update
 fi
