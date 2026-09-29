@@ -527,7 +527,7 @@ def _declared(node, fields):
 _TEXT_FIELDS = {
     "Menu": (("name", "crumb"), ("state", "intro")),
     "Section": (("key",), ()),
-    "Entry": (("key", "action"), ("suffix",)),
+    "Entry": (("key", "action"), ("suffix", "when")),
     "FromConfig": (("config_key", "action", "kwarg"), ()),
 }
 
@@ -610,7 +610,10 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     entrée dont le libellé finit par un `suffix` calculé à l'affichage
     porte un `entry` vide : aucune entrée du menu ne s'écrit comme elle.
     Le nœud d'une `Entry` déclarée `danger=True` porte "danger": True ;
-    ni la TUI ni la page web ne le lancent."""
+    ni la TUI ni la page web ne le lancent. Une entrée gardée (`when`) y
+    est, quoi que rende sa garde, mais sans méthode : seul son menu lit
+    la garde, et la TUI, qui lance une feuille par sa méthode, ne la
+    lance pas."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None
@@ -627,7 +630,7 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
                 "label": item.get("key"),
                 "is_menu": False,
                 "children": [],
-                "method": item.get("action"),
+                "method": None if item.get("when") else item.get("action"),
                 "kwargs": dict(item.get("kwargs") or {}),
                 "section": section,
             }

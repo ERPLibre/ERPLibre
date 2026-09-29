@@ -233,6 +233,31 @@ class TestNavigator(unittest.TestCase):
             ],
         )
 
+    def test_a_guarded_entry_shows_only_while_its_method_says_so(self):
+        # Absente, l'entrée gardée ne prend pas de numéro : Last est [2],
+        # puis [3] une fois que Show a rendu la garde vraie.
+        todo = FakeTodo()
+        shown = []
+        todo.forged_when = lambda: bool(shown)
+        todo.show = lambda: shown.append(True)
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                Entry("Show", "show"),
+                Entry("Guarded", "guarded", when="forged_when"),
+                Entry("Last", "last"),
+            ],
+        )
+        _, _, texts = self.navigate(menu, ["2", "1", "2", "3", "0"], todo)
+        self.assertEqual(texts[:2], ["[1] Show\n[2] Last\n[0] Back\n"] * 2)
+        self.assertEqual(
+            texts[2], "[1] Show\n[2] Guarded\n[3] Last\n[0] Back\n"
+        )
+        self.assertEqual(
+            [name for name, _ in todo.calls], ["last", "guarded", "last"]
+        )
+
     def test_a_list_absent_from_the_configuration_adds_no_entry(self):
         menu = Menu(
             "forged_menu",
@@ -439,11 +464,27 @@ class TestDeclaredTree(unittest.TestCase):
         self.assertNotIn("danger", language)
         self.assertNotIn("danger", forged)
 
+    def test_a_guarded_entry_is_in_the_tree_without_its_method(self):
+        # Une entrée gardée y est, quoi que rende sa garde, mais la TUI ne
+        # la lance pas : seul son menu lit la garde.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                'kwargs={"key": "forged_key"}',
+                'kwargs={"key": "forged_key"}, when="forged_when"',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        pick = configuration["children"][1]
+        self.assertEqual(
+            (pick["label"], pick["method"], pick["kwargs"]),
+            ("Pick", None, {"key": "forged_key"}),
+        )
+
     def test_a_computed_value_declares_nothing(self):
         # Une valeur calculée, un mot-clé inconnu, une clé non hachable, un
         # fichier à moitié écrit, puis un littéral du mauvais type : un nom
         # de menu, une action, des kwargs, une entrée, des kwargs que JSON
-        # n'écrit pas, un `danger` qui n'est pas un booléen.
+        # n'écrit pas, un `danger` qui n'est pas un booléen, une garde.
         for n, text in enumerate(
             (
                 "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
@@ -460,6 +501,10 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS.replace('"forged_key"', "{1}"),
                 FAKE_MENUS.replace(
                     '"pick", kwargs', '"pick", danger=1, kwargs'
+                ),
+                FAKE_MENUS.replace(
+                    'kwargs={"key": "forged_key"}',
+                    'kwargs={"key": "forged_key"}, when=1',
                 ),
             )
         ):
@@ -504,7 +549,7 @@ class TestDeclaredTree(unittest.TestCase):
         )
         self.assertEqual(fields["Section"], ["key"])
         self.assertEqual(
-            fields["Entry"][:4], ["key", "action", "kwargs", "suffix"]
+            fields["Entry"][:5], ["key", "action", "kwargs", "suffix", "when"]
         )
 
 

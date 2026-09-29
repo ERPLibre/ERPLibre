@@ -60,7 +60,8 @@ def _todo_class():
 
 def _command_names() -> set:
     """Méthodes que l'arbre de TODO rattache à un menu ou à une feuille,
-    et toutes celles que nomme un menu du registre : état, intro, suffixe.
+    et toutes celles que nomme un menu du registre : état, intro, suffixe,
+    garde.
 
     Seuls les noms qui contiennent « _ » sont gardés : « run » ou « quit »
     sont aussi des mots courants, un nom composé ne l'est jamais.
@@ -79,7 +80,7 @@ def _command_names() -> set:
     for menu in todo_telemetry._declared_menus(todo_dir).values():
         names |= {menu.get("name"), menu.get("state"), menu.get("intro")}
         for item in menu.get("entries") or []:
-            names |= {item.get("action"), item.get("suffix")}
+            names |= {item.get(k) for k in ("action", "suffix", "when")}
     return {name for name in names if name and "_" in name}
 
 

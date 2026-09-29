@@ -10,11 +10,12 @@ appels de ces constructeurs, aux arguments littéraux :
 module n'importe ni TODO ni une bibliothèque d'interface.
 
 `key` (d'une `Entry` ou d'une `Section`) est une clé de traduction
-anglaise, que `t()` traduit au rendu. `action`, `state`, `intro` et
-`suffix` sont des NOMS de méthodes de TODO, jamais des fonctions. Le
-numéro d'une entrée est sa place parmi les entrées numérotées : une
-`Section` n'en prend pas, un `FromConfig` en prend un par élément de sa
-liste.
+anglaise, que `t()` traduit au rendu. `action`, `state`, `intro`,
+`suffix` et `when` sont des NOMS de méthodes de TODO, jamais des
+fonctions. Le numéro d'une entrée est sa place parmi les entrées
+numérotées montrées : une `Section` n'en prend pas, un `FromConfig` en
+prend un par élément de sa liste, une `Entry` dont la garde `when` rend
+faux aucun.
 """
 
 from dataclasses import dataclass
@@ -33,17 +34,21 @@ class Section:
 class Entry:
     """Entrée numérotée : `t(key)`, suivi de `  (…)`, ce que rend la
     méthode `suffix` quand elle est nommée. Y répondre appelle la méthode
-    `action` avec `kwargs`, que `suffix` reçoit aussi. `danger`, `needs`,
-    `interfaces` et `glance` se déclarent ; le navigateur ne les lit pas.
-    L'arbre de télémétrie lit `danger` seul : le nœud d'une entrée
-    `danger=True` porte "danger", et ni la TUI de télémétrie ni la page
-    web ne le lancent ; le menu, lui, l'affiche et le lance comme une
-    autre entrée."""
+    `action` avec `kwargs`, que `suffix` reçoit aussi. `when` nomme une
+    méthode sans argument, relue à chaque dessin du menu : tant qu'elle
+    rend faux, l'entrée n'est pas montrée et les suivantes gardent leur
+    numéro sans elle. `danger`, `needs`, `interfaces` et `glance` se
+    déclarent ; le navigateur ne les lit pas. De ces quatre, l'arbre de
+    télémétrie ne lit que `danger` : le nœud d'une entrée `danger=True`
+    porte "danger", et ni la TUI de télémétrie ni la page web ne le
+    lancent ; le menu, lui, l'affiche et le lance comme une autre
+    entrée."""
 
     key: str
     action: str
     kwargs: dict | None = None
     suffix: str | None = None
+    when: str | None = None
     danger: bool | None = None
     needs: list | None = None
     interfaces: list | None = None

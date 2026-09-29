@@ -25,8 +25,9 @@ from script.todo.ui.registry import FromConfig, Section
 def _draw(todo, menu) -> tuple:
     """(texte, actions) de `menu` tel qu'il s'affiche maintenant : le
     texte de `todo.fill_help_info`, et le (méthode, kwargs) de chaque
-    entrée numérotée, dans l'ordre. Les suffixes, puis la ligne d'état,
-    sont demandés à `todo` avant l'en-tête."""
+    entrée numérotée, dans l'ordre. Les gardes et les suffixes, puis la
+    ligne d'état, sont demandés à `todo` avant l'en-tête ; une entrée
+    dont la garde rend faux n'est ni montrée ni comptée."""
     choices, actions = [], []
     for item in menu.entries:
         if isinstance(item, Section):
@@ -35,7 +36,7 @@ def _draw(todo, menu) -> tuple:
             for element in todo.config_file.get_config(item.config_key) or []:
                 choices.append(element)
                 actions.append((item.action, {item.kwarg: element}))
-        else:
+        elif not item.when or getattr(todo, item.when)():
             kwargs = dict(item.kwargs or {})
             label = t(item.key)
             if item.suffix:
