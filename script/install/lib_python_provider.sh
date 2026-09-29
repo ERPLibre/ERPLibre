@@ -171,9 +171,19 @@ el_pyenv_install() {
     # La liste des versions connues vient du dépôt git de pyenv : sans ce
     # « pull », une version récente est « not a known version ».
     (cd "${root}" && git pull) >&2 || true
+    # Le configure de CPython 2.7 teste le signe de wchar_t par un programme
+    # qui appelle exit() sans <stdlib.h>. Depuis GCC 14, une déclaration
+    # implicite est une erreur en C99 : le test échoue, Py_UNICODE devient un
+    # wchar_t signé, et une extension C compilée ensuite qui convertit un
+    # char en Py_UNICODE corrompt chaque octet UTF-8 non ASCII. -fpermissive
+    # rend ces tests à leur réponse ; la recette de pyenv y ajoute -std=c99.
+    local cflags="${PYTHON_CFLAGS:-}"
+    if [[ "${version}" == 2.7* ]]; then
+      cflags="${cflags:+${cflags} }-fpermissive"
+    fi
     # Le contrôle d'erreur d'origine testait un $retVal jamais affecté ici :
     # un échec de compilation passait inaperçu jusqu'au test d'existence.
-    if ! yes n | pyenv install "${version}" >&2; then
+    if ! yes n | PYTHON_CFLAGS="${cflags}" pyenv install "${version}" >&2; then
       echo "pyenv install ${version} a echoue." >&2
       return 1
     fi
