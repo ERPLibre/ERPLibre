@@ -878,6 +878,109 @@ def lit_constat_pont(sortie, nom):
     return Constat(debout=True, vlan=prise.group(1) == "1")
 
 
+def cmds_vms_vivantes_du_pont(pont):
+    """La commande qui nomme les VM EN MARCHE dont une carte tient à `pont`.
+
+    EN MARCHE SEULEMENT, et la distinction porte tout le geste : le tap d'une VM
+    qui tourne est détruit avec son pont et rien ne le recrée tant qu'elle vit.
+    Celui d'une VM ARRÊTÉE se crée à son démarrage ; un gabarit, qui ne tourne
+    jamais, nomme donc le pont sans rien risquer.
+
+    LUE DANS LES FICHIERS DE CONFIGURATION, et non par `qm config` VM par VM : le
+    nombre d'appels ne dépend alors pas du nombre de VM de la grappe.
+
+    LA VALEUR EST BORNÉE À DROITE par « , » ou la fin de ligne. Sans cette borne,
+    « vmbr9 » apparierait « vmbr90 », et le refus nommerait les VM d'un pont
+    qu'on ne touche pas.
+    """
+    if not (pont or "").strip():
+        return []
+    return [
+        f"p={shlex.quote(pont.strip())}; "
+        "v=$(qm list 2>/dev/null"
+        ' | awk \'NR>1 && $3=="running"{printf " %s ", $1}\'); '
+        "for f in /etc/pve/qemu-server/*.conf; do "
+        '[ -e "$f" ] || continue; '
+        'grep -qE "bridge=$p(,|\\$)" "$f" || continue; '
+        'n=$(basename "$f" .conf); '
+        'case "$v" in *" $n "*) '
+        "printf '%s %s\\n' \"$n\" "
+        '"$(sed -n \'s/^name: //p\' "$f" | head -1)";; esac; '
+        "done"
+    ]
+
+
+def lit_vms_du_pont(sortie):
+    """Les (vmid, nom) que `sortie` nomme, ou None si elle ne se lit pas.
+
+    UNE SORTIE VIDE REND (), et c'est le cas normal : aucune VM n'y tient. Une
+    ligne qui n'a pas la forme attendue rend None et fait refuser TOUTE la
+    lecture — un pont dont on lit mal les locataires doit se traiter comme un
+    pont qui en porte, jamais comme un pont libre.
+    """
+    vues = []
+    for ligne in (sortie or "").splitlines():
+        if not ligne.strip():
+            continue
+        morceaux = ligne.split(None, 1)
+        if len(morceaux) != 2 or not morceaux[0].isdigit():
+            return None
+        vues.append((morceaux[0], morceaux[1].strip()))
+    return tuple(vues)
+
+
+def vms_vivantes_du_pont(terrain, pont, elevation):
+    """Les VM en marche que `pont` porte encore, ou None. Ne lève jamais.
+
+    None DIT « ON N'A PAS SU », et l'appelant refuse sur ce doute plutôt que de
+    retirer un pont dont il ignore les locataires.
+    """
+    cmds = cmds_vms_vivantes_du_pont(pont)
+    if not cmds:
+        return ()
+    vu = joue_sur(terrain, cmds, elevation)
+    return lit_vms_du_pont(vu.sortie) if vu.reussi else None
+
+
+def refus_du_pont(pont, vivantes, siennes=()):
+    """Ce que `pont` oppose à son démontage, ou « ». Ne lève jamais.
+
+    UN PONT NE SE RETIRE PAS SOUS UNE VM QUI TOURNE. Son tap est détruit avec lui
+    et rien ne le recrée tant qu'elle vit : la VM reste « en marche » et
+    définitivement injoignable. Le lancement suivant attend alors sa flotte dix
+    minutes et refuse en la NOMMANT, sans un mot du pont qu'on lui a retiré — le
+    diagnostic le plus coûteux que ce script puisse produire.
+
+    `vivantes` À None FAIT REFUSER : un pont dont on ignore les locataires se
+    traite comme un pont qui en porte, jamais comme un pont libre.
+
+    `siennes` NE COMPTE PAS : ces VM-là sont nommées par l'empreinte et partent
+    AVANT le pont. Ce qui reste est ce que l'empreinte ne nomme pas — la flotte
+    que le moteur matérialise depuis le plan du locataire.
+
+    Le refus rendu porte le REMÈDE autant que la cause : nommer ce qui bloque
+    sans dire par quel geste s'en défaire laisse l'opérateur devant un mur.
+    """
+    if not (pont or "").strip():
+        return ""
+    nom = pont.strip()
+    if vivantes is None:
+        return f"le terrain n'a pas dit ce qui tient à « {nom} »"
+    etrangeres = [(v, n) for v, n in vivantes if v not in (siennes or ())]
+    if not etrangeres:
+        return ""
+    lignes = [f"« {nom} » porte encore {len(etrangeres)} VM en marche :"]
+    lignes += [f"     {vmid:<12} {vu}" for vmid, vu in etrangeres]
+    lignes.append(
+        "   les raser d'abord — le moteur les matérialise depuis le plan, et"
+    )
+    lignes.append(
+        "   l'empreinte ne les nomme donc pas. Retirer le pont sous elles les"
+    )
+    lignes.append("   laisserait en marche et injoignables.")
+    return "\n".join(lignes)
+
+
 # LE RÉSEAU DU BANC, et il n'est pas celui du labo. Le labo pose son pont interne
 # en 10.10.10.1/24 ; sur un plancher où il l'a déjà fait, un banc qui reprendrait
 # ce réseau y dupliquerait l'adresse de la passerelle, et les deux ponts se
@@ -3470,6 +3573,19 @@ def defaire(dry_run=False):
         print(
             f"  ⛔ le terrain ne se joue pas ({elevation}) : rien n'est défait."
         )
+        return SORTIE_NON_CONCLUANTE
+
+    # REFUSÉ EN BLOC ET AVANT TOUT GESTE. La boucle qui suit continue sur un
+    # souci : refuser au seul pont laisserait retirer les dépôts derrière lui,
+    # et avec eux le moyen de raser la flotte que le refus vient de nommer.
+    refus = refus_du_pont(
+        empreinte.pont,
+        vms_vivantes_du_pont(empreinte.terrain, empreinte.pont, elevation),
+        {str(vmid) for vmid, _nom in empreinte.vms or ()},
+    )
+    if refus:
+        print(f"  ⛔ {refus}")
+        print("     rien n'est défait.")
         return SORTIE_NON_CONCLUANTE
     print()
     moteur = moteur_du_banc()
