@@ -31,6 +31,10 @@ DEFAULTS = {
     "qemu_deploy_progress": "cli",
     # Interface de la migration Odoo : "ask" / "tui" / "cli".
     "migration_ui": "ask",
+    # PostgreSQL de la migration : "system" (le serveur du système) ou "16"
+    # (cluster de script/database/migration_cluster.py, pour une sauvegarde
+    # produite par un PostgreSQL 16 ou plus ancien).
+    "migration_postgresql": "system",
     # Balayage de découverte des serveurs LLM : connexions en vol. Sert
     # seulement quand il est INFÉRIEUR au nombre de sondes, le balayage
     # plafonnant à celui-ci — un /24 sur onze ports en compte 2 794. Monter
