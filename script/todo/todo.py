@@ -129,6 +129,7 @@ from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.menus import execute as menus_execute
 from script.todo.menus import main as menus_main
+from script.todo.menus import run as menus_run
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_cache_menu import QemuCacheMenuMixin
@@ -1100,55 +1101,27 @@ class TODO(
         return help_info
 
     def prompt_execute_instance(self):
+        """Run (RUN, `menus/run.py`) : « Choose your database », les
+        instances de `instance` dans todo.json (`_run_instance`), puis
+        Mobile, quand son répertoire existe. Dessiné une fois, à l'entrée.
+        Rend False sur [0]."""
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        # L'arbre de télémétrie lit les entrées de configuration dans cette
-        # affectation (`_choices_children`) : elle reste un appel seul de
-        # get_config, et une liste absente se remplace ensuite.
-        choices = self.config_file.get_config("instance")
-        if choices is None:
-            choices = []
-        init_len = len(choices)
+        return navigate(self, menus_run.RUN)
 
-        # Support mobile ERPLibre
-        if os.path.exists(MOBILE_HOME_PATH):
-            menu_entry = {
-                "prompt_description": t("Mobile - Compile and run software"),
-                "callback": self.callback_make_mobile_home,
-            }
-            choices.append(menu_entry)
+    def _run_instance(self, instance):
+        """Lance `instance`, une entrée de `instance` dans todo.json : sa
+        cible make ne tourne que si l'on veut une nouvelle instance, puis
+        sa base s'ouvre (`exec_run_db`)."""
+        new = click.confirm(t("Do you want a new instance?"))
+        self.execute_from_configuration(
+            instance, exec_run_db=True, ignore_makefile=not new
+        )
 
-        # Support custom database to execute
-        menu_entry = {
-            "prompt_description": t("Choose your database"),
-            "callback": self.callback_execute_custom_database,
-        }
-        choices.insert(0, menu_entry)
-        help_info = self.fill_help_info(choices)
-        # Seul un numéro tel qu'affiché lance une entrée : int() lit aussi
-        # « 01 », « +2 », un chiffre d'une autre écriture, et « -1 », qui
-        # compterait depuis la fin de la liste.
-        numbers = [str(n) for n in range(1, len(choices) + 1)]
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status not in numbers:
-                print(t("Command not found !"))
-            # « Choose your database » est [1] : les instances de la
-            # configuration sont [2] à [init_len + 1].
-            elif 1 < int(status) <= init_len + 1:
-                new = click.confirm(t("Do you want a new instance?"))
-                self.execute_from_configuration(
-                    choices[int(status) - 1],
-                    exec_run_db=True,
-                    ignore_makefile=not new,
-                )
-            else:
-                self.execute_from_configuration(choices[int(status) - 1])
+    def _mobile_exists(self):
+        """Vrai si le projet mobile est là : Run montre alors Mobile."""
+        return os.path.exists(MOBILE_HOME_PATH)
 
     def prompt_execute_function(self):
         choices = self.config_file.get_config("function")
@@ -6091,7 +6064,7 @@ class TODO(
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
-    def callback_execute_custom_database(self, config):
+    def callback_execute_custom_database(self):
         """« Choose your database » de Run : ouvre la base que choisit
         `select_database`, et rien quand il n'en rend pas (False sur [0],
         sans base, ou quand PostgreSQL ne répond pas)."""
@@ -6150,7 +6123,7 @@ class TODO(
         self.dir_path = dir_path
         todo_file_browser.exit_program()
 
-    def callback_make_mobile_home(self, config):
+    def callback_make_mobile_home(self):
         # Read file
         default_project_name = "ERPLibre"
         default_package_name = "ca.erplibre.home"

@@ -1103,6 +1103,48 @@ class TestTestMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestRunMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Run : « Choose your database », les instances de todo.json, puis
+    Mobile, montré seulement quand son répertoire existe."""
+
+    MENU = "prompt_execute_instance"
+    EXPECTED = {
+        "Choose your database": "callback_execute_custom_database",
+        "Mobile": "callback_make_mobile_home",
+    }
+
+    def test_each_instance_asks_before_it_runs_and_mobile_is_guarded(self):
+        [database, instances, mobile] = self.menu.entries
+        self.assertEqual(
+            (instances.config_key, instances.action, instances.kwarg),
+            ("instance", "_run_instance", "instance"),
+        )
+        self.assertEqual(
+            (database.when, mobile.when), (None, "_mobile_exists")
+        )
+
+    def test_the_tui_runs_each_instance_through_its_question(self):
+        # La TUI de télémétrie lance une feuille par sa méthode : chaque
+        # instance de todo.json passe par _run_instance, qui pose la
+        # question et ouvre sa base, comme depuis le menu.
+        from script.todo.todo_telemetry import _config_list, build_code_tree
+
+        [execute] = [
+            n for n in build_code_tree()["children"] if n["label"] == "Execute"
+        ]
+        [run] = [n for n in execute["children"] if n["label"] == "Run"]
+        instances = _config_list("instance", TODO_DIR)
+        self.assertTrue(instances)
+        self.assertEqual(
+            [
+                (n["method"], n["kwargs"]["instance"])
+                for n in run["children"]
+                if "instance" in n["kwargs"]
+            ],
+            [("_run_instance", instance) for instance in instances],
+        )
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -1553,6 +1595,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_process",
                 "prompt_execute_test",
                 "prompt_execute_update",
+                "prompt_execute_instance",
             },
             set(declared),
         )

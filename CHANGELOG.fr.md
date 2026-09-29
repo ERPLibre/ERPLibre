@@ -230,6 +230,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Database › Télécharger une base vérifie l'archive là où il l'a écrite, au chemin tapé, au lieu de lire le chemin par défaut et de dire en échec un téléchargement réussi
 - Exécution › Database › Télécharger une base : un numéro qu'il liste choisit cette base distante, au lieu de télécharger une base nommée par ce numéro ; tout autre texte reste le nom tapé
 - Exécution › Doc : Couverture de migration des modules et Quels changements entre les versions demandent leur version dans la langue choisie au lieu de toujours en anglais, et la seconde question ouvre sa parenthèse
+- Télémétrie de navigation : Exécution › Run montre Choisir sa base de données, qui se lance depuis la TUI et la page web, et une instance lancée depuis la TUI demande « Voulez-vous une nouvelle instance? » et ouvre sa base, comme dans le menu
 
 ## Retiré
 

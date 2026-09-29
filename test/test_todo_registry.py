@@ -742,7 +742,8 @@ class TestTodoMenuFiles(unittest.TestCase):
         fields = todo_telemetry._registry_fields(REGISTRY_PY)
         paths = sorted(MENUS_DIR.glob("*.py"))
         self.assertEqual(
-            [p.name for p in paths], ["__init__.py", "execute.py", "main.py"]
+            [p.name for p in paths],
+            ["__init__.py", "execute.py", "main.py", "run.py"],
         )
         for path in paths:
             for stmt in ast.parse(path.read_text(encoding="utf-8")).body:
@@ -767,6 +768,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute",
                 "prompt_execute_code",
                 "prompt_execute_config",
+                "prompt_execute_instance",
                 "prompt_execute_process",
                 "prompt_execute_test",
                 "prompt_execute_update",
@@ -797,13 +799,14 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 8)
+        self.assertEqual(len(menus), 9)
         for menu in menus.values():
             calls = [(menu.name, {}), (menu.state, {})]
             for item in menu.entries:
                 if isinstance(item, Entry):
                     kwargs = item.kwargs or {}
                     calls += [(item.action, kwargs), (item.suffix, kwargs)]
+                    calls.append((item.when, {}))
                 elif isinstance(item, FromConfig):
                     calls.append((item.action, {item.kwarg: {}}))
             for name, kwargs in calls:
