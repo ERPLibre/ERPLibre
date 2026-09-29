@@ -1581,6 +1581,7 @@ SECRETS_LOCATAIRE = (
     ("vault_openldap_admin", FORME_OPAQUE),
     ("vault_icinga_api_depot", FORME_OPAQUE),
     ("vault_restic_password", FORME_OPAQUE),
+    ("vault_ldap_bind_dovecot", FORME_OPAQUE),
     ("vault_backup_ssh_privkey", FORME_CLE_SSH),
 )
 
@@ -1848,6 +1849,63 @@ def _recrit(chemin, transforme):
     return _ecrit(chemin, apres)
 
 
+# Les applications que le banc COUVRE, et c'est une portée DÉCLARÉE, non une
+# découverte. Le moteur nomme lui-même les siennes dans son script d'amorçage ; le
+# banc nomme les siennes de la même façon, et dans les deux cas c'est le PLAN qui
+# donne l'HÔTE — élargir la couverture est un mot, jamais un nom de machine.
+#
+# LE MAGASIN DE COURRIEL N'Y EST PAS, et son absence est un constat, pas un oubli :
+# son rôle se lie à un annuaire, et le modèle du moteur n'en déclare aucun.
+# L'activer ferait refuser la boucle à chaque lancement, ce qui ne se distingue
+# plus d'un banc cassé.
+APPLICATIONS_COUVERTES = ("step_ca", "powerdns", "nginx")
+
+
+def lit_applications(chemin):
+    """Le registre des applications du plan, ou None. Ne lève jamais."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(chemin, encoding="utf-8") as ouvert:
+            lu = yaml.safe_load(ouvert.read())
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None
+    if not isinstance(lu, dict):
+        return None
+    registre = lu.get("applications")
+    return registre if isinstance(registre, dict) else None
+
+
+def hotes_couverts(chemin, applications=APPLICATIONS_COUVERTES):
+    """Les hôtes que le plan donne à `applications`. () si aucune. Ou None.
+
+    None DIT « LE REGISTRE NE S'EST PAS LU », et l'appelant refuse là-dessus : un
+    plan dont le registre ne se lit pas ne dit plus quel hôte porte quoi, et
+    activer au jugé poserait des machines dont rien ne nomme la fonction.
+
+    UNE APPLICATION ABSENTE DU PLAN N'EST PAS UNE PANNE : la portée du banc est la
+    sienne, le plan est celui du moteur, et un modèle qui ne déclare pas l'une
+    d'elles se couvre simplement moins.
+
+    L'ORDRE EST CELUI DES APPLICATIONS, et les doublons tombent : deux
+    applications partagent parfois un hôte, et l'activer deux fois n'ajoute rien.
+    """
+    registre = lit_applications(chemin)
+    if registre is None:
+        return None
+    vus = []
+    for nom in applications or ():
+        entree = registre.get(nom)
+        if not isinstance(entree, dict):
+            continue
+        hote = (entree.get("hote") or "").strip()
+        if hote and hote not in vus:
+            vus.append(hote)
+    return tuple(vus)
+
+
 def amorcage_du_plan(moteur, instance):
     """Les hôtes d'amorçage que le plan d'`instance` dérive. Ou None.
 
@@ -2020,6 +2078,16 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
     hotes = amorcage_du_plan(moteur, eco)
     if not hotes:
         return pose._replace(souci="le plan ne dérive aucun hôte d'amorçage")
+    # L'AMORÇAGE D'ABORD, ET SON ORDRE EST CELUI DU MOTEUR : l'autorité de
+    # certification passe avant ce qui s'enrôle auprès d'elle, et cette
+    # précédence est déclarée dans le plan. Ce que le banc couvre EN PLUS vient
+    # après, sans ordre propre — `active_les_hotes` ne fait que poser un état.
+    couverts = hotes_couverts(os.path.join(eco, "plan", "applications.yml"))
+    if couverts is None:
+        return pose._replace(
+            souci="le registre des applications ne s'est pas lu"
+        )
+    hotes = tuple(hotes) + tuple(h for h in couverts if h not in hotes)
     for fichier, transforme in (
         ("nomenclature.yml", lambda t: pose_index(t, INDEX_ECOSYSTEME)),
         ("serveurs.yml", lambda t: active_les_hotes(t, hotes)),
