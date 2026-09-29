@@ -910,6 +910,14 @@ pbr = "*"
 six = "*"
 
 [[package]]
+name = "xlrd"
+version = "1.0.0"
+description = "Library for developers to extract data from Microsoft Excel (tm) spreadsheet files"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "xlsxwriter"
 version = "2.0.0"
 description = "A Python module for creating Excel XLSX files."
@@ -953,7 +961,7 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=2.7.18,<2.8"
-content-hash = "4161b9fea989490bc30499caa9ebb922ef4d44732e93b9570281b731284063ed"
+content-hash = "f6a97e1b572534b901267aa53d6f979e2873ff430fd8ce965d8a1255139b4357"
 
 [metadata.files]
 acme-tiny = [
@@ -1589,6 +1597,10 @@ wsgiref = [
 wstools = [
     {file = "wstools-0.4.8-py2.py3-none-any.whl", hash = "sha256:e78cea7e6c3ff658d120b36b2151ad52c4daf4f1d0617ebf82b54ffc3bb694dd"},
     {file = "wstools-0.4.8.tar.gz", hash = "sha256:7992e687d7e7a4dd29b4df55376cd8b6577e0f71f72c00cfbc4bbb24b574ecc2"},
+]
+xlrd = [
+    {file = "xlrd-1.0.0-py3-none-any.whl", hash = "sha256:05f55eb39a68f1c3d336de186aeb90c98ea5add722813738d8ae8b97819c5924"},
+    {file = "xlrd-1.0.0.tar.gz", hash = "sha256:0ff87dd5d50425084f7219cb6f86bb3eb5aa29063f53d50bf270ed007e941069"},
 ]
 xlsxwriter = [
     {file = "XlsxWriter-2.0.0-py2.py3-none-any.whl", hash = "sha256:51fbb1d727d8391ddf240ce665710d6b205944dc84842c7b8452ac40226eeb71"},
