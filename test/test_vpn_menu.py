@@ -109,8 +109,8 @@ class MatchDriver(unittest.TestCase):
                 self.assertEqual(match_driver(str(index), self.names), name)
 
     def test_the_start_of_the_label(self):
-        """« L » devant « L2TP/IPsec PSK » : le geste qui a motivé tout
-        ceci."""
+        """« L » pour « L2TP/IPsec PSK » : le début du libellé choisit la
+        technologie."""
         for answer, expected in (
             ("L", "l2tp_ipsec"),
             ("l2tp", "l2tp_ipsec"),
@@ -361,20 +361,20 @@ class TheFormIsDriverAgnostic(MenuBase):
 
 
 class OnlyWhatTheSiteGaveYou(MenuBase):
-    """Le cas réel : le site remet une passerelle, un utilisateur, un mot de
-    passe et une clé. Rien sur les réseaux derrière.
+    """Un site peut ne remettre qu'une passerelle, un utilisateur, un mot
+    de passe et une clé, sans rien sur les réseaux derrière.
 
     Ce profil DOIT s'enregistrer. Il ne joint que l'hôte distant, le menu le
     dit, et le premier montage proposera le réseau que l'adresse révèle —
-    refuser l'enregistrement laissait sans issue.
+    refuser l'enregistrement laisserait sans issue.
     """
 
     def test_a_profile_without_routes_is_accepted_and_flagged(self):
         names = list(DRIVERS)
         answers = [
-            "cortalis",
+            "forged-site",
             DRIVER_LETTERS[names.index("l2tp_ipsec")],
-            "vpn.cortalis.example",  # la passerelle
+            "vpn.forged-site.example",  # la passerelle
             "user",  # l'utilisateur PPP
             "",  # réseaux : le site n'en a pas donné
             "",  # tout le trafic ? non
@@ -385,7 +385,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
         with self.answering(*answers):
             with redirect_stdout(buffer):
                 self.todo._vpn_edit_profile()
-        saved = profiles.load("cortalis")
+        saved = profiles.load("forged-site")
         self.assertIsNotNone(saved, "profil refusé alors qu'il est utilisable")
         self.assertEqual(saved["routes"], [])
         self.assertFalse(saved["default_route"])
@@ -401,7 +401,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
 
         profile = profiles.validate(
             {
-                "name": "cortalis",
+                "name": "forged-site",
                 "driver": "l2tp_ipsec",
                 "server": "127.0.0.1",
                 "ppp_user": "user",
@@ -412,12 +412,12 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
         buffer = io.StringIO()
         with patch(
             "script.vpn.drivers.base.interface_addresses",
-            return_value=["192.168.50.20", "192.168.50.1"],
+            return_value=["192.0.2.20", "192.0.2.1"],
         ):
             with redirect_stdout(buffer):
                 driver.suggest_routes(runner, "ppp0")
         printed = buffer.getvalue()
-        self.assertIn("192.168.50.0/24", printed)
+        self.assertIn("192.0.2.0/24", printed)
         self.assertIn("hypothèse", printed)
 
     def test_nothing_is_suggested_when_routes_are_declared(self):
@@ -427,7 +427,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
 
         profile = profiles.validate(
             {
-                "name": "cortalis",
+                "name": "forged-site",
                 "driver": "l2tp_ipsec",
                 "server": "127.0.0.1",
                 "ppp_user": "user",
@@ -484,14 +484,14 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
 
         Deux pour créer le coffre, quatre pour les deux secrets confirmés.
         `create_database` rend la base DÉJÀ ouverte : sans l'adopter, le mot
-        de passe maître était redemandé dans la seconde suivant les deux
+        de passe maître serait redemandé dans la seconde suivant les deux
         saisies de la création.
         """
         profiles.save(
             {
-                "name": "cortalis",
+                "name": "forged-site",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.cortalis.example",
+                "server": "vpn.forged-site.example",
                 "ppp_user": "user",
             }
         )
@@ -505,7 +505,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             return "secret"
 
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="cortalis"
+            self.todo, "_vpn_select_profile", return_value="forged-site"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
@@ -516,15 +516,15 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
 
     def test_an_empty_answer_on_an_empty_field_is_reported(self):
         """« Une réponse vide garde la valeur en place » est un piège quand
-        il n'y a RIEN en place : le secret restait vide en silence, et le
-        premier montage échouait sur « Secrets manquants ». L'invite dit
-        maintenant l'état, et le bilan nomme ce qui manque encore.
+        il n'y a RIEN en place : le secret resterait vide en silence, et le
+        premier montage échouerait sur « Secrets manquants ». L'invite dit
+        donc l'état, et le bilan nomme ce qui manque encore.
         """
         profiles.save(
             {
-                "name": "cortalis",
+                "name": "forged-site",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.cortalis.example",
+                "server": "vpn.forged-site.example",
                 "ppp_user": "user",
             }
         )
@@ -540,7 +540,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
 
         buffer = io.StringIO()
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="cortalis"
+            self.todo, "_vpn_select_profile", return_value="forged-site"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
@@ -558,9 +558,9 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
     def test_a_field_already_set_says_so(self):
         profiles.save(
             {
-                "name": "cortalis",
+                "name": "forged-site",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.cortalis.example",
+                "server": "vpn.forged-site.example",
                 "ppp_user": "user",
             }
         )
@@ -574,7 +574,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             return "valeur"
 
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="cortalis"
+            self.todo, "_vpn_select_profile", return_value="forged-site"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
@@ -676,9 +676,8 @@ class TheDefaultRouteQuestion(MenuBase):
     """« Tout le trafic ? » n'est posée qu'aux pilotes qui posent la route.
 
     Demander à qui n'a pas la main dessus, puis sanctionner la réponse par
-    un ✗ sur un tunnel sain, était la pire des trois façons de traiter la
-    question : le champ existait, ne servait à rien, et faisait échouer le
-    diagnostic.
+    un ✗ sur un tunnel sain, serait la pire des trois façons de traiter la
+    question : un champ qui ne sert à rien et fait échouer le diagnostic.
     """
 
     def filling(self, seed, *answers):
@@ -812,7 +811,7 @@ class ShowingWhatIsConnected(MenuBase):
     def test_connecting_what_is_already_up_asks_first(self):
         """Remonter un tunnel qui tient rejoue toute l'authentification —
         jusqu'à un formulaire web — pour aboutir à une interface qui
-        existait déjà."""
+        existe déjà."""
         launched = []
         with patch.object(OpenconnectDriver, "is_up", lambda self: True):
             with patch.object(
