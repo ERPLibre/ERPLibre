@@ -86,8 +86,8 @@ class Cablage(unittest.TestCase):
 
     def test_l_etiquette_de_fil_d_ariane_existe(self):
         """Le fil se dérive de la pile d'appels : une méthode absente de
-        `_MENU_LABELS` ne contribue AUCUNE miette, en silence. Le sous-menu
-        VPN a été livré ainsi et ne se situe donc nulle part."""
+        `_MENU_LABELS` ne contribuerait AUCUNE miette, en silence, et son
+        menu ne se situerait nulle part."""
         from script.todo.todo import TODO
 
         self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
@@ -223,10 +223,10 @@ class Balayage(unittest.TestCase):
     """Ce que le balayage doit atteindre, et ce qu'il ne doit pas taire.
 
     Un serveur vit souvent sur un réseau que la machine ne PORTE pas,
-    joignable par la passerelle. Les deux mécanismes qui semblaient couvrir ce
-    cas ne le couvrent pas : la saisie d'une adresse ne prend qu'un hôte, et
-    la table de voisinage est link-local, donc elle ne connaît jamais un hôte
-    routé. Sans réseau saisi à la main, un tel serveur est hors d'atteinte.
+    joignable par la passerelle. Ni la saisie d'une adresse, qui ne prend
+    qu'un hôte, ni la table de voisinage, link-local, qui ne connaît jamais
+    un hôte routé, ne couvrent ce cas. Sans réseau saisi à la main, un tel
+    serveur est hors d'atteinte.
     """
 
     def _todo(self):
