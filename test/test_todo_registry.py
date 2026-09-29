@@ -145,6 +145,21 @@ class TestNavigator(unittest.TestCase):
             menu = Menu("forged_menu", "Forged", [], back=back)
             self.assertIs(self.navigate(menu, ["0"])[0], back)
 
+    def test_a_closing_menu_gives_back_after_one_entry(self):
+        # Une réponse sans entrée ne le referme pas : la question revient.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first"), Entry("Second", "second")],
+            back=None,
+            closes=True,
+        )
+        back, todo, texts = self.navigate(menu, ["3", "2"])
+        self.assertIsNone(back)
+        self.assertEqual(todo.calls, [("second", {})])
+        self.assertEqual(len(texts), 2)
+        self.assertEqual(self.out.getvalue().count("Command not found !"), 1)
+
     def test_any_other_answer_is_not_found_and_asks_again(self):
         menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
         answers = ["2", "01", " 1", "-1", "x", "0"]
@@ -542,7 +557,16 @@ class TestDeclaredTree(unittest.TestCase):
         fields = todo_telemetry._registry_fields(REGISTRY_PY)
         self.assertEqual(
             fields["Menu"],
-            ["name", "crumb", "entries", "state", "intro", "back", "render"],
+            [
+                "name",
+                "crumb",
+                "entries",
+                "state",
+                "intro",
+                "back",
+                "render",
+                "closes",
+            ],
         )
         self.assertEqual(
             fields["FromConfig"], ["config_key", "action", "kwarg"]

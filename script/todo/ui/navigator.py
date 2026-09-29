@@ -50,8 +50,9 @@ def _draw(todo, menu) -> tuple:
 def navigate(todo, menu):
     """Affiche `menu` pour `todo` et répond à ses entrées ; rend
     `menu.back` sur « 0 ». « N » appelle la méthode de la N-ième entrée
-    numérotée avec ses kwargs, puis le menu reprend ; toute autre réponse
-    dit « Command not found ! ». L'intro s'affiche une fois, à l'entrée.
+    numérotée avec ses kwargs, puis le menu reprend, ou rend `menu.back`
+    s'il se referme (`closes`) ; toute autre réponse dit « Command not
+    found ! ». L'intro s'affiche une fois, à l'entrée.
     Un menu `render="each"` se redessine après chaque réponse, sa
     configuration relue ; un menu "once" garde son premier dessin."""
     if menu.intro:
@@ -66,6 +67,8 @@ def navigate(todo, menu):
         if status in numbers:
             method, kwargs = actions[int(status) - 1]
             getattr(todo, method)(**kwargs)
+            if menu.closes:
+                return menu.back
         else:
             print(t("Command not found !"))
         if menu.render == "each":

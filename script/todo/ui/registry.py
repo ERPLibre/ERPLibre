@@ -76,6 +76,8 @@ class Menu:
     sous le fil d'Ariane ; `intro`, celle qui s'affiche une fois, à
     l'entrée. [0] rend `back`. `render` : "each" redessine le menu à
     chaque tour, "once" le dessine une fois, avant de poser la question.
+    `closes` : le menu se referme après l'action d'une entrée, et rend
+    alors `back`, comme sur [0].
     """
 
     name: str
@@ -85,6 +87,7 @@ class Menu:
     intro: str | None = None
     back: object = False
     render: str = "each"
+    closes: bool = False
 
     def __post_init__(self):
         if self.render not in RENDERS:
