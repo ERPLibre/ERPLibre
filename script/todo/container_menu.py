@@ -31,7 +31,9 @@ import click
 
 from script.execute.execute import Execute
 from script.todo import container_runtime
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 # Le catalogue qui fait autorité sur les versions d'Odoo constructibles.
 CATALOGUE = "conf/supported_version_erplibre.json"
@@ -77,85 +79,11 @@ class ContainerMenuMixin:
     """
 
     def prompt_execute_container(self):
-        print(f"🤖 {t('Container engines!')}")
-        choices = [
-            {"section": t("Engine")},
-            {
-                "prompt_description": t(
-                    "Diagnostic - engine, service, socket, access without sudo"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Service - start, stop, enable at boot, journal"
-                )
-            },
-            {"prompt_description": t("Install Docker")},
-            {"prompt_description": t("Install Podman")},
-            {"section": t("Inventory")},
-            {"prompt_description": t("Images")},
-            {"prompt_description": t("Containers")},
-            {"prompt_description": t("Networks")},
-            {"section": t("Cleanup")},
-            {
-                "prompt_description": t(
-                    "Remove unused images, containers and volumes"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "By workspace - a compose project and what it holds"
-                )
-            },
-            {"prompt_description": t("Images one by one")},
-            {"section": t("ERPLibre images")},
-            {"prompt_description": t("Build an image for an Odoo version")},
-            {
-                "prompt_description": t(
-                    "Compose - start, stop, logs, processes"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "ERPLibre container - shell, databases, tests, status"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._container_diagnostic()
-            elif status == "2":
-                self._container_service()
-            elif status == "3":
-                self._container_install(moteur="docker")
-            elif status == "4":
-                self._container_install(moteur="podman")
-            elif status == "5":
-                self._container_inventaire(sous_commande="images")
-            elif status == "6":
-                self._container_inventaire(sous_commande="ps -a")
-            elif status == "7":
-                self._container_reseaux()
-            elif status == "8":
-                self._container_nettoyage()
-            elif status == "9":
-                self._container_nettoyer_projets()
-            elif status == "10":
-                self._container_nettoyer_images()
-            elif status == "11":
-                self._container_build_odoo()
-            elif status == "12":
-                self._container_compose()
-            elif status == "13":
-                self._container_erplibre()
-            else:
-                print(t("Command not found !"))
+        """Les moteurs de conteneurs : leur état et leur installation,
+        l'inventaire de ce qu'ils détiennent, et les images ERPLibre
+        (CONTAINER, `menus/deploy.py`), dessiné une fois, à l'entrée. Rend
+        False sur [0]."""
+        return navigate(self, menus_deploy.CONTAINER)
 
     # ------------------------------------------------------------------
     # Le moteur
@@ -355,71 +283,68 @@ class ContainerMenuMixin:
 
     def _container_service(self):
         """Démarrer, arrêter ou activer le service d'un moteur, et LIRE son
-        journal.
+        journal (CONTAINER_SERVICE, `menus/deploy.py`). Rend False sur [0],
+        et None, le menu fermé, sans moteur installé ou choisi.
 
         Le journal est la moitié utile de cet écran : un démon qui refuse de
         naître ne dit rien à « docker info », qui ne rapporte que l'absence de
         socket. La cause — un module de noyau introuvable, une plage d'UID
         subordonnés manquante — n'est écrite que là.
         """
+        return navigate(self, menus_deploy.CONTAINER_SERVICE)
+
+    def _container_service_ouvre(self):
+        """Ce qui ouvre le menu du service : le moteur choisi, ses unités et
+        leur portée. Rend {"fiche", "par_compte"}, que reçoit chaque
+        entrée, ou None sans moteur installé ou choisi."""
         fiche = self._container_choisir_moteur()
         if not fiche:
-            return
+            return None
         moteur = fiche["moteur"]
         service, socket = UNITES[moteur]
         par_compte = self._container_par_compte(moteur, fiche)
         portee = t("account session") if par_compte else t("whole host")
         print(f"\n{moteur} — {service} / {socket} ({portee})")
+        return {"fiche": fiche, "par_compte": par_compte}
 
-        choices = [
-            {"prompt_description": t("Start")},
-            {"prompt_description": t("Stop")},
-            {"prompt_description": t("Restart")},
-            {"prompt_description": t("Enable at boot")},
-            {"prompt_description": t("Disable at boot")},
-            {"prompt_description": t("Status and journal")},
-        ]
-        help_info = self.fill_help_info(choices)
-        # L'activation porte sur la SOCKET, qui fait naître le démon à la
-        # première connexion ; le reste porte sur le démon.
-        actions = {
-            "1": ("start", service),
-            "2": ("stop", service),
-            "3": ("restart", service),
-            "4": ("enable", socket),
-            "5": ("disable", socket),
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in actions:
-                action, unite = actions[status]
-                self._container_systemctl(action, unite, par_compte)
-                if action == "enable" and par_compte:
-                    print(f"  {t('A per-account unit needs linger to start')}")
-                    print(f"  {t('without a login:')} loginctl enable-linger")
-            elif status == "6":
-                self._container_etat_service(
-                    fiche=fiche, par_compte=par_compte
-                )
-            else:
-                print(t("Command not found !"))
-
-    def _container_etat_service(self, fiche=None, par_compte=None):
-        """L'état du service du moteur de `fiche`, puis son journal. Sans
-        fiche, comme lancée seule depuis la TUI de télémétrie, le moteur se
-        choisit parmi ceux qui sont installés ; `par_compte` se déduit de la
-        fiche quand il n'est pas donné."""
+    def _container_service_choisi(self, fiche=None, par_compte=None):
+        """(fiche, par_compte) du moteur dont une entrée pilote le service :
+        ceux que donne son menu, ou, sans fiche, comme depuis la TUI de
+        télémétrie, le moteur choisi maintenant parmi ceux qui sont
+        installés ; `par_compte` se déduit de la fiche quand il n'est pas
+        donné. None sans moteur installé ou choisi."""
         if fiche is None:
             fiche = self._container_choisir_moteur()
             if not fiche:
-                return
-        moteur = fiche["moteur"]
+                return None
         if par_compte is None:
-            par_compte = self._container_par_compte(moteur, fiche)
-        self._container_journal(UNITES[moteur][0], par_compte)
+            par_compte = self._container_par_compte(fiche["moteur"], fiche)
+        return fiche, par_compte
+
+    def _container_geste(self, geste, fiche=None, par_compte=None):
+        """Le geste systemd `geste` sur le service du moteur (voir
+        `_container_service_choisi`) : l'activation, enable ou disable,
+        porte sur la SOCKET, qui fait naître le démon à la première
+        connexion ; start, stop et restart portent sur le démon."""
+        choisi = self._container_service_choisi(fiche, par_compte)
+        if not choisi:
+            return
+        fiche, par_compte = choisi
+        service, socket = UNITES[fiche["moteur"]]
+        unite = socket if geste in ("enable", "disable") else service
+        self._container_systemctl(geste, unite, par_compte)
+        if geste == "enable" and par_compte:
+            print(f"  {t('A per-account unit needs linger to start')}")
+            print(f"  {t('without a login:')} loginctl enable-linger")
+
+    def _container_etat_service(self, fiche=None, par_compte=None):
+        """L'état du service du moteur, puis son journal (voir
+        `_container_service_choisi`)."""
+        choisi = self._container_service_choisi(fiche, par_compte)
+        if not choisi:
+            return
+        fiche, par_compte = choisi
+        self._container_journal(UNITES[fiche["moteur"]][0], par_compte)
 
     def _container_systemctl(self, action, unite, par_compte):
         """Lance systemctl sur l'unité, dans la bonne portée.

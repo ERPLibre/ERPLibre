@@ -409,6 +409,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         git = "TODO › Execute › Git"
         deploy = "TODO › Execute › Deploy"
         cache = f"{deploy} › QEMU cache"
+        docker = "TODO › Execute › Docker / Podman"
         self.assertEqual(
             dangerous,
             [
@@ -463,6 +464,14 @@ class TestLArbreDesMenus(unittest.TestCase):
                     f"{cache} › Automatic cleanup › Cleanup - Run now",
                     {"a_blanc": False},
                 ),
+                *[
+                    (f"{docker} › {label}", {})
+                    for label in (
+                        "Remove unused images, containers and volumes",
+                        "By workspace - a compose project and what it holds",
+                        "Images one by one",
+                    )
+                ],
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -1110,6 +1119,41 @@ class TestSecurityMenuNumbering(RegistryCoherence, unittest.TestCase):
 
     MENU = "prompt_execute_security"
     EXPECTED = {"pip-audit": "execute_pip_audit"}
+
+
+class TestContainerMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Docker / Podman : le moteur, l'inventaire, les nettoyages, qui
+    effacent, et les images ERPLibre ; Install Docker et Install Podman
+    lancent le même installateur, chacun pour son moteur."""
+
+    MENU = "prompt_execute_container"
+    EXPECTED = {
+        "Diagnostic": "_container_diagnostic",
+        "Service": "_container_service",
+        "Install Docker": "_container_install",
+        "Install Podman": "_container_install",
+        "Images one by one": "_container_nettoyer_images",
+        "Images": "_container_inventaire",
+        "Containers": "_container_inventaire",
+        "Networks": "_container_reseaux",
+        "Remove unused": "_container_nettoyage",
+        "By workspace": "_container_nettoyer_projets",
+        "Build an image": "_container_build_odoo",
+        "Compose": "_container_compose",
+        "ERPLibre container": "_container_erplibre",
+    }
+
+    def test_each_install_names_its_engine(self):
+        installs = [
+            e for e in self.entries if e.action == "_container_install"
+        ]
+        self.assertEqual(
+            [(e.key, e.kwargs) for e in installs],
+            [
+                ("Install Docker", {"moteur": "docker"}),
+                ("Install Podman", {"moteur": "podman"}),
+            ],
+        )
 
 
 class TestTelemetryMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2428,6 +2472,8 @@ class TestMenuLabels(unittest.TestCase):
                 "_cache_tests",
                 "_cache_journaux",
                 "_cache_nettoyage_auto",
+                "prompt_execute_container",
+                "_container_service",
             },
             set(declared),
         )

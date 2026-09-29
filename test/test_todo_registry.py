@@ -926,6 +926,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "_cache_nettoyage_auto",
                 "_cache_service",
                 "_cache_tests",
+                "_container_service",
                 "_prompt_claude_configs",
                 "_prompt_git_server_local",
                 "_prompt_git_server_production",
@@ -937,6 +938,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_claude_plugins",
                 "prompt_execute_code",
                 "prompt_execute_config",
+                "prompt_execute_container",
                 "prompt_execute_database",
                 "prompt_execute_deploy",
                 "prompt_execute_deploy_ssh",
@@ -983,7 +985,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 37)
+        self.assertEqual(len(menus), 39)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():
@@ -1003,6 +1005,32 @@ class TestTodoMenuFiles(unittest.TestCase):
                 with self.subTest(menu=menu.name, method=name):
                     method = getattr(owner, name)
                     inspect.signature(method).bind(None, **kwargs)
+
+    def test_each_entry_of_an_opened_menu_binds_its_context(self):
+        # Dans un menu à `opens`, navigate passe à l'action de chaque entrée
+        # ses kwargs ET le contexte que rend cette méthode ; l'arbre de
+        # télémétrie, ses kwargs seuls (test précédent). Les clés de ce
+        # contexte, par menu ; un menu absent n'en passe aucune.
+        from script.todo.todo import TODO
+
+        context_of = {
+            "_container_service": ("fiche", "par_compte"),
+        }
+        for menu in _imported_menus().values():
+            if not menu.opens:
+                continue
+            context = dict.fromkeys(context_of.get(menu.name, ()))
+            for item in menu.entries:
+                if isinstance(item, Entry):
+                    kwargs = item.kwargs or {}
+                elif isinstance(item, FromConfig):
+                    kwargs = {item.kwarg: {}}
+                else:
+                    continue
+                with self.subTest(menu=menu.name, method=item.action):
+                    self.assertFalse(kwargs.keys() & context.keys())
+                    method = getattr(TODO, item.action)
+                    inspect.signature(method).bind(None, **kwargs, **context)
 
 
 if __name__ == "__main__":

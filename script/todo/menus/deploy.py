@@ -2,8 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
-sous-menus SSH, QEMU/KVM et QEMU cache, avec ses sept menus, Network et
-Security.
+sous-menus SSH, QEMU/KVM et QEMU cache, avec ses sept menus, Network,
+Security, et Docker / Podman avec son Service.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -397,5 +397,83 @@ SECURITY = Menu(
         ),
     ],
     intro="Dependency security audit!",
+    render="once",
+)
+
+CONTAINER = Menu(
+    "prompt_execute_container",
+    "Docker / Podman",
+    [
+        Section("Engine"),
+        Entry(
+            "Diagnostic - engine, service, socket, access without sudo",
+            "_container_diagnostic",
+        ),
+        Entry(
+            "Service - start, stop, enable at boot, journal",
+            "_container_service",
+        ),
+        Entry(
+            "Install Docker", "_container_install", kwargs={"moteur": "docker"}
+        ),
+        Entry(
+            "Install Podman", "_container_install", kwargs={"moteur": "podman"}
+        ),
+        Section("Inventory"),
+        Entry(
+            "Images",
+            "_container_inventaire",
+            kwargs={"sous_commande": "images"},
+        ),
+        Entry(
+            "Containers",
+            "_container_inventaire",
+            kwargs={"sous_commande": "ps -a"},
+        ),
+        Entry("Networks", "_container_reseaux"),
+        # Chaque nettoyage efface pour de bon : un volume emporte la base de
+        # données de son conteneur.
+        Section("Cleanup"),
+        Entry(
+            "Remove unused images, containers and volumes",
+            "_container_nettoyage",
+            danger=True,
+        ),
+        Entry(
+            "By workspace - a compose project and what it holds",
+            "_container_nettoyer_projets",
+            danger=True,
+        ),
+        Entry("Images one by one", "_container_nettoyer_images", danger=True),
+        Section("ERPLibre images"),
+        Entry("Build an image for an Odoo version", "_container_build_odoo"),
+        Entry("Compose - start, stop, logs, processes", "_container_compose"),
+        Entry(
+            "ERPLibre container - shell, databases, tests, status",
+            "_container_erplibre",
+        ),
+    ],
+    intro="Container engines!",
+    render="once",
+)
+
+# Chaque entrée reçoit la fiche du moteur choisi à l'ouverture et la portée
+# de ses unités.
+CONTAINER_SERVICE = Menu(
+    "_container_service",
+    "Service",
+    [
+        Entry("Start", "_container_geste", kwargs={"geste": "start"}),
+        Entry("Stop", "_container_geste", kwargs={"geste": "stop"}),
+        Entry("Restart", "_container_geste", kwargs={"geste": "restart"}),
+        Entry(
+            "Enable at boot", "_container_geste", kwargs={"geste": "enable"}
+        ),
+        Entry(
+            "Disable at boot", "_container_geste", kwargs={"geste": "disable"}
+        ),
+        Entry("Status and journal", "_container_etat_service"),
+    ],
+    opens="_container_service_ouvre",
     render="once",
 )

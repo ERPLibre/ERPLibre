@@ -33,8 +33,6 @@ sys.path.insert(0, str(RACINE))
 from script.todo import container_menu, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
-SOURCE = (RACINE / "script/todo/container_menu.py").read_text(encoding="utf-8")
-
 
 class ExecuteFactice:
     """Le lanceur du CLI rend un CODE DE SORTIE, et c'est sur lui que le menu
@@ -822,6 +820,23 @@ class TestService(Banc):
         self.assertEqual(1, len(choix))
         self.assertIn("status docker.service", todo.execute.commandes[0])
 
+    def test_un_geste_lance_seul_choisit_son_moteur(self):
+        """Lancé seul, depuis la TUI de télémétrie, un geste demande le
+        moteur ; activer porte sur sa socket et rappelle le linger d'une
+        unité de compte."""
+        todo = self.todo()
+        todo._container_choisir_moteur = lambda: {
+            "moteur": "podman",
+            "rootless": True,
+            "docker_host": None,
+        }
+        with self.reponses() as sortie:
+            todo._container_geste(geste="enable")
+        self.assertEqual(
+            ["systemctl --user enable podman.socket"], todo.execute.commandes
+        )
+        self.assertIn("loginctl enable-linger", sortie.getvalue())
+
     def test_activer_porte_sur_la_socket_et_demarrer_sur_le_demon(self):
         """C'est la socket qui fait naître le démon à la première connexion :
         activer le démon seul ne le ferait pas revenir au démarrage."""
@@ -835,23 +850,6 @@ class TestService(Banc):
             todo._container_service()
         self.assertIn("start docker.service", todo.execute.commandes[0])
         self.assertIn("enable docker.socket", todo.execute.commandes[1])
-
-
-class TestNumerotation(Banc):
-    def test_chaque_entree_affichee_a_sa_branche(self):
-        """Une entrée sans branche rend « Command not found » sur un numéro
-        que le menu vient d'afficher."""
-        corps = SOURCE[
-            SOURCE.index("def prompt_execute_container") : SOURCE.index(
-                "def _container_fiches"
-            )
-        ]
-        entrees = len(re.findall(r'"prompt_description":', corps))
-        branches = re.findall(r'status == "(\d+)"', corps)
-        self.assertEqual(
-            [str(n) for n in range(1, entrees + 1)],
-            [b for b in branches if b != "0"],
-        )
 
 
 if __name__ == "__main__":
