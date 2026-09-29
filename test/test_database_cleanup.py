@@ -518,6 +518,47 @@ class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
         )
 
 
+class TestTheScriptDeclaresItsEncoding(unittest.TestCase):
+    """Odoo 9 et 10 lisent l'entrée du shell comme un fichier Python 2.
+
+    Un script non ASCII sans déclaration d'encodage y meurt en erreur de
+    syntaxe avant sa première ligne, et le rapport manque.
+    """
+
+    def pousser(self, script):
+        import io
+
+        class FauxProcessus:
+            def __init__(self):
+                self.stdin = io.StringIO()
+                self.stdin.close = lambda: None
+                self.stdout = iter(
+                    [f"{cleanup.START}\n", "{}\n", f"{cleanup.END}\n"]
+                )
+                self.pid = -1
+
+            def wait(self, timeout=None):
+                return 0
+
+            def poll(self):
+                return 0
+
+        faux = FauxProcessus()
+        original = cleanup.subprocess.Popen
+        cleanup.subprocess.Popen = lambda *a, **kw: faux
+        self.addCleanup(setattr, cleanup.subprocess, "Popen", original)
+        cleanup.run_shell("db", "./config.conf", script)
+        return faux.stdin.getvalue()
+
+    def test_un_script_sans_declaration_la_recoit(self):
+        envoye = self.pousser("print('modèle')\n")
+        self.assertEqual(envoye, "# -*- coding: utf-8 -*-\nprint('modèle')\n")
+
+    def test_une_declaration_presente_n_est_pas_doublee(self):
+        envoye = self.pousser(cleanup.SHELL_SCRIPT)
+        self.assertEqual(envoye, cleanup.SHELL_SCRIPT)
+
+
 class TestTheCascadeThatKilledEverything(unittest.TestCase):
     """Vécu, sur test_neutralize_upgrade_13 : sept catégories mortes d'une.
 
