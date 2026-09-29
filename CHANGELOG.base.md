@@ -403,6 +403,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › QEMU cache › Automatic cleanup › Set the age limit and Set the size ceiling, launched from the TUI, ask for their setting instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Service › Status and journal, launched from the TUI, asks for the engine and shows the state and journal of its service instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Install Docker, Install Podman, Images and Containers, launched from the TUI, install their engine or list what it holds instead of failing on a missing argument
+- Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
 
 <!-- [fr] -->
 
@@ -526,6 +527,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Nettoyage automatique › Régler l'âge limite et Régler le plafond de taille, lancées depuis la TUI, demandent leur réglage au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Service › État et journal, lancé depuis la TUI, demande le moteur et montre l'état et le journal de son service au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Installer Docker, Installer Podman, Images et Conteneurs, lancées depuis la TUI, installent leur moteur ou listent ce qu'il détient au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Docker / Podman › Conteneur ERPLibre › Copier un fichier dans le conteneur, lancé depuis la TUI, vérifie le moteur docker et emporte la socket d'un démon par compte, comme depuis son menu, au lieu de lancer le script sans eux
 
 <!-- [en] -->
 ## Removed

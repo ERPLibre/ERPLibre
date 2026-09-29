@@ -253,6 +253,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › QEMU cache › Automatic cleanup › Set the age limit and Set the size ceiling, launched from the TUI, ask for their setting instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Service › Status and journal, launched from the TUI, asks for the engine and shows the state and journal of its service instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Install Docker, Install Podman, Images and Containers, launched from the TUI, install their engine or list what it holds instead of failing on a missing argument
+- Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
 
 ## Removed
 

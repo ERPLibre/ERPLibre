@@ -673,13 +673,19 @@ class ContainerMenuMixin:
             else:
                 print(t("Command not found !"))
 
-    def _container_copier_fichier(self, prefixe=""):
+    def _container_copier_fichier(self, prefixe=None):
         """Copie un fichier de l'hôte vers le conteneur.
 
         Le script exige un fichier qui existe et refuse le reste : la source
         est donc vérifiée ici, où l'on peut redemander, plutôt qu'au retour
-        d'un code d'erreur.
+        d'un code d'erreur. `prefixe` est celui de `_container_exige_docker`,
+        que demande la copie lancée sans lui, seule, depuis la TUI de
+        télémétrie ; elle ne part pas quand rien ne peut la servir.
         """
+        if prefixe is None:
+            prefixe = self._container_exige_docker()
+            if prefixe is None:
+                return
         source = click.prompt(t("File to copy")).strip()
         if not source or not os.path.isfile(source):
             print(f"⚠ {t('No such file:')} {source}")

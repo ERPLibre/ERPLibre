@@ -20,6 +20,7 @@ import builtins
 import contextlib
 import io
 import re
+import shlex
 import sys
 import unittest
 import warnings
@@ -214,6 +215,39 @@ class TestLigneDeCommandeDocker(Banc):
             ],
             todo.execute.commandes,
         )
+
+    def test_la_copie_lancee_seule_verifie_le_moteur(self):
+        """Lancée seule, depuis la TUI de télémétrie, la copie demande son
+        préfixe : la socket du compte voyage avec elle, et sans docker elle
+        ne part pas."""
+        todo = self.todo()
+        todo._container_fiches = lambda: [
+            {
+                "moteur": "docker",
+                "sans_sudo": True,
+                "avec_sudo": True,
+                "docker_host": "unix:///forged/docker.sock",
+            }
+        ]
+        with mock.patch.object(
+            container_menu.shutil, "which", return_value="/usr/bin/docker"
+        ):
+            with self.reponses(prompts=[__file__, ""]):
+                todo._container_copier_fichier()
+        self.assertEqual(
+            [
+                "DOCKER_HOST=unix:///forged/docker.sock "
+                + shlex.join(["./script/docker/docker_copy_file.sh", __file__])
+            ],
+            todo.execute.commandes,
+        )
+        with mock.patch.object(
+            container_menu.shutil, "which", return_value=None
+        ):
+            with self.reponses() as sortie:
+                todo._container_copier_fichier()
+        self.assertEqual(1, len(todo.execute.commandes))
+        self.assertIn("docker", sortie.getvalue())
 
     def test_une_source_absente_ne_lance_pas_la_copie(self):
         todo = self.todo()
