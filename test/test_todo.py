@@ -995,6 +995,35 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         todo.db_manager._execute.exec_command_live.assert_not_called()
 
 
+class TestDownloadDatabaseBackup(unittest.TestCase):
+    """Database › Download database : les réponses sont tapées par des
+    doubles, les commandes et l'archive aussi ; rien ne part."""
+
+    def download(self, answers, listed):
+        """(ce que rend le dialogue, les chemins que lit `zipfile.ZipFile`)
+        quand `input` reçoit `answers` et que la liste des bases distantes
+        rend les lignes `listed`."""
+        todo = TODO()
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.side_effect = [
+            (0, listed),
+            (0, "forged"),
+        ]
+        with (
+            patch("builtins.input", side_effect=answers),
+            patch("getpass.getpass", return_value="forged"),
+            patch("zipfile.ZipFile") as archive,
+            redirect_stdout(io.StringIO()),
+        ):
+            done = todo.db_manager.download_database_backup_cli()
+        return done, [c.args[0] for c in archive.call_args_list]
+
+    def test_it_checks_the_archive_at_the_path_typed(self):
+        done, read = self.download(["forged", "forged.zip"], ["forged_one"])
+        self.assertEqual(done, (0, "forged.zip", "forged_one"))
+        self.assertEqual(read, ["forged.zip"])
+
+
 class TestModuleLevelAbortExit(unittest.TestCase):
     """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
     Ctrl+D/EOF - see click's own `termui.prompt_func`) is NOT a

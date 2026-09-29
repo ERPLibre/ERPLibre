@@ -227,6 +227,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Run s'ouvre quand `todo.json` n'a pas de liste `instance`, avec Choisir sa base de données, et Mobile quand son répertoire existe, au lieu d'arrêter TODO sur une erreur avant son menu
 - Exécution › Run › Choisir sa base de données n'ouvre rien quand aucune base n'est choisie — [0], aucune base, ou PostgreSQL qui ne répond pas — au lieu de lancer Odoo et sa connexion web sur une base nommée False
 - Exécution › Database › Créer une sauvegarde ne sauvegarde rien quand aucune base n'est choisie — [0], aucune base, ou PostgreSQL qui ne répond pas — au lieu d'arrêter TODO sur une erreur, ou de sauvegarder une base nommée False sous le nom tapé
+- Exécution › Database › Télécharger une base vérifie l'archive là où il l'a écrite, au chemin tapé, au lieu de lire le chemin par défaut et de dire en échec un téléchargement réussi
 
 ## Retiré
 
