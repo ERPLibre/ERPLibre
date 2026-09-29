@@ -6,9 +6,10 @@
 Code, Config, Process, Test et Update, la famille Run : Run, Database et
 son menu d'effacement, Analyse, Transform data et Doc, la famille Git :
 Git, Git local server et ses deux menus Actions, GPT code, Claude
-configs, Plugins, Claude Code, RTK et Automation, et la famille QEMU :
+configs, Plugins, Claude Code, RTK et Automation, la famille QEMU :
 Deploy, SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security,
-Docker / Podman et ses trois menus.
+Docker / Podman et ses trois menus, et la famille Proxmox : Proxmox VE,
+VPN, Long test et Install.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
@@ -21,8 +22,8 @@ capture, comme dans le worker.
 
 `TestCapture` tient les garde-fous de la capture sur un menu factice mis
 à la place de [4] : une question au terminal lève au lieu de bloquer,
-une étape de WALK absente de son menu est nommée, et ce que la famille
-QEMU lit du système vient des doubles.
+une étape de WALK absente de son menu est nommée, et ce que les familles
+QEMU et Proxmox lisent du système vient des doubles.
 """
 
 import getpass
@@ -124,6 +125,33 @@ class TestCapture(unittest.TestCase):
             [fiche["moteur"] for fiche in seen["engines"]],
             ["docker", "podman"],
         )
+
+    def test_the_proxmox_family_reads_the_system_through_doubles(self):
+        # L'hôte Proxmox retenu, les versions d'Odoo qu'Install propose et
+        # les outils que lancent les feuilles de la famille sont ceux des
+        # doubles, jamais ceux de l'hôte.
+        seen = {}
+
+        def menu(todo):
+            from script.todo.version_manager import get_odoo_version
+
+            seen["host"] = todo._pve_host(ask=False)
+            seen["versions"] = get_odoo_version()
+            seen["tools"] = [shutil.which(name) for name in ("qm", "which")]
+
+        self.captured(menu)
+        self.assertEqual(seen["host"], golden.HOST)
+        versions, installed, active = seen["versions"]
+        self.assertEqual(
+            [version["odoo_version"] for version in versions],
+            ["16.0", "17.0", "18.0"],
+        )
+        self.assertEqual(
+            (installed, active), (["odoo17.0", "odoo18.0"], "odoo18.0")
+        )
+        qm, which = seen["tools"]
+        self.assertTrue(qm.endswith("/system/stubs/qm"))
+        self.assertTrue(which.endswith("/system/stubs/which"))
 
     def test_a_step_absent_from_its_menu_is_named(self):
         # Le menu principal n'a aucune entrée de ce libellé : la session

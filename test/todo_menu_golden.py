@@ -6,9 +6,10 @@ telemetry), Configuration, la famille Execute : Execute, Code, Config,
 Process, Test et Update, la famille Run : Run, Database et son menu
 d'effacement, Analyse, Transform data et Doc, la famille Git : Git, Git
 local server et ses deux menus Actions, GPT code, Claude configs,
-Plugins, Claude Code, RTK et Automation, et la famille QEMU : Deploy,
+Plugins, Claude Code, RTK et Automation, la famille QEMU : Deploy,
 SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security, Docker /
-Podman et ses trois menus.
+Podman et ses trois menus, et la famille Proxmox : Proxmox VE, VPN, Long
+test et Install.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -16,20 +17,23 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
   réponses (ANSWERS : une réponse vide, un numéro sans entrée, 0), ce que
   montre le terminal, réponses tapées comprises, ce que rend le menu, les
   clés de télémétrie qu'il enregistre et le nombre de sondes du hub web ;
-  Run y montre l'entrée Mobile, son répertoire présent ;
+  Run y montre l'entrée Mobile, son répertoire présent ; Install, qui
+  pose ses questions par `input`, reçoit INPUTS ;
 - `session` : quand le vrai TODO, sous la capture de la session web comme
   dans le worker, suit WALK, les messages `menu` des menus de CRUMBS, le fil
   d'Ariane de chaque menu traversé et les clés de télémétrie. WALK ne
   répond qu'à des menus, jamais à une feuille : une étape nomme l'entrée
   d'un sous-menu par sa clé de traduction, ou est « 0 ». Le répertoire
   de Mobile y est absent.
-La configuration est CONFIG, les préférences celles d'un HOME vide, le
-hub web ne tourne pas (`launcher.status` rend None) et Claude Code n'a
-aucune session (`claude_sessions.fleet` rend []). Ce que les menus de la
-famille QEMU lisent du système en se dessinant vient de doubles
-(`doubles`) : de faux programmes en tête du PATH, un faux binaire du cache
-et son fichier de réglages, la place libre, les manifestes et leurs
-miroirs, les fiches des moteurs de conteneurs.
+La configuration est CONFIG, les préférences celles d'un HOME vide où
+l'hôte Proxmox HOST est retenu, le hub web ne tourne pas
+(`launcher.status` rend None) et Claude Code n'a aucune session
+(`claude_sessions.fleet` rend []). Ce que les menus des familles QEMU et
+Proxmox lisent du système en se dessinant vient de doubles (`doubles`) :
+de faux programmes en tête du PATH, un faux binaire du cache et son
+fichier de réglages, la place libre, les manifestes et leurs miroirs, les
+fiches des moteurs de conteneurs, les préférences, et les versions
+d'Odoo, installées et active, qu'Install propose.
 
     python3 test/todo_menu_golden.py   (depuis la racine du dépôt)
 
@@ -91,6 +95,10 @@ MENUS = (
     "_container_service",
     "_container_compose",
     "_container_erplibre",
+    "prompt_execute_proxmox",
+    "prompt_execute_vpn",
+    "prompt_execute_longtest",
+    "prompt_install",
 )
 CRUMBS = (
     "Navigation telemetry",
@@ -131,6 +139,9 @@ CRUMBS = (
     "Docker / Podman",
     "Compose",
     "ERPLibre container",
+    "Proxmox VE",
+    "VPN",
+    "Long test",
 )
 ANSWERS = ("", "9", "0")
 # Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
@@ -138,7 +149,8 @@ ANSWERS = ("", "9", "0")
 # feuille. Git local server entre dans chacun de ses deux menus Actions,
 # qui reçoit une réponse vide et un numéro sans entrée, puis en sort.
 # Deploy en montre dix, SSH onze, QEMU/KVM vingt-deux avec CONFIG, QEMU
-# cache douze, Docker / Podman treize : « 9 » y lancerait une entrée.
+# cache douze, Docker / Podman treize, Proxmox VE vingt avec CONFIG, VPN
+# onze, Long test dix : « 9 » y lancerait une entrée.
 ANSWERS_OF = {
     "prompt_execute": ("", "17", "0"),
     "prompt_execute_git": ("", "10", "0"),
@@ -154,7 +166,14 @@ ANSWERS_OF = {
     "prompt_execute_qemu": ("", "23", "0"),
     "prompt_execute_qemu_cache": ("", "13", "0"),
     "prompt_execute_container": ("", "14", "0"),
+    "prompt_execute_proxmox": ("", "21", "0"),
+    "prompt_execute_vpn": ("", "12", "0"),
+    "prompt_execute_longtest": ("", "11", "0"),
 }
+# Install pose ses questions par `input` : « n » à la première
+# installation du système, puis, au choix de la version, une réponse
+# vide, une touche qu'il ne montre pas, et 0.
+INPUTS = {"prompt_install": ("n", "", "x", "0")}
 # Largeur au-delà de laquelle le fichier de référence ouvre une liste ou
 # un dict, un élément par ligne.
 WIDTH = 200
@@ -208,6 +227,11 @@ CONFIG = {
         },
         {"section": "Forged section"},
         {"prompt_description": "Forged QEMU", "bash_command": "forged"},
+    ],
+    "proxmox_from_makefile": [
+        {"prompt_description": "Forged Proxmox", "bash_command": "forged"},
+        {"section": "Forged section"},
+        {"prompt_description": "Forged Proxmox two", "bash_command": "forged"},
     ],
 }
 WALK = (
@@ -290,14 +314,25 @@ WALK = (
     ["ERPLibre container - shell, databases, tests, status"],
     "0",
     "0",
+    ["Deploy - Deploy ERPLibre locally"],
+    ["Proxmox VE - Deploy a VM on a remote host"],
+    "0",
+    ["VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"],
+    "0",
+    "0",
+    ["Test - Test an Odoo module"],
+    ["Long tests - real VMs, hours"],
+    "0",
+    "0",
     "0",
     "0",
 )
-# Les programmes que les menus de la famille QEMU lancent en se dessinant,
-# et ceux que lancent leurs feuilles, qu'une capture n'atteint pas même
-# si une réponse en choisissait une. Chaque faux rend 1 sans rien écrire :
-# un service arrêté et pas au démarrage, aucune VM, une lecture de nft
-# impossible ; QEMU/KVM trouve virsh, ERPLibre container trouve docker.
+# Les programmes que les menus des familles QEMU et Proxmox lancent en se
+# dessinant, et ceux que lancent leurs feuilles, qu'une capture n'atteint
+# pas même si une réponse en choisissait une. Chaque faux rend 1 sans rien
+# écrire : un service arrêté et pas au démarrage, aucune VM, une lecture
+# de nft impossible, aucun PyCharm pour Install ; QEMU/KVM trouve virsh,
+# ERPLibre container trouve docker.
 STUBS = (
     "curl",
     "docker",
@@ -305,18 +340,25 @@ STUBS = (
     "iptables",
     "journalctl",
     "nft",
+    "openvpn",
+    "pct",
     "podman",
     "psql",
+    "pvesh",
     "qemu-img",
     "qemu-system-aarch64",
     "qemu-system-s390x",
     "qemu-system-x86_64",
+    "qm",
     "rsync",
     "scp",
     "ssh",
     "sudo",
     "systemctl",
     "virsh",
+    "wg",
+    "wg-quick",
+    "which",
 )
 # Le faux binaire du cache : l'exception d'une VM qui n'existe plus, et
 # l'occupation des miroirs, dans la langue que le menu lit.
@@ -357,6 +399,15 @@ FICHES = (
         "docker_host": None,
     },
 )
+# L'hôte Proxmox retenu : Proxmox VE s'ouvre sur lui sans rien demander.
+HOST = {"target": "root@forged-pve", "jump": "forged-jump", "version": "9.9"}
+# Les versions qu'Install propose, la 18.0 active et par défaut, la 17.0
+# installée, la 16.0 dépréciée.
+VERSIONS = {
+    "odoo16.0_forged": {"odoo_version": "16.0", "is_deprecated": True},
+    "odoo17.0_forged": {"odoo_version": "17.0"},
+    "odoo18.0_forged": {"odoo_version": "18.0", "default": True},
+}
 
 # Le vrai TODO sous la capture, dans l'ordre du worker : urwid, la
 # capture, puis `import todo` en mode script. argv : la langue, WALK en
@@ -432,9 +483,11 @@ finally:
 def doubles(base) -> list:
     """Écrit sous `base` un faux de chaque programme de STUBS, dans
     `base / "stubs"`, que le PATH doit nommer en tête, le faux binaire du
-    cache et son fichier de réglages ; rend les patchers, à démarrer, qui y
-    mènent les menus de la famille QEMU et doublent la place libre, les
-    manifestes et leurs miroirs, et les fiches des moteurs de conteneurs.
+    cache et son fichier de réglages, les préférences où HOST est retenu,
+    et les versions de VERSIONS, installées et active ; rend les patchers,
+    à démarrer, qui y mènent les menus des familles QEMU et Proxmox et
+    doublent la place libre, les manifestes et leurs miroirs, et les
+    fiches des moteurs de conteneurs.
     """
     stubs = base / "stubs"
     stubs.mkdir(parents=True)
@@ -444,6 +497,10 @@ def doubles(base) -> list:
     (base / "erplibre_go_qemu_cache").write_text(CACHE_BIN)
     (base / "erplibre_go_qemu_cache").chmod(0o755)
     (base / "cache.env").write_text(CACHE_CONF)
+    (base / "todo_prefs.json").write_text(json.dumps({"proxmox_host": HOST}))
+    (base / "versions.json").write_text(json.dumps(VERSIONS))
+    (base / "installed.txt").write_text("odoo17.0\nodoo18.0\n")
+    (base / "odoo-version").write_text("18.0\n")
 
     def depots(racine, version="", fichiers=None):
         # Un dépôt pour l'extra d'une version, trois pour sa base, cinq
@@ -469,6 +526,21 @@ def doubles(base) -> list:
             "script.todo.container_runtime.etats",
             lambda lanceur=None: [dict(fiche) for fiche in FICHES],
         ),
+        patch(
+            "script.todo.todo_prefs._path", lambda: base / "todo_prefs.json"
+        ),
+        patch(
+            "script.todo.version_manager.VERSION_DATA_FILE",
+            str(base / "versions.json"),
+        ),
+        patch(
+            "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
+            str(base / "installed.txt"),
+        ),
+        patch(
+            "script.todo.version_manager.ODOO_VERSION_FILE",
+            str(base / "odoo-version"),
+        ),
     ]
 
 
@@ -488,7 +560,8 @@ def _environment(base) -> dict:
 
 def terminal(method, lang) -> dict:
     """Ce que montre `TODO().<method>()`, en `lang`, quand il reçoit ses
-    réponses, ANSWERS_OF[method] ou ANSWERS : `screen`, ses lignes ; `back`,
+    réponses, INPUTS[method] à `input`, sinon ANSWERS_OF[method] ou ANSWERS
+    à `click.prompt` : `screen`, ses lignes ; `back`,
     ce qu'il rend ; `keys`, les clés de télémétrie enregistrées ; `probes`,
     les sondes du hub web. `method` peut être pointé : « a.b » appelle la
     méthode `b` de l'attribut `a` de TODO. Le répertoire de Mobile est
@@ -498,7 +571,8 @@ def terminal(method, lang) -> dict:
     from script.todo.todo import TODO
     from script.todo.web import launcher
 
-    shown, answers = io.StringIO(), iter(ANSWERS_OF.get(method, ANSWERS))
+    answers = INPUTS.get(method) or ANSWERS_OF.get(method, ANSWERS)
+    shown, answers = io.StringIO(), iter(answers)
 
     def typed(prompt):
         # L'invite, puis la réponse et le saut de ligne que le terminal
@@ -524,9 +598,12 @@ def terminal(method, lang) -> dict:
             patch.object(todo, "MOBILE_HOME_PATH", str(base)),
             patch("click.termui.visible_prompt_func", typed),
             # Un menu qui lirait le terminal bloquerait le test : `input`,
-            # une question masquée (`click.prompt(hide_input=True)`,
-            # `getpass`) lèvent, et l'entrée standard est vide.
-            patch("builtins.input", side_effect=AssertionError("input")),
+            # sauf pour un menu d'INPUTS, une question masquée
+            # (`click.prompt(hide_input=True)`, `getpass`) lèvent, et
+            # l'entrée standard est vide.
+            patch("builtins.input", typed)
+            if method in INPUTS
+            else patch("builtins.input", side_effect=AssertionError("input")),
             patch(
                 "click.termui.hidden_prompt_func",
                 side_effect=AssertionError("hidden_prompt_func"),
