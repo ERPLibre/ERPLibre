@@ -134,9 +134,8 @@ class TestAddAccountRollsBack(unittest.TestCase):
 
 
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
-    """Le TUI sait désormais créer un compte depuis son propre écran : le
-    refus historique de s'ouvrir sans compte (`mail_no_account`) défait
-    exactement la fonctionnalité que cette tâche ajoute."""
+    """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
+    sans compte (`mail_no_account`) rendrait cet écran inatteignable."""
 
     def test_opens_with_zero_accounts_instead_of_refusing(self):
         from unittest.mock import MagicMock, patch
@@ -222,11 +221,11 @@ class TestSyncNowSurfacesResync(unittest.TestCase):
 
 
 class TestMailLogFile(unittest.TestCase):
-    """Aucun gestionnaire n'existait nulle part dans `script/todo/mail/`
-    avant ce correctif : les modules journalisent (`_logger.exception(...)`),
-    mais brancher un gestionnaire est le travail de L'APPLICATION — ici,
-    `prompt_execute_mail`, le seul point d'entrée du paquet. Jamais vers la
-    console : Textual possède le terminal pendant tout le TUI.
+    """Les modules de `script/todo/mail/` journalisent
+    (`_logger.exception(...)`) sans poser de gestionnaire : le brancher est
+    le travail de L'APPLICATION — ici, `prompt_execute_mail`, le seul point
+    d'entrée du paquet. Jamais vers la console : Textual possède le
+    terminal pendant tout le TUI.
     """
 
     def setUp(self):
@@ -287,7 +286,7 @@ class TestMailLogFile(unittest.TestCase):
         self.assertEqual(non_file_stream_handlers, [])
 
     def test_never_leaks_to_the_console_via_root_propagation(self):
-        """`script/todo/todo.py:68` calls `logging.basicConfig()` at
+        """`script/todo/todo.py` calls `logging.basicConfig()` at
         import time, which installs a `StreamHandler` on the ROOT logger.
         `propagate` defaults to `True`: without disabling it explicitly,
         every `_logger.exception(...)` in the mail package would ALSO
@@ -295,13 +294,9 @@ class TestMailLogFile(unittest.TestCase):
         for the whole TUI. `test_never_installs_a_console_handler` above
         cannot catch this: it only inspects `script.todo.mail`'s OWN
         handlers, never what a PARENT logger does with a propagated
-        record.
-
-        Reproduced for real in the full suite: this exact leak showed up,
-        unprompted, in the middle of `unittest`'s dotted progress output
-        the first time the mail tests ran in a process where
-        `script.todo.todo` (and its `basicConfig`) had already been
-        imported by an earlier test file.
+        record. In a process where an earlier test file imports
+        `script.todo.todo`, the leak would land in the middle of
+        `unittest`'s dotted progress output.
         """
         import io
 
@@ -339,7 +334,7 @@ class TestMailLogFile(unittest.TestCase):
 
 class TestCacheSizeAndPurge(unittest.TestCase):
     """`_cache_size_and_purge` doit survivre à un coffre absent et à un
-    cache corrompu — les deux tuaient tout le CLI avant ce correctif.
+    cache corrompu : l'un ou l'autre terminerait sinon tout le CLI.
 
     `Store(account)` sans `base` retombe sur `~/.erplibre/mail` : on détourne
     `$HOME`, comme `TestComposeScreenMounted` (test_mail_compose.py), plutôt
@@ -400,9 +395,8 @@ class TestCacheSizeAndPurge(unittest.TestCase):
 
 
 class TestEnsureKdbx(unittest.TestCase):
-    """`_ensure_kdbx` doit tenir la promesse de la conception (lignes
-    204-207 du design) : créer un nouveau kdbx ou en choisir un existant
-    quand aucun n'est configuré. Un vrai `ConfigFile`, pointé vers un
+    """`_ensure_kdbx` offre de créer un nouveau kdbx ou d'en choisir un
+    existant quand aucun n'est configuré. Un vrai `ConfigFile`, pointé vers un
     dossier temporaire, sert de `todo.config_file` : on veut vérifier que
     `set_config_value` est réellement câblé, pas seulement appelé sur un
     mock.
@@ -656,9 +650,9 @@ class TestRetryPassword(unittest.TestCase):
 
     def test_a_timeout_does_not_blame_the_password(self):
         """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
-        Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        Accuser le mot de passe enverrait chercher un mot de passe
+        d'application pour un problème qui est ailleurs, un « The read
+        operation timed out » par exemple."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",
@@ -689,7 +683,7 @@ class TestRetryPassword(unittest.TestCase):
 
     def test_the_prompt_itself_asks_for_the_app_password(self):
         """La note se lit une fois ; l'invite se relit à CHAQUE tentative.
-        « Mot de passe : » invitait à saisir celui du compte, que ces
+        « Mot de passe : » inviterait à saisir celui du compte, que ces
         fournisseurs refusent."""
         self.assertIn("application", self._invite("gmail"))
 
@@ -703,11 +697,10 @@ class TestRetryPassword(unittest.TestCase):
         self.assertIn("https://myaccount.google.com/apppasswords", lignes)
 
     def test_googles_own_wording_is_recognised(self):
-        """Le cas qui a manqué : une fois la double authentification
-        active, Gmail répond « [ALERT] Application-specific password
-        required » — sans « invalid credentials » ni « authentication
-        failed ». Une liste de libellés attendus est toujours en retard sur
-        les serveurs réels."""
+        """Une fois la double authentification active, Gmail répond
+        « [ALERT] Application-specific password required » — sans
+        « invalid credentials » ni « authentication failed ». Une liste de
+        libellés attendus est toujours en retard sur les serveurs réels."""
         lignes = self._lignes_affichees(
             "gmail",
             cause=(
