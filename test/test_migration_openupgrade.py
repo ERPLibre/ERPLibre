@@ -20,6 +20,7 @@ sys.path.insert(0, str(RACINE))
 
 from script.todo.todo_upgrade import (  # noqa: E402
     http_off_option,
+    split_removable,
     odoo_tree_layout,
     openupgrade_declared,
 )
@@ -168,6 +169,35 @@ class TestLesModulesFusionnesSelonOpenUpgrade(unittest.TestCase):
     def test_un_dictionnaire_aussi(self):
         apriori = "merged_modules = {'account_chart': 'account'}\n"
         self.assertEqual(["account"], self.renommer(apriori, ["account_chart"]))
+
+
+class TestUnModuleManquantNEmportePasSesDependants(unittest.TestCase):
+    """En Odoo 8, account dépend d'edi, retiré en 9 : désinstaller edi avant
+    le saut emportait account, sale et purchase, et leurs données."""
+
+    def test_un_dependant_qui_survit_garde_le_module(self):
+        proposables, gardes = split_removable(
+            ["edi", "share", "vieux_oca"],
+            {
+                "edi": ["account", "sale"],
+                "share": ["portal"],
+                "vieux_oca": [],
+            },
+        )
+        self.assertEqual(["vieux_oca"], proposables)
+        self.assertEqual({"edi": ["account", "sale"], "share": ["portal"]}, gardes)
+
+    def test_des_dependants_eux_memes_manquants_n_empechent_rien(self):
+        proposables, gardes = split_removable(
+            ["module_a", "module_b"], {"module_a": ["module_b"], "module_b": []}
+        )
+        self.assertEqual(["module_a", "module_b"], proposables)
+        self.assertEqual({}, gardes)
+
+    def test_des_dependants_inconnus_gardent_le_module(self):
+        proposables, gardes = split_removable(["edi"], {"edi": None})
+        self.assertEqual([], proposables)
+        self.assertEqual({"edi": None}, gardes)
 
 
 if __name__ == "__main__":
