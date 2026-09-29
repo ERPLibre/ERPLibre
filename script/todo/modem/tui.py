@@ -182,6 +182,7 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
     try:
         from textual.app import App, ComposeResult
         from textual.containers import Horizontal, Vertical
+        from textual.css.query import NoMatches
         from textual.screen import ModalScreen
         from textual.widgets import (Button, Footer, Header, Input, Log,
                                      Select, Static, Switch)
@@ -292,6 +293,7 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
         #sms_pour    { width: 18; }
         #sms_corps   { width: 1fr; }
         #sms_envoyer { width: 14; }
+        #annonce_etat { width: 26; content-align: left middle; }
         #signal  { width: 1fr; }
         .mesure  { width: 11; content-align: right middle; }
         .trace   { width: 26; content-align: left middle; }
@@ -316,6 +318,12 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             self.code_messagerie = code_messagerie
             self.messages = []
             self.sms = []
+            #: Capture d'annonce en cours : (processus, fichier provisoire).
+            #: Sa duree ne se connait pas d'avance, on enregistre jusqu'a
+            #: l'arret demande.
+            self.capture = None
+            self.capture_fichier = ""
+            self.capture_minuteur = None
             #: Minuteur de la veille de la messagerie, pose une seule fois.
             self.veille_messagerie = None
             self.index_modem = index_modem
@@ -444,6 +452,12 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
                     yield Button(t("modem_tui_ans_play"), id="ecouter")
                     yield Button(t("modem_tui_ans_erase"), id="effacer_local")
                     yield Button(t("modem_tui_vault"), id="coffre")
+                # L'annonce a son rang : sans elle le repondeur decroche et
+                # laisse le silence, et l'appelant raccroche sans parler.
+                with Horizontal(classes="rang"):
+                    yield Static("", id="annonce_etat")
+                    yield Button(t("modem_tui_ann_record"), id="annonce_enregistrer")
+                    yield Button(t("modem_tui_ann_play"), id="annonce_ecouter")
             with Vertical(id="sms"):
                 with Horizontal(classes="rang"):
                     yield Static(t("modem_tui_sms_list"), classes="titre")
@@ -697,6 +711,7 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             """
             self._montrer("repondeur")
             self._lister_messages()
+            self._annonce_etat()
 
         def on_key(self, event):
             """Compose au clavier physique, sans desactiver les boutons.
@@ -931,6 +946,10 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
                 self._ecouter_message()
             elif bouton == "effacer_local":
                 self._effacer_message()
+            elif bouton == "annonce_enregistrer":
+                self._annonce_basculer()
+            elif bouton == "annonce_ecouter":
+                self._annonce_ecouter()
             elif bouton == "veille":
                 self._veiller()
             elif bouton == "repondre":
@@ -1100,6 +1119,94 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             if not isinstance(index, int) or not 0 <= index < len(self.messages):
                 return None
             return self.messages[index]
+
+        def _annonce_etat(self):
+            """Dit ce qu'il y a comme annonce, ou ce que la capture en cours
+            capte. Rien d'autre ne le dit : une annonce absente ne se voit
+            qu'a l'appel, quand l'appelant entend le silence."""
+            import os
+
+            from script.todo.modem import repondeur as rep_mod
+
+            # Le minuteur bat toutes les 0,2 s et peut survivre a l'ecran : sans
+            # cette garde, le dernier battement cherche un widget demonte et
+            # leve, ce qui abat l'application en se fermant.
+            if not self._vivante():
+                return
+            try:
+                widget = self.query_one("#annonce_etat", Static)
+            except NoMatches:
+                return
+            if self.capture is not None:
+                secondes = rep_mod.duree_captee(self.capture_fichier)
+                niveau = rep_mod.niveau_capte(self.capture_fichier)
+                widget.update("⏺ %4.1f s %s"
+                              % (secondes, barre(int(niveau * 100), 100)))
+                return
+            chemin = rep_mod.chemin_annonce()
+            if not os.path.isfile(chemin):
+                widget.update(t("modem_tui_ann_none"))
+                return
+            widget.update(t("modem_tui_ann_have") % rep_mod.duree_captee(chemin))
+
+        def _annonce_basculer(self):
+            """Demarre la capture, ou l'arrete. Un seul bouton pour les deux.
+
+            Le libelle porte l'etat : un bouton « Enregistrer » qui enregistre
+            deja ne dit pas ou l'on en est, et c'est precisement ce qu'on ne
+            savait pas.
+            """
+            from script.todo.modem import repondeur as rep_mod
+
+            bouton = self.query_one("#annonce_enregistrer", Button)
+            if self.capture is None:
+                proc, detail = rep_mod.demarrer_enregistrement()
+                if proc is None:
+                    self._dire("✖  " + detail)
+                    return
+                self.capture, self.capture_fichier = proc, detail
+                bouton.label = t("modem_tui_ann_stop")
+                bouton.variant = "error"
+                self._dire("⏺  " + t("modem_tui_ann_started"))
+                self.capture_minuteur = self.set_interval(0.2, self._annonce_etat)
+                return
+
+            proc, provisoire = self.capture, self.capture_fichier
+            self.capture, self.capture_fichier = None, ""
+            if self.capture_minuteur is not None:
+                self.capture_minuteur.stop()
+                self.capture_minuteur = None
+            bouton.label = t("modem_tui_ann_record")
+            bouton.variant = "default"
+            ok, detail = rep_mod.arreter_enregistrement(proc, provisoire)
+            self._dire(("✓  " if ok else "✖  ") + (
+                t("modem_tui_ann_saved") if ok else detail))
+            self._annonce_etat()
+
+        def _annonce_ecouter(self):
+            """Joue l'annonce sur la sortie de la MACHINE.
+
+            Pas sur la carte du modem : celle-ci est la ligne, et y jouer
+            l'annonce la ferait entendre a un correspondant.
+            """
+            import os
+            import subprocess
+            import threading
+
+            from script.todo.modem import repondeur as rep_mod
+
+            chemin = rep_mod.chemin_annonce()
+            if not os.path.isfile(chemin):
+                self._dire("·  " + t("modem_tui_ann_none"))
+                return
+            self._dire("▶  " + chemin)
+
+            def jouer():
+                subprocess.run(["aplay", "-q", chemin],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+
+            threading.Thread(target=jouer, daemon=True).start()
 
         def _ecouter_message(self):
             """Joue le message sur la sortie audio de la MACHINE.

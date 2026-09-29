@@ -59,7 +59,8 @@ COMMANDES_SIGNAL = ("#clvl_moins", "#clvl_plus", "#sw_fns", "#sw_echo",
 #: Le coffre vient EN DERNIER : son formulaire est modal et recouvre la vue,
 #: donc toute cible controlee apres lui serait declaree recouverte.
 COMMANDES_REPONDEUR = ("#sw_effacer", "#recuperer", "#messages", "#ecouter",
-                       "#effacer_local", "#coffre")
+                       "#effacer_local", "#annonce_enregistrer",
+                       "#annonce_ecouter", "#coffre")
 
 
 async def attendre(condition, limite=5.0):
@@ -162,6 +163,11 @@ class PosteTelephonique(unittest.TestCase):
                     return None
                 noeud = noeud.parent
             return dessus
+
+        refus = mock.patch("script.todo.modem.repondeur.demarrer_enregistrement",
+                           return_value=(None, "essai : aucune capture"))
+        refus.start()
+        self.addCleanup(refus.stop)
 
         async def essai():
             async with app.run_test(size=TAILLE) as pilote:
@@ -1233,3 +1239,121 @@ class PosteTelephonique(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class EnregistreurDAnnonce(unittest.TestCase):
+    """L'annonce s'enregistre sans connaitre sa duree d'avance.
+
+    Demander « duree en secondes » puis se taire ne disait meme pas si la
+    capture avait commence : on devinait un nombre, et on parlait dans le
+    doute.
+    """
+
+    class FauxProcessus:
+        def __init__(self):
+            self.signaux = []
+            self.attendu = False
+
+        def send_signal(self, signal_recu):
+            self.signaux.append(signal_recu)
+
+        def wait(self, timeout=None):
+            self.attendu = True
+            return 0
+
+        def kill(self):
+            self.signaux.append("kill")
+
+    def _app(self):
+        app = construire()
+        self.assertIsNotNone(app)
+        return app
+
+    def test_le_bouton_porte_l_etat_de_la_capture(self):
+        """Un bouton « Enregistrer » qui enregistre deja ne dit pas ou l'on en
+        est, et c'est precisement ce qu'on ne savait pas."""
+        app = self._app()
+        faux = self.FauxProcessus()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.repondeur.demarrer_enregistrement",
+                                return_value=(faux, "/tmp/annonce.partiel")), \
+                        mock.patch("script.todo.modem.recuperation.lister_messages",
+                                   return_value=[]):
+                    await pilote.click("#tab_repondeur")
+                    await pilote.pause()
+                    depart = str(app.query_one("#annonce_enregistrer").label)
+                    await pilote.click("#annonce_enregistrer")
+                    await pilote.pause()
+                    self.assertIsNotNone(app.capture, "la capture n'a pas demarre")
+                    pendant = str(app.query_one("#annonce_enregistrer").label)
+                    self.assertNotEqual(depart, pendant)
+
+                with mock.patch("script.todo.modem.repondeur.arreter_enregistrement",
+                                return_value=(True, "/tmp/annonce.wav")):
+                    # `press()` et non un second clic : le pilote de Textual
+                    # voit un double-clic quand on clique deux fois de suite au
+                    # meme endroit, et le second n'atteint pas le bouton. Deux
+                    # clics humains sont separes de secondes.
+                    app.query_one("#annonce_enregistrer", Button).press()
+                    await pilote.pause()
+                self.assertIsNone(app.capture, "la capture n'a pas ete arretee")
+                self.assertEqual(str(app.query_one("#annonce_enregistrer").label),
+                                 depart)
+
+        asyncio.run(essai())
+
+    def test_le_compteur_et_le_niveau_suivent_la_capture(self):
+        """Sans retour visible, on ne sait pas si le micro entend."""
+        app = self._app()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app.capture = self.FauxProcessus()
+                app.capture_fichier = "/tmp/annonce.partiel"
+                with mock.patch("script.todo.modem.repondeur.duree_captee",
+                                return_value=12.4), \
+                        mock.patch("script.todo.modem.repondeur.niveau_capte",
+                                   return_value=0.5):
+                    app._annonce_etat()
+                    await pilote.pause()
+                affiche = str(app.query_one("#annonce_etat").render())
+                self.assertIn("12.4", affiche)
+                self.assertIn("#", affiche, "le niveau ne se voit pas")
+
+        asyncio.run(essai())
+
+    def test_l_absence_d_annonce_se_dit_avant_l_appel(self):
+        """Elle ne se voyait qu'a l'appel, quand l'appelant entend le silence."""
+        app = self._app()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("os.path.isfile", return_value=False):
+                    app._annonce_etat()
+                    await pilote.pause()
+                self.assertIn("aucune",
+                              str(app.query_one("#annonce_etat").render()).lower())
+
+        asyncio.run(essai())
+
+    def test_un_echec_de_demarrage_ne_laisse_pas_croire_a_une_capture(self):
+        app = self._app()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.repondeur.demarrer_enregistrement",
+                                return_value=(None, "arecord absent")):
+                    app._annonce_basculer()
+                    await pilote.pause()
+                self.assertIsNone(app.capture)
+                self.assertEqual(str(app.query_one("#annonce_enregistrer").label),
+                                 tui_mod.t("modem_tui_ann_record"))
+
+        asyncio.run(essai())

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
 
 #: Ou vivent les reglages et les messages, sous la racine du depot.
@@ -240,6 +241,103 @@ def enregistrer_annonce(secondes: int = 20, chemin: str = "") -> tuple:
         return False, (fait.stderr or "").strip() or "arecord a echoue"
     os.replace(provisoire, chemin)
     return True, chemin
+
+
+#: Octets lus en queue du fichier pour mesurer le niveau. 0,1 s a 8 kHz sur
+#: 16 bits : assez pour qu'une voix fasse bouger la barre, assez peu pour que
+#: la lecture ne coute rien.
+FENETRE_NIVEAU = 1600
+
+
+def demarrer_enregistrement(chemin: str = "") -> tuple:
+    """Lance une capture SANS duree et rend (processus, chemin_provisoire).
+
+    La duree d'une annonce ne se connait pas d'avance : la demander avant de
+    parler oblige a deviner, et un compte a rebours muet ne dit meme pas si la
+    capture a commence. On enregistre donc jusqu'a l'arret demande.
+
+    L'ecriture va dans un fichier provisoire : une capture abandonnee laisserait
+    sinon une annonce tronquee EN PLACE, que le repondeur jouerait au prochain
+    appelant.
+    """
+    chemin = chemin or chemin_annonce()
+    os.makedirs(os.path.dirname(chemin), exist_ok=True)
+    outil = _outil("arecord")
+    if not outil:
+        return None, "arecord absent : installez alsa-utils"
+    provisoire = chemin + ".partiel"
+    _retirer(provisoire)
+    try:
+        proc = subprocess.Popen(
+            [outil, "-f", FORMAT, "-r", TAUX, "-c", CANAUX, provisoire],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        return None, str(exc)
+    return proc, provisoire
+
+
+def arreter_enregistrement(proc, provisoire: str, chemin: str = "") -> tuple:
+    """Arrete la capture et met l'annonce en place. Rend (succes, detail).
+
+    Par SIGINT et non SIGKILL : `arecord` ferme alors son fichier en corrigeant
+    la taille declaree dans l'entete. Tue net, il laisse un WAV dont l'entete
+    annonce zero octet, que la plupart des lecteurs refusent — dont celui qui
+    joue l'annonce a l'appelant.
+    """
+    chemin = chemin or chemin_annonce()
+    if proc is None:
+        return False, "aucun enregistrement en cours"
+    try:
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _retirer(provisoire)
+        return False, "arecord n'a pas rendu la main"
+    except OSError as exc:
+        _retirer(provisoire)
+        return False, str(exc)
+    if not os.path.exists(provisoire) or os.path.getsize(provisoire) <= 44:
+        # 44 octets : l'entete WAV seule, donc pas un echantillon de son.
+        _retirer(provisoire)
+        return False, "rien n'a ete capte"
+    os.replace(provisoire, chemin)
+    return True, chemin
+
+
+def niveau_capte(provisoire: str) -> float:
+    """Crete du son capte le plus recemment, entre 0 et 1.
+
+    Lit la QUEUE du fichier pendant qu'il grossit : `arecord` n'annonce aucun
+    niveau, et sans retour visible on ne sait pas si le micro entend quelque
+    chose. Rend 0 quand il n'y a pas encore d'echantillon.
+    """
+    try:
+        taille = os.path.getsize(provisoire)
+        if taille <= 44:
+            return 0.0
+        with open(provisoire, "rb") as flux:
+            flux.seek(max(44, taille - FENETRE_NIVEAU))
+            brut = flux.read()
+    except OSError:
+        return 0.0
+    if len(brut) < 2:
+        return 0.0
+    crete = 0
+    for index in range(0, len(brut) - 1, 2):
+        valeur = int.from_bytes(brut[index:index + 2], "little", signed=True)
+        crete = max(crete, abs(valeur))
+    return min(1.0, crete / 32768.0)
+
+
+def duree_captee(provisoire: str) -> float:
+    """Secondes deja captees, deduites de la taille du fichier."""
+    try:
+        octets = max(0, os.path.getsize(provisoire) - 44)
+    except OSError:
+        return 0.0
+    return octets / (int(TAUX) * int(CANAUX) * 2)
 
 
 def _retirer(chemin: str) -> None:

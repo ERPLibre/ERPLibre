@@ -2168,6 +2168,38 @@ TRANSLATIONS = {
         "fr": 'Lecture des SMS...',
         "en": 'Reading SMS...',
     },
+    # Enregistreur d'annonce du clavier. Le libelle du bouton porte l'etat :
+    # « Enregistrer » pendant qu'on enregistre ne dit pas ou l'on en est.
+    'modem_tui_ann_record': {
+        "fr": '⏺ Enregistrer l\'annonce',
+        "en": '⏺ Record the greeting',
+    },
+    'modem_tui_ann_stop': {
+        "fr": '⏹ Arreter et garder',
+        "en": '⏹ Stop and keep',
+    },
+    'modem_tui_ann_play': {
+        "fr": '▶ Ecouter l\'annonce',
+        "en": '▶ Play the greeting',
+    },
+    'modem_tui_ann_started': {
+        "fr": 'Parlez : le compteur et le niveau suivent la voix.',
+        "en": 'Speak: the counter and the level follow your voice.',
+    },
+    'modem_tui_ann_saved': {
+        "fr": 'Annonce gardee.',
+        "en": 'Greeting kept.',
+    },
+    # L'absence d'annonce ne se voit qu'a l'appel, quand l'appelant entend le
+    # silence : elle se dit donc ici.
+    'modem_tui_ann_none': {
+        "fr": 'Annonce : aucune',
+        "en": 'Greeting: none',
+    },
+    'modem_tui_ann_have': {
+        "fr": 'Annonce : %.1f s',
+        "en": 'Greeting: %.1f s',
+    },
     'modem_tui_vault': {
         "fr": '🔑 Coffre',
         "en": '🔑 Vault',
