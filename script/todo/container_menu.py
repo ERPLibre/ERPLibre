@@ -548,10 +548,10 @@ class ContainerMenuMixin:
         celle du moteur retenu maintenant, et rien ne part sans moteur qui
         réponde."""
         if compose is None:
-            compose = self._container_compose_ouvre()
-            if compose is None:
+            contexte = self._container_compose_ouvre()
+            if contexte is None:
                 return
-            compose = compose["compose"]
+            compose = contexte["compose"]
         self.execute.exec_command_live(
             shlex.join(compose + args), source_erplibre=False
         )
