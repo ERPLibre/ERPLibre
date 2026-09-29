@@ -21,10 +21,24 @@ printf "db_host = False\n" >> "${EL_CONFIG_FILE}"
 printf "db_port = False\n" >> "${EL_CONFIG_FILE}"
 printf "db_user = ${EL_USER}\n" >> "${EL_CONFIG_FILE}"
 printf "db_password = False\n" >> "${EL_CONFIG_FILE}"
-printf "xmlrpc_port = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
-printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
+# Les noms de port que connaît CET Odoo : http_port depuis 11, xmlrpc_port
+# avant ; gevent_port depuis 16, longpolling_port avant. Odoo 19 ne lit plus
+# les anciens noms et les signale à chaque démarrage.
+EL_CONFIG_PY="${EL_HOME_ODOO}/odoo/tools/config.py"
+[[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_CONFIG_PY="${EL_HOME_ODOO}/openerp/tools/config.py"
+EL_KEY_PORT="xmlrpc_port"
+grep -qE "[\"']--http-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_PORT="http_port"
+EL_KEY_LONGPOLLING="longpolling_port"
+grep -qE "[\"']--gevent-port[\"']" "${EL_CONFIG_PY}" 2> /dev/null && EL_KEY_LONGPOLLING="gevent_port"
+printf "${EL_KEY_PORT} = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
+printf "${EL_KEY_LONGPOLLING} = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
-printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
+# Les modules du cœur : odoo/addons depuis Odoo 10, openerp/addons en 8 et 9,
+# qui refusent un répertoire d'addons inexistant.
+EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/odoo/addons"
+[[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_ODOO_CORE_ADDONS="${EL_HOME_ODOO}/openerp/addons"
+
+printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_ODOO_CORE_ADDONS},${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
@@ -171,6 +185,7 @@ fi
 
 # Update and fix the config.conf
 # Fix only the configuration if installation is done
-if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
+if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] \
+  && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" -o -f "./odoo$(< .odoo-version)/odoo/openerp-server" ]; then
     make config_update
 fi
