@@ -2,8 +2,9 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
-(Navigation telemetry), Configuration, et la famille Execute : Execute,
-Code, Config, Process, Test et Update.
+(Navigation telemetry), Configuration, la famille Execute : Execute,
+Code, Config, Process, Test et Update, et la famille Run : Run, Database
+et son menu d'effacement, Analyse, Transform data et Doc.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les

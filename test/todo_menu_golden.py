@@ -2,8 +2,9 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Rendus de référence de menus de TODO : l'entrée [4] (Navigation
-telemetry), Configuration, et la famille Execute : Execute, Code, Config,
-Process, Test et Update.
+telemetry), Configuration, la famille Execute : Execute, Code, Config,
+Process, Test et Update, et la famille Run : Run, Database et son menu
+d'effacement, Analyse, Transform data et Doc.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -11,11 +12,13 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
   réponses (ANSWERS : une réponse vide, un numéro sans entrée, 0), ce que
   montre le terminal, réponses tapées comprises, ce que rend le menu, les
   clés de télémétrie qu'il enregistre et le nombre de sondes du hub web ;
+  Run y montre l'entrée Mobile, son répertoire présent ;
 - `session` : quand le vrai TODO, sous la capture de la session web comme
   dans le worker, suit WALK, les messages `menu` des menus de CRUMBS, le fil
   d'Ariane de chaque menu traversé et les clés de télémétrie. WALK ne
   répond qu'à des menus, jamais à une feuille : une étape nomme l'entrée
-  d'un sous-menu par sa clé de traduction, ou est « 0 ».
+  d'un sous-menu par sa clé de traduction, ou est « 0 ». Le répertoire
+  de Mobile y est absent.
 La configuration est CONFIG, les préférences celles d'un HOME vide, et le
 hub web ne tourne pas (`launcher.status` rend None).
 
@@ -47,6 +50,13 @@ MENUS = (
     "prompt_execute_process",
     "prompt_execute_test",
     "prompt_execute_update",
+    "prompt_execute_instance",
+    "prompt_execute_database",
+    # Le menu d'effacement vit sur l'objet `db_manager` de TODO.
+    "db_manager.drop_database",
+    "prompt_execute_analyse",
+    "prompt_execute_transform",
+    "prompt_execute_doc",
 )
 CRUMBS = (
     "Navigation telemetry",
@@ -57,6 +67,11 @@ CRUMBS = (
     "Process",
     "Test",
     "Update",
+    "Run",
+    "Database",
+    "Analyse",
+    "Transform data",
+    "Doc",
 )
 ANSWERS = ("", "9", "0")
 # Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
@@ -82,6 +97,14 @@ CONFIG = {
         },
         {"prompt_description": "Forged update", "makefile_cmd": "forged"},
     ],
+    "instance": [
+        {
+            "prompt_description_key": "Test - Minimal base instance",
+            "makefile_cmd": "forged_test",
+            "database": "forged",
+        },
+        {"prompt_description": "Forged instance", "makefile_cmd": "forged"},
+    ],
 }
 WALK = (
     ["Configuration"],
@@ -98,6 +121,16 @@ WALK = (
     ["Process - Execution tools"],
     "0",
     ["Test - Test an Odoo module"],
+    "0",
+    ["Run - Execute and install an instance"],
+    "0",
+    ["Database - Database tools"],
+    "0",
+    ["Analyse - Odoo database analysis"],
+    "0",
+    ["Transform data - Transform your data"],
+    "0",
+    ["Doc - Documentation search"],
     "0",
     "0",
     "0",
@@ -152,6 +185,7 @@ legacy.install(scripted)
 sys.path.insert(0, os.path.join(os.getcwd(), "script", "todo"))
 import todo
 todo.lang_is_configured = lambda: True
+todo.MOBILE_HOME_PATH = config + ".absent"
 legacy.wrap_menus(todo.TODO)
 # Le rapport s'écrit aussi quand TODO sort par SystemExit.
 try:
@@ -183,9 +217,11 @@ def terminal(method, lang) -> dict:
     """Ce que montre `TODO().<method>()`, en `lang`, quand il reçoit ses
     réponses, ANSWERS_OF[method] ou ANSWERS : `screen`, ses lignes ; `back`,
     ce qu'il rend ; `keys`, les clés de télémétrie enregistrées ; `probes`,
-    les sondes du hub web."""
+    les sondes du hub web. `method` peut être pointé : « a.b » appelle la
+    méthode `b` de l'attribut `a` de TODO. Le répertoire de Mobile est
+    présent."""
     from script.config import config_file
-    from script.todo import todo_i18n
+    from script.todo import todo, todo_i18n
     from script.todo.todo import TODO
     from script.todo.web import launcher
 
@@ -210,6 +246,7 @@ def terminal(method, lang) -> dict:
             patch.object(config_file, "CONFIG_FILE", str(base / "todo.json")),
             patch.object(config_file, "CONFIG_OVERRIDE_FILE", absent),
             patch.object(config_file, "CONFIG_OVERRIDE_PRIVATE_FILE", absent),
+            patch.object(todo, "MOBILE_HOME_PATH", str(base)),
             patch("click.termui.visible_prompt_func", typed),
             # Un menu qui lirait le terminal bloquerait le test : `input`,
             # une question masquée (`click.prompt(hide_input=True)`,
@@ -236,7 +273,10 @@ def terminal(method, lang) -> dict:
             "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
         )
         stack.enter_context(redirect_stdout(shown))
-        back = getattr(TODO(), method)()
+        target = TODO()
+        for name in method.split("."):
+            target = getattr(target, name)
+        back = target()
     return {
         "screen": shown.getvalue().split("\n"),
         "back": back,
