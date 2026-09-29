@@ -15,8 +15,8 @@ des clés de traduction anglaises, que `t()` traduit au rendu. `action`,
 de l'objet qui ouvre le menu, TODO ou un objet de TODO, jamais des
 fonctions. Le numéro d'une entrée est sa place parmi les entrées
 numérotées montrées : une `Section` n'en prend pas, un `FromConfig` en
-prend un par élément de sa liste, une `Entry` dont la garde `when` rend
-faux aucun.
+prend un par élément de sa liste qui n'est pas une section, une `Entry`
+dont la garde `when` rend faux aucun.
 """
 
 from dataclasses import dataclass
@@ -89,7 +89,10 @@ class Menu:
     `opens` nomme la méthode appelée une fois à l'entrée, après l'intro et
     avant le premier dessin : elle rend un dict pour ouvrir le menu, dont
     les clés s'ajoutent aux kwargs de l'action de chaque entrée, ou toute
-    autre valeur, que le menu rend sans se dessiner.
+    autre valeur, que le menu rend sans se dessiner. Ces clés ne répètent
+    jamais un kwarg d'une entrée : le navigateur passe les deux en
+    arguments nommés, et une clé répétée lève TypeError quand l'entrée
+    est choisie.
     `before` nomme la méthode appelée avant chaque question, que le menu
     se redessine ou non.
     `closes_on_result` : une entrée dont l'action rend une valeur vraie
