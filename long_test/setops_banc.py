@@ -1405,6 +1405,16 @@ def index_libre(instances, voulu, siens=(ECOSYSTEME, UNDERLAY_BANC)):
 # sans réécrire ce que le modèle déclare.
 INTRANTS_BANC = "15-placement-banc.yml"
 
+# L'ADRESSE DE RECOURS DU COMPTE D'AMORÇAGE. Ce compte est le seul recours quand
+# plus rien d'autre ne répond ; sans adresse joignable, « mot de passe oublié » ne
+# mène nulle part. Le modèle n'en déclare aucune, et le rôle refuse à juste titre.
+#
+# INVENTÉE, ET SOUS UN DOMAINE QUI NE PEUT PAS EXISTER. La grappe du banc est
+# jetable et personne ne lira jamais ce qui part là ; y mettre une adresse réelle
+# la ferait suivre le dépôt, et une relance enverrait du courrier à quelqu'un qui
+# n'a rien demandé. `.invalid` est réservé à cet usage et ne se résout nulle part.
+COURRIEL_RECOURS = "recours@banc-fictif.invalid"
+
 
 def cmds_resolveur():
     """La commande qui nomme le résolveur par lequel le terrain sort.
@@ -1439,6 +1449,10 @@ def lit_resolveur(sortie):
 def texte_intrants_du_banc(resolveur):
     """Le `group_vars` que le banc ajoute au locataire, ou « ».
 
+    `courriel_amorcage` EST UNE EXIGENCE DU SOCLE, pas un confort : le rôle du
+    compte de recours refuse sans elle, et son refus a raison — un compte de
+    dernier recours sans adresse joignable ne se récupère plus.
+
     `dns_amorcage` EST UN PLACEMENT, pas une intention : c'est l'adresse d'un
     résolveur joignable depuis la fabric, et le modèle du moteur n'en déclare
     aucune. Sans elle, le socle saute la tâche qui écrit `/etc/resolv.conf` —
@@ -1451,6 +1465,7 @@ def texte_intrants_du_banc(resolveur):
 # Le placement que le BANC ajoute. Il passe après les intrants du modèle, et
 # n'en réécrit aucun.
 dns_amorcage: "{resolveur.strip()}"
+amorcage_acces_courriel: "{COURRIEL_RECOURS}"
 """
 
 
@@ -3455,12 +3470,42 @@ def cause_de_l_echec(sortie, taille=400):
     texte = (sortie or "").strip()
     if not texte:
         return ""
-    causes = [
-        ligne.strip()
-        for ligne in texte.splitlines()
+    lignes = texte.splitlines()
+    marques = [
+        i
+        for i, ligne in enumerate(lignes)
         if ligne.lstrip().lower().startswith(MARQUES_CAUSE)
     ]
-    return causes[-1][:taille] if causes else texte[-taille:]
+    if not marques:
+        return texte[-taille:]
+    bloc = _bloc_de_cause(lignes, marques[-1])
+    # LE MESSAGE D'ABORD, LE RESTE ENSUITE. Un objet d'ansible porte son
+    # explication sous « msg » et le reste est de la mécanique — l'assertion
+    # évaluée, `changed: false`. Rendre l'objet entier noierait la phrase qui
+    # dit quoi faire dans des champs dont aucun ne l'apprend.
+    message = next((l for l in bloc if l.startswith('"msg"')), "")
+    if message:
+        return f"{bloc[0]} {message}"[:taille]
+    return " ".join(bloc)[:taille]
+
+
+def _bloc_de_cause(lignes, debut):
+    """La cause en `debut` et, si elle s'ouvre, les lignes qui la ferment.
+
+    UNE CAUSE TIENT PARFOIS SUR PLUSIEURS LIGNES : ansible imprime son objet en
+    clair dès qu'une valeur porte un retour, et la ligne de tête se réduit alors
+    à « fatal: [hôte]: FAILED! => { ». N'en garder qu'elle rend un refus qui
+    nomme l'hôte et rien d'autre.
+    """
+    tete = lignes[debut]
+    bloc = [tete.strip()]
+    if not tete.rstrip().endswith("{"):
+        return bloc
+    for suite in lignes[debut + 1 :]:
+        bloc.append(suite.strip())
+        if suite.strip() == "}":
+            break
+    return bloc
 
 
 def dossier_journal(base=""):
