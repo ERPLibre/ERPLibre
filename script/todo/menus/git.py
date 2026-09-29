@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Git : Git, qu'ouvre Execute, Git local server et
 ses deux menus Actions, l'un du serveur local, l'autre du serveur de
-production ; GPT code, qu'ouvre Execute, Claude configs et Plugins.
+production ; GPT code, qu'ouvre Execute, Claude configs, Plugins et RTK.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -226,5 +226,23 @@ PLUGINS = Menu(
         Entry("Uninstall a plugin", "_claude_plugin_uninstall"),
     ],
     intro="Manage Claude Code plugins and marketplaces!",
+    render="once",
+)
+
+RTK = Menu(
+    "prompt_execute_rtk",
+    "RTK",
+    [
+        Section("Setup"),
+        Entry("Install RTK", "rtk_install"),
+        Entry("Initialize global auto-rewrite hook", "rtk_init_global"),
+        Section("Status"),
+        Entry("Check RTK version", "rtk_check_version"),
+        Entry("Check RTK status", "rtk_check_status"),
+        Entry("Show cumulative token savings", "rtk_show_gain"),
+        Section("Optimize"),
+        Entry("Discover optimization opportunities", "rtk_discover"),
+    ],
+    intro="Manage RTK (Rust Token Killer) for token optimization!",
     render="once",
 )

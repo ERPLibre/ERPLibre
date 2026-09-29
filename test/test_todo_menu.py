@@ -1385,6 +1385,21 @@ class TestPluginsMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestRtkMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """RTK : l'installation et le crochet global, l'état, puis les
+    occasions d'économiser des jetons."""
+
+    MENU = "prompt_execute_rtk"
+    EXPECTED = {
+        "Install RTK": "rtk_install",
+        "Initialize global auto-rewrite hook": "rtk_init_global",
+        "Check RTK version": "rtk_check_version",
+        "Check RTK status": "rtk_check_status",
+        "Show cumulative token savings": "rtk_show_gain",
+        "Discover optimization opportunities": "rtk_discover",
+    }
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -2053,6 +2068,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_gpt_code",
                 "_prompt_claude_configs",
                 "prompt_execute_claude_plugins",
+                "prompt_execute_rtk",
             },
             set(declared),
         )

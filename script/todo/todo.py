@@ -4921,41 +4921,10 @@ class TODO(
         print(t("Git daemon process killed."))
 
     def prompt_execute_rtk(self):
-        print(
-            f"🤖 {t('Manage RTK (Rust Token Killer) for token optimization!')}"
-        )
-        choices = [
-            {"section": t("Setup")},
-            {"prompt_description": t("Install RTK")},
-            {"prompt_description": t("Initialize global auto-rewrite hook")},
-            {"section": t("Status")},
-            {"prompt_description": t("Check RTK version")},
-            {"prompt_description": t("Check RTK status")},
-            {"prompt_description": t("Show cumulative token savings")},
-            {"section": t("Optimize")},
-            {"prompt_description": t("Discover optimization opportunities")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.rtk_install()
-            elif status == "2":
-                self.rtk_init_global()
-            elif status == "3":
-                self.rtk_check_version()
-            elif status == "4":
-                self.rtk_check_status()
-            elif status == "5":
-                self.rtk_show_gain()
-            elif status == "6":
-                self.rtk_discover()
-            else:
-                print(t("Command not found !"))
+        """RTK, le proxy qui réduit les jetons d'un LLM (RTK,
+        `menus/git.py`) : installation, état, économies. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_git.RTK)
 
     def rtk_locate(self):
         """Localise l'exécutable rtk.
