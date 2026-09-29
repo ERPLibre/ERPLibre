@@ -29,10 +29,15 @@ GIT = Menu(
         ),
         # Un élément de todo.json peut nommer la méthode qui le lance.
         FromConfig("git_from_makefile", "_git_from_configuration", "instance"),
-        # Des outils de shell, pas de git : ils ferment la liste.
-        Entry("Install Starship on Shell", "_shell_install_starship"),
-        Entry("Install Claude Code", "_shell_install_claude_code"),
-        Entry("Install opencode", "_shell_install_opencode"),
+        # Des outils de shell, pas de git : ils ferment la liste. Chacun
+        # lance un installateur et écrit dans le fichier du shell.
+        Entry(
+            "Install Starship on Shell", "_shell_install_starship", danger=True
+        ),
+        Entry(
+            "Install Claude Code", "_shell_install_claude_code", danger=True
+        ),
+        Entry("Install opencode", "_shell_install_opencode", danger=True),
     ],
     intro="Git and shell management tools!",
     render="once",
@@ -55,8 +60,9 @@ GIT_LOCAL_SERVER = Menu(
     render="once",
 )
 
-# Les deux menus Actions ne diffèrent que par leur intro et par le
-# `production_ready` que chaque entrée passe à `_deploy_git_server`.
+# Les deux menus Actions ne diffèrent que par leur intro, par le
+# `production_ready` que chaque entrée passe à `_deploy_git_server` et par
+# `danger`, que portent les actions de production : elles tournent en root.
 GIT_SERVER_LOCAL = Menu(
     "_prompt_git_server_local",
     "Actions",
@@ -99,26 +105,31 @@ GIT_SERVER_PRODUCTION = Menu(
             "Run all (init + remote + push + serve)",
             "_deploy_git_server",
             kwargs={"production_ready": True, "action": "all"},
+            danger=True,
         ),
         Entry(
             "Init - Create bare repos",
             "_deploy_git_server",
             kwargs={"production_ready": True, "action": "init"},
+            danger=True,
         ),
         Entry(
             "Remote - Add local remotes",
             "_deploy_git_server",
             kwargs={"production_ready": True, "action": "remote"},
+            danger=True,
         ),
         Entry(
             "Push - Push to local server",
             "_deploy_git_server",
             kwargs={"production_ready": True, "action": "push"},
+            danger=True,
         ),
         Entry(
             "Serve - Start git daemon",
             "_deploy_git_server",
             kwargs={"production_ready": True, "action": "serve"},
+            danger=True,
         ),
     ],
     intro="Production mode (/srv/git, root required)",

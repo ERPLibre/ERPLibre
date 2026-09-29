@@ -242,8 +242,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
 - Execute › Git › Add a remote to a local repository reports git's failure, a remote that already exists say, with its exit code, instead of announcing it was added
 - Navigation telemetry: Execute › GPT code › Claude configs and Plugins launch each of their commands from the TUI with its arguments, instead of failing on a missing one, and Todo Add Command + Plan Max deploys both of its commands there
-- Navigation telemetry: Execute › Git shows its entries of `todo.json` and its three shell tools, which launch from the TUI and the web page, and the actions of Git local server's production server, launched from the TUI, deploy in production mode instead of the local one
+- Navigation telemetry: Execute › Git shows its entries of `todo.json`, which launch from the TUI and the web page, and its three shell tools
 - Navigation telemetry: Execute › GPT code › Claude Code shows List local sessions under its own name instead of the name of its method
+- Navigation telemetry: Execute › Git's three shell tools, which run an installer and write to the shell's file, and the five actions of Git local server's production server, which run as root, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
 
 ## Removed
 

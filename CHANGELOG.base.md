@@ -392,8 +392,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
 - Execute › Git › Add a remote to a local repository reports git's failure, a remote that already exists say, with its exit code, instead of announcing it was added
 - Navigation telemetry: Execute › GPT code › Claude configs and Plugins launch each of their commands from the TUI with its arguments, instead of failing on a missing one, and Todo Add Command + Plan Max deploys both of its commands there
-- Navigation telemetry: Execute › Git shows its entries of `todo.json` and its three shell tools, which launch from the TUI and the web page, and the actions of Git local server's production server, launched from the TUI, deploy in production mode instead of the local one
+- Navigation telemetry: Execute › Git shows its entries of `todo.json`, which launch from the TUI and the web page, and its three shell tools
 - Navigation telemetry: Execute › GPT code › Claude Code shows List local sessions under its own name instead of the name of its method
+- Navigation telemetry: Execute › Git's three shell tools, which run an installer and write to the shell's file, and the five actions of Git local server's production server, which run as root, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
 
 <!-- [fr] -->
 
@@ -506,8 +507,9 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Git › Ajouter un remote vers un dépôt local passe à git le nom et l'adresse tels que tapés : un blanc ne les coupe plus, et un caractère du shell comme « ; » ne termine plus la commande pour lancer ce qui suit
 - Exécution › Git › Ajouter un remote vers un dépôt local dit l'échec de git, un remote qui existe déjà par exemple, avec son code de sortie, au lieu d'annoncer l'ajout
 - Télémétrie de navigation : Exécution › GPT code › Claude configs et Plugins lancent chacune de leurs commandes depuis la TUI avec ses arguments, au lieu d'échouer sur un argument manquant, et Todo Add Command + Plan Max y déploie ses deux commandes
-- Télémétrie de navigation : Exécution › Git montre ses entrées de `todo.json` et ses trois outils de shell, qui se lancent depuis la TUI et la page web, et les actions du serveur de production de Git local server, lancées depuis la TUI, déploient en mode production au lieu du mode local
+- Télémétrie de navigation : Exécution › Git montre ses entrées de `todo.json`, qui se lancent depuis la TUI et la page web, et ses trois outils de shell
 - Télémétrie de navigation : Exécution › GPT code › Claude Code montre Lister les sessions locales sous son propre nom au lieu du nom de sa méthode
+- Télémétrie de navigation : les trois outils de shell d'Exécution › Git, qui lancent un installateur et écrivent dans le fichier du shell, et les cinq actions du serveur de production de Git local server, qui tournent en root, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 
 <!-- [en] -->
 ## Removed

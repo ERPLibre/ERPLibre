@@ -386,24 +386,45 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
-    def test_only_the_reset_and_the_erase_are_dangerous_nodes(self):
+    def test_the_dangerous_nodes_are_the_declared_ones(self):
         # Seul un nœud qui porte "danger" ne se lance ni de la TUI ni de
-        # la page web.
+        # la page web : l'effacement d'une base, les actions du serveur git
+        # de production, qui tournent en root, les installateurs de shell
+        # et la remise à zéro des préférences. Les `kwargs` distinguent les
+        # actions de production de celles du serveur local, au même chemin.
         dangerous = []
 
         def walk(node, path):
             for child in node["children"]:
                 here = f"{path} › {child['label']}"
                 if child.get("danger"):
-                    dangerous.append(here)
+                    dangerous.append((here, child.get("kwargs")))
                 walk(child, here)
 
         walk(self.arbre, "TODO")
+        actions = "TODO › Execute › Git › Git local server › Actions"
+        git = "TODO › Execute › Git"
         self.assertEqual(
             dangerous,
             [
-                "TODO › Execute › Database › Erase a database",
-                "TODO › Configuration › Reset all preferences",
+                ("TODO › Execute › Database › Erase a database", {}),
+                *[
+                    (
+                        f"{actions} › {label}",
+                        {"production_ready": True, "action": action},
+                    )
+                    for label, action in (
+                        ("Run all (init + remote + push + serve)", "all"),
+                        ("Init - Create bare repos", "init"),
+                        ("Remote - Add local remotes", "remote"),
+                        ("Push - Push to local server", "push"),
+                        ("Serve - Start git daemon", "serve"),
+                    )
+                ],
+                (f"{git} › Install Starship on Shell", {}),
+                (f"{git} › Install Claude Code", {}),
+                (f"{git} › Install opencode", {}),
+                ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
 
@@ -1284,6 +1305,19 @@ class TestGitMenuNumbering(RegistryCoherence, unittest.TestCase):
             ("git_from_makefile", "_git_from_configuration", "instance"),
         )
 
+    def test_only_the_shell_installers_are_dangerous(self):
+        # Ils lancent un installateur, du paquet ou de l'amont, et
+        # écrivent dans le fichier du shell : ni la TUI ni la page web ne
+        # les lancent.
+        self.assertEqual(
+            [entry.action for entry in self.entries if entry.danger],
+            [
+                "_shell_install_starship",
+                "_shell_install_claude_code",
+                "_shell_install_opencode",
+            ],
+        )
+
 
 class TestGitLocalServerMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Git local server : les actions du serveur local, puis celles du
@@ -1298,7 +1332,7 @@ class TestGitLocalServerMenuNumbering(RegistryCoherence, unittest.TestCase):
 
 class TestGitServerLocalMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Actions du serveur git local : les cinq étapes du déploiement, en
-    mode local."""
+    mode local ; aucune n'est dangereuse."""
 
     MENU = "_prompt_git_server_local"
     PRODUCTION = False
@@ -1319,10 +1353,17 @@ class TestGitServerLocalMenuNumbering(RegistryCoherence, unittest.TestCase):
             ],
         )
 
+    def test_each_entry_is_dangerous_in_production_only(self):
+        # En production, les actions tournent en root, sous /srv/git : ni
+        # la TUI ni la page web ne les lancent.
+        self.assertEqual(
+            {bool(entry.danger) for entry in self.entries}, {self.PRODUCTION}
+        )
+
 
 class TestGitServerProductionMenuNumbering(TestGitServerLocalMenuNumbering):
     """Actions du serveur git de production : les mêmes cinq étapes, en
-    mode production."""
+    mode production, chacune dangereuse."""
 
     MENU = "_prompt_git_server_production"
     PRODUCTION = True
