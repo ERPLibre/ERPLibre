@@ -438,7 +438,7 @@ def _source_de_la_decouverte():
 
 
 class SessionsClaudeCode(unittest.TestCase):
-    """Le câblage de la phase 4, sous « GPT code » et non sous le LLM.
+    """Les sessions de Claude Code, sous « GPT code » et non sous le LLM.
 
     Une session est un processus adressé par identifiant ; un serveur est un
     hôte adressé par port. Les mêler dans une liste numérotée ferait partager
@@ -518,6 +518,39 @@ class SessionsClaudeCode(unittest.TestCase):
         ):
             todo._claude_reprendre([])
         self.assertIn(t("No session on this machine."), sortie.getvalue())
+
+    def test_une_entree_relit_la_flotte_quand_elle_repond(self):
+        """Une session ouverte dans un autre terminal pendant que le menu
+        attend sa réponse est listée par [1] : l'entrée relit la flotte
+        au lieu de reprendre celle que le menu a dessinée."""
+        import io
+        import warnings
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        sortie = io.StringIO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                side_effect=[[], [session], [session]],
+            ),
+            patch("click.prompt", side_effect=["1", "0"]),
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(sortie),
+            warnings.catch_warnings(),
+        ):
+            # Les modules déplacés d'urwid avertissent quand
+            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
+            # `__file__` : sous `-W error`, le menu tomberait.
+            warnings.filterwarnings(
+                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+            )
+            todo.prompt_claude_sessions()
+        self.assertIn("[1] forged-s", sortie.getvalue())
 
 
 class Frontiere(unittest.TestCase):

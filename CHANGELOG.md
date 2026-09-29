@@ -236,6 +236,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Automation opens when `todo.json` has no `function` list, with [0] alone, instead of stopping on an error before its menu
 - Execute › Automation: only a number exactly as shown runs an entry of `todo.json`: « 01 », « 1 » between spaces, « +1 » or a digit of another script answer « Command not found ! » instead of running the first one
 - Execute › Git: only a number exactly as shown runs an entry: « +5 » or « 05 » answer « Command not found ! » instead of running the first entry of `todo.json`, and « 01 », « 1 » between spaces or a digit of another script no longer silently run nothing
+- Execute › GPT code › Claude Code: List local sessions, Ask a question to a session and Resume a session read the sessions when they are answered, instead of those the menu drew: a session started in another terminal while the menu waits is offered, and the navigation telemetry TUI, which launches them without an argument, runs them instead of failing
 
 ## Removed
 

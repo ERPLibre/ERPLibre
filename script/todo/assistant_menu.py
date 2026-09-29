@@ -892,16 +892,17 @@ class AssistantMenuMixin:
             if status == "0":
                 return
             elif status == "1":
-                self._claude_lister(flotte)
+                self._claude_lister()
             elif status == "2":
-                self._claude_questionner(flotte)
+                self._claude_questionner()
             elif status == "3":
-                self._claude_reprendre(flotte)
+                self._claude_reprendre()
             else:
                 print(t("Command not found !"))
 
     def _claude_flotte(self):
-        """La flotte, relue à chaque tour du menu.
+        """La flotte, relue à chaque dessin du menu et par chaque entrée
+        au moment où elle répond.
 
         Relue et non gardée : une session démarre ou s'arrête dans un autre
         terminal pendant qu'on regarde la liste, et une liste périmée
@@ -911,8 +912,9 @@ class AssistantMenuMixin:
 
         return cs.fleet()
 
-    def _claude_lister(self, flotte):
-        """Afficher la flotte, sans rien lire d'une transcription.
+    def _claude_lister(self, flotte=None):
+        """Afficher la flotte, sans rien lire d'une transcription ; sans
+        `flotte`, celle du moment.
 
         Ce qui paraît vient du registre, que tout compte de la machine peut
         déjà lire. Le titre d'une session, lui, vit dans la transcription, et
@@ -922,6 +924,8 @@ class AssistantMenuMixin:
         """
         from script.todo.assistant import claude_sessions as cs
 
+        if flotte is None:
+            flotte = self._claude_flotte()
         if not flotte:
             print(t("No session on this machine."))
             return
@@ -957,12 +961,13 @@ class AssistantMenuMixin:
         rang = int(reponse) - 1
         return flotte[rang] if 0 <= rang < len(flotte) else None
 
-    def _claude_questionner(self, flotte):
-        """Poser UNE question à une session, sans ouvrir de terminal.
+    def _claude_questionner(self, flotte=None):
+        """Poser UNE question à une session de `flotte`, ou, sans elle, de
+        la flotte du moment, sans ouvrir de terminal.
 
-        Deux garde-fous, et le second vient d'une mesure. L'invite part sur
-        l'entrée standard : la ligne de commande d'un processus est lisible
-        par tout compte de la machine, et une question porte du contexte.
+        Deux garde-fous. L'invite part sur l'entrée standard : la ligne de
+        commande d'un processus est lisible par tout compte de la machine,
+        et une question porte du contexte.
 
         Et l'outil ne REFUSE pas de reprendre une session qu'un terminal
         tient : son garde-fou écarte délibérément les détenteurs interactifs.
@@ -979,6 +984,8 @@ class AssistantMenuMixin:
         if not shutil.which("claude"):
             print(t("claude is not on the PATH."))
             return
+        if flotte is None:
+            flotte = self._claude_flotte()
         session = self._claude_choisir(flotte)
         if session is None:
             return
@@ -1030,8 +1037,9 @@ class AssistantMenuMixin:
         if cout:
             print(f"── {cout} USD ──")
 
-    def _claude_reprendre(self, flotte):
-        """Reprendre une session dans sa propre fenêtre.
+    def _claude_reprendre(self, flotte=None):
+        """Reprendre une session de `flotte`, ou, sans elle, de la flotte du
+        moment, dans sa propre fenêtre.
 
         Une session interactive est un programme plein écran : elle a besoin
         d'un vrai terminal, que le tube du lanceur ordinaire ne fournit pas.
@@ -1046,6 +1054,8 @@ class AssistantMenuMixin:
         if not chemin:
             print(t("claude is not on the PATH."))
             return
+        if flotte is None:
+            flotte = self._claude_flotte()
         session = self._claude_choisir(flotte)
         if session is None:
             return
