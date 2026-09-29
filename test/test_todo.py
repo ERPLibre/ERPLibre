@@ -319,22 +319,14 @@ class TestExecuteFromConfiguration(unittest.TestCase):
         todo.execute_from_configuration(dct, ignore_makefile=True)
         todo.execute.exec_command_live.assert_not_called()
 
-    def test_with_callback(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        callback = MagicMock()
-        dct = {"callback": callback}
-        todo.execute_from_configuration(dct)
-        callback.assert_called_once_with(dct)
-
     def test_makefile_error_stops_execution(self):
+        # La cible make échoue : la commande bash de l'instance ne part pas.
         todo = TODO()
         todo.execute = MagicMock()
         todo.execute.exec_command_live.return_value = 1
-        callback = MagicMock()
-        dct = {"makefile_cmd": "broken", "callback": callback}
+        dct = {"makefile_cmd": "broken", "bash_command": "forged_command"}
         todo.execute_from_configuration(dct)
-        callback.assert_not_called()
+        self.assertEqual(todo.execute.exec_command_live.call_count, 1)
 
     def test_run_db_opens_only_a_database_the_instance_names(self):
         # Sans « database », run.sh recevrait « -d None » : l'instance ne

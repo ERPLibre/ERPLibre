@@ -572,10 +572,6 @@ class TODO(
                 web_login_env=web_login_env,
             )
 
-        callback = instance.get("callback")
-        if callback:
-            callback(instance)
-
     # Étiquettes du fil d'Ariane par méthode de menu. Le fil est dérivé de la
     # pile d'appels (aucune méthode de menu à modifier). Labels courts et
     # stables, pensés pour être copiés afin de situer précisément un menu.

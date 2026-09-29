@@ -1460,11 +1460,6 @@ class TestRunMenu(unittest.TestCase):
         ran = []
 
         def run(todo, instance, exec_run_db=False, ignore_makefile=False):
-            # Comme execute_from_configuration : une entrée qui ne porte
-            # qu'un rappel l'appelle.
-            if instance.get("callback"):
-                instance["callback"](instance)
-                return
             command = instance["makefile_cmd"]
             ran.append((command, exec_run_db, ignore_makefile))
 
