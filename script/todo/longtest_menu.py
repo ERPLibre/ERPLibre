@@ -18,7 +18,9 @@ import os
 
 import click
 
+from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 # Les tests longs qui CRÉENT quelque chose, donc qui savent le défaire.
 #
@@ -100,84 +102,33 @@ class LongTestMenuMixin:
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def prompt_execute_longtest(self):
-        print(f"⏳ {t('Long tests: real VMs, hours. Not the unit suite.')}")
-        choices = [
-            {
-                "prompt_description": t(
-                    "Nested Proxmox depth: plan only (dry-run)"
-                )
-            },
-            {"prompt_description": t("Nested Proxmox depth: run it")},
-            {
-                "prompt_description": t(
-                    "Nested QEMU depth: plan only (dry-run)"
-                )
-            },
-            {"prompt_description": t("Nested QEMU depth: run it")},
-            {"prompt_description": t("Download cache: plan only (dry-run)")},
-            {"prompt_description": t("Download cache: two VMs, measure")},
-            {
-                "prompt_description": t(
-                    "Download cache: measure, then cut the upstream"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "ERPLibre on NixOS: plan only (dry-run)"
-                )
-            },
-            {"prompt_description": t("ERPLibre on NixOS: run it")},
-            {"prompt_description": t("Undo what the descent created")},
-        ]
-        # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
-        # Ses entrées sont donc traitées à part plutôt que pliées dans la
-        # table des piles imbriquées.
-        cache = {
-            "5": "--dry-run",
-            "6": "",
-            "7": "--hors-ligne",
-        }
-        # Chaque choix : le script, et s'il faut demander d'où l'on part.
-        scripts = {
-            "1": ("deep_proxmox.py", True),
-            "2": ("deep_proxmox.py", True),
-            "3": ("deep_qemu.py", True),
-            "4": ("deep_qemu.py", True),
-            # 8 et 9, et non 5 et 6 : le cache occupe 5 à 7, et sa table est
-            # interrogée AVANT celle-ci. Les y laisser aurait rendu les
-            # entrées NixOS inatteignables — le menu aurait lancé le cache.
-            "8": ("install_nixos.py", True),
-            "9": ("install_nixos.py", True),
-        }
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in cache:
-                self._longtest_run("qemu_cache.py", cache[status])
-                continue
-            if status in scripts:
-                script, demander = scripts[status]
-                if script == "install_nixos.py":
-                    # Pas de profondeur : une seule machine, et la question
-                    # est binaire — l'installation aboutit ou non.
-                    args = self._longtest_depart_nixos() if demander else ""
-                else:
-                    # La profondeur est DEMANDÉE : c'est le réglage qui décide
-                    # de la durée — au-delà de trois étages, tout est 15 à 30
-                    # fois plus lent, et cinq se comptent en heures.
-                    args = f"--depth {self._longtest_depth()}"
-                    if demander:
-                        args += self._longtest_depart(script)
-                if status in ("1", "3", "8"):
-                    args += " --dry-run"
-                self._longtest_run(script, args)
-            elif status == "10":
-                self._longtest_defaire()
-            else:
-                print(t("Command not found !"))
+        """Les tests longs (LONGTEST, `menus/proxmox.py`) : deux descentes
+        imbriquées, le cache de téléchargement, ERPLibre sur NixOS, chacun
+        à blanc puis pour de vrai, et le défaire. Dessiné une fois, à
+        l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_proxmox.LONGTEST)
+
+    def _longtest_descente(self, script, dry_run=False):
+        """Lance la descente `script`, deep_proxmox.py ou deep_qemu.py : la
+        profondeur est DEMANDÉE, c'est le réglage qui décide de la durée —
+        au-delà de trois étages, tout est 15 à 30 fois plus lent, et cinq
+        se comptent en heures —, puis d'où elle part. `dry_run` n'en montre
+        que le plan."""
+        args = f"--depth {self._longtest_depth()}"
+        args += self._longtest_depart(script)
+        if dry_run:
+            args += " --dry-run"
+        self._longtest_run(script, args)
+
+    def _longtest_nixos(self, dry_run=False):
+        """Lance l'installation d'ERPLibre sur NixOS : pas de profondeur, une
+        seule machine, et la question est binaire — l'installation aboutit
+        ou non ; seul se demande d'où elle part. `dry_run` n'en montre que
+        le plan."""
+        args = self._longtest_depart_nixos()
+        if dry_run:
+            args += " --dry-run"
+        self._longtest_run("install_nixos.py", args)
 
     def _longtest_defaire(self):
         """Défaire, chaque pile la sienne.

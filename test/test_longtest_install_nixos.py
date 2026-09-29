@@ -279,22 +279,30 @@ class LeVerrouEtLeMenu(unittest.TestCase):
 
     def test_the_menu_offers_it_dry_and_for_real(self):
         from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+        from script.todo.menus import proxmox
 
-        menu = (RACINE / "script/todo/longtest_menu.py").read_text(
-            encoding="utf-8"
+        entrees = {
+            entry.key: (entry.action, entry.kwargs)
+            for entry in proxmox.LONGTEST.entries
+        }
+        self.assertEqual(
+            entrees["ERPLibre on NixOS: run it"], ("_longtest_nixos", None)
         )
-        self.assertIn("ERPLibre on NixOS: run it", menu)
-        self.assertIn("ERPLibre on NixOS: plan only (dry-run)", menu)
+        self.assertEqual(
+            entrees["ERPLibre on NixOS: plan only (dry-run)"],
+            ("_longtest_nixos", {"dry_run": True}),
+        )
         self.assertIn("install_nixos.py", SCRIPTS_DEFAISABLES)
 
     def test_the_menu_does_not_pass_a_depth(self):
         """Une seule machine : « --depth » n'a pas de sens ici, et le script
         le refuserait."""
-        menu = (RACINE / "script/todo/longtest_menu.py").read_text(
-            encoding="utf-8"
-        )
-        bloc = menu.split('if script == "install_nixos.py":')[1][:400]
-        self.assertNotIn("--depth", bloc)
+        import inspect
+
+        from script.todo.longtest_menu import LongTestMenuMixin
+
+        source = inspect.getsource(LongTestMenuMixin._longtest_nixos)
+        self.assertNotIn("--depth", source)
 
     def test_every_label_is_translated(self):
         from script.todo.todo_i18n import TRANSLATIONS

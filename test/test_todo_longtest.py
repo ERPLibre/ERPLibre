@@ -1184,35 +1184,56 @@ class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
 
 
 class TestLeMenuDesDeuxTests(unittest.TestCase):
-    """La liste des choix et le dispatch sont couplés PAR POSITION, sans
-    garde : ajouter une entrée sans son branchement donne un menu qui affiche
-    une option et répond « commande inconnue »."""
+    """Le menu des tests longs est déclaré au registre (LONGTEST,
+    `menus/proxmox.py`) : le numéro d'une entrée est sa place, et chacune
+    lance le test long que nomme son libellé."""
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
 
-    def test_every_listed_choice_has_a_branch(self):
-        """fill_help_info numérote à partir de 1 : le choix n° i doit être
-        traité, sinon le menu affiche une option et répond « commande
-        inconnue »."""
-        import inspect
+    def test_each_entry_launches_the_test_its_label_names(self):
+        """Dans l'ordre du menu, chaque entrée lance son script, à blanc
+        quand son libellé le dit, avec la profondeur et le départ que
+        demande une descente, ici des doubles. `demander` reste None :
+        `_longtest_run` confirme avant tout ce qui n'est pas à blanc."""
+        from script.todo.menus import proxmox
 
-        src = inspect.getsource(self.todo.prompt_execute_longtest)
-        entrees = src.count('"prompt_description"')
-        self.assertGreaterEqual(entrees, 5, "le menu a perdu des entrées")
-        for i in range(1, entrees + 1):
-            self.assertIn(
-                f'"{i}"', src, f"le choix {i} est affiché mais pas traité"
-            )
-        # Et rien au-delà : un branchement sans entrée est un choix caché.
-        self.assertNotIn(f'"{entrees + 1}"', src)
+        lances = []
+        self.todo._longtest_run = lambda nom, args="", demander=None: (
+            lances.append((nom, args, demander))
+        )
+        self.todo._longtest_depth = lambda: 3
+        self.todo._longtest_depart = lambda script: f" --forged {script}"
+        self.todo._longtest_depart_nixos = lambda: " --forged nixos"
+        self.todo._longtest_defaire = lambda: lances.append(("undo", "", None))
+        for entry in proxmox.LONGTEST.entries:
+            getattr(self.todo, entry.action)(**(entry.kwargs or {}))
+        proxmox_depth = "--depth 3 --forged deep_proxmox.py"
+        qemu_depth = "--depth 3 --forged deep_qemu.py"
+        self.assertEqual(
+            lances,
+            [
+                ("deep_proxmox.py", proxmox_depth + " --dry-run", None),
+                ("deep_proxmox.py", proxmox_depth, None),
+                ("deep_qemu.py", qemu_depth + " --dry-run", None),
+                ("deep_qemu.py", qemu_depth, None),
+                ("qemu_cache.py", "--dry-run", None),
+                ("qemu_cache.py", "", None),
+                ("qemu_cache.py", "--hors-ligne", None),
+                ("install_nixos.py", " --forged nixos --dry-run", None),
+                ("install_nixos.py", " --forged nixos", None),
+                ("undo", "", None),
+            ],
+        )
 
     def test_both_stacks_are_offered(self):
-        import inspect
+        from script.todo.menus import proxmox
 
-        src = inspect.getsource(self.todo.prompt_execute_longtest)
-        self.assertIn("deep_proxmox.py", src)
-        self.assertIn("deep_qemu.py", src)
+        scripts = {
+            (entry.kwargs or {}).get("script")
+            for entry in proxmox.LONGTEST.entries
+        }
+        self.assertLessEqual({"deep_proxmox.py", "deep_qemu.py"}, scripts)
 
     def test_undoing_asks_each_stack_separately(self):
         """Chacun ne connaît que ses rapports : lancer les trois ne peut pas

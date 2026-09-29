@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy, et
-VPN, ouvert depuis Deploy et depuis Network.
+"""Menus de la famille Proxmox : Proxmox VE, ouvert depuis Deploy, VPN,
+ouvert depuis Deploy et depuis Network, et Long test, ouvert depuis Test.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -106,5 +106,66 @@ VPN = Menu(
     ],
     intro="VPN tunnels: connect, profiles, vault secrets",
     mark="🔐",
+    render="once",
+)
+
+LONGTEST = Menu(
+    "prompt_execute_longtest",
+    "Long test",
+    [
+        # Un test lancé pour de vrai crée des machines pour des heures, et
+        # Défaire les détruit avec leurs disques : `danger`. Un plan à
+        # blanc ne crée rien.
+        Entry(
+            "Nested Proxmox depth: plan only (dry-run)",
+            "_longtest_descente",
+            kwargs={"script": "deep_proxmox.py", "dry_run": True},
+        ),
+        Entry(
+            "Nested Proxmox depth: run it",
+            "_longtest_descente",
+            kwargs={"script": "deep_proxmox.py"},
+            danger=True,
+        ),
+        Entry(
+            "Nested QEMU depth: plan only (dry-run)",
+            "_longtest_descente",
+            kwargs={"script": "deep_qemu.py", "dry_run": True},
+        ),
+        Entry(
+            "Nested QEMU depth: run it",
+            "_longtest_descente",
+            kwargs={"script": "deep_qemu.py"},
+            danger=True,
+        ),
+        Entry(
+            "Download cache: plan only (dry-run)",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": "--dry-run"},
+        ),
+        Entry(
+            "Download cache: two VMs, measure",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": ""},
+            danger=True,
+        ),
+        Entry(
+            "Download cache: measure, then cut the upstream",
+            "_longtest_run",
+            kwargs={"nom": "qemu_cache.py", "args": "--hors-ligne"},
+            danger=True,
+        ),
+        Entry(
+            "ERPLibre on NixOS: plan only (dry-run)",
+            "_longtest_nixos",
+            kwargs={"dry_run": True},
+        ),
+        Entry("ERPLibre on NixOS: run it", "_longtest_nixos", danger=True),
+        Entry(
+            "Undo what the descent created", "_longtest_defaire", danger=True
+        ),
+    ],
+    intro="Long tests: real VMs, hours. Not the unit suite.",
+    mark="⏳",
     render="once",
 )

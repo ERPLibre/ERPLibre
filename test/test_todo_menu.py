@@ -316,6 +316,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                 walk(child, here)
 
         walk(self.arbre, "TODO")
+        longtest = "TODO › Execute › Test › Long test"
         actions = "TODO › Execute › Git › Git local server › Actions"
         git = "TODO › Execute › Git"
         deploy = "TODO › Execute › Deploy"
@@ -325,6 +326,29 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertEqual(
             dangerous,
             [
+                *[
+                    (f"{longtest} › {label}", kwargs)
+                    for label, kwargs in (
+                        (
+                            "Nested Proxmox depth: run it",
+                            {"script": "deep_proxmox.py"},
+                        ),
+                        (
+                            "Nested QEMU depth: run it",
+                            {"script": "deep_qemu.py"},
+                        ),
+                        (
+                            "Download cache: two VMs, measure",
+                            {"nom": "qemu_cache.py", "args": ""},
+                        ),
+                        (
+                            "Download cache: measure, then cut the upstream",
+                            {"nom": "qemu_cache.py", "args": "--hors-ligne"},
+                        ),
+                        ("ERPLibre on NixOS: run it", {}),
+                        ("Undo what the descent created", {}),
+                    )
+                ],
                 ("TODO › Execute › Database › Erase a database", {}),
                 *[
                     (
@@ -1190,6 +1214,22 @@ class TestVpnMenuNumbering(RegistryCoherence, unittest.TestCase):
         "VPN - Delete a profile": "_vpn_delete_profile",
         "VPN - Install the client packages": "_vpn_install",
         "VPN - What can this machine do?": "_vpn_check",
+    }
+
+
+class TestLongTestMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu des tests longs (LONGTEST, `menus/proxmox.py`), qu'ouvre
+    `longtest_menu.py` depuis Test : deux descentes imbriquées, le cache de
+    téléchargement, ERPLibre sur NixOS, chacun à blanc puis pour de vrai,
+    et le défaire."""
+
+    MENU = "prompt_execute_longtest"
+    EXPECTED = {
+        "Nested Proxmox depth": "_longtest_descente",
+        "Nested QEMU depth": "_longtest_descente",
+        "Download cache": "_longtest_run",
+        "ERPLibre on NixOS": "_longtest_nixos",
+        "Undo what the descent created": "_longtest_defaire",
     }
 
 
@@ -2656,6 +2696,7 @@ class TestMenuLabels(unittest.TestCase):
                 "_container_erplibre",
                 "prompt_execute_proxmox",
                 "prompt_execute_vpn",
+                "prompt_execute_longtest",
             },
             set(declared),
         )
