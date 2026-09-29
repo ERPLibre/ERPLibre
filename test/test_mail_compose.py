@@ -271,12 +271,10 @@ class TestDeliver(DeliverCase):
     def test_sends_and_reports(self):
         """Le chemin HEUREUX, et il faut vraiment l'emprunter.
 
-        Ce test a longtemps parcouru le chemin d'ÉCHEC : le harnais
-        fournissait un transport `None`, l'APPEND partait en AttributeError,
-        et l'unique assertion — « a@y.ca » dans le statut — était vraie du
-        statut d'échec comme de celui du succès. Les deux assertions du bas
-        sont ce qui distingue les deux, et donc ce qui protège encore si le
-        défaut du harnais redevenait cassé.
+        La seule assertion sur l'adresse du destinataire est vraie du statut
+        d'échec comme de celui du succès : un harnais qui casserait l'APPEND
+        passerait ce test sans rien envoyer. Les deux assertions du bas
+        distinguent les deux chemins.
         """
         sent = []
         status = deliver(
@@ -363,9 +361,21 @@ class TestDeliver(DeliverCase):
         self.assertTrue(status.startswith("[b red]"))
         self.assertIn("dossier Envoyés introuvable", status)
 
-    def test_offline_session_refuses(self):
-        with self.assertRaises(SmtpError):
-            deliver(self.session(online=False), self.msg)
+    def test_an_offline_send_is_queued_not_refused(self):
+        """Le message est écrit : le perdre parce que le réseau manque
+        serait le pire des trois résultats possibles. Il attend, et part au
+        retour du réseau."""
+        statut = deliver(self.session(online=False), self.msg)
+        file = self.store.outbox()
+        self.assertEqual(len(file), 1)
+        self.assertEqual(file[0]["subject"], self.msg.get("Subject"))
+        self.assertFalse(file[0]["held"])
+        self.assertTrue(statut)
+
+    def test_a_queued_message_keeps_its_recipients(self):
+        """Sans eux, le message ne saurait plus à qui partir."""
+        deliver(self.session(online=False), self.msg)
+        self.assertIn("a@y.ca", self.store.outbox()[0]["to"])
 
     def test_send_failure_is_propagated(self):
         def boom(acc, m, tr):
@@ -375,9 +385,8 @@ class TestDeliver(DeliverCase):
             deliver(self.session(), self.msg, send_fn=boom)
 
     def test_successful_append_triggers_a_targeted_sync_of_sent(self):
-        """Design (`docs/superpowers/specs/2026-08-02-email-tui-design.md`,
-        ligne 308) : « écriture locale immédiate pour qu'il apparaisse sans
-        attendre la sync ». Pas de ligne fabriquée — une sync ciblée sur
+        """Un message envoyé doit apparaître sans attendre la passe
+        suivante. Pas de ligne fabriquée dans le cache : une sync ciblée sur
         Envoyés, puisque c'est le serveur qui attribue l'UID."""
 
         class FakeTransport:
@@ -716,8 +725,8 @@ class TestExternalEditorSuspendsTerminal(ComposeScreenCase):
                 # contrôle, pas un caractère imprimable, donc `Input` ne le
                 # capture pas pour l'insérer — contrairement à l'ancien `e`
                 # nu, qu'un widget de texte avale avant qu'il n'atteigne la
-                # liaison de touche de l'écran (constaté par un essai
-                # isolé). C'est justement ce que corrige `ctrl+e`.
+                # liaison de touche de l'écran. C'est ce que corrige
+                # `ctrl+e`.
                 with patch.object(type(app), "suspend", fake_suspend):
                     await pilot.press("ctrl+e")
                     await pilot.pause()
@@ -732,11 +741,11 @@ class TestExternalEditorSuspendsTerminal(ComposeScreenCase):
         self.assertEqual(order, ["suspend", "editor"])
 
     async def test_ctrl_e_reaches_the_binding_with_focus_on_the_body(self):
-        """Le bug rapporté : `e` nu ne se déclenchait QUE si le focus se
-        trouvait par hasard sur un bouton, jamais depuis la zone de texte du
-        corps — le widget de texte avale le caractère imprimable avant qu'il
-        n'atteigne la liaison. `ctrl+e` n'est pas un caractère imprimable :
-        il doit déclencher l'éditeur même avec le focus sur `#body`."""
+        """`e` nu ne se déclenche QUE si le focus se trouve par hasard sur
+        un bouton, jamais depuis la zone de texte du corps : le widget de
+        texte avale le caractère imprimable avant qu'il n'atteigne la
+        liaison. `ctrl+e` n'est pas un caractère imprimable, et doit
+        déclencher l'éditeur même avec le focus sur `#body`."""
         from textual.widgets import TextArea
 
         import script.todo.mail.tui as tui_mod
@@ -1129,24 +1138,27 @@ class TestPreviewShowsFullDate(ComposeScreenCase):
 
 
 class TestPreviewNeverParsesTheMessageAsMarkup(ComposeScreenCase):
-    """Signalé sur un VRAI courriel (une infolettre Netflix) : le corps
-    portait un jeton de suivi entre crochets, que Textual analysait comme
-    une balise — `MarkupError`, et le message devenait illisible.
+    """Une infolettre ordinaire suffit à casser l'aperçu : un jeton de
+    suivi entre crochets dans le corps, que Textual analyse comme une
+    balise — `MarkupError`, et le message devient illisible.
 
     Expéditeur, sujet et corps viennent du message, donc de n'importe qui.
     `escape()` ne suffit pas : il laisse ces formes intactes. Seul un
     `Text` n'est jamais analysé.
     """
 
+    # Jeton INVENTÉ, de la forme qu'une infolettre pose en fin de corps :
+    # crochets, esperluettes, échappements pour cent. Un jeton pris dans un
+    # vrai message figerait dans le dépôt le suivi d'un compte réel.
     JETON = (
-        "[&g=ef7085be-63eb-4622&MESSAGE_GUID=ef7085be&trkId=13710079"
-        "&msg_token=EQIAmQABAYEAE9uAN9GfY9%2FDdS8pu2y7FrNuD7H%3D]"
+        "[&g=3f9a1c20-0a11-4d7e&MESSAGE_GUID=3f9a1c20&trkId=48120735"
+        "&msg_token=QkZBAAEBgQAT9mNkU2xwdTJ5N0Z%2FTnVE7RH%3D]"
     )
 
     async def _apercu(
         self,
-        frm="Netflix <info@members.netflix.com>",
-        subject="Grand Theft Auto VI",
+        frm="Infolettre <info@bulletin.example>",
+        subject="Nouveautés de la semaine",
         corps="",
     ):
         from textual.widgets import Static
@@ -1182,6 +1194,10 @@ class TestPreviewNeverParsesTheMessageAsMarkup(ComposeScreenCase):
                 lambda f, u: brut
             )
             app.show_preview()
+            await pilot.pause()
+            # Le corps manque au cache : il arrive par un fil de travail, et
+            # l'aperçu n'affiche jusque-là que l'en-tête et « en cours ».
+            await app.workers.wait_for_complete()
             await pilot.pause()
             return str(app.query_one("#preview", Static).content)
 
