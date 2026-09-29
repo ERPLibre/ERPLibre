@@ -815,13 +815,49 @@ class TestClaudeAddAutomation(unittest.TestCase):
 
     def test_each_offered_section_is_read_by_a_menu(self):
         # Un menu écrit à la main (get_config) ou déclaré (FromConfig)
-        # nomme sa liste en littéral, sous script/todo.
+        # nomme sa liste en littéral, premier argument de l'appel, sous
+        # script/todo ; le même texte dans un commentaire ou ailleurs ne
+        # compte pas.
         root = Path(__file__).resolve().parent.parent / "script" / "todo"
-        sources = [p.read_text(encoding="utf-8") for p in root.rglob("*.py")]
+        read = set()
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and node.args):
+                    continue
+                name = getattr(node.func, "id", None) or getattr(
+                    node.func, "attr", None
+                )
+                first = node.args[0]
+                if name in ("get_config", "FromConfig") and isinstance(
+                    first, ast.Constant
+                ):
+                    read.add(first.value)
         for section in TODO._AUTOMATION_SECTIONS:
             with self.subTest(section=section):
-                key = f'"{section}_from_makefile"'
-                self.assertTrue(any(key in text for text in sources), key)
+                self.assertIn(f"{section}_from_makefile", read)
+
+    def test_the_question_names_each_offered_section(self):
+        # Dans chaque langue, la question de la section nomme chaque
+        # section de _AUTOMATION_SECTIONS ; « forged » est refusée avant
+        # toute lecture de todo.json.
+        import script.todo.todo as module
+
+        with (
+            patch.object(module, "t", side_effect=lambda key: key),
+            patch(
+                "builtins.input",
+                side_effect=["Forged", "forged_command", "forged"],
+            ) as question,
+            redirect_stdout(io.StringIO()),
+        ):
+            TODO()._claude_add_automation()
+        key = question.call_args_list[2].args[0]
+        for lang in todo_i18n.LANGUAGES:
+            text = todo_i18n.TRANSLATIONS[key][lang]
+            for section in TODO._AUTOMATION_SECTIONS:
+                with self.subTest(lang=lang, section=section):
+                    self.assertRegex(text, rf"\b{section}\b")
 
 
 class TestGitAddRemote(unittest.TestCase):
