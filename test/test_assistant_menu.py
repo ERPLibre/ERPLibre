@@ -623,6 +623,37 @@ class SessionsClaudeCode(unittest.TestCase):
             todo.prompt_claude_sessions()
         self.assertIn("[1] forged-s", sortie.getvalue())
 
+    def test_questionner_et_reprendre_sans_flotte_la_lisent_une_fois(self):
+        """Appelées sans flotte, comme la TUI de la télémétrie de
+        navigation les lance, « Ask a question » et « Resume a session »
+        lisent les sessions une fois, après le garde-fou de `which`, et les
+        listent ; sans claude sur le PATH, elles ne les lisent pas."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="forged-session")
+        todo = TODO()
+        for nom in ("_claude_questionner", "_claude_reprendre"):
+            for chemin, lectures in (("/usr/bin/claude", 1), (None, 0)):
+                sortie = io.StringIO()
+                with (
+                    self.subTest(entree=nom, claude=chemin),
+                    patch("shutil.which", return_value=chemin),
+                    patch(
+                        "script.todo.assistant.claude_sessions.fleet",
+                        return_value=[session],
+                    ) as flotte,
+                    patch("click.prompt", side_effect=["0"]),
+                    redirect_stdout(sortie),
+                ):
+                    getattr(todo, nom)()
+                    self.assertEqual(flotte.call_count, lectures)
+                    listee = "[1] forged-s" in sortie.getvalue()
+                    self.assertIs(listee, bool(lectures))
+
     def test_un_rang_se_choisit_tel_que_la_liste_l_affiche(self):
         """`_claude_choisir` ne rend une session que pour un rang que la
         liste affiche, ses blancs ôtés : « 01 », « ١ » (le chiffre un en

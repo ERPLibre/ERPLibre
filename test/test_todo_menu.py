@@ -1981,6 +1981,34 @@ class TestGitMenu(AnsweredMenu, unittest.TestCase):
         self.assertEqual(out.count("Command not found !"), 1)
 
 
+class TestClaudeConfigsMenu(AnsweredMenu, unittest.TestCase):
+    """Claude configs : [3] déploie /todo_plan_max, puis
+    /todo_add_command, chacune par `_setup_claude_command`, un double."""
+
+    def test_three_deploys_plan_max_then_add_command(self):
+        from script.todo.todo import TODO
+
+        with (
+            patch.object(TODO, "_setup_claude_command") as deploy,
+            patch("click.prompt", side_effect=["3", "0"]),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIs(self.todo._prompt_claude_configs(), False)
+        self.assertEqual(
+            deploy.call_args_list,
+            [
+                call(
+                    "todo_plan_max",
+                    "template_claude_commands_todo_plan_max.md",
+                ),
+                call(
+                    "todo_add_command",
+                    "template_claude_commands_todo_add_command.md",
+                ),
+            ],
+        )
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 
