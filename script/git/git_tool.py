@@ -445,7 +445,7 @@ class GitTool:
                         'printf "addons_path = " >> "${EL_CONFIG_FILE}"\n'
                     )
                 else:
-                    new_line = 'printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"\n'
+                    new_line = 'printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_ODOO_CORE_ADDONS},${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"\n'
 
                 all_lines[index] = new_line
             if (

@@ -75,6 +75,12 @@ RUN cd $ODOO_PREFIX && \
     source ./.venv.erplibre/bin/activate && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
 
+# Odoo 8 et 9 se lancent par openerp-server : un lien odoo-bin le rend
+# joignable par ODOO_EXEC_BIN, que l'image de base pose pour toutes les
+# versions, docker exec compris.
+RUN cd $ODOO_PREFIX/odoo${ODOO_VERSION}/odoo && \
+    if [ ! -e odoo-bin ] && [ -f openerp-server ]; then ln -s openerp-server odoo-bin; fi
+
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
     source ./.venv.erplibre/bin/activate && \

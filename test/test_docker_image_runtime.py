@@ -9,7 +9,7 @@ nommer l'interface d'écoute : Odoo 20 remplace une valeur vide par
 docker/wait-for-psql.py est lancé par le python de l'image, en 2.7 pour
 Odoo 10 : sans déclaration d'encodage, un seul caractère non ASCII y est une
 SyntaxError, et le conteneur redémarre en boucle.
-docker/Dockerfile.base installe lessc, qu'Odoo 10 et 11 appellent pour leurs
+docker/Dockerfile.base installe lessc, qu'Odoo 8 à 11 appellent pour leurs
 feuilles : LESS 4 y refuse les calculs d'Odoo, et l'interface perd son style.
 """
 
@@ -62,17 +62,19 @@ class TestLessParVersionDOdoo(unittest.TestCase):
             check=True,
         ).stdout
 
-    def test_less_3_pour_10_et_11_seulement(self):
+    def test_less_3_pour_8_a_11_seulement(self):
         catalogue = json.loads(
             (RACINE / "conf/supported_version_erplibre.json").read_text(
                 encoding="utf-8"
             )
         )
         versions = {v["odoo_version"] for v in catalogue.values()}
-        self.assertTrue({"10.0", "11.0", "18.0"} <= versions, versions)
+        self.assertTrue({"8.0", "9.0", "10.0", "11.0", "18.0"} <= versions, versions)
         for version in sorted(versions):
             attendu = (
-                "less@3.13.1" if version in ("10.0", "11.0") else "less"
+                "less@3.13.1"
+                if version in ("8.0", "9.0", "10.0", "11.0")
+                else "less"
             )
             self.assertEqual(attendu, self._less(version), version)
 

@@ -227,7 +227,10 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     # Link for dev tools into Odoo
     echo -e "\n---- Add link dependency in site-packages of Python ----"
     # TODO this link can break, the symbolic link is maybe not created
-    ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
+    # Le paquet s'appelle openerp en Odoo 8 et 9, odoo depuis 10.
+    EL_ODOO_PACKAGE="${EL_HOME_ODOO}/odoo"
+    [[ -d "${EL_HOME_ODOO}/openerp" ]] && EL_ODOO_PACKAGE="${EL_HOME_ODOO}/openerp"
+    ln -fs "${EL_ODOO_PACKAGE}" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
 
     # Force to return to erplibre source
     source ./${VENV_ERPLIBRE_PATH}/bin/activate

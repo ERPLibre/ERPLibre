@@ -132,11 +132,11 @@ RUN echo "deb ${PGDG_URL} ${DEBIAN_NAME}-pgdg main" > /etc/apt/sources.list.d/pg
 
 # Install npm dependencies
 #
-# Odoo 10 et 11 compilent leurs feuilles avec lessc, et LESS 4 y refuse les
+# Odoo 8 à 11 compilent leurs feuilles avec lessc, et LESS 4 y refuse les
 # calculs qu'écrit Odoo : le paquet web.assets_common n'est pas produit, et
 # l'interface perd tout son style. Ils prennent donc LESS 3. À partir de 12,
 # Odoo compile en SCSS et lessc ne sert plus qu'aux .less restants.
-RUN case "${ODOO_VERSION}" in 10.0|11.0) LESS=less@3.13.1 ;; *) LESS=less ;; esac \
+RUN case "${ODOO_VERSION}" in 8.0|9.0|10.0|11.0) LESS=less@3.13.1 ;; *) LESS=less ;; esac \
     && npm install -g rtlcss "${LESS}" prettier @prettier/plugin-xml \
     && ln -fs /usr/local/bin/lessc /usr/bin/lessc
 

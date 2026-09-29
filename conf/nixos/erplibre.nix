@@ -357,8 +357,13 @@
     # Une CONDITION, et non une dépendance : systemd saute l'unité en le
     # disant une fois, sans la marquer en échec, et la démarre d'elle-même
     # au prochain déclenchement une fois le fichier là. Le motif évite de
-    # figer la version d'Odoo ici, où elle vieillirait en silence.
-    unitConfig.ConditionPathExistsGlob = "@EL_DIR@/odoo*/odoo/odoo-bin";
+    # figer la version d'Odoo ici, où elle vieillirait en silence. Odoo 8 et
+    # 9 se lancent par openerp-server ; le préfixe « | » fait des deux
+    # conditions un « ou ».
+    unitConfig.ConditionPathExistsGlob = [
+      "|@EL_DIR@/odoo*/odoo/odoo-bin"
+      "|@EL_DIR@/odoo*/odoo/openerp-server"
+    ];
     serviceConfig = {
       Type = "simple";
       User = "@EL_USER@";
