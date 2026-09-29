@@ -431,6 +431,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › gpt tools takes a tool by its letter, or by its rank only as a plain number: « ² », next to « 1 » on a French keyboard, no longer ends TODO on a `ValueError`, and « 01 » or a digit of another script no longer pick the first tool
 - A list of ranks, « 1 3 » or « 1,3 », takes each option only by its number as the list writes it, or by its name: « 01 », « +1 » or a digit of another script no longer pick the first one, in Assistant › LLM › Known servers › Delete a server as in the VM choices of QEMU/KVM and Proxmox VE
 - Assistant › Mail picks an account only by its number as the list writes it: « 0 », typed to go back, no longer picks the last account, which Delete an account erased without another question, and « -1 », « 01 » or a digit of another script pick none
+- Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
 
 <!-- [fr] -->
 
@@ -582,6 +583,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › Outils gpt prend un outil par sa lettre, ou par son rang seulement sous la forme d'un numéro simple : « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`, et « 01 » ou un chiffre d'une autre écriture ne prennent plus le premier outil
 - Une liste de rangs, « 1 3 » ou « 1,3 », ne prend chaque option que par son numéro tel que la liste l'écrit, ou par son nom : « 01 », « +1 » ou un chiffre d'une autre écriture ne prennent plus la première, dans Assistant › LLM › Serveurs connus › Supprimer un serveur comme dans les choix de VM de QEMU/KVM et de Proxmox VE
 - Assistant › Courriel ne choisit un compte que par son numéro tel que la liste l'écrit : « 0 », tapé pour revenir, ne prend plus le dernier compte, que Supprimer un compte effaçait sans autre question, et « -1 », « 01 » ou un chiffre d'une autre écriture n'en prennent aucun
+- Assistant › Courriel › Comptes › Ajouter un compte ne prend un fournisseur que par son numéro tel que la liste l'écrit : « 01 », « +1 », « -1 » ou un chiffre d'une autre écriture gardent le fournisseur générique, qui demande les serveurs, au lieu de donner au compte les serveurs d'un fournisseur que personne n'a choisi
 
 <!-- [en] -->
 ## Removed

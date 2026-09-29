@@ -298,14 +298,13 @@ def _add_account(todo) -> None:
     email_addr = input(t("mail_ask_email")).strip()
     display = input(t("mail_ask_display_name")).strip()
 
-    keys = list(PRESETS)
-    for index, key in enumerate(keys, start=1):
+    # Seul un numéro tel que la liste l'écrit choisit un fournisseur : toute
+    # autre réponse laisse le générique, qui demande les serveurs.
+    shown = {str(n): key for n, key in enumerate(PRESETS, start=1)}
+    for index, key in shown.items():
         print(f"  [{index}] {PRESETS[key]['label']}")
     choice = input(t("mail_ask_preset")).strip()
-    try:
-        preset_key = keys[int(choice) - 1]
-    except (ValueError, IndexError):
-        preset_key = "generic"
+    preset_key = shown.get(choice, "generic")
 
     vault = "kdbx" if "kdbx" in store.available_backends() else "keyring"
     try:

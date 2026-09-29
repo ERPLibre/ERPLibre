@@ -176,6 +176,50 @@ class TestPickAccount(unittest.TestCase):
         self.assertEqual(len(secrets), 1)
 
 
+class TestAddAccountPreset(unittest.TestCase):
+    """Add an account demande son fournisseur dans une liste numérotée :
+    seul un numéro tel que la liste l'écrit en choisit un, toute autre
+    réponse laisse le générique, qui demande les serveurs."""
+
+    def preset(self, answer):
+        """Le fournisseur que prend Add an account quand on lui répond
+        `answer` ; le compte ne s'enregistre pas."""
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo.mail.accounts import AccountError
+
+        vault = MagicMock()
+        vault.available_backends.return_value = ["keyring"]
+        with (
+            patch.object(menu, "secret_store_for", return_value=vault),
+            patch.object(
+                menu.mail_accounts,
+                "account_from_preset",
+                side_effect=AccountError("forged stop"),
+            ) as built,
+            patch(
+                "builtins.input",
+                side_effect=["forged_a", "a@forged.invalid", "", answer],
+            ),
+            patch("builtins.print"),
+        ):
+            menu._add_account(MagicMock())
+        return built.call_args.args[2]
+
+    def test_only_a_shown_number_picks_a_provider(self):
+        # « 01 », « +1 », un chiffre d'une autre écriture ou « -1 » ne
+        # choisissent aucun fournisseur : le compte naîtrait avec les
+        # serveurs d'un fournisseur que personne n'a choisi.
+        from script.todo.mail.accounts import PRESETS
+
+        keys = list(PRESETS)
+        for answer in ("01", "+1", "١", "-1", "0", "", "5"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.preset(answer), "generic")
+        self.assertEqual(self.preset("1"), keys[0])
+
+
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
     """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
     sans compte (`mail_no_account`) rendrait cet écran inatteignable."""
