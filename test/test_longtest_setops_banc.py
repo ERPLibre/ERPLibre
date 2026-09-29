@@ -3761,5 +3761,83 @@ class TestLeNomQueRaserExige(unittest.TestCase):
                 self.assertNotIn(forme.lower(), ecrits)
 
 
+class TestLeRefusNommeLaCauseEtNonLaPile(unittest.TestCase):
+    """Un geste du moteur qui échoue empile une erreur par niveau de `make`.
+    Garder la fin de sa sortie rend cette PILE — « Error 2 » trois fois — et tait
+    la tâche qui a échoué ; pire, elle coupe au milieu de la cause quand celle-ci
+    dépasse à peine la fenêtre. Ansible, lui, imprime sa cause sur une ligne."""
+
+    PILE = (
+        "TASK [un_role : Installer le trousseau] ***\n"
+        'fatal: [un-hote-invente]: FAILED! => {"changed": false,'
+        ' "msg": "Failed to download key at https://exemple.invalid/k.gpg"}\n'
+        "\nPLAY RECAP ***\nun-hote-invente : ok=8 failed=1\n\n"
+        "make[2]: *** [Makefile:559: deployer] Error 2\n"
+        "make[1]: *** [Makefile:1384: _amorcer-socle] Error 2\n"
+        "make: *** [Makefile:1358: reconstruire] Error 2"
+    )
+
+    def test_the_cause_wins_over_the_stack(self):
+        """LA PROPRIÉTÉ : ce qui est rendu dit POURQUOI. La pile de `make` dit
+        seulement qu'il a échoué, ce que le code de retour disait déjà."""
+        vu = B.cause_de_l_echec(self.PILE)
+        self.assertIn("un-hote-invente", vu)
+        self.assertIn("Failed to download key", vu)
+        self.assertNotIn("Error 2", vu)
+
+    def test_the_last_cause_is_the_one_that_stopped_it(self):
+        """Un jeu de rôles qui rattrape une tâche puis échoue plus loin imprime
+        plusieurs causes ; celle qui explique le code de retour est la
+        DERNIÈRE."""
+        deux = (
+            "fatal: [un-hote-invente]: FAILED! => rattrapee\n"
+            "fatal: [un-hote-invente]: FAILED! => celle-qui-arrete\n"
+            "make: *** Error 2"
+        )
+        self.assertIn("celle-qui-arrete", B.cause_de_l_echec(deux))
+
+    def test_a_cause_is_cut_by_the_head(self):
+        """Une ligne d'ansible est un objet dont le message vient tôt : en garder
+        la fin rendrait l'accolade fermante."""
+        vu = B.cause_de_l_echec(self.PILE, 40)
+        self.assertTrue(vu.startswith("fatal: [un-hote-invente]"))
+
+    def test_without_a_cause_the_tail_is_kept(self):
+        """Le contrôle positif, et le repli qui compte : un refus de script n'a
+        pas de ligne d'ansible, et sa raison est bien à la fin."""
+        refus = (
+            "REFUS : il faut NOMMER l'ecosysteme a raser.\n"
+            "make: *** [Makefile:1347: raser] Error 2"
+        )
+        self.assertIn("il faut NOMMER", B.cause_de_l_echec(refus))
+
+    def test_the_fallback_is_cut_by_the_tail(self):
+        """À défaut de cause nommée, ce qui vient en dernier est le plus proche
+        de l'échec."""
+        self.assertEqual("de", B.cause_de_l_echec("abcde", 2))
+
+    def test_an_empty_output_names_nothing(self):
+        """Fermé par défaut : inventer une cause là où rien n'a été imprimé
+        ferait chercher dans une sortie vide."""
+        for vide in ("", "   ", "\n\n", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.cause_de_l_echec(vide))
+
+    def test_both_marks_are_recognised(self):
+        """Ansible écrit « fatal: » pour ce qui arrête et « failed: » ailleurs ;
+        n'en lire qu'une laisserait l'autre tomber dans le repli.
+
+        LE REPLI SE DISTINGUE PAR CE QU'IL EMPORTE, pas par ce qu'il garde : sur
+        un texte court il rend TOUT, cause comprise, et chercher la cause seule
+        y passerait sans rien éprouver. C'est l'absence de la pile qui dit que
+        la marque a été reconnue."""
+        for marque in ("fatal:", "FATAL:", "  failed:", "Failed:"):
+            with self.subTest(marque=marque):
+                texte = f"{marque} [h] la raison\nmake: *** Error 2"
+                vu = B.cause_de_l_echec(texte)
+                self.assertIn("la raison", vu)
+                self.assertNotIn("Error 2", vu)
+
+
 if __name__ == "__main__":
     unittest.main()
