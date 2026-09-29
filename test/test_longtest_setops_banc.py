@@ -1115,9 +1115,11 @@ class TestLaBoucleEstCelleDuMoteur(unittest.TestCase):
 
     def test_razing_names_what_it_destroys(self):
         """Le quatrième verrou : le moteur refuse si l'écosystème nommé n'est
-        pas celui qui est monté."""
+        pas celui qui est MONTÉ — un nom qu'il dérive du dossier et qui n'est
+        pas celui du dossier. L'étape porte donc la marque, et non une valeur :
+        c'est le moteur qui dira laquelle, avant que la boucle ne parte."""
         raser = next(e for e in B.ETAPES_BOUCLE if e.cible == "raser")
-        self.assertIn((B.INSTANCE, B.ECOSYSTEME), raser.variables)
+        self.assertIn((B.INSTANCE, B.NOM_MONTE), raser.variables)
 
     def test_an_announced_duration_says_so(self):
         """Un plan qui confondrait relevé et annoncé promettrait un temps que
@@ -3632,6 +3634,131 @@ class TestLaSondeDesLocatairesDUnPont(unittest.TestCase):
         """Sans pont, rien n'est joué : la sonde ne demande pas au terrain de
         répondre sur ce qui n'existe pas."""
         self.assertEqual((), B.vms_vivantes_du_pont("un-terrain", "", B.ELEVE))
+
+
+class TestLeNomQueRaserExige(unittest.TestCase):
+    """`raser` ferme la boucle et REFUSE d'effacer un écosystème qu'on n'a pas
+    nommé — taper le nom est ce qui distingue une grappe jetable d'une
+    production. Le nom qu'il exige est celui de l'écosystème MONTÉ, que le
+    moteur dérive lui-même du dossier. Le banc le lui DEMANDE."""
+
+    def joue(self, *suite):
+        restes = list(suite)
+        patch = mock.patch.object(
+            B, "runner_du_banc", lambda: self.runner(restes)
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def runner(self, restes):
+        vrai = self.vrai_runner
+
+        class Faux:
+            def base(self_inner):
+                return vrai.base()
+
+            def jouer(self_inner, *a, **k):
+                return restes.pop(0)
+
+        return Faux()
+
+    def setUp(self):
+        self.vrai_runner = B.runner_du_banc()
+
+    # -- la lecture --
+
+    def test_a_well_formed_name_is_read(self):
+        """Le contrôle positif : sans lui, un lecteur qui refuserait toujours
+        passerait chacune des épreuves ci-dessous."""
+        self.assertEqual(
+            "fictif-trachyte", B.lit_nom_monte("fictif-trachyte\n")
+        )
+
+    def test_a_name_that_would_be_recut_is_refused(self):
+        """LA PROPRIÉTÉ : ce nom part en VARIABLE DE MAKE. Un blanc ou un
+        métacaractère y transformerait la commande jouée, et la cible s'en
+        plaindrait sans dire d'où vient le mot de trop."""
+        for difforme in ("un nom", "a;rm -rf /", "$(echo x)", "a|b", "-tiret"):
+            with self.subTest(difforme=difforme):
+                self.assertEqual("", B.lit_nom_monte(difforme))
+
+    def test_the_case_is_not_guarded(self):
+        """Le moteur minuscule lui-même ce qu'il reçoit : refuser une majuscule
+        ferait buter le banc sur un changement amont sans danger."""
+        self.assertEqual("Fictif-Trachyte", B.lit_nom_monte("Fictif-Trachyte"))
+
+    def test_more_than_one_line_names_nothing(self):
+        """Une sortie qui porte deux lignes n'est pas la réponse attendue :
+        prendre la première tairait l'avertissement qui la précède."""
+        for sortie in ("", "  ", None, "un\ndeux", "un\n\ndeux"):
+            with self.subTest(sortie=sortie):
+                self.assertEqual("", B.lit_nom_monte(sortie))
+
+    # -- la demande --
+
+    def test_nothing_to_ask_about_asks_nothing(self):
+        """On n'interroge pas le moteur sur une instance qu'on n'a pas."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual("", B.nom_monte_du_moteur("/f/moteur", vide))
+                self.assertEqual("", B.nom_monte_du_moteur(vide, "/f/eco"))
+
+    def test_a_refused_question_names_nothing(self):
+        """LE CAS QUI TRANCHE. Une commande en échec imprime parfois quelque
+        chose de lisible ; en tirer un nom ferait raser sous un nom que le
+        moteur n'a jamais dit."""
+        self.joue(B.Fait(1, "fictif-trachyte", 1))
+        self.assertEqual("", B.nom_monte_du_moteur("/f/moteur", "/f/eco"))
+
+    def test_an_answered_question_names_what_the_engine_said(self):
+        """Le contrôle positif de l'épreuve précédente."""
+        self.joue(B.Fait(0, "fictif-trachyte\n", 1))
+        self.assertEqual(
+            "fictif-trachyte", B.nom_monte_du_moteur("/f/moteur", "/f/eco")
+        )
+
+    # -- la résolution des étapes --
+
+    def test_the_mark_is_replaced_by_what_was_said(self):
+        """Le contrôle positif : sans lui, une résolution qui rendrait toujours
+        () passerait l'épreuve du nom manquant."""
+        etapes = B.etapes_resolues(B.ETAPES_BOUCLE, "un-nom-invente")
+        raser = [e for e in etapes if B.INSTANCE in dict(e.variables)]
+        self.assertTrue(raser)
+        for etape in raser:
+            with self.subTest(cible=etape.cible):
+                self.assertEqual(
+                    "un-nom-invente", dict(etape.variables)[B.INSTANCE]
+                )
+
+    def test_no_name_refuses_the_whole_loop(self):
+        """LA PROPRIÉTÉ : rien plutôt que les premières étapes. Les jouer pour
+        buter sur celle qui porte la marque bâtirait une flotte que le banc ne
+        saurait plus raser."""
+        for vide in ("", "   ", None):
+            with self.subTest(vide=vide):
+                self.assertEqual((), B.etapes_resolues(B.ETAPES_BOUCLE, vide))
+
+    def test_the_other_variables_are_left_alone(self):
+        """Seule la marque est remplacée : `FORCE=1` n'est pas un nom."""
+        etapes = B.etapes_resolues(B.ETAPES_BOUCLE, "un-nom-invente")
+        vues = {c: v for e in etapes for c, v in e.variables}
+        self.assertEqual("1", vues.get("FORCE"))
+
+    def test_no_step_carries_the_engine_rule_recomposed(self):
+        """LA PROPRIÉTÉ, et c'est celle qui compte : AUCUNE étape déclarée ne
+        porte le nom de l'écosystème, sous quelque casse que ce soit. Le moteur
+        dérive ce nom du dossier monté — préfixe retiré, minuscules — et refuse
+        tout autre ; l'écrire ici recopierait sa règle, et le refus qui suivrait
+        son changement nommerait le nom reçu sans dire qui l'a fabriqué."""
+        ecrits = {
+            str(valeur).lower()
+            for etape in B.ETAPES_BOUCLE
+            for _cle, valeur in etape.variables
+        }
+        for forme in (B.ECOSYSTEME, B.ECOSYSTEME.removeprefix("OPS-")):
+            with self.subTest(forme=forme):
+                self.assertNotIn(forme.lower(), ecrits)
 
 
 if __name__ == "__main__":
