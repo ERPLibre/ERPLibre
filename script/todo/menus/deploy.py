@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
 sous-menus SSH, QEMU/KVM et QEMU cache, avec ses sept menus, Network,
-Security, et Docker / Podman avec son Service.
+Security, et Docker / Podman avec ses trois menus.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -475,5 +475,72 @@ CONTAINER_SERVICE = Menu(
         Entry("Status and journal", "_container_etat_service"),
     ],
     opens="_container_service_ouvre",
+    render="once",
+)
+
+# Chaque entrée reçoit la commande compose du moteur retenu à l'ouverture.
+# « down » efface les conteneurs de la composition.
+CONTAINER_COMPOSE = Menu(
+    "_container_compose",
+    "Compose",
+    [
+        Entry(
+            "Start in the background",
+            "_container_compose_geste",
+            kwargs={"args": ["up", "-d"]},
+        ),
+        Entry(
+            "Stop",
+            "_container_compose_geste",
+            kwargs={"args": ["down"]},
+            danger=True,
+        ),
+        Entry(
+            "Follow the logs",
+            "_container_compose_geste",
+            kwargs={"args": ["logs", "-f"]},
+        ),
+        Entry(
+            "Processes", "_container_compose_geste", kwargs={"args": ["ps"]}
+        ),
+    ],
+    opens="_container_compose_ouvre",
+    render="once",
+)
+
+# Chaque entrée reçoit le préfixe que demandent les scripts de
+# script/docker/ (`_container_exige_docker`).
+CONTAINER_ERPLIBRE = Menu(
+    "_container_erplibre",
+    "ERPLibre container",
+    [
+        Entry(
+            "Enter the ERPLibre container",
+            "_container_script",
+            kwargs={"script": "./script/docker/docker_exec.sh"},
+        ),
+        Entry(
+            "Databases of the ERPLibre container",
+            "_container_script",
+            kwargs={"script": "./script/docker/docker_list_database.sh"},
+        ),
+        Entry(
+            "Regenerate odoo.conf (addons paths)",
+            "_container_script",
+            kwargs={"script": "./script/docker/docker_gen_config.sh"},
+        ),
+        Entry(
+            "Run the tests",
+            "_container_script",
+            kwargs={"script": "./script/docker/docker_make_test.sh"},
+        ),
+        Entry(
+            "Status of the git repositories",
+            "_container_script",
+            kwargs={"script": "./script/docker/docker_repo_show_status.sh"},
+        ),
+        Entry("Copy a file into the container", "_container_copier_fichier"),
+    ],
+    opens="_container_erplibre_ouvre",
     render="once",
 )

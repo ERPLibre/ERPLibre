@@ -260,6 +260,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › QEMU cache › Service lists its four systemd verbs and launches them from the TUI; the TUI no longer launches the two removals of Exceptions nor Git mirrors › Remove one, which erase
 - Navigation telemetry: QEMU cache › Age and cleanup lists its three age reports, Tests its plan and its report, Logs the live service journal, and the TUI launches them; it no longer launches the three cleanups, Tests › Undo the machines created or Automatic cleanup › Run now, which erase
 - Navigation telemetry: Execute › Docker / Podman › Service lists its five gestures and launches them from the TUI, asking for the engine; the TUI no longer launches the three cleanups of Docker / Podman, which erase
+- Navigation telemetry: Execute › Docker / Podman › Compose and ERPLibre container list their entries and launch them from the TUI, asking the engine for what they need; the TUI no longer launches Compose › Stop, which removes the containers of the composition
 
 ## Removed
 

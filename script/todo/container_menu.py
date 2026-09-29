@@ -528,75 +528,64 @@ class ContainerMenuMixin:
                 print(f"{t('Failed:')} {', '.join(echecs)}")
 
     def _container_compose(self):
-        """Démarrer, arrêter, suivre ou lister la composition ERPLibre."""
+        """Démarrer, arrêter, suivre ou lister la composition ERPLibre
+        (CONTAINER_COMPOSE, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, sans moteur qui réponde."""
+        return navigate(self, menus_deploy.CONTAINER_COMPOSE)
+
+    def _container_compose_ouvre(self):
+        """Ce qui ouvre le menu de la composition : la commande compose du
+        moteur retenu. Rend {"compose"}, que reçoit chaque entrée, ou None
+        sans moteur qui réponde."""
         fiche = self._container_fiche()
         if not fiche:
-            return
-        compose = fiche["compose"] or [fiche["moteur"], "compose"]
-        choices = [
-            {"prompt_description": t("Start in the background")},
-            {"prompt_description": t("Stop")},
-            {"prompt_description": t("Follow the logs")},
-            {"prompt_description": t("Processes")},
-        ]
-        help_info = self.fill_help_info(choices)
-        args = {
-            "1": ["up", "-d"],
-            "2": ["down"],
-            "3": ["logs", "-f"],
-            "4": ["ps"],
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status not in args:
-                print(t("Command not found !"))
-                continue
-            self.execute.exec_command_live(
-                shlex.join(compose + args[status]), source_erplibre=False
-            )
+            return None
+        return {"compose": fiche["compose"] or [fiche["moteur"], "compose"]}
+
+    def _container_compose_geste(self, args, compose=None):
+        """Lance la commande compose `compose`, suivie de `args`. Sans elle,
+        comme lancée seule depuis la TUI de télémétrie, la commande est
+        celle du moteur retenu maintenant, et rien ne part sans moteur qui
+        réponde."""
+        if compose is None:
+            compose = self._container_compose_ouvre()
+            if compose is None:
+                return
+            compose = compose["compose"]
+        self.execute.exec_command_live(
+            shlex.join(compose + args), source_erplibre=False
+        )
 
     def _container_erplibre(self):
-        """Les gestes qui visent le conteneur ERPLibre déjà démarré.
+        """Les gestes qui visent le conteneur ERPLibre déjà démarré
+        (CONTAINER_ERPLIBRE, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, quand rien ne peut servir les scripts.
 
         Tous passent par les scripts de script/docker/, qui retrouvent le
         conteneur d'après le nom du répertoire courant — les lancer depuis
         un autre répertoire ne trouve rien.
         """
+        return navigate(self, menus_deploy.CONTAINER_ERPLIBRE)
+
+    def _container_erplibre_ouvre(self):
+        """Ce qui ouvre le menu du conteneur ERPLibre : le préfixe de
+        `_container_exige_docker`. Rend {"prefixe"}, que reçoit chaque
+        entrée, ou None quand rien ne peut servir les scripts."""
         prefixe = self._container_exige_docker()
         if prefixe is None:
-            return
-        choices = [
-            {"prompt_description": t("Enter the ERPLibre container")},
-            {"prompt_description": t("Databases of the ERPLibre container")},
-            {"prompt_description": t("Regenerate odoo.conf (addons paths)")},
-            {"prompt_description": t("Run the tests")},
-            {"prompt_description": t("Status of the git repositories")},
-            {"prompt_description": t("Copy a file into the container")},
-        ]
-        help_info = self.fill_help_info(choices)
-        scripts = {
-            "1": "./script/docker/docker_exec.sh",
-            "2": "./script/docker/docker_list_database.sh",
-            "3": "./script/docker/docker_gen_config.sh",
-            "4": "./script/docker/docker_make_test.sh",
-            "5": "./script/docker/docker_repo_show_status.sh",
-        }
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in scripts:
-                self.execute.exec_command_live(
-                    prefixe + scripts[status], source_erplibre=False
-                )
-            elif status == "6":
-                self._container_copier_fichier(prefixe)
-            else:
-                print(t("Command not found !"))
+            return None
+        return {"prefixe": prefixe}
+
+    def _container_script(self, script, prefixe=None):
+        """Lance le script `script` de script/docker/, précédé de `prefixe`.
+        Sans lui, comme lancé seul depuis la TUI de télémétrie, le préfixe
+        se demande à `_container_exige_docker`, et rien ne part quand rien
+        ne peut servir le script."""
+        if prefixe is None:
+            prefixe = self._container_exige_docker()
+            if prefixe is None:
+                return
+        self.execute.exec_command_live(prefixe + script, source_erplibre=False)
 
     def _container_copier_fichier(self, prefixe=None):
         """Copie un fichier de l'hôte vers le conteneur.

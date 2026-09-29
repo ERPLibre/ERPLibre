@@ -48,6 +48,11 @@ class ExecuteFactice:
 
 
 class Banc(unittest.TestCase):
+    def setUp(self):
+        # Un menu dessiné enregistre sa clé de télémétrie dans le HOME :
+        # aucun test de ce fichier n'y écrit.
+        self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
+
     def todo(self, fiche=None, code=0):
         todo = TODO.__new__(TODO)
         todo.execute = ExecuteFactice(code)
@@ -246,6 +251,37 @@ class TestLigneDeCommandeDocker(Banc):
                 todo._container_copier_fichier()
         self.assertEqual(1, len(todo.execute.commandes))
         self.assertIn("docker", sortie.getvalue())
+
+    def test_un_script_lance_seul_verifie_le_moteur(self):
+        """Lancé seul, depuis la TUI de télémétrie, un script demande son
+        préfixe : la socket du compte voyage avec lui, et sans docker il ne
+        part pas."""
+        todo = self.todo()
+        todo._container_fiches = lambda: [
+            {
+                "moteur": "docker",
+                "sans_sudo": True,
+                "avec_sudo": True,
+                "docker_host": "unix:///forged/docker.sock",
+            }
+        ]
+        with mock.patch.object(
+            container_menu.shutil, "which", return_value="/usr/bin/docker"
+        ):
+            with self.reponses():
+                todo._container_script(script="./script/docker/docker_exec.sh")
+        with mock.patch.object(
+            container_menu.shutil, "which", return_value=None
+        ):
+            with self.reponses():
+                todo._container_script(script="./script/docker/docker_exec.sh")
+        self.assertEqual(
+            [
+                "DOCKER_HOST=unix:///forged/docker.sock"
+                " ./script/docker/docker_exec.sh"
+            ],
+            todo.execute.commandes,
+        )
 
     def test_une_source_absente_ne_lance_pas_la_copie(self):
         todo = self.todo()
@@ -850,6 +886,49 @@ class TestService(Banc):
             todo._container_service()
         self.assertIn("start docker.service", todo.execute.commandes[0])
         self.assertIn("enable docker.socket", todo.execute.commandes[1])
+
+
+class TestCompose(Banc):
+    """Chaque entrée de Compose lance la commande compose du moteur retenu
+    à l'ouverture ; lancée seule, depuis la TUI de télémétrie, elle la
+    demande au moteur retenu maintenant."""
+
+    FICHE = {
+        "moteur": "podman",
+        "sans_sudo": True,
+        "compose": ["podman-compose"],
+    }
+
+    def test_chaque_entree_lance_sa_sous_commande(self):
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        todo = self.todo(self.FICHE)
+        with self.reponses(prompts=["1", "2", "3", "4", "5", "0"]):
+            self.assertIs(todo._container_compose(), False)
+        self.assertEqual(
+            [
+                "podman-compose up -d",
+                "podman-compose down",
+                "podman-compose logs -f",
+                "podman-compose ps",
+            ],
+            todo.execute.commandes,
+        )
+
+    def test_une_entree_lancee_seule_prend_le_moteur_retenu(self):
+        todo = self.todo(dict(self.FICHE, compose=None))
+        with self.reponses():
+            todo._container_compose_geste(args=["ps"])
+        self.assertEqual(["podman compose ps"], todo.execute.commandes)
+        todo._container_fiche = lambda: None
+        with self.reponses():
+            todo._container_compose_geste(args=["ps"])
+        self.assertEqual(1, len(todo.execute.commandes))
 
 
 if __name__ == "__main__":

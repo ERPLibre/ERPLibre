@@ -410,6 +410,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Execute › Deploy › QEMU cache › Service lists its four systemd verbs and launches them from the TUI; the TUI no longer launches the two removals of Exceptions nor Git mirrors › Remove one, which erase
 - Navigation telemetry: QEMU cache › Age and cleanup lists its three age reports, Tests its plan and its report, Logs the live service journal, and the TUI launches them; it no longer launches the three cleanups, Tests › Undo the machines created or Automatic cleanup › Run now, which erase
 - Navigation telemetry: Execute › Docker / Podman › Service lists its five gestures and launches them from the TUI, asking for the engine; the TUI no longer launches the three cleanups of Docker / Podman, which erase
+- Navigation telemetry: Execute › Docker / Podman › Compose and ERPLibre container list their entries and launch them from the TUI, asking the engine for what they need; the TUI no longer launches Compose › Stop, which removes the containers of the composition
 
 <!-- [fr] -->
 
@@ -540,6 +541,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service liste ses quatre verbes systemd et les lance depuis la TUI ; la TUI ne lance plus les deux retraits d'Exceptions ni Miroirs git › En effacer un, qui effacent
 - Télémétrie de navigation : QEMU cache › Âge et nettoyage liste ses trois rapports d'âge, Tests son plan et son rapport, Journaux le journal du service en direct, et la TUI les lance ; elle ne lance plus les trois nettoyages, Tests › Défaire les machines créées ni Nettoyage automatique › Lancer maintenant, qui effacent
 - Télémétrie de navigation : Exécution › Docker / Podman › Service liste ses cinq gestes et les lance depuis la TUI, en demandant le moteur ; la TUI ne lance plus les trois nettoyages de Docker / Podman, qui effacent
+- Télémétrie de navigation : Exécution › Docker / Podman › Compose et Conteneur ERPLibre listent leurs entrées et les lancent depuis la TUI, en demandant au moteur ce qu'il leur faut ; la TUI ne lance plus Compose › Arrêter, qui efface les conteneurs de la composition
 
 <!-- [en] -->
 ## Removed

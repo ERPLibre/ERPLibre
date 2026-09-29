@@ -926,6 +926,8 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "_cache_nettoyage_auto",
                 "_cache_service",
                 "_cache_tests",
+                "_container_compose",
+                "_container_erplibre",
                 "_container_service",
                 "_prompt_claude_configs",
                 "_prompt_git_server_local",
@@ -985,7 +987,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 39)
+        self.assertEqual(len(menus), 41)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():
@@ -1015,6 +1017,8 @@ class TestTodoMenuFiles(unittest.TestCase):
 
         context_of = {
             "_container_service": ("fiche", "par_compte"),
+            "_container_compose": ("compose",),
+            "_container_erplibre": ("prefixe",),
         }
         for menu in _imported_menus().values():
             if not menu.opens:

@@ -472,6 +472,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Images one by one",
                     )
                 ],
+                (f"{docker} › Compose › Stop", {"args": ["down"]}),
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -2474,6 +2475,8 @@ class TestMenuLabels(unittest.TestCase):
                 "_cache_nettoyage_auto",
                 "prompt_execute_container",
                 "_container_service",
+                "_container_compose",
+                "_container_erplibre",
             },
             set(declared),
         )

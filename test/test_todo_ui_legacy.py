@@ -130,7 +130,7 @@ RAW_CALLS = {
     "script/qemu/network_qemu.py": 1,
     "script/todo/assistant_menu.py": 23,
     "script/todo/auto_ask.py": 2,
-    "script/todo/container_menu.py": 15,
+    "script/todo/container_menu.py": 13,
     "script/todo/database_manager.py": 16,
     "script/todo/kdbx_manager.py": 1,
     "script/todo/longtest_menu.py": 8,
