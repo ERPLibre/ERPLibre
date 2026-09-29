@@ -777,11 +777,12 @@ class LeServiceAttendQuOdooSoitLa(unittest.TestCase):
         self.src = MODULE.read_text(encoding="utf-8")
 
     def test_the_unit_waits_for_what_run_sh_executes(self):
-        self.assertIn(
-            'unitConfig.ConditionPathExistsGlob = "@EL_DIR@/odoo*/odoo/'
-            'odoo-bin";',
-            self.src,
-        )
+        """odoo-bin depuis Odoo 10, openerp-server en 8 et 9 : le « | » de
+        systemd fait de deux conditions un « ou »."""
+        self.assertIn("unitConfig.ConditionPathExistsGlob = [", self.src)
+        for lanceur in ("odoo-bin", "openerp-server"):
+            with self.subTest(lanceur=lanceur):
+                self.assertIn('"|@EL_DIR@/odoo*/odoo/%s"' % lanceur, self.src)
 
     def test_the_odoo_version_is_not_frozen_in_the_module(self):
         """Une version écrite ici vieillirait en silence : l'unité cesserait

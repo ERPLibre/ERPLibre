@@ -32,7 +32,10 @@ acme==1.11.0
 cryptography==3.3.2
 dnspython==1.16.0
 josepy==1.6.0
-openupgradelib==2.0.0
+# OpenUpgrade 9.0 et 10.0, toujours maintenus, appellent l'openupgradelib
+# actuel (safe_unlink, absent de la 2.0.0). Seul son openupgrade_12x.py est
+# écrit pour Python 3, et ne sert qu'aux migrations vers 12 et au-delà.
+openupgradelib==3.13.7
 # Le JavaScript que livre web_widget_bokeh_chart est le 0.12.7 : le Python
 # doit lui correspondre, et la 1.x exigerait Pillow >= 4, contre le 3.4.1
 # d'Odoo 10.

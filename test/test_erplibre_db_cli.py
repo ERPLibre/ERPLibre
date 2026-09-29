@@ -35,9 +35,8 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parents[1]
 ODOO_BIN = RACINE / "odoo_bin.sh"
 LIB_ODOO_RC = RACINE / "script" / "lib_odoo_rc.sh"
-COMMANDE = (
-    RACINE / "script/odoo/cli_addons/erplibre_db/cli/erplibre_db.py"
-)
+COMMANDE = RACINE / "script/odoo/cli_addons/erplibre_db/cli/erplibre_db.py"
+TRADUCTEUR = RACINE / "script" / "database" / "odoo_db_legacy.py"
 
 # Le faux interpréteur imprime les arguments qu'odoo_bin.sh lui passe.
 FAUX_PYTHON = '#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n'
@@ -58,19 +57,38 @@ class TestReecritureParOdooBin(unittest.TestCase):
         (self.racine / "script" / "lib_odoo_rc.sh").write_text(
             LIB_ODOO_RC.read_text(encoding="utf-8")
         )
+        # Le traducteur de la nouvelle syntaxe relance « ./odoo_bin.sh » dans
+        # le répertoire courant, et l'addon erplibre_db doit être présent.
+        (self.racine / "odoo_bin.sh").write_text(
+            ODOO_BIN.read_text(encoding="utf-8")
+        )
+        (self.racine / "odoo_bin.sh").chmod(0o755)
+        (self.racine / "script" / "database").mkdir()
+        (self.racine / "script" / "database" / "odoo_db_legacy.py").write_text(
+            TRADUCTEUR.read_text(encoding="utf-8")
+        )
+        (self.racine / "script/odoo/cli_addons/erplibre_db").mkdir(
+            parents=True
+        )
         self.cli = self.racine / "odoo10.0" / "odoo" / "odoo" / "cli"
         self.cli.mkdir(parents=True)
+        # Odoo 9 et suivants ont une commande shell ; seul 8 n'en a pas.
+        (self.cli / "shell.py").write_text("")
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def _args(self, *args):
         sortie = subprocess.run(
-            ["bash", str(ODOO_BIN), *args],
+            ["bash", "./odoo_bin.sh", *args],
             cwd=self.racine,
             capture_output=True,
             text=True,
-            env={k: v for k, v in os.environ.items() if k != "ODOO_RC"},
+            env={
+                k: v
+                for k, v in os.environ.items()
+                if k not in ("ODOO_RC", "ERPLIBRE_ODOO_CLI_LEGACY")
+            },
         )
         self.assertEqual(0, sortie.returncode, sortie.stderr)
         # Le premier argument est le chemin d'odoo-bin.
@@ -83,17 +101,23 @@ class TestReecritureParOdooBin(unittest.TestCase):
                 "erplibre_db",
                 "--list",
             ],
-            self._args("db", "--list"),
+            self._args("db", "list"),
         )
 
-    def test_une_commande_db_d_une_autre_interface_aussi(self):
-        """Odoo 19 et 20 ont une commande « db » à sous-commandes."""
-        (self.cli / "db.py").write_text("subparsers.add_parser('load')\n")
-        self.assertEqual("erplibre_db", self._args("db", "--list")[1])
+    def test_une_commande_db_d_ocb_aussi(self):
+        """Odoo 19 et 20 ont la commande « db » d'OCB, sans le module
+        erplibre_odoo_cli_base : la nouvelle syntaxe passe par le traducteur,
+        puis à erplibre_db."""
+        (self.cli / "db.py").write_text(
+            "class Db:\n    def _check_target(self, target):\n        pass\n"
+        )
+        self.assertEqual("erplibre_db", self._args("db", "list")[1])
 
     def test_le_fork_erplibre_garde_sa_commande(self):
-        (self.cli / "db.py").write_text('parser.add_option("--restore_image")\n')
-        self.assertEqual(["db", "--list"], self._args("db", "--list"))
+        (self.cli / "db.py").write_text(
+            'parser.add_option("--restore_image")\n'
+        )
+        self.assertEqual(["db", "--list"], self._args("db", "list"))
 
     def test_les_autres_commandes_ne_sont_pas_touchees(self):
         self.assertEqual(
@@ -168,6 +192,196 @@ class TestReecritureParOdooBin(unittest.TestCase):
         )
 
 
+class TestLaDispositionOpenerp(unittest.TestCase):
+    """Odoo 8 et 9 : paquet openerp/, lanceur openerp-server, pas d'odoo-bin."""
+
+    def monter(self, version, config, shell=True):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        racine = Path(self._tmp.name).resolve()
+        cle = "odoo%s_python2.7.18" % version
+        (racine / ".erplibre-version").write_text(cle)
+        (racine / ".odoo-version").write_text(version)
+        bin_dir = racine / (".venv." + cle) / "bin"
+        bin_dir.mkdir(parents=True)
+        # Il montre aussi ERPLIBRE_DEV_MODE, que seul odoo_bin.sh voit.
+        (bin_dir / "python").write_text(
+            FAUX_PYTHON + 'echo "DEV=${ERPLIBRE_DEV_MODE:-}"\n'
+        )
+        (bin_dir / "python").chmod(0o755)
+        (bin_dir / "activate").write_text(f'export PATH="{bin_dir}:$PATH"\n')
+        (racine / "script").mkdir()
+        (racine / "script" / "lib_odoo_rc.sh").write_text(
+            LIB_ODOO_RC.read_text(encoding="utf-8")
+        )
+        paquet = racine / ("odoo%s" % version) / "odoo" / "openerp"
+        (paquet / "cli").mkdir(parents=True)
+        (paquet / "tools").mkdir()
+        (paquet / "tools" / "config.py").write_text(config)
+        if shell:
+            (paquet / "cli" / "shell.py").write_text("")
+        self.racine = racine
+        return racine
+
+    def lancer(self, *args, env=None):
+        environ = {k: v for k, v in os.environ.items() if k != "ODOO_RC"}
+        environ.update(env or {})
+        sortie = subprocess.run(
+            ["bash", str(ODOO_BIN), *args],
+            cwd=self.racine,
+            capture_output=True,
+            text=True,
+            env=environ,
+        )
+        self.assertEqual(0, sortie.returncode, sortie.stderr)
+        return sortie.stdout.splitlines()
+
+    CONFIG_8 = 'group.add_option("--no-xmlrpc", dest="xmlrpc")\n'
+    CONFIG_9 = (
+        'group.add_option("--no-xmlrpc", dest="xmlrpc")\n'
+        "group.add_option('--dev', dest='dev_mode', action='store_true')\n"
+    )
+
+    def test_le_lanceur_est_openerp_server(self):
+        self.monter("8.0", self.CONFIG_8)
+        lignes = self.lancer("-d", "base")
+        self.assertTrue(
+            lignes[0].endswith("/odoo8.0/odoo/openerp-server"), lignes
+        )
+
+    def test_odoo_8_sans_shell_passe_a_erplibre_shell(self):
+        self.monter("8.0", self.CONFIG_8, shell=False)
+        self.assertEqual(
+            [
+                f"--addons-path={self.racine}/script/odoo/cli_addons",
+                "erplibre_shell",
+                "-d",
+                "base",
+            ],
+            self.lancer("shell", "-d", "base")[1:-1],
+        )
+
+    def test_odoo_9_garde_son_shell(self):
+        self.monter("9.0", self.CONFIG_9)
+        self.assertEqual(
+            ["shell", "-d", "base"], self.lancer("shell", "-d", "base")[1:-1]
+        )
+
+    def test_odoo_9_n_a_qu_un_drapeau_dev(self):
+        self.monter("9.0", self.CONFIG_9)
+        self.assertEqual(
+            ["--dev", "-d", "base"],
+            self.lancer("--dev", "cg", "-d", "base")[1:-1],
+        )
+
+    def test_odoo_8_n_a_pas_de_dev_le_mode_passe_par_l_environnement(self):
+        self.monter("8.0", self.CONFIG_8)
+        lignes = self.lancer("--dev", "cg", "-d", "base", "-i", "user_test")
+        self.assertEqual(["-d", "base", "-i", "user_test"], lignes[1:-1])
+        self.assertEqual("DEV=cg", lignes[-1])
+
+    def test_odoo_8_lit_la_configuration_par_openerp_server(self):
+        self.monter("8.0", self.CONFIG_8)
+        (self.racine / "config.conf").write_text("[options]\n")
+        environ = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in ("ODOO_RC", "OPENERP_SERVER")
+        }
+        sortie = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source script/lib_odoo_rc.sh; odoo_rc_resolve "$PWD"; echo "$OPENERP_SERVER"',
+            ],
+            cwd=self.racine,
+            capture_output=True,
+            text=True,
+            env=environ,
+        )
+        self.assertEqual(
+            str(self.racine / "config.conf"), sortie.stdout.strip()
+        )
+
+
+class TestDesinstallerSelonLApi(unittest.TestCase):
+    """downstream_dependencies() rend des enregistrements depuis Odoo 10, des
+    identifiants en 8 et 9 (ancienne API) : les unir tels quels levait
+    « Mixing apples and oranges », et le module restait installé."""
+
+    DESINSTALLE = []
+
+    class Modules(object):
+        NOMS = {1: "crm", 2: "sale_crm", 3: "base"}
+
+        def __init__(self, ids, ancienne_api):
+            self.ids = list(ids)
+            self.ancienne_api = ancienne_api
+
+        def search(self, domaine):
+            noms = domaine[0][2]
+            return self.browse([i for i, n in self.NOMS.items() if n in noms])
+
+        def browse(self, ids):
+            return type(self)(ids, self.ancienne_api)
+
+        def __bool__(self):
+            return bool(self.ids)
+
+        def __or__(self, autre):
+            if not isinstance(autre, type(self)):
+                raise TypeError("Mixing apples and oranges")
+            return self.browse(sorted(set(self.ids) | set(autre.ids)))
+
+        def mapped(self, champ):
+            return [self.NOMS[i] for i in self.ids]
+
+        def downstream_dependencies(self):
+            return [2] if self.ancienne_api else self.browse([2])
+
+        def button_immediate_uninstall(self):
+            TestDesinstallerSelonLApi.DESINSTALLE.append(self.mapped("name"))
+
+    def desinstaller(self):
+        import ast
+
+        source = (COMMANDE.parent / "erplibre_uninstall.py").read_text(
+            encoding="utf-8"
+        )
+        arbre = ast.parse(source)
+        fonction = [
+            n
+            for n in arbre.body
+            if isinstance(n, ast.FunctionDef) and n.name == "desinstaller"
+        ][0]
+        espace = {}
+        exec(
+            compile(ast.Module([fonction], []), "erplibre_uninstall", "exec"),
+            espace,
+        )
+        return espace["desinstaller"]
+
+    def test_les_identifiants_d_odoo_8_et_9_deviennent_des_enregistrements(
+        self,
+    ):
+        TestDesinstallerSelonLApi.DESINSTALLE = []
+        env = {"ir.module.module": self.Modules([], ancienne_api=True)}
+        self.assertEqual(
+            ["crm", "sale_crm"], self.desinstaller()(env, ["crm"])
+        )
+        self.assertEqual(
+            [["crm", "sale_crm"]], TestDesinstallerSelonLApi.DESINSTALLE
+        )
+
+    def test_les_enregistrements_d_odoo_10_et_suivants_passent_tels_quels(
+        self,
+    ):
+        env = {"ir.module.module": self.Modules([], ancienne_api=False)}
+        self.assertEqual(
+            ["crm", "sale_crm"], self.desinstaller()(env, ["crm"])
+        )
+
+
 def _charger_commande(api):
     """Charge erplibre_db.py contre un faux paquet odoo portant l'API
     demandée : « legacy » (odoo.service.db) ou « moderne » (odoo.modules.db).
@@ -209,7 +423,9 @@ def _charger_commande(api):
         db = types.ModuleType("odoo.modules.db")
 
         def duplicate(db_original_name, db_name, *, neutralize_database=False):
-            appels.append(("clone", db_original_name, db_name, neutralize_database))
+            appels.append(
+                ("clone", db_original_name, db_name, neutralize_database)
+            )
 
         db.duplicate = duplicate
         modules.db = db

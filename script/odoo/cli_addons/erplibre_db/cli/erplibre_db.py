@@ -13,31 +13,45 @@ d'une autre interface, et une commande intégrée l'emporte sur celle d'un
 addon.
 
 Le code tourne de Python 2.7 à 3.14 : ni f-string, ni argument nommé seul.
+Le paquet d'Odoo s'appelle « openerp » en 8 et 9, « odoo » depuis 10 : tout
+passe par module(), qui importe un sous-module du paquet de la version.
 Deux API servent la gestion des bases :
-  odoo.service.db    Odoo 10 à 19, fonctions exp_* et *_db ;
-  odoo.modules.db    Odoo 20, arguments nommés obligatoires.
+  service.db    Odoo 8 à 19, fonctions exp_* et *_db ;
+  modules.db    Odoo 20, arguments nommés obligatoires.
 Un paramètre qu'une version ne connaît pas — neutralize_database et phone
-en Odoo 10 et 11 — est retiré de l'appel plutôt que d'y échouer.
+en Odoo 8 à 11 — est retiré de l'appel plutôt que d'y échouer.
 """
 from __future__ import print_function
 
+import importlib
 import inspect
 import optparse
 import os
 import sys
 
-import odoo
-import odoo.api
-from odoo.cli import Command
-from odoo.tools import config
+try:
+    # openerp d'abord : le répertoire de lancement d'Odoo 8 et 9 porte aussi
+    # un script odoo.py, qu'« import odoo » prendrait pour le paquet.
+    import openerp as odoo
+except ImportError:
+    import odoo
+
+
+def module(nom):
+    """Le sous-module « nom » du paquet d'Odoo de cette version."""
+    return importlib.import_module(odoo.__name__ + "." + nom)
+
+
+Command = module("cli").Command
+config = module("tools").config
 
 try:
-    from odoo.service import db as _db_legacy
+    _db_legacy = module("service.db")
 except ImportError:
     _db_legacy = None
 if _db_legacy is None or not hasattr(_db_legacy, "exp_duplicate_database"):
     _db_legacy = None
-    from odoo.modules import db as _db_moderne
+    _db_moderne = module("modules.db")
 
 
 def _parametres(fonction):
@@ -71,26 +85,32 @@ def _mot_de_passe_maitre(opt):
 
 
 def _verifier_mot_de_passe_maitre(mot):
-    if _db_legacy is not None:
+    if _db_legacy is None:
+        _db_moderne.verify_admin_password(mot)
+    elif hasattr(_db_legacy, "check_super"):
         _db_legacy.check_super(mot)
     else:
-        _db_moderne.verify_admin_password(mot)
+        # Odoo 8 la range dans service.security.
+        module("service.security").check_super(mot)
 
 
 def lister():
-    if _db_legacy is not None:
+    if _db_legacy is None:
+        return _db_moderne.list_dbs(force=True)
+    if hasattr(_db_legacy, "list_dbs"):
         return _db_legacy.list_dbs(True)
-    return _db_moderne.list_dbs(force=True)
+    # Odoo 8 n'a que exp_list ; « document » y lève le refus de list_db.
+    return _db_legacy.exp_list(True)
 
 
 def lister_incompatibles(bases):
     fonction = getattr(_db_legacy, "list_db_incompatible", None)
     if fonction is None:
         try:
-            from odoo.addons.web.controllers.database import (
-                list_db_incompatible as fonction,
-            )
-        except ImportError:
+            fonction = module(
+                "addons.web.controllers.database"
+            ).list_db_incompatible
+        except (ImportError, AttributeError):
             return []
     return fonction(bases)
 
@@ -181,14 +201,13 @@ def chemin_image(opt):
 
 
 def _exec_pg_command(name, *args):
-    """exec_pg_command d'Odoo 10 et 11, à /dev/null près : ils l'ouvrent en
+    """exec_pg_command d'Odoo 8 à 11, à /dev/null près : ils l'ouvrent en
     LECTURE seule pour la sortie de pg_dump, pg_restore et psql, et un client
     PostgreSQL 18 refuse alors d'écrire — « n'a pas pu ouvrir stdout pour
     l'ajout » —, ce qui fait échouer toute sauvegarde et toute restauration."""
     import subprocess
 
-    from odoo.tools import misc
-
+    misc = module("tools.misc")
     programme = misc.find_pg_tool(name)
     env = misc.exec_pg_environ()
     with open(os.devnull, "w") as vide:
@@ -205,8 +224,8 @@ def corriger_exec_pg_command():
     """Remplace, dans ce processus seulement, l'exec_pg_command qui ouvre
     /dev/null en lecture. Les versions qui ne l'ouvrent pas ainsi gardent la
     leur."""
-    import odoo.tools
-    from odoo.tools import misc
+    outils = module("tools")
+    misc = module("tools.misc")
 
     source = getattr(misc, "exec_pg_command", None)
     if source is None:
@@ -218,8 +237,8 @@ def corriger_exec_pg_command():
     if "open(os.devnull)" not in texte:
         return
     misc.exec_pg_command = _exec_pg_command
-    if getattr(odoo.tools, "exec_pg_command", None) is source:
-        odoo.tools.exec_pg_command = _exec_pg_command
+    if getattr(outils, "exec_pg_command", None) is source:
+        outils.exec_pg_command = _exec_pg_command
 
 
 class _SansContexte(object):
@@ -231,12 +250,21 @@ class _SansContexte(object):
 
 
 def contexte_orm():
-    """Odoo 10 et 11 n'exécutent l'ORM que dans Environment.manage(), que
+    """Odoo 8 à 11 n'exécutent l'ORM que dans Environment.manage(), que
     leur serveur et leur shell ouvrent ; la création d'une base y échoue sur
     « AttributeError: environments » sans lui. Odoo 19 et 20 n'en ont plus."""
-    environnement = getattr(odoo.api, "Environment", None)
+    environnement = getattr(module("api"), "Environment", None)
     gerer = getattr(environnement, "manage", None)
     return gerer() if gerer is not None else _SansContexte()
+
+
+def ouvrir_registre(base):
+    """Le registre chargé de la base : RegistryManager.get en Odoo 8 et 9,
+    Registry depuis 10, qui a retiré le gestionnaire."""
+    registre = module("modules.registry")
+    if hasattr(registre, "RegistryManager"):
+        return registre.RegistryManager.get(base)
+    return registre.Registry(base)
 
 
 def mourir(condition, message, code=1):
