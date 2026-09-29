@@ -278,6 +278,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › Serveurs connus ne prend un serveur, ou l'une de ses deux entrées, que par son numéro tel qu'affiché : « 01 », « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de prendre le premier serveur
 - Assistant › LLM › Chercher un serveur ne lance une entrée que par son numéro tel qu'affiché : « 01 », « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de sonder cette machine
 - Assistant › LLM › Chercher un serveur › Les réseaux d'une machine en SSH ne balaie un réseau que par son numéro tel qu'affiché : « 01 », « +1 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de balayer le premier réseau lu sur cette machine
+- Assistant › LLM › Outils gpt prend un outil par sa lettre, ou par son rang seulement sous la forme d'un numéro simple : « ² », voisin de « 1 » sur un clavier français, n'arrête plus TODO sur une `ValueError`, et « 01 » ou un chiffre d'une autre écriture ne prennent plus le premier outil
 
 ## Retiré
 

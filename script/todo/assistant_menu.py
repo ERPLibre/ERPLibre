@@ -1184,14 +1184,14 @@ class AssistantMenuMixin:
 
     @staticmethod
     def _llm_rang(reponse, combien):
-        """Le rang désigné par une lettre ou par un chiffre, sinon `None`."""
+        """Le rang désigné par une lettre, ou par un numéro écrit comme on
+        compte les `combien` outils (« 1 », « 2 »…), sinon `None` : « 01 »,
+        « ² » ou un chiffre d'une autre écriture ne désignent rien."""
         if len(reponse) == 1 and reponse in LETTRES:
             rang = LETTRES.index(reponse)
             return rang if rang < combien else None
-        if reponse.isdigit():
-            rang = int(reponse) - 1
-            return rang if 0 <= rang < combien else None
-        return None
+        numeros = [str(n) for n in range(1, combien + 1)]
+        return numeros.index(reponse) if reponse in numeros else None
 
     def _llm_raison(self, outil, raison):
         """La raison d'un refus, ses trous remplis.

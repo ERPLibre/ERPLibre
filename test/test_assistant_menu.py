@@ -792,6 +792,19 @@ class MenusDuLLM(unittest.TestCase):
             self.answered("_llm_search_remote", "forged-remote", "2")
         balayage.assert_called_once_with("198.51.100.0/24")
 
+    def test_le_catalogue_gpt_prend_une_lettre_ou_un_numero_affiche(self):
+        # Sur trois outils : « ² », un chiffre pour `isdigit` que `int`
+        # refuse, lèverait une ValueError qui termine TODO ; « 01 », « +1 »
+        # ou un chiffre d'une autre écriture désigneraient le premier.
+        rang = type(self.todo)._llm_rang
+        self.assertEqual(
+            [rang(reponse, 3) for reponse in ("a", "c", "1", "3")],
+            [0, 2, 0, 2],
+        )
+        for reponse in ("²", "01", "+1", "١", "4", "d", "0"):
+            with self.subTest(reponse=reponse):
+                self.assertIsNone(rang(reponse, 3))
+
 
 class Frontiere(unittest.TestCase):
     """Le paquet doit vivre sans le CLI qui l'appelle."""
