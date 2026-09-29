@@ -15,6 +15,7 @@ Développement chez Mastodon, un mot de passe d'application chez Bluesky,
 une application enregistrée chez LinkedIn. Le dépôt n'a donc pas à porter
 une identité d'application, qui serait publique dès le premier clone.
 """
+
 from __future__ import annotations
 
 import json

@@ -12689,6 +12689,150 @@ TRANSLATIONS = {
         "fr": "Deux comptes sociaux portent le même nom :",
         "en": "Two social accounts share the same name:",
     },
+    "social_menu": {
+        "fr": "🐘 Réseaux sociaux",
+        "en": "🐘 Social networks",
+    },
+    "social_open_tui": {
+        "fr": "📰 Ouvrir les fils (TUI)",
+        "en": "📰 Open the feeds (TUI)",
+    },
+    "social_sync_now": {
+        "fr": "🔄 Rapporter maintenant",
+        "en": "🔄 Fetch now",
+    },
+    "social_no_account": {
+        "fr": "Aucun compte social configuré.",
+        "en": "No social account configured.",
+    },
+    "social_accounts": {
+        "fr": "Comptes",
+        "en": "Accounts",
+    },
+    "social_feed_home": {
+        "fr": "Accueil",
+        "en": "Home",
+    },
+    "social_no_feed": {
+        "fr": "(pas de fil sur cette plateforme)",
+        "en": "(no feed on this platform)",
+    },
+    "social_col_author": {
+        "fr": "De :",
+        "en": "From:",
+    },
+    "social_col_text": {
+        "fr": "Billet :",
+        "en": "Post:",
+    },
+    "social_from": {
+        "fr": "De :",
+        "en": "From:",
+    },
+    "social_handle": {
+        "fr": "Adresse :",
+        "en": "Handle:",
+    },
+    "social_date": {
+        "fr": "Date",
+        "en": "Date",
+    },
+    "social_boost": {
+        "fr": "↻ partagé",
+        "en": "↻ shared",
+    },
+    "social_quit_binding": {
+        "fr": "Quitter",
+        "en": "Quit",
+    },
+    "social_sync_binding": {
+        "fr": "Rapporter",
+        "en": "Fetch",
+    },
+    "social_sync_all_binding": {
+        "fr": "Tout rapporter",
+        "en": "Fetch all",
+    },
+    "social_compose_binding": {
+        "fr": "Écrire",
+        "en": "Write",
+    },
+    "social_reply_binding": {
+        "fr": "Répondre",
+        "en": "Reply",
+    },
+    "social_seen_binding": {
+        "fr": "Marquer lu",
+        "en": "Mark read",
+    },
+    "social_unseen_binding": {
+        "fr": "Marquer non lu",
+        "en": "Mark unread",
+    },
+    "social_all_seen_binding": {
+        "fr": "Tout marquer lu",
+        "en": "Mark all read",
+    },
+    "social_sync_done": {
+        "fr": "Billets rapportés :",
+        "en": "Posts fetched:",
+    },
+    "social_all_seen_done": {
+        "fr": "Marqués lus :",
+        "en": "Marked read:",
+    },
+    "social_compose_title": {
+        "fr": "Nouveau billet",
+        "en": "New post",
+    },
+    "social_compose_send": {
+        "fr": "Publier",
+        "en": "Publish",
+    },
+    "social_compose_cancel": {
+        "fr": "Renoncer",
+        "en": "Cancel",
+    },
+    "social_compose_sending": {
+        "fr": "Publication en cours…",
+        "en": "Publishing…",
+    },
+    "social_compose_done": {
+        "fr": "Billet publié.",
+        "en": "Post published.",
+    },
+    "social_compose_empty": {
+        "fr": "Un billet vide ne part pas.",
+        "en": "An empty post does not go out.",
+    },
+    "social_compose_refused": {
+        "fr": "Publication refusée :",
+        "en": "Publication refused:",
+    },
+    "social_compose_no_account": {
+        "fr": "Aucun compte choisi.",
+        "en": "No account chosen.",
+    },
+    "social_compose_cannot": {
+        "fr": ("Cette plateforme ne permet pas de publier d'ici."),
+        "en": ("This platform does not allow publishing from here."),
+    },
+    "social_compose_too_long": {
+        "fr": ("Le billet dépasse ce que l'instance accepte — caractères :"),
+        "en": ("The post is longer than the instance accepts — characters:"),
+    },
+    "social_compose_offline": {
+        "fr": ("Compte hors ligne : un billet ne peut pas partir sans lien."),
+        "en": ("Account offline: a post cannot go out without a link."),
+    },
+    "social_err_textual_missing": {
+        "fr": (
+            "L'écran des fils demande textual : pip install -r requirement/erplibre_require-ments.txt"
+        ),
+        "en": (
+            "The feed screen needs textual: pip install -r requirement/erplibre_require-ments.txt"
+        ),
+    },
     "social_err_unknown_visibility": {
         "fr": "Visibilité inconnue :",
         "en": "Unknown visibility:",

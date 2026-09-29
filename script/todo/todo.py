@@ -294,13 +294,16 @@ class TODO(
         # manipuler()
 
     def prompt_assistant(self):
-        """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
+        """Ce qui s'adresse à l'humain : poser une question, lire son courriel,
+        suivre ses fils."""
         from script.todo.mail.menu import prompt_execute_mail
+        from script.todo.social.menu import prompt_execute_social
 
         while True:
             help_info = f"""{self._menu_header()}
 [1] {t("AI question - Ask a model, local or remote")}
 [2] {t("mail_menu")}
+[3] {t("social_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
             print()
@@ -310,6 +313,8 @@ class TODO(
                 self.prompt_assistant_llm()
             elif status == "2":
                 prompt_execute_mail(self)
+            elif status == "3":
+                prompt_execute_social(self)
             else:
                 print(t("Command not found !"))
 
