@@ -4,9 +4,11 @@
 """Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
 (Navigation telemetry), Configuration, la famille Execute : Execute,
 Code, Config, Process, Test et Update, la famille Run : Run, Database et
-son menu d'effacement, Analyse, Transform data et Doc, et la famille
-Git : Git, Git local server et ses deux menus Actions, GPT code, Claude
-configs, Plugins, Claude Code, RTK et Automation.
+son menu d'effacement, Analyse, Transform data et Doc, la famille Git :
+Git, Git local server et ses deux menus Actions, GPT code, Claude
+configs, Plugins, Claude Code, RTK et Automation, et la famille QEMU :
+Deploy, SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security,
+Docker / Podman et ses trois menus.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
@@ -18,13 +20,15 @@ traversé et les clés de télémétrie, le vrai TODO tournant à part sous la
 capture, comme dans le worker.
 
 `TestCapture` tient les garde-fous de la capture sur un menu factice mis
-à la place de [4] : une question au terminal lève au lieu de bloquer, et
-une étape de WALK absente de son menu est nommée.
+à la place de [4] : une question au terminal lève au lieu de bloquer,
+une étape de WALK absente de son menu est nommée, et ce que la famille
+QEMU lit du système vient des doubles.
 """
 
 import getpass
 import io
 import json
+import shutil
 import sys
 import unittest
 from unittest.mock import patch
@@ -97,6 +101,29 @@ class TestCapture(unittest.TestCase):
         self.assertIsInstance(during, io.StringIO)
         self.assertEqual(during.read(), "")
         self.assertIs(sys.stdin, stdin)
+
+    def test_the_qemu_family_reads_the_system_through_doubles(self):
+        # virsh, le binaire du cache et les fiches des moteurs de
+        # conteneurs qu'un menu lit en se dessinant sont ceux des doubles,
+        # jamais ceux de l'hôte.
+        seen = {}
+
+        def menu(todo):
+            from script.todo import container_runtime, qemu_cache_menu
+
+            seen["virsh"] = shutil.which("virsh")
+            seen["cache"] = qemu_cache_menu.CACHE_BIN
+            seen["engines"] = container_runtime.etats()
+
+        self.captured(menu)
+        self.assertTrue(seen["virsh"].endswith("/system/stubs/virsh"))
+        self.assertTrue(
+            seen["cache"].endswith("/system/erplibre_go_qemu_cache")
+        )
+        self.assertEqual(
+            [fiche["moteur"] for fiche in seen["engines"]],
+            ["docker", "podman"],
+        )
 
     def test_a_step_absent_from_its_menu_is_named(self):
         # Le menu principal n'a aucune entrée de ce libellé : la session

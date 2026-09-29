@@ -4,9 +4,11 @@
 """Rendus de référence de menus de TODO : l'entrée [4] (Navigation
 telemetry), Configuration, la famille Execute : Execute, Code, Config,
 Process, Test et Update, la famille Run : Run, Database et son menu
-d'effacement, Analyse, Transform data et Doc, et la famille Git : Git,
-Git local server et ses deux menus Actions, GPT code, Claude configs,
-Plugins, Claude Code, RTK et Automation.
+d'effacement, Analyse, Transform data et Doc, la famille Git : Git, Git
+local server et ses deux menus Actions, GPT code, Claude configs,
+Plugins, Claude Code, RTK et Automation, et la famille QEMU : Deploy,
+SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security, Docker /
+Podman et ses trois menus.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -23,7 +25,11 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
   de Mobile y est absent.
 La configuration est CONFIG, les préférences celles d'un HOME vide, le
 hub web ne tourne pas (`launcher.status` rend None) et Claude Code n'a
-aucune session (`claude_sessions.fleet` rend []).
+aucune session (`claude_sessions.fleet` rend []). Ce que les menus de la
+famille QEMU lisent du système en se dessinant vient de doubles
+(`doubles`) : de faux programmes en tête du PATH, un faux binaire du cache
+et son fichier de réglages, la place libre, les manifestes et leurs
+miroirs, les fiches des moteurs de conteneurs.
 
     python3 test/todo_menu_golden.py   (depuis la racine du dépôt)
 
@@ -68,6 +74,23 @@ MENUS = (
     "prompt_claude_sessions",
     "prompt_execute_rtk",
     "prompt_execute_function",
+    "prompt_execute_deploy",
+    "prompt_execute_deploy_ssh",
+    "prompt_execute_qemu",
+    "prompt_execute_qemu_cache",
+    "_cache_service",
+    "_cache_exceptions",
+    "_cache_miroir_git",
+    "_cache_age",
+    "_cache_tests",
+    "_cache_journaux",
+    "_cache_nettoyage_auto",
+    "prompt_execute_network",
+    "prompt_execute_security",
+    "prompt_execute_container",
+    "_container_service",
+    "_container_compose",
+    "_container_erplibre",
 )
 CRUMBS = (
     "Navigation telemetry",
@@ -92,12 +115,30 @@ CRUMBS = (
     "Claude Code",
     "RTK",
     "Automation",
+    "Deploy",
+    "SSH",
+    "QEMU/KVM",
+    "QEMU cache",
+    "Service",
+    "Exceptions",
+    "Git mirrors",
+    "Age and cleanup",
+    "Tests",
+    "Logs",
+    "Automatic cleanup",
+    "Network",
+    "Security",
+    "Docker / Podman",
+    "Compose",
+    "ERPLibre container",
 )
 ANSWERS = ("", "9", "0")
 # Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
 # Git en montre neuf avec CONFIG, Plugins neuf : « 9 » y lancerait une
 # feuille. Git local server entre dans chacun de ses deux menus Actions,
 # qui reçoit une réponse vide et un numéro sans entrée, puis en sort.
+# Deploy en montre dix, SSH onze, QEMU/KVM vingt-deux avec CONFIG, QEMU
+# cache douze, Docker / Podman treize : « 9 » y lancerait une entrée.
 ANSWERS_OF = {
     "prompt_execute": ("", "17", "0"),
     "prompt_execute_git": ("", "10", "0"),
@@ -108,6 +149,11 @@ ANSWERS_OF = {
         "0",
     ),
     "prompt_execute_claude_plugins": ("", "10", "0"),
+    "prompt_execute_deploy": ("", "11", "0"),
+    "prompt_execute_deploy_ssh": ("", "12", "0"),
+    "prompt_execute_qemu": ("", "23", "0"),
+    "prompt_execute_qemu_cache": ("", "13", "0"),
+    "prompt_execute_container": ("", "14", "0"),
 }
 # Largeur au-delà de laquelle le fichier de référence ouvre une liste ou
 # un dict, un élément par ligne.
@@ -151,6 +197,17 @@ CONFIG = {
             "command": "forged_command",
         },
         {"prompt_description": "Forged function", "command": "forged"},
+    ],
+    # Une section dans la liste : elle s'affiche sans prendre de numéro.
+    "qemu_from_makefile": [
+        {
+            "prompt_description_key": (
+                "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)"
+            ),
+            "bash_command": "forged_dry_run",
+        },
+        {"section": "Forged section"},
+        {"prompt_description": "Forged QEMU", "bash_command": "forged"},
     ],
 }
 WALK = (
@@ -199,8 +256,106 @@ WALK = (
     "0",
     ["Automation - Demonstration of developed features"],
     "0",
+    ["Deploy - Deploy ERPLibre locally"],
+    ["SSH (remote host)..."],
+    "0",
+    ["QEMU/KVM - Deploy an Ubuntu VM (libvirt)"],
+    "0",
+    ["QEMU cache - Download mirror for local VMs"],
+    ["Cache - Service state"],
+    "0",
+    ["Cache - VMs kept out of the cache"],
+    "0",
+    ["Cache - Git mirrors: fill them ahead"],
+    "0",
+    ["Cache - Age and cleanup"],
+    "0",
+    ["Cache - Tests and performance report"],
+    "0",
+    ["Cache - Logs"],
+    "0",
+    ["Cache - Automatic cleanup"],
     "0",
     "0",
+    "0",
+    ["Network - Network tools"],
+    "0",
+    ["Security - Dependency security audit"],
+    "0",
+    ["Docker / Podman - Container engines"],
+    ["Service - start, stop, enable at boot, journal"],
+    "0",
+    ["Compose - start, stop, logs, processes"],
+    "0",
+    ["ERPLibre container - shell, databases, tests, status"],
+    "0",
+    "0",
+    "0",
+    "0",
+)
+# Les programmes que les menus de la famille QEMU lancent en se dessinant,
+# et ceux que lancent leurs feuilles, qu'une capture n'atteint pas même
+# si une réponse en choisissait une. Chaque faux rend 1 sans rien écrire :
+# un service arrêté et pas au démarrage, aucune VM, une lecture de nft
+# impossible ; QEMU/KVM trouve virsh, ERPLibre container trouve docker.
+STUBS = (
+    "curl",
+    "docker",
+    "ip",
+    "iptables",
+    "journalctl",
+    "nft",
+    "podman",
+    "psql",
+    "qemu-img",
+    "qemu-system-aarch64",
+    "qemu-system-s390x",
+    "qemu-system-x86_64",
+    "rsync",
+    "scp",
+    "ssh",
+    "sudo",
+    "systemctl",
+    "virsh",
+)
+# Le faux binaire du cache : l'exception d'une VM qui n'existe plus, et
+# l'occupation des miroirs, dans la langue que le menu lit.
+CACHE_BIN = """#!/bin/sh
+case "$*" in
+*--bypass-list*) echo "52:54:00:0f:0e:0d forged-vm" ;;
+*--status*) echo "dépôts git : 2 dépôts, 1,5 Gio" ;;
+esac
+"""
+CACHE_CONF = "EL_ACCESS_LOG=/forged/cache/access.log\nEL_PURGE_AGE=30j\n"
+# Docker répond sans sudo, en mode sans privilège ; Podman est absent : le
+# menu Service ne demande pas quel moteur piloter.
+FICHES = (
+    {
+        "moteur": "docker",
+        "binaire": "/forged/bin/docker",
+        "version": "forged",
+        "sans_sudo": True,
+        "avec_sudo": False,
+        "raison": "",
+        "rootless": True,
+        "compose": ["docker", "compose"],
+        "service": True,
+        "socket": None,
+        "docker_host": None,
+    },
+    {
+        "moteur": "podman",
+        "binaire": None,
+        "version": None,
+        "sans_sudo": False,
+        "avec_sudo": False,
+        "raison": "",
+        "rootless": None,
+        "compose": None,
+        "service": None,
+        "socket": None,
+        "docker_host": None,
+    },
 )
 
 # Le vrai TODO sous la capture, dans l'ordre du worker : urwid, la
@@ -251,6 +406,10 @@ class Walk(port.ScriptedPort):
 
 scripted = Walk(json.loads(walk))
 legacy.install(scripted)
+sys.path.insert(0, "test")
+import todo_menu_golden as golden
+for double in golden.doubles(golden.Path(config).parent / "system"):
+    double.start()
 sys.path.insert(0, os.path.join(os.getcwd(), "script", "todo"))
 import todo
 todo.lang_is_configured = lambda: True
@@ -270,11 +429,56 @@ finally:
 """
 
 
+def doubles(base) -> list:
+    """Écrit sous `base` un faux de chaque programme de STUBS, dans
+    `base / "stubs"`, que le PATH doit nommer en tête, le faux binaire du
+    cache et son fichier de réglages ; rend les patchers, à démarrer, qui y
+    mènent les menus de la famille QEMU et doublent la place libre, les
+    manifestes et leurs miroirs, et les fiches des moteurs de conteneurs.
+    """
+    stubs = base / "stubs"
+    stubs.mkdir(parents=True)
+    for name in STUBS:
+        (stubs / name).write_text("#!/bin/sh\nexit 1\n")
+        (stubs / name).chmod(0o755)
+    (base / "erplibre_go_qemu_cache").write_text(CACHE_BIN)
+    (base / "erplibre_go_qemu_cache").chmod(0o755)
+    (base / "cache.env").write_text(CACHE_CONF)
+
+    def depots(racine, version="", fichiers=None):
+        # Un dépôt pour l'extra d'une version, trois pour sa base, cinq
+        # pour tous les manifestes.
+        count = 1 if fichiers else 3 if version else 5
+        return [f"https://forge.invalid/forged_{n}.git" for n in range(count)]
+
+    menu = "script.todo.qemu_cache_menu"
+    return [
+        patch(f"{menu}.CACHE_BIN", str(base / "erplibre_go_qemu_cache")),
+        patch(f"{menu}.CACHE_CONF", str(base / "cache.env")),
+        patch(
+            f"{menu}.QemuCacheMenuMixin._cache_place_libre",
+            staticmethod(lambda: "12.0 Gio"),
+        ),
+        patch(f"{menu}.version_active", lambda racine: "18.0"),
+        patch(f"{menu}.depots_des_manifestes", depots),
+        patch(
+            "script.qemu.cache_offline.miroirs_absents",
+            lambda depots, racine="": list(depots)[:1],
+        ),
+        patch(
+            "script.todo.container_runtime.etats",
+            lambda lanceur=None: [dict(fiche) for fiche in FICHES],
+        ),
+    ]
+
+
 def _environment(base) -> dict:
     """L'environnement d'un TODO lancé à part : HOME et XDG_RUNTIME_DIR
-    sous `base`, sans affichage ni canal de session web."""
+    sous `base`, sans affichage ni canal de session web, les faux
+    programmes de `doubles` en tête du PATH."""
     env = dict(os.environ, HOME=str(base / "home"))
     env["XDG_RUNTIME_DIR"] = str(base / "run")
+    env["PATH"] = f"{base / 'system' / 'stubs'}{os.pathsep}{env['PATH']}"
     for name in ("DISPLAY", "WAYLAND_DISPLAY", "TODO_WEB_FD", "TODO_WEB_PID"):
         env.pop(name, None)
     (base / "home").mkdir()
@@ -310,8 +514,10 @@ def terminal(method, lang) -> dict:
         base = Path(stack.enter_context(tempfile.TemporaryDirectory()))
         (base / "todo.json").write_text(json.dumps(CONFIG))
         absent = str(base / "absent.json")
+        stubs = f"{base / 'system' / 'stubs'}{os.pathsep}{os.environ['PATH']}"
         for patcher in (
-            patch.dict(os.environ, {"HOME": str(base)}),
+            patch.dict(os.environ, {"HOME": str(base), "PATH": stubs}),
+            *doubles(base / "system"),
             patch.object(config_file, "CONFIG_FILE", str(base / "todo.json")),
             patch.object(config_file, "CONFIG_OVERRIDE_FILE", absent),
             patch.object(config_file, "CONFIG_OVERRIDE_PRIVATE_FILE", absent),
