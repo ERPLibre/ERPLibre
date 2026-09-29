@@ -19,6 +19,7 @@ RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
 
 from script.todo.todo_upgrade import (  # noqa: E402
+    TodoUpgrade,
     http_off_option,
     split_removable,
     odoo_tree_layout,
@@ -168,7 +169,9 @@ class TestLesModulesFusionnesSelonOpenUpgrade(unittest.TestCase):
 
     def test_un_dictionnaire_aussi(self):
         apriori = "merged_modules = {'account_chart': 'account'}\n"
-        self.assertEqual(["account"], self.renommer(apriori, ["account_chart"]))
+        self.assertEqual(
+            ["account"], self.renommer(apriori, ["account_chart"])
+        )
 
 
 class TestUnModuleManquantNEmportePasSesDependants(unittest.TestCase):
@@ -185,11 +188,14 @@ class TestUnModuleManquantNEmportePasSesDependants(unittest.TestCase):
             },
         )
         self.assertEqual(["vieux_oca"], proposables)
-        self.assertEqual({"edi": ["account", "sale"], "share": ["portal"]}, gardes)
+        self.assertEqual(
+            {"edi": ["account", "sale"], "share": ["portal"]}, gardes
+        )
 
     def test_des_dependants_eux_memes_manquants_n_empechent_rien(self):
         proposables, gardes = split_removable(
-            ["module_a", "module_b"], {"module_a": ["module_b"], "module_b": []}
+            ["module_a", "module_b"],
+            {"module_a": ["module_b"], "module_b": []},
         )
         self.assertEqual(["module_a", "module_b"], proposables)
         self.assertEqual({}, gardes)
@@ -198,6 +204,41 @@ class TestUnModuleManquantNEmportePasSesDependants(unittest.TestCase):
         proposables, gardes = split_removable(["edi"], {"edi": None})
         self.assertEqual([], proposables)
         self.assertEqual({"edi": None}, gardes)
+
+
+class TestLaBasculeSeRefaitALaReprise(unittest.TestCase):
+    """OpenUpgrade tourne dans l'Odoo de la version visée.
+
+    Une reprise rejoue l'étape 0, qui rebascule sur la version de la
+    sauvegarde : la bascule notée faite doit se refaire quand même.
+    """
+
+    def montee(self, lst_switch_odoo):
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.appels = []
+        upgrade.switch_odoo = upgrade.appels.append
+        upgrade.write_config = lambda: upgrade.appels.append("écrit")
+        with open(os.devnull, "w") as muet:
+            sortie, sys.stdout = sys.stdout, muet
+            try:
+                upgrade.switch_odoo_for_bump(lst_switch_odoo, 0, 9)
+            finally:
+                sys.stdout = sortie
+        return upgrade
+
+    def test_une_bascule_deja_notee_se_refait(self):
+        upgrade = self.montee([True, False])
+        self.assertEqual(upgrade.appels, [9])
+
+    def test_une_premiere_bascule_est_notee(self):
+        lst_switch_odoo = [False, False]
+        upgrade = self.montee(lst_switch_odoo)
+        self.assertEqual(upgrade.appels, [9, "écrit"])
+        self.assertEqual(lst_switch_odoo, [True, False])
+        self.assertEqual(
+            upgrade.dct_progression["state_4_switch_odoo_lst"], [True, False]
+        )
 
 
 if __name__ == "__main__":
