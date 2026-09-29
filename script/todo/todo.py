@@ -329,20 +329,17 @@ class TODO(
         return navigate(self, menus_execute.EXECUTE)
 
     def prompt_install(self):
-        print("Detect first installation from code source.")
+        print(t("Detect first installation from code source."))
 
         first_installation_input = (
-            input(
-                "💬 First system installation? This will process system installation"
-                " before (Y/N): "
-            )
+            input(f"💬 {t('First system installation? (Y/N)')}")
             .strip()
             .lower()
         )
         if self._is_yes(first_installation_input):
             cmd = "./script/version/update_env_version.py --install"
             self.execute.exec_command_live(cmd, source_erplibre=True)
-            print("Wait after OS installation before continue.")
+            print(t("Wait after OS installation before continue."))
 
         # First detect pycharm, need to be open before installation and close to increase speed
         has_pycharm = False
@@ -367,7 +364,7 @@ class TODO(
             ".idea"
         ):
             pycharm_configuration_input = (
-                input("💬 Open Pycharm? (Y/N): ").strip().lower()
+                input(f"💬 {t('Open Pycharm? (Y/N): ')}").strip().lower()
             )
             if self._is_yes(pycharm_configuration_input):
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
@@ -379,27 +376,25 @@ class TODO(
                     single_source_erplibre=False,
                     new_window=True,
                 )
-                print(
-                    "👹 WAIT and Close Pycharm when processing is done before continue"
-                    " this guide."
-                )
+                print(t("Close Pycharm once it is done"))
         # TODO detect last version supported
         # cmd_intern = "./script/install/install_erplibre.sh"
         key_i = 0
         commands_begin = {
             "q": (
                 "q",
-                "q: ERPLibre only without Odoo, with the required Python",
+                "q: "
+                + t("ERPLibre only without Odoo, with the required Python"),
                 "./script/install/install_erplibre.sh",
             ),
             "w": (
                 "w",
-                "w: Install all Odoo version with ERPLibre",
+                f"w: {t('Install all Odoo version with ERPLibre')}",
                 "make install_odoo_all_version",
             ),
             "m": (
                 "m",
-                "m: ERPLibre with mobile home",
+                f"m: {t('ERPLibre with mobile home')}",
                 "./mobile/install_and_run.sh",
             ),
             "0": (
@@ -419,13 +414,13 @@ class TODO(
 
             odoo_version = f"odoo{version_info.get('odoo_version')}"
             if odoo_version in installed_versions:
-                label += " - Installed"
+                label += t(" - Installed")
             if odoo_version == odoo_installed_version:
-                label += " - Actual"
+                label += t(" - Actual")
             if version_info.get("default"):
-                label += " - Default"
+                label += t(" - Default")
             if version_info.get("is_deprecated"):
-                label += " - Deprecated"
+                label += t(" - Deprecated")
             erplibre_version = version_info.get("erplibre_version")
             commands_begin[key_s] = (
                 key_s,
@@ -500,7 +495,7 @@ class TODO(
             print(
                 f"{t('The Bash script failed with return code')} {e.returncode}."
             )
-            print("Wait after installation and open projects by terminal.")
+            print(t("Wait after installation and open projects by terminal."))
             print("make open_terminal")
             self.restart_script(str(e))
 

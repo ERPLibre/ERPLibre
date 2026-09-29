@@ -641,6 +641,63 @@ TRANSLATIONS = {
         "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
         "en": "Install with extra modules (CybroOdoo - large, slow)",
     },
+    "Detect first installation from code source.": {
+        "fr": "Recherche d'une première installation depuis le code source.",
+        "en": "Detect first installation from code source.",
+    },
+    "First system installation? (Y/N)": {
+        "fr": (
+            "Première installation du système ? Le système s'installe"
+            " d'abord (O/N) : "
+        ),
+        "en": (
+            "First system installation? This will process system"
+            " installation before (Y/N): "
+        ),
+    },
+    "Wait after OS installation before continue.": {
+        "fr": (
+            "Attendre la fin de l'installation du système avant de continuer."
+        ),
+        "en": "Wait after OS installation before continue.",
+    },
+    "Open Pycharm? (Y/N): ": {
+        "fr": "Ouvrir Pycharm ? (O/N) : ",
+        "en": "Open Pycharm? (Y/N): ",
+    },
+    "Close Pycharm once it is done": {
+        "fr": (
+            "👹 ATTENDRE, puis fermer Pycharm une fois son traitement fini,"
+            " avant de continuer ce guide."
+        ),
+        "en": (
+            "👹 WAIT and Close Pycharm when processing is done before"
+            " continue this guide."
+        ),
+    },
+    "ERPLibre only without Odoo, with the required Python": {
+        "fr": "ERPLibre seul, sans Odoo, avec le Python requis",
+        "en": "ERPLibre only without Odoo, with the required Python",
+    },
+    "Install all Odoo version with ERPLibre": {
+        "fr": "Installer toutes les versions d'Odoo avec ERPLibre",
+        "en": "Install all Odoo version with ERPLibre",
+    },
+    "ERPLibre with mobile home": {
+        "fr": "ERPLibre avec l'accueil mobile",
+        "en": "ERPLibre with mobile home",
+    },
+    " - Installed": {"fr": " - Installée", "en": " - Installed"},
+    " - Actual": {"fr": " - Actuelle", "en": " - Actual"},
+    " - Default": {"fr": " - Par défaut", "en": " - Default"},
+    " - Deprecated": {"fr": " - Dépréciée", "en": " - Deprecated"},
+    "Wait after installation and open projects by terminal.": {
+        "fr": (
+            "Attendre la fin de l'installation, puis ouvrir les projets par"
+            " le terminal."
+        ),
+        "en": "Wait after installation and open projects by terminal.",
+    },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "🧪 Test - Instance de base minimale",

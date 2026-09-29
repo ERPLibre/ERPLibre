@@ -269,6 +269,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › VPN : le choix d'un profil, pour le connecter, le déconnecter, le diagnostiquer, le montrer, ranger ses secrets ou l'effacer, et le choix d'un préréglage de site ne prennent qu'un numéro tel qu'affiché : « 02 » ou un chiffre d'une autre écriture ne choisissent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 - Exécution › Deploy › VPN : la technologie d'un profil, ou celle dont installer les paquets du client, ne se prend par son rang que sous la forme d'un numéro tel qu'une liste l'écrit : « 02 » ou un chiffre d'une autre écriture ne désignent rien, et « ² » n'arrête plus TODO sur une `ValueError`
 - Exécution › Test › Tests longs : la profondeur d'une descente imbriquée ne se lit que dans des chiffres ASCII : « ² », voisin de « 1 » sur un clavier français, garde le défaut de trois au lieu d'arrêter TODO sur une `ValueError`, et un chiffre d'une autre écriture ne fixe plus une profondeur que l'invite n'a pas montrée
+- Installation parle la langue choisie : la ligne de détection, les questions sur la première installation du système et sur PyCharm, les trois installations choisies par une lettre et l'état de chaque version d'Odoo s'affichaient en anglais quelle que soit la langue
 
 ## Retiré
 

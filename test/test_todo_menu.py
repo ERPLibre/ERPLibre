@@ -2440,6 +2440,90 @@ class TestClaudeConfigsMenu(AnsweredMenu, unittest.TestCase):
         )
 
 
+class TestInstallMenu(unittest.TestCase):
+    """Install : la première installation du système, puis le choix de ce
+    qu'on installe, par sa touche. Rien ne part : PyCharm est tenu pour
+    absent, les versions d'Odoo sont inventées, HOME est temporaire, et
+    chaque réponse vient d'une liste."""
+
+    VERSIONS = (
+        [
+            {
+                "odoo_version": "16.0",
+                "erplibre_version": "odoo16.0_forged",
+                "is_deprecated": True,
+            },
+            {"odoo_version": "17.0", "erplibre_version": "odoo17.0_forged"},
+            {
+                "odoo_version": "18.0",
+                "erplibre_version": "odoo18.0_forged",
+                "default": True,
+            },
+        ],
+        ["odoo17.0", "odoo18.0"],
+        "odoo18.0",
+    )
+
+    def setUp(self):
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        for patcher in (
+            patch.dict(os.environ, {"HOME": home.name}),
+            patch(
+                "script.todo.todo.get_odoo_version",
+                return_value=self.VERSIONS,
+            ),
+            patch(
+                "script.todo.todo.subprocess.run",
+                return_value=Mock(returncode=1),
+            ),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.todo = TODO()
+
+    def screen(self, lang, answers):
+        """Ce qu'Install écrit en `lang`, réponses comprises, quand il
+        reçoit `answers`."""
+        from script.todo import todo_i18n
+
+        todo_i18n.use_lang(lang)
+        shown, answers = io.StringIO(), iter(answers)
+
+        def typed(prompt=""):
+            answer = next(answers)
+            shown.write(f"{prompt}{answer}\n")
+            return answer
+
+        with patch("builtins.input", typed), redirect_stdout(shown):
+            self.assertIsNone(self.todo.prompt_install())
+        return shown.getvalue()
+
+    def test_it_speaks_the_chosen_language(self):
+        # En français, aucun texte d'Install ne reste en anglais : la
+        # détection, la question de la première installation, les trois
+        # installations par touche et l'état de chaque version.
+        english = self.screen("en", ["n", "0"])
+        french = self.screen("fr", ["n", "0"])
+        for text in (
+            "Detect first installation",
+            "First system installation?",
+            "q: ERPLibre only without Odoo",
+            "w: Install all Odoo version",
+            "m: ERPLibre with mobile home",
+            "Odoo 18.0 - Installed - Actual - Default",
+            "Odoo 16.0 - Deprecated",
+        ):
+            with self.subTest(text=text):
+                self.assertIn(text, english)
+                self.assertNotIn(text, french)
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 
