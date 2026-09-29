@@ -2063,7 +2063,8 @@ class TodoUpgrade:
             database_name_upgrade = lst_database_name_upgrade[index]
             lst_module_to_uninstall = []
             lst_module_to_install = []
-            lst_module_to_analyse = self.get_rename_module(
+            lst_module_to_analyse = self.modules_for_bump(
+                last_database_name,
                 self.dct_module_per_version[next_version - 1],
                 next_version,
             )
@@ -3408,6 +3409,36 @@ class TodoUpgrade:
             f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
             f" ir_module_module WHERE name IN ({noms})"
             " AND state <> 'uninstalled' ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def modules_for_bump(self, database_name, lst_previous, next_version):
+        """Les modules à porter vers next_version, renommages compris.
+
+        La liste part de la base qu'on s'apprête à monter, et non de celle
+        du palier précédent : un module auto_install qu'une version a
+        installé d'office n'y figurerait pas, et arriverait sans code au
+        palier suivant. Sans réponse de la base, lst_previous sert.
+        """
+        lst_base = self.modules_of_database(database_name)
+        if lst_base is None:
+            lst_base = lst_previous
+        return self.get_rename_module(lst_base, next_version)
+
+    def modules_of_database(self, database_name):
+        """Les modules que porte la base : installés ou en cours de l'être.
+
+        Rend None quand la base ne répond pas.
+        """
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
+            " ir_module_module WHERE state IN"
+            " ('installed', 'to upgrade', 'to install') ORDER BY name;\"",
             get_output=True,
             wait_at_error=False,
             quiet=True,
