@@ -576,19 +576,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self._vrai = os.environ.get("HOME")
         os.environ["HOME"] = self.maison
         self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
-        # Un bouchon posé par un test et non repris fausse les SUIVANTS : un
-        # dernier_rapport remplacé et laissé en place se lirait au test
-        # d'après. tearDown reprend chacun.
-        self._vrais = {
-            nom: getattr(deep_proxmox, nom)
-            for nom in ("autre_descente", "dernier_rapport")
-        }
 
     def tearDown(self):
         if self._vrai is not None:
             os.environ["HOME"] = self._vrai
-        for nom, vrai in self._vrais.items():
-            setattr(self.dp, nom, vrai)
 
     def _ecrire(self, nom, rapport):
         with open(
@@ -758,8 +749,19 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
     def test_destroying_refuses_while_a_descent_runs(self):
         appels = []
-        moteur.autre_descente = lambda: [4242]
-        moteur.dernier_rapport = lambda outil="": appels.append("lu") or {}
+        # Posés sur le moteur, dont detruire() lit les globales, et repris à
+        # la fin du test par patch.object : un bouchon laissé en place se
+        # lirait aux tests suivants, ceux des autres classes compris.
+        self.enterContext(
+            patch.object(moteur, "autre_descente", lambda: [4242])
+        )
+        self.enterContext(
+            patch.object(
+                moteur,
+                "dernier_rapport",
+                lambda outil="": appels.append("lu") or {},
+            )
+        )
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
             code = self.dp.detruire(self.dp.FAMILLE, None, dry_run=False)
         self.assertEqual(code, 1)
