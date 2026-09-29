@@ -194,6 +194,28 @@ def http_off_option(version):
     return "--no-xmlrpc" if version <= 10 else "--no-http"
 
 
+# Correctifs d'openupgradelib chargés par --load pendant OpenUpgrade 14 et
+# plus : voir script/odoo/openupgrade_addons/erplibre_openupgrade_compat.
+OPENUPGRADE_COMPAT_MODULE = "erplibre_openupgrade_compat"
+
+
+def openupgrade_addons(path_openupgrade, version, racine="."):
+    """Les chemins d'addons à ajouter pour la montée vers version.
+
+    Jusqu'à 13, OpenUpgrade est un Odoo complet : ses addons et son cœur.
+    Depuis 14, ses scripts, plus le dossier du module de compatibilité.
+    """
+    if version <= 13:
+        return (
+            f"{path_openupgrade},{path_openupgrade}/addons,"
+            f"{odoo_tree_layout(path_openupgrade)[1]}"
+        )
+    compat = os.path.abspath(
+        os.path.join(racine, "script", "odoo", "openupgrade_addons")
+    )
+    return f"{path_openupgrade},{compat}"
+
+
 def split_removable(lst_missing, dct_dependents):
     """Départager les modules manquants dans la version suivante.
 
@@ -2728,15 +2750,9 @@ class TodoUpgrade:
                 ignore_path = (
                     "--ignore-odoo-path " if next_version <= 13 else ""
                 )
-                extra_addons_path_extra = (
-                    f",{path_addons_openupgrade}/addons,"
-                    f"{odoo_tree_layout(path_addons_openupgrade)[1]}"
-                    if next_version <= 13
-                    else ""
-                )
                 cmd_update_config = (
                     f"./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py {ignore_path}"
-                    f"--extra-addons-path {path_addons_openupgrade}{extra_addons_path_extra} "
+                    f"--extra-addons-path {openupgrade_addons(path_addons_openupgrade, next_version)} "
                     f"&& ./script/generate_config.sh"
                 )
                 self.todo_upgrade_execute(cmd_update_config)
@@ -2767,7 +2783,7 @@ class TodoUpgrade:
                     )[0]
                     cmd_upgrade = f".venv.{erplibre_version}/bin/python {lanceur} -c ./config.conf --update all {http_off_option(next_version)} --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
+                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework,{OPENUPGRADE_COMPAT_MODULE} -d {database_name_upgrade}"
                 # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`
                 # EST la liste de `dct_progression` — `.get` rend l'objet,
                 # pas une copie — donc la muter maintenant la fait persister
