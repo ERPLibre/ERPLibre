@@ -12,10 +12,10 @@ Mixin de la classe TODO : ses méthodes vivent sur la même instance que celles
 des autres fichiers, elles s'appellent donc par « self. » sans rien importer.
 Le fil d'Ariane l'exige — `_menu_header` dérive les miettes de la pile
 d'appels en retenant les cadres dont la variable locale `self` EST l'instance
-TODO. Une fonction de module n'en laisse aucune, et c'est pourquoi le
-sous-menu VPN n'apparaît pas dans son propre fil.
+TODO. Une fonction de module n'en laisse aucune : son menu ne se situerait
+pas dans le fil.
 
-Trois contraintes d'affichage sont mesurées, pas supposées.
+Trois contraintes d'affichage tiennent ce module.
 
 `click.prompt` réimprime TOUTE sa chaîne d'invite à chaque entrée vide, et une
 question collée sur plusieurs lignes lui devient autant de tours — une ligne
@@ -23,10 +23,10 @@ collée valant « 0 » déclenche alors une entrée de menu. La conversation lit
 donc par `input()`, sur une invite d'une seule ligne, et toute commande porte
 une barre oblique initiale.
 
-`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, et le seul rattrapage
-vit dans `__main__` : sans capture locale, une interruption pendant une
-réponse termine le CLI entier. Chaque boucle d'ici l'attrape et rend la main
-au menu.
+`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, que seul `__main__`
+rattrape au-delà du menu : sans capture locale, une interruption pendant une
+réponse terminerait le CLI entier. Chaque question d'ici l'attrape et rend
+la main au menu.
 
 Le dépôt n'a ni pager, ni progression sur place : la sortie s'ajoute ligne à
 ligne. Une réponse longue se ferme sur une ligne de pied, jamais sur un
@@ -47,9 +47,9 @@ from script.todo.menus import git as menus_git
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
 
-# Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
-# « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
-# qu'il existe promettrait une entrée qui n'aboutit pas.
+# Les commandes que la conversation sert et que « /? » annonce, dans cet
+# ordre ; chacune porte son aide dans `chat.COMMANDS`. Une commande de
+# `chat.COMMANDS` absente d'ici ne s'annonce pas.
 COMMANDES_PHASE_1 = (
     "/?",
     "/q",
@@ -62,9 +62,9 @@ COMMANDES_PHASE_1 = (
 )
 
 # Le catalogue se choisit par LETTRE. Le menu qui précède numérote ses
-# entrées ; une seconde liste numérotée juste après invite à retaper un
-# numéro de menu, et c'est une régression que le menu VPN a déjà payée. Un
-# chiffre reste accepté comme rang, parce que le doigt vient d'en taper un.
+# entrées ; une seconde liste numérotée juste après inviterait à retaper un
+# numéro de menu. Un chiffre reste accepté comme rang, parce que le doigt
+# vient d'en taper un.
 LETTRES = "abcdefghijklmnopqrstuvwxyz"
 
 # Les marques de compatibilité. Seule une exigence CONTREDITE par un champ
@@ -578,13 +578,13 @@ class AssistantMenuMixin:
         les comptes exacts.
 
         Le défaut est le réseau ENTIER, et non les hôtes que la table de
-        voisinage dit avoir déjà parlé. Rétrécir par défaut paraissait plus
-        prudent, et se retourne : la table ne porte souvent que la
-        passerelle, le balayage se réduit alors à une adresse, et le résumé
-        annonce un /24 vide là où une seule adresse a été vue. Un faux
-        négatif présenté comme un fait coûte plus cher que les connexions
-        épargnées. La confirmation nomme le compte, donc le consentement est
-        informé dans les deux sens.
+        voisinage dit avoir déjà parlé. Rétrécir par défaut se retournerait :
+        la table ne porte souvent que la passerelle, le balayage se
+        réduirait à une adresse, et le résumé annoncerait un /24 vide là où
+        une seule adresse aurait été regardée. Un faux négatif présenté
+        comme un fait coûte plus cher que les connexions épargnées. La
+        confirmation nomme le compte, donc le consentement est informé dans
+        les deux sens.
 
         La lettre « v » restreint aux hôtes déjà vus, pour un réseau chargé
         où l'on cherche vite. Une lettre plutôt qu'un troisième numéro : un
@@ -797,7 +797,8 @@ class AssistantMenuMixin:
 
     def _llm_nothing_found(self):
         """Les suites concrètes, pour qu'un balayage vide ne soit pas une
-        impasse. Le repli distant en est une : il répond aujourd'hui.
+        impasse. Le repli distant en est une : il répond sans serveur
+        local.
 
         En prose, et sans crochets numérotés : la question « où chercher »
         revient juste après avec sa propre numérotation, et deux séries de
@@ -1514,9 +1515,7 @@ class AssistantMenuMixin:
         """Une question sur plusieurs lignes, terminée par une ligne « . ».
 
         Une question collée ligne à ligne deviendrait autant de tours, donc
-        autant d'appels facturés, et une ligne collée valant « 0 » aurait
-        déclenché une entrée de menu avant que les commandes ne portent une
-        barre oblique. Ce mode rend un envoi unique.
+        autant d'appels facturés. Ce mode rend un envoi unique.
         """
         lignes = []
         while True:
