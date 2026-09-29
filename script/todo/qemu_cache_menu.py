@@ -1090,19 +1090,12 @@ class QemuCacheMenuMixin:
             print()
             if status == "0":
                 return False
-            if status in ("1", "2", "3") and not (
-                chemin and os.path.exists(chemin)
-            ):
-                print(
-                    f"  ✗ {t('No access log yet:')} {chemin or CACHE_CONF}\n"
-                )
-                continue
             if status == "1":
-                self._cache_suivre(chemin)
+                self._cache_voir_acces()
             elif status == "2":
-                self._cache_suivre(chemin, amont=True)
+                self._cache_voir_acces(amont=True)
             elif status == "3":
-                self._cache_suivre(chemin, suivre=False)
+                self._cache_voir_acces(suivre=False)
             elif status == "4":
                 cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
                 print(f"{t('Will execute:')} {cmd}")
@@ -1131,6 +1124,16 @@ class QemuCacheMenuMixin:
         )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_voir_acces(self, amont=False, suivre=True):
+        """Le journal d'accès par `_cache_suivre`, son chemin lu dans la
+        configuration du service au moment de l'entrée ; dit qu'il n'existe
+        pas encore plutôt que de lancer « tail » sur rien."""
+        chemin = self._cache_journal()
+        if not (chemin and os.path.exists(chemin)):
+            print(f"  ✗ {t('No access log yet:')} {chemin or CACHE_CONF}\n")
+            return
+        self._cache_suivre(chemin, amont=amont, suivre=suivre)
 
     # ------------------------------------------------------------------
     # [4] Exceptions : les VM soustraites au détournement

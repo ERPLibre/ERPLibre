@@ -371,6 +371,60 @@ class TestLesExceptionsDuCache(unittest.TestCase):
         self.assertEqual(sortie.getvalue().count("Nothing is stale."), 1)
 
 
+class TestLesJournauxDuCache(unittest.TestCase):
+    """Logs : les trois vues du journal d'accès lisent son chemin dans la
+    configuration du service au moment de l'entrée, et se lancent aussi
+    seules, comme depuis la TUI de télémétrie. `_cache_suivre` est un
+    double : aucun « tail » ne part."""
+
+    def vue(self, journal, **kwargs):
+        """(appels de `_cache_suivre`, texte affiché) quand la vue
+        `_cache_voir_acces(**kwargs)` se lance seule, la configuration du
+        service nommant `journal`."""
+        import tempfile
+
+        from script.todo import todo_i18n as i18n
+        from script.todo.todo import TODO
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        todo = TODO.__new__(TODO)
+        vus = []
+        todo._cache_suivre = lambda chemin, **options: vus.append(
+            (chemin, options)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "env"
+            conf.write_text(f"EL_ACCESS_LOG={journal.format(tmp=tmp)}\n")
+            (Path(tmp) / "access.log").write_text("")
+            with (
+                mock.patch(
+                    "script.todo.qemu_cache_menu.CACHE_CONF", str(conf)
+                ),
+                contextlib.redirect_stdout(io.StringIO()) as sortie,
+            ):
+                todo._cache_voir_acces(**kwargs)
+        return [
+            (chemin.removeprefix(tmp), options) for chemin, options in vus
+        ], sortie.getvalue()
+
+    def test_chaque_vue_suit_le_journal_de_la_configuration(self):
+        for kwargs, options in (
+            ({}, {"amont": False, "suivre": True}),
+            ({"amont": True}, {"amont": True, "suivre": True}),
+            ({"suivre": False}, {"amont": False, "suivre": False}),
+        ):
+            with self.subTest(**kwargs):
+                vus, _ = self.vue("{tmp}/access.log", **kwargs)
+                self.assertEqual(vus, [("/access.log", options)])
+
+    def test_sans_journal_rien_ne_part_et_c_est_dit(self):
+        vus, sortie = self.vue("{tmp}/absent.log")
+        self.assertEqual(vus, [])
+        self.assertIn("No access log yet:", sortie)
+
+
 class TestLeTransfertDuCache(unittest.TestCase):
     """Le magasin s'emporte ; les réglages restent.
 
