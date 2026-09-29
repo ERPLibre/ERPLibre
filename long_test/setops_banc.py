@@ -1581,7 +1581,10 @@ SECRETS_LOCATAIRE = (
     ("vault_openldap_admin", FORME_OPAQUE),
     ("vault_icinga_api_depot", FORME_OPAQUE),
     ("vault_restic_password", FORME_OPAQUE),
+    ("vault_ldap_bind_keycloak", FORME_OPAQUE),
     ("vault_ldap_bind_dovecot", FORME_OPAQUE),
+    ("vault_ldap_bind_postfix", FORME_OPAQUE),
+    ("vault_ldap_bind_icingaweb2", FORME_OPAQUE),
     ("vault_backup_ssh_privkey", FORME_CLE_SSH),
 )
 
