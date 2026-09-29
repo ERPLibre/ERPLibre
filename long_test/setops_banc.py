@@ -3140,7 +3140,7 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
         return "le moteur n'a pas dit le nom de l'écosystème monté"
 
     for etape in (e for e in etapes if not e.confirmer):
-        souci = joue_une_etape(moteur, env, etape, dire)
+        souci = joue_une_etape(moteur, env, etape, passe, secret, dire)
         if souci:
             return souci
 
@@ -3149,7 +3149,7 @@ def joue_une_passe(moteur, mesures, chantier, passe, secret, dire=print):
         return souci
 
     for etape in (e for e in etapes if e.confirmer):
-        souci = joue_une_etape(moteur, env, etape, dire)
+        souci = joue_une_etape(moteur, env, etape, passe, secret, dire)
         if souci:
             return souci
     return ""
@@ -3185,7 +3185,68 @@ def cause_de_l_echec(sortie, taille=400):
     return causes[-1][:taille] if causes else texte[-taille:]
 
 
-def joue_une_etape(moteur, env, etape, dire=print):
+def dossier_journal(base=""):
+    """Le dossier où le banc dépose les sorties du moteur."""
+    racine = base or os.path.join(os.path.expanduser("~"), ".erplibre")
+    return os.path.join(racine, "longtest", "journal")
+
+
+def chemin_journal(passe, cible, base=""):
+    """Où le banc dépose la sortie d'une étape. Ou « » sans passe ni cible.
+
+    DANS LE DOSSIER DU LABO, à côté de l'empreinte : ce qu'une séance laisse se
+    cherche à un seul endroit.
+
+    UN FICHIER PAR (PASSE, CIBLE), ÉCRASÉ À CHAQUE LANCEMENT. Le nombre de
+    fichiers ne dépend donc que du plan, jamais du nombre de séances — un
+    journal qui s'accumule finit par n'être plus lu du tout.
+    """
+    if not (passe or "").strip() or not (cible or "").strip():
+        return ""
+    return os.path.join(
+        dossier_journal(base), f"{passe.strip()}-{cible.strip()}.log"
+    )
+
+
+def ecrit_le_journal(chemin, texte, secret=""):
+    """Dépose `texte` en 0600. Rend le souci, ou « ». Ne lève jamais.
+
+    LE MODE PROTÈGE CE QU'ON N'A PAS SU NOMMER. Le banc ne connaît que les
+    secrets QU'IL a posés ; la sortie du moteur peut en porter d'autres, et une
+    liste de valeurs à retirer est par construction incomplète. Le jeton, lui,
+    est retiré parce qu'on le connaît — les deux défenses se CUMULENT, elles ne
+    se remplacent pas.
+
+    LE MODE EST RÉIMPOSÉ, pas seulement demandé : `O_CREAT` ne l'applique qu'à
+    la CRÉATION, si bien qu'un fichier déjà là sous un mode large le garderait,
+    et le journal deviendrait lisible par tout compte de la machine. `fchmod`
+    sur le descripteur ouvert le corrige sans fenêtre.
+
+    SANS SUIVRE DE LIEN. Le dossier peut être partagé : un autre compte y pose
+    ce NOM en lien vers un fichier qu'on a le droit d'écrire, et l'ouverture le
+    TRONQUERAIT avant d'y écrire.
+
+    UNE SORTIE VIDE S'ÉCRIT QUAND MÊME : qu'une étape n'ait rien imprimé est un
+    fait, et un fichier absent se lirait comme une étape qui n'a pas joué.
+    """
+    if not (chemin or "").strip():
+        return "aucun journal à déposer"
+    try:
+        os.makedirs(os.path.dirname(chemin), mode=0o700, exist_ok=True)
+        descripteur = os.open(
+            chemin,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
+        os.fchmod(descripteur, 0o600)
+        with os.fdopen(descripteur, "w", encoding="utf-8") as tenu:
+            tenu.write(expurge(texte or "", secret))
+    except OSError as souci:
+        return f"{os.path.basename(chemin)} : {souci.strerror or souci}"
+    return ""
+
+
+def joue_une_etape(moteur, env, etape, passe="", secret="", dire=print):
     """Joue une cible du moteur et LIT son verdict. Rend le souci, ou « ».
 
     LE VERDICT SE LIT, code ET sortie : plusieurs gestes du moteur rendent zéro
@@ -3197,6 +3258,17 @@ def joue_une_etape(moteur, env, etape, dire=print):
     )
     dire(f"    {runner_du_banc().cite(argv)}")
     vu = runner_du_banc().jouer(argv, env=env, cwd=moteur, delai=DELAI_ETAPE)
+    # DÉPOSÉ QUE L'ÉTAPE PASSE OU NON. Une étape verte ne dit rien d'elle-même,
+    # et ce qu'elle a fait n'existe qu'au moment où elle le fait : garder la
+    # sortie du seul échec oblige à rejouer une boucle d'une heure pour
+    # répondre à « qu'a-t-elle posé, au juste ».
+    #
+    # UN JOURNAL PERDU NE PERD PAS LE LANCEMENT : on le dit et on continue.
+    souci = ecrit_le_journal(
+        chemin_journal(passe, etape.cible), vu.sortie, secret
+    )
+    if souci:
+        dire(f"      journal non déposé : {souci}")
     if vu.code != 0:
         return f"make {etape.cible} : {cause_de_l_echec(vu.sortie)}"
     return ""
@@ -3389,6 +3461,9 @@ def principal(argv=None):
         print(f"     ce qui est posé est nommé dans {chantier.chemin}")
         return SORTIE_NON_CONCLUANTE
     print(f"  · placement : le gabarit est en {vu.vmid}")
+    # DIT AVANT, PAS APRÈS. La boucle dure une heure : savoir où regarder
+    # pendant qu'elle tourne vaut mieux que l'apprendre une fois finie.
+    print(f"  · sorties du moteur : {dossier_journal()}")
 
     for passe in passes:
         print(f"\n── passe « {passe} » ──")
