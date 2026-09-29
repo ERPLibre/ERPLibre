@@ -341,17 +341,18 @@ def _add_account(todo) -> None:
 
 
 def _pick_account(prompt_key="mail_ask_account"):
+    """(le compte choisi, ou None, et tous les comptes) : un compte ne se
+    choisit que par son numéro tel que la liste l'écrit ; « 0 », « -1 »,
+    « 01 » ou un chiffre d'une autre écriture n'en désignent aucun."""
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return None, []
-    for index, account in enumerate(accounts, start=1):
+    shown = {str(n): account for n, account in enumerate(accounts, start=1)}
+    for index, account in shown.items():
         print(f"  [{index}] {account.name}")
     choice = input(t(prompt_key)).strip()
-    try:
-        return accounts[int(choice) - 1], accounts
-    except (ValueError, IndexError):
-        return None, accounts
+    return shown.get(choice), accounts
 
 
 def _delete_account(todo) -> None:

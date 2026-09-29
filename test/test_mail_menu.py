@@ -133,6 +133,49 @@ class TestAddAccountRollsBack(unittest.TestCase):
             menu._add_account(MagicMock())  # ne doit pas lever
 
 
+class TestPickAccount(unittest.TestCase):
+    """Delete an account, Test an account, le mode de cache d'un compte et
+    Size and purge choisissent un compte par `_pick_account` : seul son
+    numéro tel que la liste l'écrit le désigne."""
+
+    ACCOUNTS = [
+        account_from_preset("forged_a", "a@forged.invalid", "generic"),
+        account_from_preset("forged_b", "b@forged.invalid", "generic"),
+    ]
+
+    def deleted(self, answer):
+        """Ce que Delete an account enregistre, None s'il n'enregistre
+        rien, et les secrets qu'il retire, quand il reçoit `answer`."""
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        with (
+            patch.object(
+                menu.mail_accounts, "load", return_value=list(self.ACCOUNTS)
+            ),
+            patch.object(menu.mail_accounts, "save") as save,
+            patch.object(menu, "secret_store_for") as store,
+            patch("builtins.input", return_value=answer),
+            patch("builtins.print"),
+        ):
+            menu._delete_account(MagicMock())
+        saved = save.call_args.args[0] if save.called else None
+        return saved, store.return_value.delete.call_args_list
+
+    def test_only_a_shown_number_picks_an_account(self):
+        # « 0 », tapé pour revenir, ne désigne aucun compte : pris pour le
+        # dernier, Delete an account l'effacerait sans autre question ;
+        # « -1 » désignerait l'avant-dernier, « 01 », « +1 » ou un chiffre
+        # d'une autre écriture le premier.
+        for answer in ("0", "-1", "01", "+1", "١", "3"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.deleted(answer), (None, []))
+        saved, secrets = self.deleted("2")
+        self.assertEqual([account.name for account in saved], ["forged_a"])
+        self.assertEqual(len(secrets), 1)
+
+
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
     """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
     sans compte (`mail_no_account`) rendrait cet écran inatteignable."""
