@@ -311,14 +311,43 @@ class TestNavigator(unittest.TestCase):
 
     def test_an_abort_or_an_error_leaves_the_menu_as_before(self):
         # Ctrl+C ou Ctrl+D à la question (Abort de click), une action qui
-        # lève : le navigateur ne rattrape rien, comme un menu écrit à la
-        # main.
+        # lève : un menu sans `abort_closes` ne rattrape rien.
         menu = Menu("forged_menu", "Forged", [Entry("First", "first")])
         with self.assertRaises(click.exceptions.Abort):
             self.navigate(menu, [click.exceptions.Abort()])
         todo = FakeTodo()
         todo.first = lambda: 1 / 0
         with self.assertRaises(ZeroDivisionError):
+            self.navigate(menu, ["1"], todo)
+
+    def test_an_abort_closes_a_menu_that_declares_it(self):
+        # Ctrl+C ou Ctrl+D à sa question : le menu rend `back` après une
+        # ligne vide, et l'entrée lancée avant reste la seule.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            back=None,
+            abort_closes=True,
+        )
+        for abort in (click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(abort=type(abort).__name__):
+                self.out.seek(0)
+                self.out.truncate()
+                back, todo, texts = self.navigate(menu, ["1", abort])
+                self.assertIsNone(back)
+                self.assertEqual(todo.calls, [("first", {})])
+                self.assertEqual(len(texts), 2)
+                self.assertEqual(self.out.getvalue(), "\n\n")
+        # Une action qui lève, elle, remonte : seule la question se
+        # rattrape.
+        todo = FakeTodo()
+
+        def first():
+            raise KeyboardInterrupt
+
+        todo.first = first
+        with self.assertRaises(KeyboardInterrupt):
             self.navigate(menu, ["1"], todo)
 
     def test_the_menu_goes_through_the_port_of_a_session(self):
@@ -610,6 +639,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "back",
                 "render",
                 "closes",
+                "abort_closes",
             ],
         )
         self.assertEqual(

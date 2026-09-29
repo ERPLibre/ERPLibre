@@ -7,9 +7,9 @@
 écrit le texte et l'en-tête des menus écrits à la main (et rend, dans une
 session web, le `MenuText` que pose `legacy.wrap_menus`), puis pose la
 question par `click.prompt` : même suffixe « : », même question reposée
-sur une réponse vide, même `Abort` sur Ctrl+C ou Ctrl+D. `click.prompt`
-se lit à chaque question : la capture d'une session web, qui remplace cet
-attribut, y répond.
+sur une réponse vide, même `Abort` sur Ctrl+C ou Ctrl+D, que seul un menu
+`abort_closes` rattrape. `click.prompt` se lit à chaque question : la
+capture d'une session web, qui remplace cet attribut, y répond.
 
 `todo` est l'objet qui ouvre le menu : TODO, ou un objet de TODO dont
 le `fill_help_info` est celui de TODO (`DatabaseManager`). Le cadre de
@@ -57,12 +57,21 @@ def navigate(todo, menu):
     found ! ». L'intro, `t(menu.intro)` derrière `menu.mark`, s'affiche
     une fois, à l'entrée.
     Un menu `render="each"` se redessine après chaque réponse, sa
-    configuration relue ; un menu "once" garde son premier dessin."""
+    configuration relue ; un menu "once" garde son premier dessin. Ctrl+C
+    ou Ctrl+D à la question remontent, sauf dans un menu `abort_closes`,
+    qui rend alors `back` après une ligne vide ; ce qu'une action lève
+    remonte toujours."""
     if menu.intro:
         print(f"{menu.mark} {t(menu.intro)}")
     text, actions = _draw(todo, menu)
     while True:
-        status = click.prompt(text)
+        try:
+            status = click.prompt(text)
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            if not menu.abort_closes:
+                raise
+            print()
+            return menu.back
         print()
         if status == "0":
             return menu.back

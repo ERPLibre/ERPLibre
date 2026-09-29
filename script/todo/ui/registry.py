@@ -81,6 +81,9 @@ class Menu:
     dessine une fois, avant de poser la question.
     `closes` : le menu se referme après l'action d'une entrée, et rend
     alors `back`, comme sur [0].
+    `abort_closes` : Ctrl+C ou Ctrl+D à sa question referment le menu,
+    qui rend `back` après une ligne vide, au lieu de laisser l'`Abort` de
+    click remonter jusqu'à terminer TODO.
     """
 
     name: str
@@ -92,6 +95,7 @@ class Menu:
     back: object = False
     render: str = "each"
     closes: bool = False
+    abort_closes: bool = False
 
     def __post_init__(self):
         if self.render not in RENDERS:
