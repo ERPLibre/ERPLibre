@@ -183,7 +183,9 @@ def odoo_tree_layout(racine):
             os.path.join(racine, "openerp-server"),
             os.path.join(racine, "openerp", "addons"),
         )
-    return os.path.join(racine, "odoo-bin"), os.path.join(racine, "odoo", "addons")
+    return os.path.join(racine, "odoo-bin"), os.path.join(
+        racine, "odoo", "addons"
+    )
 
 
 def http_off_option(version):
@@ -2206,21 +2208,7 @@ class TodoUpgrade:
             msg = f"4.{index}.{chr(option_comment + 65)} - Switch Odoo"
             self.add_comment_progression(msg)
 
-            if not lst_switch_odoo[index]:
-                self.switch_odoo(next_version)
-                lst_switch_odoo[index] = True
-                self.dct_progression["state_4_switch_odoo_lst"] = (
-                    lst_switch_odoo
-                )
-                self.write_config()
-                print(
-                    f"✅ -> {t('Switch done with update for Odoo')}"
-                    f"{next_version}"
-                )
-            else:
-                print(
-                    f"✅ -> {t('Switch already done for Odoo')}{next_version}"
-                )
+            self.switch_odoo_for_bump(lst_switch_odoo, index, next_version)
 
             lst_state_4_module_migrate_code = self.dct_progression.get(
                 "config_state_4_module_to_migrate_code",
@@ -4338,6 +4326,24 @@ class TodoUpgrade:
             )
 
         return lst_module_missing, lst_module_duplicate
+
+    def switch_odoo_for_bump(self, lst_switch_odoo, index, next_version):
+        """Rend actif Odoo next_version pour la montée de rang index.
+
+        La bascule se refait même quand lst_switch_odoo la note faite : une
+        reprise rejoue la recherche des modules de l'étape 0, qui rebascule
+        sur la version de la sauvegarde, et OpenUpgrade tournerait alors
+        dans l'Odoo de départ. switch_odoo ne fait rien quand la version
+        active est déjà la bonne.
+        """
+        self.switch_odoo(next_version)
+        if lst_switch_odoo[index]:
+            print(f"✅ -> {t('Switch already done for Odoo')}{next_version}")
+            return
+        lst_switch_odoo[index] = True
+        self.dct_progression["state_4_switch_odoo_lst"] = lst_switch_odoo
+        self.write_config()
+        print(f"✅ -> {t('Switch done with update for Odoo')}{next_version}")
 
     def switch_odoo(self, odoo_version):
         int_odoo_version = int(float(odoo_version))
