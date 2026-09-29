@@ -35,8 +35,9 @@ feed API is deprecated; only publishing is self-serve. The tree says so under
 such an account instead of showing an empty node, which would read like a
 fetch that never happened.
 
-Mastodon and Bluesky are implemented. LinkedIn has its preset and its
-accounts, and no transport yet.
+All three are implemented. LinkedIn publishes and does not read: its
+transport refuses a feed WITHOUT calling, since the limit is known in advance
+and calling would make it look like a breakdown of the day.
 
 The two implemented ones authenticate differently, and it shows. Mastodon
 takes a token you paste, valid until you revoke it. Bluesky opens a SESSION
@@ -103,10 +104,17 @@ twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to
 honour it would suggest a privacy that does not exist.
 
+LinkedIn offers NEITHER: two identical requests make two publications, and
+nothing can prevent it. So when the answer is lost the client does not retry
+— it says it does not know, and asks you to check before sending again. That
+is a third answer beside a refusal you correct and a breakdown you retry, and
+the compose screen words it differently for that reason.
+
 A refusal is told apart from a breakdown: a service saying no to an empty or
 over-long post will not change its mind, while a broken gateway will. The
-length allowed is asked of a Mastodon instance, which raises or lowers it;
-on Bluesky it is the protocol's own 300 and there is nothing to ask.
+length allowed is asked of a Mastodon instance, which raises or lowers it; on
+Bluesky it is the protocol's own 300 and on LinkedIn 3000, with nothing to
+ask in either case.
 
 ## The cache
 

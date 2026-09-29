@@ -52,8 +52,9 @@ feed API is deprecated; only publishing is self-serve. The tree says so under
 such an account instead of showing an empty node, which would read like a
 fetch that never happened.
 
-Mastodon and Bluesky are implemented. LinkedIn has its preset and its
-accounts, and no transport yet.
+All three are implemented. LinkedIn publishes and does not read: its
+transport refuses a feed WITHOUT calling, since the limit is known in advance
+and calling would make it look like a breakdown of the day.
 
 The two implemented ones authenticate differently, and it shows. Mastodon
 takes a token you paste, valid until you revoke it. Bluesky opens a SESSION
@@ -120,10 +121,17 @@ twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to
 honour it would suggest a privacy that does not exist.
 
+LinkedIn offers NEITHER: two identical requests make two publications, and
+nothing can prevent it. So when the answer is lost the client does not retry
+— it says it does not know, and asks you to check before sending again. That
+is a third answer beside a refusal you correct and a breakdown you retry, and
+the compose screen words it differently for that reason.
+
 A refusal is told apart from a breakdown: a service saying no to an empty or
 over-long post will not change its mind, while a broken gateway will. The
-length allowed is asked of a Mastodon instance, which raises or lowers it;
-on Bluesky it is the protocol's own 300 and there is nothing to ask.
+length allowed is asked of a Mastodon instance, which raises or lowers it; on
+Bluesky it is the protocol's own 300 and on LinkedIn 3000, with nothing to
+ask in either case.
 
 ## The cache
 
@@ -165,8 +173,9 @@ l'API de fil d'activité est dépréciée ; seule la publication est en
 libre-service. L'arbre le dit sous un tel compte au lieu d'afficher un nœud
 vide, qui se lirait comme une synchronisation qui n'a pas eu lieu.
 
-Mastodon et Bluesky sont implémentés. LinkedIn a son préréglage et ses
-comptes, et pas encore de transport.
+Les trois sont implémentés. LinkedIn publie et ne lit pas : son transport
+refuse un fil SANS APPELER, la limite étant connue d'avance et l'appel la
+ferait passer pour une panne du jour.
 
 Les deux implémentés ne s'authentifient pas pareil, et cela se voit. Mastodon
 prend un jeton qu'on colle, valable jusqu'à révocation. Bluesky ouvre une
@@ -236,10 +245,18 @@ de visibilité : le champ est accepté pour que l'appelant n'ait pas à
 distinguer les réseaux, et ignoré, prétendre l'honorer laissant croire à une
 confidentialité qui n'existe pas.
 
+LinkedIn n'offre NI L'UN NI L'AUTRE : deux demandes identiques font deux
+publications, et rien ne peut l'empêcher. Aussi, quand la réponse se perd, le
+client ne réessaie pas — il dit qu'il ne sait pas, et demande d'aller
+vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
+qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule
+autrement pour cette raison.
+
 Un refus se distingue d'une panne : un service qui dit non à un billet vide
 ou trop long ne changera pas d'avis, une passerelle en vrac si. La longueur
 permise se demande à une instance Mastodon, qui la relève ou l'abaisse ; sur
-Bluesky c'est le 300 du protocole, et il n'y a rien à demander.
+Bluesky c'est le 300 du protocole et sur LinkedIn 3000, sans rien à demander
+dans les deux cas.
 
 ## Le cache
 

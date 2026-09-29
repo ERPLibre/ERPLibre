@@ -152,6 +152,12 @@ def _transport(account, jeton: str):
         # Le secret gardé pour ce réseau est un MOT DE PASSE
         # D'APPLICATION, non un jeton : c'est lui qui ouvre la session.
         return BlueskyTransport(account, jeton)
+    if account.platform == "linkedin":
+        from script.todo.social.linkedin import LinkedInTransport
+
+        # Un transport quand même, bien que ce réseau ne serve aucun fil :
+        # il sert à PUBLIER, et sans lui l'écran d'écriture se refuserait.
+        return LinkedInTransport(account, jeton)
     return None
 
 
@@ -343,9 +349,20 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
             self.app.call_from_thread(self.dismiss, billet)
 
         def _refus(self, exc) -> None:
-            """Dit le refus et LAISSE l'écran ouvert, avec son texte et sa
-            clé : la reprise se fait en pressant à nouveau, sans risque de
-            publier deux fois."""
+            """Dit ce qui s'est passé et LAISSE l'écran ouvert, avec son
+            texte et sa clé.
+
+            Un doute ne se dit pas comme un refus. Sur les réseaux qui
+            offrent de quoi rejouer, presser à nouveau est sûr et la phrase
+            y invite. Sur celui qui n'offre rien, le billet est peut-être
+            déjà parti : la phrase dit alors d'aller vérifier, parce que
+            presser à nouveau publierait peut-être deux fois.
+            """
+            from script.todo.social.linkedin import SocialUnknownOutcome
+
+            if isinstance(exc, SocialUnknownOutcome):
+                self._dire(str(exc))
+                return
             self._dire(f"{t('social_compose_refused')} {exc}")
 
         def _dire(self, texte: str) -> None:

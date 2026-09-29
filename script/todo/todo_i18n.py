@@ -12851,6 +12851,38 @@ TRANSLATIONS = {
             " password."
         ),
     },
+    "social_err_no_feed_here": {
+        "fr": (
+            "Ce réseau ne sert pas le fil d'un membre : l'autorisation ne"
+            " s'obtient pas en libre-service."
+        ),
+        "en": (
+            "This network serves no member feed: the authorisation is not"
+            " self-serve."
+        ),
+    },
+    "social_err_no_reply_here": {
+        "fr": (
+            "Ce réseau ne distingue pas une réponse d'un partage : le"
+            " billet partirait comme un message public."
+        ),
+        "en": (
+            "This network does not tell a reply from a share: the post"
+            " would go out as a public message."
+        ),
+    },
+    "social_err_unknown_outcome": {
+        "fr": (
+            "Envoi parti sans réponse — il est peut-être publié. Ce réseau"
+            " n'offre rien pour rejouer sans risquer un doublon : allez"
+            " vérifier avant de renvoyer."
+        ),
+        "en": (
+            "Sent with no answer — it may be published. This network offers"
+            " nothing to replay without risking a duplicate: check before"
+            " sending again."
+        ),
+    },
     "social_err_unreachable": {
         "fr": "Instance injoignable :",
         "en": "Instance unreachable:",

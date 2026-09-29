@@ -29,6 +29,14 @@ from script.todo.social.tui import (
 )
 
 
+def t_refuse() -> str:
+    """Le préfixe d'un refus ordinaire, pour vérifier qu'un DOUTE ne le
+    porte pas."""
+    from script.todo.todo_i18n import t
+
+    return t("social_compose_refused")
+
+
 def billet(post_id, texte="Bonjour le fil.", **kw):
     base = dict(
         post_id=post_id,
@@ -371,6 +379,29 @@ class TestWriting(TuiCase):
             await app.workers.wait_for_complete()
             await pilot.pause()
             self.assertIsInstance(app.screen, ModalScreen)
+
+    async def test_a_doubt_is_not_shown_as_a_refusal(self):
+        """Sur un réseau qui n'offre rien pour rejouer, le billet est
+        peut-être parti : dire « refusé » ferait presser à nouveau, et
+        publierait peut-être deux fois."""
+        from textual.widgets import Static, TextArea
+
+        from script.todo.social.linkedin import SocialUnknownOutcome
+
+        transport = FauxTransport(
+            refus=SocialUnknownOutcome("envoi parti sans réponse")
+        )
+        app = await self._app([self._session(transport)])
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#compose_text", TextArea).text = "Bonjour."
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            dit = str(app.screen.query_one("#compose_status", Static).content)
+            self.assertIn("sans réponse", dit)
+            self.assertNotIn(t_refuse(), dit)
 
     async def test_an_empty_post_never_leaves(self):
         transport = FauxTransport()
