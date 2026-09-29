@@ -128,7 +128,7 @@ RAW_CALLS = {
     "script/odoo/migration/smoke_public_url.py": 1,
     "script/qemu/deploy_qemu.py": 3,
     "script/qemu/network_qemu.py": 1,
-    "script/todo/assistant_menu.py": 24,
+    "script/todo/assistant_menu.py": 23,
     "script/todo/auto_ask.py": 2,
     "script/todo/container_menu.py": 17,
     "script/todo/database_manager.py": 16,

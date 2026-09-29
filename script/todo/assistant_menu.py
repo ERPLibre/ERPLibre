@@ -43,7 +43,9 @@ import click
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
+from script.todo.menus import git as menus_git
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 # Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
 # « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
@@ -851,7 +853,10 @@ class AssistantMenuMixin:
     # Les sessions Claude Code de la machine
 
     def prompt_claude_sessions(self):
-        """Voir les sessions locales, en interroger une, ou la reprendre.
+        """Voir les sessions locales, en interroger une, ou la reprendre
+        (CLAUDE_CODE, `menus/git.py`). Redessiné à chaque tour, le compte
+        des sessions relu. Rend None sur [0], et sur Ctrl+C ou Ctrl+D à sa
+        question, qui ramènent à GPT code.
 
         Sous « GPT code » et non sous le sous-menu LLM : une session est un
         processus adressé par identifiant, un serveur est un hôte adressé par
@@ -859,46 +864,17 @@ class AssistantMenuMixin:
         numéros à deux modèles mentaux, alors que toutes les entrées Claude
         vivent déjà ici.
         """
-        # L'emoji vit dans la valeur traduite, jamais dans le code : le
-        # mettre aux deux endroits en imprime deux.
-        print(t("Claude Code - local sessions"))
-        while True:
-            flotte = self._claude_flotte()
-            vivantes = sum(1 for session in flotte if session.live)
-            compte = (
-                f"{len(flotte)} · {vivantes} {t('live')}"
-                if flotte
-                else t("No session on this machine.")
-            )
-            choices = [
-                {
-                    "prompt_description": (
-                        f"{t('List local sessions')}  ({compte})"
-                    )
-                },
-                {"prompt_description": t("Ask a question to a session")},
-                {
-                    "prompt_description": t(
-                        "Resume a session in a new terminal"
-                    )
-                },
-            ]
-            try:
-                status = click.prompt(self.fill_help_info(choices))
-            except (KeyboardInterrupt, click.exceptions.Abort):
-                print()
-                return
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._claude_lister()
-            elif status == "2":
-                self._claude_questionner()
-            elif status == "3":
-                self._claude_reprendre()
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_git.CLAUDE_CODE)
+
+    def _claude_sessions_count(self):
+        """Ce que « List local sessions » montre entre parenthèses : le
+        nombre de sessions et celui des vivantes, ou qu'il n'y en a
+        aucune."""
+        flotte = self._claude_flotte()
+        if not flotte:
+            return t("No session on this machine.")
+        vivantes = sum(1 for session in flotte if session.live)
+        return f"{len(flotte)} · {vivantes} {t('live')}"
 
     def _claude_flotte(self):
         """La flotte, relue à chaque dessin du menu et par chaque entrée

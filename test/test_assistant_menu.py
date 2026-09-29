@@ -490,6 +490,77 @@ class SessionsClaudeCode(unittest.TestCase):
         ):
             todo.prompt_claude_sessions()
 
+    def test_une_flotte_se_compte_avec_ses_vivantes(self):
+        """[1] montre, entre parenthèses, le nombre de sessions et celui
+        des vivantes, que rend `_claude_sessions_count` au dessin."""
+        import io
+        import warnings
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        flotte = [
+            cs.Session(session_id="forged-one", live=True),
+            cs.Session(session_id="forged-two"),
+        ]
+        todo = TODO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=flotte,
+            ),
+            patch("click.prompt", side_effect=["0"]) as question,
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(io.StringIO()),
+            warnings.catch_warnings(),
+        ):
+            # Les modules déplacés d'urwid avertissent quand
+            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
+            # `__file__` : sous `-W error`, le menu tomberait.
+            warnings.filterwarnings(
+                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+            )
+            compte = todo._claude_sessions_count()
+            todo.prompt_claude_sessions()
+        self.assertEqual(compte, f"2 · 1 {t('live')}")
+        # Le menu est le texte de la question.
+        self.assertIn(
+            f"[1] {t('List local sessions')}  ({compte})",
+            question.call_args.args[0],
+        )
+
+    def test_une_interruption_a_la_question_ramene_a_gpt_code(self):
+        """Ctrl+C ou Ctrl+D à la question des sessions (l'Abort de click)
+        rendent None après une ligne vide, au lieu de terminer TODO."""
+        import io
+        import warnings
+        from contextlib import redirect_stdout
+
+        import click
+
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        sortie = io.StringIO()
+        with (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet", return_value=[]
+            ),
+            patch("click.prompt", side_effect=[click.exceptions.Abort()]),
+            patch("script.todo.todo_telemetry.record"),
+            redirect_stdout(sortie),
+            warnings.catch_warnings(),
+        ):
+            # Les modules déplacés d'urwid avertissent quand
+            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
+            # `__file__` : sous `-W error`, le menu tomberait.
+            warnings.filterwarnings(
+                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+            )
+            self.assertIsNone(todo.prompt_claude_sessions())
+        self.assertTrue(sortie.getvalue().endswith("\n\n"))
+
     def test_un_claude_absent_est_un_message_pas_un_plantage(self):
         import io
         from contextlib import redirect_stdout

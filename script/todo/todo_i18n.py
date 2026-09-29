@@ -14766,6 +14766,11 @@ TRANSLATIONS = {
         "fr": "🤖 Claude Code - sessions locales",
         "en": "🤖 Claude Code - local sessions",
     },
+    # La même phrase sans sa marque : l'intro de Claude Code, que 🤖 précède.
+    "Local Claude Code sessions": {
+        "fr": "Claude Code - sessions locales",
+        "en": "Claude Code - local sessions",
+    },
     "List local sessions": {
         "fr": "📋 Lister les sessions locales",
         "en": "📋 List local sessions",

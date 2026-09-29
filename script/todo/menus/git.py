@@ -3,7 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Git : Git, qu'ouvre Execute, Git local server et
 ses deux menus Actions, l'un du serveur local, l'autre du serveur de
-production ; GPT code, qu'ouvre Execute, Claude configs, Plugins et RTK.
+production ; GPT code, qu'ouvre Execute, Claude configs, Plugins, RTK et
+Claude Code, dont la méthode vit dans `assistant_menu.py`.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -245,4 +246,23 @@ RTK = Menu(
     ],
     intro="Manage RTK (Rust Token Killer) for token optimization!",
     render="once",
+)
+
+# Redessiné à chaque tour : le compte des sessions se relit. Ctrl+C à sa
+# question ramène à GPT code au lieu de terminer TODO.
+CLAUDE_CODE = Menu(
+    "prompt_claude_sessions",
+    "Claude Code",
+    [
+        Entry(
+            "List local sessions",
+            "_claude_lister",
+            suffix="_claude_sessions_count",
+        ),
+        Entry("Ask a question to a session", "_claude_questionner"),
+        Entry("Resume a session in a new terminal", "_claude_reprendre"),
+    ],
+    intro="Local Claude Code sessions",
+    back=None,
+    abort_closes=True,
 )

@@ -657,6 +657,26 @@ class TestLArbreDesMenus(unittest.TestCase):
                 method = getattr(TODO, leaf["method"])
                 inspect.signature(method).bind(None, **leaf["kwargs"])
 
+    def test_the_session_listing_keeps_its_key(self):
+        # Le libellé de [1] finit par le compte des sessions, calculé au
+        # dessin : sa feuille garde la clé de l'entrée, et une entrée vide.
+        sessions = self._noeud("Claude Code")
+        self.assertEqual(
+            [
+                (n["label"], n["method"], n.get("entry"))
+                for n in sessions["children"]
+            ],
+            [
+                ("List local sessions", "_claude_lister", ""),
+                ("Ask a question to a session", "_claude_questionner", None),
+                (
+                    "Resume a session in a new terminal",
+                    "_claude_reprendre",
+                    None,
+                ),
+            ],
+        )
+
     def test_a_help_line_names_its_entry_once(self):
         # « [N] {t("…")} » dans une f-string ; un libellé calculé n'y entre
         # pas, ni un numéro que la méthode écrit avec deux libellés.
@@ -1400,6 +1420,29 @@ class TestRtkMenuNumbering(RegistryCoherence, unittest.TestCase):
     }
 
 
+class TestClaudeCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Claude Code, dans `assistant_menu.py` : lister les sessions de la
+    machine, en interroger une, ou la reprendre. Ctrl+C à sa question
+    ramène à GPT code."""
+
+    MENU = "prompt_claude_sessions"
+    BACK = None
+    EXPECTED = {
+        "List local sessions": "_claude_lister",
+        "Ask a question to a session": "_claude_questionner",
+        "Resume a session": "_claude_reprendre",
+    }
+
+    def test_the_listing_counts_and_ctrl_c_goes_back(self):
+        self.assertEqual(
+            [entry.suffix for entry in self.entries],
+            ["_claude_sessions_count", None, None],
+        )
+        self.assertEqual(
+            (self.menu.render, self.menu.abort_closes), ("each", True)
+        )
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -2069,6 +2112,7 @@ class TestMenuLabels(unittest.TestCase):
                 "_prompt_claude_configs",
                 "prompt_execute_claude_plugins",
                 "prompt_execute_rtk",
+                "prompt_claude_sessions",
             },
             set(declared),
         )
