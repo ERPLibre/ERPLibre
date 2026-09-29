@@ -8,6 +8,10 @@ Security, et Docker / Podman avec ses trois menus.
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
 nomme la méthode publique de celui-ci : son cadre porte le fil d'Ariane.
+
+Un installateur, qui pose des paquets ou un service, ici ou sur un hôte
+distant, porte `danger`, comme une entrée qui efface : ni la TUI de
+télémétrie ni la page web ne le lancent, son menu seul.
 """
 
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
@@ -34,7 +38,9 @@ DEPLOY = Menu(
             "prompt_execute_proxmox",
         ),
         Entry(
-            "Deploy - Install NTFY notification server", "_deploy_ntfy_server"
+            "Deploy - Install NTFY notification server",
+            "_deploy_ntfy_server",
+            danger=True,
         ),
         Entry(
             "QEMU cache - Download mirror for local VMs",
@@ -58,15 +64,23 @@ SSH = Menu(
         # « rsync --delete » efface, sur l'hôte distant, ce qui n'existe
         # pas ici.
         Entry("SSH - Sync files (rsync)", "_deploy_ssh_push", danger=True),
-        Entry("SSH - Install ERPLibre", "_deploy_ssh_install"),
+        Entry("SSH - Install ERPLibre", "_deploy_ssh_install", danger=True),
         Entry("SSH - Start Odoo", "_deploy_ssh_run"),
         Entry("SSH - Stop Odoo", "_deploy_ssh_stop"),
         Entry("SSH - Restart Odoo", "_deploy_ssh_restart"),
         Entry("SSH - Service status", "_deploy_ssh_status"),
         Entry("SSH - View logs", "_deploy_ssh_logs"),
         Entry("SSH - Run make target", "_deploy_ssh_make"),
-        Entry("SSH - Install systemd service", "_deploy_ssh_install_systemd"),
-        Entry("SSH - Configure nginx + SSL", "_deploy_ssh_install_nginx"),
+        Entry(
+            "SSH - Install systemd service",
+            "_deploy_ssh_install_systemd",
+            danger=True,
+        ),
+        Entry(
+            "SSH - Configure nginx + SSL",
+            "_deploy_ssh_install_nginx",
+            danger=True,
+        ),
     ],
     intro="Deploy ERPLibre to a remote host over SSH!",
     render="once",
@@ -148,7 +162,9 @@ QEMU_CACHE = Menu(
     "prompt_execute_qemu_cache",
     "QEMU cache",
     [
-        Entry("Cache - Install or reinstall", "_deploy_qemu_cache"),
+        Entry(
+            "Cache - Install or reinstall", "_deploy_qemu_cache", danger=True
+        ),
         Entry("Cache - Diagnose: does it serve?", "_cache_diagnostic"),
         Entry("Cache - Service state", "_cache_service"),
         Entry("Cache - VMs kept out of the cache", "_cache_exceptions"),
@@ -414,10 +430,16 @@ CONTAINER = Menu(
             "_container_service",
         ),
         Entry(
-            "Install Docker", "_container_install", kwargs={"moteur": "docker"}
+            "Install Docker",
+            "_container_install",
+            kwargs={"moteur": "docker"},
+            danger=True,
         ),
         Entry(
-            "Install Podman", "_container_install", kwargs={"moteur": "podman"}
+            "Install Podman",
+            "_container_install",
+            kwargs={"moteur": "podman"},
+            danger=True,
         ),
         Section("Inventory"),
         Entry(

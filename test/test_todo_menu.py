@@ -392,7 +392,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         # la page web : l'effacement d'une base, les actions du serveur git
         # de production, qui tournent en root, les installateurs de shell,
         # chaque entrée de la famille QEMU qui efface ce que la TUI ne rend
-        # pas par elle-même, et la remise à zéro des préférences. Les
+        # pas par elle-même ou qui pose des paquets ou un service, ici ou
+        # sur un hôte distant, et la remise à zéro des préférences. Les
         # `kwargs` distinguent les actions de production de celles du
         # serveur local, au même chemin.
         dangerous = []
@@ -430,7 +431,15 @@ class TestLArbreDesMenus(unittest.TestCase):
                 (f"{git} › Install Starship on Shell", {}),
                 (f"{git} › Install Claude Code", {}),
                 (f"{git} › Install opencode", {}),
-                (f"{deploy} › SSH › SSH - Sync files (rsync)", {}),
+                *[
+                    (f"{deploy} › SSH › SSH - {label}", {})
+                    for label in (
+                        "Sync files (rsync)",
+                        "Install ERPLibre",
+                        "Install systemd service",
+                        "Configure nginx + SSL",
+                    )
+                ],
                 *[
                     (f"{deploy} › QEMU/KVM › {label}", {})
                     for label in (
@@ -440,9 +449,11 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Clean up QEMU (orphan files)",
                     )
                 ],
+                (f"{deploy} › Deploy - Install NTFY notification server", {}),
                 *[
                     (f"{cache} › {label}", {})
                     for label in (
+                        "Cache - Install or reinstall",
                         "Exceptions › Exceptions - Remove the stale ones",
                         "Exceptions › Exceptions - Remove one by its MAC",
                         "Git mirrors › Mirrors - Remove one",
@@ -464,6 +475,8 @@ class TestLArbreDesMenus(unittest.TestCase):
                     f"{cache} › Automatic cleanup › Cleanup - Run now",
                     {"a_blanc": False},
                 ),
+                (f"{docker} › Install Docker", {"moteur": "docker"}),
+                (f"{docker} › Install Podman", {"moteur": "podman"}),
                 *[
                     (f"{docker} › {label}", {})
                     for label in (

@@ -402,7 +402,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: the three views of the access log under Execute › Deploy › QEMU cache › Logs, launched from the TUI, follow the log that the service configuration names at that moment instead of failing on a missing argument
 - Navigation telemetry: Execute › Deploy › QEMU cache › Automatic cleanup › Set the age limit and Set the size ceiling, launched from the TUI, ask for their setting instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › Service › Status and journal, launched from the TUI, asks for the engine and shows the state and journal of its service instead of failing on a missing argument
-- Navigation telemetry: Execute › Docker / Podman › Install Docker, Install Podman, Images and Containers, launched from the TUI, install their engine or list what it holds instead of failing on a missing argument
+- Navigation telemetry: Execute › Docker / Podman › Images and Containers, launched from the TUI, list what their engine holds instead of failing on a missing argument
 - Navigation telemetry: Execute › Docker / Podman › ERPLibre container › Copy a file into the container, launched from the TUI, checks the docker engine and carries the socket of a per-account daemon, as from its menu, instead of running the script without them
 - A declared menu that lists entries of `todo.json` or of its private override, Execute › Code, Update, Git and Automation among them, shows a section of that list without a number, as it did, and each number now runs the entry it shows instead of the one shown before it; navigation telemetry no longer lists the section as a command
 - Navigation telemetry: the TUI no longer launches Execute › Deploy › SSH › SSH - Sync files (rsync), whose `rsync --delete` erases, on the remote host, what does not exist locally
@@ -411,6 +411,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: QEMU cache › Age and cleanup lists its three age reports, Tests its plan and its report, Logs the live service journal, and the TUI launches them; it no longer launches the three cleanups, Tests › Undo the machines created or Automatic cleanup › Run now, which erase
 - Navigation telemetry: Execute › Docker / Podman › Service lists its five gestures and launches them from the TUI, asking for the engine; the TUI no longer launches the three cleanups of Docker / Podman, which erase
 - Navigation telemetry: Execute › Docker / Podman › Compose and ERPLibre container list their entries and launch them from the TUI, asking the engine for what they need; the TUI no longer launches Compose › Stop, which removes the containers of the composition
+- Navigation telemetry: Execute › Deploy › Deploy - Install NTFY notification server, SSH › SSH - Install ERPLibre, SSH - Install systemd service and SSH - Configure nginx + SSL, QEMU cache › Cache - Install or reinstall, and Execute › Docker / Podman › Install Docker and Install Podman, which put packages or a service on this machine or on a remote host, are declared dangerous and launch only from their menu: the page shows them without ▶, and the TUI answers them with a notice
 
 <!-- [fr] -->
 
@@ -533,7 +534,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : les trois vues du journal d'accès sous Exécution › Deploy › QEMU cache › Journaux, lancées depuis la TUI, suivent le journal que nomme à ce moment-là la configuration du service au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Nettoyage automatique › Régler l'âge limite et Régler le plafond de taille, lancées depuis la TUI, demandent leur réglage au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Service › État et journal, lancé depuis la TUI, demande le moteur et montre l'état et le journal de son service au lieu d'échouer sur un argument manquant
-- Télémétrie de navigation : Exécution › Docker / Podman › Installer Docker, Installer Podman, Images et Conteneurs, lancées depuis la TUI, installent leur moteur ou listent ce qu'il détient au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Docker / Podman › Images et Conteneurs, lancées depuis la TUI, listent ce que détient leur moteur au lieu d'échouer sur un argument manquant
 - Télémétrie de navigation : Exécution › Docker / Podman › Conteneur ERPLibre › Copier un fichier dans le conteneur, lancé depuis la TUI, vérifie le moteur docker et emporte la socket d'un démon par compte, comme depuis son menu, au lieu de lancer le script sans eux
 - Un menu déclaré qui liste des entrées de `todo.json` ou de sa surcharge privée, dont Exécution › Code, Update, Git et Automatisation, montre une section de cette liste sans numéro, comme avant, et chaque numéro lance désormais l'entrée qu'il montre au lieu de celle montrée avant elle ; la télémétrie de navigation ne liste plus la section comme une commande
 - Télémétrie de navigation : la TUI ne lance plus Exécution › Deploy › SSH › SSH - Synchroniser les fichiers (rsync), dont le `rsync --delete` efface, sur l'hôte distant, ce qui n'existe pas ici
@@ -542,6 +543,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : QEMU cache › Âge et nettoyage liste ses trois rapports d'âge, Tests son plan et son rapport, Journaux le journal du service en direct, et la TUI les lance ; elle ne lance plus les trois nettoyages, Tests › Défaire les machines créées ni Nettoyage automatique › Lancer maintenant, qui effacent
 - Télémétrie de navigation : Exécution › Docker / Podman › Service liste ses cinq gestes et les lance depuis la TUI, en demandant le moteur ; la TUI ne lance plus les trois nettoyages de Docker / Podman, qui effacent
 - Télémétrie de navigation : Exécution › Docker / Podman › Compose et Conteneur ERPLibre listent leurs entrées et les lancent depuis la TUI, en demandant au moteur ce qu'il leur faut ; la TUI ne lance plus Compose › Arrêter, qui efface les conteneurs de la composition
+- Télémétrie de navigation : Exécution › Deploy › Déployer - Installer le serveur de notifications NTFY, SSH › SSH - Installer ERPLibre, SSH - Installer le service systemd et SSH - Configurer nginx + SSL, QEMU cache › Cache - Installer ou réinstaller, et Exécution › Docker / Podman › Installer Docker et Installer Podman, qui posent des paquets ou un service sur cette machine ou sur un hôte distant, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 
 <!-- [en] -->
 ## Removed
