@@ -137,7 +137,7 @@ RAW_CALLS = {
     "script/todo/mail/menu.py": 20,
     "script/todo/proxmox_menu.py": 23,
     "script/todo/qemu_access.py": 14,
-    "script/todo/qemu_cache_menu.py": 26,
+    "script/todo/qemu_cache_menu.py": 22,
     "script/todo/qemu_deploy.py": 31,
     "script/todo/qemu_install.py": 2,
     "script/todo/qemu_install_monitor.py": 8,

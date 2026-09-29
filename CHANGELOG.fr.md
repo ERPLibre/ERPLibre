@@ -257,6 +257,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un menu déclaré qui liste des entrées de `todo.json` ou de sa surcharge privée, dont Exécution › Code, Update, Git et Automatisation, montre une section de cette liste sans numéro, comme avant, et chaque numéro lance désormais l'entrée qu'il montre au lieu de celle montrée avant elle ; la télémétrie de navigation ne liste plus la section comme une commande
 - Télémétrie de navigation : la TUI ne lance plus Exécution › Deploy › SSH › SSH - Synchroniser les fichiers (rsync), dont le `rsync --delete` efface, sur l'hôte distant, ce qui n'existe pas ici
 - Télémétrie de navigation : Exécution › Deploy › QEMU/KVM liste les entrées de `todo.json` et les lance depuis la TUI ; la TUI ne lance plus Redimensionner le disque d'une VM, Effacer une ou plusieurs VM, Recréer le sous-réseau des VM ni Nettoyer QEMU, qui effacent
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service liste ses quatre verbes systemd et les lance depuis la TUI ; la TUI ne lance plus les deux retraits d'Exceptions ni Miroirs git › En effacer un, qui effacent
 
 ## Retiré
 

@@ -203,13 +203,22 @@ class TestEntreeDuCache(unittest.TestCase):
 
 
 class TestSousMenusDuCache(unittest.TestCase):
-    """Affichage et dispatch sont écrits deux fois, et rien ne les relie.
+    """Le nombre d'entrées de chaque menu du cache, et où mène chacune.
 
-    La liste de `prompt_description` numérote l'écran ; la chaîne d'`elif
-    status` décide où l'on va. Une entrée insérée au milieu de l'une sans
-    l'autre envoie l'opérateur ailleurs qu'où il a lu, ou rend la dernière
-    entrée inatteignable — dans les deux cas sans un mot d'erreur.
+    Un menu déclaré au registre numérote une entrée par sa place :
+    `compter` les compte. Un menu écrit à la main l'écrit deux fois — la
+    liste de `prompt_description` numérote l'écran, la chaîne d'`elif
+    status` décide où l'on va — et `verifier` relie les deux : une entrée
+    insérée au milieu de l'une sans l'autre envoie l'opérateur ailleurs
+    qu'où il a lu, ou rend la dernière entrée inatteignable.
     """
+
+    def compter(self, menu, attendues):
+        self.assertEqual(
+            len(entrees_de(menu)),
+            attendues,
+            f"{menu} n'affiche pas {attendues} entrées",
+        )
 
     def verifier(self, nom, suivant, attendues):
         affichees, numeros = affichage_et_dispatch(corps_de(nom, suivant))
@@ -223,16 +232,16 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 12)
+        self.compter("QEMU_CACHE", 12)
 
     def test_le_menu_du_service(self):
-        self.verifier("_cache_service", "_cache_journal_service", 6)
+        self.compter("CACHE_SERVICE", 6)
 
     def test_le_menu_des_exceptions(self):
-        self.verifier("_cache_exceptions", "_cache_miroir_git", 2)
+        self.compter("CACHE_EXCEPTIONS", 2)
 
     def test_le_menu_des_miroirs(self):
-        self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 5)
+        self.compter("CACHE_GIT_MIRRORS", 5)
 
     def test_le_menu_du_nettoyage(self):
         self.verifier("_cache_nettoyage_auto", "_cache_nettoyage_etat", 4)
@@ -243,35 +252,39 @@ class TestSousMenusDuCache(unittest.TestCase):
         self.verifier("_cache_age", "_cache_lancer", 6)
 
     def test_letat_du_service_est_la_troisieme(self):
-        """Sous le diagnostic, comme demandé : le décalage du guide et des
-        tests est la moitié du changement, et c'est celle qui casse."""
-        corps = corps_de("prompt_execute_qemu_cache", "_cache_systemctl")
-        for numero, methode in (
-            ("3", "_cache_service"),
-            ("4", "_cache_exceptions"),
-            ("5", "_cache_miroir_git"),
-            ("6", "_cache_age"),
-            ("7", "_cache_guide"),
-            ("8", "_cache_tests"),
-            ("9", "_cache_combler"),
-            ("10", "_cache_journaux"),
-            ("11", "_cache_transfert"),
-            ("12", "_cache_nettoyage_auto"),
-        ):
-            self.assertRegex(
-                corps,
-                rf'elif status == "{numero}":\s*\n\s*self\.{methode}\(\)',
-                f"l'entrée {numero} ne mène pas à {methode}",
-            )
+        """L'état du service suit le diagnostic, et chaque entrée qui le
+        suit mène à sa méthode."""
+        self.assertEqual(
+            [action for _, action, _ in entrees_de("QEMU_CACHE")[2:]],
+            [
+                "_cache_service",
+                "_cache_exceptions",
+                "_cache_miroir_git",
+                "_cache_age",
+                "_cache_guide",
+                "_cache_tests",
+                "_cache_combler",
+                "_cache_journaux",
+                "_cache_transfert",
+                "_cache_nettoyage_auto",
+            ],
+        )
 
     def test_les_quatre_verbes_systemd(self):
         """start, enable, disable et stop, et pas un cinquième par erreur."""
-        corps = corps_de("_cache_service", "_cache_journal_service")
-        verbes = re.search(r"verbes = \{([^}]*)\}", corps)
-        self.assertIsNotNone(verbes, "la table des verbes a disparu")
         self.assertEqual(
-            re.findall(r'"(\w+)"', verbes.group(1))[1::2],
-            ["start", "enable", "disable", "stop"],
+            [
+                kwargs.get("verbe")
+                for _, _, kwargs in entrees_de("CACHE_SERVICE")
+            ],
+            [
+                "start",
+                "enable",
+                "disable",
+                "stop",
+                "status --no-pager",
+                None,
+            ],
         )
 
 
@@ -721,7 +734,7 @@ class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
             def _cache_place_libre(self):
                 return "?"
 
-            def fill_help_info(self, choices):
+            def fill_help_info(self, choices, state=None):
                 return ""
 
             def _cache_miroir_remplir(self, liste):

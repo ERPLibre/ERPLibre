@@ -35,7 +35,9 @@ import click
 
 from script.execute.execute import Execute
 from script.qemu import cache_offline
+from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import get_lang, t
+from script.todo.ui.navigator import navigate
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
 # un test : le menu qui chercherait ailleurs annoncerait un cache absent.
@@ -374,53 +376,10 @@ class QemuCacheMenuMixin:
     # ------------------------------------------------------------------
 
     def prompt_execute_qemu_cache(self):
-        print(f"📦 {t('QEMU download cache for local VMs')}")
-        choices = [
-            {"prompt_description": t("Cache - Install or reinstall")},
-            {"prompt_description": t("Cache - Diagnose: does it serve?")},
-            {"prompt_description": t("Cache - Service state")},
-            {"prompt_description": t("Cache - VMs kept out of the cache")},
-            {"prompt_description": t("Cache - Git mirrors: fill them ahead")},
-            {"prompt_description": t("Cache - Age and cleanup")},
-            {"prompt_description": t("Cache - Guide: how it works")},
-            {"prompt_description": t("Cache - Tests and performance report")},
-            {"prompt_description": t("Cache - Fill what offline runs lacked")},
-            {"prompt_description": t("Cache - Logs")},
-            {"prompt_description": t("Cache - Copy it to another machine")},
-            {"prompt_description": t("Cache - Automatic cleanup")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._deploy_qemu_cache()
-            elif status == "2":
-                self._cache_diagnostic()
-            elif status == "3":
-                self._cache_service()
-            elif status == "4":
-                self._cache_exceptions()
-            elif status == "5":
-                self._cache_miroir_git()
-            elif status == "6":
-                self._cache_age()
-            elif status == "7":
-                self._cache_guide()
-            elif status == "8":
-                self._cache_tests()
-            elif status == "9":
-                self._cache_combler()
-            elif status == "10":
-                self._cache_journaux()
-            elif status == "11":
-                self._cache_transfert()
-            elif status == "12":
-                self._cache_nettoyage_auto()
-            else:
-                print(t("Command not found !"))
+        """Le cache de téléchargement des VM : l'installer, le constater, le
+        conduire, le comprendre, le mesurer (QEMU_CACHE, `menus/deploy.py`),
+        dessiné une fois, à l'entrée. Rend False sur [0]."""
+        return navigate(self, menus_deploy.QEMU_CACHE)
 
     # ------------------------------------------------------------------
     # [2] Diagnostic
@@ -617,38 +576,20 @@ class QemuCacheMenuMixin:
         )
 
     def _cache_service(self):
+        """Démarrer, arrêter, activer au démarrage le service du cache, et
+        lire son état et son journal (CACHE_SERVICE, `menus/deploy.py`).
+        Rend False sur [0]."""
+        return navigate(self, menus_deploy.CACHE_SERVICE)
+
+    def _cache_service_ouvre(self):
+        """Ce qui ouvre le menu du service : son état en une ligne, et ce
+        que coûte l'arrêter. Rend {}."""
         print(f"\n⚙ {t('State of the cache service')}")
         print(f"  {self._cache_etat_court()}")
         print(
             f"  {t('Stopping it removes the rules: no VM is redirected.')}\n"
         )
-        choices = [
-            {"prompt_description": t("Service - Start (start)")},
-            {"prompt_description": t("Service - Start at boot (enable)")},
-            {
-                "prompt_description": t(
-                    "Service - Do not start at boot (disable)"
-                )
-            },
-            {"prompt_description": t("Service - Stop (stop)")},
-            {"prompt_description": t("Service - Detailed state (status)")},
-            {"prompt_description": t("Service - Logs (log)")},
-        ]
-        verbes = {"1": "start", "2": "enable", "3": "disable", "4": "stop"}
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status in verbes:
-                self._cache_systemctl(verbes[status])
-            elif status == "5":
-                self._cache_systemctl(verbe="status --no-pager", montrer=False)
-            elif status == "6":
-                self._cache_journal_service()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_journal_service(self):
         """Deux journaux, et ils ne disent pas la même chose.
@@ -1212,15 +1153,25 @@ class QemuCacheMenuMixin:
         return True
 
     def _cache_exceptions(self):
+        """Les VM soustraites au cache, et le retrait de leurs exceptions
+        (CACHE_EXCEPTIONS, `menus/deploy.py`). Une entrée qui retire
+        referme le menu, qui rend True ; [0] rend False, et le menu ne
+        s'ouvre pas, rendant None, sans binaire du cache ni exception."""
+        return navigate(self, menus_deploy.CACHE_EXCEPTIONS)
+
+    def _cache_exceptions_ouvre(self):
+        """Ce qui ouvre le menu des exceptions : chaque exception posée, sa
+        VM, et celles dont la VM n'existe plus. Rend {}, ou None sans
+        binaire du cache ni exception."""
         print(f"\n🎫 {t('VMs kept out of the download cache')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         entrees = self._cache_bypass_lire()
         if not entrees:
             print(f"  {t('No exception: every VM goes through the cache.')}")
             print(f"  {t('Tick the box when deploying to add one.')}\n")
-            return
+            return None
 
         orphelines = dict(self._cache_bypass_orphelines(entrees))
         print(f"  {'MAC':<20}{t('VM')}")
@@ -1232,51 +1183,41 @@ class QemuCacheMenuMixin:
         if orphelines:
             print(f"  ⚠ {t('A freed MAC gets reused: such an entry would')}")
             print(f"    {t('quietly keep a NEW VM out of the cache.')}\n")
-
-        choices = [
-            {"prompt_description": t("Exceptions - Remove the stale ones")},
-            {"prompt_description": t("Exceptions - Remove one by its MAC")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                if self._cache_retirer_orphelines():
-                    return True
-                continue
-            if status == "2":
-                return self._cache_retirer_par_mac()
-            print(t("Command not found !"))
+        return {}
 
     # ------------------------------------------------------------------
     # [5] Miroirs git
     # ------------------------------------------------------------------
 
     def _cache_miroir_git(self):
-        """Prendre l'avance sur les clonages, plutôt que les subir.
+        """Prendre l'avance sur les clonages, plutôt que les subir
+        (CACHE_GIT_MIRRORS, `menus/deploy.py`). Rend False sur [0], et None,
+        le menu fermé, sans binaire du cache ni dépôt dans les manifestes.
 
         À la demande, le miroir se remplit au fil des requêtes : la PREMIÈRE
         machine paie chaque clonage. Pour un dépôt qui en tire trois cents, ce
         n'est pas un coût qu'on supprime, c'est un coût qu'on déplace — sur la
         machine qui, justement, attend.
         """
+        return navigate(self, menus_deploy.CACHE_GIT_MIRRORS)
+
+    def _cache_miroir_git_ouvre(self):
+        """Ce qui ouvre le menu des miroirs : ce qui est déjà mirroré, et,
+        pour la base et l'extra de la version active et pour tous les
+        manifestes, les dépôts déclarés et ceux qui n'ont pas de miroir. Rend
+        {}, ou None sans binaire du cache ni dépôt déclaré."""
         print(f"\n🪞 {t('Git mirrors of the ERPLibre manifests')}\n")
         if not os.path.isfile(CACHE_BIN):
             print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
-            return
+            return None
         depots, octets = self._cache_miroir_occupation()
         print(f"  {t('Already mirrored:')} {depots}, {octets}")
 
-        racine = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        racine = RACINE_DEPOT
         tous = depots_des_manifestes(racine)
         if not tous:
             print(f"  ✗ {t('No repository found in manifest/')}\n")
-            return
+            return None
         # La version active décide de ce qu'un déploiement clone : sa base
         # d'office, son extra seulement sur demande. Chaque liste est montrée
         # avec ce qui lui manque, pour que le choix se fasse sur un compte et
@@ -1305,44 +1246,7 @@ class QemuCacheMenuMixin:
         print(f"\n  ⚠ {t('A mirror is complete: this can take tens of GiB')}")
         print(f"    {t('and hours on the first run. Nothing erases it.')}")
         print(f"    {t('Free space:')} {self._cache_place_libre()}\n")
-
-        choices = [
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill the base of the active Odoo version"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill the extra of the active Odoo version"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Mirrors - Fill every manifest, all versions"
-                )
-            },
-            {"prompt_description": t("Mirrors - List them, heaviest first")},
-            {"prompt_description": t("Mirrors - Remove one")},
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            if status == "1":
-                self._cache_miroir_remplir_version()
-            elif status == "2":
-                self._cache_miroir_remplir_version(extra=True)
-            elif status == "3":
-                self._cache_miroir_remplir_tout()
-            elif status == "4":
-                self._cache_miroir_lister()
-            elif status == "5":
-                self._cache_miroir_retirer()
-            else:
-                print(t("Command not found !"))
+        return {}
 
     def _cache_miroir_remplir(self, liste):
         """Remplir les miroirs sous le compte du SERVICE, jamais sous root.

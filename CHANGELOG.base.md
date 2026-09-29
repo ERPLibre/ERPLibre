@@ -407,6 +407,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A declared menu that lists entries of `todo.json` or of its private override, Execute › Code, Update, Git and Automation among them, shows a section of that list without a number, as it did, and each number now runs the entry it shows instead of the one shown before it; navigation telemetry no longer lists the section as a command
 - Navigation telemetry: the TUI no longer launches Execute › Deploy › SSH › SSH - Sync files (rsync), whose `rsync --delete` erases, on the remote host, what does not exist locally
 - Navigation telemetry: Execute › Deploy › QEMU/KVM lists the entries of `todo.json` and launches them from the TUI; the TUI no longer launches Resize a VM disk, Delete VM(s), Recreate the VM subnet or Clean up QEMU, which erase
+- Navigation telemetry: Execute › Deploy › QEMU cache › Service lists its four systemd verbs and launches them from the TUI; the TUI no longer launches the two removals of Exceptions nor Git mirrors › Remove one, which erase
 
 <!-- [fr] -->
 
@@ -534,6 +535,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un menu déclaré qui liste des entrées de `todo.json` ou de sa surcharge privée, dont Exécution › Code, Update, Git et Automatisation, montre une section de cette liste sans numéro, comme avant, et chaque numéro lance désormais l'entrée qu'il montre au lieu de celle montrée avant elle ; la télémétrie de navigation ne liste plus la section comme une commande
 - Télémétrie de navigation : la TUI ne lance plus Exécution › Deploy › SSH › SSH - Synchroniser les fichiers (rsync), dont le `rsync --delete` efface, sur l'hôte distant, ce qui n'existe pas ici
 - Télémétrie de navigation : Exécution › Deploy › QEMU/KVM liste les entrées de `todo.json` et les lance depuis la TUI ; la TUI ne lance plus Redimensionner le disque d'une VM, Effacer une ou plusieurs VM, Recréer le sous-réseau des VM ni Nettoyer QEMU, qui effacent
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service liste ses quatre verbes systemd et les lance depuis la TUI ; la TUI ne lance plus les deux retraits d'Exceptions ni Miroirs git › En effacer un, qui effacent
 
 <!-- [en] -->
 ## Removed

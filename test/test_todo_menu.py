@@ -408,6 +408,7 @@ class TestLArbreDesMenus(unittest.TestCase):
         actions = "TODO › Execute › Git › Git local server › Actions"
         git = "TODO › Execute › Git"
         deploy = "TODO › Execute › Deploy"
+        cache = f"{deploy} › QEMU cache"
         self.assertEqual(
             dangerous,
             [
@@ -436,6 +437,14 @@ class TestLArbreDesMenus(unittest.TestCase):
                         "Delete VM(s)",
                         "Recreate the VM subnet (stop, redefine, restart)",
                         "Clean up QEMU (orphan files)",
+                    )
+                ],
+                *[
+                    (f"{cache} › {label}", {})
+                    for label in (
+                        "Exceptions › Exceptions - Remove the stale ones",
+                        "Exceptions › Exceptions - Remove one by its MAC",
+                        "Git mirrors › Mirrors - Remove one",
                     )
                 ],
                 ("TODO › Configuration › Reset all preferences", {}),
@@ -2395,6 +2404,10 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_network",
                 "prompt_execute_security",
                 "prompt_execute_qemu",
+                "prompt_execute_qemu_cache",
+                "_cache_service",
+                "_cache_exceptions",
+                "_cache_miroir_git",
             },
             set(declared),
         )

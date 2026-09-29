@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille QEMU, ouverts depuis Execute : Deploy, ses
-sous-menus SSH et QEMU/KVM, Network et Security.
+sous-menus SSH, QEMU/KVM et QEMU cache, avec son Service, ses Exceptions
+et ses Git mirrors, Network et Security.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -140,6 +141,109 @@ QEMU = Menu(
     ],
     intro="Deploy a QEMU/KVM virtual machine (libvirt)!",
     opens="_qemu_ouvre",
+    render="once",
+)
+
+QEMU_CACHE = Menu(
+    "prompt_execute_qemu_cache",
+    "QEMU cache",
+    [
+        Entry("Cache - Install or reinstall", "_deploy_qemu_cache"),
+        Entry("Cache - Diagnose: does it serve?", "_cache_diagnostic"),
+        Entry("Cache - Service state", "_cache_service"),
+        Entry("Cache - VMs kept out of the cache", "_cache_exceptions"),
+        Entry("Cache - Git mirrors: fill them ahead", "_cache_miroir_git"),
+        Entry("Cache - Age and cleanup", "_cache_age"),
+        Entry("Cache - Guide: how it works", "_cache_guide"),
+        Entry("Cache - Tests and performance report", "_cache_tests"),
+        Entry("Cache - Fill what offline runs lacked", "_cache_combler"),
+        Entry("Cache - Logs", "_cache_journaux"),
+        Entry("Cache - Copy it to another machine", "_cache_transfert"),
+        Entry("Cache - Automatic cleanup", "_cache_nettoyage_auto"),
+    ],
+    intro="QEMU download cache for local VMs",
+    mark="📦",
+    render="once",
+)
+
+# Arrêter le service retire ses règles : plus aucune VM n'est détournée,
+# et le démarrer les repose.
+CACHE_SERVICE = Menu(
+    "_cache_service",
+    "Service",
+    [
+        Entry(
+            "Service - Start (start)",
+            "_cache_systemctl",
+            kwargs={"verbe": "start"},
+        ),
+        Entry(
+            "Service - Start at boot (enable)",
+            "_cache_systemctl",
+            kwargs={"verbe": "enable"},
+        ),
+        Entry(
+            "Service - Do not start at boot (disable)",
+            "_cache_systemctl",
+            kwargs={"verbe": "disable"},
+        ),
+        Entry(
+            "Service - Stop (stop)",
+            "_cache_systemctl",
+            kwargs={"verbe": "stop"},
+        ),
+        Entry(
+            "Service - Detailed state (status)",
+            "_cache_systemctl",
+            kwargs={"verbe": "status --no-pager", "montrer": False},
+        ),
+        Entry("Service - Logs (log)", "_cache_journal_service"),
+    ],
+    opens="_cache_service_ouvre",
+    render="once",
+)
+
+CACHE_EXCEPTIONS = Menu(
+    "_cache_exceptions",
+    "Exceptions",
+    [
+        Entry(
+            "Exceptions - Remove the stale ones",
+            "_cache_retirer_orphelines",
+            danger=True,
+        ),
+        Entry(
+            "Exceptions - Remove one by its MAC",
+            "_cache_retirer_par_mac",
+            danger=True,
+        ),
+    ],
+    opens="_cache_exceptions_ouvre",
+    render="once",
+    closes_on_result=True,
+)
+
+CACHE_GIT_MIRRORS = Menu(
+    "_cache_miroir_git",
+    "Git mirrors",
+    [
+        Entry(
+            "Mirrors - Fill the base of the active Odoo version",
+            "_cache_miroir_remplir_version",
+        ),
+        Entry(
+            "Mirrors - Fill the extra of the active Odoo version",
+            "_cache_miroir_remplir_version",
+            kwargs={"extra": True},
+        ),
+        Entry(
+            "Mirrors - Fill every manifest, all versions",
+            "_cache_miroir_remplir_tout",
+        ),
+        Entry("Mirrors - List them, heaviest first", "_cache_miroir_lister"),
+        Entry("Mirrors - Remove one", "_cache_miroir_retirer", danger=True),
+    ],
+    opens="_cache_miroir_git_ouvre",
     render="once",
 )
 
