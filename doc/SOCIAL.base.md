@@ -52,8 +52,15 @@ feed API is deprecated; only publishing is self-serve. The tree says so under
 such an account instead of showing an empty node, which would read like a
 fetch that never happened.
 
-Only Mastodon is implemented so far. Bluesky and LinkedIn have their presets
-and their accounts, and no transport yet.
+Mastodon and Bluesky are implemented. LinkedIn has its preset and its
+accounts, and no transport yet.
+
+The two implemented ones authenticate differently, and it shows. Mastodon
+takes a token you paste, valid until you revoke it. Bluesky opens a SESSION
+from an app password and returns two tokens: a short access one and a durable
+refresh one. The access token expires mid-session, the service names that
+error, and the client refreshes instead of asking for the password again —
+asking would be the mistake that error name exists to prevent.
 
 ## Adding an account
 
@@ -105,10 +112,18 @@ screen open with its text, so pressing send again replays the same key — and
 the instance returns the post already created instead of creating a second
 one. That is what makes the button safe to press twice.
 
-A refusal is told apart from a breakdown: an instance saying no to an empty
-or over-long post will not change its mind, while a broken gateway will. The
-length allowed is asked of the instance, which raises or lowers it, and an
-unanswered question falls back on 500 rather than blocking the send.
+On Bluesky there is no key to send: publishing means WRITING A RECORD at an
+address the client chooses, and rewriting the same address replaces instead
+of adding. The guarantee is the same, the mechanism is not — the client keeps
+the address exactly as it keeps a key, and a fresh one each try would publish
+twice. That protocol carries no visibility either: the field is accepted so
+the caller need not tell the networks apart, and ignored, since pretending to
+honour it would suggest a privacy that does not exist.
+
+A refusal is told apart from a breakdown: a service saying no to an empty or
+over-long post will not change its mind, while a broken gateway will. The
+length allowed is asked of a Mastodon instance, which raises or lowers it;
+on Bluesky it is the protocol's own 300 and there is nothing to ask.
 
 ## The cache
 
@@ -150,8 +165,16 @@ l'API de fil d'activité est dépréciée ; seule la publication est en
 libre-service. L'arbre le dit sous un tel compte au lieu d'afficher un nœud
 vide, qui se lirait comme une synchronisation qui n'a pas eu lieu.
 
-Seul Mastodon est implémenté pour l'instant. Bluesky et LinkedIn ont leurs
-préréglages et leurs comptes, et pas encore de transport.
+Mastodon et Bluesky sont implémentés. LinkedIn a son préréglage et ses
+comptes, et pas encore de transport.
+
+Les deux implémentés ne s'authentifient pas pareil, et cela se voit. Mastodon
+prend un jeton qu'on colle, valable jusqu'à révocation. Bluesky ouvre une
+SESSION à partir d'un mot de passe d'application et rend deux jetons : un
+d'accès, court, et un de rafraîchissement, durable. L'accès expire en cours
+de session, le service nomme cette erreur, et le client rafraîchit au lieu de
+redemander le mot de passe — le redemander serait l'erreur que ce nom existe
+pour éviter.
 
 ## Ajouter un compte
 
@@ -204,10 +227,19 @@ ouvert avec son texte : presser à nouveau rejoue la même clé — et l'instanc
 rend le billet déjà créé au lieu d'en poser un second. C'est ce qui rend le
 bouton sûr à presser deux fois.
 
-Un refus se distingue d'une panne : une instance qui dit non à un billet vide
+Sur Bluesky il n'y a pas de clé à envoyer : publier, c'est ÉCRIRE UN
+ENREGISTREMENT à une adresse que le client choisit, et réécrire la même
+remplace au lieu d'ajouter. La garantie est la même, le mécanisme non — le
+client garde l'adresse exactement comme il garde une clé, et en tirer une
+neuve à chaque essai publierait deux fois. Ce protocole ne porte pas non plus
+de visibilité : le champ est accepté pour que l'appelant n'ait pas à
+distinguer les réseaux, et ignoré, prétendre l'honorer laissant croire à une
+confidentialité qui n'existe pas.
+
+Un refus se distingue d'une panne : un service qui dit non à un billet vide
 ou trop long ne changera pas d'avis, une passerelle en vrac si. La longueur
-permise se demande à l'instance, qui la relève ou l'abaisse, et une question
-sans réponse retombe sur 500 plutôt que d'empêcher l'envoi.
+permise se demande à une instance Mastodon, qui la relève ou l'abaisse ; sur
+Bluesky c'est le 300 du protocole, et il n'y a rien à demander.
 
 ## Le cache
 

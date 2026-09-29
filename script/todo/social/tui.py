@@ -32,6 +32,10 @@ _logger = logging.getLogger(__name__)
 # n'en montre que le haut.
 PAGES_PAR_PASSE = 5
 
+# Le fil personnel, sous le même nom pour tous les réseaux : le cache range
+# par nom de fil, et un nom par protocole y ferait deux fils pour une chose.
+FIL_ACCUEIL = "home"
+
 # Lignes chargées d'un coup dans la liste. Un fil se compte en dizaines de
 # milliers de billets, et tout construire à chaque ouverture ferait attendre
 # pour ce que personne ne fait défiler.
@@ -142,6 +146,12 @@ def _transport(account, jeton: str):
         from script.todo.social.mastodon import MastodonTransport
 
         return MastodonTransport(account, jeton)
+    if account.platform == "bluesky":
+        from script.todo.social.bluesky import BlueskyTransport
+
+        # Le secret gardé pour ce réseau est un MOT DE PASSE
+        # D'APPLICATION, non un jeton : c'est lui qui ouvre la session.
+        return BlueskyTransport(account, jeton)
     return None
 
 
@@ -182,8 +192,8 @@ def sync_session(session: Session, pages: int = PAGES_PAR_PASSE) -> int:
     """
     if not session.online or not session.peut_lire():
         return 0
-    from script.todo.social.mastodon import FIL_ACCUEIL
-
+    # Le nom du fil d'accueil est le même partout : c'est le cache qui le
+    # porte, pas le protocole.
     fil_id = session.store.upsert_feed(FIL_ACCUEIL, t("social_feed_home"))
     etat = session.store.feed_state(FIL_ACCUEIL) or {}
     curseur = etat.get("cursor") or ""

@@ -35,8 +35,15 @@ feed API is deprecated; only publishing is self-serve. The tree says so under
 such an account instead of showing an empty node, which would read like a
 fetch that never happened.
 
-Only Mastodon is implemented so far. Bluesky and LinkedIn have their presets
-and their accounts, and no transport yet.
+Mastodon and Bluesky are implemented. LinkedIn has its preset and its
+accounts, and no transport yet.
+
+The two implemented ones authenticate differently, and it shows. Mastodon
+takes a token you paste, valid until you revoke it. Bluesky opens a SESSION
+from an app password and returns two tokens: a short access one and a durable
+refresh one. The access token expires mid-session, the service names that
+error, and the client refreshes instead of asking for the password again —
+asking would be the mistake that error name exists to prevent.
 
 ## Adding an account
 
@@ -88,10 +95,18 @@ screen open with its text, so pressing send again replays the same key — and
 the instance returns the post already created instead of creating a second
 one. That is what makes the button safe to press twice.
 
-A refusal is told apart from a breakdown: an instance saying no to an empty
-or over-long post will not change its mind, while a broken gateway will. The
-length allowed is asked of the instance, which raises or lowers it, and an
-unanswered question falls back on 500 rather than blocking the send.
+On Bluesky there is no key to send: publishing means WRITING A RECORD at an
+address the client chooses, and rewriting the same address replaces instead
+of adding. The guarantee is the same, the mechanism is not — the client keeps
+the address exactly as it keeps a key, and a fresh one each try would publish
+twice. That protocol carries no visibility either: the field is accepted so
+the caller need not tell the networks apart, and ignored, since pretending to
+honour it would suggest a privacy that does not exist.
+
+A refusal is told apart from a breakdown: a service saying no to an empty or
+over-long post will not change its mind, while a broken gateway will. The
+length allowed is asked of a Mastodon instance, which raises or lowers it;
+on Bluesky it is the protocol's own 300 and there is nothing to ask.
 
 ## The cache
 

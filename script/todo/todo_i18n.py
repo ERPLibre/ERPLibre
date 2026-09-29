@@ -12837,6 +12837,20 @@ TRANSLATIONS = {
         "fr": "Visibilité inconnue :",
         "en": "Unknown visibility:",
     },
+    "social_err_session_without_token": {
+        "fr": ("La session ouverte ne porte aucun jeton d'accès."),
+        "en": "The opened session carries no access token.",
+    },
+    "social_err_no_refresh": {
+        "fr": (
+            "Aucun jeton de rafraîchissement : la session doit être"
+            " rouverte avec le mot de passe d'application."
+        ),
+        "en": (
+            "No refresh token: the session must be reopened with the app"
+            " password."
+        ),
+    },
     "social_err_unreachable": {
         "fr": "Instance injoignable :",
         "en": "Instance unreachable:",

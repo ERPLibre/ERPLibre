@@ -36,8 +36,16 @@ l'API de fil d'activité est dépréciée ; seule la publication est en
 libre-service. L'arbre le dit sous un tel compte au lieu d'afficher un nœud
 vide, qui se lirait comme une synchronisation qui n'a pas eu lieu.
 
-Seul Mastodon est implémenté pour l'instant. Bluesky et LinkedIn ont leurs
-préréglages et leurs comptes, et pas encore de transport.
+Mastodon et Bluesky sont implémentés. LinkedIn a son préréglage et ses
+comptes, et pas encore de transport.
+
+Les deux implémentés ne s'authentifient pas pareil, et cela se voit. Mastodon
+prend un jeton qu'on colle, valable jusqu'à révocation. Bluesky ouvre une
+SESSION à partir d'un mot de passe d'application et rend deux jetons : un
+d'accès, court, et un de rafraîchissement, durable. L'accès expire en cours
+de session, le service nomme cette erreur, et le client rafraîchit au lieu de
+redemander le mot de passe — le redemander serait l'erreur que ce nom existe
+pour éviter.
 
 ## Ajouter un compte
 
@@ -90,10 +98,19 @@ ouvert avec son texte : presser à nouveau rejoue la même clé — et l'instanc
 rend le billet déjà créé au lieu d'en poser un second. C'est ce qui rend le
 bouton sûr à presser deux fois.
 
-Un refus se distingue d'une panne : une instance qui dit non à un billet vide
+Sur Bluesky il n'y a pas de clé à envoyer : publier, c'est ÉCRIRE UN
+ENREGISTREMENT à une adresse que le client choisit, et réécrire la même
+remplace au lieu d'ajouter. La garantie est la même, le mécanisme non — le
+client garde l'adresse exactement comme il garde une clé, et en tirer une
+neuve à chaque essai publierait deux fois. Ce protocole ne porte pas non plus
+de visibilité : le champ est accepté pour que l'appelant n'ait pas à
+distinguer les réseaux, et ignoré, prétendre l'honorer laissant croire à une
+confidentialité qui n'existe pas.
+
+Un refus se distingue d'une panne : un service qui dit non à un billet vide
 ou trop long ne changera pas d'avis, une passerelle en vrac si. La longueur
-permise se demande à l'instance, qui la relève ou l'abaisse, et une question
-sans réponse retombe sur 500 plutôt que d'empêcher l'envoi.
+permise se demande à une instance Mastodon, qui la relève ou l'abaisse ; sur
+Bluesky c'est le 300 du protocole, et il n'y a rien à demander.
 
 ## Le cache
 
