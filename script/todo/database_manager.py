@@ -31,15 +31,16 @@ class DatabaseManager:
         self._dir_path = path
 
     def select_database(self) -> str | bool:
-        """Faire choisir une base parmi celles que PostgreSQL expose.
+        """Faire choisir une base parmi celles que PostgreSQL expose ; rend
+        son nom, ou False sur [0], sans base, ou quand la liste échoue.
 
         Le code de retour de « db --list » est vérifié AVANT de construire le
-        menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
-        pas d'une base absente : la sortie et l'erreur sont fusionnées dans le
-        même flux (`stderr=STDOUT`, execute.py), donc les lignes de la trace
-        d'appel devenaient les entrées du menu. « Traceback (most recent call
-        last): » s'affichait comme la base [1], et la choisir renvoyait cette
-        ligne comme nom de base à l'appelant, qui la passait à sa commande.
+        menu : la sortie et l'erreur arrivent dans le même flux
+        (`stderr=STDOUT`, execute.py), et sans cette vérification un
+        PostgreSQL injoignable ne se distinguerait pas d'une base absente.
+        Les lignes de sa trace d'appel deviendraient les entrées du menu, et
+        en choisir une rendrait cette ligne, comme nom de base, à l'appelant
+        qui la passe à sa commande.
         """
         cmd_server = "./odoo_bin.sh db --list"
         status, output = self._execute.exec_command_live(
@@ -207,10 +208,10 @@ class DatabaseManager:
         ouvertes sur la source, régénère le `database.uuid`, copie le
         filestore et sait neutraliser pour de bon.
 
-        La neutralisation est proposée par DÉFAUT. Mesuré sur trois
-        migrations de suite : la copie gardait 33 crons actifs, aucun
-        serveur de courriel — donc le repli sur `smtp_server` de la
-        configuration — et une clé de paiement vivante. Le défaut à
+        La neutralisation est proposée par DÉFAUT : une copie non
+        neutralisée garde ses actions planifiées actives et les clés de ses
+        fournisseurs de paiement, et, sans serveur de courriel sortant à
+        elle, envoie par le `smtp_server` de la configuration. Le défaut à
         « oui » est le seul qui protège celui qui appuie sur Entrée.
         """
         source = self.select_database()
@@ -248,8 +249,9 @@ class DatabaseManager:
         if status:
             print(f"❌ {t('The duplication failed.')}")
             return
-        # RELIRE plutôt que croire : c'est le contrôle qui manquait aux
-        # trois modules maison, dont aucun ne posait le drapeau.
+        # Relire la copie plutôt que croire la commande : un module de
+        # neutralisation peut réussir sans poser le drapeau, et seul l'état
+        # relu dit ce qui a pris.
         if neutraliser:
             self._report_neutralize(cible)
 
