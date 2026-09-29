@@ -59,7 +59,10 @@ DECLARE
     ancre RECORD;
     combien integer := 0;
 BEGIN
-    IF to_regclass('ir_ui_view') IS NULL THEN
+    -- Sans le module website, website_page n'existe pas : rien à décoder.
+    -- La requête du FOR n'est planifiée qu'ici, après ce garde.
+    IF to_regclass('ir_ui_view') IS NULL
+            OR to_regclass('website_page') IS NULL THEN
         RETURN;
     END IF;
     FOR ancre IN
