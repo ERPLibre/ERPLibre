@@ -252,13 +252,12 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
 
 
 class TestLArbreDesMenus(unittest.TestCase):
-    """L'écran de télémétrie lit le CODE, pas la classe assemblée.
+    """L'arbre de télémétrie se lit dans le CODE, sans la classe assemblée.
 
-    `build_code_tree()` parse un fichier et n'y prend que la première classe.
-    Depuis le découpage, les menus QEMU/KVM et Proxmox vivent dans des mixins :
-    leur colonne avait disparu de cet écran — les commandes s'exécutaient
-    toujours, mais on ne pouvait plus les lancer de là ni les lire. C'est ce
-    que « il manque plein d'informations qu'il y avait avant » désignait.
+    `build_code_tree()` lit la classe TODO de todo.py, les mixins que
+    todo.py importe (QEMU/KVM, Proxmox…) et les menus du registre : un menu
+    qui vit hors de todo.py garde sa colonne. Chaque feuille porte la
+    méthode et les kwargs que la TUI de télémétrie lui passe.
     """
 
     @classmethod
@@ -663,6 +662,32 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertEqual(
             kwargs["Analyse unit tests"], {"pattern": "test_analyse*.py"}
         )
+
+    def test_each_leaf_of_the_git_family_binds_its_arguments(self):
+        # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
+        # attend un argument que l'arbre ne donne pas lève dans la TUI au
+        # lieu de lancer sa commande.
+        import inspect
+
+        from script.todo.todo import TODO
+
+        def leaves(node):
+            for child in node["children"]:
+                if child["is_menu"]:
+                    yield from leaves(child)
+                else:
+                    yield child
+
+        found = [
+            leaf
+            for menu in ("Git", "GPT code", "Automation")
+            for leaf in leaves(self._noeud(menu))
+        ]
+        self.assertGreater(len(found), 30)
+        for leaf in found:
+            with self.subTest(leaf=leaf["label"]):
+                method = getattr(TODO, leaf["method"])
+                inspect.signature(method).bind(None, **leaf["kwargs"])
 
     def test_a_help_line_names_its_entry_once(self):
         # « [N] {t("…")} » dans une f-string ; un libellé calculé n'y entre

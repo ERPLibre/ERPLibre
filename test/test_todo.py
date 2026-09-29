@@ -596,28 +596,41 @@ class TestClaudeCommandTemplates(unittest.TestCase):
     """
 
     @staticmethod
-    def _deployed_templates():
-        """Les gabarits nommés dans les appels à `_setup_claude_command`."""
+    def _deployed_pairs():
+        """(commande, gabarit) de chaque appel de todo.py à
+        `_setup_claude_command` : ses deux premiers arguments, écrits en
+        position ou nommés `command_name` et `template_filename`."""
         import ast
 
         source = Path("script/todo/todo.py").read_text(encoding="utf-8")
-        found = []
+        pairs = []
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Call):
                 continue
             attr = getattr(node.func, "attr", None)
             if attr != "_setup_claude_command":
                 continue
-            # (nom_de_commande, nom_de_gabarit) : les deux sont des littéraux,
-            # sans quoi le test ne peut rien affirmer.
+            named = {k.arg: k.value for k in node.keywords}
             args = [
+                node.args[i] if i < len(node.args) else named.get(name)
+                for i, name in enumerate(("command_name", "template_filename"))
+            ]
+            # Les deux sont des littéraux, sans quoi le test ne peut rien
+            # affirmer.
+            values = [
                 a.value
-                for a in node.args
+                for a in args
                 if isinstance(a, ast.Constant) and isinstance(a.value, str)
             ]
-            if len(args) >= 2:
-                found.append(args[1])
-        return found
+            if len(values) == 2:
+                pairs.append(tuple(values))
+        return pairs
+
+    @staticmethod
+    def _deployed_templates():
+        """Les gabarits que nomment les déploiements de Claude configs."""
+        pairs = TestClaudeCommandTemplates._deployed_pairs()
+        return [template for _, template in pairs]
 
     def test_every_menu_template_exists(self):
         templates = self._deployed_templates()
@@ -633,22 +646,7 @@ class TestClaudeCommandTemplates(unittest.TestCase):
         """Le `name:` du frontmatter donne le nom de la commande `/…` ; un
         gabarit qui en déclare un autre déploie un fichier dont le contenu
         parle d'une commande différente."""
-        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
-        import ast
-
-        pairs = []
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Call):
-                continue
-            if getattr(node.func, "attr", None) != "_setup_claude_command":
-                continue
-            args = [
-                a.value
-                for a in node.args
-                if isinstance(a, ast.Constant) and isinstance(a.value, str)
-            ]
-            if len(args) >= 2:
-                pairs.append((args[0], args[1]))
+        pairs = self._deployed_pairs()
         self.assertTrue(pairs)
         for command, template in pairs:
             with self.subTest(command=command):

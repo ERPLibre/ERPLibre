@@ -241,6 +241,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › GPT code › Add an automation with Claude in todo.py offers the sections whose list a menu reads, git, code, update, qemu and proxmox, and refuses another one: config, network and process, offered until now, wrote a list that no menu shows, and said it succeeded
 - Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
 - Execute › Git › Add a remote to a local repository reports git's failure, a remote that already exists say, with its exit code, instead of announcing it was added
+- Navigation telemetry: Execute › GPT code › Claude configs and Plugins launch each of their commands from the TUI with its arguments, instead of failing on a missing one, and Todo Add Command + Plan Max deploys both of its commands there
 
 ## Removed
 

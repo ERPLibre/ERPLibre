@@ -391,6 +391,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › GPT code › Add an automation with Claude in todo.py offers the sections whose list a menu reads, git, code, update, qemu and proxmox, and refuses another one: config, network and process, offered until now, wrote a list that no menu shows, and said it succeeded
 - Execute › Git › Add a remote to a local repository passes the name and the address to git as typed: a blank no longer splits them, and a shell character such as « ; » no longer ends the command to run what follows
 - Execute › Git › Add a remote to a local repository reports git's failure, a remote that already exists say, with its exit code, instead of announcing it was added
+- Navigation telemetry: Execute › GPT code › Claude configs and Plugins launch each of their commands from the TUI with its arguments, instead of failing on a missing one, and Todo Add Command + Plan Max deploys both of its commands there
 
 <!-- [fr] -->
 
@@ -502,6 +503,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › GPT code › Ajouter une automatisation avec Claude dans todo.py propose les sections dont un menu lit la liste, git, code, update, qemu et proxmox, et en refuse une autre : config, network et process, proposées jusqu'ici, écrivaient une liste qu'aucun menu ne montre, en annonçant un succès
 - Exécution › Git › Ajouter un remote vers un dépôt local passe à git le nom et l'adresse tels que tapés : un blanc ne les coupe plus, et un caractère du shell comme « ; » ne termine plus la commande pour lancer ce qui suit
 - Exécution › Git › Ajouter un remote vers un dépôt local dit l'échec de git, un remote qui existe déjà par exemple, avec son code de sortie, au lieu d'annoncer l'ajout
+- Télémétrie de navigation : Exécution › GPT code › Claude configs et Plugins lancent chacune de leurs commandes depuis la TUI avec ses arguments, au lieu d'échouer sur un argument manquant, et Todo Add Command + Plan Max y déploie ses deux commandes
 
 <!-- [en] -->
 ## Removed

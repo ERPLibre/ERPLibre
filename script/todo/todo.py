@@ -3425,36 +3425,42 @@ class TODO(
                 return False
             elif status == "1":
                 self._setup_claude_command(
-                    "commit",
-                    "template_claude_commands_commit.md",
+                    command_name="commit",
+                    template_filename="template_claude_commands_commit.md",
                     personalize=True,
                 )
             elif status == "2":
                 self._setup_claude_command(
-                    "git_prepare_merge",
-                    "template_claude_commands_git_prepare_merge.md",
+                    command_name="git_prepare_merge",
+                    template_filename=(
+                        "template_claude_commands_git_prepare_merge.md"
+                    ),
                 )
             elif status == "3":
-                # Les deux gabarits vont ensemble : /todo_plan_max produit la
-                # spécification que /todo_add_command implémente, et l'un sans
-                # l'autre laisse la moitié de la chaîne.
-                self._setup_claude_command(
-                    "todo_plan_max",
-                    "template_claude_commands_todo_plan_max.md",
-                )
-                self._setup_claude_command(
-                    "todo_add_command",
-                    "template_claude_commands_todo_add_command.md",
-                )
+                self._setup_claude_todo_commands()
             elif status == "4":
                 self._setup_claude_command(
-                    "todo_generate_code",
-                    "template_claude_commands_todo_generate_code.md",
+                    command_name="todo_generate_code",
+                    template_filename=(
+                        "template_claude_commands_todo_generate_code.md"
+                    ),
                 )
             elif status == "5":
                 self._list_claude_commands()
             else:
                 print(t("Command not found !"))
+
+    def _setup_claude_todo_commands(self):
+        """Déploie /todo_plan_max, puis /todo_add_command. Les deux vont
+        ensemble : /todo_plan_max produit la spécification que
+        /todo_add_command implémente, et l'un sans l'autre laisse la moitié
+        de la chaîne."""
+        self._setup_claude_command(
+            "todo_plan_max", "template_claude_commands_todo_plan_max.md"
+        )
+        self._setup_claude_command(
+            "todo_add_command", "template_claude_commands_todo_add_command.md"
+        )
 
     # Les commandes `/…` qu'ERPLibre déploie, et le gabarit de `conf/` dont
     # chacune est la copie. La liste et l'écran de contexte en dérivent l'état
@@ -3885,9 +3891,9 @@ class TODO(
             if status == "0":
                 return False
             elif status == "1":
-                self._claude_plugin_exec("list")
+                self._claude_plugin_exec(args="list")
             elif status == "2":
-                self._claude_plugin_exec("marketplace list")
+                self._claude_plugin_exec(args="marketplace list")
             elif status == "3":
                 self._claude_plugin_search()
             elif status == "4":

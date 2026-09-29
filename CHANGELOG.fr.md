@@ -241,6 +241,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › GPT code › Ajouter une automatisation avec Claude dans todo.py propose les sections dont un menu lit la liste, git, code, update, qemu et proxmox, et en refuse une autre : config, network et process, proposées jusqu'ici, écrivaient une liste qu'aucun menu ne montre, en annonçant un succès
 - Exécution › Git › Ajouter un remote vers un dépôt local passe à git le nom et l'adresse tels que tapés : un blanc ne les coupe plus, et un caractère du shell comme « ; » ne termine plus la commande pour lancer ce qui suit
 - Exécution › Git › Ajouter un remote vers un dépôt local dit l'échec de git, un remote qui existe déjà par exemple, avec son code de sortie, au lieu d'annoncer l'ajout
+- Télémétrie de navigation : Exécution › GPT code › Claude configs et Plugins lancent chacune de leurs commandes depuis la TUI avec ses arguments, au lieu d'échouer sur un argument manquant, et Todo Add Command + Plan Max y déploie ses deux commandes
 
 ## Retiré
 
