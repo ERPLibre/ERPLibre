@@ -109,11 +109,16 @@ def adresse(argv=(), config_path=None, journal=None):
     if port is None:
         hote, port = adresse_du_journal(journal)
     if port is None:
-        brut = str(config.get("http_port", "")).strip()
+        # Odoo 8 à 10 n'ont que xmlrpc_port.
+        brut = str(
+            config.get("http_port") or config.get("xmlrpc_port") or ""
+        ).strip()
         port = int(brut) if brut.isdigit() else PORT_PAR_DEFAUT
 
     if not hote:
-        interface = str(config.get("http_interface", "")).strip()
+        interface = str(
+            config.get("http_interface") or config.get("xmlrpc_interface") or ""
+        ).strip()
         # Une interface vide veut dire « toutes » : on se parle à soi-même.
         # 0.0.0.0 n'est pas une adresse de destination.
         if interface.lower() in ("", "false", "none", "0.0.0.0", "::"):

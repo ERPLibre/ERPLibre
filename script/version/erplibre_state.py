@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import date
 
 _logger = logging.getLogger(__name__)
@@ -157,7 +158,11 @@ def print_state() -> None:
     if versions:
         installed = [
             f"{v}{' +extra' if d.get('extra') else ''}"
-            for v, d in sorted(versions.items())
+            # Tri naturel : « 8.0 » avant « 10.0 ».
+            for v, d in sorted(
+                versions.items(),
+                key=lambda e: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", e[0])],
+            )
             if d.get("installed")
         ]
         if installed:

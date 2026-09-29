@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -280,7 +281,11 @@ class Update:
 
         if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
             with open(INSTALLED_ODOO_VERSION_FILE) as txt:
-                lst_version_installed = sorted(txt.read().splitlines())
+                # Tri naturel : « odoo8.0 » avant « odoo10.0 ».
+                lst_version_installed = sorted(
+                    txt.read().splitlines(),
+                    key=lambda v: [int(p) if p.isdigit() else p for p in re.split(r"(\d+)", v)],
+                )
                 str_installed_version = "Installed version: " + ", ".join(
                     lst_version_installed
                 )

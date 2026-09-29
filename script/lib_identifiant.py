@@ -53,7 +53,10 @@ def adresse_de_machine(valeur):
         return False
     if len(nombres) != 4 or any(n > 255 for n in nombres):
         return False
-    if 12 <= nombres[0] <= 18 and nombres[1] == 0:
+    # Une version de module Odoo (8.0.1.3, 18.0.2.0) a la forme d'une
+    # adresse. 10 reste signalé : 10.0.0.0/8 est la plage privée la plus
+    # répandue, et une vraie adresse y compte plus qu'une version.
+    if (nombres[0] in (8, 9) or 11 <= nombres[0] <= 20) and nombres[1] == 0:
         return False
     if nombres[0] in (0, 127, 255) or nombres[3] == 0:
         return False
