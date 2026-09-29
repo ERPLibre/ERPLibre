@@ -130,6 +130,10 @@ try:
             # Court-circuit : dès qu'UN utilisateur voit une ligne, le
             # modèle n'est pas muet. Inutile d'interroger les autres.
             visible = False
+            # Un témoin sans droit de lecture sur le modèle (ir.model.access)
+            # est refusé avant toute règle : s'il n'y a que ceux-là, le
+            # masquage vient des droits d'accès, et le rapport le dit.
+            droit = False
             for membre in membres:
                 try:
                     # with_user() depuis la 13 ; avant, sudo(user) change
@@ -140,6 +144,17 @@ try:
                         comme = modele.with_user(membre)
                     else:
                         comme = modele.sudo(membre)
+                    # has_access depuis la 18, check_access_rights avant. Lu
+                    # sur la classe : un champ du même nom n'est pas appelable.
+                    if callable(getattr(type(comme), "has_access", None)):
+                        permis = comme.has_access("read")
+                    else:
+                        permis = comme.check_access_rights(
+                            "read", raise_exception=False
+                        )
+                    if not permis:
+                        continue
+                    droit = True
                     if comme.search([], limit=1):
                         visible = True
                         break
@@ -147,7 +162,9 @@ try:
                     # Un refus d'accès n'est pas une ligne visible.
                     continue
             if not visible:
-                rapport["models"].append({{"model": nom, "rows": total}})
+                rapport["models"].append(
+                    {{"model": nom, "rows": total, "no_read_right": not droit}}
+                )
 except Exception as exc:
     rapport["error"] = "%s: %s" % (type(exc).__name__, exc)
 print({debut!r})
@@ -191,13 +208,20 @@ def render(rapport):
         f"   ❌ {len(muets)} {t('model(s) nobody can see a single row of')} :"
     )
     for entree in sorted(muets, key=lambda item: -item["rows"]):
+        cadenas = " 🔒" if entree.get("no_read_right") else ""
         lignes.append(
             f"       {entree['model']:<38} {entree['rows']:>8}"
-            f" {t('row(s)')}"
+            f" {t('row(s)')}{cadenas}"
         )
-    lignes.append(
-        f"   {t('The data is there; a global rule hides all of it.')}"
-    )
+    if any(not entree.get("no_read_right") for entree in muets):
+        lignes.append(
+            f"   {t('The data is there; a global rule hides all of it.')}"
+        )
+    if any(entree.get("no_read_right") for entree in muets):
+        lignes.append(
+            f"   🔒 {t('No witness has the read access right on the model:')}"
+            f" {t('its access groups hide it, not a rule.')}"
+        )
     return lignes
 
 

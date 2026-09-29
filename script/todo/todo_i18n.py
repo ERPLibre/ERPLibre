@@ -10712,6 +10712,14 @@ TRANSLATIONS = {
         "fr": "Les données sont là ; une règle globale les masque entièrement.",
         "en": "The data is there; a global rule hides all of it.",
     },
+    "No witness has the read access right on the model:": {
+        "fr": "Aucun témoin n'a le droit de lecture sur le modèle :",
+        "en": "No witness has the read access right on the model:",
+    },
+    "its access groups hide it, not a rule.": {
+        "fr": "ses groupes d'accès le masquent, pas une règle.",
+        "en": "its access groups hide it, not a rule.",
+    },
     "checked against": {
         "fr": "éprouvés avec",
         "en": "checked against",
