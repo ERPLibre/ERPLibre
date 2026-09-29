@@ -8,7 +8,7 @@ Install, ouvert par le menu principal.
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
 
-Une entrée qui efface, agit en root sur un hôte, pose des paquets, écrit
+Une entrée qui efface, modifie l'hôte en root, pose des paquets, écrit
 une configuration globale ou crée de vraies machines porte `danger` : ni
 la TUI de télémétrie ni la page web ne la lancent, son menu seul.
 """
@@ -61,6 +61,8 @@ PROXMOX = Menu(
             "_pve_ssh_config",
             danger=True,
         ),
+        # Les VM Proxmox sont dans ~/.ssh/config (entrée 13), où le tunnel
+        # QEMU les trouve, jump host compris.
         Entry("Remote desktop tunnel (VNC/RDP over SSH)", "_qemu_tunnel_menu"),
         Entry(
             "Android emulator (start, tunnel, scrcpy)", "_qemu_emulator_menu"
