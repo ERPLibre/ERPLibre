@@ -224,17 +224,26 @@ class TestLigneDeCommandeDocker(Banc):
 
 
 class TestInventaire(Banc):
+    def test_chaque_liste_lance_sa_sous_commande(self):
+        todo = self.todo({"moteur": "podman", "sans_sudo": True})
+        with self.reponses():
+            todo._container_inventaire("images")
+            todo._container_inventaire("ps -a")
+        self.assertEqual(
+            ["podman images", "podman ps -a"], todo.execute.commandes
+        )
+
     def test_le_prefixe_sudo_suit_la_fiche(self):
         todo = self.todo({"moteur": "docker", "sans_sudo": False})
         with self.reponses():
-            todo._container_inventaire(["images"])
+            todo._container_inventaire("images")
         self.assertEqual("sudo docker images", todo.execute.commandes[0])
 
     def test_sans_moteur_rien_ne_part(self):
         todo = self.todo()
         todo._container_fiche = lambda: None
         with self.reponses():
-            todo._container_inventaire(["images"])
+            todo._container_inventaire("images")
         self.assertEqual([], todo.execute.commandes)
 
 

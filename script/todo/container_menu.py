@@ -133,13 +133,13 @@ class ContainerMenuMixin:
             elif status == "2":
                 self._container_service()
             elif status == "3":
-                self._container_install("docker")
+                self._container_install(moteur="docker")
             elif status == "4":
-                self._container_install("podman")
+                self._container_install(moteur="podman")
             elif status == "5":
-                self._container_inventaire(["images"])
+                self._container_inventaire(sous_commande="images")
             elif status == "6":
-                self._container_inventaire(["ps", "-a"])
+                self._container_inventaire(sous_commande="ps -a")
             elif status == "7":
                 self._container_reseaux()
             elif status == "8":
@@ -504,12 +504,14 @@ class ContainerMenuMixin:
     # ------------------------------------------------------------------
     # L'inventaire
 
-    def _container_inventaire(self, args):
-        """Lance une sous-commande de listage sur le moteur retenu."""
+    def _container_inventaire(self, sous_commande):
+        """Lance sur le moteur retenu la sous-commande de listage
+        `sous_commande`, ses mots séparés par des blancs (« images »,
+        « ps -a »)."""
         fiche = self._container_fiche()
         if not fiche:
             return
-        cmd = container_runtime.commande(fiche, args)
+        cmd = container_runtime.commande(fiche, sous_commande.split())
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
 
     def _container_reseaux(self):
