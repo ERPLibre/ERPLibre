@@ -384,7 +384,9 @@ class VpnMenuMixin:
                 f" {profile['server']:<26} {target}"
             )
         answer = input(f"{t('Profile number (0 to go back)')} : ").strip()
-        if not answer.isdigit() or not 1 <= int(answer) <= len(all_profiles):
+        # Un numéro tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
+        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
+        if answer not in [str(n) for n in range(1, len(all_profiles) + 1)]:
             if answer not in ("0", ""):
                 print(t("Unknown choice."))
             return ""
@@ -413,7 +415,7 @@ class VpnMenuMixin:
                 f" {t(preset.get('hint', '') or '')}"
             )
         answer = input(f"{t('Preset number (0 to go back)')} : ").strip()
-        if not answer.isdigit() or not 1 <= int(answer) <= len(found):
+        if answer not in [str(n) for n in range(1, len(found) + 1)]:
             if answer not in ("0", ""):
                 print(t("Unknown choice."))
             return

@@ -801,6 +801,22 @@ class ShowingWhatIsConnected(MenuBase):
         }
         self.assertEqual(len(colonnes), 1, lignes)
 
+    def test_a_profile_is_picked_only_by_its_shown_number(self):
+        # « 2 » choisit le deuxième profil de la liste, affiché [2] ;
+        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas un
+        # numéro affiché : rien n'est choisi, et TODO ne s'arrête pas sur
+        # une ValueError.
+        second = profiles.with_defaults(profiles.load_all()[1])["name"]
+        for answer in ("2", "02", "٢", "²"):
+            with (
+                self.subTest(answer=answer),
+                patch.object(OpenconnectDriver, "is_up", lambda self: False),
+                self.answering(answer),
+                redirect_stdout(io.StringIO()),
+            ):
+                chosen = self.todo._vpn_select_profile()
+                self.assertEqual(chosen, second if answer == "2" else "")
+
     def test_an_unknown_driver_does_not_break_the_listing(self):
         """Un pilote retiré de la configuration ne doit pas empêcher de
         lister les profils, ni de supprimer celui qui le nomme."""
@@ -999,6 +1015,21 @@ class FromPreset(MenuBase):
                 with redirect_stdout(io.StringIO()):
                     self.todo._vpn_from_preset()
         self.assertEqual(profiles.names(), [])
+
+    def test_a_preset_is_picked_only_by_its_shown_number(self):
+        # « 01 », « ١ » (un en écriture arabe) et « ² » ne sont pas le
+        # numéro affiché du préréglage : aucune autre question n'est posée,
+        # rien n'est créé, et TODO ne s'arrête pas sur une ValueError.
+        for answer in ("01", "١", "²"):
+            loading, answering = self.choosing(answer)
+            with (
+                self.subTest(answer=answer),
+                loading,
+                answering,
+                redirect_stdout(io.StringIO()),
+            ):
+                self.todo._vpn_from_preset()
+                self.assertEqual(profiles.names(), [])
 
     def test_an_unreadable_preset_is_reported(self):
         with patch(
