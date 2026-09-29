@@ -880,16 +880,19 @@ class TestGitAddRemote(unittest.TestCase):
 
     def test_the_name_and_the_address_reach_git_as_typed(self):
         # Un blanc ne coupe pas une réponse, un « ; » ne lance rien après
-        # git ; sans nom, le remote s'appelle localhost.
+        # git, et un nom qui commence par « - » suit « -- », qui termine
+        # les options de git ; sans nom, le remote s'appelle localhost.
         name, address = "forged name", "/forged dir/repo.git; forged"
         for answers, arguments in (
             ([name, address], [name, address]),
             (["", "forged-address"], ["localhost", "forged-address"]),
+            (["-x", "forged-address"], ["-x", "forged-address"]),
         ):
             with self.subTest(answers=answers):
                 command, _ = self.answer(answers)
                 self.assertEqual(
-                    shlex.split(command), ["git", "remote", "add", *arguments]
+                    shlex.split(command),
+                    ["git", "remote", "add", "--", *arguments],
                 )
 
     def test_a_failure_of_git_is_reported(self):
