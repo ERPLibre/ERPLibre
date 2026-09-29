@@ -19,6 +19,8 @@ ni vente ni comptabilité, l'absence est normale et le dire serait du
 bruit qu'on apprendrait à ignorer.
 """
 
+import contextlib
+import io
 import os
 import sys
 import unittest
@@ -198,6 +200,98 @@ class TestTheOrmScript(unittest.TestCase):
         vif = conf.build_script(False)
         self.assertIn(conf.DEBUT, vif)
         self.assertIn(conf.FIN, vif)
+
+
+class FauxEnregistrements(list):
+    def sudo(self):
+        return self
+
+    def search(self, domaine):
+        return self
+
+    def search_count(self, domaine):
+        return len(self)
+
+    def with_context(self, **kw):
+        return self
+
+
+class FauxGabarit:
+    """account.chart.template : l'appel de _load_data est noté."""
+
+    def __init__(self, existants, avec_parametre):
+        self.existants = existants
+        self.appels = []
+        if avec_parametre:
+
+            def _load_data(donnees, ignore_duplicates=False):
+                self.appels.append((donnees, ignore_duplicates))
+
+        else:
+
+            def _load_data(donnees):
+                self.appels.append((donnees, None))
+
+        self._load_data = _load_data
+
+    def sudo(self):
+        return self
+
+    def with_company(self, societe):
+        return self
+
+    def ref(self, cle, raise_if_not_found=True):
+        return cle in self.existants
+
+    def _get_account_reconcile_model(self, plan):
+        return {"a_reco": {"name": "A"}, "b_reco": {"name": "B"}}
+
+
+class Societe:
+    chart_template = "generic_coa"
+
+
+class FauxEnv(dict):
+    def __init__(self, gabarit):
+        societes = FauxEnregistrements([Societe()])
+        societes._fields = {"chart_template": True}
+        super().__init__(
+            {
+                "res.company": societes,
+                "account.reconcile.model": FauxEnregistrements(),
+                "account.journal": FauxEnregistrements([1]),
+                "account.chart.template": gabarit,
+            }
+        )
+        self.cr = type("Cr", (), {"commit": lambda self: None})()
+
+
+class TestLeRechargementNEcrasePasUnModele(unittest.TestCase):
+    """17 et 18 passent ignore_duplicates ; 19 ne l'a plus et réécrit un
+    enregistrement dont l'xmlid existe : le script ne lui passe que les
+    absents."""
+
+    def rejouer(self, gabarit):
+        with contextlib.redirect_stdout(io.StringIO()):
+            exec(conf.build_script(False), {"env": FauxEnv(gabarit)})
+        return gabarit.appels
+
+    def test_avec_le_parametre_tout_part_avec_ignore_duplicates(self):
+        appels = self.rejouer(FauxGabarit({"a_reco"}, avec_parametre=True))
+        self.assertEqual(1, len(appels))
+        self.assertEqual(2, len(appels[0][0]["account.reconcile.model"]))
+        self.assertTrue(appels[0][1])
+
+    def test_sans_le_parametre_seuls_les_absents_partent(self):
+        appels = self.rejouer(FauxGabarit({"a_reco"}, avec_parametre=False))
+        self.assertEqual(
+            [({"account.reconcile.model": {"b_reco": {"name": "B"}}}, None)],
+            appels,
+        )
+
+    def test_sans_absent_rien_n_est_appele(self):
+        gabarit = FauxGabarit({"a_reco", "b_reco"}, avec_parametre=False)
+        self.assertEqual([], self.rejouer(gabarit))
 
 
 if __name__ == "__main__":
