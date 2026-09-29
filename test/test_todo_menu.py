@@ -518,8 +518,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         )
 
     def test_the_breadcrumb_names_the_proxmox_menu(self):
-        # Sans étiquette, le fil d'Ariane sautait le menu Proxmox : on lisait
-        # « TODO › Execute › Deploy » en étant deux niveaux plus bas.
+        # Sans étiquette, le fil d'Ariane sauterait le menu Proxmox : on
+        # lirait « TODO › Execute › Deploy » en étant deux niveaux plus bas.
         import sys
 
         sys.argv = ["todo.py"]
@@ -940,7 +940,7 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 
     Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
-    c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
+    c'est le même travail, et ce code n'est écrit qu'une fois. La table
     le dit noir sur blanc : si quelqu'un les recopiait un jour, ce test
     montrerait que la cible a changé.
     """
@@ -2333,10 +2333,9 @@ class TestMenuLabels(unittest.TestCase):
 
     Les menus se trouvent par ce qu'ils APPELLENT — `fill_help_info` ou
     `_menu_header` — dans tout le paquet, et non par la table de répartition
-    du menu Exécution. Chercher là ne voyait que les sous-menus atteints
+    du menu Exécution. Chercher là ne verrait que les sous-menus atteints
     depuis cette table : un menu ouvert depuis ailleurs, ou défini dans un
-    mixin, n'était jamais examiné, et c'est ainsi que le sous-menu VPN a
-    passé le contrôle sans étiquette.
+    mixin, comme le sous-menu VPN, ne serait jamais examiné.
 
     Cinq méthodes sont exemptées, et pour la même raison : ce sont des
     ACTIONS qui posent une question — un choix de méthode d'installation, un
@@ -2437,7 +2436,9 @@ class TestMenuLabels(unittest.TestCase):
         )
 
     def test_the_vpn_submenu_leaves_a_crumb(self):
-        """Le cas nommé : il était le seul menu invisible au contrôle."""
+        """Le cas nommé : un menu défini dans un mixin et ouvert depuis
+        Deploy et Network, qu'une recherche par la table de répartition
+        manquerait."""
         self.assertIn("prompt_execute_vpn", self.labels)
 
     def test_each_declared_menu_keeps_its_crumb(self):
