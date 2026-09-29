@@ -73,15 +73,11 @@ def _configure_mail_logging() -> None:
     logger = logging.getLogger("script.todo.mail")
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
-    # `todo.py` appelle `logging.basicConfig()` à l'IMPORT (ligne 68), ce qui
-    # pose un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
-    # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
-    # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
-    # terminal que Textual possède pendant tout le TUI, silencieusement.
-    # Constaté pour de vrai : la suite complète l'a fait fuir dans la sortie
-    # pointillée d'`unittest` dès qu'un fichier de test important déjà
-    # `script.todo.todo` tournait avant les tests courriel dans le même
-    # processus.
+    # `todo.py` appelle `logging.basicConfig()` à l'IMPORT, ce qui pose un
+    # `StreamHandler` sur le logger RACINE. `propagate` vaut `True` par
+    # défaut : sans cette ligne, chaque `_logger.exception(...)` du paquet
+    # remonterait AUSSI jusqu'à ce gestionnaire — donc sur le terminal que
+    # Textual possède pendant tout le TUI, silencieusement.
     logger.propagate = False
     _LOG_CONFIGURED = True
 
@@ -153,7 +149,7 @@ def _open_tui(todo) -> None:
     secrets = secret_store_for(todo)
     sessions = open_sessions(accounts, secrets)
     try:
-        # Un TUI sans aucun compte n'est plus une impasse : `config_file` et
+        # Un TUI sans aucun compte n'est pas une impasse : `config_file` et
         # `secrets` lui permettent d'en créer un depuis l'écran d'ajout.
         run_tui(
             sessions=sessions,
@@ -239,9 +235,8 @@ def _ensure_kdbx(todo) -> bool:
     """Vrai si un kdbx est utilisable pour la suite de `_add_account`.
 
     Si `kdbx.path` est déjà configuré, ne pose aucune question — c'est le
-    cas courant après la première utilisation. Sinon, offre les deux choix
-    promis par la conception : créer un nouveau `.kdbx` ou en choisir un
-    existant.
+    cas courant après la première utilisation. Sinon, offre deux choix :
+    créer un nouveau `.kdbx` ou en choisir un existant.
     """
     if todo.config_file.get_config_value(["kdbx", "path"]):
         return True
@@ -385,12 +380,11 @@ def _write_template() -> None:
 def _looks_like_auth_failure(cause) -> bool:
     """Le serveur a-t-il RÉPONDU, ou n'est-il rien revenu ?
 
-    La question n'est pas « le message ressemble-t-il à un refus » : la
-    première version cherchait « invalid credentials » et compagnie, et a
-    manqué le cas le plus clair qui soit — Gmail répond
-    « [ALERT] Application-specific password required » une fois la double
-    authentification active, sans employer aucun de ces mots. Une liste de
-    libellés attendus est toujours en retard sur les serveurs réels.
+    La question n'est pas « le message ressemble-t-il à un refus » : une
+    liste de libellés attendus est toujours en retard sur les serveurs
+    réels. Gmail répond « [ALERT] Application-specific password required »
+    une fois la double authentification active, sans « invalid
+    credentials » ni aucun mot d'un refus.
 
     On teste donc l'inverse, qui est structurel : `imaplib` lève
     `IMAP4.error` quand le SERVEUR a parlé, et un `OSError` (délai,
@@ -436,7 +430,7 @@ def retry_password(
     if attendu_app and _looks_like_auth_failure(cause):
         print(t("mail_app_password_note"))
         print(f"  {t(preset['note_key'])}")
-    # L'invite elle-même nomme ce qu'on attend. « Mot de passe : » invitait
+    # L'invite elle-même nomme ce qu'on attend. « Mot de passe : » inviterait
     # à saisir CELUI DU COMPTE, que ces fournisseurs refusent — la note
     # au-dessus se lit une fois, l'invite se relit à chaque tentative.
     invite = t("mail_ask_app_password" if attendu_app else "mail_ask_password")
