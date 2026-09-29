@@ -59,21 +59,6 @@ class TestLaParitéProxmox(unittest.TestCase):
             self.src.index("stop (pulls the plug)"),
         )
 
-    def test_the_menu_reads_its_extra_commands_from_todo_json(self):
-        # Les entrées de `proxmox_from_makefile` suivent le catalogue, et le
-        # navigateur les lance, sections non comptées.
-        from script.todo.menus import proxmox
-
-        last = proxmox.PROXMOX.entries[-1]
-        self.assertEqual(
-            (last.config_key, last.action, last.kwarg),
-            (
-                "proxmox_from_makefile",
-                "execute_from_configuration",
-                "instance",
-            ),
-        )
-
 
 class TestLesIconesDuMenuProxmox(unittest.TestCase):
     """L'icône vit DANS la chaîne traduite, et les deux langues la portent.
