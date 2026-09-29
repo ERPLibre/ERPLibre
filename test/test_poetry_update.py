@@ -113,6 +113,32 @@ class TestContraintesComposees(Arbre):
         self.assertIn("invoice2data", self._dependances())
 
 
+class TestLignesDOdoo8Et9(Arbre):
+    """Deux formes que portent les dépôts d'Odoo 8 et 9."""
+
+    def test_les_espaces_autour_de_l_operateur_sont_retires(self):
+        # « poetry add » 1.1 refuse « pycountry >= 0.19 » d'un ValueError.
+        Path("odoo19.0/odoo/requirements.txt").write_text(
+            "pycountry >= 0.19\ninvoice2data >= 0.2.74 , <= 0.3.4\n"
+        )
+        poetry_update.combine_requirements(self._config())
+        dependances = self._dependances().splitlines()
+        self.assertIn("pycountry>=0.19", dependances)
+        self.assertIn("invoice2data>=0.2.74,<=0.3.4", dependances)
+
+    def test_un_manifeste_openerp_declare_ses_dependances(self):
+        """Odoo 8 et 9 ne lisent que __openerp__.py."""
+        module = Path("odoo19.0/addons/OCA_x/module_x")
+        module.mkdir(parents=True)
+        (module / "__openerp__.py").write_text(
+            "{'name': 'x', 'external_dependencies': {'python': ['unidecode']}}"
+        )
+        self.assertIn(
+            str(module / "__openerp__.py"),
+            [str(f) for f in poetry_update.get_lst_manifest_py(self._config())],
+        )
+
+
 class TestCodeDeRetour(Arbre):
     def _main(self, ajout_reussi):
         Path("pyproject.toml").write_text(

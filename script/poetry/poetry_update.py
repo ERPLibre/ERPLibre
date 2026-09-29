@@ -113,9 +113,14 @@ def get_lst_requirements_txt(
 
 
 def get_lst_manifest_py(config, ignore_dir_startswith: list = None):
-    return get_file_from_glob(
-        config, "__manifest__.py", ignore_dir_startswith=ignore_dir_startswith
-    )
+    # Odoo 8 et 9 ne lisent que __openerp__.py ; 10 accepte les deux noms.
+    return [
+        fichier
+        for nom in ("__manifest__.py", "__openerp__.py")
+        for fichier in get_file_from_glob(
+            config, nom, ignore_dir_startswith=ignore_dir_startswith
+        )
+    ]
 
 
 # A file under one of these directories documents or illustrates, it does not
@@ -218,6 +223,12 @@ def combine_requirements(config):
                 if "#" in b:
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
+                if except_sign not in b:
+                    # « pycountry >= 0.19 » : des espaces autour de
+                    # l'opérateur, que « poetry add » 1.1 refuse d'un
+                    # ValueError. Une ligne à marqueur est réécrite plus bas
+                    # par Requirement, qui les retire déjà.
+                    b = re.sub(r"\s*(===|==|>=|<=|~=|!=|<|>|,)\s*", r"\1", b)
                 comment_depend = ""
                 # Défini pour TOUTE ligne : il est relu plus bas, y compris
                 # pour les lignes sans marqueur.
