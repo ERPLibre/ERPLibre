@@ -80,6 +80,10 @@ LABEL = {
 STEP = "ERPLIBRE_CLEANUP_STEP"
 START = "ERPLIBRE_CLEANUP_START"
 END = "ERPLIBRE_CLEANUP_END"
+# Odoo 9 et 10 exécutent l'entrée standard du shell comme un FICHIER
+# Python 2 (« exec sys.stdin ») : sans cette déclaration en tête, un seul
+# caractère non ASCII y est une erreur de syntaxe.
+CODING = "# -*- coding: utf-8 -*-\n"
 
 SHELL_SCRIPT = """# -*- coding: utf-8 -*-
 # Exécuté par le shell de la version active, Odoo 8 compris : la syntaxe
@@ -429,6 +433,8 @@ def run_shell(database, config_path, script, timeout=3600, echo=None):
     minuteur.daemon = True
     minuteur.start()
     lst_line = []
+    if not script.startswith(CODING):
+        script = CODING + script
     try:
         process.stdin.write(script)
         process.stdin.close()
