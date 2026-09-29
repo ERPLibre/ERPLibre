@@ -125,16 +125,16 @@ class TestWhatIsGainedAndLost(Base):
         # Une table NEUTRE : le mécanisme se teste sans la carte
         # sémantique, qui a ses propres tests.
         diff = quality.compare(
-            snapshot(table={"ma_table": 651}),
+            snapshot(table={"ma_table": 738}),
             snapshot(table={"ma_table": 0}),
         )
-        self.assertEqual(diff["rows_lost"], [("ma_table", 651, 0, None)])
+        self.assertEqual(diff["rows_lost"], [("ma_table", 738, 0, None)])
 
     def test_a_table_that_disappears_counts_as_emptied(self):
         diff = quality.compare(
-            snapshot(table={"ma_table": 651}), snapshot(table={})
+            snapshot(table={"ma_table": 738}), snapshot(table={})
         )
-        self.assertEqual(diff["rows_lost"], [("ma_table", 651, 0, None)])
+        self.assertEqual(diff["rows_lost"], [("ma_table", 738, 0, None)])
 
     def test_an_empty_table_that_disappears_is_not_a_loss(self):
         # Rien à perdre : le signaler noierait les vraies pertes.
@@ -255,16 +255,16 @@ class TestTheSemanticMap(Base):
     def test_a_known_merge_is_explained(self):
         diff = self.perte(
             "account_invoice",
-            651,
+            738,
             0,
             cible="account_move",
-            cible_avant=1371,
-            cible_apres=1812,
+            cible_avant=1294,
+            cible_apres=1817,
         )
         connu = [x for x in diff["rows_lost"] if x[0] == "account_invoice"][0]
         self.assertIsNotNone(connu[3])
         self.assertEqual(connu[3]["into"], "account_move")
-        self.assertEqual(connu[3]["gained"], 441)
+        self.assertEqual(connu[3]["gained"], 523)
 
     def test_a_retired_table_is_explained_without_a_target(self):
         diff = self.perte("ir_translation", 27415, 0)
@@ -314,11 +314,11 @@ class TestTheSemanticMap(Base):
         """
         diff = self.perte(
             "account_invoice",
-            651,
+            738,
             0,
             cible="account_move",
-            cible_avant=1371,
-            cible_apres=1371,
+            cible_avant=1294,
+            cible_apres=1294,
         )
         connu = [x for x in diff["rows_lost"] if x[0] == "account_invoice"][0]
         self.assertEqual(connu[3]["gained"], 0)
@@ -989,8 +989,8 @@ class TestTheDetailButton(Base):
 
     def test_ONE_mode_not_two_flags(self):
         """« fichiers absents » et « liste des modèles » ne peuvent pas
-        être vrais en même temps ; deux booléens laissaient écrire cet
-        état impossible."""
+        être vrais en même temps. Un seul attribut `mode` rend cet état
+        inexprimable, là où deux booléens permettent de l'écrire."""
         import inspect
 
         source = inspect.getsource(qtui.build_app)
@@ -1609,11 +1609,11 @@ class TestWhyAnAttachmentWentAway(Base):
 
     def test_the_report_names_each_cause(self):
         connu = {
-            "buckets": {"field_debt": 452, "undeclared": 1},
+            "buckets": {"field_debt": 387, "undeclared": 1},
             "why": "attachments of fields and records already gone",
         }
         texte = "\n".join(quality.render_attachment_kind(connu, colour=False))
-        self.assertIn("452", texte)
+        self.assertIn("387", texte)
         self.assertIn("1", texte)
         self.assertIn(
             quality.t("their field was already gone before this step"), texte
@@ -2097,7 +2097,8 @@ class TestTheStepLogInThePanel(Base):
         self.assertIn("40", texte)
 
     def test_it_stays_quiet_once_the_output_is_actually_there(self):
-        # Le pilote capture désormais. Répéter que la sortie manque
+        # Le journal porte la sortie de l'outil entre la commande et son
+        # verdict : l'avertissement se tait. Répéter que la sortie manque
         # enverrait la chercher ailleurs alors qu'on l'a sous les yeux.
         chemin = self.journal(
             [
