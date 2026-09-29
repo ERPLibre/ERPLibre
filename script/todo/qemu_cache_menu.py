@@ -1188,6 +1188,26 @@ class QemuCacheMenuMixin:
         print(f"\n{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _cache_retirer_orphelines(self):
+        """Rend au cache chaque exception dont la VM n'existe plus, relues
+        maintenant. Rend True s'il y en avait ; sinon dit « Nothing is
+        stale. » et rend False."""
+        orphelines = dict(self._cache_bypass_orphelines())
+        if not orphelines:
+            print(t("Nothing is stale."))
+            return False
+        for mac in orphelines:
+            self._cache_bypass_retirer(mac)
+        return True
+
+    def _cache_retirer_par_mac(self):
+        """Demande une adresse MAC et rend son exception au cache ; une
+        réponse vide ne retire rien. Rend True dans les deux cas."""
+        mac = click.prompt(t("MAC to give back to the cache")).strip()
+        if mac:
+            self._cache_bypass_retirer(mac)
+        return True
+
     def _cache_exceptions(self):
         print(f"\n🎫 {t('VMs kept out of the download cache')}\n")
         if not os.path.isfile(CACHE_BIN):
@@ -1221,17 +1241,11 @@ class QemuCacheMenuMixin:
             if status == "0":
                 return False
             if status == "1":
-                if not orphelines:
-                    print(t("Nothing is stale."))
-                    continue
-                for mac in orphelines:
-                    self._cache_bypass_retirer(mac)
-                return True
+                if self._cache_retirer_orphelines():
+                    return True
+                continue
             if status == "2":
-                mac = click.prompt(t("MAC to give back to the cache")).strip()
-                if mac:
-                    self._cache_bypass_retirer(mac)
-                return True
+                return self._cache_retirer_par_mac()
             print(t("Command not found !"))
 
     # ------------------------------------------------------------------

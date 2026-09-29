@@ -781,7 +781,10 @@ class TestLArbreDesMenus(unittest.TestCase):
                     yield child
 
         found = []
-        for path in (("Deploy", "QEMU cache", "Service"),):
+        for path in (
+            ("Deploy", "QEMU cache", "Service"),
+            ("Deploy", "QEMU cache", "Exceptions"),
+        ):
             node = self._noeud("Execute")
             for label in path:
                 [node] = [c for c in node["children"] if c["label"] == label]

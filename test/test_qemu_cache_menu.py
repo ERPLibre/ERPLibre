@@ -17,9 +17,12 @@ ne lève.
 """
 
 import ast
+import contextlib
+import io
 import re
 import sys
 import unittest
+import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -291,6 +294,81 @@ class TestSousMenusDuCache(unittest.TestCase):
             re.findall(r'"(\w+)"', verbes.group(1))[1::2],
             ["start", "enable", "disable", "stop"],
         )
+
+
+class TestLesExceptionsDuCache(unittest.TestCase):
+    """Exceptions : [1] rend au cache les exceptions dont la VM n'existe
+    plus, relues au moment de l'entrée, [2] celle d'une MAC tapée. Chacune
+    se lance aussi seule, comme depuis la TUI de télémétrie. Les retraits
+    sont des doubles : aucune règle du cache n'est touchée."""
+
+    def setUp(self):
+        from script.todo import todo_i18n as i18n
+
+        saved = i18n._current_lang
+        self.addCleanup(setattr, i18n, "_current_lang", saved)
+        i18n.use_lang("en")
+        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
+        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
+        # `-W error`, l'avertissement ferait tomber le menu.
+        self.enterContext(warnings.catch_warnings())
+        warnings.filterwarnings(
+            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
+        )
+        self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
+
+    def todo(self, orphelines):
+        """Un TODO dont les exceptions périmées sont `orphelines`, et qui
+        note dans `retirees` chaque MAC rendue au cache."""
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.retirees = []
+        todo._cache_bypass_lire = lambda: [("52:54:00:0f:0e:0d", "forged-vm")]
+        todo._cache_bypass_orphelines = lambda entrees=None: list(orphelines)
+        todo._cache_bypass_retirer = todo.retirees.append
+        return todo
+
+    def test_les_orphelines_se_relisent_et_partent(self):
+        todo = self.todo([("52:54:00:0f:0e:0d", "forged-vm")])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertIs(todo._cache_retirer_orphelines(), True)
+        self.assertEqual(todo.retirees, ["52:54:00:0f:0e:0d"])
+
+    def test_sans_orpheline_rien_ne_part_et_c_est_dit(self):
+        todo = self.todo([])
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIs(todo._cache_retirer_orphelines(), False)
+        self.assertEqual(todo.retirees, [])
+        self.assertIn("Nothing is stale.", sortie.getvalue())
+
+    def test_une_mac_tapee_part_une_reponse_vide_non(self):
+        for tapee, retirees in (
+            (" 52:54:00:0f:0e:0d ", ["52:54:00:0f:0e:0d"]),
+            ("  ", []),
+        ):
+            todo = self.todo([])
+            with mock.patch("click.prompt", return_value=tapee):
+                self.assertIs(todo._cache_retirer_par_mac(), True)
+            self.assertEqual(todo.retirees, retirees)
+
+    def test_le_menu_se_referme_sur_une_entree_qui_a_retire(self):
+        # Rien de périmé : [1] le dit et la question revient ; [2] retire
+        # la MAC tapée et referme le menu, qui rend True.
+        todo = self.todo([])
+        with (
+            mock.patch(
+                "script.todo.qemu_cache_menu.os.path.isfile",
+                return_value=True,
+            ),
+            mock.patch(
+                "click.prompt", side_effect=["1", "2", "52:54:00:0f:0e:0d"]
+            ),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
+            self.assertIs(todo._cache_exceptions(), True)
+        self.assertEqual(todo.retirees, ["52:54:00:0f:0e:0d"])
+        self.assertEqual(sortie.getvalue().count("Nothing is stale."), 1)
 
 
 class TestLeTransfertDuCache(unittest.TestCase):

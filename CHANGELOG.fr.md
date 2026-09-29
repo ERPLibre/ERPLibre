@@ -247,6 +247,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : les trois outils de shell d'Exécution › Git, qui lancent un installateur et écrivent dans le fichier du shell, et les cinq actions du serveur de production de Git local server, qui tournent en root, sont déclarés dangereux et se lancent depuis leur menu seulement : la page les montre sans ▶, et la TUI y répond par un avis
 - Exécution › Deploy › QEMU/KVM : seul un numéro tel qu'affiché lance une entrée de `todo.json` : « 01 », « 1 » entouré d'espaces, « +21 » ou un chiffre d'une autre écriture répondent « Commande non trouvée ! » au lieu de lancer comme une configuration la ligne d'une entrée fixe, ou une entrée de `todo.json`
 - Télémétrie de navigation : Exécution › Deploy › QEMU cache › Service › État détaillé, lancé depuis la TUI, montre l'état du service du cache au lieu d'échouer sur un argument manquant
+- Télémétrie de navigation : Exécution › Deploy › QEMU cache › Exceptions › Retirer celles dont la VM n'existe plus et En retirer une par sa MAC, lancées depuis la TUI, rendent au cache les exceptions dont la VM n'existe plus, lues à ce moment-là, ou la MAC tapée, au lieu d'échouer sur un argument manquant
 
 ## Retiré
 
