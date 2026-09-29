@@ -112,8 +112,13 @@ try:
         # « sur 125 » laisse croire à un examen complet.
         rapport["with_rule"] = len(vus - ATTENDUS)
         for nom in sorted(vus - ATTENDUS):
-            modele = env.get(nom)
-            if modele is None or modele._abstract or modele._transient:
+            # L'Environment d'Odoo 8 et 9 n'est pas un Mapping, sans get(),
+            # et leurs modèles n'ont pas d'attribut _abstract.
+            try:
+                modele = env[nom]
+            except KeyError:
+                continue
+            if getattr(modele, "_abstract", False) or modele._transient:
                 continue
             try:
                 total = modele.sudo().search_count([])
