@@ -77,6 +77,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sur un Odoo amont, `./odoo_bin.sh db` — créer, cloner, sauvegarder, restaurer, supprimer — passe par l'addon `erplibre_db`, et `--uninstall` par `erplibre_uninstall`, avec les options du fork ERPLibre d'Odoo, de Python 2.7 à 3.14. En Odoo 10, `--no-http`, `-p` et `--http-*` sont traduits en leur forme `--xmlrpc`
 - La migration de base enchaîne 10 à 20 : depuis une sauvegarde Odoo 10, le menu TODO atteint la 12 avec chaque vente, facture, achat et mouvement de stock identique. Une cible sans OpenUpgrade publié — la 20 pour l'instant — est annoncée dès son choix, et la migration s'arrête proprement avant cette étape
 - `make install_os PG_VERSION=<N>` impose la version de PostgreSQL sous apt. Par défaut, celle de la distribution est gardée quand elle vaut 16 ou plus, le minimum d'Odoo 20 ; sinon, la 16 vient du dépôt PGDG. Un cluster plus ancien reste en place, sans migration
+- Odoo 8 et 9 en Python 2.7, sur l'amont odoo/odoo et les 75 dépôts OCA qui publient chaque branche, plus les modules de neutralisation du dépôt development : une base aussi ancienne se migre depuis le même checkout et le même PostgreSQL 18 qu'Odoo 20. Ils nomment encore leur paquet `openerp` : `odoo_bin.sh` lance `openerp-server`, envoie à `erplibre_shell` le `shell` qui manque à Odoo 8, et lui passe son `--dev` absent par `ERPLIBRE_DEV_MODE`. Odoo 8 ne crée pas la base nommée par `-d` : la créer par `./odoo_bin.sh db --create`. En 8 et 9, `-i` charge les données de démonstration même sur une base créée sans elles ; ajouter `--without-demo=all`
 
 ## Modifié
 
@@ -204,6 +205,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make switch_odoo_<N>` et chaque régénération de la configuration passent par le venv de l'outillage, là où une machine neuve s'arrêtait sur « No module named 'git' », et enregistrent la configuration par `--save`, seule forme qu'accepte Odoo 20
 - Les vérifications de la migration tiennent en Odoo 10 à 12 et sur une base sans website : les outils des vues COW n'échouent plus sur `website_id` absent, la sonde des modèles masqués ne déclare plus tout invisible avant Odoo 13, le test d'URL ne sert que la base testée et ne signale plus les champs des lignes one2many, la réparation des réglages par défaut ne s'interrompt plus avant Odoo 17, et la configuration sans OpenUpgrade est refaite avant la mise à jour des modules qui suit chaque migration
 - `poetry_update` écarte les lignes de requis qui désignent un fichier local, rend 1 quand `poetry add` échoue, range le verrou d'une nouvelle version sous `requirement/`, et compare les contraintes à deux clauses
+- La migration lance OpenUpgrade 9.0 et 10.0 depuis leur propre arbre, avec `--no-xmlrpc` : elle lançait `odoo-bin` avec `--no-http`, que ni l'un ni l'autre ne connaît, et un saut vers 9 ou 10 ne démarrait pas
+- Odoo 10 installe `cerberus` 1.3.4 : la 1.3.5 de son verrou ne se construit que par `pyproject.toml`, que le setuptools de Python 2 ne lit pas, et installait un paquet vide nommé `UNKNOWN`
 
 ## Retiré
 

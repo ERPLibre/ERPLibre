@@ -77,6 +77,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On an upstream Odoo, `./odoo_bin.sh db` — create, clone, back up, restore, drop — goes to the `erplibre_db` addon and `--uninstall` to `erplibre_uninstall`, with the options of ERPLibre's Odoo fork, from Python 2.7 to 3.14. On Odoo 10, `--no-http`, `-p` and `--http-*` are translated to their `--xmlrpc` form
 - The database migration chains 10 through 20: from an Odoo 10 backup, the TODO menu reaches 12 with every sale, invoice, purchase and stock move identical. A target without a published OpenUpgrade — 20 for now — is announced when it is chosen, and the migration stops cleanly before that step
 - `make install_os PG_VERSION=<N>` forces the PostgreSQL version under apt. By default the distribution's is kept when it is 16 or later, Odoo 20's minimum; otherwise 16 comes from the PGDG repository. An older cluster is left in place, not migrated
+- Odoo 8 and 9 on Python 2.7, on upstream odoo/odoo and the 75 OCA repositories that publish each branch, plus the neutralization modules of the development repository: a database that old migrates from the same checkout and the same PostgreSQL 18 as Odoo 20. They still name their package `openerp`: `odoo_bin.sh` launches `openerp-server`, sends the `shell` that Odoo 8 lacks to `erplibre_shell`, and passes its missing `--dev` through `ERPLIBRE_DEV_MODE`. Odoo 8 does not create the database named by `-d`: create it with `./odoo_bin.sh db --create`. On 8 and 9, `-i` loads demo data even on a database created without it; add `--without-demo=all`
 
 ## Changed
 
@@ -204,6 +205,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `make switch_odoo_<N>` and every config regeneration run with the tooling venv, where a fresh machine stopped on « No module named 'git' », and save the config with `--save`, the only form Odoo 20 accepts
 - The migration checks hold on Odoo 10 to 12 and on databases without website: the COW view tools no longer fail on the missing `website_id`, the hidden-model probe no longer reports every model invisible before Odoo 13, the URL smoke check serves only the tested database and no longer flags one2many line fields, the default-settings repair no longer aborts before Odoo 17, and the configuration without OpenUpgrade is regenerated before the module update that follows each upgrade
 - `poetry_update` skips requirement lines naming a local file, returns 1 when `poetry add` fails, files the lock of a new version under `requirement/`, and compares two-clause constraints
+- The migration launches OpenUpgrade 9.0 and 10.0 from their own tree, with `--no-xmlrpc`: it ran `odoo-bin` with `--no-http`, which neither knows, so a hop to 9 or 10 could not start
+- Odoo 10 installs `cerberus` 1.3.4: the 1.3.5 in its lock builds only through `pyproject.toml`, which Python 2's setuptools cannot read, and installed an empty package named `UNKNOWN`
 
 ## Removed
 
