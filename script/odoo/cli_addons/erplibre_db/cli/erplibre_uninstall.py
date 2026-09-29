@@ -15,17 +15,12 @@ from __future__ import print_function
 
 import sys
 
-import odoo
-from odoo.cli import Command
-from odoo.modules.registry import Registry
-from odoo.tools import config
-
 try:
-    from .erplibre_db import _parametres, contexte_orm, mourir
+    from . import erplibre_db as commun
 except ImportError:
     # Odoo 19 et 20 chargent ce seul fichier, sous le nom
     # odoo.cli.erplibre_uninstall : son voisin n'est pas importé, et se
-    # charge alors par son chemin. Odoo 10 et 11 importent le paquet entier.
+    # charge alors par son chemin. Odoo 8 à 11 importent le paquet entier.
     import importlib.util
     import os
 
@@ -33,12 +28,16 @@ except ImportError:
         "odoo.cli.erplibre_db",
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "erplibre_db.py"),
     )
-    _voisin = importlib.util.module_from_spec(_spec)
-    sys.modules[_spec.name] = _voisin
-    _spec.loader.exec_module(_voisin)
-    _parametres = _voisin._parametres
-    contexte_orm = _voisin.contexte_orm
-    mourir = _voisin.mourir
+    commun = importlib.util.module_from_spec(_spec)
+    sys.modules[_spec.name] = commun
+    _spec.loader.exec_module(commun)
+
+odoo = commun.odoo
+Command = commun.Command
+config = commun.config
+_parametres = commun._parametres
+contexte_orm = commun.contexte_orm
+mourir = commun.mourir
 
 
 def extraire_modules(cmdargs):
@@ -80,7 +79,7 @@ class Erplibre_uninstall(Command):
     """Désinstalle des modules et leurs dépendants (--uninstall du fork)"""
 
     # Voir Erplibre_db : le nom de fichier pour Odoo 19 et 20, celui de la
-    # classe pour Odoo 10 et 11.
+    # classe pour Odoo 8 à 11.
     name = "erplibre_uninstall"
 
     def run(self, cmdargs):
@@ -93,9 +92,9 @@ class Erplibre_uninstall(Command):
         base = config["db_name"]
         mourir(not base or "," in base, "--uninstall requires one -d.")
         with contexte_orm():
-            registre = Registry(base)
+            registre = commun.ouvrir_registre(base)
             with registre.cursor() as cr:
-                env = odoo.api.Environment(cr, odoo.SUPERUSER_ID, {})
+                env = commun.module("api").Environment(cr, odoo.SUPERUSER_ID, {})
                 retires = desinstaller(env, noms)
         if retires:
             print("Uninstalled modules (with dependents): %s" % ",".join(retires))

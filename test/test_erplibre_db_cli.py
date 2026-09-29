@@ -60,6 +60,8 @@ class TestReecritureParOdooBin(unittest.TestCase):
         )
         self.cli = self.racine / "odoo10.0" / "odoo" / "odoo" / "cli"
         self.cli.mkdir(parents=True)
+        # Odoo 9 et suivants ont une commande shell ; seul 8 n'en a pas.
+        (self.cli / "shell.py").write_text("")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -166,6 +168,100 @@ class TestReecritureParOdooBin(unittest.TestCase):
             ["-d", "base", "--uninstall=a"],
             self._args("-d", "base", "--uninstall=a"),
         )
+
+
+class TestLaDispositionOpenerp(unittest.TestCase):
+    """Odoo 8 et 9 : paquet openerp/, lanceur openerp-server, pas d'odoo-bin."""
+
+    def monter(self, version, config, shell=True):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        racine = Path(self._tmp.name).resolve()
+        cle = "odoo%s_python2.7.18" % version
+        (racine / ".erplibre-version").write_text(cle)
+        (racine / ".odoo-version").write_text(version)
+        bin_dir = racine / (".venv." + cle) / "bin"
+        bin_dir.mkdir(parents=True)
+        # Il montre aussi ERPLIBRE_DEV_MODE, que seul odoo_bin.sh voit.
+        (bin_dir / "python").write_text(
+            FAUX_PYTHON + 'echo "DEV=${ERPLIBRE_DEV_MODE:-}"\n'
+        )
+        (bin_dir / "python").chmod(0o755)
+        (bin_dir / "activate").write_text(f'export PATH="{bin_dir}:$PATH"\n')
+        (racine / "script").mkdir()
+        (racine / "script" / "lib_odoo_rc.sh").write_text(
+            LIB_ODOO_RC.read_text(encoding="utf-8")
+        )
+        paquet = racine / ("odoo%s" % version) / "odoo" / "openerp"
+        (paquet / "cli").mkdir(parents=True)
+        (paquet / "tools").mkdir()
+        (paquet / "tools" / "config.py").write_text(config)
+        if shell:
+            (paquet / "cli" / "shell.py").write_text("")
+        self.racine = racine
+        return racine
+
+    def lancer(self, *args, env=None):
+        environ = {k: v for k, v in os.environ.items() if k != "ODOO_RC"}
+        environ.update(env or {})
+        sortie = subprocess.run(
+            ["bash", str(ODOO_BIN), *args],
+            cwd=self.racine,
+            capture_output=True,
+            text=True,
+            env=environ,
+        )
+        self.assertEqual(0, sortie.returncode, sortie.stderr)
+        return sortie.stdout.splitlines()
+
+    CONFIG_8 = 'group.add_option("--no-xmlrpc", dest="xmlrpc")\n'
+    CONFIG_9 = (
+        'group.add_option("--no-xmlrpc", dest="xmlrpc")\n'
+        "group.add_option('--dev', dest='dev_mode', action='store_true')\n"
+    )
+
+    def test_le_lanceur_est_openerp_server(self):
+        self.monter("8.0", self.CONFIG_8)
+        lignes = self.lancer("-d", "base")
+        self.assertTrue(lignes[0].endswith("/odoo8.0/odoo/openerp-server"), lignes)
+
+    def test_odoo_8_sans_shell_passe_a_erplibre_shell(self):
+        self.monter("8.0", self.CONFIG_8, shell=False)
+        self.assertEqual(
+            [
+                f"--addons-path={self.racine}/script/odoo/cli_addons",
+                "erplibre_shell",
+                "-d",
+                "base",
+            ],
+            self.lancer("shell", "-d", "base")[1:-1],
+        )
+
+    def test_odoo_9_garde_son_shell(self):
+        self.monter("9.0", self.CONFIG_9)
+        self.assertEqual(["shell", "-d", "base"], self.lancer("shell", "-d", "base")[1:-1])
+
+    def test_odoo_9_n_a_qu_un_drapeau_dev(self):
+        self.monter("9.0", self.CONFIG_9)
+        self.assertEqual(
+            ["--dev", "-d", "base"], self.lancer("--dev", "cg", "-d", "base")[1:-1]
+        )
+
+    def test_odoo_8_n_a_pas_de_dev_le_mode_passe_par_l_environnement(self):
+        self.monter("8.0", self.CONFIG_8)
+        lignes = self.lancer("--dev", "cg", "-d", "base", "-i", "user_test")
+        self.assertEqual(["-d", "base", "-i", "user_test"], lignes[1:-1])
+        self.assertEqual("DEV=cg", lignes[-1])
+
+    def test_odoo_8_lit_la_configuration_par_openerp_server(self):
+        self.monter("8.0", self.CONFIG_8)
+        (self.racine / "config.conf").write_text("[options]\n")
+        environ = {k: v for k, v in os.environ.items() if k not in ("ODOO_RC", "OPENERP_SERVER")}
+        sortie = subprocess.run(
+            ["bash", "-c", 'source script/lib_odoo_rc.sh; odoo_rc_resolve "$PWD"; echo "$OPENERP_SERVER"'],
+            cwd=self.racine, capture_output=True, text=True, env=environ,
+        )
+        self.assertEqual(str(self.racine / "config.conf"), sortie.stdout.strip())
 
 
 def _charger_commande(api):

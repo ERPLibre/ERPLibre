@@ -19,11 +19,15 @@
 # Poser ODOO_RC ne retire donc rien à personne : un « -c » explicite
 # l'emporte toujours, et un ODOO_RC déjà posé n'est pas écrasé.
 #
+# Odoo 8 et 9 ne lisent pas ODOO_RC : seulement OPENERP_SERVER, puis
+# ~/.openerp_serverrc. Les deux variables désignent donc le même fichier.
+#
 # L'ordre des candidats est celui de db_restore.py, pour que la
 # vérification qu'il fait porte sur le fichier qu'Odoo lira vraiment.
 
 odoo_rc_resolve() {
     if [[ -n "${ODOO_RC:-}" ]]; then
+        export OPENERP_SERVER="${OPENERP_SERVER:-${ODOO_RC}}"
         return 0
     fi
     local racine="${1:-$(pwd)}"
@@ -31,6 +35,7 @@ odoo_rc_resolve() {
     for candidat in "${racine}/config.conf" /etc/odoo/odoo.conf; do
         if [[ -f "${candidat}" ]]; then
             export ODOO_RC="${candidat}"
+            export OPENERP_SERVER="${OPENERP_SERVER:-${candidat}}"
             return 0
         fi
     done

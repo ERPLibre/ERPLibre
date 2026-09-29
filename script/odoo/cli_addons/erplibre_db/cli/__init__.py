@@ -3,3 +3,4 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 from . import erplibre_db
 from . import erplibre_uninstall
+from . import erplibre_shell
