@@ -532,7 +532,7 @@ class QemuMenuMixin:
 
     @staticmethod
     def _qemu_stamp(ts):
-        """Horodatage court « 2026-08-01 »."""
+        """Horodatage court, la date seule : « AAAA-MM-JJ »."""
         try:
             return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
         except (OSError, OverflowError, TypeError, ValueError):
