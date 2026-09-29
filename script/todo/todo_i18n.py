@@ -8420,6 +8420,22 @@ TRANSLATIONS = {
         "fr": "Ajouter un module personnalisé",
         "en": "Add an extra custom one",
     },
+    "kept, uninstalling it would remove": {
+        "fr": "gardé, sa désinstallation emporterait",
+        "en": "kept, uninstalling it would remove",
+    },
+    "kept, its dependents could not be read.": {
+        "fr": "gardé, ses dépendants n'ont pas pu être lus.",
+        "en": "kept, its dependents could not be read.",
+    },
+    "still present in Odoo": {
+        "fr": "encore présents en Odoo",
+        "en": "still present in Odoo",
+    },
+    "OpenUpgrade makes it uninstallable without deleting data.": {
+        "fr": "OpenUpgrade le rend non installable sans rien supprimer.",
+        "en": "OpenUpgrade makes it uninstallable without deleting data.",
+    },
     "List the missing modules to delete,": {
         "fr": "Énumérer les modules manquants à supprimer,",
         "en": "List the missing modules to delete,",

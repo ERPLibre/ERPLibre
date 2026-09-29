@@ -192,6 +192,32 @@ def http_off_option(version):
     return "--no-xmlrpc" if version <= 10 else "--no-http"
 
 
+def split_removable(lst_missing, dct_dependents):
+    """Départager les modules manquants dans la version suivante.
+
+    dct_dependents donne, pour chacun, ses dépendants installés. Désinstaller
+    un module emporte ses dépendants : si l'un d'eux existe encore dans la
+    version suivante — il n'est pas lui-même manquant —, le module est
+    GARDÉ, et OpenUpgrade le rend non installable sans rien détruire. Des
+    dépendants inconnus (None : la base n'a pas répondu) gardent aussi le
+    module : dans le doute, ne rien détruire.
+    Rend (proposables, {gardé: [dépendants qui survivent], ou None}).
+    """
+    manquants = set(lst_missing)
+    proposables, gardes = [], {}
+    for module in lst_missing:
+        dependants = dct_dependents.get(module)
+        if dependants is None:
+            gardes[module] = None
+            continue
+        survivants = sorted(d for d in dependants if d not in manquants)
+        if survivants:
+            gardes[module] = survivants
+        else:
+            proposables.append(module)
+    return proposables, gardes
+
+
 def openupgrade_declared(version, racine="."):
     """Vrai si le manifeste de développement d'Odoo <version>.0 déclare
     OpenUpgrade.
@@ -2266,6 +2292,35 @@ class TodoUpgrade:
                         f"💬 {t('Duplicate module error detected, handle it')}"
                         f" {t('manually then press enter to continue.')}"
                     )
+                # Désinstaller un module manquant emporte ses dépendants.
+                # Un module dont un dépendant existe encore dans la version
+                # suivante — en Odoo 8, account dépend d'edi, retiré en 9 —
+                # n'est pas proposé : sa désinstallation détruirait des
+                # données qu'OpenUpgrade sait migrer.
+                if lst_module_missing_next_version:
+                    dct_dependents = {
+                        module: self.installed_dependents(
+                            last_database_name, module
+                        )
+                        for module in lst_module_missing_next_version
+                    }
+                    lst_module_missing_next_version, dct_gardes = (
+                        split_removable(
+                            lst_module_missing_next_version, dct_dependents
+                        )
+                    )
+                    for module, survivants in dct_gardes.items():
+                        if survivants is None:
+                            print(
+                                f"🛡 {module} : {t('kept, its dependents could not be read.')}"
+                            )
+                            continue
+                        print(
+                            f"🛡 {module} : {t('kept, uninstalling it would remove')}"
+                            f" {', '.join(survivants)},"
+                            f" {t('still present in Odoo')}{next_version}."
+                            f" {t('OpenUpgrade makes it uninstallable without deleting data.')}"
+                        )
                 # if lst_module_missing_next_version and not lst_module_to_migrate:
                 if lst_module_missing_next_version:
                     # TODO support when lst_module_to_migrate is fill
@@ -3364,6 +3419,31 @@ class TodoUpgrade:
             f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
             f" ir_module_module WHERE name IN ({noms})"
             " AND state <> 'uninstalled' ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def installed_dependents(self, database_name, module):
+        """Les modules installés qui dépendent, directement ou non, de module.
+
+        Rend None quand la base ne répond pas, ou pour un nom qui n'est pas
+        un identifiant de module : il entre tel quel dans la requête.
+        """
+        if not re.fullmatch(r"[A-Za-z0-9_]+", module or ""):
+            return None
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "WITH RECURSIVE dep(name) AS ('
+            " SELECT m.name FROM ir_module_module m JOIN"
+            " ir_module_module_dependency d ON d.module_id = m.id"
+            f" WHERE d.name = '{module}' AND m.state = 'installed'"
+            " UNION SELECT m.name FROM ir_module_module m JOIN"
+            " ir_module_module_dependency d ON d.module_id = m.id"
+            " JOIN dep ON d.name = dep.name WHERE m.state = 'installed')"
+            ' SELECT name FROM dep ORDER BY name;"',
             get_output=True,
             wait_at_error=False,
             quiet=True,
