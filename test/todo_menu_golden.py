@@ -8,8 +8,9 @@ d'effacement, Analyse, Transform data et Doc, la famille Git : Git, Git
 local server et ses deux menus Actions, GPT code, Claude configs,
 Plugins, Claude Code, RTK et Automation, la famille QEMU : Deploy,
 SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security, Docker /
-Podman et ses trois menus, et la famille Proxmox : Proxmox VE, VPN, Long
-test et Install.
+Podman et ses trois menus, la famille Proxmox : Proxmox VE, VPN, Long
+test et Install, la famille Assistant : Assistant, LLM, Servers, Search
+et les trois menus du courriel, et le menu principal.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -18,7 +19,9 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
   montre le terminal, réponses tapées comprises, ce que rend le menu, les
   clés de télémétrie qu'il enregistre et le nombre de sondes du hub web ;
   Run y montre l'entrée Mobile, son répertoire présent ; Install, qui
-  pose ses questions par `input`, reçoit INPUTS ;
+  pose ses questions par `input`, reçoit INPUTS ; un menu du courriel,
+  une fonction de `script/todo/mail/menu.py`, reçoit le TODO ; le menu
+  principal montre le logo, la langue tenue pour choisie ;
 - `session` : quand le vrai TODO, sous la capture de la session web comme
   dans le worker, suit WALK, les messages `menu` des menus de CRUMBS, le fil
   d'Ariane de chaque menu traversé et les clés de télémétrie. WALK ne
@@ -28,12 +31,14 @@ Module d'aide et non fichier de tests : son nom ne commence pas par
 La configuration est CONFIG, les préférences celles d'un HOME vide où
 l'hôte Proxmox HOST est retenu, le hub web ne tourne pas
 (`launcher.status` rend None) et Claude Code n'a aucune session
-(`claude_sessions.fleet` rend []). Ce que les menus des familles QEMU et
-Proxmox lisent du système en se dessinant vient de doubles (`doubles`) :
-de faux programmes en tête du PATH, un faux binaire du cache et son
-fichier de réglages, la place libre, les manifestes et leurs miroirs, les
-fiches des moteurs de conteneurs, les préférences, et les versions
-d'Odoo, installées et active, qu'Install propose.
+(`claude_sessions.fleet` rend []). Ce que les menus des familles QEMU,
+Proxmox et Assistant lisent du système en se dessinant vient de doubles
+(`doubles`) : de faux programmes en tête du PATH, un faux binaire du
+cache et son fichier de réglages, la place libre, les manifestes et
+leurs miroirs, les fiches des moteurs de conteneurs, les préférences,
+les versions d'Odoo, installées et active, qu'Install propose, les
+réseaux que la machine porte, et un serveur de modèles qui ne répond
+jamais : aucune sonde ne quitte la capture.
 
     python3 test/todo_menu_golden.py   (depuis la racine du dépôt)
 
@@ -99,6 +104,16 @@ MENUS = (
     "prompt_execute_vpn",
     "prompt_execute_longtest",
     "prompt_install",
+    "prompt_assistant",
+    "prompt_assistant_llm",
+    "_llm_servers",
+    "_llm_search",
+    # Les menus du courriel sont des fonctions de ce module, qui reçoivent
+    # le TODO.
+    "script.todo.mail.menu.prompt_execute_mail",
+    "script.todo.mail.menu.prompt_mail_accounts",
+    "script.todo.mail.menu.prompt_mail_cache",
+    "run",
 )
 CRUMBS = (
     "Navigation telemetry",
@@ -142,6 +157,13 @@ CRUMBS = (
     "Proxmox VE",
     "VPN",
     "Long test",
+    # Les menus du courriel n'ont pas de segment : ils s'affichent sous
+    # celui d'Assistant.
+    "Assistant",
+    "LLM",
+    "Servers",
+    "Search",
+    "TODO",
 )
 ANSWERS = ("", "9", "0")
 # Execute montre seize entrées : « 9 » y ouvrirait Git, « 17 » n'en a pas.
@@ -150,7 +172,8 @@ ANSWERS = ("", "9", "0")
 # qui reçoit une réponse vide et un numéro sans entrée, puis en sort.
 # Deploy en montre dix, SSH onze, QEMU/KVM vingt-deux avec CONFIG, QEMU
 # cache douze, Docker / Podman treize, Proxmox VE vingt avec CONFIG, VPN
-# onze, Long test dix : « 9 » y lancerait une entrée.
+# onze, Long test dix : « 9 » y lancerait une entrée. Search en montre
+# huit avec les deux réseaux de NETWORKS : « 9 » n'y est pas.
 ANSWERS_OF = {
     "prompt_execute": ("", "17", "0"),
     "prompt_execute_git": ("", "10", "0"),
@@ -233,6 +256,26 @@ CONFIG = {
         {"section": "Forged section"},
         {"prompt_description": "Forged Proxmox two", "bash_command": "forged"},
     ],
+    # Deux serveurs de modèles connus : LLM les compte, Servers les liste.
+    "assistant": {
+        "servers": [
+            {
+                "label": "Forged one",
+                "host": "192.0.2.27",
+                "port": 11434,
+                "software": "ollama",
+                "model": "forged:7b",
+                "hosting": "lan",
+            },
+            {
+                "label": "Forged two",
+                "host": "198.51.100.5",
+                "port": 8080,
+                "software": "llamacpp",
+                "hosting": "lan",
+            },
+        ]
+    },
 }
 WALK = (
     ["Configuration"],
@@ -325,6 +368,20 @@ WALK = (
     "0",
     "0",
     "0",
+    ["Assistant"],
+    ["AI question - Ask a model, local or remote"],
+    ["Known servers"],
+    "0",
+    ["Search for a server…"],
+    "0",
+    "0",
+    ["mail_menu"],
+    ["mail_accounts_menu"],
+    "0",
+    ["mail_cache_menu"],
+    "0",
+    "0",
+    "0",
     "0",
 )
 # Les programmes que les menus des familles QEMU et Proxmox lancent en se
@@ -408,6 +465,12 @@ VERSIONS = {
     "odoo17.0_forged": {"odoo_version": "17.0"},
     "odoo18.0_forged": {"odoo_version": "18.0", "default": True},
 }
+# Les réseaux que la machine porte, qu'offre Search : un réseau local et
+# un pont de virtualisation, (interface, préfixe, pont).
+NETWORKS = (
+    ("forged0", "192.0.2.0/24", False),
+    ("virbr-forged", "198.51.100.0/24", True),
+)
 
 # Le vrai TODO sous la capture, dans l'ordre du worker : urwid, la
 # capture, puis `import todo` en mode script. argv : la langue, WALK en
@@ -434,7 +497,8 @@ todo_telemetry.record = keys.append
 
 
 class Walk(port.ScriptedPort):
-    # Une étape [clé] répond l'entrée dont le libellé est t(clé) ; une
+    # Une étape [clé] répond l'entrée dont le libellé est t(clé), suivi ou
+    # non de ce qu'y ajoute un suffixe, « (…) » après deux espaces ; une
     # question qui n'est pas un menu arrête tout. Une entrée absente aussi,
     # par une EOFError qui nomme la clé, gardée dans `lost`.
     lost = None
@@ -444,10 +508,12 @@ class Walk(port.ScriptedPort):
             self.answers = [EOFError(message.get("text"))]
         elif isinstance(self.answers[0], list):
             key = self.answers[0][0]
+            label = todo_i18n.t(key)
             found = [
                 item["key"]
                 for item in message["items"]
-                if item["label"] == todo_i18n.t(key)
+                if item["label"] == label
+                or item["label"].startswith(f"{label}  (")
             ]
             if not found:
                 self.lost = key
@@ -486,9 +552,13 @@ def doubles(base) -> list:
     cache et son fichier de réglages, les préférences où HOST est retenu,
     et les versions de VERSIONS, installées et active ; rend les patchers,
     à démarrer, qui y mènent les menus des familles QEMU et Proxmox et
-    doublent la place libre, les manifestes et leurs miroirs, et les
-    fiches des moteurs de conteneurs.
+    doublent la place libre, les manifestes et leurs miroirs, les fiches
+    des moteurs de conteneurs, les réseaux de NETWORKS, et la collecte des
+    réponses d'un serveur de modèles, qui ne rend rien et n'ouvre aucune
+    connexion.
     """
+    from script.todo.assistant.discover import Interface
+
     stubs = base / "stubs"
     stubs.mkdir(parents=True)
     for name in STUBS:
@@ -541,6 +611,14 @@ def doubles(base) -> list:
             "script.todo.version_manager.ODOO_VERSION_FILE",
             str(base / "odoo-version"),
         ),
+        patch(
+            "script.todo.assistant.discover.local_networks",
+            lambda run=None: [Interface(*network) for network in NETWORKS],
+        ),
+        patch(
+            "script.todo.assistant.fingerprint.collect",
+            lambda host, port, **kwargs: {},
+        ),
     ]
 
 
@@ -564,8 +642,11 @@ def terminal(method, lang) -> dict:
     à `click.prompt` : `screen`, ses lignes ; `back`,
     ce qu'il rend ; `keys`, les clés de télémétrie enregistrées ; `probes`,
     les sondes du hub web. `method` peut être pointé : « a.b » appelle la
-    méthode `b` de l'attribut `a` de TODO. Le répertoire de Mobile est
-    présent."""
+    méthode `b` de l'attribut `a` de TODO, « script.….f » la fonction `f`
+    de ce module, avec le TODO. Le répertoire de Mobile est présent, la
+    langue tenue pour choisie."""
+    import importlib
+
     from script.config import config_file
     from script.todo import todo, todo_i18n
     from script.todo.todo import TODO
@@ -596,6 +677,7 @@ def terminal(method, lang) -> dict:
             patch.object(config_file, "CONFIG_OVERRIDE_FILE", absent),
             patch.object(config_file, "CONFIG_OVERRIDE_PRIVATE_FILE", absent),
             patch.object(todo, "MOBILE_HOME_PATH", str(base)),
+            patch.object(todo, "lang_is_configured", return_value=True),
             patch("click.termui.visible_prompt_func", typed),
             # Un menu qui lirait le terminal bloquerait le test : `input`,
             # sauf pour un menu d'INPUTS, une question masquée
@@ -631,9 +713,14 @@ def terminal(method, lang) -> dict:
         )
         stack.enter_context(redirect_stdout(shown))
         target = TODO()
-        for name in method.split("."):
-            target = getattr(target, name)
-        back = target()
+        if method.startswith("script."):
+            module, _, name = method.rpartition(".")
+            function = getattr(importlib.import_module(module), name)
+            back = function(target)
+        else:
+            for name in method.split("."):
+                target = getattr(target, name)
+            back = target()
     return {
         "screen": shown.getvalue().split("\n"),
         "back": back,

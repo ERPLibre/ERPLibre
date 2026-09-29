@@ -8,8 +8,9 @@ son menu d'effacement, Analyse, Transform data et Doc, la famille Git :
 Git, Git local server et ses deux menus Actions, GPT code, Claude
 configs, Plugins, Claude Code, RTK et Automation, la famille QEMU :
 Deploy, SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security,
-Docker / Podman et ses trois menus, et la famille Proxmox : Proxmox VE,
-VPN, Long test et Install.
+Docker / Podman et ses trois menus, la famille Proxmox : Proxmox VE,
+VPN, Long test et Install, la famille Assistant : Assistant, LLM,
+Servers, Search et les trois menus du courriel, et le menu principal.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les
@@ -23,7 +24,7 @@ capture, comme dans le worker.
 `TestCapture` tient les garde-fous de la capture sur un menu factice mis
 à la place de [4] : une question au terminal lève au lieu de bloquer,
 une étape de WALK absente de son menu est nommée, et ce que les familles
-QEMU et Proxmox lisent du système vient des doubles.
+QEMU, Proxmox et Assistant lisent du système vient des doubles.
 """
 
 import getpass
@@ -152,6 +153,25 @@ class TestCapture(unittest.TestCase):
         qm, which = seen["tools"]
         self.assertTrue(qm.endswith("/system/stubs/qm"))
         self.assertTrue(which.endswith("/system/stubs/which"))
+
+    def test_the_assistant_family_reads_the_system_through_doubles(self):
+        # Les réseaux que Search propose, les serveurs de modèles connus et
+        # ce qu'un serveur répond à une sonde sont ceux des doubles et de
+        # CONFIG, jamais ceux de l'hôte : aucune sonde ne part.
+        seen = {}
+
+        def menu(todo):
+            from script.todo.assistant import discover, fingerprint, servers
+
+            seen["networks"] = [n.cidr for n in discover.local_networks()]
+            seen["answers"] = fingerprint.collect("127.0.0.1", 11434)
+            known = servers.load(get_config=todo._llm_get_config)
+            seen["servers"] = [server.label for server in known]
+
+        self.captured(menu)
+        self.assertEqual(seen["networks"], ["192.0.2.0/24", "198.51.100.0/24"])
+        self.assertEqual(seen["answers"], {})
+        self.assertEqual(seen["servers"], ["Forged one", "Forged two"])
 
     def test_a_step_absent_from_its_menu_is_named(self):
         # Le menu principal n'a aucune entrée de ce libellé : la session
