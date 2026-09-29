@@ -283,6 +283,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › Mail picks an account only by its number as the list writes it: « 0 », typed to go back, no longer picks the last account, which Delete an account erased without another question, and « -1 », « 01 » or a digit of another script pick none
 - Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
 - Assistant › Mail › Accounts › List accounts and Cache › Cache size and purge write their lines in the chosen language: a disabled account and the size of a cache were marked in French whatever the language
+- Navigation telemetry: Execute › Deploy › QEMU/KVM › SSH configuration (~/.ssh/config, ProxyJump), which rewrites the account's SSH configuration, is declared dangerous and launches only from its menu, like the entry of the same name in Proxmox VE: the page shows it without ▶, and the TUI answers it with a notice
 
 ## Removed
 

@@ -10,8 +10,9 @@ et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
 nomme la méthode publique de celui-ci : son cadre porte le fil d'Ariane.
 
 Un installateur, qui pose des paquets ou un service, ici ou sur un hôte
-distant, porte `danger`, comme une entrée qui efface : ni la TUI de
-télémétrie ni la page web ne le lancent, son menu seul.
+distant, porte `danger`, comme une entrée qui efface ou qui réécrit la
+configuration SSH du compte : ni la TUI de télémétrie ni la page web ne
+le lancent, son menu seul.
 """
 
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
@@ -121,9 +122,11 @@ QEMU = Menu(
         Entry("Resize a VM disk", "_qemu_resize_disk", danger=True),
         Entry("Delete VM(s)", "_qemu_delete_vm", danger=True),
         Section("VM access"),
+        # Réécrit ~/.ssh/config, la configuration SSH du compte : `danger`.
         Entry(
             "SSH configuration (~/.ssh/config, ProxyJump)",
             "_qemu_ssh_config_menu",
+            danger=True,
         ),
         Entry(
             "Remote desktop tunnel (VNC/RDP through SSH)",

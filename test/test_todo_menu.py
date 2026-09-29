@@ -408,6 +408,7 @@ class TestLArbreDesMenus(unittest.TestCase):
                     for label in (
                         "Resize a VM disk",
                         "Delete VM(s)",
+                        "SSH configuration (~/.ssh/config, ProxyJump)",
                         "Recreate the VM subnet (stop, redefine, restart)",
                         "Clean up QEMU (orphan files)",
                     )
