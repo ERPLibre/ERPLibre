@@ -331,7 +331,8 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
     def test_what_is_not_a_number_keeps_the_default(self):
         # « ² », voisin de « 1 » sur un clavier français, et « ٤ » (quatre
         # en écriture arabe) gardent le défaut au lieu d'arrêter TODO sur
-        # une ValueError ; « 04 » demande quatre étages.
+        # une ValueError ; « 04 » demande quatre étages. Plus de trois
+        # chiffres gardent aussi le défaut : int() lève au-delà de 4 300.
         todo = TODO.__new__(TODO)
         for answer, depth in (
             ("²", 3),
@@ -340,6 +341,9 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
             ("0", 3),
             ("04", 4),
             ("5", 5),
+            ("999", 999),
+            ("1000", 3),
+            ("9" * 5000, 3),
         ):
             with (
                 self.subTest(answer=answer),

@@ -284,8 +284,10 @@ class LongTestMenuMixin:
 
         Des chiffres ASCII seulement : isdigit() accepte aussi « ² » ou un
         chiffre d'une autre écriture, sur lesquels int() lève ou lit un
-        nombre que l'invite n'a pas montré.
+        nombre que l'invite n'a pas montré. Trois chiffres au plus : int()
+        lève au-delà de 4 300 chiffres (limite de conversion de Python), et
+        une réponse plus longue garde le défaut comme tout autre texte.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
-        chiffres = brut.isascii() and brut.isdigit()
+        chiffres = brut.isascii() and brut.isdigit() and len(brut) <= 3
         return int(brut) if chiffres and int(brut) > 0 else 3
