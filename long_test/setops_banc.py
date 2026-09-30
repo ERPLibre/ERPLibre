@@ -1881,6 +1881,7 @@ APPLICATIONS_COUVERTES = (
     "nginx",
     "openldap",
     "dovecot",
+    "postfix",
 )
 
 
@@ -1939,7 +1940,11 @@ def hotes_couverts(chemin, applications=APPLICATIONS_COUVERTES):
 # CE N'EST DONC PLUS LE MODÈLE LIVRÉ QUE LE BANC ÉPROUVE, mais le modèle ÉTENDU :
 # un lancement vert dit que le moteur tient sur CETTE topologie, pas que le
 # modèle du dépôt est complet.
-FONCTION_ANNUAIRE = "infra-idm"
+# LE NOM EST CELUI DES MODÈLES ASSEMBLÉS, pas une invention : tous ceux qui
+# déclarent un annuaire le nomment ainsi, et le rôle qui s'y lie porte le même
+# nom en défaut. Un nom propre au banc ferait diverger son plan de ceux qu'il
+# sert à éprouver.
+FONCTION_ANNUAIRE = "id-ldap"
 APPLICATION_ANNUAIRE = "openldap"
 GROUPE_ANNUAIRE = "serveur_openldap"
 
