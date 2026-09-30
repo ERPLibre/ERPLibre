@@ -4262,7 +4262,14 @@ class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
     """Une fonction sans hôte, ou un hôte sans application, laisse un plan qui se
     lit mais ne déploie pas ce qu'il annonce."""
 
-    def modele(self):
+    def modele(self, avec_annuaire=False):
+        """Une copie du modèle livré, son annuaire RETIRÉ par défaut.
+
+        DÉPOUILLÉE, PARCE QUE LE MODÈLE L'A GAGNÉ. Le socle déclare désormais son
+        annuaire ; éprouver la pose sur lui la rendrait vacueuse — les entrées
+        seraient là sans que rien ne les ait posées. Ce que le banc traite est le
+        modèle qui l'OMET, et c'est celui-là qu'il faut lui donner.
+        """
         source = os.path.join(
             B.moteur_du_banc() or "", "exemples", "modeles", "socle"
         )
@@ -4272,7 +4279,25 @@ class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         eco = os.path.join(d, "eco")
         shutil.copytree(source, eco)
+        if not avec_annuaire:
+            self.retire_l_annuaire(eco)
         return eco
+
+    def retire_l_annuaire(self, eco):
+        """Retire du plan les trois lignes qui déclarent l'annuaire."""
+        marques = (B.FONCTION_ANNUAIRE, B.APPLICATION_ANNUAIRE)
+        for fichier in (
+            "nomenclature.yml",
+            "serveurs.yml",
+            "applications.yml",
+        ):
+            chemin = os.path.join(eco, "plan", fichier)
+            with open(chemin, encoding="utf-8") as lu:
+                lignes = lu.readlines()
+            with open(chemin, "w", encoding="utf-8") as ecrit:
+                ecrit.writelines(
+                    l for l in lignes if not any(m in l for m in marques)
+                )
 
     def lu(self, eco, fichier, cle):
         with open(os.path.join(eco, "plan", fichier), encoding="utf-8") as f:
@@ -4319,12 +4344,29 @@ class TestLAnnuaireEntreDansLesTroisFichiers(unittest.TestCase):
         eco = self.modele()
         self.assertTrue(B.pose_l_annuaire(eco, "un-hote-invente"))
 
-    def test_replaying_the_pose_refuses(self):
-        """Le modèle qui déclarerait déjà cet annuaire n'a pas besoin du banc, et
-        deux entrées de même nom rendent le plan ambigu."""
+    def test_a_model_that_declares_it_needs_nothing(self):
+        """LA PROPRIÉTÉ : une réussite, pas un refus. Le banc n'ajoute l'annuaire
+        que parce qu'un modèle peut l'omettre ; celui qui le déclare n'a besoin
+        de rien. Refuser là ferait échouer la pose sur un plan PLUS complet que
+        prévu — l'inverse de ce qu'on veut d'un modèle qui s'améliore.
+
+        Le modèle LIVRÉ le déclare depuis qu'il porte son magasin de courriel :
+        cette épreuve le mesure sur lui, sans le dépouiller."""
+        eco = self.modele(avec_annuaire=True)
+        self.assertEqual("", B.pose_l_annuaire(eco, "infra-pki-01"))
+        declare = self.lu(eco, "applications.yml", "applications")
+        self.assertIn(B.APPLICATION_ANNUAIRE, declare)
+
+    def test_the_pose_never_doubles_an_entry(self):
+        """Deux entrées de même nom rendent le plan ambigu : le lecteur n'en
+        garde qu'une, sans dire laquelle."""
         eco = self.modele()
         self.assertEqual("", B.pose_l_annuaire(eco, "infra-pki-01"))
-        self.assertTrue(B.pose_l_annuaire(eco, "infra-pki-01"))
+        self.assertEqual("", B.pose_l_annuaire(eco, "infra-pki-01"))
+        with open(
+            os.path.join(eco, "plan", "applications.yml"), encoding="utf-8"
+        ) as lu:
+            self.assertEqual(1, lu.read().count(B.APPLICATION_ANNUAIRE + ":"))
 
 
 class TestUneCauseSurPlusieursLignes(unittest.TestCase):
