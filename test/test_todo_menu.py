@@ -583,6 +583,19 @@ class TestLArbreDesMenus(unittest.TestCase):
         ]
         self.assertEqual((gpt["label"], gpt["entry"]), ("gpt tools", ""))
 
+    def test_assistant_opens_llm_and_mail(self):
+        # Le courriel, dont les menus sans segment restent hors de
+        # l'arbre, y est une feuille : la TUI l'ouvre par la méthode de
+        # TODO qui passe la main à mail/menu.py.
+        assistant = self._noeud("Assistant")
+        self.assertEqual(
+            [
+                (node["label"], node["is_menu"], node.get("method"))
+                for node in assistant["children"]
+            ],
+            [("LLM", True, None), ("mail_menu", False, "_assistant_mail")],
+        )
+
     def test_a_submenu_its_parent_does_not_name_has_an_empty_entry(self):
         # Le menu LLM calcule le libellé de l'entrée qui ouvre Servers : son
         # `entry` est vide, comme celui d'une feuille que son menu ne nomme
@@ -1983,6 +1996,19 @@ class TestAutomationMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(self.menu.render, "once")
 
 
+class TestAssistantMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """L'entrée [3] du menu principal : une question à un modèle, et le
+    courriel, que TODO ouvre par une méthode qui passe la main à
+    mail/menu.py."""
+
+    MENU = "prompt_assistant"
+    BACK = None
+    EXPECTED = {
+        "AI question - Ask a model, local or remote": "prompt_assistant_llm",
+        "mail_menu": "_assistant_mail",
+    }
+
+
 class TestLlmMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Assistant › LLM : parler, un outil gpt, les serveurs connus, la
     recherche, la fiche du serveur, chacun avec ce que son libellé dit
@@ -3010,6 +3036,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_vpn",
                 "prompt_execute_longtest",
                 "prompt_install",
+                "prompt_assistant",
                 "prompt_assistant_llm",
                 "_llm_servers",
                 "_llm_search",

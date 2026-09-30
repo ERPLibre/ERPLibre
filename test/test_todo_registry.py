@@ -1164,6 +1164,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "_prompt_git_server_local",
                 "_prompt_git_server_production",
                 "drop_database",
+                "prompt_assistant",
                 "prompt_assistant_llm",
                 "prompt_claude_sessions",
                 "prompt_configuration",
@@ -1227,7 +1228,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 51)
+        self.assertEqual(len(menus), 52)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         # Les menus du courriel s'ouvrent par des fonctions de mail/menu.py
         # sur MailMenus, qui porte leurs actions, dont certaines sont des

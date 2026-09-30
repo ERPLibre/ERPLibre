@@ -3,8 +3,8 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Ce que le câblage du menu assistant doit tenir.
 
-Six sites de `todo.py` participent à un sous-menu — l'import, les bases de la
-classe, l'étiquette du fil d'Ariane, les deux listes jumelles du menu parent,
+Cinq sites participent à un sous-menu — l'import, les bases de la classe,
+l'étiquette du fil d'Ariane, son entrée dans la déclaration du menu parent,
 et les clés de traduction. Aucun n'échoue bruyamment quand il manque : une
 entrée mal branchée appelle simplement autre chose, une étiquette absente
 retire une miette du fil, et `t()` rend une clé inconnue telle quelle, donc une
@@ -80,7 +80,7 @@ def cles_de_traduction(chemin):
 
 
 class Cablage(unittest.TestCase):
-    """Les six sites de `todo.py` que le sous-menu réclame."""
+    """Les cinq sites que le sous-menu réclame."""
 
     def test_todo_expose_le_sous_menu_llm(self):
         from script.todo.todo import TODO
@@ -96,8 +96,9 @@ class Cablage(unittest.TestCase):
         self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
 
     def test_un_dispatche_vers_le_sous_menu_llm_seulement(self):
-        """Les deux listes du menu parent sont tenues à la main et rien ne
-        les rapproche : `[1]` peut afficher une entrée et appeler l'autre."""
+        """`[1]` ouvre LLM, et rien d'autre : une entrée déclarée à une
+        autre place du menu parent afficherait un libellé et en ouvrirait
+        un autre."""
         from script.todo.todo import TODO
 
         todo = TODO()

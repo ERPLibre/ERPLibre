@@ -127,6 +127,7 @@ from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.menus import assistant as menus_assistant
 from script.todo.menus import deploy as menus_deploy
 from script.todo.menus import execute as menus_execute
 from script.todo.menus import git as menus_git
@@ -301,29 +302,15 @@ class TODO(
 
     def prompt_assistant(self):
         """Ce qui s'adresse à l'humain : poser une question, lire son
-        courriel. Le texte vient de `fill_help_info`, qui le numérote :
-        dans une session web, le menu porte ses entrées exactes."""
+        courriel (ASSISTANT, `menus/assistant.py`). Rend None sur [0]."""
+        return navigate(self, menus_assistant.ASSISTANT)
+
+    def _assistant_mail(self):
+        """Ouvre le courriel par `prompt_execute_mail`, le seul point de
+        contact du paquet `mail` avec TODO, importé à l'ouverture."""
         from script.todo.mail.menu import prompt_execute_mail
 
-        choices = [
-            {
-                "prompt_description": t(
-                    "AI question - Ask a model, local or remote"
-                )
-            },
-            {"prompt_description": t("mail_menu")},
-        ]
-        while True:
-            status = click.prompt(self.fill_help_info(choices))
-            print()
-            if status == "0":
-                return
-            if status == "1":
-                self.prompt_assistant_llm()
-            elif status == "2":
-                prompt_execute_mail(self)
-            else:
-                print(t("Command not found !"))
+        return prompt_execute_mail(self)
 
     def prompt_execute(self):
         """Les seize sous-menus d'Execute, en cinq sections (EXECUTE,

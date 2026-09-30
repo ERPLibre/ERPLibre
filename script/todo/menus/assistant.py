@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus de la famille Assistant : LLM, ses serveurs connus et la
-recherche d'un serveur, le courriel, ses comptes et son cache.
+"""Menus de la famille Assistant : Assistant, LLM, ses serveurs connus et
+la recherche d'un serveur, le courriel, ses comptes et son cache.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -13,6 +13,21 @@ ni la page web ne la lancent, son menu seul.
 """
 
 from script.todo.ui.registry import Entry, FromMethod, Menu, Section
+
+# L'entrée [3] du menu principal. Le courriel s'ouvre par une méthode de
+# TODO qui passe la main à `script/todo/mail/menu.py`.
+ASSISTANT = Menu(
+    "prompt_assistant",
+    "Assistant",
+    [
+        Entry(
+            "AI question - Ask a model, local or remote",
+            "prompt_assistant_llm",
+        ),
+        Entry("mail_menu", "_assistant_mail"),
+    ],
+    back=None,
+)
 
 LLM = Menu(
     "prompt_assistant_llm",
