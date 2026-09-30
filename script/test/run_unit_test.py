@@ -134,6 +134,9 @@ class Fichier:
         self.skipped = ""
         self.log = ""
         self.proc = None
+        # Entrées que le fichier a laissées dans son TMPDIR : le lanceur les
+        # supprime et les signale au bilan.
+        self.restes = 0
 
     def ecoule(self):
         """Secondes écoulées : figées une fois fini, courantes sinon."""
@@ -253,6 +256,11 @@ class Lanceur:
         cmd = [self.py, "-u", f.chemin]
         if self.detaille:
             cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
+        # Un TMPDIR par fichier, sous le répertoire de travail : ce qu'un
+        # test oublie de supprimer y reste, est compté puis supprimé, au lieu
+        # de s'accumuler dans /tmp jusqu'à en épuiser les inodes.
+        tmp = base + ".tmp"
+        os.makedirs(tmp, exist_ok=True)
         f.debut = time.monotonic()
         f.etat = EN_COURS
         with open(f.log, "wb") as sortie:
@@ -261,7 +269,7 @@ class Lanceur:
                 stdin=subprocess.DEVNULL,
                 stdout=sortie,
                 stderr=subprocess.STDOUT,
-                env=self.env,
+                env=dict(self.env, TMPDIR=tmp),
                 start_new_session=True,
             )
             try:
@@ -271,6 +279,11 @@ class Lanceur:
                 f.proc.wait()
                 rc = None
         f.duree = time.monotonic() - f.debut
+        try:
+            f.restes = len(os.listdir(tmp))
+        except OSError:
+            f.restes = 0
+        shutil.rmtree(tmp, ignore_errors=True)
         if self.detaille:
             try:
                 with open(base + ".json", encoding="utf-8") as fh:
@@ -360,6 +373,23 @@ def ligne(f, delai):
     )
 
 
+def restes_temporaires(lanceur):
+    """Lignes d'avertissement : les fichiers qui ont laissé des entrées dans
+    leur TMPDIR. Le lanceur les a supprimées ; le test reste à corriger, car
+    lancé hors du lanceur il les laisse dans /tmp. N'échoue pas la suite."""
+    fautifs = sorted(
+        (f for f in lanceur.fichiers if getattr(f, "restes", 0)),
+        key=lambda f: f.nom,
+    )
+    if not fautifs:
+        return []
+    lignes = [
+        f"  {JAUNE}Temporaires laissés (supprimés par le lanceur) :{FIN}"
+    ]
+    lignes += [f"    {f.nom}  ({f.restes})" for f in fautifs]
+    return lignes
+
+
 def bilan(lanceur):
     """Les sorties des échecs, dans l'ordre des noms, puis le total.
 
@@ -373,6 +403,8 @@ def bilan(lanceur):
         print(_lire(f.log, fin=12))
     total = sum(int(f.ran) for f in lanceur.fichiers if f.ran.isdigit())
     duree = f"{lanceur.fin - lanceur.debut:.0f} s, {lanceur.jobs} en parallèle"
+    for ligne in restes_temporaires(lanceur):
+        print(ligne)
     print("  ─────")
     arretes = [f for f in lanceur.fichiers if f.etat == ARRETE]
     if arretes:

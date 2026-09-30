@@ -157,5 +157,41 @@ class TestLesEchecsRetenusSurPlusieursPassages(unittest.TestCase):
         self.assertEqual((passes, echoues), (["test_b.py"], ["test_a.py"]))
 
 
+class TestLesTemporairesOublies(unittest.TestCase):
+    def test_the_summary_names_the_files_that_leave_temporaries(self):
+        propre = fichier("test_propre.py", r.OK)
+        sale = fichier("test_sale.py", r.OK)
+        sale.restes = 3
+        lignes = r.restes_temporaires(Lanceur(propre, sale))
+        self.assertEqual(len(lignes), 2)
+        self.assertIn("test_sale.py  (3)", lignes[1])
+        self.assertEqual(r.restes_temporaires(Lanceur(propre)), [])
+
+    def test_a_file_gets_its_own_tmpdir_counted_then_removed(self):
+        # Un vrai passage : le fichier oublie un temporaire, le lanceur le
+        # compte, puis supprime le TMPDIR du fichier.
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "test_oubli.py")
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(
+                    "import os, tempfile, unittest\n"
+                    "class T(unittest.TestCase):\n"
+                    "    def test_oubli(self):\n"
+                    "        tempfile.NamedTemporaryFile(delete=False).close()\n"
+                    "        print('TMPDIR=' + os.environ['TMPDIR'])\n"
+                    "if __name__ == '__main__':\n"
+                    "    unittest.main()\n"
+                )
+            lanceur = r.Lanceur([chemin], sys.executable, 1, 60, {})
+            self.addCleanup(lanceur.nettoyer)
+            lanceur.lancer()
+            (f,) = lanceur.fichiers
+            self.assertEqual(f.etat, r.OK)
+            self.assertEqual(f.restes, 1)
+            tmp = r._lire(f.log).split("TMPDIR=")[1].split()[0]
+            self.assertTrue(tmp.startswith(lanceur.travail))
+            self.assertFalse(os.path.exists(tmp))
+
+
 if __name__ == "__main__":
     unittest.main()
