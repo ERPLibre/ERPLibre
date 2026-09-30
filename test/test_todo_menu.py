@@ -142,6 +142,26 @@ class TestLArbreDesMenus(unittest.TestCase):
     def test_the_tree_is_built_at_all(self):
         self.assertIsNotNone(self.arbre)
 
+    def test_each_menu_of_the_tree_is_declared(self):
+        # Le segment de chaque menu de l'arbre est déclaré : le `crumb`
+        # d'un menu du registre, ou celui d'une entrée dont l'action
+        # dessine son propre écran. Un segment que seul le code donnait
+        # manquerait à l'arbre qui ne lit que les déclarations.
+        from script.todo.todo_telemetry import _declared_menus
+
+        declared = set()
+        for menu in _declared_menus(TODO_DIR).values():
+            declared.add(menu["crumb"])
+            declared |= {item.get("crumb") for item in menu["entries"]}
+
+        def segments(node):
+            yield node["label"]
+            for child in node["children"]:
+                if child["is_menu"]:
+                    yield from segments(child)
+
+        self.assertEqual(set(segments(self.arbre)) - declared, set())
+
     def test_the_mixin_files_come_from_the_imports(self):
         # Lus dans les imports de todo.py : un mixin ajouté demain apparaît
         # sans qu'on pense à l'inscrire ici.

@@ -80,7 +80,12 @@ SEARCH = Menu(
         FromMethod("_llm_networks", "_llm_search_network", "network"),
         Entry("An address I type", "_llm_add_server"),
         Entry("A network I type (CIDR)", "_llm_search_cidr"),
-        Entry("The networks of a machine over SSH", "_llm_search_remote"),
+        # Over SSH, un sélecteur, dessine son écran sous son propre segment.
+        Entry(
+            "The networks of a machine over SSH",
+            "_llm_search_remote",
+            crumb="Over SSH",
+        ),
     ],
     back=None,
     abort_closes=True,
