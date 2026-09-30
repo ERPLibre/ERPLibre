@@ -2069,6 +2069,43 @@ def pose_sous_cle(texte, cle, nom, valeur):
     return "".join(lignes)
 
 
+def modele_plus_recent(moteur, eco):
+    """Le fichier du modèle plus récent que sa copie, ou « ». Ne lève jamais.
+
+    LA COPIE EST RÉUTILISÉE, ET C'EST VOULU : relancer sans défaire ne doit pas
+    écraser ce qui est déjà posé. Mais une copie qui PRÉCÈDE une évolution du
+    modèle fait éprouver un plan que le dépôt ne porte plus — et le lancement
+    rend VERT sur autre chose que ce qu'on croit mesurer.
+
+    COMPARÉ PAR LA DATE, et non par le contenu : le banc transforme lui-même ce
+    qu'il copie — l'index, les états, parfois une application entière — si bien
+    qu'une comparaison de contenu confondrait ses propres changements avec une
+    dérive du modèle.
+
+    UN FICHIER NEUF DANS LE MODÈLE COMPTE AUSSI : absent de la copie, il est par
+    construction plus récent qu'elle, et son absence est exactement la dérive
+    qu'on cherche.
+    """
+    source = os.path.join(moteur, MODELE_SOCLE)
+    if not os.path.isdir(source) or not os.path.isdir(eco):
+        return ""
+    for base, _dossiers, fichiers in os.walk(source):
+        for fichier in fichiers:
+            amont = os.path.join(base, fichier)
+            aval = os.path.join(eco, os.path.relpath(amont, source))
+            # L'ABSENCE PASSE PAR LA MÊME PORTE QUE L'ILLISIBLE : `getmtime`
+            # sur un fichier que la copie n'a pas lève, et c'est le même verdict
+            # — le modèle porte quelque chose qu'elle n'a pas. Un `exists`
+            # séparé coûterait un appel de plus et ouvrirait une fenêtre entre
+            # les deux, pour un cas que celui-ci traite déjà.
+            try:
+                if os.path.getmtime(amont) > os.path.getmtime(aval):
+                    return os.path.relpath(amont, source)
+            except OSError:
+                return os.path.relpath(amont, source)
+    return ""
+
+
 def pose_l_annuaire(eco, hote_autorite):
     """Ajoute l'annuaire aux trois fichiers du plan. Le souci, ou « ».
 
@@ -2288,6 +2325,16 @@ def monte_localement(moteur, noeud, pont, stockage, hote_api, resolveur):
             shutil.copytree(os.path.join(moteur, MODELE_SOCLE), eco)
         except (OSError, shutil.Error) as souci:
             return pose._replace(souci=f"{ECOSYSTEME} : {souci}")
+    else:
+        vieux = modele_plus_recent(moteur, eco)
+        if vieux:
+            return pose._replace(
+                souci=(
+                    f"« {vieux} » du modèle est plus récent que la copie de"
+                    f" {ECOSYSTEME} : défaire d'abord, sinon la boucle éprouve"
+                    " un plan que le dépôt ne porte plus"
+                )
+            )
     pose = pose._replace(ecosysteme=eco)
 
     # LE PLACEMENT QUE LE BANC AJOUTE, dans un fichier qu'il possède : le
