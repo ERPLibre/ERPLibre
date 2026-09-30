@@ -721,6 +721,41 @@ class TestPipePort(unittest.TestCase):
             "Several: 1 3, 2-5 or all; empty for none: 2 → beta\n",
         )
 
+    def test_the_end_of_a_choice_names_the_keys_chosen(self):
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
+        self.addCleanup(os.write, self.master, b"\x04")
+        options = ["alpha", "beta", "gamma"]
+        future, asked = self.asking(self.port.choose, "?", options, True)
+        os.write(self.master, b"3, 1-2 1\n")
+        self.assertEqual(future.result(10), options)
+        closed = {
+            "t": "answered",
+            "qid": asked["qid"],
+            "keys": ["1", "2", "3"],
+        }
+        self.assertEqual(self.received(), closed)
+        # Une réponse vide de la page, sur un défaut, en porte la clé.
+        future, asked = self.asking(
+            self.port.choose, "?", options, False, "beta"
+        )
+        self.reply(t="answer", qid=asked["qid"], value="")
+        self.assertEqual(future.result(10), "beta")
+        closed = {"t": "answered", "qid": asked["qid"], "keys": ["2"]}
+        self.assertEqual(self.received(), closed)
+        # Une réponse invalide n'en porte aucune ; le retour porte « 0 ».
+        future, asked = self.asking(self.port.choose, "?", options)
+        self.reply(t="answer", qid=asked["qid"], value="01")
+        self.assertEqual(
+            self.received(), {"t": "answered", "qid": asked["qid"]}
+        )
+        refused = {"t": "notice", "text": "Invalid choice: 01"}
+        self.assertEqual(self.received(), dict(refused, level="error"))
+        again = self.received()
+        self.reply(t="answer", qid=again["qid"], value="0")
+        self.assertIsNone(future.result(10))
+        closed = {"t": "answered", "qid": again["qid"], "keys": ["0"]}
+        self.assertEqual(self.received(), closed)
+
     def test_a_path_is_asked_over_the_channel_and_checked(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
