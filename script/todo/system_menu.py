@@ -31,11 +31,17 @@ LIBELLES_CATEGORIE = {
     system_cleanup.FILESTORE: "Orphan filestore",
     system_cleanup.SESSIONS: "Odoo web sessions",
     system_cleanup.VENV: "Other Odoo venv",
+    system_cleanup.VENV_AUTRE: "Venv of another checkout",
+    system_cleanup.INCONNU: "Unknown cache",
+    system_cleanup.CORBEILLE: "Trash",
 }
 
 MISES_EN_GARDE = {
     "reinstall": "reinstall to switch back to this version",
     "recent": "recent: its database may be being created",
+    "download": "downloaded again on next use",
+    "unknown": "contents unknown: look before deleting",
+    "reinstall-checkout": "that checkout needs a reinstall to run",
 }
 
 RAISONS = {

@@ -4,14 +4,20 @@
 """L'espace qu'on peut récupérer sur un poste de développement, et son
 effacement sous garde-fous.
 
-`candidats()` cherche, sans rien toucher, quatre sortes de choses :
- - des CACHES qui se reconstruisent seuls : pip, Poetry, npm, go-build, et
-   dans le dépôt les __pycache__, htmlcov/ et .coverage.* ;
+`candidats()` cherche, sans rien toucher, ces sortes de choses :
+ - des CACHES qui se reconstruisent seuls : pip, Poetry, npm, go-build,
+   yay…, et dans le dépôt les __pycache__, htmlcov/ et .coverage.* ; ceux
+   qui se RETÉLÉCHARGENT en gigaoctets (modèles, images de VM) sont
+   proposés décochés ;
+ - les répertoires INCONNUS de ~/.cache de plus de `SEUIL_INCONNU`,
+   décochés, sauf ceux qu'un processus tient ouverts ;
+ - la CORBEILLE du bureau, décochée ;
  - des RESTES dans /tmp : ce qu'un lanceur ou un montage interrompu y a
    laissé, à soi, inactif depuis `jours` jours ;
  - des FILESTORES d'Odoo dont la base n'existe plus, et les sessions web
    périmées ;
- - des VENVS d'une autre version d'Odoo que celle du checkout.
+ - des VENVS d'une autre version d'Odoo que celle du checkout, et ceux des
+   AUTRES checkouts ERPLibre voisins, décochés, sauf s'ils sont en usage.
 
 `effacer()` n'efface que ce qu'on lui passe, et REVÉRIFIE chaque chemin
 juste avant : entre la liste et la confirmation, un fichier a pu changer de
@@ -20,7 +26,7 @@ propriétaire, devenir un lien, ou un filestore retrouver sa base.
 Les garde-fous (`refus()`) : un chemin effaçable est à l'utilisateur
 courant, n'est pas un lien et n'en traverse aucun, se trouve SOUS une des
 racines permises sans en être une, et n'est jamais dans private/ ni dans
-tasks/ du dépôt. private/ porte les seules données de client du dépôt, et
+tasks/ d'un dépôt. private/ porte les seules données de client du dépôt, et
 tasks/ le travail en cours : ni l'un ni l'autre ne se reconstruit.
 
 Ce module ne rend que des faits ; les phrases appartiennent au menu.
@@ -37,6 +43,9 @@ TMP = "tmp"
 FILESTORE = "filestore"
 SESSIONS = "sessions"
 VENV = "venv"
+VENV_AUTRE = "venv-other"
+INCONNU = "unknown"
+CORBEILLE = "trash"
 
 # Les caches de l'utilisateur, sous $HOME. pypoetry/cache et non pypoetry :
 # à côté vivent virtualenvs/, qui sont des environnements, pas un cache.
@@ -45,7 +54,34 @@ CACHES_HOME = (
     ".cache/pypoetry/cache",
     ".npm/_cacache",
     ".cache/go-build",
+    ".cache/yay",
+    ".cache/selenium",
+    ".cache/yarn",
+    ".cache/uv",
+    ".cache/mise",
+    ".cache/thumbnails",
+    ".cargo/registry/cache",
 )
+
+# Des caches aussi, mais qui se retéléchargent en gigaoctets — modèles,
+# images de VM, navigateurs, dépôts Maven : décochés, avec la mise en garde.
+CACHES_TELECHARGES = (
+    ".cache/huggingface",
+    ".cache/lima",
+    ".cache/ms-playwright",
+    ".m2/repository",
+    ".gradle/caches",
+)
+
+# Sous ~/.cache, ce qui n'est pas un cache au sens effaçable : Poetry y range
+# ses virtualenvs.
+CACHE_JAMAIS = {"pypoetry"}
+
+# Un répertoire inconnu de ~/.cache n'est proposé qu'au-delà de ce poids :
+# en deçà, le regarder coûte plus que ce qu'il rend.
+SEUIL_INCONNU = 100 * 1024 * 1024
+
+CORBEILLE_REL = ".local/share/Trash"
 
 # Les restes de /tmp : un nom posé par un outil connu, jamais un motif large.
 PREFIXES_TMP = ("run_unit_test.", "tmp", "sshfs_")
@@ -254,9 +290,187 @@ def venvs(racine, actif):
     return trouves
 
 
+def usages(uid=None, proc="/proc"):
+    """Ce que les processus tiennent : (chemins, lignes de commande).
+
+    Les chemins — répertoire courant, fichiers ouverts, bibliothèques
+    chargées — ne se lisent que pour les processus de `uid`. Les lignes de
+    commande se lisent pour TOUS : une VM lancée par un autre compte ne
+    montre pas ses descripteurs, mais nomme son disque dans ses arguments."""
+    uid = os.getuid() if uid is None else uid
+    chemins = set()
+    commandes = []
+    try:
+        pids = [p for p in os.listdir(proc) if p.isdigit()]
+    except OSError:
+        return chemins, commandes
+    for pid in pids:
+        base = os.path.join(proc, pid)
+        try:
+            with open(os.path.join(base, "cmdline"), "rb") as fh:
+                ligne = fh.read().replace(b"\0", b" ").decode(errors="replace")
+            if ligne:
+                commandes.append(ligne)
+            if os.stat(base).st_uid != uid:
+                continue
+        except OSError:
+            continue
+        for lien in ("cwd", "exe"):
+            try:
+                chemins.add(os.readlink(os.path.join(base, lien)))
+            except OSError:
+                pass
+        try:
+            for fd in os.listdir(os.path.join(base, "fd")):
+                try:
+                    chemins.add(os.readlink(os.path.join(base, "fd", fd)))
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        try:
+            with open(os.path.join(base, "maps"), encoding="utf-8") as fh:
+                for ligne in fh:
+                    morceaux = ligne.split(None, 5)
+                    if len(morceaux) == 6 and morceaux[5].startswith("/"):
+                        chemins.add(morceaux[5].rstrip("\n"))
+        except OSError:
+            pass
+    return chemins, commandes
+
+
+def en_usage(chemin, utilises):
+    """Vrai si un processus tient quelque chose sous `chemin` ou le nomme
+    dans ses arguments. `utilises` est le rendu de `usages()`."""
+    chemins, commandes = utilises
+    absolu = os.path.realpath(chemin)
+    prefixe = absolu.rstrip(os.sep) + os.sep
+    if any(c == absolu or c.startswith(prefixe) for c in chemins):
+        return True
+    return any(absolu in ligne for ligne in commandes)
+
+
+def caches_telecharges(home):
+    """Les caches qui se retéléchargent cher : décochés, mis en garde."""
+    maintenant = time.time()
+    trouves = []
+    for rel in CACHES_TELECHARGES:
+        chemin = os.path.join(home, rel)
+        if os.path.isdir(chemin) and not os.path.islink(chemin):
+            trouves.append(
+                _candidat(
+                    CACHE, rel, [chemin], maintenant, mise_en_garde="download"
+                )
+            )
+    return trouves
+
+
+def caches_inconnus(home, utilises, seuil=SEUIL_INCONNU):
+    """Les répertoires de ~/.cache qu'aucune liste ne connaît, au-delà de
+    `seuil` octets, et que personne ne tient ouverts. Décochés : ce qu'ils
+    contiennent n'est pas garanti de se reconstruire."""
+    maintenant = time.time()
+    cache = os.path.join(home, ".cache")
+    connus = CACHE_JAMAIS | {
+        rel.split("/")[1]
+        for rel in CACHES_HOME + CACHES_TELECHARGES
+        if rel.startswith(".cache/")
+    }
+    trouves = []
+    try:
+        noms = sorted(os.listdir(cache))
+    except OSError:
+        return trouves
+    for nom in noms:
+        chemin = os.path.join(cache, nom)
+        if nom in connus or os.path.islink(chemin):
+            continue
+        if not os.path.isdir(chemin):
+            continue
+        candidat = _candidat(
+            INCONNU,
+            f".cache/{nom}",
+            [chemin],
+            maintenant,
+            mise_en_garde="unknown",
+        )
+        if candidat.taille < seuil or en_usage(chemin, utilises):
+            continue
+        trouves.append(candidat)
+    return trouves
+
+
+def corbeille(home):
+    """Le contenu de la corbeille du bureau, les fichiers et leurs fiches."""
+    maintenant = time.time()
+    base = os.path.join(home, CORBEILLE_REL)
+    chemins = []
+    for sous in ("files", "info", "expunged"):
+        dossier = os.path.join(base, sous)
+        try:
+            noms = sorted(os.listdir(dossier))
+        except OSError:
+            continue
+        chemins += [os.path.join(dossier, n) for n in noms]
+    if not chemins:
+        return []
+    return [_candidat(CORBEILLE, "Trash", chemins, maintenant)]
+
+
+def depots_voisins(racine):
+    """Les autres checkouts ERPLibre à côté de `racine` : un répertoire qui
+    porte .erplibre-version."""
+    parent = os.path.dirname(os.path.realpath(racine))
+    trouves = []
+    try:
+        noms = sorted(os.listdir(parent))
+    except OSError:
+        return trouves
+    for nom in noms:
+        chemin = os.path.join(parent, nom)
+        if chemin == os.path.realpath(racine) or os.path.islink(chemin):
+            continue
+        if os.path.isfile(os.path.join(chemin, ".erplibre-version")):
+            trouves.append(chemin)
+    return trouves
+
+
+def venvs_voisins(racine, utilises):
+    """Les venvs des autres checkouts ERPLibre, décochés ; jamais un venv
+    qu'un processus emploie — un Odoo lancé de ce checkout-là."""
+    maintenant = time.time()
+    trouves = []
+    for depot in depots_voisins(racine):
+        for nom in sorted(os.listdir(depot)):
+            chemin = os.path.join(depot, nom)
+            if not nom.startswith(".venv."):
+                continue
+            if not os.path.isdir(chemin) or os.path.islink(chemin):
+                continue
+            if en_usage(chemin, utilises):
+                continue
+            trouves.append(
+                _candidat(
+                    VENV_AUTRE,
+                    f"{os.path.basename(depot)}/{nom}",
+                    [chemin],
+                    maintenant,
+                    mise_en_garde="reinstall-checkout",
+                )
+            )
+    return trouves
+
+
 def racines_permises(racine, home, tmp, data_dir):
     """Les seuls répertoires sous lesquels on efface."""
-    permises = [os.path.join(home, rel) for rel in CACHES_HOME]
+    permises = [
+        os.path.join(home, rel) for rel in CACHES_HOME + CACHES_TELECHARGES
+    ]
+    permises += [
+        os.path.join(home, ".cache"),
+        os.path.join(home, CORBEILLE_REL),
+    ]
+    permises += depots_voisins(racine)
     permises += [racine, tmp]
     if data_dir:
         permises += [
@@ -279,11 +493,13 @@ def refus(chemin, racine, racines, uid):
         return "missing"
     if st.st_uid != uid:
         return "owner"
-    racine = os.path.realpath(racine)
-    for garde in ("private", "tasks"):
-        protege = os.path.join(racine, garde)
-        if absolu == protege or absolu.startswith(protege + os.sep):
-            return "protected"
+    # private/ et tasks/ se protègent sous TOUTES les racines : celle du
+    # dépôt, et celles des checkouts voisins dont on efface les venvs.
+    for r in [os.path.realpath(racine)] + list(racines):
+        for garde in ("private", "tasks"):
+            protege = os.path.join(r, garde)
+            if absolu == protege or absolu.startswith(protege + os.sep):
+                return "protected"
     if not any(absolu.startswith(r.rstrip(os.sep) + os.sep) for r in racines):
         return "outside"
     return None
@@ -332,16 +548,24 @@ def candidats(
     actif=None,
     jours=2,
     uid=None,
+    utilises=None,
 ):
-    """Tous les candidats, les plus gros d'abord."""
+    """Tous les candidats, les plus gros d'abord. `utilises` est le rendu
+    de `usages()` ; lu ici quand il n'est pas fourni."""
     racine = os.path.realpath(racine)
     home = home or os.path.expanduser("~")
     uid = os.getuid() if uid is None else uid
+    if utilises is None:
+        utilises = usages(uid)
     trouves = (
         caches(racine, home)
+        + caches_telecharges(home)
+        + caches_inconnus(home, utilises)
+        + corbeille(home)
         + restes_tmp(tmp, uid, jours)
         + odoo(data_dir, bases, jours)
         + venvs(racine, actif)
+        + venvs_voisins(racine, utilises)
     )
     return sorted(
         (c for c in trouves if c.taille > 0 or c.categorie == TMP),

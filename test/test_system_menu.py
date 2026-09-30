@@ -236,5 +236,15 @@ class TestLeRapport(unittest.TestCase):
         self.assertFalse(existe)
 
 
+class TestLesLibelles(unittest.TestCase):
+    def test_every_category_warning_and_reason_is_translated(self):
+        for cle in (
+            list(sm.LIBELLES_CATEGORIE.values())
+            + list(sm.MISES_EN_GARDE.values())
+            + list(sm.RAISONS.values())
+        ):
+            self.assertIn(cle, todo_i18n.TRANSLATIONS, cle)
+
+
 if __name__ == "__main__":
     unittest.main()

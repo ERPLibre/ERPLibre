@@ -16437,6 +16437,30 @@ TRANSLATIONS = {
         "en": "forced: the name only, the space stays",
     },
     # Système : diagnostic et espace disque
+    "Venv of another checkout": {
+        "fr": "Venv d'un autre checkout",
+        "en": "Venv of another checkout",
+    },
+    "Unknown cache": {
+        "fr": "Cache inconnu",
+        "en": "Unknown cache",
+    },
+    "Trash": {
+        "fr": "Corbeille",
+        "en": "Trash",
+    },
+    "downloaded again on next use": {
+        "fr": "retéléchargé au prochain usage",
+        "en": "downloaded again on next use",
+    },
+    "contents unknown: look before deleting": {
+        "fr": "contenu inconnu : regarder avant d'effacer",
+        "en": "contents unknown: look before deleting",
+    },
+    "that checkout needs a reinstall to run": {
+        "fr": "ce checkout devra être réinstallé pour tourner",
+        "en": "that checkout needs a reinstall to run",
+    },
     "System": {
         "fr": "Système",
         "en": "System",

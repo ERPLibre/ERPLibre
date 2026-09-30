@@ -271,5 +271,93 @@ class TestLEnsemble(Arbre):
         )
 
 
+AUCUN_USAGE = (set(), [])
+
+
+class TestLesAutresCaches(Arbre):
+    def test_downloaded_caches_are_unchecked_and_warned(self):
+        ecrire(os.path.join(self.home, ".cache/huggingface/hub/m"))
+        trouves = sc.caches_telecharges(self.home)
+        self.assertEqual(self.noms(trouves), [("cache", ".cache/huggingface")])
+        self.assertFalse(trouves[0].coche)
+        self.assertEqual(trouves[0].mise_en_garde, "download")
+
+    def test_an_unknown_heavy_cache_is_offered_unchecked(self):
+        # Un répertoire et un petit fichier occupent déjà deux blocs : le
+        # seuil est au-dessus, le gros fichier le dépasse seul.
+        ecrire(os.path.join(self.home, ".cache/outil_x/gros"), octets=65536)
+        ecrire(os.path.join(self.home, ".cache/outil_y/petit"), octets=10)
+        ecrire(
+            os.path.join(self.home, ".cache/pypoetry/virtualenvs/e/f"),
+            octets=65536,
+        )
+        ecrire(os.path.join(self.home, ".cache/pip/a"), octets=65536)
+        trouves = sc.caches_inconnus(self.home, AUCUN_USAGE, seuil=32768)
+        self.assertEqual(self.noms(trouves), [("unknown", ".cache/outil_x")])
+        self.assertFalse(trouves[0].coche)
+        self.assertEqual(trouves[0].mise_en_garde, "unknown")
+
+    def test_an_unknown_cache_in_use_is_not_offered(self):
+        chemin = os.path.join(self.home, ".cache/outil_x")
+        ecrire(os.path.join(chemin, "disque.img"), octets=8192)
+        ouvert = ({os.path.join(chemin, "disque.img")}, [])
+        nomme = (set(), [f"qemu -drive file={chemin}/disque.img"])
+        for utilises in (ouvert, nomme):
+            self.assertEqual(
+                sc.caches_inconnus(self.home, utilises, seuil=4096), []
+            )
+
+    def test_the_trash_is_one_unchecked_entry(self):
+        ecrire(os.path.join(self.home, sc.CORBEILLE_REL, "files/a.txt"))
+        ecrire(os.path.join(self.home, sc.CORBEILLE_REL, "info/a.trashinfo"))
+        trouves = sc.corbeille(self.home)
+        self.assertEqual(self.noms(trouves), [("trash", "Trash")])
+        self.assertEqual(len(trouves[0].chemins), 2)
+        self.assertFalse(trouves[0].coche)
+
+    def test_this_process_is_seen_using_its_cwd(self):
+        self.assertTrue(sc.en_usage(os.getcwd(), sc.usages()))
+
+
+class TestLesDepotsVoisins(Arbre):
+    def setUp(self):
+        super().setUp()
+        self.voisin = os.path.join(os.path.dirname(self.depot), "voisin")
+        ecrire(os.path.join(self.voisin, ".erplibre-version"), octets=5)
+        for nom in (".venv.erplibre", ".venv.odoo18.0_python3.12.10"):
+            ecrire(os.path.join(self.voisin, nom, "bin/python"))
+        ecrire(os.path.join(os.path.dirname(self.depot), "autre/.venv.x/f"))
+        ecrire(os.path.join(self.depot, ".venv.odoo16.0/bin/python"))
+
+    def test_only_the_venvs_of_other_erplibre_checkouts(self):
+        trouves = sc.venvs_voisins(self.depot, AUCUN_USAGE)
+        self.assertEqual(
+            self.noms(trouves),
+            [
+                ("venv-other", "voisin/.venv.erplibre"),
+                ("venv-other", "voisin/.venv.odoo18.0_python3.12.10"),
+            ],
+        )
+        self.assertFalse(any(c.coche for c in trouves))
+
+    def test_a_venv_in_use_is_not_offered(self):
+        venv = os.path.join(self.voisin, ".venv.erplibre")
+        utilises = ({os.path.join(venv, "lib/x.so")}, [])
+        noms = [c.nom for c in sc.venvs_voisins(self.depot, utilises)]
+        self.assertNotIn("voisin/.venv.erplibre", noms)
+
+    def test_a_neighbour_private_directory_is_protected(self):
+        racines = sc.racines_permises(
+            self.depot, self.home, self.tmp, self.data
+        )
+        chemin = os.path.join(self.voisin, "private", "x")
+        os.makedirs(chemin)
+        self.assertEqual(
+            sc.refus(chemin, self.depot, racines, self.uid), "protected"
+        )
+        venv = os.path.join(self.voisin, ".venv.erplibre")
+        self.assertIsNone(sc.refus(venv, self.depot, racines, self.uid))
+
+
 if __name__ == "__main__":
     unittest.main()
