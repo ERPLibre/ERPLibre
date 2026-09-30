@@ -97,6 +97,9 @@ class QemuAccessMixin:
             chosen = (
                 hosts if not raw else self._parse_index_selection(raw, hosts)
             )
+            if not chosen:
+                print(t("Nothing selected."))
+                return []
             # Déjà dans ~/.ssh/config : leur adresse y est, rien à réécrire.
             # Le `User` déclaré est repris tel quel : ces hôtes ne sont pas
             # forcément des VM ERPLibre, et leurs invitées suivent la même
@@ -107,7 +110,7 @@ class QemuAccessMixin:
                     "ip": None,
                     "user": self._ssh_config_user(name),
                 }
-                for name in chosen or hosts
+                for name in chosen
             ]
 
         if answer == "3":
@@ -880,7 +883,10 @@ class QemuAccessMixin:
         self._qemu_ssh_walk(roots, max_depth)
 
     def _qemu_pick_domains(self):
-        """Fait choisir des VM parmi celles définies. Vide = toutes."""
+        """Fait choisir des VM parmi celles définies. Une réponse vide les
+        prend toutes ; une réponse qui n'en désigne aucune rend [] et le
+        dit, car chaque VM rendue reçoit une entrée ~/.ssh/config et une
+        connexion SSH."""
         names = self._qemu_list_domains()
         if not names:
             print(t("No VM found."))
@@ -893,7 +899,9 @@ class QemuAccessMixin:
         if not raw:
             return names
         chosen = self._parse_index_selection(raw, names)
-        return chosen or names
+        if not chosen:
+            print(t("Nothing selected."))
+        return chosen
 
     def _qemu_ssh_retry_with_key(self, alias, message):
         """ssh a refusé l'identité : proposer la clé, puis resonder une fois.
