@@ -20,8 +20,9 @@ Chaque question est aussi un message `todo.v1` (`question`, `menu_view`) :
 client doit annoncer pour y répondre sans le terminal ; `fallback`,
 toujours `pty` : le terminal de la session répond à toute question.
 
-`TerminalPort` appelle les fonctions d'origine, gardées dans ORIGINAL
-avant toute capture ; `ScriptedPort` répond depuis une liste et garde ses
+`TerminalPort` appelle `input` et `getpass` du processus au moment de la
+question, ou, sous la capture, les fonctions d'origine qu'elle garde dans
+ORIGINAL ; `ScriptedPort` répond depuis une liste et garde ses
 événements. Ce module n'importe aucune bibliothèque d'interface à son
 chargement : auto_ask, Execute et le navigateur urwid le sont à l'appel.
 """
@@ -61,11 +62,12 @@ _SPEAK_HEAD = re.compile(r"^[^\w«\"'(\[]+")
 _SPEAK_TAIL = re.compile(r"[\s:]+$")
 _CONVERT = {None: lambda value: value, "r": repr, "s": str, "a": ascii}
 
-# Fonctions d'origine, prises avant toute capture : TerminalPort les
-# appelle, jamais les crochets qui les remplacent. `legacy.install` y
-# ajoute `auto_ask.ask` et `FileBrowser.run_main_frame` avant de les
-# remplacer.
-ORIGINAL = {"input": builtins.input, "getpass": getpass.getpass}
+# Fonctions d'origine que la capture remplace : `legacy.install` y range
+# `input`, `getpass`, `auto_ask.ask` et `FileBrowser.run_main_frame` avant
+# de poser ses crochets, et TerminalPort les y prend d'abord, jamais les
+# crochets. Hors capture, il appelle celles du processus, qu'un test peut
+# doubler.
+ORIGINAL = {}
 
 
 def speak(text) -> str:
@@ -383,17 +385,23 @@ class TerminalPort(BasePort):
     rebours d'auto_ask d'origine, `print`, `Execute.exec_command_live`."""
 
     def menu(self, view) -> str:
-        return ORIGINAL["input"](view["text"])
+        """Les lignes du texte de `view` s'impriment, sauf la dernière,
+        l'invite, seule passée à `input` : un double d'`input` qui
+        n'écrit pas son invite laisse l'écran à la sortie."""
+        screen, cut, invite = view["text"].rpartition("\n")
+        if cut:
+            print(screen)
+        return ORIGINAL.get("input", builtins.input)(invite)
 
     def ask(self, text, default=None, kind="text", timeout=None) -> str:
         if kind == "secret":
-            return ORIGINAL["getpass"](text)
+            return ORIGINAL.get("getpass", getpass.getpass)(text)
         if kind == "countdown":
             from script.todo import auto_ask
 
             countdown = ORIGINAL.get("auto_ask.ask", auto_ask.ask)
             return countdown(text, default or "", timeout)
-        return ORIGINAL["input"](text)
+        return ORIGINAL.get("input", builtins.input)(text)
 
     def pick_path(self, start, directory=False):
         """Le navigateur urwid de TODO, plein écran, par sa boucle

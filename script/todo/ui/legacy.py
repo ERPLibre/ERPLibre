@@ -454,7 +454,14 @@ def install(target):
         from script.todo import todo_file_browser
     except ImportError:
         todo_file_browser = None
-    port.ORIGINAL.setdefault("auto_ask.ask", auto_ask.ask)
+    # Les fonctions que les crochets remplacent, pour TerminalPort, le
+    # temps de la capture seulement : défaite, il reprend celles du
+    # processus. Un double qu'un test y a déjà posé reste.
+    kept = {
+        "input": builtins.input,
+        "getpass": getpass.getpass,
+        "auto_ask.ask": auto_ask.ask,
+    }
     hooks = [
         (builtins, "input", _input),
         (getpass, "getpass", _getpass),
@@ -467,12 +474,12 @@ def install(target):
     alias = None
     if todo_file_browser is not None:
         browser = todo_file_browser.FileBrowser
-        port.ORIGINAL.setdefault(
-            "FileBrowser.run_main_frame", browser.run_main_frame
-        )
+        kept["FileBrowser.run_main_frame"] = browser.run_main_frame
         hooks.append((browser, "run_main_frame", _run_main_frame))
         if "todo_file_browser" not in sys.modules:
             alias = sys.modules["todo_file_browser"] = todo_file_browser
+    kept = {k: v for k, v in kept.items() if k not in port.ORIGINAL}
+    port.ORIGINAL.update(kept)
     for owner, name, hook in hooks:
         _saved[name] = getattr(owner, name)
         setattr(owner, name, hook)
@@ -489,6 +496,8 @@ def install(target):
         _tee = None
         for owner, name, _ in hooks:
             setattr(owner, name, _saved.pop(name))
+        for name in kept:
+            port.ORIGINAL.pop(name, None)
         if alias is not None and sys.modules.get("todo_file_browser") is alias:
             del sys.modules["todo_file_browser"]
 

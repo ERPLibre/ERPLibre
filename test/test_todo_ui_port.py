@@ -146,19 +146,23 @@ class TestTerminalPort(unittest.TestCase):
         self.originals(**{"auto_ask.ask": fake_countdown})
         terminal = port.TerminalPort()
         view = port.menu_view("[1] One\n: ", [])
+        out = io.StringIO()
         self.assertEqual(terminal.ask("Name: "), "typed")
-        self.assertEqual(terminal.menu(view), "typed")
+        with redirect_stdout(out):
+            self.assertEqual(terminal.menu(view), "typed")
         self.assertEqual(terminal.secret("Password: "), "hunter2")
         self.assertEqual(terminal.ask("Go? ", "n", "countdown", 5), "n")
         self.assertEqual(
             calls,
             [
                 ("input", "Name: "),
-                ("input", "[1] One\n: "),
+                ("input", ": "),
                 ("getpass", "Password: "),
                 ("countdown", "Go? ", "n", 5),
             ],
         )
+        # Le menu s'imprime au-dessus de son invite, seule passée à input.
+        self.assertEqual(out.getvalue(), "[1] One\n")
 
     def test_a_choice_is_asked_by_number_through_input(self):
         texts = []
@@ -170,10 +174,27 @@ class TestTerminalPort(unittest.TestCase):
         _english(self)
         self.originals(input=fake_input)
         terminal = port.TerminalPort()
-        self.assertEqual(terminal.choose("Which?", ["alpha", "beta"]), "beta")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            chosen = terminal.choose("Which?", ["alpha", "beta"])
+        self.assertEqual(chosen, "beta")
+        self.assertEqual(texts, [": "])
         self.assertEqual(
-            texts, ["Which?\n[1] alpha\n[2] beta\n[0] 🔙 Back\n: "]
+            out.getvalue(), "Which?\n[1] alpha\n[2] beta\n[0] 🔙 Back\n"
         )
+
+    def test_without_the_capture_the_process_input_answers(self):
+        # Le double qu'un test pose sur `input`, après l'import du port,
+        # répond au choix que pose un sélecteur par le terminal.
+        _english(self)
+        self.assertNotIn("input", port.ORIGINAL)
+        out = io.StringIO()
+        with patch("builtins.input", return_value="2") as typed:
+            with redirect_stdout(out):
+                chosen = port.TerminalPort().choose("Which?", ["a", "b"])
+        self.assertEqual(chosen, "b")
+        typed.assert_called_once_with(": ")
+        self.assertEqual(out.getvalue(), "Which?\n[1] a\n[2] b\n[0] 🔙 Back\n")
 
     def test_run_calls_exec_command_live_and_notice_prints(self):
         with patch.object(

@@ -540,6 +540,20 @@ class TestInstall(CaptureCase):
         self.assertEqual(click.prompt("Mode", default="2"), "forged")
         self.assertEqual(typed, ["Name: ", "Mode [2]: "])
 
+    def test_the_originals_are_kept_only_while_the_capture_holds(self):
+        # Sous la capture, TerminalPort prend les fonctions d'avant ses
+        # crochets ; défaite, celles du processus, qu'un test double.
+        names = ["input", "getpass", "auto_ask.ask"]
+        names.append("FileBrowser.run_main_frame")
+        before = [builtins.input, getpass.getpass, auto_ask.ask]
+        before.append(todo_file_browser.FileBrowser.run_main_frame)
+        uninstall = legacy.install(port.ScriptedPort())
+        try:
+            self.assertEqual([port.ORIGINAL[n] for n in names], before)
+        finally:
+            uninstall()
+        self.assertEqual([n for n in names if n in port.ORIGINAL], [])
+
     def test_uninstall_puts_everything_back_once(self):
         hooked = [
             (builtins, "input"),
@@ -577,8 +591,6 @@ class TestInstall(CaptureCase):
     def test_a_countdown_under_the_terminal_reaches_the_original(self):
         # Sans l'original gardé par `install`, TerminalPort rappellerait
         # le crochet, qui le rappellerait sans fin.
-        self.enterContext(patch.dict(port.ORIGINAL))
-        port.ORIGINAL.pop("auto_ask.ask", None)
         read, write = os.pipe()
         self.addCleanup(os.close, write)
         stdin = self.enterContext(os.fdopen(read))
