@@ -1086,7 +1086,7 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la configuration : ",
         "en": "Error during configuration: ",
     },
-    # GPT code - Claude automation
+    # Assistant IA - Claude automation
     "Add an automation with Claude in todo.py": {
         "fr": "🤖 Ajouter une automatisation avec Claude dans todo.py",
         "en": "🤖 Add an automation with Claude in todo.py",
@@ -1225,11 +1225,7 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
-    # GPT code section
-    "GPT code - AI assistant tools": {
-        "fr": "🤖 GPT code - Outils d'assistant IA",
-        "en": "🤖 GPT code - AI assistant tools",
-    },
+    # Assistant IA section
     "AI assistant tools for development!": {
         "fr": "Outils d'assistant IA pour le développement!",
         "en": "AI assistant tools for development!",

@@ -618,7 +618,7 @@ def _source_de_la_decouverte():
 
 
 class SessionsClaudeCode(unittest.TestCase):
-    """Le câblage de la phase 4, sous « GPT code » et non sous le LLM.
+    """Le câblage de la phase 4, sous « Assistant › IA » et non sous le LLM.
 
     Une session est un processus adressé par identifiant ; un serveur est un
     hôte adressé par port. Les mêler dans une liste numérotée ferait partager

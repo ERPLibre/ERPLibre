@@ -2400,7 +2400,7 @@ class AssistantMenuMixin:
     def prompt_claude_sessions(self):
         """Voir les sessions locales, en interroger une, ou la reprendre.
 
-        Sous « GPT code » et non sous le sous-menu LLM : une session est un
+        Sous « Assistant › IA » et non sous le sous-menu LLM : une session est
         processus adressé par identifiant, un serveur est un hôte adressé par
         port. Les mêler dans une seule liste numérotée ferait partager cinq
         numéros à deux modèles mentaux, alors que toutes les entrées Claude
