@@ -50,6 +50,12 @@ pydevd-odoo
 
 # Mail check
 flanker
+# The « validator » extra of flanker, which a « name[extra] @ git+ » line cannot
+# carry here: Odoo's mail_validate asks flanker for the MX of each address,
+# and flanker then imports dnsq. Without it, creating a CRM lead with an
+# e-mail raises ModuleNotFoundError. redis, the other half of the extra, is
+# already pulled by other packages.
+dnsq==1.1.6
 
 # For optimal json
 orjson

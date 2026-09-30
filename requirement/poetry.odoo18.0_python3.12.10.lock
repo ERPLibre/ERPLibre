@@ -1698,6 +1698,21 @@ trio = ["trio (>=0.30)"]
 wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
 
 [[package]]
+name = "dnsq"
+version = "1.1.6"
+description = "DNS Query Tool"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "dnsq-1.1.6.tar.gz", hash = "sha256:4283025ceb6e557d27c3d61c92e221f32744bbe7c65ec2792e067a06b211e6c2"},
+]
+
+[package.dependencies]
+dnspython = ">=1.11.1"
+expiringdict = ">=1.1"
+
+[[package]]
 name = "docopt"
 version = "0.6.2"
 description = "Pythonic argument parser, that will make you smile"
@@ -1859,6 +1874,21 @@ files = [
     {file = "et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"},
     {file = "et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54"},
 ]
+
+[[package]]
+name = "expiringdict"
+version = "1.2.2"
+description = "Dictionary with auto-expiring values for caching purposes"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "expiringdict-1.2.2-py3-none-any.whl", hash = "sha256:09a5d20bc361163e6432a874edd3179676e935eb81b925eccef48d409a8a45e8"},
+    {file = "expiringdict-1.2.2.tar.gz", hash = "sha256:300fb92a7e98f15b05cf9a856c1415b3bc4f2e132be07daa326da6414c23ee09"},
+]
+
+[package.extras]
+tests = ["coverage", "coveralls", "dill", "mock", "nose"]
 
 [[package]]
 name = "extendable"
@@ -9565,4 +9595,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12.10,<3.13"
-content-hash = "e7342912cea361d2e2ad2c9d9510f446208096ebcf99b8514e3ad9b1471ffc3e"
+content-hash = "94b9225f9c8763960562ce97598e1b27f992c47e5f01642821040d6f81e90325"
