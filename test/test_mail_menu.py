@@ -256,6 +256,42 @@ class TestMailLinesSpeakTheChosenLanguage(unittest.TestCase):
         self.assertIn("  forged_a — clear — 2 KB\n", shown.getvalue())
 
 
+class TestMailCacheMenu(unittest.TestCase):
+    """Cache : [1] retient un mode par défaut qui en est un, [2] le mode
+    d'un compte, qu'une réponse qui n'en est pas un rend au défaut. Les
+    préférences et les comptes sont des doubles."""
+
+    def test_each_entry_keeps_what_it_is_answered(self):
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset(
+            "forged_a", "a@forged.invalid", "generic"
+        )
+        modes = []
+        with (
+            patch("click.prompt", side_effect=["1", "1", "2", "2", "0"]),
+            patch(
+                "builtins.input",
+                side_effect=["encrypted", "forged", "1", "ephemeral"]
+                + ["1", "forged"],
+            ),
+            patch.object(menu.todo_prefs, "get", return_value="clear"),
+            patch.object(menu.todo_prefs, "set") as kept,
+            patch.object(menu.mail_accounts, "load", return_value=[account]),
+            patch.object(
+                menu.mail_accounts,
+                "save",
+                side_effect=lambda saved: modes.append(saved[0].cache_mode),
+            ),
+            patch("builtins.print"),
+        ):
+            self.assertIsNone(menu.prompt_mail_cache(MagicMock()))
+        kept.assert_called_once_with("mail_cache_mode", "encrypted")
+        self.assertEqual(modes, ["ephemeral", None])
+
+
 class TestOpenTuiAllowsEmptyAccounts(unittest.TestCase):
     """Le TUI crée un compte depuis son propre écran : refuser de s'ouvrir
     sans compte (`mail_no_account`) rendrait cet écran inatteignable."""

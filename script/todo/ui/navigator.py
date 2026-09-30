@@ -14,11 +14,12 @@ attribut, y répond. Un menu `asks` écrit et pose sa question par sa
 propre méthode, sans `fill_help_info` ni `click.prompt`, donc sans fil
 d'Ariane ni clé de télémétrie.
 
-`todo` est l'objet qui ouvre le menu : TODO, ou un objet de TODO dont
-le `fill_help_info` est celui de TODO (`DatabaseManager`). Le cadre de
-`navigate` ne porte pas de `self` : le fil d'Ariane, que `_menu_header`
-lit dans la pile, reste celui des méthodes de TODO qui l'appellent, et
-la clé de télémétrie aussi.
+`todo` est l'objet qui ouvre le menu : TODO, ou un objet dont le
+`fill_help_info` est celui de TODO — `DatabaseManager`, que TODO porte,
+ou `MailMenus`, qui enveloppe TODO. Le cadre de `navigate` ne porte pas
+de `self` : le fil d'Ariane, que `_menu_header` lit dans la pile, reste
+celui des méthodes de TODO qui l'appellent, et la clé de télémétrie
+aussi.
 """
 
 import sys

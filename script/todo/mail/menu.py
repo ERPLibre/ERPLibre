@@ -5,7 +5,9 @@
 
 Ce module est le SEUL point de contact entre le paquet `mail` et le CLI :
 `todo.py` importe `prompt_execute_mail` et rien d'autre. Le sens de la
-dépendance est volontaire — `mail` ne doit jamais importer `todo`.
+dépendance est volontaire — `mail` ne doit jamais importer `todo`. Les
+menus du courriel sont déclarés dans `script/todo/menus/assistant.py`, et
+s'ouvrent sur `MailMenus`, qui porte leurs actions.
 """
 
 from __future__ import annotations
@@ -16,15 +18,15 @@ import os
 import shutil
 from pathlib import Path
 
-import click
-
 from script.todo import todo_prefs
 from script.todo.mail import account_setup
 from script.todo.mail import accounts as mail_accounts
 from script.todo.mail.accounts import PRESETS, AccountError
 from script.todo.mail.secrets import SecretError, SecretStore
 from script.todo.mail.store import Store, StoreError, resolve_mode
+from script.todo.menus import assistant as menus_assistant
 from script.todo.todo_i18n import t
+from script.todo.ui.navigator import navigate
 
 CACHE_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -118,28 +120,12 @@ def _load_accounts():
 
 
 def prompt_execute_mail(todo) -> None:
+    """Le menu du courriel (MAIL, `menus/assistant.py`), sous le fil
+    d'Ariane du menu de `todo` qui l'ouvre : le client, les comptes, une
+    synchronisation, le cache. Branche d'abord le journal du paquet. Rend
+    None sur [0]."""
     _configure_mail_logging()
-    choices = [
-        {"prompt_description": t("mail_open_tui")},
-        {"prompt_description": t("mail_accounts_menu")},
-        {"prompt_description": t("mail_sync_now")},
-        {"prompt_description": t("mail_cache_menu")},
-    ]
-    while True:
-        status = click.prompt(todo.fill_help_info(choices))
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            _open_tui(todo)
-        elif status == "2":
-            prompt_mail_accounts(todo)
-        elif status == "3":
-            _sync_now(todo)
-        elif status == "4":
-            prompt_mail_cache(todo)
-        else:
-            print(t("Command not found !"))
+    return navigate(MailMenus(todo), menus_assistant.MAIL)
 
 
 def _open_tui(todo) -> None:
@@ -192,30 +178,10 @@ def _sync_now(todo) -> None:
 
 
 def prompt_mail_accounts(todo) -> None:
-    choices = [
-        {"prompt_description": t("mail_account_list")},
-        {"prompt_description": t("mail_account_add")},
-        {"prompt_description": t("mail_account_delete")},
-        {"prompt_description": t("mail_account_template")},
-        {"prompt_description": t("mail_account_test")},
-    ]
-    while True:
-        status = click.prompt(todo.fill_help_info(choices))
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            _list_accounts()
-        elif status == "2":
-            _add_account(todo)
-        elif status == "3":
-            _delete_account(todo)
-        elif status == "4":
-            _write_template()
-        elif status == "5":
-            _test_account(todo)
-        else:
-            print(t("Command not found !"))
+    """Les comptes (MAIL_ACCOUNTS, `menus/assistant.py`) : les lister, en
+    ajouter, en supprimer, écrire un modèle, en tester un. Rend None sur
+    [0]."""
+    return navigate(MailMenus(todo), menus_assistant.MAIL_ACCOUNTS)
 
 
 def _list_accounts() -> None:
@@ -486,35 +452,36 @@ def _test_account(todo) -> None:
 
 
 def prompt_mail_cache(todo) -> None:
-    while True:
-        current = todo_prefs.get("mail_cache_mode", "clear")
-        default_mode = f"{t('mail_cache_default_mode')}  ({current})"
-        choices = [
-            {"prompt_description": default_mode},
-            {"prompt_description": t("mail_cache_account_mode")},
-            {"prompt_description": t("mail_cache_size_purge")},
-        ]
-        status = click.prompt(todo.fill_help_info(choices))
-        print()
-        if status == "0":
-            return
-        if status == "1":
-            mode = input(t("mail_ask_mode")).strip()
-            if mode in CACHE_MODES:
-                todo_prefs.set("mail_cache_mode", mode)
-            else:
-                print(t("Command not found !"))
-        elif status == "2":
-            account, accounts = _pick_account()
-            if account is None:
-                continue
-            mode = input(t("mail_ask_mode")).strip()
-            account.cache_mode = mode if mode in CACHE_MODES else None
-            mail_accounts.save(accounts)
-        elif status == "3":
-            _cache_size_and_purge(todo)
-        else:
-            print(t("Command not found !"))
+    """Le cache (MAIL_CACHE, `menus/assistant.py`) : le mode par défaut,
+    celui d'un compte, la taille et la purge. Redessiné à chaque tour, le
+    mode par défaut relu. Rend None sur [0]."""
+    return navigate(MailMenus(todo), menus_assistant.MAIL_CACHE)
+
+
+def _cache_mode() -> str:
+    """Le mode de cache par défaut, que Cache montre entre parenthèses."""
+    return todo_prefs.get("mail_cache_mode", "clear")
+
+
+def _set_cache_mode() -> None:
+    """Demande le mode de cache par défaut, et le retient s'il en est un ;
+    sinon « Command not found ! »."""
+    mode = input(t("mail_ask_mode")).strip()
+    if mode in CACHE_MODES:
+        todo_prefs.set("mail_cache_mode", mode)
+    else:
+        print(t("Command not found !"))
+
+
+def _set_account_cache_mode() -> None:
+    """Demande un compte, puis son mode de cache : une réponse qui n'en est
+    pas un le rend au mode par défaut."""
+    account, accounts = _pick_account()
+    if account is None:
+        return
+    mode = input(t("mail_ask_mode")).strip()
+    account.cache_mode = mode if mode in CACHE_MODES else None
+    mail_accounts.save(accounts)
 
 
 def _cache_size_and_purge(todo) -> None:
@@ -545,3 +512,32 @@ def _cache_size_and_purge(todo) -> None:
     finally:
         store.close()
     print(t("mail_purged"))
+
+
+class MailMenus:
+    """L'objet sur lequel s'ouvrent les menus du courriel : chaque action
+    qu'ils nomment est la fonction de ce module de même nom, qui le reçoit
+    à la place du TODO qu'il enveloppe ; tout autre attribut,
+    `fill_help_info` compris, est celui de ce TODO. Les menus se dessinent
+    ainsi sous le fil d'Ariane du menu de TODO qui les ouvre, sans segment
+    propre, et leur clé de télémétrie est la sienne."""
+
+    def __init__(self, todo):
+        self.todo = todo.todo if isinstance(todo, MailMenus) else todo
+
+    def __getattr__(self, name):
+        return getattr(self.todo, name)
+
+    prompt_mail_accounts = prompt_mail_accounts
+    prompt_mail_cache = prompt_mail_cache
+    _open_tui = _open_tui
+    _sync_now = _sync_now
+    _add_account = _add_account
+    _delete_account = _delete_account
+    _test_account = _test_account
+    _cache_size_and_purge = _cache_size_and_purge
+    _list_accounts = staticmethod(_list_accounts)
+    _write_template = staticmethod(_write_template)
+    _cache_mode = staticmethod(_cache_mode)
+    _set_cache_mode = staticmethod(_set_cache_mode)
+    _set_account_cache_mode = staticmethod(_set_account_cache_mode)

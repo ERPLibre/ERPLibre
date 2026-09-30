@@ -1183,6 +1183,7 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_gpt_code",
                 "prompt_execute_instance",
                 "prompt_execute_longtest",
+                "prompt_execute_mail",
                 "prompt_execute_network",
                 "prompt_execute_process",
                 "prompt_execute_proxmox",
@@ -1195,6 +1196,8 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_execute_update",
                 "prompt_execute_vpn",
                 "prompt_install",
+                "prompt_mail_accounts",
+                "prompt_mail_cache",
                 "prompt_telemetry",
             ],
         )
@@ -1220,15 +1223,26 @@ class TestTodoMenuFiles(unittest.TestCase):
 
     def test_each_method_named_binds_its_arguments(self):
         from script.todo.database_manager import DatabaseManager
+        from script.todo.mail import menu as mail_menu
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 48)
+        self.assertEqual(len(menus), 51)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
+        # Les menus du courriel s'ouvrent par des fonctions de mail/menu.py
+        # sur MailMenus, qui porte leurs actions, dont certaines sont des
+        # fonctions sans argument (staticmethod).
         owners = {"drop_database": DatabaseManager}
+        mail = ("prompt_execute_mail", "prompt_mail_accounts")
+        owners.update(dict.fromkeys((*mail, "prompt_mail_cache"), mail_menu))
         for menu in menus.values():
             owner = owners.get(menu.name, TODO)
-            calls = [(menu.name, {}), (menu.state, {}), (menu.opens, {})]
+            with self.subTest(menu=menu.name, method=menu.name):
+                method = getattr(owner, menu.name)
+                inspect.signature(method).bind(None)
+            if owner is mail_menu:
+                owner = mail_menu.MailMenus
+            calls = [(menu.state, {}), (menu.opens, {})]
             calls.append((menu.before, {}))
             # `asks` reçoit les entrées montrées, en argument positionnel.
             if menu.asks:
@@ -1250,7 +1264,9 @@ class TestTodoMenuFiles(unittest.TestCase):
                     continue
                 with self.subTest(menu=menu.name, method=name):
                     method = getattr(owner, name)
-                    inspect.signature(method).bind(None, **kwargs)
+                    static = inspect.getattr_static(owner, name)
+                    self_ = [] if isinstance(static, staticmethod) else [None]
+                    inspect.signature(method).bind(*self_, **kwargs)
 
     def test_each_entry_of_an_opened_menu_binds_its_context(self):
         # Dans un menu à `opens`, navigate passe à l'action de chaque entrée

@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Assistant : LLM, ses serveurs connus et la
-recherche d'un serveur.
+recherche d'un serveur, le courriel, ses comptes et son cache.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
@@ -70,4 +70,45 @@ SEARCH = Menu(
     back=None,
     abort_closes=True,
     before="_llm_search_where",
+)
+
+# Les menus du courriel s'ouvrent sur `MailMenus` (`mail/menu.py`), dont
+# ils nomment les actions : sans segment de fil d'Ariane (`crumb` None),
+# ils s'affichent sous celui du menu qui les ouvre.
+MAIL = Menu(
+    "prompt_execute_mail",
+    None,
+    [
+        Entry("mail_open_tui", "_open_tui"),
+        Entry("mail_accounts_menu", "prompt_mail_accounts"),
+        Entry("mail_sync_now", "_sync_now"),
+        Entry("mail_cache_menu", "prompt_mail_cache"),
+    ],
+    back=None,
+)
+
+MAIL_ACCOUNTS = Menu(
+    "prompt_mail_accounts",
+    None,
+    [
+        Entry("mail_account_list", "_list_accounts"),
+        Entry("mail_account_add", "_add_account"),
+        Entry("mail_account_delete", "_delete_account", danger=True),
+        Entry("mail_account_template", "_write_template"),
+        Entry("mail_account_test", "_test_account"),
+    ],
+    back=None,
+)
+
+MAIL_CACHE = Menu(
+    "prompt_mail_cache",
+    None,
+    [
+        Entry(
+            "mail_cache_default_mode", "_set_cache_mode", suffix="_cache_mode"
+        ),
+        Entry("mail_cache_account_mode", "_set_account_cache_mode"),
+        Entry("mail_cache_size_purge", "_cache_size_and_purge", danger=True),
+    ],
+    back=None,
 )

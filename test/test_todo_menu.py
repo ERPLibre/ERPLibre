@@ -2075,6 +2075,75 @@ class TestSearchMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(self.menu.before, "_llm_search_where")
 
 
+class MailCoherence(RegistryCoherence):
+    """Socle des menus du courriel : ils s'ouvrent par une fonction de
+    mail/menu.py, sur MailMenus, sans segment de fil d'Ariane, et rendent
+    None sur [0]. Le journal du paquet n'est pas branché."""
+
+    BACK = None
+
+    def _owner(self):
+        from script.todo.mail import menu
+
+        return menu
+
+    def setUp(self):
+        with patch("script.todo.mail.menu._configure_mail_logging"):
+            super().setUp()
+
+    def test_it_has_no_crumb(self):
+        self.assertIsNone(self.menu.crumb)
+
+
+class TestMailMenuNumbering(MailCoherence, unittest.TestCase):
+    """Assistant › Mail : le client, les comptes, une synchronisation, le
+    cache."""
+
+    MENU = "prompt_execute_mail"
+    EXPECTED = {
+        "mail_open_tui": "_open_tui",
+        "mail_accounts_menu": "prompt_mail_accounts",
+        "mail_sync_now": "_sync_now",
+        "mail_cache_menu": "prompt_mail_cache",
+    }
+
+
+class TestMailAccountsMenuNumbering(MailCoherence, unittest.TestCase):
+    """Assistant › Mail › Accounts : la suppression d'un compte efface le
+    compte et son secret."""
+
+    MENU = "prompt_mail_accounts"
+    EXPECTED = {
+        "mail_account_list": "_list_accounts",
+        "mail_account_add": "_add_account",
+        "mail_account_delete": "_delete_account",
+        "mail_account_template": "_write_template",
+        "mail_account_test": "_test_account",
+    }
+
+    def test_only_delete_is_dangerous(self):
+        dangerous = [entry.key for entry in self.entries if entry.danger]
+        self.assertEqual(dangerous, ["mail_account_delete"])
+
+
+class TestMailCacheMenuNumbering(MailCoherence, unittest.TestCase):
+    """Assistant › Mail › Cache : le mode par défaut, montré entre
+    parenthèses, celui d'un compte, et la purge, qui efface un cache."""
+
+    MENU = "prompt_mail_cache"
+    EXPECTED = {
+        "mail_cache_default_mode": "_set_cache_mode",
+        "mail_cache_account_mode": "_set_account_cache_mode",
+        "mail_cache_size_purge": "_cache_size_and_purge",
+    }
+
+    def test_the_default_mode_shows_and_purge_is_dangerous(self):
+        self.assertEqual(
+            [(entry.suffix, entry.danger) for entry in self.entries],
+            [("_cache_mode", None), (None, None), (None, True)],
+        )
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -2944,6 +3013,9 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_assistant_llm",
                 "_llm_servers",
                 "_llm_search",
+                "prompt_execute_mail",
+                "prompt_mail_accounts",
+                "prompt_mail_cache",
             },
             set(declared),
         )
