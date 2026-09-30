@@ -63,7 +63,7 @@ class FakeTodo:
             return None
         return [dict(element) for element in self.config[key]]
 
-    def fill_help_info(self, choices, state=None):
+    def fill_help_info(self, choices, state=None, quits=False):
         self.drawn.append((choices, state))
         lines, number = [state] if state else [], 0
         for choice in choices:
@@ -74,7 +74,8 @@ class FakeTodo:
             key = choice.get("prompt_description_key")
             label = t(key) if key else choice["prompt_description"]
             lines.append(f"[{number}] {label}")
-        return "\n".join([*lines, "[0] Back", ""])
+        zero = "[0] 🚪 Quit" if quits else "[0] Back"
+        return "\n".join([*lines, zero, ""])
 
     def __getattr__(self, name):
         if name.startswith("_"):
@@ -140,6 +141,16 @@ class TestRegistry(unittest.TestCase):
                         asks="forged_ask",
                         **extra,
                     )
+
+    def test_a_menu_that_quits_takes_no_abort_nor_asks(self):
+        # Un menu qui quitte TODO termine TODO sur Ctrl+C ou Ctrl+D à sa
+        # question : `abort_closes` le refermerait à la place, et un menu
+        # `asks` pose une question que le navigateur ne lit pas.
+        Menu("forged_menu", "Forged", [], quits=True)
+        for extra in ({"abort_closes": True}, {"asks": "forged_ask"}):
+            with self.subTest(extra=extra):
+                with self.assertRaises(ValueError):
+                    Menu("forged_menu", "Forged", [], quits=True, **extra)
 
     def test_a_declaration_is_frozen(self):
         entry = Entry("Forged", "forged_action")
@@ -582,6 +593,37 @@ class TestNavigator(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             self.navigate(menu, ["1"], todo)
 
+    def test_a_menu_that_quits_says_so_and_ends_todo_on_abort(self):
+        # [0] se lit « 🚪 Quit » et rend `back` ; Ctrl+C ou Ctrl+D à sa
+        # question terminent TODO par SystemExit 0, sans rien écrire. Ce
+        # qu'une action lève remonte, Abort compris.
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [Entry("First", "first")],
+            back=None,
+            quits=True,
+        )
+        back, _, texts = self.navigate(menu, ["0"])
+        self.assertIsNone(back)
+        self.assertEqual(texts, ["[1] First\n[0] 🚪 Quit\n"])
+        for abort in (click.exceptions.Abort(), KeyboardInterrupt()):
+            with self.subTest(abort=type(abort).__name__):
+                self.out.seek(0)
+                self.out.truncate()
+                with self.assertRaises(SystemExit) as ended:
+                    self.navigate(menu, [abort])
+                self.assertEqual(ended.exception.code, 0)
+                self.assertEqual(self.out.getvalue(), "")
+        todo = FakeTodo()
+
+        def first():
+            raise click.exceptions.Abort
+
+        todo.first = first
+        with self.assertRaises(click.exceptions.Abort):
+            self.navigate(menu, ["1"], todo)
+
     def test_the_menu_goes_through_the_port_of_a_session(self):
         class Wrapped(FakeTodo):
             pass
@@ -941,6 +983,7 @@ class TestDeclaredTree(unittest.TestCase):
                 "before",
                 "closes_on_result",
                 "asks",
+                "quits",
             ],
         )
         self.assertEqual(

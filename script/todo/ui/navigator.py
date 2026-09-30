@@ -7,12 +7,12 @@
 écrit le texte et l'en-tête des menus écrits à la main (et rend, dans une
 session web, le `MenuText` que pose `legacy.wrap_menus`), puis pose la
 question par `click.prompt` : même suffixe « : », même question reposée
-sur une réponse vide, même `Abort` sur Ctrl+C ou Ctrl+D, que seul un menu
-`abort_closes` rattrape. `click.prompt` se lit à chaque question : la
-capture d'une session web, qui remplace cet attribut, y répond. Un menu
-`asks` écrit et pose sa question par sa propre méthode, sans
-`fill_help_info` ni `click.prompt`, donc sans fil d'Ariane ni clé de
-télémétrie.
+sur une réponse vide, même `Abort` sur Ctrl+C ou Ctrl+D, que seuls un menu
+`abort_closes` et un menu `quits` rattrapent. `click.prompt` se lit à
+chaque question : la capture d'une session web, qui remplace cet
+attribut, y répond. Un menu `asks` écrit et pose sa question par sa
+propre méthode, sans `fill_help_info` ni `click.prompt`, donc sans fil
+d'Ariane ni clé de télémétrie.
 
 `todo` est l'objet qui ouvre le menu : TODO, ou un objet de TODO dont
 le `fill_help_info` est celui de TODO (`DatabaseManager`). Le cadre de
@@ -20,6 +20,8 @@ le `fill_help_info` est celui de TODO (`DatabaseManager`). Le cadre de
 lit dans la pile, reste celui des méthodes de TODO qui l'appellent, et
 la clé de télémétrie aussi.
 """
+
+import sys
 
 import click
 
@@ -72,6 +74,8 @@ def _draw(todo, menu) -> tuple:
     if menu.asks:
         return shown, actions
     state = getattr(todo, menu.state)() if menu.state else None
+    if menu.quits:
+        return todo.fill_help_info(choices, state=state, quits=True), actions
     return todo.fill_help_info(choices, state=state), actions
 
 
@@ -92,8 +96,9 @@ def navigate(todo, menu):
     Un menu `render="each"` se redessine après chaque réponse, sa
     configuration relue ; un menu "once" garde son premier dessin. Ctrl+C
     ou Ctrl+D à la question remontent, sauf dans un menu `abort_closes`,
-    qui rend alors `back` après une ligne vide ; ce qu'une action lève
-    remonte toujours."""
+    qui rend alors `back` après une ligne vide, et dans un menu `quits`,
+    qui termine TODO (SystemExit 0) ; ce qu'une action lève remonte
+    toujours."""
     if menu.intro:
         print(f"{menu.mark} {t(menu.intro)}")
     context = {}
@@ -111,6 +116,8 @@ def navigate(todo, menu):
             try:
                 status = click.prompt(drawn)
             except (KeyboardInterrupt, click.exceptions.Abort):
+                if menu.quits:
+                    sys.exit(0)
                 if not menu.abort_closes:
                     raise
                 print()

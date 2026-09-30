@@ -121,6 +121,12 @@ class Menu:
     son libellé, et rend la réponse, « 0 » pour [0] ; le navigateur
     n'écrit alors ni fil d'Ariane ni ligne vide après elle, et un tel menu
     refuse `state` et `abort_closes`, que seule sa question lirait.
+    `quits` : réservé au menu racine, qu'ouvre `run`. Son [0] se lit
+    « 🚪 Quit » et rend `back` à `run`, dont TODO sort ; un autre menu
+    qui le déclarerait rendrait la main à son parent sous ce mot. Ctrl+C
+    ou Ctrl+D à sa question terminent TODO (SystemExit 0), sans ligne
+    vide. Un tel menu refuse `abort_closes`, qui le refermerait à la
+    place, et `asks`.
     """
 
     name: str
@@ -137,6 +143,7 @@ class Menu:
     before: str | None = None
     closes_on_result: bool = False
     asks: str | None = None
+    quits: bool = False
 
     def __post_init__(self):
         if self.render not in RENDERS:
@@ -156,3 +163,5 @@ class Menu:
             raise ValueError(f"hotkey is one lowercase letter: {keys!r}")
         if self.asks and (self.state or self.abort_closes):
             raise ValueError("asks takes neither state nor abort_closes")
+        if self.quits and (self.abort_closes or self.asks):
+            raise ValueError("quits takes neither abort_closes nor asks")
