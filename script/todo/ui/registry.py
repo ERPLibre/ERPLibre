@@ -45,7 +45,10 @@ class Entry:
     porte "danger", et ni la TUI de télémétrie ni la page web ne le
     lancent ; le menu, lui, l'affiche et le lance comme une autre
     entrée. `hotkey`, une lettre, répond à l'entrée à la place d'un
-    numéro, dans un menu `asks` seulement."""
+    numéro, dans un menu `asks` seulement. `crumb` est le segment du fil
+    d'Ariane de l'écran que l'action dessine elle-même, hors du registre
+    (un sélecteur) : l'arbre de télémétrie en fait un menu sans feuille,
+    sous ce segment, que ni la TUI ni la page web ne lancent."""
 
     key: str
     action: str
@@ -57,6 +60,7 @@ class Entry:
     interfaces: list | None = None
     glance: bool = False
     hotkey: str | None = None
+    crumb: str | None = None
 
 
 @dataclass(frozen=True)

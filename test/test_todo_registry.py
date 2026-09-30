@@ -812,6 +812,27 @@ class TestDeclaredTree(unittest.TestCase):
             ("Pick", None, {"key": "forged_key"}),
         )
 
+    def test_an_entry_with_a_crumb_is_a_menu_without_leaves(self):
+        # Une entrée dont l'action dessine son propre écran sous un segment
+        # du fil d'Ariane : un menu sans feuille, sous ce segment, que ni
+        # la TUI ni la page web ne lancent ; son entrée est son libellé.
+        self.menus_py.write_text(
+            FAKE_MENUS.replace(
+                '"pick", kwargs={"key": "forged_key"}',
+                '"pick", kwargs={"key": "forged_key"}, crumb="Forged screen"',
+            )
+        )
+        [configuration, _] = self.tree()["children"]
+        self.assertEqual(
+            configuration["children"][1],
+            {
+                "label": "Forged screen",
+                "is_menu": True,
+                "children": [],
+                "entry": "Pick",
+            },
+        )
+
     def test_a_section_of_a_configured_list_is_no_leaf(self):
         # Comme au menu : l'élément qui porte une section n'est pas une
         # feuille, et nomme la section de ceux qui le suivent.
@@ -931,6 +952,9 @@ class TestDeclaredTree(unittest.TestCase):
                 FAKE_MENUS.replace("back=None", "back=None, asks=1"),
                 FAKE_MENUS.replace(
                     '"pick", kwargs', '"pick", hotkey=1, kwargs'
+                ),
+                FAKE_MENUS.replace(
+                    '"pick", kwargs', '"pick", crumb=1, kwargs'
                 ),
             )
         ):

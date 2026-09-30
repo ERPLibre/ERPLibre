@@ -535,7 +535,7 @@ _TEXT_FIELDS = {
         ("mark",),
     ),
     "Section": (("key",), (), ()),
-    "Entry": (("key", "action"), ("suffix", "when", "hotkey"), ()),
+    "Entry": (("key", "action"), ("suffix", "when", "hotkey", "crumb"), ()),
     "FromConfig": (("config_key", "action", "kwarg"), (), ()),
     "FromMethod": (("method", "action", "kwarg"), (), ()),
 }
@@ -633,14 +633,25 @@ def _declared_children(menu, todo_dir, labels, build) -> list:
     `FromMethod` n'y donne aucune feuille : sa liste ne se lit qu'en
     appelant sa méthode. Chaque enfant d'un menu `asks` porte un `entry`
     vide : sa question n'est pas un message `menu`, où la page web
-    chercherait l'entrée qu'elle répond."""
+    chercherait l'entrée qu'elle répond. Une `Entry` qui n'ouvre pas un
+    menu de `labels` mais déclare un segment (`crumb`) donne un menu sans
+    feuille, sous ce segment, que ni la TUI ni la page web ne lancent."""
     children, section = [], None
     for item in menu.get("entries") or []:
         kind = item.get("type") if isinstance(item, dict) else None
         if kind == "Section":
             section = item.get("key")
-        elif kind == "Entry" and item.get("action") in labels:
-            child = build(item["action"])
+        elif kind == "Entry" and (
+            item.get("action") in labels or item.get("crumb")
+        ):
+            if item.get("action") in labels:
+                child = build(item["action"])
+            else:
+                child = {
+                    "label": item["crumb"],
+                    "is_menu": True,
+                    "children": [],
+                }
             child["entry"] = "" if item.get("suffix") else item.get("key")
             if item.get("danger"):
                 child["danger"] = True
