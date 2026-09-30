@@ -94,10 +94,10 @@ class FromMethod:
 @dataclass(frozen=True)
 class Menu:
     """Un menu. `name` : la méthode qui l'ouvre ; `crumb` : son segment
-    du fil d'Ariane, sa valeur dans `_MENU_LABELS` et la clé de
-    télémétrie, que le navigateur ajoute au fil de l'entrée du menu à son
-    retour, ou None pour un menu qu'ouvre un autre objet que TODO, qui
-    s'affiche sous le fil du menu qui l'ouvre. `entries` : des `Section`,
+    du fil d'Ariane et de l'arbre de télémétrie, et sa clé de télémétrie,
+    que le navigateur ajoute au fil de l'entrée du menu à son retour, ou
+    None pour un menu qu'ouvre un autre objet que TODO, qui s'affiche
+    sous le fil du menu qui l'ouvre. `entries` : des `Section`,
     `Entry`, `FromConfig` et `FromMethod`, dans l'ordre affiché. `state`
     nomme la méthode qui rend la ligne d'état sous le fil d'Ariane.
     `intro` est la clé de la ligne dite une fois, à l'entrée, derrière

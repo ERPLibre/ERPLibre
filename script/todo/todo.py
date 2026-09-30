@@ -526,62 +526,6 @@ class TODO(
                 web_login_env=web_login_env,
             )
 
-    # Segment de l'arbre de télémétrie par méthode de menu, que lit
-    # `build_code_tree` : le `crumb` de chaque menu déclaré, et celui d'Over
-    # SSH, que déclare son entrée.
-    _MENU_LABELS = {
-        "run": "TODO",
-        "prompt_execute": "Execute",
-        "prompt_assistant": "Assistant",
-        "prompt_assistant_llm": "LLM",
-        "_llm_servers": "Servers",
-        "_llm_search": "Search",
-        "_llm_search_remote": "Over SSH",
-        "prompt_install": "Install",
-        "prompt_execute_function": "Automation",
-        "prompt_execute_code": "Code",
-        "prompt_execute_config": "Config",
-        "prompt_execute_database": "Database",
-        "prompt_execute_analyse": "Analyse",
-        "prompt_execute_transform": "Transform data",
-        "prompt_execute_doc": "Doc",
-        "prompt_execute_git": "Git",
-        "prompt_execute_git_local_server": "Git local server",
-        "_prompt_git_server_local": "Actions",
-        "_prompt_git_server_production": "Actions",
-        "prompt_execute_gpt_code": "GPT code",
-        "_prompt_claude_configs": "Claude configs",
-        "prompt_execute_claude_plugins": "Plugins",
-        "prompt_claude_sessions": "Claude Code",
-        "prompt_execute_process": "Process",
-        "prompt_execute_instance": "Run",
-        "prompt_execute_rtk": "RTK",
-        "prompt_execute_update": "Update",
-        "prompt_execute_deploy": "Deploy",
-        "prompt_execute_deploy_ssh": "SSH",
-        "prompt_execute_qemu_cache": "QEMU cache",
-        "_cache_service": "Service",
-        "_cache_tests": "Tests",
-        "_cache_age": "Age and cleanup",
-        "_cache_exceptions": "Exceptions",
-        "_cache_journaux": "Logs",
-        "_cache_miroir_git": "Git mirrors",
-        "_cache_nettoyage_auto": "Automatic cleanup",
-        "prompt_execute_qemu": "QEMU/KVM",
-        "prompt_execute_proxmox": "Proxmox VE",
-        "prompt_execute_vpn": "VPN",
-        "prompt_execute_network": "Network",
-        "prompt_execute_security": "Security",
-        "prompt_execute_container": "Docker / Podman",
-        "_container_service": "Service",
-        "_container_compose": "Compose",
-        "_container_erplibre": "ERPLibre container",
-        "prompt_execute_test": "Test",
-        "prompt_execute_longtest": "Long test",
-        "prompt_telemetry": "Navigation telemetry",
-        "prompt_configuration": "Configuration",
-    }
-
     def _menu_header(self, state=None):
         """En-tête de menu : le fil d'Ariane que tient le navigateur
         (`crumbs`), puis `state`, une ligne d'état propre au menu, s'il est

@@ -533,16 +533,6 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
-    def test_the_breadcrumb_names_the_proxmox_menu(self):
-        # Sans étiquette, le fil d'Ariane sauterait le menu Proxmox : on
-        # lirait « TODO › Execute › Deploy » en étant deux niveaux plus bas.
-        import sys
-
-        sys.argv = ["todo.py"]
-        from script.todo.todo import TODO as CLASSE
-
-        self.assertIn("prompt_execute_proxmox", CLASSE._MENU_LABELS)
-
     def test_a_submenu_carries_the_entry_its_parent_shows(self):
         # Le fil d'Ariane dit « Code », le menu Exécution montre « Code -
         # Developer tools » : la page web cherche celle-ci pour y entrer,
@@ -1561,9 +1551,9 @@ class TestEraseMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertIs(self.menu.closes, True)
 
     def test_each_entry_is_dangerous(self):
-        # `drop_database` n'est pas dans `_MENU_LABELS` : l'arbre n'a pas de
-        # nœud pour ce menu. Qu'il en gagne un, et ni la TUI ni la page web
-        # ne lancent un effacement.
+        # Sans segment, ce menu n'a pas de nœud dans l'arbre, où Database
+        # le montre comme une feuille. Qu'il en gagne un, et ni la TUI ni
+        # la page web ne lancent un effacement.
         self.assertEqual({e.danger for e in self.entries}, {True})
 
 
@@ -2819,26 +2809,28 @@ class TestMainMenu(AnsweredMenu, unittest.TestCase):
 
 
 class TestMenuLabels(unittest.TestCase):
-    """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
+    """Tout menu tient son segment de fil d'Ariane de sa déclaration.
 
-    Sans elle, `_menu_header` n'affiche pas le segment et
-    `todo_telemetry.build_code_tree` traite le menu comme une COMMANDE :
-    il apparaît en feuille, sous son nom de méthode brut.
+    Le navigateur ajoute au fil le `crumb` du menu qu'il ouvre, et celui
+    d'une entrée qui en déclare un le temps de son action ; `_menu_header`
+    écrit ce fil et en fait la clé de télémétrie. Un écran dessiné hors de
+    là s'afficherait sous le fil de son parent, avec sa clé.
 
-    Les menus se trouvent par ce qu'ils APPELLENT — `fill_help_info` ou
-    `_menu_header` — dans tout le paquet, et non par la table de répartition
-    du menu Exécution. Chercher là ne verrait que les sous-menus atteints
-    depuis cette table : un menu ouvert depuis ailleurs, ou défini dans un
-    mixin, comme le sous-menu VPN, ne serait jamais examiné.
+    Les écrans se trouvent par ce qu'ils APPELLENT — `navigate`,
+    `fill_help_info` ou `_menu_header` — dans tout script/todo/*.py, et non
+    par la table d'un menu : un écran ouvert depuis ailleurs, ou défini
+    dans un mixin, comme le sous-menu VPN, serait manqué. Chacun est un
+    menu déclaré, l'action d'une entrée qui déclare son segment, ou l'une
+    des exceptions.
 
-    Cinq méthodes sont exemptées, et pour la même raison : ce sont des
-    ACTIONS qui posent une question — un choix de méthode d'installation, un
-    « aller plus loin » après un rapport — et non des écrans où l'on
-    navigue. Leur donner un segment mettrait une miette sur une invite
-    passagère. Deux autres, `select_database` et `drop_database`, sont
-    celles de DatabaseManager : le fil d'Ariane ne lit que les cadres de
-    TODO et ne peut pas leur donner de segment ; elles s'affichent sous le
-    menu de TODO qui les ouvre.
+    Six méthodes sont exemptées, qui s'affichent sous le fil du menu qui
+    les ouvre : trois ACTIONS qui posent une question — un choix de méthode
+    d'installation, un « aller plus loin » après un rapport — et non des
+    écrans où l'on navigue, `select_database`, celle de DatabaseManager,
+    qui choisit une base, et deux menus écrits à la main sans segment,
+    `generate_config_from_preconfiguration` et `debug_ide`, des feuilles de
+    l'arbre. Donner un segment aux quatre premières mettrait une miette sur
+    une invite passagère.
     """
 
     ECRANS_EXEMPTES = {
@@ -2848,44 +2840,86 @@ class TestMenuLabels(unittest.TestCase):
         "debug_ide",
         "execute_odoo_upgrade",
         "select_database",
-        "drop_database",
+    }
+    # Le segment de chaque menu déclaré, sa clé de télémétrie : un segment
+    # renommé change la clé, et les compteurs d'avant ne s'y ajoutent plus.
+    SEGMENTS = {
+        "prompt_telemetry": "Navigation telemetry",
+        "prompt_configuration": "Configuration",
+        "prompt_execute": "Execute",
+        "prompt_execute_code": "Code",
+        "prompt_execute_config": "Config",
+        "prompt_execute_process": "Process",
+        "prompt_execute_test": "Test",
+        "prompt_execute_update": "Update",
+        "prompt_execute_instance": "Run",
+        "prompt_execute_database": "Database",
+        "drop_database": None,
+        "prompt_execute_analyse": "Analyse",
+        "prompt_execute_transform": "Transform data",
+        "prompt_execute_doc": "Doc",
+        "prompt_execute_git": "Git",
+        "prompt_execute_git_local_server": "Git local server",
+        "_prompt_git_server_local": "Actions",
+        "_prompt_git_server_production": "Actions",
+        "prompt_execute_gpt_code": "GPT code",
+        "_prompt_claude_configs": "Claude configs",
+        "prompt_execute_claude_plugins": "Plugins",
+        "prompt_execute_rtk": "RTK",
+        "prompt_claude_sessions": "Claude Code",
+        "prompt_execute_function": "Automation",
+        "prompt_execute_deploy": "Deploy",
+        "prompt_execute_deploy_ssh": "SSH",
+        "prompt_execute_network": "Network",
+        "prompt_execute_security": "Security",
+        "prompt_execute_qemu": "QEMU/KVM",
+        "prompt_execute_qemu_cache": "QEMU cache",
+        "_cache_service": "Service",
+        "_cache_exceptions": "Exceptions",
+        "_cache_miroir_git": "Git mirrors",
+        "_cache_age": "Age and cleanup",
+        "_cache_tests": "Tests",
+        "_cache_journaux": "Logs",
+        "_cache_nettoyage_auto": "Automatic cleanup",
+        "prompt_execute_container": "Docker / Podman",
+        "_container_service": "Service",
+        "_container_compose": "Compose",
+        "_container_erplibre": "ERPLibre container",
+        "prompt_execute_proxmox": "Proxmox VE",
+        "prompt_execute_vpn": "VPN",
+        "prompt_execute_longtest": "Long test",
+        "prompt_install": "Install",
+        "prompt_assistant": "Assistant",
+        "prompt_assistant_llm": "LLM",
+        "_llm_servers": "Servers",
+        "_llm_search": "Search",
+        "prompt_execute_mail": None,
+        "prompt_mail_accounts": None,
+        "prompt_mail_cache": None,
+        "run": "TODO",
     }
 
-    def setUp(self):
-        source = TODO_PY.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        cls = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
-        self.labels = set()
-        for node in cls.body:
-            if not isinstance(node, ast.Assign):
-                continue
-            if not any(
-                isinstance(tg, ast.Name) and tg.id == "_MENU_LABELS"
-                for tg in node.targets
-            ):
-                continue
-            self.labels = {
-                key.value
-                for key in node.value.keys
-                if isinstance(key, ast.Constant)
-            }
+    @classmethod
+    def setUpClass(cls):
+        from script.todo.todo_telemetry import _declared_menus
 
-    def test_menu_labels_was_parsed(self):
-        self.assertIn("prompt_execute", self.labels)
-
-    def test_analyse_menu_has_a_breadcrumb_label(self):
-        self.assertIn("prompt_execute_analyse", self.labels)
+        cls.menus = _declared_menus(TODO_DIR)
+        # {action: segment} des entrées qui déclarent le leur.
+        cls.ecrans = {
+            item["action"]: item["crumb"]
+            for menu in cls.menus.values()
+            for item in menu["entries"]
+            if item.get("crumb")
+        }
 
     @staticmethod
     def _menus_par_fichier():
-        """(fichier, méthode) de toute méthode qui dessine un menu, dans tout
-        script/todo/*.py.
+        """(fichier, méthode) de toute méthode qui dessine un écran, dans
+        tout script/todo/*.py.
 
-        Une méthode dessine un menu quand elle appelle `fill_help_info` ou
-        `_menu_header` : c'est par là que passe l'en-tête, donc c'est là que
-        l'étiquette manque ou non. Les deux fonctions elles-mêmes sortent.
-        Un menu du registre s'ouvre par `navigate(self, …)`, qui les
-        appelle : sa méthode compte aussi."""
+        Une méthode dessine un écran quand elle appelle `navigate`, qui
+        ouvre un menu déclaré, ou `fill_help_info` ou `_menu_header`, qui
+        écrivent l'en-tête. Les deux fonctions elles-mêmes sortent."""
         trouves = set()
         for chemin in sorted(TODO_DIR.glob("*.py")):
             arbre = ast.parse(chemin.read_text(encoding="utf-8"))
@@ -2921,106 +2955,80 @@ class TestMenuLabels(unittest.TestCase):
         self.assertIn("prompt_execute_vpn", menus)
         self.assertGreater(len(menus), 20)
 
-    def test_no_new_menu_forgets_its_label(self):
-        missing = self._menus_du_paquet() - self.labels - self.ECRANS_EXEMPTES
-        self.assertEqual(
-            missing,
-            set(),
-            f"menus sans étiquette dans _MENU_LABELS : {sorted(missing)}",
+    def test_no_screen_forgets_its_crumb(self):
+        """Chaque écran est un menu déclaré, l'action d'une entrée qui
+        déclare son segment, ou une exception."""
+        missing = (
+            self._menus_du_paquet()
+            - set(self.menus)
+            - set(self.ecrans)
+            - self.ECRANS_EXEMPTES
         )
-
-    def test_the_vpn_submenu_leaves_a_crumb(self):
-        """Le cas nommé : un menu défini dans un mixin et ouvert depuis
-        Deploy et Network, qu'une recherche par la table de répartition
-        manquerait."""
-        self.assertIn("prompt_execute_vpn", self.labels)
+        self.assertEqual(missing, set(), "écrans sans segment déclaré")
 
     def test_each_declared_menu_keeps_its_crumb(self):
-        """Un menu du registre garde l'étiquette de sa méthode, qui est son
-        `crumb` : le fil d'Ariane et la clé de télémétrie ne changent pas."""
-        from script.todo.todo import TODO
-        from script.todo.todo_telemetry import _declared_menus
-
-        declared = _declared_menus(TODO_DIR)
-        self.assertLessEqual(
-            {
-                "prompt_telemetry",
-                "prompt_configuration",
-                "prompt_execute",
-                "prompt_execute_code",
-                "prompt_execute_config",
-                "prompt_execute_process",
-                "prompt_execute_test",
-                "prompt_execute_update",
-                "prompt_execute_instance",
-                "prompt_execute_database",
-                "drop_database",
-                "prompt_execute_analyse",
-                "prompt_execute_transform",
-                "prompt_execute_doc",
-                "prompt_execute_git",
-                "prompt_execute_git_local_server",
-                "_prompt_git_server_local",
-                "_prompt_git_server_production",
-                "prompt_execute_gpt_code",
-                "_prompt_claude_configs",
-                "prompt_execute_claude_plugins",
-                "prompt_execute_rtk",
-                "prompt_claude_sessions",
-                "prompt_execute_function",
-                "prompt_execute_deploy",
-                "prompt_execute_deploy_ssh",
-                "prompt_execute_network",
-                "prompt_execute_security",
-                "prompt_execute_qemu",
-                "prompt_execute_qemu_cache",
-                "_cache_service",
-                "_cache_exceptions",
-                "_cache_miroir_git",
-                "_cache_age",
-                "_cache_tests",
-                "_cache_journaux",
-                "_cache_nettoyage_auto",
-                "prompt_execute_container",
-                "_container_service",
-                "_container_compose",
-                "_container_erplibre",
-                "prompt_execute_proxmox",
-                "prompt_execute_vpn",
-                "prompt_execute_longtest",
-                "prompt_install",
-                "prompt_assistant",
-                "prompt_assistant_llm",
-                "_llm_servers",
-                "_llm_search",
-                "prompt_execute_mail",
-                "prompt_mail_accounts",
-                "prompt_mail_cache",
-                "run",
-            },
-            set(declared),
-        )
-        for name, menu in declared.items():
-            self.assertEqual(TODO._MENU_LABELS.get(name), menu["crumb"], name)
-
-    def test_the_database_manager_exemptions_hold_in_its_file_only(self):
-        """`select_database` et `drop_database` ne sont exemptées que dans
-        database_manager.py : une méthode de même nom qui dessinerait un
-        menu ailleurs resterait sans segment sans que rien ne le dise."""
-        noms = {"select_database", "drop_database"}
+        """Un menu du registre garde son segment, qui est sa clé de
+        télémétrie, et Over SSH, l'écran d'une entrée de Search, le sien."""
         self.assertEqual(
-            {(f, n) for f, n in self._menus_par_fichier() if n in noms},
-            {("database_manager.py", n) for n in noms},
+            {name: self.menus[name]["crumb"] for name in self.SEGMENTS},
+            self.SEGMENTS,
+        )
+        self.assertEqual(self.ecrans, {"_llm_search_remote": "Over SSH"})
+        # Une entrée qui ouvre un menu déclaré ne déclare pas de segment : le
+        # navigateur empilerait les deux, et l'en-tête s'écarterait du
+        # chemin de l'arbre, qui ne garde que celui du menu.
+        self.assertEqual(set(self.ecrans) & set(self.menus), set())
+
+    def test_no_second_list_repeats_the_crumbs(self):
+        """Les segments ne s'écrivent qu'au registre : un dict de
+        script/todo/ qui en répète plusieurs, en clés ou en valeurs, serait
+        une seconde liste, que rien ne garderait d'accord avec les
+        déclarations."""
+        segments = {menu["crumb"] for menu in self.menus.values()} - {None}
+        copies = []
+        for chemin in sorted(TODO_DIR.rglob("*.py")):
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            for noeud in ast.walk(arbre):
+                if not isinstance(noeud, ast.Dict):
+                    continue
+                # Une clé dont la valeur est un dict est une entrée de la
+                # table des traductions, qui traduit chaque libellé.
+                cles = [
+                    k
+                    for k, v in zip(noeud.keys, noeud.values)
+                    if not isinstance(v, ast.Dict)
+                ]
+                valeurs = {
+                    c.value
+                    for c in [*cles, *noeud.values]
+                    if isinstance(c, ast.Constant)
+                }
+                if len(valeurs & segments) >= 3:
+                    copies.append(f"{chemin.name}:{noeud.lineno}")
+        self.assertEqual(copies, [])
+
+    def test_the_database_manager_exemption_holds_in_its_file_only(self):
+        """`select_database` n'est exemptée que dans database_manager.py :
+        une méthode de même nom qui dessinerait un écran ailleurs resterait
+        sans segment sans que rien ne le dise."""
+        self.assertEqual(
+            {
+                f
+                for f, n in self._menus_par_fichier()
+                if n == "select_database"
+            },
+            {"database_manager.py"},
         )
 
     def test_no_stale_exemption(self):
-        """Une exemption qui ne nomme plus un menu est à retirer."""
+        """Une exemption qui ne nomme plus un écran est à retirer."""
         fantomes = self.ECRANS_EXEMPTES - self._menus_du_paquet()
         self.assertEqual(fantomes, set())
 
-    def test_an_exemption_is_never_also_labelled(self):
-        """Exempter ET étiqueter dirait deux choses opposées du même écran."""
-        self.assertEqual(self.ECRANS_EXEMPTES & self.labels, set())
+    def test_an_exemption_is_never_also_declared(self):
+        """Exempter ET déclarer dirait deux choses opposées du même écran."""
+        declares = set(self.menus) | set(self.ecrans)
+        self.assertEqual(self.ECRANS_EXEMPTES & declares, set())
 
 
 if __name__ == "__main__":

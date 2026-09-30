@@ -68,8 +68,9 @@ that has no `Menu` in `script/todo/menus/` is still written by hand: its
 3. **Keep the menu method as it is**: the public method of a declared menu
 stays `return navigate(self, menus_git.GIT)`. A new submenu is a `Menu(...)`
 in the same file, opened by an `Entry` that names its method; that method is
-`return navigate(self, menus_<family>.MY_MENU)`, and its breadcrumb label,
-the `crumb` of the `Menu`, goes into `TODO._MENU_LABELS`.
+`return navigate(self, menus_<family>.MY_MENU)`, and the `crumb` of the
+`Menu` is its breadcrumb segment and its telemetry key: the navigator and
+the telemetry tree read it there, and nowhere else.
 
 4. **Add method** to the `TODO` class:
 ```python

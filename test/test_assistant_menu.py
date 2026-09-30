@@ -88,12 +88,12 @@ class Cablage(unittest.TestCase):
         self.assertTrue(hasattr(TODO, "prompt_assistant_llm"))
 
     def test_l_etiquette_de_fil_d_ariane_existe(self):
-        """Le fil se dérive de la pile d'appels : une méthode absente de
-        `_MENU_LABELS` ne contribuerait AUCUNE miette, en silence, et son
-        menu ne se situerait nulle part."""
-        from script.todo.todo import TODO
+        """Le navigateur ajoute au fil le segment que déclare le menu : un
+        menu sans segment ne contribuerait AUCUNE miette, en silence, et se
+        situerait sous Assistant."""
+        from script.todo.menus import assistant as menus_assistant
 
-        self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
+        self.assertEqual(menus_assistant.LLM.crumb, "LLM")
 
     def test_un_dispatche_vers_le_sous_menu_llm_seulement(self):
         """`[1]` ouvre LLM, et rien d'autre : une entrée déclarée à une
@@ -456,11 +456,9 @@ class SessionsClaudeCode(unittest.TestCase):
         self.assertTrue(hasattr(TODO, "prompt_claude_sessions"))
 
     def test_l_etiquette_de_fil_d_ariane_existe(self):
-        from script.todo.todo import TODO
+        from script.todo.menus import git as menus_git
 
-        self.assertEqual(
-            TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
-        )
+        self.assertEqual(menus_git.CLAUDE_CODE.crumb, "Claude Code")
 
     def test_six_dispatche_vers_les_sessions_seulement(self):
         """[6] de GPT code ouvre les sessions de Claude Code, et rien
