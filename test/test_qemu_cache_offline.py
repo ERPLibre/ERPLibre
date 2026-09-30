@@ -498,6 +498,7 @@ class TestCeQueLeCacheDetient(unittest.TestCase):
         for l in lignes:
             fh.write(json.dumps(l) + "\n")
         fh.close()
+        self.addCleanup(os.unlink, fh.name)
         return fh.name
 
     def test_le_nom_de_code_vient_du_catalogue(self):
@@ -1377,6 +1378,7 @@ class TestUnCheminQueSystemdReecrirait(unittest.TestCase):
         ) as fh:
             json.dump({"vms": [{"log": chemin_journal}]}, fh)
             manifeste = fh.name
+        self.addCleanup(os.unlink, manifeste)
         with contextlib.redirect_stdout(_io.StringIO()):
             rendu = todo._qemu_confier_la_levee(manifeste)
         return rendu, lances

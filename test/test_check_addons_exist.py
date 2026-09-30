@@ -4,6 +4,7 @@
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -16,6 +17,7 @@ class TestMainModuleFound(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
         # Create a valid addon
         addon_path = os.path.join(self.tmpdir, "my_addon")
         os.makedirs(addon_path)
@@ -71,6 +73,7 @@ class TestMainModuleMissing(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
         self.config_path = os.path.join(self.tmpdir, "config.conf")
         with open(self.config_path, "w") as f:
             f.write(f"[options]\naddons_path = {self.tmpdir}\n")
@@ -104,6 +107,7 @@ class TestMainDuplicateModule(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
         path1 = os.path.join(self.tmpdir, "addons1", "dup_mod")
         path2 = os.path.join(self.tmpdir, "addons2", "dup_mod")
         os.makedirs(path1)
@@ -135,6 +139,7 @@ class TestMainMissingManifest(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
         addon_path = os.path.join(self.tmpdir, "empty_addon")
         os.makedirs(addon_path)
         self.config_path = os.path.join(self.tmpdir, "config.conf")
@@ -155,6 +160,7 @@ class TestMainBadConfig(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
 
     def test_missing_options_section(self):
         config_path = os.path.join(self.tmpdir, "config.conf")

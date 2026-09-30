@@ -1655,6 +1655,7 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         ) as fh:
             fh.write(cmd)
             chemin = fh.name
+        self.addCleanup(pathlib.Path(chemin).unlink)
         res = subprocess.run(
             ["bash", "-n", chemin], capture_output=True, text=True
         )

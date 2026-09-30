@@ -6,12 +6,20 @@ import csv
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
 import zipfile
 from unittest.mock import patch
 
 from script.database.migrate.process_backup_file import process_zip
+
+
+def _mkdtemp(test):
+    """Crée un répertoire temporaire que le test supprime à sa fin."""
+    tmpdir = tempfile.mkdtemp()
+    test.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+    return tmpdir
 
 
 class TestProcessZip(unittest.TestCase):
@@ -22,7 +30,7 @@ class TestProcessZip(unittest.TestCase):
             zf.writestr(filename, content)
 
     def test_removes_matching_lines(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         input_zip = os.path.join(tmpdir, "input.zip")
         output_zip = os.path.join(tmpdir, "output.zip")
         self._create_zip(
@@ -38,7 +46,7 @@ class TestProcessZip(unittest.TestCase):
         self.assertNotIn("secret", content)
 
     def test_preserves_all_when_no_match(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         input_zip = os.path.join(tmpdir, "input.zip")
         output_zip = os.path.join(tmpdir, "output.zip")
         original = "line1\nline2\nline3\n"
@@ -51,7 +59,7 @@ class TestProcessZip(unittest.TestCase):
         self.assertIn("line3", content)
 
     def test_removes_all_matching(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         input_zip = os.path.join(tmpdir, "input.zip")
         output_zip = os.path.join(tmpdir, "output.zip")
         self._create_zip(
@@ -65,7 +73,7 @@ class TestProcessZip(unittest.TestCase):
         self.assertEqual(content.strip(), "")
 
     def test_other_files_untouched(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         input_zip = os.path.join(tmpdir, "input.zip")
         output_zip = os.path.join(tmpdir, "output.zip")
         with zipfile.ZipFile(input_zip, "w") as zf:
@@ -89,7 +97,7 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
             writer.writerows(rows)
 
     def test_identical_csvs(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         csv1 = os.path.join(tmpdir, "a.csv")
         csv2 = os.path.join(tmpdir, "b.csv")
         rows = [{"name": "mod1"}, {"name": "mod2"}]
@@ -104,7 +112,7 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
         self.assertEqual(len(s1.difference(s2)), 0)
 
     def test_different_csvs(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         csv1 = os.path.join(tmpdir, "a.csv")
         csv2 = os.path.join(tmpdir, "b.csv")
         self._write_csv(csv1, [{"name": "mod1"}, {"name": "mod2"}], ["name"])
@@ -119,7 +127,7 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
         self.assertEqual(s2.difference(s1), {"mod3"})
 
     def test_empty_csvs(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         csv1 = os.path.join(tmpdir, "a.csv")
         csv2 = os.path.join(tmpdir, "b.csv")
         self._write_csv(csv1, [], ["name"])
@@ -132,7 +140,7 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
         self.assertEqual(len(s1.union(s2)), 0)
 
     def test_one_empty_csv(self):
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = _mkdtemp(self)
         csv1 = os.path.join(tmpdir, "a.csv")
         csv2 = os.path.join(tmpdir, "b.csv")
         self._write_csv(csv1, [{"name": "mod1"}], ["name"])
@@ -147,8 +155,9 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
 
 
 class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
-    """« make db_drop_all » composait une commande « parallel », jetait son
-    code de retour et imprimait la liste des bases comme détruites.
+    """« make db_drop_all » compose une commande « parallel » et rend son
+    code de retour : la liste des bases ne s'imprime comme détruite que si
+    cette commande a réussi.
 
     Le cas s'atteint dès que « parallel » manque du PATH : le shell rend 127,
     pas une base n'est touchée, et l'opérateur passe à la suite en croyant

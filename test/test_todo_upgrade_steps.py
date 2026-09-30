@@ -364,10 +364,15 @@ class TestBackGate(unittest.TestCase):
 
     def setUp(self):
         import os
+        import shutil
         import tempfile
 
+        # Enregistré avant le retour au répertoire d'origine : les nettoyages
+        # s'exécutent à rebours, on quitte le répertoire avant de l'effacer.
+        workdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, workdir, ignore_errors=True)
         self.addCleanup(os.chdir, os.getcwd())
-        os.chdir(tempfile.mkdtemp())
+        os.chdir(workdir)
         os.makedirs(".venv.erplibre", exist_ok=True)
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang

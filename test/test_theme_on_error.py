@@ -17,6 +17,7 @@ précis, des heures plus tard : la poser au départ ne pouvait pas suffire.
 
 import io
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -33,6 +34,7 @@ class TestTheDetection(unittest.TestCase):
     def setUp(self):
         self.obj = TodoUpgrade.__new__(TodoUpgrade)
         self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
         self.obj.log_dir = lambda: self.dossier
         self.obj.current_step = "4.5.J - Migrate database"
         self.obj.step_slug = staticmethod(lambda msg: "etape")
@@ -93,6 +95,7 @@ class TestReadingTheTail(unittest.TestCase):
     def setUp(self):
         self.obj = TodoUpgrade.__new__(TodoUpgrade)
         self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
         self.obj.log_dir = lambda: self.dossier
         self.obj.current_step = "etape"
         self.obj.step_slug = staticmethod(lambda msg: "etape")

@@ -15,6 +15,7 @@ vraiment. Un manifeste Google Repo sépare la forge (« remote ») du projet
 dans plusieurs manifestes, un par version d'Odoo.
 """
 
+import shutil
 import sys
 import tempfile
 import unittest
@@ -30,13 +31,21 @@ from script.todo.qemu_cache_menu import (  # noqa: E402
 )
 
 
-def faux_depot(manifestes, listes=None):
+def repertoire_temporaire(cas):
+    """Un répertoire vide que `cas` supprime à la fin du test."""
+    d = tempfile.mkdtemp()
+    cas.addCleanup(shutil.rmtree, d, ignore_errors=True)
+    return d
+
+
+def faux_depot(cas, manifestes, listes=None):
     """Un dépôt de manifestes en dur, pour ne pas dépendre des vrais.
 
     `listes` pose les fichiers de conf que la fusion lit — {nom: [chemins]} —
-    faute de quoi une version n'aurait aucun manifeste commun.
+    faute de quoi une version n'aurait aucun manifeste commun. Le répertoire
+    disparaît à la fin du test `cas`.
     """
-    d = tempfile.mkdtemp()
+    d = repertoire_temporaire(cas)
     (Path(d) / "manifest").mkdir()
     for nom, contenu in manifestes.items():
         (Path(d) / "manifest" / nom).write_text(contenu, encoding="utf-8")
@@ -89,7 +98,7 @@ class TestLaBorneParVersion(unittest.TestCase):
     }
 
     def depot(self, listes=None):
-        return faux_depot(self.MANIFESTES, listes or self.LISTES)
+        return faux_depot(self, self.MANIFESTES, listes or self.LISTES)
 
     def test_la_base_retient_la_version_son_dev_et_les_communs(self):
         urls = depots_des_manifestes(self.depot(), "18.0")
@@ -127,12 +136,13 @@ class TestLaBorneParVersion(unittest.TestCase):
 class TestExtraction(unittest.TestCase):
     def test_lurl_est_la_forge_plus_le_projet(self):
         d = faux_depot(
+            self,
             {
                 "a.xml": "<manifest>"
                 '<remote name="F" fetch="https://forge.example/org/" />'
                 '<project name="outil.git" remote="F" />'
                 "</manifest>"
-            }
+            },
         )
         self.assertEqual(
             depots_des_manifestes(d), ["https://forge.example/org/outil.git"]
@@ -145,16 +155,17 @@ class TestExtraction(unittest.TestCase):
             '<manifest><remote name="F" fetch="https://f.example/" />'
             '<project name="p.git" remote="F" /></manifest>'
         )
-        d = faux_depot({"odoo17.xml": commun, "odoo18.xml": commun})
+        d = faux_depot(self, {"odoo17.xml": commun, "odoo18.xml": commun})
         self.assertEqual(depots_des_manifestes(d), ["https://f.example/p.git"])
 
     def test_les_barres_obliques_ne_se_doublent_pas(self):
         d = faux_depot(
+            self,
             {
                 "a.xml": "<manifest>"
                 '<remote name="F" fetch="https://f.example/org/" />'
                 '<project name="/p.git" remote="F" /></manifest>'
-            }
+            },
         )
         self.assertEqual(
             depots_des_manifestes(d), ["https://f.example/org/p.git"]
@@ -164,12 +175,13 @@ class TestExtraction(unittest.TestCase):
         """Sinon l'URL serait un nom de projet nu, que git ne sait pas
         cloner et dont l'échec ne se lirait qu'à l'exécution."""
         d = faux_depot(
+            self,
             {
                 "a.xml": "<manifest>"
                 '<remote name="F" fetch="https://f.example/" />'
                 '<project name="orphelin.git" remote="INCONNUE" />'
                 '<project name="bon.git" remote="F" /></manifest>'
-            }
+            },
         )
         self.assertEqual(
             depots_des_manifestes(d), ["https://f.example/bon.git"]
@@ -179,17 +191,20 @@ class TestExtraction(unittest.TestCase):
         """La liste sert à prendre de l'avance : en perdre une part vaut
         mieux que de ne rien prendre."""
         d = faux_depot(
+            self,
             {
                 "casse.xml": "<manifest><project",
                 "bon.xml": "<manifest>"
                 '<remote name="F" fetch="https://f.example/" />'
                 '<project name="p.git" remote="F" /></manifest>',
-            }
+            },
         )
         self.assertEqual(depots_des_manifestes(d), ["https://f.example/p.git"])
 
     def test_aucun_manifeste_rend_une_liste_vide(self):
-        self.assertEqual(depots_des_manifestes(tempfile.mkdtemp()), [])
+        self.assertEqual(
+            depots_des_manifestes(repertoire_temporaire(self)), []
+        )
 
 
 def version_du_checkout():
