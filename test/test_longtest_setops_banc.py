@@ -4444,5 +4444,63 @@ class TestLAdresseDeRecours(unittest.TestCase):
         self.assertEqual("192.0.2.1", lu["dns_amorcage"])
 
 
+class TestUneCopieQuiPrecedeSonModele(unittest.TestCase):
+    """Relancer sans défaire réutilise l'écosystème posé, et c'est voulu : rien
+    ne doit écraser ce qui est déjà là. Mais une copie qui PRÉCÈDE une évolution
+    du modèle fait éprouver un plan que le dépôt ne porte plus — et le lancement
+    rend VERT sur autre chose que ce qu'on croit mesurer."""
+
+    def atelier(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        moteur = os.path.join(d, "moteur")
+        modele = os.path.join(moteur, B.MODELE_SOCLE)
+        os.makedirs(os.path.join(modele, "plan"))
+        for nom in ("README.md", os.path.join("plan", "serveurs.yml")):
+            with open(os.path.join(modele, nom), "w", encoding="utf-8") as f:
+                f.write("du contenu\n")
+        eco = os.path.join(d, "eco")
+        shutil.copytree(modele, eco)
+        return moteur, modele, eco
+
+    def vieillis(self, chemin, secondes=120):
+        """Recule la date de `chemin` — le modèle devient plus récent qu'elle."""
+        vu = os.stat(chemin)
+        os.utime(chemin, (vu.st_atime - secondes, vu.st_mtime - secondes))
+
+    def test_a_fresh_copy_is_not_stale(self):
+        """Le contrôle positif : sans lui, un garde qui crierait toujours
+        rendrait toute relance impossible."""
+        moteur, _modele, eco = self.atelier()
+        self.assertEqual("", B.modele_plus_recent(moteur, eco))
+
+    def test_a_model_file_newer_than_its_copy_is_named(self):
+        """LA PROPRIÉTÉ, et le refus NOMME le fichier : « quelque chose a
+        bougé » enverrait comparer deux arborescences à la main."""
+        moteur, _modele, eco = self.atelier()
+        self.vieillis(os.path.join(eco, "plan", "serveurs.yml"))
+        self.assertEqual(
+            os.path.join("plan", "serveurs.yml"),
+            B.modele_plus_recent(moteur, eco),
+        )
+
+    def test_a_file_the_copy_never_had_is_named_too(self):
+        """Un fichier neuf du modèle est par construction plus récent que la
+        copie, et son absence EST la dérive qu'on cherche."""
+        moteur, modele, eco = self.atelier()
+        with open(
+            os.path.join(modele, "neuf.yml"), "w", encoding="utf-8"
+        ) as f:
+            f.write("une application de plus\n")
+        self.assertEqual("neuf.yml", B.modele_plus_recent(moteur, eco))
+
+    def test_nothing_to_compare_names_nothing(self):
+        """Sans modèle ou sans copie, il n'y a pas de dérive à constater — la
+        pose qui suit copiera, ce qui est le cas normal d'un terrain neuf."""
+        moteur, _modele, eco = self.atelier()
+        self.assertEqual("", B.modele_plus_recent(moteur, "/f/inexistant"))
+        self.assertEqual("", B.modele_plus_recent("/f/inexistant", eco))
+
+
 if __name__ == "__main__":
     unittest.main()
