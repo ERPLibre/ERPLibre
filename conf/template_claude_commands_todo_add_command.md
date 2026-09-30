@@ -61,9 +61,10 @@ Entry("My feature - What it does", "_my_feature"),
 `kwargs={"name": "literal"}` passes arguments to the method, and
 `danger=True` marks an entry that runs as root or installs software: its
 menu runs it, the navigation telemetry TUI and the web page do not. A menu
-file holds registry calls with literal arguments, nothing else. A menu
-that has no `Menu` in `script/todo/menus/` is still written by hand: its
-`choices` item and its `elif status == "N"` branch are added together.
+file holds registry calls with literal arguments, nothing else. A numbered
+menu is always declared: `TestGuards` in `test/test_todo_ui_legacy.py`
+refuses a menu loop numbered by hand in `script/todo/`, outside those
+`NUMBERED_LOOPS` names, a list that only shrinks.
 
 3. **Keep the menu method as it is**: the public method of a declared menu
 stays `return navigate(self, menus_git.GIT)`. A new submenu is a `Menu(...)`

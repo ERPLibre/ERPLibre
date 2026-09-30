@@ -9,8 +9,9 @@ boucle d'urwid. L'ordre d'import (les `ask=input` liés à l'import, le
 sys.stdout d'urwid, le navigateur que todo.py importe sous son nom court)
 et les menus du vrai TODO se vérifient dans un processus à part, HOME
 temporaire, la capture posée avant tout import de TODO comme dans le
-worker. Deux gardes lisent le code : les écrans qui numérotent sans
-crochets, épinglés, et les formes que la capture ne voit pas.
+worker. Des gardes lisent le code : les écrans qui numérotent sans
+crochets et les menus numérotés écrits à la main, épinglés, et les formes
+que la capture ne voit pas.
 """
 
 import ast
@@ -155,6 +156,35 @@ RAW_CALLS = {
     "script/vpn/runner.py": 1,
     "script/vpn/vault.py": 2,
 }
+# Les menus numérotés écrits à la main hors du navigateur, par (fichier,
+# fonction), chacun avec ce que le registre ne sait pas en dire. La liste
+# ne fait que rétrécir, et son test en borne la taille : un menu neuf se
+# déclare dans script/todo/menus/, et un menu déclaré en sort.
+NUMBERED_LOOPS = {
+    ("script/todo/todo_upgrade.py", "show_stats"): (
+        "[t], une lettre, répond hors d'un menu `asks`"
+    ),
+    ("script/todo/todo_upgrade.py", "_prompt_on_error"): (
+        "une réponse par défaut, et [6] garde son numéro quand [2] à [5]"
+        " manquent"
+    ),
+    ("script/todo/qemu_menu.py", "_qemu_stats"): (
+        "[r], une lettre, répond hors d'un menu `asks`"
+    ),
+    ("script/todo/todo.py", "generate_config_from_preconfiguration"): (
+        "rien : déclaré sans segment, il garde son nœud et sa clé"
+    ),
+    ("script/todo/todo.py", "debug_ide"): (
+        "rien : déclaré sans segment, il garde son nœud et sa clé"
+    ),
+}
+# Une entrée fixe d'un menu : « [k] », k un chiffre ou une lettre.
+FIXED_ENTRY = re.compile(r"\[([0-9A-Za-z])\]")
+# Les questions d'une boucle de menu : celles de ASKS, et celles de
+# script.todo.ui, où RAW_CALLS envoie toute question neuve.
+LOOP_ASKS = ASKS | {"ui.ask", "ui.menu", "ui.choose"}
+# Les comparaisons qui égalent une réponse à un numéro.
+MATCHES = (ast.Eq, ast.NotEq, ast.In, ast.NotIn)
 
 
 def _dotted(node) -> str:
@@ -231,6 +261,91 @@ def screens() -> dict:
                     )
             if asks and numberings:
                 found[(rel, function.name)] = numberings
+    return found
+
+
+def _number(node):
+    """Le numéro qu'écrit `node` : une chaîne de chiffres, ou un entier
+    qui n'est pas un booléen, en chaîne ; None pour toute autre valeur."""
+    if isinstance(node, ast.Constant):
+        value = node.value
+        if isinstance(value, str) and value.isascii() and value.isdecimal():
+            return value
+        if isinstance(value, int) and not isinstance(value, bool):
+            return str(value)
+    return None
+
+
+def _numbers(compare) -> set:
+    """Les numéros auxquels la comparaison `compare` égale une réponse,
+    seuls ou dans un tuple, une liste ou un ensemble : « 2 » de
+    `choix == "2"` et de `choix == 2`, « 1 » et « 2 » de
+    `choix in ("1", "2")`. Une borne, `1 <= rang`, n'en égale aucun."""
+    if not all(isinstance(op, MATCHES) for op in compare.ops):
+        return set()
+    found = set()
+    for side in (compare.left, *compare.comparators):
+        items = [side]
+        if isinstance(side, (ast.Tuple, ast.List, ast.Set)):
+            items = side.elts
+        found |= {_number(item) for item in items} - {None}
+    return found
+
+
+def numbered_loops(source) -> set:
+    """Les fonctions de `source` qui écrivent un menu numéroté à la main :
+    une boucle `while` qui pose une question (LOOP_ASKS) et, dans ses
+    propres nœuds ou dans la valeur d'un nom qu'elle passe à la question,
+    écrit au moins deux entrées fixes « [k] », dont un chiffre, sans
+    entrée calculée, ou écrit des entrées calculées, « [{…}] » ou par
+    `fill_help_info`, et égale une réponse à un numéro autre que « 0 »,
+    par une comparaison ou un `case`. Une liste calculée dont une réponse
+    choisit un élément par son rang (un sélecteur), une question oui/non
+    et une question avec sa valeur par défaut « [{…}] » n'en sont pas."""
+    found = set()
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        # Le texte d'un menu se bâtit souvent avant la boucle qui le pose.
+        values = {}
+        for node in _own_nodes(function):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        values.setdefault(target.id, []).append(node.value)
+        for loop in _own_nodes(function):
+            if not isinstance(loop, ast.While):
+                continue
+            screen = list(_own_nodes(loop))
+            for call in list(screen):
+                if not (
+                    isinstance(call, ast.Call)
+                    and _dotted(call.func) in LOOP_ASKS
+                ):
+                    continue
+                for arg in [*call.args, *(k.value for k in call.keywords)]:
+                    if isinstance(arg, ast.Name):
+                        for value in values.get(arg.id, []):
+                            screen.extend(ast.walk(value))
+            asks, computed, fixed, numbers = False, False, set(), set()
+            for node in screen:
+                if isinstance(node, ast.Call):
+                    name = _dotted(node.func)
+                    asks = asks or name in LOOP_ASKS
+                    computed = computed or name.endswith("fill_help_info")
+                elif isinstance(node, ast.Compare):
+                    numbers |= _numbers(node)
+                elif isinstance(node, ast.MatchValue):
+                    numbers |= {_number(node.value)} - {None}
+                text = _skeleton(node)
+                fixed.update(FIXED_ENTRY.findall(text))
+                computed = computed or "[{}]" in text
+            digit = fixed & set("0123456789")
+            if asks and (
+                (len(fixed) >= 2 and digit and not computed)
+                or (computed and numbers - {"0"})
+            ):
+                found.add(function.name)
     return found
 
 
@@ -791,6 +906,79 @@ class TestGuards(unittest.TestCase):
             if counts.get(rel, 0) < pinned
         ]
         self.assertEqual(lower, [], "lower RAW_CALLS to these counts")
+
+    def test_no_numbered_menu_is_written_by_hand(self):
+        # Hors du navigateur, dans script/todo/ : les seuls menus numérotés
+        # écrits à la main sont ceux de NUMBERED_LOOPS.
+        found = set()
+        for path in sorted((REPO / "script" / "todo").rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            if rel == "script/todo/ui/navigator.py":
+                continue
+            names = numbered_loops(path.read_text(encoding="utf-8"))
+            found |= {(rel, name) for name in names}
+        self.assertEqual(
+            sorted(found - set(NUMBERED_LOOPS)),
+            [],
+            "declare the menu in script/todo/menus/",
+        )
+        self.assertEqual(
+            sorted(set(NUMBERED_LOOPS) - found),
+            [],
+            "remove these from NUMBERED_LOOPS",
+        )
+        self.assertLessEqual(
+            len(NUMBERED_LOOPS),
+            5,
+            "declare the menu in script/todo/menus/, never list it here",
+        )
+
+    def test_the_loop_guard_sees_each_form(self):
+        # Un menu numéroté : des entrées fixes, ou des entrées calculées et
+        # une réponse égalée à un numéro, dans la boucle ou dans le texte
+        # qu'elle pose, bâti avant elle. Un sélecteur, une seule entrée
+        # fixe, une boucle qui ne demande rien, une question oui/non et une
+        # question avec sa valeur par défaut n'en sont pas.
+        def menu(*lines):
+            body = "".join(f"        {line}\n" for line in lines)
+            return f"def menu(self, xs, n, x):\n    while True:\n{body}"
+
+        menus = [
+            menu('print("[1] A")', 'print("[t] B")', "a = input()"),
+            menu('print(f"[{n}] {x}")', "a = self.ask('?')", 'a == "2"'),
+            menu(
+                "a = click.prompt(self.fill_help_info(xs))",
+                'a in ("0", "2")',
+            ),
+            "def menu(self, xs):\n"
+            "    text = self.fill_help_info(xs)\n"
+            "    while True:\n"
+            "        a = click.prompt(text)\n"
+            '        if a == "1":\n'
+            "            pass\n",
+            menu('a = ui.ask("[1] A\\n[2] B")'),
+            menu('print(f"[{n}] {x}")', "a = int(input())", "a == 2"),
+            menu(
+                'print(f"[{n}] {x}")',
+                "match input():",
+                '    case "1":',
+                "        pass",
+            ),
+        ]
+        for source in menus:
+            with self.subTest(source=source):
+                self.assertEqual(numbered_loops(source), {"menu"})
+        others = [
+            menu('print(f"[{n}] {x}")', "a = input()", 'a == "0"'),
+            menu('print(f"[{n}] {x}")', "a = int(input())", "1 <= a"),
+            menu('print("[0] Back")', "a = input()"),
+            menu('print("[1] A")', 'print("[2] B")'),
+            menu("a = input(f'Port [{n}]: ')", "int(a)"),
+            menu('a = input("Overwrite? [y] yes, [n] no: ")'),
+        ]
+        for source in others:
+            with self.subTest(source=source):
+                self.assertEqual(numbered_loops(source), set())
 
     def test_the_count_sees_each_raw_call(self):
         source = (
