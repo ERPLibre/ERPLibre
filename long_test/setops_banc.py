@@ -3282,6 +3282,29 @@ def identites_du_moteur(moteur):
     return tuple(vaults.lit_identites(vu.sortie) or ())
 
 
+def voutes_siennes(voutes):
+    """Les voûtes du BANC parmi celles que le moteur recense. Ou ().
+
+    LE MOTEUR NOMME TOUT CE QU'IL CONNAÎT, pas seulement le banc : un dépôt
+    frère posé à côté — une instance réelle, un site — entre dans son
+    recensement dès qu'il est là.
+
+    CE QU'UNE CLÉ DE TROP COÛTE : posée puis NOMMÉE dans l'empreinte, elle
+    s'efface au `--detruire` suivant. Une voûte dont la clé est partie ne se
+    déchiffre plus par personne — cette clé vit exprès HORS du dépôt, donc
+    aucune sauvegarde de celui-ci ne la contient.
+
+    LE MÊME PRÉDICAT AUX DEUX BOUTS, et c'est là que la faute était : la
+    relecture de l'empreinte refuse depuis toujours une clé qui n'est pas au
+    banc, l'écriture ne s'en servait pas. Le banc écrivait donc une empreinte
+    que sa propre relecture rejetait, et le refus disait « illisible » — ce qui
+    ne nomme pas le dépôt de trop.
+    """
+    return tuple(
+        v for v in voutes or () if cle_du_banc(getattr(v, "chemin", ""))
+    )
+
+
 def identite_de_role(voutes, identites, role):
     """L'identité de la voûte tenue par `role`, ou None. Ne lève jamais.
 
@@ -3379,12 +3402,15 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
     voutes = voutes_du_moteur(moteur)
     if not voutes:
         return "le moteur n'a pas dit ses voûtes", secret
-    souci = chantier.nomme(cles=tuple(v.chemin for v in voutes))
+    siennes = voutes_siennes(voutes)
+    if not siennes:
+        return "aucune voûte du banc parmi celles du moteur", secret
+    souci = chantier.nomme(cles=tuple(v.chemin for v in siennes))
     if souci:
         return souci, secret
-    dire(f"  · les {len(voutes)} clés de voûte")
+    dire(f"  · les {len(siennes)} clés de voûte")
     vaults = vaults_du_banc()
-    for voute in voutes:
+    for voute in siennes:
         pose = vaults.poser_cle(voute.chemin)
         if pose.resultat not in (vaults.POSEE, vaults.DEJA_LA):
             return (
@@ -3392,8 +3418,11 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
                 secret,
             )
 
+    # SES VOÛTES À LUI, ici aussi : le recensement du moteur porte celles des
+    # dépôts frères, et un site réel y tient le rôle d'hébergeur comme le sien.
+    # Le banc scellerait alors son jeton sous une clé qui n'est pas la sienne.
     identites = identites_du_moteur(moteur)
-    identite = identite_de_role(voutes, identites, vaults.HEBERGEUR)
+    identite = identite_de_role(siennes, identites, vaults.HEBERGEUR)
     if identite is None:
         return "l'identité de la voûte de l'hébergeur ne s'est pas lue", secret
     dire(f"  · le jeton scellé dans {VOUTE_UNDERLAY}")
@@ -3408,7 +3437,7 @@ def pose_le_banc(moteur, mesures, chantier, dire=print):
     # vide, et l'assertion nomme le secret sans dire qui aurait dû le poser.
     # La voûte du locataire n'est pas celle de l'hébergeur : la seconde porte le
     # jeton et l'emporte sur la première, qui ne sort pas de son dépôt.
-    identite = identite_de_role(voutes, identites, vaults.INSTANCE)
+    identite = identite_de_role(siennes, identites, vaults.INSTANCE)
     if identite is None:
         return "l'identité de la voûte du locataire ne s'est pas lue", secret
     secrets, souci = forge_les_secrets()
