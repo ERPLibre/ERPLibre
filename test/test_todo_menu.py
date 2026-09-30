@@ -115,12 +115,12 @@ class TestLesIconesDuMenuProxmox(unittest.TestCase):
 
 
 class TestLArbreDesMenus(unittest.TestCase):
-    """L'arbre de télémétrie se lit dans le CODE, sans la classe assemblée.
+    """L'arbre de télémétrie se lit dans les DÉCLARATIONS, sans rien importer.
 
-    `build_code_tree()` lit la classe TODO de todo.py, les mixins que
-    todo.py importe (QEMU/KVM, Proxmox…) et les menus du registre : un menu
-    qui vit hors de todo.py garde sa colonne. Chaque feuille porte la
-    méthode et les kwargs que la TUI de télémétrie lui passe.
+    `build_code_tree()` lit les menus du registre (`menus/*.py`), le module
+    du registre et todo.json : un menu déclaré garde sa colonne, où que
+    vive sa méthode. Chaque feuille porte la méthode et les kwargs que la
+    TUI de télémétrie lui passe.
     """
 
     @classmethod
@@ -142,6 +142,22 @@ class TestLArbreDesMenus(unittest.TestCase):
     def test_the_tree_is_built_at_all(self):
         self.assertIsNotNone(self.arbre)
 
+    def test_the_tree_reads_only_the_declared_menus(self):
+        # Les fichiers de menus, le module du registre et todo.json
+        # suffisent : sans todo.py ni ses mixins, l'arbre est le même,
+        # nœud pour nœud.
+        import shutil
+
+        from script.todo.todo_telemetry import build_code_tree
+
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp)
+            shutil.copytree(TODO_DIR / "menus", copy / "menus")
+            (copy / "ui").mkdir()
+            shutil.copy(TODO_DIR / "ui" / "registry.py", copy / "ui")
+            shutil.copy(TODO_DIR / "todo.json", copy)
+            self.assertEqual(build_code_tree(copy / "todo.py"), self.arbre)
+
     def test_each_menu_of_the_tree_is_declared(self):
         # Le segment de chaque menu de l'arbre est déclaré : le `crumb`
         # d'un menu du registre, ou celui d'une entrée dont l'action
@@ -161,15 +177,6 @@ class TestLArbreDesMenus(unittest.TestCase):
                     yield from segments(child)
 
         self.assertEqual(set(segments(self.arbre)) - declared, set())
-
-    def test_the_mixin_files_come_from_the_imports(self):
-        # Lus dans les imports de todo.py : un mixin ajouté demain apparaît
-        # sans qu'on pense à l'inscrire ici.
-        from script.todo.todo_telemetry import _mixin_files
-
-        noms = {f.name for f in _mixin_files(TODO_DIR / "todo.py")}
-        self.assertIn("qemu_menu.py", noms)
-        self.assertIn("proxmox_menu.py", noms)
 
     def test_the_qemu_column_carries_its_commands(self):
         noeud = self._noeud("QEMU/KVM")
@@ -269,10 +276,9 @@ class TestLArbreDesMenus(unittest.TestCase):
         self.assertEqual(leaves[: len(expected)], expected)
 
     def test_configuration_and_update_come_from_the_registry(self):
-        # Le registre donne ce que la dérivation AST ne voit pas dans
-        # `return navigate(…)` : Fork et Reset, les kwargs de _pref_edit, la
-        # méthode d'Upgrade Odoo. Un libellé qui finit par un suffixe
-        # calculé n'a pas d'entrée fixe.
+        # Le registre donne chaque entrée : Fork et Reset, les kwargs de
+        # _pref_edit, la méthode d'Upgrade Odoo. Un libellé qui finit par
+        # un suffixe calculé n'a pas d'entrée fixe.
         [configuration] = [
             n for n in self.arbre["children"] if n["label"] == "Configuration"
         ]
@@ -527,33 +533,6 @@ class TestLArbreDesMenus(unittest.TestCase):
             ],
         )
 
-    def test_a_computed_label_keeps_the_numbering(self):
-        # fill_help_info numérote chaque entrée qui n'est pas une section,
-        # son libellé écrit ou calculé : la troisième reste la troisième, et
-        # une section au titre calculé n'en prend aucun.
-        from script.todo.todo_telemetry import _choice_entries
-
-        func = ast.parse(
-            "def menu(self):\n"
-            "    choices = [\n"
-            '        {"section": titre},\n'
-            '        {"prompt_description": parler},\n'
-            '        {"prompt_description": f"{t(\'A\')}  ({x})"},\n'
-            '        {"prompt_description": t("Second")},\n'
-            '        {"section": t("Server")},\n'
-            '        {"prompt_description_key": "Third"},\n'
-            "    ]\n"
-        ).body[0]
-        self.assertEqual(
-            _choice_entries(func),
-            [
-                {"label": None, "section": None},
-                {"label": None, "section": None},
-                {"label": "Second", "section": None},
-                {"label": "Third", "section": "Server"},
-            ],
-        )
-
     def test_the_breadcrumb_names_the_proxmox_menu(self):
         # Sans étiquette, le fil d'Ariane sauterait le menu Proxmox : on
         # lirait « TODO › Execute › Deploy » en étant deux niveaux plus bas.
@@ -566,9 +545,8 @@ class TestLArbreDesMenus(unittest.TestCase):
 
     def test_a_submenu_carries_the_entry_its_parent_shows(self):
         # Le fil d'Ariane dit « Code », le menu Exécution montre « Code -
-        # Developer tools » : la page web cherche celle-ci pour y entrer.
-        # Écrite dans une f-string « [N] {t(…)} », dans une liste
-        # « choices », ou ajoutée par « choices.append ».
+        # Developer tools » : la page web cherche celle-ci pour y entrer,
+        # la clé de l'entrée déclarée qui ouvre le sous-menu.
         code = self._noeud("Code")
         self.assertEqual(code["entry"], "Code - Developer tools")
         deploy = self._noeud("Deploy")
@@ -623,104 +601,6 @@ class TestLArbreDesMenus(unittest.TestCase):
         servers = self._noeud("Servers", self._noeud("LLM"))
         self.assertTrue(servers["is_menu"])
         self.assertEqual(servers["entry"], "")
-
-    def test_a_computed_appended_label_is_no_command(self):
-        # Le menu Servers ajoute une entrée par serveur connu, au libellé
-        # calculé à l'affichage : il n'en reste que « — », qu'aucune entrée
-        # ne montre. Ses deux commandes écrites restent, chacune avec sa
-        # méthode, que la place de l'entrée calculée situe encore.
-        from script.todo.todo_telemetry import _choices_children
-
-        servers = self._noeud("Servers", self._noeud("LLM"))
-        self.assertEqual(
-            [n["label"] for n in servers["children"]],
-            ["Add a server by hand", "Delete a server"],
-        )
-        func = ast.parse(
-            "def menu(self):\n"
-            "    choices = []\n"
-            "    for nom in noms:\n"
-            '        choices.append({"prompt_description": f"{nom} — {x}"})\n'
-            '    choices.append({"prompt_description": t("Add")})\n'
-            '    choices.append({"prompt_description": t("Delete")})\n'
-            "    if status == str(len(choices) - 1):\n"
-            "        self.add()\n"
-            "    elif status == str(len(choices)):\n"
-            "        self.delete()\n"
-        ).body[0]
-        self.assertEqual(
-            _choices_children(func, TODO_DIR),
-            [("Add", "add", {}), ("Delete", "delete", {})],
-        )
-
-    def test_a_computed_label_counts_for_the_entries_before_it(self):
-        # Le dispatch compte depuis la fin : l'entrée calculée entre Add et
-        # Delete situe Add, à « len(choices) - 2 ». Une méthode qui lui
-        # répond en fait une commande, gardée avec le libellé qui en reste.
-        from script.todo.todo_telemetry import _choices_children
-
-        source = (
-            "def menu(self):\n"
-            "    choices = []\n"
-            '    choices.append({"prompt_description": t("Add")})\n'
-            "    for nom in noms:\n"
-            '        choices.append({"prompt_description": f"{nom} — {x}"})\n'
-            '    choices.append({"prompt_description": t("Delete")})\n'
-            "    if status == str(len(choices) - 2):\n"
-            "        self.add()\n"
-            "    elif status == str(len(choices)):\n"
-            "        self.delete()\n"
-        )
-        func = ast.parse(source).body[0]
-        self.assertEqual(
-            _choices_children(func, TODO_DIR),
-            [("Add", "add", {}), ("Delete", "delete", {})],
-        )
-        func = ast.parse(
-            source
-            + "    elif status == str(len(choices) - 1):\n"
-            + "        self.show()\n"
-        ).body[0]
-        self.assertEqual(
-            _choices_children(func, TODO_DIR),
-            [
-                ("Add", "add", {}),
-                (" — ", "show", {}),
-                ("Delete", "delete", {}),
-            ],
-        )
-
-    def test_a_label_that_is_not_a_string_leaves_the_tree_built(self):
-        # « t(5) » n'est pas un libellé : son entrée garde son numéro, sans
-        # libellé, et l'arbre se bâtit.
-        import tempfile
-
-        from script.todo.todo_telemetry import _str_of, build_code_tree
-
-        self.assertIsNone(_str_of(ast.parse("t(5)", mode="eval").body))
-        with tempfile.TemporaryDirectory() as tmp:
-            todo_py = Path(tmp) / "todo.py"
-            todo_py.write_text(
-                "class TODO:\n"
-                '    _MENU_LABELS = {"run": "TODO"}\n'
-                "\n"
-                "    def run(self):\n"
-                "        choices = [\n"
-                '            {"prompt_description": t(5)},\n'
-                '            {"prompt_description": t("Second")},\n'
-                "        ]\n"
-                "        status = input()\n"
-                '        if status == "1":\n'
-                "            self.first()\n"
-                '        elif status == "2":\n'
-                "            self.second()\n",
-                encoding="utf-8",
-            )
-            arbre = build_code_tree(todo_py)
-        self.assertEqual(
-            [(n["label"], n.get("entry")) for n in arbre["children"]],
-            [("first", ""), ("Second", None)],
-        )
 
     def test_no_submenu_entry_is_a_sibling_leaf_label(self):
         # La page répond à un menu l'entrée d'un sous-menu par ses lettres
@@ -810,19 +690,6 @@ class TestLArbreDesMenus(unittest.TestCase):
                 ),
             ],
         )
-
-    def test_a_help_line_names_its_entry_once(self):
-        # « [N] {t("…")} » dans une f-string ; un libellé calculé n'y entre
-        # pas, ni un numéro que la méthode écrit avec deux libellés.
-        from script.todo.todo_telemetry import _help_entries
-
-        func = ast.parse(
-            "def menu(self):\n"
-            "    print(f\"[1] {t('One')}\\n[2] {t('Two')}\\n[3] {nom}\")\n"
-            "    if autre:\n"
-            "        print(f\"[1] {t('Other')}\")\n"
-        ).body[0]
-        self.assertEqual(_help_entries(func), {2: "Two"})
 
     def test_git_lists_its_configured_entries_and_shell_tools(self):
         # Les éléments de `git_from_makefile` suivent les quatre entrées

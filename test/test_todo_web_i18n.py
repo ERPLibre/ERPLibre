@@ -15,7 +15,6 @@ aucune méthode de TODO ni aucun identifiant de menu : ce qu'elle montre
 vient des messages et de /api/telemetry.
 """
 
-import ast
 import re
 import unittest
 from pathlib import Path
@@ -50,14 +49,6 @@ EXPIRED = (
 )
 
 
-def _todo_class():
-    """La classe TODO de todo.py, lue sans l'importer."""
-    source = (REPO / "script" / "todo" / "todo.py").read_text(encoding="utf-8")
-    return next(
-        n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.ClassDef)
-    )
-
-
 def _command_names() -> set:
     """Méthodes que l'arbre de TODO rattache à un menu ou à une feuille,
     et toutes celles que nomme un menu du registre : état, ouverture,
@@ -75,7 +66,6 @@ def _command_names() -> set:
             walk(child)
 
     walk(todo_telemetry.build_code_tree())
-    names |= set(todo_telemetry._menu_labels(_todo_class()))
     todo_dir = REPO / "script" / "todo"
     for menu in todo_telemetry._declared_menus(todo_dir).values():
         names |= {menu.get(k) for k in ("name", "state", "opens", "before")}
@@ -145,7 +135,9 @@ class TestWords(unittest.TestCase):
         # Le libellé de l'entrée, emoji ôté, tel que TODO l'affiche dans
         # chaque langue : un libellé renommé fait échouer ce test.
         self.assertIn(EXPIRED, page_keys())
-        label = todo_telemetry._menu_labels(_todo_class())["prompt_telemetry"]
+        todo_dir = REPO / "script" / "todo"
+        menu = todo_telemetry._declared_menus(todo_dir)["prompt_telemetry"]
+        label = menu["crumb"]
         for lang in todo_i18n.LANGUAGES:
             shown = todo_i18n.translate(label, lang).split(" ", 1)[1]
             self.assertTrue(

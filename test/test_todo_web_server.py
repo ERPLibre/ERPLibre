@@ -442,30 +442,23 @@ class TestIdle(HubCase):
         await asyncio.wait_for(self.hub.stopped.wait(), 5)
 
 
-# Un todo.py minimal : un menu Execute, une feuille « Quit » sous une
-# section. build_code_tree le lit par AST, sans l'importer.
-FAKE_TODO = """\
-class TODO:
-    _MENU_LABELS = {"run": "TODO", "prompt_execute": "Execute"}
-
-    def run(self):
-        choices = [{"prompt_description": t("Execute")}]
-        status = input()
-        if status == "1":
-            self.prompt_execute()
-
-    def prompt_execute(self):
-        choices = [
-            {"section": t("Configuration")},
-            {"prompt_description": t("Quit")},
-        ]
-        status = input()
-        if status == "1":
-            self.leave()
-"""
-# Un fichier de menus du registre, qui déclare le menu Execute de
-# FAKE_TODO ; le module du registre, qui nomme ses arguments.
+# Les menus d'un TODO minimal, déclarés au registre : le menu principal
+# ouvre Execute, dont la feuille « Quit » vient sous une section.
+# build_code_tree les lit par AST, sans les importer.
 DECLARED = """\
+from script.todo.ui.registry import Entry, Menu, Section
+
+MAIN = Menu("run", "TODO", [Entry("Execute", "prompt_execute")], back=None)
+
+EXECUTE = Menu(
+    "prompt_execute",
+    "Execute",
+    [Section("Configuration"), Entry("Quit", "leave")],
+)
+"""
+# Un second fichier de menus, lu après le premier, qui déclare Execute
+# autrement ; le module du registre, qui nomme leurs arguments.
+OTHER = """\
 from script.todo.ui.registry import Entry, Menu
 
 EXECUTE = Menu("prompt_execute", "Execute", [Entry("Stay", "stay")])
@@ -493,9 +486,12 @@ NEWER_READER = Path(todo_telemetry.__file__).read_text() + textwrap.dedent(
 class ApiCase(HubCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        self.todo_py = self.root / "script" / "todo" / "todo.py"
-        self.todo_py.parent.mkdir(parents=True)
-        self.todo_py.write_text(FAKE_TODO)
+        todo_dir = self.root / "script" / "todo"
+        (todo_dir / "ui").mkdir(parents=True)
+        (todo_dir / "ui" / "registry.py").write_bytes(REGISTRY_PY.read_bytes())
+        self.menus_py = todo_dir / "menus" / "forged.py"
+        self.menus_py.parent.mkdir()
+        self.menus_py.write_text(DECLARED)
         self.session_cookie = await self.cookie()
 
     async def get_json(self, path):
@@ -595,15 +591,10 @@ class TestTelemetryApi(ApiCase):
             await self.get_json("/api/telemetry?lang=en")
             await self.get_json("/api/telemetry?lang=en")
             self.assertEqual(spy.call_count, 1)
-            self.todo_py.write_text(
-                FAKE_TODO.replace(
-                    '{"prompt_description": t("Quit")},',
-                    '{"prompt_description": t("Quit")},\n'
-                    '            {"prompt_description": t("Back")},',
-                ).replace(
-                    "self.leave()\n",
-                    'self.leave()\n        if status == "2":\n'
-                    "            self.back()\n",
+            self.menus_py.write_text(
+                DECLARED.replace(
+                    'Entry("Quit", "leave")]',
+                    'Entry("Quit", "leave"), Entry("Back", "back")]',
                 )
             )
             data = await self.get_json("/api/telemetry?lang=en")
@@ -622,16 +613,15 @@ class TestTelemetryApi(ApiCase):
 
     async def test_the_menus_of_the_registry_are_sources_of_the_tree(self):
         # Le module du registre, puis un fichier de menus : chacun change
-        # l'empreinte, et le menu déclaré remplace celui du code, sans que
-        # le hub importe ni l'un ni l'autre.
+        # l'empreinte, et le menu du fichier lu le dernier remplace celui
+        # du premier, sans que le hub importe ni l'un ni l'autre.
         before = set(sys.modules)
         codes = [(await self.get_json("/api/telemetry?lang=en"))["code"]]
-        todo_dir = self.todo_py.parent
-        (todo_dir / "ui").mkdir()
-        (todo_dir / "ui" / "registry.py").write_bytes(REGISTRY_PY.read_bytes())
+        todo_dir = self.menus_py.parent.parent
+        registry_py = todo_dir / "ui" / "registry.py"
+        registry_py.write_bytes(REGISTRY_PY.read_bytes() + b"\n")
         codes.append((await self.get_json("/api/telemetry?lang=en"))["code"])
-        (todo_dir / "menus").mkdir()
-        (todo_dir / "menus" / "forged.py").write_text(DECLARED)
+        (todo_dir / "menus" / "other.py").write_text(OTHER)
         data = await self.get_json("/api/telemetry?lang=en")
         codes.append(data["code"])
         self.assertEqual(len(set(codes)), 3)
@@ -688,8 +678,8 @@ class TestTelemetryApi(ApiCase):
         self.assertEqual(again, first)
         # Une date de modification seule suffit : un fichier enregistré
         # sans changement de taille change aussi l'empreinte.
-        st = self.todo_py.stat()
-        os.utime(self.todo_py, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+        st = self.menus_py.stat()
+        os.utime(self.menus_py, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
         self.assertNotEqual(self.hub.code_tree.stamp(), first)
         later = (await self.get_json("/api/telemetry?lang=en"))["code"]
         self.assertNotEqual(later, first)
@@ -706,7 +696,7 @@ class TestTelemetryApi(ApiCase):
         self.assertGreater(self.hub.last_activity, before)
 
     async def test_an_unreadable_tree_is_null_not_an_error(self):
-        self.todo_py.unlink()
+        self.menus_py.unlink()
         data = await self.get_json("/api/telemetry?lang=en")
         self.assertIsNone(data["tree"])
         self.assertIsInstance(data["counts"], dict)

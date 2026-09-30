@@ -434,9 +434,9 @@ class TestPageModel(unittest.TestCase):
         )
 
 
-# Libellés sans lettre ni chiffre, comme `build_code_tree` en produit pour
-# certaines feuilles (« () », un tiret seul, un point médian) : le tri par
-# nom ne doit pas les placer en tête.
+# Libellés sans lettre ni chiffre, comme un élément de todo.json peut en
+# porter (« () », un tiret seul, un point médian) : le tri par nom ne doit
+# pas les placer en tête.
 NAME_SORT_CHECK = r"""
 const leaf = (label) =>
     ({key: label, label, path: label, menu: false, children: []});

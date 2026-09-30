@@ -8,9 +8,9 @@ les fichiers de menus de TODO.
 Le navigateur tourne sur un double de TODO (`FakeTodo`), dont chaque
 action, état, suffixe ou garde note son appel ; les réponses viennent de
 `click.prompt` simulé, ou d'un ScriptedPort sous la capture de la session
-web. L'arbre se lit dans un répertoire temporaire : un todo.py minimal,
-une copie du module du registre et des fichiers de menus écrits par le
-test ; rien n'y est importé. La TUI tourne sous `run_test`, sur l'arbre
+web. L'arbre se lit dans un répertoire temporaire, sans todo.py : une
+copie du module du registre et un fichier de menus écrit par le test ;
+rien n'y est importé. La TUI tourne sous `run_test`, sur l'arbre
 de TODO et un HOME temporaire : elle rend l'action choisie sans jamais
 l'appeler. Les fichiers de menus de TODO sont lus par AST, puis
 importés, et les méthodes qu'ils nomment ne sont jamais appelées : seule
@@ -746,39 +746,22 @@ def _assert_nothing_imported(test, before, todo_dir):
         test.assertFalse(name.startswith("script.todo.menus"), name)
 
 
-# Un todo.py minimal : le menu principal ouvre Configuration, déclarée au
-# registre, et Forged, que son code dérive.
-FAKE_TODO = """\
-class TODO:
-    _MENU_LABELS = {
-        "run": "TODO",
-        "prompt_configuration": "Configuration",
-        "prompt_forged": "Forged",
-    }
-
-    def run(self):
-        choices = [
-            {"prompt_description": t("Configuration")},
-            {"prompt_description": t("Forged")},
-        ]
-        status = input()
-        if status == "1":
-            self.prompt_configuration()
-        elif status == "2":
-            self.prompt_forged()
-
-    def prompt_configuration(self):
-        return navigate(self, menus.CONFIGURATION)
-
-    def prompt_forged(self):
-        choices = [{"prompt_description": t("Stay")}]
-        status = input()
-        if status == "1":
-            self.stay()
-"""
-
+# Les menus d'un TODO minimal : le menu principal ouvre Configuration et
+# Forged, que Configuration ouvre aussi.
 FAKE_MENUS = """\
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
+
+MAIN = Menu(
+    "run",
+    "TODO",
+    [
+        Entry("Configuration", "prompt_configuration"),
+        Entry("Forged menu", "prompt_forged"),
+    ],
+    back=None,
+)
+
+FORGED = Menu("prompt_forged", "Forged", [Entry("Stay", "stay")])
 
 CONFIGURATION = Menu(
     "prompt_configuration",
@@ -801,7 +784,6 @@ class TestDeclaredTree(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.dir = Path(tmp.name)
-        (self.dir / "todo.py").write_text(FAKE_TODO)
         (self.dir / "ui").mkdir()
         shutil.copy(REGISTRY_PY, self.dir / "ui" / "registry.py")
         (self.dir / "menus").mkdir()
@@ -813,7 +795,8 @@ class TestDeclaredTree(unittest.TestCase):
 
     def tree(self):
         """L'arbre de `self.dir`, lu sans rien importer : aucun module neuf
-        ne vient de `self.dir`, et ni todo.py ni les menus de TODO."""
+        ne vient de `self.dir`, et ni todo.py ni les menus de TODO. Le
+        todo.py nommé n'existe pas : seul son répertoire se lit."""
         before = set(sys.modules)
         tree = todo_telemetry.build_code_tree(self.dir / "todo.py")
         _assert_nothing_imported(self, before, self.dir)
@@ -870,7 +853,10 @@ class TestDeclaredTree(unittest.TestCase):
                 'kwargs={"key": "forged_key"}',
                 'kwargs={"key": "forged_key"}, danger=True',
             )
-            .replace('"prompt_forged")', '"prompt_forged", danger=True)')
+            .replace(
+                'Entry("Forged", "prompt_forged")',
+                'Entry("Forged", "prompt_forged", danger=True)',
+            )
             .replace('"language_label"', '"language_label", danger=False')
         )
         [configuration, forged] = self.tree()["children"]
@@ -984,7 +970,8 @@ class TestDeclaredTree(unittest.TestCase):
         )
         declared = todo_telemetry._declared_menus(self.dir)
         self.assertEqual(
-            sorted(declared), ["forged_other", "prompt_configuration"]
+            sorted(declared),
+            ["forged_other", "prompt_configuration", "prompt_forged", "run"],
         )
         self.assertIsNone(declared["forged_other"]["crumb"])
 
@@ -1006,7 +993,9 @@ class TestDeclaredTree(unittest.TestCase):
         # fichier à moitié écrit, puis un littéral du mauvais type : un nom
         # de menu, une action, des kwargs, une entrée, des kwargs que JSON
         # n'écrit pas, un `danger` qui n'est pas un booléen, une garde, un
-        # `mark` None ; enfin un menu qui ne donne pas son `crumb`.
+        # `mark` None ; enfin un menu qui ne donne pas son `crumb`. Le
+        # fichier ne déclare alors aucun menu, `run` compris : il n'y a pas
+        # d'arbre.
         for n, text in enumerate(
             (
                 "import os\n" + FAKE_MENUS.replace('"Language"', "os.sep"),
@@ -1051,9 +1040,9 @@ class TestDeclaredTree(unittest.TestCase):
                     todo_telemetry.__name__, "WARNING"
                 ) as logs:
                     menus = todo_telemetry._declared_menus(self.dir)
-                    [configuration, _] = self.tree()["children"]
+                    tree = self.tree()
                 self.assertEqual(menus, {})
-                self.assertEqual(configuration["children"], [])
+                self.assertIsNone(tree)
                 # Chaque lecture nomme le fichier.
                 self.assertEqual(len(logs.records), 2)
                 for record in logs.records:
@@ -1073,6 +1062,28 @@ class TestDeclaredTree(unittest.TestCase):
             f"{self.menus_py} declares no menu: "
             "ValueError: not a registry call: t('Language')",
         )
+
+    def test_a_menu_file_that_declares_nothing_leaves_no_tree(self):
+        # Forged dans un second fichier : lu, l'arbre est celui d'avant ;
+        # une valeur calculée, et il ne déclare rien. Les entrées qui
+        # ouvrent Forged seraient alors des feuilles, que la TUI lancerait :
+        # il n'y a pas d'arbre, comme sans `run`.
+        forged = (
+            'FORGED = Menu("prompt_forged", "Forged", [Entry("Stay", "stay")])'
+        )
+        before = self.tree()
+        self.assertEqual(before["children"][1]["label"], "Forged")
+        self.menus_py.write_text(FAKE_MENUS.replace(forged, ""))
+        other = self.dir / "menus" / "other.py"
+        head = "from script.todo.ui.registry import Entry, Menu\n\n"
+        other.write_text(f"{head}{forged}\n")
+        self.assertEqual(self.tree(), before)
+        computed = forged.replace('"Stay"', 't("Stay")')
+        other.write_text(f"{head}{computed}\n")
+        with self.assertLogs(todo_telemetry.__name__, "WARNING") as logs:
+            self.assertIsNone(self.tree())
+        [record] = logs.records
+        self.assertIn(str(other), record.getMessage())
 
     def test_the_fields_come_from_the_registry_module(self):
         fields = todo_telemetry._registry_fields(REGISTRY_PY)
