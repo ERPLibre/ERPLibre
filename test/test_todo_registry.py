@@ -1073,6 +1073,7 @@ class TestDeclaredTree(unittest.TestCase):
         )
         before = self.tree()
         self.assertEqual(before["children"][1]["label"], "Forged")
+        self.assertIn(forged, FAKE_MENUS)
         self.menus_py.write_text(FAKE_MENUS.replace(forged, ""))
         other = self.dir / "menus" / "other.py"
         head = "from script.todo.ui.registry import Entry, Menu\n\n"

@@ -27,7 +27,6 @@ from unittest.mock import Mock, call, patch
 from script.todo.ui.registry import Entry, FromConfig
 
 TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
-TODO_PY = TODO_DIR / "todo.py"
 
 
 class TestLaParitéProxmox(unittest.TestCase):
