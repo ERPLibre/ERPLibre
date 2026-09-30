@@ -26,6 +26,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from contextlib import redirect_stdout
@@ -36,7 +37,7 @@ import click
 
 from script.todo import todo_i18n, todo_telemetry
 from script.todo.todo_i18n import t
-from script.todo.ui import legacy, port, registry
+from script.todo.ui import legacy, navigator, port, registry
 from script.todo.ui.navigator import navigate
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section
 
@@ -563,6 +564,91 @@ class TestNavigator(unittest.TestCase):
         with self.assertRaises(ZeroDivisionError):
             self.navigate(menu, ["1"], todo)
 
+    def test_a_menu_ends_the_breadcrumb_while_it_is_open(self):
+        # Le segment d'un menu termine le fil d'Ariane de son entrée à son
+        # retour ; un menu sans segment n'en ajoute pas, ni un menu du
+        # segment qui termine déjà le fil ; une entrée qui déclare le sien
+        # l'ajoute le temps de son action.
+        todo, seen = FakeTodo(), []
+        todo.look = lambda: seen.append(navigator.crumbs())
+        look = Entry("Look", "look")
+        menus = {
+            "inner": Menu(
+                "forged_inner", "Inner", [look, Entry("Same", "same")]
+            ),
+            "same": Menu("forged_same", "Inner", [look]),
+            "bare": Menu("forged_bare", None, [look]),
+        }
+        for name, menu in menus.items():
+            setattr(todo, name, lambda menu=menu: navigate(todo, menu))
+        menu = Menu(
+            "forged_menu",
+            "Forged",
+            [
+                look,
+                Entry("Inner", "inner"),
+                Entry("Bare", "bare"),
+                Entry("Screen", "look", crumb="Screen"),
+            ],
+        )
+        answers = ["1", "2", "1", "2", "1", "0", "0", "3", "1", "0", "4", "0"]
+        self.navigate(menu, answers, todo)
+        self.assertEqual(
+            seen,
+            [
+                ("Forged",),
+                ("Forged", "Inner"),
+                ("Forged", "Inner"),
+                ("Forged",),
+                ("Forged", "Screen"),
+            ],
+        )
+        self.assertEqual(navigator.crumbs(), ())
+
+    def test_the_breadcrumb_is_given_back_when_the_menu_is_left(self):
+        # Le fil d'Ariane redevient ce qu'il était quand le menu rend la
+        # main, qu'une action lève ou que Ctrl+C remonte de sa question.
+        todo = FakeTodo()
+
+        def fail():
+            raise ValueError("forged")
+
+        todo.fail = fail
+        menu = Menu(
+            "forged_menu", "Forged", [Entry("Fail", "fail", crumb="Screen")]
+        )
+        with navigator.crumbs_at(["Forged root"]):
+            for answers, error in (
+                (["1"], ValueError),
+                ([click.exceptions.Abort()], click.exceptions.Abort),
+            ):
+                with self.subTest(error=error.__name__):
+                    with self.assertRaises(error):
+                        self.navigate(menu, answers, todo)
+                    self.assertEqual(navigator.crumbs(), ("Forged root",))
+        self.assertEqual(navigator.crumbs(), ())
+
+    @unittest.skipIf(
+        sys.flags.thread_inherit_context, "threads inherit the context"
+    )
+    def test_a_thread_an_action_starts_has_no_breadcrumb(self):
+        # Le fil d'Ariane est propre au thread, comme la pile d'appels qu'il
+        # remplace : un thread qu'une action lance part d'un fil vide.
+        todo, seen = FakeTodo(), []
+
+        def look():
+            thread = threading.Thread(
+                target=lambda: seen.append(navigator.crumbs())
+            )
+            thread.start()
+            thread.join()
+            seen.append(navigator.crumbs())
+
+        todo.look = look
+        menu = Menu("forged_menu", "Forged", [Entry("Look", "look")])
+        self.navigate(menu, ["1", "0"], todo)
+        self.assertEqual(seen, [(), ("Forged",)])
+
     def test_an_abort_closes_a_menu_that_declares_it(self):
         # Ctrl+C ou Ctrl+D à sa question : le menu rend `back` après une
         # ligne vide, et l'entrée lancée avant reste la seule.
@@ -890,8 +976,8 @@ class TestDeclaredTree(unittest.TestCase):
         )
 
     def test_a_menu_opened_by_another_object_has_no_crumb(self):
-        # Le fil d'Ariane ne lit que les cadres de TODO : un menu qu'ouvre
-        # un autre objet s'affiche sous celui qui l'appelle.
+        # Un menu sans segment n'ajoute rien au fil d'Ariane : un menu
+        # qu'ouvre un autre objet que TODO s'affiche sous celui qui l'ouvre.
         self.menus_py.write_text(
             FAKE_MENUS
             + 'OTHER = Menu("forged_other", None, [Entry("First", "first")])\n'

@@ -94,6 +94,21 @@ class TestFillHelpInfo(unittest.TestCase):
         self.assertIn("[0] Back", result)
         self.assertNotIn("[1]", result)
 
+    def test_the_header_writes_the_crumbs_of_the_navigator(self):
+        # L'en-tête écrit le fil d'Ariane que tient le navigateur, puis la
+        # ligne d'état, et fait du fil la clé de télémétrie du menu ; hors
+        # de tout menu, il n'écrit ni fil ni clé.
+        from script.todo.ui import navigator
+
+        with patch("script.todo.todo_telemetry.record") as record:
+            self.assertNotIn("📍", self.todo._menu_header())
+            with navigator.crumbs_at(["TODO", "Forged"]):
+                header = self.todo._menu_header("forged state")
+        self.assertEqual(
+            header.split("\n")[:2], ["📍 TODO › Forged", "forged state"]
+        )
+        record.assert_called_once_with("TODO › Forged")
+
 
 class TestGetOdooVersion(unittest.TestCase):
     def test_reads_version_data(self):

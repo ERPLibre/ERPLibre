@@ -40,7 +40,8 @@ from unittest.mock import patch
 from todo_web_env import private_env
 
 from script.todo import auto_ask, todo_i18n
-from script.todo.ui import legacy, pipe_port, port
+from script.todo.ui import legacy, navigator, pipe_port, port
+from script.todo.ui.registry import Entry, Menu
 from script.todo.web import protocol, sessions, worker
 
 REPO = Path(__file__).resolve().parent.parent
@@ -131,6 +132,42 @@ class TestServe(unittest.TestCase):
         todo = FakeTodo(*[ValueError("boom")] * 3, None)
         code, _ = serve(todo, lambda: "📍 TODO › Execute")
         self.assertEqual((code, todo.runs), (worker.CRASHED, 3))
+
+    def test_the_navigator_gives_three_crashes_the_same_crumbs(self):
+        # Le vrai navigateur sous `track_crumbs` : l'action qui lève sous
+        # « TODO › X » rend le fil d'avant, le `run()` suivant redessine le
+        # même en-tête, et le troisième plantage termine la session.
+        class Todo:
+            def __init__(self):
+                self.runs = 0
+
+            def _menu_header(self, state=None):
+                return "📍 " + " › ".join(navigator.crumbs()) + "\n"
+
+            def fill_help_info(self, choices, state=None):
+                return self._menu_header(state)
+
+            def run(self):
+                self.runs += 1
+                navigator.navigate(
+                    self, Menu("run", "TODO", [Entry("X", "x")])
+                )
+
+            def x(self):
+                navigator.navigate(
+                    self, Menu("x", "X", [Entry("Boom", "boom")])
+                )
+
+            def boom(self):
+                raise ValueError("boom")
+
+        where, todo = worker.track_crumbs(Todo), Todo()
+        answers = ["1", "1"] * 3
+        with patch.object(navigator.click, "prompt", side_effect=answers):
+            code, _ = serve(todo, where)
+        self.assertEqual((code, todo.runs), (worker.CRASHED, 3))
+        self.assertEqual(where(), "📍 TODO › X")
+        self.assertEqual(navigator.crumbs(), ())
 
     def test_elsewhere_or_after_an_interrupt_the_count_starts_over(self):
         crumbs = iter(["📍 A", "📍 A", "📍 B", "📍 B", "📍 B"])

@@ -793,6 +793,22 @@ class MenusDuLLM(unittest.TestCase):
             self.answered("_llm_search_remote", "forged-remote", "2")
         balayage.assert_called_once_with("198.51.100.0/24")
 
+    def test_over_ssh_se_dessine_sous_son_segment(self):
+        # Search › The networks of a machine over SSH dessine le choix d'un
+        # réseau sous « Over SSH », le segment que déclare son entrée, puis
+        # Search se redessine sous le sien.
+        from script.todo import todo_telemetry
+        from script.todo.assistant import discover as llm_disc
+
+        reseaux = [llm_disc.Interface("forged0", "192.0.2.0/24", False)]
+        with (
+            patch.object(llm_disc, "local_networks", return_value=[]),
+            patch.object(llm_disc, "remote_networks", return_value=reseaux),
+        ):
+            self.answered("_llm_search", "6", "forged-remote", "0", "0")
+        keys = [c.args[0] for c in todo_telemetry.record.call_args_list]
+        self.assertEqual(keys, ["Search", "Search › Over SSH", "Search"])
+
     def test_servers_sans_serveur_connu_passe_a_la_recherche(self):
         # Sans serveur connu, Servers le dit et ouvre Search, sans se
         # dessiner ni poser sa question.

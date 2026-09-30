@@ -9,7 +9,7 @@ qu'ouvre Execute.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
-nomme la méthode de TODO qui l'ouvre : son cadre porte le fil d'Ariane.
+nomme la méthode de TODO qui l'ouvre, le `name` de son `Menu`.
 """
 
 from script.todo.ui.registry import Entry, FromConfig, Menu, Section

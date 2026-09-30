@@ -47,8 +47,9 @@ class Entry:
     entrée. `hotkey`, une lettre, répond à l'entrée à la place d'un
     numéro, dans un menu `asks` seulement. `crumb` est le segment du fil
     d'Ariane de l'écran que l'action dessine elle-même, hors du registre
-    (un sélecteur) : l'arbre de télémétrie en fait un menu sans feuille,
-    sous ce segment, que ni la TUI ni la page web ne lancent."""
+    (un sélecteur) : le navigateur l'ajoute au fil le temps de l'action,
+    et l'arbre de télémétrie en fait un menu sans feuille, sous ce
+    segment, que ni la TUI ni la page web ne lancent."""
 
     key: str
     action: str
@@ -94,9 +95,9 @@ class FromMethod:
 class Menu:
     """Un menu. `name` : la méthode qui l'ouvre ; `crumb` : son segment
     du fil d'Ariane, sa valeur dans `_MENU_LABELS` et la clé de
-    télémétrie, ou None pour un menu qu'ouvre un autre objet que TODO :
-    le fil d'Ariane ne lit que les cadres de TODO, et ce menu s'affiche
-    sous celui du menu de TODO qui l'appelle. `entries` : des `Section`,
+    télémétrie, que le navigateur ajoute au fil de l'entrée du menu à son
+    retour, ou None pour un menu qu'ouvre un autre objet que TODO, qui
+    s'affiche sous le fil du menu qui l'ouvre. `entries` : des `Section`,
     `Entry`, `FromConfig` et `FromMethod`, dans l'ordre affiché. `state`
     nomme la méthode qui rend la ligne d'état sous le fil d'Ariane.
     `intro` est la clé de la ligne dite une fois, à l'entrée, derrière

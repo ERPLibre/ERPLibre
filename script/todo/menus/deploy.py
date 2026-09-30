@@ -7,7 +7,7 @@ Security, et Docker / Podman avec ses trois menus.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
-nomme la méthode publique de celui-ci : son cadre porte le fil d'Ariane.
+nomme la méthode publique de celui-ci, le `name` de son `Menu`.
 
 Un installateur, qui pose des paquets ou un service, ici ou sur un hôte
 distant, porte `danger`, comme une entrée qui efface ou qui réécrit la

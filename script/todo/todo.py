@@ -7,7 +7,6 @@ import configparser
 import datetime
 import difflib
 import importlib.util
-import inspect
 import json
 import logging
 import os
@@ -145,7 +144,7 @@ from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.transform_menu import TransformMenuMixin
-from script.todo.ui.navigator import navigate
+from script.todo.ui.navigator import crumbs, crumbs_at, navigate
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 from script.todo.web import desktop, launcher, paths
@@ -527,9 +526,9 @@ class TODO(
                 web_login_env=web_login_env,
             )
 
-    # Étiquettes du fil d'Ariane par méthode de menu. Le fil est dérivé de la
-    # pile d'appels (aucune méthode de menu à modifier). Labels courts et
-    # stables, pensés pour être copiés afin de situer précisément un menu.
+    # Segment de l'arbre de télémétrie par méthode de menu, que lit
+    # `build_code_tree` : le `crumb` de chaque menu déclaré, et celui d'Over
+    # SSH, que déclare son entrée.
     _MENU_LABELS = {
         "run": "TODO",
         "prompt_execute": "Execute",
@@ -582,36 +581,24 @@ class TODO(
         "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
     }
-    # Fil d'Ariane, dans l'arbre, du menu de la commande que la TUI de
-    # télémétrie exécute ; None hors d'une telle commande.
-    _tui_crumbs = None
 
     def _menu_header(self, state=None):
-        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels), puis
-        `state`, une ligne d'état propre au menu, s'il est donné, puis la
-        ligne « Commande : ». Le fil situe le menu courant et se copie pour
-        décrire sans ambiguïté où l'on se trouve. Sous une commande que
-        lance la TUI de télémétrie, il part du menu de cette commande, et
-        non de la télémétrie qui l'a lancée."""
-        crumbs = []
-        for frame_info in reversed(inspect.stack()):
-            if frame_info.frame.f_locals.get("self") is not self:
-                continue
-            launched = frame_info.function == "_telemetry_tui_loop"
-            if launched and self._tui_crumbs is not None:
-                crumbs = list(self._tui_crumbs)
-                continue
-            label = self._MENU_LABELS.get(frame_info.function)
-            if label and (not crumbs or crumbs[-1] != label):
-                crumbs.append(label)
+        """En-tête de menu : le fil d'Ariane que tient le navigateur
+        (`crumbs`), puis `state`, une ligne d'état propre au menu, s'il est
+        donné, puis la ligne « Commande : ». Le fil situe le menu courant et
+        se copie pour décrire sans ambiguïté où l'on se trouve ; il est
+        aussi la clé de télémétrie du menu. Sous une commande que lance la
+        TUI de télémétrie, il part du menu de cette commande, et non de la
+        télémétrie qui l'a lancée (`_telemetry_tui_loop`)."""
+        path = " › ".join(crumbs())
         header = ""
-        if crumbs:
-            header = "📍 " + " › ".join(crumbs) + "\n"
+        if path:
+            header = "📍 " + path + "\n"
             # Télémétrie de navigation (best-effort, ne casse jamais le menu).
             try:
                 from script.todo import todo_telemetry
 
-                todo_telemetry.record(" › ".join(crumbs))
+                todo_telemetry.record(path)
             except Exception:
                 pass
         if state:
@@ -681,13 +668,12 @@ class TODO(
             else:
                 # Les menus que la commande dessine partent de son menu dans
                 # l'arbre : le chemin de la feuille, sans elle.
-                self._tui_crumbs = path.split(" › ")[:-1] if path else None
-                try:
-                    fn(**(kwargs or {}))
-                except Exception as exc:
-                    print(f"{t('Command failed: ')}{exc}")
-                finally:
-                    self._tui_crumbs = None
+                segments = path.split(" › ")[:-1] if path else crumbs()
+                with crumbs_at(segments):
+                    try:
+                        fn(**(kwargs or {}))
+                    except Exception as exc:
+                        print(f"{t('Command failed: ')}{exc}")
             # Revenir (curseur restauré) ou quitter ?
             ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):

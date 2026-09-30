@@ -9,11 +9,8 @@ on classe et on parle. Ce fichier ne connaît ni l'ordre des sondes, ni la forme
 d'une réponse d'API.
 
 Mixin de la classe TODO : ses méthodes vivent sur la même instance que celles
-des autres fichiers, elles s'appellent donc par « self. » sans rien importer.
-Le fil d'Ariane l'exige — `_menu_header` dérive les miettes de la pile
-d'appels en retenant les cadres dont la variable locale `self` EST l'instance
-TODO. Une fonction de module n'en laisse aucune : son menu ne se situerait
-pas dans le fil.
+des autres fichiers, elles s'appellent donc par « self. » sans rien importer,
+et un menu du registre, qui nomme ses actions, les trouve sur TODO.
 
 Trois contraintes d'affichage tiennent ce module.
 

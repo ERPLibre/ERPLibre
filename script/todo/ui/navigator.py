@@ -16,12 +16,17 @@ d'Ariane ni clé de télémétrie.
 
 `todo` est l'objet qui ouvre le menu : TODO, ou un objet dont le
 `fill_help_info` est celui de TODO — `DatabaseManager`, que TODO porte,
-ou `MailMenus`, qui enveloppe TODO. Le cadre de `navigate` ne porte pas
-de `self` : le fil d'Ariane, que `_menu_header` lit dans la pile, reste
-celui des méthodes de TODO qui l'appellent, et la clé de télémétrie
-aussi.
+ou `MailMenus`, qui enveloppe TODO.
+
+Le navigateur tient le fil d'Ariane (`crumbs`), que `_menu_header` écrit
+et dont il fait la clé de télémétrie : le segment d'un menu,
+`menu.crumb`, le termine de l'intro du menu à son retour, et celui d'une
+entrée, `Entry.crumb`, le temps de son action. Un menu sans segment
+s'affiche sous le fil du menu qui l'ouvre.
 """
 
+import contextlib
+import contextvars
 import sys
 
 import click
@@ -29,10 +34,44 @@ import click
 from script.todo.todo_i18n import t
 from script.todo.ui.registry import FromConfig, FromMethod, Section
 
+# Les segments du fil d'Ariane, du menu principal au menu courant : un
+# tuple, que `crumbs_at` remplace le temps d'un bloc et rend tel qu'il
+# était en sortant, par retour comme par exception. Une ContextVar est
+# propre au thread et à la tâche asyncio : un thread qu'une action lance
+# part d'un fil vide, sauf sous `sys.flags.thread_inherit_context`, où il
+# part du fil de l'action.
+_CRUMBS = contextvars.ContextVar("todo_crumbs", default=())
+
+
+def crumbs() -> tuple:
+    """Le fil d'Ariane du menu courant, un segment par menu ouvert."""
+    return _CRUMBS.get()
+
+
+@contextlib.contextmanager
+def crumbs_at(segments):
+    """Le fil d'Ariane vaut `segments` le temps du bloc, puis redevient ce
+    qu'il était, même quand le bloc lève."""
+    token = _CRUMBS.set(tuple(segments))
+    try:
+        yield
+    finally:
+        _CRUMBS.reset(token)
+
+
+def _under(crumb):
+    """`crumbs_at` du fil courant suivi de `crumb`, ou du fil tel quel
+    quand `crumb` est None ou le segment qui le termine déjà : deux menus
+    de même segment, l'un dans l'autre, n'en écrivent qu'un."""
+    segments = _CRUMBS.get()
+    if crumb and segments[-1:] != (crumb,):
+        segments += (crumb,)
+    return crumbs_at(segments)
+
 
 def _draw(todo, menu) -> tuple:
     """(dessin, actions) de `menu` tel qu'il s'affiche maintenant :
-    `actions` donne le (méthode, kwargs) de chaque entrée montrée par sa
+    `actions` donne (méthode, kwargs, crumb) de chaque entrée montrée par sa
     touche, son `hotkey` ou son numéro parmi les entrées numérotées ; le
     dessin est le texte de `todo.fill_help_info`, ou, pour un menu
     `asks`, la liste des entrées montrées, {"key", "label"} chacune, dans
@@ -53,15 +92,16 @@ def _draw(todo, menu) -> tuple:
                 elements = getattr(todo, item.method)()
             for element in elements or []:
                 kwargs = {item.kwarg: element}
-                rows.append((element, item.action, kwargs, None))
+                rows.append((element, item.action, kwargs, None, None))
         elif not item.when or getattr(todo, item.when)():
             kwargs = dict(item.kwargs or {})
             label = t(item.key)
             if item.suffix:
                 label += f"  ({getattr(todo, item.suffix)(**kwargs)})"
             choice = {"prompt_description": label}
-            rows.append((choice, item.action, kwargs, item.hotkey))
-        for choice, action, kwargs, hotkey in rows:
+            row = (choice, item.action, kwargs, item.hotkey, item.crumb)
+            rows.append(row)
+        for choice, action, kwargs, hotkey, crumb in rows:
             choices.append(choice)
             if choice.get("section"):
                 continue
@@ -71,7 +111,7 @@ def _draw(todo, menu) -> tuple:
             label = choice.get("prompt_description_key")
             label = t(label) if label else choice["prompt_description"]
             shown.append({"key": key, "label": label})
-            actions[key] = (action, kwargs)
+            actions[key] = (action, kwargs, crumb)
     if menu.asks:
         return shown, actions
     state = getattr(todo, menu.state)() if menu.state else None
@@ -99,7 +139,14 @@ def navigate(todo, menu):
     ou Ctrl+D à la question remontent, sauf dans un menu `abort_closes`,
     qui rend alors `back` après une ligne vide, et dans un menu `quits`,
     qui termine TODO (SystemExit 0) ; ce qu'une action lève remonte
-    toujours."""
+    toujours. Le segment du menu termine le fil d'Ariane de l'intro au
+    retour, celui d'une entrée le temps de son action."""
+    with _under(menu.crumb):
+        return _answer(todo, menu)
+
+
+def _answer(todo, menu):
+    """Le corps de `navigate`, sous le segment du menu."""
     if menu.intro:
         print(f"{menu.mark} {t(menu.intro)}")
     context = {}
@@ -127,8 +174,9 @@ def navigate(todo, menu):
         if status == "0":
             return menu.back
         if status in actions:
-            method, kwargs = actions[status]
-            result = getattr(todo, method)(**kwargs, **context)
+            method, kwargs, crumb = actions[status]
+            with _under(crumb):
+                result = getattr(todo, method)(**kwargs, **context)
             if menu.closes:
                 return menu.back
             if menu.closes_on_result and result:
