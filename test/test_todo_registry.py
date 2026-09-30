@@ -632,8 +632,8 @@ class TestNavigator(unittest.TestCase):
         sys.flags.thread_inherit_context, "threads inherit the context"
     )
     def test_a_thread_an_action_starts_has_no_breadcrumb(self):
-        # Le fil d'Ariane est propre au thread, comme la pile d'appels qu'il
-        # remplace : un thread qu'une action lance part d'un fil vide.
+        # Le fil d'Ariane, une ContextVar, est propre au thread : un thread
+        # qu'une action lance part d'un fil vide.
         todo, seen = FakeTodo(), []
 
         def look():

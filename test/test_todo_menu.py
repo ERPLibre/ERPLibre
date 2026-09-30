@@ -2795,8 +2795,9 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_mail_accounts",
         "prompt_mail_cache",
     }
-    # Le segment de chaque menu déclaré, sa clé de télémétrie : un segment
-    # renommé change la clé, et les compteurs d'avant ne s'y ajoutent plus.
+    # Le segment de chaque menu déclaré, le dernier de sa clé de
+    # télémétrie : un segment renommé change la clé, et les compteurs
+    # d'avant ne s'y ajoutent plus.
     SEGMENTS = {
         "prompt_telemetry": "Navigation telemetry",
         "prompt_configuration": "Configuration",
@@ -2940,7 +2941,7 @@ class TestMenuLabels(unittest.TestCase):
         )
 
     def test_each_declared_menu_keeps_its_crumb(self):
-        """Un menu du registre garde son segment, qui est sa clé de
+        """Un menu du registre garde son segment, le dernier de sa clé de
         télémétrie, et Over SSH, l'écran d'une entrée de Search, le sien."""
         self.assertEqual(
             {name: self.menus[name]["crumb"] for name in self.SEGMENTS},

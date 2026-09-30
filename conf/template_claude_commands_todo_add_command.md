@@ -63,15 +63,16 @@ Entry("My feature - What it does", "_my_feature"),
 menu runs it, the navigation telemetry TUI and the web page do not. A menu
 file holds registry calls with literal arguments, nothing else. A numbered
 menu is always declared: `TestGuards` in `test/test_todo_ui_legacy.py`
-refuses a menu loop numbered by hand in `script/todo/`, outside those
-`NUMBERED_LOOPS` names, a list that only shrinks.
+refuses a menu loop numbered by hand in `script/todo/`, except the loops
+named in `NUMBERED_LOOPS`, in the same test file, a list that only shrinks.
 
 3. **Keep the menu method as it is**: the public method of a declared menu
 stays `return navigate(self, menus_git.GIT)`. A new submenu is a `Menu(...)`
 in the same file, opened by an `Entry` that names its method; that method is
 `return navigate(self, menus_<family>.MY_MENU)`, and the `crumb` of the
-`Menu` is its breadcrumb segment and its telemetry key: the navigator and
-the telemetry tree read it there, and nowhere else.
+`Menu` is its breadcrumb segment, the last segment of its telemetry key,
+which is the whole breadcrumb: the navigator and the telemetry tree read it
+there, and nowhere else.
 
 4. **Add method** to the `TODO` class:
 ```python

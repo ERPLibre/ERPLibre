@@ -186,7 +186,8 @@ def _declared(node, fields):
 # au registre ; ceux qui peuvent valoir None ; ceux qui ont une valeur
 # par défaut qui n'est pas None. Un champ donné est une chaîne, ou None
 # s'il est du deuxième groupe ; un champ non donné prend sa valeur par
-# défaut. `crumb`, sans valeur par défaut, se donne, et peut valoir None.
+# défaut. Le `crumb` d'un `Menu`, sans valeur par défaut, se donne, et
+# peut valoir None.
 _TEXT_FIELDS = {
     "Menu": (
         ("name", "crumb"),
