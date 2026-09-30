@@ -561,6 +561,10 @@ TRANSLATIONS = {
         "fr": "Aucune base sur ce serveur PostgreSQL.",
         "en": "No database on this PostgreSQL server.",
     },
+    "File name in image_db (empty to go back): ": {
+        "fr": "Nom du fichier dans image_db (vide pour revenir) : ",
+        "en": "File name in image_db (empty to go back): ",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",

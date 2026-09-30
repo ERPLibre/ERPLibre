@@ -8,6 +8,7 @@ import logging
 import os
 import zipfile
 
+from script.todo import ui
 from script.todo.menus import run as menus_run
 from script.todo.todo_i18n import t
 
@@ -126,12 +127,19 @@ class DatabaseManager:
         )
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
+        """Restaurer une image de `image_db` : [1] en demande le nom, toute
+        autre réponse ouvre le navigateur de fichiers. Un nom vide à [1]
+        rend la main sans rien restaurer."""
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
         status = input("\U0001f4ac Select : ")
         if status == "1":
-            file_name = status
+            file_name = ui.ask(
+                f"\U0001f4ac {t('File name in image_db (empty to go back): ')}"
+            ).strip()
+            if not file_name:
+                return
         else:
             file_name = self.open_file_image_db()
 

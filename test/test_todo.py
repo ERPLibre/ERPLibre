@@ -16,7 +16,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, call, mock_open, patch
 
-from script.todo import todo_i18n
+from script.todo import todo_i18n, ui
 from script.todo.todo import (
     ANDROID_DIR,
     CONFIG_FILE,
@@ -30,6 +30,7 @@ from script.todo.todo import (
     TODO,
     VENV_ERPLIBRE,
 )
+from script.todo.ui import port
 from script.todo.version_manager import (
     INSTALLED_ODOO_VERSION_FILE,
     ODOO_VERSION_FILE,
@@ -1081,37 +1082,54 @@ class TestSelectDatabase(unittest.TestCase):
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
-    @patch("builtins.input")
-    def test_restore_by_filename(self, mock_input):
-        todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
-        )
-        # status="1" (by filename), db name default, no neutralize
-        mock_input.side_effect = ["1", "", "n", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
-        self.assertIn("db_restore.py", cmd)
+    """Database › Restore from backup : [1] demande le nom du fichier sous
+    image_db par `ui.ask`, auquel répond un ScriptedPort ; les autres
+    questions passent par `input`. Les commandes sont doublées."""
 
-    @patch("builtins.input")
-    def test_restore_with_neutralize(self, mock_input):
+    def restore(self, answers, file_name):
+        """(commandes lancées, port qui a répondu, double d'`input`) quand
+        `input` reçoit `answers` et la question du nom `file_name`."""
         todo = TODO()
         todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.return_value = (
-            0,
-            [],
+        todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        scripted = port.ScriptedPort([file_name])
+        with (
+            ui.bind(scripted),
+            patch("builtins.input", side_effect=answers) as asked,
+            redirect_stdout(io.StringIO()),
+        ):
+            todo.db_manager.restore_from_database()
+        live = todo.db_manager._execute.exec_command_live
+        return [c.args[0] for c in live.call_args_list], scripted, asked
+
+    def test_restore_by_filename(self):
+        # [1], puis le nom : l'image et le nom de base par défaut en
+        # viennent, et non de la réponse « 1 ».
+        commands, scripted, _ = self.restore(
+            ["1", "", "n", "n"], "forged_image.zip"
         )
-        mock_input.side_effect = ["1", "mydb", "y", "n"]
-        todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
-        self.assertIn("--neutralize", cmd)
-        self.assertIn("mydb_neutralize", cmd)
+        self.assertIn("db_restore.py -d forged_image ", commands[0])
+        self.assertIn("--image forged_image.zip", commands[0])
+        [question] = scripted.events
+        self.assertEqual(
+            question["text"],
+            "\U0001f4ac "
+            + todo_i18n.t("File name in image_db (empty to go back): "),
+        )
+
+    def test_restore_with_neutralize(self):
+        commands, _, _ = self.restore(
+            ["1", "mydb", "y", "n"], "forged_image.zip"
+        )
+        self.assertIn("--neutralize", commands[0])
+        self.assertIn("mydb_neutralize", commands[0])
+
+    def test_a_blank_file_name_goes_back(self):
+        # Ni commande ni autre question : rien n'est restauré.
+        for blank in ("", "  "):
+            commands, _, asked = self.restore(["1", "", "n", "n"], blank)
+            self.assertEqual(commands, [], repr(blank))
+            self.assertEqual(asked.call_count, 1, repr(blank))
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
