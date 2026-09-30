@@ -742,10 +742,12 @@ class TestLArbreDesMenus(unittest.TestCase):
             kwargs["Analyse unit tests"], {"pattern": "test_analyse*.py"}
         )
 
-    def test_each_leaf_of_the_git_family_binds_its_arguments(self):
+    def test_each_leaf_of_the_tree_binds_its_arguments(self):
         # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
         # attend un argument que l'arbre ne donne pas lève dans la TUI au
-        # lieu de lancer sa commande.
+        # lieu de lancer sa commande. Chaque feuille de l'arbre, toutes
+        # familles, lie les siens ; seule Mobile, gardée (`when`), n'a pas
+        # de méthode, et la TUI ne la lance pas.
         import inspect
 
         from script.todo.todo import TODO
@@ -757,13 +759,14 @@ class TestLArbreDesMenus(unittest.TestCase):
                 else:
                     yield child
 
-        found = [
-            leaf
-            for menu in ("Git", "GPT code", "Automation")
-            for leaf in leaves(self._noeud(menu))
-        ]
-        self.assertGreater(len(found), 30)
-        for leaf in found:
+        found = list(leaves(self.arbre))
+        bound = [leaf for leaf in found if leaf.get("method")]
+        self.assertGreater(len(bound), 250)
+        self.assertEqual(
+            [leaf["label"] for leaf in found if not leaf.get("method")],
+            ["Mobile - Compile and run software"],
+        )
+        for leaf in bound:
             with self.subTest(leaf=leaf["label"]):
                 method = getattr(TODO, leaf["method"])
                 inspect.signature(method).bind(None, **leaf["kwargs"])
@@ -877,39 +880,6 @@ class TestLArbreDesMenus(unittest.TestCase):
         ):
             getattr(TODO.__new__(TODO), leaf["method"])(**leaf["kwargs"])
         self.assertEqual(calls, ["forget", "pick"])
-
-    def test_each_leaf_of_the_qemu_family_binds_its_arguments(self):
-        # [4] › [1] appelle une feuille avec ses kwargs : une méthode qui
-        # attend un argument que l'arbre ne donne pas lève dans la TUI au
-        # lieu de lancer sa commande. Chaque menu nommé, un chemin sous
-        # Execute, lie ses feuilles et celles de ses sous-menus.
-        import inspect
-
-        from script.todo.todo import TODO
-
-        def leaves(node):
-            for child in node["children"]:
-                if child["is_menu"]:
-                    yield from leaves(child)
-                elif child.get("method"):
-                    yield child
-
-        found = []
-        for path in (
-            ("Deploy",),
-            ("Network",),
-            ("Security",),
-            ("Docker / Podman",),
-        ):
-            node = self._noeud("Execute")
-            for label in path:
-                [node] = [c for c in node["children"] if c["label"] == label]
-            found += leaves(node)
-        self.assertTrue(found)
-        for leaf in found:
-            with self.subTest(leaf=leaf["label"]):
-                method = getattr(TODO, leaf["method"])
-                inspect.signature(method).bind(None, **leaf["kwargs"])
 
 
 class TestQemuMenu(unittest.TestCase):
