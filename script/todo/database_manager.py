@@ -341,7 +341,17 @@ class DatabaseManager:
     def download_database_backup_cli(
         self, show_remote_list: bool = True
     ) -> tuple[int, str, str]:
+        """Télécharger la sauvegarde d'une base distante. Rend (code de
+        download_remote.sh, chemin de l'archive, nom de la base), ou
+        (1, "", "") sans rien télécharger quand le nom reste vide.
+
+        La base se choisit dans ce que liste `list_remote.py`, ou se tape
+        quand la liste n'est pas demandée, est vide ou échoue. Sa sortie
+        mêle l'erreur à la sortie (`exec_command_live`) : en échec, son
+        code non nul l'écarte, et aucune ligne n'est prise pour un nom.
+        """
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
+        output_lines = []
         if show_remote_list:
             status, output_lines = self._execute.exec_command_live(
                 f"python3 ./script/database/list_remote.py --raw"
@@ -350,25 +360,28 @@ class DatabaseManager:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
-            if len(output_lines) > 1:
-                for index, output in enumerate(output_lines):
-                    print(f"{index + 1} - {output}")
-                database_name = input("Select id of database :").strip()
-                # Un numéro affiché choisit sa base ; tout autre texte est
-                # le nom tapé.
-                shown = {
-                    str(n): name.strip()
-                    for n, name in enumerate(output_lines, 1)
-                }
-                database_name = shown.get(database_name, database_name)
-            elif len(output_lines) == 1:
-                database_name = output_lines[0].strip()
-            else:
-                database_name = input(
-                    "Cannot read remote database, Database name :\n"
-                )
+            if status:
+                print(f"❌ {t('Cannot read the list of remote databases.')}")
+                output_lines = []
+        if len(output_lines) > 1:
+            for index, output in enumerate(output_lines):
+                print(f"{index + 1} - {output}")
+            database_name = input("Select id of database :").strip()
+            # Un numéro affiché choisit sa base ; tout autre texte est le
+            # nom tapé.
+            shown = {
+                str(n): name.strip() for n, name in enumerate(output_lines, 1)
+            }
+            database_name = shown.get(database_name, database_name)
+        elif len(output_lines) == 1:
+            database_name = output_lines[0].strip()
         else:
-            database_name = input("Database name :\n")
+            database_name = ui.ask(
+                t("Database name (empty to cancel): ")
+            ).strip()
+        if not database_name:
+            print(t("Download cancelled."))
+            return 1, "", ""
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         default_output_path = f"./image_db/{database_name}_{timestamp}.zip"

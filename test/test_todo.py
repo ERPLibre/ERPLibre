@@ -1171,23 +1171,30 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
     """Database › Download database : les réponses sont tapées par des
     doubles, les commandes et l'archive aussi ; rien ne part."""
 
-    def download(self, answers, listed):
+    def download(self, answers, listed, status=0, typed=()):
         """(ce que rend le dialogue, les chemins que lit `zipfile.ZipFile`)
-        quand `input` reçoit `answers` et que la liste des bases distantes
-        rend les lignes `listed`."""
+        quand `input` reçoit `answers`, le nom demandé à la main `typed`, et
+        que la liste des bases distantes rend `status` et les lignes
+        `listed`. Garde les commandes lancées et la sortie imprimée."""
         todo = TODO()
-        todo.db_manager._execute = MagicMock()
-        todo.db_manager._execute.exec_command_live.side_effect = [
-            (0, listed),
+        execute = todo.db_manager._execute = MagicMock()
+        execute.exec_command_live.side_effect = [
+            (status, listed),
             (0, "forged"),
         ]
+        out = io.StringIO()
         with (
+            ui.bind(port.ScriptedPort(typed)),
             patch("builtins.input", side_effect=answers),
             patch("getpass.getpass", return_value="forged"),
             patch("zipfile.ZipFile") as archive,
-            redirect_stdout(io.StringIO()),
+            redirect_stdout(out),
         ):
             done = todo.db_manager.download_database_backup_cli()
+        self.commands = [
+            c.args[0] for c in execute.exec_command_live.call_args_list
+        ]
+        self.printed = out.getvalue()
         return done, [c.args[0] for c in archive.call_args_list]
 
     def test_it_checks_the_archive_at_the_path_typed(self):
@@ -1206,6 +1213,107 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
         ):
             done, _ = self.download(["forged", typed, ""], listed)
             self.assertEqual(done[2], name, typed)
+
+    def test_a_list_that_fails_asks_the_name_by_hand(self):
+        # list_remote.py rend 1, et son erreur arrive dans la sortie
+        # fusionnée : elle n'est pas un nom de base.
+        done, _ = self.download(
+            ["https://forged.invalid", ""],
+            ["Connection Error: forged refusal"],
+            status=1,
+            typed=["forged_typed"],
+        )
+        self.assertEqual((done[0], done[2]), (0, "forged_typed"))
+        self.assertNotIn("Connection Error", done[1])
+        self.assertIn(
+            todo_i18n.t("Cannot read the list of remote databases."),
+            self.printed,
+        )
+
+    def test_a_blank_name_cancels(self):
+        # Liste en échec, ou vide : ni chemin, ni mot de passe, ni
+        # download_remote.sh ; la liste est la seule commande lancée.
+        for listed, status in (
+            (["Connection Error: forged refusal"], 1),
+            ([], 0),
+        ):
+            done, read = self.download(
+                ["https://forged.invalid", "", ""], listed, status, [""]
+            )
+            self.assertEqual(done, (1, "", ""), listed)
+            self.assertEqual(read, [], listed)
+            self.assertEqual(len(self.commands), 1, self.commands)
+            self.assertIn("list_remote.py", self.commands[0])
+
+
+class TestADownloadCancelledStopsItsCaller(unittest.TestCase):
+    """Les appelants de `download_database_backup_cli` qui agissent sur ce
+    qu'il rend : Analyse › Monitoring et Transform data › Anonymise
+    restaurent l'archive, la migration de base la retient et la lit. La
+    liste distante échoue et le nom tapé est vide : le dialogue rend
+    (1, "", ""), et rien n'est téléchargé, restauré ni retenu."""
+
+    def setUp(self):
+        self.todo = TODO()
+        self.execute = self.todo.db_manager._execute = MagicMock()
+        self.execute.exec_command_live.side_effect = [
+            (1, ["Connection Error: forged refusal"]),
+            (0, "forged"),
+        ]
+        self.enterContext(ui.bind(port.ScriptedPort([""])))
+        self.enterContext(
+            patch(
+                "builtins.input",
+                side_effect=["https://forged.invalid", "", ""],
+            )
+        )
+        self.enterContext(patch("getpass.getpass", return_value="forged"))
+        self.enterContext(patch("zipfile.ZipFile"))
+        self.enterContext(redirect_stdout(io.StringIO()))
+        self.enterContext(patch("click.prompt", return_value="3"))
+
+    def assert_only_the_list_ran(self):
+        commands = [
+            c.args[0] for c in self.execute.exec_command_live.call_args_list
+        ]
+        self.assertEqual(len(commands), 1, commands)
+        self.assertIn("list_remote.py", commands[0])
+
+    def test_monitoring_restores_nothing(self):
+        with patch.object(self.todo, "_monitoring_restore") as restore:
+            self.assertIsNone(self.todo._monitoring_select_source())
+        restore.assert_not_called()
+        self.assert_only_the_list_ran()
+
+    def test_anonymise_restores_nothing(self):
+        with patch.object(self.todo, "_monitoring_restore") as restore:
+            self.assertIsNone(self.todo._transform_anonymise_source())
+        restore.assert_not_called()
+        self.assert_only_the_list_ran()
+
+    def test_the_database_upgrade_keeps_no_file(self):
+        from script.todo import todo_upgrade
+
+        upgrade = todo_upgrade.TodoUpgrade(self.todo)
+        home = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(
+            patch.object(
+                todo_upgrade,
+                "UPGRADE_DATABASE_CONFIG_LOG",
+                os.path.join(home, "absent.json"),
+            )
+        )
+        with (
+            patch.object(upgrade, "prompt_auto_execute"),
+            patch.object(upgrade, "ask_ui", return_value="cli"),
+            patch.object(upgrade, "ask", return_value="remote"),
+            patch.object(upgrade, "write_config") as write_config,
+            self.assertLogs(todo_upgrade._logger, "ERROR"),
+        ):
+            self.assertIsNone(upgrade.execute_odoo_upgrade())
+        write_config.assert_not_called()
+        self.assertNotIn("migration_file", upgrade.dct_progression)
+        self.assert_only_the_list_ran()
 
 
 class TestModuleLevelAbortExit(unittest.TestCase):

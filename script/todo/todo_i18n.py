@@ -565,6 +565,18 @@ TRANSLATIONS = {
         "fr": "Nom du fichier dans image_db (vide pour revenir) : ",
         "en": "File name in image_db (empty to go back): ",
     },
+    "Cannot read the list of remote databases.": {
+        "fr": "Impossible de lire la liste des bases distantes.",
+        "en": "Cannot read the list of remote databases.",
+    },
+    "Database name (empty to cancel): ": {
+        "fr": "Nom de la base (vide pour annuler) : ",
+        "en": "Database name (empty to cancel): ",
+    },
+    "Download cancelled.": {
+        "fr": "Téléchargement annulé.",
+        "en": "Download cancelled.",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",
