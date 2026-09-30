@@ -4502,5 +4502,96 @@ class TestUneCopieQuiPrecedeSonModele(unittest.TestCase):
         self.assertEqual("", B.modele_plus_recent("/f/inexistant", eco))
 
 
+class TestLeBancNePoseQueSesVoutes(unittest.TestCase):
+    """Le moteur recense TOUTES les voûtes qu'il connaît. Un dépôt frère posé à
+    côté — une instance réelle, un site — entre dans son compte dès qu'il est
+    là, et le banc n'a rien à faire des clés de celui-là.
+
+    CE QU'UNE CLÉ DE TROP COÛTE : posée puis nommée dans l'empreinte, elle
+    s'efface au `--detruire` suivant. Une voûte dont la clé est partie ne se
+    déchiffre plus par personne — la clé vit exprès HORS du dépôt, donc aucune
+    sauvegarde de celui-ci ne la contient."""
+
+    def voutes(self):
+        from script.setops.vaults import Voute
+
+        sienne = f"setops-vault-{B.UNDERLAY_BANC.lower()}"
+        sien = f"setops-vault-{B.ECOSYSTEME.lower()}"
+        return (
+            Voute("hebergeur", B.UNDERLAY_BANC, "presente", f"/c/{sienne}"),
+            Voute("instance", B.ECOSYSTEME, "presente", f"/c/{sien}"),
+            Voute(
+                "hebergeur",
+                "SITE-Invente",
+                "presente",
+                "/c/setops-vault-site-invente",
+            ),
+            Voute(
+                "instance",
+                "OPS-Invente",
+                "presente",
+                "/c/setops-vault-ops-invente",
+            ),
+        )
+
+    def test_a_sibling_repository_is_left_alone(self):
+        """LA PROPRIÉTÉ. Un dépôt voisin n'a pas demandé que le banc pose sa clé,
+        et encore moins qu'il l'inscrive dans ce qu'il effacera."""
+        vues = B.voutes_siennes(self.voutes())
+        self.assertEqual(2, len(vues))
+        for voute in vues:
+            with self.subTest(nom=voute.nom):
+                self.assertIn(voute.nom, (B.ECOSYSTEME, B.UNDERLAY_BANC))
+
+    def test_its_own_two_are_kept(self):
+        """Le contrôle positif : sans lui, un filtre qui ne garderait rien
+        passerait l'épreuve du voisin."""
+        noms = {v.nom for v in B.voutes_siennes(self.voutes())}
+        self.assertEqual({B.ECOSYSTEME, B.UNDERLAY_BANC}, noms)
+
+    def test_nothing_recorded_keeps_nothing(self):
+        """Un recensement vide ou absent ne fait pas deviner : le banc refuse
+        plus loin, en disant qu'aucune voûte à lui n'y figure."""
+        for vide in ((), None):
+            with self.subTest(vide=vide):
+                self.assertEqual((), B.voutes_siennes(vide))
+
+    def test_what_the_bench_writes_its_own_reading_accepts(self):
+        """L'INVARIANT QUI ÉTAIT ROMPU, et c'est le plus important de la classe.
+
+        La relecture de l'empreinte refuse depuis toujours une clé qui n'est pas
+        au banc ; l'écriture ne s'en servait pas. Le banc écrivait donc une
+        empreinte que sa propre relecture rejetait — et le refus disait
+        « illisible », ce qui ne nomme pas le dépôt de trop."""
+        empreinte = B.Empreinte(
+            terrain="un-terrain-invente",
+            ecosysteme=B.ECOSYSTEME,
+            underlay=B.UNDERLAY_BANC,
+            pont="vmbr9",
+            utilisateur=B.UTILISATEUR_API,
+            vms=(),
+            cles=tuple(v.chemin for v in B.voutes_siennes(self.voutes())),
+        )
+        relue = B.lit_empreinte(B.ecrit_empreinte(empreinte))
+        self.assertIsNotNone(
+            relue, "ce que le banc écrit, il doit savoir le lire"
+        )
+        self.assertEqual(empreinte.cles, relue.cles)
+
+    def test_an_unfiltered_list_is_what_the_reading_refuses(self):
+        """Le contre-témoin, qui montre le prix du filtre : sans lui, l'empreinte
+        écrite est rejetée par sa propre relecture."""
+        empreinte = B.Empreinte(
+            terrain="un-terrain-invente",
+            ecosysteme=B.ECOSYSTEME,
+            underlay=B.UNDERLAY_BANC,
+            pont="vmbr9",
+            utilisateur=B.UTILISATEUR_API,
+            vms=(),
+            cles=tuple(v.chemin for v in self.voutes()),
+        )
+        self.assertIsNone(B.lit_empreinte(B.ecrit_empreinte(empreinte)))
+
+
 if __name__ == "__main__":
     unittest.main()
