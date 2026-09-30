@@ -857,9 +857,9 @@ class TestRealTodo(unittest.TestCase):
                     ["1", "2", "3", "4", "5", "6", "0"],
                 ),
                 ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
-                ("text", ["TODO", "Assistant"], ["1", "2", "0"]),
+                ("fill_help_info", ["TODO", "Assistant"], ["1", "2", "0"]),
                 ("text", ["TODO", "Assistant"], ["1", "2", "3", "4", "0"]),
-                ("text", ["TODO", "Assistant"], ["1", "2", "0"]),
+                ("fill_help_info", ["TODO", "Assistant"], ["1", "2", "0"]),
                 ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
             ],
         )

@@ -300,15 +300,21 @@ class TODO(
                 print(t("Command not found !"))
 
     def prompt_assistant(self):
-        """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
+        """Ce qui s'adresse à l'humain : poser une question, lire son
+        courriel. Le texte vient de `fill_help_info`, qui le numérote :
+        dans une session web, le menu porte ses entrées exactes."""
         from script.todo.mail.menu import prompt_execute_mail
 
+        choices = [
+            {
+                "prompt_description": t(
+                    "AI question - Ask a model, local or remote"
+                )
+            },
+            {"prompt_description": t("mail_menu")},
+        ]
         while True:
-            help_info = f"""{self._menu_header()}
-[1] {t("AI question - Ask a model, local or remote")}
-[2] {t("mail_menu")}
-[0] {t("Back")}"""
-            status = click.prompt(help_info)
+            status = click.prompt(self.fill_help_info(choices))
             print()
             if status == "0":
                 return

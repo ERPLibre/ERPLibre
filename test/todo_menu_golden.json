@@ -2382,10 +2382,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant", "LLM"],
@@ -2506,10 +2506,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -2618,10 +2618,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] 🤖 AI question - Ask a model, local or remote\n[2] 📧 Mail - Read and send email\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO"],
@@ -5037,10 +5037,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant", "LLM"],
@@ -5161,10 +5161,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -5273,10 +5273,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] 🤖 Question IA - Interroger un modèle, local ou distant\n[2] 📧 Courriel - Lire et envoyer du courriel\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO"],
@@ -5892,19 +5892,22 @@
           "Command:",
           "[1] 🤖 AI question - Ask a model, local or remote",
           "[2] 📧 Mail - Read and send email",
-          "[0] 🔙 Back: ",
+          "[0] 🔙 Back",
+          ": ",
           "📍 Assistant",
           "Command:",
           "[1] 🤖 AI question - Ask a model, local or remote",
           "[2] 📧 Mail - Read and send email",
-          "[0] 🔙 Back: 9",
+          "[0] 🔙 Back",
+          ": 9",
           "",
           "Command not found !",
           "📍 Assistant",
           "Command:",
           "[1] 🤖 AI question - Ask a model, local or remote",
           "[2] 📧 Mail - Read and send email",
-          "[0] 🔙 Back: 0",
+          "[0] 🔙 Back",
+          ": 0",
           "",
           ""
         ]
@@ -8501,19 +8504,22 @@
           "Commande :",
           "[1] 🤖 Question IA - Interroger un modèle, local ou distant",
           "[2] 📧 Courriel - Lire et envoyer du courriel",
-          "[0] 🔙 Retour: ",
+          "[0] 🔙 Retour",
+          ": ",
           "📍 Assistant",
           "Commande :",
           "[1] 🤖 Question IA - Interroger un modèle, local ou distant",
           "[2] 📧 Courriel - Lire et envoyer du courriel",
-          "[0] 🔙 Retour: 9",
+          "[0] 🔙 Retour",
+          ": 9",
           "",
           "Commande non trouvée !",
           "📍 Assistant",
           "Commande :",
           "[1] 🤖 Question IA - Interroger un modèle, local ou distant",
           "[2] 📧 Courriel - Lire et envoyer du courriel",
-          "[0] 🔙 Retour: 0",
+          "[0] 🔙 Retour",
+          ": 0",
           "",
           ""
         ]
