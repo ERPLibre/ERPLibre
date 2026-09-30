@@ -158,7 +158,7 @@ RAW_CALLS = {
 }
 # Les menus numérotés écrits à la main hors du navigateur, par (fichier,
 # fonction), chacun avec ce que le registre ne sait pas en dire. La liste
-# ne fait que rétrécir, et son test en borne la taille : un menu neuf se
+# ne fait que rétrécir, et son test en borne les noms : un menu neuf se
 # déclare dans script/todo/menus/, et un menu déclaré en sort.
 NUMBERED_LOOPS = {
     ("script/todo/todo_upgrade.py", "show_stats"): (
@@ -294,14 +294,23 @@ def _numbers(compare) -> set:
 
 def numbered_loops(source) -> set:
     """Les fonctions de `source` qui écrivent un menu numéroté à la main :
-    une boucle `while` qui pose une question (LOOP_ASKS) et, dans ses
-    propres nœuds ou dans la valeur d'un nom qu'elle passe à la question,
-    écrit au moins deux entrées fixes « [k] », dont un chiffre, sans
-    entrée calculée, ou écrit des entrées calculées, « [{…}] » ou par
-    `fill_help_info`, et égale une réponse à un numéro autre que « 0 »,
+    une boucle `while` ou `for`, sa condition ou son itérable compris, qui
+    pose une question (LOOP_ASKS) et, dans ses propres nœuds ou dans la
+    valeur d'un nom qu'elle passe à la question, écrit au moins deux
+    entrées fixes « [k] », dont un chiffre, sans entrée calculée, ou, une
+    boucle `while` seulement, écrit des entrées calculées, « [{…}] » ou
+    par `fill_help_info`, et égale une réponse à un numéro autre que « 0 »,
     par une comparaison ou un `case`. Une liste calculée dont une réponse
     choisit un élément par son rang (un sélecteur), une question oui/non
-    et une question avec sa valeur par défaut « [{…}] » n'en sont pas."""
+    et une question avec sa valeur par défaut « [{…}] » n'en sont pas.
+
+    La garde ne voit ni une question lue par une fonction d'un autre nom,
+    ni un menu qui se rappelle lui-même au lieu de boucler, ni des entrées
+    qu'une donnée porte, ni un texte bâti par une autre fonction ou par
+    `+=`, ni un `for` aux entrées calculées : elle ne suit pas la réponse,
+    et un `for` qui liste des éléments par leur rang et égale sa variable
+    à un numéro s'y lirait comme un menu. Son silence ne prouve rien
+    au-delà de ces formes."""
     found = set()
     for function in ast.walk(ast.parse(source)):
         if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -314,9 +323,16 @@ def numbered_loops(source) -> set:
                     if isinstance(target, ast.Name):
                         values.setdefault(target.id, []).append(node.value)
         for loop in _own_nodes(function):
-            if not isinstance(loop, ast.While):
+            if isinstance(loop, ast.While):
+                head, by_number = loop.test, True
+            elif isinstance(loop, (ast.For, ast.AsyncFor)):
+                # Un `for` qui liste des éléments par leur rang égale souvent
+                # sa variable, et non une réponse, à un numéro : seules ses
+                # entrées fixes en font un menu.
+                head, by_number = loop.iter, False
+            else:
                 continue
-            screen = list(_own_nodes(loop))
+            screen = [*ast.walk(head), *_own_nodes(loop)]
             for call in list(screen):
                 if not (
                     isinstance(call, ast.Call)
@@ -343,7 +359,7 @@ def numbered_loops(source) -> set:
             digit = fixed & set("0123456789")
             if asks and (
                 (len(fixed) >= 2 and digit and not computed)
-                or (computed and numbers - {"0"})
+                or (by_number and computed and numbers - {"0"})
             ):
                 found.add(function.name)
     return found
@@ -927,21 +943,34 @@ class TestGuards(unittest.TestCase):
             [],
             "remove these from NUMBERED_LOOPS",
         )
+        # Le plafond : des boucles de cet ensemble, qui ne gagne aucun nom ;
+        # une boucle neuve ne prend pas la place d'une boucle déclarée.
         self.assertLessEqual(
-            len(NUMBERED_LOOPS),
-            5,
+            set(NUMBERED_LOOPS),
+            {
+                ("script/todo/todo_upgrade.py", "show_stats"),
+                ("script/todo/todo_upgrade.py", "_prompt_on_error"),
+                ("script/todo/qemu_menu.py", "_qemu_stats"),
+                (
+                    "script/todo/todo.py",
+                    "generate_config_from_preconfiguration",
+                ),
+                ("script/todo/todo.py", "debug_ide"),
+            },
             "declare the menu in script/todo/menus/, never list it here",
         )
 
     def test_the_loop_guard_sees_each_form(self):
-        # Un menu numéroté : des entrées fixes, ou des entrées calculées et
-        # une réponse égalée à un numéro, dans la boucle ou dans le texte
+        # Un menu numéroté : des entrées fixes, ou, dans un `while`, des
+        # entrées calculées et une réponse égalée à un numéro ; dans la
+        # boucle, sa condition ou son itérable compris, ou dans le texte
         # qu'elle pose, bâti avant elle. Un sélecteur, une seule entrée
-        # fixe, une boucle qui ne demande rien, une question oui/non et une
-        # question avec sa valeur par défaut n'en sont pas.
-        def menu(*lines):
+        # fixe, une boucle qui ne demande rien, une question oui/non, une
+        # question avec sa valeur par défaut et un `for` qui liste des
+        # éléments par leur rang n'en sont pas.
+        def menu(*lines, head="while True:"):
             body = "".join(f"        {line}\n" for line in lines)
-            return f"def menu(self, xs, n, x):\n    while True:\n{body}"
+            return f"def menu(self, xs, n, x):\n    {head}\n{body}"
 
         menus = [
             menu('print("[1] A")', 'print("[t] B")', "a = input()"),
@@ -964,6 +993,22 @@ class TestGuards(unittest.TestCase):
                 '    case "1":',
                 "        pass",
             ),
+            menu(
+                'if a == "1":',
+                "    pass",
+                head='while (a := input("[1] A\\n[2] B")) != "0":',
+            ),
+            menu(
+                'if a == "1":',
+                "    pass",
+                head='for a in iter(lambda: input("[1] A\\n[2] B"), "0"):',
+            ),
+            menu(
+                'print("[1] A")',
+                'print("[2] B")',
+                "a = input()",
+                head="for _ in range(99):",
+            ),
         ]
         for source in menus:
             with self.subTest(source=source):
@@ -975,6 +1020,22 @@ class TestGuards(unittest.TestCase):
             menu('print("[1] A")', 'print("[2] B")'),
             menu("a = input(f'Port [{n}]: ')", "int(a)"),
             menu('a = input("Overwrite? [y] yes, [n] no: ")'),
+            menu(
+                "pass", head='while input("Again? [y] yes, [n] no: ") == "y":'
+            ),
+            menu(
+                'print(f"[{n}] {x}")',
+                "a = int(input())",
+                "1 <= a",
+                head="for x in xs:",
+            ),
+            menu("a = input(f'Port [{n}]: ')", "int(a)", head="for x in xs:"),
+            menu(
+                'print(f"[{n}] {x}")',
+                "a = input()",
+                "x == 13",
+                head="for x in xs:",
+            ),
         ]
         for source in others:
             with self.subTest(source=source):
