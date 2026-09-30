@@ -219,7 +219,7 @@ class TestLeNoyau(unittest.TestCase):
     """Tant que l'hôte tourne le noyau de la distribution, il n'a ni module
     bridge ni table NAT : ifupdown2 répond « Operation not supported », et
     quand /run/network manque il répond même « Another instance of this
-    program is already running » — un mensonge. Vécu sur l'hôte d'essai."""
+    program is already running » — un mensonge."""
 
     def test_the_running_kernel_is_read_from_pveversion(self):
         self.assertEqual(
@@ -251,8 +251,7 @@ class TestLeNoyau(unittest.TestCase):
 
 class TestLeDns(unittest.TestCase):
     """« --ipconfig0 » ne porte pas le DNS : une VM en adresse fixe se
-    retrouvait sans résolveur. Mesuré sur la VM d'essai — le NAT routait, mais
-    « getent hosts deb.debian.org » ne rendait rien."""
+    retrouve sans résolveur — le NAT route, mais aucun nom ne se résout."""
 
     def test_the_resolved_stub_is_useless_to_a_guest(self):
         self.assertEqual(pve.parse_nameservers("nameserver 127.0.0.53"), [])
@@ -579,9 +578,8 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIn("pveversion", sortie)
 
     def test_a_reachable_machine_without_proxmox_says_exactly_that(self):
-        """Le cas rapporté : « je n'arrive pas à me connecter, pourtant il est
-        accessible ». La machine répondait ; c'est Proxmox qui manquait, et le
-        message parlait d'injoignabilité."""
+        """La machine répond, c'est Proxmox qui manque : le message le dit,
+        au lieu de parler d'injoignabilité."""
         host, sortie = self._confirm(
             [
                 (127, AVERTISSEMENT + "bash: pveversion: command not found"),
@@ -728,7 +726,7 @@ class TestLaTableNat(unittest.TestCase):
         self.assertEqual(lu["kernel"], "7.0.14-14-pve")
 
     def test_the_cloud_kernel_waiting_for_a_reboot(self):
-        # L'état exact rapporté : le noyau Proxmox est POSÉ, pas amorcé.
+        # Le noyau Proxmox est POSÉ, pas amorcé : l'hôte attend un redémarrage.
         lu = pve.parse_nat_check(
             self._sortie("6.12.101+deb13-cloud-amd64", False, "7.0.14-14-pve")
         )
@@ -755,14 +753,14 @@ class TestLaTableNat(unittest.TestCase):
 
 
 class TestLeReseauDuPontInterne(unittest.TestCase):
-    """Le pont interne avait une adresse CODÉE EN DUR, 10.10.10.1/24.
+    """Le pont interne ne prend pas INTERNAL_CIDR à l'aveugle.
 
-    Un Proxmox dans un Proxmox hérite du réseau interne de son parent : la VM
-    vivait en 10.10.10.152 avec 10.10.10.1 pour PASSERELLE. Lui demander de
-    poser 10.10.10.1/24 sur son propre pont, c'est prendre l'adresse de sa
-    passerelle et rendre tout le /24 local — la machine s'isole au milieu de
-    la commande qui la configure. Vécu : « ifup » n'a jamais rendu la main, et
-    la VM ne répondait plus ni en ssh ni en ping."""
+    Un Proxmox dans un Proxmox hérite du réseau interne de son parent :
+    l'adresse de INTERNAL_CIDR y est celle de sa PASSERELLE. La poser sur son
+    propre pont, c'est prendre l'adresse de sa passerelle et rendre tout le
+    /24 local — la machine s'isole au milieu de la commande qui la configure :
+    « ifup » ne rend jamais la main, et la VM ne répond plus ni en ssh ni en
+    ping."""
 
     IMBRIQUE = (
         "2: eth0    inet 10.10.10.152/24 brd 10.10.10.255 scope global eth0\n"
@@ -784,7 +782,7 @@ class TestLeReseauDuPontInterne(unittest.TestCase):
 
     def test_a_route_alone_is_enough_to_collide(self):
         # Une route sans adresse locale suffit : c'est le cas exact de la
-        # route par défaut « via 10.10.10.1 ».
+        # route par défaut « via » la passerelle du parent.
         seule = "default via 10.10.10.1 dev eth0\n"
         self.assertNotEqual(pve.pick_internal_cidr(seule), "10.10.10.1/24")
 
@@ -870,10 +868,10 @@ class TestPourquoiAucunStockage(unittest.TestCase):
     terre, la commande répond « Connection refused », la liste est vide, et
     l'écran s'arrête sur le symptôme — le défaut est trois étages plus bas.
 
-    Vécu sur un Proxmox imbriqué : le nom d'hôte ne résolvait que vers
-    127.0.1.1, parce que cloud-init réécrit /etc/hosts à CHAQUE démarrage. Le
-    redémarrage désormais automatique défaisait donc la correction que
-    l'installation venait de poser."""
+    Sur un Proxmox imbriqué, le nom d'hôte peut ne résoudre que vers
+    127.0.1.1, parce que cloud-init réécrit /etc/hosts à CHAQUE démarrage : le
+    redémarrage automatique défait la correction que l'installation vient de
+    poser."""
 
     def _sortie(self, actif, monte, adresses):
         return (
@@ -895,9 +893,9 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         """« La sonde n'a pas répondu » n'est PAS « rien n'est monté ».
 
         Un dépassement de délai — hostname bloqué sur un DNS injoignable —
-        rend les mêmes vides. On affirmait alors « le nom ne résout que vers
-        ? » sans avoir rien mesuré, ce qui envoyait réécrire /etc/hosts sur
-        une machine peut-être saine."""
+        rend les mêmes vides. Les lire comme un constat fait affirmer « le nom
+        ne résout que vers ? » sans rien avoir mesuré, et envoie réécrire
+        /etc/hosts sur une machine peut-être saine."""
         self.assertFalse(pve.parse_cluster_check("timeout")["lu"])
         self.assertFalse(pve.parse_cluster_check("")["lu"])
         self.assertTrue(
@@ -907,12 +905,12 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         )
 
     def test_a_link_local_address_is_not_routable(self):
-        """Mesuré : « hostname --ip-address » peut ne rendre QUE des fe80::.
+        """« hostname --ip-address » peut ne rendre QUE des fe80::.
 
-        Le seul test « ne commence pas par 127. » les prenait pour routables,
-        et une APIPA en 169.254 aussi. pmxcfs n'a alors rien d'utilisable,
-        mais le diagnostic concluait l'inverse — et renvoyait vers journalctl
-        au lieu de /etc/hosts."""
+        Un test réduit à « ne commence pas par 127. » les prend pour
+        routables, et une APIPA en 169.254 aussi. pmxcfs n'a alors rien
+        d'utilisable, mais le diagnostic conclut l'inverse — et renvoie vers
+        journalctl au lieu de /etc/hosts."""
         for adresses in (
             ["fe80::5054:ff:fecf:bba9", "fe80::fc54:ff:fe79:78a4"],
             ["169.254.3.4"],
@@ -941,9 +939,8 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         """storage.cfg N'EXISTE PAS sur une installation neuve.
 
         Proxmox se contente alors de ses stockages par défaut, et « local »
-        répond parfaitement — mesuré sur l'hôte imbriqué, où /etc/pve était
-        monté sans ce fichier. Le tester revenait à déclarer /etc/pve absent
-        sur un hôte sain."""
+        répond parfaitement alors que /etc/pve est monté sans ce fichier. Le
+        tester reviendrait à déclarer /etc/pve absent sur un hôte sain."""
         self.assertNotIn("storage.cfg", pve.CLUSTER_CHECK_CMD)
         self.assertIn("/etc/pve/.version", pve.CLUSTER_CHECK_CMD)
 
@@ -1117,10 +1114,12 @@ class TestReparerEtcHosts(unittest.TestCase):
     def _joue(self, contenu, court="pve", passages=3, ecrivable=True):
         """Rejoue la commande RÉELLE `passages` fois sur un faux /etc/hosts."""
         import os
+        import shutil
         import subprocess
         import tempfile
 
         d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
         hosts = os.path.join(d, "hosts")
         with open(hosts, "w", encoding="utf-8") as fh:
             fh.write(contenu)
@@ -1157,14 +1156,14 @@ class TestReparerEtcHosts(unittest.TestCase):
         )
 
     def test_a_refused_write_leaves_the_file_ALONE(self):
-        """Le constat le plus grave de l'attaque, mesuré sur trois états
-        réels : /etc en lecture seule, fichier immuable, quota atteint.
+        """Une écriture refusée laisse le fichier intact, quelle qu'en soit la
+        cause : /etc en lecture seule, fichier immuable, quota atteint.
 
-        « sed -i » puis « printf >> » étaient DEUX écritures. Sed refusé et
-        ajout réussi, la ligne 127.0.1.1 survivait EN PREMIER et notre ligne
-        s'ajoutait une fois par tentative. Sed réussi et ajout refusé, l'hôte
-        perdait l'entrée de son nom — et sur une machine qu'on ne joint que
-        par ssh, chaque sudo attend ensuite le résolveur.
+        « sed -i » puis « printf >> » feraient DEUX écritures. Sed refusé et
+        ajout réussi, la ligne 127.0.1.1 survivrait EN PREMIER et notre ligne
+        s'ajouterait une fois par tentative. Sed réussi et ajout refusé,
+        l'hôte perdrait l'entrée de son nom — et sur une machine qu'on ne
+        joint que par ssh, chaque sudo attend ensuite le résolveur.
 
         Une seule écriture, la dernière, et elle est vérifiée avant."""
         vu = self._joue(
@@ -1179,10 +1178,10 @@ class TestReparerEtcHosts(unittest.TestCase):
     def test_a_file_without_a_final_newline(self):
         """cloud-init « write_files » n'en met pas.
 
-        sed PRÉSERVE l'absence — vérifié — et notre ligne se collait à la
-        précédente : « 192.168.1.9 autre-machine10.10.10.150 pve », donc le
-        nom du nœud résolvait vers l'adresse d'une AUTRE machine. awk émet un
-        saut de ligne par enregistrement, donc il normalise."""
+        sed PRÉSERVE l'absence, et notre ligne se collerait au nom
+        « autre-machine » de la précédente : le nom du nœud résoudrait alors
+        vers l'adresse d'une AUTRE machine. awk émet un saut de ligne par
+        enregistrement, donc il normalise."""
         vu = self._joue(
             "127.0.0.1 localhost\n127.0.1.1 pve\n192.168.1.9 autre-machine"
         )
@@ -1277,10 +1276,12 @@ class TestGelerCloudInit(unittest.TestCase):
 
     def _joue(self, etat):
         import os
+        import shutil
         import subprocess
         import tempfile
 
         racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, racine)
         dossier = os.path.join(racine, "cloud.cfg.d")
         fichier = os.path.join(dossier, "99-erplibre-hosts.cfg")
         if etat != "sans-cloud":
@@ -1331,10 +1332,9 @@ class TestGelerCloudInit(unittest.TestCase):
 class TestQuelleAdressePourLeNoeud(unittest.TestCase):
     """L'adresse écrite doit être celle par laquelle on JOINT l'hôte.
 
-    Mesuré sur une Proxmox imbriquée : « hostname -I » rend
-    « 10.10.10.150 10.10.20.1 », et la seconde est le pont interne que notre
-    propre code vient de créer. La poser ferait s'identifier le nœud par une
-    adresse que personne ne joint."""
+    Sur un Proxmox imbriqué, « hostname -I » rend aussi l'adresse du pont
+    interne que notre propre code vient de créer. La poser ferait s'identifier
+    le nœud par une adresse que personne ne joint."""
 
     def test_the_server_field_of_ssh_connection(self):
         self.assertEqual(
@@ -1370,10 +1370,13 @@ class TestRelancerLesUnites(unittest.TestCase):
 
     def _joue(self, unite, etat, monte, existe=True, start_ok=True, **kw):
         import os
+        import shutil
         import subprocess
         import tempfile
 
-        temoin = os.path.join(tempfile.mkdtemp(), "version")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        temoin = os.path.join(d, "version")
         if monte:
             open(temoin, "w").close()
         bouchons = (
@@ -1493,10 +1496,13 @@ class TestConstaterLeMontage(unittest.TestCase):
     def _attends(self, present, disparait=False):
         """Exécute la commande RÉELLE, sentinelle créée puis retirée."""
         import os
+        import shutil
         import subprocess
         import tempfile
 
-        temoin = os.path.join(tempfile.mkdtemp(), "version")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        temoin = os.path.join(d, "version")
         if present:
             open(temoin, "w").close()
         cmd = pve.mount_wait_cmd(tours=2, repos=1).replace(
