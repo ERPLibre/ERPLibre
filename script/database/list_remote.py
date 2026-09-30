@@ -8,7 +8,9 @@ import click
 
 def get_db_list_xmlrpc(odoo_url):
     """
-    Retrieves the list of Odoo databases using the XML-RPC API.
+    Retrieves the list of Odoo databases using the XML-RPC API: the names,
+    possibly none, or None when the server cannot list them, the reason
+    then written on stderr.
     """
     try:
         common = xmlrpc.client.ServerProxy(f"{odoo_url}/xmlrpc/db")
@@ -18,10 +20,10 @@ def get_db_list_xmlrpc(odoo_url):
         print(
             f"XML-RPC Error: {e.faultCode} - {e.faultString}", file=sys.stderr
         )
-        return []
+        return None
     except Exception as e:
         print(f"Connection Error: {e}", file=sys.stderr)
-        return []
+        return None
 
 
 # --- CLI using Click ---
@@ -46,17 +48,21 @@ def list_databases(odoo_url, raw=False):
 
     databases = get_db_list_xmlrpc(odoo_url)
 
-    if databases:
+    # A failure writes nothing on stdout and exits 1: a caller reads each
+    # line of stdout as a database name, and could not tell an error line
+    # from a database.
+    if databases is None:
         if not raw:
-            click.echo("\nAvailable databases:")
-        for db in databases:
-            if not raw:
-                click.echo(f"- {db}")
-            else:
-                click.echo(db)
-    else:
+            click.echo("Failed to retrieve the database list.", err=True)
+        sys.exit(1)
+
+    if not raw:
+        click.echo("\nAvailable databases:")
+    for db in databases:
         if not raw:
-            click.echo("Failed to retrieve the database list.")
+            click.echo(f"- {db}")
+        else:
+            click.echo(db)
 
 
 # --- Script Execution ---

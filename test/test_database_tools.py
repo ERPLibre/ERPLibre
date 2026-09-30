@@ -9,7 +9,7 @@ import os
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from script.database.migrate.process_backup_file import process_zip
 
@@ -213,6 +213,62 @@ class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
         self.assertIn("Database deleted", sortie)
         self.assertIn("test_alpha", sortie)
         self.assertIn("test_beta", sortie)
+
+
+class TestListRemote(unittest.TestCase):
+    """script/database/list_remote.py, serveur doublé : `ServerProxy` est
+    remplacé, aucune requête ne part. Un appelant lit sa sortie standard
+    comme des noms de base : un échec n'y écrit rien et rend 1."""
+
+    URL = "http://forged.invalid"
+
+    def listing(self, answer, *args):
+        """Le résultat de CliRunner quand le `list()` du serveur rend
+        `answer`, ou le lève quand c'est une exception."""
+        from click.testing import CliRunner
+
+        from script.database import list_remote
+
+        server = MagicMock()
+        if isinstance(answer, BaseException):
+            server.list.side_effect = answer
+        else:
+            server.list.return_value = answer
+        with patch.object(
+            list_remote.xmlrpc.client, "ServerProxy", return_value=server
+        ) as proxy:
+            result = CliRunner().invoke(
+                list_remote.list_databases, ["--odoo-url", self.URL, *args]
+            )
+        proxy.assert_called_once_with(f"{self.URL}/xmlrpc/db")
+        return result
+
+    def test_a_server_that_does_not_answer_exits_non_zero(self):
+        refused = ConnectionRefusedError("forged refusal")
+        for args in (["--raw"], []):
+            result = self.listing(refused, *args)
+            self.assertEqual(result.exit_code, 1, args)
+            self.assertIn("forged refusal", result.stderr, args)
+            self.assertNotIn("forged refusal", result.stdout, args)
+        self.assertEqual(self.listing(refused, "--raw").stdout, "")
+        self.assertIn("Failed to retrieve", self.listing(refused).stderr)
+
+    def test_a_refusal_of_the_server_exits_non_zero(self):
+        import xmlrpc.client
+
+        result = self.listing(xmlrpc.client.Fault(3, "Access Denied"), "--raw")
+        self.assertEqual((result.exit_code, result.stdout), (1, ""))
+        self.assertIn("Access Denied", result.stderr)
+
+    def test_the_databases_listed_one_per_line(self):
+        result = self.listing(["forged_one", "forged_two"], "--raw")
+        self.assertEqual(
+            (result.exit_code, result.stdout), (0, "forged_one\nforged_two\n")
+        )
+
+    def test_an_empty_list_is_not_a_failure(self):
+        result = self.listing([], "--raw")
+        self.assertEqual((result.exit_code, result.stdout), (0, ""))
 
 
 if __name__ == "__main__":
