@@ -1196,7 +1196,7 @@ def run_tui(run_app: bool = True):
 
             Rien ne le récupère, donc l'identifiant se RETAPE en entier — le
             long, pas celui de huit caractères. Une frappe sur « o » se donne
-            par réflexe ; recopier vingt-six caractères oblige à regarder ce
+            par réflexe ; recopier un identifiant entier oblige à regarder ce
             qu'on détruit.
             """
             session = self._agent_choisi()
