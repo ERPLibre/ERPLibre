@@ -246,5 +246,37 @@ class TestLesLibelles(unittest.TestCase):
             self.assertIn(cle, todo_i18n.TRANSLATIONS, cle)
 
 
+class TestLesCachesSudo(unittest.TestCase):
+    def lancer(self, reponses):
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+        caches = [
+            {
+                "nom": "pacman",
+                "chemin": "/nulle/part",
+                "taille": 2048,
+                "commande": ["sudo", "pacman", "-Sc", "--noconfirm"],
+            }
+        ]
+        with (
+            mock.patch.object(sc, "caches_systeme", return_value=caches),
+            mock.patch("builtins.input", side_effect=reponses),
+            mock.patch("builtins.print"),
+        ):
+            todo._system_caches_sudo()
+        return todo.execute.exec_command_live.call_args_list
+
+    def test_nothing_runs_without_a_yes(self):
+        self.assertEqual(self.lancer(["1", "n"]), [])
+        self.assertEqual(self.lancer([""]), [])
+
+    def test_the_chosen_command_runs_after_a_yes(self):
+        appels = self.lancer(["1", "o"])
+        self.assertEqual(len(appels), 1)
+        self.assertEqual(appels[0].args[0], "sudo pacman -Sc --noconfirm")
+
+
 if __name__ == "__main__":
     unittest.main()

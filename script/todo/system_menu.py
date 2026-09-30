@@ -13,8 +13,10 @@ celles des autres fichiers, elles s'appellent donc par « self. ».
 
 import datetime
 import os
+import shlex
 import subprocess
 import sys
+import time
 
 import click
 
@@ -254,6 +256,18 @@ class SystemMenuMixin:
         choices = [
             {"prompt_description": t("System diagnostic")},
             {"prompt_description": t("Space to reclaim")},
+            {
+                "prompt_description": t(
+                    "Heavy directories next to the repository"
+                )
+            },
+            {"prompt_description": t("System caches (sudo)")},
+            {
+                "prompt_description": t(
+                    "QEMU download cache - size and cleanup"
+                )
+            },
+            {"prompt_description": t("Containers - size and cleanup")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -265,6 +279,14 @@ class SystemMenuMixin:
                 self._system_diagnostic()
             elif status == "2":
                 self._system_espace()
+            elif status == "3":
+                self._system_depots_lourds()
+            elif status == "4":
+                self._system_caches_sudo()
+            elif status == "5":
+                self._system_cache_qemu()
+            elif status == "6":
+                self._system_conteneurs()
             else:
                 print(t("Command not found !"))
 
@@ -383,3 +405,125 @@ class SystemMenuMixin:
             print(f"  {t('Left in place:')}")
             for chemin, raison in laisses:
                 print(f"    {chemin} — {t(RAISONS.get(raison, raison))}")
+
+    def _system_depots_lourds(self):
+        """Ce qui pèse à côté du dépôt, par dépôt puis par sous-répertoire.
+        Un rapport : seuls les venvs des autres checkouts se proposent, au
+        formulaire de l'espace à récupérer."""
+        parent = os.path.dirname(os.path.realpath("."))
+        print(f"  {t('Measuring')} {parent}…")
+        depots = system_cleanup.depots_lourds(parent)
+        if depots is None:
+            print(f"  {t('unavailable')}")
+            return
+        maintenant = time.time()
+        for d in depots:
+            quand = (
+                f"  · {duree(maintenant - d['commit'])}"
+                f" {t('since the last commit')}"
+                if d["commit"]
+                else ""
+            )
+            marque = "  ERPLibre" if d["erplibre"] else ""
+            print(f"\n  {octets(d['taille']):>10}  {d['nom']}{marque}{quand}")
+            for nom, taille in d["enfants"]:
+                print(f"    {octets(taille):>10}  {nom}")
+        print(
+            f"\n  {octets(sum(d['taille'] for d in depots))} {t('in total')}"
+        )
+        print(
+            f"  {t('The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.')}"
+        )
+
+    def _system_caches_sudo(self):
+        """Les caches du système : leur poids et la commande, puis sudo
+        après confirmation, cache par cache."""
+        caches = system_cleanup.caches_systeme()
+        if not caches:
+            print(f"  {t('Nothing to reclaim.')}")
+            return
+        for i, c in enumerate(caches, 1):
+            print(
+                f"  [{i}] {octets(c['taille']):>10}  {c['nom']:<8}"
+                f" {c['chemin']}"
+            )
+            print(f"      {t('Will execute:')} {shlex.join(c['commande'])}")
+        reponse = input(
+            t("Numbers to run (e.g. 1,2), Enter for none: ")
+        ).strip()
+        choisis = [
+            caches[int(m) - 1]
+            for m in reponse.replace(" ", "").split(",")
+            if m.isdigit() and 1 <= int(m) <= len(caches)
+        ]
+        if not choisis:
+            print(f"  {t('Nothing selected.')}")
+            return
+        for c in choisis:
+            print(f"  - {shlex.join(c['commande'])}")
+        if not self._is_yes(input(t("Run these commands with sudo? (y/N): "))):
+            print(f"  {t('Nothing deleted.')}")
+            return
+        for c in choisis:
+            self.execute.exec_command_live(
+                shlex.join(c["commande"]), source_erplibre=False
+            )
+            apres, _ = system_cleanup.mesurer(c["chemin"])
+            print(f"  ✓ {c['nom']} : {octets(c['taille'])} → {octets(apres)}")
+
+    def _system_cache_qemu(self):
+        """Le cache de téléchargement des VM : son état et son poids, puis
+        le menu d'âge et de nettoyage du cache lui-même."""
+        from script.todo import qemu_cache_menu
+
+        if not os.path.isdir(qemu_cache_menu.CACHE_DIR):
+            print(f"  {t('Not installed:')} {qemu_cache_menu.CACHE_DIR}")
+            return
+        print(f"  {self._cache_etat_court()}")
+        print(
+            f"  {self._cache_poids(qemu_cache_menu.CACHE_DIR):>8}  "
+            f"{qemu_cache_menu.CACHE_DIR}"
+        )
+        print(
+            f"  {self._cache_poids(qemu_cache_menu.CACHE_MIROIR_GIT):>8}  "
+            f"{qemu_cache_menu.CACHE_MIROIR_GIT}"
+        )
+        self._cache_age()
+
+    def _system_conteneurs(self):
+        """Le poids des images, conteneurs et volumes, puis les nettoyages
+        du menu Conteneurs."""
+        from script.todo import container_runtime
+
+        fiche = self._container_fiche()
+        if not fiche:
+            return
+        cmd = container_runtime.commande(fiche, ["system", "df"])
+        self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
+        choices = [
+            {
+                "prompt_description": t(
+                    "Remove unused images, containers and volumes"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "By workspace - a compose project and what it holds"
+                )
+            },
+            {"prompt_description": t("Images one by one")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._container_nettoyage()
+            elif status == "2":
+                self._container_nettoyer_projets()
+            elif status == "3":
+                self._container_nettoyer_images()
+            else:
+                print(t("Command not found !"))

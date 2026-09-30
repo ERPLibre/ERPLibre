@@ -35,6 +35,7 @@ Ce module ne rend que des faits ; les phrases appartiennent au menu.
 import os
 import shutil
 import stat
+import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -571,3 +572,140 @@ def candidats(
         (c for c in trouves if c.taille > 0 or c.categorie == TMP),
         key=lambda c: -c.taille,
     )
+
+
+# ----------------------------------------------------------------------
+# Le rapport des dépôts lourds : ce qui pèse à côté du dépôt, sans rien
+# proposer d'effacer d'autre que les venvs vus plus haut.
+
+# Un sous-répertoire n'est détaillé qu'au-delà de ce poids.
+SEUIL_DETAIL = 50 * 1024 * 1024
+
+
+def depots_lourds(parent, lanceur=subprocess.run, seuil=SEUIL_DETAIL):
+    """Les répertoires de `parent`, les plus lourds d'abord, chacun avec
+    ses sous-répertoires de plus de `seuil` octets et la date de son dernier
+    commit (None hors git).
+
+    Un seul `du` sur deux niveaux plutôt qu'un parcours Python : une dizaine
+    de checkouts se comptent en centaines de milliers de fichiers. -x ne
+    franchit pas un point de montage — un sshfs sous un dépôt ne se compte
+    pas."""
+    try:
+        res = lanceur(
+            ["du", "-x", "-B1", "-d", "2", parent],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    tailles = {}
+    for ligne in res.stdout.splitlines():
+        octets, _, chemin = ligne.partition("\t")
+        if octets.isdigit() and chemin:
+            tailles[chemin] = int(octets)
+    parent = parent.rstrip(os.sep)
+    depots = []
+    for chemin, taille in tailles.items():
+        if os.path.dirname(chemin) != parent:
+            continue
+        enfants = sorted(
+            (
+                (os.path.basename(c), t)
+                for c, t in tailles.items()
+                if os.path.dirname(c) == chemin and t >= seuil
+            ),
+            key=lambda e: -e[1],
+        )
+        depots.append(
+            {
+                "nom": os.path.basename(chemin),
+                "chemin": chemin,
+                "taille": taille,
+                "enfants": enfants,
+                "erplibre": os.path.isfile(
+                    os.path.join(chemin, ".erplibre-version")
+                ),
+                "commit": dernier_commit(chemin, lanceur),
+            }
+        )
+    return sorted(depots, key=lambda d: -d["taille"])
+
+
+def dernier_commit(depot, lanceur=subprocess.run):
+    """L'horodatage du dernier commit de `depot`, ou None."""
+    if not os.path.exists(os.path.join(depot, ".git")):
+        return None
+    try:
+        res = lanceur(
+            ["git", "-C", depot, "log", "-1", "--format=%ct"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    valeur = res.stdout.strip()
+    return int(valeur) if res.returncode == 0 and valeur.isdigit() else None
+
+
+# ----------------------------------------------------------------------
+# Les caches du système, qui ne s'effacent qu'avec sudo : on les mesure
+# ici, la commande est lancée par le menu après confirmation.
+
+# Le journal systemd est réduit à ce poids, pas vidé : les derniers jours
+# restent lisibles pour un diagnostic.
+JOURNAL_GARDE = "200M"
+JOURNAL_GARDE_OCTETS = 200 * 1024 * 1024
+
+# (nom, répertoire mesuré, binaire requis, commande). La commande du
+# gestionnaire de paquets est la sienne, jamais un rm : elle sait ce qui est
+# installé. « pacman -Sc » garde les paquets des versions installées.
+CACHES_SYSTEME = (
+    (
+        "pacman",
+        "/var/cache/pacman/pkg",
+        "pacman",
+        ["sudo", "pacman", "-Sc", "--noconfirm"],
+    ),
+    (
+        "apt",
+        "/var/cache/apt/archives",
+        "apt-get",
+        ["sudo", "apt-get", "clean"],
+    ),
+    (
+        "dnf",
+        "/var/cache/dnf",
+        "dnf",
+        ["sudo", "dnf", "clean", "packages"],
+    ),
+    (
+        "journal",
+        "/var/log/journal",
+        "journalctl",
+        ["sudo", "journalctl", f"--vacuum-size={JOURNAL_GARDE}"],
+    ),
+)
+
+
+def caches_systeme(caches=CACHES_SYSTEME, which=shutil.which):
+    """Les caches du système présents ici : [{nom, chemin, taille,
+    commande}]. Le journal n'est proposé qu'au-delà de ce qu'il garde."""
+    trouves = []
+    for nom, chemin, binaire, commande in caches:
+        if which(binaire) is None or not os.path.isdir(chemin):
+            continue
+        taille, _ = mesurer(chemin)
+        if nom == "journal" and taille <= JOURNAL_GARDE_OCTETS:
+            continue
+        trouves.append(
+            {
+                "nom": nom,
+                "chemin": chemin,
+                "taille": taille,
+                "commande": list(commande),
+            }
+        )
+    return trouves

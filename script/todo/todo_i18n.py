@@ -16461,6 +16461,46 @@ TRANSLATIONS = {
         "fr": "ce checkout devra être réinstallé pour tourner",
         "en": "that checkout needs a reinstall to run",
     },
+    "Heavy directories next to the repository": {
+        "fr": "🗂 Répertoires lourds à côté du dépôt",
+        "en": "🗂 Heavy directories next to the repository",
+    },
+    "System caches (sudo)": {
+        "fr": "🔐 Caches du système (sudo)",
+        "en": "🔐 System caches (sudo)",
+    },
+    "QEMU download cache - size and cleanup": {
+        "fr": "💿 Cache de téléchargement QEMU - taille et nettoyage",
+        "en": "💿 QEMU download cache - size and cleanup",
+    },
+    "Containers - size and cleanup": {
+        "fr": "📦 Conteneurs - taille et nettoyage",
+        "en": "📦 Containers - size and cleanup",
+    },
+    "Measuring": {
+        "fr": "Mesure de",
+        "en": "Measuring",
+    },
+    "since the last commit": {
+        "fr": "depuis le dernier commit",
+        "en": "since the last commit",
+    },
+    "in total": {
+        "fr": "au total",
+        "en": "in total",
+    },
+    "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.": {
+        "fr": "Les venvs des autres checkouts ERPLibre sont proposés, décochés, dans Espace à récupérer.",
+        "en": "The venvs of the other ERPLibre checkouts are offered, unchecked, in Space to reclaim.",
+    },
+    "Numbers to run (e.g. 1,2), Enter for none: ": {
+        "fr": "Numéros à lancer (ex. 1,2), Entrée pour aucun : ",
+        "en": "Numbers to run (e.g. 1,2), Enter for none: ",
+    },
+    "Run these commands with sudo? (y/N): ": {
+        "fr": "Lancer ces commandes avec sudo ? (o/N) : ",
+        "en": "Run these commands with sudo? (y/N): ",
+    },
     "System": {
         "fr": "Système",
         "en": "System",

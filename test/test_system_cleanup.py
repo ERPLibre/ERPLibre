@@ -359,5 +359,55 @@ class TestLesDepotsVoisins(Arbre):
         self.assertIsNone(sc.refus(venv, self.depot, racines, self.uid))
 
 
+class Reponse:
+    def __init__(self, stdout, returncode=0):
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+class TestLeRapportDesDepots(unittest.TestCase):
+    def test_repositories_heaviest_first_with_their_heavy_children(self):
+        sortie = (
+            "10\t/g/a/petit\n"
+            "900\t/g/a/odoo\n"
+            "1000\t/g/a\n"
+            "3000\t/g/b/.venv.x\n"
+            "3000\t/g/b\n"
+            "4000\t/g\n"
+        )
+
+        def lanceur(args, **kw):
+            return Reponse(sortie if args[0] == "du" else "")
+
+        depots = sc.depots_lourds("/g", lanceur=lanceur, seuil=100)
+        self.assertEqual([d["nom"] for d in depots], ["b", "a"])
+        self.assertEqual(depots[1]["enfants"], [("odoo", 900)])
+        self.assertIsNone(depots[0]["commit"])
+
+    def test_a_failing_du_gives_none(self):
+        def lanceur(args, **kw):
+            raise OSError
+
+        self.assertIsNone(sc.depots_lourds("/g", lanceur=lanceur))
+
+
+class TestLesCachesDuSysteme(Arbre):
+    def test_present_tools_only_and_the_journal_above_its_floor(self):
+        pkg = os.path.join(self.tmp, "pkg")
+        ecrire(os.path.join(pkg, "p.tar.zst"))
+        journal = os.path.join(self.tmp, "journal")
+        ecrire(os.path.join(journal, "j"))
+        caches = (
+            ("pacman", pkg, "pacman", ["sudo", "pacman", "-Sc"]),
+            ("apt", pkg, "apt-get", ["sudo", "apt-get", "clean"]),
+            ("journal", journal, "journalctl", ["sudo", "journalctl"]),
+        )
+        trouves = sc.caches_systeme(
+            caches, which=lambda b: None if b == "apt-get" else b
+        )
+        self.assertEqual([c["nom"] for c in trouves], ["pacman"])
+        self.assertEqual(trouves[0]["commande"][0], "sudo")
+
+
 if __name__ == "__main__":
     unittest.main()
