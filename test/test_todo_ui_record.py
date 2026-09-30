@@ -193,9 +193,9 @@ class TestMakeTodoRecord(unittest.TestCase):
         self.assertEqual(
             [(m["qid"], m["source"], m["crumbs"]) for m in menus],
             [
-                (1, "text", ["TODO"]),
+                (1, "fill_help_info", ["TODO"]),
                 (2, "fill_help_info", ["TODO", "Configuration"]),
-                (3, "text", ["TODO"]),
+                (3, "fill_help_info", ["TODO"]),
             ],
         )
         shown = re.sub(r"\n+", "\n", result.stdout)

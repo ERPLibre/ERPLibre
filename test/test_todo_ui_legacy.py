@@ -850,13 +850,13 @@ class TestRealTodo(unittest.TestCase):
         self.assertEqual(
             menus,
             [
-                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+                ("fill_help_info", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
                 (
                     "fill_help_info",
                     ["TODO", "Configuration"],
                     ["1", "2", "3", "4", "5", "6", "0"],
                 ),
-                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+                ("fill_help_info", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
                 ("fill_help_info", ["TODO", "Assistant"], ["1", "2", "0"]),
                 (
                     "fill_help_info",
@@ -864,7 +864,7 @@ class TestRealTodo(unittest.TestCase):
                     ["1", "2", "3", "4", "0"],
                 ),
                 ("fill_help_info", ["TODO", "Assistant"], ["1", "2", "0"]),
-                ("text", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
+                ("fill_help_info", ["TODO"], ["1", "2", "3", "4", "5", "0"]),
             ],
         )
         quit_entry = seen["events"][0]["items"][-1]

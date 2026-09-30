@@ -2656,6 +2656,15 @@ class TestMainMenu(AnsweredMenu, unittest.TestCase):
         intro = t("=> Enter your choice by number and press Enter!")
         self.assertTrue(shown.endswith(f"🤖 {intro}\n\n"), shown[-60:])
 
+    def test_its_zero_reads_quit(self):
+        # [0] du menu principal quitte TODO : `fill_help_info` l'écrit
+        # « 🚪 Quit », et une session web lit ce libellé pour [0].
+        from script.todo.todo_i18n import t
+
+        choices = [{"prompt_description": "Forged"}]
+        text = self.todo.fill_help_info(choices, quits=True)
+        self.assertTrue(text.endswith(f"[1] Forged\n[0] 🚪 {t('Quit')}\n"))
+
 
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.

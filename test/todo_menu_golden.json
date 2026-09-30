@@ -185,7 +185,7 @@
           "printed": true,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommand:\n[1] 🧰 Execute\n[2] 📦 Install\n[3] 🤖 Assistant\n[4] 📊 Navigation telemetry\n[5] 🔩 Configuration\n[0] 🚪 Quit\n: "
@@ -226,7 +226,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommand:\n[1] 🧰 Execute\n[2] 📦 Install\n[3] 🤖 Assistant\n[4] 📊 Navigation telemetry\n[5] 🔩 Configuration\n[0] 🚪 Quit\n: "
@@ -265,7 +265,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommand:\n[1] 🧰 Execute\n[2] 📦 Install\n[3] 🤖 Assistant\n[4] 📊 Navigation telemetry\n[5] 🔩 Configuration\n[0] 🚪 Quit\n: "
@@ -2365,7 +2365,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommand:\n[1] 🧰 Execute\n[2] 📦 Install\n[3] 🤖 Assistant\n[4] 📊 Navigation telemetry\n[5] 🔩 Configuration\n[0] 🚪 Quit\n: "
@@ -2638,7 +2638,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommand:\n[1] 🧰 Execute\n[2] 📦 Install\n[3] 🤖 Assistant\n[4] 📊 Navigation telemetry\n[5] 🔩 Configuration\n[0] 🚪 Quit\n: "
@@ -2830,7 +2830,7 @@
           "printed": true,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommande :\n[1] 🧰 Exécution\n[2] 📦 Installation\n[3] 🤖 Assistant\n[4] 📊 Télémétrie de navigation\n[5] 🔩 Configuration\n[0] 🚪 Quitter\n: "
@@ -2871,7 +2871,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommande :\n[1] 🧰 Exécution\n[2] 📦 Installation\n[3] 🤖 Assistant\n[4] 📊 Télémétrie de navigation\n[5] 🔩 Configuration\n[0] 🚪 Quitter\n: "
@@ -2910,7 +2910,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommande :\n[1] 🧰 Exécution\n[2] 📦 Installation\n[3] 🤖 Assistant\n[4] 📊 Télémétrie de navigation\n[5] 🔩 Configuration\n[0] 🚪 Quitter\n: "
@@ -5020,7 +5020,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommande :\n[1] 🧰 Exécution\n[2] 📦 Installation\n[3] 🤖 Assistant\n[4] 📊 Télémétrie de navigation\n[5] 🔩 Configuration\n[0] 🚪 Quitter\n: "
@@ -5293,7 +5293,7 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "TODO",
           "t": "menu",
           "text": "📍 TODO\nCommande :\n[1] 🧰 Exécution\n[2] 📦 Installation\n[3] 🤖 Assistant\n[4] 📊 Télémétrie de navigation\n[5] 🔩 Configuration\n[0] 🚪 Quitter\n: "

@@ -260,14 +260,14 @@ class TODO(
         self._ask_language()
         print(t("Opening TODO ..."))
         print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
-        help_info = f"""{self._menu_header()}
-[1] {t("Execute")}
-[2] {t("Install")}
-[3] {t("Assistant")}
-[4] {t("Navigation telemetry")}
-[5] {t("Configuration")}
-[0] 🚪 {t("Quit")}
-"""
+        choices = [
+            {"prompt_description": t("Execute")},
+            {"prompt_description": t("Install")},
+            {"prompt_description": t("Assistant")},
+            {"prompt_description": t("Navigation telemetry")},
+            {"prompt_description": t("Configuration")},
+        ]
+        help_info = self.fill_help_info(choices, quits=True)
         while True:
             try:
                 status = click.prompt(help_info)
@@ -1076,13 +1076,16 @@ class TODO(
         n = todo_prefs.reset()
         print(f"✅ {t('Preferences reset')} ({n})")
 
-    def fill_help_info(self, choices, state=None):
+    def fill_help_info(self, choices, state=None, quits=False):
         # Une entrée {"section": "..."} affiche un titre de section SANS
         # consommer de numéro : la numérotation reste continue sur les vraies
         # commandes (compatible avec les elif codés en dur des menus).
-        # `state` : une ligne d'état, sous le fil d'Ariane.
+        # `state` : une ligne d'état, sous le fil d'Ariane. `quits` : [0]
+        # quitte TODO, et se lit « 🚪 Quit » au lieu de « Back ».
         help_info = self._menu_header(state) + "\n"
         help_end = f"[0] {t('Back')}\n"
+        if quits:
+            help_end = f"[0] 🚪 {t('Quit')}\n"
         n = 0
         for instance in choices:
             section = instance.get("section")
