@@ -2,8 +2,8 @@
 # Désinstaller un thème comme Odoo le fait lui-même.
 #
 # « ./run.sh --uninstall theme_x » retire le MODULE, pas le THÈME. Choisir un
-# thème (button_choose_theme, ce que pose --install-theme) fait DEUX choses :
-# copier ses vues et ressources dans chaque site, et écrire dans
+# thème (button_choose_theme, dont --install-theme refait le travail) fait DEUX
+# choses : copier ses vues et ressources dans chaque site, et écrire dans
 # user_values.scss une personnalisation qui DÉFINIT $o-theme-font-number et
 # ses trois voisines. Le chemin de retrait d'Odoo, _theme_remove(), défait les
 # deux.
