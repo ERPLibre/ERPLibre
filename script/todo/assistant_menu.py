@@ -43,6 +43,7 @@ import click
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
+from script.todo.menus import assistant as menus_assistant
 from script.todo.menus import git as menus_git
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -192,112 +193,78 @@ class AssistantMenuMixin:
         return serveur.software
 
     def prompt_assistant_llm(self):
-        """Le sous-menu : parler à un serveur, ou décider auquel."""
-        print(f"🤖 {t('A server, a gpt tool, a conversation.')}")
-        while True:
-            serveur = self._llm_current()
-            if serveur is None:
-                repli = t("no local server — via api.openai.com")
-                parler = f"{t('Free question')}  ({repli})"
-            else:
-                parler = f"{t('Free question')}  ({self._llm_label(serveur)})"
-            connus = llm_servers.load(get_config=self._llm_get_config)
-            compte = f"{len(connus)}" if connus else t("no server yet")
-            choices = [
-                {"section": t("Talk")},
-                {"prompt_description": parler},
-                {"prompt_description": self._llm_gpt_label()},
-                {"section": t("Server")},
-                {"prompt_description": (f"{t('Known servers')}  ({compte})")},
-                {"prompt_description": t("Search for a server…")},
-                {
-                    "prompt_description": (
-                        f"{t('Server card')}  ({t('what it says it can do')})"
-                    )
-                },
-            ]
-            try:
-                status = click.prompt(self.fill_help_info(choices))
-            except (KeyboardInterrupt, click.exceptions.Abort):
-                print()
-                return
-            print()
-            if status == "0":
-                return
-            elif status == "1":
-                self._llm_conversation()
-            elif status == "2":
-                self._llm_gpt_catalogue()
-            elif status == "3":
-                self._llm_servers()
-            elif status == "4":
-                self._llm_search()
-            elif status == "5":
-                self._llm_server_card()
-            else:
-                print(t("Command not found !"))
+        """Le sous-menu : parler à un serveur, ou décider auquel (LLM,
+        `menus/assistant.py`). Redessiné à chaque tour, le serveur en usage
+        et les comptes relus. Rend None sur [0], et sur Ctrl+C ou Ctrl+D à
+        sa question, qui ramènent à Assistant."""
+        return navigate(self, menus_assistant.LLM)
+
+    def _llm_talks_to(self):
+        """Ce que « Free question » montre entre parenthèses : le serveur
+        en usage, ou le repli distant quand il n'y en a aucun."""
+        serveur = self._llm_current()
+        if serveur is None:
+            return t("no local server — via api.openai.com")
+        return self._llm_label(serveur)
+
+    def _llm_servers_count(self):
+        """Ce que « Known servers » montre entre parenthèses : le nombre de
+        serveurs connus, ou qu'il n'y en a aucun."""
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        return f"{len(connus)}" if connus else t("no server yet")
+
+    def _llm_card_hint(self):
+        """Ce que « Server card » montre entre parenthèses."""
+        return t("what it says it can do")
 
     # ------------------------------------------------------------------
     # Les serveurs
 
     def _llm_servers(self):
-        """Lister, choisir, ajouter à la main, supprimer.
+        """Lister, choisir, ajouter à la main, supprimer (SERVERS,
+        `menus/assistant.py`). Une liste vide tombe dans la recherche
+        plutôt que d'imprimer une erreur : l'entrée n'a jamais de raison
+        d'être une impasse. Rend None sur [0], et sur Ctrl+C ou Ctrl+D à
+        sa question."""
+        return navigate(self, menus_assistant.SERVERS)
 
-        Une liste vide tombe dans la recherche plutôt que d'imprimer une
-        erreur : l'entrée n'a jamais de raison d'être une impasse.
-        """
-        connus = llm_servers.load(get_config=self._llm_get_config)
-        if not connus:
-            print(t("no server yet"))
-            self._llm_search()
-            return
-        while True:
-            state = self._llm_state()
-            choices = []
-            for serveur in connus:
-                marque = (
-                    f"  ({t('in use')})"
-                    if state["serveur"]
-                    and state["serveur"].handle == serveur.handle
-                    else ""
-                )
-                choices.append(
-                    {
-                        "prompt_description": (
-                            f"{serveur.label} — {self._llm_label(serveur)}"
-                            f"{marque}"
-                        )
-                    }
-                )
-            choices.append({"section": t("Server")})
-            choices.append({"prompt_description": t("Add a server by hand")})
-            choices.append({"prompt_description": t("Delete a server")})
-            try:
-                status = click.prompt(self.fill_help_info(choices))
-            except (KeyboardInterrupt, click.exceptions.Abort):
-                print()
-                return
-            print()
-            if status == "0":
-                return
-            # Seul un numéro tel qu'affiché désigne une entrée : `int`
-            # prendrait aussi « 01 », « +1 » ou un chiffre d'une autre
-            # écriture.
-            if status not in [str(n) for n in range(1, len(connus) + 3)]:
-                print(t("Command not found !"))
-                continue
-            rang = int(status)
-            if 1 <= rang <= len(connus):
-                self._llm_state()["serveur"] = connus[rang - 1]
-                print(f"✅ {self._llm_label(connus[rang - 1])}")
-            elif rang == len(connus) + 1:
-                self._llm_add_server()
-                connus = llm_servers.load(get_config=self._llm_get_config)
-            elif rang == len(connus) + 2:
-                self._llm_delete_server(connus)
-                connus = llm_servers.load(get_config=self._llm_get_config)
-            else:
-                print(t("Command not found !"))
+    def _llm_servers_open(self):
+        """Ce qui ouvre Servers : {} quand un serveur est connu ; sinon le
+        dit, passe à la recherche, puis rend None, que Servers rend sans
+        se dessiner."""
+        if llm_servers.load(get_config=self._llm_get_config):
+            return {}
+        print(t("no server yet"))
+        self._llm_search()
+        return None
+
+    def _llm_known_servers(self):
+        """Les serveurs connus, comme Servers les liste, relus à chaque
+        dessin : {"prompt_description", "server"} chacun, celui en usage
+        marqué."""
+        en_usage = self._llm_state()["serveur"]
+        lignes = []
+        for serveur in llm_servers.load(get_config=self._llm_get_config):
+            marque = (
+                f"  ({t('in use')})"
+                if en_usage and en_usage.handle == serveur.handle
+                else ""
+            )
+            lignes.append(
+                {
+                    "prompt_description": (
+                        f"{serveur.label} — {self._llm_label(serveur)}{marque}"
+                    ),
+                    "server": serveur,
+                }
+            )
+        return lignes
+
+    def _llm_use_server(self, server):
+        """Fait de `server`, une ligne de `_llm_known_servers`, le serveur
+        en usage, et le dit."""
+        self._llm_state()["serveur"] = server["server"]
+        print(f"✅ {self._llm_label(server['server'])}")
 
     def _llm_add_server(self):
         """Saisir un hôte et un port, puis reconnaître ce qui répond.
@@ -338,12 +305,13 @@ class AssistantMenuMixin:
         )
         print(f"✅ {label}")
 
-    def _llm_delete_server(self, connus):
-        """Supprimer un serveur, son nom retapé en entier.
+    def _llm_delete_server(self):
+        """Supprimer un serveur connu, son nom retapé en entier.
 
         Une frappe sur « o » se donne par réflexe ; recopier un nom oblige à
         regarder ce qu'on retire.
         """
+        connus = llm_servers.load(get_config=self._llm_get_config)
         noms = [s.label for s in connus]
         for rang, nom in enumerate(noms, 1):
             print(f"[{rang}] {nom}")
@@ -373,7 +341,8 @@ class AssistantMenuMixin:
             state["serveur"] = None
 
     def _llm_search(self):
-        """Où chercher un serveur.
+        """Où chercher un serveur (SEARCH, `menus/assistant.py`). Rend None
+        sur [0], et sur Ctrl+C ou Ctrl+D à sa question.
 
         La question se pose ICI, au moment où l'on cherche, et non à l'entrée
         du menu : une première utilisation doit pouvoir répondre sans avoir
@@ -384,76 +353,42 @@ class AssistantMenuMixin:
         virtualisation — et « le réseau local » ne désigne alors rien de
         précis ; le pont est signalé comme tel et le choix reste entier.
         """
+        return navigate(self, menus_assistant.SEARCH)
+
+    def _llm_search_where(self):
+        """La question de Search, redite avant chaque réponse."""
+        print(t("Where should I look for a server?"))
+
+    def _llm_here_hint(self):
+        """Ce que « Here (127.0.0.1) » montre entre parenthèses."""
+        return t("11 ports, instant")
+
+    def _llm_search_here(self):
+        """Sonder les ports de cette machine, la sonde de la session
+        oubliée pour qu'elle se refasse."""
+        self._llm_state()["sonde"] = None
+        self._llm_probe_and_keep(["127.0.0.1"])
+
+    def _llm_networks(self):
+        """Les réseaux que la machine porte, comme Search les propose,
+        relus à chaque dessin : {"prompt_description", "cidr"} chacun, un
+        pont de virtualisation signalé."""
         from script.todo.assistant import discover as llm_disc
 
-        while True:
-            reseaux = llm_disc.local_networks()
-            choices = [
+        reseaux = []
+        for interface in llm_disc.local_networks():
+            pont = f" ({t('libvirt bridge')})" if interface.is_bridge else ""
+            reseaux.append(
                 {
                     "prompt_description": (
-                        f"{t('Here (127.0.0.1)')}  ({t('11 ports, instant')})"
-                    )
-                },
-                {
-                    "prompt_description": t(
-                        "The QEMU VMs of this machine (virsh)"
-                    )
-                },
-                {"prompt_description": t("The hosts of ~/.ssh/config")},
-            ]
-            for interface in reseaux:
-                pont = (
-                    f" ({t('libvirt bridge')})" if interface.is_bridge else ""
-                )
-                choices.append(
-                    {
-                        "prompt_description": (
-                            f"{t('local network of this machine')}"
-                            f"  {interface.cidr}"
-                            f" · {interface.name}{pont}"
-                        )
-                    }
-                )
-            choices.append({"prompt_description": t("An address I type")})
-            choices.append(
-                {"prompt_description": t("A network I type (CIDR)")}
+                        f"{t('local network of this machine')}"
+                        f"  {interface.cidr}"
+                        f" · {interface.name}{pont}"
+                    ),
+                    "cidr": interface.cidr,
+                }
             )
-            choices.append(
-                {"prompt_description": t("The networks of a machine over SSH")}
-            )
-            print(t("Where should I look for a server?"))
-            try:
-                status = click.prompt(self.fill_help_info(choices))
-            except (KeyboardInterrupt, click.exceptions.Abort):
-                print()
-                return
-            print()
-            if status == "0":
-                return
-            # Seul un numéro tel qu'affiché désigne une entrée : `int`
-            # prendrait aussi « 01 », « +1 » ou un chiffre d'une autre
-            # écriture.
-            if status not in [str(n) for n in range(1, len(reseaux) + 7)]:
-                print(t("Command not found !"))
-                continue
-            rang = int(status)
-            if rang == 1:
-                self._llm_state()["sonde"] = None
-                self._llm_probe_and_keep(["127.0.0.1"])
-            elif rang == 2:
-                self._llm_search_qemu()
-            elif rang == 3:
-                self._llm_search_ssh()
-            elif 4 <= rang <= 3 + len(reseaux):
-                self._llm_search_network(reseaux[rang - 4])
-            elif rang == 4 + len(reseaux):
-                self._llm_add_server()
-            elif rang == 5 + len(reseaux):
-                self._llm_search_cidr()
-            elif rang == 6 + len(reseaux):
-                self._llm_search_remote()
-            else:
-                print(t("Command not found !"))
+        return reseaux
 
     def _llm_search_qemu(self):
         """Les VM libvirt de la machine comme cibles.
@@ -567,9 +502,9 @@ class AssistantMenuMixin:
         else:
             print(t("Command not found !"))
 
-    def _llm_search_network(self, interface):
-        """Balayer un réseau porté par une interface."""
-        self._llm_sweep_cidr(interface.cidr)
+    def _llm_search_network(self, network):
+        """Balayer `network`, un réseau de `_llm_networks`."""
+        self._llm_sweep_cidr(network["cidr"])
 
     def _llm_sweep_cidr(self, cidr):
         """Confirmer, puis balayer le réseau nommé.
@@ -1066,8 +1001,9 @@ class AssistantMenuMixin:
             state["gpts"], state["gpt_problemes"] = llm_gpt.load_all()
         return state["gpts"], state["gpt_problemes"]
 
-    def _llm_gpt_label(self):
-        """L'étiquette de l'entrée du catalogue, avec ses comptes.
+    def _llm_gpt_count(self):
+        """Ce que « gpt tools » montre entre parenthèses : ses outils et
+        combien conviennent au serveur en usage, ou ce qui les empêche.
 
         Le nombre de compatibles se dit dès le menu : ouvrir un catalogue pour
         y découvrir que rien ne convient est une visite perdue.
@@ -1076,14 +1012,12 @@ class AssistantMenuMixin:
         if not gpts:
             fatals = [souci for souci in problemes if souci.fatal]
             if fatals:
-                return f"{t('gpt tools')}  ({len(fatals)} ⚠)"
-            return f"{t('gpt tools')}  ({t('no gpt tool yet')})"
+                return f"{len(fatals)} ⚠"
+            return t("no gpt tool yet")
         compatibles = sum(
             1 for _, verdict, _ in self._llm_apparier(gpts) if verdict == "ok"
         )
-        return (
-            f"{t('gpt tools')}  ({len(gpts)}, {compatibles} {t('compatible')})"
-        )
+        return f"{len(gpts)}, {compatibles} {t('compatible')}"
 
     def _llm_apparier(self, gpts):
         """[(gpt, verdict, raison)] — chaque outil confronté au serveur.

@@ -792,6 +792,54 @@ class MenusDuLLM(unittest.TestCase):
             self.answered("_llm_search_remote", "forged-remote", "2")
         balayage.assert_called_once_with("198.51.100.0/24")
 
+    def test_servers_sans_serveur_connu_passe_a_la_recherche(self):
+        # Sans serveur connu, Servers le dit et ouvre Search, sans se
+        # dessiner ni poser sa question.
+        from script.todo.assistant import servers as llm_servers
+
+        with (
+            patch.object(llm_servers, "load", return_value=[]),
+            patch.object(type(self.todo), "_llm_search") as recherche,
+        ):
+            shown = self.answered("_llm_servers")
+        recherche.assert_called_once_with()
+        self.assertEqual(shown, f"{t('no server yet')}\n")
+
+    def test_search_offre_les_reseaux_que_la_machine_porte(self):
+        # Les réseaux suivent les hôtes SSH : sur deux réseaux, « 5 »
+        # balaie le second, et « 6 », l'entrée qui les suit, saisit une
+        # adresse.
+        from script.todo.assistant import discover as llm_disc
+
+        reseaux = [
+            llm_disc.Interface("forged0", "192.0.2.0/24", False),
+            llm_disc.Interface("virbr-forged", "198.51.100.0/24", True),
+        ]
+        with (
+            patch.object(llm_disc, "local_networks", return_value=reseaux),
+            patch.object(type(self.todo), "_llm_sweep_cidr") as balayage,
+            patch.object(type(self.todo), "_llm_add_server") as saisie,
+        ):
+            self.answered("_llm_search", "5", "6", "0")
+        balayage.assert_called_once_with("198.51.100.0/24")
+        saisie.assert_called_once_with()
+
+    def test_supprimer_un_serveur_ne_retire_que_celui_retape(self):
+        # Servers › Delete a server, [4] sous deux serveurs connus : le
+        # second n'est retiré que son nom retapé en entier ; un nom
+        # incomplet ne retire rien, et « 01 » ne désigne aucun serveur,
+        # sans que le nom soit demandé : le « 0 » qui suit est la réponse
+        # de Servers, et la liste des réponses s'épuiserait sinon.
+        from script.todo.assistant import servers as llm_servers
+
+        with patch.object(llm_servers, "save") as save:
+            self.answered("_llm_servers", "4", "2", "Forged two", "0")
+            self.answered("_llm_servers", "4", "2", "Forged", "0")
+            self.answered("_llm_servers", "4", "01", "0")
+        self.assertEqual(save.call_count, 1)
+        [(restants,), _] = save.call_args_list[0]
+        self.assertEqual([s.label for s in restants], ["Forged one"])
+
     def test_le_catalogue_gpt_prend_une_lettre_ou_un_numero_affiche(self):
         # Sur trois outils : « ² », un chiffre pour `isdigit` que `int`
         # refuse, lèverait une ValueError qui termine TODO ; « 01 », « +1 »

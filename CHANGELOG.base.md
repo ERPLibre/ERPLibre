@@ -439,6 +439,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
 - Assistant › Mail › Accounts › List accounts and Cache › Cache size and purge write their lines in the chosen language: a disabled account and the size of a cache were marked in French whatever the language
 - Navigation telemetry: Execute › Deploy › QEMU/KVM › SSH configuration (~/.ssh/config, ProxyJump), which rewrites the account's SSH configuration, is declared dangerous and launches only from its menu, like the entry of the same name in Proxmox VE: the page shows it without ▶, and the TUI answers it with a notice
+- Navigation telemetry: Assistant › LLM names its entries as its menu does; Known servers › Add a server by hand and the other entries of Search for a server launch from the TUI, and Search › The networks of a machine over SSH is a menu the TODO page reaches; neither the TUI nor the page launches Known servers › Delete a server, which erases a server, nor Search › The QEMU VMs of this machine (virsh) and The hosts of ~/.ssh/config, which probe those hosts without asking
 
 <!-- [fr] -->
 
@@ -594,6 +595,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › Courriel › Comptes › Ajouter un compte ne prend un fournisseur que par son numéro tel que la liste l'écrit : « 01 », « +1 », « -1 » ou un chiffre d'une autre écriture gardent le fournisseur générique, qui demande les serveurs, au lieu de donner au compte les serveurs d'un fournisseur que personne n'a choisi
 - Assistant › Courriel › Comptes › Lister les comptes et Cache › Taille du cache et purge écrivent leurs lignes dans la langue choisie : un compte désactivé et la taille d'un cache s'y marquaient en français quelle que soit la langue
 - Télémétrie de navigation : Exécution › Deploy › QEMU/KVM › Configuration SSH (~/.ssh/config, ProxyJump), qui réécrit la configuration SSH du compte, est déclarée dangereuse et se lance depuis son menu seulement, comme l'entrée du même nom de Proxmox VE : la page la montre sans ▶, et la TUI y répond par un avis
+- Télémétrie de navigation : Assistant › LLM nomme ses entrées comme son menu ; Serveurs connus › Ajouter un serveur à la main et les autres entrées de Chercher un serveur se lancent depuis la TUI, et Chercher un serveur › Les réseaux d'une machine en SSH est un menu que la page de TODO atteint ; ni la TUI ni la page ne lancent Serveurs connus › Supprimer un serveur, qui efface un serveur, ni Chercher un serveur › Les VM QEMU de cette machine (virsh) et Les hôtes de ~/.ssh/config, qui sondent ces hôtes sans confirmation
 
 <!-- [en] -->
 ## Removed

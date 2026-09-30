@@ -287,6 +287,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › Mail › Accounts › Add an account takes a provider only by its number as the list writes it: « 01 », « +1 », « -1 » or a digit of another script keep the generic provider, which asks for the servers, instead of giving the account the servers of a provider nobody chose
 - Assistant › Mail › Accounts › List accounts and Cache › Cache size and purge write their lines in the chosen language: a disabled account and the size of a cache were marked in French whatever the language
 - Navigation telemetry: Execute › Deploy › QEMU/KVM › SSH configuration (~/.ssh/config, ProxyJump), which rewrites the account's SSH configuration, is declared dangerous and launches only from its menu, like the entry of the same name in Proxmox VE: the page shows it without ▶, and the TUI answers it with a notice
+- Navigation telemetry: Assistant › LLM names its entries as its menu does; Known servers › Add a server by hand and the other entries of Search for a server launch from the TUI, and Search › The networks of a machine over SSH is a menu the TODO page reaches; neither the TUI nor the page launches Known servers › Delete a server, which erases a server, nor Search › The QEMU VMs of this machine (virsh) and The hosts of ~/.ssh/config, which probe those hosts without asking
 
 ## Removed
 

@@ -331,9 +331,12 @@ class TestLArbreDesMenus(unittest.TestCase):
         # chaque entrée des familles QEMU et Proxmox qui efface ce que la
         # TUI ne rend pas par elle-même, pose des paquets ou un service, ici
         # ou sur un hôte distant, agit en root sur un hôte, écrit la
-        # configuration SSH du compte ou crée de vraies machines, et la
-        # remise à zéro des préférences. Les `kwargs` distinguent les
-        # actions de production de celles du serveur local, au même chemin.
+        # configuration SSH du compte ou crée de vraies machines, la
+        # suppression d'un serveur de modèles connu, les deux recherches qui
+        # sondent sans confirmation les VM de la machine ou les hôtes de
+        # ~/.ssh/config, et la remise à zéro des préférences. Les `kwargs`
+        # distinguent les actions de production de celles du serveur local,
+        # au même chemin.
         dangerous = []
 
         def walk(node, path):
@@ -489,6 +492,17 @@ class TestLArbreDesMenus(unittest.TestCase):
                         ),
                     )
                 ],
+                (
+                    "TODO › Assistant › LLM › Servers › Delete a server",
+                    {},
+                ),
+                *[
+                    (f"TODO › Assistant › LLM › Search › {label}", {})
+                    for label in (
+                        "The QEMU VMs of this machine (virsh)",
+                        "The hosts of ~/.ssh/config",
+                    )
+                ],
                 ("TODO › Configuration › Reset all preferences", {}),
             ],
         )
@@ -556,8 +570,8 @@ class TestLArbreDesMenus(unittest.TestCase):
         )
         # Une feuille n'en porte pas : son libellé est celui de son entrée.
         self.assertNotIn("entry", self._noeud("Show code status"))
-        # Deux libellés calculés en tête du menu LLM : Search garde le sien,
-        # et une feuille que son menu ne nomme pas a une entrée vide.
+        # Le menu LLM : Search garde son entrée, et une feuille dont le
+        # libellé finit par un suffixe calculé a une entrée vide.
         llm = self._noeud("LLM")
         self.assertEqual(
             self._noeud("Search", llm)["entry"], "Search for a server…"
@@ -567,9 +581,7 @@ class TestLArbreDesMenus(unittest.TestCase):
             for n in llm["children"]
             if n.get("method") == "_llm_gpt_catalogue"
         ]
-        self.assertEqual(
-            (gpt["label"], gpt["entry"]), ("llm gpt catalogue", "")
-        )
+        self.assertEqual((gpt["label"], gpt["entry"]), ("gpt tools", ""))
 
     def test_a_submenu_its_parent_does_not_name_has_an_empty_entry(self):
         # Le menu LLM calcule le libellé de l'entrée qui ouvre Servers : son
@@ -1971,6 +1983,98 @@ class TestAutomationMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(self.menu.render, "once")
 
 
+class TestLlmMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › LLM : parler, un outil gpt, les serveurs connus, la
+    recherche, la fiche du serveur, chacun avec ce que son libellé dit
+    entre parenthèses ; Ctrl+C ou Ctrl+D ramènent à Assistant."""
+
+    MENU = "prompt_assistant_llm"
+    BACK = None
+    EXPECTED = {
+        "Free question": "_llm_conversation",
+        "gpt tools": "_llm_gpt_catalogue",
+        "Known servers": "_llm_servers",
+        "Search for a server…": "_llm_search",
+        "Server card": "_llm_server_card",
+    }
+
+    def test_each_computed_label_names_its_method(self):
+        self.assertEqual(
+            [entry.suffix for entry in self.entries],
+            [
+                "_llm_talks_to",
+                "_llm_gpt_count",
+                "_llm_servers_count",
+                None,
+                "_llm_card_hint",
+            ],
+        )
+        self.assertIs(self.menu.abort_closes, True)
+
+
+class TestServersMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › LLM › Servers : les serveurs connus, puis l'ajout à la
+    main et la suppression, qui efface un serveur."""
+
+    MENU = "_llm_servers"
+    BACK = None
+    EXPECTED = {
+        "Add a server by hand": "_llm_add_server",
+        "Delete a server": "_llm_delete_server",
+    }
+
+    def test_the_known_servers_come_first_and_delete_is_dangerous(self):
+        from script.todo.ui.registry import FromMethod
+
+        known = self.menu.entries[0]
+        self.assertIsInstance(known, FromMethod)
+        self.assertEqual(
+            (known.method, known.action, known.kwarg),
+            ("_llm_known_servers", "_llm_use_server", "server"),
+        )
+        self.assertEqual(
+            [entry.danger for entry in self.entries], [None, True]
+        )
+        self.assertEqual(self.menu.opens, "_llm_servers_open")
+
+
+class TestSearchMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Assistant › LLM › Search : cette machine, ses VM, ses hôtes SSH, les
+    réseaux qu'elle porte, puis ce qu'on tape ; la question est redite
+    avant chaque réponse."""
+
+    MENU = "_llm_search"
+    BACK = None
+    EXPECTED = {
+        "Here (127.0.0.1)": "_llm_search_here",
+        "The QEMU VMs of this machine (virsh)": "_llm_search_qemu",
+        "The hosts of ~/.ssh/config": "_llm_search_ssh",
+        "An address I type": "_llm_add_server",
+        "A network I type (CIDR)": "_llm_search_cidr",
+        "The networks of a machine over SSH": "_llm_search_remote",
+    }
+
+    def test_the_probes_that_do_not_confirm_are_dangerous(self):
+        # Les VM de la machine et les hôtes de ~/.ssh/config se sondent dès
+        # l'entrée choisie ; le reste de Search confirme, demande l'hôte ou
+        # ne joint que cette machine.
+        self.assertEqual(
+            [entry.danger for entry in self.entries],
+            [None, True, True, None, None, None],
+        )
+
+    def test_the_networks_come_after_the_hosts_of_the_machine(self):
+        from script.todo.ui.registry import FromMethod
+
+        networks = self.menu.entries[3]
+        self.assertIsInstance(networks, FromMethod)
+        self.assertEqual(
+            (networks.method, networks.action, networks.kwarg),
+            ("_llm_networks", "_llm_search_network", "network"),
+        )
+        self.assertEqual(self.menu.before, "_llm_search_where")
+
+
 class TestUpdateMenu(unittest.TestCase):
     """Mise à jour : chaque numéro lance l'entrée qu'il montre, et aucune
     autre réponse ne lance rien.
@@ -2837,6 +2941,9 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_vpn",
                 "prompt_execute_longtest",
                 "prompt_install",
+                "prompt_assistant_llm",
+                "_llm_servers",
+                "_llm_search",
             },
             set(declared),
         )

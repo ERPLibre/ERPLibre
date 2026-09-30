@@ -1120,6 +1120,7 @@ class TestTodoMenuFiles(unittest.TestCase):
             [p.name for p in paths],
             [
                 "__init__.py",
+                "assistant.py",
                 "deploy.py",
                 "execute.py",
                 "git.py",
@@ -1157,10 +1158,13 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "_container_compose",
                 "_container_erplibre",
                 "_container_service",
+                "_llm_search",
+                "_llm_servers",
                 "_prompt_claude_configs",
                 "_prompt_git_server_local",
                 "_prompt_git_server_production",
                 "drop_database",
+                "prompt_assistant_llm",
                 "prompt_claude_sessions",
                 "prompt_configuration",
                 "prompt_execute",
@@ -1219,7 +1223,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 45)
+        self.assertEqual(len(menus), 48)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         owners = {"drop_database": DatabaseManager}
         for menu in menus.values():
