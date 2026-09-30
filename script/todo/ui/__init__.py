@@ -61,8 +61,18 @@ def confirm(text, default=False, typed=None) -> bool:
     return current().confirm(text, default, typed)
 
 
-def choose(text, options, multi=False):
-    return current().choose(text, options, multi)
+def choose(
+    text,
+    options,
+    multi=False,
+    default=None,
+    labels=None,
+    letters=None,
+    names=None,
+):
+    return current().choose(
+        text, options, multi, default, labels, letters, names
+    )
 
 
 def pick_path(start, directory=False):

@@ -11843,6 +11843,11 @@ TRANSLATIONS = {
         "fr": "Chemin du répertoire (vide pour annuler) : ",
         "en": "Directory path (empty to cancel): ",
     },
+    "Invalid choice: ": {"fr": "Choix invalide : ", "en": "Invalid choice: "},
+    "Several: 1 3, 2-5 or all; empty for none: ": {
+        "fr": "Plusieurs : 1 3, 2-5 ou tout ; vide pour aucun : ",
+        "en": "Several: 1 3, 2-5 or all; empty for none: ",
+    },
     "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
     "Odoo backup .zip to inspect, without restoring it": {
         "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",

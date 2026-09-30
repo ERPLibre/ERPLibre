@@ -6,14 +6,14 @@ les questions de TODO, et deux ports qui le font.
 
 Un port répond à `menu(view)`, `ask(text, default, kind, timeout)`,
 `secret(text)`, `confirm(text, default, typed)`, `choose(text, options,
-multi)`, `pick_path(start, directory)`, `notice(text, level)`, `run(cmd,
-**opts)` et `open_view(view)`. `menu` et `ask` sont les deux primitives :
-elles montrent leur texte tel quel et rendent la ligne répondue, sans son
-saut de ligne. Une ligne vide rend "" et laisse le défaut à l'appelant,
-comme `input` ; seul le compte à rebours (`kind="countdown"`) rend
-`default` à l'échéance. `menu` pose un message déjà fait : un `menu`, ou
-l'`ask` que construisent `choose` et `pick_path`. `BasePort` en déduit
-les autres questions.
+multi, default, labels, letters, names)`, `pick_path(start, directory)`,
+`notice(text, level)`, `run(cmd, **opts)` et `open_view(view)`. `menu`
+et `ask` sont les deux primitives : elles montrent leur texte tel quel
+et rendent la ligne répondue, sans son saut de ligne. Une ligne vide
+rend "" et laisse le défaut à l'appelant, comme `input` ; seul le compte
+à rebours (`kind="countdown"`) rend `default` à l'échéance. `menu` pose
+un message déjà fait : un `menu`, ou l'`ask` que construisent `choose`
+et `pick_path`. `BasePort` en déduit les autres questions.
 
 Chaque question est aussi un message `todo.v1` (`question`, `menu_view`) :
 `speak`, un libellé court pour la voix ; `requires`, les capacités qu'un
@@ -50,6 +50,12 @@ FALLBACK = "pty"
 SPEAK_LIMIT = 80
 YES = ("y", "yes", "o", "oui")
 NO = ("n", "no", "non")
+# Les mots qui, dans un choix multiple, prennent toutes les options.
+ALL_WORDS = ("tout", "all", "*")
+# Une plage de numéros tels qu'une liste les écrit, et ce qui sépare les
+# réponses d'un choix multiple.
+_RANGE = re.compile(r"([1-9][0-9]*)-([1-9][0-9]*)")
+_SEPARATORS = re.compile(r"[\s,]+")
 # Décor en tête de ligne (emoji, puces) et ponctuation d'invite en fin.
 _SPEAK_HEAD = re.compile(r"^[^\w«\"'(\[]+")
 _SPEAK_TAIL = re.compile(r"[\s:]+$")
@@ -105,6 +111,79 @@ def path_question(start, directory=False) -> dict:
     return question(
         "path", f"📂 {start}\n{invite}", start=start, directory=bool(directory)
     )
+
+
+def choice_question(
+    text, labels, multi=False, default=None, names=None, letters=None
+) -> dict:
+    """Message `ask` de genre `choose` : chaque libellé de `labels` sous
+    son numéro, à partir de 1, puis chaque action de `letters` ({lettre:
+    libellé}), puis [0] Retour. `default`, la clé qu'une réponse vide
+    choisit, marque la première ligne de son entrée ; `names` ({nom:
+    clé}) porte les options qu'un nom exact choisit. `text` montre la
+    question, `prompt` la même, sans ses entrées, pour la page ;
+    l'invite d'un choix multiple dit les réponses qu'il lit."""
+    entries = [(str(n), label) for n, label in enumerate(labels, 1)]
+    options = []
+    for key, label in [*entries, *(letters or {}).items()]:
+        if key == default:
+            head, cut, rest = str(label).partition("\n")
+            label = f"{head} {t('(default)')}{cut}{rest}"
+        options.append(
+            {"key": key, "label": str(label), "speak": speak(label)}
+        )
+    options.append({"key": "0", "label": t("Back"), "speak": speak(t("Back"))})
+    invite = t("Several: 1 3, 2-5 or all; empty for none: ") if multi else ": "
+    lines = [text, *(f"[{o['key']}] {o['label']}" for o in options)]
+    return question(
+        "choose",
+        "\n".join(lines) + "\n" + invite,
+        default,
+        options=options,
+        multi=bool(multi),
+        names=dict(names or {}),
+        prompt=text,
+        speak=speak(text),
+    )
+
+
+def chosen_keys(message, answer):
+    """Les clés que nomme `answer` à la question `message` d'un choix
+    (`choice_question`) : un numéro tel que la liste l'écrit, jamais
+    « 01 », « +1 » ni « ١ » ; une lettre d'action, sans casse ; le nom
+    exact d'une option. « 0 » rend ["0"], le retour. Une réponse vide rend
+    le défaut d'un choix simple, ["0"] sans lui, et [] pour un choix
+    multiple : jamais toutes les options. Un choix multiple lit aussi les
+    plages « 2-5 » et `ALL_WORDS`, séparés de virgules ou d'espaces, et
+    rend ses clés dans l'ordre de la liste, sans doublon. None pour une
+    réponse qui ne se lit pas ainsi, ou dont un morceau se lit de deux
+    façons : le nom d'une option qui est le numéro d'une autre, une
+    lettre ou un mot de `ALL_WORDS`."""
+    typed = answer.strip()
+    keys = [option["key"] for option in message["options"]]
+    numbers = [key for key in keys if key.isdecimal() and key != "0"]
+    letters = [key for key in keys if not key.isdecimal()]
+    names = message.get("names") or {}
+    multi = message["multi"]
+    if not typed:
+        return [] if multi else [message.get("default") or "0"]
+    if typed == "0":
+        return ["0"]
+    picked = set()
+    for token in filter(None, _SEPARATORS.split(typed) if multi else [typed]):
+        span = _RANGE.fullmatch(token) if multi else None
+        readings = [{names[token]}] if token in names else []
+        if token in numbers or token.lower() in letters:
+            readings.append({token.lower()})
+        if multi and token.lower() in ALL_WORDS:
+            readings.append(set(numbers))
+        if span and int(span[1]) <= int(span[2]) <= len(numbers):
+            first, last = int(span[1]), int(span[2])
+            readings.append({str(n) for n in range(first, last + 1)})
+        if not readings or any(r != readings[0] for r in readings):
+            return None
+        picked |= readings[0]
+    return [key for key in keys if key in picked]
 
 
 def menu_view(
@@ -189,34 +268,66 @@ class BasePort:
             if not answer:
                 return default
 
-    def choose(self, text, options, multi=False):
-        """L'option choisie par son numéro, ou avec `multi` la liste de
-        celles que nomme une réponse comme « 1 3 » ; redemande tant que la
-        réponse nomme autre chose. La question est un `ask` de genre
-        `choose`, posé par `menu` : `options` (`key`, `label`, `speak`) et
-        `multi` pour la page, un texte qui numérote les options pour le
-        terminal."""
-        items = [
-            {"key": str(n), "label": str(option), "speak": speak(option)}
-            for n, option in enumerate(options, 1)
-        ]
-        lines = [text, *(f"[{i['key']}] {i['label']}" for i in items)]
-        shown = "\n".join(lines) + "\n: "
-        message = question(
-            "choose", shown, options=items, multi=multi, speak=speak(text)
-        )
+    def choose(
+        self,
+        text,
+        options,
+        multi=False,
+        default=None,
+        labels=None,
+        letters=None,
+        names=None,
+    ):
+        """L'option choisie, ou avec `multi` la liste de celles choisies,
+        dans l'ordre de `options` ; None pour [0] Retour, Ctrl+D (EOFError)
+        ou, sans `default`, une réponse vide d'un choix simple, et [] pour
+        celle d'un choix multiple. Chaque option se montre par son libellé
+        de `labels`, `str(option)` sans eux, et se choisit par son numéro,
+        ou par un nom de `names` ({nom affiché: option}) ; sans `labels`,
+        une option qui est une chaîne est aussi son nom. `default`, une
+        option d'un choix simple, est ce que prend une réponse vide ; une
+        action de `letters` ({lettre: libellé}) rend sa lettre. Une réponse
+        invalide le dit (`notice`) et la question revient. Les règles sont
+        celles de `chosen_keys` ; la question, un `ask` de genre `choose`
+        (`choice_question`), posé par `menu`. ValueError, avant de
+        demander, pour un défaut ou des lettres dans un choix multiple, une
+        lettre hors de a à z, un libellé de plus ou de moins que d'options,
+        un défaut ou un nom hors des options."""
+        options = list(options)
+        if labels is None:
+            labels = [str(option) for option in options]
+            strings = [option for option in options if isinstance(option, str)]
+            names = {**dict(zip(strings, strings)), **(names or {})}
+        if multi and (default is not None or letters):
+            raise ValueError("a multiple choice has no default nor letter")
+        if len(labels) != len(options) or not all(
+            re.fullmatch("[a-z]+", letter) for letter in letters or ()
+        ):
+            raise ValueError("one label per option, letters from a to z")
+        shown = {
+            name: str(options.index(option) + 1)
+            for name, option in (names or {}).items()
+        }
+        key = None if default is None else str(options.index(default) + 1)
+        message = choice_question(text, labels, multi, key, shown, letters)
         while True:
-            keys = self.menu(message).replace(",", " ").split()
-            picked = [
-                options[int(key) - 1]
-                for key in keys
-                if key.isdigit() and 0 < int(key) <= len(options)
-            ]
-            if keys and len(picked) == len(keys):
-                if multi:
-                    return picked
-                if len(picked) == 1:
-                    return picked[0]
+            try:
+                answer = self.menu(message)
+            except EOFError:
+                return None
+            keys = chosen_keys(message, answer)
+            if keys is None:
+                self.notice(
+                    f"{t('Invalid choice: ')}{answer.strip()}", "error"
+                )
+            elif keys == ["0"]:
+                return None
+            elif multi:
+                return [options[int(key) - 1] for key in keys]
+            elif keys[0].isdecimal():
+                return options[int(keys[0]) - 1]
+            else:
+                return keys[0]
 
     def pick_path(self, start, directory=False):
         """Le chemin absolu d'un fichier, ou avec `directory` d'un

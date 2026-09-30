@@ -700,7 +700,7 @@ class TestPipePort(unittest.TestCase):
         self.assertEqual(self.out.getvalue(), "[1] Execute\n: 1 → Execute\n")
 
     def test_a_choice_is_an_ask_with_its_options(self):
-        # Entrée seule redemande un choix : Ctrl+D, lui, le finit.
+        # Un test en échec laisse sa question posée : Ctrl+D la finit.
         self.addCleanup(os.write, self.master, b"\x04")
         future, asked = self.asking(
             self.port.choose, "Which?", ["alpha", "beta"], True
@@ -710,12 +710,15 @@ class TestPipePort(unittest.TestCase):
             ("ask", "choose", True),
         )
         self.assertEqual(
-            [o["label"] for o in asked["options"]], ["alpha", "beta"]
+            [o["label"] for o in asked["options"]],
+            ["alpha", "beta", "🔙 Back"],
         )
         self.reply(t="answer", qid=asked["qid"], value="2")
         self.assertEqual(future.result(10), ["beta"])
         self.assertEqual(
-            self.out.getvalue(), "Which?\n[1] alpha\n[2] beta\n: 2 → beta\n"
+            self.out.getvalue(),
+            "Which?\n[1] alpha\n[2] beta\n[0] 🔙 Back\n"
+            "Several: 1 3, 2-5 or all; empty for none: 2 → beta\n",
         )
 
     def test_a_path_is_asked_over_the_channel_and_checked(self):

@@ -167,10 +167,13 @@ class TestTerminalPort(unittest.TestCase):
             texts.append(text)
             return "2"
 
+        _english(self)
         self.originals(input=fake_input)
         terminal = port.TerminalPort()
         self.assertEqual(terminal.choose("Which?", ["alpha", "beta"]), "beta")
-        self.assertEqual(texts, ["Which?\n[1] alpha\n[2] beta\n: "])
+        self.assertEqual(
+            texts, ["Which?\n[1] alpha\n[2] beta\n[0] 🔙 Back\n: "]
+        )
 
     def test_run_calls_exec_command_live_and_notice_prints(self):
         with patch.object(
@@ -239,19 +242,21 @@ class TestScriptedPort(unittest.TestCase):
         self.assertEqual(texts[:3], ["Go? [y/N]: "] * 3)
         self.assertEqual(scripted.events[0]["default"], "n")
         self.assertEqual(scripted.events[3]["kind"], "typed")
+        _english(self)
         scripted = port.ScriptedPort(["4", "2", "1, 3"])
         options = ["alpha", "beta", "gamma"]
         self.assertEqual(scripted.choose("Which?", options), "beta")
         self.assertEqual(
             scripted.choose("Which?", options, multi=True), ["alpha", "gamma"]
         )
-        single, again, multi = scripted.events
+        single, refused, again, multi = scripted.events
         self.assertEqual(
             (single["t"], single["kind"], single["multi"], multi["multi"]),
             ("ask", "choose", False, True),
         )
         self.assertEqual(
-            single["text"], "Which?\n[1] alpha\n[2] beta\n[3] gamma\n: "
+            single["text"],
+            "Which?\n[1] alpha\n[2] beta\n[3] gamma\n[0] 🔙 Back\n: ",
         )
         self.assertEqual(single["speak"], "Which?")
         self.assertEqual(
@@ -260,8 +265,10 @@ class TestScriptedPort(unittest.TestCase):
                 ("1", "alpha", "alpha"),
                 ("2", "beta", "beta"),
                 ("3", "gamma", "gamma"),
+                ("0", "🔙 Back", "Back"),
             ],
         )
+        self.assertEqual(refused["text"], "Invalid choice: 4")
         self.assertEqual(again, single)
 
     def test_a_typed_confirmation_carries_the_text_it_expects(self):
@@ -419,6 +426,219 @@ class TestScriptedPort(unittest.TestCase):
                 f"Not a directory: {folder}/spaced.zip ",
             ],
         )
+
+
+class TestChoose(unittest.TestCase):
+    """Les règles d'un choix, les mêmes à chaque sélecteur de TODO : un
+    numéro tel qu'affiché ou le nom exact d'une option, [0] Retour, une
+    réponse vide qui prend le défaut et jamais tout, « tout » et les
+    plages en choix multiple seulement, une réponse invalide dite puis la
+    question reposée, Ctrl+D qui revient."""
+
+    def setUp(self):
+        _english(self)
+
+    def chosen(self, answers, *args, **rules):
+        """(ce que rend le choix, les événements du port) quand il reçoit
+        `answers`, puis Ctrl+D."""
+        scripted = port.ScriptedPort(answers)
+        return scripted.choose(*args, **rules), scripted.events
+
+    def refusals(self, events) -> list:
+        return [e["text"] for e in events if e["t"] == "notice"]
+
+    def test_the_list_shows_numbers_letters_the_default_and_back(self):
+        _, [asked] = self.chosen(
+            [],
+            "Which browser?",
+            ["w3m", "lynx"],
+            default="lynx",
+            letters={"i": "Install another"},
+        )
+        self.assertEqual(
+            asked["text"],
+            "Which browser?\n[1] w3m\n[2] lynx (default)\n"
+            "[i] Install another\n[0] 🔙 Back\n: ",
+        )
+        self.assertEqual(
+            [o["key"] for o in asked["options"]], ["1", "2", "i", "0"]
+        )
+        # La page lit la question sans ses entrées, et les noms qu'elle
+        # peut taper.
+        self.assertEqual(
+            (asked["prompt"], asked["default"], asked["names"]),
+            ("Which browser?", "2", {"w3m": "1", "lynx": "2"}),
+        )
+        # Sur un libellé de plusieurs lignes, la marque suit la première.
+        _, [asked] = self.chosen(
+            [], "Mode?", ["a", "b"], default="b", labels=["a", "b\n    more"]
+        )
+        self.assertEqual(asked["options"][1]["label"], "b (default)\n    more")
+        _, [several] = self.chosen([], "Which?", ["a"], multi=True)
+        self.assertEqual(
+            several["text"],
+            "Which?\n[1] a\n[0] 🔙 Back\n"
+            "Several: 1 3, 2-5 or all; empty for none: ",
+        )
+
+    def test_a_number_is_taken_only_as_the_list_shows_it(self):
+        # « 01 », « +1 », « ١ » (un en écriture arabe), « ² », « -1 » et
+        # « 1.0 » ne sont pas le numéro affiché : chacun est dit invalide,
+        # puis la même question revient, à laquelle « 2 » répond.
+        for answer in ("01", "+1", "١", "²", "-1", "1.0", "3"):
+            with self.subTest(answer=answer):
+                chosen, events = self.chosen(
+                    [answer, " 2 "], "Which?", ["alpha", "beta"]
+                )
+                self.assertEqual(chosen, "beta")
+                self.assertEqual(
+                    self.refusals(events), [f"Invalid choice: {answer}"]
+                )
+                self.assertEqual(events[0], events[2])
+
+    def test_an_option_that_is_a_string_is_also_chosen_by_its_exact_name(
+        self,
+    ):
+        chosen, _ = self.chosen(["beta"], "Which?", ["alpha", "beta"])
+        self.assertEqual(chosen, "beta")
+        chosen, events = self.chosen(
+            ["Beta", "beta "], "Which?", ["alpha", "beta"]
+        )
+        self.assertEqual(
+            (chosen, self.refusals(events)), ("beta", ["Invalid choice: Beta"])
+        )
+        # Une option qui n'est pas une chaîne n'a que son numéro ; son
+        # libellé n'est pas un nom.
+        chosen, events = self.chosen(
+            ["two", "2"], "Which?", [1, 2], labels=["one", "two"]
+        )
+        self.assertEqual((chosen, len(self.refusals(events))), (2, 1))
+
+    def test_under_labels_only_a_declared_name_chooses(self):
+        # Sous des libellés, le code d'une option, que la liste ne montre
+        # pas, n'est pas un nom ; seul un nom de `names` en est un.
+        rules = {"labels": ["Shown A", "Shown B"]}
+        chosen, events = self.chosen(
+            ["code_a", "Shown A", "1"], "?", ["code_a", "code_b"], **rules
+        )
+        self.assertEqual(chosen, "code_a")
+        self.assertEqual(
+            self.refusals(events),
+            ["Invalid choice: code_a", "Invalid choice: Shown A"],
+        )
+        rules["names"] = {"Shown B": "code_b"}
+        chosen, events = self.chosen(
+            ["Shown B"], "?", ["code_a", "code_b"], **rules
+        )
+        self.assertEqual((chosen, self.refusals(events)), ("code_b", []))
+        self.assertEqual(events[0]["names"], {"Shown B": "2"})
+
+    def test_an_answer_read_two_ways_is_invalid(self):
+        # Le nom d'une option qui est le numéro d'une autre, une lettre ou
+        # un mot de tout : dit invalide plutôt que deviné. Un nom qui est
+        # le numéro de sa propre option n'a qu'une lecture.
+        cases = [
+            (["2", "1"], (["2", "b"],), {}, "2"),
+            (["r", "1"], (["r"],), {"letters": {"r": "Reset"}}, "r"),
+            (["all", "1"], (["all", "b"], True), {}, ["all"]),
+        ]
+        for answers, args, rules, expected in cases:
+            with self.subTest(answers=answers):
+                chosen, events = self.chosen(answers, "?", *args, **rules)
+                self.assertEqual(chosen, expected)
+                self.assertEqual(
+                    self.refusals(events), [f"Invalid choice: {answers[0]}"]
+                )
+        self.assertEqual(self.chosen(["2"], "?", ["a", "2"])[0], "2")
+
+    def test_zero_and_ctrl_d_go_back_and_ctrl_c_interrupts(self):
+        self.assertEqual(self.chosen(["0"], "Which?", ["a"])[0], None)
+        self.assertEqual(self.chosen(["0"], "Which?", ["a"], True)[0], None)
+        self.assertEqual(
+            self.chosen([], "Which?", ["a"], default="a")[0], None
+        )
+        with self.assertRaises(KeyboardInterrupt):
+            self.chosen([KeyboardInterrupt()], "Which?", ["a"])
+
+    def test_a_blank_answer_takes_the_default_or_goes_back_never_all(self):
+        for blank in ("", "  \t"):
+            with self.subTest(blank=blank):
+                chosen, _ = self.chosen([blank], "?", ["a", "b"], default="b")
+                self.assertEqual(chosen, "b")
+                self.assertIsNone(self.chosen([blank], "?", ["a", "b"])[0])
+                chosen, _ = self.chosen([blank], "?", ["a", "b"], multi=True)
+                self.assertEqual(chosen, [])
+
+    def test_all_ranges_and_separators_only_in_a_multiple_choice(self):
+        options = ["a", "b", "c", "d"]
+        cases = {
+            "tout": options,
+            "ALL": options,
+            "*": options,
+            "2-3": ["b", "c"],
+            "4,1": ["a", "d"],
+            "3, 1 1": ["a", "c"],
+            "d b": ["b", "d"],
+            "1-1 all": options,
+        }
+        for answer, expected in cases.items():
+            with self.subTest(answer=answer):
+                chosen, _ = self.chosen([answer], "?", options, multi=True)
+                self.assertEqual(chosen, expected)
+        # Une plage à l'envers ou hors de la liste, un « ; », « 0 » avec
+        # d'autres réponses, ou un seul morceau faux refusent tout.
+        for answer in ("3-2", "2-5", "1;3", "0 1", "1 x", "01-2"):
+            with self.subTest(answer=answer):
+                chosen, events = self.chosen(
+                    [answer, "1"], "?", options, multi=True
+                )
+                self.assertEqual(chosen, ["a"])
+                self.assertEqual(
+                    self.refusals(events), [f"Invalid choice: {answer}"]
+                )
+        # Dans un choix simple, « tout » et une plage sont invalides.
+        for answer in ("tout", "*", "1-2", "1 2"):
+            with self.subTest(single=answer):
+                chosen, events = self.chosen([answer, "2"], "?", options)
+                self.assertEqual((chosen, len(events)), ("b", 3))
+
+    def test_a_letter_answers_in_either_case_and_comes_back(self):
+        for answer in ("i", "I", " i "):
+            with self.subTest(answer=answer):
+                chosen, _ = self.chosen(
+                    [answer], "?", ["w3m"], letters={"i": "Install"}
+                )
+                self.assertEqual(chosen, "i")
+
+    def test_rules_that_contradict_each_other_are_refused_before_asking(
+        self,
+    ):
+        scripted = port.ScriptedPort(["1"])
+        with self.assertRaises(ValueError):
+            scripted.choose("?", ["a"], multi=True, default="a")
+        with self.assertRaises(ValueError):
+            scripted.choose("?", ["a"], multi=True, letters={"i": "x"})
+        with self.assertRaises(ValueError):
+            scripted.choose("?", ["a"], default="z")
+        # Une lettre qui ne se tape pas telle quelle, qui se lit comme un
+        # numéro ou comme le retour ; un libellé de trop ; un nom sans
+        # option.
+        for letter in ("R", "5", "0", "", "i j"):
+            with self.subTest(letter=letter):
+                with self.assertRaises(ValueError):
+                    scripted.choose("?", ["a"], letters={letter: "x"})
+        with self.assertRaises(ValueError):
+            scripted.choose("?", ["a"], labels=["a", "b"])
+        with self.assertRaises(ValueError):
+            scripted.choose("?", ["a"], names={"b": "b"})
+        self.assertEqual(scripted.events, [])
+
+    def test_the_facade_passes_every_rule_to_the_bound_port(self):
+        scripted = port.ScriptedPort(["", "one"])
+        rules = {"labels": ["one", "two"], "letters": {}, "names": {"one": 1}}
+        with ui.bind(scripted):
+            self.assertEqual(ui.choose("?", [1, 2], default=2, **rules), 2)
+            self.assertEqual(ui.choose("?", [1, 2], default=2, **rules), 1)
 
 
 class TestMessages(unittest.TestCase):
