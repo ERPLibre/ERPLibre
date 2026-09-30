@@ -98,6 +98,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Clean up everything unused, one compose project with its containers, networks and volumes, or images picked by rank. A selection with a typo removes nothing, and an image a container still holds is settled before anything goes: keep it, remove its containers then the image, or force — offered only when no running container holds it, since forcing frees the name and not the space
 
 <!-- [fr] -->
+- Import a Dolibarr website export zip into an Odoo website with the `erplibre_website_import_from_dolibarr` module: pages, blog posts, media, site CSS, header menu and 301 redirects from every Dolibarr URL. Known PHP idioms become QWeb, unknown PHP is removed with the HTML it wraps, and the analysis shows what will be removed before anything is written. Pages in another language without a translation link are chosen one by one; a re-import updates the same records, keeps edits made in Odoo unless told otherwise, and only reports what the source no longer has. From Website › Configuration › Import from Dolibarr or `odoo-bin dolibarr_website_import`
 
 - Dolibarr, l'ERP en PHP, s'installe depuis `Installation › Dolibarr`, épinglé sur un commit du dépôt officiel que Google Repo récupère : une instance de développement sous votre compte sur un port local, ou une instance de production derrière le nginx de la distribution, avec PHP-FPM sous un compte système par instance, le code en lecture seule dans `/opt`, une minuterie systemd pour les tâches planifiées de Dolibarr et un certificat de certbot ou de l'autorité locale d'ERPLibre. MariaDB ou PostgreSQL ; Debian/Ubuntu, Fedora/EL, Arch et openSUSE
 - Une instance Dolibarr de développement peut aussi tourner en conteneurs Docker ou Podman, depuis l'image officielle sur MariaDB, sans outil compose ; les secrets passent en fichiers lus seuls
@@ -166,6 +167,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nettoyer tout ce qui ne sert pas, un projet compose avec ses conteneurs, réseaux et volumes, ou des images choisies par leur rang. Une sélection fautive n'efface rien, et une image qu'un conteneur tient encore se décide avant tout effacement : la garder, effacer ses conteneurs puis l'image, ou forcer — offert seulement quand aucun conteneur en marche ne la tient, puisque forcer libère le nom et non la place
 
 <!-- [en] -->
+- Importer un zip d'export de site web Dolibarr dans un site Odoo avec le module `erplibre_website_import_from_dolibarr` : pages, billets, médias, CSS du site, menu d'en-tête et redirections 301 depuis chaque URL Dolibarr. Les idiomes PHP connus deviennent du QWeb, le PHP inconnu est retiré avec le HTML qu'il enveloppe, et l'analyse montre ce qui sera retiré avant toute écriture. Les pages dans une autre langue sans lien de traduction se choisissent une à une ; un réimport met à jour les mêmes enregistrements, garde les modifications faites dans Odoo sauf demande contraire, et ne fait que signaler ce que la source n'a plus. Depuis Site web › Configuration › Import depuis Dolibarr ou `odoo-bin dolibarr_website_import`
 ## Changed
 <!-- [fr] -->
 ## Modifié

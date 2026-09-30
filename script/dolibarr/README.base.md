@@ -465,6 +465,8 @@ ne sont pas posés.
   its name retyped to turn the API on or off. Dolibarr 24's MCP server,
   still experimental, comes later.
 
+A Dolibarr website moves to Odoo with the `erplibre_website_import_from_dolibarr` addon: export the site from Dolibarr's Website module, then import the zip from Website › Configuration › Import from Dolibarr, or with `./odoo_bin.sh dolibarr_website_import -d DB --website-id 1 --zip FILE`. The module's README describes the review step and the re-import rules.
+
 ## Pinned version
 
 <!-- [fr] -->
@@ -479,6 +481,8 @@ ne sont pas posés.
   L'explorateur (swagger) est à `/api/index.php/explorer/`. Une production
   exige son nom retapé pour allumer ou éteindre l'API. Le serveur MCP de
   Dolibarr 24, encore expérimental, viendra ensuite.
+
+Un site web Dolibarr passe à Odoo par l'addon `erplibre_website_import_from_dolibarr` : exporter le site depuis le module Site web de Dolibarr, puis importer le zip depuis Site web › Configuration › Import depuis Dolibarr, ou par `./odoo_bin.sh dolibarr_website_import -d DB --website-id 1 --zip FICHIER`. Le README du module décrit l'étape de revue et les règles du réimport.
 
 ## Version épinglée
 
