@@ -15978,10 +15978,6 @@ TRANSLATIONS = {
         "fr": "Docker pose un démon que root possède.",
         "en": "Docker runs a daemon owned by root.",
     },
-    "Mode": {
-        "fr": "Mode",
-        "en": "Mode",
-    },
     "Use vendor packages? (Y/N): ": {
         "fr": "Prendre les paquets de l'éditeur ? (O/N) : ",
         "en": "Use vendor packages? (Y/N): ",
@@ -16001,10 +15997,6 @@ TRANSLATIONS = {
     "Odoo version:": {
         "fr": "Version d'Odoo :",
         "en": "Odoo version:",
-    },
-    "Number": {
-        "fr": "Numéro",
-        "en": "Number",
     },
     "Rebuild without cache? (Y/N): ": {
         "fr": "Reconstruire sans cache ? (O/N) : ",
@@ -16218,10 +16210,6 @@ TRANSLATIONS = {
         "fr": "L'unité a refusé. Son état, puis son journal :",
         "en": "The unit refused. Its state, then its journal:",
     },
-    "All versions": {
-        "fr": "Toutes les versions",
-        "en": "All versions",
-    },
     "Every version: hours of work, tens of GB.": {
         "fr": "Toutes les versions : des heures, et des dizaines de Go.",
         "en": "Every version: hours of work, tens of GB.",
@@ -16246,13 +16234,13 @@ TRANSLATIONS = {
         "fr": "🎯 Images à la pièce",
         "en": "Images one by one",
     },
-    "Numbers (1 3, 2-5, * for all, empty to cancel)": {
-        "fr": "Numéros (1 3, 2-5, * pour tout, vide pour annuler)",
-        "en": "Numbers (1 3, 2-5, * for all, empty to cancel)",
+    "Images to remove:": {
+        "fr": "Images à effacer :",
+        "en": "Images to remove:",
     },
-    "Invalid selection: nothing removed.": {
-        "fr": "Sélection invalide : rien n'est effacé.",
-        "en": "Invalid selection: nothing removed.",
+    "Workspaces to remove:": {
+        "fr": "Espaces de travail à effacer :",
+        "en": "Workspaces to remove:",
     },
     "No image.": {
         "fr": "Aucune image.",

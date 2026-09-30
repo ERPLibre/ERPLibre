@@ -30,7 +30,7 @@ import textwrap
 import click
 
 from script.execute.execute import Execute
-from script.todo import container_runtime
+from script.todo import container_runtime, ui
 from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -91,42 +91,12 @@ class ContainerMenuMixin:
     def _container_libelle_moteur(self, nom):
         """Le nom du moteur précédé de son icône, pour une liste.
 
-        Le libellé est d'AFFICHAGE : le choix rend un rang, et les appelants
-        gardent leur liste de noms nus pour retrouver la fiche. Décorer ce
-        qu'on affiche ne doit jamais décorer ce sur quoi on décide.
+        Le libellé est d'AFFICHAGE : le choix rend le nom nu, qui retrouve
+        la fiche et se tape sans l'icône. Décorer ce qu'on affiche ne doit
+        jamais décorer ce sur quoi on décide.
         """
         icone = ICONES_MOTEUR.get(nom)
         return f"{icone} {nom}" if icone else nom
-
-    def _container_choix_numerote(self, titre, options, defaut="1"):
-        """Le RANG choisi parmi des options numérotées, ou None.
-
-        Le numéro plutôt que le nom : taper « docker » ou « podman » en entier
-        pour deux entrées coûte plus qu'il ne rapporte, et une faute de frappe
-        retombait en silence sur la première.
-
-        Les rangs hors liste sont refusés explicitement : en Python
-        options[-1] existe, et un « 0 » saisi rendrait la DERNIÈRE entrée —
-        un choix que personne n'a fait, sur un écran qui en efface parfois.
-
-        « 0 » vaut retour, comme dans tout le reste de TODO, et sort sans se
-        plaindre : c'est un geste, pas une faute de frappe.
-        """
-        print(f"\n{titre}")
-        for rang, option in enumerate(options, 1):
-            print(f"  [{rang}] {option}")
-        print(f"  [0] {t('Back')}")
-        reponse = click.prompt(t("Number"), default=defaut).strip()
-        try:
-            rang = int(reponse)
-        except ValueError:
-            rang = -1
-        if rang == 0:
-            return None
-        if not 1 <= rang <= len(options):
-            print(t("Command not found !"))
-            return None
-        return rang - 1
 
     def _container_fiches(self):
         """Les fiches des deux moteurs, relues maintenant."""
@@ -154,14 +124,18 @@ class ContainerMenuMixin:
         for fiche in prets:
             if fiche["moteur"] == choisi:
                 return fiche
-        rang = self._container_choix_numerote(
+        noms = [fiche["moteur"] for fiche in prets]
+        choisi = ui.choose(
             t("Available engines:"),
-            [self._container_libelle_moteur(f["moteur"]) for f in prets],
+            noms,
+            default=noms[0],
+            labels=[self._container_libelle_moteur(nom) for nom in noms],
+            names=dict(zip(noms, noms)),
         )
-        if rang is None:
+        if choisi is None:
             return None
-        self._container_choix = prets[rang]["moteur"]
-        return prets[rang]
+        self._container_choix = choisi
+        return prets[noms.index(choisi)]
 
     # Les libellés du diagnostic, dans l'ordre d'affichage. La largeur de la
     # colonne se CALCULE sur eux, traduits : un gabarit fixe est juste dans la
@@ -275,11 +249,14 @@ class ContainerMenuMixin:
             return None
         if len(poses) == 1:
             return fiches[poses[0]]
-        rang = self._container_choix_numerote(
+        choisi = ui.choose(
             t("Installed engines:"),
-            [self._container_libelle_moteur(nom) for nom in poses],
+            poses,
+            default=poses[0],
+            labels=[self._container_libelle_moteur(nom) for nom in poses],
+            names=dict(zip(poses, poses)),
         )
-        return fiches[poses[rang]] if rang is not None else None
+        return fiches.get(choisi)
 
     def _container_service(self):
         """Démarrer, arrêter ou activer le service d'un moteur, et LIRE son
@@ -391,22 +368,33 @@ class ContainerMenuMixin:
         """Propose l'installation du moteur, après avoir montré la commande.
 
         Le groupe « docker » équivaut à root : le mode est demandé, jamais
-        choisi à la place de l'opérateur.
+        choisi à la place de l'opérateur ; une réponse vide prend le mode
+        sans privilège, et [0] n'installe rien.
         """
         cmd = ["sudo", "bash", "./script/install/install_container.sh", moteur]
         if moteur == "docker":
             print(f"\n{t('Docker runs a daemon owned by root.')}")
-            print(f"  {t('Two ways to reach it without typing sudo:')}")
-            print(
-                f"\n  1) {t('docker group - ONE shared daemon, still root')}"
+            modes = [
+                (
+                    t("docker group - ONE shared daemon, still root"),
+                    t("Being in the group opens its socket, which"),
+                    t("mounts any host path: it equals being root."),
+                ),
+                (
+                    t("rootless - ONE daemon per account, no group"),
+                    t("It runs inside your session, so nothing of it"),
+                    t("is root. Ports under 1024 stay closed to it."),
+                ),
+            ]
+            rang = ui.choose(
+                t("Two ways to reach it without typing sudo:"),
+                range(2),
+                default=1,
+                labels=["\n    ".join(mode) for mode in modes],
             )
-            print(f"     {t('Being in the group opens its socket, which')}")
-            print(f"     {t('mounts any host path: it equals being root.')}")
-            print(f"\n  2) {t('rootless - ONE daemon per account, no group')}")
-            print(f"     {t('It runs inside your session, so nothing of it')}")
-            print(f"     {t('is root. Ports under 1024 stay closed to it.')}")
-            mode = click.prompt(t("Mode"), default="2").strip()
-            if mode == "2":
+            if rang is None:
+                return
+            if rang == 1:
                 cmd.append("--rootless")
                 print(f"\n  {t('Where Docker Inc. packages, rootless mode')}")
                 print(f"  {t('needs ITS packages; elsewhere the installer')}")
@@ -478,7 +466,7 @@ class ContainerMenuMixin:
         return sorted(versions, key=lambda v: float(v), reverse=True)
 
     def _container_build_odoo(self):
-        """Construit l'image d'une ou de TOUTES les versions d'Odoo.
+        """Construit l'image d'une ou de plusieurs versions d'Odoo.
 
         Le balayage ne s'arrête pas au premier échec : une version qui casse
         n'apprend rien sur les suivantes, et les relancer une à une coûte des
@@ -492,20 +480,16 @@ class ContainerMenuMixin:
         if not versions:
             print(f"⚠ {t('Unreadable version catalogue:')} {CATALOGUE}")
             return
-        rang = self._container_choix_numerote(
-            t("Odoo version:"), versions + [t("All versions")]
-        )
-        if rang is None:
+        cibles = ui.choose(t("Odoo version:"), versions, multi=True)
+        if not cibles:
             return
-        toutes = rang == len(versions)
-        if toutes:
+        if len(cibles) == len(versions) > 1:
             # Une image de production pèse une dizaine de gigaoctets : le dire
             # AVANT, pendant qu'un disque plein est encore évitable.
             print(f"\n⚠ {t('Every version: hours of work, tens of GB.')}")
             if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
                 print(t("Nothing to do."))
                 return
-        cibles = versions if toutes else [versions[rang]]
         sans_cache = ""
         if self._is_yes(input(f"💬 {t('Rebuild without cache? (Y/N): ')}")):
             sans_cache = " --no-cache"
@@ -671,26 +655,6 @@ class ContainerMenuMixin:
             return
         self.execute.exec_command_live(shlex.join(cmd), source_erplibre=False)
 
-    def _container_lire_selection(self, total):
-        """Les rangs saisis, ou None.
-
-        Une saisie vide annule sans rien dire. Une saisie fautive le DIT, et
-        n'efface rien : lire_selection refuse la saisie entière dès qu'une
-        partie en est fausse.
-        """
-        texte = click.prompt(
-            t("Numbers (1 3, 2-5, * for all, empty to cancel)"),
-            default="",
-            show_default=False,
-        )
-        if not texte.strip():
-            print(t("Nothing to do."))
-            return None
-        rangs = container_runtime.lire_selection(texte, total)
-        if rangs is None:
-            print(f"⚠ {t('Invalid selection: nothing removed.')}")
-        return rangs
-
     def _container_bilan(self, total, echecs, raison):
         """Ce qui est parti et ce qui a été refusé, avec la raison probable.
 
@@ -725,22 +689,27 @@ class ContainerMenuMixin:
             print(t("No image."))
             return
         usages = container_runtime.conteneurs_par_image(fiche, images)
-        print()
-        for rang, image in enumerate(images, 1):
-            nom = container_runtime.reference_image(image)
-            ligne = f"  [{rang:>2}] {nom}  {image['taille']}  ({image['age']})"
+        refs = [container_runtime.reference_image(image) for image in images]
+        libelles = []
+        for ref, image in zip(refs, images):
+            ligne = f"{ref}  {image['taille']}  ({image['age']})"
             tenants = usages.get(image["id"])
             if tenants:
-                noms = ", ".join(c["nom"] for c in tenants)
-                ligne += f"  ⛓ {noms}"
-            print(ligne)
-        rangs = self._container_lire_selection(len(images))
-        if not rangs:
+                ligne += f"  ⛓ {', '.join(c['nom'] for c in tenants)}"
+            libelles.append(ligne)
+        choisies = ui.choose(
+            t("Images to remove:"),
+            refs,
+            multi=True,
+            labels=libelles,
+            names=dict(zip(refs, refs)),
+        )
+        if not choisies:
             return
 
         plan = []
-        for rang in rangs:
-            image = images[rang]
+        for ref in choisies:
+            image = images[refs.index(ref)]
             tenants = usages.get(image["id"], [])
             action = "effacer"
             if tenants:
@@ -818,8 +787,10 @@ class ContainerMenuMixin:
             print(f"  {t('A container runs: the engine refuses to force.')}")
         else:
             options.append(t("Force - removes the name only; the space stays"))
-        rang = self._container_choix_numerote(t("Decision:"), options)
-        return {1: "vider", 2: "forcer"}.get(rang, "garder")
+        rang = ui.choose(
+            t("Decision:"), range(len(options)), default=0, labels=options
+        )
+        return ("garder", "vider", "forcer")[rang or 0]
 
     def _container_nettoyer_projets(self):
         """Effacer un espace de travail : un projet compose et tout ce qu'il
@@ -841,24 +812,28 @@ class ContainerMenuMixin:
             print(t("No workspace (compose project) here."))
             return
         noms = sorted(projets)
-        print()
-        for rang, nom in enumerate(noms, 1):
+        libelles = []
+        for nom in noms:
             projet = projets[nom]
             etats = ", ".join(
                 sorted({c["etat"] for c in projet["conteneurs"]})
             )
-            print(f"  [{rang:>2}] {nom}  —  {projet['dossier'] or '?'}")
-            print(
-                f"       {len(projet['conteneurs'])} {t('containers')}"
-                f" ({etats})"
+            libelles.append(
+                f"{nom}  —  {projet['dossier'] or '?'}\n"
+                f"    {len(projet['conteneurs'])} {t('containers')} ({etats})"
             )
-        rangs = self._container_lire_selection(len(noms))
-        if not rangs:
+        choisis = ui.choose(
+            t("Workspaces to remove:"),
+            noms,
+            multi=True,
+            labels=libelles,
+            names=dict(zip(noms, noms)),
+        )
+        if not choisis:
             return
 
         plan = []
-        for rang in rangs:
-            nom = noms[rang]
+        for nom in choisis:
             ressources = container_runtime.ressources_projet(fiche, nom)
             plan.append((nom, projets[nom], ressources))
         print(f"\n⚠ {t('Will remove:')}")

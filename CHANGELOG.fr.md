@@ -133,6 +133,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le menu Assistant pose sa question sur sa propre ligne, sous [0], comme tout menu, et une session web reçoit ses entrées telles que le menu les numérote au lieu de les lire à l'écran
 - Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
 - Dans une session web, une liste posée sous les règles ci-dessous arrive à la page en boutons, ou en cases à cocher quand elle prend plusieurs réponses, avec Tout, qui prend toutes les options, et Retour
+- Exécution › Docker / Podman pose chaque choix sous les mêmes règles : un numéro tel que la liste l'écrit ou le nom exact d'un moteur, d'une image ou d'un espace de travail, [0] Retour sur chaque liste, et une réponse invalide repose la question au lieu d'agir ou d'abandonner. Effacer des images ou des espaces de travail ne prend rien sur une réponse vide, lit `tout`, `all` ou `*` pour tous, plus `tous`, et nomme toujours ce qui sera effacé avant de demander. Construire l'image d'une version d'Odoo choisit une ou plusieurs versions au lieu d'une entrée « Toutes les versions », et une réponse vide ne construit rien, là où elle construisait la première version, des heures de travail et des dizaines de Go
 
 ## Corrigé
 
@@ -307,6 +308,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
 - L'interface web de TODO borne ses connexions et ses ouvertures : une connexion vaut 12 heures à partir de son code à usage unique, jamais prolongée, et 16 au plus vivent à la fois, la moins récemment servie oubliée au-delà ; une page expirée dit de rouvrir l'interface depuis TODO › Télémétrie de navigation, tandis qu'une session déjà ouverte dans un onglet continue. Une sixième session neuve en une minute est refusée avec l'attente en secondes ; se rattacher à une session et le worker de réserve ne comptent pas. Les codes de connexion refusés ne comptent dans aucune limite : un bon code est toujours accepté
 - La relance de TODO après une erreur ne construit plus de ligne de commande shell : elle lance le python du venv ERPLibre avec ses arguments en liste et l'environnement que pose `activate`, si bien qu'un argument qui porte une espace, un `;` ou un `$` passe tel quel au lieu d'être découpé ou interprété
+- Exécution › Docker / Podman › Installer Docker redemande son mode sur une faute de frappe au lieu de donner le groupe docker, équivalent root, à toute réponse sauf 2 ; une réponse vide garde le mode sans privilège, et [0] n'installe rien
 
 
 ## [1.8.0] - 2026-09-04

@@ -539,31 +539,3 @@ def ressources_projet(fiche, nom, lanceur=lancer):
                     noms.append(ligne)
         ressources[genre] = noms
     return ressources
-
-
-def lire_selection(texte, total):
-    """Les rangs choisis, en base 0, triés et sans doublon ; None si la
-    saisie est vide ou fautive.
-
-    Accepte « 1 3 », « 1,3 », « 2-5 », et « * », « tout » ou « all » pour
-    l'ensemble. Une seule partie fautive invalide TOUTE la saisie : sur un
-    écran qui efface, une faute de frappe ne doit jamais retenir en silence
-    le sous-ensemble qu'elle n'a pas abîmé.
-    """
-    texte = texte.strip().lower()
-    if not texte or total < 1:
-        return None
-    if texte in ("*", "tout", "tous", "all"):
-        return list(range(total))
-    rangs = set()
-    for morceau in re.split(r"[\s,;]+", texte):
-        if not morceau:
-            continue
-        m = re.fullmatch(r"(\d+)(?:-(\d+))?", morceau)
-        if not m:
-            return None
-        debut, fin = int(m.group(1)), int(m.group(2) or m.group(1))
-        if debut < 1 or fin > total or debut > fin:
-            return None
-        rangs.update(range(debut - 1, fin))
-    return sorted(rangs) or None

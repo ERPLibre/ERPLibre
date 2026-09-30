@@ -324,33 +324,6 @@ class TestInstallateur(unittest.TestCase):
         self.assertIn("--amont", INSTALLATEUR)
 
 
-class TestSelection(unittest.TestCase):
-    """Sur un écran qui efface, une faute de frappe ne doit jamais retenir en
-    silence le sous-ensemble qu'elle n'a pas abîmé."""
-
-    def test_les_formes_acceptees(self):
-        cas = {
-            "1 3": [0, 2],
-            "1,3": [0, 2],
-            "2-4": [1, 2, 3],
-            "1 2-3 5": [0, 1, 2, 4],
-            "*": [0, 1, 2, 3, 4],
-            "tout": [0, 1, 2, 3, 4],
-            "3 1 3": [0, 2],
-        }
-        for texte, attendu in cas.items():
-            with self.subTest(texte=texte):
-                self.assertEqual(attendu, cr.lire_selection(texte, 5))
-
-    def test_une_partie_fautive_invalide_tout(self):
-        for texte in ("1 x", "1,3,9", "0", "4-2", "", "   ", "1-"):
-            with self.subTest(texte=texte):
-                self.assertIsNone(cr.lire_selection(texte, 5))
-
-    def test_une_liste_vide_ne_rend_rien(self):
-        self.assertIsNone(cr.lire_selection("*", 0))
-
-
 class TestImages(unittest.TestCase):
     def test_une_image_nommee_se_designe_par_son_nom(self):
         """Effacer par identifiant une image à plusieurs noms échoue sans

@@ -8,7 +8,7 @@ sur un détail que l'affichage seul ne garantit pas :
 
 - l'installation de Docker demande un MODE. Le groupe « docker » équivaut à
   root sur l'hôte, le mode sans privilège n'y touche pas : le drapeau doit
-  suivre la réponse, et jamais un défaut ;
+  suivre la réponse, et une faute de frappe ne le choisit jamais ;
 - l'effacement porte sur les VOLUMES, donc sur la base de données. Il se
   refuse par un simple non, et rien ne part ;
 - les scripts de script/docker/ appellent la commande docker par son nom.
@@ -62,7 +62,9 @@ class Banc(unittest.TestCase):
     @staticmethod
     @contextlib.contextmanager
     def reponses(entrees=(), prompts=()):
-        """Joue des réponses écrites d'avance sur input() et click.prompt."""
+        """Joue des réponses écrites d'avance sur input(), qui répond aussi
+        aux choix (ui.choose), et sur click.prompt, qui répond aux menus ;
+        input() rend "" une fois ses réponses épuisées."""
         suite = iter(entrees)
         ancien = builtins.input
         builtins.input = lambda *a, **k: next(suite, "")
@@ -80,7 +82,7 @@ class Banc(unittest.TestCase):
 class TestInstallation(Banc):
     def test_le_mode_groupe_est_celui_de_la_reponse(self):
         todo = self.todo()
-        with self.reponses(entrees=["o"], prompts=["1"]):
+        with self.reponses(entrees=["1", "o"]):
             todo._container_install("docker")
         self.assertEqual(1, len(todo.execute.commandes))
         cmd = todo.execute.commandes[0]
@@ -89,7 +91,7 @@ class TestInstallation(Banc):
 
     def test_le_mode_sans_privilege_peut_prendre_l_amont(self):
         todo = self.todo()
-        with self.reponses(entrees=["o", "o"], prompts=["2"]):
+        with self.reponses(entrees=["2", "o", "o"]):
             todo._container_install("docker")
         cmd = todo.execute.commandes[0]
         self.assertIn("--rootless", cmd)
@@ -97,7 +99,7 @@ class TestInstallation(Banc):
 
     def test_l_amont_se_refuse_sans_emporter_le_mode(self):
         todo = self.todo()
-        with self.reponses(entrees=["n", "o"], prompts=["2"]):
+        with self.reponses(entrees=["2", "n", "o"]):
             todo._container_install("docker")
         cmd = todo.execute.commandes[0]
         self.assertIn("--rootless", cmd)
@@ -114,9 +116,29 @@ class TestInstallation(Banc):
 
     def test_un_refus_ne_lance_rien(self):
         todo = self.todo()
-        with self.reponses(entrees=["n"], prompts=["1"]):
+        with self.reponses(entrees=["1", "n"]):
             todo._container_install("docker")
         self.assertEqual([], todo.execute.commandes)
+
+    def test_le_mode_se_choisit_sous_les_regles_d_un_choix(self):
+        """Vide : le mode sans privilège, marqué ; [0] : rien ne s'installe ;
+        une faute de frappe est dite, et la question revient au lieu de
+        donner le groupe, équivalent root."""
+        for entrees, drapeau in (
+            (["", "n", "o"], "--rootless"),
+            (["x", "1", "o"], "--groupe"),
+            (["0"], None),
+        ):
+            with self.subTest(entrees=entrees):
+                todo = self.todo()
+                with self.reponses(entrees=entrees) as sortie:
+                    todo._container_install("docker")
+                if drapeau is None:
+                    self.assertEqual([], todo.execute.commandes)
+                else:
+                    self.assertIn(drapeau, todo.execute.commandes[0])
+        self.assertIn("[2] rootless", sortie.getvalue())
+        self.assertIn(todo_i18n.t("(default)"), sortie.getvalue())
 
 
 class TestEffacement(Banc):
@@ -360,9 +382,7 @@ class TestNettoyageImages(Banc):
                 return_value=usages or {},
             ),
         ):
-            with self.reponses(
-                entrees=[reponse], prompts=[selection, *decisions]
-            ) as s:
+            with self.reponses(entrees=[selection, *decisions, reponse]) as s:
                 todo._container_nettoyer_images()
         return s.getvalue()
 
@@ -383,15 +403,43 @@ class TestNettoyageImages(Banc):
                 self.assertNotIn("--force", cmd)
 
     def test_une_selection_fautive_n_efface_rien_et_le_dit(self):
-        """« 1 x » ne retient pas « 1 » : la saisie entière tombe, et la
-        question de confirmation n'est même pas posée."""
+        """« 1 x » ne retient pas « 1 » : la saisie entière est dite
+        invalide, la question revient, et une réponse vide n'efface rien
+        sans que la confirmation soit posée."""
         todo = self._banc()
-        rendu = self._jouer(todo, "1 x", "o")
+        rendu = self._jouer(todo, "1 x", "")
         self.assertEqual([], todo.execute.commandes)
-        self.assertIn(
-            todo_i18n.t("Invalid selection: nothing removed."), rendu
-        )
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}1 x", rendu)
+        self.assertEqual(2, rendu.count(todo_i18n.t("Images to remove:")))
         self.assertNotIn(todo_i18n.t("Will remove:"), rendu)
+
+    def test_seule_la_confirmation_efface_ce_que_la_reponse_choisit(self):
+        """Vide, [0], « tous », qui n'est pas un mot de tout, une plage à
+        l'envers : rien n'est choisi, et rien ne part sans confirmation ;
+        les deux derniers sont dits invalides. « tout » choisit les trois,
+        que la confirmation nomme avant que rien ne parte."""
+        for selection in ("", "0", "tous", "3-1"):
+            with self.subTest(selection=selection):
+                todo = self._banc()
+                rendu = self._jouer(todo, selection, "o")
+                self.assertEqual([], todo.execute.commandes)
+                self.assertNotIn(todo_i18n.t("Will remove:"), rendu)
+                faute = f"{todo_i18n.t('Invalid choice: ')}{selection}\n"
+                self.assertEqual(selection in ("tous", "3-1"), faute in rendu)
+        todo = self._banc()
+        rendu = self._jouer(todo, "tout", "n")
+        self.assertEqual([], todo.execute.commandes)
+        annonce = rendu.split(todo_i18n.t("Will remove:"))[1]
+        for ref in ("d/x:1", "a2", "d/y:2"):
+            self.assertIn(ref, annonce)
+        todo = self._banc()
+        self._jouer(todo, "all", "o")
+        self.assertEqual(3, len(todo.execute.commandes))
+
+    def test_une_image_se_choisit_aussi_par_son_nom(self):
+        todo = self._banc()
+        self._jouer(todo, "d/y:2", "o")
+        self.assertEqual(["docker rmi d/y:2"], todo.execute.commandes)
 
     def test_un_refus_de_confirmation_n_efface_rien(self):
         todo = self._banc()
@@ -463,11 +511,11 @@ class TestConflitImage(TestNettoyageImages):
         self.assertEqual(["docker rmi -f d/x:1"], todo.execute.commandes)
 
     def test_un_conteneur_en_marche_retire_le_forcage(self):
-        """Le moteur refuserait : « 3 » n'existe plus, et une saisie hors
-        liste garde l'image."""
+        """Le moteur refuserait : « 3 » n'existe plus, la question revient,
+        et une réponse vide garde l'image."""
         todo = self._banc()
         rendu = self._jouer(
-            todo, "1", "o", usages=self.EN_MARCHE, decisions=["3"]
+            todo, "1", "o", usages=self.EN_MARCHE, decisions=["3", ""]
         )
         self.assertEqual([], todo.execute.commandes)
         self.assertNotIn(
@@ -483,12 +531,13 @@ class TestConflitImage(TestNettoyageImages):
         self.assertEqual([], todo.execute.commandes)
 
     def test_dans_le_doute_rien_ne_part(self):
-        """Retour, ou toute saisie qui n'est pas un choix, garde l'image."""
-        for decision in ("0", "x", ""):
-            with self.subTest(decision=decision):
+        """Retour et une réponse vide gardent l'image ; une saisie qui n'est
+        pas un choix est dite, et la question revient."""
+        for decisions in (["0"], [""], ["x", ""]):
+            with self.subTest(decisions=decisions):
                 todo = self._banc()
                 self._jouer(
-                    todo, "1", "o", usages=self.ARRETE, decisions=[decision]
+                    todo, "1", "o", usages=self.ARRETE, decisions=decisions
                 )
                 self.assertEqual([], todo.execute.commandes)
 
@@ -540,7 +589,7 @@ class TestNettoyageProjets(Banc):
                 return_value=self.RESSOURCES,
             ),
         ):
-            with self.reponses(entrees=[reponse], prompts=[selection]) as s:
+            with self.reponses(entrees=[selection, reponse]) as s:
                 todo._container_nettoyer_projets()
         return s.getvalue()
 
@@ -577,9 +626,24 @@ class TestNettoyageProjets(Banc):
                     self.assertNotIn("-f", cmd.split())
 
     def test_une_selection_hors_liste_n_efface_rien(self):
+        """« 2 » est dit invalide, la question revient, et « o », qui n'est
+        pas un choix non plus, n'efface rien."""
         todo = self.todo(self.FICHE)
-        self._jouer(todo, "2", "o")
+        rendu = self._jouer(todo, "2", "o")
         self.assertEqual([], todo.execute.commandes)
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}2", rendu)
+
+    def test_seule_la_confirmation_efface_un_espace_de_travail(self):
+        """Vide, [0] : rien n'est choisi ni demandé, même suivi de « o ».
+        « tout » et le nom du projet le choisissent, et la confirmation,
+        qui nomme ses volumes, garde encore tout sur « n »."""
+        cas = (("", "o"), ("0", "o"), ("tout", "n"), ("p", "n"))
+        for selection, reponse in cas:
+            with self.subTest(selection=selection):
+                todo = self.todo(self.FICHE)
+                rendu = self._jouer(todo, selection, reponse)
+                self.assertEqual([], todo.execute.commandes)
+                self.assertEqual(reponse == "n", "p_db-data" in rendu)
 
 
 class TestNettoyageGlobal(Banc):
@@ -605,16 +669,38 @@ class TestConstructionOdoo(Banc):
 
     def test_une_version_choisie_ne_lance_qu_elle(self):
         todo = self._banc()
-        with self.reponses(entrees=["n"], prompts=["3"]):
+        with self.reponses(entrees=["3", "n"]):
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_12"],
             todo.execute.commandes,
         )
 
+    def test_plusieurs_versions_se_choisissent_dans_l_ordre_du_catalogue(
+        self,
+    ):
+        """Vide ou [0] ne construit rien ; « 3 1 » construit ces deux-là,
+        sans la question de toutes les versions."""
+        for entrees in ([""], ["0"]):
+            with self.subTest(entrees=entrees):
+                todo = self._banc()
+                with self.reponses(entrees=entrees):
+                    todo._container_build_odoo()
+                self.assertEqual([], todo.execute.commandes)
+        todo = self._banc()
+        with self.reponses(entrees=["3 1", "n"]):
+            todo._container_build_odoo()
+        self.assertEqual(
+            [
+                "./script/docker/docker_build.sh --odoo_18",
+                "./script/docker/docker_build.sh --odoo_12",
+            ],
+            todo.execute.commandes,
+        )
+
     def test_toutes_les_lance_dans_l_ordre_du_catalogue(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "n"], prompts=["4"]):
+        with self.reponses(entrees=["tout", "o", "n"]):
             todo._container_build_odoo()
         self.assertEqual(
             [
@@ -629,7 +715,7 @@ class TestConstructionOdoo(Banc):
         """Une image de production pèse une dizaine de Go : un refus doit
         tout arrêter."""
         todo = self._banc()
-        with self.reponses(entrees=["n"], prompts=["4"]):
+        with self.reponses(entrees=["*", "n"]):
             todo._container_build_odoo()
         self.assertEqual([], todo.execute.commandes)
 
@@ -637,7 +723,7 @@ class TestConstructionOdoo(Banc):
         """Une version qui casse n'apprend rien sur les suivantes, et les
         relancer une à une coûte des heures."""
         todo = self._banc(code=1)
-        with self.reponses(entrees=["o", "n"], prompts=["4"]) as sortie:
+        with self.reponses(entrees=["all", "o", "n"]) as sortie:
             todo._container_build_odoo()
         self.assertEqual(3, len(todo.execute.commandes))
         rendu = sortie.getvalue()
@@ -646,7 +732,7 @@ class TestConstructionOdoo(Banc):
 
     def test_le_sans_cache_ne_se_demande_qu_une_fois(self):
         todo = self._banc()
-        with self.reponses(entrees=["o", "o"], prompts=["4"]):
+        with self.reponses(entrees=["1-3", "o", "o"]):
             todo._container_build_odoo()
         for cmd in todo.execute.commandes:
             with self.subTest(cmd=cmd):
@@ -682,49 +768,6 @@ class TestRaisonsTraduites(Banc):
                 self.assertIn(phrase, todo_i18n.TRANSLATIONS)
 
 
-class TestChoixNumerote(Banc):
-    """Le numéro plutôt que le nom : taper « docker » en entier pour deux
-    entrées coûte plus qu'il ne rapporte."""
-
-    def test_le_rang_saisi_designe_l_option(self):
-        todo = self.todo()
-        with self.reponses(prompts=["2"]):
-            rang = todo._container_choix_numerote("t", ["a", "b", "c"])
-        self.assertEqual(1, rang)
-
-    def test_zero_vaut_retour_et_ne_rend_pas_la_derniere(self):
-        """options[-1] existe en Python : sans ce garde, « 0 » rendait la
-        DERNIÈRE entrée — un choix que personne n'a fait, sur un écran qui
-        efface parfois. Il vaut retour, et sort sans se plaindre."""
-        todo = self.todo()
-        with self.reponses(prompts=["0"]) as sortie:
-            self.assertIsNone(
-                todo._container_choix_numerote("t", ["a", "b", "c"])
-            )
-        self.assertNotIn("!", sortie.getvalue())
-
-    def test_un_rang_hors_liste_est_refuse(self):
-        todo = self.todo()
-        with self.reponses(prompts=["4"]):
-            self.assertIsNone(
-                todo._container_choix_numerote("t", ["a", "b", "c"])
-            )
-
-    def test_une_saisie_qui_n_est_pas_un_nombre_est_refusee(self):
-        """Une faute de frappe retombait en silence sur la première."""
-        todo = self.todo()
-        with self.reponses(prompts=["docker"]):
-            self.assertIsNone(todo._container_choix_numerote("t", ["a", "b"]))
-
-    def test_les_options_sont_affichees_numerotees(self):
-        todo = self.todo()
-        with self.reponses(prompts=["1"]) as sortie:
-            todo._container_choix_numerote("Moteurs", ["docker", "podman"])
-        rendu = sortie.getvalue()
-        self.assertIn("[1] docker", rendu)
-        self.assertIn("[2] podman", rendu)
-
-
 class TestIconeDesMoteurs(Banc):
     def test_la_liste_porte_les_icones(self):
         todo = self.todo()
@@ -732,7 +775,7 @@ class TestIconeDesMoteurs(Banc):
             {"moteur": "docker", "binaire": "/usr/bin/docker"},
             {"moteur": "podman", "binaire": "/usr/bin/podman"},
         ]
-        with self.reponses(prompts=["2"]) as sortie:
+        with self.reponses(entrees=["2"]) as sortie:
             fiche = todo._container_choisir_moteur()
         rendu = sortie.getvalue()
         self.assertIn("[1] 🐳 docker", rendu)
@@ -744,6 +787,44 @@ class TestIconeDesMoteurs(Banc):
     def test_un_moteur_sans_icone_garde_son_nom(self):
         todo = self.todo()
         self.assertEqual("autre", todo._container_libelle_moteur("autre"))
+
+    def test_un_moteur_se_choisit_par_son_nom_ou_par_defaut(self):
+        """Le nom nu, pas son libellé décoré ; une réponse vide prend le
+        premier, marqué ; [0] n'en prend aucun."""
+        todo = self.todo()
+        todo._container_fiches = lambda: [
+            {"moteur": "docker", "binaire": "/usr/bin/docker"},
+            {"moteur": "podman", "binaire": "/usr/bin/podman"},
+        ]
+        for reponse, moteur in (("podman", "podman"), ("", "docker")):
+            with self.subTest(reponse=reponse):
+                with self.reponses(entrees=[reponse]):
+                    fiche = todo._container_choisir_moteur()
+                self.assertEqual(moteur, fiche["moteur"])
+        with self.reponses(entrees=["0"]):
+            self.assertIsNone(todo._container_choisir_moteur())
+
+    def test_renoncer_au_moteur_n_efface_rien(self):
+        """Entre deux moteurs, [0], ou le libellé décoré, qui n'est pas un
+        nom, puis [0] : aucun nettoyage qui efface ne liste ni ne lance."""
+        prets = [{"moteur": m, "sans_sudo": True} for m in ("docker", "x")]
+        runtime = container_menu.container_runtime
+        faute = todo_i18n.t("Invalid choice: ")
+        for nom in ("nettoyage", "nettoyer_images", "nettoyer_projets"):
+            for entrees in (["0"], ["🐳 docker", "0"]):
+                todo = self.todo()
+                todo._container_fiches = lambda: prets
+                with (
+                    self.subTest(nom=nom, entrees=entrees),
+                    mock.patch.object(runtime, "lister_images") as images,
+                    mock.patch.object(runtime, "lister_projets") as dirs,
+                    self.reponses(entrees=entrees) as sortie,
+                ):
+                    getattr(todo, f"_container_{nom}")()
+                    self.assertEqual([], todo.execute.commandes)
+                    self.assertFalse(images.called or dirs.called)
+                    fautes = sortie.getvalue().count(faute)
+                    self.assertEqual(len(entrees) - 1, fautes)
 
 
 class TestService(Banc):

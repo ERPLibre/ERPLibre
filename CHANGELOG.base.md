@@ -241,6 +241,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Assistant menu asks its question on its own line, under [0], as every menu does, and a web session gets its entries as the menu numbers them instead of reading them on the screen
 - The three Mail menus do the same, and Cache writes the default mode after two spaces, as every value a menu entry shows
 - In a web session, a list asked by the rules below reaches the page as buttons, or as boxes to tick when it takes several answers, with All, which takes every option, and Back
+- Execute › Docker / Podman asks each choice by the same rules: a number as the list shows it or the exact name of an engine, an image or a workspace, [0] Back on every list, and an invalid answer asks again instead of acting or giving up. Removing images or workspaces takes nothing on an empty answer, reads `tout`, `all` or `*` for all of them, no longer `tous`, and still names what it will remove before asking. Build an image for an Odoo version picks one or several versions instead of an « All versions » entry, and an empty answer builds nothing where it built the first version, hours of work and tens of GB
 
 <!-- [fr] -->
 
@@ -282,6 +283,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le menu Assistant pose sa question sur sa propre ligne, sous [0], comme tout menu, et une session web reçoit ses entrées telles que le menu les numérote au lieu de les lire à l'écran
 - Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
 - Dans une session web, une liste posée sous les règles ci-dessous arrive à la page en boutons, ou en cases à cocher quand elle prend plusieurs réponses, avec Tout, qui prend toutes les options, et Retour
+- Exécution › Docker / Podman pose chaque choix sous les mêmes règles : un numéro tel que la liste l'écrit ou le nom exact d'un moteur, d'une image ou d'un espace de travail, [0] Retour sur chaque liste, et une réponse invalide repose la question au lieu d'agir ou d'abandonner. Effacer des images ou des espaces de travail ne prend rien sur une réponse vide, lit `tout`, `all` ou `*` pour tous, plus `tous`, et nomme toujours ce qui sera effacé avant de demander. Construire l'image d'une version d'Odoo choisit une ou plusieurs versions au lieu d'une entrée « Toutes les versions », et une réponse vide ne construit rien, là où elle construisait la première version, des heures de travail et des dizaines de Go
 
 <!-- [en] -->
 ## Fixed
@@ -632,6 +634,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The git mirror of the QEMU cache clones only over `http` and `https`: a client could name an `ssh://` or `git://` repository in its request and make the cache connect, with its service account keys, to a host of its choosing. Repositories fetched over HTTPS are mirrored as before; the binary reports 0.2.17
 - The TODO web interface bounds its logins and its openings: a login lasts 12 hours from its one-time code, never extended, and at most 16 live at once, the least recently used forgotten beyond; an expired page says to reopen the interface from TODO › Navigation telemetry, while a session already open in a tab keeps running. A sixth new session in a minute is refused with the wait in seconds; attaching to a session and the prepared spare worker do not count. Refused login codes count against no limit: a good code is always accepted
 - TODO's restart after an error no longer builds a shell command line: it runs the ERPLibre venv's python with its arguments as a list and the environment that `activate` sets, so an argument holding a space, a `;` or a `$` is passed as is instead of being split or interpreted
+- Execute › Docker / Podman › Install Docker asks its mode again on a mistyped answer instead of giving the docker group, equivalent to root, to any answer but 2; an empty answer keeps the rootless mode, and [0] installs nothing
 
 <!-- [fr] -->
 
@@ -642,6 +645,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
 - L'interface web de TODO borne ses connexions et ses ouvertures : une connexion vaut 12 heures à partir de son code à usage unique, jamais prolongée, et 16 au plus vivent à la fois, la moins récemment servie oubliée au-delà ; une page expirée dit de rouvrir l'interface depuis TODO › Télémétrie de navigation, tandis qu'une session déjà ouverte dans un onglet continue. Une sixième session neuve en une minute est refusée avec l'attente en secondes ; se rattacher à une session et le worker de réserve ne comptent pas. Les codes de connexion refusés ne comptent dans aucune limite : un bon code est toujours accepté
 - La relance de TODO après une erreur ne construit plus de ligne de commande shell : elle lance le python du venv ERPLibre avec ses arguments en liste et l'environnement que pose `activate`, si bien qu'un argument qui porte une espace, un `;` ou un `$` passe tel quel au lieu d'être découpé ou interprété
+- Exécution › Docker / Podman › Installer Docker redemande son mode sur une faute de frappe au lieu de donner le groupe docker, équivalent root, à toute réponse sauf 2 ; une réponse vide garde le mode sans privilège, et [0] n'installe rien
 
 <!-- [common] -->
 
