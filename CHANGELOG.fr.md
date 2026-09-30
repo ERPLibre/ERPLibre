@@ -134,6 +134,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
 - Dans une session web, une liste posée sous les règles ci-dessous arrive à la page en boutons, ou en cases à cocher quand elle prend plusieurs réponses, avec Tout, qui prend toutes les options, et Retour
 - Exécution › Docker / Podman pose chaque choix sous les mêmes règles : un numéro tel que la liste l'écrit ou le nom exact d'un moteur, d'une image ou d'un espace de travail, [0] Retour sur chaque liste, et une réponse invalide repose la question au lieu d'agir ou d'abandonner. Effacer des images ou des espaces de travail ne prend rien sur une réponse vide, lit `tout`, `all` ou `*` pour tous, plus `tous`, et nomme toujours ce qui sera effacé avant de demander. Construire l'image d'une version d'Odoo choisit une ou plusieurs versions au lieu d'une entrée « Toutes les versions », et une réponse vide ne construit rien, là où elle construisait la première version, des heures de travail et des dizaines de Go
+- Déploiement › Cache QEMU › Tests › Test - Choisir et lancer prend un ou plusieurs essais, ou `tout`, au lieu d'une entrée « Les trois » ; une réponse vide n'en lance aucun, et un numéro hors de la liste est nommé comme choix invalide. La charge et le système gardent leur première entrée pour défaut, marquée dans la liste, et un système se choisit aussi par son nom tel que la liste l'écrit, sans son icône
 
 ## Corrigé
 

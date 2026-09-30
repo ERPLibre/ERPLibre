@@ -826,7 +826,6 @@ class TestLesIconesDeLAssistant(unittest.TestCase):
         cles = [e[1] for e in M._CACHE_ESSAIS] + [
             c[1] for c in M._CACHE_CHARGES
         ]
-        cles.append("All three, one after another")
         for cle in cles:
             for langue in ("fr", "en"):
                 valeur = todo_i18n.TRANSLATIONS[cle][langue]
@@ -836,10 +835,10 @@ class TestLesIconesDeLAssistant(unittest.TestCase):
 
 
 class TestLAssistantDesTests(unittest.TestCase):
-    """Trois questions — quel essai, quelle charge, quel système — puis les
-    essais choisis, l'un après l'autre.
+    """Trois questions — quels essais, quelle charge, quel système — puis
+    les essais choisis, l'un après l'autre.
 
-    Deux propriétés que rien d'autre ne tient. « Les trois » doit lancer TROIS
+    Deux propriétés que rien d'autre ne tient. « tout » doit lancer TROIS
     commandes, chacune portant le système et la charge choisis : en oublier un
     ferait mesurer autre chose que ce qui a été demandé, sans rien dire. Et la
     confirmation porte sur le LOT : la reposer à chaque essai la rendrait
@@ -861,16 +860,19 @@ class TestLAssistantDesTests(unittest.TestCase):
         it = iter(reponses)
         # « click.confirm » et « longtest_menu.click.confirm » sont le MÊME
         # objet : un seul mock les couvre, et c'est ce qui rend le compte
-        # d'appels lisible — une question en tout, pas une par essai.
+        # d'appels lisible — une question en tout, pas une par essai. Les
+        # choix répondent par input ; épuisées, les réponses sont vides.
         with (
-            mock.patch("click.prompt", side_effect=lambda *a, **k: next(it)),
+            mock.patch("builtins.input", side_effect=lambda *a: next(it, "")),
             mock.patch("click.confirm", return_value=True) as confirme,
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
         ):
             Faux()._cache_assistant()
+        self.sortie = sortie.getvalue()
         return lancees, confirme
 
     def test_les_trois_lancent_trois_commandes(self):
-        lancees, _c = self.assistant(["4", "1", "2"])
+        lancees, _c = self.assistant(["tout", "1", "2"])
         self.assertEqual(len(lancees), 3, f"lancées : {lancees}")
         options = {"", "--hors-ligne", "--sans-cache"}
         for attendu in options:
@@ -881,7 +883,7 @@ class TestLAssistantDesTests(unittest.TestCase):
             )
 
     def test_le_systeme_et_la_charge_suivent_chaque_essai(self):
-        lancees, _c = self.assistant(["4", "2", "3"])
+        lancees, _c = self.assistant(["*", "2", "3"])
         for cmd in lancees:
             self.assertIn("--distro debian", cmd)
             self.assertIn("--charge erplibre", cmd)
@@ -894,7 +896,7 @@ class TestLAssistantDesTests(unittest.TestCase):
     def test_une_seule_question_pour_tout_le_lot(self):
         """Trois essais, une question. La reposer à chaque essai la rendrait
         machinale, ce qui est exactement ce qui fait qu'on cesse de la lire."""
-        lancees, confirme = self.assistant(["4", "1", "2"])
+        lancees, confirme = self.assistant(["all", "1", "2"])
         self.assertEqual(len(lancees), 3)
         self.assertEqual(
             confirme.call_count,
@@ -903,9 +905,32 @@ class TestLAssistantDesTests(unittest.TestCase):
         )
 
     def test_renoncer_ne_lance_rien(self):
-        for reponses in (["0"], ["4", "0"], ["4", "1", "0"]):
-            lancees, _c = self.assistant(reponses)
+        # Aucun essai sur une réponse vide ; [0] à chaque question.
+        for reponses in ([""], ["0"], ["tout", "0"], ["tout", "1", "0"]):
+            lancees, confirme = self.assistant(reponses)
             self.assertEqual(lancees, [], f"réponses {reponses}")
+            self.assertEqual(confirme.call_count, 0, f"réponses {reponses}")
+
+    def test_les_reponses_suivent_les_regles_d_un_choix(self):
+        """« 4 » n'est pas un essai : dit invalide, la question revient ;
+        une plage choisit deux essais ; une réponse vide prend la première
+        charge et le premier système, que la liste marque."""
+        lancees, _c = self.assistant(["4", "2-3"])
+        self.assertIn(f"{todo_i18n.t('Invalid choice: ')}4", self.sortie)
+        self.assertEqual(len(lancees), 2, f"lancées : {lancees}")
+        self.assertIn(todo_i18n.t("(default)"), self.sortie)
+
+    def test_un_systeme_se_choisit_par_son_nom_sans_son_icone(self):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        libelle = dict(M._cache_systemes())["debian"]
+        nom = libelle.partition(" ")[2]
+        lancees, _c = self.assistant(["1", "1", libelle, nom])
+        self.assertIn(
+            f"{todo_i18n.t('Invalid choice: ')}{libelle}", self.sortie
+        )
+        self.assertEqual(len(lancees), 1, f"lancées : {lancees}")
+        self.assertIn("--distro debian", lancees[0])
 
 
 class TestToutesLesClesDuFichier(unittest.TestCase):

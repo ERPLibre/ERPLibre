@@ -134,6 +134,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The three Mail menus do the same, and Cache writes the default mode after two spaces, as every value a menu entry shows
 - In a web session, a list asked by the rules below reaches the page as buttons, or as boxes to tick when it takes several answers, with All, which takes every option, and Back
 - Execute › Docker / Podman asks each choice by the same rules: a number as the list shows it or the exact name of an engine, an image or a workspace, [0] Back on every list, and an invalid answer asks again instead of acting or giving up. Removing images or workspaces takes nothing on an empty answer, reads `tout`, `all` or `*` for all of them, no longer `tous`, and still names what it will remove before asking. Build an image for an Odoo version picks one or several versions instead of an « All versions » entry, and an empty answer builds nothing where it built the first version, hours of work and tens of GB
+- Deployment › QEMU cache › Tests › Test - Choose and run picks one or several tests, or `tout`, instead of an « All three » entry; an empty answer runs none, and a number out of the list is named as an invalid choice. Load and system keep their first entry as the default, marked in the list, and a system is also chosen by its name as the list shows it, without its icon
 
 ## Fixed
 

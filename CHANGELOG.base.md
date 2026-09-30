@@ -242,6 +242,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The three Mail menus do the same, and Cache writes the default mode after two spaces, as every value a menu entry shows
 - In a web session, a list asked by the rules below reaches the page as buttons, or as boxes to tick when it takes several answers, with All, which takes every option, and Back
 - Execute › Docker / Podman asks each choice by the same rules: a number as the list shows it or the exact name of an engine, an image or a workspace, [0] Back on every list, and an invalid answer asks again instead of acting or giving up. Removing images or workspaces takes nothing on an empty answer, reads `tout`, `all` or `*` for all of them, no longer `tous`, and still names what it will remove before asking. Build an image for an Odoo version picks one or several versions instead of an « All versions » entry, and an empty answer builds nothing where it built the first version, hours of work and tens of GB
+- Deployment › QEMU cache › Tests › Test - Choose and run picks one or several tests, or `tout`, instead of an « All three » entry; an empty answer runs none, and a number out of the list is named as an invalid choice. Load and system keep their first entry as the default, marked in the list, and a system is also chosen by its name as the list shows it, without its icon
 
 <!-- [fr] -->
 
@@ -284,6 +285,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
 - Dans une session web, une liste posée sous les règles ci-dessous arrive à la page en boutons, ou en cases à cocher quand elle prend plusieurs réponses, avec Tout, qui prend toutes les options, et Retour
 - Exécution › Docker / Podman pose chaque choix sous les mêmes règles : un numéro tel que la liste l'écrit ou le nom exact d'un moteur, d'une image ou d'un espace de travail, [0] Retour sur chaque liste, et une réponse invalide repose la question au lieu d'agir ou d'abandonner. Effacer des images ou des espaces de travail ne prend rien sur une réponse vide, lit `tout`, `all` ou `*` pour tous, plus `tous`, et nomme toujours ce qui sera effacé avant de demander. Construire l'image d'une version d'Odoo choisit une ou plusieurs versions au lieu d'une entrée « Toutes les versions », et une réponse vide ne construit rien, là où elle construisait la première version, des heures de travail et des dizaines de Go
+- Déploiement › Cache QEMU › Tests › Test - Choisir et lancer prend un ou plusieurs essais, ou `tout`, au lieu d'une entrée « Les trois » ; une réponse vide n'en lance aucun, et un numéro hors de la liste est nommé comme choix invalide. La charge et le système gardent leur première entrée pour défaut, marquée dans la liste, et un système se choisit aussi par son nom tel que la liste l'écrit, sans son icône
 
 <!-- [en] -->
 ## Fixed

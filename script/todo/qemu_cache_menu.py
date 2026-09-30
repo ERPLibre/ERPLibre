@@ -35,6 +35,7 @@ import click
 
 from script.execute.execute import Execute
 from script.qemu import cache_offline
+from script.todo import ui
 from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import get_lang, t
 from script.todo.ui.navigator import navigate
@@ -1651,24 +1652,14 @@ class QemuCacheMenuMixin:
             prefixe, distro, module.DISTROS[distro][1], charge
         )
 
-    def _cache_choisir(self, titre, options):
-        """Une question numérotée, le premier choix par défaut.
-
-        Rend l'indice choisi, ou None si l'on renonce. Les trois questions de
-        l'assistant partagent cette forme : une seule façon de répondre, et
-        « 0 » ramène en arrière partout.
-        """
-        print(f"\n{titre}")
-        for i, libelle in enumerate(options, 1):
-            print(f"  [{i}] {libelle}")
-        print(f"  [0] {t('Back')}")
-        while True:
-            reponse = click.prompt(t("Choice"), default="1").strip()
-            if reponse == "0":
-                return None
-            if reponse.isdigit() and 1 <= int(reponse) <= len(options):
-                return int(reponse) - 1
-            print(t("Command not found !"))
+    @staticmethod
+    def _cache_choisir(titre, options):
+        """L'indice choisi parmi les libellés `options`, chacun ouvert par
+        son icône : par son numéro ou par son libellé sans l'icône, le
+        premier sur une réponse vide, ou None pour [0] (`ui.choose`)."""
+        noms = {o.partition(" ")[2]: rang for rang, o in enumerate(options)}
+        rangs = range(len(options))
+        return ui.choose(titre, rangs, default=0, labels=options, names=noms)
 
     def _cache_assistant(self):
         """Trois questions, puis les essais choisis, l'un après l'autre.
@@ -1677,18 +1668,14 @@ class QemuCacheMenuMixin:
         porte sur le LOT, et la reposer trois fois la rendrait machinale
         — c'est ce qui fait qu'on cesse de la lire.
         """
-        essais = self._cache_choisir(
+        choisis = ui.choose(
             t("Which test?"),
-            [t(e[1]) for e in self._CACHE_ESSAIS]
-            + [t("All three, one after another")],
+            self._CACHE_ESSAIS,
+            multi=True,
+            labels=[t(e[1]) for e in self._CACHE_ESSAIS],
         )
-        if essais is None:
+        if not choisis:
             return
-        choisis = (
-            list(self._CACHE_ESSAIS)
-            if essais == len(self._CACHE_ESSAIS)
-            else [self._CACHE_ESSAIS[essais]]
-        )
 
         charge = self._cache_choisir(
             t("Which load?"), [t(c[1]) for c in self._CACHE_CHARGES]

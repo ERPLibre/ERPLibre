@@ -1771,10 +1771,6 @@ TRANSLATIONS = {
         "fr": "⚖ Le témoin : deux VM SANS le cache",
         "en": "⚖ The control: two VMs WITHOUT the cache",
     },
-    "All three, one after another": {
-        "fr": "🔁 Les trois, l'un après l'autre",
-        "en": "🔁 All three, one after another",
-    },
     "Which load?": {
         "fr": "Quelle charge ?",
         "en": "Which load?",
