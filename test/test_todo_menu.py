@@ -2763,8 +2763,9 @@ class TestMenuLabels(unittest.TestCase):
     `fill_help_info` ou `_menu_header` — dans tout script/todo/*.py, et non
     par la table d'un menu : un écran ouvert depuis ailleurs, ou défini
     dans un mixin, comme le sous-menu VPN, serait manqué. Chacun est un
-    menu déclaré, l'action d'une entrée qui déclare son segment, ou l'une
-    des exceptions.
+    menu déclaré avec son segment, l'un des menus déclarés sans segment
+    que nomme `MENUS_SANS_SEGMENT`, l'action d'une entrée qui déclare son
+    segment, ou l'une des exceptions.
 
     Six méthodes sont exemptées, qui s'affichent sous le fil du menu qui
     les ouvre : trois ACTIONS qui posent une question — un choix de méthode
@@ -2783,6 +2784,16 @@ class TestMenuLabels(unittest.TestCase):
         "debug_ide",
         "execute_odoo_upgrade",
         "select_database",
+    }
+    # Les menus déclarés sans segment : chacun s'affiche sous le fil du
+    # menu qui l'ouvre, sans clé de télémétrie à lui, et l'arbre fait une
+    # feuille de l'entrée qui l'ouvre. La liste ne fait que rétrécir : un
+    # menu neuf déclare son `crumb`.
+    MENUS_SANS_SEGMENT = {
+        "drop_database",
+        "prompt_execute_mail",
+        "prompt_mail_accounts",
+        "prompt_mail_cache",
     }
     # Le segment de chaque menu déclaré, sa clé de télémétrie : un segment
     # renommé change la clé, et les compteurs d'avant ne s'y ajoutent plus.
@@ -2899,15 +2910,34 @@ class TestMenuLabels(unittest.TestCase):
         self.assertGreater(len(menus), 20)
 
     def test_no_screen_forgets_its_crumb(self):
-        """Chaque écran est un menu déclaré, l'action d'une entrée qui
-        déclare son segment, ou une exception."""
+        """Chaque écran est un menu déclaré avec son segment, l'un des
+        MENUS_SANS_SEGMENT, l'action d'une entrée qui déclare son segment,
+        ou une exception."""
+        avec_segment = {n for n, m in self.menus.items() if m["crumb"]}
         missing = (
             self._menus_du_paquet()
-            - set(self.menus)
+            - avec_segment
+            - self.MENUS_SANS_SEGMENT
             - set(self.ecrans)
             - self.ECRANS_EXEMPTES
         )
         self.assertEqual(missing, set(), "écrans sans segment déclaré")
+
+    def test_no_new_menu_goes_without_a_crumb(self):
+        """Un menu déclaré sans segment est l'un des MENUS_SANS_SEGMENT, où
+        qu'il soit ouvert : la liste refuse un nom de plus, et un nom qui
+        a désormais son segment."""
+        sans = {n for n, m in self.menus.items() if m["crumb"] is None}
+        self.assertEqual(
+            sorted(sans - self.MENUS_SANS_SEGMENT),
+            [],
+            "donner son segment au menu neuf : Menu(name, crumb, …)",
+        )
+        self.assertEqual(
+            sorted(self.MENUS_SANS_SEGMENT - sans),
+            [],
+            "ces menus ont leur segment : les retirer de MENUS_SANS_SEGMENT",
+        )
 
     def test_each_declared_menu_keeps_its_crumb(self):
         """Un menu du registre garde son segment, qui est sa clé de
