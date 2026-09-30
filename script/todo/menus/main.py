@@ -1,15 +1,34 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Menus ouverts par le menu principal : l'entrée [4], Navigation
-telemetry, et Configuration. Install, qu'il ouvre aussi, est déclaré avec
-la famille Proxmox, dans `proxmox.py`.
+"""Le menu principal et deux des menus qu'il ouvre : l'entrée [4],
+Navigation telemetry, et Configuration. Install et Assistant, qu'il ouvre
+aussi, sont déclarés avec leurs familles, dans `proxmox.py` et
+`assistant.py`.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place.
 """
 
 from script.todo.ui.registry import Entry, Menu, Section
+
+# Le menu principal, dessiné une fois après le logo et la langue qu'écrit
+# `run` ; [0] quitte TODO (`quits`).
+MAIN = Menu(
+    "run",
+    "TODO",
+    [
+        Entry("Execute", "prompt_execute"),
+        Entry("Install", "prompt_install"),
+        Entry("Assistant", "prompt_assistant"),
+        Entry("Navigation telemetry", "prompt_telemetry"),
+        Entry("Configuration", "prompt_configuration"),
+    ],
+    intro="=> Enter your choice by number and press Enter!",
+    back=None,
+    render="once",
+    quits=True,
+)
 
 TELEMETRY = Menu(
     "prompt_telemetry",

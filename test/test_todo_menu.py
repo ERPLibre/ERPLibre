@@ -1996,6 +1996,49 @@ class TestAutomationMenuNumbering(RegistryCoherence, unittest.TestCase):
         self.assertEqual(self.menu.render, "once")
 
 
+class TestMainMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Le menu principal : ses cinq entrées, dessinées une fois après le
+    logo et la langue ; [0] quitte TODO."""
+
+    MENU = "run"
+    BACK = None
+    EXPECTED = {
+        "Execute": "prompt_execute",
+        "Install": "prompt_install",
+        "Assistant": "prompt_assistant",
+        "Navigation telemetry": "prompt_telemetry",
+        "Configuration": "prompt_configuration",
+    }
+
+    def setUp(self):
+        # `run` écrit le logo et demande la langue avant d'ouvrir le menu :
+        # le logo est un fichier vide, la langue ne se demande pas.
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo.config_file = Mock()
+        todo.config_file.get_logo_ascii_file_path.return_value = os.devnull
+        opened = []
+        with (
+            patch(
+                "script.todo.todo.navigate",
+                lambda todo, menu: opened.append(menu),
+            ),
+            patch.object(TODO, "_ask_language"),
+            redirect_stdout(io.StringIO()),
+        ):
+            todo.run()
+        [self.menu] = opened
+        self.entries = [e for e in self.menu.entries if isinstance(e, Entry)]
+
+    def test_it_quits_todo_and_is_drawn_once(self):
+        self.assertIs(self.menu.quits, True)
+        self.assertEqual(self.menu.render, "once")
+        self.assertEqual(
+            self.menu.intro, "=> Enter your choice by number and press Enter!"
+        )
+
+
 class TestAssistantMenuNumbering(RegistryCoherence, unittest.TestCase):
     """L'entrée [3] du menu principal : une question à un modèle, et le
     courriel, que TODO ouvre par une méthode qui passe la main à
@@ -2855,6 +2898,59 @@ class TestMainMenu(AnsweredMenu, unittest.TestCase):
         intro = t("=> Enter your choice by number and press Enter!")
         self.assertTrue(shown.endswith(f"🤖 {intro}\n\n"), shown[-60:])
 
+    def test_each_number_opens_the_menu_it_shows(self):
+        # Chaque sous-menu est un double ; le menu se dessine une fois, et
+        # « 9 », qu'il ne montre pas, n'est pas trouvé.
+        from script.todo.todo import TODO
+        from script.todo.todo_i18n import t
+
+        names = (
+            "prompt_execute",
+            "prompt_install",
+            "prompt_assistant",
+            "prompt_telemetry",
+            "prompt_configuration",
+        )
+        opened = Mock()
+        with ExitStack() as stack:
+            for name in names:
+                stack.enter_context(
+                    patch.object(TODO, name, getattr(opened, name))
+                )
+            back, shown = self.run_todo("1", "2", "3", "4", "5", "9", "0")
+        self.assertIsNone(back)
+        self.assertEqual([c[0] for c in opened.mock_calls], list(names))
+        self.assertEqual(shown.count(t("Command not found !")), 1)
+
+    def test_ctrl_c_at_its_question_ends_todo_without_a_word(self):
+        # Ctrl+C ou Ctrl+D à la question du menu principal (l'Abort de
+        # click) terminent TODO par SystemExit 0, sans ligne vide ; dans un
+        # sous-menu, l'Abort remonte au-delà de `run`, que `__main__` ou le
+        # worker rattrapent.
+        import click
+
+        from script.todo.todo import TODO
+        from script.todo.todo_i18n import t
+
+        shown = io.StringIO()
+        with (
+            patch("script.todo.todo.lang_is_configured", return_value=True),
+            patch("click.prompt", side_effect=click.exceptions.Abort),
+            redirect_stdout(shown),
+            self.assertRaises(SystemExit) as ended,
+        ):
+            self.todo.run()
+        self.assertEqual(ended.exception.code, 0)
+        intro = t("=> Enter your choice by number and press Enter!")
+        self.assertTrue(shown.getvalue().endswith(f"🤖 {intro}\n"))
+        with (
+            patch.object(
+                TODO, "prompt_execute", side_effect=click.exceptions.Abort
+            ),
+            self.assertRaises(click.exceptions.Abort),
+        ):
+            self.run_todo("1")
+
     def test_its_zero_reads_quit(self):
         # [0] du menu principal quitte TODO : `fill_help_info` l'écrit
         # « 🚪 Quit », et une session web lit ce libellé pour [0].
@@ -3043,6 +3139,7 @@ class TestMenuLabels(unittest.TestCase):
                 "prompt_execute_mail",
                 "prompt_mail_accounts",
                 "prompt_mail_cache",
+                "run",
             },
             set(declared),
         )

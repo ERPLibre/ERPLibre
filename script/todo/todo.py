@@ -256,49 +256,15 @@ class TODO(
         print(t("Language changed to: English"))
 
     def run(self):
+        """Le logo, la langue demandée au premier lancement et « Opening
+        TODO ... », puis le menu principal (MAIN, `menus/main.py`),
+        dessiné une fois : [0] le referme et rend None, et TODO sort ;
+        Ctrl+C ou Ctrl+D à sa question terminent TODO (SystemExit 0)."""
         with open(self.config_file.get_logo_ascii_file_path()) as my_file:
             print(my_file.read())
         self._ask_language()
         print(t("Opening TODO ..."))
-        print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
-        choices = [
-            {"prompt_description": t("Execute")},
-            {"prompt_description": t("Install")},
-            {"prompt_description": t("Assistant")},
-            {"prompt_description": t("Navigation telemetry")},
-            {"prompt_description": t("Configuration")},
-        ]
-        help_info = self.fill_help_info(choices, quits=True)
-        while True:
-            try:
-                status = click.prompt(help_info)
-            except NameError:
-                print("Do")
-                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
-                sys.exit(1)
-            except ImportError:
-                print("Do")
-                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
-                sys.exit(1)
-            except click.exceptions.Abort:
-                sys.exit(0)
-            print()
-            if status == "0":
-                break
-            elif status == "1":
-                self.prompt_execute()
-            elif status == "2":
-                self.prompt_install()
-            elif status == "3":
-                self.prompt_assistant()
-            elif status == "4":
-                self.prompt_telemetry()
-            elif status == "5":
-                self.prompt_configuration()
-            # elif status == "3" or status == "install":
-            #     print("install")
-            else:
-                print(t("Command not found !"))
+        return navigate(self, menus_main.MAIN)
 
     def prompt_assistant(self):
         """Ce qui s'adresse à l'humain : poser une question, lire son

@@ -1200,10 +1200,20 @@ class TestTodoMenuFiles(unittest.TestCase):
                 "prompt_mail_accounts",
                 "prompt_mail_cache",
                 "prompt_telemetry",
+                "run",
             ],
         )
         rebuilt = {name: _rebuilt(v) for name, v in declared.items()}
         self.assertEqual(rebuilt, imported)
+
+    def test_only_the_root_menu_quits(self):
+        # Le [0] d'un menu `quits` rend `back` à la méthode qui l'ouvre :
+        # TODO ne sort que parce que `run` ouvre le menu racine. Ailleurs,
+        # « 🚪 Quit » ramènerait au menu parent.
+        self.assertEqual(
+            [name for name, menu in _imported_menus().items() if menu.quits],
+            ["run"],
+        )
 
     def test_each_key_is_translated_in_both_languages(self):
         # Les clés du registre ne sont pas des appels de `t()` : ce test
@@ -1228,7 +1238,7 @@ class TestTodoMenuFiles(unittest.TestCase):
         from script.todo.todo import TODO
 
         menus = _imported_menus()
-        self.assertEqual(len(menus), 52)
+        self.assertEqual(len(menus), 53)
         # ERASE s'ouvre par DatabaseManager, dont il nomme les méthodes.
         # Les menus du courriel s'ouvrent par des fonctions de mail/menu.py
         # sur MailMenus, qui porte leurs actions, dont certaines sont des

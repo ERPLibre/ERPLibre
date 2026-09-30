@@ -1178,12 +1178,12 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
 class TestModuleLevelAbortExit(unittest.TestCase):
     """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
     Ctrl+D/EOF - see click's own `termui.prompt_func`) is NOT a
-    `KeyboardInterrupt` subclass. Only the top-level menu's `click.prompt`
-    call is wrapped locally, inside `run()` (todo.py around line 149) -
-    every submenu (`prompt_assistant`, etc.) lets `Abort` propagate
-    uncaught. These tests drive the real script end to end (not a mock of
-    the dispatch chain) to prove the module-level guard around
-    `todo.run()` (todo.py around line 7159) now catches it too.
+    `KeyboardInterrupt` subclass. At the question of the main menu, which
+    declares `quits`, the navigator turns it into `SystemExit(0)`; every
+    submenu (`prompt_assistant`, etc.) lets `Abort` go up out of `run()`.
+    These tests drive the real script end to end (not a mock of the
+    dispatch chain): the module-level guard around `todo.run()` catches
+    the Abort of a submenu, and the main menu ends TODO cleanly.
     """
 
     def _run_todo(self, stdin_text):
@@ -1204,15 +1204,14 @@ class TestModuleLevelAbortExit(unittest.TestCase):
 
     def test_ctrl_d_in_a_submenu_exits_cleanly(self):
         # "3" enters the Assistant submenu; the immediate EOF that follows
-        # raises Abort from a click.prompt() call that run() does not wrap.
+        # raises Abort at its question, which lets it go up out of run().
         result = self._run_todo("3\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
         self.assertNotIn("click.exceptions.Abort", result.stderr)
 
     def test_ctrl_d_on_the_top_menu_still_exits_cleanly(self):
-        # Regression guard: the pre-existing local handler in run() must
-        # keep working once the module-level guard is added alongside it.
+        # EOF at the question of the main menu ends TODO with code 0.
         result = self._run_todo("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
