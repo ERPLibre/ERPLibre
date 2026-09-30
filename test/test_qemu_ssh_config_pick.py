@@ -67,7 +67,7 @@ class _PickCase(unittest.TestCase):
 
 class TestLocalVms(_PickCase):
     def test_a_rank_not_as_shown_picks_no_vm(self):
-        for raw in ("01", "+1", "١", "forged_vm_z"):
+        for raw in ("01", "+1", "١", "forged_vm_z", "0", "9"):
             with self.subTest(raw=raw):
                 self.assertNothingWritten(self._play("1", raw, ""))
 
@@ -91,7 +91,7 @@ class TestLocalVms(_PickCase):
 
 class TestHostsOfSshConfig(_PickCase):
     def test_a_rank_not_as_shown_picks_no_host(self):
-        for raw in ("01", "+1", "١", "forged_host_z"):
+        for raw in ("01", "+1", "١", "forged_host_z", "0", "9"):
             with self.subTest(raw=raw):
                 self.assertNothingWritten(self._play("2", raw, ""))
 
