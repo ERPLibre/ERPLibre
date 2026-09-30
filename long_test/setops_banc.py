@@ -2077,8 +2077,17 @@ def pose_l_annuaire(eco, hote_autorite):
 
     LES TROIS FICHIERS OU AUCUN. Une fonction sans hôte, ou un hôte sans
     application, laisse un plan qui se lit mais ne déploie pas ce qu'il annonce.
+
+    DÉJÀ AU PLAN, RIEN À POSER, ET C'EST UNE RÉUSSITE. Le banc n'ajoute l'annuaire
+    que parce qu'un modèle peut l'omettre ; celui qui le déclare n'a besoin de
+    rien. Traiter ce cas en refus ferait échouer la pose sur un plan PLUS complet
+    que prévu — l'inverse exact de ce qu'on veut d'un modèle qui s'améliore.
     """
     plan = os.path.join(eco, "plan")
+    if APPLICATION_ANNUAIRE in (
+        lit_applications(os.path.join(plan, "applications.yml")) or {}
+    ):
+        return ""
     try:
         with open(
             os.path.join(plan, "nomenclature.yml"), encoding="utf-8"
