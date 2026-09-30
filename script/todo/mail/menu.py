@@ -119,14 +119,14 @@ def _load_accounts():
 
 def prompt_execute_mail(todo) -> None:
     _configure_mail_logging()
+    choices = [
+        {"prompt_description": t("mail_open_tui")},
+        {"prompt_description": t("mail_accounts_menu")},
+        {"prompt_description": t("mail_sync_now")},
+        {"prompt_description": t("mail_cache_menu")},
+    ]
     while True:
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_open_tui")}
-[2] {t("mail_accounts_menu")}
-[3] {t("mail_sync_now")}
-[4] {t("mail_cache_menu")}
-[0] {t("Back")}"""
-        status = click.prompt(help_info)
+        status = click.prompt(todo.fill_help_info(choices))
         print()
         if status == "0":
             return
@@ -192,15 +192,15 @@ def _sync_now(todo) -> None:
 
 
 def prompt_mail_accounts(todo) -> None:
+    choices = [
+        {"prompt_description": t("mail_account_list")},
+        {"prompt_description": t("mail_account_add")},
+        {"prompt_description": t("mail_account_delete")},
+        {"prompt_description": t("mail_account_template")},
+        {"prompt_description": t("mail_account_test")},
+    ]
     while True:
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_account_list")}
-[2] {t("mail_account_add")}
-[3] {t("mail_account_delete")}
-[4] {t("mail_account_template")}
-[5] {t("mail_account_test")}
-[0] {t("Back")}"""
-        status = click.prompt(help_info)
+        status = click.prompt(todo.fill_help_info(choices))
         print()
         if status == "0":
             return
@@ -488,12 +488,13 @@ def _test_account(todo) -> None:
 def prompt_mail_cache(todo) -> None:
     while True:
         current = todo_prefs.get("mail_cache_mode", "clear")
-        help_info = f"""{todo._menu_header()}
-[1] {t("mail_cache_default_mode")} ({current})
-[2] {t("mail_cache_account_mode")}
-[3] {t("mail_cache_size_purge")}
-[0] {t("Back")}"""
-        status = click.prompt(help_info)
+        default_mode = f"{t('mail_cache_default_mode')}  ({current})"
+        choices = [
+            {"prompt_description": default_mode},
+            {"prompt_description": t("mail_cache_account_mode")},
+            {"prompt_description": t("mail_cache_size_purge")},
+        ]
+        status = click.prompt(todo.fill_help_info(choices))
         print()
         if status == "0":
             return

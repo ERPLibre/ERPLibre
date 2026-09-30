@@ -131,6 +131,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'entrée 4 du menu principal de TODO, Télémétrie de navigation, demande s'il faut ouvrir la télémétrie dans le terminal (TUI) ou dans le navigateur (WEB), et sait arrêter l'interface web ; une ligne sous son fil d'Ariane dit si cette interface tourne. La page du navigateur gagne une vue Liste et une vue Système, une recherche qui ignore la casse et les accents, et des tris par usage, par nom ou dans l'ordre du code
 - L'interface web lit l'arbre des menus de TODO avec le lecteur tel qu'il est sur le disque : restée ouverte pendant une mise à jour de TODO, elle sert les menus du nouveau code sans être relancée. Une interface lancée avant cette version doit l'être une fois ([4] › [3] l'arrête)
 - Le menu Assistant pose sa question sur sa propre ligne, sous [0], comme tout menu, et une session web reçoit ses entrées telles que le menu les numérote au lieu de les lire à l'écran
+- Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
 
 ## Corrigé
 

@@ -2525,10 +2525,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -2545,10 +2545,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] List accounts\n[2] Add an account\n[3] Delete an account\n[4] Generate an accounts.json template\n[5] Test an account connection\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] List accounts\n[2] Add an account\n[3] Delete an account\n[4] Generate an accounts.json template\n[5] Test an account connection\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -2564,16 +2564,16 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
           "fallback": "pty",
           "items": [
-            {"key": "1", "label": "Default cache mode (clear)", "section": null, "speak": "Default cache mode (clear)"},
+            {"key": "1", "label": "Default cache mode  (clear)", "section": null, "speak": "Default cache mode  (clear)"},
             {"key": "2", "label": "Cache mode of one account", "section": null, "speak": "Cache mode of one account"},
             {"key": "3", "label": "Cache size and purge", "section": null, "speak": "Cache size and purge"},
             {"key": "0", "label": "🔙 Back", "section": null, "speak": "Back"}
@@ -2582,10 +2582,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] Default cache mode (clear)\n[2] Cache mode of one account\n[3] Cache size and purge\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] Default cache mode  (clear)\n[2] Cache mode of one account\n[3] Cache size and purge\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -2601,10 +2601,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back: "
+          "text": "📍 TODO › Assistant\nCommand:\n[1] Open the mail client (TUI)\n[2] Accounts\n[3] Synchronise now\n[4] Cache\n[0] 🔙 Back\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -5180,10 +5180,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -5200,10 +5200,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] Lister les comptes\n[2] Ajouter un compte\n[3] Supprimer un compte\n[4] Générer un modèle accounts.json\n[5] Tester la connexion d'un compte\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] Lister les comptes\n[2] Ajouter un compte\n[3] Supprimer un compte\n[4] Générer un modèle accounts.json\n[5] Tester la connexion d'un compte\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -5219,16 +5219,16 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
           "fallback": "pty",
           "items": [
-            {"key": "1", "label": "Mode de cache par défaut (clear)", "section": null, "speak": "Mode de cache par défaut (clear)"},
+            {"key": "1", "label": "Mode de cache par défaut  (clear)", "section": null, "speak": "Mode de cache par défaut  (clear)"},
             {"key": "2", "label": "Mode de cache d'un compte", "section": null, "speak": "Mode de cache d'un compte"},
             {"key": "3", "label": "Taille du cache et purge", "section": null, "speak": "Taille du cache et purge"},
             {"key": "0", "label": "🔙 Retour", "section": null, "speak": "Retour"}
@@ -5237,10 +5237,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] Mode de cache par défaut (clear)\n[2] Mode de cache d'un compte\n[3] Taille du cache et purge\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] Mode de cache par défaut  (clear)\n[2] Mode de cache d'un compte\n[3] Taille du cache et purge\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -5256,10 +5256,10 @@
           "printed": false,
           "requires": [],
           "sections": [],
-          "source": "text",
+          "source": "fill_help_info",
           "speak": "Assistant",
           "t": "menu",
-          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour: "
+          "text": "📍 TODO › Assistant\nCommande :\n[1] Ouvrir le client courriel (TUI)\n[2] Comptes\n[3] Synchroniser maintenant\n[4] Cache\n[0] 🔙 Retour\n: "
         },
         {
           "crumbs": ["TODO", "Assistant"],
@@ -7836,13 +7836,15 @@
           "[2] Accounts",
           "[3] Synchronise now",
           "[4] Cache",
-          "[0] 🔙 Back: ",
+          "[0] 🔙 Back",
+          ": ",
           "Command:",
           "[1] Open the mail client (TUI)",
           "[2] Accounts",
           "[3] Synchronise now",
           "[4] Cache",
-          "[0] 🔙 Back: 9",
+          "[0] 🔙 Back",
+          ": 9",
           "",
           "Command not found !",
           "Command:",
@@ -7850,7 +7852,8 @@
           "[2] Accounts",
           "[3] Synchronise now",
           "[4] Cache",
-          "[0] 🔙 Back: 0",
+          "[0] 🔙 Back",
+          ": 0",
           "",
           ""
         ]
@@ -7866,14 +7869,16 @@
           "[3] Delete an account",
           "[4] Generate an accounts.json template",
           "[5] Test an account connection",
-          "[0] 🔙 Back: ",
+          "[0] 🔙 Back",
+          ": ",
           "Command:",
           "[1] List accounts",
           "[2] Add an account",
           "[3] Delete an account",
           "[4] Generate an accounts.json template",
           "[5] Test an account connection",
-          "[0] 🔙 Back: 9",
+          "[0] 🔙 Back",
+          ": 9",
           "",
           "Command not found !",
           "Command:",
@@ -7882,7 +7887,8 @@
           "[3] Delete an account",
           "[4] Generate an accounts.json template",
           "[5] Test an account connection",
-          "[0] 🔙 Back: 0",
+          "[0] 🔙 Back",
+          ": 0",
           "",
           ""
         ]
@@ -7893,22 +7899,25 @@
         "probes": 0,
         "screen": [
           "Command:",
-          "[1] Default cache mode (clear)",
+          "[1] Default cache mode  (clear)",
           "[2] Cache mode of one account",
           "[3] Cache size and purge",
-          "[0] 🔙 Back: ",
+          "[0] 🔙 Back",
+          ": ",
           "Command:",
-          "[1] Default cache mode (clear)",
+          "[1] Default cache mode  (clear)",
           "[2] Cache mode of one account",
           "[3] Cache size and purge",
-          "[0] 🔙 Back: 9",
+          "[0] 🔙 Back",
+          ": 9",
           "",
           "Command not found !",
           "Command:",
-          "[1] Default cache mode (clear)",
+          "[1] Default cache mode  (clear)",
           "[2] Cache mode of one account",
           "[3] Cache size and purge",
-          "[0] 🔙 Back: 0",
+          "[0] 🔙 Back",
+          ": 0",
           "",
           ""
         ]
@@ -10448,13 +10457,15 @@
           "[2] Comptes",
           "[3] Synchroniser maintenant",
           "[4] Cache",
-          "[0] 🔙 Retour: ",
+          "[0] 🔙 Retour",
+          ": ",
           "Commande :",
           "[1] Ouvrir le client courriel (TUI)",
           "[2] Comptes",
           "[3] Synchroniser maintenant",
           "[4] Cache",
-          "[0] 🔙 Retour: 9",
+          "[0] 🔙 Retour",
+          ": 9",
           "",
           "Commande non trouvée !",
           "Commande :",
@@ -10462,7 +10473,8 @@
           "[2] Comptes",
           "[3] Synchroniser maintenant",
           "[4] Cache",
-          "[0] 🔙 Retour: 0",
+          "[0] 🔙 Retour",
+          ": 0",
           "",
           ""
         ]
@@ -10478,14 +10490,16 @@
           "[3] Supprimer un compte",
           "[4] Générer un modèle accounts.json",
           "[5] Tester la connexion d'un compte",
-          "[0] 🔙 Retour: ",
+          "[0] 🔙 Retour",
+          ": ",
           "Commande :",
           "[1] Lister les comptes",
           "[2] Ajouter un compte",
           "[3] Supprimer un compte",
           "[4] Générer un modèle accounts.json",
           "[5] Tester la connexion d'un compte",
-          "[0] 🔙 Retour: 9",
+          "[0] 🔙 Retour",
+          ": 9",
           "",
           "Commande non trouvée !",
           "Commande :",
@@ -10494,7 +10508,8 @@
           "[3] Supprimer un compte",
           "[4] Générer un modèle accounts.json",
           "[5] Tester la connexion d'un compte",
-          "[0] 🔙 Retour: 0",
+          "[0] 🔙 Retour",
+          ": 0",
           "",
           ""
         ]
@@ -10505,22 +10520,25 @@
         "probes": 0,
         "screen": [
           "Commande :",
-          "[1] Mode de cache par défaut (clear)",
+          "[1] Mode de cache par défaut  (clear)",
           "[2] Mode de cache d'un compte",
           "[3] Taille du cache et purge",
-          "[0] 🔙 Retour: ",
+          "[0] 🔙 Retour",
+          ": ",
           "Commande :",
-          "[1] Mode de cache par défaut (clear)",
+          "[1] Mode de cache par défaut  (clear)",
           "[2] Mode de cache d'un compte",
           "[3] Taille du cache et purge",
-          "[0] 🔙 Retour: 9",
+          "[0] 🔙 Retour",
+          ": 9",
           "",
           "Commande non trouvée !",
           "Commande :",
-          "[1] Mode de cache par défaut (clear)",
+          "[1] Mode de cache par défaut  (clear)",
           "[2] Mode de cache d'un compte",
           "[3] Taille du cache et purge",
-          "[0] 🔙 Retour: 0",
+          "[0] 🔙 Retour",
+          ": 0",
           "",
           ""
         ]

@@ -131,6 +131,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Entry 4 of the TODO main menu, Navigation telemetry, asks whether to open the telemetry in the terminal (TUI) or in the browser (WEB), and can stop the web interface; a line under its breadcrumb says whether that interface runs. The browser page gains a List and a System view, a search that ignores case and accents, and sorts by usage, name or code order
 - The web interface reads the menu tree of TODO with the tree reader as it is on disk: one left running across an update of TODO serves the menus of the new code without a restart. One started before this version still needs a restart once ([4] › [3] stops it)
 - The Assistant menu asks its question on its own line, under [0], as every menu does, and a web session gets its entries as the menu numbers them instead of reading them on the screen
+- The three Mail menus do the same, and Cache writes the default mode after two spaces, as every value a menu entry shows
 
 ## Fixed
 
