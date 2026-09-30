@@ -19,6 +19,10 @@ from script.todo.ui.port import TerminalPort, shell
 
 TERMINAL = TerminalPort()
 _BOUND = contextvars.ContextVar("todo_ui_port")
+# Appelés à la fin de chaque question de la façade, quelle qu'en soit
+# l'issue : la capture héritée y oublie ce que son Tee a vu imprimé, que le
+# menu suivant prendrait sinon pour la sortie d'une feuille.
+ENDED = []
 
 
 def current():
@@ -45,20 +49,30 @@ def detach(token) -> None:
     _BOUND.reset(token)
 
 
+def _asked(question, *args):
+    """Ce que rend `question(*args)`, une question du port lié ; chaque
+    rappel de ENDED est appelé ensuite, même quand elle lève."""
+    try:
+        return question(*args)
+    finally:
+        for ended in ENDED:
+            ended()
+
+
 def menu(view) -> str:
-    return current().menu(view)
+    return _asked(current().menu, view)
 
 
 def ask(text, default=None, kind="text", timeout=None) -> str:
-    return current().ask(text, default, kind, timeout)
+    return _asked(current().ask, text, default, kind, timeout)
 
 
 def secret(text) -> str:
-    return current().secret(text)
+    return _asked(current().secret, text)
 
 
 def confirm(text, default=False, typed=None) -> bool:
-    return current().confirm(text, default, typed)
+    return _asked(current().confirm, text, default, typed)
 
 
 def choose(
@@ -70,15 +84,15 @@ def choose(
     letters=None,
     names=None,
 ):
-    return current().choose(
-        text, options, multi, default, labels, letters, names
-    )
+    port = current()
+    rules = (multi, default, labels, letters, names)
+    return _asked(port.choose, text, options, *rules)
 
 
 def pick_path(start, directory=False):
     """Le chemin d'un fichier, ou d'un répertoire, choisi à partir de
     `start` ; None si l'utilisateur renonce."""
-    return current().pick_path(start, directory)
+    return _asked(current().pick_path, start, directory)
 
 
 def notice(text, level="info") -> None:

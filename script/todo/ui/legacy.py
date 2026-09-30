@@ -36,13 +36,14 @@ et auto_ask y mettent leur défaut. Annuler lève EOFError, que click change
 en Abort, comme Ctrl+D.
 
 `sys.stdout` passe par un `Tee`, qui rend au plus les TEE_LIMIT derniers
-caractères imprimés depuis la fin de la question précédente, dont la
-transcription de sa réponse fait partie : l'écran que lit la suivante. Un
-menu dit si ces caractères portent autre chose que des blancs avant son
-propre texte (`printed`) : ce qu'une feuille imprime avant de rendre la
-main à son menu, et que ses boutons ne montrent pas. Il porte aussi les
-lignes de son texte que ses entrées ne disent pas (`notes`), une ligne
-d'état par exemple.
+caractères imprimés depuis la fin de la question précédente, posée par la
+capture ou par la façade `ui` (`ui.ENDED`), dont la transcription de sa
+réponse fait partie : l'écran que lit la suivante. Un menu dit si ces
+caractères portent autre chose que des blancs avant son propre texte
+(`printed`) : ce qu'une feuille imprime avant de rendre la main à son
+menu, et que ses boutons ne montrent pas. Il porte aussi les lignes de
+son texte que ses entrées ne disent pas (`notes`), une ligne d'état par
+exemple.
 """
 
 import builtins
@@ -485,6 +486,7 @@ def install(target):
         setattr(owner, name, hook)
     tee = _tee = Tee(sys.stdout)
     sys.stdout = _tee
+    ui.ENDED.append(tee.clear)
     token = ui.attach(target)
 
     def uninstall():
@@ -492,6 +494,7 @@ def install(target):
         if _tee is not tee:
             return  # déjà défaite, peut-être sous une capture plus récente
         ui.detach(token)
+        ui.ENDED.remove(tee.clear)
         sys.stdout = _tee.inner
         _tee = None
         for owner, name, _ in hooks:

@@ -750,6 +750,16 @@ class TestMenus(CaptureCase):
             ],
         )
 
+    def test_what_a_choice_of_ui_leaves_printed_flags_no_menu(self):
+        # Ce qu'un sélecteur imprime avant de choisir par ui.choose, puis
+        # sa question, finissent avec elle : le menu qui suit ne le prend
+        # pas pour la sortie d'une feuille.
+        scripted = self.capture("1", "0")
+        print("forged listing")
+        self.assertEqual(ui.choose("Which?", ["forged_a"]), "forged_a")
+        input("[1] Execute\n[0] Back\n: ")
+        self.assertFalse(scripted.events[-1]["printed"])
+
     def test_a_menu_carries_the_lines_its_buttons_do_not_say(self):
         # La ligne d'état sous le fil d'Ariane, une ligne à crochets qui
         # n'est pas une entrée ; ni le fil, ni les sections, ni les

@@ -81,6 +81,16 @@ class TestFacade(unittest.TestCase):
         ui.detach(token)
         self.assertIs(ui.current(), ui.TERMINAL)
 
+    def test_every_question_ends_with_the_ended_callbacks(self):
+        ended = []
+        self.enterContext(patch.object(ui, "ENDED", [lambda: ended.append(1)]))
+        with ui.bind(port.ScriptedPort(["x", "1"])):
+            self.assertEqual(ui.ask("Name: "), "x")
+            self.assertEqual(ui.choose("Which?", ["a"]), "a")
+            with self.assertRaises(EOFError):
+                ui.secret("Password: ")
+        self.assertEqual(ended, [1, 1, 1])
+
     def test_two_threads_keep_distinct_ports(self):
         both_bound = threading.Barrier(2, timeout=10)
         seen = {}
