@@ -20,7 +20,6 @@ import io
 import re
 import sys
 import unittest
-import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -256,13 +255,6 @@ class TestLesExceptionsDuCache(unittest.TestCase):
         saved = i18n._current_lang
         self.addCleanup(setattr, i18n, "_current_lang", saved)
         i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
 
     def todo(self, orphelines):

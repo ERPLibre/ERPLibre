@@ -23,7 +23,6 @@ import re
 import shlex
 import sys
 import unittest
-import warnings
 from pathlib import Path
 from unittest import mock
 
@@ -52,13 +51,6 @@ class Banc(unittest.TestCase):
         # Un menu dessiné enregistre sa clé de télémétrie dans le HOME :
         # aucun test de ce fichier n'y écrit.
         self.enterContext(mock.patch("script.todo.todo_telemetry.record"))
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
 
     def todo(self, fiche=None, code=0):
         todo = TODO.__new__(TODO)

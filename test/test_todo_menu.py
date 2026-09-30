@@ -20,7 +20,6 @@ import os
 import tempfile
 import unicodedata
 import unittest
-import warnings
 from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import Mock, call, patch
@@ -781,13 +780,6 @@ class TestQemuMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         for patcher in (
@@ -857,13 +849,6 @@ class TestProxmoxMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         host = {"target": "root@forged-pve", "jump": ""}
@@ -2082,13 +2067,6 @@ class TestUpdateMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         for patcher in (
@@ -2159,13 +2137,6 @@ class TestCodeMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         for patcher in (
@@ -2244,13 +2215,6 @@ class TestRunMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         self.mobile = os.path.join(home.name, "mobile")
@@ -2355,13 +2319,6 @@ class TestDocMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("fr")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         with (
@@ -2399,13 +2356,6 @@ class TestEraseMenu(unittest.TestCase):
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         keys = []
@@ -2439,13 +2389,6 @@ class AnsweredMenu:
         saved = todo_i18n._current_lang
         self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
         todo_i18n.use_lang("en")
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__` : sous
-        # `-W error`, l'avertissement ferait tomber le menu.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         home = tempfile.TemporaryDirectory()
         self.addCleanup(home.cleanup)
         for patcher in (

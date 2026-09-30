@@ -28,7 +28,6 @@ import os
 import subprocess
 import sys
 import unittest
-import warnings
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
@@ -496,7 +495,6 @@ class SessionsClaudeCode(unittest.TestCase):
         """[1] montre, entre parenthèses, le nombre de sessions et celui
         des vivantes, que rend `_claude_sessions_count` au dessin."""
         import io
-        import warnings
         from contextlib import redirect_stdout
 
         from script.todo.assistant import claude_sessions as cs
@@ -515,14 +513,7 @@ class SessionsClaudeCode(unittest.TestCase):
             patch("click.prompt", side_effect=["0"]) as question,
             patch("script.todo.todo_telemetry.record"),
             redirect_stdout(io.StringIO()),
-            warnings.catch_warnings(),
         ):
-            # Les modules déplacés d'urwid avertissent quand
-            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
-            # `__file__` : sous `-W error`, le menu tomberait.
-            warnings.filterwarnings(
-                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-            )
             compte = todo._claude_sessions_count()
             todo.prompt_claude_sessions()
         self.assertEqual(compte, f"2 · 1 {t('live')}")
@@ -536,7 +527,6 @@ class SessionsClaudeCode(unittest.TestCase):
         """Ctrl+C ou Ctrl+D à la question des sessions (l'Abort de click)
         rendent None après une ligne vide, au lieu de terminer TODO."""
         import io
-        import warnings
         from contextlib import redirect_stdout
 
         import click
@@ -552,14 +542,7 @@ class SessionsClaudeCode(unittest.TestCase):
             patch("click.prompt", side_effect=[click.exceptions.Abort()]),
             patch("script.todo.todo_telemetry.record"),
             redirect_stdout(sortie),
-            warnings.catch_warnings(),
         ):
-            # Les modules déplacés d'urwid avertissent quand
-            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
-            # `__file__` : sous `-W error`, le menu tomberait.
-            warnings.filterwarnings(
-                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-            )
             self.assertIsNone(todo.prompt_claude_sessions())
         self.assertTrue(sortie.getvalue().endswith("\n\n"))
 
@@ -597,7 +580,6 @@ class SessionsClaudeCode(unittest.TestCase):
         attend sa réponse est listée par [1] : l'entrée relit la flotte
         au lieu de reprendre celle que le menu a dessinée."""
         import io
-        import warnings
         from contextlib import redirect_stdout
 
         from script.todo.assistant import claude_sessions as cs
@@ -614,14 +596,7 @@ class SessionsClaudeCode(unittest.TestCase):
             patch("click.prompt", side_effect=["1", "0"]),
             patch("script.todo.todo_telemetry.record"),
             redirect_stdout(sortie),
-            warnings.catch_warnings(),
         ):
-            # Les modules déplacés d'urwid avertissent quand
-            # `inspect.stack`, qui dessine le fil d'Ariane, lit leur
-            # `__file__` : sous `-W error`, le menu tomberait.
-            warnings.filterwarnings(
-                "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-            )
             todo.prompt_claude_sessions()
         self.assertIn("[1] forged-s", sortie.getvalue())
 
@@ -689,12 +664,6 @@ class MenusDuLLM(unittest.TestCase):
         from script.todo.assistant import servers as llm_servers
         from script.todo.todo import TODO
 
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__`.
-        self.enterContext(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
-        )
         connus = llm_servers.assign_handles(
             [
                 llm_servers.Server(

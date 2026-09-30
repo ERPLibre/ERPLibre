@@ -51,7 +51,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import warnings
 from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -704,12 +703,6 @@ def terminal(method, lang) -> dict:
         )
         record = stack.enter_context(
             patch("script.todo.todo_telemetry.record")
-        )
-        # Les modules déplacés d'urwid avertissent quand `inspect.stack`,
-        # qui dessine le fil d'Ariane, lit leur `__file__`.
-        stack.enter_context(warnings.catch_warnings())
-        warnings.filterwarnings(
-            "ignore", r"urwid\.\S+ is moved to", DeprecationWarning
         )
         stack.enter_context(redirect_stdout(shown))
         target = TODO()
