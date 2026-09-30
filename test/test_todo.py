@@ -1305,6 +1305,8 @@ class TestParseIndexSelection(unittest.TestCase):
         self.assertEqual(
             parse("2,forged_a,2", options), ["forged_b", "forged_a"]
         )
+        # Une option nommée comme un numéro se prend par son nom.
+        self.assertEqual(parse("01", ["forged_x", "01"]), ["01"])
         for raw in ("01", "+1", "١", "0", "-1", "4"):
             with self.subTest(raw=raw):
                 self.assertEqual(parse(raw, options), [])
