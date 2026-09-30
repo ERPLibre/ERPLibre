@@ -1117,7 +1117,7 @@ console.log(JSON.stringify({
         {t: "menu", text: "Choice [1]: ", notes: ["Choice [1]:"]},
     ].map((question) => m.menuText({...question, items: [{key: "1"}, {key: "0"}]})).concat(
         m.menuText({t: "ask", kind: "choose", text: "Which?\n[1] alpha\n: ",
-            options: [{key: "1", label: "alpha"}]})),
+            prompt: "Which?", options: [{key: "1", label: "alpha"}]})),
 }));
 """
 
@@ -1217,6 +1217,7 @@ class TestMenuWidget(unittest.TestCase):
 
 QUESTION_CHECK = r"""
 const choose = {kind: "choose", text: "Which?\n[1] alpha\n[2] beta\n: ",
+    prompt: "Which?",
     options: [{key: "1", label: "alpha"}, {key: "2", label: "beta"}]};
 const typed = {kind: "typed", text: "Type forged:", expected: "forged"};
 console.log(JSON.stringify({
@@ -1267,6 +1268,78 @@ class TestQuestionWidgets(unittest.TestCase):
             self.out["texts"],
             ["Which?", "Type forged:", "💬 Name:", "Choice [1]:"],
         )
+
+
+# Un choix simple et un choix multiple tels que le port les pose (MESSAGES,
+# remplacé par leur JSON), et ce que la page en montre et en envoie.
+CHOICE_CHECK = r"""
+const [single, several] = MESSAGES;
+const keys = (items) => items.map((item) => item.key);
+console.log(JSON.stringify({
+    texts: [m.promptText(single), m.menuText(single), m.promptText(several)],
+    buttons: m.menuGroups(single.options).map((group) => keys(group.items)),
+    back: [m.backItem(single.options).label, m.backItem(several.options).key],
+    boxes: keys(m.choiceBoxes(several.options)),
+    picked: m.choiceValue(several.options, ["2", "1"]),
+    all: m.ALL_ANSWER,
+}));
+"""
+
+
+def _choices() -> list:
+    """Les messages d'un choix simple, puis d'un choix multiple, entre
+    « alpha » et « beta », posés en anglais par le port."""
+    saved = todo_i18n._current_lang
+    try:
+        todo_i18n.use_lang("en")
+        messages = []
+        for multi in (False, True):
+            scripted = port.ScriptedPort()
+            scripted.choose("Which?", ["alpha", "beta"], multi=multi)
+            messages.append(scripted.events[0])
+        return messages
+    finally:
+        todo_i18n._current_lang = saved
+
+
+@unittest.skipUnless(shutil.which("node"), "node absent")
+class TestChoiceWidgets(unittest.TestCase):
+    """Un choix posé par le vrai port : un choix simple en boutons, [0] à
+    part, comme un menu ; un choix multiple en cases, sans [0], avec Tout
+    et [0] ; ce que ses boutons envoient, relu par les règles du port."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.single, cls.several = _choices()
+        messages = json.dumps([cls.single, cls.several])
+        cls.out = _node_json(
+            CHOICE_CHECK.replace("MESSAGES", messages), "prompt.js"
+        )
+
+    def test_a_choice_shows_its_question_without_its_entries(self):
+        self.assertEqual(self.out["texts"], ["Which?"] * 3)
+
+    def test_a_single_choice_is_buttons_with_back_apart(self):
+        self.assertEqual(self.out["buttons"], [["1", "2"]])
+        self.assertEqual(self.out["back"], ["🔙 Back", "0"])
+
+    def test_a_multiple_choice_ticks_its_options_or_takes_them_all(self):
+        self.assertEqual(self.out["boxes"], ["1", "2"])
+        for sent, keys in (
+            (self.out["picked"], ["1", "2"]),
+            (self.out["all"], ["1", "2"]),
+            ("0", ["0"]),
+            ("", []),
+        ):
+            with self.subTest(sent=sent):
+                self.assertEqual(port.chosen_keys(self.several, sent), keys)
+
+    def test_the_multiple_choice_widget_offers_all_and_back(self):
+        source = (SRC / "question_view.js").read_text(encoding="utf-8")
+        template = TEMPLATE.search(source)[1]
+        self.assertIn('t-foreach="boxes"', template)
+        self.assertIn("this.send(allAnswer)", template)
+        self.assertIn("this.send('0')", template)
 
 
 # Un répertoire factice, comme /api/fs le rend, et ce que le sélecteur de

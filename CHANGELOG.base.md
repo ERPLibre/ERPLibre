@@ -240,6 +240,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The web interface reads the menu tree of TODO with the tree reader as it is on disk: one left running across an update of TODO serves the menus of the new code without a restart. One started before this version still needs a restart once ([4] › [3] stops it)
 - The Assistant menu asks its question on its own line, under [0], as every menu does, and a web session gets its entries as the menu numbers them instead of reading them on the screen
 - The three Mail menus do the same, and Cache writes the default mode after two spaces, as every value a menu entry shows
+- In a web session, a list asked by the rules below reaches the page as buttons, or as boxes to tick when it takes several answers, with All, which takes every option, and Back
 
 <!-- [fr] -->
 
@@ -280,6 +281,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'interface web lit l'arbre des menus de TODO avec le lecteur tel qu'il est sur le disque : restée ouverte pendant une mise à jour de TODO, elle sert les menus du nouveau code sans être relancée. Une interface lancée avant cette version doit l'être une fois ([4] › [3] l'arrête)
 - Le menu Assistant pose sa question sur sa propre ligne, sous [0], comme tout menu, et une session web reçoit ses entrées telles que le menu les numérote au lieu de les lire à l'écran
 - Les trois menus du Courriel font de même, et Cache écrit le mode par défaut après deux espaces, comme toute valeur que montre une entrée de menu
+- Dans une session web, une liste posée sous les règles ci-dessous arrive à la page en boutons, ou en cases à cocher quand elle prend plusieurs réponses, avec Tout, qui prend toutes les options, et Retour
 
 <!-- [en] -->
 ## Fixed

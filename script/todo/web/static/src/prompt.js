@@ -202,13 +202,19 @@ export function choiceValue(options, picked) {
         .join(" ");
 }
 
+// Ce qu'envoie le bouton Tout d'un choix multiple : un mot que le port lit
+// comme toutes les options, dans les deux langues.
+export const ALL_ANSWER = "*";
+
+// Les options qu'un choix multiple offre à cocher : toutes, sauf l'entrée
+// 0, le retour, qui a son bouton.
+export function choiceBoxes(options) {
+    return options.filter((option) => option.key !== "0");
+}
+
 // Le texte d'une question sans ce que son widget montre déjà : pour un
-// choix, les lignes de ses options et l'invite « : » qui les suit.
+// choix, sa question seule (`prompt`), sans ses entrées ni son invite.
 export function promptText(question) {
-    let lines = String(question.text ?? "").split("\n");
-    if (question.kind === "choose") {
-        const shown = new Set((question.options ?? []).map((option) => `[${option.key}] ${option.label}`));
-        lines = lines.filter((line) => !shown.has(line) && line.trim() !== ":");
-    }
-    return lines.join("\n").trimEnd();
+    const text = question.kind === "choose" ? question.prompt : question.text;
+    return String(text ?? "").trimEnd();
 }

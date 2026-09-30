@@ -14,8 +14,9 @@
 //   onglet qui reprend la session, le fait repartir de `timeout_s`.
 //   L'échéance qui compte est celle du worker, qui prend le défaut et
 //   ferme la question ;
-// - choose avec `multi` : des cases à cocher et Valider (un choix simple
-//   est un menu : MenuView).
+// - choose avec `multi` : une case à cocher par option, Valider, Tout, qui
+//   les prend toutes, et l'entrée 0, le retour (un choix simple est un
+//   menu : MenuView).
 // Une confirmation et un choix gardent le champ « Autre réponse ». Chaque
 // widget a un nom accessible tiré de `speak`, et Annuler, qui fait ce que
 // fait Ctrl+D au terminal : la question finit sans réponse (EOFError,
@@ -28,7 +29,10 @@
 // d'avance presserait.
 import {Component, onMounted, onWillUnmount, useEffect, useRef, useState, xml} from "@odoo/owl";
 import {
+    ALL_ANSWER,
     ARM,
+    backItem,
+    choiceBoxes,
     choiceValue,
     composing,
     confirmKey,
@@ -54,7 +58,7 @@ export class QuestionView extends Component {
                     t-att-disabled="locked" t-on-click="() => this.send('n')" t-esc="env.t('Answer no')"/>
             </div>
             <div t-elif="kind === 'choose'" class="entries">
-                <label t-foreach="options" t-as="option" t-key="option.key" class="entry">
+                <label t-foreach="boxes" t-as="option" t-key="option.key" class="entry">
                     <input type="checkbox" t-att-checked="state.picked.includes(option.key)"
                         t-att-disabled="props.pending" t-on-change="() => this.toggle(option.key)"/>
                     <span class="key" t-esc="option.key + '.'"/>
@@ -73,8 +77,17 @@ export class QuestionView extends Component {
                 <span t-if="kind === 'secret'" class="dropped" role="status" t-esc="refusedText"/>
             </div>
             <div t-if="kind === 'confirm' or kind === 'choose'" class="answer-row">
-                <button t-if="kind === 'choose'" type="button" t-att-disabled="locked or !state.picked.length"
-                    t-on-click="sendPicked" t-esc="env.t('Validate')"/>
+                <t t-if="kind === 'choose'">
+                    <button type="button" t-att-disabled="locked or !state.picked.length" t-on-click="sendPicked"
+                        t-esc="env.t('Validate')"/>
+                    <button type="button" t-att-disabled="locked" t-on-click="() => this.send(allAnswer)"
+                        t-esc="env.t('All')"/>
+                    <button t-if="back" type="button" class="entry" t-att-disabled="locked"
+                        t-att-aria-label="'0. ' + (back.speak or back.label)" t-on-click="() => this.send('0')">
+                        <span class="key" t-esc="'0.'"/>
+                        <span t-esc="back.label"/>
+                    </button>
+                </t>
                 <label class="other">
                     <span t-esc="env.t('Other answer')"/>
                     <input type="text" autocomplete="off" t-model="state.other" t-on-keydown="onOtherKey"/>
@@ -134,6 +147,20 @@ export class QuestionView extends Component {
 
     get options() {
         return this.props.question.options ?? [];
+    }
+
+    // Les options à cocher d'un choix multiple, sans l'entrée 0 ; celle-ci,
+    // le retour, a son bouton, comme dans un menu.
+    get boxes() {
+        return choiceBoxes(this.options);
+    }
+
+    get back() {
+        return backItem(this.options);
+    }
+
+    get allAnswer() {
+        return ALL_ANSWER;
     }
 
     get left() {
