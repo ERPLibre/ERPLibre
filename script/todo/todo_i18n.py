@@ -12246,10 +12246,6 @@ TRANSLATIONS = {
     "mail_ask_imap_host": {"fr": "Serveur IMAP : ", "en": "IMAP server: "},
     "mail_ask_smtp_host": {"fr": "Serveur SMTP : ", "en": "SMTP server: "},
     "mail_ask_account": {"fr": "Quel compte ? ", "en": "Which account? "},
-    "mail_ask_mode": {
-        "fr": "Mode (clear / encrypted / ephemeral) : ",
-        "en": "Mode (clear / encrypted / ephemeral): ",
-    },
     "mail_app_password_note": {
         "fr": "Ce fournisseur exige un mot de passe d'application.",
         "en": "This provider requires an app password.",
@@ -12320,8 +12316,6 @@ TRANSLATIONS = {
         "fr": "Choisir un fichier existant",
         "en": "Choose an existing file",
     },
-    "mail_kdbx_menu_cancel": {"fr": "Annuler", "en": "Cancel"},
-    "mail_kdbx_ask_choice": {"fr": "Votre choix : ", "en": "Your choice: "},
     "mail_kdbx_ask_path_new": {
         "fr": "Chemin du nouveau fichier kdbx",
         "en": "Path for the new kdbx file",

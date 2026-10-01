@@ -18,7 +18,7 @@ import os
 import shutil
 from pathlib import Path
 
-from script.todo import todo_prefs
+from script.todo import todo_prefs, ui
 from script.todo.mail import account_setup
 from script.todo.mail import accounts as mail_accounts
 from script.todo.mail.accounts import PRESETS, AccountError
@@ -202,19 +202,20 @@ def _ensure_kdbx(todo) -> bool:
 
     Si `kdbx.path` est déjà configuré, ne pose aucune question — c'est le
     cas courant après la première utilisation. Sinon, offre deux choix :
-    créer un nouveau `.kdbx` ou en choisir un existant.
+    créer un nouveau `.kdbx` ou en choisir un existant ; [0] n'en fait
+    rien.
     """
     if todo.config_file.get_config_value(["kdbx", "path"]):
         return True
 
-    print(t("mail_kdbx_none_configured"))
-    print(f"  [1] {t('mail_kdbx_menu_create')}")
-    print(f"  [2] {t('mail_kdbx_menu_choose')}")
-    print(f"  [0] {t('mail_kdbx_menu_cancel')}")
-    choice = input(t("mail_kdbx_ask_choice")).strip()
-    if choice == "1":
+    choice = ui.choose(
+        t("mail_kdbx_none_configured"),
+        range(2),
+        labels=[t("mail_kdbx_menu_create"), t("mail_kdbx_menu_choose")],
+    )
+    if choice == 0:
         return _create_kdbx_interactive(todo)
-    if choice == "2":
+    if choice == 1:
         return _choose_kdbx_interactive(todo)
     return False
 
@@ -264,13 +265,21 @@ def _add_account(todo) -> None:
     email_addr = input(t("mail_ask_email")).strip()
     display = input(t("mail_ask_display_name")).strip()
 
-    # Seul un numéro tel que la liste l'écrit choisit un fournisseur : toute
-    # autre réponse laisse le générique, qui demande les serveurs.
-    shown = {str(n): key for n, key in enumerate(PRESETS, start=1)}
-    for index, key in shown.items():
-        print(f"  [{index}] {PRESETS[key]['label']}")
-    choice = input(t("mail_ask_preset")).strip()
-    preset_key = shown.get(choice, "generic")
+    # Un fournisseur se choisit par son numéro ou par son libellé ; une
+    # réponse vide prend le générique, qui demande les serveurs ; [0]
+    # renonce au compte.
+    keys = list(PRESETS)
+    labels = [PRESETS[key]["label"] for key in keys]
+    rank = ui.choose(
+        t("mail_ask_preset").strip(),
+        range(len(keys)),
+        default=keys.index("generic"),
+        labels=labels,
+        names={label: rank for rank, label in enumerate(labels)},
+    )
+    if rank is None:
+        return
+    preset_key = keys[rank]
 
     vault = "kdbx" if "kdbx" in store.available_backends() else "keyring"
     try:
@@ -305,19 +314,17 @@ def _add_account(todo) -> None:
     print(t("mail_account_saved"))
 
 
-def _pick_account(prompt_key="mail_ask_account"):
-    """(le compte choisi, ou None, et tous les comptes) : un compte ne se
-    choisit que par son numéro tel que la liste l'écrit ; « 0 », « -1 »,
-    « 01 » ou un chiffre d'une autre écriture n'en désignent aucun."""
+def _pick_account():
+    """(le compte choisi, ou None, et tous les comptes) : un compte se
+    choisit par son numéro tel que la liste l'écrit ou par son nom, sous
+    les règles de `ui.choose` ; None pour [0] ou une réponse vide."""
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return None, []
-    shown = {str(n): account for n, account in enumerate(accounts, start=1)}
-    for index, account in shown.items():
-        print(f"  [{index}] {account.name}")
-    choice = input(t(prompt_key)).strip()
-    return shown.get(choice), accounts
+    names = [account.name for account in accounts]
+    name = ui.choose(t("mail_ask_account").strip(), names)
+    return (None if name is None else accounts[names.index(name)]), accounts
 
 
 def _delete_account(todo) -> None:
@@ -464,23 +471,29 @@ def _cache_mode() -> str:
 
 
 def _set_cache_mode() -> None:
-    """Demande le mode de cache par défaut, et le retient s'il en est un ;
-    sinon « Command not found ! »."""
-    mode = input(t("mail_ask_mode")).strip()
-    if mode in CACHE_MODES:
+    """Demande le mode de cache par défaut, par son numéro ou son nom, et
+    le retient ; [0] le laisse tel quel."""
+    mode = ui.choose(t("mail_cache_default_mode"), CACHE_MODES)
+    if mode is not None:
         todo_prefs.set("mail_cache_mode", mode)
-    else:
-        print(t("Command not found !"))
 
 
 def _set_account_cache_mode() -> None:
-    """Demande un compte, puis son mode de cache : une réponse qui n'en est
-    pas un le rend au mode par défaut."""
+    """Demande un compte, puis son mode de cache, par son numéro ou son
+    nom, ou le mode par défaut, la dernière entrée ; [0] laisse le compte
+    tel quel."""
     account, accounts = _pick_account()
     if account is None:
         return
-    mode = input(t("mail_ask_mode")).strip()
-    account.cache_mode = mode if mode in CACHE_MODES else None
+    mode = ui.choose(
+        t("mail_cache_account_mode"),
+        [*CACHE_MODES, ""],
+        labels=[*CACHE_MODES, t("mail_cache_default_mode")],
+        names=dict(zip(CACHE_MODES, CACHE_MODES)),
+    )
+    if mode is None:
+        return
+    account.cache_mode = mode or None
     mail_accounts.save(accounts)
 
 

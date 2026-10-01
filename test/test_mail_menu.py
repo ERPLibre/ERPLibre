@@ -12,6 +12,7 @@ from pathlib import Path
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.menu import cache_summary
 from script.todo.mail.store import Store
+from script.todo.todo_i18n import t
 
 
 class TestCacheSummary(unittest.TestCase):
@@ -135,55 +136,71 @@ class TestAddAccountRollsBack(unittest.TestCase):
 
 class TestPickAccount(unittest.TestCase):
     """Delete an account, Test an account, le mode de cache d'un compte et
-    Size and purge choisissent un compte par `_pick_account` : seul son
-    numéro tel que la liste l'écrit le désigne."""
+    Size and purge choisissent un compte par `_pick_account` : son numéro
+    tel que la liste l'écrit ou son nom exact le désignent, [0] et une
+    réponse vide n'en désignent aucun, toute autre réponse est dite
+    invalide et la question revient."""
 
     ACCOUNTS = [
         account_from_preset("forged_a", "a@forged.invalid", "generic"),
         account_from_preset("forged_b", "b@forged.invalid", "generic"),
     ]
 
-    def deleted(self, answer):
+    def deleted(self, *answers):
         """Ce que Delete an account enregistre, None s'il n'enregistre
-        rien, et les secrets qu'il retire, quand il reçoit `answer`."""
+        rien, et les secrets qu'il retire, quand il reçoit `answers`, puis
+        « 0 » ; ce qu'il imprime va dans `self.shown`."""
+        import io
+        from contextlib import redirect_stdout
         from unittest.mock import MagicMock, patch
 
         import script.todo.mail.menu as menu
 
+        shown = io.StringIO()
         with (
             patch.object(
                 menu.mail_accounts, "load", return_value=list(self.ACCOUNTS)
             ),
             patch.object(menu.mail_accounts, "save") as save,
             patch.object(menu, "secret_store_for") as store,
-            patch("builtins.input", return_value=answer),
-            patch("builtins.print"),
+            patch("builtins.input", side_effect=[*answers, "0"]),
+            redirect_stdout(shown),
         ):
             menu._delete_account(MagicMock())
+        self.shown = shown.getvalue()
         saved = save.call_args.args[0] if save.called else None
         return saved, store.return_value.delete.call_args_list
 
-    def test_only_a_shown_number_picks_an_account(self):
-        # « 0 », tapé pour revenir, ne désigne aucun compte : pris pour le
-        # dernier, Delete an account l'effacerait sans autre question ;
-        # « -1 » désignerait l'avant-dernier, « 01 », « +1 » ou un chiffre
-        # d'une autre écriture le premier.
-        for answer in ("0", "-1", "01", "+1", "١", "3"):
+    def test_only_a_shown_number_or_a_name_picks_an_account(self):
+        # Delete an account efface sans autre question : « 0 » et une
+        # réponse vide reviennent, et « -1 », « 01 », « +1 », un chiffre
+        # d'une autre écriture, « tout » ou un nom mal écrit sont dits
+        # invalides, puis « 0 » revient.
+        for answer in ("0", ""):
             with self.subTest(answer=answer):
                 self.assertEqual(self.deleted(answer), (None, []))
+        for answer in ("-1", "01", "+1", "١", "3", "tout", "Forged_a"):
+            with self.subTest(answer=answer):
+                self.assertEqual(self.deleted(answer), (None, []))
+                self.assertIn(f"{t('Invalid choice: ')}{answer}\n", self.shown)
         saved, secrets = self.deleted("2")
         self.assertEqual([account.name for account in saved], ["forged_a"])
         self.assertEqual(len(secrets), 1)
+        saved, secrets = self.deleted("forged_a")
+        self.assertEqual([account.name for account in saved], ["forged_b"])
 
 
 class TestAddAccountPreset(unittest.TestCase):
     """Add an account demande son fournisseur dans une liste numérotée :
-    seul un numéro tel que la liste l'écrit en choisit un, toute autre
-    réponse laisse le générique, qui demande les serveurs."""
+    un numéro tel que la liste l'écrit ou le libellé affiché en choisit
+    un, une réponse vide prend le générique, marqué, qui demande les
+    serveurs, [0] renonce au compte, et toute autre réponse repose la
+    question."""
 
-    def preset(self, answer):
+    def preset(self, *answers):
         """Le fournisseur que prend Add an account quand on lui répond
-        `answer` ; le compte ne s'enregistre pas."""
+        `answers`, ou None s'il n'en prend aucun ; le compte ne
+        s'enregistre pas."""
         from unittest.mock import MagicMock, patch
 
         import script.todo.mail.menu as menu
@@ -200,24 +217,27 @@ class TestAddAccountPreset(unittest.TestCase):
             ) as built,
             patch(
                 "builtins.input",
-                side_effect=["forged_a", "a@forged.invalid", "", answer],
+                side_effect=["forged_a", "a@forged.invalid", "", *answers],
             ),
             patch("builtins.print"),
         ):
             menu._add_account(MagicMock())
-        return built.call_args.args[2]
+        return built.call_args.args[2] if built.called else None
 
     def test_only_a_shown_number_picks_a_provider(self):
-        # « 01 », « +1 », un chiffre d'une autre écriture ou « -1 » ne
-        # choisissent aucun fournisseur : le compte naîtrait avec les
-        # serveurs d'un fournisseur que personne n'a choisi.
+        # « 01 », « +1 », un chiffre d'une autre écriture, « -1 », « 5 » ou
+        # un nom qui n'est pas affiché ne choisissent aucun fournisseur :
+        # la question revient, et une réponse vide prend le générique.
         from script.todo.mail.accounts import PRESETS
 
         keys = list(PRESETS)
-        for answer in ("01", "+1", "١", "-1", "0", "", "5"):
+        for answer in ("01", "+1", "١", "-1", "5", "gmail"):
             with self.subTest(answer=answer):
-                self.assertEqual(self.preset(answer), "generic")
+                self.assertEqual(self.preset(answer, ""), "generic")
+        self.assertEqual(self.preset(""), "generic")
         self.assertEqual(self.preset("1"), keys[0])
+        self.assertEqual(self.preset(PRESETS[keys[1]]["label"]), keys[1])
+        self.assertIsNone(self.preset("0"))
 
 
 class TestMailLinesSpeakTheChosenLanguage(unittest.TestCase):
@@ -257,9 +277,11 @@ class TestMailLinesSpeakTheChosenLanguage(unittest.TestCase):
 
 
 class TestMailCacheMenu(unittest.TestCase):
-    """Cache : [1] retient un mode par défaut qui en est un, [2] le mode
-    d'un compte, qu'une réponse qui n'en est pas un rend au défaut. Les
-    préférences et les comptes sont des doubles."""
+    """Cache : [1] retient un mode par défaut, choisi par son numéro ou
+    son nom ; [2] le mode d'un compte, ou le mode par défaut, sa dernière
+    entrée ; une réponse invalide repose la question, et [0] ou une
+    réponse vide ne change rien. Les préférences et les comptes sont des
+    doubles."""
 
     def test_each_entry_keeps_what_it_is_answered(self):
         from unittest.mock import MagicMock, patch
@@ -271,11 +293,11 @@ class TestMailCacheMenu(unittest.TestCase):
         )
         modes = []
         with (
-            patch("click.prompt", side_effect=["1", "1", "2", "2", "0"]),
+            patch("click.prompt", side_effect=["1", "1", "2", "2", "2", "0"]),
             patch(
                 "builtins.input",
-                side_effect=["encrypted", "forged", "1", "ephemeral"]
-                + ["1", "forged"],
+                side_effect=["encrypted", "forged", "0", "1", "ephemeral"]
+                + ["forged_a", "4", "1", ""],
             ),
             patch.object(menu.todo_prefs, "get", return_value="clear"),
             patch.object(menu.todo_prefs, "set") as kept,
@@ -532,6 +554,30 @@ class TestCacheSizeAndPurge(unittest.TestCase):
             patch("builtins.input", side_effect=["1", "o"]),
         ):
             menu._cache_size_and_purge(MagicMock())  # ne doit pas lever
+
+    def test_only_a_chosen_account_is_purged(self):
+        # Une réponse vide, « 0 », « tout » ou une faute, chacune suivie de
+        # « 0 » quand la question revient, ne choisissent aucun compte :
+        # rien n'est ouvert ni purgé, et la confirmation n'est pas posée.
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+        for answers in ([""], ["0"], ["tout", "0"], ["x", "0"]):
+            with (
+                self.subTest(answers=answers),
+                patch.object(menu, "_load_accounts", return_value=[account]),
+                patch.object(menu, "secret_store_for") as secrets,
+                patch.object(Store, "purge_all") as purge,
+                patch.object(menu.shutil, "rmtree") as removed,
+                patch("builtins.input", side_effect=answers) as typed,
+                patch("builtins.print"),
+            ):
+                menu._cache_size_and_purge(MagicMock())
+            self.assertEqual(typed.call_count, len(answers))
+            calls = secrets.call_count + purge.call_count + removed.call_count
+            self.assertEqual(calls, 0)
 
     def test_corrupted_cache_is_removed_from_disk_instead_of_crashing(self):
         from unittest.mock import MagicMock, patch
