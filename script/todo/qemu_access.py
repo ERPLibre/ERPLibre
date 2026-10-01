@@ -37,10 +37,10 @@ class QemuAccessMixin:
     # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
     # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
     #
-    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
-    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
-    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
-    # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
+    # « sudo virsh » y échoue sur un hôte où sudo (sudo-rs, par exemple)
+    # demande un mot de passe, et la sonde répondrait alors « pas de QEMU » sur
+    # une machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord,
+    # via qemu:///system : appartenir au groupe libvirt suffit, sans tty.
     #
     # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
     # utilisateur non root tombe sur qemu:///session, qui répond correctement…
@@ -333,7 +333,7 @@ class QemuAccessMixin:
     # « -no-snapshot-save » : sans lui, un émulateur tué par pkill — ce que ce
     # menu propose lui-même — laisse un instantané en cours, et le lancement
     # SUIVANT meurt sur « A snapshot operation is pending and timeout has
-    # expired ». Vécu, et le message ne dit pas quoi faire.
+    # expired », un message qui ne dit pas quoi faire.
     # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
     # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
     # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
@@ -354,8 +354,7 @@ class QemuAccessMixin:
 
         Deux sur le même AVD, et le second s'arrête sur « Running multiple
         emulators with the same AVD is an experimental feature ». Le savoir
-        AVANT de lancer évite de lire cette phrase sans la comprendre — vécu,
-        deux fois."""
+        AVANT de lancer évite de lire cette phrase sans la comprendre."""
         try:
             res = subprocess.run(
                 ["ssh"]
@@ -490,9 +489,9 @@ class QemuAccessMixin:
         if res.returncode:
             print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
             return
-        # « setsid » détache : le code de retour ne dit RIEN de l'émulateur.
-        # Le menu annonçait « Démarré » pendant que le journal de la VM disait
-        # « not found » — mesuré sur une VM sans SDK. On attend donc de voir le
+        # « setsid » détache : le code de retour ne dit RIEN de l'émulateur,
+        # et le menu annoncerait « Démarré » pendant que le journal de la VM
+        # dit « not found », sur une VM sans SDK. On attend donc de voir le
         # processus, et à défaut on rapporte le journal.
         for _ in range(5):
             if self._qemu_emulator_running(target, src) > 0:

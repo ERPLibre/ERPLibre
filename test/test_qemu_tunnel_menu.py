@@ -49,8 +49,8 @@ class _MenuCase(unittest.TestCase):
 
 class TestTunnelMenuChoices(_MenuCase):
     def test_the_hypervisor_console_is_reachable_at_all(self):
-        """Le défaut vécu : « _qemu_console_tunnel() takes 1 positional
-        argument but 3 were given ». Le choix 3 doit aboutir, pas lever."""
+        """Le choix 3 aboutit, sans lever « _qemu_console_tunnel() takes 1
+        positional argument but 3 were given »."""
         out = self._play(["1", "3"])
         self.assertIn("5900", out)
         self.assertIn("hyperviseur", out)

@@ -493,10 +493,9 @@ class TestCreerUnPont(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLInterpretePython(unittest.TestCase):
-    """L'écran Proxmox n'offrait pas le choix, donc envoyait toujours
-    « automatique » — et comme mise n'est jamais installé d'office, c'était
-    pyenv, qui COMPILE Python. Rapporté sur une VM Arch : « il utilise le
-    tar.xz pour le compiler »."""
+    """L'écran Proxmox offre le choix de l'interprète Python. Sans lui, il
+    enverrait toujours « automatique » — et comme mise n'est jamais installé
+    d'office, ce serait pyenv, qui COMPILE Python depuis son archive."""
 
     def _ecran(self, gestes=None, mise_arches=("amd64", "arm64")):
         from script.todo.proxmox_deploy_form import run_proxmox_form
@@ -976,9 +975,9 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
             self.assertIn(attendu, vus[0])
 
     def test_la_sonde_nomme_ce_qui_manque(self):
-        """Le cas vécu : un hôte porte GL mais pas EGL, et Proxmox refuse de
-        démarrer la machine APRÈS avoir écrit son disque. La case ne doit pas
-        disparaître en silence — ce qui manque se nomme."""
+        """Un hôte qui porte GL mais pas EGL : Proxmox refuse de démarrer la
+        machine APRÈS avoir écrit son disque. La case ne doit pas disparaître
+        en silence — ce qui manque se nomme."""
         todo = self._todo()
         todo._pve_show = lambda *a, **k: (0, "libegl1\nFIN\n")
         self.assertEqual(todo._pve_gpu_dispo(), (False, "libegl1"))
@@ -1070,9 +1069,8 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
         self.assertFalse(vu["valeur"])
 
     def test_ce_qui_manque_est_nomme_avec_son_paquet(self):
-        """Le cas vécu : la case avait disparu après correction de la sonde,
-        sans que rien ne dise pourquoi. Elle nomme désormais la pièce ET la
-        commande qui la pose — sur l'HÔTE, pas dans la VM."""
+        """Une case absente dit pourquoi : elle nomme la pièce qui manque ET
+        la commande qui la pose — sur l'HÔTE, pas dans la VM."""
         vu = self._ecran(False, manque="libegl1")
         self.assertFalse(vu["offerte"])
         self.assertIn("libegl1", vu["explication"])
@@ -1302,11 +1300,11 @@ class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
 class TestLAttenteAvantLesGestesDansLInvite(unittest.TestCase):
     """Une adresse n'est pas une machine prête.
 
-    Vécu : une VM Proxmox est née sans guide, en UTC, sans l'autorité du
-    cache et sur le miroir de son image. Les quatre gestes passent tous par
-    ssh et partaient dès l'adresse connue, pendant que cloud-init posait
-    encore les comptes et les clés. Ils échouaient donc ENSEMBLE, et la panne
-    ressemblait à quatre pannes sans lien.
+    Les quatre gestes dans l'invité passent tous par ssh. Partis dès
+    l'adresse connue, pendant que cloud-init pose encore les comptes et les
+    clés, ils échouent ENSEMBLE : la VM naît sans guide, en UTC, sans
+    l'autorité du cache et sur le miroir de son image, et la panne ressemble
+    à quatre pannes sans lien.
     """
 
     def _todo(self):
@@ -1489,17 +1487,13 @@ class TestUnParcMixte(unittest.TestCase):
 
 
 class TestLaVmCloneLeDepotDistant(unittest.TestCase):
-    """« Le problème est revenu » — alors qu'il était corrigé.
+    """Un correctif commité ici et non poussé n'atteint pas la VM.
 
     La VM ne reçoit pas le checkout d'ici : elle CLONE la branche depuis le
     dépôt DISTANT. Tout ce qui tourne dedans — install_proxmox.sh, les
     scripts d'installation, le Makefile — vient donc de là. Un correctif
-    commité ici et non poussé lui est invisible.
-
-    Vécu deux fois de suite : la correction de /etc/hosts était dans le
-    checkout depuis la veille, absente du distant, et chaque VM déployée
-    ensuite recevait l'ancien script. Il a fallu comparer les deux versions à
-    la main pour le voir. Rien ne le disait."""
+    commité ici et non poussé lui est invisible : sans l'écart nommé, chaque
+    VM déployée reçoit l'ancien script, et rien ne le dit."""
 
     def _todo(self, sortie, code=0):
         import sys
@@ -1565,13 +1559,13 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
 
 
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
-    """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
+    """Le pont NAT ne s'écrit qu'APRÈS la sonde qui dit si le NAT existe.
 
-    Résultat rapporté : la strophe posée dans /etc/network/interfaces, le
-    pont absent, et six lignes d'iptables qui ne parlent pas de redémarrage.
-    L'avertissement sur le noyau existait — mais à la CONFIRMATION de l'hôte,
-    et l'hôte est ensuite mémorisé : on revient des jours plus tard créer un
-    pont, et plus personne ne rappelle rien."""
+    Écrit avant, il laisserait la strophe posée dans /etc/network/interfaces,
+    le pont absent, et six lignes d'iptables qui ne parlent pas de
+    redémarrage. La raison nomme le noyau à démarrer quand le pont se crée,
+    et non à la seule CONFIRMATION de l'hôte : l'hôte est mémorisé, et on
+    revient des jours plus tard créer un pont."""
 
     def _todo(self, sortie):
         import sys
@@ -1787,8 +1781,8 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         self.assertFalse(vole)
 
     def test_a_fleet_gets_one_single_convention(self):
-        # Le défaut rapporté : trois VM du même déploiement, deux nommées
-        # d'une façon et la troisième d'une autre.
+        # Trois VM d'un même déploiement suivent une seule convention, et non
+        # deux nommées d'une façon et la troisième d'une autre.
         noms = [
             self._choisit(n, locaux=("erplibre-ubuntu-2604",))[0][0]
             for n in (
@@ -1979,10 +1973,9 @@ class TestLAncienNomSEnVa(unittest.TestCase):
         """Retirer sans réécrire est un appel légitime : les machines
         n'existent plus.
 
-        Constaté dans le vrai ~/.ssh/config de l'utilisateur : l'appel écrivait
-        « Host » NU, suivi d'un « HostName » vide, puis mourait sur un
-        IndexError en annonçant l'ajout. Le bloc sans nom s'applique à rien et
-        brouille la lecture du fichier."""
+        Sans garde, l'appel écrirait « Host » NU, suivi d'un « HostName »
+        vide, puis mourrait sur un IndexError en annonçant l'ajout. Le bloc
+        sans nom ne s'applique à rien et brouille la lecture du fichier."""
         import os
 
         self.todo._write_ssh_config_entry(
@@ -2055,12 +2048,12 @@ class TestLAncienNomSEnVa(unittest.TestCase):
 
 
 class TestLeGuideDeConnexion(unittest.TestCase):
-    """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
+    """Une VM Proxmox reçoit le guide de connexion de sa distribution, celui
+    qui dit de prendre pacman sur Arch comme celui d'Ubuntu.
 
-    Rapporté sur Arch : « pas l'écran de connexion, avec le guide qui dit de
-    prendre pacman, comme sur ubuntu ». La voie libvirt livre /etc/motd par le
-    « write_files » de cloud-init ; « qm set » n'offre pas cela. Le contenu
-    vient de la MÊME source (`guide_files`) et part par ssh.
+    La voie libvirt livre /etc/motd par le « write_files » de cloud-init ;
+    « qm set » n'offre pas cela. Le contenu vient de la MÊME source
+    (`guide_files`) et part par ssh.
     """
 
     def _ecrit(self, vm=None, install=None, distro="arch"):

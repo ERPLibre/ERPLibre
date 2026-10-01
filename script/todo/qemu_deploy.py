@@ -131,8 +131,8 @@ class QemuDeployMixin:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
-        # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
+        # APRÈS le make : sur un dépôt cloné mais pas installé, PyCharm
+        # n'écrit AUCUN .idea — son configurateur d'interpréteur Python
         # échoue faute de venv, et il renonce. Le même appel sur un dépôt
         # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
         # modules.xml, vcs.xml.
@@ -144,7 +144,7 @@ class QemuDeployMixin:
             self._qemu_pycharm_project_cmd(prod)
             # Le venv du dépôt, comme le fait update_env_version.
             # pycharm_update() : le script importe xmltodict, absent du python
-            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # système, sur lequel « make pycharm_configure » s'arrêterait :
             # « No module named 'xmltodict' ».
             + "./.venv.erplibre/bin/python "
             "./script/ide/pycharm_configuration.py --init || true; "
@@ -1525,9 +1525,9 @@ class QemuDeployMixin:
 
         « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
         VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
-        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
-        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
-        d'attendre vaut mieux que de chercher la cause après."""
+        Une VM s390x sur un hôte s390x lui-même invité KVM sort ainsi en
+        « <domain type='qemu'> », et met des minutes à démarrer. Le savoir
+        avant d'attendre vaut mieux que de chercher la cause après."""
         try:
             mod = self._qemu_import_module()
             if mod.kvm_available():
@@ -2097,8 +2097,9 @@ class QemuDeployMixin:
 
     def _qemu_ask_locale(self):
         """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
-        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
-        déploiement pour un confort dont une VM jetable n'a pas besoin."""
+        locale-gen dans l'invité, une trentaine de secondes sur s390x, payées
+        à chaque déploiement pour un confort dont une VM jetable n'a pas
+        besoin."""
         default = "C.UTF-8"
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
         return answer or default
