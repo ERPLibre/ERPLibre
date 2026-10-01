@@ -321,13 +321,16 @@ class TestEmulatorMenu(_MenuCase):
         self.assertIn("AVD", out)
         self.assertEqual(self._started(calls), [])
 
-    def test_a_stray_answer_cancels_instead_of_starting(self):
-        """« n » à une question à deux crans partait démarrer l'émulateur :
-        tout ce qui n'était pas « 2 » valait « sans fenêtre ». Observé."""
+    def test_a_stray_answer_is_asked_again_and_zero_starts_nothing(self):
+        """Une réponse de travers à une question à deux crans (« n », « 3 »,
+        « oui ») ne démarre pas l'émulateur : elle est nommée, et la même
+        question revient, à laquelle [0] répond sans rien démarrer. Seuls
+        « 1 » et une réponse vide démarrent sans fenêtre."""
         for stray in ("n", "3", "oui"):
             self.calls = []
-            out, calls = self._play(["1", stray])
+            out, calls = self._play(["1", stray, "0"])
             self.assertEqual(self._started(calls), [], stray)
+            self.assertIn(f"{t('Invalid choice: ')}{stray}", out)
 
     def test_a_start_that_never_appears_reports_the_log_not_a_success(self):
         """Le code de retour d'un « setsid » détaché vaut 0 quoi qu'il arrive :

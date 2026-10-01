@@ -21,6 +21,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 
 class _MenuCase(unittest.TestCase):
@@ -81,9 +82,24 @@ class TestTunnelMenuChoices(_MenuCase):
         out = self._play(["1", "1"])
         self.assertIn("-L 3390:localhost:3389 saut+vm-a", out)
 
-    def test_an_out_of_range_choice_cancels_without_a_command(self):
-        out = self._play(["9"])
-        self.assertNotIn("ssh -N", out)
+    def test_an_invalid_choice_is_asked_again_and_zero_leaves(self):
+        # Une VM hors de la liste et un genre de bureau inconnu sont nommés,
+        # la même question revient, et [0] part sans imprimer de commande :
+        # aucun ne vaut RDP en silence.
+        for answers, refused in (
+            (["9", "0"], ["9"]),
+            (["1", "6", "x", "0"], ["6", "x"]),
+            (["1", "0"], []),
+        ):
+            with self.subTest(answers=answers):
+                out = self._play(answers)
+                self.assertNotIn("ssh -N", out)
+                for answer in refused:
+                    self.assertIn(f"{t('Invalid choice: ')}{answer}", out)
+
+    def test_a_vm_is_also_chosen_by_its_name(self):
+        out = self._play(["saut+vm-a", "2"])
+        self.assertIn("-L 5902:localhost:5901 saut+vm-a", out)
 
 
 class TestVirtViewer(_MenuCase):

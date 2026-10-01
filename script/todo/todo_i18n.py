@@ -2854,11 +2854,7 @@ TRANSLATIONS = {
         "fr": "~/.ssh/config ne contient aucun hôte.",
         "en": "~/.ssh/config holds no host.",
     },
-    "Which hosts? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quels hôtes ? (numéros séparés par des virgules ; "
-        "vide = tous) : ",
-        "en": "Which hosts? (numbers, comma-separated; blank = all): ",
-    },
+    "Which hosts?": {"fr": "Quels hôtes ?", "en": "Which hosts?"},
     "Host or IP:": {
         "fr": "Hôte ou IP :",
         "en": "Host or IP:",
@@ -2875,11 +2871,7 @@ TRANSLATIONS = {
         "fr": "Profondeur (1 = ces machines seulement, défaut :",
         "en": "Depth (1 = these machines only, default:",
     },
-    "Which VMs? (numbers, comma-separated; blank = all): ": {
-        "fr": "Quelles VM ? (numéros séparés par des virgules ; "
-        "vide = toutes) : ",
-        "en": "Which VMs? (numbers, comma-separated; blank = all): ",
-    },
+    "Which VMs?": {"fr": "Quelles VM ?", "en": "Which VMs?"},
     "Depth (default:": {
         "fr": "Profondeur (défaut :",
         "en": "Depth (default:",

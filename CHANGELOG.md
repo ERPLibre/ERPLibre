@@ -139,6 +139,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code › Debug and Execute › Config › Generate from pre-configuration are menus of their own: each writes its segment in the breadcrumb and counts under its own telemetry key, and navigation telemetry lists their entries — open todo.py in the IDE, generate the configuration of a group — which launch from the TUI and the web page
 - Deployment › QEMU/KVM › Statistics offers its [r] Reset like any list, under the screen's title: [0] Back and an empty answer return, any other answer is named as invalid and asked again instead of being ignored, and the history is still erased only after its y/N
 - Execute › Network › VPN asks each of its lists by the same rules: a profile by its number or its exact name, a site preset by its number or its label when no other preset carries it, a technology by its number or its exact label where it read a letter, a rank or the start of a label, with the current technology as the marked default of an empty answer, and [0] Back on each; an invalid answer is named and asks again instead of giving up after « Unknown choice. »
+- Execute › Deploy › QEMU/KVM › SSH configuration, Remote desktop tunnel and Android emulator ask each list by the same rules: a number as the list shows it or the exact name of a VM or a host, the local VMs, the first machine, RDP or the windowless start as the marked default of an empty answer, and [0] Back on each; an invalid answer is named and asks again instead of cancelling, or of taking the local VMs or RDP without a word
 
 ## Fixed
 
@@ -314,6 +315,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The TODO web interface bounds its logins and its openings: a login lasts 12 hours from its one-time code, never extended, and at most 16 live at once, the least recently used forgotten beyond; an expired page says to reopen the interface from TODO › Navigation telemetry, while a session already open in a tab keeps running. A sixth new session in a minute is refused with the wait in seconds; attaching to a session and the prepared spare worker do not count. Refused login codes count against no limit: a good code is always accepted
 - TODO's restart after an error no longer builds a shell command line: it runs the ERPLibre venv's python with its arguments as a list and the environment that `activate` sets, so an argument holding a space, a `;` or a `$` is passed as is instead of being split or interpreted
 - Execute › Docker / Podman › Install Docker asks its mode again on a mistyped answer instead of giving the docker group, equivalent to root, to any answer but 2; an empty answer keeps the rootless mode, and [0] installs nothing
+- Execute › Deploy › QEMU/KVM › SSH configuration no longer takes every VM, or every host of ~/.ssh/config, on an empty answer, which wrote an entry and opened an SSH connection for each: an empty answer or [0] takes none, and `tout`, `all` or `*` takes them all
 
 
 ## [1.8.0] - 2026-09-04

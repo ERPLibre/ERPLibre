@@ -247,6 +247,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Code › Debug and Execute › Config › Generate from pre-configuration are menus of their own: each writes its segment in the breadcrumb and counts under its own telemetry key, and navigation telemetry lists their entries — open todo.py in the IDE, generate the configuration of a group — which launch from the TUI and the web page
 - Deployment › QEMU/KVM › Statistics offers its [r] Reset like any list, under the screen's title: [0] Back and an empty answer return, any other answer is named as invalid and asked again instead of being ignored, and the history is still erased only after its y/N
 - Execute › Network › VPN asks each of its lists by the same rules: a profile by its number or its exact name, a site preset by its number or its label when no other preset carries it, a technology by its number or its exact label where it read a letter, a rank or the start of a label, with the current technology as the marked default of an empty answer, and [0] Back on each; an invalid answer is named and asks again instead of giving up after « Unknown choice. »
+- Execute › Deploy › QEMU/KVM › SSH configuration, Remote desktop tunnel and Android emulator ask each list by the same rules: a number as the list shows it or the exact name of a VM or a host, the local VMs, the first machine, RDP or the windowless start as the marked default of an empty answer, and [0] Back on each; an invalid answer is named and asks again instead of cancelling, or of taking the local VMs or RDP without a word
 
 <!-- [fr] -->
 
@@ -294,6 +295,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Code › Debug et Exécution › Config › Generate from pre-configuration sont des menus à part entière : chacun écrit son segment dans le fil d'Ariane et compte sous sa propre clé de télémétrie, et la télémétrie de navigation liste leurs entrées — ouvrir todo.py dans l'IDE, générer la configuration d'un groupe —, qui se lancent depuis la TUI et la page web
 - Déploiement › QEMU/KVM › Statistiques offre son [r] Remise à zéro comme toute liste, sous le titre de l'écran : [0] Retour et une réponse vide reviennent, toute autre réponse est nommée invalide et redemandée au lieu d'être ignorée, et l'historique ne s'efface toujours qu'après son o/N
 - Exécution › Réseau › VPN pose chacune de ses listes sous les mêmes règles : un profil par son numéro ou son nom exact, un préréglage de site par son numéro ou son libellé quand aucun autre ne le porte, une technologie par son numéro ou son libellé exact là où elle lisait une lettre, un rang ou le début d'un libellé, la technologie courante en défaut marqué d'une réponse vide, et [0] Retour sur chacune ; une réponse invalide est nommée et repose la question au lieu d'abandonner après « Choix inconnu. »
+- Exécution › Deploy › QEMU/KVM › Configuration SSH, Tunnel bureau distant et Émulateur Android posent chaque liste sous les mêmes règles : un numéro tel que la liste l'écrit ou le nom exact d'une VM ou d'un hôte, les VM locales, la première machine, RDP ou le démarrage sans fenêtre en défaut marqué d'une réponse vide, et [0] Retour sur chacune ; une réponse invalide est nommée et repose la question au lieu d'annuler, ou de prendre les VM locales ou RDP sans rien dire
 
 <!-- [en] -->
 ## Fixed
@@ -645,6 +647,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The TODO web interface bounds its logins and its openings: a login lasts 12 hours from its one-time code, never extended, and at most 16 live at once, the least recently used forgotten beyond; an expired page says to reopen the interface from TODO › Navigation telemetry, while a session already open in a tab keeps running. A sixth new session in a minute is refused with the wait in seconds; attaching to a session and the prepared spare worker do not count. Refused login codes count against no limit: a good code is always accepted
 - TODO's restart after an error no longer builds a shell command line: it runs the ERPLibre venv's python with its arguments as a list and the environment that `activate` sets, so an argument holding a space, a `;` or a `$` is passed as is instead of being split or interpreted
 - Execute › Docker / Podman › Install Docker asks its mode again on a mistyped answer instead of giving the docker group, equivalent to root, to any answer but 2; an empty answer keeps the rootless mode, and [0] installs nothing
+- Execute › Deploy › QEMU/KVM › SSH configuration no longer takes every VM, or every host of ~/.ssh/config, on an empty answer, which wrote an entry and opened an SSH connection for each: an empty answer or [0] takes none, and `tout`, `all` or `*` takes them all
 
 <!-- [fr] -->
 
@@ -656,6 +659,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'interface web de TODO borne ses connexions et ses ouvertures : une connexion vaut 12 heures à partir de son code à usage unique, jamais prolongée, et 16 au plus vivent à la fois, la moins récemment servie oubliée au-delà ; une page expirée dit de rouvrir l'interface depuis TODO › Télémétrie de navigation, tandis qu'une session déjà ouverte dans un onglet continue. Une sixième session neuve en une minute est refusée avec l'attente en secondes ; se rattacher à une session et le worker de réserve ne comptent pas. Les codes de connexion refusés ne comptent dans aucune limite : un bon code est toujours accepté
 - La relance de TODO après une erreur ne construit plus de ligne de commande shell : elle lance le python du venv ERPLibre avec ses arguments en liste et l'environnement que pose `activate`, si bien qu'un argument qui porte une espace, un `;` ou un `$` passe tel quel au lieu d'être découpé ou interprété
 - Exécution › Docker / Podman › Installer Docker redemande son mode sur une faute de frappe au lieu de donner le groupe docker, équivalent root, à toute réponse sauf 2 ; une réponse vide garde le mode sans privilège, et [0] n'installe rien
+- Exécution › Deploy › QEMU/KVM › Configuration SSH ne prend plus toutes les VM, ou tous les hôtes de ~/.ssh/config, sur une réponse vide, qui écrivait une entrée et ouvrait une connexion SSH pour chacun : une réponse vide ou [0] n'en prend aucun, et `tout`, `all` ou `*` les prend tous
 
 <!-- [common] -->
 
