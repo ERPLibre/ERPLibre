@@ -7,6 +7,7 @@ import os
 import shutil
 from datetime import datetime
 
+from script.todo import ui
 from script.todo.menus import deploy as menus_deploy
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -324,7 +325,8 @@ class QemuMenuMixin:
         return {}
 
     def _qemu_stats(self):
-        """Statistiques d'utilisation de QEMU, et remise à zéro.
+        """Statistiques d'utilisation de QEMU, et remise à zéro par [r],
+        une action du choix qui les suit (`ui.choose`), après sa question.
 
         Tout vient de l'historique tenu par le moniteur d'installation
         (.venv.erplibre/qemu_install_stats.json) et de l'état libvirt courant.
@@ -393,24 +395,21 @@ class QemuMenuMixin:
                         print(f"   {key:<22} {count:>3} ×   {moy:<8}{fail}")
 
             self._qemu_stats_vms(mon)
-            print(f"\n   [r] {t('Reset the statistics')}")
-            print(f"   [0] {t('Back')}")
-            answer = input(f"💬 {t('Your choice')} : ").strip().lower()
-            if answer in ("", "0"):
+            letters = {"r": t("Reset the statistics")}
+            if ui.choose(t("QEMU statistics"), [], letters=letters) != "r":
                 return
-            if answer == "r":
-                if not summary:
-                    print(f"   {t('Nothing to reset.')}")
-                    continue
-                confirm = input(
-                    f"   {t('Erase')} {summary['total']}"
-                    f" {t('recorded runs')}? (y/N): "
-                ).strip()
-                if self._is_yes(confirm):
-                    count = mon.reset_stats()
-                    print(f"   ✅ {count} {t('runs erased')}.")
-                else:
-                    print(f"   {t('Cancelled.')}")
+            if not summary:
+                print(f"   {t('Nothing to reset.')}")
+                continue
+            confirm = input(
+                f"   {t('Erase')} {summary['total']}"
+                f" {t('recorded runs')}? (y/N): "
+            ).strip()
+            if self._is_yes(confirm):
+                count = mon.reset_stats()
+                print(f"   ✅ {count} {t('runs erased')}.")
+            else:
+                print(f"   {t('Cancelled.')}")
 
     @staticmethod
     def _qemu_stamp(ts):

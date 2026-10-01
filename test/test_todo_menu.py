@@ -17,6 +17,7 @@ import ast
 import io
 import json
 import os
+import re
 import tempfile
 import unicodedata
 import unittest
@@ -824,6 +825,45 @@ class TestQemuMenu(unittest.TestCase):
         self.assertEqual(ran, ["forged_one", "forged_two"])
         self.assertEqual(fixed, [1, 1])
         self.assertEqual(out.count("Command not found !"), 6)
+
+
+class TestQemuStatistics(unittest.TestCase):
+    """Statistics : [r] remet l'historique à zéro, après sa question o/N ;
+    une réponse vide, [0], « tout » ou un numéro reviennent sans rien
+    effacer. L'historique et libvirt sont des doubles."""
+
+    SUMMARY = {"total": 2, "ok": 2, "failed": 0, "first_ts": 0}
+    SUMMARY.update(last_ts=0, median=60, min=60, max=60, total_secs=120)
+
+    def test_only_r_then_yes_erases_the_history(self):
+        from script.todo import qemu_install_monitor as mon
+        from script.todo import todo_i18n
+        from script.todo.todo import TODO
+
+        saved = todo_i18n._current_lang
+        self.addCleanup(setattr, todo_i18n, "_current_lang", saved)
+        todo_i18n.use_lang("en")
+        todo = TODO.__new__(TODO)
+        cases = [([""], 0), (["0"], 0), (["tout", "0"], 0), (["1", ""], 0)]
+        cases += [(["r", "n", "0"], 0), (["R", "y", "0"], 1)]
+        refused = []
+        for answers, erased in cases:
+            with (
+                self.subTest(answers=answers),
+                patch.object(mon, "stats_summary", return_value=self.SUMMARY),
+                patch.object(mon, "stats_by", return_value=[]),
+                patch.object(mon, "virsh_domstates", return_value={}),
+                patch.object(mon, "reset_stats", return_value=2) as reset,
+                patch("builtins.input", side_effect=answers),
+                redirect_stdout(io.StringIO()) as out,
+            ):
+                todo._qemu_stats()
+            self.assertEqual(reset.call_count, erased)
+            refused += re.findall(r"Invalid choice: (.*)", out.getvalue())
+        question = "\nQEMU statistics\n[r] Reset the statistics\n[0] 🔙 Back"
+        self.assertIn(question, out.getvalue())
+        # « tout » et « 1 » sont dits invalides, puis la question revient.
+        self.assertEqual(refused, ["tout", "1"])
 
 
 class TestProxmoxMenu(unittest.TestCase):

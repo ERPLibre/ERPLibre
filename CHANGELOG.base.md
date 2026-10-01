@@ -245,6 +245,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Deployment › QEMU cache › Tests › Test - Choose and run picks one or several tests, or `tout`, instead of an « All three » entry; an empty answer runs none, and a number out of the list is named as an invalid choice. Load and system keep their first entry as the default, marked in the list, and a system is also chosen by its name as the list shows it, without its icon
 - Mail asks each of its lists by the same rules: an account by its number or its exact name, a provider by its number or its name as the list shows it, with the standard server as the marked default, a cache mode by its number or its name, and [0] Back on each; an invalid answer is named and asks again instead of taking the standard server or resetting an account's cache mode without a word, and Add an account can go back at its provider
 - Execute › Code › Debug and Execute › Config › Generate from pre-configuration are menus of their own: each writes its segment in the breadcrumb and counts under its own telemetry key, and navigation telemetry lists their entries — open todo.py in the IDE, generate the configuration of a group — which launch from the TUI and the web page
+- Deployment › QEMU/KVM › Statistics offers its [r] Reset like any list, under the screen's title: [0] Back and an empty answer return, any other answer is named as invalid and asked again instead of being ignored, and the history is still erased only after its y/N
 
 <!-- [fr] -->
 
@@ -290,6 +291,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Déploiement › Cache QEMU › Tests › Test - Choisir et lancer prend un ou plusieurs essais, ou `tout`, au lieu d'une entrée « Les trois » ; une réponse vide n'en lance aucun, et un numéro hors de la liste est nommé comme choix invalide. La charge et le système gardent leur première entrée pour défaut, marquée dans la liste, et un système se choisit aussi par son nom tel que la liste l'écrit, sans son icône
 - Courriel pose chacune de ses listes sous les mêmes règles : un compte par son numéro ou son nom exact, un fournisseur par son numéro ou son nom tel que la liste l'écrit, le serveur standard en défaut marqué, un mode de cache par son numéro ou son nom, et [0] Retour sur chacune ; une réponse invalide est nommée et repose la question au lieu de prendre le serveur standard ou de rendre un compte au mode par défaut sans rien dire, et Ajouter un compte peut revenir à son fournisseur
 - Exécution › Code › Debug et Exécution › Config › Generate from pre-configuration sont des menus à part entière : chacun écrit son segment dans le fil d'Ariane et compte sous sa propre clé de télémétrie, et la télémétrie de navigation liste leurs entrées — ouvrir todo.py dans l'IDE, générer la configuration d'un groupe —, qui se lancent depuis la TUI et la page web
+- Déploiement › QEMU/KVM › Statistiques offre son [r] Remise à zéro comme toute liste, sous le titre de l'écran : [0] Retour et une réponse vide reviennent, toute autre réponse est nommée invalide et redemandée au lieu d'être ignorée, et l'historique ne s'efface toujours qu'après son o/N
 
 <!-- [en] -->
 ## Fixed

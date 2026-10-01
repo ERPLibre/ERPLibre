@@ -137,6 +137,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Deployment › QEMU cache › Tests › Test - Choose and run picks one or several tests, or `tout`, instead of an « All three » entry; an empty answer runs none, and a number out of the list is named as an invalid choice. Load and system keep their first entry as the default, marked in the list, and a system is also chosen by its name as the list shows it, without its icon
 - Mail asks each of its lists by the same rules: an account by its number or its exact name, a provider by its number or its name as the list shows it, with the standard server as the marked default, a cache mode by its number or its name, and [0] Back on each; an invalid answer is named and asks again instead of taking the standard server or resetting an account's cache mode without a word, and Add an account can go back at its provider
 - Execute › Code › Debug and Execute › Config › Generate from pre-configuration are menus of their own: each writes its segment in the breadcrumb and counts under its own telemetry key, and navigation telemetry lists their entries — open todo.py in the IDE, generate the configuration of a group — which launch from the TUI and the web page
+- Deployment › QEMU/KVM › Statistics offers its [r] Reset like any list, under the screen's title: [0] Back and an empty answer return, any other answer is named as invalid and asked again instead of being ignored, and the history is still erased only after its y/N
 
 ## Fixed
 

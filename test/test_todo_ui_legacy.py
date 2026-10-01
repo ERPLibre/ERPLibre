@@ -142,7 +142,7 @@ RAW_CALLS = {
     "script/todo/qemu_install.py": 2,
     "script/todo/qemu_install_monitor.py": 8,
     "script/todo/qemu_manage.py": 44,
-    "script/todo/qemu_menu.py": 6,
+    "script/todo/qemu_menu.py": 5,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 7,
     "script/todo/todo.py": 101,
@@ -166,9 +166,6 @@ NUMBERED_LOOPS = {
     ("script/todo/todo_upgrade.py", "_prompt_on_error"): (
         "une réponse par défaut, et [6] garde son numéro quand [2] à [5]"
         " manquent"
-    ),
-    ("script/todo/qemu_menu.py", "_qemu_stats"): (
-        "[r], une lettre, répond hors d'un menu `asks`"
     ),
 }
 # Une entrée fixe d'un menu : « [k] », k un chiffre ou une lettre.
@@ -965,7 +962,6 @@ class TestGuards(unittest.TestCase):
             {
                 ("script/todo/todo_upgrade.py", "show_stats"),
                 ("script/todo/todo_upgrade.py", "_prompt_on_error"),
-                ("script/todo/qemu_menu.py", "_qemu_stats"),
             },
             "declare the menu in script/todo/menus/, never list it here",
         )
