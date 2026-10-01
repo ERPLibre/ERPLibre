@@ -200,7 +200,9 @@ class TestAddAccountPreset(unittest.TestCase):
     def preset(self, *answers):
         """Le fournisseur que prend Add an account quand on lui répond
         `answers`, ou None s'il n'en prend aucun ; le compte ne
-        s'enregistre pas."""
+        s'enregistre pas. Ce qu'il imprime reste dans `self.shown`."""
+        import io
+        from contextlib import redirect_stdout
         from unittest.mock import MagicMock, patch
 
         import script.todo.mail.menu as menu
@@ -219,9 +221,10 @@ class TestAddAccountPreset(unittest.TestCase):
                 "builtins.input",
                 side_effect=["forged_a", "a@forged.invalid", "", *answers],
             ),
-            patch("builtins.print"),
+            redirect_stdout(io.StringIO()) as shown,
         ):
             menu._add_account(MagicMock())
+        self.shown = shown.getvalue()
         return built.call_args.args[2] if built.called else None
 
     def test_only_a_shown_number_picks_a_provider(self):
@@ -234,6 +237,8 @@ class TestAddAccountPreset(unittest.TestCase):
         for answer in ("01", "+1", "١", "-1", "5", "gmail"):
             with self.subTest(answer=answer):
                 self.assertEqual(self.preset(answer, ""), "generic")
+                refused = f"{t('Invalid choice: ')}{answer}\n"
+                self.assertEqual(self.shown.count(refused), 1)
         self.assertEqual(self.preset(""), "generic")
         self.assertEqual(self.preset("1"), keys[0])
         self.assertEqual(self.preset(PRESETS[keys[1]]["label"]), keys[1])

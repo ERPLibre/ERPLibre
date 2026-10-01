@@ -806,7 +806,9 @@ class TestIconeDesMoteurs(Banc):
 
     def test_renoncer_au_moteur_n_efface_rien(self):
         """Entre deux moteurs, [0], ou le libellé décoré, qui n'est pas un
-        nom, puis [0] : aucun nettoyage qui efface ne liste ni ne lance."""
+        nom, puis [0] : aucun nettoyage qui efface ne liste ni ne lance.
+        Les listes doublées sont vides : un nettoyage qui irait plus loin
+        s'arrêterait là, sans interroger le vrai moteur."""
         prets = [{"moteur": m, "sans_sudo": True} for m in ("docker", "x")]
         runtime = container_menu.container_runtime
         faute = todo_i18n.t("Invalid choice: ")
@@ -816,8 +818,12 @@ class TestIconeDesMoteurs(Banc):
                 todo._container_fiches = lambda: prets
                 with (
                     self.subTest(nom=nom, entrees=entrees),
-                    mock.patch.object(runtime, "lister_images") as images,
-                    mock.patch.object(runtime, "lister_projets") as dirs,
+                    mock.patch.object(
+                        runtime, "lister_images", return_value=[]
+                    ) as images,
+                    mock.patch.object(
+                        runtime, "lister_projets", return_value={}
+                    ) as dirs,
                     self.reponses(entrees=entrees) as sortie,
                 ):
                     getattr(todo, f"_container_{nom}")()

@@ -84,12 +84,17 @@ class TestFacade(unittest.TestCase):
     def test_every_question_ends_with_the_ended_callbacks(self):
         ended = []
         self.enterContext(patch.object(ui, "ENDED", [lambda: ended.append(1)]))
-        with ui.bind(port.ScriptedPort(["x", "1"])):
+        view = port.menu_view("Menu", [])
+        answers = ["x", "1", "2", "y", ""]
+        with ui.bind(port.ScriptedPort(answers)):
             self.assertEqual(ui.ask("Name: "), "x")
             self.assertEqual(ui.choose("Which?", ["a"]), "a")
+            self.assertEqual(ui.menu(view), "2")
+            self.assertTrue(ui.confirm("Go?"))
+            self.assertIsNone(ui.pick_path(_forged_dir(self)))
             with self.assertRaises(EOFError):
                 ui.secret("Password: ")
-        self.assertEqual(ended, [1, 1, 1])
+        self.assertEqual(ended, [1] * 6)
 
     def test_two_threads_keep_distinct_ports(self):
         both_bound = threading.Barrier(2, timeout=10)
@@ -588,6 +593,7 @@ class TestChoose(unittest.TestCase):
         self.assertEqual(
             self.chosen([], "Which?", ["a"], default="a")[0], None
         )
+        self.assertEqual(self.chosen([], "Which?", ["a"], True)[0], None)
         with self.assertRaises(KeyboardInterrupt):
             self.chosen([KeyboardInterrupt()], "Which?", ["a"])
 

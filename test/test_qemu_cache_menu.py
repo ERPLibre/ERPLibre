@@ -915,10 +915,15 @@ class TestLAssistantDesTests(unittest.TestCase):
         """« 4 » n'est pas un essai : dit invalide, la question revient ;
         une plage choisit deux essais ; une réponse vide prend la première
         charge et le premier système, que la liste marque."""
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
         lancees, _c = self.assistant(["4", "2-3"])
         self.assertIn(f"{todo_i18n.t('Invalid choice: ')}4", self.sortie)
         self.assertEqual(len(lancees), 2, f"lancées : {lancees}")
         self.assertIn(todo_i18n.t("(default)"), self.sortie)
+        distro, charge = M._cache_systemes()[0][0], M._CACHE_CHARGES[0][0]
+        for cmd in lancees:
+            self.assertIn(f"--distro {distro} --charge {charge}", cmd)
 
     def test_un_systeme_se_choisit_par_son_nom_sans_son_icone(self):
         from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
