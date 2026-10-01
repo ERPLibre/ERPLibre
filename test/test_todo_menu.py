@@ -1395,6 +1395,28 @@ class TestCodeMenuNumbering(RegistryCoherence, unittest.TestCase):
         )
 
 
+class TestDebugMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Debug : une entrée, qui ouvre todo.py dans l'IDE."""
+
+    MENU = "debug_ide"
+    EXPECTED = {"Debug todo.py": "_debug_todo_py"}
+
+    def test_its_entry_opens_todo_py_in_the_ide(self):
+        from script.todo.todo import TODO
+
+        opened = []
+        todo = TODO.__new__(TODO)
+        todo.open_pycharm_file = lambda *paths: opened.append(paths)
+        getattr(todo, self.entries[0].action)()
+        folder = os.getcwd()
+        self.assertEqual(
+            opened, [(folder, os.path.join(folder, "script/todo/todo.py"))]
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.render), ("Debug", "once")
+        )
+
+
 class TestConfigMenuNumbering(RegistryCoherence, unittest.TestCase):
     """Config : quatre générations de la configuration, puis la file
     d'attente des tâches."""
@@ -1409,6 +1431,32 @@ class TestConfigMenuNumbering(RegistryCoherence, unittest.TestCase):
         "Generate from database": "generate_config_from_database",
         "Setup queue job": "generate_config_queue_job",
     }
+
+
+class TestPreconfigurationMenuNumbering(RegistryCoherence, unittest.TestCase):
+    """Generate from pre-configuration : trois groupes préréglés, puis
+    tout ; chaque entrée génère la configuration de son groupe."""
+
+    MENU = "generate_config_from_preconfiguration"
+    EXPECTED = {"base": "generate_config", "all": "generate_config"}
+
+    def test_each_entry_generates_its_group(self):
+        self.assertEqual(
+            [(entry.key, entry.kwargs) for entry in self.entries],
+            [
+                ("base", {"add_arg": "--group base"}),
+                (
+                    "base + code_generator",
+                    {"add_arg": "--group base,code_generator"},
+                ),
+                ("base + image_db", {"add_arg": "--group base,image_db"}),
+                ("all", None),
+            ],
+        )
+        self.assertEqual(
+            (self.menu.crumb, self.menu.render),
+            ("Generate from pre-configuration", "once"),
+        )
 
 
 class TestProcessMenuNumbering(RegistryCoherence, unittest.TestCase):
@@ -2766,21 +2814,17 @@ class TestMenuLabels(unittest.TestCase):
     que nomme `MENUS_SANS_SEGMENT`, l'action d'une entrée qui déclare son
     segment, ou l'une des exceptions.
 
-    Six méthodes sont exemptées, qui s'affichent sous le fil du menu qui
-    les ouvre : trois ACTIONS qui posent une question — un choix de méthode
-    d'installation, un « aller plus loin » après un rapport — et non des
-    écrans où l'on navigue, `select_database`, celle de DatabaseManager,
-    qui choisit une base, et deux menus écrits à la main sans segment,
-    `generate_config_from_preconfiguration` et `debug_ide`, des feuilles de
-    l'arbre. Donner un segment aux quatre premières mettrait une miette sur
-    une invite passagère.
+    Quatre méthodes sont exemptées, qui s'affichent sous le fil du menu
+    qui les ouvre : trois ACTIONS qui posent une question — un choix de
+    méthode d'installation, un « aller plus loin » après un rapport — et
+    non des écrans où l'on navigue, et `select_database`, celle de
+    DatabaseManager, qui choisit une base. Leur donner un segment
+    mettrait une miette sur une invite passagère.
     """
 
     ECRANS_EXEMPTES = {
         "_analyse_follow_up",
         "rtk_install",
-        "generate_config_from_preconfiguration",
-        "debug_ide",
         "execute_odoo_upgrade",
         "select_database",
     }
@@ -2802,7 +2846,11 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_configuration": "Configuration",
         "prompt_execute": "Execute",
         "prompt_execute_code": "Code",
+        "debug_ide": "Debug",
         "prompt_execute_config": "Config",
+        "generate_config_from_preconfiguration": (
+            "Generate from pre-configuration"
+        ),
         "prompt_execute_process": "Process",
         "prompt_execute_test": "Test",
         "prompt_execute_update": "Update",

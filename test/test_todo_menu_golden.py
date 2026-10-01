@@ -3,14 +3,15 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Des menus de TODO rendent leurs rendus de référence : l'entrée [4]
 (Navigation telemetry), Configuration, la famille Execute : Execute,
-Code, Config, Process, Test et Update, la famille Run : Run, Database et
-son menu d'effacement, Analyse, Transform data et Doc, la famille Git :
-Git, Git local server et ses deux menus Actions, GPT code, Claude
-configs, Plugins, Claude Code, RTK et Automation, la famille QEMU :
-Deploy, SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security,
-Docker / Podman et ses trois menus, la famille Proxmox : Proxmox VE,
-VPN, Long test et Install, la famille Assistant : Assistant, LLM,
-Servers, Search et les trois menus du courriel, et le menu principal.
+Code et Debug, Config et Generate from pre-configuration, Process, Test
+et Update, la famille Run : Run, Database et son menu d'effacement,
+Analyse, Transform data et Doc, la famille Git : Git, Git local server et
+ses deux menus Actions, GPT code, Claude configs, Plugins, Claude Code,
+RTK et Automation, la famille QEMU : Deploy, SSH, QEMU/KVM, QEMU cache et
+ses sept menus, Network, Security, Docker / Podman et ses trois menus, la
+famille Proxmox : Proxmox VE, VPN, Long test et Install, la famille
+Assistant : Assistant, LLM, Servers, Search et les trois menus du
+courriel, et le menu principal.
 
 test/todo_menu_golden.json fige, pour chacun, les octets du terminal en
 français et en anglais, ce que rend [0], les clés de télémétrie, les

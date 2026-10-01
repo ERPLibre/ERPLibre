@@ -2,15 +2,16 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Rendus de référence de menus de TODO : l'entrée [4] (Navigation
-telemetry), Configuration, la famille Execute : Execute, Code, Config,
-Process, Test et Update, la famille Run : Run, Database et son menu
-d'effacement, Analyse, Transform data et Doc, la famille Git : Git, Git
-local server et ses deux menus Actions, GPT code, Claude configs,
-Plugins, Claude Code, RTK et Automation, la famille QEMU : Deploy,
-SSH, QEMU/KVM, QEMU cache et ses sept menus, Network, Security, Docker /
-Podman et ses trois menus, la famille Proxmox : Proxmox VE, VPN, Long
-test et Install, la famille Assistant : Assistant, LLM, Servers, Search
-et les trois menus du courriel, et le menu principal.
+telemetry), Configuration, la famille Execute : Execute, Code et Debug,
+Config et Generate from pre-configuration, Process, Test et Update, la
+famille Run : Run, Database et son menu d'effacement, Analyse, Transform
+data et Doc, la famille Git : Git, Git local server et ses deux menus
+Actions, GPT code, Claude configs, Plugins, Claude Code, RTK et
+Automation, la famille QEMU : Deploy, SSH, QEMU/KVM, QEMU cache et ses
+sept menus, Network, Security, Docker / Podman et ses trois menus, la
+famille Proxmox : Proxmox VE, VPN, Long test et Install, la famille
+Assistant : Assistant, LLM, Servers, Search et les trois menus du
+courriel, et le menu principal.
 
 Module d'aide et non fichier de tests : son nom ne commence pas par
 « test_ ». `capture()` rend, en français et en anglais :
@@ -63,7 +64,9 @@ MENUS = (
     "prompt_configuration",
     "prompt_execute",
     "prompt_execute_code",
+    "debug_ide",
     "prompt_execute_config",
+    "generate_config_from_preconfiguration",
     "prompt_execute_process",
     "prompt_execute_test",
     "prompt_execute_update",

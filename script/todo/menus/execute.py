@@ -2,7 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menus de la famille Execute : Execute, qu'ouvre le menu principal, ses
-sous-menus Code, Config, Process et Test, et Update, qu'ouvre Code.
+sous-menus Code, Config, Process et Test, Update et Debug, qu'ouvre Code,
+et Generate from pre-configuration, qu'ouvre Config.
 
 Des données seulement : `build_code_tree` lit ce fichier sans l'importer,
 et le numéro d'une entrée est sa place. Une entrée qui ouvre un sous-menu
@@ -89,6 +90,33 @@ CONFIG = Menu(
         Entry("Setup queue job for parallelism", "generate_config_queue_job"),
     ],
     intro="Manage ERPLibre and Odoo configuration!",
+    render="once",
+)
+
+DEBUG = Menu(
+    "debug_ide",
+    "Debug",
+    [Entry("Debug todo.py", "_debug_todo_py")],
+    render="once",
+)
+
+PRECONFIGURATION = Menu(
+    "generate_config_from_preconfiguration",
+    "Generate from pre-configuration",
+    [
+        Entry("base", "generate_config", kwargs={"add_arg": "--group base"}),
+        Entry(
+            "base + code_generator",
+            "generate_config",
+            kwargs={"add_arg": "--group base,code_generator"},
+        ),
+        Entry(
+            "base + image_db",
+            "generate_config",
+            kwargs={"add_arg": "--group base,image_db"},
+        ),
+        Entry("all", "generate_config"),
+    ],
     render="once",
 )
 

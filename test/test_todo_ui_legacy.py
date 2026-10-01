@@ -145,7 +145,7 @@ RAW_CALLS = {
     "script/todo/qemu_menu.py": 6,
     "script/todo/qemu_network.py": 3,
     "script/todo/qemu_recover.py": 7,
-    "script/todo/todo.py": 103,
+    "script/todo/todo.py": 101,
     "script/todo/todo_install.py": 1,
     "script/todo/todo_telemetry.py": 1,
     "script/todo/todo_upgrade.py": 14,
@@ -169,12 +169,6 @@ NUMBERED_LOOPS = {
     ),
     ("script/todo/qemu_menu.py", "_qemu_stats"): (
         "[r], une lettre, répond hors d'un menu `asks`"
-    ),
-    ("script/todo/todo.py", "generate_config_from_preconfiguration"): (
-        "rien : déclaré sans segment, il garde son nœud et sa clé"
-    ),
-    ("script/todo/todo.py", "debug_ide"): (
-        "rien : déclaré sans segment, il garde son nœud et sa clé"
     ),
 }
 # Une entrée fixe d'un menu : « [k] », k un chiffre ou une lettre.
@@ -972,11 +966,6 @@ class TestGuards(unittest.TestCase):
                 ("script/todo/todo_upgrade.py", "show_stats"),
                 ("script/todo/todo_upgrade.py", "_prompt_on_error"),
                 ("script/todo/qemu_menu.py", "_qemu_stats"),
-                (
-                    "script/todo/todo.py",
-                    "generate_config_from_preconfiguration",
-                ),
-                ("script/todo/todo.py", "debug_ide"),
             },
             "declare the menu in script/todo/menus/, never list it here",
         )

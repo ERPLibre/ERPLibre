@@ -5181,59 +5181,22 @@ class TODO(
         )
 
     def generate_config_from_preconfiguration(self):
-        choices = [
-            {"prompt_description": t("base")},
-            {"prompt_description": t("base + code_generator")},
-            {"prompt_description": t("base + image_db")},
-            {"prompt_description": t("all")},
-            # {"prompt_description": "base + migration"},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                group = "base"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "2":
-                group = "base,code_generator"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "3":
-                group = "base,image_db"
-                str_group = f"--group {group}"
-                self.generate_config(add_arg=str_group)
-            elif status == "4":
-                self.generate_config()
-            # elif status == "5":
-            #     group = "base,migration"
-            #     str_group = f"--group {group}"
-            #     self.generate_config(add_arg=str_group)
-            else:
-                print(t("Command not found !"))
+        """La configuration d'un groupe de modules préréglé
+        (PRECONFIGURATION, `menus/execute.py`). Rend False sur [0]."""
+        return navigate(self, menus_execute.PRECONFIGURATION)
 
     def debug_ide(self):
-        choices = [
-            {"prompt_description": t("Debug todo.py")},
-        ]
-        help_info = self.fill_help_info(choices)
+        """Déboguer TODO dans l'IDE (DEBUG, `menus/execute.py`). Rend False
+        sur [0]."""
+        return navigate(self, menus_execute.DEBUG)
 
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self.open_pycharm_file(
-                    os.getcwd(),
-                    os.path.join(os.getcwd(), "script/todo/todo.py"),
-                )
-            else:
-                print(t("Command not found !"))
+    def _debug_todo_py(self):
+        """Ouvre script/todo/todo.py dans PyCharm, depuis le répertoire
+        courant."""
+        self.open_pycharm_file(
+            os.getcwd(),
+            os.path.join(os.getcwd(), "script/todo/todo.py"),
+        )
 
     def generate_config_from_backup(self):
         file_name = self.db_manager.open_file_image_db()
