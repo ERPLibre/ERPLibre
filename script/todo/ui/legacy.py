@@ -418,14 +418,11 @@ def _run_main_frame(browser):
     donne ; renoncer ne l'appelle pas, comme `q`. Un rappel qui ferme
     l'écran d'urwid (`exit_program`) n'a plus de boucle à fermer : son
     ExitMainLoop s'arrête ici. L'écran que lit la question suivante
-    repart vide."""
+    repart vide : `ui.pick_path` finit par les rappels de `ui.ENDED`,
+    où `install` range l'oubli du Tee le temps de la capture."""
     import urwid
 
-    try:
-        path = ui.pick_path(browser.current_path, browser.open_dir)
-    finally:
-        if _tee is not None:
-            _tee.clear()
+    path = ui.pick_path(browser.current_path, browser.open_dir)
     if path is not None:
         try:
             browser.callback(path)

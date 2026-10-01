@@ -275,7 +275,7 @@ def _add_account(todo) -> None:
         range(len(keys)),
         default=keys.index("generic"),
         labels=labels,
-        names={label: rank for rank, label in enumerate(labels)},
+        names={label: index for index, label in enumerate(labels)},
     )
     if rank is None:
         return
