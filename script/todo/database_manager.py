@@ -128,8 +128,9 @@ class DatabaseManager:
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
         """Restaurer une image de `image_db` : [1] en demande le nom, toute
-        autre réponse ouvre le navigateur de fichiers. Un nom vide à [1]
-        rend la main sans rien restaurer."""
+        autre réponse ouvre le navigateur de fichiers. Un nom vide à [1], ou
+        le navigateur quitté sans fichier, rend la main sans rien
+        restaurer."""
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
@@ -138,10 +139,10 @@ class DatabaseManager:
             file_name = ui.ask(
                 f"\U0001f4ac {t('File name in image_db (empty to go back): ')}"
             ).strip()
-            if not file_name:
-                return
         else:
             file_name = self.open_file_image_db()
+        if not file_name:
+            return
 
         default_database_name = file_name.replace(" ", "_")
         if default_database_name.endswith(".zip"):

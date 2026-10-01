@@ -305,6 +305,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Navigation telemetry: Assistant › LLM names its entries as its menu does; Known servers › Add a server by hand and the other entries of Search for a server launch from the TUI, and Search › The networks of a machine over SSH is a menu the TODO page reaches; neither the TUI nor the page launches Known servers › Delete a server, which erases a server, nor Search › The QEMU VMs of this machine (virsh) and The hosts of ~/.ssh/config, which probe those hosts without asking
 - Navigation telemetry: Assistant › Mail is in the tree, and opens from the TUI and the TODO page
 - Assistant › LLM › Known servers › Delete a server removes only the server chosen: two servers of one host, which share its name by default, both went when one was deleted
+- Execute › Database › Restore from backup: leaving the file browser without picking a file goes back without restoring anything, instead of running the restore with an empty image name and, on « y », updating all the modules of the database named from it
 
 ## Removed
 

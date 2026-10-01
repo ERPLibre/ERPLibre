@@ -305,6 +305,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Télémétrie de navigation : Assistant › LLM nomme ses entrées comme son menu ; Serveurs connus › Ajouter un serveur à la main et les autres entrées de Chercher un serveur se lancent depuis la TUI, et Chercher un serveur › Les réseaux d'une machine en SSH est un menu que la page de TODO atteint ; ni la TUI ni la page ne lancent Serveurs connus › Supprimer un serveur, qui efface un serveur, ni Chercher un serveur › Les VM QEMU de cette machine (virsh) et Les hôtes de ~/.ssh/config, qui sondent ces hôtes sans confirmation
 - Télémétrie de navigation : Assistant › Courriel est dans l'arbre, et s'ouvre depuis la TUI et la page de TODO
 - Assistant › LLM › Serveurs connus › Supprimer un serveur ne retire que le serveur choisi : deux serveurs d'un même hôte, qui en partagent le nom par défaut, partaient ensemble quand on en supprimait un
+- Exécution › Database › Restaurer à partir d'une sauvegarde : quitter le navigateur de fichiers sans choisir de fichier revient sans rien restaurer, au lieu de lancer la restauration avec un nom d'image vide et, sur « y », de mettre à jour tous les modules de la base nommée d'après lui
 
 ## Retiré
 

@@ -1086,12 +1086,14 @@ class TestRestoreFromDatabase(unittest.TestCase):
     image_db par `ui.ask`, auquel répond un ScriptedPort ; les autres
     questions passent par `input`. Les commandes sont doublées."""
 
-    def restore(self, answers, file_name):
+    def restore(self, answers, file_name, browsed="forged_browsed.zip"):
         """(commandes lancées, port qui a répondu, double d'`input`) quand
-        `input` reçoit `answers` et la question du nom `file_name`."""
+        `input` reçoit `answers`, la question du nom `file_name`, et que le
+        navigateur de fichiers rend `browsed`."""
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (0, [])
+        todo.db_manager.open_file_image_db = lambda: browsed
         scripted = port.ScriptedPort([file_name])
         with (
             ui.bind(scripted),
@@ -1130,6 +1132,14 @@ class TestRestoreFromDatabase(unittest.TestCase):
             commands, _, asked = self.restore(["1", "", "n", "n"], blank)
             self.assertEqual(commands, [], repr(blank))
             self.assertEqual(asked.call_count, 1, repr(blank))
+
+    def test_leaving_the_file_browser_restores_nothing(self):
+        # Le navigateur quitté sans fichier rend un nom vide : ni
+        # restauration, ni mise à jour des modules de la base nommée d'après
+        # lui sur « y », ni autre question que celle de la source.
+        commands, _, asked = self.restore(["", "", "n", "y"], "", browsed="")
+        self.assertEqual(commands, [])
+        self.assertEqual(asked.call_count, 1)
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
