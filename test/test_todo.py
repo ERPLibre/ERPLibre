@@ -1082,19 +1082,20 @@ class TestSelectDatabase(unittest.TestCase):
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
-    """Database › Restore from backup : [1] demande le nom du fichier sous
-    image_db par `ui.ask`, auquel répond un ScriptedPort ; les autres
-    questions passent par `input`. Les commandes sont doublées."""
+    """Database › Restore from backup : le choix de la source, par
+    `ui.choose`, et à [1] le nom du fichier sous image_db, par `ui.ask`,
+    auxquels répond un ScriptedPort ; les autres questions passent par
+    `input`. Les commandes sont doublées."""
 
-    def restore(self, answers, file_name, browsed="forged_browsed.zip"):
+    def restore(self, answers, *asked_by_ui, browsed="forged_browsed.zip"):
         """(commandes lancées, port qui a répondu, double d'`input`) quand
-        `input` reçoit `answers`, la question du nom `file_name`, et que le
-        navigateur de fichiers rend `browsed`."""
+        `input` reçoit `answers` et les questions de `ui`, `asked_by_ui`, et
+        que le navigateur de fichiers rend `browsed`."""
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (0, [])
         todo.db_manager.open_file_image_db = lambda: browsed
-        scripted = port.ScriptedPort([file_name])
+        scripted = port.ScriptedPort(list(asked_by_ui))
         with (
             ui.bind(scripted),
             patch("builtins.input", side_effect=answers) as asked,
@@ -1108,38 +1109,64 @@ class TestRestoreFromDatabase(unittest.TestCase):
         # [1], puis le nom : l'image et le nom de base par défaut en
         # viennent, et non de la réponse « 1 ».
         commands, scripted, _ = self.restore(
-            ["1", "", "n", "n"], "forged_image.zip"
+            ["", "n", "n"], "1", "forged_image.zip"
         )
         self.assertIn("db_restore.py -d forged_image ", commands[0])
         self.assertIn("--image forged_image.zip", commands[0])
-        [question] = scripted.events
+        [choice, question] = scripted.events
         self.assertEqual(
             question["text"],
             "\U0001f4ac "
             + todo_i18n.t("File name in image_db (empty to go back): "),
         )
+        # La source se choisit par son numéro : le navigateur, [2], est le
+        # défaut d'une réponse vide, et [0] revient.
+        self.assertEqual(
+            [o["key"] for o in choice["options"]], ["1", "2", "0"]
+        )
+        self.assertEqual(choice["default"], "2")
 
     def test_restore_with_neutralize(self):
         commands, _, _ = self.restore(
-            ["1", "mydb", "y", "n"], "forged_image.zip"
+            ["mydb", "y", "n"], "1", "forged_image.zip"
         )
         self.assertIn("--neutralize", commands[0])
         self.assertIn("mydb_neutralize", commands[0])
 
-    def test_a_blank_file_name_goes_back(self):
-        # Ni commande ni autre question : rien n'est restauré.
-        for blank in ("", "  "):
-            commands, _, asked = self.restore(["1", "", "n", "n"], blank)
-            self.assertEqual(commands, [], repr(blank))
-            self.assertEqual(asked.call_count, 1, repr(blank))
+    def test_an_empty_answer_or_two_browses_image_db(self):
+        for answer in ("", "2"):
+            commands, _, _ = self.restore(["", "n", "n"], answer)
+            self.assertIn("--image forged_browsed.zip", commands[0], answer)
+
+    def test_a_blank_file_name_zero_or_a_typo_restore_nothing(self):
+        # Ni commande ni autre question : rien n'est restauré ; une faute
+        # est nommée, et la question revient sans ouvrir le navigateur.
+        for asked_by_ui, refused in (
+            (("1", ""), []),
+            (("1", "  "), []),
+            (("0",), []),
+            (("x", "3", "0"), ["x", "3"]),
+        ):
+            commands, scripted, asked = self.restore(
+                ["", "n", "n"], *asked_by_ui
+            )
+            self.assertEqual(commands, [], asked_by_ui)
+            self.assertEqual(asked.call_count, 0, asked_by_ui)
+            notices = [
+                e["text"] for e in scripted.events if e["t"] == "notice"
+            ]
+            self.assertEqual(
+                notices,
+                [f"{todo_i18n.t('Invalid choice: ')}{a}" for a in refused],
+            )
 
     def test_leaving_the_file_browser_restores_nothing(self):
         # Le navigateur quitté sans fichier rend un nom vide : ni
         # restauration, ni mise à jour des modules de la base nommée d'après
-        # lui sur « y », ni autre question que celle de la source.
-        commands, _, asked = self.restore(["", "", "n", "y"], "", browsed="")
+        # lui sur « y », ni autre question.
+        commands, _, asked = self.restore(["", "n", "y"], "", browsed="")
         self.assertEqual(commands, [])
-        self.assertEqual(asked.call_count, 1)
+        self.assertEqual(asked.call_count, 0)
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
@@ -1212,16 +1239,19 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
         self.assertEqual(done, (0, "forged.zip", "forged_one"))
         self.assertEqual(read, ["forged.zip"])
 
-    def test_a_shown_number_picks_its_database(self):
-        # « 2 » est le numéro affiché de forged_two ; « 02 » n'en est pas
-        # un, et reste, comme tout autre texte, le nom tapé.
+    def test_a_shown_number_or_name_picks_its_database(self):
+        # « 2 » est le numéro affiché de forged_two, et son nom le choisit
+        # aussi ; « 02 » ou un nom absent de la liste sont dits invalides et
+        # la question revient ; « 0 » ou une réponse vide annulent.
         listed = ["forged_one", "forged_two"]
         for typed, name in (
-            ("2", "forged_two"),
-            ("02", "02"),
-            ("forged_other", "forged_other"),
+            (["2"], "forged_two"),
+            (["forged_two"], "forged_two"),
+            (["02", "forged_other", "1"], "forged_one"),
+            (["0"], ""),
+            ([""], ""),
         ):
-            done, _ = self.download(["forged", typed, ""], listed)
+            done, _ = self.download(["forged", ""], listed, typed=typed)
             self.assertEqual(done[2], name, typed)
 
     def test_a_list_that_fails_asks_the_name_by_hand(self):

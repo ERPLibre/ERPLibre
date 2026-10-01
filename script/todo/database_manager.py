@@ -127,15 +127,23 @@ class DatabaseManager:
         )
 
     def restore_from_database(self, show_remote_list: bool = True) -> None:
-        """Restaurer une image de `image_db` : [1] en demande le nom, toute
-        autre réponse ouvre le navigateur de fichiers. Un nom vide à [1], ou
-        le navigateur quitté sans fichier, rend la main sans rien
-        restaurer."""
+        """Restaurer une image de `image_db` : [1] en demande le nom, [2],
+        le défaut d'une réponse vide, ouvre le navigateur de fichiers ; [0],
+        un nom vide à [1] et le navigateur quitté sans fichier rendent la
+        main sans rien restaurer."""
         path_image_db = os.path.join(os.getcwd(), "image_db")
-        print("[1] By filename from image_db")
-        print(f"[] Browser image_db {path_image_db}")
-        status = input("\U0001f4ac Select : ")
-        if status == "1":
+        status = ui.choose(
+            f"\U0001f4ac {t('Which image to restore?')}",
+            ["name", "browse"],
+            default="browse",
+            labels=[
+                t("By filename from image_db"),
+                f"{t('Browse image_db')} {path_image_db}",
+            ],
+        )
+        if status is None:
+            return
+        if status == "name":
             file_name = ui.ask(
                 f"\U0001f4ac {t('File name in image_db (empty to go back): ')}"
             ).strip()
@@ -344,12 +352,14 @@ class DatabaseManager:
     ) -> tuple[int, str, str]:
         """Télécharger la sauvegarde d'une base distante. Rend (code de
         download_remote.sh, chemin de l'archive, nom de la base), ou
-        (1, "", "") sans rien télécharger quand le nom reste vide.
+        (1, "", "") sans rien télécharger sur [0] ou une réponse vide au
+        choix de la base, comme sur un nom tapé vide.
 
-        La base se choisit dans ce que liste `list_remote.py`, ou se tape
-        quand la liste n'est pas demandée, est vide ou échoue. Sa sortie
-        mêle l'erreur à la sortie (`exec_command_live`) : en échec, son
-        code non nul l'écarte, et aucune ligne n'est prise pour un nom.
+        La base se choisit par son numéro ou son nom dans ce que liste
+        `list_remote.py`, ou se tape quand la liste n'est pas demandée, est
+        vide ou échoue. Sa sortie mêle l'erreur à la sortie
+        (`exec_command_live`) : en échec, son code non nul l'écarte, et
+        aucune ligne n'est prise pour un nom.
         """
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
         output_lines = []
@@ -365,15 +375,11 @@ class DatabaseManager:
                 print(f"❌ {t('Cannot read the list of remote databases.')}")
                 output_lines = []
         if len(output_lines) > 1:
-            for index, output in enumerate(output_lines):
-                print(f"{index + 1} - {output}")
-            database_name = input("Select id of database :").strip()
-            # Un numéro affiché choisit sa base ; tout autre texte est le
-            # nom tapé.
-            shown = {
-                str(n): name.strip() for n, name in enumerate(output_lines, 1)
-            }
-            database_name = shown.get(database_name, database_name)
+            # Une base de la liste, par son numéro ou son nom ; [0] ou une
+            # réponse vide annule.
+            database_name = ui.choose(
+                t("Which database?"), [name.strip() for name in output_lines]
+            )
         elif len(output_lines) == 1:
             database_name = output_lines[0].strip()
         else:

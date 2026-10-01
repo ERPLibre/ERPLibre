@@ -562,6 +562,16 @@ TRANSLATIONS = {
         "fr": "Aucune base sur ce serveur PostgreSQL.",
         "en": "No database on this PostgreSQL server.",
     },
+    "Which image to restore?": {
+        "fr": "Quelle image restaurer ?",
+        "en": "Which image to restore?",
+    },
+    "By filename from image_db": {
+        "fr": "Par son nom de fichier dans image_db",
+        "en": "By filename from image_db",
+    },
+    "Browse image_db": {"fr": "Parcourir image_db", "en": "Browse image_db"},
+    "Which database?": {"fr": "Quelle base ?", "en": "Which database?"},
     "File name in image_db (empty to go back): ": {
         "fr": "Nom du fichier dans image_db (vide pour revenir) : ",
         "en": "File name in image_db (empty to go back): ",

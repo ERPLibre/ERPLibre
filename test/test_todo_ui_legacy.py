@@ -83,7 +83,6 @@ with open(sys.argv[2], "w") as out:
 # texte. La liste ne fait que rétrécir : un écran neuf numérote entre
 # crochets, et un écran converti en sort.
 EXCEPTIONS = {
-    ("script/todo/database_manager.py", "download_database_backup_cli"),
     ("script/todo/qemu_access.py", "_qemu_scrcpy_tunnel"),
     ("script/todo/qemu_cache_menu.py", "_cache_sans_sudo_la_bas"),
     ("script/todo/qemu_network.py", "_qemu_network_recreate"),
@@ -131,7 +130,7 @@ RAW_CALLS = {
     "script/todo/assistant_menu.py": 15,
     "script/todo/auto_ask.py": 2,
     "script/todo/container_menu.py": 10,
-    "script/todo/database_manager.py": 14,
+    "script/todo/database_manager.py": 12,
     "script/todo/kdbx_manager.py": 1,
     "script/todo/longtest_menu.py": 7,
     "script/todo/mail/menu.py": 12,
