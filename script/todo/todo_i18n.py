@@ -14096,10 +14096,7 @@ TRANSLATIONS = {
         "fr": "Préréglage illisible : ",
         "en": "Unreadable preset: ",
     },
-    "Preset number (0 to go back)": {
-        "fr": "Numéro du préréglage (0 pour revenir)",
-        "en": "Preset number (0 to go back)",
-    },
+    "Which preset?": {"fr": "Quel préréglage ?", "en": "Which preset?"},
     "An empty answer keeps the preset value.": {
         "fr": "Une réponse vide garde la valeur du préréglage.",
         "en": "An empty answer keeps the preset value.",
@@ -14194,10 +14191,7 @@ TRANSLATIONS = {
         "fr": "Nom du profil (minuscules, chiffres, « - » ou « _ »)",
         "en": "Profile name (lowercase, digits, - or _)",
     },
-    "Profile number (0 to go back)": {
-        "fr": "Numéro du profil (0 pour revenir)",
-        "en": "Profile number (0 to go back)",
-    },
+    "Which profile?": {"fr": "Quel profil ?", "en": "Which profile?"},
     "Profile saved: ": {
         "fr": "Profil enregistré : ",
         "en": "Profile saved: ",
@@ -14229,10 +14223,6 @@ TRANSLATIONS = {
     "Unknown driver: ": {
         "fr": "Pilote inconnu : ",
         "en": "Unknown driver: ",
-    },
-    "Unknown choice.": {
-        "fr": "Choix inconnu.",
-        "en": "Unknown choice.",
     },
     "The installation requires sudo.": {
         "fr": "L'installation demande sudo.",
@@ -14389,10 +14379,6 @@ TRANSLATIONS = {
     "No secret to store: this one authenticates over SSH.": {
         "fr": "Aucun secret à déposer : celui-là s'authentifie par SSH.",
         "en": "No secret to store: this one authenticates over SSH.",
-    },
-    "Several technologies match: ": {
-        "fr": "Plusieurs technologies correspondent : ",
-        "en": "Several technologies match: ",
     },
     "Authentication through a web form (SAML / SSO)?": {
         "fr": "Authentification par formulaire web (SAML / SSO) ?",

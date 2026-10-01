@@ -28,6 +28,7 @@ except Exception:
     # directe reste. Un menu qui ne s'ouvre plus serait pire.
     todo_file_browser = None
 
+from script.todo import ui
 from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -131,13 +132,6 @@ MASTER_PASSWORD_WARNING = (
 )
 
 
-# Les technologies se choisissent par LETTRE. Le menu qui précède numérote
-# ses entrées ; une seconde liste numérotée juste après invite à retaper un
-# numéro de menu — et c'est exactement ce qui s'est produit. La lettre dit
-# « autre question ».
-DRIVER_LETTERS = "abcdefghijklmnopqrstuvwxyz"
-
-
 def _sso_helper_seen():
     """Le greffon SSO est-il déjà joignable sur cette machine ?
 
@@ -149,39 +143,6 @@ def _sso_helper_seen():
     if driver_cls is None:
         return True
     return bool(driver_cls({"name": "check"}).sso_helper)
-
-
-def match_driver(answer, names):
-    """Le pilote désigné par `answer`.
-
-    Rend le nom du pilote, "" si rien ne correspond, ou la LISTE des
-    candidats quand c'est ambigu — le dire vaut mieux qu'en choisir un.
-
-    Trois formes, dans cet ordre : la lettre affichée ; le rang, parce que
-    quelqu'un tapera un chiffre et qu'il a raison de le faire vu le menu qui
-    précède, écrit comme une liste le numérote (« 2 », et non « 02 » ni un
-    chiffre d'une autre écriture) ; et un début de libellé, parce que
-    devant « L2TP/IPsec PSK » on tape « L ». « open » désigne deux pilotes :
-    celui-là est refusé en le nommant.
-    """
-    answer = (answer or "").strip().lower()
-    if not answer:
-        return ""
-    if len(answer) == 1 and answer in DRIVER_LETTERS:
-        index = DRIVER_LETTERS.index(answer)
-        if index < len(names):
-            return names[index]
-    if answer in [str(rank) for rank in range(1, len(names) + 1)]:
-        return names[int(answer) - 1]
-    matches = [
-        name
-        for name in names
-        if DRIVERS[name].label.lower().startswith(answer)
-        or name.startswith(answer)
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    return matches or ""
 
 
 class VpnMenuMixin:
@@ -302,7 +263,8 @@ class VpnMenuMixin:
         return bool(driver_cls) and driver_cls(profile).is_up()
 
     def _vpn_select_profile(self):
-        """Nom du profil choisi, "" si l'utilisateur renonce.
+        """Nom du profil choisi, par son numéro ou son nom sous les règles
+        de `ui.choose`, ou None quand l'utilisateur renonce.
 
         L'état de chaque profil est affiché, parce que la liste sert autant
         à connecter qu'à déconnecter : sans lui, on descend un tunnel déjà
@@ -312,8 +274,9 @@ class VpnMenuMixin:
         all_profiles = [profiles.with_defaults(p) for p in profiles.load_all()]
         if not all_profiles:
             print(t("No VPN profile yet: create one first."))
-            return ""
-        for index, profile in enumerate(all_profiles, start=1):
+            return None
+        rows = []
+        for profile in all_profiles:
             target = (
                 t("all traffic")
                 if profile["default_route"]
@@ -323,18 +286,17 @@ class VpnMenuMixin:
             # deux, et sans cela les lignes non connectées décaleraient tout
             # ce qui suit.
             marque = "🟢" if self._vpn_is_up(profile) else "  "
-            print(
-                f"[{index}] {marque} {profile['name']:<20}"
+            rows.append(
+                f"{marque} {profile['name']:<20}"
                 f" {profile['server']:<26} {target}"
             )
-        answer = input(f"{t('Profile number (0 to go back)')} : ").strip()
-        # Un numéro tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
-        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
-        if answer not in [str(n) for n in range(1, len(all_profiles) + 1)]:
-            if answer not in ("0", ""):
-                print(t("Unknown choice."))
-            return ""
-        return all_profiles[int(answer) - 1]["name"]
+        names = [profile["name"] for profile in all_profiles]
+        return ui.choose(
+            t("Which profile?"),
+            names,
+            labels=rows,
+            names=dict(zip(names, names)),
+        )
 
     def _vpn_from_preset(self):
         """Crée un profil à partir d'un préréglage de site.
@@ -352,18 +314,25 @@ class VpnMenuMixin:
             print(t("No site preset available."))
             print(f"  {t(PRESET_LOCATION_NOTE)}")
             return
-        for index, preset in enumerate(found, start=1):
-            print(
-                f"[{index}] {presets.label(preset):<34}"
-                f" {preset.get('server', ''):<28}"
+        # Un préréglage se choisit par son numéro, ou par son libellé quand
+        # aucun autre ne le porte : seul l'identifiant est unique.
+        libelles = [presets.label(preset) for preset in found]
+        preset = ui.choose(
+            t("Which preset?"),
+            found,
+            labels=[
+                f"{libelle:<34} {preset.get('server', ''):<28}"
                 f" {t(preset.get('hint', '') or '')}"
-            )
-        answer = input(f"{t('Preset number (0 to go back)')} : ").strip()
-        if answer not in [str(n) for n in range(1, len(found) + 1)]:
-            if answer not in ("0", ""):
-                print(t("Unknown choice."))
+                for libelle, preset in zip(libelles, found)
+            ],
+            names={
+                libelle: preset
+                for libelle, preset in zip(libelles, found)
+                if libelles.count(libelle) == 1
+            },
+        )
+        if preset is None:
             return
-        preset = found[int(answer) - 1]
         print(f"\n{t('An empty answer keeps the preset value.')}")
         name = input(
             f"{t('Profile name (lowercase, digits, - or _)')} : "
@@ -573,55 +542,39 @@ class VpnMenuMixin:
 
     @staticmethod
     def _vpn_pick_driver(current):
-        """La technologie, par lettre, avec un conseil par ligne.
+        """La technologie, par son numéro ou son libellé exact, avec un
+        conseil par ligne ; la courante, ou la première, est le défaut
+        d'une réponse vide ; None pour [0].
 
         C'est la seule décision du formulaire où l'utilisateur a besoin
         d'aide : le reste se déduit de ce que le site lui a donné.
 
         Une étoile marque les technologies qu'aucun serveur réel n'a
         encore validées, et une légende dit ce qu'elle signifie : la liste
-        montre autrement cinq choix d'apparence égale.
-
-        `[0] Retour` est là comme dans tous les menus de ce CLI : sans lui,
-        on est coincé dans le formulaire dès qu'on a tapé un nom de profil.
+        montre autrement cinq choix d'apparence égale ; la légende précède
+        la question, qui reste la ligne qui introduit la liste.
         """
         names = list(DRIVERS)
         if len(names) == 1:
             return DRIVERS[names[0]]
-        default = current if current in DRIVERS else names[0]
-        print(f"\n{t('Which technology?')}")
-        unproven = False
-        for letter, name in zip(DRIVER_LETTERS, names):
-            driver_cls = DRIVERS[name]
-            mark = " ←" if name == default else ""
-            # L'étoile occupe une colonne à elle : sans cela, les lignes
-            # marquées décaleraient leur conseil et la liste se lirait mal.
-            star = " " if driver_cls.proven else "*"
-            unproven = unproven or not driver_cls.proven
-            print(
-                f"[{letter}] {driver_cls.label:<16}{star}"
-                f" {t(driver_cls.hint)}{mark}"
-            )
-        if unproven:
-            print(f"    * {t(UNPROVEN_NOTE)}")
-        print(f"[0] {t('Back')}")
-        default_letter = DRIVER_LETTERS[names.index(default)]
-        answer = input(
-            f"{t('Choice')} [{default_letter} = {DRIVERS[default].label}] : "
-        ).strip()
-        if not answer:
-            return DRIVERS[default]
-        if answer == "0":
-            return None
-        chosen = match_driver(answer, names)
-        if isinstance(chosen, list):
-            labels = ", ".join(DRIVERS[name].label for name in chosen)
-            print(f"{t('Several technologies match: ')}{labels}")
-            return None
-        if not chosen:
-            print(t("Unknown choice."))
-            return None
-        return DRIVERS[chosen]
+        # L'étoile occupe une colonne à elle : sans cela, les lignes
+        # marquées décaleraient leur conseil et la liste se lirait mal.
+        rows = [
+            f"{DRIVERS[name].label:<16}{' ' if DRIVERS[name].proven else '*'}"
+            f" {t(DRIVERS[name].hint)}"
+            for name in names
+        ]
+        question = t("Which technology?")
+        if not all(DRIVERS[name].proven for name in names):
+            question = f"    * {t(UNPROVEN_NOTE)}\n{question}"
+        chosen = ui.choose(
+            question,
+            names,
+            default=current if current in DRIVERS else names[0],
+            labels=rows,
+            names={DRIVERS[name].label: name for name in names},
+        )
+        return None if chosen is None else DRIVERS[chosen]
 
     def _vpn_delete_profile(self):
         name = self._vpn_select_profile()

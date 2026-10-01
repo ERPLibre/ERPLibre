@@ -31,11 +31,7 @@ sys.argv = ["todo.py"]
 
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
-from script.todo.vpn_menu import (  # noqa: E402
-    DRIVER_LETTERS,
-    UNPROVEN_NOTE,
-    match_driver,
-)
+from script.todo.vpn_menu import UNPROVEN_NOTE  # noqa: E402
 from script.vpn import profiles  # noqa: E402
 from script.vpn.drivers import DRIVERS  # noqa: E402
 from script.vpn.drivers.openconnect import (  # noqa: E402
@@ -81,106 +77,43 @@ class MenuBase(unittest.TestCase):
         return patch("builtins.input", side_effect=list(answers))
 
 
-class MatchDriver(unittest.TestCase):
-    """La correspondance est pure : elle se juge sans menu ni saisie.
-
-    Elle existe parce qu'une liste numérotée juste après un menu numéroté
-    fait taper un numéro de menu — et que devant « [L2TP/IPsec PSK] », on
-    tape « L ». Les deux doivent marcher.
-    """
-
-    def setUp(self):
-        self.names = list(DRIVERS)
-
-    def test_the_displayed_letter(self):
-        for index, name in enumerate(self.names):
-            with self.subTest(name=name):
-                letter = DRIVER_LETTERS[index]
-                self.assertEqual(match_driver(letter, self.names), name)
-                self.assertEqual(
-                    match_driver(letter.upper(), self.names), name
-                )
-
-    def test_the_rank_still_works(self):
-        """Quelqu'un tapera un chiffre, et il a raison de le faire vu le
-        menu qui précède."""
-        for index, name in enumerate(self.names, start=1):
-            with self.subTest(rang=index):
-                self.assertEqual(match_driver(str(index), self.names), name)
-
-    def test_a_rank_is_only_its_number(self):
-        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas le
-        # rang 2 : rien ne correspond, et TODO ne s'arrête pas sur une
-        # ValueError.
-        for answer in ("02", "٢", "²"):
-            with self.subTest(answer=answer):
-                self.assertEqual(match_driver(answer, self.names), "")
-
-    def test_the_start_of_the_label(self):
-        """« L » pour « L2TP/IPsec PSK » : le début du libellé choisit la
-        technologie."""
-        for answer, expected in (
-            ("L", "l2tp_ipsec"),
-            ("l2tp", "l2tp_ipsec"),
-            ("w", "wireguard"),
-            ("WireG", "wireguard"),
-            ("openv", "openvpn"),
-            ("openc", "openconnect"),
-            ("ssh", "sshuttle"),
-        ):
-            with self.subTest(answer=answer):
-                self.assertEqual(match_driver(answer, self.names), expected)
-
-    def test_an_ambiguous_prefix_names_the_candidates(self):
-        """« open » désigne deux pilotes : le dire vaut mieux qu'en choisir
-        un au hasard."""
-        result = match_driver("open", self.names)
-        self.assertIsInstance(result, list)
-        self.assertEqual(sorted(result), ["openconnect", "openvpn"])
-
-    def test_nothing_matches_nothing(self):
-        for answer in ("x", "9", "0", "", "   ", "carrier-pigeon"):
-            with self.subTest(answer=answer):
-                self.assertEqual(match_driver(answer, self.names), "")
-
-
 class DriverPicker(MenuBase):
-    def test_an_empty_answer_keeps_the_current_driver(self):
-        with self.answering(""):
-            with redirect_stdout(io.StringIO()):
-                chosen = self.todo._vpn_pick_driver("wireguard")
-        self.assertEqual(chosen.name, "wireguard")
+    """La technologie se choisit par son numéro tel que la liste l'écrit ou
+    par son libellé exact ; une réponse vide garde la courante, marquée
+    comme le défaut ; toute autre réponse est dite invalide, et la question
+    revient. Chaque liste de réponses finit par une réponse acceptée."""
 
-    def test_a_letter_picks_from_the_list(self):
-        names = list(DRIVERS)
-        with self.answering("c"):
-            with redirect_stdout(io.StringIO()):
-                chosen = self.todo._vpn_pick_driver(None)
-        self.assertEqual(chosen.name, names[2])
-
-    def test_a_number_still_picks_from_the_list(self):
-        names = list(DRIVERS)
-        with self.answering("3"):
-            with redirect_stdout(io.StringIO()):
-                chosen = self.todo._vpn_pick_driver(None)
-        self.assertEqual(chosen.name, names[2])
-
-    def test_the_start_of_a_label_picks_too(self):
-        with self.answering("L"):
-            with redirect_stdout(io.StringIO()):
-                chosen = self.todo._vpn_pick_driver(None)
-        self.assertEqual(chosen.name, "l2tp_ipsec")
-
-    def test_the_list_is_lettered_and_offers_a_way_back(self):
+    def picking(self, *answers, current=None):
+        """(la technologie choisie ou None, ce qui s'est imprimé)."""
         buffer = io.StringIO()
-        with self.answering(""):
-            with redirect_stdout(buffer):
-                self.todo._vpn_pick_driver(None)
-        printed = buffer.getvalue()
-        for letter in DRIVER_LETTERS[: len(DRIVERS)]:
-            self.assertIn(f"[{letter}]", printed)
-        self.assertNotIn("[1]", printed)
-        self.assertIn("[0]", printed)
+        with self.answering(*answers), redirect_stdout(buffer):
+            chosen = self.todo._vpn_pick_driver(current)
+        return chosen, buffer.getvalue()
+
+    def test_an_empty_answer_keeps_the_current_driver(self):
+        chosen, printed = self.picking("", current="wireguard")
+        self.assertEqual(chosen.name, "wireguard")
+        line = [l for l in printed.splitlines() if "WireGuard" in l][0]
+        self.assertIn(t("(default)"), line)
+
+    def test_a_shown_number_picks_from_the_list(self):
+        chosen, _ = self.picking("3")
+        self.assertEqual(chosen.name, list(DRIVERS)[2])
+
+    def test_only_the_exact_label_names_a_driver(self):
+        # Une lettre, le début d'un libellé et le nom interne ne sont pas
+        # des réponses : chacun est dit invalide, et la question revient.
+        for answer in ("c", "L", "open", "wireguard", "02", "²"):
+            with self.subTest(answer=answer):
+                chosen, printed = self.picking(answer, "L2TP/IPsec PSK")
+                self.assertEqual(chosen.name, "l2tp_ipsec")
+                self.assertIn(f"{t('Invalid choice: ')}{answer}", printed)
+
+    def test_the_list_is_numbered_and_offers_a_way_back(self):
+        _, printed = self.picking("")
+        for number in range(1, len(DRIVERS) + 1):
+            self.assertIn(f"[{number}] ", printed)
+        self.assertNotIn("[a]", printed)
 
     def test_zero_goes_back_without_scolding(self):
         """Sans sortie explicite, on est coincé dans le formulaire dès
@@ -192,19 +125,41 @@ class DriverPicker(MenuBase):
         self.assertNotIn("✗", buffer.getvalue())
         self.assertNotIn("inconnu", buffer.getvalue().lower())
 
-    def test_an_ambiguous_answer_says_which_ones(self):
-        buffer = io.StringIO()
-        with self.answering("open"):
-            with redirect_stdout(buffer):
-                self.assertIsNone(self.todo._vpn_pick_driver(None))
-        printed = buffer.getvalue()
-        self.assertIn("OpenVPN", printed)
-        self.assertIn("OpenConnect", printed)
+    def test_an_out_of_range_answer_is_asked_again(self):
+        chosen, printed = self.picking("99", "tout", "0")
+        self.assertIsNone(chosen)
+        self.assertIn(f"{t('Invalid choice: ')}99", printed)
+        self.assertIn(f"{t('Invalid choice: ')}tout", printed)
 
-    def test_an_out_of_range_answer_gives_up(self):
-        with self.answering("99"):
-            with redirect_stdout(io.StringIO()):
-                self.assertIsNone(self.todo._vpn_pick_driver(None))
+    def test_install_runs_only_for_a_chosen_or_default_driver(self):
+        # Installer les paquets d'un client passe par sudo : « 0 », ou une
+        # faute suivie de « 0 », n'installent rien ; une réponse vide
+        # installe la technologie marquée par défaut, la première.
+        for answers, expected in (
+            (["0"], []),
+            (["x", "0"], []),
+            ([""], [f"install --driver {list(DRIVERS)[0]}"]),
+        ):
+            launched = []
+            with (
+                self.subTest(answers=answers),
+                patch(
+                    "script.todo.vpn_menu._sso_helper_seen", return_value=True
+                ),
+                patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, secrets_env=None: launched.append(
+                        arguments
+                    ),
+                ),
+                self.answering(*answers),
+                redirect_stdout(io.StringIO()) as out,
+            ):
+                self.todo._vpn_install()
+            self.assertEqual(launched, expected)
+            if "x" in answers:
+                self.assertIn(f"{t('Invalid choice: ')}x", out.getvalue())
 
     def test_every_driver_shows_its_hint(self):
         """C'est la seule décision où l'utilisateur a besoin d'un conseil."""
@@ -249,7 +204,7 @@ class TheFormIsDriverAgnostic(MenuBase):
         names = list(DRIVERS)
         answers = [
             "acme-wg",  # nom du profil
-            DRIVER_LETTERS[names.index("wireguard")],  # technologie
+            str(names.index("wireguard") + 1),  # technologie
             "vpn.acme.example",  # serveur
             "10.7.0.2/32",  # wg_address
             WG_PUBLIC,  # wg_peer_key
@@ -275,7 +230,7 @@ class TheFormIsDriverAgnostic(MenuBase):
         names = list(DRIVERS)
         answers = [
             "acme-ssh",
-            DRIVER_LETTERS[names.index("sshuttle")],
+            str(names.index("sshuttle") + 1),
             "erplibre@bastion.acme.example",
             "10.40.0.0/16",
             "",
@@ -381,7 +336,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
         names = list(DRIVERS)
         answers = [
             "forged-site",
-            DRIVER_LETTERS[names.index("l2tp_ipsec")],
+            str(names.index("l2tp_ipsec") + 1),
             "vpn.forged-site.example",  # la passerelle
             "user",  # l'utilisateur PPP
             "",  # réseaux : le site n'en a pas donné
@@ -809,21 +764,65 @@ class ShowingWhatIsConnected(MenuBase):
         }
         self.assertEqual(len(colonnes), 1, lignes)
 
-    def test_a_profile_is_picked_only_by_its_shown_number(self):
-        # « 2 » choisit le deuxième profil de la liste, affiché [2] ;
-        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas un
-        # numéro affiché : rien n'est choisi, et TODO ne s'arrête pas sur
-        # une ValueError.
+    def test_a_profile_is_picked_by_its_shown_number_or_its_name(self):
+        # « 2 » choisit le deuxième profil de la liste, affiché [2], et son
+        # nom exact le choisit aussi ; « 02 », « ٢ » (deux en écriture
+        # arabe), « ² » ou « tout » sont dits invalides, et « 0 » renonce.
         second = profiles.with_defaults(profiles.load_all()[1])["name"]
-        for answer in ("2", "02", "٢", "²"):
+        for answers, expected in (
+            (["2"], second),
+            ([second], second),
+            (["02", "٢", "²", "tout", "0"], None),
+            ([""], None),
+        ):
             with (
-                self.subTest(answer=answer),
+                self.subTest(answers=answers),
                 patch.object(OpenconnectDriver, "is_up", lambda self: False),
-                self.answering(answer),
+                self.answering(*answers),
+                redirect_stdout(io.StringIO()) as out,
+            ):
+                self.assertEqual(self.todo._vpn_select_profile(), expected)
+            refused = answers[:-1] if expected is None else []
+            for answer in refused:
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{answer}", out.getvalue()
+                )
+
+    def test_only_a_chosen_profile_is_disconnected_or_deleted(self):
+        # Déconnecter lance « down » sans autre question : une réponse vide,
+        # « 0 », « tout » ou une faute n'en lancent aucun ; Supprimer n'en
+        # retire aucun et ne pose pas sa confirmation.
+        for answers in ([""], ["0"], ["tout", "0"], ["*", "01", "x", ""]):
+            launched = []
+            with (
+                self.subTest(answers=answers),
+                patch.object(OpenconnectDriver, "is_up", lambda self: True),
+                patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ),
+                patch.object(profiles, "delete") as delete,
+                self.answering(*answers, *answers),
                 redirect_stdout(io.StringIO()),
             ):
-                chosen = self.todo._vpn_select_profile()
-                self.assertEqual(chosen, second if answer == "2" else "")
+                self.todo._vpn_disconnect()
+                self.todo._vpn_delete_profile()
+            self.assertEqual(launched, [])
+            delete.assert_not_called()
+        launched = []
+        with (
+            patch.object(OpenconnectDriver, "is_up", lambda self: True),
+            patch.object(
+                self.todo,
+                "_vpn_cli",
+                lambda arguments, env=None: launched.append(arguments),
+            ),
+            self.answering("mort"),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.todo._vpn_disconnect()
+        self.assertEqual(launched, ["down --profile mort"])
 
     def test_an_unknown_driver_does_not_break_the_listing(self):
         """Un pilote retiré de la configuration ne doit pas empêcher de
@@ -1025,19 +1024,63 @@ class FromPreset(MenuBase):
         self.assertEqual(profiles.names(), [])
 
     def test_a_preset_is_picked_only_by_its_shown_number(self):
-        # « 01 », « ١ » (un en écriture arabe) et « ² » ne sont pas le
-        # numéro affiché du préréglage : aucune autre question n'est posée,
-        # rien n'est créé, et TODO ne s'arrête pas sur une ValueError.
-        for answer in ("01", "١", "²"):
-            loading, answering = self.choosing(answer)
+        # « 01 », « ١ » (un en écriture arabe), « ² » et « campus », son
+        # identifiant que la liste ne montre pas, ne désignent pas le
+        # préréglage : chacun est dit invalide, « 0 » renonce, et rien
+        # n'est créé.
+        for answer in ("01", "١", "²", "campus"):
+            loading, answering = self.choosing(answer, "0")
             with (
                 self.subTest(answer=answer),
                 loading,
                 answering,
-                redirect_stdout(io.StringIO()),
+                redirect_stdout(io.StringIO()) as out,
             ):
                 self.todo._vpn_from_preset()
                 self.assertEqual(profiles.names(), [])
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{answer}", out.getvalue()
+                )
+
+    def test_a_preset_is_picked_by_its_label(self):
+        loading, answering = self.choosing(
+            "Campus SSL VPN",
+            "campus_me",
+            "",  # serveur
+            "someone",  # oc_user
+            "",  # protocole
+            "",  # groupe de connexion
+            "",  # SSO ?
+            "",  # réseaux
+            "",  # tout le trafic ?
+            "",  # témoin
+            "n",  # réglages avancés ?
+        )
+        with loading, answering, redirect_stdout(io.StringIO()):
+            self.todo._vpn_from_preset()
+        self.assertEqual(profiles.load("campus_me")["oc_user"], "someone")
+
+    def test_a_label_two_presets_share_picks_neither(self):
+        # Deux préréglages ne sont uniques que par leur identifiant : leur
+        # libellé commun est dit invalide, et seul le numéro les distingue.
+        twin = dict(
+            self.PRESET, preset="campus-two", server="forged.example.net"
+        )
+        seeds = []
+        with (
+            patch(
+                "script.vpn.presets.load_all",
+                return_value=([dict(self.PRESET), twin], []),
+            ),
+            patch.object(
+                self.todo, "_vpn_edit_profile", lambda seed: seeds.append(seed)
+            ),
+            self.answering("Campus SSL VPN", "2", "campus_me"),
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            self.todo._vpn_from_preset()
+        self.assertIn(f"{t('Invalid choice: ')}Campus SSL VPN", out.getvalue())
+        self.assertEqual([s["server"] for s in seeds], ["forged.example.net"])
 
     def test_an_unreadable_preset_is_reported(self):
         with patch(
