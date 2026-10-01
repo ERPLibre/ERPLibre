@@ -542,11 +542,12 @@ class TestChoixDeLHote(unittest.TestCase):
         todo._pve_remember_host = lambda h: None
         return todo
 
-    def test_a_host_is_picked_only_by_its_shown_number(self):
-        # « 2 » choisit la deuxième machine de la liste, affichée [2] ;
-        # « 02 », « ٢ » (deux en écriture arabe) et « ² » ne sont pas un
-        # numéro affiché : « Invalid selection! », rien n'est choisi, et
-        # TODO ne s'arrête pas sur une ValueError.
+    def test_a_host_is_picked_by_its_shown_number_or_its_name(self):
+        # « 2 » choisit la deuxième machine de la liste, affichée [2], et
+        # son nom exact aussi ; « 02 », « ٢ » (deux en écriture arabe) et
+        # « ² » ne sont pas un numéro affiché : chacun est dit invalide, la
+        # question revient, et « 0 » ou une réponse vide n'en choisit
+        # aucune.
         import contextlib
         import io
 
@@ -563,15 +564,57 @@ class TestChoixDeLHote(unittest.TestCase):
             ("_pve_host_from_qemu", "root@198.51.100.5"),
             ("_pve_host_from_ssh_config", "forged-b"),
         ):
-            for answer in ("2", "02", "٢", "²"):
+            for answers, expected in (
+                (["2"], chosen),
+                (["forged-b"], chosen),
+                (["02", "٢", "²", "0"], None),
+                ([""], None),
+            ):
                 with (
-                    self.subTest(method=method, answer=answer),
-                    mock.patch("builtins.input", return_value=answer),
-                    contextlib.redirect_stdout(io.StringIO()),
+                    self.subTest(method=method, answers=answers),
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
                 ):
                     host = getattr(todo, method)()
-                    expected = chosen if answer == "2" else None
-                    self.assertEqual(host and host["target"], expected)
+                self.assertEqual(host and host["target"], expected)
+                for refused in answers[:-1]:
+                    self.assertIn(
+                        f"{t('Invalid choice: ')}{refused}", out.getvalue()
+                    )
+
+    def test_the_source_of_the_host_is_asked_again_on_a_wrong_answer(self):
+        # [4] Garder n'existe qu'avec un hôte retenu : sans lui, « 4 » est
+        # une faute comme « x », nommée, et la question revient ; « 0 » et
+        # une réponse vide n'ouvrent aucune des trois voies.
+        import contextlib
+        import io
+
+        todo = self._todo()
+        todo._pve_host_from_qemu = lambda: self.fail("VM locale ouverte")
+        todo._pve_host_manual = lambda: self.fail("saisie ouverte")
+        for answers in (["4", "x", "0"], [""]):
+            with (
+                self.subTest(answers=answers),
+                mock.patch(
+                    "script.todo.proxmox_menu.todo_prefs.get", return_value={}
+                ),
+                mock.patch("builtins.input", side_effect=answers),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+            ):
+                self.assertIsNone(todo._pve_pick_host())
+            for refused in answers[:-1]:
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{refused}", out.getvalue()
+                )
+        kept = {"target": "root@forged_a", "jump": ""}
+        with (
+            mock.patch(
+                "script.todo.proxmox_menu.todo_prefs.get", return_value=kept
+            ),
+            mock.patch("builtins.input", side_effect=["4"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(todo._pve_pick_host(), kept)
 
     def test_an_unknown_host_key_is_recognised(self):
         for texte in (
@@ -684,54 +727,140 @@ class TestChoixDeLHote(unittest.TestCase):
 
 
 class TestLeChoixDUneVm(unittest.TestCase):
-    """Une VM de l'hôte se choisit par son rang dans la liste, jamais par
-    son VMID à retaper : Show a VM IP address, Open the console on a VM,
-    Resize a VM disk, Delete VM(s) et Test a VM passent par là."""
+    """Une VM de l'hôte se choisit par son rang dans la liste ou par son
+    nom, jamais par son VMID à retaper : Show a VM IP address, Open the
+    console on a VM, Resize a VM disk, Delete VM(s), Test a VM et Changer
+    l'état passent par là. Une réponse invalide est dite, et la question
+    revient ; chaque liste de réponses finit par une réponse acceptée."""
 
     VMS = [
         {"vmid": "100", "name": "forged-a", "status": "running"},
         {"vmid": "101", "name": "forged-b", "status": "stopped"},
     ]
 
-    def _pick(self, answer, multiple=False):
-        """Les noms des VM que rend `_pve_pick_vm` quand on répond `answer`
-        à sa question, ou None."""
+    def _todo(self):
+        """Un TODO dont l'hôte porte VMS, et qui note chaque commande
+        envoyée à l'hôte dans `self.sent`, sans rien lancer."""
+        self.sent = []
+        todo = TODO.__new__(TODO)
+        todo._pve_vms = lambda: [dict(vm) for vm in self.VMS]
+        todo._pve_show = lambda cmd, **opts: self.sent.append(cmd) or (0, "")
+        return todo
+
+    def _pick(self, *answers, multiple=False):
+        """Les noms des VM que rend `_pve_pick_vm` quand on répond
+        `answers` à sa question, ou None ; ce qu'il imprime va dans
+        `self.shown`."""
         import contextlib
         import io
 
-        todo = TODO.__new__(TODO)
-        todo._pve_vms = lambda: [dict(vm) for vm in self.VMS]
         with (
-            mock.patch("builtins.input", return_value=answer),
-            contextlib.redirect_stdout(io.StringIO()),
+            mock.patch("builtins.input", side_effect=answers),
+            contextlib.redirect_stdout(io.StringIO()) as out,
         ):
-            picked = todo._pve_pick_vm(multiple=multiple)
+            picked = self._todo()._pve_pick_vm(multiple=multiple)
+        self.shown = out.getvalue()
         if picked is None:
             return None
         if multiple:
             return [vm["name"] for vm in picked]
         return picked["name"]
 
-    def test_one_vm_is_picked_only_by_its_shown_number(self):
-        # « 2 » choisit la deuxième, affichée [2] ; « 02 », « ٢ » (deux en
-        # écriture arabe) et « ² » ne sont pas un numéro affiché : rien
-        # n'est choisi, et TODO ne s'arrête pas sur une ValueError.
+    def test_one_vm_is_picked_by_its_shown_number_or_its_name(self):
+        # « 2 » choisit la deuxième, affichée [2], comme son nom ; « 02 »,
+        # « ٢ » (deux en écriture arabe), « ² » et le VMID ne sont pas un
+        # numéro affiché : chacun est dit invalide, et « 0 » renonce.
         self.assertEqual(self._pick("2"), "forged-b")
-        for answer in ("02", "٢", "²"):
-            with self.subTest(answer=answer):
-                self.assertIsNone(self._pick(answer))
+        self.assertEqual(self._pick("forged-b"), "forged-b")
+        self.assertIsNone(self._pick("02", "٢", "²", "101", "0"))
+        for refused in ("02", "٢", "²", "101"):
+            self.assertIn(f"{t('Invalid choice: ')}{refused}", self.shown)
+        self.assertIsNone(self._pick(""))
 
-    def test_several_vms_are_picked_only_by_their_shown_numbers(self):
-        # Delete VM(s) : chaque rang tel qu'affiché choisit sa VM, un autre
-        # ne choisit rien.
-        for answer, names in (
-            ("1, 2", ["forged-a", "forged-b"]),
-            ("01 2", ["forged-b"]),
-            ("٢", []),
-            ("² 1", ["forged-a"]),
+    def test_several_vms_are_picked_by_numbers_names_or_all(self):
+        # Delete VM(s) : chaque rang tel qu'affiché, chaque nom, une plage
+        # ou `tout` ; une réponse vide n'en prend aucune, et un seul
+        # morceau faux fait redemander la réponse entière.
+        for answers, names in (
+            (["1, 2"], ["forged-a", "forged-b"]),
+            (["tout"], ["forged-a", "forged-b"]),
+            (["forged-b 1"], ["forged-a", "forged-b"]),
+            (["01 2", "² 1", "2"], ["forged-b"]),
+            ([""], []),
+            (["0"], None),
         ):
-            with self.subTest(answer=answer):
-                self.assertEqual(self._pick(answer, multiple=True), names)
+            with self.subTest(answers=answers):
+                self.assertEqual(self._pick(*answers, multiple=True), names)
+
+    def test_only_a_chosen_vm_is_deleted_after_both_confirmations(self):
+        # --purge emporte disques et sauvegardes : une réponse vide, « 0 »
+        # ou une faute ne détruisent rien et ne posent pas la confirmation ;
+        # `tout` y mène, sa confirmation nomme les deux VM, et seules ses
+        # deux réponses oui détruisent.
+        import contextlib
+        import io
+
+        for answers in (
+            [""],
+            ["0"],
+            ["x", "0"],
+            ["tout", "n"],
+            ["tout", "o", "n"],
+        ):
+            todo = self._todo()
+            with (
+                self.subTest(answers=answers),
+                mock.patch("builtins.input", side_effect=answers) as asked,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                todo._pve_delete()
+            self.assertEqual(self.sent, [])
+            if answers[0] == "tout":
+                self.assertIn(
+                    "100 (forged-a), 101 (forged-b)",
+                    asked.call_args_list[1].args[0],
+                )
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=["forged-b", "o", "o"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._pve_delete()
+        self.assertEqual(self.sent, pve.destroy_cmds("101"))
+
+    def test_only_a_chosen_vm_changes_state_after_its_confirmation(self):
+        # `tout` mène à la confirmation, qui nomme les deux VM ; rien ne
+        # part avant son oui.
+        import contextlib
+        import io
+
+        for answers in (
+            [""],
+            ["0"],
+            ["x", "0"],
+            ["tout", "0"],
+            ["tout", "4", "0"],
+            ["tout", "1", "n"],
+        ):
+            todo = self._todo()
+            with (
+                self.subTest(answers=answers),
+                mock.patch("builtins.input", side_effect=answers),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+            ):
+                todo._pve_change_state()
+            self.assertEqual(self.sent, [])
+            if answers[-1] == "n":
+                self.assertIn(
+                    "start : forged-a (100), forged-b (101)", out.getvalue()
+                )
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=["1", "2", "o"]),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            todo._pve_change_state()
+        self.assertEqual(self.sent, ["qm shutdown 100", "qm list"])
 
 
 def entrees_de_deploy():

@@ -592,6 +592,10 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
     l'une éteignait les deux."""
 
     def test_selecting_one_twin_takes_only_that_one(self):
+        # Un nom que deux VM portent n'en désigne aucune : il est dit
+        # invalide, et la question revient.
+        import contextlib
+        import io
         import sys
 
         sys.argv = ["todo.py"]
@@ -602,22 +606,19 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
             {"vmid": 100, "name": "jumeau", "status": "running"},
             {"vmid": 101, "name": "jumeau", "status": "running"},
         ]
-        rangs = [str(i) for i in range(1, len(vms) + 1)]
         for choix, attendu in (
-            ("1", [100]),
-            ("2", [101]),
-            ("1,2", [100, 101]),
+            (["1"], [100]),
+            (["2"], [101]),
+            (["1,2"], [100, 101]),
+            (["jumeau", "2"], [101]),
         ):
-            voulus = {
-                int(r)
-                for r in todo._parse_index_selection(choix, rangs)
-                if str(r).isdigit()
-            }
-            self.assertEqual(
-                [vm["vmid"] for i, vm in enumerate(vms, 1) if i in voulus],
-                attendu,
-                choix,
-            )
+            with (
+                self.subTest(choix=choix),
+                mock.patch("builtins.input", side_effect=choix),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                choisies = todo._pve_pick_vm("", True, vms)
+            self.assertEqual([vm["vmid"] for vm in choisies], attendu)
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")

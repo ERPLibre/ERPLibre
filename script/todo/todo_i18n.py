@@ -350,6 +350,7 @@ TRANSLATIONS = {
         "fr": "Numéro de l'hôte SSH à sélectionner : ",
         "en": "Select SSH host number: ",
     },
+    "Which SSH host?": {"fr": "Quel hôte SSH ?", "en": "Which SSH host?"},
     "Invalid selection!": {
         "fr": "Sélection invalide!",
         "en": "Invalid selection!",
@@ -4832,10 +4833,6 @@ TRANSLATIONS = {
         "fr": "VM de cet hôte :",
         "en": "VMs on this host:",
     },
-    "Selection (number): ": {
-        "fr": "Sélection (numéro) : ",
-        "en": "Selection (number): ",
-    },
     "Deploy a VM on the Proxmox host": {
         "fr": "🚀 Déployer une VM sur l'hôte Proxmox",
         "en": "🚀 Deploy a VM on the Proxmox host",
@@ -4915,10 +4912,6 @@ TRANSLATIONS = {
     "freeze cloud-init, fix /etc/hosts, restart pmxcfs": {
         "fr": "geler cloud-init, corriger /etc/hosts, relancer pmxcfs",
         "en": "freeze cloud-init, fix /etc/hosts, restart pmxcfs",
-    },
-    "leave it alone": {
-        "fr": "ne rien toucher",
-        "en": "leave it alone",
     },
     "Cannot tell which address reaches this host.": {
         "fr": "Impossible de savoir quelle adresse atteint cet hôte.",
@@ -5862,10 +5855,6 @@ TRANSLATIONS = {
     "stop (pulls the plug)": {
         "fr": "arrêter (coupe le courant)",
         "en": "stop (pulls the plug)",
-    },
-    "Choice (blank = back): ": {
-        "fr": "Choix (vide = retour) : ",
-        "en": "Choice (blank = back): ",
     },
     "Confirm? (y/N): ": {
         "fr": "Confirmer ? (o/N) : ",

@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import time
 
-from script.todo import todo_prefs
+from script.todo import todo_prefs, ui
 from script.todo.menus import proxmox as menus_proxmox
 from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
@@ -88,26 +88,29 @@ class ProxmoxMenuMixin:
         return lab
 
     def _pve_pick_host(self):
-        """Choisit l'hôte Proxmox : VM locale, adresse, ou ~/.ssh/config."""
-        print(f"\n{t('Which Proxmox host?')}")
-        print(f"  [1] {t('From the local QEMU VMs')}")
-        print(f"  [2] {t('Type an address')}")
-        print(f"  [3] {t('From ~/.ssh/config')}")
+        """Choisit l'hôte Proxmox : VM locale, adresse, ~/.ssh/config, ou
+        celui retenu ; None pour [0] ou une réponse vide."""
+        sources = {
+            "qemu": t("From the local QEMU VMs"),
+            "manual": t("Type an address"),
+            "ssh_config": t("From ~/.ssh/config"),
+        }
         actuel = todo_prefs.get(self._PVE_PREF_KEY) or {}
         if actuel.get("target"):
-            print(f"  [4] {t('Keep')} : {self._pve_label(actuel)}")
-        choix = input(t("Choice: ")).strip()
-        if choix == "4" and actuel.get("target"):
+            sources["keep"] = f"{t('Keep')} : {self._pve_label(actuel)}"
+        choix = ui.choose(
+            t("Which Proxmox host?"), list(sources), labels=[*sources.values()]
+        )
+        if choix == "keep":
             self._pve_host_cache = actuel
             return actuel
-        if choix == "1":
+        if choix == "qemu":
             host = self._pve_host_from_qemu()
-        elif choix == "3":
+        elif choix == "ssh_config":
             host = self._pve_host_from_ssh_config()
-        elif choix == "2":
+        elif choix == "manual":
             host = self._pve_host_manual()
         else:
-            print(t("Cancelled."))
             return None
         if not host:
             return None
@@ -134,20 +137,18 @@ class ProxmoxMenuMixin:
         if not noms:
             print(f"\n{t('No VM found.')}")
             return None
-        print(f"\n{t('Local VMs:')}")
-        ips = {}
-        for i, nom in enumerate(noms, 1):
-            ip = self._qemu_vm_ip_now(nom) or ""
-            ips[nom] = ip
-            etat = self._qemu_domstate(nom)
-            print(f"  [{i}] {nom:<32} {ip or '-':<16} {etat}")
-        sel = input(t("Selection (number): ")).strip()
-        # Un numéro tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
-        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
-        if sel not in [str(rang) for rang in range(1, len(noms) + 1)]:
-            print(t("Invalid selection!"))
+        ips = {nom: self._qemu_vm_ip_now(nom) or "" for nom in noms}
+        nom = ui.choose(
+            t("Local VMs:"),
+            noms,
+            labels=[
+                f"{nom:<32} {ips[nom] or '-':<16} {self._qemu_domstate(nom)}"
+                for nom in noms
+            ],
+            names=dict(zip(noms, noms)),
+        )
+        if nom is None:
             return None
-        nom = noms[int(sel) - 1]
         ip = ips.get(nom)
         if not ip:
             print(f"  ⚠ {t('No IP for this VM: is it running?')}")
@@ -161,17 +162,21 @@ class ProxmoxMenuMixin:
         if not entrees:
             print(f"\n{t('No SSH hosts found in ~/.ssh/config')}")
             return None
-        print()
-        for i, (nom, info) in enumerate(entrees, 1):
+        labels = []
+        for nom, info in entrees:
             hn = info.get("hostname", nom)
             u = info.get("user", "")
             desc = nom + (f" ({hn})" if hn != nom else "")
-            print(f"  [{i}] {desc}{f' [{u}]' if u else ''}")
-        sel = input(t("Select SSH host number: ")).strip()
-        if sel not in [str(rang) for rang in range(1, len(entrees) + 1)]:
-            print(t("Invalid selection!"))
+            labels.append(f"{desc}{f' [{u}]' if u else ''}")
+        aliases = [nom for nom, _info in entrees]
+        alias = ui.choose(
+            t("Which SSH host?"),
+            aliases,
+            labels=labels,
+            names=dict(zip(aliases, aliases)),
+        )
+        if alias is None:
             return None
-        alias = entrees[int(sel) - 1][0]
         # L'alias SEUL : ssh y lira l'utilisateur, le port et le ProxyJump.
         return {"target": alias, "jump": ""}
 
@@ -428,34 +433,29 @@ class ProxmoxMenuMixin:
         code, out = self._pve_show("qm list", quiet=True)
         return pve.parse_qm_list(out) if code == 0 else []
 
-    def _pve_pick_vm(self, titre="", multiple=False):
-        """Choisit une VM de l'hôte (numéro de la liste, jamais le VMID à
-        retaper). Renvoie un dict, une liste si `multiple`, ou None."""
-        vms = self._pve_vms()
+    def _pve_pick_vm(self, titre="", multiple=False, vms=None):
+        """Choisit une VM de `vms`, par défaut celles de l'hôte, sous les
+        règles de `ui.choose` : son numéro tel que la liste l'écrit, ou son
+        nom quand aucune autre VM ne le porte — seul le VMID est unique sur
+        Proxmox. Renvoie un dict, ou avec `multiple` une liste ([] pour une
+        réponse vide), et None pour [0]."""
+        vms = self._pve_vms() if vms is None else vms
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
             return [] if multiple else None
-        print(f"\n{titre or t('VMs on this host:')}")
-        for i, vm in enumerate(vms, 1):
-            print(f"  [{i}] {vm['vmid']:<6} {vm['name']:<28} {vm['status']}")
-        if multiple:
-            print(f"  [all] {t('select all')}")
-        brut = input(t("Selection (number): ")).strip()
-        # Un rang tel qu'affiché, rien d'autre : int() lirait aussi « 02 »
-        # ou un chiffre d'une autre écriture, et lèverait sur « ² ».
-        rangs = [str(rang) for rang in range(1, len(vms) + 1)]
-        if multiple:
-            if brut.lower() in ("all", "*"):
-                return vms
-            return [
-                vms[int(jeton) - 1]
-                for jeton in re.split(r"[\s,]+", brut)
-                if jeton in rangs
-            ]
-        if brut in rangs:
-            return vms[int(brut) - 1]
-        print(t("Invalid selection!"))
-        return None
+        noms = [vm["name"] for vm in vms]
+        return ui.choose(
+            titre or t("VMs on this host:"),
+            vms,
+            multiple,
+            labels=[
+                f"{vm['vmid']:<6} {vm['name']:<28} {vm['status']}"
+                for vm in vms
+            ],
+            names={
+                vm["name"]: vm for vm in vms if noms.count(vm["name"]) == 1
+            },
+        )
 
     # -- Les commandes du menu ----------------------------------------- #
     def _pve_list(self):
@@ -478,8 +478,12 @@ class ProxmoxMenuMixin:
         print(f"\n  {len(vms)} VM, {actives} {t('running')}")
         # Le pendant du sous-menu de QEMU/KVM : la liste est le bon endroit
         # pour agir sur ce qu'on vient de lire.
-        print(f"\n  [1] {t('Change the state of one or more VMs')}")
-        if input(t("Choice (blank = back): ")).strip() == "1":
+        suite = ui.choose(
+            t("VMs on this host:"),
+            ["state"],
+            labels=[t("Change the state of one or more VMs")],
+        )
+        if suite == "state":
             self._pve_change_state(vms)
 
     def _pve_change_state(self, vms=None):
@@ -491,41 +495,20 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
 
-        vms = vms if vms is not None else self._pve_vms()
-        if not vms:
-            print(f"\n{t('No VM on this Proxmox host.')}")
-            return
-        print(f"\n{t('Available VMs:')}")
-        for i, vm in enumerate(vms, 1):
-            print(
-                f"  [{i}] {vm['vmid']:<7} {vm['name'][:34]:<34} {vm['status']}"
-            )
-        print(f"  [all] {t('select all')}")
-        brut = input(t("Selection (numbers, or 'all'): ")).strip().lower()
-        if not brut:
-            print(t("Nothing selected."))
-            return
-        if brut in ("all", "*"):
-            choisies = list(vms)
-        else:
-            # Par RANG, jamais par nom : deux VM du même hôte peuvent
-            # porter le même nom (seul le VMID est unique sur Proxmox), et
-            # cocher l'une éteindrait les deux.
-            rangs = self._parse_index_selection(
-                brut, [str(i) for i in range(1, len(vms) + 1)]
-            )
-            voulus = {int(r) for r in rangs if str(r).isdigit()}
-            choisies = [vm for i, vm in enumerate(vms, 1) if i in voulus]
+        choisies = self._pve_pick_vm(t("Available VMs:"), True, vms)
         if not choisies:
             print(t("Nothing selected."))
             return
-        print(
-            f"\n  [1] {t('start')}   [2] {t('shutdown (clean)')}"
-            f"   [3] {t('stop (pulls the plug)')}"
+        verbe = ui.choose(
+            t("Target state:"),
+            ["start", "shutdown", "stop"],
+            labels=[
+                t("start"),
+                t("shutdown (clean)"),
+                t("stop (pulls the plug)"),
+            ],
         )
-        geste = input(t("Choice: ")).strip()
-        verbe = {"1": "start", "2": "shutdown", "3": "stop"}.get(geste)
-        if not verbe:
+        if verbe is None:
             print(t("Cancelled."))
             return
         print(
@@ -912,15 +895,11 @@ class ProxmoxMenuMixin:
             etat, quoi = self._pve_cluster_state(host)
         if not quoi:
             return bool(etat["monte"])
-        print(f"\n  {t('Repair it from here?')}")
         if quoi == "hosts":
-            print(
-                f"  [1] {t('freeze cloud-init, fix /etc/hosts, restart pmxcfs')}"
-            )
+            geste = t("freeze cloud-init, fix /etc/hosts, restart pmxcfs")
         else:
-            print(f"  [1] {t('restart pmxcfs only (the address is fine)')}")
-        print(f"  [0] {t('leave it alone')}")
-        if input(t("Choice: ")).strip() != "1":
+            geste = t("restart pmxcfs only (the address is fine)")
+        if ui.choose(t("Repair it from here?"), [geste]) is None:
             return False
         if quoi == "hosts":
             ip = self._pve_ssh_ip(host)
@@ -1088,17 +1067,24 @@ class ProxmoxMenuMixin:
         # l'écran même où l'on demande l'accord.
         cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
-        print(f"  {t('qm create needs one. Two ways:')}")
+        deux_voies = t("qm create needs one. Two ways:")
         if not cidr:
+            print(f"  {deux_voies}")
             print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
             print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
             return ""
-        print(
-            f"  [1] {t('create an internal')} {pve.INTERNAL_BRIDGE}"
-            f" ({cidr}) + NAT — {t('touches no physical NIC')}"
+        voie = ui.choose(
+            deux_voies,
+            ["internal", "manual"],
+            labels=[
+                f"{t('create an internal')} {pve.INTERNAL_BRIDGE}"
+                f" ({cidr}) + NAT — {t('touches no physical NIC')}",
+                t("do it myself (bridge-ports <nic>, needs console)"),
+            ],
         )
-        print(f"  [2] {t('do it myself (bridge-ports <nic>, needs console)')}")
-        if input(t("Choice: ")).strip() != "1":
+        if voie is None:
+            return ""
+        if voie == "manual":
             print(f"\n  {t('To bridge the LAN, on the host:')}")
             print("    auto vmbr0")
             print("    iface vmbr0 inet static")
