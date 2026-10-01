@@ -151,22 +151,22 @@ class QemuRecoverMixin:
         print(f"   {t('a half-written file, an unreplayed journal.')}")
         choix = self._qemu_pick(
             t("What do you want to do?"),
-            ["read", "shutdown", "cancel"],
+            ["read", "shutdown"],
             "shutdown",
             [
                 t("Read anyway (read-only, no risk for the VM)"),
                 t("Shut the VM down cleanly, then read"),
-                t("Cancel"),
             ],
         )
-        if choix == "cancel":
+        if choix is None:
             return False
         if choix == "read":
             return True
         return self._qemu_shutdown_wait(name)
 
     def _qemu_recover_pick_filesystem(self, disk):
-        """Système de fichiers choisi dans le disque, ou "" si aucun.
+        """Système de fichiers choisi dans le disque ; "" quand le disque
+        n'en montre aucun, None pour [0].
 
         « list-filesystems » les rend tous, y compris ceux qu'on ne peut pas
         monter — swap, partitions vides. Les montrer quand même : leur absence

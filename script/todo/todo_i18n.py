@@ -3338,10 +3338,6 @@ TRANSLATIONS = {
         "fr": "Déployer quand même (nouveau run)",
         "en": "Deploy anyway (new run)",
     },
-    "Choice (number, blank = reopen): ": {
-        "fr": "Choix (numéro, vide = rouvrir) : ",
-        "en": "Choice (number, blank = reopen): ",
-    },
     "Python interpreter:": {
         "fr": "Interpreteur Python :",
         "en": "Python interpreter:",
@@ -4451,14 +4447,6 @@ TRANSLATIONS = {
         "fr": "Runs d'installation (du plus récent) :",
         "en": "Install runs (most recent first):",
     },
-    "Choice (number, blank = last): ": {
-        "fr": "Choix (numéro, vide = le dernier) : ",
-        "en": "Choice (number, blank = last): ",
-    },
-    "Invalid selection.": {
-        "fr": "Sélection invalide.",
-        "en": "Invalid selection.",
-    },
     "Resolving VM IP...": {
         "fr": "Résolution de l'IP de la VM…",
         "en": "Resolving VM IP...",
@@ -4479,10 +4467,6 @@ TRANSLATIONS = {
         "fr": "Installer un autre navigateur",
         "en": "Install another browser",
     },
-    "Choice (number, blank = w3m): ": {
-        "fr": "Choix (numéro, vide = w3m) : ",
-        "en": "Choice (number, blank = w3m): ",
-    },
     "Unknown package manager; install it manually.": {
         "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
         "en": "Unknown package manager; install it manually.",
@@ -4494,10 +4478,6 @@ TRANSLATIONS = {
     "Which browser to view the page?": {
         "fr": "Quel navigateur pour voir la page ?",
         "en": "Which browser to view the page?",
-    },
-    "Choice (number, blank = first): ": {
-        "fr": "Choix (numéro, vide = le premier) : ",
-        "en": "Choice (number, blank = first): ",
     },
     "Page may not have loaded: Odoo not started on :8069, "
     "or network/firewall.": {
@@ -5529,10 +5509,6 @@ TRANSLATIONS = {
         "fr": "cette VM n'a pas d'écran virtuel",
         "en": "this VM has no virtual screen",
     },
-    "Unknown VM(s):": {
-        "fr": "VM inconnue(s) :",
-        "en": "Unknown VM(s):",
-    },
     "Target state:": {
         "fr": "État cible :",
         "en": "Target state:",
@@ -5740,10 +5716,6 @@ TRANSLATIONS = {
     "Select VMs to delete:": {
         "fr": "Sélectionner les VM à effacer :",
         "en": "Select VMs to delete:",
-    },
-    "Selection (numbers, or 'all'): ": {
-        "fr": "Sélection (numéros, ou « all ») : ",
-        "en": "Selection (numbers, or 'all'): ",
     },
     "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
         "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",

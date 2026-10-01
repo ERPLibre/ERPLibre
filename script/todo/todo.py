@@ -1625,14 +1625,6 @@ class TODO(
         return 0
 
     @staticmethod
-    def _is_index(token, options):
-        """Vrai si le jeton est l'un des numéros qu'une liste affiche (1
-        pour la première) ; « 01 », « +1 » ou un chiffre d'une autre
-        écriture n'en sont aucun, la même règle que
-        `_parse_index_selection`."""
-        return token in {str(n) for n in range(1, len(options) + 1)}
-
-    @staticmethod
     def _parse_index_selection(raw, options):
         """« 1 3 » ou « 1,3 » -> sous-liste d'options, chacune désignée par
         son numéro tel qu'une liste l'écrit (1 pour la première) ou par son

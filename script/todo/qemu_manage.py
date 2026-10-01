@@ -13,7 +13,7 @@ import subprocess
 import time
 
 from script.execute.execute import Execute
-from script.todo import ssh_config, todo_install
+from script.todo import ssh_config, todo_install, ui
 from script.todo.qemu_cache_menu import bypass_menage
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
@@ -241,19 +241,22 @@ class QemuManageMixin:
         if not ask_advanced:
             return
         # Menu contextuel : infos avancées, ou changer l'état de VM.
-        print(f"\n{t('What do you want to do?')}")
-        print(f"  [1] {t('Advanced info (vCPU, RAM, disk)')}")
-        print(f"  [2] {t('Change the state of one or more VMs')}")
-        print(f"  [{t('Enter')}] {t('Nothing')}")
-        choice = input(t("Choice: ")).strip()
-        if choice == "1":
+        choice = ui.choose(
+            t("What do you want to do?"),
+            ["advanced", "state"],
+            labels=[
+                t("Advanced info (vCPU, RAM, disk)"),
+                t("Change the state of one or more VMs"),
+            ],
+        )
+        if choice == "advanced":
             self._qemu_list_vms_advanced()
-        elif choice == "2":
+        elif choice == "state":
             self._qemu_change_state()
 
     def _qemu_change_state(self):
-        """Démarre (« ouvrir ») ou éteint (« fermer ») une liste de VM saisie
-        séparée par des virgules, avec DOUBLE validation."""
+        """Démarre (« ouvrir ») ou éteint (« fermer ») des VM choisies sous
+        les règles d'un choix multiple, avec DOUBLE validation."""
         names = self._qemu_list_domains()
         if not names:
             print(f"\n{t('No VM found.')}")
@@ -261,48 +264,27 @@ class QemuManageMixin:
         # Liste NUMÉROTÉE, comme l'écran de suppression : les noms de VM sont
         # longs et se ressemblent, les retaper invite à la faute de frappe sur
         # une commande qui change l'état d'une machine.
-        print(f"\n{t('Available VMs:')}")
-        for i, n in enumerate(names, 1):
-            print(f"  [{i}] {n}")
-        print(f"  [all] {t('select all')}")
-        raw = input(t("Selection (numbers, or 'all'): ")).strip()
-        if not raw:
-            print(t("Nothing selected."))
-            return
-        if raw.lower() in ("all", "*"):
-            resolved = list(names)
-        else:
-            resolved = self._parse_index_selection(raw.lower(), names)
-            # Le parseur ignore en silence ce qu'il ne reconnaît pas. Sur une
-            # sélection qui va démarrer ou éteindre des VM, un numéro hors
-            # liste doit être dit, pas escamoté.
-            unknown = [
-                tok
-                for tok in re.split(r"[\s,]+", raw.strip())
-                if tok and tok not in names and not self._is_index(tok, names)
-            ]
-            if unknown:
-                print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
-                return
+        resolved = ui.choose(t("Available VMs:"), names, multi=True)
         if not resolved:
             print(t("Nothing selected."))
             return
         # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
-        print(f"\n{t('Target state:')}")
-        print(f"  [1] {t('Open (start)')}")
-        print(f"  [2] {t('Close (shut down)')}")
-        print(f"  [3] {t('Adjust hardware only (vCPU, RAM, 3D)')}")
-        st = input(t("Choice: ")).strip()
-        if st == "1":
-            action, verb = "start", t("start")
-        elif st == "2":
-            action, verb = "shutdown", t("shut down")
-        elif st == "3":
+        st = ui.choose(
+            t("Target state:"),
+            ["start", "shutdown", "hardware"],
+            labels=[
+                t("Open (start)"),
+                t("Close (shut down)"),
+                t("Adjust hardware only (vCPU, RAM, 3D)"),
+            ],
+        )
+        if st is None:
+            return
+        if st == "hardware":
             self._qemu_adjust_hardware(resolved)
             return
-        else:
-            print(t("Cancelled."))
-            return
+        action = st
+        verb = t("start") if st == "start" else t("shut down")
         # Le matériel d'une VM ne se règle QUE pendant qu'elle est éteinte :
         # démarrer est donc le dernier moment pour le faire, et le seul où la
         # question tombe juste.
@@ -1041,23 +1023,19 @@ class QemuManageMixin:
         except ImportError:
             return {}
 
-    def _qemu_pick(self, title, values, current, labels=None):
-        """Liste numérotée dont le DÉFAUT est la valeur actuelle.
-
-        Rendre la valeur actuelle sur une réponse vide, et sur une réponse
-        illisible : dans un formulaire de matériel, ne rien comprendre ne doit
-        rien changer.
-        """
-        labels = labels or values
-        print(f"{title} :")
-        for i, (val, lab) in enumerate(zip(values, labels), 1):
-            mark = " ←" if val == current else ""
-            print(f"      [{i}] {lab}{mark}")
-        ans = input("      " + t("Choice: ")).strip()
-        if not ans.isdigit():
-            return current
-        idx = int(ans)
-        return values[idx - 1] if 1 <= idx <= len(values) else current
+    @staticmethod
+    def _qemu_pick(title, values, current, labels=None):
+        """Liste numérotée dont le DÉFAUT, marqué, est la valeur actuelle
+        `current` quand elle est parmi `values` : la valeur choisie par son
+        numéro, ou sans `labels` par son nom, sous les règles de
+        `ui.choose` ; None pour [0], ou pour une réponse vide sans valeur
+        actuelle. Une réponse illisible est dite, et la question revient."""
+        return ui.choose(
+            title,
+            values,
+            default=current if current in values else None,
+            labels=labels,
+        )
 
     def _qemu_hw_prompts(self, rows, node, nets=None):
         """Même ajustement, en invites, quand Textual n'est pas disponible."""
@@ -1082,6 +1060,8 @@ class QemuManageMixin:
             auto = self._qemu_ask_bool(
                 f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
             )
+            # [0] rend None, que build_want lit comme la valeur actuelle :
+            # renoncer à un champ du formulaire n'y change rien.
             cpu = self._qemu_pick(f"    {t('CPU mode')}", cpus, r.get("cpu"))
             heads = ""
             if r.get("video"):
@@ -1371,28 +1351,18 @@ class QemuManageMixin:
         if not runs:
             print(t("No install run found in history."))
             return
-        print(f"\n{t('Install runs (most recent first):')}")
-        for i, r in enumerate(runs, 1):
-            names = ", ".join(v.get("name", "?") for v in r["vms"])
-            star = " *" if i == 1 else ""
-            print(
-                f"  [{i}] {r['label']} — {len(r['vms'])} VM{star}\n"
-                f"        {names}"
-            )
-        sel = input(t("Choice (number, blank = last): ")).strip()
-        run = runs[0]
-        if sel:
-            try:
-                idx = int(sel) - 1
-                if 0 <= idx < len(runs):
-                    run = runs[idx]
-                else:
-                    print(t("Invalid selection."))
-                    return
-            except ValueError:
-                print(t("Invalid selection."))
-                return
-        self._qemu_open_monitor(run["manifest"])
+        run = ui.choose(
+            t("Install runs (most recent first):"),
+            runs,
+            default=runs[0],
+            labels=[
+                f"{r['label']} — {len(r['vms'])} VM\n"
+                f"        {', '.join(v.get('name', '?') for v in r['vms'])}"
+                for r in runs
+            ],
+        )
+        if run is not None:
+            self._qemu_open_monitor(run["manifest"])
 
     def _qemu_open_monitor(self, manifest):
         """Ouvre le dashboard sur un manifeste, en installant Textual au
@@ -1438,13 +1408,15 @@ class QemuManageMixin:
             print(
                 f"     {t('Last activity:')} {mon._fmt_secs(int(run['idle']))}"
             )
-        print(f"\n  [1] {t('Reopen that monitoring')} *")
-        print(f"  [2] {t('Deploy anyway (new run)')}")
-        print(f"  [0] {t('Back')}")
-        sel = input(t("Choice (number, blank = reopen): ")).strip()
-        if sel == "2":
+        sel = ui.choose(
+            t("What do you want to do?"),
+            ["reopen", "deploy"],
+            default="reopen",
+            labels=[t("Reopen that monitoring"), t("Deploy anyway (new run)")],
+        )
+        if sel == "deploy":
             return False
-        if sel != "0":
+        if sel == "reopen":
             self._qemu_open_monitor(run["manifest"])
         return True
 
@@ -1456,22 +1428,15 @@ class QemuManageMixin:
         available = [b for b in CLI_BROWSERS if shutil.which(b)]
         if not available:
             return self._qemu_install_cli_browser()
-        print(f"\n{t('Which browser to view the page?')}")
-        for i, b in enumerate(available, 1):
-            print(f"  [{i}] {b}{' *' if i == 1 else ''}")
-        print(f"  [i] {t('Install another browser')}")
-        sel = input(t("Choice (number, blank = first): ")).strip().lower()
+        sel = ui.choose(
+            t("Which browser to view the page?"),
+            available,
+            default=available[0],
+            letters={"i": t("Install another browser")},
+        )
         if sel == "i":
             return self._qemu_install_cli_browser()
-        if not sel:
-            return available[0]
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(available):
-                return available[idx]
-        except ValueError:
-            pass
-        return available[0]
+        return sel
 
     def _qemu_install_cli_browser(self):
         """Demande QUEL navigateur CLI installer, affiche la commande adaptée
@@ -1482,17 +1447,16 @@ class QemuManageMixin:
             browser_install_command,
         )
 
-        print(f"\n{t('Which browser to install?')}")
-        for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
-            print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = w3m): ")).strip()
-        browser = INSTALLABLE_BROWSERS[0][0]
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(INSTALLABLE_BROWSERS):
-                browser = INSTALLABLE_BROWSERS[idx][0]
-        except ValueError:
-            pass
+        names = [name for name, _desc in INSTALLABLE_BROWSERS]
+        browser = ui.choose(
+            t("Which browser to install?"),
+            names,
+            default=names[0],
+            labels=[desc for _name, desc in INSTALLABLE_BROWSERS],
+            names=dict(zip(names, names)),
+        )
+        if browser is None:
+            return None
         cmd = browser_install_command(browser)
         if not cmd:
             print(t("Unknown package manager; install it manually."))
@@ -2526,18 +2490,7 @@ class QemuManageMixin:
         if not names:
             print(t("No VM found."))
             return
-        print(f"\n{t('Select VMs to delete:')}")
-        for i, n in enumerate(names, 1):
-            print(f"  [{i}] {n}")
-        print(f"  [all] {t('select all')}")
-        raw = input(t("Selection (numbers, or 'all'): ")).strip()
-        if not raw:
-            print(t("Nothing selected."))
-            return
-        if raw.lower() in ("all", "*"):
-            chosen = list(names)
-        else:
-            chosen = self._parse_index_selection(raw.lower(), names)
+        chosen = ui.choose(t("Select VMs to delete:"), names, multi=True)
         if not chosen:
             print(t("Nothing selected."))
             return

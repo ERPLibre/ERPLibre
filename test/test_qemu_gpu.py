@@ -35,6 +35,7 @@ from unittest import mock
 sys.argv = ["todo.py"]
 from script.todo import qemu_hardware as hw  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 
 def _deploy_qemu():
@@ -885,19 +886,34 @@ class TestHostNetworks(unittest.TestCase):
         self.assertIn("--inactive", vu["cmd"])
 
     def test_a_numbered_pick_defaults_to_the_current_value(self):
+        # Une réponse vide garde la valeur actuelle, marquée ; une réponse
+        # illisible est dite, et la question revient ; [0] rend None, que
+        # build_want lit comme la valeur actuelle : renoncer à un champ n'y
+        # change rien.
         todo = TODO.__new__(TODO)
-        out = io.StringIO()
-        for reponse, attendu in (
-            ("", "b"),
-            ("mille", "b"),
-            ("9", "b"),
-            ("1", "a"),
-            ("2", "b"),
+        for reponses, attendu in (
+            ([""], "b"),
+            (["mille", "9", "1"], "a"),
+            (["2"], "b"),
+            (["a"], "a"),
+            (["0"], None),
         ):
-            with mock.patch("builtins.input", lambda *a, r=reponse: r):
+            out = io.StringIO()
+            with mock.patch("builtins.input", side_effect=reponses):
                 with contextlib.redirect_stdout(out):
                     got = todo._qemu_pick("t", ["a", "b"], "b")
-            self.assertEqual(attendu, got, reponse)
+            self.assertEqual(attendu, got, reponses)
+            for refus in reponses[:-1]:
+                self.assertIn(
+                    f"{t('Invalid choice: ')}{refus}", out.getvalue()
+                )
+        self.assertIn(f"[2] b {t('(default)')}", out.getvalue())
+        self.assertEqual(
+            hw.build_want(
+                {"cpu": "host-model"}, "", "", False, False, cpu=None
+            )["cpu"],
+            "host-model",
+        )
 
 
 if __name__ == "__main__":

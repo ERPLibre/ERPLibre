@@ -1451,19 +1451,6 @@ class TestParseIndexSelection(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(parse(raw, options), [])
 
-    def test_is_index_agrees_with_the_parser(self):
-        # `_is_index` sert de garde à un appelant qui doit dire un numéro
-        # hors liste plutôt que l'escamoter ; elle doit reconnaître les
-        # mêmes numéros que `_parse_index_selection`, ni plus ni moins.
-        is_index = TODO._is_index
-        options = ["forged_a", "forged_b", "forged_c"]
-        for raw in ("1", "2", "3"):
-            with self.subTest(raw=raw):
-                self.assertTrue(is_index(raw, options))
-        for raw in ("01", "+1", "١", "0", "-1", "4"):
-            with self.subTest(raw=raw):
-                self.assertFalse(is_index(raw, options))
-
 
 class TestAttributsDeTODO(unittest.TestCase):
     """Tout `self.X` que `TODO` LIT est-il posé par TODO ou un mixin ?

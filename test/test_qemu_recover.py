@@ -105,7 +105,7 @@ class LaVmAllumee(unittest.TestCase):
         self.todo._qemu_domstate = lambda n: "shut off"
         self.assertTrue(self.todo._qemu_recover_ready("vm-a"))
 
-    def test_a_running_vm_offers_three_ways(self):
+    def test_a_running_vm_offers_two_ways_and_back(self):
         self.todo._qemu_domstate = lambda n: "running"
         vus = {}
 
@@ -117,16 +117,23 @@ class LaVmAllumee(unittest.TestCase):
         self.todo._qemu_pick = faux_pick
         with mock.patch("builtins.print"):
             self.assertTrue(self.todo._qemu_recover_ready("vm-a"))
-        self.assertEqual(["read", "shutdown", "cancel"], vus["valeurs"])
+        self.assertEqual(["read", "shutdown"], vus["valeurs"])
         # L'arrêt propre est le défaut : c'est la seule voie qui donne une
         # copie fidèle.
         self.assertEqual("shutdown", vus["defaut"])
 
-    def test_cancelling_stops_everything(self):
+    def test_going_back_stops_everything(self):
+        # [0] Retour renonce à la lecture : rien n'est lu ni arrêté, et une
+        # réponse illisible repose la question.
         self.todo._qemu_domstate = lambda n: "running"
-        self.todo._qemu_pick = lambda *a, **k: "cancel"
-        with mock.patch("builtins.print"):
-            self.assertFalse(self.todo._qemu_recover_ready("vm-a"))
+        self.todo._qemu_shutdown_wait = lambda n: self.fail("VM arrêtée")
+        for reponses in (["0"], ["3", "0"]):
+            with (
+                self.subTest(reponses=reponses),
+                mock.patch("builtins.input", side_effect=reponses),
+                mock.patch("builtins.print"),
+            ):
+                self.assertFalse(self.todo._qemu_recover_ready("vm-a"))
 
     def test_choosing_shutdown_waits_for_it(self):
         self.todo._qemu_domstate = lambda n: "running"
