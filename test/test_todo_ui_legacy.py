@@ -138,7 +138,7 @@ RAW_CALLS = {
     "script/todo/proxmox_menu.py": 13,
     "script/todo/qemu_access.py": 7,
     "script/todo/qemu_cache_menu.py": 17,
-    "script/todo/qemu_deploy.py": 31,
+    "script/todo/qemu_deploy.py": 28,
     "script/todo/qemu_install.py": 2,
     "script/todo/qemu_install_monitor.py": 8,
     "script/todo/qemu_manage.py": 35,

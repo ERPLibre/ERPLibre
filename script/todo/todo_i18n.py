@@ -5656,20 +5656,9 @@ TRANSLATIONS = {
         "fr": "Choisir des versions précises (liste séparée par des virgules)",
         "en": "Pick exact versions (comma-separated list)",
     },
-    "Selection (numbers, 'all', 'principal' or 'granulaire',"
-    " default: all): ": {
-        "fr": "Sélection (numéros, « all », « principal » ou « granulaire »,"
-        " défaut : all) : ",
-        "en": "Selection (numbers, 'all', 'principal' or 'granulaire',"
-        " default: all): ",
-    },
     "All versions:": {
         "fr": "Toutes les versions :",
         "en": "All versions:",
-    },
-    "Selection (comma-separated numbers): ": {
-        "fr": "Sélection (numéros séparés par des virgules) : ",
-        "en": "Selection (comma-separated numbers): ",
     },
     "s390x images only exist for:": {
         "fr": "images s390x disponibles seulement pour :",
@@ -5700,10 +5689,6 @@ TRANSLATIONS = {
     "Invalid selection, using": {
         "fr": "Sélection invalide, utilisation de",
         "en": "Invalid selection, using",
-    },
-    "select all": {
-        "fr": "tout sélectionner",
-        "en": "select all",
     },
     "Delete VM(s)": {
         "fr": "🗑  Effacer une ou plusieurs VM",
@@ -5951,14 +5936,6 @@ TRANSLATIONS = {
     "The main version of each distro (marked *)": {
         "fr": "La version principale de chaque distro (marquée *)",
         "en": "The main version of each distro (marked *)",
-    },
-    "Selection (numbers, 'all' or 'principal', default: all): ": {
-        "fr": "Sélection (numéros, « all » ou « principal », défaut : all) : ",
-        "en": "Selection (numbers, 'all' or 'principal', default: all): ",
-    },
-    "Selection (numbers, or 'all', default: all): ": {
-        "fr": "Sélection (numéros, ou « all », défaut : all) : ",
-        "en": "Selection (numbers, or 'all', default: all): ",
     },
     "Nothing selected.": {
         "fr": "Rien de sélectionné.",

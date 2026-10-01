@@ -16,7 +16,7 @@ import subprocess
 import threading
 import time
 
-from script.todo import todo_prefs
+from script.todo import todo_prefs, ui
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
 
@@ -1770,61 +1770,57 @@ class QemuDeployMixin:
         def arches_for(distro):
             return self._qemu_arches_for(distro, arch)
 
-        # 1) Distributions : multi-sélection, catalogue complet, principal (la
-        # version par défaut de chaque distro, marquée d'un *), ou granulaire
-        # (liste à plat de TOUTES les versions × archis, choix par virgules).
-        # Avec [all] archis, chaque version se décline en une VM par archi.
-        print(f"\n{t('Distributions:')}")
-        for i, d in enumerate(distros, 1):
+        # 1) Distributions, sous les règles d'un choix multiple, ou l'une de
+        # trois actions : [c] le catalogue complet, [p] la version par défaut
+        # de chaque distro (marquée d'un *), [g] la liste à plat de TOUTES les
+        # versions × archis. Avec [all] archis, chaque version se décline en
+        # une VM par archi. Une réponse vide ne prend rien.
+        labels = []
+        for d in distros:
             default_v = mod.DISTROS[d][1]
             vers = ", ".join(
                 (v + " *" if v == default_v else v) for v in mod.DISTROS[d][0]
             )
-            print(f"  [{i}] {d} ({vers}){self._qemu_stat_avg('distro', d)}")
-        print(f"  [all] {t('Whole catalog (every version)')}")
-        print(
-            f"  [principal] {t('The main version of each distro (marked *)')}"
+            labels.append(f"{d} ({vers}){self._qemu_stat_avg('distro', d)}")
+        raw = ui.choose(
+            t("Distributions:"),
+            distros,
+            multi=True,
+            labels=labels,
+            names=dict(zip(distros, distros)),
+            letters={
+                "c": t("Whole catalog (every version)"),
+                "p": t("The main version of each distro (marked *)"),
+                "g": t("Pick exact versions (comma-separated list)"),
+            },
         )
-        print(
-            f"  [granulaire] {t('Pick exact versions (comma-separated list)')}"
-        )
-        raw = (
-            input(
-                t(
-                    "Selection (numbers, 'all', 'principal' or 'granulaire',"
-                    " default: all): "
-                )
-            )
-            .strip()
-            .lower()
-        )
-        catalog_all = raw in ("", "all", "*")
-        principal = raw in ("principal", "each", "p")
-        granular = raw in ("granulaire", "granular", "g")
+        if not raw:
+            print(t("Nothing selected."))
+            return None
+        catalog_all = raw == "c"
 
         selected = []  # (distro, version, ram_mb, disk_str, arch)
-        if granular:
+        if raw == "g":
             # Liste APLATIE distro + version + ARCHITECTURE : on choisit des
-            # combinaisons précises par numéros séparés de virgules. La liste
-            # vient du catalogue partagé avec le formulaire TUI.
+            # combinaisons précises. La liste vient du catalogue partagé avec
+            # le formulaire TUI.
             flat = self._qemu_catalog_entries(mod, distros, arch)
-            print(f"\n{t('All versions:')}")
-            for i, e in enumerate(flat, 1):
-                star = " *" if e["default"] else ""
-                print(
-                    f"  [{i}] {e['distro']} {e['version']}{star} "
-                    f"[{e['arch']}]  (RAM≥{e['ram']}Mo, {e['disk']})"
-                )
-            r = (
-                input(t("Selection (comma-separated numbers): "))
-                .strip()
-                .lower()
+            chosen = ui.choose(
+                t("All versions:"),
+                flat,
+                multi=True,
+                labels=[
+                    f"{e['distro']} {e['version']}"
+                    f"{' *' if e['default'] else ''} [{e['arch']}]"
+                    f"  (RAM≥{e['ram']}Mo, {e['disk']})"
+                    for e in flat
+                ],
             )
-            for e in self._parse_index_selection(r, flat):
+            for e in chosen or []:
                 selected.append(
                     (e["distro"], e["version"], e["ram"], e["disk"], e["arch"])
                 )
-        elif principal:
+        elif raw == "p":
             # Une VM par distro (version par défaut) × chaque archi supportée.
             for d in distros:
                 versions_map, default_v = mod.DISTROS[d]
@@ -1832,35 +1828,25 @@ class QemuDeployMixin:
                 for a in arches_for(d):
                     selected.append((d, default_v, ram, disk, a))
         else:
-            sel_distros = (
-                distros
-                if catalog_all
-                else self._parse_index_selection(raw, distros)
-            )
-            if not sel_distros:
-                print(t("Nothing selected."))
-                return None
-            # 2) Versions par distro (multi-sélection) ; « all » si catalogue.
-            for d in sel_distros:
+            # 2) Versions par distro (choix multiple) ; toutes si catalogue.
+            # [0] renonce au déploiement entier.
+            for d in distros if catalog_all else raw:
                 versions_map = mod.DISTROS[d][0]
-                vlist = list(versions_map)
-                if catalog_all:
-                    chosen = vlist
-                else:
-                    print(f"\n{t('Versions for')} {d.capitalize()} :")
-                    for i, v in enumerate(vlist, 1):
-                        _c, _o, ram, disk = versions_map[v]
-                        stat = self._qemu_stat_avg("version", v, d)
-                        print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk}){stat}")
-                    print(f"  [all] {t('select all')}")
-                    r = input(
-                        t("Selection (numbers, or 'all', default: all): ")
-                    ).strip()
-                    chosen = (
-                        vlist
-                        if r.lower() in ("", "all", "*")
-                        else self._parse_index_selection(r.lower(), vlist)
+                chosen = list(versions_map)
+                if not catalog_all:
+                    chosen = ui.choose(
+                        f"{t('Versions for')} {d.capitalize()} :",
+                        chosen,
+                        multi=True,
+                        labels=[
+                            f"{v}  (RAM≥{ram}Mo, {disk})"
+                            f"{self._qemu_stat_avg('version', v, d)}"
+                            for v, (_c, _o, ram, disk) in versions_map.items()
+                        ],
+                        names=dict(zip(chosen, chosen)),
                     )
+                if chosen is None:
+                    return None
                 for v in chosen:
                     _c, _o, ram, disk = versions_map[v]
                     for a in arches_for(d):
