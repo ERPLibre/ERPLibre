@@ -509,7 +509,6 @@ class ProxmoxMenuMixin:
             ],
         )
         if verbe is None:
-            print(t("Cancelled."))
             return
         print(
             f"\n  {verbe} : "
