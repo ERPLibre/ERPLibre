@@ -20,10 +20,10 @@ collée valant « 0 » déclenche alors une entrée de menu. La conversation lit
 donc par `input()`, sur une invite d'une seule ligne, et toute commande porte
 une barre oblique initiale.
 
-`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, que seul `__main__`
-rattrape au-delà du menu : sans capture locale, une interruption pendant une
-réponse terminerait le CLI entier. Chaque question d'ici l'attrape et rend
-la main au menu.
+`click.prompt` lève `Abort` sur Ctrl+C comme sur Ctrl+D, et `ui.choose`
+laisse passer Ctrl+C, que seul `__main__` rattrape au-delà du menu : sans
+capture locale, une interruption pendant une réponse terminerait le CLI
+entier. Chaque question d'ici l'attrape et rend la main au menu.
 
 Le dépôt n'a ni pager, ni progression sur place : la sortie s'ajoute ligne à
 ligne. Une réponse longue se ferme sur une ligne de pied, jamais sur un
@@ -37,6 +37,7 @@ import time
 
 import click
 
+from script.todo import ui
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
@@ -58,12 +59,6 @@ COMMANDES_PHASE_1 = (
     "/m",
     "/save",
 )
-
-# Le catalogue se choisit par LETTRE. Le menu qui précède numérote ses
-# entrées ; une seconde liste numérotée juste après inviterait à retaper un
-# numéro de menu. Un chiffre reste accepté comme rang, parce que le doigt
-# vient d'en taper un.
-LETTRES = "abcdefghijklmnopqrstuvwxyz"
 
 # Les marques de compatibilité. Seule une exigence CONTREDITE par un champ
 # réellement lu sur le serveur grise ; l'inconnu et l'estimé restent
@@ -306,17 +301,24 @@ class AssistantMenuMixin:
         """Supprimer un serveur connu, son nom retapé en entier.
 
         Une frappe sur « o » se donne par réflexe ; recopier un nom oblige à
-        regarder ce qu'on retire.
+        regarder ce qu'on retire. Le libellé vaut l'hôte par défaut : deux
+        serveurs d'un même hôte le partagent, et seul leur numéro les
+        distingue ; seul le serveur choisi part.
         """
         connus = llm_servers.load(get_config=self._llm_get_config)
-        noms = [s.label for s in connus]
-        for rang, nom in enumerate(noms, 1):
-            print(f"[{rang}] {nom}")
+        libelles = [serveur.label for serveur in connus]
         try:
-            choisis = self._parse_index_selection(
-                click.prompt(t("Delete a server")), noms
+            choisi = ui.choose(
+                t("Delete a server"),
+                connus,
+                labels=libelles,
+                names={
+                    libelle: serveur
+                    for libelle, serveur in zip(libelles, connus)
+                    if libelles.count(libelle) == 1
+                },
             )
-            if not choisis:
+            if choisi is None:
                 return
             frappe = click.prompt(
                 t("Type the server name in full to delete it:"),
@@ -325,16 +327,16 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
-        if frappe != choisis[0]:
+        if frappe != choisi.label:
             print(t("Destination not retyped — nothing was sent."))
             return
-        restants = [s for s in connus if s.label != choisis[0]]
+        restants = [s for s in connus if s is not choisi]
         llm_servers.save(
             llm_servers.assign_handles(restants),
             set_config=self._llm_set_config,
         )
         state = self._llm_state()
-        if state["serveur"] and state["serveur"].label == choisis[0]:
+        if state["serveur"] == choisi:
             state["serveur"] = None
 
     def _llm_search(self):
@@ -832,14 +834,23 @@ class AssistantMenuMixin:
         propriétaire : cette frontière n'est pas à rouvrir pour décorer une
         liste.
         """
-        from script.todo.assistant import claude_sessions as cs
-
         if flotte is None:
             flotte = self._claude_flotte()
         if not flotte:
             print(t("No session on this machine."))
             return
-        for rang, session in enumerate(flotte, 1):
+        for rang, libelle in enumerate(self._claude_libelles(flotte), 1):
+            print(f"  [{rang}] {libelle}")
+
+    @staticmethod
+    def _claude_libelles(flotte):
+        """Le libellé de chaque session de `flotte`, sur deux lignes : son
+        identifiant réduit et son état, puis son répertoire, sa branche et
+        sa version."""
+        from script.todo.assistant import claude_sessions as cs
+
+        libelles = []
+        for session in flotte:
             vue = cs.displayable(session)
             if vue["live"]:
                 etat = (
@@ -848,27 +859,34 @@ class AssistantMenuMixin:
                 )
             else:
                 etat = t("resumable, not running")
-            print(f"  [{rang}] {vue['id']}  {etat}")
-            print(
-                f"        {vue['dir']}"
+            libelles.append(
+                f"{vue['id']}  {etat}\n        {vue['dir']}"
                 f"{'  ' + vue['branch'] if vue['branch'] else ''}"
                 f"{'  ' + vue['version'] if vue['version'] else ''}"
             )
+        return libelles
 
     def _claude_choisir(self, flotte):
-        """La session désignée par un rang tel que la liste l'affiche, ou
-        `None`."""
+        """La session désignée par son numéro tel que la liste l'affiche,
+        ou par son identifiant réduit quand aucune autre ne le porte, sous
+        les règles de `ui.choose` ; `None` pour [0], une réponse vide ou
+        Ctrl+C."""
+        from script.todo.assistant import claude_sessions as cs
+
         if not flotte:
             print(t("No session on this machine."))
             return None
-        self._claude_lister(flotte)
+        ids = [cs.displayable(session)["id"] for session in flotte]
         try:
-            reponse = click.prompt(t("Choice")).strip()
-        except (KeyboardInterrupt, click.exceptions.Abort):
+            return ui.choose(
+                t("Which session?"),
+                flotte,
+                labels=self._claude_libelles(flotte),
+                names={i: s for i, s in zip(ids, flotte) if ids.count(i) == 1},
+            )
+        except KeyboardInterrupt:
             print()
             return None
-        rangs = [str(rang) for rang in range(1, len(flotte) + 1)]
-        return flotte[int(reponse) - 1] if reponse in rangs else None
 
     def _claude_questionner(self, flotte=None):
         """Poser UNE question à une session de `flotte`, ou, sans elle, de
@@ -902,15 +920,19 @@ class AssistantMenuMixin:
         detenteur = cs.held_by(session)
         if detenteur:
             avis = t("This session is open elsewhere. A branch would be lost.")
-            print(f"⚠ {avis}")
-            print(f"  [1] {t('Branch a copy (recommended)')}")
-            print(f"  [2] {t('Write into the held session')}")
             try:
-                choix = click.prompt(t("Choice")).strip()
-            except (KeyboardInterrupt, click.exceptions.Abort):
+                choix = ui.choose(
+                    f"⚠ {avis}",
+                    ["fork", "write"],
+                    labels=[
+                        t("Branch a copy (recommended)"),
+                        t("Write into the held session"),
+                    ],
+                )
+            except KeyboardInterrupt:
                 print()
                 return
-            if choix == "2":
+            if choix == "write":
                 try:
                     frappe = click.prompt(
                         t("Type the pid of the holder to write into it:"),
@@ -923,7 +945,7 @@ class AssistantMenuMixin:
                     print(t("Nothing has been sent."))
                     return
                 fork = False
-            elif choix != "1":
+            elif choix is None:
                 return
         try:
             question = click.prompt(t("Write your question "))
@@ -1048,12 +1070,8 @@ class AssistantMenuMixin:
         ]
 
     def _llm_gpt_catalogue(self):
-        """Choisir un outil, par lettre.
-
-        Une lettre plutôt qu'un numéro : le menu qui précède numérote ses
-        entrées, et une seconde liste numérotée juste après fait retaper un
-        numéro de menu. Un chiffre reste accepté comme rang, parce que le
-        doigt vient d'en taper un.
+        """Choisir un outil, par son numéro ou son nom, sous les règles de
+        `ui.choose` ; [d] détaille les fichiers d'outils illisibles.
 
         Un outil ⛔ imprime sa raison et re-demande : il n'est jamais avalé en
         silence, et jamais lancé.
@@ -1069,40 +1087,47 @@ class AssistantMenuMixin:
         while True:
             appariement = self._llm_apparier(gpts)
             serveur = self._llm_current() or REPLI_OPENAI
-            print(f"{t('Which gpt tool?')}    {self._llm_label(serveur)}")
-            for rang, (outil, verdict, raison) in enumerate(appariement):
-                marque = MARQUE.get(verdict, "")
+            # Les légendes précèdent la question, qui reste la ligne qui
+            # introduit la liste.
+            question = f"{t('Which gpt tool?')}    {self._llm_label(serveur)}"
+            if any(v != "ok" for _, v, _ in appariement):
+                question = (
+                    f"⚠️ {t('a requirement could not be checked')}"
+                    f" · ⛔ {t('a requirement is contradicted')}\n{question}"
+                )
+            if fatals:
+                question = (
+                    f"⚠ {len(fatals)} {t('unreadable gpt files')}\n{question}"
+                )
+            noms = [t(outil.name) for outil, _v, _r in appariement]
+            try:
                 # Le nom sur sa ligne, la description en dessous : un nom de
                 # gpt est une phrase, et les deux bout à bout dépassent la
                 # largeur d'un terminal — une entrée qui s'enroule se lit
                 # moins bien que deux lignes assumées.
-                print(f"  [{LETTRES[rang]}] {marque} {t(outil.name)}")
-                print(f"        {t(outil.description)[:LARGEUR]}")
-            print(f"  [0] {t('Back')}")
-            if any(v != "ok" for _, v, _ in appariement):
-                print(
-                    f"      ⚠️ {t('a requirement could not be checked')}"
-                    f" · ⛔ {t('a requirement is contradicted')}"
+                rang = ui.choose(
+                    question,
+                    range(len(appariement)),
+                    labels=[
+                        f"{MARQUE.get(verdict, '')} {nom}\n"
+                        f"        {t(outil.description)[:LARGEUR]}"
+                        for nom, (outil, verdict, _r) in zip(noms, appariement)
+                    ],
+                    names={
+                        nom: rang
+                        for rang, nom in enumerate(noms)
+                        if noms.count(nom) == 1
+                    },
+                    letters={"d": t("details")} if fatals else None,
                 )
-            if fatals:
-                print(
-                    f"      ⚠ {len(fatals)} {t('unreadable gpt files')}"
-                    f" — [d] {t('details')}"
-                )
-            try:
-                reponse = click.prompt(t("Choice")).strip().lower()
-            except (KeyboardInterrupt, click.exceptions.Abort):
+            except KeyboardInterrupt:
                 print()
                 return
-            if reponse in ("0", ""):
+            if rang is None:
                 return
-            if reponse == "d" and fatals:
+            if rang == "d":
                 for souci in problemes:
                     self._llm_dire_probleme(souci)
-                continue
-            rang = self._llm_rang(reponse, len(appariement))
-            if rang is None:
-                print(t("Command not found !"))
                 continue
             outil, verdict, raison = appariement[rang]
             if verdict == "no":
@@ -1112,17 +1137,6 @@ class AssistantMenuMixin:
             print(f"✅ {t(outil.name)}")
             self._llm_conversation()
             return
-
-    @staticmethod
-    def _llm_rang(reponse, combien):
-        """Le rang désigné par une lettre, ou par un numéro écrit comme on
-        compte les `combien` outils (« 1 », « 2 »…), sinon `None` : « 01 »,
-        « ² » ou un chiffre d'une autre écriture ne désignent rien."""
-        if len(reponse) == 1 and reponse in LETTRES:
-            rang = LETTRES.index(reponse)
-            return rang if rang < combien else None
-        numeros = [str(n) for n in range(1, combien + 1)]
-        return numeros.index(reponse) if reponse in numeros else None
 
     def _llm_raison(self, outil, raison):
         """La raison d'un refus, ses trous remplis.
@@ -1243,11 +1257,13 @@ class AssistantMenuMixin:
                 )
         print(f"   {t('What the filter checks')}")
         try:
-            reponse = click.prompt(f"[c] {t('continue')} · [0] {t('cancel')}")
-        except (KeyboardInterrupt, click.exceptions.Abort):
+            reponse = ui.choose(
+                t("Send it?"), [], letters={"c": t("continue")}
+            )
+        except KeyboardInterrupt:
             print()
             return False
-        if reponse.strip().lower() != "c":
+        if reponse != "c":
             print(t("Nothing has been sent."))
             return False
         return True

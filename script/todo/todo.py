@@ -1625,20 +1625,6 @@ class TODO(
         return 0
 
     @staticmethod
-    def _parse_index_selection(raw, options):
-        """« 1 3 » ou « 1,3 » -> sous-liste d'options, chacune désignée par
-        son numéro tel qu'une liste l'écrit (1 pour la première) ou par son
-        nom ; « 01 », « +1 » ou un chiffre d'une autre écriture ne
-        désignent aucune option."""
-        numbers = {str(n): option for n, option in enumerate(options, 1)}
-        chosen = []
-        for tok in re.split(r"[\s,]+", raw.strip()):
-            option = numbers.get(tok, tok if tok in options else None)
-            if tok and option is not None and option not in chosen:
-                chosen.append(option)
-        return chosen
-
-    @staticmethod
     def _fmt_dur(secs):
         """Durée lisible : « 45s » ou « 2m05s »."""
         secs = int(secs)

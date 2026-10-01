@@ -14686,10 +14686,7 @@ TRANSLATIONS = {
         "fr": "Ce que le filtre contrôle : adresses, courriels, chemins de compte. Pas les noms.",
         "en": "What the filter checks",
     },
-    "cancel": {
-        "fr": "annuler",
-        "en": "cancel",
-    },
+    "Send it?": {"fr": "L'envoyer ?", "en": "Send it?"},
     "Nothing has been sent.": {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
@@ -14760,6 +14757,7 @@ TRANSLATIONS = {
         "fr": "📋 Lister les sessions locales",
         "en": "📋 List local sessions",
     },
+    "Which session?": {"fr": "Quelle session ?", "en": "Which session?"},
     "Ask a question to a session": {
         "fr": "❓ Poser une question à une session",
         "en": "❓ Ask a question to a session",
