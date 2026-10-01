@@ -152,20 +152,20 @@ def choice_question(
 def chosen_keys(message, answer):
     """Les clés que nomme `answer` à la question `message` d'un choix
     (`choice_question`) : un numéro tel que la liste l'écrit, jamais
-    « 01 », « +1 » ni « ١ » ; une lettre d'action, sans casse ; le nom
-    exact d'une option. « 0 » rend ["0"], le retour. Une réponse vide rend
-    le défaut d'un choix simple, ["0"] sans lui, et [] pour un choix
-    multiple : jamais toutes les options. Un choix multiple lit aussi les
-    plages « 2-5 », dont chaque borne est un numéro affiché, et
-    `ALL_WORDS`, séparés de virgules ou d'espaces, et rend ses clés dans
-    l'ordre de la liste, sans doublon ; un nom qui porte une espace ou une
-    virgule y est coupé en morceaux, et son option ne s'y choisit que par
-    son numéro. None pour une réponse qui ne se lit pas ainsi, ou dont un
-    morceau se lit de deux façons : le nom d'une option qui est le numéro
-    d'une autre, une lettre ou un mot de `ALL_WORDS`. Une lettre d'action
-    qui est aussi le nom d'une option, tapée telle que la liste l'écrit,
-    est donc invalide, et cette option ne se choisit que par son
-    numéro."""
+    « 01 », « +1 » ni « ١ » ; une lettre d'action, sans casse, seule dans
+    sa réponse ; le nom exact d'une option. « 0 » rend ["0"], le retour.
+    Une réponse vide rend le défaut d'un choix simple, ["0"] sans lui, et
+    [] pour un choix multiple : jamais toutes les options. Un choix
+    multiple lit aussi les plages « 2-5 », dont chaque borne est un numéro
+    affiché, et `ALL_WORDS`, séparés de virgules ou d'espaces, et rend ses
+    clés dans l'ordre de la liste, sans doublon ; un nom qui porte une
+    espace ou une virgule y est coupé en morceaux, et son option ne s'y
+    choisit que par son numéro. None pour une réponse qui ne se lit pas
+    ainsi, qui mêle une lettre à une autre réponse, ou dont un morceau se
+    lit de deux façons : le nom d'une option qui est le numéro d'une
+    autre, une lettre ou un mot de `ALL_WORDS`. Une lettre d'action qui
+    est aussi le nom d'une option, tapée telle que la liste l'écrit, est
+    donc invalide, et cette option ne se choisit que par son numéro."""
     typed = answer.strip()
     keys = [option["key"] for option in message["options"]]
     numbers = [key for key in keys if key.isdecimal() and key != "0"]
@@ -191,6 +191,8 @@ def chosen_keys(message, answer):
         if not readings or any(r != readings[0] for r in readings):
             return None
         picked |= readings[0]
+    if len(picked) > 1 and picked & set(letters):
+        return None
     return [key for key in keys if key in picked]
 
 
@@ -294,25 +296,25 @@ class BasePort:
         ou par un nom de `names` ({nom affiché: option}) ; sans `labels`,
         une option qui est une chaîne est aussi son nom. `default`, une
         option d'un choix simple, est ce que prend une réponse vide ; une
-        action de `letters` ({lettre: libellé}) rend sa lettre. Une lettre
-        qui est aussi le nom d'une option se lit de deux façons : tapée
-        telle que la liste l'écrit, elle est invalide, et cette option ne
-        se choisit que par son numéro. Dans un choix multiple, un nom qui
-        porte une espace ou une virgule ne se tape pas, coupé par les
-        séparateurs : son option s'y choisit par son numéro. Une réponse
-        invalide le dit (`notice`) et la question revient. Les règles sont
-        celles de `chosen_keys` ; la question, un `ask` de genre `choose`
-        (`choice_question`), posé par `menu`. ValueError, avant de
-        demander, pour un défaut ou des lettres dans un choix multiple, une
-        lettre hors de a à z, un libellé de plus ou de moins que d'options,
-        un défaut ou un nom hors des options."""
+        action de `letters` ({lettre: libellé}), tapée seule, rend sa lettre,
+        en choix multiple comme en choix simple. Une lettre qui est aussi le
+        nom d'une option se lit de deux façons : tapée telle que la liste
+        l'écrit, elle est invalide, et cette option ne se choisit que par son
+        numéro. Dans un choix multiple, un nom qui porte une espace ou une
+        virgule ne se tape pas, coupé par les séparateurs : son option s'y
+        choisit par son numéro. Une réponse invalide le dit (`notice`) et la
+        question revient. Les règles sont celles de `chosen_keys` ; la
+        question, un `ask` de genre `choose` (`choice_question`), posé par
+        `menu`. ValueError, avant de demander, pour un défaut dans un choix
+        multiple, une lettre hors de a à z, un libellé de plus ou de moins que
+        d'options, un défaut ou un nom hors des options."""
         options = list(options)
         if labels is None:
             labels = [str(option) for option in options]
             strings = [option for option in options if isinstance(option, str)]
             names = {**dict(zip(strings, strings)), **(names or {})}
-        if multi and (default is not None or letters):
-            raise ValueError("a multiple choice has no default nor letter")
+        if multi and default is not None:
+            raise ValueError("a multiple choice has no default")
         if len(labels) != len(options) or not all(
             re.fullmatch("[a-z]+", letter) for letter in letters or ()
         ):
@@ -335,12 +337,12 @@ class BasePort:
                 )
             elif keys == ["0"]:
                 return None
+            elif keys and not keys[0].isdecimal():
+                return keys[0]
             elif multi:
                 return [options[int(key) - 1] for key in keys]
-            elif keys[0].isdecimal():
-                return options[int(keys[0]) - 1]
             else:
-                return keys[0]
+                return options[int(keys[0]) - 1]
 
     def pick_path(self, start, directory=False):
         """Le chemin absolu d'un fichier, ou avec `directory` d'un

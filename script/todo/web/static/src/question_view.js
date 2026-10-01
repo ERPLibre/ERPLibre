@@ -14,9 +14,9 @@
 //   onglet qui reprend la session, le fait repartir de `timeout_s`.
 //   L'échéance qui compte est celle du worker, qui prend le défaut et
 //   ferme la question ;
-// - choose avec `multi` : une case à cocher par option, Valider, Tout, qui
-//   les prend toutes, et l'entrée 0, le retour (un choix simple est un
-//   menu : MenuView).
+// - choose avec `multi` : une case à cocher par option numérotée, Valider,
+//   Tout, qui les prend toutes, un bouton par action à lettre et l'entrée
+//   0, le retour (un choix simple est un menu : MenuView).
 // Une confirmation et un choix gardent le champ « Autre réponse ». Chaque
 // widget a un nom accessible tiré de `speak`, et Annuler, qui fait ce que
 // fait Ctrl+D au terminal : la question finit sans réponse (EOFError,
@@ -32,6 +32,7 @@ import {
     ALL_ANSWER,
     ARM,
     backItem,
+    choiceActions,
     choiceBoxes,
     choiceValue,
     composing,
@@ -82,6 +83,12 @@ export class QuestionView extends Component {
                         t-esc="env.t('Validate')"/>
                     <button type="button" t-att-disabled="locked" t-on-click="() => this.send(allAnswer)"
                         t-esc="env.t('All')"/>
+                    <button t-foreach="actions" t-as="action" t-key="action.key" type="button" class="entry"
+                        t-att-disabled="locked" t-att-aria-label="action.key + '. ' + (action.speak or action.label)"
+                        t-on-click="() => this.send(action.key)">
+                        <span class="key" t-esc="action.key + '.'"/>
+                        <span t-esc="action.label"/>
+                    </button>
                     <button t-if="back" type="button" class="entry" t-att-disabled="locked"
                         t-att-aria-label="'0. ' + (back.speak or back.label)" t-on-click="() => this.send('0')">
                         <span class="key" t-esc="'0.'"/>
@@ -153,6 +160,10 @@ export class QuestionView extends Component {
     // le retour, a son bouton, comme dans un menu.
     get boxes() {
         return choiceBoxes(this.options);
+    }
+
+    get actions() {
+        return choiceActions(this.options);
     }
 
     get back() {

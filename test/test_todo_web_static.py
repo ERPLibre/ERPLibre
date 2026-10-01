@@ -1270,10 +1270,11 @@ class TestQuestionWidgets(unittest.TestCase):
         )
 
 
-# Un choix simple et un choix multiple tels que le port les pose (MESSAGES,
-# remplacé par leur JSON), et ce que la page en montre et en envoie.
+# Un choix simple, un choix multiple et un choix multiple qui offre une
+# action à lettre, tels que le port les pose (MESSAGES, remplacé par leur
+# JSON), et ce que la page en montre et en envoie.
 CHOICE_CHECK = r"""
-const [single, several] = MESSAGES;
+const [single, several, acting] = MESSAGES;
 const keys = (items) => items.map((item) => item.key);
 console.log(JSON.stringify({
     texts: [m.promptText(single), m.menuText(single), m.promptText(several)],
@@ -1282,20 +1283,27 @@ console.log(JSON.stringify({
     boxes: keys(m.choiceBoxes(several.options)),
     picked: m.choiceValue(several.options, ["2", "1"]),
     all: m.ALL_ANSWER,
+    acting: [keys(m.choiceBoxes(acting.options)),
+        keys(m.choiceActions(acting.options)),
+        keys(m.choiceActions(several.options))],
 }));
 """
 
 
 def _choices() -> list:
-    """Les messages d'un choix simple, puis d'un choix multiple, entre
-    « alpha » et « beta », posés en anglais par le port."""
+    """Les messages d'un choix simple, d'un choix multiple, puis d'un choix
+    multiple qui offre l'action [p], entre « alpha » et « beta », posés
+    en anglais par le port."""
     saved = todo_i18n._current_lang
     try:
         todo_i18n.use_lang("en")
         messages = []
-        for multi in (False, True):
+        for multi, letters in ((False, None), (True, None), (True, "p")):
+            actions = {letters: "Main"} if letters else None
             scripted = port.ScriptedPort()
-            scripted.choose("Which?", ["alpha", "beta"], multi=multi)
+            scripted.choose(
+                "Which?", ["alpha", "beta"], multi=multi, letters=actions
+            )
             messages.append(scripted.events[0])
         return messages
     finally:
@@ -1305,13 +1313,14 @@ def _choices() -> list:
 @unittest.skipUnless(shutil.which("node"), "node absent")
 class TestChoiceWidgets(unittest.TestCase):
     """Un choix posé par le vrai port : un choix simple en boutons, [0] à
-    part, comme un menu ; un choix multiple en cases, sans [0], avec Tout
-    et [0] ; ce que ses boutons envoient, relu par les règles du port."""
+    part, comme un menu ; un choix multiple en cases, sans [0] ni ses
+    actions à lettre, avec Tout, un bouton par action et [0] ; ce que ses
+    boutons envoient, relu par les règles du port."""
 
     @classmethod
     def setUpClass(cls):
-        cls.single, cls.several = _choices()
-        messages = json.dumps([cls.single, cls.several])
+        cls.single, cls.several, cls.acting = _choices()
+        messages = json.dumps([cls.single, cls.several, cls.acting])
         cls.out = _node_json(
             CHOICE_CHECK.replace("MESSAGES", messages), "prompt.js"
         )
@@ -1340,6 +1349,17 @@ class TestChoiceWidgets(unittest.TestCase):
         self.assertIn('t-foreach="boxes"', template)
         self.assertIn("this.send(allAnswer)", template)
         self.assertIn("this.send('0')", template)
+
+    def test_a_letter_of_a_multiple_choice_is_a_button_that_sends_it(self):
+        # [p] n'est pas une case : cochée avec un numéro, elle ferait une
+        # réponse que le port dit invalide ; son bouton envoie « p » seul.
+        self.assertEqual(self.out["acting"], [["1", "2"], ["p"], []])
+        self.assertEqual(port.chosen_keys(self.acting, "p"), ["p"])
+        self.assertIsNone(port.chosen_keys(self.acting, "1 p"))
+        source = (SRC / "question_view.js").read_text(encoding="utf-8")
+        template = TEMPLATE.search(source)[1]
+        self.assertIn('t-foreach="actions"', template)
+        self.assertIn("this.send(action.key)", template)
 
 
 # Un répertoire factice, comme /api/fs le rend, et ce que le sélecteur de

@@ -206,10 +206,16 @@ export function choiceValue(options, picked) {
 // comme toutes les options, dans les deux langues.
 export const ALL_ANSWER = "*";
 
-// Les options qu'un choix multiple offre à cocher : toutes, sauf l'entrée
-// 0, le retour, qui a son bouton.
+// Les options qu'un choix multiple offre à cocher : celles d'un numéro,
+// sans l'entrée 0, le retour, ni une action à lettre, qui ont leur bouton.
 export function choiceBoxes(options) {
-    return options.filter((option) => option.key !== "0");
+    return options.filter((option) => /^[1-9]/.test(option.key));
+}
+
+// Les actions à lettre d'un choix multiple : un bouton chacune, qui envoie
+// sa lettre seule, la réponse que le port attend d'elle.
+export function choiceActions(options) {
+    return options.filter((option) => /^[a-z]/.test(option.key));
 }
 
 // Le texte d'une question sans ce que son widget montre déjà : pour un

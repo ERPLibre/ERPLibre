@@ -662,14 +662,40 @@ class TestChoose(unittest.TestCase):
                 )
                 self.assertEqual(chosen, "i")
 
+    def test_a_letter_in_a_multiple_choice_answers_alone(self):
+        # Une action à lettre suit aussi les numéros d'un choix multiple :
+        # tapée seule, elle rend sa lettre ; mêlée à un numéro, à une autre
+        # lettre ou à « tout », la réponse est dite invalide.
+        rules = {"multi": True, "letters": {"p": "Main", "g": "Exact"}}
+        _, [asked] = self.chosen([], "Which?", ["a", "b"], **rules)
+        self.assertEqual(
+            asked["text"],
+            "Which?\n[1] a\n[2] b\n[p] Main\n[g] Exact\n[0] 🔙 Back\n"
+            "Several: 1 3, 2-5 or all; empty for none: ",
+        )
+        for answer in ("p", "G", " p ", "p,p"):
+            with self.subTest(answer=answer):
+                chosen, _ = self.chosen([answer], "?", ["a", "b"], **rules)
+                self.assertEqual(chosen, answer.strip()[0].lower())
+        for answer in ("1 p", "p,g", "p tout", "p-g", "0 p"):
+            with self.subTest(answer=answer):
+                chosen, events = self.chosen(
+                    [answer, "2"], "?", ["a", "b"], **rules
+                )
+                self.assertEqual(chosen, ["b"])
+                self.assertEqual(
+                    self.refusals(events), [f"Invalid choice: {answer}"]
+                )
+        chosen, _ = self.chosen(["tout"], "?", ["a", "b"], **rules)
+        self.assertEqual(chosen, ["a", "b"])
+        self.assertEqual(self.chosen([""], "?", ["a"], **rules)[0], [])
+
     def test_rules_that_contradict_each_other_are_refused_before_asking(
         self,
     ):
         scripted = port.ScriptedPort(["1"])
         with self.assertRaises(ValueError):
             scripted.choose("?", ["a"], multi=True, default="a")
-        with self.assertRaises(ValueError):
-            scripted.choose("?", ["a"], multi=True, letters={"i": "x"})
         with self.assertRaises(ValueError):
             scripted.choose("?", ["a"], default="z")
         # Une lettre qui ne se tape pas telle quelle, qui se lit comme un
