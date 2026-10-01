@@ -16200,9 +16200,9 @@ TRANSLATIONS = {
         "fr": "L'unité a refusé. Son état, puis son journal :",
         "en": "The unit refused. Its state, then its journal:",
     },
-    "Every version: hours of work, tens of GB.": {
-        "fr": "Toutes les versions : des heures, et des dizaines de Go.",
-        "en": "Every version: hours of work, tens of GB.",
+    "Several versions: hours of work, tens of GB.": {
+        "fr": "Plusieurs versions : des heures, et des dizaines de Go.",
+        "en": "Several versions: hours of work, tens of GB.",
     },
     "Built:": {
         "fr": "Construites :",

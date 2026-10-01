@@ -661,6 +661,8 @@ class TestNettoyageGlobal(Banc):
 
 
 class TestConstructionOdoo(Banc):
+    COUT = todo_i18n.t("Several versions: hours of work, tens of GB.")
+
     def _banc(self, code=0):
         todo = self.todo(code=code)
         todo._container_exige_docker = lambda: ""
@@ -668,19 +670,21 @@ class TestConstructionOdoo(Banc):
         return todo
 
     def test_une_version_choisie_ne_lance_qu_elle(self):
+        """Une seule version : ni l'avertissement du coût ni sa question."""
         todo = self._banc()
-        with self.reponses(entrees=["3", "n"]):
+        with self.reponses(entrees=["3", "n"]) as sortie:
             todo._container_build_odoo()
         self.assertEqual(
             ["./script/docker/docker_build.sh --odoo_12"],
             todo.execute.commandes,
         )
+        self.assertNotIn(self.COUT, sortie.getvalue())
 
     def test_plusieurs_versions_se_choisissent_dans_l_ordre_du_catalogue(
         self,
     ):
         """Vide ou [0] ne construit rien ; « 3 1 » construit ces deux-là,
-        sans la question de toutes les versions."""
+        après l'avertissement du coût."""
         for entrees in ([""], ["0"]):
             with self.subTest(entrees=entrees):
                 todo = self._banc()
@@ -688,8 +692,9 @@ class TestConstructionOdoo(Banc):
                     todo._container_build_odoo()
                 self.assertEqual([], todo.execute.commandes)
         todo = self._banc()
-        with self.reponses(entrees=["3 1", "n"]):
+        with self.reponses(entrees=["3 1", "o", "n"]) as sortie:
             todo._container_build_odoo()
+        self.assertIn(self.COUT, sortie.getvalue())
         self.assertEqual(
             [
                 "./script/docker/docker_build.sh --odoo_18",
@@ -711,13 +716,16 @@ class TestConstructionOdoo(Banc):
             todo.execute.commandes,
         )
 
-    def test_toutes_demande_confirmation_avant_les_heures(self):
-        """Une image de production pèse une dizaine de Go : un refus doit
-        tout arrêter."""
-        todo = self._banc()
-        with self.reponses(entrees=["*", "n"]):
-            todo._container_build_odoo()
-        self.assertEqual([], todo.execute.commandes)
+    def test_plusieurs_demandent_confirmation_avant_les_heures(self):
+        """Une image de production pèse une dizaine de Go : dès deux
+        versions, toutes ou non, un refus doit tout arrêter."""
+        for choix in ("*", "1 3"):
+            with self.subTest(choix=choix):
+                todo = self._banc()
+                with self.reponses(entrees=[choix, "n"]) as sortie:
+                    todo._container_build_odoo()
+                self.assertEqual([], todo.execute.commandes)
+                self.assertIn(self.COUT, sortie.getvalue())
 
     def test_un_echec_n_arrete_pas_le_balayage(self):
         """Une version qui casse n'apprend rien sur les suivantes, et les

@@ -483,10 +483,11 @@ class ContainerMenuMixin:
         cibles = ui.choose(t("Odoo version:"), versions, multi=True)
         if not cibles:
             return
-        if len(cibles) == len(versions) > 1:
-            # Une image de production pèse une dizaine de gigaoctets : le dire
-            # AVANT, pendant qu'un disque plein est encore évitable.
-            print(f"\n⚠ {t('Every version: hours of work, tens of GB.')}")
+        if len(cibles) > 1:
+            # Une image de production pèse une dizaine de gigaoctets : dès
+            # deux, le dire AVANT, pendant qu'un disque plein est encore
+            # évitable.
+            print(f"\n⚠ {t('Several versions: hours of work, tens of GB.')}")
             if not self._is_yes(input(f"💬 {t('Continue? (Y/N): ')}")):
                 print(t("Nothing to do."))
                 return
@@ -667,7 +668,9 @@ class ContainerMenuMixin:
             print(f"  {raison}")
 
     def _container_nettoyer_images(self):
-        """Effacer des images choisies à la pièce, par leur rang.
+        """Effacer des images choisies à la pièce : par leur rang, par leur
+        référence telle que la liste l'écrit, ou toutes par « tout »,
+        « all » ou « * ».
 
         Une image qu'un conteneur tient — même arrêté — est refusée par
         « rmi ». Le conflit se décide AVANT d'effacer quoi que ce soit : le
