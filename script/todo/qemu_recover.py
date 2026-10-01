@@ -149,10 +149,12 @@ class QemuRecoverMixin:
         print(f"\n⚠  {t('This VM is running.')}")
         print(f"   {t('Reading a live disk sees a possibly torn state:')}")
         print(f"   {t('a half-written file, an unreplayed journal.')}")
+        # Aucune valeur courante : une réponse vide renonce comme [0], sans
+        # arrêter la VM sans qu'on l'ait choisi explicitement.
         choix = self._qemu_pick(
             t("What do you want to do?"),
             ["read", "shutdown"],
-            "shutdown",
+            None,
             [
                 t("Read anyway (read-only, no risk for the VM)"),
                 t("Shut the VM down cleanly, then read"),
