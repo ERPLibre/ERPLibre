@@ -114,6 +114,7 @@ class DriverPicker(MenuBase):
         for number in range(1, len(DRIVERS) + 1):
             self.assertIn(f"[{number}] ", printed)
         self.assertNotIn("[a]", printed)
+        self.assertIn("[0]", printed)
 
     def test_zero_goes_back_without_scolding(self):
         """Sans sortie explicite, on est coincé dans le formulaire dès
