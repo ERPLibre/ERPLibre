@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import replace
 
 import click
 
@@ -184,6 +185,21 @@ class AssistantMenuMixin:
             return f"{serveur.software} · {serveur.model}"
         return serveur.software
 
+    @staticmethod
+    def _llm_meme_serveur(a, b):
+        """`a` et `b` désignent le même serveur, poignée mise à part.
+
+        La poignée se rattribue au rang à chaque sauvegarde
+        (`servers.assign_handles`) : un serveur gardé d'un tour à l'autre la
+        perd dès qu'un retrait ailleurs dans la liste déplace son rang, et la
+        comparer prendrait alors ce serveur pour un autre, ou l'inverse.
+        """
+        return (
+            a is not None
+            and b is not None
+            and replace(a, handle="") == replace(b, handle="")
+        )
+
     def prompt_assistant_llm(self):
         """Le sous-menu : parler à un serveur, ou décider auquel (LLM,
         `menus/assistant.py`). Redessiné à chaque tour, le serveur en usage
@@ -239,7 +255,7 @@ class AssistantMenuMixin:
         for serveur in llm_servers.load(get_config=self._llm_get_config):
             marque = (
                 f"  ({t('in use')})"
-                if en_usage and en_usage.handle == serveur.handle
+                if self._llm_meme_serveur(en_usage, serveur)
                 else ""
             )
             lignes.append(
@@ -336,7 +352,7 @@ class AssistantMenuMixin:
             set_config=self._llm_set_config,
         )
         state = self._llm_state()
-        if state["serveur"] == choisi:
+        if self._llm_meme_serveur(state["serveur"], choisi):
             state["serveur"] = None
 
     def _llm_search(self):

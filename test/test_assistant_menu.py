@@ -1000,6 +1000,58 @@ class MenusDuLLM(unittest.TestCase):
         self.assertEqual([s.port for s in restants], [11434])
         self.assertIsNone(self.todo._llm_state()["serveur"])
 
+    def test_deux_suppressions_de_suite_liberent_le_bon_serveur(self):
+        # Trois serveurs connus, B en usage : supprimer A ne touche pas
+        # l'usage, bien que le retrait décale le rang des deux qui restent
+        # (B passe de « server-2 » à « server-1 ») ; supprimer ensuite B, à
+        # son rang désormais décalé, vide l'usage au lieu de le garder sur
+        # la poignée qu'il portait avant le premier retrait.
+        from script.todo.assistant import servers as llm_servers
+
+        trio = llm_servers.assign_handles(
+            [
+                llm_servers.Server(
+                    handle="",
+                    label=label,
+                    host=host,
+                    port=11434,
+                    software="ollama",
+                    model="",
+                    hosting="lan",
+                    secret_ref="",
+                )
+                for label, host in (
+                    ("Forged a", "192.0.2.27"),
+                    ("Forged b", "192.0.2.28"),
+                    ("Forged c", "192.0.2.29"),
+                )
+            ]
+        )
+        stockes = list(trio)
+        self.todo._llm_state()["serveur"] = trio[1]
+
+        def charger(get_config=None):
+            return list(stockes)
+
+        def sauver(servers, set_config=None):
+            stockes[:] = servers
+
+        with (
+            patch.object(llm_servers, "load", side_effect=charger),
+            patch.object(llm_servers, "save", side_effect=sauver),
+        ):
+            self.answered("_llm_servers", "5", "Forged a", "0", inputs=["1"])
+            self.assertEqual(
+                [s.label for s in stockes], ["Forged b", "Forged c"]
+            )
+            self.assertEqual(
+                self.todo._llm_state()["serveur"].label, "Forged b"
+            )
+
+            self.answered("_llm_servers", "4", "Forged b", "0", inputs=["1"])
+        self.assertEqual([s.label for s in stockes], ["Forged c"])
+        self.assertIsNone(self.todo._llm_state()["serveur"])
+
     def test_le_catalogue_gpt_prend_un_numero_ou_un_nom_affiche(self):
         # Sur trois outils : un numéro tel qu'affiché ou le nom d'un outil
         # le choisit ; une lettre, « ² », « 01 », « +1 », un chiffre d'une
