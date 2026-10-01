@@ -633,6 +633,21 @@ class TestChoose(unittest.TestCase):
                 chosen, events = self.chosen([answer, "2"], "?", options)
                 self.assertEqual((chosen, len(events)), ("b", 3))
 
+    def test_a_range_bound_that_is_no_shown_number_is_invalid(self):
+        # Une borne de 5000 chiffres passe la limite de conversion d'`int`
+        # (4300 chiffres) : n'étant pas un numéro affiché, elle rend la
+        # réponse invalide, et le choix ne lève pas.
+        huge = "1" * 5000
+        for answer in (f"{huge}-2", f"1-{huge}"):
+            with self.subTest(bound=answer.index("-")):
+                chosen, events = self.chosen(
+                    [answer, "1"], "?", ["a", "b"], multi=True
+                )
+                self.assertEqual(chosen, ["a"])
+                self.assertEqual(
+                    self.refusals(events), [f"Invalid choice: {answer}"]
+                )
+
     def test_a_letter_answers_in_either_case_and_comes_back(self):
         for answer in ("i", "I", " i "):
             with self.subTest(answer=answer):
