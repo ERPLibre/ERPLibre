@@ -199,3 +199,86 @@ func TestSansDossierLeRepondeurRefuse(t *testing.T) {
 		t.Fatal("message accepté sans dossier de destination")
 	}
 }
+
+// rejouerNiveaux rejoue une suite de niveaux et rend la mesure, comme la capture le
+// ferait bloc par bloc.
+func rejouerNiveaux(max time.Duration, niveaux ...int) *mesureMessage {
+	m := &mesureMessage{max: max}
+	for _, n := range niveaux {
+		if !m.ajouter(n) {
+			break
+		}
+	}
+	return m
+}
+
+func blocs(n int, niveau int) []int {
+	suite := make([]int, n)
+	for i := range suite {
+		suite[i] = niveau
+	}
+	return suite
+}
+
+func TestUnClaquementDePriseDeLigneNEstPasUnMessage(t *testing.T) {
+	// Un seul bloc saturé, puis le silence : c'est ce que la carte du modem
+	// rend quand l'appelant ne dit rien.
+	m := rejouerNiveaux(2*time.Minute, append([]int{32768}, blocs(400, 0)...)...)
+
+	if d := m.retenue(); d != 0 {
+		t.Fatalf("un claquement vaut un message de %s", d)
+	}
+	if m.crête != 32768 {
+		t.Fatalf("crête %d, la saturation doit rester visible", m.crête)
+	}
+}
+
+func TestLeSilenceDeFinNeComptePasDansLaDuree(t *testing.T) {
+	// Deux secondes de parole, puis le silence qui termine le message.
+	suite := append(blocs(100, 5000), blocs(400, 0)...)
+	m := rejouerNiveaux(2*time.Minute, suite...)
+
+	if d := m.retenue(); d != 2*time.Second {
+		t.Fatalf("durée %s, attendu 2s", d)
+	}
+	if m.écoulé != 2*time.Second+SilenceFinMessage {
+		t.Fatalf("capté %s, attendu la parole plus le silence de fin", m.écoulé)
+	}
+}
+
+func TestLaDureeAnnonceeDecritLesOctetsGardes(t *testing.T) {
+	// L'invariant qui tient le fichier et sa description ensemble : ce qu'on
+	// coupe plus ce qu'on garde fait ce qu'on a écrit.
+	suite := append(blocs(75, 5000), blocs(400, 0)...)
+	m := rejouerNiveaux(2*time.Minute, suite...)
+
+	écrits := int(m.écoulé/DuréeBloc) * OctetsPCM
+	if gardés := octetsPour(m.retenue()); gardés+octetsPour(m.depuisSon) != écrits {
+		t.Fatalf("%d octets gardés + %d coupés != %d écrits",
+			gardés, octetsPour(m.depuisSon), écrits)
+	}
+}
+
+func TestSansUnMotOnSArreteAvantLaDureeMaximale(t *testing.T) {
+	m := rejouerNiveaux(2*time.Minute, blocs(3000, 0)...)
+
+	if m.écoulé != DélaiPremierSon {
+		t.Fatalf("capté %s, attendu %s", m.écoulé, DélaiPremierSon)
+	}
+	if d := m.retenue(); d != 0 {
+		t.Fatalf("durée %s sans un mot", d)
+	}
+}
+
+func TestUnAppelantQuiPoseSonCombineEstBorne(t *testing.T) {
+	// Parole continue : seule la durée maximale arrête la capture, car la
+	// ligne ouverte se facture.
+	m := rejouerNiveaux(3*time.Second, blocs(1000, 5000)...)
+
+	if m.écoulé != 3*time.Second {
+		t.Fatalf("capté %s, attendu la borne de 3s", m.écoulé)
+	}
+	if d := m.retenue(); d != 3*time.Second {
+		t.Fatalf("durée %s, attendu 3s", d)
+	}
+}

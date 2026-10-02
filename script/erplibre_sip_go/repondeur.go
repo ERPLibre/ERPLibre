@@ -54,6 +54,12 @@ const (
 	// vides cache ceux qui comptent.
 	DélaiPremierSon = 8 * time.Second
 
+	// DuréeMinMessage : en deçà, ce qui reste une fois le silence coupé
+	// n'est pas une parole. Un claquement de prise de ligne passe le seuil
+	// de son sur un seul bloc et laisserait sinon un message d'un centième
+	// de seconde, annoncé « 0 seconde » et vide à l'écoute.
+	DuréeMinMessage = 1 * time.Second
+
 	// Ce que la carte du modem rend : la même chose que le réseau
 	// téléphonique, sans rééchantillonnage. Le taux vient de `duplex.go`,
 	// qui le donne déjà aux deux processus ALSA.
@@ -226,7 +232,7 @@ func PrendreLeMessage(ctx context.Context, carte string, r RéglagesRépondeur,
 	message := &Message{
 		Numéro:        numéro,
 		Début:         début.Format(time.RFC3339),
-		DuréeSecondes: int(durée / time.Second),
+		DuréeSecondes: int(durée.Round(time.Second) / time.Second),
 		Fichier:       chemin,
 		CrêteMaximale: crête,
 	}
@@ -302,6 +308,56 @@ func EffacerMessage(wav string) error {
 	return err
 }
 
+// mesureMessage suit un enregistrement bloc par bloc et décide quand il est
+// fini, puis ce qu'on en garde.
+//
+// Séparée de la capture : la décision est la partie qui se trompe, et elle se
+// vérifie ainsi sans carte son ni processus.
+type mesureMessage struct {
+	max       time.Duration
+	crête     int
+	aParlé    bool
+	depuisSon time.Duration
+	écoulé    time.Duration
+}
+
+// ajouter prend le niveau d'un bloc et rend faux quand il faut cesser de
+// capter : silence de fin, absence de premier son, ou durée maximale.
+func (m *mesureMessage) ajouter(niveau int) bool {
+	if niveau > m.crête {
+		m.crête = niveau
+	}
+	m.écoulé += DuréeBloc
+	if niveau > SeuilÉcho {
+		m.aParlé = true
+		m.depuisSon = 0
+		return m.écoulé < m.max
+	}
+	m.depuisSon += DuréeBloc
+	if m.aParlé && m.depuisSon >= SilenceFinMessage {
+		return false
+	}
+	if !m.aParlé && m.depuisSon >= DélaiPremierSon {
+		return false
+	}
+	return m.écoulé < m.max
+}
+
+// retenue rend la durée du message, silence de fin exclu, ou ZÉRO quand il
+// ne reste pas de parole.
+func (m *mesureMessage) retenue() time.Duration {
+	durée := m.écoulé - m.depuisSon
+	if durée < DuréeMinMessage {
+		return 0
+	}
+	return durée
+}
+
+// octetsPour rend les octets PCM que dure `d`, à un bloc près.
+func octetsPour(d time.Duration) int {
+	return int(d/DuréeBloc) * OctetsPCM
+}
+
 // enregistrerLaVoix capture jusqu'au silence, à la durée maximale, ou à
 // l'abandon du contexte. Rend la durée retenue et la crête observée.
 //
@@ -336,54 +392,42 @@ func enregistrerLaVoix(ctx context.Context, carte, chemin string,
 		return 0, 0, err
 	}
 
-	var (
-		écrits    int
-		crête     int
-		aParlé    bool
-		depuisSon time.Duration
-		écoulé    time.Duration
-		bloc      = make([]byte, OctetsPCM)
-	)
-	for écoulé < max {
+	mesure := &mesureMessage{max: max}
+	écrits := 0
+	bloc := make([]byte, OctetsPCM)
+	for {
 		if _, err := io.ReadFull(flux, bloc); err != nil {
 			// Le flux se ferme quand la ligne retombe : c'est la fin normale
 			// d'un message, pas une panne.
 			break
 		}
 		if _, err := fichier.Write(bloc); err != nil {
-			return 0, 0, err
+			return 0, mesure.crête, err
 		}
 		écrits += len(bloc)
-		écoulé += DuréeBloc
-
-		niveau := niveauCrête(bloc)
-		if niveau > crête {
-			crête = niveau
-		}
-		if niveau > SeuilÉcho {
-			aParlé = true
-			depuisSon = 0
-			continue
-		}
-		depuisSon += DuréeBloc
-		if aParlé && depuisSon >= SilenceFinMessage {
+		if !mesure.ajouter(niveauCrête(bloc)) {
 			break
 		}
-		if !aParlé && depuisSon >= DélaiPremierSon {
-			return 0, crête, nil
-		}
 	}
 
-	if _, err := fichier.WriteAt(entêteWAV(écrits), 0); err != nil {
-		return 0, crête, err
+	durée := mesure.retenue()
+	if durée == 0 {
+		return 0, mesure.crête, nil
 	}
-	// Le silence de fin ne fait pas partie du message : le garder ajoute
-	// quatre secondes de rien à chaque écoute.
-	durée := écoulé
-	if aParlé && durée > SilenceFinMessage {
-		durée -= SilenceFinMessage
+	// Le silence de fin est coupé DU FICHIER et pas seulement de la durée
+	// annoncée : une durée qui ne décrit pas le son qu'on écoute est fausse,
+	// et l'écart valait ici les quatre secondes du silence de fin.
+	gardés := écrits - octetsPour(mesure.depuisSon)
+	if gardés < 0 {
+		gardés = 0
 	}
-	return durée, crête, nil
+	if err := fichier.Truncate(int64(len(entêteWAV(0)) + gardés)); err != nil {
+		return 0, mesure.crête, err
+	}
+	if _, err := fichier.WriteAt(entêteWAV(gardés), 0); err != nil {
+		return 0, mesure.crête, err
+	}
+	return durée, mesure.crête, nil
 }
 
 // entêteWAV rend l'en-tête canonique de 44 octets pour `octets` de PCM.
