@@ -210,7 +210,13 @@ def sync_session(session: Session, pages: int = PAGES_PAR_PASSE) -> int:
             ecrits += session.store.upsert_posts(fil_id, billets)
         session.store.set_feed_state(FIL_ACCUEIL, cursor=suite or None)
         curseur = suite
-        if not suite:
+        if not suite or not billets:
+            # Une page VIDE termine la descente, même quand une suite est
+            # annoncée. Un service construit cette annonce à partir de ce
+            # qu'il vient de rendre, sans savoir s'il reste quelque chose
+            # derrière : s'en remettre à lui seul coûte un aller-retour
+            # inutile à chaque passe, et une descente sans fin si jamais
+            # il annonce une suite sur le vide.
             break
     return ecrits
 

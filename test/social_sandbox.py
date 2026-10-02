@@ -267,7 +267,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         limite = int((params.get("limit") or ["40"])[0])
         page = billets[:limite]
         entetes = {}
-        if len(billets) > limite and page:
+        if page:
+            # Une suite est annoncée dès que la page N'EST PAS VIDE, sans
+            # regarder s'il reste quelque chose derrière. C'est ce que fait
+            # l'instance : elle construit ce lien à partir des billets
+            # qu'elle vient de rendre, et ne sait rien du reste. Ne
+            # l'annoncer qu'en cas de reste certifierait un client qui
+            # descend un fil sans fin sur une instance réelle.
             base = f"http://{HOST}:{self.bac.port}/api/v1/timelines/home"
             if self.bac.pagination == "jeton":
                 suivant = f"{base}?suite=k-{depuis + limite}"

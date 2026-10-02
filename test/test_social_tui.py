@@ -170,6 +170,20 @@ class TestTheFetchPass(TuiCase):
         sync_session(self._session(transport))
         self.assertIsNone(self.store.feed_state("home")["cursor"])
 
+    def test_an_empty_page_ends_the_descent(self):
+        """Un service construit son annonce de suite à partir de ce qu'il
+        vient de rendre, sans savoir s'il reste quelque chose : la dernière
+        page du fil en porte une, et la demande suivante rend le vide. S'en
+        remettre à la seule annonce coûte un aller-retour par passe, et une
+        descente sans fin si le service annonce une suite sur le vide.
+        """
+        transport = FauxTransport(
+            [([billet("1")], "k-1"), ([], "k-2"), ([billet("2")], "k-3")]
+        )
+        sync_session(self._session(transport), pages=5)
+        self.assertEqual(len(transport.curseurs), 2)
+        self.assertEqual(self.store.count_posts(self.fil), 1)
+
     def test_it_stops_when_the_instance_announces_no_more(self):
         transport = FauxTransport([([billet("1")], "")])
         sync_session(self._session(transport))

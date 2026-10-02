@@ -203,10 +203,23 @@ class TestThePagingFollowsTheHeader(SandboxCase):
                 f"casse {casse!r} non reconnue",
             )
 
-    def test_the_last_page_announces_nothing(self):
-        """Le seul signal d'arrêt qui ne suppose rien sur le nombre rendu."""
+    def test_a_full_feed_still_announces_a_next_page(self):
+        """L'instance annonce une suite dès que la page n'est pas vide.
+
+        Elle construit ce lien à partir des billets qu'elle vient de
+        rendre, sans savoir s'il en reste : la dernière page du fil en
+        porte donc un, exactement comme les précédentes.
+        """
+        page, suite = self.transport.home_timeline(limit=40)
+        self.assertEqual(len(page), 9)
+        self.assertTrue(suite)
+
+    def test_an_empty_page_announces_nothing(self):
+        """Le vrai signal de fin, et le seul : plus rien à rendre."""
         _, suite = self.transport.home_timeline(limit=40)
-        self.assertEqual(suite, "")
+        page, encore = self.transport.home_timeline(cursor=suite, limit=40)
+        self.assertEqual(page, [])
+        self.assertEqual(encore, "")
 
     def test_walking_the_whole_feed_sees_every_post(self):
         vus, curseur = [], ""
