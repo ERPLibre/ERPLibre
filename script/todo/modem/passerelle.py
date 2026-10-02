@@ -69,6 +69,19 @@ ETATS_APPEL = {
 #: service qui conduit l'appel.
 CADENCE_APPELS = 3
 
+#: Ecart au-dela duquel deux objets d'appel ne sont plus le MEME appel.
+#:
+#: ModemManager cree parfois PLUSIEURS objets pour un seul appel — trois pour
+#: un entrant qu'on n'a pas pu prendre, vus a 0, 0 et 9 secondes — et une fiche
+#: par objet donnerait trois fiches dans Odoo pour un coup de telephone. La SIM
+#: ne porte qu'une conversation a la fois : deux objets du meme numero si
+#: proches sont le meme appel.
+#:
+#: Le prix est assume : rappeler dans les vingt secondes se lit comme un seul
+#: appel. Inventer un appel qui n'a pas eu lieu est la pire des deux erreurs,
+#: parce que rien dans la fiche ne permet de s'en apercevoir.
+FENETRE_MEME_APPEL = 20
+
 #: Appels retenus dans l'etat, au plus. Une lecture de ModemManager qui echoue
 #: rend une liste vide, indistinguable d'une ligne au repos : on ne purge donc
 #: que sur une lecture qui a ramene quelque chose, et ce plafond borne le reste.
@@ -450,6 +463,24 @@ def _epoque(horodatage):
     return None
 
 
+def _reprendre_l_appel(suivi, numero, maintenant):
+    """Le suivi d'un appel deja en cours pour ce numero, ou None.
+
+    Rend une COPIE avec l'etat remis a vide : les deux chemins pointent alors
+    sur la meme fiche, et le nouvel objet peut y poster ses propres etats sans
+    que l'ancien ne les ait deja marques comme dits.
+    """
+    for connu in suivi.values():
+        if connu.get("numero") != numero:
+            continue
+        if maintenant - float(connu.get("vu_a") or 0) > FENETRE_MEME_APPEL:
+            continue
+        repris = dict(connu)
+        repris["etat"] = ""
+        return repris
+    return None
+
+
 def etat_modem(modem, en_attente):
     """Ce que le serveur juge, et rien de plus.
 
@@ -567,12 +598,17 @@ class Passerelle:
                 continue
             connu = suivi.get(cle)
             if connu is None:
-                connu = {
-                    "uuid": "modem-%s-%d" % (cle.rsplit("/", 1)[-1], int(maintenant)),
-                    "etat": "",
-                    "parle_a": 0,
-                }
+                connu = _reprendre_l_appel(suivi, numero, maintenant)
+                if connu is None:
+                    connu = {
+                        "uuid": "modem-%s-%d" % (cle.rsplit("/", 1)[-1],
+                                                 int(maintenant)),
+                        "etat": "",
+                        "parle_a": 0,
+                    }
                 suivi[cle] = connu
+            connu["numero"] = numero
+            connu["vu_a"] = maintenant
             if connu.get("etat") == etat:
                 continue
             if etat == "connected" and not connu.get("parle_a"):

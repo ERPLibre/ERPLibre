@@ -541,7 +541,10 @@ class TestAppelsEntrants(Montage):
         self.assertNotIn("duration_source", fin,
                          "aucune des origines du module ne nomme ce service")
 
-        # Un appel jamais decroche n'a pas de duree du tout.
+        # Un appel jamais decroche n'a pas de duree du tout. On sort de la
+        # fenetre de regroupement : sinon c'est le MEME appel qui continue, et
+        # il herite a juste titre de la conversation deja vue.
+        self.horloge.avancer(pa.FENETRE_MEME_APPEL + 1)
         autre = "/org/freedesktop/ModemManager1/Call/8"
         modem.vues = [[_vu(autre, "terminated")]]
         agent.surveiller_les_appels()
@@ -613,6 +616,52 @@ class TestAppelsEntrants(Montage):
         agent.surveiller_les_appels()
         agent.surveiller_les_appels()
         self.assertIn(self.CHEMIN, agent.etat.appels_vus)
+
+    def test_plusieurs_objets_pour_un_appel_ne_font_qu_une_fiche(self):
+        """ModemManager cree parfois trois objets pour un seul appel entrant :
+        une fiche par objet donnerait trois appels pour un coup de telephone.
+
+        La suite jouee ici est celle qu'un vrai appel a produite — deux objets
+        dans la meme seconde, un troisieme neuf secondes plus tard.
+        """
+        base = "/org/freedesktop/ModemManager1/Call/"
+        modem = FauxModem(appels=[
+            [_vu(base + "43", "ringing-in"), _vu(base + "44", "ringing-in")],
+            [_vu(base + "45", "ringing-in")],
+        ])
+        agent = self.monter(modem=modem)
+        agent.surveiller_les_appels()
+        self.horloge.avancer(9)
+        agent.surveiller_les_appels()
+        uuids = {evenement["uuid"] for evenement in self._calls()}
+        self.assertEqual(len(uuids), 1, "un appel, donc une seule fiche")
+
+    def test_un_appel_plus_tard_reste_un_autre_appel(self):
+        """Le regroupement ne vaut que dans sa fenetre : au-dela, c'est un
+        second coup de telephone, et le fondre dans le premier effacerait un
+        appel qui a bien eu lieu."""
+        base = "/org/freedesktop/ModemManager1/Call/"
+        modem = FauxModem(appels=[
+            [_vu(base + "45", "ringing-in")],
+            [_vu(base + "46", "ringing-in")],
+        ])
+        agent = self.monter(modem=modem)
+        agent.surveiller_les_appels()
+        self.horloge.avancer(pa.FENETRE_MEME_APPEL + 1)
+        agent.surveiller_les_appels()
+        uuids = {evenement["uuid"] for evenement in self._calls()}
+        self.assertEqual(len(uuids), 2, "deux appels distincts")
+
+    def test_deux_numeros_ne_se_confondent_jamais(self):
+        base = "/org/freedesktop/ModemManager1/Call/"
+        modem = FauxModem(appels=[
+            [_vu(base + "50", "ringing-in", numero="+15145550142"),
+             _vu(base + "51", "ringing-in", numero="+15145550199")],
+        ])
+        agent = self.monter(modem=modem)
+        agent.surveiller_les_appels()
+        uuids = {evenement["uuid"] for evenement in self._calls()}
+        self.assertEqual(len(uuids), 2, "deux correspondants, deux fiches")
 
     def test_la_ligne_est_surveillee_entre_deux_interrogations(self):
         """Une sonnerie dure une trentaine de secondes : l'attendre au cycle
