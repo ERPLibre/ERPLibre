@@ -209,7 +209,13 @@ class MastodonTransport:
                 requete, timeout=self.timeout
             ) as reponse:
                 corps = reponse.read()
-                entetes = dict(reponse.headers.items())
+                # RENDUS TELS QUELS. Un `HTTPMessage` cherche sans égard à
+                # la casse, ce que `dict(...)` détruit : l'instance écrit
+                # `link` en minuscules — son cadre replie tout nom
+                # d'en-tête — et un `get("Link")` sur un dict ordinaire n'y
+                # trouve rien. La page suivante n'était alors jamais
+                # annoncée, ce qui se lit comme une fin de fil.
+                entetes = reponse.headers
         except urllib.error.HTTPError as exc:
             self._lever(exc)
         except Exception as exc:
@@ -290,7 +296,8 @@ class MastodonTransport:
                 requete, timeout=self.timeout
             ) as reponse:
                 brut = reponse.read()
-                recus = dict(reponse.headers.items())
+                # Tels quels, pour la même raison que dans `_get`.
+                recus = reponse.headers
         except urllib.error.HTTPError as exc:
             self._lever(exc)
         except Exception as exc:

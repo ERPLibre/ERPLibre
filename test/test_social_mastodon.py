@@ -28,6 +28,7 @@ from script.todo.social.mastodon import (
     SocialAuthError,
     SocialError,
     SocialRateLimited,
+    _suivant,
     billet_depuis_statut,
     texte_depuis_html,
 )
@@ -171,6 +172,31 @@ class TestThePagingFollowsTheHeader(SandboxCase):
         self.assertFalse(
             {b.post_id for b in page} & {b.post_id for b in suivante}
         )
+
+    def test_the_header_is_found_whatever_its_case(self):
+        """L'instance écrit `link` en minuscules — son cadre replie tout nom
+        d'en-tête, et la version 3 du protocole qu'il emploie interdit les
+        majuscules. Un client qui cherche `Link` à la lettre ne trouve rien,
+        rend un curseur vide, et prend un succès pour une fin de fil.
+
+        Le contrôle porte sur les DEUX casses : la réparation doit tenir
+        quelle que soit celle qui arrive.
+        """
+        import http.client
+        import io
+
+        for casse in ("link", "Link", "LINK"):
+            entetes = http.client.parse_headers(
+                io.BytesIO(
+                    f'{casse}: <https://i.exemple/suite>; rel="next"\r\n'
+                    "\r\n".encode()
+                )
+            )
+            self.assertEqual(
+                _suivant(entetes.get("Link", "")),
+                "https://i.exemple/suite",
+                f"casse {casse!r} non reconnue",
+            )
 
     def test_the_last_page_announces_nothing(self):
         """Le seul signal d'arrêt qui ne suppose rien sur le nombre rendu."""

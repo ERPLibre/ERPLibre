@@ -265,7 +265,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 suivant = f"{base}?suite=k-{depuis + limite}"
             else:
                 suivant = f"{base}?max_id={page[-1]['id']}"
-            entetes["Link"] = f'<{suivant}>; rel="next"'
+            # MINUSCULE, comme l'instance l'écrit : son cadre applicatif
+            # replie tout nom d'en-tête, et la version 3 du protocole qu'il
+            # emploie interdit les majuscules. Écrire « Link » ici
+            # certifierait un client incapable de lire une vraie réponse.
+            entetes["link"] = f'<{suivant}>; rel="next"'
         self._json(200, page, entetes)
 
     def _servir_panne(self, panne: Fault) -> None:
