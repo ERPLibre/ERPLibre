@@ -172,8 +172,10 @@ func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) (RéglagesRép
 	if annonce := écrireAnnonce(locaux, distants.AnnonceNom, distants.AnnonceB64); annonce != "" {
 		fusionnés.Annonce = annonce
 	}
-	slog.Info("reglages du repondeur pris dans Odoo",
-		"actif", fusionnés.Actif, "sonneries", fusionnés.Sonneries)
+	// Rien n'est journalise ici : cette fonction est appelee a chaque tour de
+	// veille, et une ligne par lecture noie celles qui comptent — mille lignes
+	// identiques pour cent qui disent quelque chose. L'appelant journalise la
+	// PREMIERE lecture et les CHANGEMENTS, qui sont les seuls faits nouveaux.
 	return fusionnés.Normaliser(), nil
 }
 

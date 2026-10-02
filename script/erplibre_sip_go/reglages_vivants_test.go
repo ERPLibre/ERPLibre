@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -222,4 +223,44 @@ func TestUnDossierEcritEstRespecte(t *testing.T) {
 	if réglages.Dossier != "/ailleurs/messages" {
 		t.Fatalf("le dossier du fichier a ete remplace : %q", réglages.Dossier)
 	}
+}
+
+func TestLeJournalNeRetientQueLesFaitsNouveaux(t *testing.T) {
+	// Relus chaque minute, les reglages ecrivaient une ligne par lecture :
+	// mille lignes identiques pour cent qui disent quelque chose, et la panne
+	// qu'on cherche noyee dedans.
+	var sonneries, lectures atomic.Int64
+	sonneries.Store(2)
+	serveur := serveurRéglages(t, &sonneries, &lectures)
+
+	écrites := 0
+	ancien := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(écrivainComptant{&écrites},
+		&slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(ancien) })
+
+	vivants := NouveauxRéglagesVivants(lienVers(serveur.URL), RéglagesParDéfaut())
+	vivants.Relire()
+	if écrites != 1 {
+		t.Fatalf("la premiere lecture doit se dire une fois, %d ligne(s)", écrites)
+	}
+	for i := 0; i < 5; i++ {
+		vivants.Relire()
+	}
+	if écrites != 1 {
+		t.Fatalf("des lectures sans changement ont ecrit : %d ligne(s)", écrites)
+	}
+	sonneries.Store(5)
+	vivants.Relire()
+	if écrites != 2 {
+		t.Fatalf("un changement doit se dire, %d ligne(s)", écrites)
+	}
+}
+
+// écrivainComptant compte les lignes de journal au lieu de les afficher.
+type écrivainComptant struct{ lignes *int }
+
+func (e écrivainComptant) Write(p []byte) (int, error) {
+	*e.lignes++
+	return len(p), nil
 }

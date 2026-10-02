@@ -107,6 +107,9 @@ func (r *RéglagesVivants) relire(lien *LienOdoo) bool {
 	// déjà remplacé. `RéglagesDepuisOdoo` les rend telles quelles en cas
 	// d'échec.
 	avant := r.Valeurs()
+	r.mu.RLock()
+	premier := r.luÀ.IsZero()
+	r.mu.RUnlock()
 	après, err := RéglagesDepuisOdoo(lien, avant)
 
 	r.mu.Lock()
@@ -119,7 +122,18 @@ func (r *RéglagesVivants) relire(lien *LienOdoo) bool {
 	}
 	r.mu.Unlock()
 
-	if changé {
+	// Deux faits nouveaux, et eux seuls : qu'Odoo ait repondu une premiere
+	// fois, et qu'il dise autre chose qu'avant. Une ligne a chaque lecture
+	// remplirait le journal de la meme phrase, et la panne qu'on y cherche
+	// serait noyee dedans.
+	switch {
+	case err != nil:
+		// `RéglagesDepuisOdoo` a deja dit pourquoi.
+	case premier:
+		slog.Info("reglages du repondeur pris dans Odoo",
+			"actif", après.Actif, "sonneries", après.Sonneries,
+			"duree_max_s", après.DuréeMaxSecondes)
+	case changé:
 		slog.Info("reglages du repondeur changes dans Odoo",
 			"actif", après.Actif, "sonneries", après.Sonneries,
 			"duree_max_s", après.DuréeMaxSecondes)
