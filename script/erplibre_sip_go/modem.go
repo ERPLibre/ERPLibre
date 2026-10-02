@@ -67,7 +67,7 @@ func (m *Modem) RendreLaLigne() { m.ligne.Unlock() }
 //
 // On ne touche PAS au débit. Sur un port série virtuel USB il n'a aucun
 // effet : `stty 115200` échoue, le port reste à 9600, et le dialogue
-// fonctionne quand même. Mesuré sur cet appareil.
+// fonctionne quand même.
 func OuvrirModem(chemin string) (*Modem, error) {
 	if chemin == "" {
 		chemin = PortDéfaut
@@ -210,7 +210,7 @@ type ÉtatAppel struct {
 // Indispensable, et pas un raffinement : ModemManager maintient en
 // permanence un porteur de données LTE, que +CLCC rapporte comme un appel
 // d'état 0 — donc « actif ». Sans ce filtre, on croit avoir décroché à
-// l'instant où l'on compose. Mesuré :
+// l'instant où l'on compose. Ce que ce porteur rend :
 //
 //	+CLCC: 1,1,0,1,0,"",128
 //	             ^ état 0   ^ mode 1 = données
@@ -297,6 +297,24 @@ func (m *Modem) RéaffirmerVoixUSB(mode int) error {
 	_, err := m.Commande(fmt.Sprintf("AT+QPCMV=0;+QPCMV=1,%d", mode),
 		5*time.Second)
 	return err
+}
+
+// ÉtatVoixUSB rend ce que le modem DIT de son canal voix : « 1,2 » quand la
+// voix est routée vers la carte USB, « 0,0 » quand elle ne l'est pas.
+//
+// Nécessaire parce qu'ouvrir le canal rend OK sans rien prouver : arrivée
+// après que la voix s'est établie, la commande est acceptée et sans effet,
+// et la ligne reste muette dans les deux sens. L'état lu est le seul moyen
+// de distinguer un canal routé d'un canal qui a seulement dit oui.
+func (m *Modem) ÉtatVoixUSB() (string, error) {
+	rép, err := m.Commande("AT+QPCMV?", 5*time.Second)
+	if err != nil {
+		return "", err
+	}
+	if g := motifQPCMV.FindStringSubmatch(rép); g != nil {
+		return strings.TrimSpace(g[1]), nil
+	}
+	return "", fmt.Errorf("reponse QPCMV illisible : %q", strings.TrimSpace(rép))
 }
 
 // RéglerModeAudio choisit le traitement DSP appliqué à la voix.
@@ -498,8 +516,9 @@ func (m *Modem) Signal() (int, string) {
 }
 
 var (
-	motifCSQ  = regexp.MustCompile(`\+CSQ:\s*(\d+),`)
-	motifQCSQ = regexp.MustCompile(`\+QCSQ:\s*(.+)`)
+	motifCSQ   = regexp.MustCompile(`\+CSQ:\s*(\d+),`)
+	motifQPCMV = regexp.MustCompile(`\+QPCMV:\s*([\d,]+)`)
+	motifQCSQ  = regexp.MustCompile(`\+QCSQ:\s*(.+)`)
 )
 
 // Composer lance un appel VOIX.

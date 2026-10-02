@@ -81,3 +81,25 @@ func TestSeulesLesTouchesDUnClavierPassent(t *testing.T) {
 		}
 	}
 }
+
+func TestLEtatDuCanalVoixSeLitDansLaReponse(t *testing.T) {
+	cas := []struct {
+		réponse string
+		veut    string
+	}{
+		{"\r\n+QPCMV: 1,2\r\n\r\nOK\r\n", "1,2"},
+		{"\r\n+QPCMV: 0,0\r\n\r\nOK\r\n", "0,0"},
+	}
+	for _, c := range cas {
+		g := motifQPCMV.FindStringSubmatch(c.réponse)
+		if g == nil {
+			t.Fatalf("%q : aucun etat lu", c.réponse)
+		}
+		if g[1] != c.veut {
+			t.Fatalf("%q : etat %q, attendu %q", c.réponse, g[1], c.veut)
+		}
+	}
+	if motifQPCMV.FindStringSubmatch("\r\nERROR\r\n") != nil {
+		t.Fatal("une erreur ne doit pas se lire comme un etat")
+	}
+}

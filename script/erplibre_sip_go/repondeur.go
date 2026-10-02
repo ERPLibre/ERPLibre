@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -59,6 +60,15 @@ const (
 	// de son sur un seul bloc et laisserait sinon un message d'un centième
 	// de seconde, annoncé « 0 seconde » et vide à l'écoute.
 	DuréeMinMessage = 1 * time.Second
+
+	// FréquenceBip et DuréeBip : le signal qui dit à l'appelant que
+	// l'annonce est finie et que la ligne enregistre. Sans lui, il attend un
+	// repère qui ne vient pas et parle par-dessus l'annonce ou après la fin
+	// de la capture. 1000 Hz passe la bande téléphonique sans perte, et une
+	// amplitude à la moitié de l'échelle reste nette sans saturer.
+	FréquenceBip = 1000.0
+	DuréeBip     = 300 * time.Millisecond
+	AmplitudeBip = 16000
 
 	// Ce que la carte du modem rend : la même chose que le réseau
 	// téléphonique, sans rééchantillonnage. Le taux vient de `duplex.go`,
@@ -212,6 +222,12 @@ func PrendreLeMessage(ctx context.Context, carte string, r RéglagesRépondeur,
 		}
 	}
 
+	// Le bip APRÈS l'annonce et jamais ensemble : les deux écrivent dans la
+	// même carte, et se la disputer donnerait un mélange inaudible.
+	if err := jouerPCMSurCarte(ctx, carte, sonBip()); err != nil {
+		slog.Warn("bip du repondeur non joue", "err", err)
+	}
+
 	début := time.Now()
 	nom := fmt.Sprintf("%s_%s.wav", début.Format("20060102-150405"),
 		chiffresSeuls(numéro))
@@ -225,7 +241,10 @@ func PrendreLeMessage(ctx context.Context, carte string, r RéglagesRépondeur,
 	if durée == 0 {
 		// Personne n'a parlé : on ne garde rien, et on le dit.
 		_ = os.Remove(chemin)
-		slog.Info("appel sans message", "de", numéro)
+		// La crête AVEC le constat : une ligne muette et un appelant
+		// silencieux donnent le même « sans message », et seul le niveau
+		// capté les distingue — zéro accuse le routage, pas l'appelant.
+		slog.Info("appel sans message", "de", numéro, "crete", crête)
 		return nil, nil
 	}
 
@@ -428,6 +447,23 @@ func enregistrerLaVoix(ctx context.Context, carte, chemin string,
 		return 0, mesure.crête, err
 	}
 	return durée, mesure.crête, nil
+}
+
+// sonBip rend le bip en PCM, au format de la carte du modem.
+//
+// Synthétisé plutôt que lu : un fichier livré avec le dépôt se perdrait à
+// l'installation, et le répondeur enregistrerait alors sans prévenir
+// personne.
+func sonBip() []byte {
+	échantillons := int(TauxVoixHz * DuréeBip.Seconds())
+	pcm := make([]byte, 0, échantillons*OctetsParÉchan)
+	for i := 0; i < échantillons; i++ {
+		v := AmplitudeBip * math.Sin(2*math.Pi*FréquenceBip*float64(i)/TauxVoixHz)
+		var deux [2]byte
+		binary.LittleEndian.PutUint16(deux[:], uint16(int16(v)))
+		pcm = append(pcm, deux[0], deux[1])
+	}
+	return pcm
 }
 
 // entêteWAV rend l'en-tête canonique de 44 octets pour `octets` de PCM.

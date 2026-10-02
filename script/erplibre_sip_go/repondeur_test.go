@@ -282,3 +282,38 @@ func TestUnAppelantQuiPoseSonCombineEstBorne(t *testing.T) {
 		t.Fatalf("durée %s, attendu 3s", d)
 	}
 }
+
+func TestLeBipPorteAuFormatDeLaCarte(t *testing.T) {
+	pcm := sonBip()
+
+	attendu := int(TauxVoixHz*DuréeBip.Seconds()) * OctetsParÉchan
+	if len(pcm) != attendu {
+		t.Fatalf("%d octets, attendu %d", len(pcm), attendu)
+	}
+	if crête := niveauCrête(pcm); crête < AmplitudeBip-100 || crête > AmplitudeBip {
+		t.Fatalf("crête %d, attendu environ %d sans saturer", crête, AmplitudeBip)
+	}
+	if niveauCrête(pcm) <= SeuilÉcho {
+		t.Fatalf("un bip sous le seuil de son ne s'entend pas sur la ligne")
+	}
+}
+
+func TestLeBipTientSaFrequence(t *testing.T) {
+	pcm := sonBip()
+
+	// Deux passages par zéro par période : la fréquence se mesure sans
+	// transformée, et une erreur de taux d'échantillonnage s'y voit.
+	passages := 0
+	précédent := int16(0)
+	for i := 0; i+1 < len(pcm); i += 2 {
+		v := int16(binary.LittleEndian.Uint16(pcm[i:]))
+		if (v < 0) != (précédent < 0) && i > 0 {
+			passages++
+		}
+		précédent = v
+	}
+	attendu := int(2 * FréquenceBip * DuréeBip.Seconds())
+	if passages < attendu-2 || passages > attendu+2 {
+		t.Fatalf("%d passages par zéro, attendu %d", passages, attendu)
+	}
+}

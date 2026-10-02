@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -274,6 +275,26 @@ func jouerSurCarte(ctx context.Context, carte, fichier string) error {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, "aplay", "-D", carte, "-q", fichier)
+	sortie, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("aplay : %w : %s", err, strings.TrimSpace(string(sortie)))
+	}
+	return nil
+}
+
+// jouerPCMSurCarte envoie des octets PCM à la carte, sans fichier.
+//
+// Même format que la capture — 8000 Hz, mono, 16 bits signés — puisque c'est
+// celui que la carte du modem impose dans les deux sens. `aplay` le reçoit
+// par son entrée standard : un son de quelques centaines de millisecondes ne
+// vaut pas un fichier temporaire, dont il faudrait aussi garantir l'effacement.
+func jouerPCMSurCarte(ctx context.Context, carte string, pcm []byte) error {
+	carte, err := carteOuDéfaut(carte)
+	if err != nil {
+		return err
+	}
+	cmd := commandePour(ctx, carte, "aplay", "pw-play")
+	cmd.Stdin = bytes.NewReader(pcm)
 	sortie, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("aplay : %w : %s", err, strings.TrimSpace(string(sortie)))

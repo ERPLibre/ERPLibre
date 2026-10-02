@@ -196,6 +196,15 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	}
 	defer rendre()
 
+	// Le mode audio AVANT le canal, comme à l'appel sortant : chaque réglage
+	// referme et rouvre le périphérique USB, et les traitements prévus pour
+	// un combiné brouillent un signal qui arrive déjà numérisé.
+	if o.AudMod != ModeAudioInchangé {
+		if err := m.RéglerModeAudio(o.AudMod); err != nil {
+			slog.Warn("mode audio non réglé", "err", err)
+		}
+	}
+
 	// Le canal voix AVANT que la voix ne s'établisse : le modem fige son
 	// routage au décroché et refuse la commande ensuite. Même contrainte qu'à
 	// l'appel sortant, dans l'autre sens.
@@ -694,6 +703,15 @@ func prendreLeMessageSurLaLigne(ctx context.Context, m *Modem, o OptionsModem,
 	// enregistre le silence d'un canal qui n'est plus routé vers l'USB.
 	if err := m.RéaffirmerVoixUSB(o.ModePCM); err != nil {
 		slog.Warn("canal voix USB non réaffirmé", "err", err)
+	}
+	// Ce que le modem dit de son canal, et non ce qu'on lui a demandé : la
+	// commande rend OK même quand le routage reste fermé, et le message est
+	// alors muet dans les deux sens sans que rien d'autre ne le signale.
+	if état, err := m.ÉtatVoixUSB(); err != nil {
+		slog.Warn("canal voix du repondeur illisible", "err", err)
+	} else {
+		slog.Info("canal voix du repondeur", "qpcmv", état,
+			"mode_demande", o.ModePCM)
 	}
 	message, err := PrendreLeMessage(ctx, carte, r, numéro)
 	if err != nil || message == nil {
