@@ -98,6 +98,12 @@ const LatencePipeWire = "20ms"
 // le délai qu'on cherche à supprimer.
 func argsALSA(périphérique string) []string {
 	args := []string{
+		// « raw » et non le défaut : arecord écrit un en-tête WAVE de 44
+		// octets en tête de son flux, et aplay en attend un. Ces 44 octets
+		// traversent le pont comme s'ils étaient du son — « RIFF » se lit
+		// -32768 à pleine échelle — et saturent la crête mesurée du premier
+		// bloc. C'est le pendant de « --raw » côté PipeWire.
+		"-t", "raw",
 		"-f", FormatVoix, "-r", TauxVoix, "-c", CanauxVoix,
 		"--period-size", PériodeVoix, "--buffer-size", TamponVoix,
 		"-q", "-",
@@ -167,9 +173,7 @@ const (
 	//
 	// Un relevé PÉRIODIQUE du maximum, et non une annonce au premier bloc
 	// qui dépasse un seuil : le périphérique USB rend du rebut à
-	// l'ouverture, et l'annoncer une fois faisait passer ce rebut pour du
-	// son. Mesuré : niveau 6039 annoncé sur une carte dont la capture
-	// brute rendait zéro exact.
+	// l'ouverture, et l'annoncer une fois fait passer ce rebut pour du son.
 	RapportNiveau = 5 * time.Second
 
 	// ÉtablissementFlux écarte les premiers blocs, ceux du rebut.
@@ -355,9 +359,9 @@ func (c *Combiné) BruitModemActif() bool { return c.bruitModem.Load() }
 // poserRéglageAudioModem applique un réglage et rétablit le canal voix.
 //
 // TOUT réglage audio du module rompt le canal voix USB : le son disparaît
-// des deux côtés et ne revient qu'en recomposant. Constaté sur le filtre de
-// bruit, puis sur le gain de montée — il n'y a aucune raison de croire les
-// autres épargnés, d'où un passage OBLIGÉ par ici.
+// des deux côtés et ne revient qu'en recomposant. Le filtre de bruit et le
+// gain de montée le font tous deux, et rien ne dit que les autres réglages y
+// échappent, d'où un passage OBLIGÉ par ici.
 //
 // La séquence qui ouvre le canal au décroché le rétablit, ce qui rend le
 // réglage possible en pleine conversation.

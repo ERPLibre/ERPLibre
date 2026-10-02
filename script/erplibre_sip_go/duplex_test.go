@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -501,5 +502,17 @@ func TestLesFluxPosentLaBorne(t *testing.T) {
 			t.Fatalf("capture : tuyau de %d octets, %d attendus", taille,
 				TailleTuyau)
 		}
+	}
+}
+
+func TestLesDeuxCheminsAudioRefusentUnEnteteWAV(t *testing.T) {
+	// Un en-tête traverse le pont comme du son : « RIFF » vaut -32768 à
+	// pleine échelle, et la crête du premier bloc ne mesure plus la voix.
+	// Les deux listes doivent donc le refuser, et non une seule.
+	if !slices.Contains(argsALSA("hw:1,0"), "raw") {
+		t.Fatalf("arecord ecrirait un en-tete WAVE : %v", argsALSA("hw:1,0"))
+	}
+	if !slices.Contains(argsPipeWire("cible"), "--raw") {
+		t.Fatalf("pw-record ecrirait un en-tete : %v", argsPipeWire("cible"))
 	}
 }
