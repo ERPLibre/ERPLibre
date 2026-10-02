@@ -151,3 +151,50 @@ parce que trier dix mille billets ne doit pas déchiffrer une ligne chacun.
 L'identifiant d'un billet est une CHAÎNE que la plateforme choisit — un
 compteur à flocon sur l'une, une URI `at://` sur l'autre — donc la clé est la
 paire fil plus identifiant, jamais un nombre inventé par ce cache.
+
+## L'essayer contre les vrais services
+
+Rien ici n'a jamais parlé à un compte réel. Tous les tests qui passent le
+font contre des serveurs bacs à sable écrits à côté du client, de la même
+main, et un bac à sable donne raison à son auteur : deux audits y ont trouvé
+quatre défauts qu'ils ne pouvaient pas voir — un en-tête dont la casse
+n'était pas celle attendue, une adresse d'enregistrement que le service
+refuse, une réponse qui ne nommait que la moitié de ce qu'elle doit, un
+succès lu comme un doute. Le parcours ci-dessous n'est donc pas une
+formalité. C'est la seule chose qui éprouve l'accord avec le service plutôt
+qu'avec le bac.
+
+Prendre un compte jetable, et effacer les billets ensuite. Rien de l'essai —
+identifiant, instance, jeton, billet — n'a sa place dans ce dépôt.
+
+**Avant tout.** Un compte par plateforme, chaque jeton au coffre comme le
+tableau plus haut le décrit. `TODO > Assistant > Réseaux sociaux > Rapporter
+maintenant` rend l'état de chaque compte sans ouvrir d'écran : un compte qui
+répond là porte un jeton que le service accepte, et c'est la seule chose à
+régler avant le reste.
+
+**Mastodon.** Rapporter, puis rapporter encore : la passe doit descendre
+AU-DELÀ de la première page. Un fil qui s'arrête exactement sur une page de
+billets, c'est le défaut où un service nomme sa page suivante dans un en-tête
+dont personne n'attendait la casse. Puis publier sous chacune des quatre
+portées, et vérifier que le service montre celle choisie. Puis répondre à un
+billet du fil, et vérifier qu'il paraît sous lui et non en nouveau fil.
+
+**Bluesky.** Rapporter deux fois, comme ci-dessus ; ici le curseur voyage
+dans le corps de la réponse. Puis publier deux fois coup sur coup : DEUX
+billets doivent paraître. Un seul là où l'on en a fait deux signifie que le
+second enregistrement a écrasé le premier, les adresses ayant collisionné.
+Puis répondre, et vérifier que cela tombe sous le bon billet ET dans le bon
+fil — une réponse nomme les deux, chacun par adresse et empreinte de contenu.
+
+**LinkedIn.** Il n'y a pas de fil et l'écran le dit ; ce n'est pas une panne.
+Publier, et vérifier que le billet paraît au profil : un succès ne rend ici
+aucun corps, et un client qui en exige un annonce un doute sur un billet
+pourtant parti. Puis renvoyer LE MÊME texte, tout de suite : le service le
+refuse en nommant le billet déjà en ligne, et le client doit dire qu'il est
+déjà en ligne et où, non pas seulement qu'il a été refusé.
+
+Noter, à chaque étape, ce que le client a dit et ce que le service montre. Un
+désaccord entre les deux est un défaut, et il va dans `tasks/`, le compte et
+l'instance généralisés. Si les deux s'accordent sur les neuf étapes, ce
+client aura été éprouvé contre quelque chose qu'il n'a pas écrit lui-même.

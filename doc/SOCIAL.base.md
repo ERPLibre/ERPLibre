@@ -164,6 +164,51 @@ A post's identifier is a STRING the platform chooses — a snowflake counter on
 one, an `at://` URI on another — so the key is the pair feed plus identifier,
 never a number this cache invented.
 
+## Trying it against the real services
+
+Nothing here has ever spoken to a real account. Every passing test runs
+against sandbox servers written beside the client, by the same hand, and a
+sandbox agrees with its author: two audits found four defects they could not
+see — a header whose case was not the expected one, a record address the
+service rejects, a reply naming only half of what it must, a success read as
+a doubt. The walk below is therefore not a formality. It is the only thing
+that tests the agreement with the service rather than with the sandbox.
+
+Use a throwaway account, and delete the posts afterwards. Nothing from the
+trial — handle, instance, token, post — belongs in this repository.
+
+**Before anything.** One account per platform, each token in the vault as
+the table above describes. `TODO > Assistant > Social networks > Fetch now`
+reports every account without opening a screen: an account that answers
+there holds a token the service accepts, which is the one thing worth
+settling first.
+
+**Mastodon.** Fetch, then fetch again: the pass must descend PAST the first
+page. A feed that stops at exactly one page-worth of posts is the defect
+where a service names its next page in a header whose case no one expected.
+Then post under each of the four scopes, and check the service shows the
+scope chosen. Then reply to a post from the feed, and check it appears under
+it rather than as a new thread.
+
+**Bluesky.** Fetch twice, as above; here the cursor travels in the body of
+the answer. Then post twice in quick succession: TWO posts must appear. One
+post where you made two means the second record overwrote the first, the
+addresses having collided. Then reply, and check it lands under the right
+post AND in the right thread — a reply names both, each by address and
+content fingerprint.
+
+**LinkedIn.** There is no feed and the screen says so; that is not a
+breakdown. Post, and check it appears on the profile: a success returns no
+body at all here, and a client that demands one reports a doubt over a post
+that did go out. Then send the SAME text again, straight away: the service
+refuses it and names the post already online, and the client must say it is
+already online and where, not merely that it was refused.
+
+Write down, for each step, what the client said and what the service shows.
+A disagreement between those two is a defect, and it belongs in `tasks/`,
+with the account and the instance generalised away. If the two agree on all
+nine steps, this client has been tested against something it did not write.
+
 <!-- [fr] -->
 
 ## Ce que c'est
@@ -307,3 +352,50 @@ parce que trier dix mille billets ne doit pas déchiffrer une ligne chacun.
 L'identifiant d'un billet est une CHAÎNE que la plateforme choisit — un
 compteur à flocon sur l'une, une URI `at://` sur l'autre — donc la clé est la
 paire fil plus identifiant, jamais un nombre inventé par ce cache.
+
+## L'essayer contre les vrais services
+
+Rien ici n'a jamais parlé à un compte réel. Tous les tests qui passent le
+font contre des serveurs bacs à sable écrits à côté du client, de la même
+main, et un bac à sable donne raison à son auteur : deux audits y ont trouvé
+quatre défauts qu'ils ne pouvaient pas voir — un en-tête dont la casse
+n'était pas celle attendue, une adresse d'enregistrement que le service
+refuse, une réponse qui ne nommait que la moitié de ce qu'elle doit, un
+succès lu comme un doute. Le parcours ci-dessous n'est donc pas une
+formalité. C'est la seule chose qui éprouve l'accord avec le service plutôt
+qu'avec le bac.
+
+Prendre un compte jetable, et effacer les billets ensuite. Rien de l'essai —
+identifiant, instance, jeton, billet — n'a sa place dans ce dépôt.
+
+**Avant tout.** Un compte par plateforme, chaque jeton au coffre comme le
+tableau plus haut le décrit. `TODO > Assistant > Réseaux sociaux > Rapporter
+maintenant` rend l'état de chaque compte sans ouvrir d'écran : un compte qui
+répond là porte un jeton que le service accepte, et c'est la seule chose à
+régler avant le reste.
+
+**Mastodon.** Rapporter, puis rapporter encore : la passe doit descendre
+AU-DELÀ de la première page. Un fil qui s'arrête exactement sur une page de
+billets, c'est le défaut où un service nomme sa page suivante dans un en-tête
+dont personne n'attendait la casse. Puis publier sous chacune des quatre
+portées, et vérifier que le service montre celle choisie. Puis répondre à un
+billet du fil, et vérifier qu'il paraît sous lui et non en nouveau fil.
+
+**Bluesky.** Rapporter deux fois, comme ci-dessus ; ici le curseur voyage
+dans le corps de la réponse. Puis publier deux fois coup sur coup : DEUX
+billets doivent paraître. Un seul là où l'on en a fait deux signifie que le
+second enregistrement a écrasé le premier, les adresses ayant collisionné.
+Puis répondre, et vérifier que cela tombe sous le bon billet ET dans le bon
+fil — une réponse nomme les deux, chacun par adresse et empreinte de contenu.
+
+**LinkedIn.** Il n'y a pas de fil et l'écran le dit ; ce n'est pas une panne.
+Publier, et vérifier que le billet paraît au profil : un succès ne rend ici
+aucun corps, et un client qui en exige un annonce un doute sur un billet
+pourtant parti. Puis renvoyer LE MÊME texte, tout de suite : le service le
+refuse en nommant le billet déjà en ligne, et le client doit dire qu'il est
+déjà en ligne et où, non pas seulement qu'il a été refusé.
+
+Noter, à chaque étape, ce que le client a dit et ce que le service montre. Un
+désaccord entre les deux est un défaut, et il va dans `tasks/`, le compte et
+l'instance généralisés. Si les deux s'accordent sur les neuf étapes, ce
+client aura été éprouvé contre quelque chose qu'il n'a pas écrit lui-même.

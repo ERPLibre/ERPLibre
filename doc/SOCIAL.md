@@ -146,3 +146,48 @@ date, because sorting ten thousand posts must not decrypt a row apiece.
 A post's identifier is a STRING the platform chooses — a snowflake counter on
 one, an `at://` URI on another — so the key is the pair feed plus identifier,
 never a number this cache invented.
+
+## Trying it against the real services
+
+Nothing here has ever spoken to a real account. Every passing test runs
+against sandbox servers written beside the client, by the same hand, and a
+sandbox agrees with its author: two audits found four defects they could not
+see — a header whose case was not the expected one, a record address the
+service rejects, a reply naming only half of what it must, a success read as
+a doubt. The walk below is therefore not a formality. It is the only thing
+that tests the agreement with the service rather than with the sandbox.
+
+Use a throwaway account, and delete the posts afterwards. Nothing from the
+trial — handle, instance, token, post — belongs in this repository.
+
+**Before anything.** One account per platform, each token in the vault as
+the table above describes. `TODO > Assistant > Social networks > Fetch now`
+reports every account without opening a screen: an account that answers
+there holds a token the service accepts, which is the one thing worth
+settling first.
+
+**Mastodon.** Fetch, then fetch again: the pass must descend PAST the first
+page. A feed that stops at exactly one page-worth of posts is the defect
+where a service names its next page in a header whose case no one expected.
+Then post under each of the four scopes, and check the service shows the
+scope chosen. Then reply to a post from the feed, and check it appears under
+it rather than as a new thread.
+
+**Bluesky.** Fetch twice, as above; here the cursor travels in the body of
+the answer. Then post twice in quick succession: TWO posts must appear. One
+post where you made two means the second record overwrote the first, the
+addresses having collided. Then reply, and check it lands under the right
+post AND in the right thread — a reply names both, each by address and
+content fingerprint.
+
+**LinkedIn.** There is no feed and the screen says so; that is not a
+breakdown. Post, and check it appears on the profile: a success returns no
+body at all here, and a client that demands one reports a doubt over a post
+that did go out. Then send the SAME text again, straight away: the service
+refuses it and names the post already online, and the client must say it is
+already online and where, not merely that it was refused.
+
+Write down, for each step, what the client said and what the service shows.
+A disagreement between those two is a defect, and it belongs in `tasks/`,
+with the account and the instance generalised away. If the two agree on all
+nine steps, this client has been tested against something it did not write.
