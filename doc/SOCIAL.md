@@ -98,7 +98,11 @@ one. That is what makes the button safe to press twice.
 
 On Bluesky there is no key to send: publishing means WRITING A RECORD at an
 address the client chooses, and rewriting the same address replaces instead
-of adding. The guarantee is the same, the mechanism is not — the client keeps
+of adding. That address has a shape the service enforces — thirteen
+characters of a sorted alphabet, so that a repository stays ordered by
+address — and replying there names TWO posts, the one answered and the
+thread's root, each by address AND content fingerprint. An identifier alone
+does not name a post, so the client carries the fingerprint in its cache. The guarantee is the same, the mechanism is not — the client keeps
 the address exactly as it keeps a key, and a fresh one each try would publish
 twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to

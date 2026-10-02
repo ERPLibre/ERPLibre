@@ -188,6 +188,12 @@ class LinkedInTransport:
             "urn": self.urn,
         }
 
+    def nouvelle_cle(self) -> str:
+        """Ce réseau n'offre rien pour reconnaître une demande déjà reçue :
+        la clé existe pour que l'appelant n'ait pas à distinguer les
+        réseaux, et ne promet rien ici."""
+        return ""
+
     def limite_caracteres(self) -> int:
         """Celle de l'API, non d'un serveur : rien à demander."""
         return LIMITE_CARACTERES
@@ -210,6 +216,7 @@ class LinkedInTransport:
         visibilite: str = "public",
         repond_a: str = "",
         avertissement: str = "",
+        parent=None,
     ) -> PostMeta:
         """Publie un partage. Rend celui que l'API a créé.
 

@@ -43,6 +43,39 @@ JETON_REPRISE = "jeton-de-reprise-du-bac"
 DID = "did:plc:exemple1234567890"
 
 
+# L'alphabet TRIÉ dont le service tire ses adresses d'enregistrement : il
+# range un dépôt par adresse, donc l'ordre des caractères doit suivre l'ordre
+# du temps. Ce n'est PAS l'alphabet base32 courant, où « 2 » précède « a ».
+ALPHABET_TID = "234567abcdefghijklmnopqrstuvwxyz"
+
+
+def tid_valide(rkey: str) -> bool:
+    """Vrai si `rkey` a la forme que le service exige d'une adresse.
+
+    Treize caractères de l'alphabet trié, le premier dans sa première
+    moitié — le bit de poids fort d'un identifiant est toujours nul. Un
+    service courant refuse tout le reste par un 400, et un bac à sable qui
+    accepterait n'importe quoi laisserait passer un client incapable de
+    publier.
+    """
+    return (
+        len(rkey) == 13
+        and all(c in ALPHABET_TID for c in rkey)
+        and rkey[0] in ALPHABET_TID[:16]
+    )
+
+
+def _ref_valide(ref) -> bool:
+    """Une référence forte porte une adresse ET une empreinte de contenu.
+
+    L'une sans l'autre ne désigne pas un billet : l'adresse dit où, et
+    l'empreinte dit quelle version. Le lexique les exige toutes deux.
+    """
+    return (
+        isinstance(ref, dict) and bool(ref.get("uri")) and bool(ref.get("cid"))
+    )
+
+
 class JetonExpire(Fault):
     """Le jeton d'accès a vécu. Le serveur le NOMME.
 
@@ -61,6 +94,7 @@ def billet(
     nom: str = "Ana",
     did: str = "did:plc:ana000000000000",
     repond_a: str = "",
+    racine: dict | None = None,
     partage_par: str = "",
     images: list | None = None,
 ) -> dict:
@@ -75,7 +109,14 @@ def billet(
         "$type": "app.bsky.feed.post",
     }
     if repond_a:
-        enregistrement["reply"] = {"parent": {"uri": repond_a}}
+        # Les deux références, chacune complète : c'est ce que le lexique
+        # exige, et ce qu'un client doit savoir relire pour répondre à son
+        # tour sans casser le fil.
+        parent = {"uri": repond_a, "cid": f"bafyreiparent{rkey}"}
+        enregistrement["reply"] = {
+            "root": racine or parent,
+            "parent": parent,
+        }
     entree = {
         "post": {
             "uri": f"at://{did}/app.bsky.feed.post/{rkey}",
@@ -232,6 +273,40 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         """
         rkey = charge.get("rkey") or ""
         enregistrement = charge.get("record") or {}
+        if not tid_valide(rkey):
+            # Le service valide la FORME de l'adresse avant tout le reste :
+            # la collection déclare le type attendu, et une adresse d'une
+            # autre forme est refusée sans que l'enregistrement soit lu.
+            self._json(
+                400,
+                {
+                    "error": "InvalidRecordError",
+                    "message": f"Invalid rkey: {rkey!r}",
+                },
+            )
+            return
+        reponse = enregistrement.get("reply")
+        if reponse is not None:
+            # Une réponse nomme DEUX billets : celui auquel elle répond et
+            # la racine du fil. Les deux par référence forte. Il manquait
+            # la racine, et l'empreinte des deux.
+            manque = [
+                champ
+                for champ in ("root", "parent")
+                if not _ref_valide((reponse or {}).get(champ))
+            ]
+            if manque:
+                self._json(
+                    400,
+                    {
+                        "error": "InvalidRequest",
+                        "message": (
+                            "Invalid app.bsky.feed.post record: reply"
+                            f' must have the property "{manque[0]}"'
+                        ),
+                    },
+                )
+                return
         texte = enregistrement.get("text", "")
         if not texte.strip():
             self._json(

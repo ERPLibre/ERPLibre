@@ -269,13 +269,20 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
             Binding("ctrl+s", "send", t("social_compose_send")),
         ]
 
-        def __init__(self, session, repond_a: str = ""):
+        def __init__(self, session, repond_a: str = "", origine=None):
             super().__init__()
             self.session = session
             self.repond_a = repond_a
-            from script.todo.social.mastodon import _cle_idempotence
-
-            self.cle = _cle_idempotence()
+            # Le billet auquel on répond, tel que le cache le rend. Certains
+            # réseaux le désignent par son adresse ET son empreinte, qu'un
+            # identifiant seul ne reconstitue pas.
+            # `origine` et non `parent` : Textual réserve ce nom pour le
+            # parent d'un widget dans l'arbre, et l'affecter lève.
+            self.origine = origine
+            # La clé vient du TRANSPORT : elle est un objet du protocole, et
+            # imposer celle du premier réseau écrit la ferait refuser par le
+            # suivant.
+            self.cle = session.transport.nouvelle_cle()
             self.limite = 0
 
         def compose(self) -> ComposeResult:
@@ -339,6 +346,7 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
                     cle=self.cle,
                     visibilite=visibilite or "public",
                     repond_a=self.repond_a,
+                    parent=self.origine,
                 )
             except Exception as exc:
                 _logger.exception(
@@ -624,10 +632,12 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
             self._ecrire()
 
         def action_reply(self) -> None:
+            """Le billet entier part avec, pas seulement son identifiant :
+            répondre exige ailleurs son adresse et son empreinte."""
             meta = self.current_meta()
-            self._ecrire(meta.post_id if meta else "")
+            self._ecrire(meta.post_id if meta else "", meta)
 
-        def _ecrire(self, repond_a: str = "") -> None:
+        def _ecrire(self, repond_a: str = "", origine=None) -> None:
             if self.current_ref is None:
                 self.set_status(t("social_compose_no_account"))
                 return
@@ -644,7 +654,7 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
                     return
                 self.set_status(t("social_compose_done"))
 
-            self.push_screen(ComposeScreen(session, repond_a), publie)
+            self.push_screen(ComposeScreen(session, repond_a, origine), publie)
 
     app = SocialApp(sessions or [])
     if run_app:

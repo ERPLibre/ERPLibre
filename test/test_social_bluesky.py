@@ -46,6 +46,11 @@ from script.todo.social.mastodon import (
     SocialRefused,
 )
 
+# Des adresses d'enregistrement VALIDES, de la forme que le service exige :
+# treize caractères de l'alphabet trié. « rk-1 » était refusé.
+ADRESSE_1 = "3kaaaaaaaaaaa"
+ADRESSE_2 = "3kaaaaaaaaaab"
+
 
 class BlueskyCase(unittest.TestCase):
     def setUp(self):
@@ -210,8 +215,8 @@ class TestPublishing(BlueskyCase):
     def test_the_same_address_twice_writes_once(self):
         """L'adresse tient ici le rôle d'une clé d'idempotence : réécrire
         remplace au lieu d'ajouter."""
-        self.transport.publish("Bonjour.", cle="rk-1")
-        self.transport.publish("Bonjour.", cle="rk-1")
+        self.transport.publish("Bonjour.", cle=ADRESSE_1)
+        self.transport.publish("Bonjour.", cle=ADRESSE_1)
         self.assertEqual(len(self.bac.ecrits), 1)
 
     def test_a_fresh_address_each_try_would_double_it(self):
@@ -224,8 +229,8 @@ class TestPublishing(BlueskyCase):
         self.transport.ouvrir()
         self.bac.fail(EnVrac(sur="/xrpc/com.atproto.repo.putRecord"))
         with self.assertRaises(SocialError):
-            self.transport.publish("Bonjour.", cle="rk-1")
-        self.transport.publish("Bonjour.", cle="rk-1")
+            self.transport.publish("Bonjour.", cle=ADRESSE_1)
+        self.transport.publish("Bonjour.", cle=ADRESSE_1)
         self.assertEqual(len(self.bac.ecrits), 1)
 
     def test_an_address_is_generated_when_none_is_given(self):
@@ -237,10 +242,61 @@ class TestPublishing(BlueskyCase):
         y mêleraient les billets."""
         self.assertLess(nouvelle_adresse(), nouvelle_adresse())
 
-    def test_a_reply_names_the_post_it_answers(self):
-        self.transport.publish("Merci.", cle="rk-2", repond_a="rk-1")
-        ecrit = self.bac.ecrits[f"at://{self.bac.did}/app.bsky.feed.post/rk-2"]
-        self.assertIn("rk-1", ecrit["reply"]["parent"]["uri"])
+    def _origine(self, racine=False):
+        from script.todo.social.store import PostMeta
+
+        base = "at://did:plc:ana000000000000/app.bsky.feed.post"
+        return PostMeta(
+            post_id=ADRESSE_1,
+            uri=f"{base}/{ADRESSE_1}",
+            cid="bafyreimilieu" if racine else "bafyreiorigine",
+            root_uri=f"{base}/racine" if racine else "",
+            root_cid="bafyreiracine" if racine else "",
+        )
+
+    def _ecrit(self):
+        return self.bac.ecrits[
+            f"at://{self.bac.did}/app.bsky.feed.post/{ADRESSE_2}"
+        ]
+
+    def test_a_reply_names_both_the_parent_and_the_root(self):
+        """Une réponse nomme DEUX billets, chacun par adresse ET empreinte.
+        Il manquait la racine, et l'empreinte des deux : le service refusait
+        l'enregistrement entier."""
+        origine = self._origine()
+        self.transport.publish(
+            "Merci.", cle=ADRESSE_2, repond_a=ADRESSE_1, parent=origine
+        )
+        ecrit = self._ecrit()
+        self.assertEqual(ecrit["reply"]["parent"]["uri"], origine.uri)
+        self.assertEqual(ecrit["reply"]["parent"]["cid"], "bafyreiorigine")
+        self.assertEqual(ecrit["reply"]["root"], ecrit["reply"]["parent"])
+
+    def test_a_reply_to_a_reply_keeps_the_same_root(self):
+        """Nommer une autre racine scinderait le fil en deux."""
+        self.transport.publish(
+            "Encore.",
+            cle=ADRESSE_2,
+            repond_a=ADRESSE_1,
+            parent=self._origine(racine=True),
+        )
+        ecrit = self._ecrit()
+        self.assertEqual(ecrit["reply"]["root"]["cid"], "bafyreiracine")
+        self.assertEqual(ecrit["reply"]["parent"]["cid"], "bafyreimilieu")
+
+    def test_a_reply_without_the_original_is_refused(self):
+        """Un identifiant seul ne désigne pas le billet : reconstruire son
+        adresse de mémoire la placerait sous le dépôt de qui répond."""
+        with self.assertRaises(SocialRefused):
+            self.transport.publish("Merci.", cle=ADRESSE_2, repond_a=ADRESSE_1)
+        self.assertEqual(self.bac.ecrits, {})
+
+    def test_an_invented_address_is_refused(self):
+        """Le service valide la FORME de l'adresse : treize caractères d'un
+        alphabet trié, et rien d'autre."""
+        with self.assertRaises(SocialRefused):
+            self.transport.publish("Bonjour.", cle="rk-1")
+        self.assertEqual(self.bac.ecrits, {})
 
     def test_an_empty_post_never_leaves(self):
         with self.assertRaises(SocialRefused):
@@ -258,8 +314,10 @@ class TestPublishing(BlueskyCase):
         """Ce protocole ne porte pas cette notion. Prétendre l'honorer
         laisserait croire à une confidentialité qui n'existe pas ; la
         refuser obligerait l'appelant à distinguer les réseaux."""
-        self.transport.publish("Bonjour.", cle="rk-1", visibilite="private")
-        ecrit = self.bac.ecrits[f"at://{self.bac.did}/app.bsky.feed.post/rk-1"]
+        self.transport.publish("Bonjour.", cle=ADRESSE_1, visibilite="private")
+        ecrit = self.bac.ecrits[
+            f"at://{self.bac.did}/app.bsky.feed.post/{ADRESSE_1}"
+        ]
         self.assertNotIn("visibility", ecrit)
 
 

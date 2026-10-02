@@ -307,6 +307,16 @@ class MastodonTransport:
         except ValueError as exc:
             raise SocialError(t("social_err_answer_not_json")) from exc
 
+    def nouvelle_cle(self) -> str:
+        """La clé d'idempotence de CE réseau, tirée par lui.
+
+        Un protocole la définit à sa façon — un jeton libre ici, l'adresse
+        d'un enregistrement là. L'appelant demande donc au transport plutôt
+        que d'imposer la forme du premier réseau écrit, qui serait refusée
+        par le suivant.
+        """
+        return _cle_idempotence()
+
     def limite_caracteres(self) -> int:
         """La longueur maximale d'un billet, telle que l'instance l'annonce.
 
@@ -335,6 +345,7 @@ class MastodonTransport:
         visibilite: str = "public",
         repond_a: str = "",
         avertissement: str = "",
+        parent=None,
     ) -> PostMeta:
         """Publie un billet. Rend celui que l'instance a créé.
 

@@ -115,7 +115,11 @@ one. That is what makes the button safe to press twice.
 
 On Bluesky there is no key to send: publishing means WRITING A RECORD at an
 address the client chooses, and rewriting the same address replaces instead
-of adding. The guarantee is the same, the mechanism is not — the client keeps
+of adding. That address has a shape the service enforces — thirteen
+characters of a sorted alphabet, so that a repository stays ordered by
+address — and replying there names TWO posts, the one answered and the
+thread's root, each by address AND content fingerprint. An identifier alone
+does not name a post, so the client carries the fingerprint in its cache. The guarantee is the same, the mechanism is not — the client keeps
 the address exactly as it keeps a key, and a fresh one each try would publish
 twice. That protocol carries no visibility either: the field is accepted so
 the caller need not tell the networks apart, and ignored, since pretending to
@@ -241,7 +245,11 @@ bouton sûr à presser deux fois.
 
 Sur Bluesky il n'y a pas de clé à envoyer : publier, c'est ÉCRIRE UN
 ENREGISTREMENT à une adresse que le client choisit, et réécrire la même
-remplace au lieu d'ajouter. La garantie est la même, le mécanisme non — le
+remplace au lieu d'ajouter. Cette adresse a une forme que le service impose
+— treize caractères d'un alphabet trié, pour qu'un dépôt reste rangé par
+adresse — et y répondre nomme DEUX billets, celui auquel on répond et la
+racine du fil, chacun par adresse ET empreinte de contenu. Un identifiant
+seul ne désigne pas un billet, d'où l'empreinte gardée au cache. La garantie est la même, le mécanisme non — le
 client garde l'adresse exactement comme il garde une clé, et en tirer une
 neuve à chaque essai publierait deux fois. Ce protocole ne porte pas non plus
 de visibilité : le champ est accepté pour que l'appelant n'ait pas à

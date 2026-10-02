@@ -101,7 +101,11 @@ bouton sûr à presser deux fois.
 
 Sur Bluesky il n'y a pas de clé à envoyer : publier, c'est ÉCRIRE UN
 ENREGISTREMENT à une adresse que le client choisit, et réécrire la même
-remplace au lieu d'ajouter. La garantie est la même, le mécanisme non — le
+remplace au lieu d'ajouter. Cette adresse a une forme que le service impose
+— treize caractères d'un alphabet trié, pour qu'un dépôt reste rangé par
+adresse — et y répondre nomme DEUX billets, celui auquel on répond et la
+racine du fil, chacun par adresse ET empreinte de contenu. Un identifiant
+seul ne désigne pas un billet, d'où l'empreinte gardée au cache. La garantie est la même, le mécanisme non — le
 client garde l'adresse exactement comme il garde une clé, et en tirer une
 neuve à chaque essai publierait deux fois. Ce protocole ne porte pas non plus
 de visibilité : le champ est accepté pour que l'appelant n'ait pas à

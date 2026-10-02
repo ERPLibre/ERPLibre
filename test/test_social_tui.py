@@ -60,6 +60,7 @@ class FauxTransport:
         self.refus = refus
         self.publies = []
         self.curseurs = []
+        self.cles = 0
 
     def home_timeline(self, cursor="", limit=40):
         self.curseurs.append(cursor)
@@ -70,8 +71,16 @@ class FauxTransport:
     def limite_caracteres(self):
         return self.limite
 
-    def publish(self, texte, *, cle="", visibilite="public", repond_a=""):
-        self.publies.append((texte, cle, visibilite, repond_a))
+    def nouvelle_cle(self):
+        """La clé vient du TRANSPORT : chaque protocole la définit à sa
+        façon, et imposer celle d'un réseau la ferait refuser ailleurs."""
+        self.cles += 1
+        return f"cle-{self.cles}"
+
+    def publish(
+        self, texte, *, cle="", visibilite="public", repond_a="", parent=None
+    ):
+        self.publies.append((texte, cle, visibilite, repond_a, parent))
         if self.refus is not None:
             souci = self.refus
             self.refus = None
@@ -443,6 +452,10 @@ class TestWriting(TuiCase):
             await app.workers.wait_for_complete()
             await pilot.pause()
             self.assertEqual(transport.publies[0][3], "7")
+            # Le billet d'origine voyage avec : certains réseaux le
+            # désignent par son adresse ET son empreinte.
+            self.assertIsNotNone(transport.publies[0][4])
+            self.assertEqual(transport.publies[0][4].post_id, "7")
 
     async def test_an_offline_account_is_refused_and_told(self):
         app = await self._app([Session(self.account, self.store, None)])

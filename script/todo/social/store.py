@@ -36,7 +36,7 @@ from script.todo import cache_dirs
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EPHEMERAL_PREFIX = "erplibre-social-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS posts (
   reply_to           TEXT,
   boost_of           TEXT,
   sealed_uri         BLOB,
+  sealed_cid         BLOB,
+  sealed_root_uri    BLOB,
+  sealed_root_cid    BLOB,
   sealed_author      BLOB,
   sealed_author_name BLOB,
   sealed_text        BLOB,
@@ -73,6 +76,26 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS idx_post_date ON posts(feed_id, created_at DESC);
 """
+
+
+def _ensure_columns(conn) -> list:
+    """Ajoute à `posts` les colonnes qui lui manquent. Rend les ajoutées.
+
+    `CREATE TABLE IF NOT EXISTS` ne touche pas une table déjà là : un cache
+    écrit par une version antérieure garderait son schéma, et la première
+    écriture échouerait sur une colonne inconnue. Les colonnes se comparent
+    donc à chaque ouverture, ce qui coûte une requête et évite d'avoir à
+    effacer le cache à chaque version.
+    """
+    presentes = {
+        ligne[1] for ligne in conn.execute("PRAGMA table_info(posts)")
+    }
+    ajoutees = []
+    for nom in ("sealed_cid", "sealed_root_uri", "sealed_root_cid"):
+        if nom not in presentes:
+            conn.execute(f"ALTER TABLE posts ADD COLUMN {nom} BLOB")
+            ajoutees.append(nom)
+    return ajoutees
 
 
 class SocialStoreError(Exception):
@@ -123,6 +146,14 @@ class PostMeta:
     text: str = ""
     url: str = ""
     uri: str = ""
+    # v2. L'EMPREINTE du contenu, à côté de l'adresse. Certains réseaux
+    # désignent un billet par les deux : l'adresse dit où il est, l'empreinte
+    # quelle version. Répondre sans elle est refusé par le service.
+    cid: str = ""
+    # La racine du fil quand ce billet est lui-même une réponse. Répondre à
+    # une réponse doit nommer la MÊME racine, sinon le fil se scinde.
+    root_uri: str = ""
+    root_cid: str = ""
     reply_to: str = ""
     boost_of: str = ""
     media: list = field(default_factory=list)
@@ -208,6 +239,7 @@ class Store:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
+            _ensure_columns(conn)
             conn.execute(
                 "INSERT OR REPLACE INTO meta(key, value)"
                 " VALUES('schema_version', ?)",
@@ -412,15 +444,19 @@ class Store:
         db = self._db()
         db.executemany(
             "INSERT INTO posts(feed_id, post_id, created_at, uri_hash,"
-            " reply_to, boost_of, sealed_uri, sealed_author,"
+            " reply_to, boost_of, sealed_uri, sealed_cid,"
+            " sealed_root_uri, sealed_root_cid, sealed_author,"
             " sealed_author_name, sealed_text, sealed_url, sealed_media)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(feed_id, post_id) DO UPDATE SET"
             "   created_at = excluded.created_at,"
             "   uri_hash = excluded.uri_hash,"
             "   reply_to = excluded.reply_to,"
             "   boost_of = excluded.boost_of,"
             "   sealed_uri = excluded.sealed_uri,"
+            "   sealed_cid = excluded.sealed_cid,"
+            "   sealed_root_uri = excluded.sealed_root_uri,"
+            "   sealed_root_cid = excluded.sealed_root_cid,"
             "   sealed_author = excluded.sealed_author,"
             "   sealed_author_name = excluded.sealed_author_name,"
             "   sealed_text = excluded.sealed_text,"
@@ -435,6 +471,9 @@ class Store:
                     m.reply_to or None,
                     m.boost_of or None,
                     self._seal(m.uri),
+                    self._seal(m.cid),
+                    self._seal(m.root_uri),
+                    self._seal(m.root_cid),
                     self._seal(m.author),
                     self._seal(m.author_name),
                     self._seal(m.text),
@@ -475,6 +514,9 @@ class Store:
             text=self._open(row["sealed_text"]),
             url=self._open(row["sealed_url"]),
             uri=self._open(row["sealed_uri"]),
+            cid=self._open(row["sealed_cid"]),
+            root_uri=self._open(row["sealed_root_uri"]),
+            root_cid=self._open(row["sealed_root_cid"]),
             reply_to=row["reply_to"] or "",
             boost_of=row["boost_of"] or "",
             media=_media_from_json(self._open(row["sealed_media"])),

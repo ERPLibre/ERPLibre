@@ -12863,6 +12863,16 @@ TRANSLATIONS = {
             " authorising the account again:"
         ),
     },
+    "social_err_reply_needs_parent": {
+        "fr": (
+            "Répondre ici exige le billet d'origine, son adresse et son"
+            " empreinte : un identifiant seul ne le désigne pas."
+        ),
+        "en": (
+            "Replying here needs the original post, its address and its"
+            " fingerprint: an identifier alone does not name it."
+        ),
+    },
     "social_err_no_feed_here": {
         "fr": (
             "Ce réseau ne sert pas le fil d'un membre : l'autorisation ne"
