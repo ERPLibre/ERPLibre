@@ -285,5 +285,40 @@ class TestTheTreeStopsSayingUnread(AllSeenCase):
             self.assertEqual(arbre.cursor_line, avant)
 
 
+class TestAPreviewWithoutAScreen(AllSeenCase):
+    """Peindre après la fermeture ne lève pas.
+
+    Un corps demandé au serveur revient par un fil de travail, et l'écran
+    peut avoir disparu entre-temps : fermé, ou couvert par un écran modal.
+    Chercher la liste levait alors `NoMatches`, ce qui faisait échouer le
+    fil — pour un message que plus personne ne regarde. L'échec ne se
+    montrait qu'au hasard de la charge, le fil courant parfois plus vite
+    que la fermeture.
+    """
+
+    async def test_no_row_is_designated_once_the_list_is_gone(self):
+        from textual.widgets import DataTable
+
+        app = await self._app()
+        async with app.run_test() as pilot:
+            app.select_ref(app.current_ref)
+            await pilot.pause()
+            self.assertIsNotNone(app.current_meta())
+            await app.query_one("#list", DataTable).remove()
+            await pilot.pause()
+            self.assertIsNone(app.current_meta())
+
+    async def test_painting_without_a_preview_does_nothing(self):
+        from textual.widgets import Static
+
+        app = await self._app()
+        async with app.run_test() as pilot:
+            app.select_ref(app.current_ref)
+            await pilot.pause()
+            await app.query_one("#preview", Static).remove()
+            await pilot.pause()
+            app.show_preview()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1846,7 +1846,19 @@ def run_tui(
             self.selection = {}
 
         def current_meta(self):
-            table = self.query_one("#list", DataTable)
+            """Le message que le curseur désigne, ou None.
+
+            `NoMatches` vaut None et non une erreur : un fil de travail qui
+            revient après la fermeture de l'écran, ou pendant qu'un écran
+            modal le couvre, ne trouve plus la liste. Aucune ligne n'est
+            alors désignée, ce qui est la réponse juste — laisser lever
+            ferait échouer le fil pour un message que plus personne ne
+            regarde.
+            """
+            try:
+                table = self.query_one("#list", DataTable)
+            except NoMatches:
+                return None
             if table.cursor_row is None or not self.metas:
                 return None
             # Le MÊME ordre que l'affichage : en mode fil, `visible_metas`
@@ -1955,7 +1967,12 @@ def run_tui(
 
         def show_preview(self) -> None:
             meta = self.current_meta()
-            preview = self.query_one("#preview", Static)
+            try:
+                preview = self.query_one("#preview", Static)
+            except NoMatches:
+                # Même raison que dans `current_meta` : il n'y a plus
+                # d'aperçu à peindre, et ce n'est pas une anomalie.
+                return
             if meta is None or self.current_ref is None:
                 preview.update("")
                 return
