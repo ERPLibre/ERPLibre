@@ -16,6 +16,7 @@ Quand la réponse se perd, le client dit qu'il ne sait pas — c'est la seule
 réponse honnête, et `PerdueApres` la rend reproductible.
 """
 
+import time
 import unittest
 
 from linkedin_sandbox import (
@@ -154,11 +155,25 @@ class TestALostAnswerIsSaidNotRetried(LinkedInCase):
     def test_a_rate_limit_is_not_a_doubt(self):
         """Rien n'est parti : on attend, puis on renvoie sans risque."""
         self.transport.verify()
-        self.bac.fail(TropVite(sur="/v2/ugcPosts", reprise=60))
+        self.bac.fail(
+            TropVite(sur="/v2/ugcPosts", reprise=int(time.time()) + 60)
+        )
         with self.assertRaises(SocialRateLimited) as pris:
             self.transport.publish("Bonjour.")
         self.assertNotIsInstance(pris.exception, SocialUnknownOutcome)
         self.assertEqual(self.bac.publies, [])
+
+    def test_a_rate_limit_says_when_to_come_back(self):
+        """Ce service donne un DÉLAI, là où les deux autres nomment le
+        moment. Le prendre pour un moment ferait revenir en 1970, donc
+        tout de suite, ce qui rallonge la coupure au lieu de l'abréger.
+        """
+        quand = int(time.time()) + 60
+        self.transport.verify()
+        self.bac.fail(TropVite(sur="/v2/ugcPosts", reprise=quand))
+        with self.assertRaises(SocialRateLimited) as pris:
+            self.transport.publish("Bonjour.")
+        self.assertAlmostEqual(pris.exception.reprise, quand, delta=5)
 
     def test_nothing_in_the_client_prevents_a_second_send(self):
         """Ce que le CLIENT ne fait pas : aucune clé, aucune adresse, donc

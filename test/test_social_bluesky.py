@@ -18,6 +18,7 @@ publier, c'est écrire un enregistrement à une ADRESSE qu'on choisit, et
 c'est elle qui tient lieu de clé d'idempotence.
 """
 
+import time
 import unittest
 
 from bluesky_sandbox import (
@@ -329,11 +330,14 @@ class TestWhatItDoesWithARefusal(BlueskyCase):
             self.transport.home_timeline()
 
     def test_a_rate_limit_says_when_to_come_back(self):
+        """Ce service nomme le MOMENT, en secondes depuis l'époque. Le
+        prendre pour un délai ferait attendre un demi-siècle."""
+        quand = int(time.time()) + 1234
         self.transport.ouvrir()
-        self.bac.fail(TropVite(sur="/xrpc/app.bsky.feed", reprise=1234))
+        self.bac.fail(TropVite(sur="/xrpc/app.bsky.feed", reprise=quand))
         with self.assertRaises(SocialRateLimited) as pris:
             self.transport.home_timeline()
-        self.assertEqual(pris.exception.reprise, 1234)
+        self.assertEqual(pris.exception.reprise, float(quand))
 
     def test_a_broken_service_is_an_ordinary_error(self):
         self.transport.ouvrir()

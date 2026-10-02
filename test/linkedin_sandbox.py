@@ -23,6 +23,7 @@ from __future__ import annotations
 import http.server
 import json
 import threading
+import time
 import urllib.parse
 
 from social_sandbox import (
@@ -116,7 +117,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._json(
                 429,
                 {"message": "Throttled"},
-                {"Retry-After": str(panne.reprise)},
+                # UN DÉLAI, parce que c'est ce que `Retry-After` porte :
+                # des secondes à compter de maintenant, et non le moment
+                # lui-même. Les deux autres services nomment le moment.
+                {"Retry-After": str(max(0, int(panne.reprise - time.time())))},
             )
         elif isinstance(panne, Illisible):
             self._brut(200, b"<html>passerelle</html>", "text/html")

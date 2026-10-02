@@ -10,7 +10,9 @@ le CLIENT en fait — et surtout ce qu'il fait de ses refus, car trois
 conduites distinctes en dépendent.
 """
 
+import time
 import unittest
+from datetime import datetime, timezone
 
 from social_sandbox import (
     EnVrac,
@@ -24,12 +26,15 @@ from social_sandbox import (
 
 from script.todo.social.accounts import account_from_preset
 from script.todo.social.mastodon import (
+    DELAI,
+    INSTANT,
     MastodonTransport,
     SocialAuthError,
     SocialError,
     SocialRateLimited,
     _suivant,
     billet_depuis_statut,
+    instant_de_reprise,
     texte_depuis_html,
 )
 from script.todo.social.store import Store
@@ -258,11 +263,18 @@ class TestWhatItDoesWithARefusal(SandboxCase):
             autre.home_timeline()
 
     def test_a_rate_limit_says_when_to_come_back(self):
-        """Réessayer avant allonge la coupure au lieu de l'abréger."""
-        self.bac.fail(TropVite(reprise=1234))
+        """Réessayer avant allonge la coupure au lieu de l'abréger.
+
+        L'instance écrit ce moment en ISO-8601, sous un nom d'en-tête qui
+        ferait attendre un nombre. Ne lire qu'un nombre ne rendait donc
+        jamais rien de cette instance : la coupure se répétait sans que le
+        client sache l'attendre.
+        """
+        quand = int(time.time()) + 1234
+        self.bac.fail(TropVite(reprise=quand))
         with self.assertRaises(SocialRateLimited) as pris:
             self.transport.home_timeline()
-        self.assertEqual(pris.exception.reprise, 1234)
+        self.assertEqual(pris.exception.reprise, float(quand))
 
     def test_a_rate_limit_is_not_an_authentication_failure(self):
         self.bac.fail(TropVite())
@@ -354,6 +366,90 @@ class TestFromTheInstanceToTheCache(SandboxCase):
         self._rapporter()
         pieces = self.store.get_post(self.fil, "1").media
         self.assertEqual(pieces[0].description, "une affiche")
+
+
+class TestWhenToComeBack(unittest.TestCase):
+    """Trois services, trois écritures, UN sens.
+
+    `reprise` porte toujours un instant. Un service le nomme, un autre
+    donne un délai, et le même champ portait les deux : un délai pris pour
+    un instant fait attendre jusqu'en 1970, et l'inverse pendant un
+    demi-siècle. Le genre est donc déclaré par le transport, qui sait ce
+    que son service écrit.
+    """
+
+    def test_a_delay_counts_from_now(self):
+        avant = time.time()
+        lu = instant_de_reprise(
+            {"Retry-After": "120"}, (("Retry-After", DELAI),)
+        )
+        self.assertGreaterEqual(lu, avant + 120)
+        self.assertLess(lu, avant + 125)
+
+    def test_a_moment_is_taken_as_it_is(self):
+        lu = instant_de_reprise(
+            {"X-RateLimit-Reset": "1800000000"},
+            (("X-RateLimit-Reset", INSTANT),),
+        )
+        self.assertEqual(lu, 1800000000.0)
+
+    def test_an_iso_date_is_read(self):
+        """Ce qu'une instance écrit vraiment, là où le nom de l'en-tête
+        ferait attendre un nombre."""
+        lu = instant_de_reprise(
+            {"X-RateLimit-Reset": "2026-10-02T12:00:00.000Z"},
+            (("X-RateLimit-Reset", INSTANT),),
+        )
+        self.assertEqual(
+            lu,
+            datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc).timestamp(),
+        )
+
+    def test_a_date_without_a_zone_is_read_as_utc(self):
+        """La lire comme locale décalerait la reprise de l'écart du poste,
+        donc d'une valeur qui change avec la machine."""
+        lu = instant_de_reprise(
+            {"X-RateLimit-Reset": "2026-10-02T12:00:00"},
+            (("X-RateLimit-Reset", INSTANT),),
+        )
+        self.assertEqual(
+            lu,
+            datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc).timestamp(),
+        )
+
+    def test_an_http_date_is_a_moment_even_in_a_delay_header(self):
+        """La seule écriture non numérique que `Retry-After` permette :
+        elle nomme un moment, et ne s'ajoute donc pas à l'heure courante.
+        """
+        lu = instant_de_reprise(
+            {"Retry-After": "Fri, 02 Oct 2026 12:00:00 GMT"},
+            (("Retry-After", DELAI),),
+        )
+        self.assertEqual(
+            lu,
+            datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc).timestamp(),
+        )
+
+    def test_an_unreadable_value_is_not_invented(self):
+        """None se dit « je ne sais pas ». Un nombre inventé serait pris
+        pour une mesure, et l'appelant attendrait dessus."""
+        self.assertIsNone(
+            instant_de_reprise(
+                {"Retry-After": "bientôt"}, (("Retry-After", DELAI),)
+            )
+        )
+
+    def test_a_missing_header_falls_to_the_next_source(self):
+        avant = time.time()
+        lu = instant_de_reprise(
+            {"Retry-After": "60"},
+            (("X-RateLimit-Reset", INSTANT), ("Retry-After", DELAI)),
+        )
+        self.assertGreaterEqual(lu, avant + 60)
+
+    def test_no_source_at_all_says_nothing(self):
+        self.assertIsNone(instant_de_reprise({}, (("Retry-After", DELAI),)))
+        self.assertIsNone(instant_de_reprise(None, (("Retry-After", DELAI),)))
 
 
 if __name__ == "__main__":

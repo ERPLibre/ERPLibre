@@ -29,10 +29,12 @@ from __future__ import annotations
 import html
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from script.todo.social.store import Media, PostMeta
 from script.todo.todo_i18n import t
@@ -54,6 +56,14 @@ LIMITE_PAR_DEFAUT = 500
 # garde hors d'eux ; `private` le réserve aux abonnés ; `direct` aux seules
 # personnes citées.
 VISIBILITES = ("public", "unlisted", "private", "direct")
+
+# Les deux façons dont un service dit quand revenir, et ce qui les
+# sépare : un DÉLAI compte des secondes à partir de maintenant, un INSTANT
+# nomme un moment. Les confondre fait attendre jusqu'en 1970 ou pendant un
+# demi-siècle, selon le sens de la confusion, d'où un genre déclaré par
+# chaque transport pour chacun de ses en-têtes.
+DELAI = "delai"
+INSTANT = "instant"
 
 # Au-delà, l'instance rend ce qu'elle veut : 40 est le plafond documenté.
 PAGE_MAX = 40
@@ -252,7 +262,10 @@ class MastodonTransport:
         if exc.code == 429:
             raise SocialRateLimited(
                 f"{t('social_err_rate_limited')} {detail}",
-                _reprise(exc.headers),
+                instant_de_reprise(
+                    exc.headers,
+                    (("X-RateLimit-Reset", INSTANT), ("Retry-After", DELAI)),
+                ),
             ) from exc
         if 400 <= exc.code < 500:
             # L'instance a compris et refusé : la demande est en cause, pas
@@ -427,16 +440,64 @@ def _message(detail: bytes) -> str:
     return ""
 
 
-def _reprise(entetes) -> float | None:
-    """La seconde à partir de laquelle redemander, si l'instance la dit."""
-    for nom in ("X-RateLimit-Reset", "Retry-After"):
+def instant_de_reprise(entetes, sources) -> float | None:
+    """L'instant — secondes depuis l'époque — à partir duquel redemander.
+
+    `sources` ordonne les en-têtes à lire, chacun avec le genre de valeur
+    qu'il porte, `DELAI` ou `INSTANT`. Un délai s'ajoute à l'heure
+    courante ; un instant est rendu tel quel. Trois écritures circulent et
+    toutes sont lues : un nombre de secondes, une date ISO-8601 — ce
+    qu'écrit une instance dans `X-RateLimit-Reset`, là où un nombre serait
+    attendu —, et une date HTTP, seule forme non numérique que la
+    spécification de `Retry-After` permette.
+
+    Rend None quand aucun en-tête ne répond ou qu'aucun ne se lit :
+    l'appelant prendrait un instant inventé pour une mesure, et attendrait
+    sur elle.
+    """
+    for nom, genre in sources:
         valeur = entetes.get(nom) if entetes else None
         if valeur is None:
             continue
-        try:
-            return float(valeur)
-        except (TypeError, ValueError):
-            # Certaines instances y écrivent une date plutôt qu'un nombre :
-            # ne pas la comprendre vaut mieux que d'inventer un délai.
+        lu = _secondes(str(valeur))
+        if lu is None:
+            lu = _moment(str(valeur))
+            # Une date lue dans un en-tête de DÉLAI nomme quand même un
+            # moment : c'est son écriture qui change, pas son sens.
+            if lu is not None:
+                return lu
             continue
+        return time.time() + lu if genre == DELAI else lu
+    return None
+
+
+def _secondes(valeur: str) -> float | None:
+    """Le nombre que porte l'en-tête, ou None s'il n'en porte pas."""
+    try:
+        return float(valeur.strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _moment(valeur: str) -> float | None:
+    """Une date ISO-8601 ou HTTP ramenée à des secondes depuis l'époque.
+
+    Une date sans fuseau est lue comme UTC : c'est ce qu'un en-tête HTTP
+    désigne, et la lire comme locale décalerait la reprise de l'écart du
+    poste.
+    """
+    texte = valeur.strip()
+    for lire in (
+        lambda s: datetime.fromisoformat(s.replace("Z", "+00:00")),
+        parsedate_to_datetime,
+    ):
+        try:
+            quand = lire(texte)
+        except (TypeError, ValueError):
+            continue
+        if quand is None:
+            continue
+        if quand.tzinfo is None:
+            quand = quand.replace(tzinfo=timezone.utc)
+        return quand.timestamp()
     return None

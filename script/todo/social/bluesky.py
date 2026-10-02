@@ -34,10 +34,13 @@ import urllib.request
 from datetime import datetime, timezone
 
 from script.todo.social.mastodon import (
+    DELAI,
+    INSTANT,
     SocialAuthError,
     SocialError,
     SocialRateLimited,
     SocialRefused,
+    instant_de_reprise,
 )
 from script.todo.social.store import Media, PostMeta
 from script.todo.todo_i18n import t
@@ -343,7 +346,10 @@ class BlueskyTransport:
         if exc.code == 429:
             raise SocialRateLimited(
                 f"{t('social_err_rate_limited')} {detail}",
-                _reprise(exc.headers),
+                instant_de_reprise(
+                    exc.headers,
+                    (("RateLimit-Reset", INSTANT), ("Retry-After", DELAI)),
+                ),
             ) from exc
         if 400 <= exc.code < 500:
             # Le jeton périmé passe PAR ICI : le serveur le range dans les
@@ -470,16 +476,3 @@ class BlueskyTransport:
             uri=str(donnees["uri"]),
             reply_to=repond_a,
         )
-
-
-def _reprise(entetes) -> float | None:
-    """La seconde à partir de laquelle redemander, si le service la dit."""
-    for nom in ("RateLimit-Reset", "Retry-After"):
-        valeur = entetes.get(nom) if entetes else None
-        if valeur is None:
-            continue
-        try:
-            return float(valeur)
-        except (TypeError, ValueError):
-            continue
-    return None

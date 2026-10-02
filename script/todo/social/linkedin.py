@@ -30,10 +30,12 @@ import urllib.parse
 import urllib.request
 
 from script.todo.social.mastodon import (
+    DELAI,
     SocialAuthError,
     SocialError,
     SocialRateLimited,
     SocialRefused,
+    instant_de_reprise,
 )
 from script.todo.social.store import PostMeta
 from script.todo.todo_i18n import t
@@ -157,7 +159,7 @@ class LinkedInTransport:
         if exc.code == 429:
             raise SocialRateLimited(
                 f"{t('social_err_rate_limited')} {detail}",
-                _reprise(exc.headers),
+                instant_de_reprise(exc.headers, (("Retry-After", DELAI),)),
             ) from exc
         if exc.code == 409:
             # Conflit d'écriture interne : le service demande de RECOMMENCER.
@@ -295,9 +297,3 @@ class LinkedInTransport:
         )
 
 
-def _reprise(entetes) -> float | None:
-    valeur = entetes.get("Retry-After") if entetes else None
-    try:
-        return float(valeur) if valeur is not None else None
-    except (TypeError, ValueError):
-        return None

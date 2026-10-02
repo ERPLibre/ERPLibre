@@ -27,7 +27,9 @@ from __future__ import annotations
 import http.server
 import json
 import threading
+import time
 import urllib.parse
+from datetime import datetime, timezone
 
 HOST = "127.0.0.1"
 
@@ -68,11 +70,17 @@ class TropVite(Fault):
 
     L'en-tête dit QUAND reprendre ; un client qui l'ignore se fait couper
     plus longtemps à chaque tour.
+
+    `reprise` est un INSTANT — des secondes depuis l'époque. Chaque bac le
+    rend dans l'écriture de son service : une date ISO-8601 ici, un nombre
+    de secondes depuis l'époque pour un dépôt de données, un DÉLAI pour un
+    réseau professionnel. Les trois disent le même moment, et c'est ce que
+    le client doit en retrouver.
     """
 
-    def __init__(self, sur: str = "", apres: int = 0, reprise: int = 42):
+    def __init__(self, sur: str = "", apres: int = 0, reprise: int = 0):
         super().__init__(sur, apres)
-        self.reprise = reprise
+        self.reprise = reprise or int(time.time()) + 42
 
 
 class EnVrac(Fault):
@@ -279,7 +287,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._json(
                 429,
                 {"error": "Too many requests"},
-                {"X-RateLimit-Reset": str(panne.reprise)},
+                # UNE DATE, telle que l'instance l'écrit, là où le nom de
+                # l'en-tête ferait attendre un nombre. Y mettre un nombre
+                # certifierait un client qui ne sait lire que le bac.
+                {"X-RateLimit-Reset": _en_iso(panne.reprise)},
             )
         elif isinstance(panne, Illisible):
             self._brut(200, b"<html>passerelle</html>", "text/html")
@@ -308,6 +319,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.send_header(nom, valeur)
         self.end_headers()
         self.wfile.write(corps)
+
+
+def _en_iso(instant: float) -> str:
+    """L'instant écrit comme l'instance l'écrit : ISO-8601, en UTC."""
+    return (
+        datetime.fromtimestamp(instant, timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 class SocialSandbox:
