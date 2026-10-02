@@ -292,8 +292,13 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 			return fmt.Errorf("l'appelant a raccroche pendant la sonnerie")
 		}
 		if répondeur.Actif {
+			// Le MOTIF, et pas seulement le fait : sans lui, un softphone qui
+			// renonce en quelques millisecondes se lit comme une sonnerie qui
+			// a dure son temps, et on cherche du cote du repondeur.
 			slog.Info("le softphone n'a pas pris : le repondeur decroche",
-				"de", numéro, "sonneries", répondeur.Normaliser().Sonneries)
+				"de", numéro, "sonneries", répondeur.Normaliser().Sonneries,
+				"attente", time.Since(sonnerieÀ).Round(time.Millisecond),
+				"motif", err)
 			return prendreLeMessageSurLaLigne(ctx, m, o, répondeur, numéro)
 		}
 		return err
