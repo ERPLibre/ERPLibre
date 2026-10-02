@@ -72,11 +72,32 @@ func OuvrirModem(chemin string) (*Modem, error) {
 	if chemin == "" {
 		chemin = PortDéfaut
 	}
-	f, err := os.OpenFile(chemin, os.O_RDWR|unix.O_NOCTTY, 0)
+	// O_NONBLOCK a l'ouverture, et `Fd()` JAMAIS ensuite : ces deux choses
+	// decident si une lecture peut etre bornee.
+	//
+	// `Fd()` sort le fichier du scrutateur de Go et le repasse en mode
+	// bloquant — c'est documente, et `SetDeadline` cesse alors d'avoir le
+	// moindre effet SANS rendre d'erreur. Une commande AT restee sans reponse
+	// bloquait donc pour toujours, le verrou de parole avec elle : la ligne
+	// restait ouverte et facturee, et plus aucun appel n'entrait.
+	f, err := os.OpenFile(chemin, os.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("port %s : %w", chemin, err)
 	}
-	fd := int(f.Fd())
+	brut, err := f.SyscallConn()
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("port %s : %w", chemin, err)
+	}
+	var erreurSys error
+	avecFd := func(action func(fd int) error) error {
+		if err := brut.Control(func(fd uintptr) {
+			erreurSys = action(int(fd))
+		}); err != nil {
+			return err
+		}
+		return erreurSys
+	}
 
 	// UN SEUL lecteur à la fois sur ce port, et le noyau l'arbitre.
 	//
@@ -89,15 +110,21 @@ func OuvrirModem(chemin string) (*Modem, error) {
 	//
 	// Le verrou n'est PAS hérité par les processus fils et disparaît avec
 	// celui qui le tient, y compris tué : rien à nettoyer après un plantage.
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := avecFd(func(fd int) error {
+		return unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB)
+	}); err != nil {
 		f.Close()
 		return nil, fmt.Errorf(
 			"port %s deja tenu par un autre programme : arretez la veille, "+
 				"le clavier de composition ou le service softphone avant "+
 				"d'en lancer un second (%w)", chemin, err)
 	}
-	t, err := unix.IoctlGetTermios(fd, unix.TCGETS)
-	if err != nil {
+	var t *unix.Termios
+	if err := avecFd(func(fd int) error {
+		var lu error
+		t, lu = unix.IoctlGetTermios(fd, unix.TCGETS)
+		return lu
+	}); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("termios : %w", err)
 	}
@@ -108,9 +135,24 @@ func OuvrirModem(chemin string) (*Modem, error) {
 	t.Lflag &^= unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN
 	t.Cflag &^= unix.CSIZE | unix.PARENB
 	t.Cflag |= unix.CS8 | unix.CREAD | unix.CLOCAL
-	if err := unix.IoctlSetTermios(fd, unix.TCSETS, t); err != nil {
+	if err := avecFd(func(fd int) error {
+		return unix.IoctlSetTermios(fd, unix.TCSETS, t)
+	}); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("mode brut : %w", err)
+	}
+	// On REFUSE un port dont les lectures ne peuvent pas etre bornees. Un
+	// service qui se bloque pour toujours sur une commande sans reponse est
+	// pire qu'un service qui ne demarre pas : la ligne reste ouverte, et le
+	// defaut ne se voit qu'a l'appel suivant, qui n'arrive jamais.
+	if err := f.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		f.Close()
+		return nil, fmt.Errorf(
+			"port %s : les lectures ne peuvent pas etre bornees (%w)", chemin, err)
+	}
+	if err := f.SetDeadline(time.Time{}); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("port %s : %w", chemin, err)
 	}
 	return &Modem{f: f, br: bufio.NewReader(f)}, nil
 }
