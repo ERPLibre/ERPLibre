@@ -132,7 +132,11 @@ func main() {
 		// le seul moment où l'on sait qu'il vient peut-être de revenir.
 		TéléverserCeQuiAttend(lien, répondeur.Dossier)
 		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, vivants); err != nil {
-			échouer(err.Error())
+			if arrêtDemandé(ctx, err) {
+				slog.Info("arret demande : le service rend la main")
+			} else {
+				échouer(err.Error())
+			}
 		}
 		return
 	}
@@ -208,6 +212,17 @@ func main() {
 }
 
 // rendre écrit le résultat en JSON et fixe le code de sortie.
+// arrêtDemandé dit si une erreur n'est que la trace d'un arret voulu.
+//
+// Le serveur rend l'erreur de son ecouteur ferme quand on l'arrete — « use of
+// closed network connection » — et la compter comme une panne faisait afficher
+// « failed » a systemd pour un arret normal. L'exploitant lit cet etat avant
+// tout le reste : s'il ment sur un arret, il ne dira rien le jour d'une vraie
+// panne.
+func arrêtDemandé(ctx context.Context, err error) bool {
+	return err != nil && ctx.Err() != nil
+}
+
 func rendre(res Résultat, err error) {
 	sortie, _ := json.MarshalIndent(res, "", "  ")
 	fmt.Println(string(sortie))

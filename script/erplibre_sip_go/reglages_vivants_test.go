@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -263,4 +265,23 @@ type écrivainComptant struct{ lignes *int }
 func (e écrivainComptant) Write(p []byte) (int, error) {
 	*e.lignes++
 	return len(p), nil
+}
+
+func TestUnArretDemandeNEstPasUnePanne(t *testing.T) {
+	// Le serveur rend l'erreur de son ecouteur ferme quand on l'arrete, et la
+	// compter comme une panne faisait afficher « failed » a systemd pour un
+	// arret normal. L'exploitant lit cet etat avant tout le reste.
+	ctx, arrêter := context.WithCancel(context.Background())
+	erreur := errors.New("accept tcp 127.0.0.1:8189: use of closed network connection")
+
+	if arrêtDemandé(ctx, erreur) {
+		t.Fatal("une erreur sans arret demande doit rester une panne")
+	}
+	arrêter()
+	if !arrêtDemandé(ctx, erreur) {
+		t.Fatal("l'erreur qui suit un arret demande n'est pas une panne")
+	}
+	if arrêtDemandé(ctx, nil) {
+		t.Fatal("sans erreur, il n'y a rien a classer")
+	}
 }
