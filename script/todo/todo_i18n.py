@@ -12905,6 +12905,18 @@ TRANSLATIONS = {
             " sending again."
         ),
     },
+    "social_err_duplicate_post": {
+        "fr": (
+            "Ce texte est déjà en ligne : le réseau reconnaît l'envoi"
+            " précédent, qui a donc abouti. Rien n'a été publié cette"
+            " fois-ci."
+        ),
+        "en": (
+            "This text is already online: the network recognises the"
+            " previous send, which therefore went through. Nothing was"
+            " published this time."
+        ),
+    },
     "social_err_unreachable": {
         "fr": "Instance injoignable :",
         "en": "Instance unreachable:",

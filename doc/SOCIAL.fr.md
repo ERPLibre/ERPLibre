@@ -122,6 +122,13 @@ vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
 qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule
 autrement pour cette raison.
 
+Renvoyer le même texte fait répondre ce garde-fou, et c'est tout l'intérêt :
+son refus est le SEUL signal qui lève le doute, puisqu'il prouve que le
+premier envoi a abouti. Le client le lit, en tire l'adresse du billet et
+montre où regarder, formulé comme une certitude et non comme un refus de
+plus. Un refus qui ne nomme aucun billet reste un doublon et le dit, sans
+prétendre savoir où regarder.
+
 Les portées que l'écran d'écriture propose sont celles du réseau sur lequel
 on écrit : quatre sur Mastodon, deux sur LinkedIn, une sur Bluesky. La même
 liste partout laissait choisir une portée que le réseau refuse, et le refus

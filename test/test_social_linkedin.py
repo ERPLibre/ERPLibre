@@ -31,9 +31,11 @@ from linkedin_sandbox import (
 
 from script.todo.social.accounts import SocialAccount
 from script.todo.social.linkedin import (
+    CONSULTER,
     LIMITE_CARACTERES,
     VISIBILITES,
     LinkedInTransport,
+    SocialDuplicate,
     SocialUnknownOutcome,
 )
 from script.todo.social.mastodon import (
@@ -184,7 +186,12 @@ class TestALostAnswerIsSaidNotRetried(LinkedInCase):
         service, lui, refuse un doublon exact par un 422 pendant quelques
         minutes — un garde-fou anti-spam qui expire, pas une garantie de
         rejeu. Le doute reste donc fondé, mais pour cette raison-là.
+
+        Le garde-fou est DÉSARMÉ ici, ce qui tient lieu de son expiration :
+        c'est le seul état où la question posée — que fait le client ? —
+        reçoit une réponse qui ne vient pas du service.
         """
+        self.bac.anti_doublon = False
         self.transport.publish("Bonjour.", cle="k-1")
         self.transport.publish("Bonjour.", cle="k-1")
         self.assertEqual(len(self.bac.publies), 2)
@@ -293,6 +300,82 @@ class TestWhatItRefuses(LinkedInCase):
         self.bac.fail(EnVrac(sur="/v2/ugcPosts"))
         with self.assertRaises(SocialError):
             self.transport.publish("Bonjour.")
+
+
+class TestTheDuplicateThatSettlesTheDoubt(LinkedInCase):
+    """Le seul signal qui transforme un doute en certitude.
+
+    Une réponse perdue laisse le client incapable de dire si le billet est
+    passé. Le renvoi se heurte alors au garde-fou anti-spam du service, qui
+    refuse une répétition identique — et ce refus PROUVE que le premier
+    envoi a abouti. Le jeter dans une chaîne de refus perdait la seule
+    information qui tranche.
+    """
+
+    def test_a_resend_after_a_lost_answer_is_named_a_duplicate(self):
+        self.transport.verify()
+        self.bac.fail(PerdueApres(sur="/v2/ugcPosts"))
+        with self.assertRaises(SocialUnknownOutcome):
+            self.transport.publish("Bonjour.")
+        with self.assertRaises(SocialDuplicate):
+            self.transport.publish("Bonjour.")
+
+    def test_the_duplicate_names_the_post_already_online(self):
+        """L'adresse consultable, et non l'URN seul : c'est là qu'on va
+        regarder."""
+        self.transport.verify()
+        self.bac.fail(PerdueApres(sur="/v2/ugcPosts"))
+        with self.assertRaises(SocialUnknownOutcome):
+            self.transport.publish("Bonjour.")
+        with self.assertRaises(SocialDuplicate) as pris:
+            self.transport.publish("Bonjour.")
+        urn = self.bac.publies[0][2]
+        self.assertEqual(pris.exception.urn, urn)
+        self.assertEqual(pris.exception.url, CONSULTER.format(urn=urn))
+        self.assertIn(urn, str(pris.exception))
+
+    def test_the_resend_publishes_nothing(self):
+        """Ce que le refus garantit : il n'y a toujours qu'un billet."""
+        self.transport.verify()
+        self.bac.fail(PerdueApres(sur="/v2/ugcPosts"))
+        with self.assertRaises(SocialUnknownOutcome):
+            self.transport.publish("Bonjour.")
+        with self.assertRaises(SocialDuplicate):
+            self.transport.publish("Bonjour.")
+        self.assertEqual(len(self.bac.publies), 1)
+
+    def test_a_duplicate_is_a_refusal_not_a_doubt(self):
+        """Un doute se lève en allant voir ; celui-ci est déjà levé. Mais il
+        reste un refus : CET envoi n'a rien publié."""
+        self.transport.publish("Bonjour.")
+        with self.assertRaises(SocialRefused) as pris:
+            self.transport.publish("Bonjour.")
+        self.assertNotIsInstance(pris.exception, SocialUnknownOutcome)
+
+    def test_a_duplicate_without_an_address_is_still_a_duplicate(self):
+        """Le service ne nomme pas toujours le billet. Sans adresse, le
+        refus reste un doublon et le dit, sans prétendre savoir où
+        regarder."""
+        self.bac.doublon_nomme = False
+        self.transport.publish("Bonjour.")
+        with self.assertRaises(SocialDuplicate) as pris:
+            self.transport.publish("Bonjour.")
+        self.assertEqual(pris.exception.urn, "")
+        self.assertEqual(pris.exception.url, "")
+
+    def test_another_422_stays_an_ordinary_refusal(self):
+        """Le code 422 ne dit pas « doublon » : le service l'emploie pour
+        toute demande qu'il juge invalide. Le promettre à tort ferait croire
+        un texte en ligne alors que rien n'est parti.
+
+        La limite du BAC est abaissée sous celle du client : c'est le seul
+        moyen d'atteindre un refus du serveur, puisque le client arrête
+        d'abord ce qu'il sait trop long.
+        """
+        self.bac.limite_caracteres = 10
+        with self.assertRaises(SocialRefused) as pris:
+            self.transport.publish("a" * 50)
+        self.assertNotIsInstance(pris.exception, SocialDuplicate)
 
 
 class TestWhatTheScreenMayOffer(LinkedInCase):

@@ -5,12 +5,16 @@
 
 Le troisième réseau du paquet, et le seul qui ne propose aucune garantie
 contre le double envoi. Le premier accepte une clé d'idempotence, le second une adresse
-d'enregistrement à réécrire ; celui-ci n'a ni l'une ni l'autre, et deux
-demandes identiques créent deux publications.
+d'enregistrement à réécrire ; celui-ci n'a qu'un garde-fou anti-spam, qui
+refuse une répétition identique à l'octet pendant quelques minutes — il
+expire, et un caractère changé le contourne, donc il ne garantit pas le
+rejeu. Il donne tout de même le seul signal qui LÈVE un doute : son refus
+nomme le billet déjà en ligne.
 
-Ce bac à sable existe surtout pour rendre cette situation reproductible :
-`PerdueApres` publie PUIS perd la réponse, ce qui est exactement le cas où un
-client naïf réessaie et publie en double.
+Ce bac à sable rend les deux situations reproductibles : `PerdueApres`
+publie PUIS perd la réponse, et le renvoi qui suit se heurte au garde-fou.
+`anti_doublon = False` le désarme, ce qui tient lieu de son expiration et
+redonne le cas où deux demandes identiques font deux publications.
 
 Il ne sert AUCUN fil, et c'est voulu : récupérer celui d'un membre demande
 une autorisation qui ne s'obtient pas en libre-service. Un bac à sable qui en
@@ -96,10 +100,20 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if len(texte) > self.bac.limite_caracteres:
             self._json(422, {"message": "Commentary is too long"})
             return
+        if self.bac.anti_doublon:
+            for ancien, _, deja in self.bac.publies:
+                if ancien == texte:
+                    # LE REFUS TEL QUE LE SERVICE L'ÉCRIT : un 422 dont le
+                    # message nomme le billet déjà posé. C'est le seul
+                    # signal qui prouve qu'un envoi dont la réponse s'est
+                    # perdue a bien abouti.
+                    message = "Duplicate post detected"
+                    if self.bac.doublon_nomme:
+                        message += f": {deja}"
+                    self._json(422, {"message": message, "status": 422})
+                    return
         urn = f"urn:li:share:{7000 + len(self.bac.publies)}"
-        # AUCUNE reconnaissance d'une demande déjà vue : deux identiques font
-        # deux publications, et c'est le comportement qu'on éprouve.
-        self.bac.publies.append((texte, charge))
+        self.bac.publies.append((texte, charge, urn))
         if panne is not None:
             # Publié ; c'est la réponse qui se perd.
             self._servir_panne(EnVrac())
@@ -164,6 +178,13 @@ class LinkedInSandbox:
         self.membre = MEMBRE
         self.nom = "Moi"
         self.limite_caracteres = 3000
+        # Le garde-fou anti-spam du service, actif comme chez lui. Le
+        # désarmer tient lieu de son expiration.
+        self.anti_doublon = True
+        # Le refus nomme-t-il le billet déjà posé ? Chez le service, pas
+        # toujours : un doublon sans adresse reste un doublon, et le client
+        # doit le dire sans prétendre savoir où regarder.
+        self.doublon_nomme = True
         self.publies: list = []
         self.faults: list = []
         self.demandes: list = []

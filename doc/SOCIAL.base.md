@@ -134,6 +134,13 @@ not retry
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.
 
+Send the same text again and that guard answers, which is the point: its
+refusal is the ONLY signal that settles the doubt, since it proves the first
+send went through. The client reads it, takes the post's address out of it
+and shows you where to look, worded as a certainty rather than as one more
+refusal. A refusal that names no post stays a duplicate and says so, without
+pretending to know where to look.
+
 The scopes the compose screen offers are those of the network you are
 writing on: four on Mastodon, two on LinkedIn, one on Bluesky. The same list
 everywhere let you pick a scope the network refuses, and the refusal only
@@ -270,6 +277,13 @@ client ne réessaie pas — il dit qu'il ne sait pas, et demande d'aller
 vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
 qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule
 autrement pour cette raison.
+
+Renvoyer le même texte fait répondre ce garde-fou, et c'est tout l'intérêt :
+son refus est le SEUL signal qui lève le doute, puisqu'il prouve que le
+premier envoi a abouti. Le client le lit, en tire l'adresse du billet et
+montre où regarder, formulé comme une certitude et non comme un refus de
+plus. Un refus qui ne nomme aucun billet reste un doublon et le dit, sans
+prétendre savoir où regarder.
 
 Les portées que l'écran d'écriture propose sont celles du réseau sur lequel
 on écrit : quatre sur Mastodon, deux sur LinkedIn, une sur Bluesky. La même

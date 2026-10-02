@@ -452,6 +452,28 @@ class TestWriting(TuiCase):
             )
             self.assertEqual(choix.value, transport.visibilites()[0])
 
+    async def test_a_duplicate_is_not_shown_as_a_refusal(self):
+        """Un doublon reconnu PROUVE que l'envoi précédent a abouti : le
+        dire « refusé » ferait croire à une publication perdue."""
+        from textual.widgets import Static, TextArea
+
+        from script.todo.social.linkedin import SocialDuplicate
+
+        transport = FauxTransport(
+            refus=SocialDuplicate("déjà en ligne", "urn:li:share:7000")
+        )
+        app = await self._app([self._session(transport)])
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#compose_text", TextArea).text = "Bonjour."
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            dit = str(app.screen.query_one("#compose_status", Static).content)
+            self.assertIn("déjà en ligne", dit)
+            self.assertNotIn(t_refuse(), dit)
+
     async def test_an_empty_post_never_leaves(self):
         transport = FauxTransport()
         app = await self._app([self._session(transport)])

@@ -117,6 +117,13 @@ not retry
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.
 
+Send the same text again and that guard answers, which is the point: its
+refusal is the ONLY signal that settles the doubt, since it proves the first
+send went through. The client reads it, takes the post's address out of it
+and shows you where to look, worded as a certainty rather than as one more
+refusal. A refusal that names no post stays a duplicate and says so, without
+pretending to know where to look.
+
 The scopes the compose screen offers are those of the network you are
 writing on: four on Mastodon, two on LinkedIn, one on Bluesky. The same list
 everywhere let you pick a scope the network refuses, and the refusal only

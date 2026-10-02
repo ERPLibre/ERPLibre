@@ -25,6 +25,7 @@ mais un doute, que seule la personne peut lever en allant regarder.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -41,7 +42,20 @@ from script.todo.social.store import PostMeta
 from script.todo.todo_i18n import t
 
 CHEMIN_IDENTITE = "/v2/userinfo"
+# La surface HÉRITÉE, et la seule qu'un compte ordinaire ouvre. Celle qui
+# lui succède demande un produit accordé au cas par cas ; viser la neuve
+# ferait échouer l'envoi chez tout le monde sauf les quelques comptes qui
+# l'ont obtenue.
 CHEMIN_PUBLIER = "/v2/ugcPosts"
+
+# La forme d'un identifiant de billet, quel que soit le mot au milieu : le
+# service en emploie plusieurs selon l'objet et l'époque, et c'est le seul
+# fragment du refus d'un doublon qui désigne ce qui est déjà en ligne.
+URN_BILLET = re.compile(r"urn:li:[A-Za-z]+:[0-9]+")
+
+# Le mot que le service écrit quand il reconnaît un envoi déjà reçu. Ses
+# messages d'erreur ne sont pas traduits, donc le chercher tient.
+MARQUE_DOUBLON = "duplicate"
 
 # Ce que l'API accepte dans le commentaire d'un partage.
 LIMITE_CARACTERES = 3000
@@ -68,6 +82,25 @@ class SocialUnknownOutcome(SocialError):
     pas à la place de la personne : il dit ce qu'il sait, et ce qu'il ne
     sait pas.
     """
+
+
+class SocialDuplicate(SocialRefused):
+    """Le service reconnaît cet envoi comme un qu'il a déjà reçu.
+
+    Le seul signal qui LÈVE le doute laissé par une réponse perdue : il
+    prouve que le premier envoi est passé. `urn` et `url` portent le billet
+    déjà en ligne quand le refus le nomme — il ne le fait pas toujours, et
+    un doublon sans adresse reste un doublon.
+
+    Un refus, donc, et non un succès : cet appel-ci n'a rien publié, et le
+    rendre comme une réussite ferait croire à un second billet là où il n'y
+    en a qu'un.
+    """
+
+    def __init__(self, message: str, urn: str = ""):
+        super().__init__(message)
+        self.urn = urn
+        self.url = CONSULTER.format(urn=urn) if urn else ""
 
 
 class LinkedInTransport:
@@ -133,8 +166,10 @@ class LinkedInTransport:
 
     def _lever(self, exc) -> None:
         detail = ""
+        brut = ""
         try:
-            charge = json.loads(exc.read().decode("utf-8", "replace"))
+            brut = exc.read().decode("utf-8", "replace")
+            charge = json.loads(brut)
             if isinstance(charge, dict):
                 detail = str(charge.get("message") or "")
         except Exception:
@@ -160,6 +195,17 @@ class LinkedInTransport:
             raise SocialRateLimited(
                 f"{t('social_err_rate_limited')} {detail}",
                 instant_de_reprise(exc.headers, (("Retry-After", DELAI),)),
+            ) from exc
+        if exc.code == 422 and _est_doublon(brut):
+            # Le corps BRUT, et non le seul « message » : l'adresse du
+            # billet déjà en ligne n'est pas toujours rangée là, et c'est
+            # elle qu'on vient chercher.
+            trouve = URN_BILLET.search(brut)
+            urn = trouve.group(0) if trouve else ""
+            raise SocialDuplicate(
+                f"{t('social_err_duplicate_post')}"
+                f"{' ' + CONSULTER.format(urn=urn) if urn else ''}",
+                urn,
             ) from exc
         if exc.code == 409:
             # Conflit d'écriture interne : le service demande de RECOMMENCER.
@@ -278,7 +324,9 @@ class LinkedInTransport:
             )
         except (SocialAuthError, SocialRateLimited, SocialRefused):
             # Le service a RÉPONDU non : rien n'est parti, et l'appelant
-            # peut corriger puis recommencer sans risque.
+            # peut corriger puis recommencer sans risque. `SocialDuplicate`
+            # en fait partie — il refuse CET envoi en prouvant que le
+            # précédent a abouti.
             raise
         except SocialError as exc:
             # Le service n'a pas répondu, ou a répondu 5xx après avoir
@@ -302,3 +350,16 @@ class LinkedInTransport:
         )
 
 
+def _est_doublon(brut: str) -> bool:
+    """Un refus 422 qui porte la marque d'un envoi déjà reçu.
+
+    Le code seul ne suffit pas : le service l'emploie pour toute demande
+    qu'il juge invalide. Sans la marque ni une adresse de billet, le refus
+    reste un refus ordinaire plutôt que de promettre à tort que le texte
+    est en ligne.
+    """
+    if not brut:
+        return False
+    return (
+        MARQUE_DOUBLON in brut.lower() or URN_BILLET.search(brut) is not None
+    )

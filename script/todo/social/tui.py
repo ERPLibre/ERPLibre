@@ -375,10 +375,17 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
             y invite. Sur celui qui n'offre rien, le billet est peut-être
             déjà parti : la phrase dit alors d'aller vérifier, parce que
             presser à nouveau publierait peut-être deux fois.
-            """
-            from script.todo.social.linkedin import SocialUnknownOutcome
 
-            if isinstance(exc, SocialUnknownOutcome):
+            Un doublon reconnu est le contraire d'un doute : il PROUVE que
+            l'envoi précédent a abouti. Il se dit donc seul, sans le mot
+            « refusé » qui ferait croire à une publication perdue.
+            """
+            from script.todo.social.linkedin import (
+                SocialDuplicate,
+                SocialUnknownOutcome,
+            )
+
+            if isinstance(exc, (SocialUnknownOutcome, SocialDuplicate)):
                 self._dire(str(exc))
                 return
             self._dire(f"{t('social_compose_refused')} {exc}")
