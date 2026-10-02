@@ -122,6 +122,11 @@ vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
 qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule
 autrement pour cette raison.
 
+Les portées que l'écran d'écriture propose sont celles du réseau sur lequel
+on écrit : quatre sur Mastodon, deux sur LinkedIn, une sur Bluesky. La même
+liste partout laissait choisir une portée que le réseau refuse, et le refus
+ne revenait qu'après l'aller-retour.
+
 Un refus se distingue d'une panne : un service qui dit non à un billet vide
 ou trop long ne changera pas d'avis, une passerelle en vrac si. La longueur
 permise se demande à une instance Mastodon, qui la relève ou l'abaisse ; sur

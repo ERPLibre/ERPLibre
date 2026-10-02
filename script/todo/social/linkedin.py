@@ -200,6 +200,11 @@ class LinkedInTransport:
         """Celle de l'API, non d'un serveur : rien à demander."""
         return LIMITE_CARACTERES
 
+    def visibilites(self) -> tuple:
+        """Les portées à PROPOSER. Les autres ne sont pas tues : elles ne
+        sont pas offertes, ce qui évite un refus après coup."""
+        return tuple(VISIBILITES)
+
     def home_timeline(self, cursor: str = "", limit: int = 0) -> tuple:
         """Refuse tout de suite, sans rien appeler.
 

@@ -28,6 +28,7 @@ from script.todo.social.accounts import account_from_preset
 from script.todo.social.mastodon import (
     DELAI,
     INSTANT,
+    VISIBILITES,
     MastodonTransport,
     SocialAuthError,
     SocialError,
@@ -463,6 +464,20 @@ class TestWhenToComeBack(unittest.TestCase):
     def test_no_source_at_all_says_nothing(self):
         self.assertIsNone(instant_de_reprise({}, (("Retry-After", DELAI),)))
         self.assertIsNone(instant_de_reprise(None, (("Retry-After", DELAI),)))
+
+
+class TestWhatTheScreenMayOffer(SandboxCase):
+    """Les portées proposées sont celles que `publish` accepte."""
+
+    def test_every_offered_visibility_goes_through(self):
+        for portee in self.transport.visibilites():
+            self.transport.publish(f"Bonjour, {portee}.", visibilite=portee)
+        self.assertEqual(
+            len(self.bac.publies), len(self.transport.visibilites())
+        )
+
+    def test_nothing_else_is_offered(self):
+        self.assertEqual(self.transport.visibilites(), VISIBILITES)
 
 
 if __name__ == "__main__":

@@ -117,6 +117,11 @@ not retry
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.
 
+The scopes the compose screen offers are those of the network you are
+writing on: four on Mastodon, two on LinkedIn, one on Bluesky. The same list
+everywhere let you pick a scope the network refuses, and the refusal only
+came back after the round trip.
+
 A refusal is told apart from a breakdown: a service saying no to an empty or
 over-long post will not change its mind, while a broken gateway will. The
 length allowed is asked of a Mastodon instance, which raises or lowers it; on

@@ -350,6 +350,12 @@ class MastodonTransport:
         except (SocialError, AttributeError, TypeError, ValueError):
             return LIMITE_PAR_DEFAUT
 
+    def visibilites(self) -> tuple:
+        """Les portées à PROPOSER à qui écrit. Chaque réseau a les
+        siennes ; offrir celles d'un autre fait choisir pour se faire
+        refuser."""
+        return tuple(VISIBILITES)
+
     def publish(
         self,
         texte: str,

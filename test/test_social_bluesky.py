@@ -360,5 +360,22 @@ class TestWhatItDoesWithARefusal(BlueskyCase):
             BlueskyTransport(mort, MOT_DE_PASSE, timeout=2).home_timeline()
 
 
+class TestWhatTheScreenMayOffer(BlueskyCase):
+    """Une seule portée, parce que le protocole n'en porte pas d'autre.
+
+    `publish` accepte le mot pour que l'appelant n'ait pas à distinguer les
+    réseaux, et l'IGNORE. En proposer plusieurs à l'écran laisserait
+    choisir une confidentialité que rien n'applique.
+    """
+
+    def test_only_the_public_one_is_offered(self):
+        self.assertEqual(self.transport.visibilites(), ("public",))
+
+    def test_every_offered_visibility_goes_through(self):
+        self.transport.ouvrir()
+        for portee in self.transport.visibilites():
+            self.transport.publish(f"Bonjour, {portee}.", visibilite=portee)
+
+
 if __name__ == "__main__":
     unittest.main()

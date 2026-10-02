@@ -134,6 +134,11 @@ not retry
 is a third answer beside a refusal you correct and a breakdown you retry, and
 the compose screen words it differently for that reason.
 
+The scopes the compose screen offers are those of the network you are
+writing on: four on Mastodon, two on LinkedIn, one on Bluesky. The same list
+everywhere let you pick a scope the network refuses, and the refusal only
+came back after the round trip.
+
 A refusal is told apart from a breakdown: a service saying no to an empty or
 over-long post will not change its mind, while a broken gateway will. The
 length allowed is asked of a Mastodon instance, which raises or lowers it; on
@@ -265,6 +270,11 @@ client ne réessaie pas — il dit qu'il ne sait pas, et demande d'aller
 vérifier avant de renvoyer. C'est une troisième réponse, à côté du refus
 qu'on corrige et de la panne qu'on réessaie, et l'écran d'écriture la formule
 autrement pour cette raison.
+
+Les portées que l'écran d'écriture propose sont celles du réseau sur lequel
+on écrit : quatre sur Mastodon, deux sur LinkedIn, une sur Bluesky. La même
+liste partout laissait choisir une portée que le réseau refuse, et le refus
+ne revenait qu'après l'aller-retour.
 
 Un refus se distingue d'une panne : un service qui dit non à un billet vide
 ou trop long ne changera pas d'avis, une passerelle en vrac si. La longueur

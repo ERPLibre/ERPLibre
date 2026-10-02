@@ -378,6 +378,12 @@ class BlueskyTransport:
         à demander au serveur."""
         return LIMITE_CARACTERES
 
+    def visibilites(self) -> tuple:
+        """Une seule, parce que le protocole n'en porte pas d'autre. En
+        proposer plus laisserait choisir une confidentialité que rien
+        n'applique."""
+        return ("public",)
+
     def home_timeline(self, cursor: str = "", limit: int = PAGE_MAX) -> tuple:
         """Une page du fil. Rend `(billets, curseur_suivant)`.
 

@@ -71,6 +71,12 @@ class FauxTransport:
     def limite_caracteres(self):
         return self.limite
 
+    def visibilites(self):
+        """Les portées viennent du TRANSPORT : chaque réseau a les
+        siennes, et proposer celles d'un autre fait choisir pour se faire
+        refuser."""
+        return ("public", "private")
+
     def nouvelle_cle(self):
         """La clé vient du TRANSPORT : chaque protocole la définit à sa
         façon, et imposer celle d'un réseau la ferait refuser ailleurs."""
@@ -425,6 +431,26 @@ class TestWriting(TuiCase):
             dit = str(app.screen.query_one("#compose_status", Static).content)
             self.assertIn("sans réponse", dit)
             self.assertNotIn(t_refuse(), dit)
+
+    async def test_the_visibilities_offered_are_the_transport_s(self):
+        """L'écran les tenait d'un réseau écrit en premier, donc il offrait
+        des portées que les autres refusent : on choisissait pour se faire
+        dire non après l'aller-retour."""
+        from textual.widgets import Select
+
+        transport = FauxTransport()
+        app = await self._app([self._session(transport)])
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            choix = ecran.query_one("#compose_visibility", Select)
+            self.assertEqual(
+                # Le sentinelle « rien de choisi » n'est pas une portée :
+                # Textual le range dans la même liste, et son nom a changé
+                # d'une version à l'autre.
+                [v for _, v in choix._options if isinstance(v, str)],
+                list(transport.visibilites()),
+            )
+            self.assertEqual(choix.value, transport.visibilites()[0])
 
     async def test_an_empty_post_never_leaves(self):
         transport = FauxTransport()

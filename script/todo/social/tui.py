@@ -245,10 +245,7 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
         return
 
     from script.todo.mail import tui_text
-    from script.todo.social.mastodon import (
-        VISIBILITES,
-        SocialError,
-    )
+    from script.todo.social.mastodon import SocialError
 
     ADD_NOTHING = "__rien__"
 
@@ -263,11 +260,17 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
     class ComposeScreen(ModalScreen):
         """Écrire un billet, et le publier.
 
-        La CLÉ d'idempotence est tirée à l'ouverture et gardée tant que
-        l'écran vit : un envoi qui échoue se rejoue avec la même, et
-        l'instance rend alors le billet déjà posé au lieu d'en créer un
-        second. C'est ce qui rend le bouton « envoyer » sûr à presser deux
-        fois quand on ne sait pas si le premier est parti.
+        La CLÉ est tirée à l'ouverture et gardée tant que l'écran vit : là
+        où le réseau en reconnaît une, un envoi qui échoue se rejoue avec
+        la même et le service rend le billet déjà posé au lieu d'en créer
+        un second. C'est ce qui rend « envoyer » sûr à presser deux fois
+        quand on ne sait pas si le premier est parti — sur les réseaux qui
+        l'offrent, et ils ne le font pas tous : celui qui rend une clé vide
+        ne promet rien, et le doute s'y dit au lieu de se rejouer.
+
+        Les visibilités proposées viennent elles aussi du transport, pour
+        la même raison : elles font partie du protocole, et celles d'un
+        réseau font refuser un envoi sur le suivant.
         """
 
         BINDINGS = [
@@ -295,9 +298,10 @@ def run_tui(run_app: bool = True, sessions=None, base=None) -> None:
             with Container(id="compose_box"):
                 yield Static(t("social_compose_title"), id="compose_title")
                 yield TextArea(id="compose_text")
+                portees = self.session.transport.visibilites()
                 yield Select(
-                    [(v, v) for v in VISIBILITES],
-                    value="public",
+                    [(v, v) for v in portees],
+                    value=portees[0],
                     id="compose_visibility",
                 )
                 yield Static("", id="compose_status")

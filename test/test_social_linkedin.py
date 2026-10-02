@@ -32,6 +32,7 @@ from linkedin_sandbox import (
 from script.todo.social.accounts import SocialAccount
 from script.todo.social.linkedin import (
     LIMITE_CARACTERES,
+    VISIBILITES,
     LinkedInTransport,
     SocialUnknownOutcome,
 )
@@ -292,6 +293,26 @@ class TestWhatItRefuses(LinkedInCase):
         self.bac.fail(EnVrac(sur="/v2/ugcPosts"))
         with self.assertRaises(SocialError):
             self.transport.publish("Bonjour.")
+
+
+class TestWhatTheScreenMayOffer(LinkedInCase):
+    """Les portées proposées sont celles que `publish` accepte.
+
+    L'écran les tenait d'un autre réseau, donc il offrait des choix que ce
+    transport refuse. L'invariant qui l'empêche de revenir : tout ce qui
+    est proposé part.
+    """
+
+    def test_every_offered_visibility_goes_through(self):
+        for portee in self.transport.visibilites():
+            self.bac.anti_doublon = False
+            self.transport.publish(f"Bonjour, {portee}.", visibilite=portee)
+        self.assertEqual(
+            len(self.bac.publies), len(self.transport.visibilites())
+        )
+
+    def test_nothing_else_is_offered(self):
+        self.assertEqual(self.transport.visibilites(), tuple(VISIBILITES))
 
 
 if __name__ == "__main__":
