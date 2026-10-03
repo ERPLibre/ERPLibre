@@ -118,8 +118,8 @@ class TestLesQuestionsADefaut(_Cas):
                     self.assertIn(f"\n[{number}] {name} ", self.shown)
 
     def test_an_invalid_answer_is_named_and_zero_goes_back(self):
-        # Une faute prenait le défaut sans un mot : la TUI, le serveur, deb,
-        # mise ou l'agent par défaut.
+        # Une faute est nommée et la question revient : elle ne prend pas
+        # en silence le défaut, la TUI, le serveur, deb, mise ou l'agent.
         todo = self.todo
         gui = [{"desktop": "gnome", "distro": "ubuntu"}]
         for call in (
@@ -144,7 +144,17 @@ class TestLesQuestionsADefaut(_Cas):
         self.assertEqual((label, vms[0][2], vms[0][5]), ("x3", 3072, 6))
         label, vms = self.play(lambda: ask(selected, 8, 0), "x2")
         self.assertEqual((label, vms[0][2], vms[0][5]), ("x2", 2048, 4))
-        # Une faute prenait x1 en silence.
+        # [5] pose les vCPU, la RAM et le disque une fois pour tout le
+        # parc ; une réponse vide garde la valeur du catalogue.
+        custom = [("forged_a", "1", 4096, "40G", "amd64", 4)]
+        got = self.play(lambda: ask(selected, 8, 0), "5", "4", "4096", "40")
+        self.assertEqual(got, (t("custom"), custom))
+        kept = [("forged_a", "1", 1024, "10G", "amd64", 2)]
+        got = self.play(lambda: ask(selected, 8, 0), "5", "", "", "")
+        self.assertEqual(got, (t("custom"), kept))
+        self.assertEqual(len(self.asked), 4)
+        # Une faute est nommée et redemandée : elle ne prend pas x1 en
+        # silence.
         self.assertIsNone(self.play(lambda: ask(selected, 8, 0), "6", "0"))
         self.assertEqual(self.refused(), ["6"])
 

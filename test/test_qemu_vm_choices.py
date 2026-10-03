@@ -257,10 +257,19 @@ class TestUneVmChoisieDansLaListe(_Cas):
 
     def test_without_a_vm_nothing_is_asked(self):
         self.todo._qemu_list_domains = lambda: []
-        for method in ("_qemu_show_ip", "_qemu_console", "_qemu_resize_disk"):
+        self.todo._qemu_recover_ensure_tools = lambda: True
+        self.todo._qemu_vm_ip = lambda name, **k: self.fail("IP lue")
+        self.todo._qemu_main_disk = lambda name: self.fail("disque lu")
+        for method in (
+            "_qemu_show_ip",
+            "_qemu_console",
+            "_qemu_test_vm",
+            "_qemu_resize_disk",
+            "_qemu_recover_files",
+        ):
             with self.subTest(method=method):
                 _, out = self.play(method)
-                self.assertEqual(self.asked, [])
+                self.assertEqual((self.asked, self.virsh()), ([], []))
                 self.assertIn(t("No VM found."), out)
 
 
@@ -358,8 +367,9 @@ class TestLeNavigateur(_Cas):
         ):
             with (
                 self.subTest(answers=answers),
-                mock.patch(
-                    "script.todo.qemu_manage.shutil.which",
+                mock.patch.object(
+                    qemu_install_monitor.shutil,
+                    "which",
                     lambda b: b in ("w3m", "lynx") and f"/bin/{b}",
                 ),
             ):
