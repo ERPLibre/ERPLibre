@@ -139,7 +139,9 @@ class TestLArchitecture(_Cas):
                 )
         native = f"[1] amd64 (x86_64) — {t('native')} {t('(default)')}\n"
         self.assertIn(native, self.shown)
-        self.assertIn(f"[4] {t('All supported architectures')}\n", self.shown)
+        every = t("All supported architectures")
+        # « all » se tape parce que la liste l'écrit.
+        self.assertIn(f"[4] all — {every}\n", self.shown)
         # Une arch émulée et « all » avertissent encore, la native jamais.
         self.play("_qemu_prompt_infra_arch", "arm64")
         emulated = t(

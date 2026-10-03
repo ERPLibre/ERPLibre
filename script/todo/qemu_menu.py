@@ -164,8 +164,9 @@ class QemuMenuMixin:
         """L'architecture choisie parmi `opts` (`ui.choose`) par son numéro,
         son nom ou son alias de distribution (x86_64, aarch64), la native,
         marquée, sur une réponse vide ; avec `allow_all`, « all », la
-        dernière option, prend toutes les archis. None pour [0]. Toute arch
-        non native est ÉMULÉE (TCG, lente), ce que le choix rappelle."""
+        dernière option, dont le libellé écrit le nom, prend toutes les
+        archis. None pour [0]. Toute arch non native est ÉMULÉE (TCG,
+        lente), ce que le choix rappelle."""
         options, labels = list(opts), []
         names = {a: a for a in opts}
         for a in opts:
@@ -184,7 +185,7 @@ class QemuMenuMixin:
             labels.append(f"{label}{self._qemu_stat_avg('arch', a)}")
         if allow_all:
             options.append("all")
-            labels.append(t("All supported architectures"))
+            labels.append(f"all — {t('All supported architectures')}")
             names["all"] = "all"
         chosen = ui.choose(
             t("Architecture:"),
