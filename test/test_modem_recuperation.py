@@ -385,6 +385,48 @@ class TestRecetteDEffacement(unittest.TestCase):
         self.assertIn("le service tient le port", sortie.getvalue())
         ouvrir.assert_not_called()
 
+    def test_l_effacement_est_annonce_avant_le_choix(self):
+        """Une confirmation arrive quand la decision est prise. Ce que la
+        commande detruit se dit AVANT, la ou on choisit encore."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.modem import menu
+
+        sortie = io.StringIO()
+        with mock.patch.object(menu.device_mod, "port_reserve", return_value="/dev/p"), \
+                mock.patch("script.todo.modem.recuperation.ligne_occupee",
+                           return_value=""), \
+                mock.patch.object(menu.mv_mod, "numero_messagerie", return_value=("+15145550199", "")), \
+                mock.patch("os.path.exists", return_value=True), \
+                mock.patch("builtins.input", return_value="0"), \
+                redirect_stdout(sortie):
+            menu._repondeur_recuperer(todo=None)
+        texte = sortie.getvalue()
+        self.assertIn("EFFAC", texte.upper())
+        self.assertLess(texte.upper().index("EFFAC"), texte.index("[1]"))
+
+    def test_le_coffre_ne_s_ouvre_qu_une_fois_l_effacement_accepte(self):
+        """Deverrouiller ses mots de passe pour decouvrir ensuite ce que la
+        commande fait, et pouvoir encore y renoncer, fait payer un geste avant
+        d'avoir decide."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.modem import menu
+
+        sortie = io.StringIO()
+        with mock.patch.object(menu.device_mod, "port_reserve", return_value="/dev/p"), \
+                mock.patch("script.todo.modem.recuperation.ligne_occupee",
+                           return_value=""), \
+                mock.patch.object(menu.mv_mod, "numero_messagerie", return_value=("+15145550199", "")), \
+                mock.patch("os.path.exists", return_value=True), \
+                mock.patch("builtins.input", return_value="0"), \
+                mock.patch("script.todo.modem.code_messagerie.coffre") as ouvrir, \
+                redirect_stdout(sortie):
+            menu._repondeur_recuperer(todo=None)
+        ouvrir.assert_not_called()
+
     def test_l_avertissement_s_affiche_avant_le_choix(self):
         import io
         from contextlib import redirect_stdout

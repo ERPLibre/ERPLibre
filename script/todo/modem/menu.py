@@ -620,27 +620,22 @@ def _repondeur_recuperer(todo):
     if not numero:
         print("  " + raison)
         return
-    try:
-        code = code_mod.lire(code_mod.coffre(todo))
-    except SecretError as exc:
-        print("  " + str(exc))
-        return
-    if not code:
-        print("  " + t("modem_ans_fetch_no_code"))
-        return
     binaire = os.path.expanduser("~/.local/bin/erplibre-sip-go")
     if not os.path.exists(binaire):
         print("  " + t("modem_ans_fetch_no_binary") % binaire)
         return
 
-    # Le risque AVANT le choix, et non seulement a la confirmation : c'est
-    # la limite de l'automatisation, et elle decide de l'option a prendre.
+    # CE QUE ÇA DÉTRUIT, avant le choix et non a la confirmation. Une
+    # confirmation arrive quand la decision est deja prise : on y repond oui.
+    # L'effacement est irreversible — la boite de l'operateur ne garde pas de
+    # corbeille — et c'est ce qui separe les deux options.
+    print("  ⚠ " + t("modem_ans_fetch_delete_warn"))
     silence = rec_mod.silence_avant_effacement_s(
         rec_mod.charger_recette("recuperer_un_message"))
     if silence is not None:
         print("  ⚠ " + t("modem_ans_fetch_silence_risk") % (
             str(silence).replace(".", ","), str(silence).replace(".", ",")))
-        print()
+    print()
     print(f"  [1] {t('modem_ans_fetch_one')}")
     print(f"  [2] {t('modem_ans_fetch_survey')}")
     print(f"  [0] {t('Back')}")
@@ -653,13 +648,25 @@ def _repondeur_recuperer(todo):
             print("  " + t("modem_ans_fetch_no_flag"))
             if not click.confirm("  " + t("modem_continue"), default=False):
                 return
-        print("  " + t("modem_ans_fetch_delete_warn"))
         if not click.confirm("  " + t("modem_continue"), default=False):
             return
     else:
         print("  " + t("modem_ans_fetch_reperage"))
         if not click.confirm("  " + t("modem_continue"), default=True):
             return
+    # Le coffre EN DERNIER, une fois seulement que l'effacement est annonce et
+    # accepte : deverrouiller ses mots de passe pour decouvrir ensuite ce que
+    # la commande fait, et pouvoir encore y renoncer, fait payer un geste
+    # avant d'avoir decide.
+    try:
+        code = code_mod.lire(code_mod.coffre(todo))
+    except SecretError as exc:
+        print("  " + str(exc))
+        return
+    if not code:
+        print("  " + t("modem_ans_fetch_no_code"))
+        return
+
     print("  " + t("modem_ans_fetch_running"))
     bilan, wav = rec_mod.jouer(recette, numero, code, binaire, device_mod.PORT_RESERVE)
     del code
