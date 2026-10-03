@@ -195,6 +195,73 @@ class TestDecoupe(unittest.TestCase):
             with open(os.path.splitext(sortie)[0] + ".json", encoding="utf-8") as flux:
                 self.assertEqual(json.load(flux)["decoupe"], "silence")
 
+    def test_la_touche_d_effacement_borne_le_message(self):
+        """La recette envoie le 7 des que le message se tait : le message est
+        donc la derniere parole qui le precede.
+
+        Le modele « annonce / message / menu » ne vaut pas ici — le menu ne
+        joue jamais avant la coupure. Applique quand meme, il prend le MESSAGE
+        pour le menu et n'extrait que l'amorce qui le precede. Structure
+        relevee sur une messagerie reelle : annonce de 7,7 s, amorce de 0,9 s,
+        message de 29,7 s, puis la touche.
+        """
+        bilan = {
+            "evenements": [
+                {"ms": 20900, "quoi": "étape 4 : touches 1"},
+                {"ms": 68800, "quoi": "étape 7 : touches 7"},
+            ],
+            "courbe_crete_100ms": courbe(
+                (False, 22.7), (True, 7.7), (False, 2.3), (True, 0.9),
+                (False, 1.0), (True, 29.7), (False, 6.3), (True, 18.1)),
+        }
+        debut, fin, methode = rec.bornes_et_methode(bilan)
+        self.assertEqual(methode, "touche d'effacement")
+        self.assertAlmostEqual((fin - debut) / 1000, 30.3, delta=0.4)
+        self.assertGreaterEqual(debut, 34600 - rec.MARGE_DECOUPE_MS - 100)
+        self.assertLessEqual(fin, 68800)
+
+    def test_sans_annonce_avant_la_touche_on_ne_coupe_pas(self):
+        """Une seule plage avant le 7 ne distingue pas l'annonce du message :
+        mieux vaut garder l'enregistrement complet."""
+        bilan = {
+            "evenements": [
+                {"ms": 20900, "quoi": "étape 4 : touches 1"},
+                {"ms": 40000, "quoi": "étape 7 : touches 7"},
+            ],
+            "courbe_crete_100ms": courbe((False, 22.0), (True, 10.0), (False, 10.0)),
+        }
+        self.assertIsNone(rec.bornes_et_methode(bilan))
+
+    def test_deux_relevements_de_la_meme_seconde_ne_se_marchent_pas_dessus(self):
+        """Le nom suivait l'instant de l'extraction : deux relevements traites
+        dans la meme seconde portaient le meme nom, et le second ecrasait le
+        premier — Odoo n'en voyait qu'un, la reference etant ce nom."""
+        import wave
+
+        bilan = {
+            "evenements": [
+                {"ms": 3300, "quoi": "étape 4 : touches 1"},
+                {"ms": 20000, "quoi": "étape 7 : touches 7"},
+            ],
+            "courbe_crete_100ms": courbe(
+                (False, 4.0), (True, 5.0), (False, 1.0), (True, 8.0), (False, 2.0)),
+        }
+        with tempfile.TemporaryDirectory() as dossier:
+            sorties = []
+            for nom in ("appel-20261003-003159.wav", "appel-20261003-004035.wav"):
+                source = os.path.join(dossier, nom)
+                with wave.open(source, "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(8000)
+                    w.writeframes(b"\x00\x00" * 8000 * 30)
+                sorties.append(rec.extraire_message(
+                    source, bilan, os.path.join(dossier, "m"),
+                    maintenant=datetime(2026, 10, 3, 0, 43, 3)))
+            self.assertEqual(len(set(sorties)), 2, sorties)
+            for chemin in sorties:
+                self.assertTrue(os.path.exists(chemin))
+
     def test_une_structure_inconnue_ne_se_decoupe_pas(self):
         """Mieux vaut garder l'enregistrement complet que decouper au hasard."""
         b = self.bilan()
