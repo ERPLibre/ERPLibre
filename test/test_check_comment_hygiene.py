@@ -159,6 +159,41 @@ class TestLeTemoignage(unittest.TestCase):
         ):
             self.assertEqual([], self._recits(phrase), phrase)
 
+    def test_l_aparte_apres_deux_points_ou_point_virgule(self):
+        """Le deux-points et le point-virgule détachent l'aparté comme le
+        tiret ; constaté et signalé témoignent comme les autres."""
+        for phrase in (
+            "Le cache sert depuis l'amont : mesuré, puis la suite.",
+            "Le cache sert depuis l'amont :mesuré.",
+            "La copie reste en place ; mesuré.",
+            "La copie reste en place ;vécu, et la suite.",
+            "Le service tombe au démarrage — constaté.",
+            "La clé change sous la même adresse, signalée.",
+        ):
+            self.assertIn(
+                "aparté", {t[0] for t in self._recits(phrase)}, phrase
+            )
+        for phrase in (
+            "Le seuil : le délai mesuré décide du repli.",
+            "Le cas ; la valeur est mesurée PIRE que la limite.",
+        ):
+            self.assertEqual([], self._recits(phrase), phrase)
+
+    def test_l_aparte_qui_clot_une_ligne(self):
+        """Un aparté sans ponctuation finit avec sa ligne ; un participe
+        que la phrase continue à la ligne suivante n'en est pas un."""
+        self.assertEqual(
+            [("aparté", "vécu", 38)],
+            self._recits(
+                "La liste mène à la mauvaise machine — vécu\npuis la suite."
+            ),
+        )
+        for phrase in (
+            "Le délai est mesuré\npuis arrondi.",
+            "Le délai\nmesuré décide du repli.",
+        ):
+            self.assertEqual([], self._recits(phrase), phrase)
+
     def test_un_marqueur_que_deux_motifs_relevent_compte_une_fois(self):
         """« Mesuré : » est un témoignage, et aussi un aparté : une seule
         trouvaille, celle du témoignage ; « — vécu. » en est une autre."""
@@ -302,6 +337,21 @@ class TestCeQuiEstLu(unittest.TestCase):
         self.assertEqual(
             [(2, "aparté")], [(f["line"], f["pattern"]) for f in trouvailles]
         )
+
+    def test_un_aparte_sans_ponctuation_finit_sa_ligne(self):
+        """Les lignes d'un bloc se recollent, mais l'aparté qui clôt la
+        première sans ponctuation se voit encore, et la pointe."""
+        source = "# une raison — vécu\n# puis la suite.\nX = 1\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(
+            [(1, "aparté")], [(f["line"], f["pattern"]) for f in trouvailles]
+        )
+
+    def test_un_extrait_a_cheval_sur_deux_lignes_tient_sur_une(self):
+        """Le rapport imprime un extrait par ligne."""
+        source = "# La valeur est stable. Mesuré\n# deux fois.\nX = 1\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["Mesuré deux"], [f["excerpt"] for f in trouvailles])
 
     def test_un_source_illisible_se_replie_sur_les_lignes(self):
         """Rendre un rapport vide dirait « propre » d'un fichier non lu."""

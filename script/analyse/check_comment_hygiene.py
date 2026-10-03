@@ -103,14 +103,17 @@ RECIT = re.compile(
 
 # L'aparté : le même témoignage, seul entre deux ponctuations, détaché de
 # la phrase qui énonce le fait — après un tiret, une parenthèse, une
-# virgule ou une fin de phrase, et avant une ponctuation (« … — vécu, »,
-# « (mesuré) », « …, vécu. », « … voulus. Mesuré. »). Pris dans la phrase
-# (« est mesuré pire », « que le journal a rapportée. »), le participe
-# énonce le fait et ne se signale pas. « vecu » sans accent n'a pas de
-# présent qui s'écrive pareil, au contraire de « mesure ».
+# virgule, un deux-points, un point-virgule ou une fin de phrase, et avant
+# une ponctuation ou la fin de sa ligne (« … — vécu, », « (mesuré) »,
+# « … : constaté. », « … voulus. Mesuré. »). Pris dans la phrase (« est
+# mesuré pire », « que le journal a rapportée. »), le participe énonce le
+# fait et ne se signale pas. « vecu » sans accent n'a pas de présent qui
+# s'écrive pareil, au contraire de « mesure ». La fin de ligne se lit dans
+# le texte que `inspect` recolle par des sauts de ligne.
 APARTE = re.compile(
-    r"(?:^|(?<=[—–(,])|(?<=[—–(,]\s)|(?<=[.!?]\s))"
-    r"(?:v[ée]cu|mesuré|rapporté|observé)e?s?(?=\s?[,.;:)!?]|$)",
+    r"(?:^|(?<=[—–(,:;])|(?<=[—–(,:;]\s)|(?<=[.!?]\s))"
+    r"(?:v[ée]cu|mesuré|rapporté|constaté|observé|signalé)e?s?"
+    r"(?=\s?[,.;:)!?]|\n|$)",
     re.IGNORECASE,
 )
 
@@ -396,12 +399,12 @@ def recits(texte):
     porte souvent plusieurs, et n'en montrer qu'une cache le reste du travail.
     Une position que deux motifs relèvent ne compte qu'une fois, pour le
     premier de MOTIFS_RECIT : « Vécu : » est un témoignage, et aussi un
-    aparté.
+    aparté. Un extrait à cheval sur deux lignes se rend sur une seule.
     """
     trouves = {}
     for nom, motif in MOTIFS_RECIT:
         for trouve in motif.finditer(texte):
-            extrait = trouve.group(0).strip()
+            extrait = trouve.group(0).strip().replace("\n", " ")
             trouves.setdefault(trouve.start(), (nom, extrait, trouve.start()))
     return sorted(trouves.values(), key=lambda t: t[2])
 
@@ -448,9 +451,14 @@ def inspect(chemin, source=None, termes=None):
 
     trouvailles = []
     for bloc in blocs(chemin, source):
+        # Le récit se cherche dans les lignes recollées par des sauts de
+        # ligne, où l'aparté qui clôt une ligne sans ponctuation garde sa
+        # fin ; le séparateur fait un caractère comme l'espace du texte du
+        # bloc, et les positions restent les siennes.
+        lignes = "\n".join(texte for _, texte in bloc["lines"])
         familles = (
             ("identifiant", identifiants(bloc["text"], termes)),
-            ("récit", recits(bloc["text"])),
+            ("récit", recits(lignes)),
             ("nom", noms_dhote(bloc["text"])),
         )
         for genre, trouves in familles:
