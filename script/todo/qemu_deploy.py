@@ -1560,9 +1560,10 @@ class QemuDeployMixin:
         )
 
     def _qemu_ask_ui(self):
-        """Interface du déploiement : formulaire TUI ou invites en ligne.
-        La préférence peut trancher d'avance (menu Configuration) ; « ask »
-        pose la question."""
+        """Interface du déploiement : « tui », le formulaire, ou « cli »,
+        les invites en ligne ; None pour [0]. La préférence peut trancher
+        d'avance (menu Configuration) ; « ask » pose la question
+        (`ui.choose`), la TUI sur une réponse vide."""
         pref = todo_prefs.get("qemu_deploy_ui")
         if pref in ("tui", "cli"):
             return pref
@@ -1944,7 +1945,11 @@ class QemuDeployMixin:
         )
 
     def _qemu_ask_app_store(self, vms):
-        """Magasin d'applications des VM graphiques Ubuntu."""
+        """Magasin d'applications des VM graphiques Ubuntu : « deb »,
+        « flatpak » ou « snap », par son numéro ou ce nom (`ui.choose`),
+        deb sur une réponse vide ; None pour [0]. « deb » sans question
+        quand aucune VM de `vms` n'en a l'usage
+        (`_qemu_app_store_needed`)."""
         if not self._qemu_app_store_needed(vms):
             return "deb"
         keys = [key for key, _label in self.QEMU_APP_STORES]
@@ -2031,11 +2036,13 @@ class QemuDeployMixin:
         return agent, nom, mail
 
     def _qemu_ask_python_provider(self, arches):
-        """mise (CPython précompilé) ou pyenv (compilation).
+        """« mise » (CPython précompilé) ou « pyenv » (compilation), par
+        son numéro ou ce nom (`ui.choose`), mise sur une réponse vide ;
+        None pour [0].
 
         `arches` : les architectures du parc à déployer. mise ne publie pas de
-        binaire pour toutes — hors de QEMU_MISE_ARCHES la question n'a pas de
-        sens et on ne la pose pas."""
+        binaire pour toutes — sans aucune de QEMU_MISE_ARCHES la question n'a
+        pas de sens : rien n'est posé, et la réponse est « »."""
         usable = [a for a in arches if a in self.QEMU_MISE_ARCHES]
         if not usable:
             # Rien, pas « pyenv » : le mode automatique doit rester libre de
