@@ -49,9 +49,11 @@ class TestConfigurationDejaEnPlace(unittest.TestCase):
                 "chown() { :; }\n"
                 "CONFIG_DIR=%s\n"
                 "CACHE_DIR=%s/cache\n"
+                "DATA_DIR=%s/lib\n"
+                "AUTH_FILE=%s/lib/user.db\n"
                 "NTFY_PORT=8080\nNTFY_BASE_URL=http://localhost:8080\n"
                 "NTFY_PUBLIC=0\nNTFY_CERT_FILE=\nNTFY_KEY_FILE=\n"
-                % (dossier, dossier)
+                % (dossier, dossier, dossier, dossier)
             ) + extraire_fonction("configure_ntfy") + "\nconfigure_ntfy\n"
             env = dict(os.environ)
             env.update(environnement or {})
@@ -88,6 +90,10 @@ class TestConfigurationDejaEnPlace(unittest.TestCase):
         self.assertEqual(fait.returncode, 0, fait.stderr)
         self.assertIn("auth-default-access", ecrit)
         self.assertIn("deny-all", ecrit)
+        # La base des comptes ne va PAS sous /etc : le service tourne sous un
+        # compte qui n'y ecrit pas, et il sortirait en erreur au demarrage.
+        self.assertNotIn('auth-file: "/etc/', ecrit)
+        self.assertIn("/lib/user.db", ecrit)
 
 
 if __name__ == "__main__":
