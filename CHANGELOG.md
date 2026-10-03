@@ -319,6 +319,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In French, Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) and the three Exécution › Config entries Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde and Générer à partir de la base de données carry their accents, where the menus wrote « a partir » and « pre-configuration »
 - Execute › Config › Generate from backup file, its file browser left without a file, and Generate from database, at [0] of its list, with no database or when the list cannot be read, generate nothing, where they regenerated the configuration with an empty backup name or a database named « False »
 - In a web session, an option label of several lines keeps its lines on the page — an install run and its VMs, a Claude Code session, a gpt tool and its description — where they ran into one
+- Execute › Deploy › QEMU/KVM › Deploy VM(s) labels the flatpak application store « flatpak (tooling, no Flathub) », in the questions as in the form, opening on the name its answer accepts: the list wrote « Flatpak tooling, no Flathub » and refused « Flatpak » typed as written, accepting only « flatpak », which it never wrote
 
 ## Removed
 

@@ -361,7 +361,7 @@ class QemuInstallMixin:
     # serveur, rien ne tire de snap.
     QEMU_APP_STORES = (
         ("deb", "deb only (epiphany-browser)"),
-        ("flatpak", "Flatpak tooling, no Flathub"),
+        ("flatpak", "flatpak (tooling, no Flathub)"),
         ("snap", "snap (Ubuntu default, Firefox)"),
     )
 

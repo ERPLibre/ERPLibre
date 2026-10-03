@@ -24,7 +24,7 @@ from contextlib import redirect_stdout
 from unittest import mock
 
 sys.argv = ["todo.py"]
-from script.todo import todo_prefs  # noqa: E402
+from script.todo import todo_i18n, todo_prefs  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -100,6 +100,22 @@ class TestLesQuestionsADefaut(_Cas):
         for call, answer, expected in cases:
             with self.subTest(answer=answer):
                 self.assertEqual(self.play(call, answer, "", ""), expected)
+
+    def test_each_store_shows_the_name_it_answers_to(self):
+        # Un magasin se nomme par ce que la liste écrit : son libellé
+        # commence par le nom que la réponse accepte, dans les deux langues.
+        self.addCleanup(todo_i18n.use_lang, todo_i18n.get_lang())
+        gui = [{"desktop": "gnome", "distro": "ubuntu"}]
+        stores = ("deb", "flatpak", "snap")
+        for lang in ("fr", "en"):
+            todo_i18n.use_lang(lang)
+            for number, name in enumerate(stores, 1):
+                with self.subTest(lang=lang, name=name):
+                    got = self.play(
+                        lambda: self.todo._qemu_ask_app_store(gui), name
+                    )
+                    self.assertEqual(got, name)
+                    self.assertIn(f"\n[{number}] {name} ", self.shown)
 
     def test_an_invalid_answer_is_named_and_zero_goes_back(self):
         # Une faute prenait le défaut sans un mot : la TUI, le serveur, deb,

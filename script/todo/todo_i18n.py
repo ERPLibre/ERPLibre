@@ -3467,9 +3467,9 @@ TRANSLATIONS = {
         "fr": "deb uniquement (epiphany-browser)",
         "en": "deb only (epiphany-browser)",
     },
-    "Flatpak tooling, no Flathub": {
-        "fr": "outillage Flatpak, sans Flathub",
-        "en": "Flatpak tooling, no Flathub",
+    "flatpak (tooling, no Flathub)": {
+        "fr": "flatpak (outillage, sans Flathub)",
+        "en": "flatpak (tooling, no Flathub)",
     },
     "snap (Ubuntu default, Firefox)": {
         "fr": "snap (défaut Ubuntu, Firefox)",
