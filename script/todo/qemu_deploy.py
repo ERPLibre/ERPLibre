@@ -2864,7 +2864,7 @@ class QemuDeployMixin:
         #
         # Et quand il n'y a RIEN à installer, le suivi s'ouvre quand même : la
         # commande distante regarde alors la VM arriver (cloud-init puis relevé
-        # système). Sans cela, décocher ERPLibre faisait disparaître le tableau
+        # système). Sans cela, décocher ERPLibre ferait disparaître le tableau
         # de bord, et le suivi semblerait ne plus fonctionner. Le choix vient
         # du déploiement, pas de l'installation.
         monitor = install["monitor"] if install else spec.get("monitor", True)
