@@ -302,7 +302,8 @@ func RelierAuModem(ctx context.Context, socket *SocketMédia, session *SessionSR
 func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP,
 	pont *PontModem) error {
 
-	var reçus, écrits, illisibles int
+	var reçus, écrits, illisibles, étrangers, désordre int
+	suite := &SuiteRTP{}
 	relevé := time.NewTicker(5 * time.Second)
 	defer relevé.Stop()
 
@@ -312,7 +313,8 @@ func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP
 			return nil
 		case <-relevé.C:
 			slog.Info("navigateur vers la ligne",
-				"recus", reçus, "ecrits", écrits, "illisibles", illisibles)
+				"recus", reçus, "ecrits", écrits, "illisibles", illisibles,
+				"etrangers", étrangers, "desordre", désordre)
 		case protégé, ouvert := <-socket.RTP():
 			if !ouvert {
 				return nil
@@ -327,6 +329,19 @@ func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP
 			if err := paquet.Unmarshal(clair); err != nil {
 				illisibles++
 				continue
+			}
+			// Le TYPE de charge décide, et pas seulement le fait qu'un
+			// paquet soit arrivé. Nous n'offrons que PCMU, mais un
+			// navigateur émet aussi du bruit de confort et des événements
+			// de touche ; leurs charges, écrites telles quelles dans la
+			// carte comme si elles étaient du µ-law, donnent de courtes
+			// salves de n'importe quoi au correspondant.
+			if paquet.PayloadType != ChargePCMU {
+				étrangers++
+				continue
+			}
+			if suite.Désordonné(paquet.SequenceNumber) {
+				désordre++
 			}
 			if err := pont.ÉcrireVersModem(paquet.Payload); err != nil {
 				return fmt.Errorf("ecriture vers la carte du modem : %w%s",
@@ -386,4 +401,30 @@ func versLeNavigateur(ctx context.Context, socket *SocketMédia,
 			slog.Info("premier paquet du modem transmis au navigateur")
 		}
 	}
+}
+
+// SuiteRTP suit la numérotation d'un flux RTP pour en signaler les trous.
+//
+// Un paquet qui arrive hors de son rang est écrit hors de son rang : la carte
+// joue alors vingt millisecondes d'un instant qui n'est pas le sien, ce qui
+// s'entend comme un claquement. Compter n'y remédie pas — cela dit si c'est
+// la cause, ce qu'aucun compteur de paquets reçus ne distingue.
+type SuiteRTP struct {
+	dernier  uint16
+	démarrée bool
+}
+
+// Désordonné dit si ce numéro ne suit pas le précédent.
+//
+// La comparaison tient compte du rebouclage à 65535 : un flux d'une heure en
+// fait plusieurs, et les traiter comme des sauts rendrait la mesure inutile.
+func (s *SuiteRTP) Désordonné(numéro uint16) bool {
+	if !s.démarrée {
+		s.démarrée = true
+		s.dernier = numéro
+		return false
+	}
+	attendu := s.dernier + 1
+	s.dernier = numéro
+	return numéro != attendu
 }

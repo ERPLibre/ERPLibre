@@ -109,3 +109,38 @@ func TestLEmetteurNumeroteSaPropreSuite(t *testing.T) {
 		précédent = paquet
 	}
 }
+
+func TestUneSuiteRTPSignaleLesTrousEtPasLeReste(t *testing.T) {
+	suite := &SuiteRTP{}
+
+	// Le premier paquet n'a pas de precedent : il ne peut pas etre en retard.
+	if suite.Désordonné(1000) {
+		t.Fatal("le premier paquet compte comme desordonne")
+	}
+	for _, n := range []uint16{1001, 1002, 1003} {
+		if suite.Désordonné(n) {
+			t.Fatalf("%d suit pourtant son precedent", n)
+		}
+	}
+	if !suite.Désordonné(1010) {
+		t.Fatal("un saut de sept paquets passe inapercu")
+	}
+	// Apres un saut, on repart du numero vu : sinon un seul trou ferait
+	// compter desordonnes tous les paquets qui suivent.
+	if suite.Désordonné(1011) {
+		t.Fatal("la suite ne se recale pas apres un trou")
+	}
+}
+
+func TestLeRebouclageDesNumerosNEstPasUnTrou(t *testing.T) {
+	// Un flux d'une heure reboucle plusieurs fois : les compter comme des
+	// sauts rendrait la mesure inutilisable.
+	suite := &SuiteRTP{}
+	suite.Désordonné(65534)
+	if suite.Désordonné(65535) {
+		t.Fatal("65535 suit 65534")
+	}
+	if suite.Désordonné(0) {
+		t.Fatal("le rebouclage a 0 compte comme un trou")
+	}
+}
