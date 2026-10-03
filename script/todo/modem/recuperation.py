@@ -74,6 +74,12 @@ REPRISE_APRES_TOUCHE_MS = 300
 #: Marge gardee de part et d'autre du message extrait.
 MARGE_DECOUPE_MS = 300
 
+#: Ce qu'on garde de la fin de l'annonce pour y trouver le numero annonce.
+#: La messagerie dit la date puis le numero sans silence entre les deux : la
+#: frontiere ne se mesure pas, et trois secondes couvrent dix chiffres enonces
+#: sans amputer le premier.
+DUREE_NUMERO_MS = 3000
+
 #: Ajustements des deux bornes, regles a l'oreille sur une messagerie reelle.
 #: Le debut est repousse d'une seconde : la fin de l'annonce du numero, qui
 #: precede le message, n'est plus dans l'extrait. La fin est avancee d'une
@@ -244,6 +250,48 @@ def bornes_du_message(bilan: dict):
     return (trouve[0], trouve[1]) if trouve else None
 
 
+def plages_apres_la_touche(bilan: dict):
+    """Les plages de parole qui SUIVENT le « 1 », et la courbe. (None, []) sinon.
+
+    La decoupe ne regarde que ce qui suit la touche : filtrer apres coup ne
+    suffit pas, car une plage commencee avant elle absorbe celles d'apres et
+    disparait du meme geste — l'annonce et le message se retrouvaient alors
+    dans ce qui precede.
+
+    La touche part souvent PENDANT que la messagerie parle : ce qui reste de
+    cette phrase n'est pas l'annonce, c'est la fin de la precedente. On ne
+    garde donc que ce qui commence apres un vrai silence.
+    """
+    depart = instant_touche(bilan, "1")
+    if depart is None:
+        return None, []
+    pas = 100
+    courbe = bilan.get("courbe_crete_100ms") or []
+    debut_index = depart // pas
+    plages = [[a + depart_ms(debut_index, pas), z + depart_ms(debut_index, pas)]
+              for a, z in segments(courbe[debut_index:], pont_ms=PONT_DECOUPE_MS,
+                                   pas_ms=pas)]
+    return [p for p in plages if p[0] >= depart + REPRISE_APRES_TOUCHE_MS], courbe
+
+
+def bornes_du_numero(bilan: dict):
+    """Rend (debut_ms, fin_ms) du numero annonce, ou None.
+
+    La messagerie enonce la date PUIS le numero de l'appelant, d'une traite :
+    aucun silence ne les separe, et il n'y a donc rien a mesurer entre les
+    deux. On prend les dernieres secondes de l'annonce, ou le numero se tient
+    toujours — ce qui emporte la fin de la date quand l'annonce est courte,
+    et c'est preferable a couper un chiffre en deux.
+    """
+    plages, _courbe = plages_apres_la_touche(bilan)
+    if not plages:
+        return None
+    annonce = plages[0]
+    debut = max(annonce[0], annonce[1] - DUREE_NUMERO_MS)
+    fin = annonce[1] + MARGE_DECOUPE_MS
+    return (debut, fin) if fin > debut else None
+
+
 def bornes_et_methode(bilan: dict):
     """Rend (debut_ms, fin_ms) du message dans l'enregistrement, ou None.
 
@@ -254,23 +302,10 @@ def bornes_et_methode(bilan: dict):
     qui ne correspond pas rend None : mieux vaut garder l'enregistrement
     complet que decouper au hasard.
     """
-    depart = instant_touche(bilan, "1")
-    if depart is None:
+    plages, courbe = plages_apres_la_touche(bilan)
+    if plages is None:
         return None
     pas = 100
-    courbe = bilan.get("courbe_crete_100ms") or []
-    # La decoupe ne regarde QUE ce qui suit la touche : filtrer les plages
-    # apres coup ne suffit pas, car une plage commencee avant la touche
-    # absorbe celles d'apres et disparait du meme geste — l'annonce et le
-    # message se retrouvaient alors dans ce qui precede.
-    debut_index = depart // pas
-    plages = [[a + depart_ms(debut_index, pas), z + depart_ms(debut_index, pas)]
-              for a, z in segments(courbe[debut_index:], pont_ms=PONT_DECOUPE_MS,
-                                   pas_ms=pas)]
-    # La touche part souvent PENDANT que la messagerie parle : ce qui reste de
-    # cette phrase n'est pas l'annonce du message, c'est la fin de la
-    # precedente. On ne garde que ce qui commence apres un vrai silence.
-    plages = [p for p in plages if p[0] >= depart + REPRISE_APRES_TOUCHE_MS]
     menu = None
     for i, (debut, fin) in enumerate(plages):
         suivant = plages[i + 1][0] if i + 1 < len(plages) else len(courbe) * pas
@@ -323,14 +358,21 @@ def extraire_message(wav: str, bilan: dict, dossier: str, maintenant=None):
     sortie = os.path.join(
         dossier, "message-%s.wav" % os.path.splitext(os.path.basename(wav))[0]
     )
-    with wave.open(wav, "rb") as source:
-        cadres = source.getframerate()
-        source.setpos(min(source.getnframes(), debut * cadres // 1000))
-        donnees = source.readframes(max(0, (fin - debut) * cadres // 1000))
-        with wave.open(sortie, "wb") as cible:
-            cible.setparams(source.getparams())
-            cible.writeframes(donnees)
-    os.chmod(sortie, 0o600)
+    _ecrire_segment(wav, debut, fin, sortie)
+
+    # Le numero annonce part AVEC le message, dans le meme geste : les deux
+    # viennent du meme enregistrement et ne servent qu'ensemble — la
+    # messagerie ne transmet le numero sous aucune forme lisible, et c'est en
+    # ecoutant ces secondes-la qu'on remplit la fiche.
+    numero_fichier, numero_duree = "", 0.0
+    bornes_numero = bornes_du_numero(bilan)
+    if bornes_numero:
+        debut_n, fin_n = bornes_numero
+        numero_fichier = os.path.join(
+            dossier, "numero-%s.wav" % os.path.splitext(os.path.basename(wav))[0]
+        )
+        _ecrire_segment(wav, debut_n, fin_n, numero_fichier)
+        numero_duree = round((fin_n - debut_n) / 1000, 1)
     with open(os.path.splitext(sortie)[0] + ".json", "w", encoding="utf-8") as flux:
         json.dump({
             "source": "messagerie de l'operateur",
@@ -340,9 +382,26 @@ def extraire_message(wav: str, bilan: dict, dossier: str, maintenant=None):
             # une duree connue quand l'operateur n'en laisse pas.
             "decoupe": methode,
             "fichier": sortie,
+            # Le numero annonce : son fichier et sa duree, vides quand
+            # l'annonce n'a pas ete reconnue. Le message reste utilisable
+            # sans lui, et l'inverse n'a pas de sens.
+            "numero_fichier": numero_fichier,
+            "numero_duree_secondes": numero_duree,
             "enregistrement_complet": wav,
         }, flux, indent=1, ensure_ascii=False)
     return sortie
+
+
+def _ecrire_segment(source_wav: str, debut_ms: int, fin_ms: int, sortie: str):
+    """Recopie une tranche de l'enregistrement dans son propre fichier."""
+    with wave.open(source_wav, "rb") as source:
+        cadres = source.getframerate()
+        source.setpos(min(source.getnframes(), debut_ms * cadres // 1000))
+        donnees = source.readframes(max(0, (fin_ms - debut_ms) * cadres // 1000))
+        with wave.open(sortie, "wb") as cible:
+            cible.setparams(source.getparams())
+            cible.writeframes(donnees)
+    os.chmod(sortie, 0o600)
 
 
 def dossier_messages() -> str:
@@ -380,9 +439,17 @@ def effacer_message(message: dict) -> None:
 
     L'enregistrement COMPLET de l'appel n'est pas touche : c'est la copie de
     secours, celle qui porte aussi l'annonce du numero de l'appelant.
+
+    Le numero extrait part AVEC le message : il n'a aucun usage seul — on ne
+    rappelle pas un numero dont on a jete ce qu'il voulait dire — et le
+    laisser remplirait le dossier de fichiers que plus rien ne designe.
     """
     fichier = message.get("fichier") or ""
-    for chemin in (fichier, os.path.splitext(fichier)[0] + ".json"):
+    numero = message.get("numero_fichier") or ""
+    for chemin in (fichier, os.path.splitext(fichier)[0] + ".json",
+                   numero):
+        if not chemin:
+            continue
         try:
             os.remove(chemin)
         except OSError:
@@ -444,6 +511,23 @@ def televerser(message: dict, transport=None) -> tuple:
         "audio_b64": son,
         "reference": "operateur-" + os.path.basename(chemin_son),
     }
+    # Le numero annonce voyage AVEC le message, dans la meme charge : deux
+    # envois qui peuvent reussir separement laisseraient une fiche portant
+    # l'un sans l'autre, et c'est precisement ensemble qu'ils servent.
+    numero_son = message.get("numero_fichier") or ""
+    if numero_son:
+        try:
+            with open(numero_son, "rb") as flux:
+                charge["numero_audio_b64"] = base64.b64encode(
+                    flux.read()).decode("ascii")
+            charge["numero_nom_fichier"] = os.path.basename(numero_son)
+            charge["numero_duree_secondes"] = round(
+                float(message.get("numero_duree_secondes") or 0))
+        except OSError:
+            # Le message monte quand meme : mieux vaut une fiche sans
+            # l'annonce du numero qu'aucune fiche du tout.
+            charge.pop("numero_audio_b64", None)
+            charge.pop("numero_nom_fichier", None)
     try:
         reponse = transport.poster(ROUTE_MESSAGE, charge)
     except Exception as exc:

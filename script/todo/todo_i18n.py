@@ -2144,6 +2144,14 @@ TRANSLATIONS = {
         "fr": 'Non remis : %s',
         "en": 'Not handed over: %s',
     },
+    'modem_tui_ans_play_number': {
+        "fr": 'Ecouter le numero',
+        "en": 'Play the number',
+    },
+    'modem_tui_ans_no_number': {
+        "fr": 'aucun numero annonce dans cet enregistrement',
+        "en": 'no number announced in this recording',
+    },
     'modem_ans_fetch_no_code': {
         "fr": 'Aucun code de messagerie : saisissez-le d\'abord par [6].',
         "en": 'No voicemail code: enter it first with [6].',

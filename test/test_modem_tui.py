@@ -1357,5 +1357,95 @@ class EnregistreurDAnnonce(unittest.TestCase):
         asyncio.run(essai())
 
 
+class NumeroAnnonce(unittest.TestCase):
+    """Un appel releve porte DEUX sons : le numero annonce et le message.
+
+    Ils se tiennent sur une seule ligne de la liste, avec un bouton chacun :
+    les separer en deux entrees ferait chercher lequel va avec lequel, et ils
+    ne servent qu'ensemble.
+    """
+
+    def _message(self, avec_numero=True):
+        message = {
+            "fichier": "/tmp/message-appel.wav",
+            "recupere_le": "2026-10-03T02:11:39",
+            "duree_secondes": 5.4,
+        }
+        if avec_numero:
+            message["numero_fichier"] = "/tmp/numero-appel.wav"
+            message["numero_duree_secondes"] = 3.3
+        return message
+
+    def test_la_liste_marque_les_messages_qui_portent_un_numero(self):
+        app = construire()
+        self.assertIsNotNone(app)
+        joues = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=[self._message()]):
+                    await pilote.click("#tab_repondeur")
+                    await pilote.pause()
+                    app._lister_messages()
+                    await pilote.pause()
+                liste = app.query_one("#messages")
+                libelles = [str(libelle) for libelle, _ in liste._options]
+                self.assertTrue(any("☎" in libelle for libelle in libelles),
+                                libelles)
+
+        asyncio.run(essai())
+        _ = joues
+
+    def test_le_bouton_du_numero_joue_le_bon_fichier(self):
+        app = construire()
+        self.assertIsNotNone(app)
+        joues = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=[self._message()]), \
+                        mock.patch("script.todo.modem.repondeur.jouer",
+                                   side_effect=lambda c: (joues.append(c), (True, ""))[1]):
+                    await pilote.click("#tab_repondeur")
+                    await pilote.pause()
+                    app._lister_messages()
+                    await pilote.pause()
+                    app._ecouter_numero()
+                    for _ in range(20):
+                        if joues:
+                            break
+                        await pilote.pause()
+                        time.sleep(0.05)
+        asyncio.run(essai())
+        self.assertEqual(joues, ["/tmp/numero-appel.wav"])
+
+    def test_sans_numero_on_le_dit_au_lieu_de_jouer_le_message(self):
+        """Jouer le message a la place ferait croire que le numero n'a pas
+        ete annonce, alors que c'est la decoupe qui ne l'a pas trouve."""
+        app = construire()
+        self.assertIsNotNone(app)
+        joues = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=[self._message(avec_numero=False)]), \
+                        mock.patch("script.todo.modem.repondeur.jouer",
+                                   side_effect=lambda c: (joues.append(c), (True, ""))[1]):
+                    await pilote.click("#tab_repondeur")
+                    await pilote.pause()
+                    app._lister_messages()
+                    await pilote.pause()
+                    app._ecouter_numero()
+                    await pilote.pause()
+        asyncio.run(essai())
+        self.assertEqual(joues, [])
+
+
 if __name__ == "__main__":
     unittest.main()

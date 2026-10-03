@@ -485,6 +485,81 @@ class TestRecetteDEffacement(unittest.TestCase):
                 self.assertIn("verifier_parole", etapes[i - 1])
 
 
+class TestLeNumeroAnnonce(unittest.TestCase):
+    """La messagerie enonce la date PUIS le numero, d'une traite.
+
+    Aucun silence ne les separe : il n'y a rien a mesurer entre les deux, et
+    la decoupe prend les dernieres secondes de l'annonce — ou le numero se
+    tient toujours.
+    """
+
+    def _bilan(self):
+        # Structure relevee sur une messagerie reelle : annonce de 7,7 s,
+        # amorce, message, puis le menu.
+        return {
+            "evenements": [{"ms": 20900, "quoi": "étape 4 : touches 1"}],
+            "courbe_crete_100ms": courbe(
+                (False, 22.7), (True, 7.7), (False, 2.3), (True, 0.9),
+                (False, 1.0), (True, 29.7), (False, 6.3)),
+        }
+
+    def test_le_numero_est_la_fin_de_l_annonce(self):
+        debut, fin = rec.bornes_du_numero(self._bilan())
+        annonce_fin = 22700 + 7700
+        self.assertEqual(debut, annonce_fin - rec.DUREE_NUMERO_MS)
+        self.assertEqual(fin, annonce_fin + rec.MARGE_DECOUPE_MS)
+
+    def test_une_annonce_plus_courte_que_la_fenetre_est_prise_entiere(self):
+        """Couper un chiffre en deux est pire que d'emporter la fin de la
+        date : on ne prend jamais moins que l'annonce."""
+        bilan = {
+            "evenements": [{"ms": 20900, "quoi": "étape 4 : touches 1"}],
+            "courbe_crete_100ms": courbe(
+                (False, 22.7), (True, 1.5), (False, 1.0), (True, 10.0)),
+        }
+        debut, fin = rec.bornes_du_numero(bilan)
+        self.assertEqual(debut, 22700)
+
+    def test_sans_touche_il_n_y_a_pas_d_annonce_a_couper(self):
+        self.assertIsNone(rec.bornes_du_numero({"evenements": [],
+                                                "courbe_crete_100ms": []}))
+
+    def test_le_numero_s_ecrit_avec_le_message_et_se_note(self):
+        """Les deux viennent du meme enregistrement et ne servent qu'ensemble :
+        les extraire en deux gestes laisserait un message sans son numero le
+        jour ou le second echoue."""
+        import wave
+
+        with tempfile.TemporaryDirectory() as dossier:
+            source = os.path.join(dossier, "appel-20261003-021139.wav")
+            with wave.open(source, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(8000)
+                w.writeframes(b"\x00\x00" * 8000 * 70)
+            sortie = rec.extraire_message(source, self._bilan(),
+                                          os.path.join(dossier, "m"))
+            self.assertTrue(sortie)
+            with open(os.path.splitext(sortie)[0] + ".json", encoding="utf-8") as f:
+                compagnon = json.load(f)
+            numero = compagnon["numero_fichier"]
+            self.assertTrue(numero.endswith("numero-appel-20261003-021139.wav"))
+            self.assertTrue(os.path.exists(numero))
+            self.assertAlmostEqual(compagnon["numero_duree_secondes"], 3.3, delta=0.2)
+
+    def test_effacer_emporte_le_numero(self):
+        """Un numero seul n'a aucun usage : on ne rappelle pas quelqu'un dont
+        on a jete ce qu'il voulait dire."""
+        with tempfile.TemporaryDirectory() as dossier:
+            message = os.path.join(dossier, "message-x.wav")
+            numero = os.path.join(dossier, "numero-x.wav")
+            for chemin in (message, numero, os.path.join(dossier, "message-x.json")):
+                open(chemin, "w").close()
+            rec.effacer_message({"fichier": message, "numero_fichier": numero})
+            self.assertFalse(os.path.exists(message))
+            self.assertFalse(os.path.exists(numero))
+
+
 class TestLeRamassageDesDepots(unittest.TestCase):
     """Ce que le service depose, l'agent le decoupe et le televerse.
 

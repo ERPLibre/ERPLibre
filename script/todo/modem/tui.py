@@ -448,7 +448,11 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
                 with Horizontal(classes="rang"):
                     yield Static(t("modem_tui_ans_saved"), classes="titre")
                     yield Select([], allow_blank=True, id="messages")
+                # Les deux sons d'un MEME appel, cote a cote : la messagerie
+                # annonce l'appelant puis son message, et c'est une seule
+                # ligne de la liste qui porte les deux.
                 with Horizontal(classes="rang"):
+                    yield Button(t("modem_tui_ans_play_number"), id="ecouter_numero")
                     yield Button(t("modem_tui_ans_play"), id="ecouter")
                     yield Button(t("modem_tui_ans_erase"), id="effacer_local")
                     yield Button(t("modem_tui_vault"), id="coffre")
@@ -944,6 +948,8 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
                 self._recuperer_message()
             elif bouton == "ecouter":
                 self._ecouter_message()
+            elif bouton == "ecouter_numero":
+                self._ecouter_numero()
             elif bouton == "effacer_local":
                 self._effacer_message()
             elif bouton == "annonce_enregistrer":
@@ -1096,8 +1102,13 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
 
             self.messages = rec_mod.lister_messages()
             options = [
-                ("%s  %s s" % ((m.get("recupere_le") or "")[:19].replace("T", " "),
-                               m.get("duree_secondes") or "?"), index)
+                ("%s  %s s%s" % (
+                    (m.get("recupere_le") or "")[:19].replace("T", " "),
+                    m.get("duree_secondes") or "?",
+                    # Le marqueur dit qu'un numero accompagne ce message :
+                    # sans lui, le bouton d'ecoute du numero se presse pour
+                    # rien sur les messages qui n'en portent pas.
+                    "  ☎" if m.get("numero_fichier") else ""), index)
                 for index, m in enumerate(self.messages)
             ]
             liste = self.query_one("#messages", Select)
@@ -1208,6 +1219,22 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
 
             threading.Thread(target=jouer, daemon=True).start()
 
+        def _ecouter_numero(self):
+            """Joue les secondes ou la messagerie annonce l'appelant.
+
+            Sur la sortie de la MACHINE, comme le message : la carte du modem
+            est la ligne, et y jouer se ferait entendre du correspondant.
+            """
+            message = self._message_choisi()
+            if not message:
+                self._dire("·  " + t("modem_ans_none"))
+                return
+            numero = message.get("numero_fichier") or ""
+            if not numero:
+                self._dire("·  " + t("modem_tui_ans_no_number"))
+                return
+            self._jouer_dans_un_fil(numero)
+
         def _ecouter_message(self):
             """Joue le message sur la sortie audio de la MACHINE.
 
@@ -1220,12 +1247,23 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             if not message:
                 self._dire("·  " + t("modem_ans_none"))
                 return
-            self._dire("▶  " + (message.get("fichier") or ""))
+            self._jouer_dans_un_fil(message.get("fichier") or "")
+
+        def _jouer_dans_un_fil(self, chemin):
+            """Joue un fichier sans bloquer l'ecran.
+
+            Dans un fil : la lecture dure le temps du son, et l'ecran doit
+            rester vivant — un bouton qui ne repond plus pendant trente
+            secondes passe pour une panne.
+            """
+            import threading
+
+            self._dire("▶  " + chemin)
 
             def jouer():
                 from script.todo.modem import repondeur as rep_mod
 
-                succes, plainte = rep_mod.jouer(message.get("fichier") or "")
+                succes, plainte = rep_mod.jouer(chemin)
                 if not succes:
                     self.call_from_thread(self._dire, "✖  " + plainte)
 
