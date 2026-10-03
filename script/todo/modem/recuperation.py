@@ -271,21 +271,6 @@ def bornes_et_methode(bilan: dict):
     # cette phrase n'est pas l'annonce du message, c'est la fin de la
     # precedente. On ne garde que ce qui commence apres un vrai silence.
     plages = [p for p in plages if p[0] >= depart + REPRISE_APRES_TOUCHE_MS]
-    # LA TOUCHE D'EFFACEMENT, quand elle est partie, borne le message mieux
-    # que n'importe quelle mesure : la recette l'envoie des que le message se
-    # tait, donc le message est la derniere parole qui la precede. Le modele
-    # « annonce / message / menu » ne s'applique pas dans ce cas — le menu ne
-    # joue jamais avant la coupure, et c'est alors le MESSAGE que la
-    # recherche d'un menu designe, ne laissant extraire qu'une amorce.
-    effacement = instant_touche(bilan, "7")
-    if effacement is not None:
-        avant = [p for p in plages if p[0] < effacement]
-        if len(avant) >= 2:
-            debut = max(0, avant[-1][0] - MARGE_DECOUPE_MS)
-            fin = avant[-1][1] + MARGE_DECOUPE_MS
-            return (debut, fin, "touche d'effacement")
-        return None
-
     menu = None
     for i, (debut, fin) in enumerate(plages):
         suivant = plages[i + 1][0] if i + 1 < len(plages) else len(courbe) * pas
