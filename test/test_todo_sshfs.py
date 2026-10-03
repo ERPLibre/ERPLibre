@@ -37,25 +37,25 @@ sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
-# Entrée réelle écrite par todo.py pour une VM derrière un rebond.
+# Entrée de la forme qu'écrit todo.py pour une VM derrière un rebond.
 CONFIG = """Host *
     ServerAliveInterval 60
 
-Host pro_private
-    HostName 192.168.100.110
+Host forged-bastion
+    HostName 192.0.2.110
     User admin
 
-Host pro_private+ERPLibre01
-    HostName 192.168.122.50
+Host forged-bastion+Forged-Guest
+    HostName 198.51.100.50
     User admin
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-    IdentityFile /home/erplibre/.ssh/id_ed25519
+    IdentityFile /home/forged/.ssh/id_ed25519
     IdentitiesOnly yes
-    ProxyJump pro_private
+    ProxyJump forged-bastion
 
-Host erplibre-ubuntu-2604 erplibre-2604-bis
-    HostName 192.168.123.165
+Host forged-vm-2604 forged-vm-2604-bis
+    HostName 198.51.100.165
     User erplibre
 
 Host web-?
@@ -63,12 +63,12 @@ Host web-?
 """
 
 # Sortie de « ssh -G » pour l'alias à « + », réduite à ce qui compte.
-SSH_G = """host pro_private+erplibre01
-hostname 192.168.122.50
+SSH_G = """host forged-bastion+forged-guest
+hostname 198.51.100.50
 user admin
 port 22
-proxyjump pro_private
-identityfile /home/erplibre/.ssh/id_ed25519
+proxyjump forged-bastion
+identityfile /home/forged/.ssh/id_ed25519
 identityfile ~/.ssh/id_rsa
 identitiesonly yes
 stricthostkeychecking false
@@ -93,22 +93,18 @@ class TestLectureConfig(unittest.TestCase):
     def test_it_reads_hosts_in_file_order(self):
         hosts = TODO._ssh_config_entries(self.chemin)
         noms = [n for n, _i in hosts]
-        self.assertEqual("pro_private", noms[0])
-        self.assertIn("pro_private+ERPLibre01", noms)
+        self.assertEqual("forged-bastion", noms[0])
+        self.assertIn("forged-bastion+Forged-Guest", noms)
 
     def test_a_host_line_with_two_patterns_gives_two_aliases(self):
         """C'est ce que le générateur du dépôt écrit (« Host {' '.join(names)} »).
         Les prendre pour un seul nom donnait l'alias « a b », que sshfs ne peut
         pas monter — et qui n'existe pour personne."""
         hosts = dict(TODO._ssh_config_entries(self.chemin))
-        self.assertIn("erplibre-ubuntu-2604", hosts)
-        self.assertIn("erplibre-2604-bis", hosts)
-        self.assertEqual(
-            "192.168.123.165", hosts["erplibre-ubuntu-2604"]["hostname"]
-        )
-        self.assertEqual(
-            hosts["erplibre-ubuntu-2604"], hosts["erplibre-2604-bis"]
-        )
+        self.assertIn("forged-vm-2604", hosts)
+        self.assertIn("forged-vm-2604-bis", hosts)
+        self.assertEqual("198.51.100.165", hosts["forged-vm-2604"]["hostname"])
+        self.assertEqual(hosts["forged-vm-2604"], hosts["forged-vm-2604-bis"])
 
     def test_wildcard_patterns_are_left_out(self):
         """« Host * » et « Host web-? » ne désignent aucune machine : les
@@ -119,13 +115,13 @@ class TestLectureConfig(unittest.TestCase):
 
     def test_the_plus_alias_stays_one_name(self):
         noms = [n for n, _i in TODO._ssh_config_entries(self.chemin)]
-        self.assertNotIn("pro_private", noms[1:2] and [])
-        self.assertIn("pro_private+ERPLibre01", noms)
+        self.assertNotIn("forged-bastion", noms[1:2] and [])
+        self.assertIn("forged-bastion+Forged-Guest", noms)
 
     def test_hostname_and_user_are_kept(self):
         hosts = dict(TODO._ssh_config_entries(self.chemin))
-        info = hosts["pro_private+ERPLibre01"]
-        self.assertEqual("192.168.122.50", info["hostname"])
+        info = hosts["forged-bastion+Forged-Guest"]
+        self.assertEqual("198.51.100.50", info["hostname"])
         self.assertEqual("admin", info["user"])
 
     def test_a_missing_file_is_not_a_crash(self):
@@ -138,9 +134,9 @@ class TestResolution(unittest.TestCase):
             "subprocess.run",
             return_value=subprocess.CompletedProcess([], 0, SSH_G, ""),
         ):
-            cfg = TODO._ssh_resolve("pro_private+ERPLibre01")
-        self.assertEqual("192.168.122.50", cfg["hostname"])
-        self.assertEqual("pro_private", cfg["proxyjump"])
+            cfg = TODO._ssh_resolve("forged-bastion+Forged-Guest")
+        self.assertEqual("198.51.100.50", cfg["hostname"])
+        self.assertEqual("forged-bastion", cfg["proxyjump"])
 
     def test_the_first_identityfile_wins(self):
         """ssh -G les répète toutes ; la première est celle qu'il essaiera."""
@@ -149,7 +145,7 @@ class TestResolution(unittest.TestCase):
             return_value=subprocess.CompletedProcess([], 0, SSH_G, ""),
         ):
             cfg = TODO._ssh_resolve("x")
-        self.assertEqual("/home/erplibre/.ssh/id_ed25519", cfg["identityfile"])
+        self.assertEqual("/home/forged/.ssh/id_ed25519", cfg["identityfile"])
 
     def test_a_failing_ssh_resolves_to_nothing(self):
         with mock.patch(
@@ -176,11 +172,11 @@ class TestCommandeSshfs(unittest.TestCase):
 
     def _resolue(self):
         return {
-            "hostname": "192.168.122.50",
+            "hostname": "198.51.100.50",
             "user": "admin",
             "port": "22",
-            "proxyjump": "pro_private",
-            "identityfile": "/home/erplibre/.ssh/id_ed25519",
+            "proxyjump": "forged-bastion",
+            "identityfile": "/home/forged/.ssh/id_ed25519",
             "identitiesonly": "yes",
             "stricthostkeychecking": "false",
             "userknownhostsfile": "/dev/null",
@@ -188,10 +184,10 @@ class TestCommandeSshfs(unittest.TestCase):
 
     def test_a_plus_alias_becomes_a_resolved_target(self):
         cmd, contourne = self.todo._sshfs_command(
-            "pro_private+ERPLibre01", "/tmp/mnt", self._resolue()
+            "forged-bastion+Forged-Guest", "/tmp/mnt", self._resolue()
         )
         self.assertTrue(contourne)
-        self.assertIn("admin@192.168.122.50:/", cmd)
+        self.assertIn("admin@198.51.100.50:/", cmd)
         self.assertNotIn("+", cmd)
 
     def test_the_options_that_matter_travel_with_it(self):
@@ -199,9 +195,9 @@ class TestCommandeSshfs(unittest.TestCase):
         une IP DHCP recyclée fait échouer le montage sur sa clé d'hôte."""
         cmd, _ = self.todo._sshfs_command("a+b", "/tmp/mnt", self._resolue())
         for attendu in (
-            "-o ProxyJump=pro_private",
+            "-o ProxyJump=forged-bastion",
             "-o Port=22",
-            "-o IdentityFile=/home/erplibre/.ssh/id_ed25519",
+            "-o IdentityFile=/home/forged/.ssh/id_ed25519",
             "-o IdentitiesOnly=yes",
             "-o StrictHostKeyChecking=false",
             "-o UserKnownHostsFile=/dev/null",
@@ -284,9 +280,9 @@ class TestFlux(unittest.TestCase):
         todo.execute = exe
         todo._ssh_probe = lambda alias, timeout=8: probe
         todo._ssh_resolve = lambda alias: {
-            "hostname": "192.168.122.50",
+            "hostname": "198.51.100.50",
             "user": "admin",
-            "proxyjump": "pro_private",
+            "proxyjump": "forged-bastion",
         }
         return todo
 
@@ -376,12 +372,12 @@ class TestFlux(unittest.TestCase):
     def test_the_plus_alias_is_bypassed_before_being_run(self):
         """Le vrai correctif : la commande lancée ne contient plus le « + »."""
         todo = self._todo(0)
-        # [1] pro_private · [2] pro_private+ERPLibre01 · [3] la VM
+        # [1] forged-bastion · [2] forged-bastion+Forged-Guest · [3] la VM
         _s, _c, _r = self._joue(todo, CONFIG, "2")
         lancee = todo.lances[0]
-        self.assertIn("admin@192.168.122.50:/", lancee)
-        self.assertIn("-o ProxyJump=pro_private", lancee)
-        self.assertNotIn("+ERPLibre01", lancee)
+        self.assertIn("admin@198.51.100.50:/", lancee)
+        self.assertIn("-o ProxyJump=forged-bastion", lancee)
+        self.assertNotIn("+Forged-Guest", lancee)
 
 
 if __name__ == "__main__":

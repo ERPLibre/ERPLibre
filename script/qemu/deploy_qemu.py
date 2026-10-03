@@ -2000,10 +2000,10 @@ def kvm_available() -> bool:
 
     « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
     VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
-    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
-    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
-    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
-    que rien ne le signale.
+    Sur un hôte lui-même invité KVM, une VM s390x sur hôte s390x sort en
+    « <domain type='qemu'> », soit de l'émulation intégrale : des minutes de
+    démarrage au lieu de quelques dizaines de secondes, sans que rien ne le
+    signale.
 
     /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
     que si on est root : libvirt, lui, tourne en root et se moque de notre

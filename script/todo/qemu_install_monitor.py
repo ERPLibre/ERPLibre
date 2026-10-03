@@ -243,9 +243,9 @@ def _launch_one(
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
     # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
-    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
-    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
-    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # y échoue dès que l'hôte exige une authentification interactive
+    # (« sudo-rs: interactive authentication is required »), et la
+    # ré-résolution reste alors muette sans laisser la moindre trace.
     # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
     # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
     # pour les hôtes où le groupe manque.
