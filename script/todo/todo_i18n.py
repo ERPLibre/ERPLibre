@@ -817,7 +817,7 @@ TRANSLATIONS = {
         "en": "⬇  Download database to create backup (.zip)",
     },
     "Restore from backup (.zip)": {
-        "fr": "♻  Restaurer a partir d'une sauvegarde (.zip)",
+        "fr": "♻  Restaurer à partir d'une sauvegarde (.zip)",
         "en": "♻  Restore from backup (.zip)",
     },
     "Create backup (.zip)": {
@@ -841,15 +841,15 @@ TRANSLATIONS = {
         "en": "🧱 Generate all configuration",
     },
     "Generate from pre-configuration": {
-        "fr": "📋 Générer a partir de la pre-configuration",
+        "fr": "📋 Générer à partir de la pré-configuration",
         "en": "📋 Generate from pre-configuration",
     },
     "Generate from backup file": {
-        "fr": "💾 Générer a partir d'un fichier de sauvegarde",
+        "fr": "💾 Générer à partir d'un fichier de sauvegarde",
         "en": "💾 Generate from backup file",
     },
     "Generate from database": {
-        "fr": "🗄  Générer a partir de la base de données",
+        "fr": "🗄  Générer à partir de la base de données",
         "en": "🗄  Generate from database",
     },
     "base": {

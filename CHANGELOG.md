@@ -310,6 +310,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Database › Restore from backup (.zip): leaving the file browser without picking a file goes back without restoring anything, instead of running the restore with an empty image name and, on « y », updating all the modules of the database named from it
 - Execute › Deploy › QEMU/KVM › Recover files from a VM disk (libguestfs) no longer shuts a running VM down on an empty answer, 0 or a typo, which all took the clean shutdown marked as default: only [2] shuts it down, an empty answer or [0] goes back without reading anything, and a typo asks again
 - Assistant › LLM › Known servers marks « (in use) » only on the server in use: the mark fell on another server, the one carrying its former number once a deletion had renumbered the list, or the first one while a server found on this machine, outside the list, was in use
+- In French, Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) and the three Exécution › Config entries Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde and Générer à partir de la base de données carry their accents, where the menus wrote « a partir » and « pre-configuration »
 
 ## Removed
 

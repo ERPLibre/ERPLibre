@@ -476,6 +476,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Database › Restore from backup (.zip): leaving the file browser without picking a file goes back without restoring anything, instead of running the restore with an empty image name and, on « y », updating all the modules of the database named from it
 - Execute › Deploy › QEMU/KVM › Recover files from a VM disk (libguestfs) no longer shuts a running VM down on an empty answer, 0 or a typo, which all took the clean shutdown marked as default: only [2] shuts it down, an empty answer or [0] goes back without reading anything, and a typo asks again
 - Assistant › LLM › Known servers marks « (in use) » only on the server in use: the mark fell on another server, the one carrying its former number once a deletion had renumbered the list, or the first one while a server found on this machine, outside the list, was in use
+- In French, Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) and the three Exécution › Config entries Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde and Générer à partir de la base de données carry their accents, where the menus wrote « a partir » and « pre-configuration »
 
 <!-- [fr] -->
 
@@ -640,6 +641,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) : quitter le navigateur de fichiers sans choisir de fichier revient sans rien restaurer, au lieu de lancer la restauration avec un nom d'image vide et, sur « y », de mettre à jour tous les modules de la base nommée d'après lui
 - Exécution › Deploy › QEMU/KVM › Récupérer des fichiers dans le disque d'une VM (libguestfs) n'éteint plus une VM allumée sur une réponse vide, 0 ou une faute de frappe, qui prenaient toutes l'arrêt propre marqué par défaut : seul [2] l'éteint, une réponse vide ou [0] revient sans rien lire, et une faute repose la question
 - Assistant › LLM › Serveurs connus ne marque « (en usage) » que le serveur en usage : la marque tombait sur un autre serveur, celui qui portait son ancien numéro une fois la liste renumérotée par une suppression, ou le premier quand un serveur trouvé sur cette machine, hors de la liste, était en usage
+- Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) et les trois entrées d'Exécution › Config, Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde et Générer à partir de la base de données, portent leurs accents, là où les menus écrivaient « a partir » et « pre-configuration »
 
 <!-- [en] -->
 ## Removed
