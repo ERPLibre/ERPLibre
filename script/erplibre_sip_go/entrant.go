@@ -454,15 +454,46 @@ func sonner(ctx context.Context, dialogues *sipgo.DialogClientCache,
 		return nil, fmt.Errorf("presentation au softphone : %w", err)
 	}
 
-	minuté, arrêter := context.WithTimeout(ctx, DélaiSonnerieSoftphone)
-	defer arrêter()
-	if err := session.WaitAnswer(minuté, sipgo.AnswerOptions{}); err != nil {
+	// La fenêtre de sonnerie se referme avec la CAUSE que sipgo reconnaît,
+	// d'où qu'elle vienne — le répondeur la borne par le contexte reçu, et
+	// notre propre délai la borne à défaut. Sans cette cause, sipgo annule
+	// lui-même l'INVITE avec une requête qui ne porte pas de destination :
+	// elle part résoudre en DNS le contact « .invalid » du navigateur,
+	// échoue, et c'est CETTE panne de résolution qui remonte à la place du
+	// seul fait utile — personne n'a décroché. L'annulation est alors la
+	// nôtre, qui vise la connexion ouverte.
+	// Détaché du contexte reçu, et rattaché à la main juste après : un
+	// contexte dérivé hérite de la CAUSE de son parent dès que celui-ci
+	// expire, et cette cause-là gagnerait la course contre la nôtre.
+	sonnerie, cesser := context.WithCancelCause(context.WithoutCancel(ctx))
+	defer cesser(nil)
+	échéance := time.AfterFunc(DélaiSonnerieSoftphone, func() {
+		cesser(sipgo.WaitAnswerForceCancelErr)
+	})
+	defer échéance.Stop()
+	fini := make(chan struct{})
+	defer close(fini)
+	go func() {
+		select {
+		case <-ctx.Done():
+			cesser(sipgo.WaitAnswerForceCancelErr)
+		case <-fini:
+		}
+	}()
+
+	début := time.Now()
+	if err := session.WaitAnswer(sonnerie, sipgo.AnswerOptions{}); err != nil {
+		if context.Cause(sonnerie) == sipgo.WaitAnswerForceCancelErr {
+			err = fmt.Errorf("aucun decroche en %s",
+				time.Since(début).Round(time.Millisecond))
+		}
 		// On ANNULE avant de fermer : fermer ne dit rien au navigateur, qui
 		// sonnerait alors jusqu'a ce que quelqu'un decroche une ligne deja
 		// retombee.
 		annulation := ConstruireAnnulation(invite, inscription.Source)
-		if err := session.WriteRequest(annulation); err != nil {
-			slog.Warn("annulation de la sonnerie non transmise", "err", err)
+		if erreurAnnulation := session.WriteRequest(annulation); erreurAnnulation != nil {
+			slog.Warn("annulation de la sonnerie non transmise",
+				"err", erreurAnnulation)
 		}
 		_ = session.Close()
 		return nil, fmt.Errorf("sans reponse du softphone : %w", err)
