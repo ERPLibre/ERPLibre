@@ -1169,6 +1169,36 @@ class TestRestoreFromDatabase(unittest.TestCase):
         self.assertEqual(asked.call_count, 0)
 
 
+class TestGenerateConfigFromASource(unittest.TestCase):
+    """Execute › Config › Generate from backup file et Generate from
+    database : la source se choisit d'abord, par le navigateur d'image_db
+    ou la liste des bases, tous deux doublés, et la commande l'est aussi.
+    Le navigateur quitté sans fichier rend "", [0] à la liste des bases
+    rend False."""
+
+    def generated(self, browsed, database):
+        """Les commandes lancées par les deux entrées, le navigateur
+        rendant `browsed` et la liste des bases `database`."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.db_manager.open_file_image_db = lambda: browsed
+        todo.db_manager.select_database = lambda: database
+        todo.generate_config_from_backup()
+        todo.generate_config_from_database()
+        return [
+            c.args[0] for c in todo.execute.exec_command_live.call_args_list
+        ]
+
+    def test_only_a_chosen_source_generates(self):
+        # Sans source, rien : ni la génération de base, ni celle qui lirait
+        # « --from_backup_name » vide ou « --database False ».
+        self.assertEqual(self.generated("", False), [])
+        commands = self.generated("forged_backup.zip", "forged_db")
+        self.assertEqual(len(commands), 2, commands)
+        self.assertIn("--from_backup_name forged_backup.zip ", commands[0])
+        self.assertIn("--database forged_db;", commands[1])
+
+
 class TestCreateBackupFromDatabase(unittest.TestCase):
     @patch("script.todo.database_manager.click")
     @patch("builtins.input")

@@ -5177,12 +5177,20 @@ class TODO(
         )
 
     def generate_config_from_backup(self):
+        """La configuration des dépôts que porte une sauvegarde d'image_db,
+        choisie au navigateur ; rien quand il est quitté sans fichier."""
         file_name = self.db_manager.open_file_image_db()
+        if not file_name:
+            return
         add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
         self.generate_config(add_arg=add_arg)
 
     def generate_config_from_database(self):
+        """La configuration des dépôts qu'emploie une base, choisie dans la
+        liste ; rien sur [0], sans base, ou quand la liste échoue."""
         database_name = self.db_manager.select_database()
+        if not database_name:
+            return False
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False

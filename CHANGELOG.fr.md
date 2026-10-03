@@ -311,6 +311,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exécution › Deploy › QEMU/KVM › Récupérer des fichiers dans le disque d'une VM (libguestfs) n'éteint plus une VM allumée sur une réponse vide, 0 ou une faute de frappe, qui prenaient toutes l'arrêt propre marqué par défaut : seul [2] l'éteint, une réponse vide ou [0] revient sans rien lire, et une faute repose la question
 - Assistant › LLM › Serveurs connus ne marque « (en usage) » que le serveur en usage : la marque tombait sur un autre serveur, celui qui portait son ancien numéro une fois la liste renumérotée par une suppression, ou le premier quand un serveur trouvé sur cette machine, hors de la liste, était en usage
 - Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) et les trois entrées d'Exécution › Config, Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde et Générer à partir de la base de données, portent leurs accents, là où les menus écrivaient « a partir » et « pre-configuration »
+- Exécution › Config › Générer à partir d'un fichier de sauvegarde, son navigateur de fichiers quitté sans fichier, et Générer à partir de la base de données, à [0] de sa liste, sans base ou quand la liste ne peut être lue, ne génèrent rien, là où ils régénéraient la configuration avec un nom de sauvegarde vide ou une base nommée « False »
 
 ## Retiré
 

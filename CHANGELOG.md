@@ -311,6 +311,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Execute › Deploy › QEMU/KVM › Recover files from a VM disk (libguestfs) no longer shuts a running VM down on an empty answer, 0 or a typo, which all took the clean shutdown marked as default: only [2] shuts it down, an empty answer or [0] goes back without reading anything, and a typo asks again
 - Assistant › LLM › Known servers marks « (in use) » only on the server in use: the mark fell on another server, the one carrying its former number once a deletion had renumbered the list, or the first one while a server found on this machine, outside the list, was in use
 - In French, Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) and the three Exécution › Config entries Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde and Générer à partir de la base de données carry their accents, where the menus wrote « a partir » and « pre-configuration »
+- Execute › Config › Generate from backup file, its file browser left without a file, and Generate from database, at [0] of its list, with no database or when the list cannot be read, generate nothing, where they regenerated the configuration with an empty backup name or a database named « False »
 
 ## Removed
 
