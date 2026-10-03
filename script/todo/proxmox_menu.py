@@ -438,11 +438,12 @@ class ProxmoxMenuMixin:
         règles de `ui.choose` : son numéro tel que la liste l'écrit, ou son
         nom quand aucune autre VM ne le porte — seul le VMID est unique sur
         Proxmox. Renvoie un dict, ou avec `multiple` une liste ([] pour une
-        réponse vide), et None pour [0]."""
+        réponse vide), et None pour [0], pour Ctrl+D ou quand il n'y a
+        aucune VM à choisir — ce qu'elle a déjà dit."""
         vms = self._pve_vms() if vms is None else vms
         if not vms:
             print(f"\n{t('No VM on this Proxmox host.')}")
-            return [] if multiple else None
+            return None
         noms = [vm["name"] for vm in vms]
         return ui.choose(
             titre or t("VMs on this host:"),
@@ -497,7 +498,8 @@ class ProxmoxMenuMixin:
 
         choisies = self._pve_pick_vm(t("Available VMs:"), True, vms)
         if not choisies:
-            print(t("Nothing selected."))
+            if choisies == []:
+                print(t("Nothing selected."))
             return
         verbe = ui.choose(
             t("Target state:"),

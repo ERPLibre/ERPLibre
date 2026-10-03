@@ -862,6 +862,134 @@ class TestLeChoixDUneVm(unittest.TestCase):
             todo._pve_change_state()
         self.assertEqual(self.sent, ["qm shutdown 100", "qm list"])
 
+    def test_nothing_selected_answers_only_an_empty_answer(self):
+        # Une réponse vide ne choisit aucune VM, et le dit ; [0] et Ctrl+D
+        # reviennent sans un mot, et un hôte sans VM le dit une fois.
+        import contextlib
+        import io
+
+        for vms, answers, said in (
+            (self.VMS, [""], True),
+            (self.VMS, ["0"], False),
+            (self.VMS, [EOFError], False),
+            ([], [], False),
+        ):
+            with self.subTest(vms=len(vms), answers=answers):
+                todo = self._todo()
+                todo._pve_vms = lambda vms=vms: [dict(vm) for vm in vms]
+                with (
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    todo._pve_change_state()
+                shown = out.getvalue()
+                self.assertEqual(self.sent, [])
+                self.assertEqual(t("Nothing selected.") in shown, said)
+                self.assertEqual(
+                    shown.count(t("No VM on this Proxmox host.")), int(not vms)
+                )
+
+    def test_only_one_in_the_list_opens_change_the_state(self):
+        # La suite de List VMs : une réponse vide, [0], Ctrl+D ou une faute
+        # suivie de « 0 » n'ouvrent pas Changer l'état, « 1 » l'ouvre sur
+        # les VM que la liste vient d'afficher.
+        import contextlib
+        import io
+
+        listed = [dict(vm, mem="2048", disk="16.00") for vm in self.VMS]
+        for answers, opened in (
+            ([""], []),
+            (["0"], []),
+            ([EOFError], []),
+            (["x", "0"], []),
+            (["1"], [listed]),
+        ):
+            with self.subTest(answers=answers):
+                todo = self._todo()
+                todo._pve_vms = lambda: [dict(vm) for vm in listed]
+                asked = []
+                todo._pve_change_state = asked.append
+                with (
+                    mock.patch("builtins.input", side_effect=answers),
+                    contextlib.redirect_stdout(io.StringIO()) as out,
+                ):
+                    todo._pve_list()
+                self.assertEqual((asked, self.sent), (opened, []))
+                if "x" in answers:
+                    self.assertIn(f"{t('Invalid choice: ')}x", out.getvalue())
+
+
+class TestLesReparationsProposees(unittest.TestCase):
+    """Réparer pmxcfs et poser un pont interne agissent en root sur l'hôte :
+    geler cloud-init, réécrire /etc/hosts, relancer les unités, écrire un
+    pont avec NAT. Une réponse vide, une faute suivie de « 0 » ou Ctrl+D
+    n'en lancent rien ; seul un choix explicite y mène."""
+
+    REFUSALS = ([""], ["0"], ["x", "0"], [EOFError])
+
+    def _todo(self):
+        """Un TODO dont chaque geste sur l'hôte se note dans `self.sent`,
+        sans rien lancer ; les lectures de l'hôte rendent des valeurs
+        inventées."""
+        self.sent = []
+        todo = TODO.__new__(TODO)
+        todo._pve_show = lambda cmd, **opts: self.sent.append(cmd) or (0, "")
+        todo._pve_ssh_ip = lambda host: self.sent.append("ssh_ip") or ""
+        todo._pve_restart_units = lambda remonte: (
+            self.sent.append("restart") or (False, [])
+        )
+        todo._pve_uplink = lambda: self.sent.append("uplink") or ""
+        todo._pve_host = lambda ask=True: {"target": "forged-host"}
+        todo._pve_internal_cidr = lambda host: pve.INTERNAL_CIDR
+        todo._pve_nat_ready = lambda host: (True, [])
+        return todo
+
+    def play(self, method, answers, *args):
+        """(ce que rend `method`, ce qu'elle imprime) quand `input` reçoit
+        `answers`."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        with (
+            mock.patch("builtins.input", side_effect=answers),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            got = getattr(todo, method)(*args)
+        return got, out.getvalue()
+
+    def test_the_pmxcfs_repair_runs_only_on_its_number(self):
+        # Les deux causes : l'adresse de /etc/hosts, ou les unités seules.
+        etat = {"monte": False}
+        for quoi, first in (("hosts", "ssh_ip"), ("unites", "restart")):
+            for answers in self.REFUSALS:
+                with self.subTest(quoi=quoi, answers=answers):
+                    got, out = self.play(
+                        "_pve_offer_cluster_fix", answers, {}, etat, quoi
+                    )
+                    self.assertEqual((got, self.sent), (False, []))
+                    if "x" in answers:
+                        self.assertIn(f"{t('Invalid choice: ')}x", out)
+            with self.subTest(quoi=quoi, answers=["1"]):
+                self.play("_pve_offer_cluster_fix", ["1"], {}, etat, quoi)
+                self.assertEqual(self.sent[:1], [first])
+
+    def test_the_internal_bridge_is_written_only_on_its_number(self):
+        # [2] montre les étapes à faire soi-même, sans rien envoyer.
+        for answers in (*self.REFUSALS, ["2"]):
+            with self.subTest(answers=answers):
+                got, out = self.play("_pve_offer_bridge", answers)
+                self.assertEqual((got, self.sent), ("", []))
+                if "x" in answers:
+                    self.assertIn(f"{t('Invalid choice: ')}x", out)
+                if answers == ["2"]:
+                    self.assertIn("bridge-ports <interface>", out)
+        self.play("_pve_offer_bridge", ["1"])
+        self.assertEqual(self.sent[0], "uplink")
+        self.assertEqual(
+            self.sent[1:-1], pve.bridge_setup_cmds(cidr=pve.INTERNAL_CIDR)
+        )
+
 
 def entrees_de_deploy():
     """Les entrées de Deploy, déclaré au registre, par leur numéro : leur
