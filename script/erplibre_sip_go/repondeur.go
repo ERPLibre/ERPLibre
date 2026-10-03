@@ -89,6 +89,20 @@ type RéglagesRépondeur struct {
 	Annonce          string `json:"annonce"`
 	Dossier          string `json:"dossier"`
 	DuréeMaxSecondes int    `json:"duree_max_secondes"`
+
+	// RelèveAuto fait appeler la boîte vocale de l'opérateur dès que la SIM
+	// annonce un message. Le déclencheur est ce drapeau et non une horloge :
+	// un relèvement OCCUPE la ligne, et il n'a de raison de partir que s'il
+	// y a quelque chose à prendre.
+	RelèveAuto bool `json:"releve_auto"`
+	// RelèveEfface décide de la recette jouée. Un message relevé et laissé
+	// en place maintient le drapeau levé, et le relèvement repartirait sans
+	// fin ; l'effacement est en revanche IRRÉVERSIBLE.
+	RelèveEfface bool `json:"releve_efface"`
+	// RelèveDemandée porte la date posée par le bouton d'Odoo. Elle se
+	// COMPARE à la dernière traitée : une valeur nouvelle vaut un
+	// relèvement, la même rejouée n'en déclenche pas un second.
+	RelèveDemandée string `json:"releve_demandee"`
 }
 
 // RéglagesParDéfaut rend un répondeur ÉTEINT.

@@ -64,6 +64,8 @@ func main() {
 		"avec -navigateur : renvoyer le son au lieu de composer par la SIM")
 	répondeurConf := flag.String("repondeur", "",
 		"fichier JSON de reglages du repondeur ; absent, aucun repondeur")
+	recettes := flag.String("recettes", DossierRecettesDéfaut,
+		"dossier des recettes de messagerie, relatif au répertoire de travail")
 	recette := flag.String("recette", "",
 		"avec -numero : jouer une recette de messagerie vocale (JSON) ; le code, s'il est demande, se lit sur l'entree standard")
 	enregistrer := flag.String("enregistrer", "",
@@ -142,7 +144,8 @@ func main() {
 		// Ce qu'une panne d'Odoo a laissé sur disque monte maintenant : c'est
 		// le seul moment où l'on sait qu'il vient peut-être de revenir.
 		TéléverserCeQuiAttend(lien, répondeur.Dossier)
-		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, vivants); err != nil {
+		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien,
+			vivants, secrets, *recettes); err != nil {
 			if arrêtDemandé(ctx, err) {
 				slog.Info("arret demande : le service rend la main")
 			} else {

@@ -457,6 +457,104 @@ class TestRecetteDEffacement(unittest.TestCase):
                 self.assertIn("verifier_parole", etapes[i - 1])
 
 
+class TestLeRamassageDesDepots(unittest.TestCase):
+    """Ce que le service depose, l'agent le decoupe et le televerse.
+
+    Le partage suit ce que chacun sait faire : le service voit le drapeau,
+    tient le port et detient le code ; l'agent porte le decoupage.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dossier = self.tmp.name
+
+    def _bilan_lisible(self):
+        return {
+            "evenements": [{"ms": 3300, "quoi": "étape 4 : touches 1"}],
+            "courbe_crete_100ms": courbe(
+                (False, 6.3), (True, 7.3), (False, 1.2), (True, 2.8),
+                (False, 1.8), (True, 29.8), (False, 5.5)),
+        }
+
+    def _deposer(self, nom="recuperer_un_message-20261003-003000.wav",
+                 bilan=None, marque=True):
+        import wave
+
+        wav = os.path.join(self.dossier, nom)
+        with wave.open(wav, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(b"\x00\x00" * 8000 * 60)
+        if bilan is not None:
+            with open(rec.compagnon_du_son(wav), "w", encoding="utf-8") as flux:
+                json.dump(bilan, flux)
+        if marque:
+            open(wav + rec.MARQUE_A_TRAITER, "w").close()
+        return wav
+
+    def test_seul_ce_qui_porte_la_marque_est_ramasse(self):
+        """La marque est ecrite EN DERNIER : sans elle, le depot peut etre un
+        relevement encore en cours, ou un relevement du menu deja traite."""
+        self._deposer(nom="du_menu.wav", bilan=self._bilan_lisible(), marque=False)
+        attendu = self._deposer(bilan=self._bilan_lisible())
+        self.assertEqual(rec.depots_a_traiter(self.dossier), [attendu])
+
+    def test_un_depot_sans_bilan_n_est_pas_ramasse(self):
+        """Le son seul ne se decoupe pas : les bornes viennent du bilan."""
+        self._deposer(bilan=None)
+        self.assertEqual(rec.depots_a_traiter(self.dossier), [])
+
+    def test_un_bilan_illisible_se_range_au_lieu_de_revenir(self):
+        wav = self._deposer(bilan=None)
+        with open(rec.compagnon_du_son(wav), "w", encoding="utf-8") as flux:
+            flux.write("{ pas du json")
+        ok, detail = rec.traiter_un_depot(wav)
+        self.assertFalse(ok)
+        self.assertIn("illisible", detail)
+        self.assertTrue(os.path.exists(wav + rec.MARQUE_FAITE))
+        self.assertFalse(os.path.exists(wav + rec.MARQUE_A_TRAITER))
+
+    def test_une_structure_inconnue_garde_l_enregistrement(self):
+        """Mieux vaut garder l'enregistrement complet que de le jeter : il
+        porte le message, meme mal borne."""
+        wav = self._deposer(bilan={"evenements": [], "courbe_crete_100ms": []})
+        ok, detail = rec.traiter_un_depot(wav)
+        self.assertFalse(ok)
+        self.assertIn("structure", detail)
+        self.assertTrue(os.path.exists(wav))
+        self.assertTrue(os.path.exists(wav + rec.MARQUE_FAITE))
+
+    def test_un_odoo_absent_laisse_le_depot_pour_le_prochain_tour(self):
+        """Une panne qui se repare toute seule ne doit pas perdre un message :
+        le depot reste marque a traiter."""
+        wav = self._deposer(bilan=self._bilan_lisible())
+        with mock.patch.object(rec, "extraire_message", return_value="/m/x.wav"), \
+                mock.patch.object(rec, "lister_messages",
+                                  return_value=[{"fichier": "/m/x.wav"}]), \
+                mock.patch.object(rec, "televerser",
+                                  return_value=(False, "Odoo ne repond pas")):
+            ok, detail = rec.traiter_un_depot(wav)
+        self.assertFalse(ok)
+        self.assertIn("Odoo", detail)
+        self.assertTrue(os.path.exists(wav + rec.MARQUE_A_TRAITER))
+        self.assertFalse(os.path.exists(wav + rec.MARQUE_FAITE))
+
+    def test_un_depot_televerse_est_marque_et_ne_revient_pas(self):
+        wav = self._deposer(bilan=self._bilan_lisible())
+        with mock.patch.object(rec, "extraire_message", return_value="/m/x.wav"), \
+                mock.patch.object(rec, "lister_messages",
+                                  return_value=[{"fichier": "/m/x.wav"}]), \
+                mock.patch.object(rec, "televerser", return_value=(True, "41")), \
+                mock.patch.object(rec, "marquer_televerse"):
+            comptes = rec.ramasser_les_depots(self.dossier)
+        self.assertEqual([c["ok"] for c in comptes], [True])
+        self.assertEqual(rec.depots_a_traiter(self.dossier), [])
+
+
 class TestLaLigneOccupee(unittest.TestCase):
     """Une recette prend le port AT pour elle seule.
 

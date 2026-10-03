@@ -473,3 +473,97 @@ def marquer_televerse(message: dict, identifiant: str) -> None:
     contenu["televerse_odoo"] = identifiant or True
     with open(compagnon, "w", encoding="utf-8") as flux:
         json.dump(contenu, flux, indent=1, ensure_ascii=False)
+
+
+#: Marque posee par le service a cote d'un enregistrement qu'il vient de
+#: deposer. Le menu n'en pose pas : ce qu'il releve, il le traite lui-meme, et
+#: sans cette distinction les deux chemins creeraient deux fiches du meme
+#: message.
+MARQUE_A_TRAITER = ".a_traiter"
+
+#: Marque qui remplace la precedente, une fois le depot traite. Elle porte ce
+#: qui s'est passe : un depot qui echoue ne doit pas etre rejoue en boucle,
+#: et il faut pouvoir dire pourquoi sans relire tout le journal.
+MARQUE_FAITE = ".fait"
+
+
+def depots_a_traiter(dossier=None) -> list:
+    """Les enregistrements que le service a deposes et pas encore traites.
+
+    La marque est ecrite EN DERNIER par le service, apres le son et le bilan :
+    sa presence dit que les deux sont complets, ce qu'un simple `*.wav` ne
+    dirait pas d'un relevement encore en cours.
+    """
+    dossier = dossier or os.path.join(racine(), DOSSIER_RELATIF)
+    if not os.path.isdir(dossier):
+        return []
+    trouves = []
+    for nom in sorted(os.listdir(dossier)):
+        if not nom.endswith(MARQUE_A_TRAITER):
+            continue
+        wav = os.path.join(dossier, nom[: -len(MARQUE_A_TRAITER)])
+        if os.path.exists(wav) and os.path.exists(compagnon_du_son(wav)):
+            trouves.append(wav)
+    return trouves
+
+
+def compagnon_du_son(wav: str) -> str:
+    """Le bilan ecrit a cote d'un enregistrement."""
+    return os.path.splitext(wav)[0] + ".json"
+
+
+def _marquer_fait(wav: str, detail: str) -> None:
+    try:
+        os.replace(wav + MARQUE_A_TRAITER, wav + MARQUE_FAITE)
+        with open(wav + MARQUE_FAITE, "w", encoding="utf-8") as flux:
+            flux.write(detail + "\n")
+    except OSError:
+        pass
+
+
+def traiter_un_depot(wav: str, maintenant=None, transport=None) -> tuple:
+    """Decoupe et televerse UN depot du service. Rend (succes, detail).
+
+    Le decoupage est celui du menu, et c'est voulu : une seconde version,
+    reglee ailleurs, finirait par couper autrement le meme enregistrement.
+    """
+    try:
+        with open(compagnon_du_son(wav), encoding="utf-8") as flux:
+            bilan = json.load(flux)
+    except (OSError, ValueError) as exc:
+        _marquer_fait(wav, "bilan illisible : %s" % exc)
+        return False, "bilan illisible : %s" % exc
+
+    message = extraire_message(
+        wav, bilan, os.path.join(racine(), DOSSIER_MESSAGES_RELATIF),
+        maintenant=maintenant,
+    )
+    if not message:
+        # L'enregistrement COMPLET reste : il porte le message, meme mal
+        # borne, et le jeter perdrait ce qu'on n'a pas su couper.
+        _marquer_fait(wav, "structure non reconnue : enregistrement garde")
+        return False, "structure non reconnue"
+
+    for recupere in lister_messages():
+        if recupere.get("fichier") != message:
+            continue
+        monte, detail = televerser(recupere, transport)
+        if monte:
+            marquer_televerse(recupere, detail)
+            _marquer_fait(wav, "televerse : %s" % detail)
+            return True, detail
+        # NON marque : un Odoo absent se repare tout seul, et le depot
+        # repartira au prochain tour.
+        return False, detail
+    _marquer_fait(wav, "message extrait introuvable dans la liste")
+    return False, "message extrait introuvable"
+
+
+def ramasser_les_depots(dossier=None, maintenant=None, transport=None) -> list:
+    """Traite tout ce que le service a depose. Rend un compte rendu par depot."""
+    comptes = []
+    for wav in depots_a_traiter(dossier):
+        ok, detail = traiter_un_depot(wav, maintenant, transport)
+        comptes.append({"fichier": os.path.basename(wav), "ok": ok,
+                        "detail": detail})
+    return comptes

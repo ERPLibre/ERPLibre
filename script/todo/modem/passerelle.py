@@ -556,14 +556,43 @@ class Passerelle:
                 "events": evenements, "calls": appels,
             })
         entrants = self._remonter_les_entrants()
+        releves = self._ramasser_les_relevements()
 
         self.etat.oublier_les_vieux(self.horloge())
         self.etat.enregistrer()
         return {
             "recus": recus, "rejoues": len(rejoues),
             "rapportes": len(evenements), "appels": len(appels),
-            "entrants": entrants,
+            "entrants": entrants, "releves": releves,
         }
+
+    # ------------------------------------------------------------------
+    def _ramasser_les_relevements(self) -> int:
+        """Televerse ce que le service de voix a depose en relevant.
+
+        Le partage est dicte par ce que chacun sait faire : le service voit le
+        drapeau, tient le port et detient le code, donc il APPELLE ; l'agent
+        porte le decoupage, regle sur une vraie messagerie, donc il DECOUPE.
+        Une seconde version du decoupage cote service couperait autrement le
+        meme enregistrement.
+
+        Rien n'est leve ici : un relevement qui ne monte pas ne doit pas
+        arreter les SMS, qui sont le service rendu principal.
+        """
+        from script.todo.modem import recuperation as rec_mod
+
+        try:
+            comptes = rec_mod.ramasser_les_depots()
+        except Exception as exc:  # noqa: BLE001 - voir la docstring
+            journal("passerelle : relevements non ramasses — %s" % exc)
+            return 0
+        for compte in comptes:
+            if compte["ok"]:
+                journal("passerelle : message de l'operateur televerse")
+            else:
+                journal("passerelle : relevement non traite — %s"
+                        % compte["detail"])
+        return sum(1 for c in comptes if c["ok"])
 
     # ------------------------------------------------------------------
     def _appels_a_rapporter(self):

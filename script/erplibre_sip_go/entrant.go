@@ -38,7 +38,7 @@ const (
 // VeillerSurLesEntrants présente au softphone les appels qui arrivent.
 func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 	hôte string, registre *Registre, dialogues *sipgo.DialogClientCache,
-	vivants *RéglagesVivants) {
+	vivants *RéglagesVivants, secrets *Secrets, dossierRecettes string) {
 
 	if err := m.AnnoncerAppelant(); err != nil {
 		// Sans CLIP l'appel se présente sans numéro : on continue, un appel
@@ -62,6 +62,8 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 		Lien: OuvrirLienOdoo(), Fichier: CheminÉtatMessagerie(),
 	}
 	var messagerieLueÀ time.Time
+	relève := &Relève{}
+	var refusDit string
 	for {
 		select {
 		case <-ctx.Done():
@@ -94,6 +96,31 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 			// n'ajoute rien au port du modem, et un nombre de sonneries change
 			// a l'ecran s'applique alors en moins d'une minute.
 			vivants.Relire()
+
+			// Le relèvement se décide ICI, la ligne libre et le drapeau tout
+			// juste lu. Ailleurs, il faudrait relire l'un ou l'autre, et
+			// appeler sur un drapeau d'il y a une minute ferait un appel que
+			// rien ne justifie plus.
+			décision := relève.Décider(vivants.Valeurs(), attente, err == nil,
+				secrets.ADéjàLeNIP())
+			if décision.Motif != "" && décision.Motif != refusDit {
+				// Une fois par motif : répété chaque minute, il noierait le
+				// journal et on cesserait de le lire.
+				refusDit = décision.Motif
+				slog.Warn("relevement de la boite vocale impossible",
+					"motif", décision.Motif)
+			}
+			if décision.Relever {
+				refusDit = ""
+				if _, err := Relever(ctx, m, o, vivants.Valeurs(), décision,
+					secrets.NIP(), dossierRecettes, time.Now()); err != nil {
+					slog.Warn("relevement de la boite vocale en echec",
+						"err", err)
+				}
+				// La ligne vient de servir : on repart sur un tour neuf
+				// plutôt que d'enchaîner sur un état d'avant l'appel.
+				continue
+			}
 		}
 
 		numéro := m.AppelEntrant()

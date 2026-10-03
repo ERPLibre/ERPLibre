@@ -430,6 +430,46 @@ func RécupérerMessagerie(ctx context.Context, o OptionsModem, r Recette,
 		return échec(expliquerPort(err))
 	}
 	defer m.Close()
+	return récupérerAvecModem(ctx, m, o, r, fichier, code, norm, carte)
+}
+
+// RécupérerMessagerieAvecModem joue la recette sur un modem DÉJÀ ouvert.
+//
+// Le service tient le port en permanence : rouvrir le modem échouerait sur
+// son propre verrou. L'appelant est responsable d'avoir pris la ligne —
+// cette fonction compose, et composer par-dessus une conversation la
+// couperait.
+func RécupérerMessagerieAvecModem(ctx context.Context, m *Modem, o OptionsModem,
+	r Recette, fichier string, code string) Bilan {
+
+	bilan := Bilan{Fichier: fichier}
+	if err := r.Vérifier(); err != nil {
+		bilan.Erreur = err.Error()
+		return bilan
+	}
+	norm, err := NuméroValide(o.Numéro)
+	if err != nil {
+		bilan.Erreur = err.Error()
+		return bilan
+	}
+	carte, err := carteOuDéfaut(o.Carte)
+	if err != nil {
+		bilan.Erreur = err.Error()
+		return bilan
+	}
+	return récupérerAvecModem(ctx, m, o, r, fichier, code, norm, carte)
+}
+
+// récupérerAvecModem porte le déroulé commun aux deux entrées : la voix, la
+// composition, le pilotage de la recette et le raccrochage.
+func récupérerAvecModem(ctx context.Context, m *Modem, o OptionsModem, r Recette,
+	fichier string, code string, norm string, carte string) Bilan {
+
+	bilan := Bilan{Fichier: fichier}
+	échec := func(err error) Bilan {
+		bilan.Erreur = err.Error()
+		return bilan
+	}
 
 	if o.AudMod != ModeAudioInchangé {
 		if err := m.RéglerModeAudio(o.AudMod); err != nil {

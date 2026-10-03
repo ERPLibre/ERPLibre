@@ -159,6 +159,9 @@ func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) (RéglagesRép
 		DuréeMaxSecondes int    `json:"duree_max_secondes"`
 		AnnonceNom       string `json:"annonce_nom"`
 		AnnonceB64       string `json:"annonce_b64"`
+		RelèveAuto       bool   `json:"operateur_releve_auto"`
+		RelèveEfface     bool   `json:"operateur_releve_efface"`
+		RelèveDemandée   string `json:"operateur_releve_demande"`
 	}
 	if err := json.Unmarshal(brut, &distants); err != nil {
 		slog.Warn("reglages d'Odoo illisibles : ceux du disque font foi", "err", err)
@@ -169,6 +172,9 @@ func RéglagesDepuisOdoo(l *LienOdoo, locaux RéglagesRépondeur) (RéglagesRép
 	fusionnés.Actif = distants.Actif
 	fusionnés.Sonneries = distants.Sonneries
 	fusionnés.DuréeMaxSecondes = distants.DuréeMaxSecondes
+	fusionnés.RelèveAuto = distants.RelèveAuto
+	fusionnés.RelèveEfface = distants.RelèveEfface
+	fusionnés.RelèveDemandée = distants.RelèveDemandée
 	if annonce := écrireAnnonce(locaux, distants.AnnonceNom, distants.AnnonceB64); annonce != "" {
 		fusionnés.Annonce = annonce
 	}
