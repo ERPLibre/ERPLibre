@@ -142,7 +142,7 @@ class TestWhereTheMachinesComeFrom(_PickCase):
     def test_a_blank_answer_takes_the_local_vms_marked_as_default(self):
         out = self._play("", "1", "")
         self.assertEqual(self.walks, [["forged_vm_a"]])
-        line = [l for l in out.splitlines() if l.startswith("[1] ")][0]
+        line = next(row for row in out.splitlines() if row.startswith("[1] "))
         self.assertIn(t("(default)"), line)
 
     def test_zero_or_an_invalid_answer_writes_nothing(self):

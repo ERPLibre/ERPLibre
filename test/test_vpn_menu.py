@@ -93,7 +93,7 @@ class DriverPicker(MenuBase):
     def test_an_empty_answer_keeps_the_current_driver(self):
         chosen, printed = self.picking("", current="wireguard")
         self.assertEqual(chosen.name, "wireguard")
-        line = [l for l in printed.splitlines() if "WireGuard" in l][0]
+        line = next(row for row in printed.splitlines() if "WireGuard" in row)
         self.assertIn(t("(default)"), line)
 
     def test_a_shown_number_picks_from_the_list(self):
@@ -136,12 +136,13 @@ class DriverPicker(MenuBase):
         # Installer les paquets d'un client passe par sudo : « 0 », ou une
         # faute suivie de « 0 », n'installent rien ; une réponse vide
         # installe la technologie marquée par défaut, la première.
+        launched = []
         for answers, expected in (
             (["0"], []),
             (["x", "0"], []),
             ([""], [f"install --driver {list(DRIVERS)[0]}"]),
         ):
-            launched = []
+            launched.clear()
             with (
                 self.subTest(answers=answers),
                 patch(
@@ -793,8 +794,9 @@ class ShowingWhatIsConnected(MenuBase):
         # Déconnecter lance « down » sans autre question : une réponse vide,
         # « 0 », « tout » ou une faute n'en lancent aucun ; Supprimer n'en
         # retire aucun et ne pose pas sa confirmation.
+        launched = []
         for answers in ([""], ["0"], ["tout", "0"], ["*", "01", "x", ""]):
-            launched = []
+            launched.clear()
             with (
                 self.subTest(answers=answers),
                 patch.object(OpenconnectDriver, "is_up", lambda self: True),
@@ -811,7 +813,7 @@ class ShowingWhatIsConnected(MenuBase):
                 self.todo._vpn_delete_profile()
             self.assertEqual(launched, [])
             delete.assert_not_called()
-        launched = []
+        launched.clear()
         with (
             patch.object(OpenconnectDriver, "is_up", lambda self: True),
             patch.object(
