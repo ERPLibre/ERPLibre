@@ -197,6 +197,16 @@ class TestPage(unittest.TestCase):
         fixed = re.findall(r"^([^{}\n]+)\{[^}]*position: fixed", css, re.M)
         self.assertEqual(fixed, [".sessions.fullscreen:not([hidden]) "])
 
+    def test_a_question_keeps_the_lines_of_its_text_and_options(self):
+        # Une question et un libellé d'option de plusieurs lignes gardent
+        # leurs retours à la ligne : la question en pre-wrap, qui garde le
+        # retrait du terminal ; un libellé en pre-line, qui le replie dans
+        # sa boîte.
+        css = (STATIC / "css" / "todo.css").read_text(encoding="utf-8")
+        rules = dict(re.findall(r"^([^{}\n]+?) \{([^}]*)\}", css, re.M))
+        self.assertIn("white-space: pre-wrap;", rules[".prompt-text"])
+        self.assertIn("white-space: pre-line;", rules[".question .entry"])
+
     def test_every_reference_of_the_page_is_served(self):
         for ref in re.findall(rb'(?:href|src)="(/static/[^"]+)"', self.index):
             self.assertIn(ref.decode(), self.table)

@@ -490,6 +490,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › Known servers marks « (in use) » only on the server in use: the mark fell on another server, the one carrying its former number once a deletion had renumbered the list, or the first one while a server found on this machine, outside the list, was in use
 - In French, Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) and the three Exécution › Config entries Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde and Générer à partir de la base de données carry their accents, where the menus wrote « a partir » and « pre-configuration »
 - Execute › Config › Generate from backup file, its file browser left without a file, and Generate from database, at [0] of its list, with no database or when the list cannot be read, generate nothing, where they regenerated the configuration with an empty backup name or a database named « False »
+- In a web session, an option label of several lines keeps its lines on the page — an install run and its VMs, a Claude Code session, a gpt tool and its description — where they ran into one
 
 <!-- [fr] -->
 
@@ -656,6 +657,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Assistant › LLM › Serveurs connus ne marque « (en usage) » que le serveur en usage : la marque tombait sur un autre serveur, celui qui portait son ancien numéro une fois la liste renumérotée par une suppression, ou le premier quand un serveur trouvé sur cette machine, hors de la liste, était en usage
 - Exécution › Database › Restaurer à partir d'une sauvegarde (.zip) et les trois entrées d'Exécution › Config, Générer à partir de la pré-configuration, Générer à partir d'un fichier de sauvegarde et Générer à partir de la base de données, portent leurs accents, là où les menus écrivaient « a partir » et « pre-configuration »
 - Exécution › Config › Générer à partir d'un fichier de sauvegarde, son navigateur de fichiers quitté sans fichier, et Générer à partir de la base de données, à [0] de sa liste, sans base ou quand la liste ne peut être lue, ne génèrent rien, là où ils régénéraient la configuration avec un nom de sauvegarde vide ou une base nommée « False »
+- Dans une session web, un libellé d'option de plusieurs lignes garde ses lignes sur la page — un suivi d'installation et ses VM, une session Claude Code, un outil gpt et sa description — là où elles se fondaient en une seule
 
 <!-- [en] -->
 ## Removed

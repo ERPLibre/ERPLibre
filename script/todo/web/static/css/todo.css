@@ -351,10 +351,13 @@ footer.source dd + dd {
     gap: 0.4rem;
 }
 
+/* Un libellé d'option de plusieurs lignes (un suivi et ses VM, une session,
+   un outil et sa description) garde ses lignes. */
 .question .entry {
     display: flex;
     gap: 0.4rem;
     text-align: left;
+    white-space: pre-line;
 }
 
 .entry .key {
