@@ -115,7 +115,7 @@ class TestLectureConfig(unittest.TestCase):
 
     def test_the_plus_alias_stays_one_name(self):
         noms = [n for n, _i in TODO._ssh_config_entries(self.chemin)]
-        self.assertNotIn("forged-bastion", noms[1:2] and [])
+        self.assertEqual(1, noms.count("forged-bastion"))
         self.assertIn("forged-bastion+Forged-Guest", noms)
 
     def test_hostname_and_user_are_kept(self):

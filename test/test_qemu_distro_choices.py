@@ -102,8 +102,8 @@ class TestLaDistributionEtLaVersion(_Cas):
 
     def test_an_invalid_answer_is_named_and_asked_again(self):
         # « 01 », un nom d'une autre casse, un numéro hors de la liste ou
-        # écrit autrement qu'elle ne l'affiche : plus jamais le défaut en
-        # silence.
+        # écrit autrement qu'elle ne l'affiche sont refusés, et ne prennent
+        # jamais le défaut.
         wrong = ["01", "Debian", "10", "²", "x"]
         self.assertEqual(
             self.play("_qemu_prompt_distro", *wrong, "2"), "debian"
@@ -154,7 +154,7 @@ class TestLArchitecture(_Cas):
         self.assertNotIn("⚠", self.shown)
 
     def test_an_invalid_answer_is_named_and_zero_goes_back(self):
-        # « * » et une autre casse se lisaient : « * » ne vaut « tout » que
+        # « * » et une autre casse sont refusés : « * » ne vaut « tout » que
         # dans un choix multiple.
         wrong = ["*", "AMD64", "5", "01"]
         self.assertIsNone(self.play("_qemu_prompt_infra_arch", *wrong, "0"))

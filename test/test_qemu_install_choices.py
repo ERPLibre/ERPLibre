@@ -79,7 +79,7 @@ class TestLesTroisQuestions(_Cas):
         self.assertIs(self.play(ask, ""), False)
         self.assertIn(t("(default)"), self.shown.splitlines()[1])
         self.assertIs(self.play(ask, "2"), True)
-        # Toute autre réponse que 2 valait dev, sans un mot.
+        # Une faute (« prod », « 3 ») est refusée, jamais prise pour dev.
         self.assertIsNone(self.play(ask, "prod", "3", "0"))
         self.assertEqual(self.refused(), ["prod", "3"])
 
@@ -92,7 +92,7 @@ class TestLesTroisQuestions(_Cas):
         wanted = t("ERPLibre only (no Odoo)")
         self.assertEqual(self.play(lambda: pick(""), wanted)[0], wanted)
         self.assertEqual(self.play(lambda: pick(""), "2")[1].count("17"), 1)
-        # Une faute prenait Odoo 18 en silence.
+        # Une faute est refusée, jamais prise pour Odoo 18.
         wrong = ["13", "01", "Odoo 18"]
         self.assertIsNone(self.play(lambda: pick(""), *wrong, "0"))
         self.assertEqual(self.refused(), wrong)
