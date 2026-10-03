@@ -3483,35 +3483,18 @@ class QemuManageMixin:
         return branches
 
     def _qemu_pick_branch(self):
-        """Liste les branches distantes d'ERPLibre et en fait choisir une."""
+        """La branche d'ERPLibre, choisie parmi les branches distantes
+        (`ui.choose`) par son numéro ou son nom, master (sinon la
+        première) sur une réponse vide, None pour [0] ; tapée quand la
+        liste ne se lit pas, master sur une réponse vide, None pour
+        « 0 »."""
         print(f"\n{t('Fetching ERPLibre branch list...')}")
         branches = self._qemu_branch_list()
-        default = (
-            "master"
-            if "master" in branches
-            else (branches[0] if branches else "master")
-        )
         if not branches:
-            return (
-                input(f"{t('Branch (default:')} {default}): ").strip()
-                or default
-            )
-        print(f"{t('Branches:')}")
-        for i, b in enumerate(branches, 1):
-            star = " *" if b == default else ""
-            print(f"  [{i}] {b}{star}")
-        sel = input(f"{t('Choice (number or name, default:')} {default}): ")
-        sel = sel.strip()
-        if not sel:
-            return default
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(branches):
-                return branches[idx]
-        except ValueError:
-            if sel in branches:
-                return sel
-        return default
+            typed = input(f"{t('Branch (default:')} master): ").strip()
+            return None if typed == "0" else typed or "master"
+        default = "master" if "master" in branches else branches[0]
+        return ui.choose(t("Branches:"), branches, default=default)
 
     @staticmethod
     def _qemu_wait_ssh(ip, user="erplibre", timeout=1200):

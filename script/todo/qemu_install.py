@@ -6,7 +6,7 @@
 import re
 import shlex
 
-from script.todo import dev_tools
+from script.todo import dev_tools, ui
 from script.todo.todo_i18n import t
 
 
@@ -31,14 +31,19 @@ class QemuInstallMixin:
     )
 
     def _qemu_ask_prod(self):
-        """Environnement cible : dev (défaut) ou prod. En PROD : ERPLibre est
-        installé dans /opt/erplibre (au lieu de ~/git/erplibre) et le service
-        systemd reste CONFINÉ par SELinux (pas d'unconfined)."""
-        print(f"\n{t('Target environment?')}")
-        print(f"  [1] {t('Development (~/git/erplibre, SELinux relaxed)')} *")
-        print(f"  [2] {t('Production (/opt/erplibre, SELinux enforced)')}")
-        sel = input(t("Choice (1-2, default 1): ")).strip()
-        return sel == "2"
+        """Environnement cible (`ui.choose`) : False pour dev, le défaut
+        marqué, True pour prod, None pour [0]. En PROD : ERPLibre est
+        installé dans /opt/erplibre (au lieu de ~/git/erplibre) et le
+        service systemd reste CONFINÉ par SELinux (pas d'unconfined)."""
+        return ui.choose(
+            t("Target environment?"),
+            [False, True],
+            default=False,
+            labels=[
+                t("Development (~/git/erplibre, SELinux relaxed)"),
+                t("Production (/opt/erplibre, SELinux enforced)"),
+            ],
+        )
 
     def _qemu_install_profiles(self):
         """Profils installables : [(libellé, commande)]. Le premier est le
@@ -123,8 +128,9 @@ class QemuInstallMixin:
         return install_cmd.strip() not in self._qemu_no_erplibre_cmds()
 
     def _qemu_pick_install_profile(self, distro=""):
-        """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
-        finale exécutée dans ~/git/erplibre).
+        """Ce qu'on installe sur la VM (`ui.choose`) : (libellé, commande
+        finale exécutée dans ~/git/erplibre), par son numéro ou son
+        libellé, le premier sur une réponse vide ; None pour [0].
 
         Le profil qu'un système impose passe en tête, et devient donc le
         défaut de la réponse vide.
@@ -133,17 +139,28 @@ class QemuInstallMixin:
         impose = self._qemu_distro_profile(distro)
         if impose:
             profiles.sort(key=lambda p: p[0] != impose[0])
-        print(f"\n{t('What to install on the VM(s)?')}")
-        for i, (label, _cmd) in enumerate(profiles, 1):
-            print(f"  [{i}] {label}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(profiles):
-                return profiles[idx]
-        except ValueError:
-            pass
-        return profiles[0]  # défaut : ERPLibre + Odoo 18
+        return ui.choose(
+            t("What to install on the VM(s)?"),
+            profiles,
+            default=profiles[0],
+            labels=[label for label, _cmd in profiles],
+            names={profile[0]: profile for profile in profiles},
+        )
+
+    def _qemu_install_questions(self, distro="", ask_prod=True):
+        """La branche, dev ou prod, puis ce qu'on installe, l'un après
+        l'autre : (branche, prod, (libellé, commande)), ou None dès qu'un
+        [0] renonce. Sans `ask_prod`, prod vaut False sans question."""
+        branch = self._qemu_pick_branch()
+        if branch is None:
+            return None
+        prod = self._qemu_ask_prod() if ask_prod else False
+        if prod is None:
+            return None
+        profile = self._qemu_pick_install_profile(distro)
+        if profile is None:
+            return None
+        return branch, prod, profile
 
     @staticmethod
     def _qemu_install_dir(prod):

@@ -2155,14 +2155,17 @@ class QemuDeployMixin:
                 " sudo ./script/proxmox/install_proxmox.sh"
             )
         if self._is_yes_default_yes(ans):
-            branch = self._qemu_pick_branch()
-            # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
-            prod = self._qemu_ask_prod()
-            label, cmd = self._qemu_pick_install_profile(
+            # [0] à la branche, à dev ou prod (~/git et SELinux relâché, ou
+            # /opt et confiné) ou au profil renonce au déploiement, dont
+            # rien n'est encore créé.
+            answers = self._qemu_install_questions(
                 "proxmox"
                 if any(v.get("distro") == "proxmox" for v in vms)
                 else ""
             )
+            if answers is None:
+                return None
+            branch, prod, (label, cmd) = answers
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )

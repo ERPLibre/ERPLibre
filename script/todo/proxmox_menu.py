@@ -2603,10 +2603,13 @@ class ProxmoxMenuMixin:
         if self._is_yes_default_yes(
             input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
         ):
-            branch = self._qemu_pick_branch()
-            label, cmd = self._qemu_pick_install_profile(distro)
-            print(f"  {label}")
-            install = {"branch": branch, "cmd": cmd, "label": label}
+            # La VM existe déjà : [0] à la branche ou au profil n'y installe
+            # rien, et l'épilogue continue.
+            answers = self._qemu_install_questions(distro, ask_prod=False)
+            if answers:
+                branch, _prod, (label, cmd) = answers
+                print(f"  {label}")
+                install = {"branch": branch, "cmd": cmd, "label": label}
         spec_finale = {
             "host": host,
             "storage": stockage,
