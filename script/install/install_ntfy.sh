@@ -211,9 +211,33 @@ configure_ntfy() {
         chown ntfy:ntfy "$CACHE_DIR"
     fi
 
+    # Une configuration deja en place est RESPECTEE — elle peut porter des
+    # reglages d'exploitation que ce script ignore. Mais la respecter sans
+    # regarder ce qu'elle dit a laisse tourner la configuration permissive
+    # d'une distribution : lecture ET ecriture anonymes sur tous les sujets,
+    # sur toutes les interfaces, alors que ce script annonce le contraire.
+    # Une posture annoncee et non appliquee est pire que pas de script.
     if [ -f "${CONFIG_DIR}/server.yml" ]; then
-        log "Config already exists at ${CONFIG_DIR}/server.yml — skipping."
-        return
+        if grep -qE '^[[:space:]]*auth-default-access:' "${CONFIG_DIR}/server.yml"; then
+            log "Config already exists at ${CONFIG_DIR}/server.yml — skipping."
+            return
+        fi
+        echo
+        echo "  La configuration en place ne declare AUCUN controle d'acces." >&2
+        echo "  ntfy autorise alors la lecture et l'ecriture anonymes sur tous" >&2
+        echo "  les sujets : qui apprend un nom de sujet lit tout ce qui y" >&2
+        echo "  transite. Ce script ne la remplace pas en silence." >&2
+        echo >&2
+        echo "  Ecartez-la, puis relancez :" >&2
+        echo "    sudo mv ${CONFIG_DIR}/server.yml ${CONFIG_DIR}/server.yml.origine" >&2
+        echo "    sudo bash \$0" >&2
+        echo >&2
+        echo "  Ou gardez-la en connaissance de cause : NTFY_GARDER_CONFIG=1" >&2
+        if [ "${NTFY_GARDER_CONFIG:-0}" = "1" ]; then
+            log "NTFY_GARDER_CONFIG=1 — configuration permissive conservee."
+            return
+        fi
+        die "configuration en place sans controle d'acces"
     fi
 
     if [ -n "${NTFY_CERT_FILE}" ] && [ -n "${NTFY_KEY_FILE}" ]; then
