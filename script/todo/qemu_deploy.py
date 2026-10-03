@@ -1634,8 +1634,8 @@ class QemuDeployMixin:
             "cache_offert": self._qemu_cache_active(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
-            # La place du système de fichiers qui portera les qcow2. Mesurée
-            # ICI, comme le reste : une lecture disque pendant que Textual
+            # La place du système de fichiers qui portera les qcow2, lue
+            # ICI comme le reste : une lecture disque pendant que Textual
             # affiche n'a pas sa place.
             "free_disk": disque_libre,
             "total_disk": disque_total,

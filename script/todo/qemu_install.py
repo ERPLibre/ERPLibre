@@ -1347,7 +1347,7 @@ class QemuInstallMixin:
             # Déjà posé ? On ne retélécharge pas. Rejouer une
             # installation est le cas NORMAL — une qui est morte, un outil
             # ajouté après coup — et le téléchargement en est la partie
-            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # longue, plusieurs minutes pour Android Studio comme pour
             # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
             # rejoue de toute façon, lui est idempotent et bon marché.
             "if [ -x /opt/pycharm/bin/pycharm.sh ]; then "
@@ -1606,7 +1606,7 @@ class QemuInstallMixin:
             # Déjà posé ? On ne retélécharge pas. Rejouer une
             # installation est le cas NORMAL — une qui est morte, un outil
             # ajouté après coup — et le téléchargement en est la partie
-            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # longue, plusieurs minutes pour Android Studio comme pour
             # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
             # rejoue de toute façon, lui est idempotent et bon marché.
             "if [ -x /opt/android-studio/bin/studio ]; then "
@@ -2005,7 +2005,7 @@ class QemuInstallMixin:
             # avec « -no-audio ». Mesuré : c'est la SEULE bibliothèque qui
             # manque, tout le reste des dépendances Qt voyage dans le bundle.
             #
-            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : mesuré,
+            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : sans lui,
             # Gradle s'arrête sur « Cannot find a Java installation matching
             # {languageVersion=21} » — les modules de Capacitor 8 réclament 21.
             # Les deux JDK cohabitent, et Gradle choisit par sa chaîne d'outils.
@@ -2310,9 +2310,9 @@ class QemuInstallMixin:
                 + self._qemu_android_prologue_cmd()
                 + self._qemu_android_sdk_steps(el_dir)
                 # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que
-                # la première commande du groupe suivant : mesuré, un APK
-                # manquant laissait tourner l'émulateur puis rendait 0 — la VM
-                # repassait au vert alors que rien n'avait compilé.
+                # la première commande du groupe suivant : un APK manquant
+                # laisse tourner l'émulateur puis rend 0, et la VM repasse au
+                # vert alors que rien n'a compilé.
                 + " && ".join(f"{{ {g}; }}" for g in groups)
                 + "; }"
             )

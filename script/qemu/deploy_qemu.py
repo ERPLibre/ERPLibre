@@ -3357,7 +3357,7 @@ OFFLINE_BOOTCMD = [
 # NixOS n'a pas d'ancre de confiance PAR FICHIER : /etc est généré depuis le
 # store et monté en lecture seule, donc la forme de CACHE_TRUST — un
 # répertoire où déposer, une commande qui relit — n'y existe pas. Le
-# téléchargeur n'est pas non plus le même : mesuré, une LECTURE passe par le
+# téléchargeur n'est pas non plus le même : une LECTURE passe par le
 # client et honore une variable de session, mais RÉALISER une dérivation
 # passe par nix-daemon, qui ne la voit pas. Seul un fragment systemd
 # l'atteint.
