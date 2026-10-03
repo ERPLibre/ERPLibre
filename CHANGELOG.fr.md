@@ -11,6 +11,32 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Ajouté
 
+- Une passerelle cellulaire sur un modem USB, accessible depuis **Passerelle mobile** dans Odoo :
+  elle relaie par la carte SIM les SMS qu'Odoo veut envoyer, rapporte les appels qui entrent, et
+  évite au serveur d'avoir jamais à joindre l'appareil — c'est l'agent qui vient chercher son
+  travail, donc une adresse dynamique et un NAT d'opérateur n'y changent rien. L'échange est
+  authentifié par une signature HMAC dont la clé est lue dans l'environnement du processus Odoo,
+  jamais en base : le code de ce module est publié sous AGPL-3, et une clé en fiche part dans
+  chaque sauvegarde et chaque copie de la base
+- Un appel entrant fait sonner un softphone de navigateur, et la voix circule entre le navigateur et
+  la SIM dans les deux sens — WebRTC d'un côté, la carte son du modem de l'autre. Le softphone
+  dispose d'une trentaine de secondes pour décrocher : au-delà, la boîte vocale de l'opérateur prend
+  l'appel, et c'est cette course que règle le nombre de sonneries
+- Un répondeur à soi, qui décroche avant la boîte de l'opérateur et garde ainsi un historique
+  qu'aucune commande AT ne permettrait de récupérer : il joue une annonce, émet un bip, enregistre,
+  coupe le silence de fin du fichier autant que de la durée annoncée, et téléverse le message dans
+  Odoo, où il s'écoute dans la fiche au lieu de se télécharger
+- La boîte vocale de l'opérateur se relève en l'appelant : une recette de touches DTMF, cadencée sur
+  les silences, parcourt le serveur vocal. Elle part sur le drapeau de message de la SIM — un
+  relèvement occupe la ligne, il n'a pas de raison de partir sans rien à prendre — ou sur un bouton
+  des réglages. Le message est découpé de l'appel, et les secondes où la boîte annonce le numéro de
+  l'appelant le sont aussi : cette annonce est la seule trace de qui a appelé, l'opérateur ne le
+  transmettant sous aucune forme lisible
+- Les deux services du modem tournent sous systemd, secrets dans un `EnvironmentFile` en 0600 et
+  jamais en base. Le NIP de la messagerie fait exception à dessein : il vit dans un coffre qu'une
+  personne seule peut ouvrir, on le remet donc au service en marche par une socket locale et il n'est
+  gardé qu'en mémoire — perdu à chaque redémarrage, ce que le menu annonce, parce que l'écrire
+  quelque part annulerait le coffre
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
 - Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
 - OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe
