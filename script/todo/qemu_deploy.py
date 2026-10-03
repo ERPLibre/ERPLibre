@@ -2098,10 +2098,18 @@ class QemuDeployMixin:
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
         return answer or default
 
-    def _qemu_collect_options_cli(self, vms, res_label):
-        """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
-        parallélisme, puis récapitulatif et confirmation.
-        Renvoie la spec complète, ou None si l'utilisateur renonce."""
+    def _qemu_collect_guest_cli(self, vms):
+        """Invites en ligne du système invité, dans l'ordre : clé SSH,
+        fuseau, locale, puis les listes du type de VM, du magasin
+        d'applications, des outils de développement et de l'interpréteur
+        Python. Rend {ssh_key, timezone, locale, desktop, vm_tools,
+        python_provider, app_store}, les clés dans l'ordre de la spec, ou
+        None dès qu'une liste rend None ([0], Ctrl+D), sans poser les
+        suivantes.
+
+        Le type choisi est posé sur chaque VM de `vms` qui n'en porte pas,
+        et le nom de chacune prend le suffixe de son bureau, avant la
+        question du magasin."""
         # Clé SSH (partagée par tout le parc). Sans clé, cloud-init n'en
         # injecte aucune : la VM démarre sans accès SSH, donc sans
         # installation ni vérification possibles. On propose donc d'en créer
@@ -2146,6 +2154,24 @@ class QemuDeployMixin:
             [vm["arch"] for vm in vms]
         )
         if python_provider is None:
+            return None
+        return {
+            "ssh_key": ssh_key,
+            "timezone": timezone,
+            "locale": locale,
+            "desktop": desktop,
+            "vm_tools": vm_tools,
+            "python_provider": python_provider,
+            "app_store": app_store,
+        }
+
+    def _qemu_collect_options_cli(self, vms, res_label):
+        """Invites en ligne : système invité (`_qemu_collect_guest_cli`),
+        installation ERPLibre, ~/.ssh/config, parallélisme, puis
+        récapitulatif et confirmation.
+        Renvoie la spec complète, ou None si l'utilisateur renonce."""
+        guest = self._qemu_collect_guest_cli(vms)
+        if guest is None:
             return None
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
@@ -2216,7 +2242,7 @@ class QemuDeployMixin:
 
         # Ces trois réponses n'ont d'objet que si l'outil est coché : les
         # poser toujours ferait trois questions de plus à qui n'en veut pas.
-        ai_tools = self._qemu_ask_ai_tools(vm_tools)
+        ai_tools = self._qemu_ask_ai_tools(guest["vm_tools"])
         if ai_tools is None:
             return None
         ai_agent, git_name, git_email = ai_tools
@@ -2272,13 +2298,7 @@ class QemuDeployMixin:
             "res_label": res_label,
             "vms": pending,
             "existing": existing,
-            "ssh_key": ssh_key,
-            "timezone": timezone,
-            "locale": locale,
-            "desktop": desktop,
-            "vm_tools": vm_tools,
-            "python_provider": python_provider,
-            "app_store": app_store,
+            **guest,
             "install": install,
             # Au niveau du déploiement : le suivi survit à une installation
             # décochée (voir _qemu_run_spec).
