@@ -820,6 +820,9 @@ class TestIconeDesMoteurs(Banc):
         prets = [{"moteur": m, "sans_sudo": True} for m in ("docker", "x")]
         runtime = container_menu.container_runtime
         faute = todo_i18n.t("Invalid choice: ")
+        alerte = todo_i18n.t(
+            "This REMOVES unused images, containers, networks"
+        )
         for nom in ("nettoyage", "nettoyer_images", "nettoyer_projets"):
             for entrees in (["0"], ["🐳 docker", "0"]):
                 todo = self.todo()
@@ -839,6 +842,9 @@ class TestIconeDesMoteurs(Banc):
                     self.assertFalse(images.called or dirs.called)
                     fautes = sortie.getvalue().count(faute)
                     self.assertEqual(len(entrees) - 1, fautes)
+                    # L'avertissement du nettoyage global, qui nomme les
+                    # volumes, suit le choix du moteur : [0] ne le montre pas.
+                    self.assertNotIn(alerte, sortie.getvalue())
 
 
 class TestService(Banc):
