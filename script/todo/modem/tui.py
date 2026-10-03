@@ -1504,6 +1504,16 @@ def lancer(index_modem, numero_initial="", code_messagerie=""):
             # Quitter ne doit pas laisser un appel ouvert derriere soi.
             if self.pilote:
                 self.pilote.raccrocher()
+            # Ni une capture d'annonce : elle n'a pas de duree et tiendrait
+            # le microphone du poste jusqu'au prochain redemarrage, en faisant
+            # hacher la capture de tout autre programme. ABANDONNEE et non
+            # conclue : une annonce qu'on n'a pas validee ne s'installe pas
+            # parce qu'on a ferme la fenetre.
+            if self.capture is not None:
+                from script.todo.modem import repondeur as rep_mod
+
+                rep_mod.abandonner_enregistrement(self.capture, self.capture_fichier)
+                self.capture = None
 
     _ = device_mod  # index_modem sert a l'appelant, pas ici
     Poste().run()

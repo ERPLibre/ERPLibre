@@ -209,5 +209,50 @@ class TestEcouteOperateur(unittest.TestCase):
         self.assertEqual(effaces, [])
 
 
+class TestLesCapturesOubliees(unittest.TestCase):
+    """Une capture d'annonce n'a pas de duree : elle ne s'arrete que sur
+    demande, et une TUI fermee brutalement la laisse tenir le microphone du
+    poste. Plusieurs clients sur le micro font hacher ce que chacun recoit,
+    ce qui s'entend ailleurs — jusque dans un appel en cours."""
+
+    def _lister(self, *commandes):
+        return lambda: [(100 + i, c) for i, c in enumerate(commandes)]
+
+    def test_les_captures_du_meme_fichier_sont_reconnues(self):
+        lister = self._lister(
+            "arecord\x00-f\x00S16_LE\x00/tmp/annonce.wav.partiel\x00",
+            "arecord\x00-D\x00hw:1,0\x00-t\x00raw\x00-\x00",
+        )
+        vivantes = rep.captures_vivantes("/tmp/annonce.wav.partiel", lister)
+        self.assertEqual(vivantes, [100])
+
+    def test_le_pont_d_un_appel_en_cours_n_est_pas_touche(self):
+        """Il capte aussi, mais sur la carte du modem : le tuer couperait la
+        conversation."""
+        lister = self._lister("arecord\x00-D\x00hw:1,0\x00-t\x00raw\x00-\x00")
+        self.assertEqual(rep.captures_vivantes("/tmp/annonce.wav.partiel", lister), [])
+
+    def test_une_capture_neuve_termine_celles_d_avant(self):
+        """Toutes ecrivent dans le MEME fichier provisoire : deux captures
+        simultanees s'y melangent."""
+        tues = []
+        lister = self._lister(
+            "arecord\x00/tmp/annonce.wav.partiel\x00",
+            "arecord\x00/tmp/annonce.wav.partiel\x00",
+        )
+        retires = rep._retirer_les_survivants(
+            "/tmp/annonce.wav.partiel", lister, tues.append)
+        self.assertEqual(retires, 2)
+        self.assertEqual(tues, [100, 101])
+
+    def test_un_processus_deja_parti_ne_fait_pas_echouer(self):
+        def tuer(pid):
+            raise ProcessLookupError
+
+        lister = self._lister("arecord\x00/tmp/annonce.wav.partiel\x00")
+        self.assertEqual(
+            rep._retirer_les_survivants("/tmp/annonce.wav.partiel", lister, tuer), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

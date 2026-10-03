@@ -249,6 +249,53 @@ def enregistrer_annonce(secondes: int = 20, chemin: str = "") -> tuple:
 FENETRE_NIVEAU = 1600
 
 
+def captures_vivantes(provisoire: str, lister=None) -> list:
+    """Les captures d'annonce encore en vie, par identifiant de processus.
+
+    Une capture sans duree ne s'arrete QUE sur demande. Une TUI fermee
+    brutalement, un terminal coupe, et elle tient le microphone du poste
+    indefiniment. Ce qu'elle encombre n'est pas le disque — le fichier
+    provisoire peut meme avoir ete efface sous elle — mais la CAPTURE des
+    autres programmes : plusieurs clients sur le micro numerique font hacher
+    ce que chacun recoit.
+    """
+    lister = lister or _processus_arecord
+    return [pid for pid, commande in lister() if provisoire in commande]
+
+
+def _processus_arecord():
+    """(pid, ligne de commande) de chaque arecord du systeme."""
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/comm" % pid, encoding="utf-8") as flux:
+                if flux.read().strip() != "arecord":
+                    continue
+            with open("/proc/%s/cmdline" % pid, "rb") as flux:
+                commande = flux.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        yield int(pid), commande
+
+
+def _retirer_les_survivants(provisoire: str, lister=None, tuer=None) -> int:
+    """Termine les captures d'annonce oubliees. Rend combien.
+
+    Avant d'en lancer une neuve, et pas apres : toutes ecrivent dans le MEME
+    fichier provisoire, et deux captures simultanees s'y melangent.
+    """
+    tuer = tuer or (lambda pid: os.kill(pid, signal.SIGTERM))
+    retires = 0
+    for pid in captures_vivantes(provisoire, lister):
+        try:
+            tuer(pid)
+            retires += 1
+        except OSError:
+            pass
+    return retires
+
+
 def demarrer_enregistrement(chemin: str = "") -> tuple:
     """Lance une capture SANS duree et rend (processus, chemin_provisoire).
 
@@ -266,6 +313,9 @@ def demarrer_enregistrement(chemin: str = "") -> tuple:
     if not outil:
         return None, "arecord absent : installez alsa-utils"
     provisoire = chemin + ".partiel"
+    oubliees = _retirer_les_survivants(provisoire)
+    if oubliees:
+        print("  %d capture(s) oubliee(s) arretee(s)" % oubliees)
     _retirer(provisoire)
     try:
         proc = subprocess.Popen(
@@ -275,6 +325,25 @@ def demarrer_enregistrement(chemin: str = "") -> tuple:
     except OSError as exc:
         return None, str(exc)
     return proc, provisoire
+
+
+def abandonner_enregistrement(proc, provisoire: str = "") -> None:
+    """Termine la capture et jette ce qu'elle avait pris.
+
+    Ce que fait QUITTER, par opposition a conclure : une annonce qu'on n'a pas
+    validee ne doit pas se retrouver en place parce qu'une fenetre s'est
+    fermee — le repondeur la jouerait au prochain appelant. Ne leve jamais :
+    on l'appelle sur un chemin de sortie, ou il n'y a plus personne a qui
+    rapporter une erreur.
+    """
+    try:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            proc.wait(timeout=2)
+    except Exception:  # noqa: BLE001 - voir la docstring
+        pass
+    if provisoire:
+        _retirer(provisoire)
 
 
 def arreter_enregistrement(proc, provisoire: str, chemin: str = "") -> tuple:
