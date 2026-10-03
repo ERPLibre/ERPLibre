@@ -99,6 +99,35 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 				slog.Warn("gain du micro non réglé", "err", err)
 			}
 		}
+		// La VoLTE est VÉRIFIÉE au démarrage, comme les gains : attachée en
+		// LTE sans domaine voix, la ligne porte les données et ne reçoit
+		// aucun appel — l'opérateur les dérive vers sa messagerie, et rien
+		// ici ne le voit. Le réglage vit en NV mais ne survit pas à tout :
+		// une réinitialisation du module rend la ligne sourde en silence.
+		forcée, enregistrée, err := modem.ÉtatIMS()
+		switch {
+		case err != nil:
+			slog.Warn("etat de la VoLTE illisible", "err", err)
+		case forcée != IMSForcée:
+			if err := modem.ForcerIMS(); err != nil {
+				slog.Error("VoLTE non forcee : la ligne ne recevra pas"+
+					" d'appel en LTE", "err", err)
+			} else {
+				// Le module ne l'applique qu'en redémarrant : le dire, car
+				// d'ici là la ligne reste sourde et rien d'autre ne
+				// l'annonce.
+				slog.Warn("VoLTE forcee : elle ne prendra qu'au prochain" +
+					" redemarrage du module (AT+CFUN=1,1)")
+			}
+		case enregistrée == 0:
+			// Forcée mais pas enregistrée : normal hors LTE, anormal en
+			// LTE. On le dit sans trancher, le réseau d'accès n'étant pas
+			// lu ici.
+			slog.Info("VoLTE forcee, pas encore enregistree")
+		default:
+			slog.Info("VoLTE enregistree")
+		}
+
 		slog.Info("modem prêt", "carte", carte, "port", o.Port,
 			"gain_ecoute", o.GainÉcoute, "gain_micro", o.GainMicro)
 	}

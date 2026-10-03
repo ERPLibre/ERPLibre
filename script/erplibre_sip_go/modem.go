@@ -351,6 +351,36 @@ func (m *Modem) RéaffirmerVoixUSB(mode int) error {
 	return err
 }
 
+// IMSForcée est la valeur de AT+QCFG="ims" qui impose la VoLTE.
+//
+// Zéro veut dire « suivre le profil opérateur », et un profil générique ne
+// provisionne pas l'IMS : le modem s'attache alors en LTE pour les données
+// sans domaine voix, et AUCUN appel entrant n'est présenté — l'opérateur le
+// dérive vers sa messagerie, et rien localement ne le voit. Forcer est le
+// seul recours quand le module ne porte pas de profil de cet opérateur.
+const IMSForcée = 1
+
+// ÉtatIMS rend (forcée, enregistrée) tels que le modem les annonce.
+func (m *Modem) ÉtatIMS() (int, int, error) {
+	rép, err := m.Commande(`AT+QCFG="ims"`, 5*time.Second)
+	if err != nil {
+		return 0, 0, err
+	}
+	g := motifIMS.FindStringSubmatch(rép)
+	if g == nil {
+		return 0, 0, fmt.Errorf("reponse ims illisible : %q", strings.TrimSpace(rép))
+	}
+	forcée, _ := strconv.Atoi(g[1])
+	enregistrée, _ := strconv.Atoi(g[2])
+	return forcée, enregistrée, nil
+}
+
+// ForcerIMS impose la VoLTE. Le réglage ne prend qu'au redémarrage du module.
+func (m *Modem) ForcerIMS() error {
+	_, err := m.Commande(fmt.Sprintf(`AT+QCFG="ims",%d`, IMSForcée), 5*time.Second)
+	return err
+}
+
 // ÉtatVoixUSB rend ce que le modem DIT de son canal voix : « 1,2 » quand la
 // voix est routée vers la carte USB, « 0,0 » quand elle ne l'est pas.
 //
@@ -598,6 +628,7 @@ func (m *Modem) Signal() (int, string) {
 var (
 	motifCSQ   = regexp.MustCompile(`\+CSQ:\s*(\d+),`)
 	motifQPCMV = regexp.MustCompile(`\+QPCMV:\s*([\d,]+)`)
+	motifIMS   = regexp.MustCompile(`\+QCFG:\s*"ims"\s*,\s*(\d+)\s*,\s*(\d+)`)
 	motifQCSQ  = regexp.MustCompile(`\+QCSQ:\s*(.+)`)
 )
 

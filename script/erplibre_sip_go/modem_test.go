@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // Le porteur de données LTE que ModemManager maintient en permanence se
 // présente dans +CLCC comme un appel d'état 0, donc « actif ». Le prendre
@@ -132,5 +135,34 @@ func TestUnGainInchangeNeTouchePasAuModem(t *testing.T) {
 	if GainÉcouteInchangé >= 0 {
 		t.Fatalf("GainÉcouteInchangé vaut %d : indistinguable d'un vrai gain",
 			GainÉcouteInchangé)
+	}
+}
+
+func TestLEtatDeLaVoLTESeLitDansLaReponse(t *testing.T) {
+	cas := []struct {
+		réponse             string
+		forcée, enregistrée int
+	}{
+		// Le defaut d'usine : suivre le profil operateur. Un profil
+		// generique ne provisionne pas l'IMS, donc aucun appel entrant.
+		{"\r\n+QCFG: \"ims\",0,0\r\n\r\nOK\r\n", 0, 0},
+		// Forcee, pas encore enregistree : normal hors LTE.
+		{"\r\n+QCFG: \"ims\",1,0\r\n\r\nOK\r\n", 1, 0},
+		{"\r\n+QCFG: \"ims\",1,1\r\n\r\nOK\r\n", 1, 1},
+	}
+	for _, c := range cas {
+		g := motifIMS.FindStringSubmatch(c.réponse)
+		if g == nil {
+			t.Fatalf("%q : aucun etat lu", c.réponse)
+		}
+		if g[1] != fmt.Sprint(c.forcée) || g[2] != fmt.Sprint(c.enregistrée) {
+			t.Fatalf("%q : lu (%s,%s), attendu (%d,%d)",
+				c.réponse, g[1], g[2], c.forcée, c.enregistrée)
+		}
+	}
+	// Une erreur ne doit pas se lire comme un etat : le service forcerait
+	// alors la VoLTE a chaque demarrage sans jamais le savoir.
+	if motifIMS.FindStringSubmatch("\r\nERROR\r\n") != nil {
+		t.Fatal("une erreur passe pour un etat")
 	}
 }
