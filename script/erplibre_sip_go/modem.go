@@ -389,6 +389,18 @@ func (m *Modem) RéglerVolumeÉcoute(cran int) error {
 // qui fait perdre du niveau au correspondant sans rien annoncer.
 const GainMicroUnité = 8192
 
+// GainMicroInchangé laisse le gain de montée tel que le modem le porte.
+const GainMicroInchangé = -1
+
+// GainMicroDéfaut laisse la MONTÉE à l'unité.
+//
+// Un navigateur normalise déjà ce que son micro capte — c'est ce que fait le
+// contrôle automatique de gain de WebRTC, actif par défaut — et la parole en
+// sort près de la pleine échelle. Multiplier derrière écrête, et le
+// correspondant entend un grincement que rien dans le transport ne montre :
+// les échantillons restent valides, seulement trop forts.
+const GainMicroDéfaut = GainMicroUnité
+
 // GainÉcouteInchangé laisse le gain de descente tel que le modem le porte.
 const GainÉcouteInchangé = -1
 

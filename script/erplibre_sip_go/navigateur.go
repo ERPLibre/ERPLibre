@@ -94,8 +94,13 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 				slog.Warn("gain d'écoute non réglé", "err", err)
 			}
 		}
+		if o.GainMicro != GainMicroInchangé {
+			if err := modem.RéglerGainMicroModem(o.GainMicro); err != nil {
+				slog.Warn("gain du micro non réglé", "err", err)
+			}
+		}
 		slog.Info("modem prêt", "carte", carte, "port", o.Port,
-			"gain_ecoute", o.GainÉcoute)
+			"gain_ecoute", o.GainÉcoute, "gain_micro", o.GainMicro)
 	}
 
 	ua, err := sipgo.NewUA()

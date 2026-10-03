@@ -46,6 +46,8 @@ func main() {
 		"ouvrir le micro dès le décroché ; sinon il s'ouvre par la touche m")
 	gainÉcoute := flag.Int("gain-ecoute", GainÉcouteDéfaut,
 		"gain de descente du modem (8192 = inchangé, -1 pour ne pas y toucher)")
+	gainMicro := flag.Int("gain-micro", GainMicroDéfaut,
+		"gain de montée du modem (8192 = unité, -1 pour ne pas y toucher)")
 	audmod := flag.Int("audmod", ModeAudioSansDSP,
 		"AT+QAUDMOD ; 3 désactive le traitement DSP, -1 n'y touche pas")
 	sonder := flag.Bool("sonder-audio", false,
@@ -105,7 +107,7 @@ func main() {
 		options := OptionsModem{
 			Port: *port, Carte: *carte, ModePCM: *modePCM,
 			AudMod: *audmod, Bruit: *bruit, VolumeÉcoute: *clvl,
-			GainÉcoute: *gainÉcoute,
+			GainÉcoute: *gainÉcoute, GainMicro: *gainMicro,
 		}
 		gardien, err := NouveauGardien(os.Getenv(VariablePostes), *sansAuth)
 		if err != nil {

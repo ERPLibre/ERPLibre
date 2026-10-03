@@ -53,8 +53,11 @@ type OptionsModem struct {
 	// GainÉcoute est le gain de descente, AT+QAUDCFG="decgain".
 	// GainÉcouteInchangé pour laisser celui du modem.
 	GainÉcoute int
-	Micro      bool // ouvrir le micro dès le décroché plutôt qu'à la demande
-	Pilote     bool // commander l'appel par l'entrée standard, non au clavier
+	// GainMicro est le gain de montée, AT+QMIC.
+	// GainMicroInchangé pour laisser celui du modem.
+	GainMicro int
+	Micro     bool // ouvrir le micro dès le décroché plutôt qu'à la demande
+	Pilote    bool // commander l'appel par l'entrée standard, non au clavier
 
 	// VolumeÉcoute est le cran de AT+CLVL posé au décroché. Négatif pour ne
 	// pas y toucher.

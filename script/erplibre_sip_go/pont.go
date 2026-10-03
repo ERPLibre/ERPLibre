@@ -302,7 +302,8 @@ func RelierAuModem(ctx context.Context, socket *SocketMédia, session *SessionSR
 func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP,
 	pont *PontModem) error {
 
-	var reçus, écrits, illisibles, étrangers, désordre int
+	var reçus, écrits, illisibles, étrangers, désordre, saturants int
+	crête := 0
 	suite := &SuiteRTP{}
 	relevé := time.NewTicker(5 * time.Second)
 	defer relevé.Stop()
@@ -314,7 +315,9 @@ func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP
 		case <-relevé.C:
 			slog.Info("navigateur vers la ligne",
 				"recus", reçus, "ecrits", écrits, "illisibles", illisibles,
-				"etrangers", étrangers, "desordre", désordre)
+				"etrangers", étrangers, "desordre", désordre,
+				"crete", crête, "blocs_saturants", saturants)
+			crête, saturants = 0, 0
 		case protégé, ouvert := <-socket.RTP():
 			if !ouvert {
 				return nil
@@ -342,6 +345,18 @@ func versLaLigne(ctx context.Context, socket *SocketMédia, session *SessionSRTP
 			}
 			if suite.Désordonné(paquet.SequenceNumber) {
 				désordre++
+			}
+			// Le NIVEAU de ce qu'on pousse, et pas seulement le compte des
+			// paquets. Le modem applique ensuite son propre gain de montée :
+			// un bloc qui dépasse SeuilSaturationMontée y écrêtera, et un
+			// son écrêté s'entend comme un grincement chez le correspondant
+			// sans qu'aucun compteur de paquets ne bouge.
+			niveau := niveauCrête(VersModem(paquet.Payload))
+			if niveau > crête {
+				crête = niveau
+			}
+			if niveau > SeuilSaturationMontée {
+				saturants++
 			}
 			if err := pont.ÉcrireVersModem(paquet.Payload); err != nil {
 				return fmt.Errorf("ecriture vers la carte du modem : %w%s",
@@ -402,6 +417,15 @@ func versLeNavigateur(ctx context.Context, socket *SocketMédia,
 		}
 	}
 }
+
+// SeuilSaturationMontée est le niveau au-delà duquel le gain de montée du
+// modem écrête.
+//
+// La pleine échelle divisée par le gain de 3,5 que porte le module : au-dessus, ce
+// qu'on lui donne ne tient plus une fois multiplié, et il le rogne. Mesurer
+// ICI, avant le modem, est le seul moyen de le voir — après, le son est déjà
+// abîmé et rien ne distingue un écrêtage d'une voix forte.
+const SeuilSaturationMontée = 9362
 
 // SuiteRTP suit la numérotation d'un flux RTP pour en signaler les trous.
 //
