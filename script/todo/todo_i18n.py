@@ -2368,14 +2368,6 @@ TRANSLATIONS = {
         "fr": "Distribution :",
         "en": "Distribution:",
     },
-    "Choice (number or name, default: ubuntu): ": {
-        "fr": "Choix (numéro ou nom, défaut : ubuntu) : ",
-        "en": "Choice (number or name, default: ubuntu): ",
-    },
-    "Invalid selection, using ubuntu": {
-        "fr": "Sélection invalide, utilisation d'ubuntu",
-        "en": "Invalid selection, using ubuntu",
-    },
     "Version for": {
         "fr": "Version des",
         "en": "Version for",
@@ -5654,10 +5646,6 @@ TRANSLATIONS = {
         "fr": "VM prête — installation ERPLibre en cours",
         "en": "VM ready - starting the ERPLibre install",
     },
-    "Choice (number or name, blank = native):": {
-        "fr": "Choix (numéro ou nom, vide = native) :",
-        "en": "Choice (number or name, blank = native):",
-    },
     "Pick exact versions (flat list)": {
         "fr": "Choisir des versions précises (liste à plat)",
         "en": "Pick exact versions (flat list)",
@@ -5687,14 +5675,6 @@ TRANSLATIONS = {
         "plus lents que x86.",
         "en": "s390x is emulated (TCG): boot and install are much "
         "slower than x86.",
-    },
-    "Choice (number or version, blank = default):": {
-        "fr": "Choix (numéro ou version, vide = défaut) :",
-        "en": "Choice (number or version, blank = default):",
-    },
-    "Invalid selection, using": {
-        "fr": "Sélection invalide, utilisation de",
-        "en": "Invalid selection, using",
     },
     "Delete VM(s)": {
         "fr": "🗑  Effacer une ou plusieurs VM",

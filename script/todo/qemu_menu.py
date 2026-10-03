@@ -55,46 +55,27 @@ class QemuMenuMixin:
     }
 
     def _qemu_prompt_distro(self):
-        """Demande la distribution (défaut : ubuntu)."""
-        distros = list(self._QEMU_DISTROS)
-        print(f"\n{t('Distribution:')}")
-        for i, d in enumerate(distros, 1):
-            print(f"  [{i}] {d}")
-        sel = input(t("Choice (number or name, default: ubuntu): ")).strip()
-        if not sel:
-            return "ubuntu"
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(distros):
-                return distros[idx]
-        except ValueError:
-            if sel in distros:
-                return sel
-        print(t("Invalid selection, using ubuntu"))
-        return "ubuntu"
+        """La distribution choisie par son numéro ou son nom (`ui.choose`),
+        ubuntu sur une réponse vide ; None pour [0]."""
+        return ui.choose(
+            t("Distribution:"), list(self._QEMU_DISTROS), default="ubuntu"
+        )
 
     def _qemu_prompt_version(self, distro):
-        """Demande la version pour la distro (défaut = version par défaut)."""
-        versions, default = self._QEMU_DISTROS.get(distro, ([], ""))
-        print(f"\n{t('Version for')} {distro.capitalize()} :")
-        for i, v in enumerate(versions, 1):
-            suffix = " *" if v == default else ""
-            stat = self._qemu_stat_avg("version", v, distro)
-            print(f"  [{i}] {v}{suffix}{stat}")
-        sel = input(
-            f"{t('Choice (number or version, blank = default):')} "
-        ).strip()
-        if not sel:
-            return default
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(versions):
-                return versions[idx]
-        except ValueError:
-            if sel in versions:
-                return sel
-        print(f"{t('Invalid selection, using')} {default}")
-        return default
+        """La version de `distro` choisie par son numéro ou son nom
+        (`ui.choose`), sa version par défaut sur une réponse vide ; None
+        pour [0]."""
+        versions, default = self._QEMU_DISTROS.get(distro, ([], None))
+        return ui.choose(
+            f"{t('Version for')} {distro.capitalize()} :",
+            versions,
+            default=default,
+            labels=[
+                f"{v}{self._qemu_stat_avg('version', v, distro)}"
+                for v in versions
+            ],
+            names={v: v for v in versions},
+        )
 
     # Repli SEULEMENT : la table qui fait autorité est ARCH_DISTRO_SUPPORT de
     # deploy_qemu.py, lue par _qemu_arch_distros. Ces tuples ont longtemps été
@@ -180,44 +161,42 @@ class QemuMenuMixin:
         return ""
 
     def _qemu_ask_arch(self, opts, native, allow_all=False):
-        """Affiche les architectures `opts` (natif marqué d'un *) et renvoie le
-        choix. Si `allow_all`, propose aussi [all] = toutes les archis (renvoie
-        « all »). Toute arch non native est ÉMULÉE (TCG, lente)."""
-        print(f"\n{t('Architecture:')}")
-        for i, a in enumerate(opts, 1):
+        """L'architecture choisie parmi `opts` (`ui.choose`) par son numéro,
+        son nom ou son alias de distribution (x86_64, aarch64), la native,
+        marquée, sur une réponse vide ; avec `allow_all`, « all », la
+        dernière option, prend toutes les archis. None pour [0]. Toute arch
+        non native est ÉMULÉE (TCG, lente), ce que le choix rappelle."""
+        options, labels = list(opts), []
+        names = {a: a for a in opts}
+        for a in opts:
             alias = self._QEMU_ARCH_ALIAS.get(a)
             label = f"{a} ({alias})" if alias else a
+            if alias:
+                names[alias] = a
             if a == native:
-                label += f" — {t('native')} *"
+                label += f" — {t('native')}"
             elif a == "s390x":
                 label += f"  ({t('IBM Z — emulated, slow; Ubuntu only')})"
             elif a == "arm64":
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:
                 label += f"  ({t('emulated, slow')})"
-            print(f"  [{i}] {label}{self._qemu_stat_avg('arch', a)}")
+            labels.append(f"{label}{self._qemu_stat_avg('arch', a)}")
         if allow_all:
-            print(f"  [all] {t('All supported architectures')}")
-        sel = (
-            input(f"{t('Choice (number or name, blank = native):')} ")
-            .strip()
-            .lower()
+            options.append("all")
+            labels.append(t("All supported architectures"))
+            names["all"] = "all"
+        chosen = ui.choose(
+            t("Architecture:"),
+            options,
+            default=native,
+            labels=labels,
+            names=names,
         )
-        if not sel:
-            return native
-        if allow_all and sel in ("all", "*"):
+        if chosen == "all":
             note = t("(includes emulated architectures — some VMs are slow)")
             print(f"⚠  {note}")
-            return "all"
-        chosen = None
-        for i, a in enumerate(opts, 1):
-            if sel in (str(i), a, self._QEMU_ARCH_ALIAS.get(a)):
-                chosen = a
-                break
-        if chosen is None:
-            print(f"{t('Invalid selection, using')} {native}")
-            return native
-        if chosen != native:
+        elif chosen not in (None, native):
             warn = t(
                 "This architecture is emulated (TCG): boot and install are"
                 " much slower than the native one."
@@ -226,9 +205,10 @@ class QemuMenuMixin:
         return chosen
 
     def _qemu_prompt_infra_arch(self):
-        """Architecture du parc (défaut : native de l'hôte, marquée d'un *).
-        Toute arch non native est émulée ; le catalogue est ensuite restreint
-        aux distros publiant cette arch."""
+        """Architecture du parc (`_qemu_ask_arch`) : la native de l'hôte,
+        marquée, sur une réponse vide, « all », la dernière option, ou None
+        pour [0]. Toute arch non native est émulée ; le catalogue est ensuite
+        restreint aux distros publiant cette arch."""
         native = self._native_arch()
         opts = ["amd64", "arm64", "s390x"]
         if native not in opts:  # hôte exotique : garder le natif en tête

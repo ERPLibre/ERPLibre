@@ -1746,11 +1746,14 @@ class QemuDeployMixin:
         Renvoie (étiquette_de_profil, vms) ou None si rien à faire."""
         distros = list(mod.DISTROS)
 
-        # 0) Architecture du parc (défaut : native ; [all] = TOUTES les archis
-        # supportées). Pour une arch précise non-amd64, on restreint le
-        # catalogue aux distros qui la publient ; pour [all], chaque distro
-        # reçoit uniquement les archis QU'ELLE publie.
+        # 0) Architecture du parc (défaut : native ; « all », la dernière
+        # option, prend TOUTES les archis supportées ; [0] renonce). Pour une
+        # arch précise non-amd64, on restreint le catalogue aux distros qui la
+        # publient ; pour « all », chaque distro reçoit uniquement les archis
+        # QU'ELLE publie.
         arch = self._qemu_prompt_infra_arch()  # amd64/arm64/s390x/all
+        if arch is None:
+            return None
         if arch != "all":
             allowed = self._qemu_arch_distros(arch)
             if allowed is not None:

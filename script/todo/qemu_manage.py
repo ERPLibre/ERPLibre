@@ -217,7 +217,11 @@ class QemuManageMixin:
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
         distro = self._qemu_prompt_distro()
+        if not distro:
+            return
         version = self._qemu_prompt_version(distro)
+        if not version:
+            return
         ans = input(t("Verify SHA256 after download? (y/N): "))
         parts = [
             "sudo",

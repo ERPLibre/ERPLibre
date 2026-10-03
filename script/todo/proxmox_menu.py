@@ -2464,7 +2464,11 @@ class ProxmoxMenuMixin:
             return
         mod = self._qemu_import_module()
         distro = self._qemu_prompt_distro()
+        if not distro:
+            return
         version = self._qemu_prompt_version(distro)
+        if not version:
+            return
         arch = "amd64"
         nom = (
             input(t("VM name (default: erplibre-<distro>): ")).strip()
@@ -2782,7 +2786,11 @@ class ProxmoxMenuMixin:
 
         mod = self._qemu_import_module()
         distro = self._qemu_prompt_distro()
+        if not distro:
+            return
         version = self._qemu_prompt_version(distro)
+        if not version:
+            return
         code = mod.DISTROS[distro][0][version][0]
         url = mod.image_url(distro, code, "amd64", version)
         nom = mod.default_image_name(distro, code, "amd64", version)
