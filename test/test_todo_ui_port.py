@@ -570,12 +570,12 @@ class TestChoose(unittest.TestCase):
         self.assertEqual(events[0]["names"], {"Shown B": "2"})
 
     def test_an_answer_read_two_ways_is_invalid(self):
-        # Le nom d'une option qui est le numéro d'une autre, une lettre ou
-        # un mot de tout : dit invalide plutôt que deviné. Un nom qui est
-        # le numéro de sa propre option n'a qu'une lecture.
+        # Le nom d'une option qui est le numéro d'une autre, ou un mot de
+        # tout : dit invalide plutôt que deviné. Un nom qui est le numéro de
+        # sa propre option n'a qu'une lecture ; un nom qu'une lettre lirait
+        # est refusé avant la question.
         cases = [
             (["2", "1"], (["2", "b"],), {}, "2"),
-            (["r", "1"], (["r"],), {"letters": {"r": "Reset"}}, "r"),
             (["all", "1"], (["all", "b"], True), {}, ["all"]),
         ]
         for answers, args, rules, expected in cases:
@@ -710,6 +710,30 @@ class TestChoose(unittest.TestCase):
         with self.assertRaises(ValueError):
             scripted.choose("?", ["a"], names={"b": "b"})
         self.assertEqual(scripted.events, [])
+
+    def test_an_option_or_a_name_read_as_a_letter_is_refused(self):
+        # Choisie par son numéro, une option égale à une lettre se rendrait
+        # comme la lettre : l'appelant ne saurait laquelle on a voulue. Un
+        # nom qu'une lettre lit à sa place, sans casse, ne se taperait pas :
+        # « R », son propre nom, ou déclaré. Refusés avant la question. Sous
+        # un libellé, « R » n'est pas un nom, se rend autrement, et passe.
+        scripted = port.ScriptedPort(["1"])
+        for args, names in (
+            ((["r"],), None),
+            ((["a", "r"], True), None),
+            ((["R"],), None),
+            ((["x"],), {"R": "x"}),
+        ):
+            with self.subTest(args=args, names=names):
+                with self.assertRaises(ValueError):
+                    scripted.choose(
+                        "?", *args, letters={"r": "Reset"}, names=names
+                    )
+        self.assertEqual(scripted.events, [])
+        chosen, _ = self.chosen(
+            ["1"], "?", ["R"], labels=["Reset R"], letters={"r": "Reset"}
+        )
+        self.assertEqual(chosen, "R")
 
     def test_the_facade_passes_every_rule_to_the_bound_port(self):
         scripted = port.ScriptedPort(["", "one"])

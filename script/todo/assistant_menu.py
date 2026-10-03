@@ -1116,6 +1116,7 @@ class AssistantMenuMixin:
                     f"⚠ {len(fatals)} {t('unreadable gpt files')}\n{question}"
                 )
             noms = [t(outil.name) for outil, _v, _r in appariement]
+            lettres = {"d": t("details")} if fatals else {}
             try:
                 # Le nom sur sa ligne, la description en dessous : un nom de
                 # gpt est une phrase, et les deux bout à bout dépassent la
@@ -1129,12 +1130,14 @@ class AssistantMenuMixin:
                         f"        {t(outil.description)[:LARGEUR]}"
                         for nom, (outil, verdict, _r) in zip(noms, appariement)
                     ],
+                    # Un nom que [d] lirait à sa place ne se déclare pas :
+                    # son outil se choisit par son numéro.
                     names={
                         nom: rang
                         for rang, nom in enumerate(noms)
-                        if noms.count(nom) == 1
+                        if noms.count(nom) == 1 and nom.lower() not in lettres
                     },
-                    letters={"d": t("details")} if fatals else None,
+                    letters=lettres,
                 )
             except KeyboardInterrupt:
                 print()

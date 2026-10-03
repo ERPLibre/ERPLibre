@@ -297,16 +297,16 @@ class BasePort:
         une option qui est une chaîne est aussi son nom. `default`, une
         option d'un choix simple, est ce que prend une réponse vide ; une
         action de `letters` ({lettre: libellé}), tapée seule, rend sa lettre,
-        en choix multiple comme en choix simple. Une lettre qui est aussi le
-        nom d'une option se lit de deux façons : tapée telle que la liste
-        l'écrit, elle est invalide, et cette option ne se choisit que par son
-        numéro. Dans un choix multiple, un nom qui porte une espace ou une
-        virgule ne se tape pas, coupé par les séparateurs : son option s'y
-        choisit par son numéro. Une réponse invalide le dit (`notice`) et la
-        question revient. Les règles sont celles de `chosen_keys` ; la
-        question, un `ask` de genre `choose` (`choice_question`), posé par
-        `menu`. ValueError, avant de demander, pour un défaut dans un choix
-        multiple, une lettre hors de a à z, un libellé de plus ou de moins que
+        en choix multiple comme en choix simple. Dans un choix multiple, un
+        nom qui porte une espace ou une virgule ne se tape pas, coupé par les
+        séparateurs : son option s'y choisit par son numéro. Une réponse
+        invalide le dit (`notice`) et la question revient. Les règles sont
+        celles de `chosen_keys` ; la question, un `ask` de genre `choose`
+        (`choice_question`), posé par `menu`. ValueError, avant de demander,
+        pour un défaut dans un choix multiple, une lettre hors de a à z, une
+        option égale à une lettre, que son numéro rendrait comme la lettre,
+        un nom qu'une lettre lirait à sa place, sans casse (une option sans
+        libellé est son propre nom), un libellé de plus ou de moins que
         d'options, un défaut ou un nom hors des options."""
         options = list(options)
         if labels is None:
@@ -319,6 +319,11 @@ class BasePort:
             re.fullmatch("[a-z]+", letter) for letter in letters or ()
         ):
             raise ValueError("one label per option, letters from a to z")
+        taken = set(letters or ())
+        if any(isinstance(o, str) and o in taken for o in options) or any(
+            name.lower() in taken for name in names or {}
+        ):
+            raise ValueError("an option or a name read as a letter")
         shown = {
             name: str(options.index(option) + 1)
             for name, option in (names or {}).items()

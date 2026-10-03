@@ -1098,6 +1098,30 @@ class MenusDuLLM(unittest.TestCase):
                 if refusee != "2":
                     self.assertIn(f"{t('Invalid choice: ')}{refusee}", shown)
 
+    def test_un_outil_nomme_comme_une_lettre_se_choisit_par_son_numero(self):
+        # Avec des fichiers illisibles, [d] lit « D » : le nom de l'outil ne
+        # se déclare pas, « D » détaille, et l'outil se choisit par « 1 ».
+        import types
+
+        outil = types.SimpleNamespace(name="D", description="d")
+        cls = type(self.todo)
+        self.todo._llm_state()["gpt"] = None
+        with (
+            patch.object(
+                cls,
+                "_llm_gpts",
+                return_value=([outil], [types.SimpleNamespace(fatal=True)]),
+            ),
+            patch.object(
+                cls, "_llm_apparier", return_value=[(outil, "ok", "")]
+            ),
+            patch.object(cls, "_llm_dire_probleme") as dire,
+            patch.object(cls, "_llm_conversation"),
+        ):
+            self.answered("_llm_gpt_catalogue", inputs=["D", "1"])
+        self.assertIs(self.todo._llm_state()["gpt"], outil)
+        self.assertEqual(dire.call_count, 1)
+
     def test_un_nom_que_deux_outils_portent_n_en_choisit_aucun(self):
         import types
 
