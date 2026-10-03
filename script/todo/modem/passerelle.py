@@ -557,6 +557,8 @@ class Passerelle:
             })
         entrants = self._remonter_les_entrants()
         releves = self._ramasser_les_relevements()
+        if not releves["echecs"]:
+            releves = releves["televerses"]
 
         self.etat.oublier_les_vieux(self.horloge())
         self.etat.enregistrer()
@@ -577,22 +579,24 @@ class Passerelle:
         meme enregistrement.
 
         Rien n'est leve ici : un relevement qui ne monte pas ne doit pas
-        arreter les SMS, qui sont le service rendu principal.
+        arreter les SMS, qui sont le service rendu principal. Rien n'est
+        journalise non plus — le compte rendu REMONTE, comme celui des SMS et
+        des appels, et c'est la boucle qui ecrit. Un tour n'a pas de quoi
+        ecrire : le journal est un parametre d'elle, pas une fonction du
+        module.
         """
         from script.todo.modem import recuperation as rec_mod
 
         try:
             comptes = rec_mod.ramasser_les_depots()
         except Exception as exc:  # noqa: BLE001 - voir la docstring
-            journal("passerelle : relevements non ramasses — %s" % exc)
-            return 0
-        for compte in comptes:
-            if compte["ok"]:
-                journal("passerelle : message de l'operateur televerse")
-            else:
-                journal("passerelle : relevement non traite — %s"
-                        % compte["detail"])
-        return sum(1 for c in comptes if c["ok"])
+            return {"televerses": 0, "echecs": ["non ramasses : %s" % exc]}
+        return {
+            "televerses": sum(1 for c in comptes if c["ok"]),
+            # Le motif REMONTE : un message qui n'arrive pas dans Odoo se
+            # cherche autrement pendant des heures.
+            "echecs": [c["detail"] for c in comptes if not c["ok"]],
+        }
 
     # ------------------------------------------------------------------
     def _appels_a_rapporter(self):

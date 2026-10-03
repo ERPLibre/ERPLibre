@@ -15,6 +15,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -194,6 +195,41 @@ class TestCycle(Montage):
         self.assertEqual(evenements[0]["uuid"], "u1")
         self.assertEqual(evenements[0]["state"], "delivered")
         self.assertGreaterEqual(evenements[0]["seq"], 1)
+
+    def test_un_relevement_ramasse_se_compte_sans_rien_journaliser(self):
+        """Un tour n'a pas de quoi ecrire : le journal est un parametre de la
+        BOUCLE, pas une fonction du module. Y appeler `journal` faisait tomber
+        l'agent au premier relevement reussi, et systemd le relancait — la
+        chaine repartait et retombait au suivant."""
+        agent = self.monter(FauxServeur())
+        with mock.patch(
+                "script.todo.modem.recuperation.ramasser_les_depots",
+                return_value=[{"fichier": "a.wav", "ok": True, "detail": "7"}]):
+            compte = agent.cycle()
+        self.assertEqual(compte["releves"], 1)
+
+    def test_un_relevement_en_echec_remonte_son_motif(self):
+        """Un message qui n'arrive pas dans Odoo se cherche autrement pendant
+        des heures : le motif doit sortir du tour."""
+        agent = self.monter(FauxServeur())
+        with mock.patch(
+                "script.todo.modem.recuperation.ramasser_les_depots",
+                return_value=[{"fichier": "a.wav", "ok": False,
+                               "detail": "structure non reconnue"}]):
+            compte = agent.cycle()
+        self.assertEqual(compte["releves"]["televerses"], 0)
+        self.assertIn("structure non reconnue", compte["releves"]["echecs"])
+
+    def test_un_ramassage_qui_leve_n_arrete_pas_les_sms(self):
+        """Les SMS sont le service rendu principal : un relevement fautif ne
+        doit pas emporter le tour."""
+        agent = self.monter(FauxServeur(groupes=[_travail("u1")]))
+        with mock.patch(
+                "script.todo.modem.recuperation.ramasser_les_depots",
+                side_effect=OSError("disque plein")):
+            compte = agent.cycle()
+        self.assertEqual(compte["recus"], 1)
+        self.assertIn("disque plein", compte["releves"]["echecs"][0])
 
     def test_un_refus_du_modem_se_rapporte_en_echec(self):
         agent = self.monter(FauxServeur(groupes=[_travail("u1")]),
