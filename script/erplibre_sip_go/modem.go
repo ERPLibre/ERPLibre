@@ -389,6 +389,22 @@ func (m *Modem) RéglerVolumeÉcoute(cran int) error {
 // qui fait perdre du niveau au correspondant sans rien annoncer.
 const GainMicroUnité = 8192
 
+// GainÉcouteInchangé laisse le gain de descente tel que le modem le porte.
+const GainÉcouteInchangé = -1
+
+// GainÉcouteDéfaut triple le gain de DESCENTE du modem.
+//
+// À l'unité (8192), ce que la ligne rend arrive autour de -34 dBFS en valeur
+// efficace, là où une parole téléphonique se tient entre -20 et -26 : les
+// enregistrements s'entendent mal. Le volume d'écoute (AT+CLVL) est déjà à
+// son cran maximal et n'offre aucune marge.
+//
+// Trois et non quatre : la crête la plus forte mesurée sur des messages
+// réels laisse 3,97 fois de marge avant la pleine échelle, et un son écrêté
+// ne se répare pas. Entre les mots, la ligne rend un zéro exact — il n'y a
+// donc pas de souffle que ce gain amplifierait.
+const GainÉcouteDéfaut = 3 * GainMicroUnité
+
 // GainMicroMax borne le gain de montée du modem.
 const GainMicroMax = 65535
 

@@ -50,8 +50,11 @@ type OptionsModem struct {
 	ModePCM int    // mode de AT+QPCMV
 	Sonder  bool   // mesurer les modes au lieu de jouer l'annonce
 	AudMod  int    // AT+QAUDMOD ; ModeAudioInchangé pour ne pas y toucher
-	Micro   bool   // ouvrir le micro dès le décroché plutôt qu'à la demande
-	Pilote  bool   // commander l'appel par l'entrée standard, non au clavier
+	// GainÉcoute est le gain de descente, AT+QAUDCFG="decgain".
+	// GainÉcouteInchangé pour laisser celui du modem.
+	GainÉcoute int
+	Micro      bool // ouvrir le micro dès le décroché plutôt qu'à la demande
+	Pilote     bool // commander l'appel par l'entrée standard, non au clavier
 
 	// VolumeÉcoute est le cran de AT+CLVL posé au décroché. Négatif pour ne
 	// pas y toucher.

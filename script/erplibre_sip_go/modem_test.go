@@ -103,3 +103,34 @@ func TestLEtatDuCanalVoixSeLitDansLaReponse(t *testing.T) {
 		t.Fatal("une erreur ne doit pas se lire comme un etat")
 	}
 }
+
+func TestLeGainDEcouteNeSatureAucunMessageConnu(t *testing.T) {
+	// La crête la plus forte relevée sur des messages réels, en seize bits
+	// signés. Ce n'est pas un relevé d'un jour : c'est la borne qui décide
+	// du gain qu'on peut poser sans écrêter, et un son écrêté ne se répare
+	// pas.
+	const crêteLaPlusForte = 8247
+
+	facteur := float64(GainÉcouteDéfaut) / float64(GainMicroUnité)
+	if facteur <= 1 {
+		t.Fatalf("gain x%.1f : il ne monte rien", facteur)
+	}
+	if poussée := facteur * crêteLaPlusForte; poussée >= 32768 {
+		t.Fatalf("gain x%.1f : la crete connue monterait a %.0f et ecreterait",
+			facteur, poussée)
+	}
+	// Et il doit monter ASSEZ : à l'unité, la parole arrive vers -34 dBFS
+	// efficaces, là où elle s'entend entre -20 et -26.
+	if facteur < 2.5 {
+		t.Fatalf("gain x%.1f : trop faible pour sortir des -34 dBFS", facteur)
+	}
+}
+
+func TestUnGainInchangeNeTouchePasAuModem(t *testing.T) {
+	// Le service ne pose le gain QUE si on le lui demande : une valeur
+	// posée à chaque démarrage sur un modem réglé à la main l'écraserait.
+	if GainÉcouteInchangé >= 0 {
+		t.Fatalf("GainÉcouteInchangé vaut %d : indistinguable d'un vrai gain",
+			GainÉcouteInchangé)
+	}
+}

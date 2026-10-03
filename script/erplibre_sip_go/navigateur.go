@@ -86,7 +86,16 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 		}
 		defer modem.Close()
 		o.Carte = carte
-		slog.Info("modem prêt", "carte", carte, "port", o.Port)
+		// Le gain de descente est posé UNE fois, au démarrage, et jamais par
+		// appel : tout réglage audio rompt le canal voix USB, et le poser en
+		// pleine conversation la rendrait muette.
+		if o.GainÉcoute != GainÉcouteInchangé {
+			if err := modem.RéglerGainÉcouteModem(o.GainÉcoute); err != nil {
+				slog.Warn("gain d'écoute non réglé", "err", err)
+			}
+		}
+		slog.Info("modem prêt", "carte", carte, "port", o.Port,
+			"gain_ecoute", o.GainÉcoute)
 	}
 
 	ua, err := sipgo.NewUA()
