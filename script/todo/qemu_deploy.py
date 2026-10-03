@@ -9,7 +9,6 @@ import getpass
 import grp
 import json
 import os
-import re
 import shlex
 import signal
 import subprocess
@@ -826,35 +825,32 @@ class QemuDeployMixin:
     def _qemu_customize_vms(self, selected, host_cpu):
         """Personnalise chaque VM avant déploiement : NOM, DISQUE, RAM et vCPU.
         `selected` = liste de (d, v, ram, disk, a, vcpus) où les valeurs sont
-        déjà FINALES (profil de ressources appliqué).
-        Renvoie (names, selected_maj). Défaut : rien ne change."""
+        déjà FINALES (profil de ressources appliqué). Les VM à modifier se
+        choisissent sous les règles d'un choix multiple (`ui.choose`), par
+        numéro, plage, nom ou `tout` ; une réponse vide n'en modifie aucune.
+        Renvoie (names, selected_maj), ou None pour [0]."""
         names = [
             self._qemu_infra_name(d, v, a) for d, v, _r, _dk, a, _c in selected
         ]
         sel = [list(s) for s in selected]  # mutable
-
-        def show():
-            print(f"\n{t('VMs (default = no change):')}")
-            for i, (nm, s) in enumerate(zip(names, sel), 1):
-                d, v, ram, disk, a, vcpus = s
-                print(
-                    f"  [{i}] {nm}   ({d} {v} [{a}])  {vcpus} vCPU  "
-                    f"RAM {ram}Mo  {t('disk')} {disk}"
+        chosen = ui.choose(
+            t("VMs (default = no change):"),
+            list(range(len(sel))),
+            multi=True,
+            labels=[
+                f"{nm}   ({d} {v} [{a}])  {vcpus} vCPU  "
+                f"RAM {ram}Mo  {t('disk')} {disk}"
+                for nm, (d, v, ram, disk, a, vcpus) in zip(
+                    names, sel, strict=True
                 )
-
-        show()
-        raw = input(
-            t("Modify which VMs? (numbers, comma-separated; blank = none): ")
-        ).strip()
-        for tok in re.split(r"[\s,]+", raw):
-            if not tok:
-                continue
-            try:
-                i = int(tok) - 1
-            except ValueError:
-                continue
-            if not (0 <= i < len(sel)):
-                continue
+            ],
+            names={
+                nm: i for i, nm in enumerate(names) if names.count(nm) == 1
+            },
+        )
+        if chosen is None:
+            return None
+        for i in chosen:
             # Pour la VM i : nom, disque, RAM, vCPU (vide = garder la valeur).
             new = input(
                 f"  {names[i]} — {t('new name (blank = keep):')} "
@@ -1877,7 +1873,10 @@ class QemuDeployMixin:
         res_label, selected = got
 
         # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
-        names, selected = self._qemu_customize_vms(selected, host_cpu)
+        got = self._qemu_customize_vms(selected, host_cpu)
+        if got is None:
+            return None
+        names, selected = got
 
         vms = [
             self._qemu_make_vm(d, v, a, ram, disk, vcpus, names[i])
@@ -1959,17 +1958,16 @@ class QemuDeployMixin:
         )
 
     def _qemu_ask_vm_tools(self, vms):
-        """Outils de développement des VM graphiques : liste à cocher.
+        """Outils de développement des VM graphiques : un choix multiple
+        (`ui.choose`), par numéro, plage, nom ou `tout`, vide pour aucun ;
+        un tuple de clés, ou None pour [0].
 
         Ne montre que ce qu'au moins une VM du parc peut recevoir : les IDE
         graphiques disparaissent d'un parc de serveurs, où ils n'auraient rien
         pour s'afficher, et la compilation mobile reste offerte — elle compile,
         elle n'affiche pas. La réponse vaut pour tout le parc et sera filtrée
-        machine par machine.
-
-        Saisie par numéros séparés par des espaces ou des virgules, « tous »
-        pour tout cocher, vide pour rien : quatre questions oui/non de plus
-        alourdiraient une séquence d'invites déjà longue."""
+        machine par machine. Une liste plutôt que quatre questions oui/non,
+        qui alourdiraient une séquence d'invites déjà longue."""
         choices = [
             c
             for c in self._qemu_vm_tool_choices()
@@ -1985,32 +1983,26 @@ class QemuDeployMixin:
         ]
         if not choices:
             return ()
-        print(f"\n{t('Development tools:')}")
-        for i, (_key, label, hint) in enumerate(choices, 1):
-            print(f"  [{i}] {label} — {hint}")
+        question = t("Development tools:")
+        # Le mobile fait échouer la VM quand l'application ne compile pas :
+        # c'est le but, mais il vaut mieux le savoir avant de cocher.
+        if any(k == "mobile" for k, _l, _h in choices):
+            question += (
+                f"\n  ⚠ {t('a failed mobile build marks the VM as failed')}"
+            )
         gb = ", ".join(
             f"{label} +{self._QEMU_VM_TOOLS[key]['disk_gb']} Go"
             for key, label, _hint in choices
         )
-        # Le mobile fait échouer la VM quand l'application ne compile pas :
-        # c'est le but, mais il vaut mieux le savoir avant de cocher.
-        if any(k == "mobile" for k, _l, _h in choices):
-            print(f"  ⚠ {t('a failed mobile build marks the VM as failed')}")
-        print(f"  {t('Disk needed:')} {gb}")
-        answer = input(
-            f"{t('Numbers separated by spaces, [all], blank = none:')} "
-        ).strip()
-        if not answer:
-            return ()
-        if answer.lower() in ("all", "tous", "toutes", "*"):
-            return tuple(key for key, _l, _h in choices)
-        picked = []
-        for token in answer.replace(",", " ").split():
-            if token.isdigit() and 1 <= int(token) <= len(choices):
-                key = choices[int(token) - 1][0]
-                if key not in picked:
-                    picked.append(key)
-        return tuple(picked)
+        keys = [key for key, _label, _hint in choices]
+        picked = ui.choose(
+            f"{question}\n  {t('Disk needed:')} {gb}",
+            keys,
+            multi=True,
+            labels=[f"{label} — {hint}" for _key, label, hint in choices],
+            names={label: key for key, label, _hint in choices},
+        )
+        return None if picked is None else tuple(picked)
 
     def _qemu_ask_ai_tools(self, vm_tools):
         """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché ;
@@ -2148,6 +2140,8 @@ class QemuDeployMixin:
         if app_store is None:
             return None
         vm_tools = self._qemu_ask_vm_tools(vms)
+        if vm_tools is None:
+            return None
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )

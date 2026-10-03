@@ -182,5 +182,95 @@ class TestZeroRenonceAuDeploiement(_Cas):
                 self.assertNotIn(t("Cancelled."), self.shown)
 
 
+SELECTED = [
+    ("forged_a", "1", 1024, "10G", "amd64", 2),
+    ("forged_b", "2", 2048, "20G", "amd64", 2),
+]
+TOOLS = [("pycharm", "PyCharm", "IDE"), ("forgejo", "Forgejo", "forge")]
+
+
+class TestLesChoixMultiples(_Cas):
+    """Les VM à personnaliser et les outils de développement : un choix
+    multiple, par numéro, plage, nom ou `tout` ; une réponse vide n'en
+    prend aucun ; une faute redemande la réponse entière au lieu d'en
+    écarter un morceau sans rien dire, et `tous` ne se lit plus."""
+
+    def setUp(self):
+        super().setUp()
+        todo = self.todo
+        todo._qemu_infra_name = lambda d, v, a: f"forged-vm-{d[-1]}"
+        todo._qemu_vm_tool_choices = lambda: list(TOOLS)
+        todo._qemu_tools_for = lambda *a: ["x"]
+        todo._QEMU_VM_TOOLS = {
+            "pycharm": {"disk_gb": 3},
+            "forgejo": {"disk_gb": 1},
+        }
+
+    def customize(self, *answers):
+        call = lambda: self.todo._qemu_customize_vms(SELECTED, 8)  # noqa: E731
+        return self.play(call, *answers)
+
+    def test_the_vms_to_customize(self):
+        # Une VM choisie pose quatre questions : son nom, son disque, sa
+        # RAM et ses vCPU, une réponse vide gardant chacun.
+        names, _ = self.customize("")
+        self.assertEqual(names, ["forged-vm-a", "forged-vm-b"])
+        self.assertEqual(len(self.asked), 1)
+        names, _ = self.customize("2", "forged_new", "", "", "")
+        self.assertEqual(names, ["forged-vm-a", "forged_new"])
+        names, _ = self.customize("forged-vm-a", "forged_renamed", "", "", "")
+        self.assertEqual(names, ["forged_renamed", "forged-vm-b"])
+        self.customize("tout", *[""] * 8)
+        self.assertEqual(len(self.asked), 9)
+        wrong = ["tous", "1 x", "3"]
+        self.assertIsNone(self.customize(*wrong, "0"))
+        self.assertEqual(self.refused(), wrong)
+
+    def test_the_development_tools(self):
+        ask = lambda *answers: self.play(  # noqa: E731
+            lambda: self.todo._qemu_ask_vm_tools([{}]), *answers
+        )
+        self.assertEqual(ask(""), ())
+        self.assertEqual(ask("2"), ("forgejo",))
+        self.assertEqual(ask("PyCharm"), ("pycharm",))
+        self.assertEqual(ask("tout"), ("pycharm", "forgejo"))
+        self.assertIn("PyCharm +3 Go, Forgejo +1 Go", self.shown)
+        wrong = ["tous", "toutes", "1 9"]
+        self.assertIsNone(ask(*wrong, "0"))
+        self.assertEqual(self.refused(), wrong)
+        # Coupé aux espaces, « Android Studio » ne se tape pas : son outil
+        # se choisit par son numéro.
+        self.todo._qemu_vm_tool_choices = lambda: [
+            ("android", "Android Studio", "IDE")
+        ]
+        self.todo._QEMU_VM_TOOLS["android"] = {"disk_gb": 9}
+        self.assertEqual(ask("Android Studio", "1"), ("android",))
+        self.assertEqual(self.refused(), ["Android Studio"])
+
+    def test_zero_at_either_list_deploys_nothing(self):
+        todo = self.todo
+        todo._qemu_prompt_infra_arch = lambda: "amd64"
+        todo._qemu_arch_distros = lambda arch: None
+        todo._qemu_stat_avg = lambda *a: ""
+        todo._host_free_ram_mb = lambda: 8192
+        todo._qemu_print_plan = lambda *a: self.fail("plan imprimé")
+        # La distribution, sa version, les ressources, puis [0].
+        got = self.play(
+            lambda: todo._qemu_collect_vms_cli(MOD), "1", "1", "", "0"
+        )
+        self.assertIsNone(got)
+        todo._qemu_default_ssh_key = lambda: "/forged/id_ed25519.pub"
+        todo._qemu_ask_timezone = lambda: "UTC"
+        todo._qemu_ask_locale = lambda: "C.UTF-8"
+        todo._qemu_desktop_suffixes = lambda: {}
+        todo._qemu_list_domains = lambda: self.fail("déploiement poursuivi")
+        vms = [{"name": "forged-vm", "distro": "forged_a", "arch": "amd64"}]
+        # La clé, un serveur, puis [0] aux outils.
+        call = lambda: todo._qemu_collect_options_cli(vms, "x1")  # noqa: E731
+        self.assertIsNone(self.play(call, "", "", "0"))
+        self.assertEqual(len(self.asked), 3)
+        self.assertNotIn(t("Cancelled."), self.shown)
+
+
 if __name__ == "__main__":
     unittest.main()

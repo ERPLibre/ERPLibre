@@ -2516,11 +2516,6 @@ TRANSLATIONS = {
         "fr": "VM (défaut = aucune modification) :",
         "en": "VMs (default = no change):",
     },
-    "Modify which VMs? (numbers, comma-separated; blank = none): ": {
-        "fr": "Modifier quelles VM ? (numéros séparés par des virgules ; "
-        "vide = aucune) : ",
-        "en": "Modify which VMs? (numbers, comma-separated; blank = none): ",
-    },
     "new name (blank = keep):": {
         "fr": "nouveau nom (vide = garder) :",
         "en": "new name (blank = keep):",
@@ -12745,10 +12740,6 @@ TRANSLATIONS = {
         "en": "Development tools:",
     },
     "Disk needed:": {"fr": "Disque nécessaire :", "en": "Disk needed:"},
-    "Numbers separated by spaces, [all], blank = none:": {
-        "fr": "Numéros séparés par des espaces, [tous], vide = aucun :",
-        "en": "Numbers separated by spaces, [all], blank = none:",
-    },
     "No graphical VM: these tools are not installed.": {
         "fr": "Aucune VM graphique : ces outils ne seront pas installés.",
         "en": "No graphical VM: these tools are not installed.",
