@@ -1237,8 +1237,6 @@ class PosteTelephonique(unittest.TestCase):
                 self.assertLessEqual(len(sans), len(complet))
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
@@ -1357,3 +1355,7 @@ class EnregistreurDAnnonce(unittest.TestCase):
                                  tui_mod.t("modem_tui_ann_record"))
 
         asyncio.run(essai())
+
+
+if __name__ == "__main__":
+    unittest.main()
