@@ -1220,8 +1220,9 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
             (0, "forged"),
         ]
         out = io.StringIO()
+        self.scripted = port.ScriptedPort(typed)
         with (
-            ui.bind(port.ScriptedPort(typed)),
+            ui.bind(self.scripted),
             patch("builtins.input", side_effect=answers),
             patch("getpass.getpass", return_value="forged"),
             patch("zipfile.ZipFile") as archive,
@@ -1242,17 +1243,39 @@ class TestDownloadDatabaseBackup(unittest.TestCase):
     def test_a_shown_number_or_name_picks_its_database(self):
         # « 2 » est le numéro affiché de forged_two, et son nom le choisit
         # aussi ; « 02 » ou un nom absent de la liste sont dits invalides et
-        # la question revient ; « 0 » ou une réponse vide annulent.
+        # la question revient ; « 0 » ou une réponse vide annulent, sans
+        # chemin ni autre commande que la liste.
         listed = ["forged_one", "forged_two"]
-        for typed, name in (
-            (["2"], "forged_two"),
-            (["forged_two"], "forged_two"),
-            (["02", "forged_other", "1"], "forged_one"),
-            (["0"], ""),
-            ([""], ""),
+        for typed, name, refused in (
+            (["2"], "forged_two", []),
+            (["forged_two"], "forged_two", []),
+            (
+                ["02", "forged_other", "1"],
+                "forged_one",
+                ["02", "forged_other"],
+            ),
+            (["0"], "", []),
+            ([""], "", []),
         ):
-            done, _ = self.download(["forged", ""], listed, typed=typed)
-            self.assertEqual(done[2], name, typed)
+            with self.subTest(typed=typed):
+                done, read = self.download(["forged", ""], listed, typed=typed)
+                if name:
+                    path = done[1]
+                    self.assertTrue(path.startswith(f"./image_db/{name}_"))
+                    self.assertEqual(done, (0, path, name))
+                    self.assertEqual(read, [path])
+                else:
+                    self.assertEqual((done, read), ((1, "", ""), []))
+                    self.assertEqual(len(self.commands), 1)
+                notices = [
+                    e["text"]
+                    for e in self.scripted.events
+                    if e.get("t") == "notice"
+                ]
+                self.assertEqual(
+                    notices,
+                    [f"{todo_i18n.t('Invalid choice: ')}{a}" for a in refused],
+                )
 
     def test_a_list_that_fails_asks_the_name_by_hand(self):
         # list_remote.py rend 1, et son erreur arrive dans la sortie
