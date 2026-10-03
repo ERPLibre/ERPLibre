@@ -140,12 +140,40 @@ def segments(courbe, pont_ms=500, pas_ms=100):
     return trouves
 
 
-def jouer(nom_recette, numero, code, binaire, port, executer=None, maintenant=None):
+def ligne_occupee(service_actif=None) -> str:
+    """Rend la raison de ne pas composer, ou "" quand la voie est libre.
+
+    Une recette ouvre le port AT avec un verrou EXCLUSIF. Le service de voix
+    le tient en permanence : lance pendant qu'il tourne, le binaire echoue a
+    l'ouverture du modem, donc avant meme de composer, et l'erreur parle d'un
+    fichier et non de la cause.
+    """
+    if service_actif is None:
+        from script.todo.modem import service as svc_mod
+
+        if not svc_mod.posee(svc_mod.VOIX):
+            return ""
+        service_actif = svc_mod.active(svc_mod.VOIX)
+    if not service_actif:
+        return ""
+    return (
+        "le service de voix tient le port AT : arretez-le, relevez, puis"
+        " relancez-le\n"
+        "    sudo systemctl stop erplibre-sip-go\n"
+        "    sudo systemctl start erplibre-sip-go"
+    )
+
+
+def jouer(nom_recette, numero, code, binaire, port, executer=None, maintenant=None,
+          service_actif=None):
     """Joue la recette et rend (bilan, chemin_wav).
 
     `executer(commande, entree, timeout)` rend (code_sortie, stdout, stderr) ;
     il est injectable pour que la logique se verifie sans modem.
     """
+    occupee = ligne_occupee(service_actif)
+    if occupee:
+        return {"erreur": occupee}, ""
     with open(chemin_recette(nom_recette), encoding="utf-8") as flux:
         recette = json.load(flux)
     if demande_code(recette) and not code:

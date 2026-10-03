@@ -610,6 +610,12 @@ def _repondeur_recuperer(todo):
     if not device_mod.port_reserve():
         print("  " + t("modem_ans_fetch_no_port"))
         return
+    # Le refus AVANT le coffre : deverrouiller un trousseau pour s'entendre
+    # dire ensuite que la ligne est prise fait payer un geste pour rien.
+    occupee = rec_mod.ligne_occupee()
+    if occupee:
+        print("  " + occupee)
+        return
     numero, raison = mv_mod.numero_messagerie()
     if not numero:
         print("  " + raison)

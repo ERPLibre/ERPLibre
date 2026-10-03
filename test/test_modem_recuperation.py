@@ -32,7 +32,7 @@ class TestJouer(unittest.TestCase):
     def test_le_code_passe_par_l_entree_standard_et_jamais_en_argument(self):
         """La ligne de commande se lit par tout programme de la machine."""
         rec.jouer("reperage_code_ecoute", "+15145550199", "864209", "/bin/erplibre-sip-go",
-                  "/dev/erplibre-modem-at", executer=self.executer,
+                  "/dev/erplibre-modem-at", executer=self.executer, service_actif=False,
                   maintenant=datetime(2026, 9, 17, 8, 0, 0))
         commande, entree, _ = self.appels[0]
         self.assertNotIn("864209", " ".join(commande))
@@ -40,7 +40,7 @@ class TestJouer(unittest.TestCase):
 
     def test_l_enregistrement_va_sous_private(self):
         _, wav = rec.jouer("reperage_code_ecoute", "+15145550199", "864209", "/bin/x",
-                           "/dev/p", executer=self.executer,
+                           "/dev/p", executer=self.executer, service_actif=False,
                            maintenant=datetime(2026, 9, 17, 8, 0, 0))
         self.assertTrue(wav.startswith(os.path.join(self.tmp.name, "private/")))
         self.assertTrue(wav.endswith("reperage_code_ecoute-20260917-080000.wav"))
@@ -48,19 +48,20 @@ class TestJouer(unittest.TestCase):
     def test_le_delai_couvre_toute_la_recette(self):
         """Abandonner le processus avant la fin laisserait l'appel ouvert."""
         rec.jouer("reperage_code_ecoute", "+15145550199", "1234", "/bin/x", "/dev/p",
-                  executer=self.executer)
+                  executer=self.executer, service_actif=False)
         self.assertGreaterEqual(self.appels[0][2], 20 + 20 + 90)
 
     def test_sans_code_rien_ne_part(self):
         bilan, wav = rec.jouer("reperage_code_ecoute", "+15145550199", "", "/bin/x",
-                               "/dev/p", executer=self.executer)
+                               "/dev/p", executer=self.executer, service_actif=False)
         self.assertIn("code", bilan["erreur"])
         self.assertEqual(self.appels, [])
         self.assertEqual(wav, "")
 
     def test_une_sortie_illisible_devient_une_erreur_lisible(self):
         bilan, _ = rec.jouer("reperage_code_ecoute", "+15145550199", "1234", "/bin/x",
-                             "/dev/p", executer=lambda *a: (2, "", "port tenu"))
+                             "/dev/p", executer=lambda *a: (2, "", "port tenu"),
+                             service_actif=False)
         self.assertIn("port tenu", bilan["erreur"])
 
 
@@ -366,6 +367,24 @@ class TestRecetteDEffacement(unittest.TestCase):
         self.assertIsNone(rec.silence_avant_effacement_s(
             rec.charger_recette("reperage_code_ecoute")))
 
+    def test_le_service_actif_arrete_tout_avant_le_coffre(self):
+        """Deverrouiller un coffre pour s'entendre dire que la ligne est
+        prise fait payer un geste pour rien."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.modem import menu
+
+        coffre = mock.patch("script.todo.modem.code_messagerie.coffre")
+        sortie = io.StringIO()
+        with mock.patch.object(menu.device_mod, "port_reserve", return_value="/dev/p"), \
+                mock.patch("script.todo.modem.recuperation.ligne_occupee",
+                           return_value="le service tient le port"), \
+                coffre as ouvrir, redirect_stdout(sortie):
+            menu._repondeur_recuperer(todo=None)
+        self.assertIn("le service tient le port", sortie.getvalue())
+        ouvrir.assert_not_called()
+
     def test_l_avertissement_s_affiche_avant_le_choix(self):
         import io
         from contextlib import redirect_stdout
@@ -374,6 +393,8 @@ class TestRecetteDEffacement(unittest.TestCase):
 
         sortie = io.StringIO()
         with mock.patch.object(menu.device_mod, "port_reserve", return_value="/dev/p"), \
+                mock.patch("script.todo.modem.recuperation.ligne_occupee",
+                           return_value=""), \
                 mock.patch.object(menu.mv_mod, "numero_messagerie", return_value=("+15145550199", "")), \
                 mock.patch("script.todo.modem.code_messagerie.coffre"), \
                 mock.patch("script.todo.modem.code_messagerie.lire", return_value="1234"), \
@@ -392,6 +413,25 @@ class TestRecetteDEffacement(unittest.TestCase):
         for i, etape in enumerate(etapes):
             if "7" in etape.get("touches", ""):
                 self.assertIn("verifier_parole", etapes[i - 1])
+
+
+class TestLaLigneOccupee(unittest.TestCase):
+    """Une recette prend le port AT pour elle seule.
+
+    Le service de voix le tient en permanence. Composer pendant qu'il tourne
+    donne un appel facture, qui echoue sur un verrou et rapporte un nom de
+    fichier au lieu de la cause.
+    """
+
+    def test_le_service_actif_empeche_de_composer(self):
+        bilan, wav = rec.jouer("reperage_code_ecoute", "+15145550199", "1234",
+                               "/bin/x", "/dev/p", service_actif=True)
+        self.assertEqual(wav, "")
+        self.assertIn("port AT", bilan["erreur"])
+        self.assertIn("systemctl stop", bilan["erreur"])
+
+    def test_le_service_eteint_laisse_composer(self):
+        self.assertEqual(rec.ligne_occupee(service_actif=False), "")
 
 
 if __name__ == "__main__":
