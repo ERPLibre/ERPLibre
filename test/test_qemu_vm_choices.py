@@ -5,10 +5,10 @@
 rouvrent un suivi, sous les règles des choix.
 
 Changer l'état et Effacer des VM lancent virsh après leurs confirmations :
-une réponse vide, [0] ou une faute n'en lancent aucun et ne posent pas la
-confirmation ; `tout` y mène, et seules ses réponses oui agissent. Chaque
-liste de réponses finit par une réponse acceptée ou « 0 » : une réponse
-invalide repose la question.
+une réponse vide, [0], Ctrl+D ou une faute n'en lancent aucun et ne posent
+pas la confirmation ; `tout` y mène, et seules ses réponses oui agissent.
+Chaque liste de réponses finit par une réponse acceptée ou « 0 » : une
+réponse invalide repose la question.
 
 Les VM, les suivis et les navigateurs sont inventés ; virsh n'est jamais
 lancé, `execute` note chaque commande.
@@ -100,6 +100,53 @@ class TestChangerLEtat(_Cas):
         self.play("_qemu_change_state", "tout", "2", "o", "o")
         self.assertEqual(len(self.virsh()), 2)
 
+    def test_ctrl_d_at_either_list_changes_nothing(self):
+        # Ctrl+D aux VM ou à l'état cible revient sans rien lancer ni
+        # demander de confirmation.
+        for answers in ([EOFError], ["tout", EOFError]):
+            with self.subTest(answers=answers):
+                self.todo.execute.cmds.clear()
+                self.play("_qemu_change_state", *answers)
+                self.assertEqual(self.virsh(), [])
+                self.assertEqual(len(self.asked), len(answers))
+
+    def test_nothing_selected_answers_only_an_empty_answer(self):
+        # [0] et Ctrl+D reviennent sans un mot.
+        for answers, said in (
+            ([""], True),
+            (["0"], False),
+            ([EOFError], False),
+        ):
+            with self.subTest(answers=answers):
+                _, out = self.play("_qemu_change_state", *answers)
+                self.assertEqual(t("Nothing selected.") in out, said)
+
+    def test_starting_asks_for_the_hardware_then_both_confirmations(self):
+        # [1] Ouvrir pose une question de plus, le matériel, avant les deux
+        # confirmations ; seules leurs deux réponses oui démarrent la VM.
+        adjusted = []
+        self.todo._qemu_adjust_hardware = adjusted.append
+        for answers, hardware, started in (
+            (["1", "1", "n", "n"], [], []),
+            (["1", "1", "n", "o", "n"], [], []),
+            (["1", "1", "o", "n"], [["forged_vm_a"]], []),
+            (["forged_vm_b", "1", "n", "o", "o"], [], ["forged_vm_b"]),
+        ):
+            with self.subTest(answers=answers):
+                adjusted.clear()
+                self.todo.execute.cmds.clear()
+                self.play("_qemu_change_state", *answers)
+                self.assertIn(
+                    t("Adjust hardware before starting? (y/N): "),
+                    self.asked[2],
+                )
+                self.assertEqual(adjusted, hardware)
+                self.assertEqual(
+                    [cmd.rsplit(" ", 1)[1] for cmd in self.virsh()], started
+                )
+                for cmd in self.virsh():
+                    self.assertIn(" start ", cmd)
+
 
 class TestEffacerDesVm(_Cas):
     def test_nothing_is_deleted_without_a_choice_and_its_yes(self):
@@ -126,6 +173,21 @@ class TestEffacerDesVm(_Cas):
         self.assertIn("undefine forged_vm_b", self.virsh()[0])
         self.assertNotIn("forged_vm_a", self.virsh()[0])
 
+    def test_a_blank_zero_or_ctrl_d_deletes_nothing(self):
+        # Aucun ne pose la question des disques ; une réponse vide dit
+        # qu'aucune VM n'est choisie, [0] et Ctrl+D reviennent sans un mot.
+        for answers, said in (
+            ([""], True),
+            (["0"], False),
+            ([EOFError], False),
+        ):
+            with self.subTest(answers=answers):
+                self.todo.execute.cmds.clear()
+                _, out = self.play("_qemu_delete_vm", *answers)
+                self.assertEqual(self.virsh(), [])
+                self.assertEqual(len(self.asked), 1)
+                self.assertEqual(t("Nothing selected.") in out, said)
+
 
 class TestLaListeDesVm(_Cas):
     def test_the_list_offers_two_ways_and_back(self):
@@ -137,6 +199,7 @@ class TestLaListeDesVm(_Cas):
         for answers, expected in (
             ([""], []),
             (["0"], []),
+            ([EOFError], []),
             (["3", "1"], ["advanced"]),
             (["2"], ["state"]),
         ):
@@ -149,6 +212,12 @@ class TestLaListeDesVm(_Cas):
                 ):
                     self.todo._qemu_list_vms(ask_advanced=True)
                 self.assertEqual(vus, expected)
+                # Un numéro hors de la liste est nommé, et la question
+                # revient.
+                self.assertEqual(
+                    f"{t('Invalid choice: ')}3" in out.getvalue(),
+                    "3" in answers,
+                )
 
 
 RUNS = [

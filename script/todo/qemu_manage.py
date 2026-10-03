@@ -266,7 +266,8 @@ class QemuManageMixin:
         # une commande qui change l'état d'une machine.
         resolved = ui.choose(t("Available VMs:"), names, multi=True)
         if not resolved:
-            print(t("Nothing selected."))
+            if resolved == []:
+                print(t("Nothing selected."))
             return
         # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
         st = ui.choose(
@@ -2492,7 +2493,8 @@ class QemuManageMixin:
             return
         chosen = ui.choose(t("Select VMs to delete:"), names, multi=True)
         if not chosen:
-            print(t("Nothing selected."))
+            if chosen == []:
+                print(t("Nothing selected."))
             return
 
         del_disks = self._is_yes(
