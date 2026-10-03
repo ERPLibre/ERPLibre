@@ -46,6 +46,10 @@ class _Execute:
 
 class _Cas(unittest.TestCase):
     def setUp(self):
+        # sudo_prefix lirait libvirt par virsh pour savoir si sudo est dû.
+        self.enterContext(
+            mock.patch("script.todo.qemu_manage.sudo_prefix", lambda: "")
+        )
         self.todo = TODO.__new__(TODO)
         self.todo.execute = _Execute()
         self.todo._qemu_list_domains = lambda: list(VMS)
@@ -192,6 +196,72 @@ class TestEffacerDesVm(_Cas):
                 self.assertEqual(self.virsh(), [])
                 self.assertEqual(len(self.asked), 1)
                 self.assertEqual(t("Nothing selected.") in out, said)
+
+
+class TestUneVmChoisieDansLaListe(_Cas):
+    """Show IP, la console, Tester, Redimensionner et Récupérer des fichiers
+    choisissent leur VM dans la liste de libvirt, par son numéro ou son
+    nom, au lieu d'un nom ou d'un ID virsh tapé ; Show IP en prend
+    plusieurs, ou toutes par `tout`. Une réponse vide sans défaut, [0] ou
+    une faute n'atteignent aucune VM."""
+
+    WRONG = (["0"], ["01", "forged_vm_z", "0"])
+
+    def test_show_ip_reads_the_chosen_vms_only(self):
+        for answers, vms in (
+            (["2"], ["forged_vm_b"]),
+            (["tout"], VMS),
+            ([""], []),
+            (["tous", "1-3", "0"], []),
+            *((answers, []) for answers in self.WRONG),
+        ):
+            with self.subTest(answers=answers):
+                self.todo.execute.cmds.clear()
+                _, out = self.play("_qemu_show_ip", *answers)
+                self.assertEqual(
+                    [cmd.split()[-3] for cmd in self.virsh()], vms
+                )
+                refused = [a for a in answers[:-1] if a != "0"]
+                self.assertEqual(
+                    out.count(t("Invalid choice: ")), len(refused)
+                )
+                # Une réponse vide ne choisit rien, et le dit ; [0] revient
+                # sans un mot.
+                nothing = t("Nothing selected.") in out
+                self.assertEqual(nothing, answers == [""])
+
+    def test_one_vm_by_number_or_name_and_nothing_else(self):
+        reached = []
+        self.todo._qemu_main_disk = lambda name: reached.append(name)
+        self.todo._qemu_vm_ip = lambda name, **k: reached.append(name)
+        self.todo._qemu_recover_ensure_tools = lambda: True
+        for method in (
+            "_qemu_console",
+            "_qemu_test_vm",
+            "_qemu_resize_disk",
+            "_qemu_recover_files",
+        ):
+            for answers, vm in (
+                (["2"], "forged_vm_b"),
+                (["forged_vm_a"], "forged_vm_a"),
+                ([""], None),
+                *((answers, None) for answers in self.WRONG),
+            ):
+                with self.subTest(method=method, answers=answers):
+                    reached.clear()
+                    self.todo.execute.cmds.clear()
+                    self.play(method, *answers)
+                    console = [c for c in self.virsh() if " console " in c]
+                    touched = reached + [c.split()[-1] for c in console]
+                    self.assertEqual(touched, [vm] if vm else [])
+
+    def test_without_a_vm_nothing_is_asked(self):
+        self.todo._qemu_list_domains = lambda: []
+        for method in ("_qemu_show_ip", "_qemu_console", "_qemu_resize_disk"):
+            with self.subTest(method=method):
+                _, out = self.play(method)
+                self.assertEqual(self.asked, [])
+                self.assertIn(t("No VM found."), out)
 
 
 class TestLaListeDesVm(_Cas):

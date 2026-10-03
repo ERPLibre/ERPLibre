@@ -4218,14 +4218,6 @@ TRANSLATIONS = {
         "fr": "📐 Redimensionner le disque d'une VM",
         "en": "📐 Resize a VM disk",
     },
-    "VM name to resize: ": {
-        "fr": "Nom de la VM à redimensionner : ",
-        "en": "VM name to resize: ",
-    },
-    "VM not found.": {
-        "fr": "VM introuvable.",
-        "en": "VM not found.",
-    },
     "Main disk not found for this VM.": {
         "fr": "Disque principal introuvable pour cette VM.",
         "en": "Main disk not found for this VM.",
@@ -6890,21 +6882,9 @@ TRANSLATIONS = {
         "fr": "Nom de la VM (requis) : ",
         "en": "VM name (required): ",
     },
-    "VM name is required!": {
-        "fr": "Le nom de la VM est requis !",
-        "en": "VM name is required!",
-    },
     "VM name: ": {
         "fr": "Nom de la VM : ",
         "en": "VM name: ",
-    },
-    "VM name or ID: ": {
-        "fr": "Nom ou ID de la VM : ",
-        "en": "VM name or ID: ",
-    },
-    "VM name or ID (or 'all'): ": {
-        "fr": "Nom ou ID de la VM (ou « all ») : ",
-        "en": "VM name or ID (or 'all'): ",
     },
     "RAM in MB (blank = version minimum): ": {
         "fr": "RAM en Mo (vide = minimum de la version) : ",

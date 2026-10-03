@@ -288,11 +288,9 @@ class QemuRecoverMixin:
             return
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
-        name = self._qemu_domname(name)
         disk = self._qemu_main_disk(name)
         if not disk:
             print(f"  ⚠ {t('No disk found for this VM.')}")

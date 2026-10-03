@@ -1267,22 +1267,14 @@ class QemuManageMixin:
             )
 
     def _qemu_show_ip(self):
-        # Affiche d'abord les VM (avec leur ID) pour que l'utilisateur sache
-        # quel nom/ID saisir, puis demande lequel (ou « all » pour toutes).
+        """L'adresse de chaque VM choisie, après la liste de virsh, sous
+        les règles d'un choix multiple (`tout` pour toutes)."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID (or 'all'): ")).strip()
-        if not name:
-            print(t("VM name is required!"))
-            return
-        if name.lower() in ("all", "tous", "*"):
-            targets = self._qemu_list_domains()
-            if not targets:
-                print(t("No VM found."))
-                return
-        else:
-            targets = [name]
-        for tgt in targets:
+        targets = self._qemu_pick_vm(multi=True)
+        if targets == []:
+            print(t("Nothing selected."))
+        for tgt in targets or []:
             cmd = (
                 f"{sudo_prefix()}virsh --connect {URI} "
                 f"domifaddr {shlex.quote(tgt)}"
@@ -1294,13 +1286,12 @@ class QemuManageMixin:
                 return
 
     def _qemu_console(self):
-        # Liste les VM, demande laquelle, rappelle comment quitter (Ctrl+])
-        # puis ouvre la console série interactive.
+        # Liste les VM, fait choisir laquelle, rappelle comment quitter
+        # (Ctrl+]) puis ouvre la console série interactive.
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
         print(f"\n💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
         print(
@@ -1317,13 +1308,8 @@ class QemuManageMixin:
         navigateur web EN LIGNE DE COMMANDE choisi par l'utilisateur."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name or ID: ")).strip()
-        if not name:
-            print(t("VM name is required!"))
-            return
-        real = self._qemu_domname(name)
-        if not self._qemu_domain_exists(real):
-            print(f"{real}: {t('VM not found.')}")
+        real = self._qemu_pick_vm()
+        if not real:
             return
         print(f"\n{t('Resolving VM IP...')}")
         ip = self._qemu_vm_ip(real, timeout=120)
@@ -1690,17 +1676,9 @@ class QemuManageMixin:
         puis propose d'étendre le système de fichiers invité."""
         self._qemu_list_vms()
         print()
-        name = input(t("VM name to resize: ")).strip()
+        name = self._qemu_pick_vm()
         if not name:
-            print(t("VM name is required!"))
             return
-        if not self._qemu_domain_exists(name):
-            print(f"{name}: {t('VM not found.')}")
-            return
-        # Résout tout de suite le NOM canonique (VM encore allumée -> l'ID est
-        # résoluble). Après extinction, un ID numérique disparaît : « virsh
-        # start 32 » échouerait. On travaille désormais avec le nom.
-        name = self._qemu_domname(name)
         disk = self._qemu_main_disk(name)
         if not disk:
             print(t("Main disk not found for this VM."))
@@ -2437,6 +2415,16 @@ class QemuManageMixin:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_pick_vm(self, multi=False):
+        """La VM, ou avec `multi` la liste des VM, choisie parmi celles que
+        libvirt définit (`ui.choose`), par son numéro ou son nom ; None pour
+        [0], ou sans VM, ce qui se dit."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(t("No VM found."))
+            return None
+        return ui.choose(t("Available VMs:"), names, multi=multi)
+
     def _qemu_list_domains(self):
         """Noms des VM libvirt définies (via virsh)."""
         try:
@@ -2911,19 +2899,6 @@ class QemuManageMixin:
         if arch and arch != cls._native_arch():
             base += f"-{arch}"
         return base
-
-    def _qemu_domain_exists(self, name):
-        """Vrai si une VM libvirt de ce nom est déjà définie."""
-        try:
-            res = subprocess.run(
-                virsh_argv("dominfo", name),
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            return res.returncode == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
 
     @staticmethod
     def _qemu_host_addresses():
