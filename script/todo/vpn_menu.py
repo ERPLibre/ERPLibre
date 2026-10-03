@@ -316,18 +316,18 @@ class VpnMenuMixin:
             return
         # Un préréglage se choisit par son numéro, ou par son libellé quand
         # aucun autre ne le porte : seul l'identifiant est unique.
-        libelles = [presets.label(preset) for preset in found]
+        libelles = [presets.label(entree) for entree in found]
         preset = ui.choose(
             t("Which preset?"),
             found,
             labels=[
-                f"{libelle:<34} {preset.get('server', ''):<28}"
-                f" {t(preset.get('hint', '') or '')}"
-                for libelle, preset in zip(libelles, found)
+                f"{libelle:<34} {entree.get('server', ''):<28}"
+                f" {t(entree.get('hint', '') or '')}"
+                for libelle, entree in zip(libelles, found)
             ],
             names={
-                libelle: preset
-                for libelle, preset in zip(libelles, found)
+                libelle: entree
+                for libelle, entree in zip(libelles, found)
                 if libelles.count(libelle) == 1
             },
         )
