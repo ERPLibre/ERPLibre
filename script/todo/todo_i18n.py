@@ -4620,10 +4620,6 @@ TRANSLATIONS = {
         "fr": "Entrée",
         "en": "Enter",
     },
-    "Nothing": {
-        "fr": "Rien",
-        "en": "Nothing",
-    },
     "Choice: ": {
         "fr": "Choix : ",
         "en": "Choice: ",
