@@ -257,7 +257,7 @@ class TestEmulatorMenu(_MenuCase):
         self.assertEqual(len(started), 1)
         cmd = started[0][-1]
         # Chemin absolu : « ssh hôte 'commande' » ne lit ni ~/.profile ni
-        # ~/.bashrc, et « emulator » seul rend « command not found » — vécu.
+        # ~/.bashrc, et « emulator » seul y rend « command not found ».
         self.assertIn("$HOME/android/emulator/emulator", cmd)
         self.assertIn("-no-window", cmd)
         # sg kvm : sans le groupe, l'émulateur n'a pas /dev/kvm et renonce.
@@ -386,8 +386,8 @@ class TestScrcpyTunnel(unittest.TestCase):
 
     def test_a_local_vm_needs_the_vm_as_the_LAST_hop(self):
         """L'émulateur n'écoute que sur le 127.0.0.1 de la VM. Une redirection
-        vers IP_VM:5555 depuis l'hyperviseur est refusée (mesuré) : « localhost »
-        ne vaut que sur le dernier saut, d'où -J."""
+        vers IP_VM:5555 depuis l'hyperviseur est refusée : « localhost » ne
+        vaut que sur le dernier saut, d'où -J."""
         out, _ = self._play(src="virsh")
         self.assertIn("-L 5555:localhost:5555", out)
         self.assertIn("-J poste@10.0.0.2", out)

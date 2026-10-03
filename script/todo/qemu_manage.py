@@ -1167,8 +1167,8 @@ class QemuManageMixin:
         10,8 Go d'« utilisé » sur une VM qui en occupait 1,2.
 
         La période de collecte est posée d'abord, et c'est indispensable : sans
-        elle le ballon ne rafraîchit rien, et une VM qui occupait 4,8 Go en
-        annonçait 490 Mo — vécu. « --live » ne touche pas le XML : le réglage
+        elle le ballon ne rafraîchit rien, et une VM annonce une fraction de la
+        mémoire qu'elle occupe. « --live » ne touche pas le XML : le réglage
         disparaît au prochain démarrage du domaine."""
         try:
             subprocess.run(
@@ -2644,7 +2644,7 @@ class QemuManageMixin:
             orphans.append((size, path, t("disk backup (resize)")))
         # Le nom d'un fichier ne dit RIEN de son usage : c'est libvirt qui
         # sait. Une VM renommée garde le nom de fichier d'avant, et le
-        # nettoyage offrait alors son disque de 63 Go au « rm -f » — rapporté.
+        # nettoyage offrirait alors son disque au « rm -f ».
         orphans, proteges = self._qemu_split_orphans(orphans)
         if proteges:
             print(f"\n{t('Kept (still attached to a VM):')}")

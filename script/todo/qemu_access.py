@@ -185,8 +185,8 @@ class QemuAccessMixin:
         La source des cibles est ~/.ssh/config, PAS le libvirt local. La VM
         graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
         VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
-        poste ne voit alors que l'orchestrateur, et proposer sa liste menait
-        droit a la mauvaise machine — vecu.
+        poste ne voit alors que l'orchestrateur, et proposer sa liste mene
+        droit a la mauvaise machine.
 
         ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
         seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
@@ -282,10 +282,10 @@ class QemuAccessMixin:
         """Options ssh selon la provenance de la cible.
 
         Une VM libvirt locale est jointe par son IP, et son IP est recyclée d'un
-        déploiement à l'autre : sa clé d'hôte change sous le même adresse, et
-        ssh refuse alors de se connecter — « Host key verification failed »,
-        vécu. C'est la raison pour laquelle le suivi d'installation et l'attente
-        de sshd emploient déjà ces deux options.
+        déploiement à l'autre : sa clé d'hôte change sous la même adresse, et
+        ssh refuse alors de se connecter (« Host key verification failed »).
+        C'est la raison pour laquelle le suivi d'installation et l'attente de
+        sshd emploient déjà ces deux options.
 
         Un hôte de ~/.ssh/config, lui, est une machine que l'utilisateur a
         configurée : on ne touche PAS à sa politique de clés. Sa clé est un
@@ -321,8 +321,8 @@ class QemuAccessMixin:
 
     # Drapeaux passés à CHAQUE lancement, et non écrits dans le config.ini de
     # l'AVD : l'émulateur réécrit ce fichier depuis le profil du téléphone au
-    # premier démarrage, et les hw.lcd.* y étaient effacés — l'AVD repartait en
-    # 1080x2400 densité 420, quatre fois les pixels voulus. Mesuré.
+    # premier démarrage, et les hw.lcd.* y sont effacés : l'AVD repart en
+    # 1080x2400 densité 420, quatre fois les pixels voulus.
     #
     # La résolution et la DENSITÉ vont ensemble, et c'est contre-intuitif :
     # 540x1140 en densité 420 est PIRE que le plein écran — 81 ms de médiane
@@ -732,8 +732,8 @@ class QemuAccessMixin:
         else:
             # L'écran VNC appartient à QEMU, donc à l'HYPERVISEUR — pas à
             # l'invité. Tunneler vers la VM elle-même ne trouve rien : le
-            # socket n'existe pas de ce côté. Vécu, et c'est aussi ce qui
-            # rendait le premier jet de ce menu inutile hors machine locale.
+            # socket n'existe pas de ce côté, et un tunnel vers l'invité
+            # rendrait ce menu inutile hors machine locale.
             #
             # L'hyperviseur est le ProxyJump déclaré dans ssh_config, lu par
             # « ssh -G » : c'est la seule lecture qui couvre toutes les formes

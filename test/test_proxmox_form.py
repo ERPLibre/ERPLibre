@@ -426,8 +426,8 @@ class TestEcran(unittest.TestCase):
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestCreerUnPont(unittest.TestCase):
-    """Sans pont, « qm create » est impossible — et l'écran refusait de
-    déployer sans offrir le moindre moyen d'en avoir un. Rapporté.
+    """Sans pont, « qm create » est impossible : l'écran qui refuse de
+    déployer sans pont offre le moyen d'en avoir un.
 
     Le pont INTERNE se crée depuis l'écran parce qu'il ne touche à aucune
     interface physique : il n'y a rien à faire arbitrer. Un pont sur le LAN

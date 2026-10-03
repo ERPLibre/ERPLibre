@@ -218,11 +218,11 @@ class QemuDeployMixin:
             # Tumbleweed est ROLLING et ne supporte pas les mises à jour
             # partielles, exactement comme Arch. L'image cloud est un
             # instantané figé : ses dépôts ont avancé depuis, et un
-            # « install » simple bute sur une incohérence — vécu, git 2.54
-            # réclamait perl-Git bâti contre un perl-base plus ancien que
-            # celui de l'image. zypper proposait alors trois solutions et
-            # attendait un choix ; « --non-interactive » prend le défaut,
-            # « c » = annuler, et l'installation s'arrêtait là.
+            # « install » simple bute sur une incohérence : un paquet neuf
+            # réclame une dépendance bâtie contre une version plus récente
+            # que celle de l'image. zypper propose alors des solutions et
+            # attend un choix ; « --non-interactive » prend le défaut,
+            # « c » = annuler, et l'installation s'arrête là.
             #
             # Sur Leap, « dup » sert à CHANGER de version : l'y appeler irait
             # contre la raison même de la choisir. « up » y suffit, l'image et
@@ -2865,8 +2865,8 @@ class QemuDeployMixin:
         # Et quand il n'y a RIEN à installer, le suivi s'ouvre quand même : la
         # commande distante regarde alors la VM arriver (cloud-init puis relevé
         # système). Sans cela, décocher ERPLibre faisait disparaître le tableau
-        # de bord — rapporté, et c'est ce qui donnait « le suivi ne fonctionne
-        # plus ». Le choix vient du déploiement, pas de l'installation.
+        # de bord, et le suivi semblerait ne plus fonctionner. Le choix vient
+        # du déploiement, pas de l'installation.
         monitor = install["monitor"] if install else spec.get("monitor", True)
         # Hors ligne, le suivi est d'office : seule sa voie confie la levée de
         # la coupure au guet, qui la tient jusqu'à la fin de la dernière

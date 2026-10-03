@@ -623,12 +623,11 @@ _LST_IGNORE_ERROR = (
 
 
 # Signaux d'échec qui ne contiennent NI « error » NI « warning ». Sans eux, le
-# scan par sous-chaîne rate des installations franchement ratées : le journal de
-# la VM erplibre-ubuntu-2604-gnome, dont la compilation de l'APK a été tuée par
-# le noyau, ne portait AUCUNE ligne « error » — mesuré, 0 sur 8765 lignes —
-# pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build failed » et
-# « daemon disappeared unexpectedly » y étaient. Le détail des erreurs annonçait
-# donc « aucune erreur détectée » sur une installation en échec.
+# scan par sous-chaîne rate des installations franchement ratées : le journal
+# d'une VM dont le noyau tue la compilation de l'APK ne porte AUCUNE ligne
+# « error », pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build
+# failed » et « daemon disappeared unexpectedly » y sont. Le détail des erreurs
+# annoncerait donc « aucune erreur détectée » sur une installation en échec.
 #
 # Chaque motif est là parce qu'il est apparu dans un vrai journal, pas par
 # précaution : Gradle dit « FAILURE », Python « Traceback », git « fatal: », apt
@@ -1443,8 +1442,8 @@ def read_domstats() -> str:
 # rapporte « disk: 0 » — il ne la calcule pas.
 #
 # « -sB1 » et NON « -sb » : le second rend la taille APPARENTE, et un disque
-# raw creux de 6 Go la donne entière. La colonne affichait donc « 6.0G/6.0G »,
-# un disque plein, quand l'invité n'avait écrit que 1,2 Go — rapporté.
+# raw creux de 6 Go la donne entière. La colonne afficherait donc un disque
+# plein quand l'invité n'en a écrit qu'une fraction.
 PVE_STATS_CMD = (
     "pvesh get /cluster/resources --type vm --output-format json;"
     " echo '---ERPLIBRE-DU---';"

@@ -3437,8 +3437,8 @@ CACHE_CERT_NAME = "erplibre-cache.crt"
 # donc en être SOUSTRAITE, faute de quoi elle ne télécharge plus rien — et le
 # message qu'elle rendrait, « self-signed certificate in certificate chain »,
 # ne dit rien d'une famille sans magasin.
-# Plus aucune famille n'y figure. « nix » y était tant qu'on ne savait pas
-# lui donner l'autorité : il l'a désormais par un fragment systemd, mesuré.
+# Plus aucune famille n'y figure : « nix » reçoit l'autorité par un
+# fragment systemd.
 # La table reste, et le repli avec elle — une famille future sans magasin
 # retomberait dessus plutôt que d'être interceptée sans rien.
 CACHE_SANS_AUTORITE: frozenset = frozenset()
@@ -4320,9 +4320,9 @@ def build_preseed(
         # Question propre à s390x, posée par le udeb « s390-netdevice » et
         # inexistante ailleurs : le matériel Z offre ctc, qeth, iucv ou
         # virtio, et d-i ne devine pas. Elle n'a AUCUNE valeur par défaut,
-        # donc « priority=critical » ne la saute pas — l'installation se
-        # figeait dessus, sur le premier choix de la liste (ctc), en
-        # n'affichant rien d'autre qu'un écran bleu. Mesuré.
+        # donc « priority=critical » ne la saute pas : l'installation se
+        # fige dessus, sur le premier choix de la liste (ctc), en
+        # n'affichant rien d'autre qu'un écran bleu.
         "d-i s390-netdevice/choose_networktype select virtio",
         # « auto » évite la question du choix d'interface : sous virtio-ccw
         # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
@@ -4533,7 +4533,7 @@ def build_installer_initrd(
         # historiquement limitée. Ce n'est pas une question à laquelle
         # répondre : le composant démarre sshd puis ATTEND une connexion de
         # l'utilisateur « installer », indéfiniment. Preseeder son mot de
-        # passe le fait avancer d'un écran, pas davantage — mesuré.
+        # passe le fait avancer d'un écran, pas davantage.
         #
         # Un composant dont « .isinstallable » sort en erreur est retiré du
         # menu. L'original le fait déjà quand sshd tourne ; on le remplace par

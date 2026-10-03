@@ -1284,7 +1284,7 @@ class QemuInstallMixin:
         `alias` : un second nom pour la même commande. L'archive d'Android
         Studio n'installe que « studio », mais personne ne tape « studio » —
         on cherche « android-studio », on ne trouve rien, et on conclut que
-        l'installation a échoué alors qu'elle est bien là. Vécu."""
+        l'installation a échoué alors qu'elle est bien là."""
         return (
             f"b=$(ls {root}/bin/{link}.sh {root}/bin/{link} 2>/dev/null "
             "| head -1); "
@@ -1858,11 +1858,11 @@ class QemuInstallMixin:
         # (6,8 Go de RSS sur 12 Go, sans swap), et Gradle n'en sait rien — il
         # dit seulement que son démon « a disparu ». Le motif nomme la mémoire,
         # et le contexte l'établit au lieu de le supposer.
-        # Vécu, et c'est en amont : « Too many zip entries 123678 (MAX=65535) ».
-        # Un APK est un ZIP classique, borné à 65 535 entrées, et le dépôt
-        # mobile embarque 122 684 fichiers sous assets/public/repos — des
-        # dépôts Odoo entiers — pour 337 fichiers qui sont l'application. Rien
-        # ici ne peut le corriger : c'est au projet mobile de ne pas les
+        # En amont : « Too many zip entries … (MAX=65535) ». Un APK est un ZIP
+        # classique, borné à 65 535 entrées, et un dépôt mobile qui embarque
+        # des dépôts Odoo entiers sous assets/public/repos les dépasse de loin,
+        # pour quelques centaines de fichiers qui sont l'application. Rien ici
+        # ne peut le corriger : c'est au projet mobile de ne pas les
         # empaqueter. On le NOMME, avec le chiffre, plutôt que de laisser lire
         # 5 000 lignes de Gradle.
         (
@@ -1962,9 +1962,9 @@ class QemuInstallMixin:
         return (
             # Le « test -f » n'est pas une ceinture de plus : c'est la seule
             # vérité disponible. update_manifest_local_mobile.sh finit par
-            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné —
-            # vécu, faute de .venv.erplibre. L'étape passait, et c'est le « cd »
-            # suivant qui échouait, deux étapes plus loin.
+            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné,
+            # faute de .venv.erplibre par exemple. L'étape passerait, et c'est
+            # le « cd » suivant qui échouerait, deux étapes plus loin.
             # Le venv d'ERPLibre d'abord, et nommément : tout ce qui suit en
             # dépend — c'est lui qui porte « repo », qui synchronise le
             # manifeste. Vécu avec le profil « ERPLibre seul », dont le code
@@ -1997,7 +1997,7 @@ class QemuInstallMixin:
             "-o DPkg::Lock::Timeout=600 install -y unzip wget xauth "
             "libpulse0 openjdk-21-jdk' && "
             # L'installateur amont n'est PAS idempotent : au second passage il
-            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ». Mesuré.
+            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ».
             # On ne le rejoue donc que s'il reste quelque chose à poser — un
             # déploiement qui se répète ne doit pas échouer sur une réussite
             # précédente.
@@ -2070,10 +2070,10 @@ class QemuInstallMixin:
             #
             # Ces dépôts entrent en PACKS, et c'est ce qui rend la chose
             # possible : un APK est un ZIP borné à 65535 entrées, quand les
-            # 139 dépôts pèsent plus de 116 000 fichiers. Un fichier par source
-            # donnait « Too many zip entries 123678 (MAX=65535) » et rien du
-            # tout ; regroupés, ils tiennent en 391 tranches — mesuré, avec
-            # 3 002 entrées dans l'APK.
+            # dépôts du manifeste pèsent plus de cent mille fichiers. Un
+            # fichier par source donne « Too many zip entries » et rien du
+            # tout ; regroupés, ils tiennent en quelques centaines de tranches,
+            # et l'APK en quelques milliers d'entrées.
             #
             # Lié par « && » : un transfert vide fait échouer la VM, au même
             # titre qu'un APK manquant. Une application qui ne porte pas le code
@@ -2089,8 +2089,8 @@ class QemuInstallMixin:
             #     et de sentencepiece, pour trois qui ne serviront jamais ici ;
             #   - sentencepiece bâtit son « protoc » POUR LA CIBLE puis tente de
             #     l'exécuter sur l'hôte. En arm64 cela donne « Exec format
-            #     error » et la compilation s'arrête — mesuré. En x86_64 la
-            #     cible et l'hôte coïncident, et le défaut ne se manifeste pas.
+            #     error » et la compilation s'arrête. En x86_64 la cible et
+            #     l'hôte coïncident, et le défaut ne se manifeste pas.
             #     Un APK arm64 demandera un correctif au projet mobile.
             f'mstep "{t("debug APK (gradle)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile/android && "
@@ -2161,9 +2161,9 @@ class QemuInstallMixin:
             "else "
             # /dev/kvm est en root:kvm 0660 : sans appartenir au groupe,
             # l'émulateur refuse de démarrer sur « ProbeKVM: This user doesn't
-            # have permissions to use KVM ». Mesuré. L'appartenance ne prend
-            # qu'à la prochaine session — ce qui tombe bien, la session utile
-            # est justement celle du « ssh -X » qui viendra ensuite.
+            # have permissions to use KVM ». L'appartenance ne prend qu'à la
+            # prochaine session — ce qui tombe bien, la session utile est
+            # justement celle du « ssh -X » qui viendra ensuite.
             "sudo usermod -aG kvm $(id -un) 2>/dev/null || true; "
             f'echo "   {t("user added to the kvm group (effective at next login)")}"; '
             "fi; "
