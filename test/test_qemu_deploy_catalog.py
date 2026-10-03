@@ -67,12 +67,22 @@ class TestLeCatalogue(unittest.TestCase):
         self.shown = out.getvalue()
         return None if got is None else got[1]
 
-    def test_an_empty_answer_or_zero_deploys_nothing(self):
-        # Une réponse vide ne déploie rien, pas même le catalogue entier.
-        for answers in ([""], ["0"]):
+    def test_an_empty_answer_zero_or_ctrl_d_deploys_nothing(self):
+        # Une réponse vide ne déploie rien, pas même le catalogue entier, et
+        # le dit ; [0] et Ctrl+D reviennent sans un mot, aux distributions,
+        # aux versions d'une distribution et à la liste à plat de [g].
+        for answers, said in (
+            ([""], True),
+            (["0"], False),
+            ([EOFError], False),
+            (["forged_a", EOFError], False),
+            (["g", ""], True),
+            (["g", "0"], False),
+            (["g", EOFError], False),
+        ):
             with self.subTest(answers=answers):
                 self.assertIsNone(self.collect(*answers))
-                self.assertIn(t("Nothing selected."), self.shown)
+                self.assertEqual(t("Nothing selected.") in self.shown, said)
 
     def test_the_three_actions_follow_the_numbers(self):
         self.assertEqual(
@@ -87,6 +97,11 @@ class TestLeCatalogue(unittest.TestCase):
         )
         self.assertIsNone(self.collect("g", ""))
         self.assertIn("[c] ", self.shown)
+        # [g] lit des numéros, des plages ou `tout`, pas seulement une
+        # liste à virgules : son libellé dit la liste qu'il ouvre.
+        self.assertIn(
+            f"[g] {t('Pick exact versions (flat list)')}", self.shown
+        )
 
     def test_distributions_then_their_versions(self):
         self.assertEqual(self.collect("forged_a", "2"), ["forged_a 2 amd64"])

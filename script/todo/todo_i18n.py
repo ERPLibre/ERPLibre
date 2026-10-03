@@ -5662,9 +5662,9 @@ TRANSLATIONS = {
         "fr": "Choix (numéro ou nom, vide = native) :",
         "en": "Choice (number or name, blank = native):",
     },
-    "Pick exact versions (comma-separated list)": {
-        "fr": "Choisir des versions précises (liste séparée par des virgules)",
-        "en": "Pick exact versions (comma-separated list)",
+    "Pick exact versions (flat list)": {
+        "fr": "Choisir des versions précises (liste à plat)",
+        "en": "Pick exact versions (flat list)",
     },
     "All versions:": {
         "fr": "Toutes les versions :",

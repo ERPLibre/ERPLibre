@@ -1791,11 +1791,12 @@ class QemuDeployMixin:
             letters={
                 "c": t("Whole catalog (every version)"),
                 "p": t("The main version of each distro (marked *)"),
-                "g": t("Pick exact versions (comma-separated list)"),
+                "g": t("Pick exact versions (flat list)"),
             },
         )
         if not raw:
-            print(t("Nothing selected."))
+            if raw == []:
+                print(t("Nothing selected."))
             return None
         catalog_all = raw == "c"
 
@@ -1816,7 +1817,9 @@ class QemuDeployMixin:
                     for e in flat
                 ],
             )
-            for e in chosen or []:
+            if chosen is None:
+                return None
+            for e in chosen:
                 selected.append(
                     (e["distro"], e["version"], e["ram"], e["disk"], e["arch"])
                 )
