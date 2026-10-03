@@ -75,10 +75,14 @@ REPRISE_APRES_TOUCHE_MS = 300
 MARGE_DECOUPE_MS = 300
 
 #: Ce qu'on garde de la fin de l'annonce pour y trouver le numero annonce.
+#:
 #: La messagerie dit la date puis le numero sans silence entre les deux : la
-#: frontiere ne se mesure pas, et trois secondes couvrent dix chiffres enonces
-#: sans amputer le premier.
-DUREE_NUMERO_MS = 3000
+#: frontiere ne se mesure pas. Trois secondes paraissaient couvrir dix
+#: chiffres enonces ; a l'ecoute, elles en amputaient le debut. Sept couvrent
+#: l'annonce presque entiere, ce qui emporte la date — et c'est le bon
+#: compromis : une date en trop se saute d'une seconde, un chiffre manquant
+#: rend le numero inutilisable.
+DUREE_NUMERO_MS = 7000
 
 #: Ajustements des deux bornes, regles a l'oreille sur une messagerie reelle.
 #: Le debut est repousse d'une seconde : la fin de l'annonce du numero, qui

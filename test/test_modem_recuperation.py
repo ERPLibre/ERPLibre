@@ -545,7 +545,11 @@ class TestLeNumeroAnnonce(unittest.TestCase):
             numero = compagnon["numero_fichier"]
             self.assertTrue(numero.endswith("numero-appel-20261003-021139.wav"))
             self.assertTrue(os.path.exists(numero))
-            self.assertAlmostEqual(compagnon["numero_duree_secondes"], 3.3, delta=0.2)
+            # La fenetre plus la marge, et non un chiffre fige : la duree
+            # suit la constante, qui s'est deja elargie une fois.
+            attendu = (rec.DUREE_NUMERO_MS + rec.MARGE_DECOUPE_MS) / 1000
+            self.assertAlmostEqual(
+                compagnon["numero_duree_secondes"], attendu, delta=0.2)
 
     def test_effacer_emporte_le_numero(self):
         """Un numero seul n'a aucun usage : on ne rappelle pas quelqu'un dont
