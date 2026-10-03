@@ -2116,6 +2116,34 @@ TRANSLATIONS = {
         "fr": 'Enregistrement : %s',
         "en": 'Recording: %s',
     },
+    'modem_ans_pin_hand': {
+        "fr": 'Remettre le NIP au service de voix (garde en memoire)',
+        "en": 'Hand the PIN to the voice service (kept in memory)',
+    },
+    'modem_ans_pin_in_memory': {
+        "fr": 'remis au service',
+        "en": 'handed to the service',
+    },
+    'modem_ans_pin_not_in_memory': {
+        "fr": 'pas remis — le service ne peut pas composer la messagerie',
+        "en": 'not handed over — the service cannot dial the voicemail',
+    },
+    'modem_ans_pin_service_down': {
+        "fr": 'service de voix arrete',
+        "en": 'voice service stopped',
+    },
+    'modem_ans_pin_handed': {
+        "fr": ('Remis. Le service le garde en memoire et le PERD a son arret :'
+               ' il faut le lui remettre a chaque demarrage. Il n\'est ecrit'
+               ' ni sur le disque, ni en base, ni dans le depot.'),
+        "en": ('Handed over. The service keeps it in memory and LOSES it when'
+               ' it stops: it must be handed over at every startup. It is'
+               ' written to no disk, no database and no repository.'),
+    },
+    'modem_ans_pin_not_handed': {
+        "fr": 'Non remis : %s',
+        "en": 'Not handed over: %s',
+    },
     'modem_ans_fetch_no_code': {
         "fr": 'Aucun code de messagerie : saisissez-le d\'abord par [6].',
         "en": 'No voicemail code: enter it first with [6].',

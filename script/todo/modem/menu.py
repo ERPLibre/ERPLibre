@@ -506,7 +506,8 @@ def _repondeur(todo=None):
 [4] {t("modem_ans_rings")}
 [5] {t("modem_ans_toggle")}
 [6] {t("modem_ans_pin")} — {_etat_code_messagerie(todo)}
-[7] {t("modem_ans_fetch")}
+[7] {t("modem_ans_pin_hand")} — {_etat_nip_du_service()}
+[8] {t("modem_ans_fetch")}
 [0] {t("Back")}"""
         choix = click.prompt(help_info)
         print()
@@ -525,9 +526,52 @@ def _repondeur(todo=None):
         elif choix == "6":
             _repondeur_code(todo)
         elif choix == "7":
+            _repondeur_remettre_code(todo)
+        elif choix == "8":
             _repondeur_recuperer(todo)
         else:
             print(t("Command not found !"))
+
+
+def _etat_nip_du_service() -> str:
+    """Le service detient-il le code ? Sans jamais l'afficher.
+
+    L'etat tient en une ligne du menu parce que c'est la question qu'on se
+    pose en arrivant : un service relance il y a dix minutes a tout oublie, et
+    rien d'autre a l'ecran ne le dirait.
+    """
+    from script.todo.modem import code_messagerie as code_mod
+
+    detient = code_mod.service_a_le_code()
+    if detient is None:
+        return t("modem_ans_pin_service_down")
+    return t("modem_ans_pin_in_memory") if detient else t("modem_ans_pin_not_in_memory")
+
+
+def _repondeur_remettre_code(todo) -> None:
+    """Lit le code dans le coffre et le remet au service de voix.
+
+    Le coffre reste la seule copie durable : le service le garde en memoire et
+    le perd a son arret. C'est voulu — l'ecrire quelque part pour lui epargner
+    ce geste reviendrait a annuler le coffre.
+    """
+    from script.todo.mail.secrets import SecretError
+    from script.todo.modem import code_messagerie as code_mod
+
+    try:
+        code = code_mod.lire(code_mod.coffre(todo))
+    except SecretError as exc:
+        print("  " + str(exc))
+        return
+    if not code:
+        print("  " + t("modem_ans_fetch_no_code"))
+        return
+    remis, detail = code_mod.remettre_au_service(code)
+    del code
+    if remis:
+        print("  " + t("modem_ans_pin_handed"))
+    else:
+        print("  " + t("modem_ans_pin_not_handed") % detail)
 
 
 def _etat_code_messagerie(todo) -> str:

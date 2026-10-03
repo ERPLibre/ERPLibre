@@ -138,5 +138,104 @@ class TestMenu(unittest.TestCase):
         self.assertTrue(etat)
 
 
+class ServiceFactice:
+    """Un service de voix en toc, sur une vraie socket de domaine Unix.
+
+    Rejoue le dialogue du service : une ligne recue, une ligne rendue, et la
+    connexion se ferme. Ce qu'on verifie ici n'est pas la socket mais ce qui y
+    passe — et surtout ce qui n'y passe pas.
+    """
+
+    def __init__(self, chemin, reponse="OK"):
+        import socket
+        import threading
+
+        self.chemin = chemin
+        self.reponse = reponse
+        self.recu = []
+        self.prise = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.prise.bind(chemin)
+        self.prise.listen(1)
+        self.fil = threading.Thread(target=self._servir, daemon=True)
+        self.fil.start()
+
+    def _servir(self):
+        while True:
+            try:
+                conn, _ = self.prise.accept()
+            except OSError:
+                return
+            with conn:
+                self.recu.append(conn.recv(256).decode("utf-8").strip())
+                conn.sendall((self.reponse + "\n").encode("utf-8"))
+
+    def fermer(self):
+        self.prise.close()
+
+
+class TestRemiseAuService(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.chemin = os.path.join(self.tmp.name, "controle.sock")
+
+    def test_un_code_invalide_ne_touche_pas_la_socket(self):
+        """Refuser AVANT d'ouvrir la socket : une saisie fautive n'a aucune
+        raison d'atteindre le service."""
+        service = ServiceFactice(self.chemin)
+        self.addCleanup(service.fermer)
+        remis, detail = code_mod.remettre_au_service("abc", self.chemin)
+        self.assertFalse(remis)
+        self.assertEqual(service.recu, [])
+        self.assertIn("chiffres", detail)
+
+    def test_le_code_traverse_la_socket_et_le_service_accuse(self):
+        service = ServiceFactice(self.chemin)
+        self.addCleanup(service.fermer)
+        remis, _ = code_mod.remettre_au_service("864209", self.chemin)
+        self.assertTrue(remis)
+        self.assertEqual(service.recu, ["NIP 864209"])
+
+    def test_un_refus_du_service_se_rapporte_tel_quel(self):
+        service = ServiceFactice(self.chemin, reponse="ERREUR aucun code")
+        self.addCleanup(service.fermer)
+        remis, detail = code_mod.remettre_au_service("864209", self.chemin)
+        self.assertFalse(remis)
+        self.assertIn("ERREUR", detail)
+
+    def test_sans_service_on_le_dit_au_lieu_d_echouer(self):
+        """Un service arrete n'est pas une panne du CLI : c'est l'etat le plus
+        courant, juste apres un redemarrage."""
+        remis, detail = code_mod.remettre_au_service("864209", self.chemin)
+        self.assertFalse(remis)
+        self.assertIn("ne tourne pas", detail)
+        self.assertIsNone(code_mod.service_a_le_code(self.chemin))
+
+    def test_l_etat_dit_oui_ou_non_sans_rendre_le_code(self):
+        service = ServiceFactice(self.chemin, reponse="OK nip=oui")
+        self.addCleanup(service.fermer)
+        self.assertTrue(code_mod.service_a_le_code(self.chemin))
+        service.reponse = "OK nip=non"
+        self.assertFalse(code_mod.service_a_le_code(self.chemin))
+
+    def test_le_code_n_apparait_pas_a_l_ecran_de_la_remise(self):
+        """Meme chemin que la saisie : ce qui est dit a l'ecran ne porte
+        jamais la valeur."""
+        from script.todo.modem import menu
+
+        sortie = io.StringIO()
+        with mock.patch("script.todo.modem.code_messagerie.coffre"), \
+                mock.patch("script.todo.modem.code_messagerie.lire",
+                           return_value="864209"), \
+                mock.patch("script.todo.modem.code_messagerie.remettre_au_service",
+                           return_value=(True, "")) as remise, \
+                redirect_stdout(sortie):
+            menu._repondeur_remettre_code(todo=None)
+        self.assertNotIn("864209", sortie.getvalue())
+        remise.assert_called_once_with("864209")
+
+
 if __name__ == "__main__":
     unittest.main()

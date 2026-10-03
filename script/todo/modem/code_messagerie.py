@@ -13,6 +13,8 @@ l'automatisation le compose, et part alors en tonalites sur la ligne.
 """
 from __future__ import annotations
 
+import os
+
 #: Entree dans le kdbx : groupe ERPLibre > Modem, titre messagerie-vocale.
 REF_KDBX = "kdbx:ERPLibre/Modem/messagerie-vocale"
 
@@ -143,3 +145,74 @@ def coffre_avec_mot_de_passe(mot_de_passe: str, chemin: str = "", config=None):
     gestionnaire = CoffreOuvert(chemin, mot_de_passe)
     gestionnaire.get_kdbx()
     return SecretStore(kdbx_manager=gestionnaire, use_keyring=True)
+
+
+#: Nom de la socket de commande du service de voix. Le chemin est le meme que
+#: celui qu'il calcule : repertoire d'etat de l'utilisateur, puis `erplibre/`.
+NOM_SOCKET = "controle.sock"
+
+#: Au-dela, le service est considere muet. Court : il repond localement, en
+#: une ligne, sans rien faire d'autre que ranger une valeur en memoire. L'etat
+#: est demande a CHAQUE affichage du menu, et un service fige ne doit pas
+#: faire attendre devant un ecran qui n'a rien a dire.
+DELAI_CONTROLE_S = 2.0
+
+
+def chemin_controle() -> str:
+    """Ou le service de voix ecoute ses commandes locales."""
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state"
+    )
+    return os.path.join(base, "erplibre", NOM_SOCKET)
+
+
+def _demander(ligne: str, chemin=None) -> tuple:
+    """Envoie UNE commande au service et rend (succes, reponse).
+
+    Une socket de domaine Unix : rien ne passe par le reseau, et ce sont les
+    droits du fichier qui autorisent. Une absence de socket n'est pas une
+    panne du CLI — c'est un service arrete, et ca se dit comme tel.
+    """
+    import socket
+
+    chemin = chemin or chemin_controle()
+    if not os.path.exists(chemin):
+        return False, "le service de voix ne tourne pas"
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as prise:
+            prise.settimeout(DELAI_CONTROLE_S)
+            prise.connect(chemin)
+            prise.sendall((ligne + "\n").encode("utf-8"))
+            reponse = prise.recv(256).decode("utf-8", "replace").strip()
+    except OSError as exc:
+        return False, str(exc)
+    if not reponse.startswith("OK"):
+        return False, reponse
+    return True, reponse
+
+
+def remettre_au_service(code: str, chemin=None) -> tuple:
+    """Remet le code au service, qui le garde EN MEMOIRE. Rend (succes, detail).
+
+    Le code ne va ni sur le disque, ni en base, ni dans le depot : le coffre
+    reste sa seule copie durable. Le service le perd a chaque arret, et il
+    faut donc le lui remettre a chaque demarrage — c'est le prix de ne
+    l'ecrire nulle part.
+    """
+    try:
+        code = valider(code)
+    except CodeInvalide as exc:
+        return False, str(exc)
+    return _demander("NIP " + code, chemin)
+
+
+def service_a_le_code(chemin=None):
+    """Le service detient-il un code ? Rend True, False, ou None s'il se tait.
+
+    Il repond par oui ou par non et ne rend JAMAIS la valeur : un etat bavard
+    ferait de l'ecran et du journal autant d'endroits ou la lire.
+    """
+    ok, reponse = _demander("ETAT", chemin)
+    if not ok:
+        return None
+    return reponse.endswith("nip=oui")

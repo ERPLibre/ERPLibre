@@ -107,6 +107,17 @@ func main() {
 			échouer(err.Error())
 		}
 		defer gardien.Fermer()
+
+		// Les commandes locales vivent le temps du service, et le secret
+		// qu'elles portent avec elles. Une écoute qui échoue n'empêche PAS de
+		// servir : la voix et le répondeur n'en dépendent pas, et refuser de
+		// démarrer pour une socket priverait la ligne de tout.
+		secrets := &Secrets{}
+		go func() {
+			if err := ÉcouterLesCommandes(ctx, CheminContrôle(), secrets); err != nil {
+				slog.Warn("commandes locales indisponibles", "err", err)
+			}
+		}()
 		// Les réglages sont lus AU DÉMARRAGE et refusés bruyamment : un
 		// répondeur mal configuré ne se découvre autrement qu'au premier
 		// appel manqué, c'est-à-dire une fois le message perdu.
