@@ -163,9 +163,9 @@ def chosen_keys(message, answer):
     choisit que par son numéro. None pour une réponse qui ne se lit pas
     ainsi, qui mêle une lettre à une autre réponse, ou dont un morceau se
     lit de deux façons : le nom d'une option qui est le numéro d'une
-    autre, une lettre ou un mot de `ALL_WORDS`. Une lettre d'action qui
-    est aussi le nom d'une option, tapée telle que la liste l'écrit, est
-    donc invalide, et cette option ne se choisit que par son numéro."""
+    autre, une lettre ou un mot de `ALL_WORDS`. `BasePort.choose` refuse,
+    avant de demander, une liste où une lettre lirait le nom d'une option :
+    seule une question bâtie hors de lui en porte une."""
     typed = answer.strip()
     keys = [option["key"] for option in message["options"]]
     numbers = [key for key in keys if key.isdecimal() and key != "0"]

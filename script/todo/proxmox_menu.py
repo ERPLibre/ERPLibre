@@ -2464,10 +2464,10 @@ class ProxmoxMenuMixin:
             return
         mod = self._qemu_import_module()
         distro = self._qemu_prompt_distro()
-        if not distro:
+        if distro is None:
             return
         version = self._qemu_prompt_version(distro)
-        if not version:
+        if version is None:
             return
         arch = "amd64"
         nom = (
@@ -2606,7 +2606,7 @@ class ProxmoxMenuMixin:
             # La VM existe déjà : [0] à la branche ou au profil n'y installe
             # rien, et l'épilogue continue.
             answers = self._qemu_install_questions(distro, ask_prod=False)
-            if answers:
+            if answers is not None:
                 branch, _prod, (label, cmd) = answers
                 print(f"  {label}")
                 install = {"branch": branch, "cmd": cmd, "label": label}
@@ -2789,10 +2789,10 @@ class ProxmoxMenuMixin:
 
         mod = self._qemu_import_module()
         distro = self._qemu_prompt_distro()
-        if not distro:
+        if distro is None:
             return
         version = self._qemu_prompt_version(distro)
-        if not version:
+        if version is None:
             return
         code = mod.DISTROS[distro][0][version][0]
         url = mod.image_url(distro, code, "amd64", version)

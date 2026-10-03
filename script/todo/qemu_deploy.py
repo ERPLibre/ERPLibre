@@ -1776,8 +1776,8 @@ class QemuDeployMixin:
         # 1) Distributions, sous les règles d'un choix multiple, ou l'une de
         # trois actions : [c] le catalogue complet, [p] la version par défaut
         # de chaque distro (marquée d'un *), [g] la liste à plat de TOUTES les
-        # versions × archis. Avec [all] archis, chaque version se décline en
-        # une VM par archi. Une réponse vide ne prend rien.
+        # versions × archis. Avec l'architecture « all », chaque version se
+        # décline en une VM par archi. Une réponse vide ne prend rien.
         labels = []
         for d in distros:
             default_v = mod.DISTROS[d][1]

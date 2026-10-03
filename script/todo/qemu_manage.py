@@ -217,10 +217,10 @@ class QemuManageMixin:
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
         distro = self._qemu_prompt_distro()
-        if not distro:
+        if distro is None:
             return
         version = self._qemu_prompt_version(distro)
-        if not version:
+        if version is None:
             return
         ans = input(t("Verify SHA256 after download? (y/N): "))
         parts = [
@@ -1165,10 +1165,10 @@ class QemuManageMixin:
         """(utilisée, totale) en KiO vues par l'INVITÉ, ou (0, 0).
 
         « available » est ce que l'invité voit, « usable » ce qu'il peut encore
-        rendre : leur différence est son « used », à quelques mégaoctets près —
-        calibré contre le « free » de deux VM (1186 contre 1216, 4831 contre
-        4838). « unused » ne convient pas : il ignore le cache, et donnait
-        10,8 Go d'« utilisé » sur une VM qui en occupait 1,2.
+        rendre : leur différence est son « used », à quelques mégaoctets près
+        de ce que « free » affiche dans l'invité. « unused » ne convient pas :
+        il ignore le cache, et compte pour « utilisé » toute la mémoire que
+        l'invité garde en cache, bien au-delà de ce que la VM occupe.
 
         La période de collecte est posée d'abord, et c'est indispensable : sans
         elle le ballon ne rafraîchit rien, et une VM annonce une fraction de la
