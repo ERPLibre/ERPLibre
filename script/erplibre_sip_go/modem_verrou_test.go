@@ -77,3 +77,61 @@ func TestLePortSeLibereALaFermeture(t *testing.T) {
 	}
 	_ = second.Close()
 }
+
+func TestRouvrirReprendLePortSousLeMemeNom(t *testing.T) {
+	// Ce que fait une mise en veille : le noeud disparait du bus et revient,
+	// et le lien udev pointe alors un nouveau ttyUSB sous le meme nom. Le
+	// descripteur d'avant ne rend plus qu'une erreur.
+	chemin := pseudoPort(t)
+	m, err := OuvrirModem(chemin)
+	if err != nil {
+		t.Fatalf("ouverture : %v", err)
+	}
+	defer m.Close()
+	avant := m.f
+
+	if err := m.Rouvrir(); err != nil {
+		t.Fatalf("reouverture : %v", err)
+	}
+	if m.f == avant {
+		t.Fatal("le descripteur n'a pas change : rien n'a ete rouvert")
+	}
+	// Le verrou du noyau suit le nouveau descripteur : sans la fermeture de
+	// l'ancien, il tiendrait encore et la reouverture aurait echoue.
+	if m.br == nil {
+		t.Fatal("le lecteur tamponne pointe encore l'ancien descripteur")
+	}
+}
+
+func TestRouvrirRefusePendantUneConversation(t *testing.T) {
+	// Le port sert a l'appel en cours : le reprendre le couperait. Et une
+	// ligne qui tient encore dit justement que le port n'est pas mort.
+	m, err := OuvrirModem(pseudoPort(t))
+	if err != nil {
+		t.Fatalf("ouverture : %v", err)
+	}
+	defer m.Close()
+	if !m.PrendreLaLigne() {
+		t.Fatal("la ligne devrait etre libre")
+	}
+	defer m.RendreLaLigne()
+
+	if err := m.Rouvrir(); err == nil {
+		t.Fatal("une conversation en cours n'a pas empeche la reprise du port")
+	}
+}
+
+func TestUnPortDisparuSeRefuseAuLieuDeSeTaire(t *testing.T) {
+	// Rouvrir ce qui n'existe plus doit RENDRE une erreur : avalee, elle
+	// laisserait le service croire qu'il a repris la main.
+	m, err := OuvrirModem(pseudoPort(t))
+	if err != nil {
+		t.Fatalf("ouverture : %v", err)
+	}
+	defer m.Close()
+	m.chemin = "/dev/ce-port-n-existe-pas"
+
+	if err := m.Rouvrir(); err == nil {
+		t.Fatal("la reouverture d'un port absent s'est dite reussie")
+	}
+}

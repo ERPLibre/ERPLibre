@@ -29,6 +29,12 @@ const PortDéfaut = "/dev/erplibre-modem-at"
 // place un appel. Sans la règle udev, chaque commande exigeait de l'arrêter,
 // ce qui coupait la connexion de données.
 type Modem struct {
+	// chemin est retenu pour pouvoir ROUVRIR : un modem qui quitte le bus
+	// USB et y revient — une mise en veille, un AT+CFUN=1,1 — laisse un
+	// descripteur mort derriere lui, et le lien udev pointe alors un
+	// nouveau ttyUSB sous le meme nom.
+	chemin string
+
 	f  *os.File
 	br *bufio.Reader
 
@@ -72,6 +78,52 @@ func OuvrirModem(chemin string) (*Modem, error) {
 	if chemin == "" {
 		chemin = PortDéfaut
 	}
+	f, err := ouvrirPortBrut(chemin)
+	if err != nil {
+		return nil, err
+	}
+	return &Modem{chemin: chemin, f: f, br: bufio.NewReader(f)}, nil
+}
+
+// Rouvrir reprend le port sous le MEME nom, apres sa disparition.
+//
+// Un modem qui quitte le bus USB et y revient laisse derriere lui un
+// descripteur qui ne rend plus qu'une erreur. Le service, lui, ne meurt pas :
+// il continue d'interroger une ligne qu'il ne voit plus, systemd ne le
+// relance donc pas, et plus aucun appel n'entre — une panne muette.
+//
+// Rouvrir EN PLACE plutot que de rendre la main : le pointeur est detenu
+// ailleurs — la composition sortante, le pilotage — et le service garde en
+// memoire le code de la messagerie, qu'un redemarrage ferait redemander a
+// un humain.
+//
+// Refuse pendant une conversation : le port y sert, et le reprendre
+// couperait l'appel. Une ligne qui tient encore dit d'ailleurs que le port
+// n'est pas mort.
+func (m *Modem) Rouvrir() error {
+	if !m.ligne.TryLock() {
+		return fmt.Errorf("une conversation tient la ligne")
+	}
+	defer m.ligne.Unlock()
+	m.parole.Lock()
+	defer m.parole.Unlock()
+
+	// Fermer d'abord, et sans se soucier de l'erreur : le descripteur est
+	// mort, c'est la raison d'etre de cet appel. Le laisser ouvert garderait
+	// le verrou du noyau sur l'ancien noeud.
+	_ = m.f.Close()
+
+	f, err := ouvrirPortBrut(m.chemin)
+	if err != nil {
+		return err
+	}
+	m.f = f
+	m.br = bufio.NewReader(f)
+	return nil
+}
+
+// ouvrirPortBrut ouvre et configure le port, sans construire de modem.
+func ouvrirPortBrut(chemin string) (*os.File, error) {
 	// O_NONBLOCK a l'ouverture, et `Fd()` JAMAIS ensuite : ces deux choses
 	// decident si une lecture peut etre bornee.
 	//
@@ -154,7 +206,7 @@ func OuvrirModem(chemin string) (*Modem, error) {
 		f.Close()
 		return nil, fmt.Errorf("port %s : %w", chemin, err)
 	}
-	return &Modem{f: f, br: bufio.NewReader(f)}, nil
+	return f, nil
 }
 
 func (m *Modem) Close() error { return m.f.Close() }

@@ -30,6 +30,15 @@ const (
 	// disputeraient.
 	CadenceSurveillanceEntrants = time.Second
 
+	// ÉchecsAvantRéouverture : au bout de combien d'interrogations sans
+	// réponse on reprend le port.
+	//
+	// Assez pour ne pas rouvrir sur un modem momentanément fâché — il refuse
+	// une commande pendant qu'il bascule de réseau — et assez peu pour que
+	// la ligne ne reste pas sourde une minute après un réveil. La veille
+	// interroge chaque seconde, donc dix vaut dix secondes.
+	ÉchecsAvantRéouverture = 10
+
 	// DélaiSonnerieSoftphone borne l'attente d'un décroché au navigateur.
 	// Au-delà, l'appelant a raccroché ou personne n'est devant l'écran.
 	DélaiSonnerieSoftphone = 45 * time.Second
@@ -80,6 +89,20 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 			if muets == 1 || muets%60 == 0 {
 				slog.Warn("la ligne ne repond pas a l'interrogation",
 					"err", err, "tentatives", muets)
+			}
+			// Une serie d'echecs n'est pas un modem fache, c'est un port
+			// mort : une mise en veille suffit a le faire disparaitre du bus
+			// et revenir sous un autre ttyUSB. Sans cette reprise, le
+			// service reste vivant et sourd — systemd ne le relance pas
+			// puisqu'il n'est pas mort, et plus aucun appel n'entre.
+			if muets%ÉchecsAvantRéouverture == 0 {
+				if err := m.Rouvrir(); err != nil {
+					slog.Warn("port du modem non rouvert",
+						"err", err, "tentatives", muets)
+				} else {
+					slog.Info("port du modem rouvert", "apres_echecs", muets)
+					muets = 0
+				}
 			}
 			continue
 		}
