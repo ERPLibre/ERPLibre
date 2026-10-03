@@ -32,7 +32,7 @@ func portLibre(t *testing.T) string {
 // modem ni carte SIM : le défaut qu'il attrape ne se voit autrement qu'en
 // appelant un vrai numéro.
 func softphoneDEssai(t *testing.T, adresseServeur, poste, contact string,
-	invites chan<- *sip.Request) {
+	invites chan<- *sip.Request, décroche bool, byes chan<- *sip.Request) {
 
 	t.Helper()
 	ua, err := sipgo.NewUA()
@@ -48,6 +48,22 @@ func softphoneDEssai(t *testing.T, adresseServeur, poste, contact string,
 	srv.OnInvite(func(req *sip.Request, tx sip.ServerTransaction) {
 		invites <- req
 		_ = tx.Respond(sip.NewResponseFromRequest(req, 180, "Ringing", nil))
+		if !décroche {
+			return
+		}
+		réponse := sip.NewResponseFromRequest(req, 200, "OK", []byte("v=0\r\n"))
+		réponse.AppendHeader(&sip.ContactHeader{
+			Address: sip.Uri{User: poste, Host: contact, UriParams: sip.NewParams()},
+			Params:  sip.NewParams(),
+		})
+		_ = tx.Respond(réponse)
+	})
+	srv.OnAck(func(req *sip.Request, tx sip.ServerTransaction) {})
+	srv.OnBye(func(req *sip.Request, tx sip.ServerTransaction) {
+		if byes != nil {
+			byes <- req
+		}
+		_ = tx.Respond(sip.NewResponseFromRequest(req, 200, "OK", nil))
 	})
 
 	client, err := sipgo.NewClient(ua)
@@ -84,14 +100,21 @@ func softphoneDEssai(t *testing.T, adresseServeur, poste, contact string,
 	}
 }
 
-func TestLInviteAtteintUnSoftphoneAuContactInvalide(t *testing.T) {
+// serveurDEssai monte le registre et la pile SIP du service, en WebSocket.
+//
+// Rend l'adresse d'écoute, le registre et le cache de dialogues : de quoi
+// présenter un appel entrant à un poste, sans modem ni carte SIM.
+func serveurDEssai(t *testing.T) (string, *Registre, *sipgo.DialogClientCache,
+	context.Context) {
+
+	t.Helper()
 	adresse := portLibre(t)
 
 	ua, err := sipgo.NewUA()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = ua.Close() }()
+	t.Cleanup(func() { _ = ua.Close() })
 	srv, err := sipgo.NewServer(ua)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +135,7 @@ func TestLInviteAtteintUnSoftphoneAuContactInvalide(t *testing.T) {
 	})
 
 	ctx, arrêter := context.WithCancel(context.Background())
-	defer arrêter()
+	t.Cleanup(arrêter)
 	go func() {
 		_ = srv.ListenAndServe(ctx, "ws", adresse)
 	}()
@@ -127,8 +150,14 @@ func TestLInviteAtteintUnSoftphoneAuContactInvalide(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
+	return adresse, registre, dialogues, ctx
+}
+
+func TestLInviteAtteintUnSoftphoneAuContactInvalide(t *testing.T) {
+	adresse, registre, dialogues, ctx := serveurDEssai(t)
+
 	invites := make(chan *sip.Request, 1)
-	softphoneDEssai(t, adresse, "1001", "abc123xyz.invalid", invites)
+	softphoneDEssai(t, adresse, "1001", "abc123xyz.invalid", invites, false, nil)
 
 	inscription, joignable := registre.Trouver("1001", time.Now())
 	if !joignable {
@@ -165,5 +194,39 @@ func TestLInviteAtteintUnSoftphoneAuContactInvalide(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "lookup") || strings.Contains(err.Error(), "SRV") {
 		t.Fatalf("motif %q : la resolution DNS du contact masque la cause", err)
+	}
+}
+
+func TestLeRaccrochageAtteintLeSoftphoneQuiADecroche(t *testing.T) {
+	adresse, registre, dialogues, ctx := serveurDEssai(t)
+
+	invites := make(chan *sip.Request, 1)
+	byes := make(chan *sip.Request, 1)
+	softphoneDEssai(t, adresse, "1001", "zzz999plq.invalid", invites, true, byes)
+
+	inscription, joignable := registre.Trouver("1001", time.Now())
+	if !joignable {
+		t.Fatal("le poste ne s'est pas inscrit")
+	}
+
+	minuté, finir := context.WithTimeout(ctx, 5*time.Second)
+	defer finir()
+	session, err := sonner(minuté, dialogues, inscription, adresse, "15550100",
+		[]byte("v=0\r\n"))
+	if err != nil {
+		t.Fatalf("le poste a decroche mais sonner a echoue : %v", err)
+	}
+	defer session.Close()
+
+	// Le correspondant raccroche : c'est à NOUS de le dire au poste. Sans
+	// acquittement de sa part, l'appel reste affiché à l'écran et le
+	// raccrochage attend son échéance entière.
+	if err := raccrocherLAppelant(ctx, session, inscription.Source); err != nil {
+		t.Fatalf("raccrochage : %v", err)
+	}
+	select {
+	case <-byes:
+	case <-time.After(3 * time.Second):
+		t.Fatal("le softphone n'a recu aucun BYE")
 	}
 }

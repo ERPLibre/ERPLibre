@@ -406,7 +406,7 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	// encore : quand c'est LUI qui a raccroché, son BYE nous est déjà
 	// parvenu et en renvoyer un serait répondre à une porte fermée.
 	if session.Context().Err() == nil {
-		raccrocherLAppelant(ctx, session, inscription.Source)
+		_ = raccrocherLAppelant(ctx, session, inscription.Source)
 	}
 	return err
 }
@@ -511,20 +511,25 @@ func sonner(ctx context.Context, dialogues *sipgo.DialogClientCache,
 
 // raccrocherLAppelant met fin au dialogue vers le softphone.
 func raccrocherLAppelant(ctx context.Context, session *sipgo.DialogClientSession,
-	destination string) {
+	destination string) error {
 
 	if session.InviteResponse == nil {
-		return
+		return nil
 	}
 	bye := ConstruireByeSortant(session.InviteRequest, session.InviteResponse,
 		destination)
 	minuté, arrêter := context.WithTimeout(ctx, DélaiRaccrochage)
 	defer arrêter()
 	if err := session.WriteBye(minuté, bye); err != nil {
-		slog.Warn("raccrochage du softphone", "err", err)
-		return
+		// La ligne cellulaire est DÉJÀ rendue quand on arrive ici : ce qui
+		// manque est l'acquittement du poste, et sans lui son écran peut
+		// garder l'appel affiché alors que plus personne n'est au bout.
+		slog.Warn("raccrochage du softphone sans acquittement",
+			"err", err, "delai", DélaiRaccrochage)
+		return err
 	}
 	slog.Info("softphone raccroché : la ligne est retombée")
+	return nil
 }
 
 // surveillerLAppelant coupe la sonnerie dès que la ligne cellulaire retombe.
