@@ -759,36 +759,37 @@ class QemuDeployMixin:
 
         `selected` = liste de (d, v, ram_min, disk, arch). Renvoie
         (label, selected) où selected porte désormais les valeurs FINALES et
-        un vCPU par VM : (d, v, ram, disk, arch, vcpus)."""
+        un vCPU par VM : (d, v, ram, disk, arch, vcpus) ; None pour [0]. Le
+        choix passe par `ui.choose`, x1 sur une réponse vide."""
         base_ram = sum(s[2] for s in selected)  # RAM min totale (x1)
         base_vcpus = self._QEMU_BASE_VCPUS
-        print(f"\n{t('Resources per VM (x1 = catalog minimum):')}")
         cpu_txt = f"{host_cpu} vCPU"
         ram_txt = (
             f"~{free_ram} Mo {t('free')}"
             if free_ram
             else t("free RAM unknown")
         )
-        print(f"  {t('Host:')} {cpu_txt}, {ram_txt}")
+        labels = []
         for n in (1, 2, 3, 4):
             vcpus = min(base_vcpus * n, host_cpu)
             total = base_ram * n
-            star = " *" if n == 1 else ""
             warn = ""
             if free_ram and total > free_ram:
                 warn = f"   ⚠ {t('> host free RAM')}"
-            print(
-                f"  [{n}] x{n}{star}  {vcpus} vCPU/VM, "
-                f"{t('total RAM')} ~{total} Mo{warn}"
+            labels.append(
+                f"x{n}  {vcpus} vCPU/VM, {t('total RAM')} ~{total} Mo{warn}"
             )
-        print(f"  [5] {t('Custom - set vCPU, RAM and disk')}")
-        sel = input(f"{t('Choice (1-5, default 1):')} ").strip()
-        try:
-            mult = int(sel)
-        except ValueError:
-            mult = 1
-        if not 1 <= mult <= 5:
-            mult = 1
+        labels.append(t("Custom - set vCPU, RAM and disk"))
+        mult = ui.choose(
+            f"{t('Resources per VM (x1 = catalog minimum):')}\n"
+            f"  {t('Host:')} {cpu_txt}, {ram_txt}",
+            [1, 2, 3, 4, 5],
+            default=1,
+            labels=labels,
+            names={f"x{n}": n for n in (1, 2, 3, 4)},
+        )
+        if mult is None:
+            return None
 
         if mult != 5:
             vcpus = min(base_vcpus * mult, host_cpu)
@@ -1569,12 +1570,13 @@ class QemuDeployMixin:
         pref = todo_prefs.get("qemu_deploy_ui")
         if pref in ("tui", "cli"):
             return pref
-        print(f"\n{t('Interface:')}")
-        print(f"  [1] {t('TUI form')} *")
-        print(f"  [2] {t('Classic questions (line by line)')}")
-        print(f"  {t('(change the default in TODO > Configuration)')}")
-        sel = input(t("Choice (1-2, default 1): ")).strip()
-        return "cli" if sel == "2" else "tui"
+        return ui.choose(
+            f"{t('Interface:')}\n"
+            f"  {t('(change the default in TODO > Configuration)')}",
+            ["tui", "cli"],
+            default="tui",
+            labels=[t("TUI form"), t("Classic questions (line by line)")],
+        )
 
     def _qemu_form_context(self, mod):
         """Données préchargées pour le formulaire TUI.
@@ -1673,7 +1675,10 @@ class QemuDeployMixin:
         self._qemu_check_libvirt_group()
         self._qemu_check_kvm()
 
-        if self._qemu_ask_ui() == "tui":
+        interface = self._qemu_ask_ui()
+        if interface is None:
+            return
+        if interface == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
             if spec is None:
                 return
@@ -1866,9 +1871,10 @@ class QemuDeployMixin:
         # finales — RAM, disque et vCPU — pour chaque VM.
         host_cpu = os.cpu_count() or 2
         free_ram = self._host_free_ram_mb()
-        res_label, selected = self._qemu_prompt_resources(
-            selected, host_cpu, free_ram
-        )
+        got = self._qemu_prompt_resources(selected, host_cpu, free_ram)
+        if got is None:
+            return None
+        res_label, selected = got
 
         # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
         names, selected = self._qemu_customize_vms(selected, host_cpu)
@@ -1913,19 +1919,20 @@ class QemuDeployMixin:
         """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
 
         Serveur par défaut : c'est ce que sert une image cloud, et le bureau
-        ajoute une à deux heures d'installation sur une architecture émulée."""
-        print(f"\n{t('VM type:')}")
-        print(f"  [1] {t('Server (no graphical interface)')} *")
+        ajoute une à deux heures d'installation sur une architecture émulée.
+        Une saveur se choisit aussi par son nom affiché ; None pour [0]."""
         flavours = list(self._QEMU_DESKTOP)
-        for i, key in enumerate(flavours, 2):
-            label = self._QEMU_DESKTOP[key]["label"]
-            print(f"  [{i}] {t('Graphical (server + desktop):')} {label}")
-        sel = input(t("Choice (number, blank = server): ")).strip()
-        try:
-            index = int(sel) - 2
-        except ValueError:
-            return ""
-        return flavours[index] if 0 <= index < len(flavours) else ""
+        shown = {self._QEMU_DESKTOP[key]["label"]: key for key in flavours}
+        return ui.choose(
+            t("VM type:"),
+            ["", *flavours],
+            default="",
+            labels=[
+                t("Server (no graphical interface)"),
+                *(f"{t('Graphical (server + desktop):')} {s}" for s in shown),
+            ],
+            names=shown,
+        )
 
     @classmethod
     def _qemu_app_store_needed(cls, vms):
@@ -1941,15 +1948,15 @@ class QemuDeployMixin:
         """Magasin d'applications des VM graphiques Ubuntu."""
         if not self._qemu_app_store_needed(vms):
             return "deb"
-        print(f"\n{t('Application store (graphical Ubuntu VMs):')}")
-        for i, (_key, label) in enumerate(self.QEMU_APP_STORES, 1):
-            star = " *" if i == 1 else ""
-            print(f"  [{i}] {t(label)}{star}")
-        print(f"  ⚠ {t('snap needs the store; slow under emulation.')}")
-        answer = input(f"{t('Choice')} [1]: ").strip() or "1"
-        if answer.isdigit() and 1 <= int(answer) <= len(self.QEMU_APP_STORES):
-            return self.QEMU_APP_STORES[int(answer) - 1][0]
-        return "deb"
+        keys = [key for key, _label in self.QEMU_APP_STORES]
+        return ui.choose(
+            f"{t('Application store (graphical Ubuntu VMs):')}\n"
+            f"  ⚠ {t('snap needs the store; slow under emulation.')}",
+            keys,
+            default=keys[0],
+            labels=[t(label) for _key, label in self.QEMU_APP_STORES],
+            names={key: key for key in keys},
+        )
 
     def _qemu_ask_vm_tools(self, vms):
         """Outils de développement des VM graphiques : liste à cocher.
@@ -2006,7 +2013,8 @@ class QemuDeployMixin:
         return tuple(picked)
 
     def _qemu_ask_ai_tools(self, vm_tools):
-        """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché.
+        """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché ;
+        None pour [0] au choix de l'agent (`ui.choose`).
 
         Le nom et le courriel sont proposés avec l'identité de l'HÔTE, qui
         est ce que la VM reçoit aujourd'hui : une réponse vide la garde. Sans
@@ -2017,17 +2025,13 @@ class QemuDeployMixin:
 
         if "aidev" not in (vm_tools or ()):
             return "", "", ""
-        noms = list(dev_tools.AGENTS)
-        print(f"  {t('AI coding tools')} :")
-        for i, nom in enumerate(noms, 1):
-            marque = " ←" if nom == dev_tools.AGENT_DEFAUT else ""
-            print(f"    [{i}] {nom}{marque}")
-        rep = input("    " + t("Choice: ")).strip()
-        agent = (
-            noms[int(rep) - 1]
-            if rep.isdigit() and 1 <= int(rep) <= len(noms)
-            else dev_tools.AGENT_DEFAUT
+        agent = ui.choose(
+            f"{t('AI coding tools')} :",
+            list(dev_tools.AGENTS),
+            default=dev_tools.AGENT_DEFAUT,
         )
+        if agent is None:
+            return None
         hote_nom = self._qemu_host_git("user.name")
         hote_mail = self._qemu_host_git("user.email")
         nom = input(f"    {t('Name for git')} [{hote_nom}] : ").strip()
@@ -2046,19 +2050,25 @@ class QemuDeployMixin:
             # préférer un Python de la distribution. Voir _python_provider()
             # dans le formulaire, même raisonnement.
             return ""
-        print(f"\n{t('Python interpreter:')}")
-        print(f"  [1] {t('mise (precompiled, faster)')} *")
-        print(f"  [2] {t('pyenv (compiles from source)')}")
+        question = t("Python interpreter:")
         skipped = [a for a in arches if a not in self.QEMU_MISE_ARCHES]
         if skipped:
             # Dit AVANT le déploiement plutôt que découvert dans un log.
-            print(
-                f"  ⚠ {t('mise has no binary for:')} "
+            question += (
+                f"\n  ⚠ {t('mise has no binary for:')} "
                 f"{', '.join(sorted(set(skipped)))} — "
                 f"{t('those VMs use pyenv')}"
             )
-        sel = input(t("Choice (number, blank = mise): ")).strip()
-        return "pyenv" if sel == "2" else "mise"
+        return ui.choose(
+            question,
+            ["mise", "pyenv"],
+            default="mise",
+            labels=[
+                t("mise (precompiled, faster)"),
+                t("pyenv (compiles from source)"),
+            ],
+            names={"mise": "mise", "pyenv": "pyenv"},
+        )
 
     def _qemu_host_timezone(self):
         """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
@@ -2119,7 +2129,11 @@ class QemuDeployMixin:
 
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
+        # [0] à l'une des listes qui suivent renonce au déploiement, sans un
+        # mot, rien n'étant encore créé.
         desktop = self._qemu_ask_desktop()
+        if desktop is None:
+            return None
         # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
         # VM avant de décider du magasin, qui ne concerne que les graphiques.
         # Le nom suit le type, exactement comme dans le formulaire — c'est la
@@ -2131,10 +2145,14 @@ class QemuDeployMixin:
             _vm.setdefault("desktop", desktop)
             _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
         app_store = self._qemu_ask_app_store(vms)
+        if app_store is None:
+            return None
         vm_tools = self._qemu_ask_vm_tools(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )
+        if python_provider is None:
+            return None
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -2204,7 +2222,10 @@ class QemuDeployMixin:
 
         # Ces trois réponses n'ont d'objet que si l'outil est coché : les
         # poser toujours ferait trois questions de plus à qui n'en veut pas.
-        ai_agent, git_name, git_email = self._qemu_ask_ai_tools(vm_tools)
+        ai_tools = self._qemu_ask_ai_tools(vm_tools)
+        if ai_tools is None:
+            return None
+        ai_agent, git_name, git_email = ai_tools
 
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))

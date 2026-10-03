@@ -2455,10 +2455,6 @@ TRANSLATIONS = {
         "fr": "Choix (1-4, défaut 1) :",
         "en": "Choice (1-4, default 1):",
     },
-    "Choice (1-5, default 1):": {
-        "fr": "Choix (1-5, défaut 1) :",
-        "en": "Choice (1-5, default 1):",
-    },
     "Custom - set vCPU, RAM and disk": {
         "fr": "Personnalisé — choisir vCPU, RAM et disque",
         "en": "Custom — set vCPU, RAM and disk",
@@ -3352,10 +3348,6 @@ TRANSLATIONS = {
         "fr": "pyenv (compile depuis les sources)",
         "en": "pyenv (compiles from source)",
     },
-    "Choice (number, blank = mise): ": {
-        "fr": "Choix (numero, vide = mise) : ",
-        "en": "Choice (number, blank = mise): ",
-    },
     "mise has no binary for:": {
         "fr": "mise ne publie pas de binaire pour :",
         "en": "mise has no binary for:",
@@ -3391,10 +3383,6 @@ TRANSLATIONS = {
     "Installing the desktop (long):": {
         "fr": "Installation du bureau (long) :",
         "en": "Installing the desktop (long):",
-    },
-    "Choice (number, blank = server): ": {
-        "fr": "Choix (numero, vide = serveur) : ",
-        "en": "Choice (number, blank = server): ",
     },
     "Installing the GNOME desktop (long)": {
         "fr": "Installation du bureau GNOME (long)",
@@ -3708,7 +3696,6 @@ TRANSLATIONS = {
         "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
         "en": "(the hypervisor only relays; -J puts the VM last)",
     },
-    "Choice": {"fr": "Choix", "en": "Choice"},
     "failed steps": {"fr": "étapes en échec", "en": "failed steps"},
     "Failed steps": {"fr": "Étapes en échec", "en": "Failed steps"},
     "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
@@ -4623,10 +4610,6 @@ TRANSLATIONS = {
     "Enter": {
         "fr": "Entrée",
         "en": "Enter",
-    },
-    "Choice: ": {
-        "fr": "Choix : ",
-        "en": "Choice: ",
     },
     "Available VMs:": {
         "fr": "VM disponibles :",
