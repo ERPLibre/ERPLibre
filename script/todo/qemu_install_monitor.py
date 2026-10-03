@@ -1128,10 +1128,10 @@ def cli_browser() -> str | None:
 # Navigateurs CLI installables via apt/dnf/pacman (nom de paquet = binaire).
 # browsh/carbonyl ne sont pas dans les dépôts standard -> non proposés ici.
 INSTALLABLE_BROWSERS = (
-    ("w3m", "w3m — léger, rend un peu de HTML"),
-    ("lynx", "lynx — navigateur texte"),
-    ("links", "links — texte / graphique"),
-    ("elinks", "elinks — texte, onglets"),
+    ("w3m", "w3m — light, renders some HTML"),
+    ("lynx", "lynx — text browser"),
+    ("links", "links — text / graphical"),
+    ("elinks", "elinks — text, tabs"),
 )
 
 
@@ -1147,6 +1147,66 @@ def browser_install_command(browser="w3m") -> list | None:
     from script.todo import todo_install
 
     return todo_install.install_command([browser])
+
+
+def choose_cli_browser(install):
+    """Le navigateur CLI choisi parmi ceux du PATH (`ui.choose`), par son
+    numéro ou son nom, le premier, marqué, sur une réponse vide ; None pour
+    [0]. [i], ou aucun navigateur installé, rend ce que rend `install()`.
+    Le choix du menu QEMU et celui du dashboard, la TUI suspendue."""
+    from script.todo import ui
+
+    available = [b for b in CLI_BROWSERS if shutil.which(b)]
+    if not available:
+        return install()
+    sel = ui.choose(
+        t("Which browser to view the page?"),
+        available,
+        default=available[0],
+        letters={"i": t("Install another browser")},
+    )
+    return install() if sel == "i" else sel
+
+
+def pick_installable_browser():
+    """Le navigateur CLI à installer (`ui.choose`), par son numéro ou son
+    nom, w3m, marqué, sur une réponse vide ; None pour [0]."""
+    from script.todo import ui
+
+    names = [name for name, _desc in INSTALLABLE_BROWSERS]
+    return ui.choose(
+        t("Which browser to install?"),
+        names,
+        default=names[0],
+        labels=[t(desc) for _name, desc in INSTALLABLE_BROWSERS],
+        names={name: name for name in names},
+    )
+
+
+def install_cli_browser(pause=False):
+    """Le navigateur CLI à installer (`pick_installable_browser`), sa
+    commande montrée puis lancée après un oui : le binaire désormais dans
+    le PATH, ou None. Avec `pause`, le dashboard, la TUI suspendue, attend
+    Entrée avant de reprendre l'écran."""
+    browser = pick_installable_browser()
+    if browser is None:
+        return None
+    cmd = browser_install_command(browser)
+    if not cmd:
+        print(t("Unknown package manager; install it manually."))
+        if pause:
+            input("Entrée… ")
+        return None
+    printable = " ".join(cmd)
+    print(f"{t('Command:')} {printable}")
+    answer = input(t("Install now? (y/N): ")).strip().lower()
+    if answer not in ("o", "oui", "y", "yes"):
+        return None
+    rc = os.system(printable)
+    if pause:
+        print(f"\nInstallation terminée (code {rc}).")
+        input("Entrée pour continuer… ")
+    return browser if shutil.which(browser) else None
 
 
 def virsh_ip(name: str) -> str:
@@ -3012,74 +3072,22 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     pass
 
         def _choose_browser(self):
-            """Offre la LISTE des navigateurs CLI installés et laisse choisir
-            lequel utiliser pour voir la page. Si aucun n'est installé, propose
-            d'en installer un. Renvoie le binaire choisi, ou None."""
-            available = [b for b in CLI_BROWSERS if shutil.which(b)]
-            if not available:
-                browser = self._install_cli_browser()
-                if not browser:
-                    self.notify(
-                        "Aucun navigateur CLI disponible.",
-                        title="Web",
-                        severity="warning",
-                    )
-                return browser
+            """Le navigateur CLI choisi pour voir la page, la TUI suspendue
+            (`choose_cli_browser`) : [i], ou aucun navigateur installé, en
+            installe un (`install_cli_browser`). None pour [0], ou sans
+            navigateur, ce qu'une notification dit quand il n'y en a
+            aucun."""
             with self.suspend():
-                print("Quel navigateur utiliser pour voir la page ?")
-                for i, b in enumerate(available, 1):
-                    print(f"  [{i}] {b}{' *' if i == 1 else ''}")
-                print("  [i] Installer un autre navigateur")
-                sel = (
-                    input(f"Choix (numéro, vide = {available[0]}) : ")
-                    .strip()
-                    .lower()
+                browser = choose_cli_browser(
+                    lambda: install_cli_browser(pause=True)
                 )
-                if sel == "i":
-                    return self._install_cli_browser()
-                if not sel:
-                    return available[0]
-                try:
-                    idx = int(sel) - 1
-                    if 0 <= idx < len(available):
-                        return available[idx]
-                except ValueError:
-                    pass
-                return available[0]
-
-        def _install_cli_browser(self):
-            """Demande QUEL navigateur CLI installer (w3m/lynx/links/elinks),
-            affiche la commande, l'exécute après validation. Renvoie le binaire
-            désormais disponible, ou None."""
-            with self.suspend():
-                print("Aucun navigateur CLI installé. Lequel installer ?")
-                for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
-                    print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
-                sel = input("Choix (numéro, vide = w3m) : ").strip()
-                browser = INSTALLABLE_BROWSERS[0][0]
-                try:
-                    idx = int(sel) - 1
-                    if 0 <= idx < len(INSTALLABLE_BROWSERS):
-                        browser = INSTALLABLE_BROWSERS[idx][0]
-                except ValueError:
-                    pass
-                cmd = browser_install_command(browser)
-                if not cmd:
-                    print(
-                        "Gestionnaire de paquets inconnu : installez "
-                        f"« {browser} » manuellement."
-                    )
-                    input("Entrée… ")
-                    return None
-                printable = " ".join(cmd)
-                print(f"Commande : {printable}")
-                ans = input("Installer maintenant ? (o/N) : ").strip().lower()
-                if ans not in ("o", "oui", "y", "yes"):
-                    return None
-                rc = os.system(printable)
-                print(f"\nInstallation terminée (code {rc}).")
-                input("Entrée pour continuer… ")
-            return cli_browser()
+            if browser is None and cli_browser() is None:
+                self.notify(
+                    t("No CLI browser available."),
+                    title="Web",
+                    severity="warning",
+                )
+            return browser
 
         def action_copy_log(self) -> None:
             """Copie le log complet de la VM sélectionnée dans le

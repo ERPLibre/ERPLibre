@@ -14,13 +14,18 @@ Les VM, les suivis et les navigateurs sont inventés ; virsh n'est jamais
 lancé, `execute` note chaque commande.
 """
 
+import contextlib
 import io
+import json
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest import mock
 
 sys.argv = ["todo.py"]
+from script.todo import qemu_install_monitor, todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -268,7 +273,13 @@ class TestLesSuivis(_Cas):
 
 class TestLeNavigateur(_Cas):
     def test_an_installed_browser_by_number_or_name_or_i_to_install(self):
-        self.todo._qemu_install_cli_browser = lambda: "forged_installed"
+        self.enterContext(
+            mock.patch.object(
+                qemu_install_monitor,
+                "install_cli_browser",
+                lambda: "forged_installed",
+            )
+        )
         for answers, expected in (
             ([""], "w3m"),
             (["lynx"], "lynx"),
@@ -286,6 +297,8 @@ class TestLeNavigateur(_Cas):
             self.assertEqual(got, expected)
 
     def test_the_browser_to_install_is_asked_before_any_command(self):
+        # Le menu QEMU installe par la même fonction que le dashboard, sans
+        # sa pause.
         asked = []
         for answers, expected in (
             ([""], ["w3m"]),
@@ -295,14 +308,100 @@ class TestLeNavigateur(_Cas):
         ):
             with (
                 self.subTest(answers=answers),
-                mock.patch(
-                    "script.todo.qemu_install_monitor.browser_install_command",
-                    lambda b: asked.append(b),
+                mock.patch.object(
+                    qemu_install_monitor,
+                    "browser_install_command",
+                    asked.append,
                 ),
+                mock.patch("builtins.input", side_effect=answers),
+                redirect_stdout(io.StringIO()),
             ):
                 asked.clear()
-                got, _ = self.play("_qemu_install_cli_browser", *answers)
+                got = qemu_install_monitor.install_cli_browser()
             self.assertEqual((got, asked), (None, expected))
+
+
+class TestLeNavigateurDuSuivi(unittest.TestCase):
+    """Le dashboard du suivi d'installation, la TUI suspendue, choisit son
+    navigateur sous les mêmes règles que le menu QEMU, dans la langue de
+    TODO ; le navigateur à installer se choisit avant toute commande."""
+
+    def setUp(self):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        vm = {"name": "forged_vm_a", "ip": "192.0.2.30", "log": str(tmp / "a")}
+        manifest = tmp / "session.json"
+        manifest.write_text(json.dumps({"started": 0, "vms": [vm]}))
+        self.app = qemu_install_monitor.run_monitor(
+            str(manifest), run_app=False
+        )
+        self.app.suspend = contextlib.nullcontext
+        self.notes = []
+        self.app.notify = lambda message, **_how: self.notes.append(message)
+        self.asked = []
+        self.enterContext(
+            mock.patch.object(
+                qemu_install_monitor.shutil,
+                "which",
+                lambda b: b in ("w3m", "lynx") and f"/bin/{b}",
+            )
+        )
+        self.enterContext(
+            mock.patch.object(
+                qemu_install_monitor,
+                "browser_install_command",
+                self.asked.append,
+            )
+        )
+
+    def play(self, *answers):
+        """(ce que rend le choix, ce qu'il imprime) quand `input` reçoit
+        `answers`."""
+        out = io.StringIO()
+        with (
+            mock.patch("builtins.input", side_effect=answers),
+            redirect_stdout(out),
+        ):
+            got = self.app._choose_browser()
+        return got, out.getvalue()
+
+    def test_an_installed_browser_by_number_or_name_or_i_to_install(self):
+        # Une faute redemande au lieu de prendre le premier en silence ; [i]
+        # mène au choix du navigateur à installer, dont [0] ne lance rien.
+        # Sans gestionnaire de paquets connu, Entrée revient.
+        for answers, expected, asked, refused in (
+            ([""], "w3m", [], 0),
+            (["lynx"], "lynx", [], 0),
+            (["9", "0"], None, [], 1),
+            (["I", "0"], None, [], 0),
+            (["i", "x", "links", ""], None, ["links"], 1),
+        ):
+            with self.subTest(answers=answers):
+                self.asked.clear()
+                got, shown = self.play(*answers)
+                self.assertEqual((got, self.asked), (expected, asked))
+                self.assertEqual(shown.count(t("Invalid choice: ")), refused)
+        self.assertEqual(self.notes, [])
+
+    def test_without_any_browser_the_list_to_install_then_a_notice(self):
+        # Aucun navigateur installé : la liste à installer vient d'emblée ;
+        # [0] n'installe rien, et une notification dit qu'il n'y en a pas.
+        with mock.patch.object(
+            qemu_install_monitor.shutil, "which", lambda b: None
+        ):
+            got, shown = self.play("0")
+        self.assertIsNone(got)
+        self.assertIn(t("Which browser to install?"), shown)
+        self.assertEqual(self.notes, [t("No CLI browser available.")])
+
+    def test_the_lists_speak_the_language_of_todo(self):
+        self.addCleanup(todo_i18n.use_lang, todo_i18n.get_lang())
+        todo_i18n.use_lang("en")
+        _, shown = self.play("i", "0")
+        self.assertIn(
+            "Which browser to view the page?\n[1] w3m (default)", shown
+        )
+        self.assertIn("[i] Install another browser\n", shown)
+        self.assertIn("[1] w3m — light, renders some HTML (default)\n", shown)
 
 
 if __name__ == "__main__":

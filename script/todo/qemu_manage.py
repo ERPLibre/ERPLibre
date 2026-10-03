@@ -1426,52 +1426,15 @@ class QemuManageMixin:
         return True
 
     def _qemu_choose_cli_browser(self):
-        """Offre la LISTE des navigateurs CLI installés, plus une option pour
-        en INSTALLER un autre, et renvoie celui choisi, sinon None."""
-        from script.todo.qemu_install_monitor import CLI_BROWSERS
-
-        available = [b for b in CLI_BROWSERS if shutil.which(b)]
-        if not available:
-            return self._qemu_install_cli_browser()
-        sel = ui.choose(
-            t("Which browser to view the page?"),
-            available,
-            default=available[0],
-            letters={"i": t("Install another browser")},
-        )
-        if sel == "i":
-            return self._qemu_install_cli_browser()
-        return sel
-
-    def _qemu_install_cli_browser(self):
-        """Demande QUEL navigateur CLI installer, affiche la commande adaptée
-        à l'OS, l'exécute après validation. Renvoie le binaire installé ou
-        None."""
+        """Le navigateur CLI choisi pour voir la page
+        (`qemu_install_monitor.choose_cli_browser`) : [i], ou aucun
+        navigateur installé, en installe un. None pour [0]."""
         from script.todo.qemu_install_monitor import (
-            INSTALLABLE_BROWSERS,
-            browser_install_command,
+            choose_cli_browser,
+            install_cli_browser,
         )
 
-        names = [name for name, _desc in INSTALLABLE_BROWSERS]
-        browser = ui.choose(
-            t("Which browser to install?"),
-            names,
-            default=names[0],
-            labels=[desc for _name, desc in INSTALLABLE_BROWSERS],
-            names=dict(zip(names, names)),
-        )
-        if browser is None:
-            return None
-        cmd = browser_install_command(browser)
-        if not cmd:
-            print(t("Unknown package manager; install it manually."))
-            return None
-        printable = " ".join(cmd)
-        print(f"{t('Command:')} {printable}")
-        if not self._is_yes(input(t("Install now? (y/N): "))):
-            return None
-        os.system(printable)
-        return browser if shutil.which(browser) else None
+        return choose_cli_browser(install_cli_browser)
 
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM

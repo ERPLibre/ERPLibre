@@ -4477,6 +4477,26 @@ TRANSLATIONS = {
         "fr": "Installer maintenant ? (o/N) : ",
         "en": "Install now? (y/N): ",
     },
+    "w3m — light, renders some HTML": {
+        "fr": "w3m — léger, rend un peu de HTML",
+        "en": "w3m — light, renders some HTML",
+    },
+    "lynx — text browser": {
+        "fr": "lynx — navigateur texte",
+        "en": "lynx — text browser",
+    },
+    "links — text / graphical": {
+        "fr": "links — texte / graphique",
+        "en": "links — text / graphical",
+    },
+    "elinks — text, tabs": {
+        "fr": "elinks — texte, onglets",
+        "en": "elinks — text, tabs",
+    },
+    "No CLI browser available.": {
+        "fr": "Aucun navigateur CLI disponible.",
+        "en": "No CLI browser available.",
+    },
     "Which browser to view the page?": {
         "fr": "Quel navigateur pour voir la page ?",
         "en": "Which browser to view the page?",
