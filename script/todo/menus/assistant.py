@@ -80,16 +80,26 @@ SEARCH = Menu(
         FromMethod("_llm_networks", "_llm_search_network", "network"),
         Entry("An address I type", "_llm_add_server"),
         Entry("A network I type (CIDR)", "_llm_search_cidr"),
-        # Over SSH, un sélecteur, dessine son écran sous son propre segment.
-        Entry(
-            "The networks of a machine over SSH",
-            "_llm_search_remote",
-            crumb="Over SSH",
-        ),
+        Entry("The networks of a machine over SSH", "_llm_search_remote"),
     ],
     back=None,
     abort_closes=True,
     before="_llm_search_where",
+)
+
+# Over SSH demande l'hôte et lit les réseaux qu'il porte à l'entrée
+# (`opens`) ; sans hôte, ou sans réseau lu, il revient sans se dessiner. Il
+# offre ces réseaux, l'hôte sur sa ligne d'état, et se referme après en avoir
+# balayé un.
+REMOTE = Menu(
+    "_llm_search_remote",
+    "Over SSH",
+    [FromMethod("_llm_remote_networks", "_llm_search_network", "network")],
+    state="_llm_remote_where",
+    back=None,
+    closes=True,
+    abort_closes=True,
+    opens="_llm_remote_open",
 )
 
 # Les menus du courriel s'ouvrent sur `MailMenus` (`mail/menu.py`), dont

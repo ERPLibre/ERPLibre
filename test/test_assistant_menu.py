@@ -31,6 +31,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
+import click
+
 from script.todo.todo_i18n import t
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -866,29 +868,83 @@ class MenusDuLLM(unittest.TestCase):
             self.answered("_llm_search", "1", "0")
         sonde.assert_called_once_with(["127.0.0.1"])
 
-    def test_over_ssh_balaie_un_reseau_par_son_numero_affiche(self):
-        # Les réseaux lus sur l'hôte distant : « 01 », « +1 », « 1 »
-        # précédé d'un blanc ou un chiffre d'une autre écriture n'en
-        # balaient aucun ; « 2 » balaie le second.
+    def over_ssh(self, *answers, reseaux=None):
+        """(ce qu'écrit Over SSH, ses questions comprises, quand elles
+        reçoivent `answers`, les réseaux balayés) ; l'hôte distant porte
+        `reseaux`, deux réseaux sans eux."""
         from script.todo.assistant import discover as llm_disc
 
-        reseaux = [
-            llm_disc.Interface("forged0", "192.0.2.0/24", False),
-            llm_disc.Interface("forged1", "198.51.100.0/24", False),
-        ]
+        if reseaux is None:
+            reseaux = [
+                llm_disc.Interface("forged0", "192.0.2.0/24", False),
+                llm_disc.Interface("forged1", "198.51.100.0/24", True),
+            ]
         with (
             patch.object(llm_disc, "remote_networks", return_value=reseaux),
             patch.object(type(self.todo), "_llm_sweep_cidr") as balayage,
+            patch("click.prompt", side_effect=answers) as question,
+            redirect_stdout(io.StringIO()) as shown,
         ):
-            for answer in ("01", "+1", " 1", "١"):
-                with self.subTest(answer=answer):
-                    shown = self.answered(
-                        "_llm_search_remote", "forged-remote", answer
-                    )
-                    self.assertIn(t("Command not found !"), shown)
-            balayage.assert_not_called()
-            self.answered("_llm_search_remote", "forged-remote", "2")
-        balayage.assert_called_once_with("198.51.100.0/24")
+            self.todo._llm_search_remote()
+        asked = "".join(f"{c.args[0]}\n" for c in question.call_args_list)
+        swept = [c.args[0] for c in balayage.call_args_list]
+        return shown.getvalue() + asked, swept
+
+    def test_over_ssh_balaie_un_reseau_par_son_numero_affiche(self):
+        # Les réseaux lus sur l'hôte distant : « 01 », « +1 », « 1 »
+        # précédé d'un blanc ou un chiffre d'une autre écriture n'en
+        # balaient aucun, et la liste revient ; « 2 » balaie le second,
+        # puis Over SSH se referme sans reposer sa question.
+        for answer in ("01", "+1", " 1", "١"):
+            with self.subTest(answer=answer):
+                shown, balayes = self.over_ssh("forged-remote", answer, "2")
+                self.assertIn(t("Command not found !"), shown)
+                self.assertEqual(balayes, ["198.51.100.0/24"])
+
+    def test_over_ssh_offre_les_reseaux_lus_sous_l_hote(self):
+        # Sous son fil, « Search › Over SSH », qui est aussi la clé de
+        # télémétrie de sa visite, la ligne d'état nomme l'hôte où les
+        # réseaux ont été lus ; chaque réseau porte son interface, un pont
+        # signalé. [0] revient sans rien balayer.
+        from script.todo import todo_telemetry
+        from script.todo.ui import navigator
+
+        with navigator.crumbs_at(("Assistant", "LLM", "Search")):
+            shown, balayes = self.over_ssh("forged-remote", "0")
+        todo_telemetry.record.assert_called_once_with(
+            "Assistant › LLM › Search › Over SSH"
+        )
+        self.assertIn(
+            t("read on %s, swept from here") % "forged-remote", shown
+        )
+        self.assertIn("[1] 192.0.2.0/24 · forged0\n", shown)
+        pont = t("libvirt bridge")
+        self.assertIn(f"[2] 198.51.100.0/24 · forged1 ({pont})\n", shown)
+        self.assertEqual(balayes, [])
+
+    def test_over_ssh_sans_hote_ou_sans_reseau_ne_se_dessine_pas(self):
+        # Un hôte blanc, Ctrl+D à sa question, ou un hôte sans réseau lu :
+        # Over SSH revient sans dessiner de liste ni rien balayer, et sans
+        # visite à compter.
+        from script.todo import todo_telemetry
+
+        for answers, reseaux in (
+            (("  ",), None),
+            ((click.exceptions.Abort(),), None),
+            (("forged-remote",), []),
+        ):
+            with self.subTest(answers=answers, reseaux=reseaux):
+                shown, balayes = self.over_ssh(*answers, reseaux=reseaux)
+                self.assertNotIn("[0]", shown)
+                self.assertEqual(balayes, [])
+        todo_telemetry.record.assert_not_called()
+
+    def test_over_ssh_revient_sur_ctrl_d_a_sa_liste(self):
+        shown, balayes = self.over_ssh(
+            "forged-remote", click.exceptions.Abort()
+        )
+        self.assertIn("[1] 192.0.2.0/24", shown)
+        self.assertEqual(balayes, [])
 
     def test_over_ssh_se_dessine_sous_son_segment(self):
         # Search › The networks of a machine over SSH dessine le choix d'un

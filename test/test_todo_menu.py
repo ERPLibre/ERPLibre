@@ -2935,6 +2935,7 @@ class TestMenuLabels(unittest.TestCase):
         "prompt_assistant_llm": "LLM",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
+        "_llm_search_remote": "Over SSH",
         "prompt_execute_mail": None,
         "prompt_mail_accounts": None,
         "prompt_mail_cache": None,
@@ -3029,12 +3030,12 @@ class TestMenuLabels(unittest.TestCase):
 
     def test_each_declared_menu_keeps_its_crumb(self):
         """Un menu du registre garde son segment, le dernier de sa clé de
-        télémétrie, et Over SSH, l'écran d'une entrée de Search, le sien."""
+        télémétrie ; aucune entrée ne déclare le sien."""
         self.assertEqual(
             {name: self.menus[name]["crumb"] for name in self.SEGMENTS},
             self.SEGMENTS,
         )
-        self.assertEqual(self.ecrans, {"_llm_search_remote": "Over SSH"})
+        self.assertEqual(self.ecrans, {})
         # Une entrée qui ouvre un menu déclaré ne déclare pas de segment : le
         # navigateur empilerait les deux, et l'en-tête s'écarterait du
         # chemin de l'arbre, qui ne garde que celui du menu.

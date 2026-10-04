@@ -91,7 +91,7 @@ class AssistantMenuMixin:
 
     def _llm_state(self):
         """L'état de la session : serveur choisi, sonde locale, destinations
-        déjà confirmées.
+        déjà confirmées, et l'hôte d'Over SSH avec les réseaux lus sur lui.
 
         Vit sur l'instance et meurt avec le CLI. Rien n'en descend sur le
         disque : une table de qui a répondu décrit des machines que personne
@@ -105,6 +105,7 @@ class AssistantMenuMixin:
                 "contextes": set(),
                 "gpt": None,
                 "gpts": None,
+                "distant": None,
             }
         return self._llm_session
 
@@ -469,7 +470,8 @@ class AssistantMenuMixin:
         self._llm_sweep_cidr(cidr)
 
     def _llm_search_remote(self):
-        """Lire les réseaux d'une machine joignable en SSH, et en balayer un.
+        """Lire les réseaux d'une machine joignable en SSH, et en balayer un
+        (REMOTE, `menus/assistant.py`). Rend None.
 
         La machine du dessus porte les bons préfixes quand celle-ci n'en voit
         que ceux de son hyperviseur. Les réseaux se LISENT là-bas et se
@@ -477,48 +479,55 @@ class AssistantMenuMixin:
         route par défaut suffit d'ordinaire. L'hôte distant n'a besoin que
         d'un accès en lecture, et rien n'est balayé depuis lui.
         """
+        return navigate(self, menus_assistant.REMOTE)
+
+    def _llm_remote_open(self):
+        """Ce qui ouvre Over SSH : l'hôte, puis les réseaux qu'il porte,
+        gardés dans l'état de la session ; {} quand il en porte, None sur un
+        hôte vide, Ctrl+C, Ctrl+D ou un hôte sans réseau lu."""
         from script.todo.assistant import discover as llm_disc
 
         try:
             alias = click.prompt(t("Host reachable over SSH")).strip()
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
-            return
+            return None
         if not alias:
-            return
+            return None
         print(f"  {t('Reading the networks it carries…')}", flush=True)
         reseaux = llm_disc.remote_networks(alias)
         if not reseaux:
             print(f"⚠ {t('That host did not answer, or carries no network.')}")
-            return
-        choices = []
-        for interface in reseaux:
+            return None
+        self._llm_state()["distant"] = (alias, reseaux)
+        return {}
+
+    def _llm_remote_networks(self):
+        """Les réseaux qu'Over SSH offre, ceux que `_llm_remote_open` a lus :
+        {"prompt_description", "cidr"} chacun, un pont de virtualisation
+        signalé."""
+        choix = []
+        for interface in self._llm_state()["distant"][1]:
             pont = f" ({t('libvirt bridge')})" if interface.is_bridge else ""
-            choices.append(
+            choix.append(
                 {
                     "prompt_description": (
                         f"{interface.cidr} · {interface.name}{pont}"
-                    )
+                    ),
+                    "cidr": interface.cidr,
                 }
             )
-        print(t("read on %s, swept from here") % alias)
-        try:
-            status = click.prompt(self.fill_help_info(choices))
-        except (KeyboardInterrupt, click.exceptions.Abort):
-            print()
-            return
-        print()
-        if status == "0":
-            return
-        # Seul un numéro tel qu'affiché désigne un réseau : `int` prendrait
-        # aussi « 01 », « +1 » ou un chiffre d'une autre écriture.
-        if status in [str(n) for n in range(1, len(reseaux) + 1)]:
-            self._llm_sweep_cidr(reseaux[int(status) - 1].cidr)
-        else:
-            print(t("Command not found !"))
+        return choix
+
+    def _llm_remote_where(self):
+        """La ligne d'état d'Over SSH : où les réseaux ont été lus."""
+        return (
+            t("read on %s, swept from here") % self._llm_state()["distant"][0]
+        )
 
     def _llm_search_network(self, network):
-        """Balayer `network`, un réseau de `_llm_networks`."""
+        """Balayer `network`, un réseau de `_llm_networks` ou de
+        `_llm_remote_networks`."""
         self._llm_sweep_cidr(network["cidr"])
 
     def _llm_sweep_cidr(self, cidr):
