@@ -3662,10 +3662,12 @@ class TODO(
         `default_transaction_read_only=on` : c'est le serveur qui refuse
         l'écriture, pas une promesse du code.
 
-        Une seule action écrit — installer les modules suggérés, à la fin
-        de l'analyse [5]. Elle ne part jamais seule : question explicite,
-        défaut à « non », liste à confirmer, et refus net si le checkout
-        n'est pas sur la version de la base.
+        Trois actions écrivent, et aucune ne part seule : question
+        explicite, défaut à « non ». Installer les modules suggérés, à la
+        fin de l'analyse [5], veut en plus une liste confirmée et un
+        checkout sur la version de la base ; purger les pièces jointes dont
+        le champ a disparu et ranger un filestore imbriqué suivent
+        l'analyse du filestore [7].
         """
         return navigate(self, menus_run.ANALYSE)
 
@@ -3832,11 +3834,11 @@ class TODO(
     def _filestore_purge_dead(self, database, rapport):
         """Effacer les pièces jointes dont le champ a disparu.
 
-        La seule ÉCRITURE en base de tout le menu Analyse. Elle porte sur
-        des lignes que plus rien ne lit — `res.country.image` est devenu
-        `image_url`, calculé, en 13 — mais elle reste une suppression :
-        question explicite, défaut à « non », et le compte est relu avant
-        de partir.
+        La seule requête qui écrit en base de tout le menu Analyse :
+        installer des modules passe par Odoo. Elle porte sur des lignes
+        que plus rien ne lit — `res.country.image` est devenu `image_url`,
+        calculé, en 13 — mais elle reste une suppression : question
+        explicite, défaut à « non », et le compte est relu avant de partir.
         """
         from script.analyse import check_filestore as filestore
         from script.todo import auto_ask
@@ -3926,12 +3928,12 @@ class TODO(
         nécessaire : le rapport vient d'en annoncer onze, la liste n'en
         montre qu'un, et sans un mot on croirait à un bogue.
 
-        C'est la seule écriture de tout le menu Analyse, d'où trois
+        C'est la seule installation de tout le menu Analyse, d'où trois
         garde-fous : la version du checkout doit être celle de la base —
         un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
         question par défaut est « non », et la liste choisie est
         confirmée avant que rien ne parte. La liste est un choix multiple :
-        des numéros, des noms ou `tout` ; [0] et une réponse vide
+        des numéros, des noms ou `tout` ; [0], Ctrl+D et une réponse vide
         n'installent rien.
         """
         from script.analyse import check_module_package as modules
@@ -4778,28 +4780,30 @@ class TODO(
         """Installe RTK par la méthode choisie, curl, brew ou cargo, par son
         numéro ou son nom ; [0], une réponse vide ou Ctrl+D ne lancent
         rien."""
-        commands = {
+        # Chaque méthode porte son libellé avec sa commande : un ordre
+        # changé ne peut pas prêter à l'une le libellé d'une autre.
+        methods = {
             "curl": (
+                t("curl - Automatic install script"),
                 "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
-                "refs/heads/master/install.sh | sh"
+                "refs/heads/master/install.sh | sh",
             ),
-            "brew": "brew install rtk",
-            "cargo": "cargo install --git https://github.com/rtk-ai/rtk",
+            "brew": (t("brew - Homebrew (macOS/Linux)"), "brew install rtk"),
+            "cargo": (
+                t("cargo - Build from source (Rust required)"),
+                "cargo install --git https://github.com/rtk-ai/rtk",
+            ),
         }
         method = ui.choose(
             f"🤖 {t('Installation method:')}",
-            list(commands),
-            labels=[
-                t("curl - Automatic install script"),
-                t("brew - Homebrew (macOS/Linux)"),
-                t("cargo - Build from source (Rust required)"),
-            ],
-            names={name: name for name in commands},
+            list(methods),
+            labels=[label for label, _command in methods.values()],
+            names={name: name for name in methods},
         )
         if method is None:
             return
         exit_code = self.execute.exec_command_live(
-            commands[method],
+            methods[method][1],
             source_erplibre=False,
         )
         self.rtk_report_install(exit_code)
