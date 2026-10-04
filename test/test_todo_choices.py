@@ -294,6 +294,26 @@ class TestLaRedirectionDePort(unittest.TestCase):
         commandes, _ = self.tunnel(EOFError())
         self.assertEqual(commandes, [])
 
+    def test_zero_typed_as_the_address_opens_nothing(self):
+        # « 0 » tapé comme adresse vaut une réponse vide : il suit une
+        # liste où [0] veut dire Retour, et l'hôte « 0 » désigne la machine
+        # locale. Ni sonde ni tunnel ; les deux réponses vides qui suivent
+        # répondraient aux ports si la question continuait.
+        sondes = []
+        with patch.object(
+            self.todo,
+            "_remote_port_open",
+            lambda host, port: sondes.append(host),
+        ):
+            for hotes, reponses in ((self.hotes, ["3", "0"]), ([], ["0"])):
+                with self.subTest(reponses=reponses):
+                    self.hotes = hotes
+                    self.todo.execute.commandes.clear()
+                    commandes, sortie = self.tunnel(*reponses, "", "")
+                    self.assertEqual(commandes, [])
+                    self.assertIn(t("Cancelled."), sortie)
+        self.assertEqual(sondes, [])
+
     def test_a_typo_asks_again(self):
         commandes, sortie = self.tunnel("forged-B", "01", "1", "", "")
         self.assertEqual(sortie.count(t("Invalid choice: ")), 2)

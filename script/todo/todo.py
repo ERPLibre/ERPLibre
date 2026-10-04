@@ -1997,7 +1997,9 @@ class TODO(
         L'hôte vient de ~/.ssh/config, par son numéro ou son nom, ou se
         tape après « Type an address », la dernière entrée, qui est la
         seule question quand le fichier ne déclare aucun hôte. [0], une
-        réponse vide ou Ctrl+D reviennent sans rien sonder ni ouvrir."""
+        réponse vide ou Ctrl+D reviennent sans rien sonder ni ouvrir. « 0 »
+        tapé comme adresse vaut une réponse vide : il suit une liste où [0]
+        veut dire Retour, et l'hôte « 0 » désigne la machine locale."""
         print(f"\n🔌 {t('SSH port forwarding')}")
         hosts = self._ssh_config_hosts()
         host = ""
@@ -2015,6 +2017,8 @@ class TODO(
                 host = ui.ask(f"{t('Host or IP:')} ").strip()
             except EOFError:
                 return
+            if host == "0":
+                host = ""
         if not host:
             print(t("Cancelled."))
             return
