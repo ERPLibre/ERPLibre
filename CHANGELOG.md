@@ -329,7 +329,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - In a web session, an option label of several lines keeps its lines on the page — an install run and its VMs, a Claude Code session, a gpt tool and its description — where they ran into one
 - Execute › Deploy › QEMU/KVM › Deploy VM(s) labels the flatpak application store « flatpak (tooling, no Flathub) », in the questions as in the form, opening on the name its answer accepts: the list wrote « Flatpak tooling, no Flathub » and refused « Flatpak » typed as written, accepting only « flatpak », which it never wrote
 - Execute › Test › Long tests - real VMs, hours: giving up the host a test starts from — [0] at the Proxmox host list, or an empty address for another host or for a NixOS machine you already have — says « Cancelled. » and runs nothing, where Nested Proxmox depth, Nested QEMU depth and ERPLibre on NixOS went on to create a fresh VM once confirmed
-- Configuration › QEMU deployment interface, Display while deploying and Odoo migration interface write nothing when the answer keeps the current value, empty or by its number: a preference never set keeps following TODO's default instead of being stored in ~/.erplibre/todo_prefs.json
+- Configuration › QEMU deployment interface, Display while deploying and Odoo migration interface write nothing when the current value is chosen by its number, as an empty answer already did: a preference never set keeps following TODO's default instead of being stored in ~/.erplibre/todo_prefs.json
 
 ## Removed
 

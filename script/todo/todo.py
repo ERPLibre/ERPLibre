@@ -3662,12 +3662,15 @@ class TODO(
         `default_transaction_read_only=on` : c'est le serveur qui refuse
         l'écriture, pas une promesse du code.
 
-        Trois actions écrivent, et aucune ne part seule : question
-        explicite, défaut à « non ». Installer les modules suggérés, à la
-        fin de l'analyse [5], veut en plus une liste confirmée et un
-        checkout sur la version de la base ; purger les pièces jointes dont
-        le champ a disparu et ranger un filestore imbriqué suivent
-        l'analyse du filestore [7].
+        Trois actions modifient la base analysée ou son filestore, et
+        aucune ne part seule : question explicite, défaut à « non ».
+        Installer les modules suggérés, à la fin de l'analyse [5], veut en
+        plus une liste confirmée et un checkout sur la version de la base ;
+        purger les pièces jointes dont le champ a disparu et ranger un
+        filestore imbriqué suivent l'analyse du filestore [7]. Ailleurs,
+        Monitoring [8] restaure une sauvegarde dans une base NEUVE, que sa
+        neutralisation (défaut « oui ») modifie en y installant des
+        modules, et « Export as JSON » écrit un rapport sous `private/`.
         """
         return navigate(self, menus_run.ANALYSE)
 
@@ -3928,8 +3931,9 @@ class TODO(
         nécessaire : le rapport vient d'en annoncer onze, la liste n'en
         montre qu'un, et sans un mot on croirait à un bogue.
 
-        C'est la seule installation de tout le menu Analyse, d'où trois
-        garde-fous : la version du checkout doit être celle de la base —
+        C'est la seule installation dans la base analysée elle-même (la
+        neutralisation de Monitoring installe dans une base qu'il vient de
+        restaurer), d'où trois garde-fous : la version du checkout doit être celle de la base —
         un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
         question par défaut est « non », et la liste choisie est
         confirmée avant que rien ne parte. La liste est un choix multiple :
