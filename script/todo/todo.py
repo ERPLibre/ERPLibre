@@ -924,7 +924,9 @@ class TODO(
 
     def _pref_edit(self, key):
         """Fait choisir une valeur parmi celles proposées pour `key`, la
-        valeur courante en défaut, qu'une réponse vide garde ; [0] et
+        valeur courante en défaut, qu'une réponse vide garde. Seule une
+        autre valeur s'écrit : garder la valeur courante n'écrit rien, et
+        une préférence jamais réglée suit encore le défaut de TODO ; [0] et
         Ctrl+D reviennent sans rien écrire."""
         title, options = self._PREF_CHOICES[key]
         current = todo_prefs.get(key)
@@ -936,7 +938,7 @@ class TODO(
             default=current if current in values else None,
             labels=[t(label) for _stored, label in options],
         )
-        if value is None:
+        if value is None or value == current:
             return
         todo_prefs.set(key, value)
         print(f"  ✅ {t(title)} : {self._pref_label(key)}")

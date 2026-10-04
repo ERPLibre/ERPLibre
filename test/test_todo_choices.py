@@ -13,7 +13,10 @@ préférences, et ce qu'un choix lancerait est un double qui note son appel.
 
 import contextlib
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from script.todo import todo as todo_module
@@ -139,6 +142,44 @@ class TestLesPreferences(unittest.TestCase):
                     _, sortie = self.edit(reponse)
                 ecrit.assert_not_called()
                 self.assertNotIn("✅", sortie)
+
+
+class TestUnePreferenceGardee(unittest.TestCase):
+    """Le vrai magasin des préférences, son fichier dans un répertoire
+    temporaire : garder la valeur courante n'y écrit rien, si bien qu'une
+    préférence jamais réglée suit encore le défaut de TODO."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        racine = tempfile.TemporaryDirectory()
+        self.addCleanup(racine.cleanup)
+        self.fichier = Path(racine.name) / "todo_prefs.json"
+        patcher = patch.object(
+            todo_module.todo_prefs, "_path", return_value=self.fichier
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def edit(self, *reponses):
+        return joue(lambda: self.todo._pref_edit("qemu_deploy_ui"), *reponses)
+
+    def test_keeping_the_current_value_writes_nothing(self):
+        # « ask », le défaut de TODO, est le [1] marqué de la liste.
+        for reponse in ("", "1"):
+            with self.subTest(reponse=reponse):
+                _, sortie = self.edit(reponse)
+                marque = f"[1] {t('Ask every time')} {t('(default)')}\n"
+                self.assertIn(marque, sortie)
+                self.assertFalse(self.fichier.exists())
+                self.assertNotIn("✅", sortie)
+
+    def test_another_value_is_written(self):
+        _, sortie = self.edit("3")
+        self.assertEqual(
+            json.loads(self.fichier.read_text(encoding="utf-8")),
+            {"qemu_deploy_ui": "cli"},
+        )
+        self.assertIn(f"✅ {t('QEMU deployment interface')} :", sortie)
 
 
 class Execute:
