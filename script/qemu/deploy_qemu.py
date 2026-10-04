@@ -209,7 +209,7 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
 # diffèrent de l'architecture de l'hôte.
 NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
-# Distros publiant des images cloud par architecture (vérifié juillet 2026) :
+# Distros publiant des images cloud par architecture :
 # - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
 # - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
@@ -553,7 +553,7 @@ def image_candidates(
             ]
         # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
         # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
-        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
+        # y sont côte à côte.
         return [
             f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
             f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
@@ -766,7 +766,7 @@ def repertoire_a_root(chemin: Path) -> tuple | None:
 
 
 def sudo_facts(disk_dir: Path | None = None, image_dir: Path | None = None):
-    """Pourquoi root est nécessaire ici : des FAITS, constatés sur la machine.
+    """Pourquoi root est nécessaire ici : des FAITS, lus sur la machine.
 
     Rend une liste de couples (clé, valeurs) et non des phrases : ce script
     les dit en français, le menu TODO les traduit, et la vérification ne vit
@@ -844,7 +844,7 @@ class Runner:
 
         Avant et non après : sudo n'explique jamais ce qu'il sert à faire, et
         un mot de passe tapé sans savoir ce qu'il autorise est donné à
-        l'aveugle. Les raisons sont constatées sur la machine, pas affirmées —
+        l'aveugle. Les raisons se lisent sur la machine au lieu de s'affirmer —
         voir sudo_facts().
         """
         if self._sudo_dit:
@@ -1415,10 +1415,10 @@ def ensure_tools(
     manque, puis vérifie la connexion à l'hyperviseur.
 
     `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
-    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
-    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
-    n'était jamais installé -> « Failed to start network default ». Les
-    gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
+    Un libvirt posé sans dnsmasq, par une installation qui ne le listait pas,
+    fait rendre False à daemon_missing(), et dnsmasq ne s'installe jamais :
+    « Failed to start network default ». Les gestionnaires de paquets
+    ignorent ce qui est déjà là : c'est bon marché.
     """
     missing = missing_tools()
     need_daemon = daemon_missing() or force_daemon
@@ -1780,7 +1780,7 @@ def verify_pinned_sha256(
 # Où chaque distribution publie la somme de ses images, et avec quel
 # algorithme.
 #
-# Relevé sur les dépôts eux-mêmes, pas déduit. Les FORMATS se ressemblent —
+# Chaque entrée suit son dépôt, sans rien déduire. Les FORMATS se ressemblent —
 # « <empreinte>  <nom> », l'astérisque d'Ubuntu en plus — mais ni le nom du
 # fichier ni l'algorithme ne se devinent : Debian publie du sha512 quand tout
 # le reste est en sha256, les familles RHEL nomment leur fichier « CHECKSUM »
@@ -1940,10 +1940,8 @@ def hash_password(plain: str) -> str:
 # Miroirs apt, du plus rapide au dernier recours. cloud-init prend le PREMIER
 # joignable de la liste « search » : l'ordre est donc la priorité.
 #
-# Mesuré depuis Montréal sur l'index main/s390x (1,6 Mo) :
-#   ports.ubuntu.com              1,61 s   1,0 Mo/s
-#   mirror.csclub.uwaterloo.ca    0,32 s   5,2 Mo/s
-#   mirror.us.leaseweb.net        0,88 s   1,9 Mo/s
+# ports.ubuntu.com, nettement plus lent que les miroirs, passe en dernier
+# recours.
 #
 # Le chemin diffère selon l'architecture : les arches « ports » (s390x, arm64,
 # ppc64el, riscv64) ne sont PAS sur archive.ubuntu.com, et amd64 n'est pas sur
@@ -2068,16 +2066,16 @@ TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 # EFI, dont le chemin de repli est bien là. Ni l'entropie ni la machine q35 n'y
 # changent rien.
 #
-# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS. Mesuré sur un
-# Proxmox 9 : en SeaBIOS, une VM NixOS se déclare « running » et sa console
-# reste muette ; la même en OVMF démarre — systemd, cloud-init, réseau.
+# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS : en SeaBIOS, une VM
+# NixOS se déclare « running » et sa console reste muette ; la même en OVMF
+# démarre — systemd, cloud-init, réseau.
 #
 # Le symptôme est muet des deux côtés : aucune console, aucun bail DHCP, une
 # VM « en cours d'exécution » qui ne fait rien. D'où cette table plutôt qu'un
 # diagnostic à refaire.
 #
-# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13,
-# mesurée sur le même hôte, démarre en SeaBIOS sans rien devoir à l'UEFI.
+# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13
+# démarre en SeaBIOS sans rien devoir à l'UEFI.
 #
 # AVEUGLE À L'ARCHITECTURE : elle ne vaut que sur x86. Sur arm64 il n'y a pas
 # de SeaBIOS, et virt_install tranche par l'architecture avant d'arriver ici ;
@@ -2757,9 +2755,9 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
+# N'apparaît que sur une VM déployée AVEC un bureau. GNOME et gdm3 installés,
+# la cible graphique par défaut, la console reste en mode texte :
+# graphical.target est déjà atteinte quand le paquet arrive, et une cible
 # active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
 # rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
 # d'où le « --now », qui démarre.
@@ -3394,10 +3392,10 @@ NIX_CA_VARS = (
 def nix_trust_commands() -> list[str]:
     """Ce qui fait approuver l'autorité du cache par nix, sans reconstruire.
 
-    Mesuré sur une VM interceptée : sans cela « nix-shell -p hello » échoue
-    sur « self-signed certificate in certificate chain » ; avec, la dérivation
-    est réalisée depuis cache.nixos.org à travers le cache, et le magasin
-    garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
+    Derrière un cache qui intercepte TLS, sans cela « nix-shell -p hello »
+    échoue sur « self-signed certificate in certificate chain » ; avec, la
+    dérivation se réalise depuis cache.nixos.org à travers le cache, et le
+    magasin garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
     """
     dossier = NIX_DROPIN.rsplit("/", 1)[0]
     return [
@@ -4193,11 +4191,11 @@ def _ip_taken(ip: str) -> bool:
     """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
 
     Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
-    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
-    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
-    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
-    journal ne le disait qu'à demi-mot : « git is already the newest
-    version », impossible sur un système que d-i vient de poser.
+    machine éteinte au moment du choix, ou dont sshd est filtré. Une VM neuve
+    reçoit alors l'adresse d'une machine du parc, et l'installation ERPLibre
+    se déroule SUR CETTE DERNIÈRE ; le journal ne le dit qu'à demi-mot :
+    « git is already the newest version », impossible sur un système que d-i
+    vient de poser.
 
     On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
     ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
@@ -4273,8 +4271,8 @@ def static_net_plan(
     # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
     # en partant du haut » donne la MÊME adresse à deux VM déployées en
     # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
-    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
-    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # donc aucune ne voit l'autre : les deux prennent la même adresse et se la
+    # disputent, et une seule la garde.
     # Le nom, lui, diffère toujours, et le tirage reste stable d'un
     # redéploiement à l'autre.
     start = zlib.crc32(name.encode()) % 50
@@ -4456,9 +4454,9 @@ def build_preseed(
     early = [
         # LE correctif, pas un diagnostic : on ALLUME la carte.
         #
-        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
-        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
-        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
+        # Dans l'installateur, la carte reste « enc1: <BROADCAST,MULTICAST>
+        # … qdisc noop » — ni UP ni LOWER_UP — quand un udhcpc lancé à la
+        # main obtient un bail en quelques secondes. Le réseau n'est pas en
         # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
         # pas, saute le DHCP et demande une adresse statique.
         #

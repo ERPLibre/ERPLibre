@@ -1047,7 +1047,7 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
                     cases.first(Checkbox).value = True
                     await pilote.pause()
                 vu["valeur"] = app._form_values()["gpu3d"]
-                # Relevé DANS le contexte : « run_test » démonte les widgets
+                # Lu DANS le contexte : « run_test » démonte les widgets
                 # en sortant, et le texte n'existerait plus après.
                 vu["explication"] = " ".join(
                     str(getattr(w, "_content", "") or w.render())

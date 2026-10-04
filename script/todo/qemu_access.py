@@ -336,7 +336,7 @@ class QemuAccessMixin:
     # expired », un message qui ne dit pas quoi faire.
     # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
     # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
-    # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
+    # ce n'est pas un défaut à imposer à une machine où il n'a pas été essayé.
     # EL_EMULATOR_GPU permet de l'essayer sans toucher au code, une fois le
     # nœud de rendu présent dans l'invité (voir script/qemu/README).
     _QEMU_EMULATOR_GPU = os.environ.get("EL_EMULATOR_GPU") or "swangle"
@@ -527,13 +527,13 @@ class QemuAccessMixin:
 
         Le port est celui de l'émulateur, pas celui du serveur adb. Un émulateur
         écoute sur 5554 (console) et 5555 (adb), tous deux sur le localhost de
-        la VM — vérifié par « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
+        la VM, ce que montre « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
         tunneler le serveur adb obligerait à tuer celui du poste, qui occupe le
         même port.
 
-        Vérifié de bout en bout à travers le tunnel : une poignée de main adb
-        (paquet CNXN) reçoit « device::ro.product.name=sdk_gphone64_x86 » de
-        l'émulateur lui-même — c'est exactement ce que fait « adb connect ».
+        À travers le tunnel, une poignée de main adb (paquet CNXN) reçoit
+        « device::ro.product.name=sdk_gphone64_x86 » de l'émulateur lui-même —
+        c'est exactement ce que fait « adb connect ».
         """
         port = 5555
         target = self._qemu_ssh_target(name, src)
