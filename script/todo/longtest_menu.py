@@ -18,6 +18,7 @@ import os
 
 import click
 
+from script.todo import ui
 from script.todo.menus import proxmox as menus_proxmox
 from script.todo.todo_i18n import t
 from script.todo.ui.navigator import navigate
@@ -152,18 +153,28 @@ class LongTestMenuMixin:
                 self._longtest_run(script, "--detruire", demander=False)
 
     def _longtest_depart_nixos(self):
-        """D'où part l'installation : une VM neuve, ou une machine NixOS
-        qu'on possède déjà. Rend les options du script, "" pour une VM
-        neuve, ou None quand la machine n'est pas donnée.
+        """D'où part l'installation : une VM neuve, le défaut, ou une
+        machine NixOS qu'on possède déjà. Rend les options du script, ""
+        pour une VM neuve, ou None pour [0], Ctrl+D, ou une machine qui
+        n'est pas donnée.
 
         La question n'est pas celle des descentes — il n'y a pas d'étage ici,
         et un hôte fourni doit DÉJÀ porter NixOS : le script y installe
         ERPLibre, il n'y installe pas le système.
         """
-        print(f"\n{t('Where does the install run?')}")
-        print(f"  [1] {t('Create a fresh NixOS VM')} *")
-        print(f"  [2] {t('Use a NixOS machine you already have')}")
-        if input(t("Choice (1-2, default 1): ")).strip() != "2":
+        print()
+        depart = ui.choose(
+            t("Where does the install run?"),
+            ["fresh", "mine"],
+            default="fresh",
+            labels=[
+                t("Create a fresh NixOS VM"),
+                t("Use a NixOS machine you already have"),
+            ],
+        )
+        if depart is None:
+            return None
+        if depart == "fresh":
             return ""
         hote = self._longtest_hote_manuel()
         if hote:
@@ -172,9 +183,9 @@ class LongTestMenuMixin:
         return None
 
     def _longtest_depart(self, script):
-        """D'où part la descente : une VM neuve, ou un hôte qu'on a déjà.
-        Rend les options du script, "" pour une VM neuve, ou None quand
-        l'autre hôte n'est pas choisi.
+        """D'où part la descente : une VM neuve, le défaut, ou un hôte qu'on
+        a déjà. Rend les options du script, "" pour une VM neuve, ou None
+        pour [0], Ctrl+D, ou un autre hôte qui n'est pas choisi.
 
         Créer une machine de tête pour héberger un hyperviseur qu'on possède
         déjà coûte cinq minutes ET un étage d'imbrication — donc de la
@@ -190,15 +201,22 @@ class LongTestMenuMixin:
                 connu = self._pve_host(ask=False)
             except Exception:  # noqa: BLE001 - une préférence illisible
                 connu = None
-        print(f"\n{t('Where does the descent start?')}")
-        print(f"  [1] {t('Create a fresh QEMU VM as level one')} *")
+        departs = {"fresh": t("Create a fresh QEMU VM as level one")}
         if connu:
-            print(f"  [2] {t('Start from:')} {self._pve_label(connu)}")
-        print(f"  [3] {t('Start from another existing host')}")
-        choix = input(t("Choice (1-3, default 1): ")).strip()
-        if choix == "2" and connu:
+            departs["known"] = f"{t('Start from:')} {self._pve_label(connu)}"
+        departs["other"] = t("Start from another existing host")
+        print()
+        depart = ui.choose(
+            t("Where does the descent start?"),
+            list(departs),
+            default="fresh",
+            labels=list(departs.values()),
+        )
+        if depart is None:
+            return None
+        if depart == "known":
             return self._longtest_args_hote(connu)
-        if choix == "3":
+        if depart == "other":
             hote = (
                 self._pve_pick_host()
                 if script == "deep_proxmox.py"

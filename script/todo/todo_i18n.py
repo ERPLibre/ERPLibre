@@ -4982,10 +4982,6 @@ TRANSLATIONS = {
         "fr": "Partir d'un autre hôte existant",
         "en": "Start from another existing host",
     },
-    "Choice (1-3, default 1): ": {
-        "fr": "Choix (1-3, défaut 1) : ",
-        "en": "Choice (1-3, default 1): ",
-    },
     "Address (user@host, blank = cancel): ": {
         "fr": "Adresse (utilisateur@hôte, vide = annuler) : ",
         "en": "Address (user@host, blank = cancel): ",
@@ -5496,10 +5492,6 @@ TRANSLATIONS = {
     "Production (/opt/erplibre, SELinux enforced)": {
         "fr": "Production (/opt/erplibre, SELinux confiné)",
         "en": "Production (/opt/erplibre, SELinux enforced)",
-    },
-    "Choice (1-2, default 1): ": {
-        "fr": "Choix (1-2, défaut 1) : ",
-        "en": "Choice (1-2, default 1): ",
     },
     "Open (start)": {
         "fr": "Ouvrir (démarrer)",

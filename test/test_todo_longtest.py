@@ -1279,21 +1279,31 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
             " --hote vm --jump porte",
         )
 
-    def test_a_fresh_vm_is_the_default_answer(self):
-        """Toute réponse hors plage retombe sur l'option 1 : le menu ne doit
-        jamais partir d'un hôte qu'on n'a pas désigné."""
-        import builtins
-
-        vrai = builtins.input
-        self.addCleanup(setattr, builtins, "input", vrai)
+    def test_a_fresh_vm_is_the_marked_default(self):
+        """Une réponse vide prend la VM neuve, que la liste marque : le menu
+        ne part jamais d'un hôte qu'on n'a pas désigné."""
         self.todo._pve_host = lambda ask=True: None
-        for reponse in ("", "1", "n'importe quoi", "9"):
+        for reponse in ("", "1"):
             with self.subTest(reponse=reponse):
-                builtins.input = lambda _p="", r=reponse: r
-                with contextlib.redirect_stdout(io.StringIO()):
+                with (
+                    patch("builtins.input", side_effect=[reponse]),
+                    contextlib.redirect_stdout(io.StringIO()) as sortie,
+                ):
                     self.assertEqual(
                         self.todo._longtest_depart("deep_proxmox.py"), ""
                     )
+                self.assertIn(t("(default)"), sortie.getvalue())
+
+    def test_a_typo_asks_again_instead_of_a_fresh_vm(self):
+        """Une faute est dite et la question revient : elle ne prend jamais
+        la VM neuve."""
+        self.todo._pve_host = lambda ask=True: None
+        with (
+            patch("builtins.input", side_effect=["n'importe quoi", "9", "1"]),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
+            self.assertEqual(self.todo._longtest_depart("deep_proxmox.py"), "")
+        self.assertEqual(sortie.getvalue().count(t("Invalid choice: ")), 2)
 
     def test_the_known_host_is_offered_without_being_searched(self):
         import builtins
@@ -1324,14 +1334,15 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
 
         vrai = builtins.input
         self.addCleanup(setattr, builtins, "input", vrai)
-        reponses = iter(["3", "erplibre@10.0.0.7", ""])
+        # Sans hôte Proxmox retenu, l'autre hôte est la deuxième entrée.
+        reponses = iter(["2", "forged@192.0.2.7", ""])
         builtins.input = lambda _p="": next(reponses)
         self.todo._pve_pick_host = lambda: self.fail(
             "sélecteur Proxmox appelé"
         )
         with contextlib.redirect_stdout(io.StringIO()):
             args = self.todo._longtest_depart("deep_qemu.py")
-        self.assertEqual(args, " --hote erplibre@10.0.0.7")
+        self.assertEqual(args, " --hote forged@192.0.2.7")
 
 
 class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
@@ -1393,12 +1404,40 @@ class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
         self.assertEqual(self.lances, [])
 
     def test_no_libvirt_host_typed_runs_no_descent(self):
+        # Une descente QEMU n'offre pas l'hôte Proxmox retenu : l'autre
+        # hôte y est la deuxième entrée.
         self.todo._pve_pick_host = lambda: self.fail("Proxmox demandé")
         sortie = self._joue(
-            ["3", ""], lambda: self.todo._longtest_descente("deep_qemu.py")
+            ["2", ""], lambda: self.todo._longtest_descente("deep_qemu.py")
         )
         self.assertIn(t("Cancelled."), sortie)
         self.assertEqual(self.lances, [])
+
+    def test_back_at_the_start_runs_nothing(self):
+        # [0] ou Ctrl+D à la question du départ : ni descente, ni
+        # installation, à blanc ou pour de vrai.
+        actions = (
+            lambda d: self.todo._longtest_descente("deep_proxmox.py", d),
+            lambda d: self.todo._longtest_descente("deep_qemu.py", d),
+            lambda d: self.todo._longtest_nixos(dry_run=d),
+        )
+        for action in actions:
+            for reponse in ("0", EOFError()):
+                for dry_run in (False, True):
+                    with self.subTest(reponse=reponse, dry_run=dry_run):
+                        sortie = self._joue(
+                            [reponse], lambda a=action, d=dry_run: a(d)
+                        )
+                        self.assertNotIn(t("Cancelled."), sortie)
+        self.assertEqual(self.lances, [])
+
+    def test_a_typo_at_the_start_asks_again(self):
+        sortie = self._joue(
+            ["4", "x", "1"],
+            lambda: self.todo._longtest_descente("deep_qemu.py"),
+        )
+        self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
+        self.assertEqual(self.lances, [("deep_qemu.py", "--depth 3")])
 
     def test_no_nixos_machine_typed_runs_no_install(self):
         for dry_run in (False, True):
