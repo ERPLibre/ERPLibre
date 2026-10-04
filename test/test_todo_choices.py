@@ -12,6 +12,7 @@ préférences, et ce qu'un choix lancerait est un double qui note son appel.
 """
 
 import contextlib
+import getpass
 import io
 import json
 import tempfile
@@ -216,14 +217,18 @@ class TestLaCibleSSH(unittest.TestCase):
         return joue(self.todo._ask_ssh_target, *reponses)
 
     def test_a_host_by_its_number_or_its_alias(self):
+        # L'utilisateur est le User que déclare ~/.ssh/config, et sans lui
+        # celui de la session.
         for reponses, attendu in (
             (["2", "1"], ("forged-a", "forged", "192.0.2.10", "forged-a")),
-            (["2", "forged-b"], ("forged-b",) * 4),
+            (
+                ["2", "forged-b"],
+                ("forged-b", getpass.getuser(), "forged-b", "forged-b"),
+            ),
         ):
             with self.subTest(reponses=reponses):
                 rendu, sortie = self.cible(*reponses)
-                self.assertEqual(rendu[0], attendu[0])
-                self.assertEqual(rendu[2:4], attendu[2:4])
+                self.assertEqual(rendu[:4], attendu)
                 self.assertIs(rendu[4], True)
                 self.assertIn("[1] forged-a (192.0.2.10) [forged]\n", sortie)
 

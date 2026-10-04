@@ -1344,6 +1344,25 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
             args = self.todo._longtest_depart("deep_qemu.py")
         self.assertEqual(args, " --hote forged@192.0.2.7")
 
+    def test_a_proxmox_descent_without_a_known_host_searches_at_2(self):
+        """Sans hôte Proxmox retenu, l'autre hôte est la deuxième entrée,
+        et une descente Proxmox le cherche par le sélecteur Proxmox."""
+        self.todo._pve_host = lambda ask=True: None
+        cherches = []
+        self.todo._pve_pick_host = lambda: (
+            cherches.append("pve") or {"target": "root@forged-pve", "jump": ""}
+        )
+        with (
+            patch("builtins.input", side_effect=["2"]),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
+            args = self.todo._longtest_depart("deep_proxmox.py")
+        self.assertEqual(args, " --hote root@forged-pve")
+        self.assertEqual(cherches, ["pve"])
+        autre = f"[2] {t('Start from another existing host')}\n"
+        self.assertIn(autre, sortie.getvalue())
+        self.assertNotIn("[3] ", sortie.getvalue())
+
 
 class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
     """Renoncer à l'hôte de départ ne lance aucun test long. Un départ vide
@@ -1438,6 +1457,11 @@ class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
         )
         self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
         self.assertEqual(self.lances, [("deep_qemu.py", "--depth 3")])
+
+    def test_a_typo_at_the_nixos_start_asks_again(self):
+        sortie = self._joue(["3", "x", "1"], self.todo._longtest_nixos)
+        self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
+        self.assertEqual(self.lances, [("install_nixos.py", "")])
 
     def test_no_nixos_machine_typed_runs_no_install(self):
         for dry_run in (False, True):
