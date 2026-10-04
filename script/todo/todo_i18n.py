@@ -2711,10 +2711,6 @@ TRANSLATIONS = {
         "fr": "TUI, blocs repliables par VM",
         "en": "TUI, collapsible blocks per VM",
     },
-    "Choice (number, blank = keep):": {
-        "fr": "Choix (numéro, vide = garder) :",
-        "en": "Choice (number, blank = keep):",
-    },
     "SSH port forwarding (open Odoo in the browser)": {
         "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
         "en": "🔌 SSH port forwarding (open Odoo in the browser)",

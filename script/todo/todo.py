@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
+from script.todo import dev_tools, ssh_config, todo_install, todo_prefs, ui
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
@@ -224,34 +224,35 @@ class TODO(
         self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
 
     def _ask_language(self):
-        if not lang_is_configured():
-            print()
-            print("🌍 Choisir la langue / Choose language:")
-            print("[1] 🇫🇷 Français")
-            print("[2] 🇬🇧 English")
-            choice = ""
-            while choice not in ("1", "2"):
-                choice = input("Select / Choisir : ").strip()
-            if choice == "1":
-                set_lang("fr")
-            else:
-                set_lang("en")
+        """Au premier lancement, la langue de TODO, gardée par `set_lang`.
+        [0], une réponse vide ou Ctrl+D n'en gardent aucune : TODO parle sa
+        langue par défaut et redemande au lancement suivant."""
+        if lang_is_configured():
+            return
+        print()
+        langue = ui.choose(
+            "🌍 Choisir la langue / Choose language:",
+            ["fr", "en"],
+            labels=["🇫🇷 Français", "🇬🇧 English"],
+            names={"Français": "fr", "English": "en"},
+        )
+        if langue is not None:
+            set_lang(langue)
 
     def _change_language(self):
+        """Configuration › Language / Langue : le français ou l'anglais, par
+        son numéro ou son nom affiché, gardé par `set_lang`. Rend False sur
+        [0], une réponse vide ou Ctrl+D, sans rien garder."""
         print()
-        print("🌍 " + t("Choose language / Choisir la langue") + ":")
-        print(f"[1] 🇫🇷 {t('French')}")
-        print(f"[2] 🇬🇧 {t('English')}")
-        print(f"[0] {t('Back')}")
-        choice = ""
-        while choice not in ("0", "1", "2"):
-            choice = input(t("Select: ")).strip()
-        if choice == "0":
+        langue = ui.choose(
+            "🌍 " + t("Choose language / Choisir la langue") + ":",
+            ["fr", "en"],
+            labels=[f"🇫🇷 {t('French')}", f"🇬🇧 {t('English')}"],
+            names={t("French"): "fr", t("English"): "en"},
+        )
+        if langue is None:
             return False
-        elif choice == "1":
-            set_lang("fr")
-        else:
-            set_lang("en")
+        set_lang(langue)
         print(t("Language changed to: English"))
 
     def run(self):
@@ -922,21 +923,23 @@ class TODO(
         return str(value)
 
     def _pref_edit(self, key):
-        """Fait choisir une valeur parmi celles proposées pour `key`."""
+        """Fait choisir une valeur parmi celles proposées pour `key`, la
+        valeur courante en défaut, qu'une réponse vide garde ; [0] et
+        Ctrl+D reviennent sans rien écrire."""
         title, options = self._PREF_CHOICES[key]
         current = todo_prefs.get(key)
-        print(f"\n{t(title)} :")
-        for i, (stored, label) in enumerate(options, 1):
-            star = " *" if stored == current else ""
-            print(f"  [{i}] {t(label)}{star}")
-        sel = input(f"{t('Choice (number, blank = keep):')} ").strip()
-        try:
-            idx = int(sel) - 1
-        except ValueError:
+        values = [stored for stored, _label in options]
+        print()
+        value = ui.choose(
+            f"{t(title)} :",
+            values,
+            default=current if current in values else None,
+            labels=[t(label) for _stored, label in options],
+        )
+        if value is None:
             return
-        if 0 <= idx < len(options):
-            todo_prefs.set(key, options[idx][0])
-            print(f"  ✅ {t(title)} : {self._pref_label(key)}")
+        todo_prefs.set(key, value)
+        print(f"  ✅ {t(title)} : {self._pref_label(key)}")
 
     def prompt_configuration(self):
         """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json),
