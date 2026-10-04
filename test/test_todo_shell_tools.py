@@ -427,18 +427,26 @@ class TestUpstreamTools(ShellFixture):
         ligne = f'export PATH="{self.repertoires["opencode"]}:$PATH"\n'
         self.cree("bash", contenu=ligne)
         self.pose_le_binaire("opencode")
-        self.installe("opencode")
+        sortie = self.installe("opencode")
         contenu = self.fichiers["bash"].read_text(encoding="utf-8")
         self.assertEqual(contenu.count(str(self.repertoires["opencode"])), 1)
+        self.assertNotIn(t("Open a new shell to see it."), sortie)
 
     def test_a_binary_that_did_not_land_is_said(self):
         self.cree("bash")
         sortie = self.installe("claude")
         self.assertIn("⚠", sortie)
 
+    def test_a_written_path_line_asks_for_a_new_shell(self):
+        self.cree("bash")
+        self.pose_le_binaire("claude")
+        sortie = self.installe("claude")
+        self.assertIn(t("Open a new shell to see it."), sortie)
+
     def test_back_at_the_file_question_leaves_the_path_alone(self):
         # Deux fichiers : la question se pose, [0] n'en écrit aucun, et le
-        # binaire posé est dit.
+        # binaire posé est dit, sans renvoyer à un nouveau shell : aucune
+        # ligne de PATH n'a été écrite.
         self.cree("bash", "zsh", contenu="export EDITOR=vim\n")
         self.pose_le_binaire("claude")
         self.todo.execute.exec_command_live.return_value = 0
@@ -457,6 +465,7 @@ class TestUpstreamTools(ShellFixture):
         self.assertIn(
             f"✅ claude : {self.repertoires['claude']}", out.getvalue()
         )
+        self.assertNotIn(t("Open a new shell to see it."), out.getvalue())
 
     def test_the_two_menu_entries_reach_the_shared_path(self):
         for methode, outil in (

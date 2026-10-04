@@ -2861,7 +2861,8 @@ class TODO(
         return f'export PATH="{repertoire}:$PATH"'
 
     def _shell_ensure_on_path(self, shell, repertoire):
-        """Garantir que le répertoire est dans le PATH du shell choisi.
+        """Garantir que le répertoire est dans le PATH du shell choisi ;
+        rend vrai quand la ligne vient d'être écrite.
 
         Ne fait rien si le répertoire y figure déjà, quelle que soit la
         graphie — les installateurs amont écrivent souvent la ligne eux-mêmes.
@@ -2870,9 +2871,10 @@ class TODO(
         chemin = self._shell_rc_append(shell, ligne, repertoire)
         if chemin is None:
             print(f"✅ {t('Already on the PATH: ')}{repertoire}")
-            return
+            return False
         print(f"✅ {t('PATH line added to: ')}{chemin}")
         print(f"   {ligne}")
+        return True
 
     def _shell_install_starship(self):
         """Poser starship, puis l'accrocher au shell de l'utilisateur.
@@ -2953,7 +2955,9 @@ class TODO(
         binaire est là et la commande reste introuvable. Le PATH du processus
         courant, lui, est figé depuis son démarrage — le menu ne verra pas le
         binaire avant d'être relancé. Renoncer au choix du fichier n'en écrit
-        aucun : le binaire installé est dit quand même.
+        aucun : le binaire installé est dit quand même. Le renvoi à un
+        nouveau shell ne suit qu'une ligne de PATH qui vient d'être écrite :
+        c'est elle qu'un shell déjà ouvert ne porte pas.
         """
         commande, repertoire = self._UPSTREAM_TOOLS[binaire]
         status = self.execute.exec_command_live(
@@ -2964,14 +2968,16 @@ class TODO(
             print(f"❌ {t('Installation failed, see the output above.')}")
             return
         shell = self._shell_rc_target()
-        if shell is not None:
-            self._shell_ensure_on_path(shell, repertoire)
+        ecrite = shell is not None and self._shell_ensure_on_path(
+            shell, repertoire
+        )
         pose = os.path.join(os.path.expanduser(repertoire), binaire)
         if not os.path.exists(pose):
             print(f"⚠ {t('Binary not found at: ')}{pose}")
             return
         print(f"✅ {binaire} : {pose}")
-        print(f"   {t('Open a new shell to see it.')}")
+        if ecrite:
+            print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):
         """Le serveur git local (GIT_LOCAL_SERVER, `menus/git.py`) : ses
