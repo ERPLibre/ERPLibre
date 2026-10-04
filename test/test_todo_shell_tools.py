@@ -24,6 +24,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from script.todo.todo import TODO
+from script.todo.todo_i18n import t
 
 LIGNE_BASH = (
     "if command -v starship >/dev/null 2>&1; then"
@@ -85,12 +86,17 @@ class ShellFixture(unittest.TestCase):
 class TestRcTarget(ShellFixture):
     """Quel fichier, et quand la question se pose."""
 
-    def choisit(self, shell_env="/bin/bash", reponse=None):
-        entree = refuse_input if reponse is None else (lambda *a: reponse)
+    def choisit(self, shell_env="/bin/bash", reponse=None, suite=()):
+        """Le shell que rend `_shell_rc_target`, `reponse` puis `suite`
+        répondus dans l'ordre ; sans réponse, une question échoue."""
+        entree = refuse_input
+        if reponse is not None:
+            entree = MagicMock(side_effect=[reponse, *suite])
+        self.sortie = io.StringIO()
         with (
             patch.dict(os.environ, {"SHELL": shell_env}),
             patch("builtins.input", entree),
-            redirect_stdout(io.StringIO()),
+            redirect_stdout(self.sortie),
         ):
             return self.todo._shell_rc_target()
 
@@ -120,9 +126,23 @@ class TestRcTarget(ShellFixture):
         self.cree("bash", "zsh")
         self.assertEqual(self.choisit(reponse="zsh"), "zsh")
 
-    def test_a_nonsense_answer_falls_back_on_the_default(self):
+    def test_a_nonsense_answer_asks_again(self):
+        # Le défaut, marqué dans la liste, ne se prend pas en silence : un
+        # numéro hors de la liste, « 01 » ou un nom d'une autre casse sont
+        # dits invalides, et la question revient.
         self.cree("bash", "zsh")
-        self.assertEqual(self.choisit(reponse="42"), "bash")
+        rendu = self.choisit(reponse="42", suite=("01", "Zsh", "zsh"))
+        self.assertEqual(rendu, "zsh")
+        self.assertEqual(
+            self.sortie.getvalue().count(t("Invalid choice: ")), 3
+        )
+        self.assertIn(f"{t('(default)')}\n", self.sortie.getvalue())
+
+    def test_back_or_ctrl_d_chooses_no_file(self):
+        self.cree("bash", "zsh")
+        for reponse in ("0", EOFError()):
+            with self.subTest(reponse=reponse):
+                self.assertIsNone(self.choisit(reponse=reponse))
 
 
 class TestRcAppend(ShellFixture):
@@ -242,6 +262,20 @@ class TestHookStarship(ShellFixture):
             self.fichiers["bash"].read_text(encoding="utf-8"),
             f"{LIGNE_BASH}\n",
         )
+
+    def test_back_at_the_file_question_writes_no_line(self):
+        self.cree("bash", "zsh", contenu="export EDITOR=vim\n")
+        with (
+            patch.dict(os.environ, {"SHELL": "/bin/bash"}),
+            patch("builtins.input", side_effect=["0"]),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.todo._shell_hook_starship()
+        for shell in ("bash", "zsh"):
+            self.assertEqual(
+                self.fichiers[shell].read_text(encoding="utf-8"),
+                "export EDITOR=vim\n",
+            )
 
 
 class TestInstallStarship(unittest.TestCase):
@@ -401,6 +435,28 @@ class TestUpstreamTools(ShellFixture):
         self.cree("bash")
         sortie = self.installe("claude")
         self.assertIn("⚠", sortie)
+
+    def test_back_at_the_file_question_leaves_the_path_alone(self):
+        # Deux fichiers : la question se pose, [0] n'en écrit aucun, et le
+        # binaire posé est dit.
+        self.cree("bash", "zsh", contenu="export EDITOR=vim\n")
+        self.pose_le_binaire("claude")
+        self.todo.execute.exec_command_live.return_value = 0
+        out = io.StringIO()
+        with (
+            patch.dict(os.environ, {"SHELL": "/bin/bash"}),
+            patch("builtins.input", side_effect=["0"]),
+            redirect_stdout(out),
+        ):
+            self.todo._shell_install_upstream_tool("claude")
+        for shell in ("bash", "zsh"):
+            self.assertEqual(
+                self.fichiers[shell].read_text(encoding="utf-8"),
+                "export EDITOR=vim\n",
+            )
+        self.assertIn(
+            f"✅ claude : {self.repertoires['claude']}", out.getvalue()
+        )
 
     def test_the_two_menu_entries_reach_the_shared_path(self):
         for methode, outil in (

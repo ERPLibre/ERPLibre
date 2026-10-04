@@ -2801,11 +2801,13 @@ class TODO(
         ]
 
     def _shell_rc_target(self):
-        """Le shell à modifier. Ne demande que devant un vrai choix.
+        """Le shell à modifier, ou None quand on renonce. Ne demande que
+        devant un vrai choix.
 
         Aucun fichier de configuration présent : bash, sans question — l'appel
         le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux ou
-        trois : à l'opérateur de trancher, le sien proposé par défaut.
+        trois : à l'opérateur de trancher, par son numéro ou son nom, le sien
+        proposé par défaut ; [0] ou Ctrl+D rendent None.
         """
         presents = self._shell_rc_present()
         if not presents:
@@ -2813,24 +2815,14 @@ class TODO(
         if len(presents) == 1:
             return presents[0]
         courant = self._shell_name()
-        defaut = courant if courant in presents else presents[0]
-        print(f"\n{t('Which shell configuration?')}")
-        for i, nom in enumerate(presents, 1):
-            print(f"  [{i}] {nom:<5} {self._SHELL_RC[nom]}")
-        sel = input(
-            f"{t('Choice (number or name, default:')} {defaut}) : "
-        ).strip()
-        if not sel:
-            return defaut
-        if sel in presents:
-            return sel
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(presents):
-                return presents[idx]
-        except ValueError:
-            pass
-        return defaut
+        print()
+        return ui.choose(
+            t("Which shell configuration?"),
+            presents,
+            default=courant if courant in presents else presents[0],
+            labels=[f"{nom:<5} {self._SHELL_RC[nom]}" for nom in presents],
+            names={nom: nom for nom in presents},
+        )
 
     def _shell_rc_append(self, shell, ligne, marqueur):
         """Ajouter la ligne au fichier du shell si le marqueur n'y est pas.
@@ -2926,9 +2918,11 @@ class TODO(
         La ligne n'est écrite qu'une fois : « starship init » cherché dans le
         fichier couvre les trois shells, dont les lignes diffèrent. L'écriture
         ne demande pas de confirmation — le choix du fichier, quand il y en a
-        un à faire, l'a déjà donnée.
+        un à faire, l'a déjà donnée, et y renoncer n'écrit rien.
         """
         shell = self._shell_rc_target()
+        if shell is None:
+            return
         ligne = self._STARSHIP_LINE[shell]
         chemin = self._shell_rc_append(shell, ligne, "starship init")
         if chemin is None:
@@ -2952,7 +2946,8 @@ class TODO(
         le PATH d'un shell ne porte pas toujours : sans la ligne d'export, le
         binaire est là et la commande reste introuvable. Le PATH du processus
         courant, lui, est figé depuis son démarrage — le menu ne verra pas le
-        binaire avant d'être relancé.
+        binaire avant d'être relancé. Renoncer au choix du fichier n'en écrit
+        aucun : le binaire installé est dit quand même.
         """
         commande, repertoire = self._UPSTREAM_TOOLS[binaire]
         status = self.execute.exec_command_live(
@@ -2962,7 +2957,9 @@ class TODO(
         if status:
             print(f"❌ {t('Installation failed, see the output above.')}")
             return
-        self._shell_ensure_on_path(self._shell_rc_target(), repertoire)
+        shell = self._shell_rc_target()
+        if shell is not None:
+            self._shell_ensure_on_path(shell, repertoire)
         pose = os.path.join(os.path.expanduser(repertoire), binaire)
         if not os.path.exists(pose):
             print(f"⚠ {t('Binary not found at: ')}{pose}")

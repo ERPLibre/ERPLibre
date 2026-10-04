@@ -6828,10 +6828,6 @@ TRANSLATIONS = {
         "fr": "Branches :",
         "en": "Branches:",
     },
-    "Choice (number or name, default:": {
-        "fr": "Choix (numéro ou nom, défaut :",
-        "en": "Choice (number or name, default:",
-    },
     "no IP obtained, ERPLibre clone skipped.": {
         "fr": "aucune IP obtenue, clonage ERPLibre ignoré.",
         "en": "no IP obtained, ERPLibre clone skipped.",
