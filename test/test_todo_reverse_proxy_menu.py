@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from script.todo.todo import TODO
+from script.todo.todo_i18n import t
 
 
 class TestMenuNetwork(unittest.TestCase):
@@ -147,9 +148,10 @@ class TestLancement(unittest.TestCase):
 
     def test_https_reprend_le_certificat_existant(self):
         dossier = self.dossier_vide()
-        with patch(
-            "script.reverse_proxy.local_cert.exists", return_value=True
-        ), patch("script.reverse_proxy.local_cert.issue") as mock_issue:
+        with (
+            patch("script.reverse_proxy.local_cert.exists", return_value=True),
+            patch("script.reverse_proxy.local_cert.issue") as mock_issue,
+        ):
             cmd, _ = self.lancer(
                 "",
                 "[options]\nproxy_mode = True\nworkers = 2\n",
@@ -164,6 +166,57 @@ class TestLancement(unittest.TestCase):
             "1", "[options]\nproxy_mode = True\nworkers = 2\n"
         )
         self.assertNotIn("proxy_mode", imprime)
+
+    def repondre(self, *reponses):
+        """(commandes lancées, certificats émis, ce qui s'imprime) quand
+        l'écoute et le protocole reçoivent `reponses` ; un certificat
+        manque, et son émission, comme les noms qu'elle lirait, est un
+        double."""
+        todo = TODO()
+        cert = "script.reverse_proxy.local_cert"
+        with (
+            patch("builtins.input", side_effect=reponses),
+            patch.object(todo.execute, "exec_command_live") as mock_exec,
+            patch(f"{cert}.issue") as mock_issue,
+            patch(f"{cert}.default_names", return_value=["localhost"]),
+            patch("builtins.print") as mock_print,
+        ):
+            todo.network_reverse_proxy(
+                config_path=self.config("[options]\nworkers = 2\n"),
+                cert_dir=self.dossier_vide(),
+            )
+        imprime = " ".join(
+            str(a) for c in mock_print.call_args_list for a in c.args
+        )
+        commandes = [c.args[0] for c in mock_exec.call_args_list]
+        return commandes, mock_issue.call_count, imprime
+
+    def test_back_at_either_question_issues_and_runs_nothing(self):
+        # [0] ou Ctrl+D à l'écoute ou au protocole : ni certificat, ni
+        # mandataire, ouvert à tout le réseau ou non.
+        for reponses in (
+            ["0"],
+            [EOFError()],
+            ["2", "0"],
+            ["", EOFError()],
+        ):
+            with self.subTest(reponses=reponses):
+                commandes, emis, _ = self.repondre(*reponses)
+                self.assertEqual((commandes, emis), ([], 0))
+
+    def test_the_defaults_are_marked_and_a_typo_asks_again(self):
+        commandes, emis, imprime = self.repondre(
+            "3", "01", "2", "http", "HTTPS"
+        )
+        self.assertEqual(imprime.count(t("Invalid choice: ")), 3)
+        self.assertIn(
+            f"{t('Local only (127.0.0.1)')} {t('(default)')}", imprime
+        )
+        self.assertIn(f"[1] HTTP {t('(default)')}", imprime)
+        self.assertEqual(emis, 1)
+        self.assertEqual(len(commandes), 1)
+        self.assertIn("--listen 0.0.0.0", commandes[0])
+        self.assertIn("--tls-cert", commandes[0])
 
 
 if __name__ == "__main__":

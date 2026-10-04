@@ -4880,27 +4880,38 @@ class TODO(
         """Lance script/reverse_proxy/main.py avec les ports de config_path.
 
         Demande l'écoute — la machine seule ou tout le réseau — et le
-        protocole. En HTTPS, le certificat local de cert_dir sert, émis au
-        premier usage. Signale ensuite les réglages d'Odoo sans lesquels le
-        mandataire ne sert à rien : proxy_mode (Odoo ignore sinon les
-        en-têtes X-Forwarded-*) et workers (à 0, aucun port de bus n'écoute
-        et /websocket échoue). Le mandataire tourne au premier plan ; Ctrl+C
-        le rend au menu.
+        protocole, la machine seule et HTTP en défaut ; [0] ou Ctrl+D à
+        l'une des deux revient sans rien émettre ni lancer. En HTTPS, le
+        certificat local de cert_dir sert, émis au premier usage. Signale
+        ensuite les réglages d'Odoo sans lesquels le mandataire ne sert à
+        rien : proxy_mode (Odoo ignore sinon les en-têtes X-Forwarded-*) et
+        workers (à 0, aucun port de bus n'écoute et /websocket échoue). Le
+        mandataire tourne au premier plan ; Ctrl+C le rend au menu.
         """
         from script.reverse_proxy import local_cert
         from script.reverse_proxy.main import read_odoo_config
 
         cert_dir = cert_dir or local_cert.DEFAULT_DIR
         odoo = read_odoo_config(config_path)
-        print(f"\n{t('Listen on:')}")
-        print(f"  [1] {t('Local only (127.0.0.1)')} *")
-        print(f"  [2] {t('Whole network (0.0.0.0)')}")
-        choice = input(t("Choice (1-2, default 1): ")).strip()
-        listen = "0.0.0.0" if choice == "2" else "127.0.0.1"
-        print(f"\n{t('Protocol:')}")
-        print("  [1] HTTP *")
-        print(f"  [2] HTTPS ({t('local certificate')})")
-        https = input(t("Choice (1-2, default 1): ")).strip() == "2"
+        print()
+        listen = ui.choose(
+            t("Listen on:"),
+            ["127.0.0.1", "0.0.0.0"],
+            default="127.0.0.1",
+            labels=[t("Local only (127.0.0.1)"), t("Whole network (0.0.0.0)")],
+        )
+        if listen is None:
+            return
+        print()
+        https = ui.choose(
+            t("Protocol:"),
+            [False, True],
+            default=False,
+            labels=["HTTP", f"HTTPS ({t('local certificate')})"],
+            names={"HTTP": False, "HTTPS": True},
+        )
+        if https is None:
+            return
         tls = ""
         if https:
             files = local_cert.paths(cert_dir)
