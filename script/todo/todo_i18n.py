@@ -338,17 +338,9 @@ TRANSLATIONS = {
         "fr": "Depuis ~/.ssh/config",
         "en": "From ~/.ssh/config",
     },
-    "Your choice (1/2): ": {
-        "fr": "Votre choix (1/2) : ",
-        "en": "Your choice (1/2): ",
-    },
     "No SSH hosts found in ~/.ssh/config": {
         "fr": "Aucun hôte SSH trouvé dans ~/.ssh/config",
         "en": "No SSH hosts found in ~/.ssh/config",
-    },
-    "Select SSH host number: ": {
-        "fr": "Numéro de l'hôte SSH à sélectionner : ",
-        "en": "Select SSH host number: ",
     },
     "Which SSH host?": {"fr": "Quel hôte SSH ?", "en": "Which SSH host?"},
     "Invalid selection!": {
@@ -2718,10 +2710,6 @@ TRANSLATIONS = {
     "SSH port forwarding": {
         "fr": "Redirection de port SSH",
         "en": "SSH port forwarding",
-    },
-    "Host (number or name):": {
-        "fr": "Hôte (numéro ou nom) :",
-        "en": "Host (number or name):",
     },
     "Remote port (default:": {
         "fr": "Port distant (défaut :",

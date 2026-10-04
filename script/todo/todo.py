@@ -1992,18 +1992,32 @@ class TODO(
         Le port distant est vu DEPUIS la machine cible : « -L
         local:localhost:distant ». Un rebond éventuel n'a pas à être indiqué —
         le ProxyJump du bloc ~/.ssh/config s'applique tout seul, ce qui rend
-        joignable une VM imbriquée sans route directe."""
+        joignable une VM imbriquée sans route directe.
+
+        L'hôte vient de ~/.ssh/config, par son numéro ou son nom, ou se
+        tape après « Type an address », la dernière entrée, qui est la
+        seule question quand le fichier ne déclare aucun hôte. [0], une
+        réponse vide ou Ctrl+D reviennent sans rien sonder ni ouvrir."""
         print(f"\n🔌 {t('SSH port forwarding')}")
         hosts = self._ssh_config_hosts()
+        host = ""
         if hosts:
-            for i, name in enumerate(hosts, 1):
-                print(f"  [{i}] {name}")
-        host = input(f"{t('Host (number or name):')} ").strip()
+            host = ui.choose(
+                t("Host:"),
+                [*hosts, ""],
+                labels=[*hosts, t("Type an address")],
+                names={name: name for name in hosts},
+            )
+            if host is None:
+                return
+        if not host:
+            try:
+                host = ui.ask(f"{t('Host or IP:')} ").strip()
+            except EOFError:
+                return
         if not host:
             print(t("Cancelled."))
             return
-        if host.isdigit() and 1 <= int(host) <= len(hosts):
-            host = hosts[int(host) - 1]
 
         raw = input(f"{t('Remote port (default:')} 8069): ").strip()
         remote = raw if raw.isdigit() else "8069"
@@ -2256,22 +2270,29 @@ class TODO(
         """Demande OÙ se connecter, à la main ou depuis ~/.ssh/config.
 
         Rend (cible, utilisateur, hôte, nom, depuis_config), ou None si l'on
-        renonce. La CIBLE est ce qu'on passe à ssh : l'alias quand il vient du
-        fichier de configuration, pour que son User et son ProxyJump
-        s'appliquent — un « user@hôte » écrit à la main les perdrait, et une VM
-        imbriquée sans route directe deviendrait injoignable.
+        renonce : [0] ou Ctrl+D à l'une des deux listes ; la saisie à la
+        main est le défaut d'une réponse vide. La CIBLE est ce qu'on passe à
+        ssh : l'alias quand il vient du fichier de configuration, pour que
+        son User et son ProxyJump s'appliquent — un « user@hôte » écrit à la
+        main les perdrait, et une VM imbriquée sans route directe deviendrait
+        injoignable.
 
         DEPUIS_CONFIG distingue les deux, que le nom seul ne sépare pas :
         l'appelant n'interroge ~/.ssh/config que pour une adresse qui en vient.
         """
         import getpass
 
-        print(f"\n{t('SSH address input method')}")
-        print(f"[1] {t('Manual entry')}")
-        print(f"[2] {t('From ~/.ssh/config')}")
-        choice = input(t("Your choice (1/2): ")).strip()
+        print()
+        methode = ui.choose(
+            t("SSH address input method"),
+            ["manual", "ssh_config"],
+            default="manual",
+            labels=[t("Manual entry"), t("From ~/.ssh/config")],
+        )
+        if methode is None:
+            return None
 
-        if choice == "2":
+        if methode == "ssh_config":
             ssh_config_path = os.path.expanduser("~/.ssh/config")
             hosts = self._ssh_config_entries(ssh_config_path)
 
@@ -2279,8 +2300,8 @@ class TODO(
                 print(t("No SSH hosts found in ~/.ssh/config"))
                 return None
 
-            print()
-            for i, (host, info) in enumerate(hosts, 1):
+            labels = []
+            for host, info in hosts:
                 hn = info.get("hostname", host)
                 u = info.get("user", "")
                 desc = host
@@ -2288,18 +2309,23 @@ class TODO(
                     desc += f" ({hn})"
                 if u:
                     desc += f" [{u}]"
-                print(f"[{i}] {desc}")
-            sel = input(t("Select SSH host number: ")).strip()
-            try:
-                idx = int(sel) - 1
-                if idx < 0 or idx >= len(hosts):
-                    print(t("Invalid selection!"))
-                    return None
-            except ValueError:
-                print(t("Invalid selection!"))
+                labels.append(desc)
+            aliases = [host for host, _info in hosts]
+            print()
+            entry = ui.choose(
+                t("Hosts from ~/.ssh/config"),
+                hosts,
+                labels=labels,
+                names={
+                    host: (host, info)
+                    for host, info in hosts
+                    if aliases.count(host) == 1
+                },
+            )
+            if entry is None:
                 return None
 
-            host_name, host_info = hosts[idx]
+            host_name, host_info = entry
             hostname = host_info.get("hostname", host_name)
             user = host_info.get("user", getpass.getuser())
             return host_name, user, hostname, host_name, True
