@@ -22,6 +22,7 @@ from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
 from script.todo.todo import TODO
+from script.todo.todo_i18n import t
 
 FALLBACK = os.path.expanduser("~/.local/bin/rtk")
 PATH_HINT = 'export PATH="$HOME/.local/bin:$PATH"'
@@ -78,6 +79,55 @@ class TestRtkExec(unittest.TestCase):
                 status = todo.rtk_exec("gain")
         self.assertEqual(status, 1)
         todo.execute.exec_command_live.assert_not_called()
+
+
+class TestRtkInstall(unittest.TestCase):
+    """La méthode d'installation : un numéro tel qu'affiché ou son nom,
+    [0] Retour ; la commande et son bilan sont des doubles."""
+
+    CURL = (
+        "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
+        "refs/heads/master/install.sh | sh"
+    )
+
+    def installe(self, *reponses):
+        """(commandes lancées, ce qui s'imprime) quand la méthode reçoit
+        `reponses`."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        with (
+            patch("builtins.input", side_effect=reponses),
+            patch.object(todo, "rtk_report_install") as bilan,
+            redirect_stdout(io.StringIO()) as out,
+        ):
+            todo.rtk_install()
+        commandes = [
+            c.args[0] for c in todo.execute.exec_command_live.call_args_list
+        ]
+        self.assertEqual(bilan.call_count, len(commandes))
+        return commandes, out.getvalue()
+
+    def test_a_method_by_its_number_or_its_name(self):
+        for reponses, commande in (
+            (["1"], self.CURL),
+            (["brew"], "brew install rtk"),
+            (
+                ["4", "01", "Cargo", "3"],
+                "cargo install --git https://github.com/rtk-ai/rtk",
+            ),
+        ):
+            with self.subTest(reponses=reponses):
+                commandes, out = self.installe(*reponses)
+                self.assertEqual(commandes, [commande])
+                fautes = out.count(t("Invalid choice: "))
+                self.assertEqual(fautes, len(reponses) - 1)
+
+    def test_back_or_an_empty_answer_installs_nothing(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                commandes, out = self.installe(reponse)
+                self.assertEqual(commandes, [])
+                self.assertIn(f"[0] {t('Back')}", out)
 
 
 class TestRtkReportInstall(unittest.TestCase):

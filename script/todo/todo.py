@@ -4763,35 +4763,31 @@ class TODO(
             self.rtk_report_path_warning()
 
     def rtk_install(self):
-        print(f"🤖 {t('Installation method:')}")
-        choices = [
-            {"prompt_description": t("curl - Automatic install script")},
-            {"prompt_description": t("brew - Homebrew (macOS/Linux)")},
-            {
-                "prompt_description": t(
-                    "cargo - Build from source (Rust required)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        status = click.prompt(help_info)
-        print()
-        if status == "0":
-            return
-        elif status == "1":
-            command = (
+        """Installe RTK par la méthode choisie, curl, brew ou cargo, par son
+        numéro ou son nom ; [0], une réponse vide ou Ctrl+D ne lancent
+        rien."""
+        commands = {
+            "curl": (
                 "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
                 "refs/heads/master/install.sh | sh"
-            )
-        elif status == "2":
-            command = "brew install rtk"
-        elif status == "3":
-            command = "cargo install --git https://github.com/rtk-ai/rtk"
-        else:
-            print(t("Command not found !"))
+            ),
+            "brew": "brew install rtk",
+            "cargo": "cargo install --git https://github.com/rtk-ai/rtk",
+        }
+        method = ui.choose(
+            f"🤖 {t('Installation method:')}",
+            list(commands),
+            labels=[
+                t("curl - Automatic install script"),
+                t("brew - Homebrew (macOS/Linux)"),
+                t("cargo - Build from source (Rust required)"),
+            ],
+            names={name: name for name in commands},
+        )
+        if method is None:
             return
         exit_code = self.execute.exec_command_live(
-            command,
+            commands[method],
             source_erplibre=False,
         )
         self.rtk_report_install(exit_code)
