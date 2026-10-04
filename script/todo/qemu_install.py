@@ -529,8 +529,8 @@ class QemuInstallMixin:
             + cache_env_reload()
             + "; "
             # ICI, et nulle part avant. Le faisceau que ces exports désignent
-            # est écrit par cloud-init lui aussi : la session ssh est
-            # acceptée jusqu'à une seconde avant qu'il existe, donc
+            # est écrit par cloud-init lui aussi : la session ssh peut être
+            # acceptée avant qu'il existe, donc
             # une garde évaluée en tête de commande est fausse et n'exporte
             # rien. Tout ce qui suit perd alors l'autorité — le clone du dépôt
             # échoue sur « self-signed certificate », quand nix, qui lit son
@@ -603,8 +603,8 @@ class QemuInstallMixin:
             # désinstaller, pour rester réversible d'un « systemctl enable ».
             #
             # Sauf si le magasin RETENU est snap : le couper puis laisser un
-            # postinst appeler « snap install » est exactement ce qui figeait
-            # une VM graphique trente minutes durant.
+            # postinst appeler « snap install » fige l'installation d'une VM
+            # graphique.
             + (
                 ""
                 if app_store == "snap"
@@ -1985,8 +1985,9 @@ class QemuInstallMixin:
             f'mstep "{t("ERPLibre venv (everything below needs it)")}" '
             # « activate », et non « bin/python » : sans python3-venv, le venv
             # naît INFIRME — bin/python existe (un lien), mais ni pip ni
-            # activate ni site-packages. La sonde passait, et l'échec ne se
-            # voyait que deux étapes plus loin, en « No module named git ».
+            # activate ni site-packages. Une sonde sur bin/python passerait,
+            # et l'échec ne se verrait que deux étapes plus loin, en « No
+            # module named git ».
             f"'test -f {el_dir}/.venv.erplibre/bin/activate' && "
             f'mstep "{t("mobile repository (additive manifest)")}" '
             f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh; "
@@ -2218,8 +2219,8 @@ class QemuInstallMixin:
             # ne lit NI ~/.profile NI ~/.bashrc — Ubuntu place même un
             # « return » en tête du second pour les shells non interactifs.
             # Le PATH que l'installateur y écrit ne s'applique donc jamais
-            # à ces commandes, et « emulator » y répond « command not
-            # found », même sur la ligne que ce message affiche.
+            # à ces commandes, et un « emulator » sans chemin y répond
+            # « command not found ».
             f'echo "   {t("open it from your workstation:")} '
             # « -XC » et non « -X » : la compression X11 change tout sur un
             # écran distant. Les autres drapeaux viennent de la même autorité

@@ -948,8 +948,8 @@ class MenusDuLLM(unittest.TestCase):
 
     def test_over_ssh_se_dessine_sous_son_segment(self):
         # Search › The networks of a machine over SSH dessine le choix d'un
-        # réseau sous « Over SSH », le segment que déclare son entrée, puis
-        # Search se redessine sous le sien.
+        # réseau sous « Over SSH », le segment que déclare le menu REMOTE,
+        # puis Search se redessine sous le sien.
         from script.todo import todo_telemetry
         from script.todo.assistant import discover as llm_disc
 

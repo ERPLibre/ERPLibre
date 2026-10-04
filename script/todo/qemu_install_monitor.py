@@ -226,7 +226,7 @@ def _launch_one(
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
     # lancement devient donc morte en cours de route, et une adresse figée
     # ferait échouer l'attente 20 minutes durant sur une VM parfaitement saine,
-    # son bail périmé quand la VM vit à l'adresse suivante.
+    # son bail périmé quand la VM vit à une autre adresse.
     #
     # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
@@ -234,8 +234,8 @@ def _launch_one(
     # sans que personne ne la voie. Sans réponse, on garde l'adresse courante.
     # L'agent ne suffit PAS comme source unique : son paquet s'installe hors de
     # cloud-init pour ne pas retarder le démarrage, donc il arrive tard — et
-    # pendant tout ce temps la ré-résolution ne renvoyait rien et gardait
-    # l'adresse morte. C'est le défaut qui a fait échouer le premier correctif.
+    # tant qu'il manque, une ré-résolution par l'agent seul ne rend rien et
+    # garde l'adresse morte.
     #
     # Repli sur les baux : dnsmasq les garde tous les deux sans dire lequel est
     # vivant, on tranche donc en TESTANT le port 22 — le seul critère qui compte
@@ -1844,8 +1844,8 @@ def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
     Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
-    dernier rapport du pilote : une VM fraîche en annonce le tiers de ce
-    qu'elle occupe réellement, avec un horodatage vieux d'une demi-heure.
+    dernier rapport du pilote : une VM fraîche en annonce bien moins que ce
+    qu'elle occupe réellement, avec l'horodatage de ce dernier rapport.
     La période se perd quand le domaine redémarre — ce qu'une
     installation fait — donc on la réarme à intervalle lent.
     """
@@ -2856,8 +2856,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             except Exception:
                 return
             # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
-            # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
-            # ses colonnes vivantes. Son état vient de l'hôte.
+            # lue là, elle passerait pour EFFACÉE, ce qui éteindrait du même
+            # coup ses colonnes vivantes. Son état vient donc de l'hôte.
             distants, hote_ok = await asyncio.to_thread(
                 read_pvestats_detail, vms
             )
