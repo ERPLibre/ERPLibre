@@ -7922,29 +7922,17 @@ TRANSLATIONS = {
         "fr": "Installation impossible d'ici.",
         "en": "Cannot install from here.",
     },
-    "Enter = cancel": {
-        "fr": "Entrée = annuler",
-        "en": "Enter = cancel",
-    },
     "Go ahead?": {
         "fr": "On y va ?",
         "en": "Go ahead?",
-    },
-    "Ignored, not in the list:": {
-        "fr": "Ignorés, absents de la liste :",
-        "en": "Ignored, not in the list:",
     },
     "Install some of the": {
         "fr": "Installer une partie des",
         "en": "Install some of the",
     },
-    "Numbers, space separated:": {
-        "fr": "Numéros, séparés par des espaces :",
-        "en": "Numbers, space separated:",
-    },
-    "every one of them": {
-        "fr": "tous",
-        "en": "every one of them",
+    "Modules to install:": {
+        "fr": "Modules à installer :",
+        "en": "Modules to install:",
     },
     "need repair first": {
         "fr": "à réparer d'abord",
@@ -11681,6 +11669,7 @@ TRANSLATIONS = {
         "fr": "📜 Afficher tous les champs",
         "en": "📜 Show every field",
     },
+    "Which source?": {"fr": "Quelle source ?", "en": "Which source?"},
     "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
     "A backup .zip, without restoring it": {
         "fr": "🗜  Une sauvegarde .zip, sans la restaurer",

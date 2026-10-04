@@ -3918,7 +3918,9 @@ class TODO(
         garde-fous : la version du checkout doit être celle de la base —
         un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
         question par défaut est « non », et la liste choisie est
-        confirmée avant que rien ne parte.
+        confirmée avant que rien ne parte. La liste est un choix multiple :
+        des numéros, des noms ou `tout` ; [0] et une réponse vide
+        n'installent rien.
         """
         from script.analyse import check_module_package as modules
         from script.odoo.migration import database_cleanup
@@ -3950,18 +3952,13 @@ class TODO(
             return
 
         print()
-        for rang, nom in enumerate(candidats, start=1):
-            print(f"   [{rang}] {nom}")
-        print(f"   [a] {t('every one of them')}")
-        print(f"   {t('Enter = cancel')}")
-        choisis, refuses = modules.parse_selection(
-            auto_ask.ask(f"💬 {t('Numbers, space separated:')} ", default=""),
-            candidats,
+        # Un morceau faux redemande la réponse entière : en demander cinq et
+        # en recevoir quatre sans un mot ferait croire l'installation faite.
+        choisis = ui.choose(
+            f"💬 {t('Modules to install:')}", candidats, multi=True
         )
-        # Un jeton refusé n'est JAMAIS avalé : en demander cinq et en
-        # recevoir quatre sans un mot ferait croire l'installation faite.
-        if refuses:
-            print(f"⚠ {t('Ignored, not in the list:')} {' '.join(refuses)}")
+        if choisis is None:
+            return
         if not choisis:
             print(f"ℹ️  {t('Nothing selected.')}")
             return
@@ -4020,15 +4017,15 @@ class TODO(
         de lire ce qu'elle contient.
         """
         print()
-        print(f"[1] {t('A database')}")
-        print(f"[2] {t('A backup .zip, without restoring it')}")
-        print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"), prompt_suffix=" ")
-        print()
-        if answer == "1":
+        source = ui.choose(
+            t("Which source?"),
+            ["database", "backup"],
+            labels=[t("A database"), t("A backup .zip, without restoring it")],
+        )
+        if source == "database":
             database = self._analyse_select_database()
             return (False, database) if database else None
-        if answer == "2":
+        if source == "backup":
             path = self.db_manager.select_backup_path()
             return (True, path) if path else None
         return None
@@ -4058,28 +4055,22 @@ class TODO(
     def _analyse_follow_up(self, choices, handler):
         """Boucle « aller plus loin » après une analyse.
 
-        Le rapport suggérait « utilisez -v », « --exact », « ajoutez --diff ».
-        Dans un menu, c'est demander à l'utilisateur de sortir et de retaper
-        une commande pour obtenir ce que le menu pouvait lui offrir. Les
-        options sont donc devenues des entrées, et les conseils en ligne de
-        commande ne s'affichent plus que dans la vraie ligne de commande.
+        Chaque option qu'un rapport suggère en ligne de commande (« -v »,
+        « --exact », « --diff ») est une entrée : dans un menu, la
+        suggestion obligerait à sortir et à retaper une commande pour
+        obtenir ce que le menu offre. Ces conseils ne s'affichent que dans
+        la vraie ligne de commande.
+
+        Chaque réponse appelle `handler` avec le rang de l'entrée, à partir
+        de 1, puis la question revient ; [0], une réponse vide, Ctrl+D, ou
+        un `handler` qui rend False, la referment.
         """
-        help_info = self.fill_help_info(
-            [{"section": t("Go further")}] + choices
-        )
+        rangs = list(range(1, len(choices) + 1))
+        labels = [choice["prompt_description"] for choice in choices]
         while True:
-            status = click.prompt(help_info)
             print()
-            if status == "0":
-                return
-            try:
-                rank = int(status)
-            except ValueError:
-                rank = 0
-            if not 1 <= rank <= len(choices):
-                print(t("Command not found !"))
-                continue
-            if handler(rank) is False:
+            rank = ui.choose(t("Go further"), rangs, labels=labels)
+            if rank is None or handler(rank) is False:
                 return
 
     def execute_analyse_schema_size(self):

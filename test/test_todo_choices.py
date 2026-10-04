@@ -300,5 +300,84 @@ class TestLaRedirectionDePort(unittest.TestCase):
         self.assertEqual(commandes, ["ssh -N -L 8069:localhost:8069 forged-a"])
 
 
+class TestLAnalyse(unittest.TestCase):
+    """Execute › Analyse : la source d'une analyse, puis « aller plus
+    loin » ; la base, la sauvegarde et ce qu'une entrée lance sont des
+    doubles."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.demandes = []
+        self.todo._analyse_select_database = lambda: (
+            self.demandes.append("base") or "forged_db"
+        )
+        self.todo.db_manager = type(
+            "Bases",
+            (),
+            {
+                "select_backup_path": lambda _s: (
+                    self.demandes.append("zip") or "/forged/copie.zip"
+                )
+            },
+        )()
+
+    def test_a_source_by_its_number(self):
+        for reponses, attendu in (
+            (["1"], (False, "forged_db")),
+            (["2"], (True, "/forged/copie.zip")),
+            (["3", "01", "1"], (False, "forged_db")),
+        ):
+            with self.subTest(reponses=reponses):
+                rendu, sortie = joue(
+                    self.todo._analyse_select_source, *reponses
+                )
+                self.assertEqual(rendu, attendu)
+                fautes = sortie.count(t("Invalid choice: "))
+                self.assertEqual(fautes, len(reponses) - 1)
+
+    def test_back_asks_for_no_database_and_no_backup(self):
+        for reponse in ("0", "", EOFError()):
+            with self.subTest(reponse=reponse):
+                rendu, sortie = joue(self.todo._analyse_select_source, reponse)
+                self.assertIsNone(rendu)
+                self.assertIn(f"[0] {t('Back')}", sortie)
+        self.assertEqual(self.demandes, [])
+
+    def suite(self, *reponses, rend=None):
+        """Les rangs que reçoit le `handler` d'« aller plus loin », qui
+        rend `rend`, et ce qui s'imprime."""
+        rangs = []
+        choix = [
+            {"prompt_description": t("Show every entry")},
+            {"prompt_description": t("Export as JSON")},
+        ]
+        _, sortie = joue(
+            lambda: self.todo._analyse_follow_up(
+                choix, lambda rang: rangs.append(rang) or rend
+            ),
+            *reponses,
+        )
+        return rangs, sortie
+
+    def test_going_further_asks_again_until_back(self):
+        rangs, sortie = self.suite("2", "1", "0")
+        self.assertEqual(rangs, [2, 1])
+        self.assertIn(f"[2] {t('Export as JSON')}\n", sortie)
+        self.assertEqual(sortie.count(t("Go further")), 3)
+
+    def test_going_further_a_typo_asks_again_and_empty_goes_back(self):
+        rangs, sortie = self.suite("x", "01", "2", "")
+        self.assertEqual(rangs, [2])
+        self.assertEqual(sortie.count(t("Invalid choice: ")), 2)
+
+    def test_going_further_closes_on_ctrl_d(self):
+        rangs, _ = self.suite("2", EOFError())
+        self.assertEqual(rangs, [2])
+
+    def test_a_handler_that_returns_false_closes_the_list(self):
+        rangs, _ = self.suite("1", rend=False)
+        self.assertEqual(rangs, [1])
+
+
 if __name__ == "__main__":
     unittest.main()

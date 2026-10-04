@@ -2854,16 +2854,15 @@ class TestMenuLabels(unittest.TestCase):
     que nomme `MENUS_SANS_SEGMENT`, l'action d'une entrée qui déclare son
     segment, ou l'une des exceptions.
 
-    Quatre méthodes sont exemptées, qui s'affichent sous le fil du menu
-    qui les ouvre : trois ACTIONS qui posent une question — un choix de
-    méthode d'installation, un « aller plus loin » après un rapport — et
-    non des écrans où l'on navigue, et `select_database`, celle de
+    Trois méthodes sont exemptées, qui s'affichent sous le fil du menu
+    qui les ouvre : deux ACTIONS qui posent une question — un choix de
+    méthode d'installation, une montée de version d'Odoo — et non des
+    écrans où l'on navigue, et `select_database`, celle de
     DatabaseManager, qui choisit une base. Leur donner un segment
     mettrait une miette sur une invite passagère.
     """
 
     ECRANS_EXEMPTES = {
-        "_analyse_follow_up",
         "rtk_install",
         "execute_odoo_upgrade",
         "select_database",
