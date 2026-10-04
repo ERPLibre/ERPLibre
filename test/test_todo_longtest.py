@@ -23,6 +23,7 @@ import unittest
 from unittest.mock import patch
 
 from script.todo.todo import TODO
+from script.todo.todo_i18n import t
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
@@ -1331,6 +1332,83 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             args = self.todo._longtest_depart("deep_qemu.py")
         self.assertEqual(args, " --hote erplibre@10.0.0.7")
+
+
+class TestUnDepartAbandonneNeLanceRien(unittest.TestCase):
+    """Renoncer à l'hôte de départ ne lance aucun test long. Un départ vide
+    se lirait « une VM neuve » : la descente ou l'installation partirait en
+    créer une, à la place de l'hôte qu'on n'a pas choisi."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.lances = []
+        self.todo._longtest_run = lambda nom, args="", demander=None: (
+            self.lances.append((nom, args))
+        )
+        self.todo._longtest_depth = lambda: 3
+        self.todo._pve_host = lambda ask=True: {
+            "target": "root@forged-pve",
+            "jump": "",
+        }
+
+    def _joue(self, reponses, action):
+        """Ce qu'imprime `action()`, chaque `input` répondu par
+        `reponses`, dans l'ordre."""
+        with (
+            patch("builtins.input", side_effect=reponses),
+            contextlib.redirect_stdout(io.StringIO()) as sortie,
+        ):
+            action()
+        return sortie.getvalue()
+
+    def test_no_proxmox_host_chosen_runs_no_descent(self):
+        self.todo._pve_pick_host = lambda: None
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run):
+                sortie = self._joue(
+                    ["3"],
+                    lambda: self.todo._longtest_descente(
+                        "deep_proxmox.py", dry_run=dry_run
+                    ),
+                )
+                self.assertIn(t("Cancelled."), sortie)
+        self.assertEqual(self.lances, [])
+
+    def test_back_at_the_proxmox_host_list_runs_no_descent(self):
+        # Le vrai `_pve_pick_host`, sans hôte gardé dans les préférences,
+        # qui sont un double : [0] à sa liste rend None, et la descente ne
+        # part pas, à blanc ou pour de vrai.
+        from script.todo import proxmox_menu
+
+        with patch.object(proxmox_menu.todo_prefs, "get", return_value=None):
+            for dry_run in (False, True):
+                with self.subTest(dry_run=dry_run):
+                    sortie = self._joue(
+                        ["3", "0"],
+                        lambda: self.todo._longtest_descente(
+                            "deep_proxmox.py", dry_run=dry_run
+                        ),
+                    )
+                    self.assertIn(t("Which Proxmox host?"), sortie)
+        self.assertEqual(self.lances, [])
+
+    def test_no_libvirt_host_typed_runs_no_descent(self):
+        self.todo._pve_pick_host = lambda: self.fail("Proxmox demandé")
+        sortie = self._joue(
+            ["3", ""], lambda: self.todo._longtest_descente("deep_qemu.py")
+        )
+        self.assertIn(t("Cancelled."), sortie)
+        self.assertEqual(self.lances, [])
+
+    def test_no_nixos_machine_typed_runs_no_install(self):
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run):
+                sortie = self._joue(
+                    ["2", ""],
+                    lambda: self.todo._longtest_nixos(dry_run=dry_run),
+                )
+                self.assertIn(t("Cancelled."), sortie)
+        self.assertEqual(self.lances, [])
 
 
 class TestAucuneEtapeNeRepondNone(unittest.TestCase):

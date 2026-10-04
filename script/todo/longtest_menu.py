@@ -112,9 +112,13 @@ class LongTestMenuMixin:
         """Lance la descente `script`, deep_proxmox.py ou deep_qemu.py : la
         profondeur est DEMANDÉE, c'est le réglage qui décide de la durée
         (voir `_longtest_depth` pour ce qu'elle coûte selon l'étage), puis
-        d'où elle part. `dry_run` n'en montre que le plan."""
+        d'où elle part ; un départ abandonné ne lance rien. `dry_run` n'en
+        montre que le plan."""
         args = f"--depth {self._longtest_depth()}"
-        args += self._longtest_depart(script)
+        depart = self._longtest_depart(script)
+        if depart is None:
+            return
+        args += depart
         if dry_run:
             args += " --dry-run"
         self._longtest_run(script, args)
@@ -122,9 +126,11 @@ class LongTestMenuMixin:
     def _longtest_nixos(self, dry_run=False):
         """Lance l'installation d'ERPLibre sur NixOS : pas de profondeur, une
         seule machine, et la question est binaire — l'installation aboutit
-        ou non ; seul se demande d'où elle part. `dry_run` n'en montre que
-        le plan."""
+        ou non ; seul se demande d'où elle part, et un départ abandonné ne
+        lance rien. `dry_run` n'en montre que le plan."""
         args = self._longtest_depart_nixos()
+        if args is None:
+            return
         if dry_run:
             args += " --dry-run"
         self._longtest_run("install_nixos.py", args)
@@ -147,7 +153,8 @@ class LongTestMenuMixin:
 
     def _longtest_depart_nixos(self):
         """D'où part l'installation : une VM neuve, ou une machine NixOS
-        qu'on possède déjà.
+        qu'on possède déjà. Rend les options du script, "" pour une VM
+        neuve, ou None quand la machine n'est pas donnée.
 
         La question n'est pas celle des descentes — il n'y a pas d'étage ici,
         et un hôte fourni doit DÉJÀ porter NixOS : le script y installe
@@ -162,10 +169,12 @@ class LongTestMenuMixin:
         if hote:
             return self._longtest_args_hote(hote)
         print(t("Cancelled."))
-        return ""
+        return None
 
     def _longtest_depart(self, script):
         """D'où part la descente : une VM neuve, ou un hôte qu'on a déjà.
+        Rend les options du script, "" pour une VM neuve, ou None quand
+        l'autre hôte n'est pas choisi.
 
         Créer une machine de tête pour héberger un hyperviseur qu'on possède
         déjà coûte cinq minutes ET un étage d'imbrication — donc de la
@@ -198,6 +207,7 @@ class LongTestMenuMixin:
             if hote:
                 return self._longtest_args_hote(hote)
             print(t("Cancelled."))
+            return None
         return ""
 
     @staticmethod
