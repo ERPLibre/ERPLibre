@@ -1,0 +1,12 @@
+{
+  "etapes": [
+    {"attendre_silence": {"silence_ms": 1000, "max_s": 20, "exiger_parole": true}},
+    {"touches": "{code}#"},
+    {"attendre_silence": {"silence_ms": 1500, "max_s": 20, "exiger_parole": true}},
+    {"touches": "1"},
+    {"attendre_silence": {"silence_ms": 4500, "max_s": 240, "exiger_parole": true}},
+    {"verifier_parole": {"min_s": 15}},
+    {"touches": "7"},
+    {"enregistrer": {"max_s": 20, "silence_fin_s": 3}}
+  ]
+}
