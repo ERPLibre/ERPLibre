@@ -668,6 +668,24 @@ TRANSLATIONS = {
         "en": "🎨 Format modified code",
     },
     # todo.py hardcoded prompt_descriptions
+    "mobile_lan_cleartext_warning": {
+        "fr": (
+            "  La passerelle SMS en Wi-Fi exige un APK qui tolere le HTTP en"
+            " clair\n  vers le reseau local. Il fait circuler numeros et"
+            " messages en clair :\n  pour une demonstration sur un reseau"
+            " maitrise, jamais au-dela."
+        ),
+        "en": (
+            "  The SMS gateway over Wi-Fi needs an APK that tolerates plain"
+            " HTTP to\n  the local network. Numbers and messages then travel"
+            " in clear: for a\n  demonstration on a controlled network,"
+            " never beyond."
+        ),
+    },
+    "mobile_lan_cleartext_ask": {
+        "fr": "APK de demonstration, HTTP en clair tolere, defaut Non (Y) : ",
+        "en": "Demonstration APK, plain HTTP tolerated, default No (Y): ",
+    },
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",

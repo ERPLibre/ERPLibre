@@ -6353,8 +6353,20 @@ class TODO(
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
             self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
+        # Pose AVANT la compilation, et hors de la personnalisation : c'est
+        # un choix de construction, pas d'habillage. Sans lui, la politique
+        # reseau d'Android refuse le HTTP en clair vers une adresse du
+        # reseau local — la passerelle en Wi-Fi ne joint alors rien, et
+        # chaque reconstruction ordinaire remplace l'APK qui le tolerait.
+        print(t("mobile_lan_cleartext_warning"))
+        do_lan_cleartext = self._is_yes(
+            input(t("mobile_lan_cleartext_ask"))
+        )
+        commande = "./mobile/compile_and_run.sh"
+        if do_lan_cleartext:
+            commande += " --lan-cleartext"
         status = self.execute.exec_command_live(
-            "./mobile/compile_and_run.sh", source_erplibre=False
+            commande, source_erplibre=False
         )
 
 
