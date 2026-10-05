@@ -22,7 +22,7 @@ import (
 // aboutir ; plus long laisserait la file bloquée.
 const DélaiSonnerie = 90 * time.Second
 
-// Résultat de l'appel, tel qu'il sera rapporté à Odoo.
+// Résultat de l'appel, tel qu'il est rapporté à Odoo.
 type Résultat struct {
 	Numéro    string          `json:"numero"`
 	Décroché  bool            `json:"decroche"`

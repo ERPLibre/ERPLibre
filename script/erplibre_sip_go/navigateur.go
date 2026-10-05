@@ -460,8 +460,8 @@ func (l *LigneModem) Fermer() {
 		slog.Warn("canal voix USB non refermé", "err", err)
 	}
 	// Le modem N'EST PAS refermé : il appartient au service et sert aussi la
-	// veille des appels entrants. Le fermer ici rendrait la passerelle sourde
-	// après le premier appel sortant.
+	// boucle de veille des appels entrants. Le fermer ici rendrait la
+	// passerelle sourde après le premier appel sortant.
 	l.modem.RendreLaLigne()
 	l.modem = nil
 }

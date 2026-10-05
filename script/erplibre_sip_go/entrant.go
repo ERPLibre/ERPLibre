@@ -35,8 +35,8 @@ const (
 	//
 	// Assez pour ne pas rouvrir sur un modem momentanément fâché — il refuse
 	// une commande pendant qu'il bascule de réseau — et assez peu pour que
-	// la ligne ne reste pas sourde une minute après un réveil. La veille
-	// interroge chaque seconde, donc dix vaut dix secondes.
+	// la ligne ne reste pas sourde une minute après un réveil. La boucle
+	// de veille interroge chaque seconde, donc dix vaut dix secondes.
 	ÉchecsAvantRéouverture = 10
 
 	// DélaiSonnerieSoftphone borne l'attente d'un décroché au navigateur.

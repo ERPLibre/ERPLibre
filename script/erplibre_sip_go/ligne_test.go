@@ -2,10 +2,10 @@ package main
 
 import "testing"
 
-// La SIM ne porte qu'UNE conversation. Deux chemins s'en servent — la veille
-// des appels entrants et la composition sortante — et rien ne les arbitrait :
-// le raccrochage du premier tombait sur le second, qui perdait sa ligne
-// quelques secondes apres l'avoir prise, sans qu'aucune erreur ne le dise.
+// La SIM ne porte qu'UNE conversation. Deux chemins s'en servent — la boucle
+// de veille des appels entrants et la composition sortante — et sans arbitre le
+// raccrochage du premier tombe sur le second, qui perd sa ligne quelques
+// secondes apres l'avoir prise, sans qu'aucune erreur ne le dise.
 func TestLaLigneNeSePrendPasDeuxFois(t *testing.T) {
 	m := &Modem{}
 	if !m.PrendreLaLigne() {

@@ -14,7 +14,7 @@ const (
 	// ÂgeRéglagesTolérable borne la vieillesse des réglages au moment de
 	// décider si le répondeur prend l'appel.
 	//
-	// Deux fois la cadence de la veille : au-delà, la lecture périodique n'a
+	// Deux fois la cadence de la boucle de veille : au-delà, la lecture périodique n'a
 	// pas eu lieu — une ligne tenue longtemps, ou un Odoo muet — et les
 	// valeurs peuvent dater d'avant un changement à l'écran.
 	ÂgeRéglagesTolérable = 2 * CadenceMessagerie
@@ -37,7 +37,7 @@ const (
 // s'applique pas est pire qu'un réglage absent.
 //
 // Deux chemins de lecture, pour deux besoins qui ne se recouvrent pas :
-// la veille relit à intervalle, ligne libre ; l'arrivée d'un appel relit
+// la boucle de veille relit à intervalle, ligne libre ; l'arrivée d'un appel relit
 // seulement si les valeurs sont vieilles, et sous un délai court.
 type RéglagesVivants struct {
 	mu      sync.RWMutex

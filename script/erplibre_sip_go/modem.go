@@ -47,10 +47,10 @@ type Modem struct {
 
 	// Une CONVERSATION à la fois, ce qui n'est pas la même chose qu'une
 	// commande à la fois. La SIM ne porte qu'un appel voix ; deux chemins
-	// s'en servent — la veille des entrants et la composition sortante — et
-	// rien ne les arbitrait. Le raccrochage du premier tombait alors sur le
-	// second, qui perdait sa ligne quelques secondes après l'avoir prise,
-	// sans qu'aucune erreur ne le dise.
+	// s'en servent — la boucle de veille et la composition sortante — et
+	// sans arbitre le raccrochage du premier tombe sur le second, qui perd
+	// sa ligne quelques secondes après l'avoir prise, sans qu'aucune erreur
+	// ne le dise.
 	ligne sync.Mutex
 }
 
@@ -167,7 +167,7 @@ func ouvrirPortBrut(chemin string) (*os.File, error) {
 	}); err != nil {
 		f.Close()
 		return nil, fmt.Errorf(
-			"port %s deja tenu par un autre programme : arretez la veille, "+
+			"port %s deja tenu par un autre programme : arretez la boucle de veille, "+
 				"le clavier de composition ou le service softphone avant "+
 				"d'en lancer un second (%w)", chemin, err)
 	}
