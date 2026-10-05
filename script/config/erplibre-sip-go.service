@@ -1,0 +1,44 @@
+# Service de voix du modem : softphone de navigateur sur la carte SIM.
+#
+# Gabarit : les @JETONS@ sont remplaces a la pose par script/todo/modem/service.py.
+# Il n'est pas pose tel quel — le chemin du depot, celui du binaire et le
+# compte qui le fait tourner changent d'une machine a l'autre.
+#
+# Le compte compte : le port AT appartient au groupe « dialout » et la carte
+# son du modem au groupe « audio ». systemd donne a l'unite TOUS les groupes
+# configures du compte, ce qu'une session de terminal ouverte avant l'ajout
+# n'a pas — c'est meme la raison pour laquelle le CLI doit parfois se relancer
+# par « sg ».
+[Unit]
+Description=ERPLibre — voix du modem, softphone de navigateur
+Documentation=file://@DEPOT@/script/erplibre_sip_go
+# ModemManager tient les ports du modem : demarrer avant lui ferait echouer la
+# premiere ouverture, et le service repartirait en boucle sur une panne qui se
+# resout toute seule une seconde plus tard.
+After=network-online.target ModemManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@UTILISATEUR@
+WorkingDirectory=@DEPOT@
+# Le « - » tolere l'absence du fichier : le service demarre alors sans poste
+# declare et le dit dans son journal, au lieu de refuser de se lancer.
+EnvironmentFile=-@ENV@
+ExecStart=@BINAIRE@ -navigateur @ECOUTE@ -repondeur @REPONDEUR@ -pcm @PCM@ -v
+
+# SIGINT et non SIGTERM : le binaire raccroche la ligne sur une interruption.
+# Tue net, il laisse le modem en conversation, et l'appel continue de se
+# facturer jusqu'a ce que le correspondant raccroche.
+KillSignal=SIGINT
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=5
+
+# Pas de ProtectHome : le repondeur ECRIT ses enregistrements sous le depot,
+# qui vit dans le compte de l'exploitant. En lecture seule, il prendrait les
+# messages et les perdrait.
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
