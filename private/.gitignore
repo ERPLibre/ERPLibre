@@ -9,3 +9,17 @@ odoo/
 # an institution, its gateway and its authentication group, so they belong to
 # a repository that is itself private, never to a public fork.
 vpn/presets/
+
+# Configuration propre a une installation : etat de la demonstration SMS,
+# secret HMAC partage, journal et PID du serveur de demo. Rien de tout cela
+# n'est partageable, et le secret encore moins — le distant de ce depot est
+# public, et le reste de `private/` est bel et bien versionne.
+conf/
+
+# Enregistrements tires de la boite vocale : la voix de l'appelant, son numero
+# annonce a la voix, et le code de la messagerie dans les traces de la recette.
+# C'est de la donnee d'une personne, pas une configuration.
+repondeur/
+
+# Journal des SMS par correspondant : numeros reels et texte des messages.
+sms/
