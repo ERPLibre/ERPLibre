@@ -11,6 +11,42 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
+- A cellular gateway on a USB modem, reachable from **Mobile gateway** in Odoo: it relays the SMS
+  Odoo wants to send through the SIM, reports the calls that come in, and keeps the server from ever
+  having to reach the appliance — the agent comes for its work, so a dynamic address and a carrier
+  NAT change nothing. The exchange is authenticated by an HMAC signature whose key is read from the
+  Odoo process's environment, never from the database: this module's code is published under
+  AGPL-3, and a key in a record travels in every backup and every copy of the base
+- An incoming call rings a browser softphone, and its voice travels between the browser and the SIM
+  in both directions — WebRTC on one side, the modem's sound card on the other. The softphone has
+  about thirty seconds to answer: past that the carrier's own mailbox takes the call, and the race
+  is what the number of rings settles
+- An answering machine of its own, which picks up before the carrier's mailbox and so keeps a
+  history that no AT command could otherwise retrieve: it plays a greeting, beeps, records, trims
+  the closing silence from the file as well as from the stated duration, and uploads the message to
+  Odoo, where it is played in the record rather than downloaded
+- The carrier's own mailbox is fetched by calling it: a recipe of DTMF keys, timed on the silences,
+  navigates the voice menu. It starts on the SIM's message-waiting flag — a fetch occupies the line,
+  so it has no reason to start with nothing to take — or on a button in the settings. The message is
+  cut out of the call, and so are the seconds where the mailbox announces the caller's number: that
+  announcement is the only trace of who called, the carrier transmitting it in no readable form
+- The modem's two services run under systemd, with their secrets in an `EnvironmentFile` at 0600 and
+  never in the database. The voicemail PIN is an exception on purpose: it lives in a vault only a
+  person can open, so it is handed to the running service over a local socket and kept in memory
+  alone — lost at every restart, which the menu says, because writing it anywhere would undo the
+  vault
+- The end-to-end demonstration exists twice over, once per device holding the SIM: the Android
+  phone from **TODO › Assistant**, the USB modem from entry 9 of the modem menu. Each has its own
+  state, database, port, gateway record and HMAC key, so the two Odoo stand side by side on one
+  machine and configuring the second no longer undoes the first. One entry switches from one to the
+  other without losing a step, which is what makes the two loops comparable in a sitting
+- The phone's gateway settings are written over the cable instead of typed: the demonstration
+  stops the application, writes the server URL, the device identifier and the 64-character shared
+  key into its preferences, and clears the last recorded error. Everything the server had set —
+  polling rhythm, segment quota, journal choices — is kept, and the previous file is copied beside
+  the state before anything is replaced. It needs a debuggable package, the only kind Android opens
+  to `run-as`. The chain uses it on its own at the step that links the phone, and asks for nothing;
+  the sheet to type by hand appears only when the cable cannot carry it, with the reason
 - Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
 - Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
 - OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group
