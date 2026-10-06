@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 
+from . import udev
+
 #: Port que la regle udev soustrait a ModemManager. Quand il existe, tout le
 #: reste de ce fichier devient inutile : on l'ouvre directement.
 PORT_RESERVE = "/dev/erplibre-modem-at"
@@ -22,7 +24,8 @@ PORT_RESERVE = "/dev/erplibre-modem-at"
 #: Le port du modem est en 0660 root:dialout.
 GROUPE_PORT = "dialout"
 
-#: Ports AT du modem, dans l'ordre ou on les essaie a defaut du port reserve.
+#: Derniere chance, quand ModemManager ne dit le role d'aucun port : la
+#: composition d'une carte precise, qui ne vaut que pour elle.
 PORTS_AT = ("/dev/ttyUSB2", "/dev/ttyUSB3")
 
 #: Au-dela, on considere que le modem ne repondra pas.
@@ -61,6 +64,20 @@ def avec_groupe(args):
 def port_reserve():
     """Rend le port soustrait a ModemManager, ou None s'il n'est pas pose."""
     return PORT_RESERVE if os.path.exists(PORT_RESERVE) else None
+
+
+def port_primaire():
+    """Rend le port AT que ModemManager tient, ou None.
+
+    Le role vient de ModemManager plutot que d'un rang fixe : sur une autre
+    carte, /dev/ttyUSB2 porte un port QCDM ou GPS, qui ne repond pas aux
+    commandes AT et ne le signale pas — la sequence expire au bout du delai
+    au lieu d'echouer tout de suite.
+    """
+    for entree in udev.ports_at():
+        if entree["role"] == "primaire":
+            return entree["port"]
+    return None
 
 
 def mmcli_present():
@@ -190,7 +207,7 @@ def commande_at(commandes, port=None):
       donnees sans que personne comprenne pourquoi, et le modem disparait des
       listes le temps qu'il resonde.
     """
-    cible = port or port_reserve() or PORTS_AT[0]
+    cible = port or port_reserve() or port_primaire() or PORTS_AT[0]
     if cible == PORT_RESERVE:
         # Voie directe : la regle udev a deja ecarte ModemManager de ce port.
         # Ni sudo ni arret de service, donc ni coupure de la connexion de

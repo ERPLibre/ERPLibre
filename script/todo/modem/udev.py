@@ -1,12 +1,18 @@
 """Regle udev qui reserve un port AT du modem a ERPLibre.
 
-ModemManager tient les deux ports AT du Quectel. Sans cette regle, chaque
+ModemManager tient les deux ports AT du modem. Sans cette regle, chaque
 commande AT exige de l'arreter — ce qui coupe la connexion de donnees et
 demande sudo. Intenable pour un service qui appelle regulierement.
 
 On reserve le port SECONDAIRE et on lui laisse le primaire : il continue
 donc de fournir l'etat de la SIM, l'operateur, le signal et les SMS.
+
+Le port se designe par ce que ModemManager en dit, non par un numero
+d'interface USB : la composition des ports change d'une carte a l'autre.
+Toute carte que ModemManager reconnait et qui expose deux ports AT est donc
+candidate, a condition que son vendeur figure dans la regle.
 """
+import glob
 import os
 import shlex
 import subprocess
@@ -14,6 +20,15 @@ import subprocess
 NOM = "99-erplibre-modem.rules"
 CIBLE = "/etc/udev/rules.d/" + NOM
 LIEN = "/dev/erplibre-modem-at"
+
+#: Vendeurs USB dont ERPLibre reclame un port AT. ModemManager designe
+#: LEQUEL ; cette liste dit seulement DE QUI, pour qu'un second modem sur le
+#: meme hote garde les siens. Elle suit la regle du depot — les deux se
+#: lisent ensemble, et `vendeur_borne()` dit si elles divergent.
+VENDEURS = ("2c7c", "1e0e")
+
+#: Ports serie derriere lesquels un modem se presente.
+GABARITS_PORTS = ("/dev/ttyUSB*", "/dev/ttyACM*")
 
 
 def source():
@@ -50,6 +65,87 @@ def port_reserve():
         return os.path.realpath(LIEN)
     except OSError:
         return None
+
+
+def _proprietes(chemin):
+    """Rend les proprietes udev d'un peripherique, ou un dict vide."""
+    try:
+        r = subprocess.run(["udevadm", "info", "-q", "property", "-n", chemin],
+                           capture_output=True, text=True, timeout=10)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return {}
+    if r.returncode != 0:
+        return {}
+    props = {}
+    for ligne in r.stdout.splitlines():
+        cle, _, valeur = ligne.partition("=")
+        if cle:
+            props[cle] = valeur
+    return props
+
+
+def ports_at():
+    """Rend les ports AT que ModemManager reconnait, avec leur role.
+
+    Chaque entree porte le peripherique, « primaire » ou « secondaire », et
+    l'identifiant du vendeur. La liste est vide quand aucun modem n'est
+    branche ou qu'aucune regle de ModemManager ne reconnait celui-ci — un
+    modem inconnu de lui expose des ports serie dont rien ne dit le role.
+    """
+    roles = (("ID_MM_PORT_TYPE_AT_PRIMARY", "primaire"),
+             ("ID_MM_PORT_TYPE_AT_SECONDARY", "secondaire"))
+    trouves = []
+    for gabarit in GABARITS_PORTS:
+        for chemin in sorted(glob.glob(gabarit)):
+            props = _proprietes(chemin)
+            for cle, role in roles:
+                if props.get(cle) == "1":
+                    trouves.append({
+                        "port": chemin,
+                        "role": role,
+                        "vendeur": props.get("ID_VENDOR_ID", ""),
+                    })
+    return trouves
+
+
+def vendeur_borne(vendeur):
+    """Le vendeur figure-t-il dans la liste que la regle accepte ?"""
+    return vendeur.lower() in VENDEURS
+
+
+def cause_absence_lien():
+    """Pourquoi le lien reserve manque. Rend None quand il est la.
+
+    Un lien absent a quatre causes distinctes, et confondre la carte a port
+    AT unique avec la regle non posee envoie chercher au mauvais endroit.
+    """
+    if port_reserve():
+        return None
+    ports = ports_at()
+    if not ports:
+        return (
+            "aucun port AT : le modem n'est pas branche, ou ModemManager"
+            " ne reconnait pas cette carte."
+        )
+    secondaires = [p for p in ports if p["role"] == "secondaire"]
+    if not secondaires:
+        return (
+            "cette carte n'expose qu'UN port AT (%s). ERPLibre ne le prend"
+            " pas : ModemManager perdrait l'etat du modem." % ports[0]["port"]
+        )
+    inconnus = [p for p in secondaires if not vendeur_borne(p["vendeur"])]
+    if len(inconnus) == len(secondaires):
+        return (
+            "vendeur %s absent de la regle. Elle borne sa portee a une liste"
+            " pour ne pas reclamer le port d'un second modem ; ajouter cet"
+            " identifiant a ATTRS{idVendor} suffit." % (inconnus[0]["vendeur"] or "inconnu")
+        )
+    if not posee():
+        return "la regle n'est pas posee."
+    return (
+        "un port AT secondaire existe et la regle est posee : recharger"
+        " udev, le lien se cree au prochain evenement."
+    )
 
 
 def poser():

@@ -1339,6 +1339,12 @@ def _regle_udev():
         + " : "
         + (os.path.basename(port) if port else t("modem_port_shared"))
     )
+    if not port:
+        # Un lien absent a plusieurs causes, et « poser la règle » n'en
+        # corrige qu'une : une carte à port AT unique ne l'obtiendra jamais.
+        cause = udev_mod.cause_absence_lien()
+        if cause:
+            print("  " + t("modem_port_cause") + " : " + cause)
     # Une regle posee n'est pas une preuve : on OUVRE le port pour le savoir.
     libre, motif = udev_mod.port_libre()
     print(

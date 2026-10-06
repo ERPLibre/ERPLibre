@@ -1840,6 +1840,10 @@ TRANSLATIONS = {
         "fr": 'Port AT',
         "en": 'AT port',
     },
+    'modem_port_cause': {
+        'fr': "Cause",
+        'en': "Cause",
+    },
     'modem_port_reserved': {
         "fr": 'reserve →',
         "en": 'reserved →',
