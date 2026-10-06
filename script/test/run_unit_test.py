@@ -235,9 +235,16 @@ class Lanceur:
             return
         base = os.path.join(self.travail, f"{f.fichier}.{f.passage}")
         f.log = base + ".log"
-        cmd = [self.py, f.chemin]
+        # « -u » : le journal reçoit la sortie standard ET la sortie
+        # d'erreur. Sans terminal, la première ne se vide qu'à la fin du
+        # processus, APRÈS le verdict qu'unittest écrit sur la seconde : les
+        # dernières lignes que bilan() affiche montreraient ce que le test
+        # imprime, et non l'erreur. L'option plutôt que PYTHONUNBUFFERED :
+        # un programme que le test lance garde le tampon qu'il aurait hors
+        # du lanceur.
+        cmd = [self.py, "-u", f.chemin]
         if self.detaille:
-            cmd = [self.py, UNIT_FILE, f.chemin, base + ".json"]
+            cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
         f.debut = time.monotonic()
         f.etat = EN_COURS
         with open(f.log, "wb") as sortie:
