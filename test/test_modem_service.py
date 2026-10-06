@@ -15,6 +15,39 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from script.todo.modem import service  # noqa: E402
+from script.todo.sms import spec  # noqa: E402
+
+#: Le secret HMAC que porte la demonstration jetable du module.
+SECRET_INVENTE = "secret-invente-du-modem"
+
+
+def setUpModule():
+    """Les sources des valeurs vivent dans un dossier jetable.
+
+    `postes()` cree le compte du softphone la ou il le cherche, et
+    `valeurs_environnement()` lit l'etat et le secret de la demonstration :
+    sans ce detour, la suite ecrit un compte dans `private/` du depot et juge
+    sur ce que la demonstration du poste y a laisse.
+    """
+    import tempfile
+    from pathlib import Path
+
+    dossier = tempfile.TemporaryDirectory()
+    unittest.addModuleCleanup(dossier.cleanup)
+    racine = Path(dossier.name)
+    for remplacement in (
+        mock.patch.object(
+            service,
+            "chemin_postes",
+            return_value=str(racine / "voip" / "postes"),
+        ),
+        mock.patch.object(spec, "BASE", racine / "sms"),
+    ):
+        remplacement.start()
+        unittest.addModuleCleanup(remplacement.stop)
+    chemin = spec.chemin_secret("modem")
+    chemin.parent.mkdir(parents=True)
+    chemin.write_text(SECRET_INVENTE + "\n", encoding="utf-8")
 
 
 class TestGabarits(unittest.TestCase):
@@ -71,11 +104,11 @@ class TestGabarits(unittest.TestCase):
         """Une unite est lisible par tout le monde en 0644 : le secret passe
         par un fichier d'environnement en 0600, jamais par ExecStart."""
         secret = service.valeurs_environnement()["ERPLIBRE_SMS_HMAC_SECRET"]
+        self.assertEqual(secret, SECRET_INVENTE)
         compte = service.postes()
         for unite in service.UNITES:
             texte = service.rendre(unite)
-            if secret:
-                self.assertNotIn(secret, texte, unite)
+            self.assertNotIn(secret, texte, unite)
             self.assertNotIn(compte.split(":", 1)[-1], texte, unite)
             self.assertIn("EnvironmentFile=", texte)
 
@@ -127,6 +160,21 @@ class TestEnvironnement(unittest.TestCase):
             ok, detail = service.poser_environnement()
         self.assertFalse(ok)
         self.assertIn("ERPLIBRE_SMS_URL", detail)
+
+    def test_un_secret_introuvable_se_nomme(self):
+        """Sans le fichier du secret HMAC de la demonstration du modem, l'etat
+        le nomme parmi les valeurs manquantes, au lieu d'annoncer un service
+        pret ou d'inventer un secret qu'Odoo ne partage pas."""
+        chemin = spec.chemin_secret("modem")
+        chemin.unlink()
+        self.addCleanup(
+            chemin.write_text, SECRET_INVENTE + "\n", encoding="utf-8"
+        )
+        self.assertEqual(
+            service.variables_manquantes(service.AGENT),
+            ["ERPLIBRE_SMS_HMAC_SECRET"],
+        )
+        self.assertFalse(chemin.exists())
 
     def test_l_etat_se_lit_sans_sudo(self):
         """Le fichier pose appartient a root en 0600 : l'etat s'appuie donc
@@ -253,27 +301,49 @@ class TestPoseConditionnee(unittest.TestCase):
         """Un service sans son environnement echoue aussitot : on obtient une
         unite en panne, une boucle de relances, et une cause enfouie a trois
         niveaux dans un journal."""
-        appels = []
-
-        def faux_run(args, timeout=30):
-            appels.append(args)
-            return 0, ""
-
-        with mock.patch.object(service, "environnement_pose", return_value=False), \
-                mock.patch.object(service, "_run", faux_run):
+        # `poser` appelle subprocess.run sans passer par `_run` : c'est lui
+        # qu'on remplace, sinon un sudo echappe au test.
+        with (
+            mock.patch.object(
+                service, "environnement_pose", return_value=False
+            ),
+            mock.patch.object(service.subprocess, "run") as lance,
+        ):
             for unite in service.UNITES:
                 ok, detail = service.poser(unite)
                 self.assertFalse(ok, unite)
                 self.assertIn(service.CHEMIN_ENV, detail)
-        self.assertEqual(appels, [], "rien ne doit avoir ete lance")
+        self.assertEqual(
+            lance.call_args_list, [], "rien ne doit avoir ete lance"
+        )
 
     def test_les_valeurs_disponibles_ne_suffisent_pas(self):
-        """C'est le FICHIER que systemd lira, pas l'etat du poste : les deux se
-        confondaient, et l'ecran annoncait « rien ne manque » pendant que les
-        services echouaient faute de fichier."""
-        with mock.patch.object(service, "environnement_pose", return_value=False):
-            ok, _detail = service.poser(service.AGENT)
+        """C'est le FICHIER que systemd lira, pas l'etat du poste : les
+        confondre fait annoncer « rien ne manque » a l'ecran pendant que les
+        services echouent faute de fichier."""
+        # Les valeurs sont toutes presentes, et inventees : le verdict ne
+        # depend ni de la demonstration, ni du secret, ni du compte que porte
+        # le poste qui lance le test.
+        disponibles = {
+            nom: "valeur-de-test"
+            for unite in service.UNITES
+            for nom in service.VARIABLES[unite]
+        }
+        with (
+            mock.patch.object(
+                service, "valeurs_environnement", return_value=disponibles
+            ),
+            mock.patch.object(
+                service, "environnement_pose", return_value=False
+            ),
+            mock.patch.object(service.subprocess, "run") as lance,
+        ):
+            self.assertEqual(service.variables_manquantes(service.AGENT), [])
+            ok, detail = service.poser(service.AGENT)
         self.assertFalse(ok)
-        self.assertEqual(service.variables_manquantes(service.AGENT), [])
+        self.assertIn(service.CHEMIN_ENV, detail)
+        lance.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
