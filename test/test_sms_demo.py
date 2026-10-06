@@ -282,6 +282,33 @@ class TestAppairageUsb(SmsDemoBase):
         "</map>"
     )
 
+    class AdbNonBouchonne(BaseException):
+        """Un appel a `adb` qu'aucun test n'a bouchonne.
+
+        BaseException et non Exception : le menu rapporte toute Exception
+        levee par une etape comme un echec de l'etape, et un test qui attend
+        cet echec passerait sur la garde elle-meme.
+        """
+
+    def setUp(self):
+        """Ferme `_adb`, seule porte du module vers `adb`, pour toute la
+        classe : un test l'ouvre en la bouchonnant lui-meme.
+
+        Ouverte, un appel non bouchonne atteint l'`adb` du poste, et par lui
+        le telephone qui y est branche : `pm grant` et `am broadcast` y
+        agissent pour de vrai. Fermee, elle echoue de la meme facon sur tous
+        les postes et nomme la commande.
+        """
+        super().setUp()
+        from unittest.mock import patch
+
+        def porte_fermee(args, *_a, **_kw):
+            raise self.AdbNonBouchonne("adb " + " ".join(map(str, args)))
+
+        garde = patch.object(self._module(), "_adb", porte_fermee)
+        garde.start()
+        self.addCleanup(garde.stop)
+
     def _module(self):
         from script.todo.sms import appairage
 
@@ -407,7 +434,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(
                     app, "ecrire_prefs",
                     side_effect=lambda _x: ordre.append("ecriture")
-                ):
+                ), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             ok, _detail = app.appairer(
                 self._spec(), "a" * 64, "http://127.0.0.1:8169"
             )
@@ -434,7 +463,11 @@ class TestAppairageUsb(SmsDemoBase):
                     patch.object(
                         app, "ecrire_prefs",
                         side_effect=lambda x: ecrits.append(x)
-                    ):
+                    ), \
+                    patch.object(
+                        app, "accorder_permissions", return_value=[]
+                    ), \
+                    patch.object(app, "reveiller_passerelle"):
                 app.appairer(self._spec(), "a" * 64, url)
             self.assertIn(
                 '<boolean name="allow_plain_lan" value="%s" />' % attendu,
@@ -451,7 +484,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "run_as_ouvre", return_value=(True, "")), \
                 patch.object(app, "lire_prefs", return_value=self.EXISTANT), \
                 patch.object(app, "arreter_application"), \
-                patch.object(app, "ecrire_prefs"):
+                patch.object(app, "ecrire_prefs"), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             app.appairer(
                 self._spec(), "a" * 64, "http://h:1", copie_vers=copie
             )
@@ -474,7 +509,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "arreter_application"), \
                 patch.object(
                     app, "ecrire_prefs", side_effect=lambda x: ecrits.append(x)
-                ):
+                ), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             app.appairer(self._spec(), "a" * 64, "http://h:1")
         self.assertNotIn("HTTP 403", ecrits[-1])
 
@@ -823,6 +860,7 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "lire_prefs", return_value=self.EXISTANT), \
                 patch.object(app, "arreter_application"), \
                 patch.object(app, "ecrire_prefs"), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
                 patch.object(app, "reveiller_passerelle") as reveil:
             ok, _detail = app.appairer(self._spec(), "a" * 64, "http://h:1")
         self.assertTrue(ok)
