@@ -35,9 +35,10 @@ HERMÉTIQUE. Un test unitaire ne touche pas l'hôte :
    le PATH, par exemple — échoue aussitôt sur « a terminal is required » au
    lieu de demander un mot de passe que personne ne voit, et un input()
    oublié échoue sur EOFError au lieu d'attendre ;
- - sudo, pkexec, doas, virsh et ssh sont remplacés, en tête du PATH, par une
-   commande qui refuse en le disant : un appel non bouchonné échoue de la
-   même façon sur tous les postes, au lieu d'interroger les VM du poste ;
+ - sudo, pkexec, doas, virsh, ssh et adb sont remplacés, en tête du PATH,
+   par une commande qui refuse en le disant : un appel non bouchonné échoue
+   de la même façon sur tous les postes, au lieu d'interroger les VM du
+   poste ou le téléphone qui y est branché ;
  - `--timeout` secondes par fichier : au-delà, le groupe entier du fichier
    est tué et le fichier marqué DÉLAI.
 
@@ -102,7 +103,14 @@ UNIT_FILE = os.path.join(
 )
 
 # Les commandes refusées et le code d'échec que leur appelant attend.
-REFUSEES = {"sudo": 1, "pkexec": 1, "doas": 1, "virsh": 1, "ssh": 255}
+REFUSEES = {
+    "sudo": 1,
+    "pkexec": 1,
+    "doas": 1,
+    "virsh": 1,
+    "ssh": 255,
+    "adb": 1,
+}
 
 
 class Fichier:
