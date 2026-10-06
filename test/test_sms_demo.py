@@ -1880,21 +1880,88 @@ class TestMateriel(SmsDemoBase):
             modem_menu._passerelle(todo=None)
         ouvre.assert_called_once_with(None, "modem")
 
+    def _depot_factice(self, depots):
+        """Un depot en miniature, ou `spec` et `local` cherchent le temps du
+        test : un venv Odoo, odoo-bin, et les depots d'addons de `depots`,
+        chacun avec les modules qu'il porte. Rend la racine.
+
+        Le vrai depot n'a pas le meme contenu d'un poste a l'autre, et pas
+        toujours d'addons du tout : un verdict tire de lui depend du poste.
+        """
+        import shutil
+        from unittest.mock import patch
+
+        from script.todo.sms import local
+        from script.todo.sms import spec as vrai_spec
+
+        racine = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, racine, ignore_errors=True)
+        for objet, nom in ((vrai_spec, "_repo_root"), (local, "repo_root")):
+            rebranche = patch.object(objet, nom, return_value=racine)
+            rebranche.start()
+            self.addCleanup(rebranche.stop)
+        # La disposition s'ecrit en toutes lettres, celle que pose Google Repo
+        # (manifest/git_manifest_odoo18.0.xml) : tiree de DOSSIER_ADDONS ou
+        # d'odoo_bin(), elle suivrait une valeur fausse sans rien signaler.
+        for depot, modules in depots.items():
+            for module in modules:
+                dossier = racine / "odoo18.0" / "addons" / depot / module
+                dossier.mkdir(parents=True)
+                (dossier / "__manifest__.py").write_text(
+                    repr({"name": module}) + "\n", encoding="utf-8"
+                )
+        python = racine / ".venv.odoo18.0_python3.12.10" / "bin" / "python"
+        for fichier in (python, racine / "odoo18.0" / "odoo" / "odoo-bin"):
+            fichier.parent.mkdir(parents=True, exist_ok=True)
+            fichier.touch()
+        return racine
+
     def test_le_module_se_cherche_au_lieu_de_se_deviner(self):
         """Plus de cent depots d'addons : lequel porte le module ne se devine pas."""
         from script.todo.sms import spec as vrai_spec
 
+        self._depot_factice(
+            {
+                "depot_a": ["autre_module"],
+                "depot_m": ["erplibre_mobile_gateway"],
+                "depot_z": ["encore_un_module"],
+            }
+        )
         trouve = vrai_spec.trouver_module("erplibre_mobile_gateway")
         self.assertIsNotNone(trouve, "le module de la demonstration est introuvable")
         self.assertTrue(trouve.is_dir())
+        self.assertEqual(trouve.parent.name, "depot_m")
         self.assertIsNone(vrai_spec.trouver_module("module_qui_nexiste_pas"))
 
     def test_letape_une_trouve_le_module_ou_il_est(self):
+        """step_env trouve le module dans le depot d'addons qui le porte, et le
+        nomme quand il n'est plus nulle part."""
+        import shutil
+        import subprocess
+        from dataclasses import replace
+        from unittest.mock import patch
+
         from script.todo.sms import local as backend
 
+        # Un module autre que celui par defaut : l'etape cherche celui que
+        # l'etat retient, pas celui que la specification propose.
+        module = "module_retenu"
+        racine = self._depot_factice(
+            {"depot_a": ["autre_module"], "depot_m": [module]}
+        )
         etat = self.spec_mod.load()
-        ok, detail = backend.step_env(None, etat)
-        self.assertTrue(ok, detail)
+        etat.spec = replace(etat.spec, module=module)
+        # psql est le seul programme que l'etape lance : lui repondre garde le
+        # verdict sur l'arbre, et non sur le PostgreSQL du poste.
+        psql = subprocess.CompletedProcess(["psql", "-lqt"], 0, "", "")
+        with patch.object(backend.subprocess, "run", return_value=psql):
+            ok, detail = backend.step_env(None, etat)
+            self.assertTrue(ok, detail)
+
+            shutil.rmtree(racine / "odoo18.0" / "addons" / "depot_m" / module)
+            ok, detail = backend.step_env(None, etat)
+        self.assertFalse(ok)
+        self.assertIn(module, detail)
 
     def test_un_module_renomme_ne_bloque_pas_pour_toujours(self):
         """Le nom vit dans un JSON de `private/` : personne ne le corrigera."""
@@ -1902,6 +1969,9 @@ class TestMateriel(SmsDemoBase):
 
         from script.todo.sms import spec as vrai_spec
 
+        # Le nom par defaut est dans l'arbre et l'ancien n'y est plus : c'est
+        # un renommage, que le chargement rattrape.
+        self._depot_factice({"depot_m": [vrai_spec.DemoSpec.module]})
         etat = self.spec_mod.load()
         self.spec_mod.save(etat)
         brut = json.loads(
@@ -1922,10 +1992,23 @@ class TestMateriel(SmsDemoBase):
         from script.todo.sms import spec as vrai_spec
 
         temoin = "erplibre_devops"
-        if vrai_spec.trouver_module(temoin) is None:
-            self.skipTest("ce depot n'a pas ce module temoin")
+        # Le nom par defaut y est aussi : sans lui, _rattraper_le_module ne
+        # remplace rien, quel que soit le nom retenu.
+        self._depot_factice({"depot_m": [vrai_spec.DemoSpec.module, temoin]})
         autre = replace(vrai_spec.DemoSpec(), module=temoin)
         self.assertEqual(vrai_spec._rattraper_le_module(autre).module, temoin)
+
+    def test_sans_le_nom_par_defaut_rien_ne_se_rattrape(self):
+        """Sans le nom par defaut dans l'arbre, un renommage ne se distingue
+        pas d'un arbre d'addons absent : _rattraper_le_module garde le nom."""
+        from dataclasses import replace
+
+        from script.todo.sms import spec as vrai_spec
+
+        ancien = "erplibre_mobile_passerelle_sms"
+        self._depot_factice({"depot_m": ["autre_module"]})
+        retenu = replace(vrai_spec.DemoSpec(), module=ancien)
+        self.assertEqual(vrai_spec._rattraper_le_module(retenu).module, ancien)
 
     def test_letape_annoncee_porte_le_nom_du_materiel(self):
         """Annoncer « application mobile » ferait chercher un appareil absent."""
