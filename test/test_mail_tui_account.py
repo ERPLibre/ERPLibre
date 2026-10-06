@@ -403,6 +403,32 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
         await pilot.pause()
         return ecran
 
+    async def _cliquer_autoriser(self, pilot, ecran):
+        """Amène le bouton d'autorisation à l'écran, puis clique dessus.
+
+        Le formulaire défile : le bouton est sous la ligne de flottaison
+        d'un terminal de test, comme il le serait d'un petit terminal réel.
+
+        Le défilement saute droit à sa place (`animate=False`) et tout de
+        suite (`immediate=True`), puis la pause refait la mise en page au
+        nouveau décalage : le clic vise le bouton à sa place finale. Animé,
+        le défilement s'étale sur 0,2 s, que `pilot.pause()` n'attend pas —
+        elle rend la main dès que le processus paraît inactif, plus ou moins
+        tôt selon la vitesse et la charge de l'hôte —, et le clic viserait
+        le bouton à mi-course, parfois encore sous l'écran.
+
+        `immediate` ne vaut que pour un bouton déjà disposé, ce que fait la
+        pause qui clôt `_ouvrir` : sans taille, Textual reporte le
+        défilement au rafraîchissement suivant.
+        """
+        from textual.widgets import Button
+
+        ecran.query_one("#acc_authorize", Button).scroll_visible(
+            animate=False, immediate=True
+        )
+        await pilot.pause()
+        await pilot.click("#acc_authorize")
+
     async def test_the_button_is_offered_where_a_client_id_exists(self):
         from textual.widgets import Button
 
@@ -434,7 +460,7 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
     async def test_the_flow_fills_the_secret_field(self):
         from unittest.mock import patch
 
-        from textual.widgets import Button, Input
+        from textual.widgets import Input
 
         from script.todo.mail.oauth import TokenSet
 
@@ -449,12 +475,7 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
             async with app.run_test() as pilot:
                 ecran = await self._ouvrir(pilot, app, "outlook")
                 ecran.query_one("#acc_email", Input).value = "moi@x.ca"
-                # Le formulaire défile : le bouton est sous la ligne de
-                # flottaison d'un terminal de test, comme il le serait d'un
-                # petit terminal réel.
-                ecran.query_one("#acc_authorize", Button).scroll_visible()
-                await pilot.pause()
-                await pilot.click("#acc_authorize")
+                await self._cliquer_autoriser(pilot, ecran)
                 await pilot.pause()
                 await app.workers.wait_for_complete()
                 await pilot.pause()
@@ -468,7 +489,7 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
         coffre et refusé à chaque connexion."""
         from unittest.mock import patch
 
-        from textual.widgets import Button, Input, Static
+        from textual.widgets import Input, Static
 
         from script.todo.mail.oauth import OAuthError
 
@@ -483,9 +504,7 @@ class TestAuthorisingFromTheTui(TuiAccountCase):
         with patch("script.todo.mail.oauth.authorize", refuse):
             async with app.run_test() as pilot:
                 ecran = await self._ouvrir(pilot, app, "outlook")
-                ecran.query_one("#acc_authorize", Button).scroll_visible()
-                await pilot.pause()
-                await pilot.click("#acc_authorize")
+                await self._cliquer_autoriser(pilot, ecran)
                 await pilot.pause()
                 await app.workers.wait_for_complete()
                 await pilot.pause()
