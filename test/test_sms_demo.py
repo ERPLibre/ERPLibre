@@ -1339,14 +1339,84 @@ class TestTransport(SmsDemoBase):
         self.assertFalse(phone.same_subnet("192.168.50.10", "192.168.60.11"))
         self.assertFalse(phone.same_subnet("192.168.50.10", ""))
 
-    def test_ladresse_du_poste_evite_le_pont_libvirt(self):
-        # Une machine de developpement porte souvent un pont libvirt, dont
-        # l'adresse est privee et valide mais que le telephone n'atteint pas.
+    #: Ce que rend « ip -4 route get » sur un poste dont le reseau local est
+    #: 192.0.2.0/24 : la source est l'adresse de l'interface qui sort.
+    ROUTE = (
+        "1.1.1.1 via 192.0.2.1 dev lien0 src 192.0.2.37 uid 1000\n    cache\n"
+    )
+    #: Ce que rend « ip -o -4 addr show » sur le meme poste, qui porte le pont
+    #: « default » de libvirt. Le pont est liste avant l'interface qui sort :
+    #: la premiere adresse hors boucle locale est la sienne.
+    INTERFACES = (
+        "1: lo    inet 127.0.0.1/8 scope host lo\n"
+        "2: virbr0    inet 192.168.122.1/24 brd 192.168.122.255 scope global"
+        " virbr0\n"
+        "3: lien0    inet 192.0.2.37/24 brd 192.0.2.255 scope global lien0\n"
+    )
+
+    def _adresse_du_poste(self, reponse):
+        """host_lan_ip face a un `ip` dont les reponses sont fixees.
+
+        `reponse` est ce que rend une question de route, ou l'exception que
+        leve l'appel ; une question d'adresses recoit INTERFACES. Rend
+        l'adresse obtenue et les commandes lancees. Le vrai `ip` decrit le
+        reseau du poste qui lance la suite, et un verdict qui en depend
+        change d'un poste a l'autre.
+        """
+        import subprocess
+        from unittest.mock import patch
+
         from script.todo.sms import phone
 
-        adresse = phone.host_lan_ip()
-        if adresse:
-            self.assertFalse(adresse.startswith("192.168.122."))
+        lancees = []
+
+        def faux_run(argv, **_options):
+            lancees.append(argv)
+            if isinstance(reponse, Exception):
+                raise reponse
+            sortie = self.INTERFACES if "addr" in argv else reponse
+            return subprocess.CompletedProcess(argv, 0, sortie, "")
+
+        with patch.object(phone.subprocess, "run", side_effect=faux_run):
+            return phone.host_lan_ip(), lancees
+
+    def test_ladresse_du_poste_evite_le_pont_libvirt(self):
+        """Une machine de developpement porte souvent un pont libvirt, dont
+        l'adresse est privee et valide mais que le telephone n'atteint pas.
+        La route qui sort ne le traverse pas : host_lan_ip lit la route, et
+        non la liste des interfaces, ou le pont passe devant."""
+        adresse, lancees = self._adresse_du_poste(self.ROUTE)
+        self.assertEqual(adresse, "192.0.2.37")
+        self.assertTrue(lancees)
+        for argv in lancees:
+            self.assertIn("route", argv)
+
+    def test_un_poste_invite_de_libvirt_garde_ladresse_qui_sort(self):
+        """Un poste qui est lui-meme une VM du reseau « default » de libvirt
+        sort par 192.168.122.0/24 : c'est son adresse reelle, et le prefixe
+        seul ne dit pas s'il s'agit d'un pont. Un telephone sur un autre
+        reseau est signale a part, par la verification du Wi-Fi."""
+        route = (
+            "1.1.1.1 via 192.168.122.1 dev lien0 src 192.168.122.57"
+            " uid 1000\n    cache\n"
+        )
+        adresse, _lancees = self._adresse_du_poste(route)
+        self.assertEqual(adresse, "192.168.122.57")
+
+    def test_sans_route_lisible_ladresse_du_poste_est_vide(self):
+        """host_lan_ip rend une chaine vide, que ses appelants lisent comme
+        « adresse inconnue », plutot que de lever."""
+        import subprocess
+
+        cas = {
+            "ip absent": FileNotFoundError("ip"),
+            "ip sans reponse": subprocess.TimeoutExpired(["ip"], 15),
+            "aucune route": "",
+            "route sans source": "1.1.1.1 via 192.0.2.1 dev lien0\n",
+        }
+        for nom, reponse in cas.items():
+            with self.subTest(nom):
+                self.assertEqual(self._adresse_du_poste(reponse)[0], "")
 
 
 class TestNumeroDEssai(SmsDemoBase):
