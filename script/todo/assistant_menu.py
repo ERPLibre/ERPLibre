@@ -611,6 +611,40 @@ class AssistantMenuMixin:
             else:
                 print(t("Command not found !"))
 
+    def _harnais_poser(self, harnais):
+        """Offrir la pose d'un harnais absent, quand ce dépôt la connaît.
+
+        La commande s'affiche AVANT la question. Elle tire un script d'un site
+        amont et le passe à un shell : un « o » donné par réflexe sur une
+        invite qui n'a rien montré n'est pas un consentement.
+
+        Un harnais dont la pose n'est pas mesurée l'annonce, au lieu d'offrir
+        un bouton qui lancerait une devinette. C'est la règle que le registre
+        tient déjà pour le répertoire de configuration.
+
+        Le binaire n'apparaîtra pas dans CE menu une fois posé : le PATH d'un
+        processus est figé à son démarrage, et l'installateur écrit dans un
+        répertoire que le shell courant ne relit pas. La routine de pose le
+        dit elle-même en terminant.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        pose = reg.installation(harnais)
+        if pose is None:
+            print(f"   {t('This repository has not measured its install.')}")
+            return
+        commande = pose[0]
+        print(f"   {t('This repository knows how to install it:')}")
+        print(f"   {commande}")
+        try:
+            reponse = click.prompt(t("Install it now? (y/n)"), default="n")
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
+            return
+        self._shell_install_upstream_tool(harnais.binaire)
+
     def _harnais_ouvrir(self, etat):
         """L'écran d'un harnais, ou la raison pour laquelle il n'y en a pas."""
         from script.todo.assistant.harness import registre as reg
@@ -619,7 +653,7 @@ class AssistantMenuMixin:
             print(f"{MARQUE['no']} {t('This harness is not usable here:')}")
             print(f"   {etat.harnais.nom} — {t(etat.raison)}")
             if etat.verdict == reg.ABSENT:
-                print(f"   {t('Installing it makes it appear on its own.')}")
+                self._harnais_poser(etat.harnais)
             return
         if etat.harnais.cle == "claude":
             self.prompt_claude_sessions()

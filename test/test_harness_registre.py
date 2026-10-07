@@ -201,5 +201,55 @@ class TestCeQueLeDepotDeclare(unittest.TestCase):
                 self.assertEqual(h.actions, (), h.cle)
 
 
+class LaPoseConnue(unittest.TestCase):
+    """`installation()` : ce que le dépôt sait poser, et ce qu'il ignore.
+
+    La table est INJECTÉE partout ici : la garde se vérifie sans importer le
+    CLI ni dépendre de ce que `dev_tools` déclare aujourd'hui.
+    """
+
+    HARNAIS_CONNU = R.Harnais(
+        cle="essai", nom="Essai", icone="🧪", binaire="essai-bin"
+    )
+    TABLE = {"essai-bin": ("poser-essai --oui", "~/.essai/bin")}
+
+    def test_a_known_harness_yields_its_command_and_directory(self):
+        self.assertEqual(
+            R.installation(self.HARNAIS_CONNU, table=self.TABLE),
+            ("poser-essai --oui", "~/.essai/bin"),
+        )
+
+    def test_an_unmeasured_harness_yields_none_not_a_guess(self):
+        """None dit « non mesuré », jamais « ne s'installe pas ».
+
+        Une commande devinée serait passée à un shell : le module refuse déjà
+        la devinette pour le répertoire de configuration, à plus forte raison
+        ici.
+        """
+        inconnu = R.Harnais(
+            cle="ailleurs", nom="Ailleurs", icone="❓", binaire="ailleurs-bin"
+        )
+        self.assertIsNone(R.installation(inconnu, table=self.TABLE))
+
+    def test_an_empty_entry_counts_as_unmeasured(self):
+        """Une entrée vide ne doit pas produire une commande vide."""
+        self.assertIsNone(
+            R.installation(self.HARNAIS_CONNU, table={"essai-bin": ()})
+        )
+
+    def test_the_two_measured_harnesses_are_the_ones_we_can_install(self):
+        """Les harnais mesurés sont exactement ceux que le dépôt sait poser.
+
+        Offrir la pose d'un harnais sans adaptateur poserait un logiciel que
+        le menu ne saurait ensuite pas piloter.
+        """
+        from script.todo import dev_tools
+
+        posables = {h.cle for h in R.HARNAIS if R.installation(h) is not None}
+        mesures = {h.cle for h in R.HARNAIS if h.verifie}
+        self.assertEqual(posables, mesures)
+        self.assertEqual(posables, set(dev_tools.AGENTS) & posables)
+
+
 if __name__ == "__main__":
     unittest.main()

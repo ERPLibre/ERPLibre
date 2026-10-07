@@ -1026,6 +1026,10 @@ TRANSLATIONS = {
         "fr": "starship accroché à : ",
         "en": "starship hooked into: ",
     },
+    "Other shells need to be reopened to see it.": {
+        "fr": "Les autres shells doivent être rouverts pour le voir.",
+        "en": "Other shells need to be reopened to see it.",
+    },
     "Open a new shell to see it.": {
         "fr": "Ouvrir un nouveau shell pour le voir.",
         "en": "Open a new shell to see it.",
@@ -16676,9 +16680,17 @@ TRANSLATIONS = {
         "fr": "Ce harnais n'est pas utilisable ici :",
         "en": "This harness is not usable here:",
     },
-    "Installing it makes it appear on its own.": {
-        "fr": "L'installer le fait apparaître de lui-même.",
-        "en": "Installing it makes it appear on its own.",
+    "This repository knows how to install it:": {
+        "fr": "Ce dépôt sait l'installer :",
+        "en": "This repository knows how to install it:",
+    },
+    "This repository has not measured its install.": {
+        "fr": "Ce dépôt n'a pas mesuré son installation.",
+        "en": "This repository has not measured its install.",
+    },
+    "Install it now? (y/n)": {
+        "fr": "L'installer maintenant ? (o/n)",
+        "en": "Install it now? (y/n)",
     },
     "Installing one makes it appear on its own.": {
         "fr": "En installer un le fait apparaître de lui-même.",

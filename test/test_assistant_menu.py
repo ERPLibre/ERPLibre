@@ -896,6 +896,95 @@ class LeCablageDesAgents(unittest.TestCase):
         self._dispatche("6", "_claude_gerer")
 
 
+class LaPoseDUnHarnaisAbsent(unittest.TestCase):
+    """Un harnais absent OFFRE sa pose au lieu de constater son absence.
+
+    Le message précédent disait « l'installer le fait apparaître de
+    lui-même » sans donner le moyen de le faire : un cul-de-sac poli.
+    """
+
+    def _ecran(self, harnais, reponse, *, table=None):
+        """Ouvrir l'écran d'un harnais ABSENT et rendre (sortie, poses).
+
+        `poses` recueille les binaires réellement passés à la routine
+        d'installation : c'est elle qui lance un script amont dans un shell,
+        donc le test doit prouver qu'elle n'est PAS appelée sans un oui.
+        """
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        from script.todo.assistant.harness import registre as reg
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        etat = reg.Etat(harnais=harnais, chemin="")
+        poses = []
+        sortie = io.StringIO()
+        cibles = patch.object(
+            TODO, "_shell_install_upstream_tool", lambda _s, b: poses.append(b)
+        )
+        if table is not None:
+            pose_connue = patch.object(
+                reg, "installation", lambda h, **_: table.get(h.binaire)
+            )
+        else:
+            pose_connue = patch.object(
+                reg, "installation", lambda h, **_: None
+            )
+        with cibles, pose_connue, redirect_stdout(sortie), patch(
+            "click.prompt", return_value=reponse
+        ):
+            todo._harnais_ouvrir(etat)
+        return sortie.getvalue(), poses
+
+    HARNAIS = __import__(
+        "script.todo.assistant.harness.registre", fromlist=["Harnais"]
+    ).Harnais(cle="essai", nom="Essai", icone="🧪", binaire="essai-bin")
+    TABLE = {"essai-bin": ("poser-essai --oui", "~/.essai/bin")}
+
+    def test_la_commande_est_affichee_avant_la_question(self):
+        """Elle passe un script amont à un shell : un oui donné sans l'avoir
+        lue n'est pas un consentement."""
+        sortie, _ = self._ecran(self.HARNAIS, "n", table=self.TABLE)
+        self.assertIn("poser-essai --oui", sortie)
+        self.assertIn(t("This repository knows how to install it:"), sortie)
+
+    def test_un_refus_ne_pose_rien(self):
+        _, poses = self._ecran(self.HARNAIS, "n", table=self.TABLE)
+        self.assertEqual(poses, [])
+
+    def test_une_reponse_vide_ne_pose_rien(self):
+        """Le défaut est NON : une frappe sur entrée n'installe pas."""
+        _, poses = self._ecran(self.HARNAIS, "", table=self.TABLE)
+        self.assertEqual(poses, [])
+
+    def test_un_oui_pose_ce_binaire_la(self):
+        for frappe in ("o", "oui", "y", "YES"):
+            with self.subTest(frappe=frappe):
+                _, poses = self._ecran(self.HARNAIS, frappe, table=self.TABLE)
+                self.assertEqual(poses, ["essai-bin"])
+
+    def test_une_pose_non_mesuree_le_dit_au_lieu_d_offrir(self):
+        """Offrir un bouton lancerait une devinette dans un shell."""
+        sortie, poses = self._ecran(self.HARNAIS, "o", table=None)
+        self.assertIn(
+            t("This repository has not measured its install."), sortie
+        )
+        self.assertEqual(poses, [])
+
+    def test_les_clefs_du_message_sont_traduites(self):
+        from script.todo import todo_i18n
+
+        for cle in (
+            "This repository knows how to install it:",
+            "This repository has not measured its install.",
+            "Install it now? (y/n)",
+        ):
+            self.assertIn(cle, todo_i18n.TRANSLATIONS, cle)
+            self.assertTrue(todo_i18n.TRANSLATIONS[cle]["fr"], cle)
+
+
 class LeHarnaisOpenCode(unittest.TestCase):
     """Le deuxième harnais mesuré, et ce que son écran doit dire.
 

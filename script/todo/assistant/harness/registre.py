@@ -159,6 +159,29 @@ class Etat:
         return self.verdict == OK and action in self.harnais.actions
 
 
+def installation(harnais, *, table=None):
+    """La pose CONNUE de ce harnais — (commande, répertoire) — ou None.
+
+    None dit « ce dépôt n'a pas mesuré son installation », jamais « ce
+    logiciel ne s'installe pas ». La distinction est la même que celle du
+    répertoire de configuration, et pour la même raison : afficher une
+    commande devinée la présenterait comme vérifiée, et elle est ici passée
+    à un shell.
+
+    La table vit dans `dev_tools`, d'où le déploiement QEMU tire les mêmes
+    poses : deux copies d'une URL amont dérivent dès que l'une change. Elle
+    est injectable, donc la garde se vérifie sans lire le disque.
+    """
+    if table is None:
+        from script.todo import dev_tools
+
+        table = dev_tools.AGENTS
+    pose = table.get(harnais.binaire)
+    if not pose:
+        return None
+    return tuple(pose)
+
+
 def etat_de(harnais, *, which=None, exists=None) -> Etat:
     """L'état d'UN harnais. `which` et `exists` sont injectés."""
     if which is None:

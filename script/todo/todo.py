@@ -3401,8 +3401,14 @@ class TODO(
         if not os.path.exists(pose):
             print(f"⚠ {t('Binary not found at: ')}{pose}")
             return
+        # Le PATH du processus est fige a son demarrage : sans cette ligne,
+        # l'ecran qui vient de poser le binaire continue de le declarer
+        # introuvable, et seul un redemarrage du menu le revelerait.
+        os.environ["PATH"] = os.pathsep.join(
+            [os.path.dirname(pose), os.environ.get("PATH", "")]
+        )
         print(f"✅ {binaire} : {pose}")
-        print(f"   {t('Open a new shell to see it.')}")
+        print(f"   {t('Other shells need to be reopened to see it.')}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('Manage local git repository server!')}")
