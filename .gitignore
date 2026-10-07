@@ -53,5 +53,12 @@ private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
 
-# Working notes, kept out of tracked files by the code conventions.
-tasks/
+# Investigation notes, dated measurements and execution traces.
+# UNVERSIONED ON PURPOSE: it holds what neither the code nor the commits
+# may hold, customer data included. Ignoring it stops a blanket stage from
+# sweeping it in.
+/tasks/
+
+# Binaire compile du service SIP : il se rebatit par l'installateur, et
+# pese douze megaoctets.
+/script/erplibre_sip_go/erplibre_sip_go

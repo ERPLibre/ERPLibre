@@ -22,6 +22,7 @@ import builtins
 import contextlib
 import io
 import sys
+import ast
 import unittest
 from pathlib import Path
 
@@ -133,19 +134,108 @@ class TestLeModeDEmploi(BancProxy):
 
 
 class TestLeMenu(unittest.TestCase):
-    def test_l_entree_ferme_la_section_locale(self):
-        """Quatrième, et la suite glisse : le VPN passe de 9 à 10."""
+    """Le menu de déploiement : ses numéros mènent-ils où ils promettent ?
+
+    L'épreuve ne cite AUCUN numéro. La version précédente affirmait « le VPN
+    est en 10 » et virait au rouge le jour où une entrée s'est insérée avant
+    lui, alors que le menu restait juste. Ce qui casse vraiment, c'est un
+    numéro affiché qui appelle autre chose — et cela se vérifie en comparant
+    la liste des entrées à la chaîne de branches, quelle que soit leur
+    longueur.
+    """
+
+    @staticmethod
+    def _methode(nom):
         source = (RACINE / "script/todo/todo.py").read_text(encoding="utf-8")
-        debut = source.index("def prompt_execute_deploy(self)")
-        menu = source[debut : source.index("def prompt_execute_deploy_ssh")]
-        self.assertIn(
-            'elif status == "4":\n                self._deploy_socks_proxy()',
-            menu,
+        arbre = ast.parse(source)
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == nom:
+                return noeud
+        raise AssertionError("methode introuvable : %s" % nom)
+
+    @staticmethod
+    def _entrees(methode):
+        """Les libellés des entrées numérotées, dans l'ordre.
+
+        Une entrée {"section": ...} ne consomme pas de numéro — c'est ce que
+        fait `fill_help_info`, et la numérotation doit s'y accorder.
+        """
+        for noeud in ast.walk(methode):
+            if not isinstance(noeud, ast.Assign):
+                continue
+            cibles = [c.id for c in noeud.targets if isinstance(c, ast.Name)]
+            if "choices" not in cibles or not isinstance(noeud.value, ast.List):
+                continue
+            libelles = []
+            for element in noeud.value.elts:
+                if not isinstance(element, ast.Dict):
+                    continue
+                cles = [k.value for k in element.keys if isinstance(k, ast.Constant)]
+                if "section" in cles:
+                    continue
+                textes = [n.value for n in ast.walk(element)
+                          if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                          and not n.value.startswith("prompt_description")]
+                libelles.append(" ".join(textes))
+            return libelles
+        raise AssertionError("aucune liste « choices »")
+
+    @staticmethod
+    def _branches(methode):
+        """Les (numéro, nom appelé) de la chaîne if/elif qui suit le menu."""
+        trouvees = []
+        for noeud in ast.walk(methode):
+            if not isinstance(noeud, ast.If):
+                continue
+            test = noeud.test
+            if not (isinstance(test, ast.Compare)
+                    and isinstance(test.left, ast.Name) and test.left.id == "status"
+                    and len(test.comparators) == 1
+                    and isinstance(test.comparators[0], ast.Constant)):
+                continue
+            numero = test.comparators[0].value
+            appele = ""
+            for interne in ast.walk(ast.Module(body=noeud.body, type_ignores=[])):
+                if isinstance(interne, ast.Call) and isinstance(interne.func, ast.Attribute):
+                    appele = interne.func.attr
+                    break
+            trouvees.append((numero, appele))
+        return trouvees
+
+    def test_chaque_numero_affiche_a_sa_branche(self):
+        methode = self._methode("prompt_execute_deploy")
+        entrees = self._entrees(methode)
+        branches = dict(self._branches(methode))
+
+        self.assertIn("0", branches, "le retour n'est pas cable")
+        numerotes = [str(n) for n in range(1, len(entrees) + 1)]
+        self.assertEqual(
+            sorted(set(numerotes) - set(branches)), [],
+            "des entrees affichees ne menent nulle part",
         )
-        self.assertIn(
-            'elif status == "10":\n                self.prompt_execute_vpn()',
-            menu,
+        self.assertEqual(
+            sorted(set(branches) - set(numerotes) - {"0"}), [],
+            "des branches repondent a des numeros que le menu n'affiche pas",
         )
+
+    def test_le_proxy_socks_ferme_la_section_locale(self):
+        methode = self._methode("prompt_execute_deploy")
+        entrees = self._entrees(methode)
+        branches = dict(self._branches(methode))
+
+        rang = next(i for i, libelle in enumerate(entrees, start=1)
+                    if "SOCKS" in libelle)
+        self.assertEqual(rang, 4, "le proxy SOCKS n'est plus le quatrieme")
+        self.assertEqual(branches.get(str(rang)), "_deploy_socks_proxy")
+
+    def test_le_vpn_mene_a_son_sous_menu(self):
+        methode = self._methode("prompt_execute_deploy")
+        entrees = self._entrees(methode)
+        branches = dict(self._branches(methode))
+
+        rang = next(i for i, libelle in enumerate(entrees, start=1)
+                    if "VPN" in libelle)
+        self.assertEqual(branches.get(str(rang)), "prompt_execute_vpn")
 
 
 if __name__ == "__main__":

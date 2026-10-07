@@ -9,9 +9,9 @@ est un ZIP borné à 65535 entrées, quand les 139 dépôts pèsent plus de 116 
 fichiers. Un fichier par source donnait « Too many zip entries 123678
 (MAX=65535) » — la compilation s'arrêtait là, et l'application ne portait rien.
 
-Regroupés en tranches de 4 Mo, ces fichiers tiennent en 391 entrées. Mesuré sur
-la VM : 3 002 entrées dans l'APK, 282 Mo, et 20 fichiers relus depuis les packs
-identiques octet pour octet à leur source.
+Regroupés en tranches de 4 Mo, ces fichiers tiennent en 391 entrées : 3 002
+entrées dans l'APK pour 282 Mo, et un échantillon relu depuis les packs reste
+identique octet pour octet à sa source.
 
 Ce que ces tests vérifient : qu'un transfert vide, tronqué ou incohérent est
 DIT, et non pris pour bon. Les trois pannes correspondantes ont chacune leur
@@ -21,6 +21,7 @@ fixture.
 import json
 import sys
 import tempfile
+import pathlib
 import unittest
 from pathlib import Path
 
@@ -269,6 +270,66 @@ MOBILE = REPO / "mobile" / "erplibre_home_mobile"
 ZIP_ENTRY_LIMIT = 65535
 
 
+class TestLeScriptDeConstruction(unittest.TestCase):
+    """`mobile/compile_and_run.sh` et l'APK de demonstration.
+
+    Une reconstruction ordinaire remplace l'APK qui tolere le HTTP en clair,
+    en silence : la passerelle en Wi-Fi retombe alors sur « Cleartext HTTP
+    traffic not permitted », un refus d'Android qu'aucun reglage de
+    l'application ne leve.
+    """
+
+    def _source(self):
+        chemin = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "mobile" / "compile_and_run.sh"
+        )
+        return chemin.read_text(encoding="utf-8")
+
+    def test_loption_existe_et_porte_le_drapeau_gradle(self):
+        source = self._source()
+        self.assertIn("--lan-cleartext", source)
+        self.assertIn("-PlanCleartext", source)
+
+    def test_sans_loption_la_construction_reste_lordinaire(self):
+        """L'APK de demonstration affaiblit la protection : il ne doit pas
+        devenir le defaut par inadvertance."""
+        source = self._source()
+        self.assertIn("npx cap run android", source)
+        avant = source.index("-PlanCleartext")
+        self.assertIn("LAN_CLEARTEXT", source[:avant])
+
+    def test_un_argument_inconnu_est_refuse(self):
+        """Une faute de frappe sur l'option produirait sinon un APK ordinaire
+        en croyant avoir demande l'autre."""
+        source = self._source()
+        self.assertIn("argument inconnu", source)
+
+    def test_le_menu_todo_sait_la_demander(self):
+        """Le chemin reel passe par « TODO › Execute › Run » : une option que
+        seule la ligne de commande connait n'existe pas pour qui lance la
+        compilation depuis le menu."""
+        todo = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "script" / "todo" / "todo.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("--lan-cleartext", todo)
+        self.assertIn("mobile_lan_cleartext_ask", todo)
+
+    def test_la_question_du_menu_a_ses_deux_langues(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for cle in ("mobile_lan_cleartext_ask",
+                    "mobile_lan_cleartext_warning"):
+            self.assertIn(cle, TRANSLATIONS, cle)
+            for langue in ("fr", "en"):
+                self.assertTrue(TRANSLATIONS[cle][langue].strip(), cle)
+
+    def test_loption_annonce_ce_quelle_coute(self):
+        source = self._source()
+        self.assertIn("en clair", source)
+
+
 class TestTheRealBundle(unittest.TestCase):
     """Le VRAI transfert, quand le dépôt mobile est installé et compilé.
 
@@ -289,8 +350,7 @@ class TestTheRealBundle(unittest.TestCase):
     def setUpClass(cls):
         if not MOBILE.is_dir():
             # Pas de « relative_to » : il lève quand le chemin sort du
-            # dépôt, et une erreur n'est pas un « ignoré » — mesuré en
-            # simulant l'absence.
+            # dépôt, et une erreur n'est pas un « ignoré ».
             raise unittest.SkipTest(
                 "mobile/erplibre_home_mobile absent :"
                 " ./mobile/install_mobile_dev.sh"
@@ -304,10 +364,9 @@ class TestTheRealBundle(unittest.TestCase):
             )
         # Manifeste PRÉSENT mais VIDE : l'application a été compilée sans le
         # transfert des dépôts. C'est un choix légitime, pas une régression —
-        # et le distinguer importe, car ces tests échouaient alors sur
-        # « aucun dépôt à vérifier », ce qui se lit comme une panne du
-        # transfert. Vu le 23 août 2026 sur un build de 07:55 : manifeste à
-        # zéro entrée, aucun pack.
+        # et le distinguer importe : un manifeste à zéro entrée et aucun
+        # pack font échouer ces tests sur « aucun dépôt à vérifier », ce qui
+        # se lit comme une panne du transfert.
         try:
             entrees = json.loads(manifeste.read_text())
         except (OSError, ValueError) as exc:
@@ -318,11 +377,11 @@ class TestTheRealBundle(unittest.TestCase):
                 " relancer ./mobile/compile_and_run.sh pour les inclure"
             )
         # Manifeste PLEIN mais index MANQUANTS : un transfert interrompu, ou
-        # un build qui a écrit le manifeste avant les paquets. Vu le
-        # 24 août 2026 — « <slug> : index.json absent » remontait en ERREUR,
-        # ce qui se lit comme une régression du transfert alors que rien
-        # n'était encore transféré. Un état incomplet s'IGNORE ; seule une
-        # incohérence entre ce qui est là et le dépôt doit échouer.
+        # un build qui a écrit le manifeste avant les paquets. Rapporter
+        # « index.json absent » en ERREUR se lit comme une régression du
+        # transfert alors que rien n'est encore transféré. Un état incomplet
+        # s'IGNORE ; seule une incohérence entre ce qui est là et le dépôt
+        # doit échouer.
         # L'index se cherche par la MÊME résolution que le vérificateur : la
         # chercher ici en dur, sous `<slug>/index.json`, faisait sauter ces
         # tests sur toute compilation en archives — ils regardaient ailleurs au

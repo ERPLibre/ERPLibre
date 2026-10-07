@@ -82,6 +82,10 @@ doc_clean_user:
 	make -C doc/odoo_documentation-user clean
 
 # documentation markdown - generate multilingual documentation (en + fr)
+#
+# « mobile/ » est un AUTRE depot git, avec sa propre generation : ratisser
+# dedans fait qu'un make d'ici reecrit ses fichiers, et emporte ce qui aurait
+# ete ajoute a un .md genere au lieu de son .base.md.
 .PHONY: doc_markdown
 doc_markdown:
 	source ./.venv.erplibre/bin/activate && \
@@ -91,4 +95,5 @@ doc_markdown:
 		  -not -path "./odoo*" \
 		  -not -path "./.repo/*" \
 		  -not -path "./node_modules/*" \
+		  -not -path "./mobile/*" \
 		  | parallel mmg --verbose --yes {}

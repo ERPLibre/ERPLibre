@@ -1,0 +1,48 @@
+# Reserve UN port AT du modem cellulaire a ERPLibre, et un seul.
+#
+# Pourquoi pas ID_MM_DEVICE_IGNORE : ignorer tout l'appareil priverait
+# ModemManager du modem, donc ERPLibre de l'etat qu'il en tire — carte SIM,
+# operateur, qualite du signal, SMS. On perdrait plus qu'on ne gagne.
+#
+# QUEL port : celui que ModemManager designe comme AT secondaire, jamais un
+# numero d'interface USB. La composition des ports change d'une carte a
+# l'autre, et ModemManager la connait deja pour les familles qu'il supporte ;
+# la reecrire ici la figerait sur un seul modele. Les regles
+# 77-mm-*-port-types.rules posent la propriete et sont lues avant celle-ci,
+# l'ordre lexical des noms de fichiers etant ce qui gouverne udev.
+#
+# On laisse le primaire a ModemManager et on prend le secondaire. Les deux
+# repondent aux memes commandes ; se les partager evite d'arreter un service
+# a chaque appel, ce qui coupe la connexion de donnees. Une carte qui
+# n'expose qu'UN port AT ne se partage pas ainsi : elle n'obtient pas le
+# lien, et le diagnostic nomme ce cas plutot que de laisser un lien absent.
+#
+# DE QUI : la liste de vendeurs ne sert pas a trouver le port — ModemManager
+# le designe — mais a borner la portee. Sans elle, un hote portant deux
+# modems verrait ERPLibre reclamer aussi le port de celui qui ne lui
+# appartient pas. Supporter une carte que ModemManager reconnait tient donc
+# dans un identifiant de plus, et non dans un bloc de plus.
+#   2c7c Quectel   1e0e SimTech (SIMCom)
+#
+# Deux modems du MEME vendeur revendiquent le meme lien, et le dernier
+# branche l'emporte. Un lien portant le numero de serie leverait la limite ;
+# rien ne le fait aujourd'hui.
+#
+# Le groupe dialout et le mode 0660 evitent d'exiger les droits
+# d'administration pour placer un appel : sudo a chaque appel serait
+# intenable pour un service qui tourne seul.
+
+ACTION=="add|change", SUBSYSTEM=="tty", \
+  ENV{ID_MM_PORT_TYPE_AT_SECONDARY}=="1", \
+  ATTRS{idVendor}=="2c7c|1e0e", \
+  ENV{ID_MM_PORT_IGNORE}="1", \
+  GROUP="dialout", MODE="0660", \
+  SYMLINK+="erplibre-modem-at"
+
+# La carte son apparait quand l'UAC est actif. Meme groupe, meme raison.
+# Aucune propriete ne designe la carte son d'un modem comme
+# ID_MM_PORT_TYPE_AT_SECONDARY designe son port AT : ici le materiel se
+# nomme, faute d'un intermediaire qui le connaisse.
+ACTION=="add|change", SUBSYSTEM=="sound", \
+  ATTRS{idVendor}=="2c7c|1e0e", \
+  GROUP="audio", MODE="0660"
