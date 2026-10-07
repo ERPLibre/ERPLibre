@@ -3281,8 +3281,17 @@ class TODO(
             fh.write(f"{ligne}\n")
         return chemin
 
-    def _shell_path_line(self, shell, repertoire):
-        """La ligne qui met un répertoire dans le PATH, selon le shell."""
+    @staticmethod
+    def _shell_path_line(shell, repertoire):
+        """La ligne qui met un répertoire dans le PATH, selon le shell.
+
+        Le tilde devient `$HOME` : entre guillemets, un shell NE l'étend PAS,
+        et la ligne ajoute alors un répertoire littéralement nommé « ~ » que
+        rien ne porte. Le défaut reste invisible tant qu'un installateur amont
+        écrit sa propre ligne juste à côté.
+        """
+        if repertoire.startswith("~/"):
+            repertoire = "$HOME/" + repertoire[2:]
         if shell == "fish":
             return f"fish_add_path {repertoire}"
         return f'export PATH="{repertoire}:$PATH"'
