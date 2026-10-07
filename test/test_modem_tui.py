@@ -1007,10 +1007,34 @@ class PosteTelephonique(unittest.TestCase):
         """ALSA n'annonce pas les branchements : les listes sont lues une
         fois, et un casque branche apres ne s'y trouve pas."""
         from script.todo.modem import audio as audio_mod
-        from textual.widgets import Select
+        from textual.widgets import Button, Select
 
         app = construire()
         vraies = audio_mod.entrees
+
+        async def relire(pilote, lire):
+            """Clique sur ⟳, ALSA repondant `lire`, et rend la main une fois
+            la relecture faite.
+
+            La relecture se constate a son effet, un appel a la lecture des
+            entrees, au lieu de se supposer : un clic ignore laisserait la
+            liste telle quelle, et « le choix survit » passerait sans rien
+            avoir relu. Le message du clic va du bouton a l'application de
+            file en file, d'ou plusieurs pauses au besoin.
+            """
+            lues = []
+
+            def comptee(ex=None):
+                lues.append(ex)
+                return lire(ex)
+
+            audio_mod.entrees = comptee
+            await pilote.click("#rafraichir")
+            for _ in range(50):
+                if lues:
+                    break
+                await pilote.pause()
+            self.assertTrue(lues, "le clic sur ⟳ n'a rien relu")
 
         async def essai():
             async with app.run_test(size=TAILLE) as pilote:
@@ -1019,26 +1043,27 @@ class PosteTelephonique(unittest.TestCase):
                 await pilote.pause()
                 liste = app.query_one("#dev_entree", Select)
                 avant = len(liste._options)
+                # Un Button ignore tout clic pendant son effet d'appui
+                # (`active_effect_duration`, 0,2 s) : trois clics en rafale
+                # sur ⟳ en perdraient selon la vitesse de l'hote. Sans
+                # l'effet, chaque clic appuie.
+                app.query_one("#rafraichir", Button).active_effect_duration = 0
 
                 # Un micro apparait.
-                audio_mod.entrees = lambda ex=None: (
-                    vraies(ex) + [("hw:9,0", "hw:9,0  Micro d essai")])
-                await pilote.click("#rafraichir")
-                await pilote.pause()
+                await relire(pilote, lambda ex=None: (
+                    vraies(ex) + [("hw:9,0", "hw:9,0  Micro d essai")]))
                 self.assertEqual(len(liste._options), avant + 1)
                 self.assertIn("hw:9,0", [v for _, v in liste._options])
 
                 # On le choisit, puis on relit : le choix DOIT survivre.
                 # Le perdre en pleine conversation couperait le son.
                 liste.value = "hw:9,0"
-                await pilote.click("#rafraichir")
-                await pilote.pause()
+                await relire(pilote, lambda ex=None: (
+                    vraies(ex) + [("hw:9,0", "hw:9,0  Micro d essai")]))
                 self.assertEqual(liste.value, "hw:9,0")
 
                 # Il disparait : retour au peripherique du systeme.
-                audio_mod.entrees = vraies
-                await pilote.click("#rafraichir")
-                await pilote.pause()
+                await relire(pilote, vraies)
                 self.assertEqual(liste.value, "")
 
         try:
