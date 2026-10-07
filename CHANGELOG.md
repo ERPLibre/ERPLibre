@@ -241,6 +241,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
 - The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
 - `make doc_markdown` stops at the edge of this repository. It also regenerated the documentation of `mobile/`, a separate repository with its own generation, and so wiped a section written directly into one of its generated files
+- The unit suite passes on a host without adb, without the Google Repo addons or the state of an SMS demonstration, on a host that is itself a libvirt guest and on one without cloud-init: the SMS and modem tests build a throwaway checkout and feed canned `ip` answers instead of reading the machine, and no longer write a softphone account into `private/`. The USB pairing tests no longer send real `pm grant` and `am broadcast` commands to a plugged-in phone, the mail account test clicks the OAuth button once its scroll has stopped, not mid-animation, and the modem console test no longer loses a quick click on ⟳ to the button's press effect — both failed or passed with the host's load
+- A failing file's tail, as the unit test runner displays it, ends on unittest's verdict: the test's own prints, flushed at exit, used to bury the error under them
 
 ## Removed
 

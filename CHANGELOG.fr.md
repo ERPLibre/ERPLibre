@@ -245,6 +245,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
 - La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
 - `make doc_markdown` s'arrête au bord de ce dépôt. Il régénérait aussi la documentation de `mobile/`, un dépôt distinct doté de sa propre génération, et effaçait ainsi une section écrite directement dans l'un de ses fichiers générés
+- La suite unitaire passe sur un poste sans adb, sans les addons de Google Repo ni l'état d'une démonstration SMS, sur un poste qui est lui-même invité de libvirt et sur un poste sans cloud-init : les tests SMS et modem bâtissent un checkout jetable et fournissent des réponses `ip` fixées au lieu de lire la machine, et n'écrivent plus de compte de softphone dans `private/`. Les tests d'appairage USB n'envoient plus de vraies commandes `pm grant` et `am broadcast` à un téléphone branché, le test du compte courriel clique sur le bouton OAuth une fois son défilement arrêté, et non en pleine animation, et le test de la console du modem ne perd plus un clic rapide sur ⟳ dans l'effet d'appui du bouton — tous deux échouaient ou passaient selon la charge du poste
+- La fin du journal d'un fichier en échec, telle que l'affiche le lanceur de tests unitaires, finit sur le verdict d'unittest : les impressions du test, vidées à la sortie, enterraient l'erreur sous elles
 
 ## Retiré
 

@@ -429,6 +429,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
 - The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
 - `make doc_markdown` stops at the edge of this repository. It also regenerated the documentation of `mobile/`, a separate repository with its own generation, and so wiped a section written directly into one of its generated files
+- The unit suite passes on a host without adb, without the Google Repo addons or the state of an SMS demonstration, on a host that is itself a libvirt guest and on one without cloud-init: the SMS and modem tests build a throwaway checkout and feed canned `ip` answers instead of reading the machine, and no longer write a softphone account into `private/`. The USB pairing tests no longer send real `pm grant` and `am broadcast` commands to a plugged-in phone, the mail account test clicks the OAuth button once its scroll has stopped, not mid-animation, and the modem console test no longer loses a quick click on ⟳ to the button's press effect — both failed or passed with the host's load
+- A failing file's tail, as the unit test runner displays it, ends on unittest's verdict: the test's own prints, flushed at exit, used to bury the error under them
 
 <!-- [fr] -->
 
@@ -506,6 +508,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
 - La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
 - `make doc_markdown` s'arrête au bord de ce dépôt. Il régénérait aussi la documentation de `mobile/`, un dépôt distinct doté de sa propre génération, et effaçait ainsi une section écrite directement dans l'un de ses fichiers générés
+- La suite unitaire passe sur un poste sans adb, sans les addons de Google Repo ni l'état d'une démonstration SMS, sur un poste qui est lui-même invité de libvirt et sur un poste sans cloud-init : les tests SMS et modem bâtissent un checkout jetable et fournissent des réponses `ip` fixées au lieu de lire la machine, et n'écrivent plus de compte de softphone dans `private/`. Les tests d'appairage USB n'envoient plus de vraies commandes `pm grant` et `am broadcast` à un téléphone branché, le test du compte courriel clique sur le bouton OAuth une fois son défilement arrêté, et non en pleine animation, et le test de la console du modem ne perd plus un clic rapide sur ⟳ dans l'effet d'appui du bouton — tous deux échouaient ou passaient selon la charge du poste
+- La fin du journal d'un fichier en échec, telle que l'affiche le lanceur de tests unitaires, finit sur le verdict d'unittest : les impressions du test, vidées à la sortie, enterraient l'erreur sous elles
 
 <!-- [en] -->
 ## Removed
