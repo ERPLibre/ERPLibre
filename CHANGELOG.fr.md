@@ -51,6 +51,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paquet débogable, le seul qu'Android ouvre à `run-as`. La chaîne s'en sert d'elle-même à l'étape
   qui relie le téléphone, et ne demande rien ; le pense-bête à recopier ne paraît que lorsque le
   câble ne peut pas le porter, avec le motif
+- `mobile/compile_and_run.sh --lan-cleartext` construit l'APK de démonstration, le seul qu'Android
+  laisse parler en HTTP clair à une adresse locale : sans lui, la passerelle SMS en Wi-Fi ne joint
+  rien, le refus tombant avant que l'application voie la requête. La compilation mobile de **TODO**
+  le demande et répond Non par défaut — il affaiblit une protection du système, il se demande donc
+  à chaque compilation et ne s'hérite jamais — et une option mal tapée est refusée au lieu de
+  produire l'APK ordinaire
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
 - Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
 - OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe
@@ -238,6 +244,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les tests unitaires n'atteignent plus l'hôte qui les lance : un vrai `sudo virsh` qui demandait un mot de passe là où libvirt exige root, `ssh` et `~/.ssh/config` lus par les tests du formulaire Proxmox, l'UUID d'un vrai domaine écrit dans un rapport de test long, un `input()` qui bloquait dès que la suite partait d'un terminal, et le script d'installation Proxmox joué contre les outils Debian, le nom et l'adresse de l'hôte. Trois tests de l'écran de composition cessent aussi de tourner dix fois chacun
 - Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
 - La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
+- `make doc_markdown` s'arrête au bord de ce dépôt. Il régénérait aussi la documentation de `mobile/`, un dépôt distinct doté de sa propre génération, et effaçait ainsi une section écrite directement dans l'un de ses fichiers générés
 
 ## Retiré
 
@@ -250,6 +257,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
 - Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
 - Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
+- L'installateur de ntfy ne laisse plus de canal d'alerte ouvert : l'accès est refusé par défaut (`auth-default-access: deny-all`), là où le défaut de ntfy laisse quiconque apprend un nom de sujet le lire et y publier, et une configuration déjà en place sans cette directive est refusée au lieu d'être gardée en silence. Le compte d'administration est créé avant le démarrage du service, sa base sous `/var/lib` où le compte `ntfy` peut écrire, et le bandeau final ne dit que ce qui a été vérifié. `NTFY_PUBLIC=1` rétablit un serveur volontairement public
 
 
 ## [1.8.0] - 2026-09-04

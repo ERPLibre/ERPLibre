@@ -47,6 +47,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the state before anything is replaced. It needs a debuggable package, the only kind Android opens
   to `run-as`. The chain uses it on its own at the step that links the phone, and asks for nothing;
   the sheet to type by hand appears only when the cable cannot carry it, with the reason
+- `mobile/compile_and_run.sh --lan-cleartext` builds the demonstration APK, the only one Android
+  lets speak plain HTTP to a local address: without it the SMS gateway over Wi-Fi reaches nothing,
+  the refusal landing before the application sees the request. The mobile build in **TODO** asks
+  for it and answers No by default — it weakens a system protection, so it is asked for at each
+  build and never inherited — and a mistyped option is refused rather than producing the ordinary
+  APK
 - Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
 - Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
 - OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group
@@ -234,6 +240,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
 - A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
 - The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
+- `make doc_markdown` stops at the edge of this repository. It also regenerated the documentation of `mobile/`, a separate repository with its own generation, and so wiped a section written directly into one of its generated files
 
 ## Removed
 
@@ -246,6 +253,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 installs `idna` 3.20 instead of the 3.6 its own requirements pin, which is affected by CVE-2024-3651
 - Odoo 18 installs `requests` 2.32.4 instead of the 2.31.0 its own requirements pin, which is affected by CVE-2024-35195 and CVE-2024-47081
 - The git mirror of the QEMU cache clones only over `http` and `https`: a client could name an `ssh://` or `git://` repository in its request and make the cache connect, with its service account keys, to a host of its choosing. Repositories fetched over HTTPS are mirrored as before; the binary reports 0.2.17
+- The ntfy installer no longer leaves an open alert channel: access is denied by default (`auth-default-access: deny-all`), where ntfy's own default lets anyone who learns a topic name read it and publish to it, and an existing configuration without that directive is refused rather than silently kept. The admin account is created before the service starts, its database under `/var/lib` where the `ntfy` account can write, and the closing banner states only what was verified. `NTFY_PUBLIC=1` restores a deliberately public server
 
 
 ## [1.8.0] - 2026-09-04

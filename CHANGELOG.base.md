@@ -67,6 +67,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the state before anything is replaced. It needs a debuggable package, the only kind Android opens
   to `run-as`. The chain uses it on its own at the step that links the phone, and asks for nothing;
   the sheet to type by hand appears only when the cable cannot carry it, with the reason
+- `mobile/compile_and_run.sh --lan-cleartext` builds the demonstration APK, the only one Android
+  lets speak plain HTTP to a local address: without it the SMS gateway over Wi-Fi reaches nothing,
+  the refusal landing before the application sees the request. The mobile build in **TODO** asks
+  for it and answers No by default — it weakens a system protection, so it is asked for at each
+  build and never inherited — and a mistyped option is refused rather than producing the ordinary
+  APK
 - Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
 - Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
 - OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group
@@ -180,6 +186,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paquet débogable, le seul qu'Android ouvre à `run-as`. La chaîne s'en sert d'elle-même à l'étape
   qui relie le téléphone, et ne demande rien ; le pense-bête à recopier ne paraît que lorsque le
   câble ne peut pas le porter, avec le motif
+- `mobile/compile_and_run.sh --lan-cleartext` construit l'APK de démonstration, le seul qu'Android
+  laisse parler en HTTP clair à une adresse locale : sans lui, la passerelle SMS en Wi-Fi ne joint
+  rien, le refus tombant avant que l'application voie la requête. La compilation mobile de **TODO**
+  le demande et répond Non par défaut — il affaiblit une protection du système, il se demande donc
+  à chaque compilation et ne s'hérite jamais — et une option mal tapée est refusée au lieu de
+  produire l'APK ordinaire
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
 - Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
 - OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe
@@ -416,6 +428,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Unit tests no longer reach the host that runs them: a real `sudo virsh` that asked for a password where libvirt needs root, `ssh` and `~/.ssh/config` read by the Proxmox form tests, the UUID of a real domain written into a long-test report, an `input()` that blocked whenever the suite ran from a terminal, and the Proxmox install script played against the host's own Debian tools, name and address. Three compose-screen tests also stop running ten times each
 - A unit test that replaces `PATH` with the system directories must stub `sudo` in the function that builds it, and a guard test refuses the one that does not: without it, the script under test reached the real `sudo`, asking for a password or running as root on a `NOPASSWD` host
 - The unit suite passes in a fresh clone, without `.odoo-version`: the migration tests fix the version, and the two that check the file is read say they are skipped
+- `make doc_markdown` stops at the edge of this repository. It also regenerated the documentation of `mobile/`, a separate repository with its own generation, and so wiped a section written directly into one of its generated files
 
 <!-- [fr] -->
 
@@ -492,6 +505,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Les tests unitaires n'atteignent plus l'hôte qui les lance : un vrai `sudo virsh` qui demandait un mot de passe là où libvirt exige root, `ssh` et `~/.ssh/config` lus par les tests du formulaire Proxmox, l'UUID d'un vrai domaine écrit dans un rapport de test long, un `input()` qui bloquait dès que la suite partait d'un terminal, et le script d'installation Proxmox joué contre les outils Debian, le nom et l'adresse de l'hôte. Trois tests de l'écran de composition cessent aussi de tourner dix fois chacun
 - Un test unitaire qui remplace le `PATH` par les répertoires système doit doubler `sudo` dans la fonction qui le bâtit, et un test de garde refuse celui qui ne le fait pas : sans quoi le script testé atteignait le vrai `sudo`, qui demandait un mot de passe ou s'exécutait en root sur un hôte en `NOPASSWD`
 - La suite unitaire passe dans un clone neuf, sans `.odoo-version` : les tests de migration fixent la version, et les deux qui vérifient la lecture du fichier se disent ignorés
+- `make doc_markdown` s'arrête au bord de ce dépôt. Il régénérait aussi la documentation de `mobile/`, un dépôt distinct doté de sa propre génération, et effaçait ainsi une section écrite directement dans l'un de ses fichiers générés
 
 <!-- [en] -->
 ## Removed
@@ -516,6 +530,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 installs `idna` 3.20 instead of the 3.6 its own requirements pin, which is affected by CVE-2024-3651
 - Odoo 18 installs `requests` 2.32.4 instead of the 2.31.0 its own requirements pin, which is affected by CVE-2024-35195 and CVE-2024-47081
 - The git mirror of the QEMU cache clones only over `http` and `https`: a client could name an `ssh://` or `git://` repository in its request and make the cache connect, with its service account keys, to a host of its choosing. Repositories fetched over HTTPS are mirrored as before; the binary reports 0.2.17
+- The ntfy installer no longer leaves an open alert channel: access is denied by default (`auth-default-access: deny-all`), where ntfy's own default lets anyone who learns a topic name read it and publish to it, and an existing configuration without that directive is refused rather than silently kept. The admin account is created before the service starts, its database under `/var/lib` where the `ntfy` account can write, and the closing banner states only what was verified. `NTFY_PUBLIC=1` restores a deliberately public server
 
 <!-- [fr] -->
 
@@ -524,6 +539,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Odoo 18 installe `idna` 3.20 au lieu de la 3.6 qu'épinglent ses propres requirements, touchée par CVE-2024-3651
 - Odoo 18 installe `requests` 2.32.4 au lieu du 2.31.0 qu'épinglent ses propres requirements, touché par CVE-2024-35195 et CVE-2024-47081
 - Le miroir git du cache QEMU ne clone plus qu'en `http` et `https` : un client pouvait nommer un dépôt `ssh://` ou `git://` dans sa requête et faire se connecter le cache, avec les clés de son compte de service, à un hôte de son choix. Les dépôts servis en HTTPS sont mis en miroir comme avant ; le binaire annonce 0.2.17
+- L'installateur de ntfy ne laisse plus de canal d'alerte ouvert : l'accès est refusé par défaut (`auth-default-access: deny-all`), là où le défaut de ntfy laisse quiconque apprend un nom de sujet le lire et y publier, et une configuration déjà en place sans cette directive est refusée au lieu d'être gardée en silence. Le compte d'administration est créé avant le démarrage du service, sa base sous `/var/lib` où le compte `ntfy` peut écrire, et le bandeau final ne dit que ce qui a été vérifié. `NTFY_PUBLIC=1` rétablit un serveur volontairement public
 
 <!-- [common] -->
 
