@@ -7,8 +7,10 @@
 Le sous-menu est écrit deux fois — une liste de `prompt_description` qui
 numérote l'affichage, et une chaîne d'`elif status == "N"` qui dispatche.
 Insérer une entrée au milieu décale les deux, et une seule erreur envoie
-l'opérateur dans un autre écran sans que rien ne proteste : l'entrée du cache
-est arrivée en 8, ce qui a poussé le VPN en 9.
+l'opérateur dans un autre écran sans que rien ne proteste. Les épreuves du
+menu Déploiement n'écrivent donc aucun numéro en dur : chacune déduit le
+numéro d'une entrée de son rang dans la liste, puis vérifie que la branche de
+ce numéro appelle la méthode attendue.
 
 Le test vérifie aussi que chaque clé i18n de l'entrée résout DANS LES DEUX
 LANGUES. Une clé absente rend sa propre chaîne anglaise, donc un menu
@@ -164,9 +166,122 @@ def corps_du_sous_menu():
     return src[debut:fin]
 
 
+def cablage_du_deploiement():
+    """Rend (libellés, branches) de prompt_execute_deploy(), lus dans l'arbre.
+
+    `libellés` : la clé i18n de chaque entrée numérotée, dans l'ordre de la
+    liste `choices` écrite dans la méthode — la première porte le numéro 1.
+    Une entrée {"section": …} ne consomme pas de numéro : c'est la règle de
+    fill_help_info. Cette liste tient lieu d'écran : une entrée que la
+    méthode ajouterait ensuite à `choices` (append, insert) décalerait
+    l'affichage sans figurer ici.
+
+    `branches` : {numéro: méthode appelée}, en suivant la chaîne d'`elif`
+    depuis `if status == "0"`, dans l'ordre où l'exécution la parcourt. Un
+    numéro répété garde sa PREMIÈRE branche, la seule que l'exécution
+    atteint ; un `if status == "N"` détaché de la chaîne n'y est pas relevé.
+
+    L'arbre et non le texte : un libellé que le formateur coupe sur trois
+    lignes, ou un commentaire glissé entre une branche et son appel, ne
+    change rien au résultat.
+    """
+    arbre = ast.parse(TODO_PY.read_text(encoding="utf-8"))
+    methode = next(
+        (
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+            and n.name == "prompt_execute_deploy"
+        ),
+        None,
+    )
+    if methode is None:
+        raise AssertionError("prompt_execute_deploy absent de todo.py")
+
+    def numero(noeud):
+        """Le N d'un `if status == "N"`, None pour tout autre nœud.
+
+        La saisie est une chaîne comparée telle quelle : `status == 11`,
+        `status != "11"` ou `status == "011"` ne répondent jamais à « 11 »,
+        et ne comptent donc pas comme sa branche.
+        """
+        if not (
+            isinstance(noeud, ast.If)
+            and isinstance(noeud.test, ast.Compare)
+            and isinstance(noeud.test.left, ast.Name)
+            and noeud.test.left.id == "status"
+            and len(noeud.test.ops) == 1
+            and isinstance(noeud.test.ops[0], ast.Eq)
+            and isinstance(noeud.test.comparators[0], ast.Constant)
+            and isinstance(noeud.test.comparators[0].value, str)
+        ):
+            return None
+        valeur = noeud.test.comparators[0].value
+        if valeur.isdigit() and str(int(valeur)) == valeur:
+            return int(valeur)
+        return None
+
+    libelles = []
+    tete = None
+    for noeud in ast.walk(methode):
+        if (
+            isinstance(noeud, ast.Assign)
+            and isinstance(noeud.value, ast.List)
+            and any(
+                isinstance(c, ast.Name) and c.id == "choices"
+                for c in noeud.targets
+            )
+        ):
+            for entree in noeud.value.elts:
+                cles = [
+                    k.value
+                    for k in getattr(entree, "keys", [])
+                    if isinstance(k, ast.Constant)
+                ]
+                if "section" in cles:
+                    continue
+                textes = [
+                    n.value
+                    for v in getattr(entree, "values", [])
+                    for n in ast.walk(v)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                ]
+                libelles.append(textes[0] if textes else "")
+        elif tete is None and numero(noeud) == 0:
+            tete = noeud
+    if not libelles:
+        raise AssertionError("aucune liste « choices » dans le menu")
+    if tete is None:
+        raise AssertionError('aucune chaîne « if status == "0" » dans le menu')
+    branches = {}
+    noeud = tete
+    while numero(noeud) is not None:
+        appels = [
+            n.func.attr
+            for instruction in noeud.body
+            for n in ast.walk(instruction)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        ]
+        branches.setdefault(numero(noeud), appels[0] if appels else "")
+        # Un `elif` est, dans l'arbre, le seul nœud du `orelse` de la branche
+        # qui le précède ; un `else` final arrête la chaîne.
+        suite = noeud.orelse
+        noeud = suite[0] if len(suite) == 1 else None
+    return libelles, branches
+
+
 class TestEntreeDuCache(unittest.TestCase):
+    # L'entrée du cache, par sa clé i18n : son numéro se lit à son rang dans
+    # la liste, jamais en dur.
+    CACHE = "QEMU cache - Download mirror for local VMs"
+
     def setUp(self):
         self.corps = corps_du_sous_menu()
+
+    def rang(self, libelles, cle):
+        """Le numéro que la liste écrite donne à l'entrée `cle`."""
+        self.assertIn(cle, libelles, f"« {cle} » n'est plus dans le menu")
+        return libelles.index(cle) + 1
 
     def test_entree_affichee(self):
         self.assertIn(
@@ -176,19 +291,41 @@ class TestEntreeDuCache(unittest.TestCase):
         )
 
     def test_entree_dispatchee(self):
-        self.assertRegex(
-            self.corps,
-            r'elif status == "9":\s*\n\s*self\.prompt_execute_qemu_cache\(\)',
-            "l'entrée 8 ne mène pas au sous-menu du cache",
+        libelles, branches = cablage_du_deploiement()
+        rang = self.rang(libelles, self.CACHE)
+        self.assertEqual(
+            branches.get(rang),
+            "prompt_execute_qemu_cache",
+            f"l'entrée {rang} ne mène pas au sous-menu du cache",
         )
 
     def test_vpn_reste_le_dernier(self):
         """Toute entrée insérée avant lui le pousse : sans quoi deux entrées
         partagent un numéro, et la seconde est inatteignable."""
-        self.assertRegex(
-            self.corps,
-            r'elif status == "10":\s*\n\s*self\.prompt_execute_vpn\(\)',
+        libelles, branches = cablage_du_deploiement()
+        # Le VPN se reconnaît au début de son libellé : la suite du texte peut
+        # changer sans que le menu change.
+        rangs = [
+            i
+            for i, libelle in enumerate(libelles, start=1)
+            if libelle.startswith("VPN - ")
+        ]
+        self.assertEqual(
+            len(rangs),
+            1,
+            "une seule entrée au libellé commençant par « VPN - » attendue,"
+            f" rangs : {rangs}",
+        )
+        rang = rangs[0]
+        self.assertEqual(
+            rang,
+            len(libelles),
             "le VPN n'est plus la dernière entrée du menu",
+        )
+        self.assertEqual(
+            branches.get(rang),
+            "prompt_execute_vpn",
+            f"l'entrée {rang}, le VPN, ne mène pas à son sous-menu",
         )
 
     def test_numeros_sans_trou_ni_doublon(self):

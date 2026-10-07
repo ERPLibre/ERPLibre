@@ -35,9 +35,10 @@ HERMÉTIQUE. Un test unitaire ne touche pas l'hôte :
    le PATH, par exemple — échoue aussitôt sur « a terminal is required » au
    lieu de demander un mot de passe que personne ne voit, et un input()
    oublié échoue sur EOFError au lieu d'attendre ;
- - sudo, pkexec, doas, virsh et ssh sont remplacés, en tête du PATH, par une
-   commande qui refuse en le disant : un appel non bouchonné échoue de la
-   même façon sur tous les postes, au lieu d'interroger les VM du poste ;
+ - sudo, pkexec, doas, virsh, ssh et adb sont remplacés, en tête du PATH,
+   par une commande qui refuse en le disant : un appel non bouchonné échoue
+   de la même façon sur tous les postes, au lieu d'interroger les VM du
+   poste ou le téléphone qui y est branché ;
  - `--timeout` secondes par fichier : au-delà, le groupe entier du fichier
    est tué et le fichier marqué DÉLAI.
 
@@ -102,7 +103,14 @@ UNIT_FILE = os.path.join(
 )
 
 # Les commandes refusées et le code d'échec que leur appelant attend.
-REFUSEES = {"sudo": 1, "pkexec": 1, "doas": 1, "virsh": 1, "ssh": 255}
+REFUSEES = {
+    "sudo": 1,
+    "pkexec": 1,
+    "doas": 1,
+    "virsh": 1,
+    "ssh": 255,
+    "adb": 1,
+}
 
 
 class Fichier:
@@ -235,9 +243,16 @@ class Lanceur:
             return
         base = os.path.join(self.travail, f"{f.fichier}.{f.passage}")
         f.log = base + ".log"
-        cmd = [self.py, f.chemin]
+        # « -u » : le journal reçoit la sortie standard ET la sortie
+        # d'erreur. Sans terminal, la première ne se vide qu'à la fin du
+        # processus, APRÈS le verdict qu'unittest écrit sur la seconde : les
+        # dernières lignes que bilan() affiche montreraient ce que le test
+        # imprime, et non l'erreur. L'option plutôt que PYTHONUNBUFFERED :
+        # un programme que le test lance garde le tampon qu'il aurait hors
+        # du lanceur.
+        cmd = [self.py, "-u", f.chemin]
         if self.detaille:
-            cmd = [self.py, UNIT_FILE, f.chemin, base + ".json"]
+            cmd = [self.py, "-u", UNIT_FILE, f.chemin, base + ".json"]
         f.debut = time.monotonic()
         f.etat = EN_COURS
         with open(f.log, "wb") as sortie:

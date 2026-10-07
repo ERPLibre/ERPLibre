@@ -282,6 +282,33 @@ class TestAppairageUsb(SmsDemoBase):
         "</map>"
     )
 
+    class AdbNonBouchonne(BaseException):
+        """Un appel a `adb` qu'aucun test n'a bouchonne.
+
+        BaseException et non Exception : le menu rapporte toute Exception
+        levee par une etape comme un echec de l'etape, et un test qui attend
+        cet echec passerait sur la garde elle-meme.
+        """
+
+    def setUp(self):
+        """Ferme `_adb`, seule porte du module vers `adb`, pour toute la
+        classe : un test l'ouvre en la bouchonnant lui-meme.
+
+        Ouverte, un appel non bouchonne atteint l'`adb` du poste, et par lui
+        le telephone qui y est branche : `pm grant` et `am broadcast` y
+        agissent pour de vrai. Fermee, elle echoue de la meme facon sur tous
+        les postes et nomme la commande.
+        """
+        super().setUp()
+        from unittest.mock import patch
+
+        def porte_fermee(args, *_a, **_kw):
+            raise self.AdbNonBouchonne("adb " + " ".join(map(str, args)))
+
+        garde = patch.object(self._module(), "_adb", porte_fermee)
+        garde.start()
+        self.addCleanup(garde.stop)
+
     def _module(self):
         from script.todo.sms import appairage
 
@@ -407,7 +434,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(
                     app, "ecrire_prefs",
                     side_effect=lambda _x: ordre.append("ecriture")
-                ):
+                ), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             ok, _detail = app.appairer(
                 self._spec(), "a" * 64, "http://127.0.0.1:8169"
             )
@@ -434,7 +463,11 @@ class TestAppairageUsb(SmsDemoBase):
                     patch.object(
                         app, "ecrire_prefs",
                         side_effect=lambda x: ecrits.append(x)
-                    ):
+                    ), \
+                    patch.object(
+                        app, "accorder_permissions", return_value=[]
+                    ), \
+                    patch.object(app, "reveiller_passerelle"):
                 app.appairer(self._spec(), "a" * 64, url)
             self.assertIn(
                 '<boolean name="allow_plain_lan" value="%s" />' % attendu,
@@ -451,7 +484,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "run_as_ouvre", return_value=(True, "")), \
                 patch.object(app, "lire_prefs", return_value=self.EXISTANT), \
                 patch.object(app, "arreter_application"), \
-                patch.object(app, "ecrire_prefs"):
+                patch.object(app, "ecrire_prefs"), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             app.appairer(
                 self._spec(), "a" * 64, "http://h:1", copie_vers=copie
             )
@@ -474,7 +509,9 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "arreter_application"), \
                 patch.object(
                     app, "ecrire_prefs", side_effect=lambda x: ecrits.append(x)
-                ):
+                ), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
+                patch.object(app, "reveiller_passerelle"):
             app.appairer(self._spec(), "a" * 64, "http://h:1")
         self.assertNotIn("HTTP 403", ecrits[-1])
 
@@ -823,6 +860,7 @@ class TestAppairageUsb(SmsDemoBase):
                 patch.object(app, "lire_prefs", return_value=self.EXISTANT), \
                 patch.object(app, "arreter_application"), \
                 patch.object(app, "ecrire_prefs"), \
+                patch.object(app, "accorder_permissions", return_value=[]), \
                 patch.object(app, "reveiller_passerelle") as reveil:
             ok, _detail = app.appairer(self._spec(), "a" * 64, "http://h:1")
         self.assertTrue(ok)
@@ -1301,14 +1339,84 @@ class TestTransport(SmsDemoBase):
         self.assertFalse(phone.same_subnet("192.168.50.10", "192.168.60.11"))
         self.assertFalse(phone.same_subnet("192.168.50.10", ""))
 
-    def test_ladresse_du_poste_evite_le_pont_libvirt(self):
-        # Une machine de developpement porte souvent un pont libvirt, dont
-        # l'adresse est privee et valide mais que le telephone n'atteint pas.
+    #: Ce que rend « ip -4 route get » sur un poste dont le reseau local est
+    #: 192.0.2.0/24 : la source est l'adresse de l'interface qui sort.
+    ROUTE = (
+        "1.1.1.1 via 192.0.2.1 dev lien0 src 192.0.2.37 uid 1000\n    cache\n"
+    )
+    #: Ce que rend « ip -o -4 addr show » sur le meme poste, qui porte le pont
+    #: « default » de libvirt. Le pont est liste avant l'interface qui sort :
+    #: la premiere adresse hors boucle locale est la sienne.
+    INTERFACES = (
+        "1: lo    inet 127.0.0.1/8 scope host lo\n"
+        "2: virbr0    inet 192.168.122.1/24 brd 192.168.122.255 scope global"
+        " virbr0\n"
+        "3: lien0    inet 192.0.2.37/24 brd 192.0.2.255 scope global lien0\n"
+    )
+
+    def _adresse_du_poste(self, reponse):
+        """host_lan_ip face a un `ip` dont les reponses sont fixees.
+
+        `reponse` est ce que rend une question de route, ou l'exception que
+        leve l'appel ; une question d'adresses recoit INTERFACES. Rend
+        l'adresse obtenue et les commandes lancees. Le vrai `ip` decrit le
+        reseau du poste qui lance la suite, et un verdict qui en depend
+        change d'un poste a l'autre.
+        """
+        import subprocess
+        from unittest.mock import patch
+
         from script.todo.sms import phone
 
-        adresse = phone.host_lan_ip()
-        if adresse:
-            self.assertFalse(adresse.startswith("192.168.122."))
+        lancees = []
+
+        def faux_run(argv, **_options):
+            lancees.append(argv)
+            if isinstance(reponse, Exception):
+                raise reponse
+            sortie = self.INTERFACES if "addr" in argv else reponse
+            return subprocess.CompletedProcess(argv, 0, sortie, "")
+
+        with patch.object(phone.subprocess, "run", side_effect=faux_run):
+            return phone.host_lan_ip(), lancees
+
+    def test_ladresse_du_poste_evite_le_pont_libvirt(self):
+        """Une machine de developpement porte souvent un pont libvirt, dont
+        l'adresse est privee et valide mais que le telephone n'atteint pas.
+        La route qui sort ne le traverse pas : host_lan_ip lit la route, et
+        non la liste des interfaces, ou le pont passe devant."""
+        adresse, lancees = self._adresse_du_poste(self.ROUTE)
+        self.assertEqual(adresse, "192.0.2.37")
+        self.assertTrue(lancees)
+        for argv in lancees:
+            self.assertIn("route", argv)
+
+    def test_un_poste_invite_de_libvirt_garde_ladresse_qui_sort(self):
+        """Un poste qui est lui-meme une VM du reseau « default » de libvirt
+        sort par 192.168.122.0/24 : c'est son adresse reelle, et le prefixe
+        seul ne dit pas s'il s'agit d'un pont. Un telephone sur un autre
+        reseau est signale a part, par la verification du Wi-Fi."""
+        route = (
+            "1.1.1.1 via 192.168.122.1 dev lien0 src 192.168.122.57"
+            " uid 1000\n    cache\n"
+        )
+        adresse, _lancees = self._adresse_du_poste(route)
+        self.assertEqual(adresse, "192.168.122.57")
+
+    def test_sans_route_lisible_ladresse_du_poste_est_vide(self):
+        """host_lan_ip rend une chaine vide, que ses appelants lisent comme
+        « adresse inconnue », plutot que de lever."""
+        import subprocess
+
+        cas = {
+            "ip absent": FileNotFoundError("ip"),
+            "ip sans reponse": subprocess.TimeoutExpired(["ip"], 15),
+            "aucune route": "",
+            "route sans source": "1.1.1.1 via 192.0.2.1 dev lien0\n",
+        }
+        for nom, reponse in cas.items():
+            with self.subTest(nom):
+                self.assertEqual(self._adresse_du_poste(reponse)[0], "")
 
 
 class TestNumeroDEssai(SmsDemoBase):
@@ -1772,21 +1880,88 @@ class TestMateriel(SmsDemoBase):
             modem_menu._passerelle(todo=None)
         ouvre.assert_called_once_with(None, "modem")
 
+    def _depot_factice(self, depots):
+        """Un depot en miniature, ou `spec` et `local` cherchent le temps du
+        test : un venv Odoo, odoo-bin, et les depots d'addons de `depots`,
+        chacun avec les modules qu'il porte. Rend la racine.
+
+        Le vrai depot n'a pas le meme contenu d'un poste a l'autre, et pas
+        toujours d'addons du tout : un verdict tire de lui depend du poste.
+        """
+        import shutil
+        from unittest.mock import patch
+
+        from script.todo.sms import local
+        from script.todo.sms import spec as vrai_spec
+
+        racine = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, racine, ignore_errors=True)
+        for objet, nom in ((vrai_spec, "_repo_root"), (local, "repo_root")):
+            rebranche = patch.object(objet, nom, return_value=racine)
+            rebranche.start()
+            self.addCleanup(rebranche.stop)
+        # La disposition s'ecrit en toutes lettres, celle que pose Google Repo
+        # (manifest/git_manifest_odoo18.0.xml) : tiree de DOSSIER_ADDONS ou
+        # d'odoo_bin(), elle suivrait une valeur fausse sans rien signaler.
+        for depot, modules in depots.items():
+            for module in modules:
+                dossier = racine / "odoo18.0" / "addons" / depot / module
+                dossier.mkdir(parents=True)
+                (dossier / "__manifest__.py").write_text(
+                    repr({"name": module}) + "\n", encoding="utf-8"
+                )
+        python = racine / ".venv.odoo18.0_python3.12.10" / "bin" / "python"
+        for fichier in (python, racine / "odoo18.0" / "odoo" / "odoo-bin"):
+            fichier.parent.mkdir(parents=True, exist_ok=True)
+            fichier.touch()
+        return racine
+
     def test_le_module_se_cherche_au_lieu_de_se_deviner(self):
         """Plus de cent depots d'addons : lequel porte le module ne se devine pas."""
         from script.todo.sms import spec as vrai_spec
 
+        self._depot_factice(
+            {
+                "depot_a": ["autre_module"],
+                "depot_m": ["erplibre_mobile_gateway"],
+                "depot_z": ["encore_un_module"],
+            }
+        )
         trouve = vrai_spec.trouver_module("erplibre_mobile_gateway")
         self.assertIsNotNone(trouve, "le module de la demonstration est introuvable")
         self.assertTrue(trouve.is_dir())
+        self.assertEqual(trouve.parent.name, "depot_m")
         self.assertIsNone(vrai_spec.trouver_module("module_qui_nexiste_pas"))
 
     def test_letape_une_trouve_le_module_ou_il_est(self):
+        """step_env trouve le module dans le depot d'addons qui le porte, et le
+        nomme quand il n'est plus nulle part."""
+        import shutil
+        import subprocess
+        from dataclasses import replace
+        from unittest.mock import patch
+
         from script.todo.sms import local as backend
 
+        # Un module autre que celui par defaut : l'etape cherche celui que
+        # l'etat retient, pas celui que la specification propose.
+        module = "module_retenu"
+        racine = self._depot_factice(
+            {"depot_a": ["autre_module"], "depot_m": [module]}
+        )
         etat = self.spec_mod.load()
-        ok, detail = backend.step_env(None, etat)
-        self.assertTrue(ok, detail)
+        etat.spec = replace(etat.spec, module=module)
+        # psql est le seul programme que l'etape lance : lui repondre garde le
+        # verdict sur l'arbre, et non sur le PostgreSQL du poste.
+        psql = subprocess.CompletedProcess(["psql", "-lqt"], 0, "", "")
+        with patch.object(backend.subprocess, "run", return_value=psql):
+            ok, detail = backend.step_env(None, etat)
+            self.assertTrue(ok, detail)
+
+            shutil.rmtree(racine / "odoo18.0" / "addons" / "depot_m" / module)
+            ok, detail = backend.step_env(None, etat)
+        self.assertFalse(ok)
+        self.assertIn(module, detail)
 
     def test_un_module_renomme_ne_bloque_pas_pour_toujours(self):
         """Le nom vit dans un JSON de `private/` : personne ne le corrigera."""
@@ -1794,6 +1969,9 @@ class TestMateriel(SmsDemoBase):
 
         from script.todo.sms import spec as vrai_spec
 
+        # Le nom par defaut est dans l'arbre et l'ancien n'y est plus : c'est
+        # un renommage, que le chargement rattrape.
+        self._depot_factice({"depot_m": [vrai_spec.DemoSpec.module]})
         etat = self.spec_mod.load()
         self.spec_mod.save(etat)
         brut = json.loads(
@@ -1814,10 +1992,23 @@ class TestMateriel(SmsDemoBase):
         from script.todo.sms import spec as vrai_spec
 
         temoin = "erplibre_devops"
-        if vrai_spec.trouver_module(temoin) is None:
-            self.skipTest("ce depot n'a pas ce module temoin")
+        # Le nom par defaut y est aussi : sans lui, _rattraper_le_module ne
+        # remplace rien, quel que soit le nom retenu.
+        self._depot_factice({"depot_m": [vrai_spec.DemoSpec.module, temoin]})
         autre = replace(vrai_spec.DemoSpec(), module=temoin)
         self.assertEqual(vrai_spec._rattraper_le_module(autre).module, temoin)
+
+    def test_sans_le_nom_par_defaut_rien_ne_se_rattrape(self):
+        """Sans le nom par defaut dans l'arbre, un renommage ne se distingue
+        pas d'un arbre d'addons absent : _rattraper_le_module garde le nom."""
+        from dataclasses import replace
+
+        from script.todo.sms import spec as vrai_spec
+
+        ancien = "erplibre_mobile_passerelle_sms"
+        self._depot_factice({"depot_m": ["autre_module"]})
+        retenu = replace(vrai_spec.DemoSpec(), module=ancien)
+        self.assertEqual(vrai_spec._rattraper_le_module(retenu).module, ancien)
 
     def test_letape_annoncee_porte_le_nom_du_materiel(self):
         """Annoncer « application mobile » ferait chercher un appareil absent."""

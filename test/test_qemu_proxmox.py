@@ -186,6 +186,10 @@ DEBIAN = {
     "dpkg": 'case "$1" in -C) exit 0 ;; *) exit 1 ;; esac',
     "dpkg-query": "exit 1",
     "apt-get": "exit 0",
+    # L'image cloud Debian porte cloud-init, et le script n'attend sa fin
+    # que s'il le trouve : sans doublure, l'attente dépend du poste qui lance
+    # le test.
+    "cloud-init": "exit 0",
     "debconf-set-selections": "cat >/dev/null",
     "hostname": (
         'case "$1" in -I | -i | --ip-address) echo 192.0.2.10 ;;'
