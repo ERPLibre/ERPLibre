@@ -110,4 +110,4 @@ pymupdf>=1.28.2 ; platform_machine != 's390x'
 # lxml==5.2.1 : le solveur poetry n'a plus de solution. Les versions jusqu'à
 # 0.4.4 n'imposent aucune borne sur lxml — vérifié sur PyPI, release par
 # release. À lever le jour où lxml montera.
-lxml-html-clean<0.4.5
+lxml-html-clean<0.4.6
