@@ -64,7 +64,7 @@ orjson
 meteostat==1.7.6
 
 # Fix build
-beautifulsoup4==4.13.5
+beautifulsoup4==4.15.0
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
 #pylint==3.3.9
