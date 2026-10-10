@@ -208,6 +208,7 @@ xmltodict = "0.13.0"
 zeep = "4.2.1"
 zklib = "^0.1.1"
 dnsq = "1.1.6"
+coverage = "7.16.2"
 [[tool.poetry.dependencies.factur-x]]
 version = ">=6.8"
 markers = "platform_machine != \"s390x\""
