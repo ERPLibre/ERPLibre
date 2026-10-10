@@ -41,3 +41,11 @@ See also: [EMAIL.md](EMAIL.md) — the mail client built into the TODO CLI
 <!-- [fr] -->
 Voir aussi : [EMAIL.fr.md](EMAIL.fr.md) — le client courriel intégré au CLI
 TODO (`Assistant > Courriel`).
+
+<!-- [en] -->
+See also: [APERTUS.md](APERTUS.md) — installing the Apertus open LLM, here or
+on a server (`Assistant > IA > Apertus`).
+
+<!-- [fr] -->
+Voir aussi : [APERTUS.fr.md](APERTUS.fr.md) — installer le LLM ouvert Apertus,
+ici ou sur un serveur (`Assistant > IA > Apertus`).

@@ -497,6 +497,56 @@ class ArgvClaude(unittest.TestCase):
         self.assertEqual(argv[argv.index("--permission-mode") + 1], "dontAsk")
         self.assertEqual(argv[argv.index("--add-dir") + 1], "/depot")
 
+    def test_un_agent_specialise_se_nomme_par_un_drapeau(self):
+        argv = claude_argv(
+            session_id=None, cwd="/depot", fork=False, agent="agent-invente"
+        )
+        self.assertEqual(argv[argv.index("--agent") + 1], "agent-invente")
+
+    def test_les_outils_declares_remplacent_la_lecture_seule(self):
+        """Plusieurs agents déclarent Write et Edit : honorer leur en-tête
+        leur donne le droit d'écrire, et le drapeau est ce qui le dit."""
+        argv = claude_argv(
+            session_id=None,
+            cwd="/depot",
+            fork=False,
+            agent="agent-invente",
+            outils=("Read", "Write", "Edit"),
+        )
+        self.assertEqual(argv[argv.index("--tools") + 1], "Read,Write,Edit")
+        self.assertNotIn("Read,Glob,Grep", argv)
+
+    def test_des_outils_vides_laissent_la_lecture_seule(self):
+        """Un agent qui ne déclare rien hérite de la garde par défaut, et
+        non d'une liste vide qui lui retirerait jusqu'à la lecture."""
+        for rien in ((), ("",), ("  ",), None):
+            with self.subTest(rien=rien):
+                argv = claude_argv(
+                    session_id=None,
+                    cwd="/depot",
+                    fork=False,
+                    outils=rien or (),
+                )
+                self.assertEqual(
+                    argv[argv.index("--tools") + 1], "Read,Glob,Grep"
+                )
+
+    def test_les_outils_declares_ouvrent_quand_meme_le_depot(self):
+        """Un spécialiste du dépôt sans le dépôt ne sert à rien."""
+        argv = claude_argv(
+            session_id=None,
+            cwd="/depot",
+            fork=False,
+            read_only=False,
+            outils=("Read", "Write"),
+        )
+        self.assertEqual(argv[argv.index("--add-dir") + 1], "/depot")
+        self.assertEqual(
+            argv[argv.index("--permission-mode") + 1],
+            "dontAsk",
+            "un -p ne peut rien demander : sans ce mode, une écriture attend",
+        )
+
     def test_sans_lecture_seule_aucun_drapeau_d_outil(self):
         argv = claude_argv(
             session_id=None, cwd="/depot", fork=False, read_only=False

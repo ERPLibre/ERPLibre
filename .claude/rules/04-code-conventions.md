@@ -162,4 +162,4 @@ de situation — « sur une base de production », jamais son nom.
 Le mode d'emploi complet — résolution dynamique du modèle, gabarit, identité
 git, taille des correctifs — est dans
 `conf/template_claude_commands_commit.md`, déployable en `/commit` par
-`TODO › Execute › GPT code › Claude configs`.
+`TODO › Assistant › IA › Claude configs`.

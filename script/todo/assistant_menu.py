@@ -35,25 +35,34 @@ défilement piloté.
 
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import time
+from dataclasses import replace
 
 import click
 
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
+from script.todo.assistant import mesure as llm_mesure
+from script.todo.assistant import perf_tui as llm_perf
 from script.todo.assistant import servers as llm_servers
-from script.todo.todo_i18n import t
+from script.todo.todo_i18n import get_lang, t
 
-# Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
-# « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
-# qu'il existe promettrait une entrée qui n'aboutit pas.
+# Les commandes que cette boucle sert, DANS L'ORDRE où « /? » les liste. Elle
+# décide de ce qui paraît ; `chat.COMMANDS` fournit le texte de chaque ligne.
+# Un nom qui figure ici sans figurer là-bas fait lever le premier « /? », donc
+# les deux s'ajoutent ensemble.
 COMMANDES_PHASE_1 = (
     "/?",
     "/q",
     "/new",
     "/gpt",
     "/srv",
+    "/model",
+    "/dossier",
+    "/tui",
     "/ctx",
     "/m",
     "/save",
@@ -75,6 +84,22 @@ MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 # largeur du terminal ; soixante-dix caractères tiennent partout, indentation
 # comprise.
 LARGEUR = 70
+
+# Le nombre de séances qu'on propose de reprendre. Une liste sans fin oblige
+# à défiler pour atteindre « nouvelle conversation », qui est en tête, et les
+# séances anciennes se retrouvent par leur fichier plutôt que par ce menu.
+REPRISES_MAX = 15
+
+# Les outils qui touchent la machine, par opposition à ceux qui la lisent. La
+# liste est FERMÉE : un outil qu'elle ne nomme pas n'est pas réputé
+# inoffensif, il est seulement inconnu — d'où l'affichage de la liste
+# complète à côté de cet avertissement.
+OUTILS_QUI_ECRIVENT = ("Write", "Edit", "Bash", "NotebookEdit", "Agent")
+
+# Le délai d'un montage de tunnel. Il borne l'attente d'un hôte injoignable
+# ou d'une authentification qui attend une frappe : sans lui, un `ssh -f`
+# tiendrait le menu jusqu'à ce que la pile TCP renonce d'elle-même.
+DELAI_TUNNEL = 40
 
 # Le serveur distant que le coffre sait déjà servir. Il porte une poignée comme
 # les autres : c'est elle, et non son adresse, qui a le droit de circuler.
@@ -109,16 +134,63 @@ class AssistantMenuMixin:
                 "contextes": set(),
                 "gpt": None,
                 "gpts": None,
+                "tunnels": None,
+                "seance": "",
+                "seance_fichier": None,
+                "rang_depart": 0,
+                "mesures": [],
             }
         return self._llm_session
+
+    def _llm_tunnels(self):
+        """Les tunnels que déclare la configuration SSH, lus une fois.
+
+        Lire coûte un sous-processus par alias, d'où le résultat gardé pour
+        la session. Ce qui vieillit dans cette lecture est la DÉCLARATION, et
+        elle vit dans un fichier que le menu ne modifie pas ; l'ÉTAT du
+        tunnel — monté ou non — n'en fait pas partie et se resonde à chaque
+        balayage.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        state = self._llm_state()
+        # `get` et non `[]` : une case de CACHE absente se lit comme « pas
+        # encore lu », qui est exactement ce qu'elle veut dire.
+        if state.get("tunnels") is None:
+            state["tunnels"] = llm_disc.ssh_forwards(
+                list_aliases=self._ssh_config_hosts,
+                resolve_all=self._ssh_resolve_all,
+            )
+        return state["tunnels"]
+
+    def _llm_loopback_ports(self):
+        """Les ports à frapper sur la boucle locale, sans doublon.
+
+        Les ports connus, puis l'extrémité locale de chaque tunnel déclaré.
+        Un tunnel porte le port qu'on lui a donné, et aucune liste ne le
+        devine : la configuration SSH est le seul endroit qui le nomme, et
+        sans elle un service n'est joignable que par un port dont personne
+        n'a entendu parler.
+        """
+        ports = list(llm_fp.PORTS)
+        for tunnel in self._llm_tunnels():
+            if tunnel.local_port not in ports:
+                ports.append(tunnel.local_port)
+        return ports
 
     def _llm_probe_loopback(self):
         """Ce qui écoute sur la boucle locale, sondé une fois par session.
 
-        Les onze ports se testent en quelques millisecondes : la sonde est
+        Les ports connus se testent en quelques millisecondes : la sonde est
         donc gratuite et ne mérite aucune question. Son résultat nourrit les
         étiquettes du menu, pour qu'une première utilisation n'ait pas à
         choisir entre configurer et abandonner.
+
+        Les extrémités des tunnels déclarés n'en font PAS partie, et c'est ce
+        qui borne le coût : les lire demande un sous-processus par alias, et
+        cette sonde-ci tourne pendant qu'un écran s'affiche, où rien n'a le
+        droit de lancer quoi que ce soit. Les tunnels rejoignent la boucle
+        locale quand une RECHERCHE est demandée, qui est une action.
         """
         state = self._llm_state()
         if state["sonde"] is not None:
@@ -152,7 +224,7 @@ class AssistantMenuMixin:
                 host="127.0.0.1",
                 port=port,
                 software=empreinte.software,
-                model=empreinte.models[0] if empreinte.models else "",
+                model=self._llm_default_model(empreinte),
                 hosting="loopback",
                 secret_ref="",
             )
@@ -189,6 +261,651 @@ class AssistantMenuMixin:
             return f"{serveur.software} · {serveur.model}"
         return serveur.software
 
+    @staticmethod
+    def _llm_default_model(empreinte):
+        """Le modèle qu'on retient d'office pour un serveur qu'on découvre.
+
+        Un modèle SERVI d'abord, le premier du catalogue ensuite. Un moteur
+        réparti annonce tout ce qu'il SAIT faire tourner — des centaines
+        d'entrées — et n'en tient qu'une poignée chargée : en retenir une au
+        hasard ouvre une conversation dont chaque question rend un refus, et
+        le refus n'arrive qu'APRÈS la première question.
+
+        Le catalogue reste le repli parce qu'un serveur qui ne distingue pas
+        les deux n'annonce que ce qu'il sert, et parce que ne rien retenir
+        vaudrait moins qu'un nom à corriger.
+        """
+        if empreinte.served:
+            return empreinte.served[0]
+        return empreinte.models[0] if empreinte.models else ""
+
+    def _llm_resolve_model(self, serveur):
+        """Le serveur, son modèle remplacé quand il n'est plus servable.
+
+        Ce qu'un moteur tient chargé CHANGE pendant qu'on s'en sert : un
+        modèle retenu à la découverte ne désigne plus forcément celui qui
+        répond, et la question se repose donc à chaque ouverture plutôt
+        qu'une fois pour toutes.
+
+        La lecture ne frappe qu'un chemin, et seulement chez les logiciels
+        qui distinguent annoncer et servir. Partout ailleurs elle ne touche
+        pas le réseau et rend vide, ce qui se lit « il ne le dit pas » et
+        jamais « rien n'est servable » : traiter ce silence comme un refus
+        rendrait tout serveur inutilisable.
+        """
+        sert = llm_fp.collect_served(
+            serveur.software, serveur.host, serveur.port, budget=2.0
+        )
+        if not sert or serveur.model in sert:
+            return serveur
+        dit = t("%s is not loaded; this server serves %s.") % (
+            serveur.model,
+            sert[0],
+        )
+        print(f"  ℹ {dit}")
+        return replace(serveur, model=sert[0])
+
+    def _llm_pick_model(self, serveur, filtre=""):
+        """Choisir un modèle du serveur. Rend le serveur modifié, ou None.
+
+        Le catalogue n'est pas enregistré — un serveur retenu ne garde qu'UN
+        nom de modèle — donc il se relit ici. C'est une commande explicite,
+        et c'est ce qui rend la relecture acceptable là où elle ne le serait
+        pas à l'affichage d'un écran.
+
+        `filtre` retient les modèles dont le nom le contient, casse ignorée.
+        Il existe parce qu'un moteur réparti en annonce des centaines, et
+        qu'une liste de cette longueur ne se choisit pas : le menu n'a ni
+        pagination ni défilement piloté.
+
+        Les modèles SERVIS passent devant et portent une marque. L'ordre du
+        catalogue est celui du serveur, et il ne met pas en tête ce qui
+        répond.
+        """
+        empreinte = llm_fp.identify(
+            llm_fp.collect(serveur.host, serveur.port, budget=2.0),
+            port=serveur.port,
+            host=serveur.host,
+        )
+        sert = set(empreinte.served)
+        # Les servis d'abord, chacun dans l'ordre où le serveur les nomme.
+        noms = [nom for nom in empreinte.models if nom in sert]
+        noms += [nom for nom in empreinte.models if nom not in sert]
+        for nom in empreinte.served:
+            if nom not in noms:
+                # Servi sans figurer au catalogue : le serveur se contredit,
+                # et c'est le servi qui a raison puisque c'est lui qui répond.
+                noms.insert(0, nom)
+        if filtre:
+            filtre = filtre.lower()
+            noms = [nom for nom in noms if filtre in nom.lower()]
+        if not noms:
+            print(f"  {t('No model under that name on this server.')}")
+            return None
+        for rang, nom in enumerate(noms, 1):
+            marque = f"  ({t('loaded')})" if nom in sert else ""
+            print(f"  [{rang}] {nom}{marque}")
+        try:
+            reponse = click.prompt(t("Which model"))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        # `_llm_rang` rend un INDEX, pas un rang : il a déjà retiré le un.
+        index = self._llm_rang(reponse, len(noms))
+        if index is None:
+            print(t("Command not found !"))
+            return None
+        choisi = noms[index]
+        if choisi == serveur.model:
+            return None
+        return replace(serveur, model=choisi)
+
+    def _llm_remember_model(self, serveur):
+        """Écrire le modèle choisi sur le serveur ENREGISTRÉ qui lui répond.
+
+        Un choix explicite mérite de survivre au menu, mais tout serveur en
+        usage n'est pas un serveur enregistré : le repli distant n'en est pas
+        un, et celui qu'offre la sonde de la boucle locale non plus. On ne
+        touche donc que l'entrée dont l'hôte ET le port correspondent, et on
+        n'en crée aucune.
+        """
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        touche = False
+        for rang, connu in enumerate(connus):
+            if connu.host == serveur.host and connu.port == serveur.port:
+                connus[rang] = replace(connu, model=serveur.model)
+                touche = True
+        if not touche:
+            return
+        llm_servers.save(
+            llm_servers.assign_handles(connus),
+            set_config=self._llm_set_config,
+        )
+
+    def _llm_say_served(self, serveur):
+        """Après un refus, nommer ce que le serveur sert vraiment.
+
+        Une panne de réseau et un modèle absent se ressemblent dans le texte
+        d'une erreur, et la forme de ce texte appartient à chaque logiciel.
+        On repose donc au serveur la question « que sers-tu » au lieu de lire
+        son message, et on ne parle que si sa réponse contredit ce qu'on
+        demandait — un silence ne dit rien et se tait.
+        """
+        sert = llm_fp.collect_served(
+            serveur.software, serveur.host, serveur.port, budget=2.0
+        )
+        if not sert or serveur.model in sert:
+            return
+        print(f"  {t('This server does not serve %s.') % serveur.model}")
+        print(f"  {t('It serves: %s') % ', '.join(sert)}")
+        print(f"  💡 {t('/model changes it, /model <text> filters')}")
+
+    @staticmethod
+    def _llm_found_label(alias, adresse, port, empreinte):
+        """Le nom qu'on donne d'office à un serveur qu'on vient de trouver.
+
+        Il n'est PAS demandé : une découverte en rend plusieurs d'un coup, et
+        trois invites de nommage entre la trouvaille et l'usage font
+        abandonner. Il se corrige ensuite comme n'importe quel nom.
+
+        Derrière un tunnel, l'adresse ne distingue rien — tout est sur la
+        boucle locale, seul le port change — et trois lignes identiques à un
+        chiffre près ne se choisissent pas. L'alias est alors ce qui sépare,
+        et le modèle ce qui départage. Sans tunnel, l'adresse et le port
+        restent la seule chose qui sépare deux serveurs du même logiciel.
+
+        L'alias dit quelle entrée a DÉCLARÉ ce point de terminaison, et non
+        sur quelle machine le serveur tourne : l'appelant ne le fournit que
+        pour un port qu'aucune autre cible ne couvrait, sans quoi l'étiquette
+        nommerait une machine distante devant un service local.
+        """
+        if not alias:
+            return f"{empreinte.software} ({adresse}:{port})"
+        modele = AssistantMenuMixin._llm_default_model(empreinte)
+        return f"{alias} · {empreinte.software} {modele}".rstrip()
+
+    # ------------------------------------------------------------------
+    # Les agents IA
+
+    def _harnais_etats(self):
+        """L'état de chaque harnais déclaré, lu une fois par affichage."""
+        from script.todo.assistant.harness import registre as reg
+
+        return reg.etats()
+
+    @staticmethod
+    def _harnais_libelle(etat, compte=""):
+        """« ⛔ Open Code  (binaire introuvable) » — et jamais rien de moins.
+
+        Le verdict et sa raison sont sur la MÊME ligne que le nom : un écran
+        qui grise sans dire pourquoi envoie chercher une installation là où
+        c'est un adaptateur qui manque, ou l'inverse.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        marque = "" if etat.verdict == reg.OK else f"{MARQUE['no']} "
+        detail = compte or (t(etat.raison) if etat.raison else "")
+        suffixe = f"  ({detail})" if detail else ""
+        icone = etat.harnais.icone
+        return f"{marque}{icone} {etat.harnais.nom}{suffixe}"
+
+    def prompt_assistant_ia(self):
+        """Les agents, les modèles, et l'outillage qui les entoure.
+
+        Un agent et un serveur de modèle vivent dans le même écran mais dans
+        deux sections : le premier s'adresse par identifiant de session, le
+        second par port, et rien de ce qu'on sait de l'un ne s'applique à
+        l'autre. Les mêler dans une seule section ferait partager les mêmes
+        chiffres à deux modèles mentaux.
+
+        Un harnais absent garde son numéro et sa place. Le taire donnerait un
+        écran qui change de numérotation d'une machine à l'autre, et cacherait
+        justement l'information qui sert — qu'il existe, et qu'un `install`
+        suffirait.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        print(f"🤖 {t('An agent, a model, a conversation.')}")
+        while True:
+            etats = self._harnais_etats()
+            devant, autres = etats[:3], etats[3:]
+            serveur = self._llm_current()
+            # Les deux listes se construisent EN MÊME TEMPS, une action par
+            # entrée. Tenues séparément, elles se décalent d'un cran sans que
+            # rien ne lève : l'entrée s'affiche et une autre part.
+            choices = [{"section": t("Agents")}]
+            actions = []
+            for etat in devant:
+                compte = ""
+                if etat.verdict == reg.OK:
+                    if etat.harnais.cle == "claude":
+                        compte = self._claude_compte()
+                    elif etat.harnais.cle == "opencode":
+                        compte = self._opencode_compte()
+                choices.append(
+                    {"prompt_description": self._harnais_libelle(etat, compte)}
+                )
+                actions.append(lambda e=etat: self._harnais_ouvrir(e))
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Other harnesses…')}  ({len(autres)})"
+                    )
+                }
+            )
+            actions.append(lambda: self._harnais_autres(autres))
+            choices.append({"section": t("Direct model")})
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('LLM servers')}  ({self._llm_label(serveur)})"
+                    )
+                }
+            )
+            actions.append(self.prompt_assistant_llm)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Apertus - The open LLM, here or on a server')}"
+                        f"  ({self._apertus_label()})"
+                    )
+                }
+            )
+            actions.append(self._apertus_menu)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Open models - engines, licences and resources')}"
+                        f"  ({self._panorama_label()})"
+                    )
+                }
+            )
+            actions.append(self._panorama)
+            choices.append({"prompt_description": self._llm_gpt_label()})
+            actions.append(self._llm_gpt_catalogue)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Specialised agents')}"
+                        f"  ({self._llm_specialistes_label()})"
+                    )
+                }
+            )
+            actions.append(self._llm_specialistes)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Background agents')}"
+                        f"  ({self._llm_courses_label()})"
+                    )
+                }
+            )
+            actions.append(self._llm_courses)
+            choices.append({"section": t("Measure")})
+            choices.append({"prompt_description": t("Agent telemetry (TUI)")})
+            actions.append(self._agents_telemetrie)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Telemetry hooks')}  ({self._agents_hooks_etat()})"
+                    )
+                }
+            )
+            actions.append(self._agents_hooks)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Disk and cleanup')}  ({self._agents_volume()})"
+                    )
+                }
+            )
+            actions.append(self._agents_disque)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('MCP servers')}  ({self._agents_mcp_compte()})"
+                    )
+                }
+            )
+            actions.append(self._agents_mcp)
+            choices.append({"section": t("Tooling")})
+            for cle, methode in (
+                (
+                    "Configure Claude Code configurations",
+                    self._prompt_claude_configs,
+                ),
+                (
+                    "Claude Code plugins - marketplaces and ERPLibre list",
+                    self.prompt_execute_claude_plugins,
+                ),
+                (
+                    "RTK - CLI proxy to reduce LLM token consumption",
+                    self.prompt_execute_rtk,
+                ),
+                (
+                    "Show the context given to Claude",
+                    self._show_claude_context,
+                ),
+                (
+                    "Add an automation with Claude in todo.py",
+                    self._claude_add_automation,
+                ),
+            ):
+                choices.append({"prompt_description": t(cle)})
+                actions.append(methode)
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            try:
+                rang = int(status)
+            except ValueError:
+                print(t("Command not found !"))
+                continue
+            if 1 <= rang <= len(actions):
+                actions[rang - 1]()
+            else:
+                print(t("Command not found !"))
+
+    def _harnais_poser(self, harnais):
+        """Offrir la pose d'un harnais absent, quand ce dépôt la connaît.
+
+        La commande s'affiche AVANT la question. Elle tire un script d'un site
+        amont et le passe à un shell : un « o » donné par réflexe sur une
+        invite qui n'a rien montré n'est pas un consentement.
+
+        Un harnais dont la pose n'est pas mesurée l'annonce, au lieu d'offrir
+        un bouton qui lancerait une devinette. C'est la règle que le registre
+        tient déjà pour le répertoire de configuration.
+
+        Le binaire n'apparaîtra pas dans CE menu une fois posé : le PATH d'un
+        processus est figé à son démarrage, et l'installateur écrit dans un
+        répertoire que le shell courant ne relit pas. La routine de pose le
+        dit elle-même en terminant.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        pose = reg.installation(harnais)
+        if pose is None:
+            print(f"   {t('This repository has not measured its install.')}")
+            return
+        commande = pose[0]
+        print(f"   {t('This repository knows how to install it:')}")
+        print(f"   {commande}")
+        try:
+            reponse = click.prompt(t("Install it now? (y/n)"), default="n")
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if reponse.strip().lower() not in ("o", "oui", "y", "yes"):
+            return
+        self._shell_install_upstream_tool(harnais.binaire)
+
+    def _harnais_ouvrir(self, etat):
+        """L'écran d'un harnais, ou la raison pour laquelle il n'y en a pas."""
+        from script.todo.assistant.harness import registre as reg
+
+        if etat.verdict != reg.OK:
+            print(f"{MARQUE['no']} {t('This harness is not usable here:')}")
+            print(f"   {etat.harnais.nom} — {t(etat.raison)}")
+            if etat.verdict == reg.ABSENT:
+                self._harnais_poser(etat.harnais)
+            return
+        if etat.harnais.cle == "claude":
+            self.prompt_claude_sessions()
+            return
+        if etat.harnais.cle == "opencode":
+            self.prompt_opencode_seances()
+            return
+        print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
+
+    # Ce que l'écran nomme comme source de ce qu'il montre. Les deux ne
+    # portent pas la même chose : la base sait sortir du répertoire courant,
+    # le CLI non, et l'écran ne doit pas offrir une portée qu'il n'a pas.
+    SOURCES = {"base": "its database", "cli": "its command line"}
+
+    @staticmethod
+    def _opencode_lancer(argv):
+        """La sortie d'une lecture, ou "" quand l'outil ne répond pas.
+
+        Capturée et non diffusée : le listage se décode avant de s'afficher,
+        là où les statistiques se montrent telles quelles.
+        """
+        import subprocess
+
+        try:
+            fini = subprocess.run(
+                argv, capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return fini.stdout if fini.returncode == 0 else ""
+
+    def _opencode_seances(self, *, partout=False):
+        """Les séances, les plus récentes d'abord, et LA SOURCE qui a répondu.
+
+        La base d'abord : une lecture de moins d'une milliseconde qui porte
+        déjà le coût de chaque séance, là où le CLI demande deux commandes et
+        près de deux secondes pour moins, et se tronque au-delà de 60 ko.
+
+        Le CLI en repli, parce que le schéma de la base est celui d'un
+        logiciel tiers que personne ne promet stable. Il ne sait pas sortir du
+        répertoire courant : `partout` est donc sans effet sur lui, et l'écran
+        le dit plutôt que d'annoncer une portée qu'il n'a pas.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        ici = None if partout else os.getcwd()
+        seances = oc.lire_base(repertoire=ici)
+        if seances is not None:
+            return seances, "base"
+        return oc.decoder_liste(self._opencode_lancer(oc.argv_lister())), "cli"
+
+    def _opencode_compte(self):
+        """Ce que l'entrée du menu annonce, sans mentir sur la portée.
+
+        La BASE seulement, jamais le repli par le CLI. Celui-ci coûte un
+        lancement d'Open Code — près de deux secondes — et ce libellé se
+        recalcule à chaque affichage du menu, donc après chaque geste, y
+        compris ceux qui n'ont rien à voir avec ce harnais. L'écran qui suit,
+        lui, a le droit de payer : on le lui a demandé.
+
+        Base muette, suffixe vide : un compte inventé vaudrait moins que pas
+        de compte du tout.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        seances = oc.lire_base(repertoire=os.getcwd())
+        if seances is None:
+            return ""
+        if not seances:
+            return t("nothing here")
+        return self._llm_count(len(seances), "session here", "sessions here")
+
+    def prompt_opencode_seances(self):
+        """Les séances d'Open Code, et ce qu'elles ont coûté.
+
+        **L'écran DIT sa portée avant de lister.** Le listage d'Open Code ne
+        voit que le répertoire d'où il est lancé, là où celui de Claude Code
+        voit la machine entière. Présenter les deux de la même façon
+        annoncerait « aucune séance » à quelqu'un qui en a vingt dans le
+        répertoire d'à côté, et le laisserait chercher une panne.
+
+        **Aucun titre n'est affiché.** Celui d'une séance est engendré par le
+        modèle à partir de la conversation : c'est du contenu résumé, pas un
+        champ structurel, et il n'a pas plus sa place ici que le titre d'une
+        session de Claude Code.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        partout = False
+        while True:
+            seances, source = self._opencode_seances(partout=partout)
+            elargi = partout and source == "base"
+            titre = (
+                "Sessions everywhere on this machine"
+                if elargi
+                else "Sessions opened from this directory"
+            )
+            print(f"{t(titre)} :")
+            if not elargi:
+                print(f"  {os.getcwd()}")
+            if not seances:
+                # Trois vides qui n'appellent pas le même geste : la machine
+                # n'en porte aucune, ce répertoire n'en porte aucune, ou le
+                # CLI ne sait regarder que là. Le troisième invite à changer
+                # de répertoire, les deux autres non.
+                if elargi:
+                    vide = "No Open Code session on this machine."
+                elif source == "base":
+                    vide = "None in this directory."
+                else:
+                    vide = "None here. The listing sees this directory only."
+                print(f"  {MARQUE['unknown']} {t(vide)}")
+            for seance in seances:
+                print(f"  {self._opencode_ligne(seance)}")
+            print(f"  {t('read from')} {t(self.SOURCES[source])}")
+            choices = [
+                {"prompt_description": t("What one session cost")},
+                {
+                    "prompt_description": t(
+                        "Statistics, by tool and by model (all projects)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "This directory only"
+                        if elargi
+                        else "Every directory of this machine"
+                    )
+                },
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._opencode_cout(seances)
+            elif status == "2":
+                self.execute.exec_command_live(
+                    " ".join(oc.argv_statistiques()), source_erplibre=False
+                )
+            elif status == "3":
+                # Le CLI ne sait pas sortir du répertoire courant : basculer
+                # alors qu'il a répondu afficherait la même liste sous un
+                # autre titre, ce qui se lit comme un écran cassé.
+                if source != "base":
+                    print(
+                        f"{MARQUE['no']} {t('The database is not readable.')}"
+                    )
+                else:
+                    partout = not partout
+            else:
+                print(t("Command not found !"))
+
+    @staticmethod
+    def _opencode_ligne(seance):
+        """« <id>  AAAA-MM-JJ hh:mm » — ce qui DISTINGUE une séance.
+
+        La date et non le répertoire. Le listage étant cadré sur le répertoire
+        courant, celui d'une séance vaut presque toujours celui que l'en-tête
+        vient d'afficher : en colonne, il est constant et n'aide à rien, alors
+        que sans la date deux séances du même dossier sont identiques à
+        l'écran. Il reparaît quand il diffère, qui est le seul cas où il
+        apprend quelque chose.
+        """
+        ligne = f"{seance.identifiant}  {seance.quand}".rstrip()
+        ailleurs = seance.repertoire and seance.repertoire != os.getcwd()
+        return f"{ligne}  {seance.repertoire}" if ailleurs else ligne
+
+    def _opencode_cout(self, seances):
+        """Le coût d'une séance choisie : jetons, cache, lignes touchées."""
+        from script.todo.assistant.harness import opencode as oc
+
+        if not seances:
+            print(f"{MARQUE['unknown']} {t('No session to read here.')}")
+            return
+        choices = [
+            {"prompt_description": self._opencode_ligne(s)} for s in seances
+        ]
+        try:
+            rang = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if rang == "0":
+            return
+        if not rang.isdigit() or not 1 <= int(rang) <= len(seances):
+            print(t("Command not found !"))
+            return
+        seance = seances[int(rang) - 1]
+        # La base rend le résumé avec la séance : quand il est là, aucune
+        # commande n'est lancée, et la troncature de l'export ne peut pas
+        # frapper. Le repli ne sert que lorsque la base n'a pas répondu.
+        resume = seance.resume
+        brut = ""
+        if resume is None:
+            try:
+                argv = oc.argv_exporter(seance.identifiant)
+            except ValueError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                return
+            brut = self._opencode_lancer(argv)
+            resume = oc.decoder_export(brut)
+        if resume is None:
+            # None n'est pas un résumé à zéro : le dire évite de chercher une
+            # séance gratuite là où rien n'a pu être lu. Et nommer QUI a
+            # failli évite de chercher le défaut ici : sur une longue séance,
+            # c'est l'outil qui sort avant d'avoir vidé son tampon.
+            if oc.semble_tronque(brut):
+                print(f"{MARQUE['no']} {t('Open Code cut its own output.')}")
+                print(f"   {t('It happens past roughly 60 kB of export.')}")
+            else:
+                print(f"{MARQUE['no']} {t('This session could not be read.')}")
+            return
+        print(f"  {resume.modele} · {resume.fournisseur} · {resume.agent}")
+        print(f"  {t('cost')} {resume.cout:.4f} $")
+        print(
+            f"  {t('tokens')} {resume.jetons}"
+            f"  ({t('cache read')} {resume.cache_lu})"
+        )
+        print(
+            f"  +{resume.lignes_ajoutees} −{resume.lignes_retirees}"
+            f"  {self._llm_count(resume.fichiers, 'file', 'files')}"
+        )
+
+    def _harnais_autres(self, autres):
+        """Les harnais restants, en prose et sans numéro.
+
+        Aucun n'est ouvrable — ils sont là pour dire qu'ils existent et ce qui
+        leur manque. Une liste numérotée juste après un menu numéroté invite à
+        retaper une entrée de menu, et ce dépôt l'a déjà payé une fois.
+        """
+        print(f"{t('The harnesses this repository knows by name')} :")
+        for etat in autres:
+            print(
+                f"  {MARQUE['no']} {etat.harnais.icone} {etat.harnais.nom}"
+                f" — {t(etat.raison)}"
+            )
+        print(f"  {t('Installing one makes it appear on its own.')}")
+
+    def _claude_compte(self):
+        """« 6 · 5 vivantes », ou ce qui le remplace quand il n'y a rien."""
+        flotte = self._claude_flotte()
+        if not flotte:
+            return t("No session on this machine.")
+        vivantes = sum(1 for session in flotte if session.live)
+        return f"{len(flotte)} · {vivantes} {t('live')}"
+
     def prompt_assistant_llm(self):
         """Le sous-menu : parler à un serveur, ou décider auquel."""
         print(f"🤖 {t('A server, a gpt tool, a conversation.')}")
@@ -213,6 +930,9 @@ class AssistantMenuMixin:
                         f"{t('Server card')}  ({t('what it says it can do')})"
                     )
                 },
+                {"section": t("Deployment")},
+                {"prompt_description": self._llm_models_label()},
+                {"prompt_description": t("Install ERPLibre on a target")},
             ]
             try:
                 status = click.prompt(self.fill_help_info(choices))
@@ -223,7 +943,7 @@ class AssistantMenuMixin:
             if status == "0":
                 return
             elif status == "1":
-                self._llm_conversation()
+                self._llm_reprendre()
             elif status == "2":
                 self._llm_gpt_catalogue()
             elif status == "3":
@@ -232,6 +952,10 @@ class AssistantMenuMixin:
                 self._llm_search()
             elif status == "5":
                 self._llm_server_card()
+            elif status == "6":
+                self._llm_models()
+            elif status == "7":
+                self._llm_deploy()
             else:
                 print(t("Command not found !"))
 
@@ -323,7 +1047,7 @@ class AssistantMenuMixin:
                 host=host,
                 port=port,
                 software=empreinte.software or "",
-                model=empreinte.models[0] if empreinte.models else "",
+                model=self._llm_default_model(empreinte),
                 hosting=llm_caps.classify_hosting(host),
                 secret_ref="",
             )
@@ -340,15 +1064,21 @@ class AssistantMenuMixin:
         Une frappe sur « o » se donne par réflexe ; recopier un nom oblige à
         regarder ce qu'on retire.
         """
-        noms = [s.label for s in connus]
-        for rang, nom in enumerate(noms, 1):
-            print(f"[{rang}] {nom}")
+        # L'entrée est choisie par son RANG, jamais par son nom. Deux
+        # serveurs peuvent porter la même étiquette — elle retombe sur l'hôte
+        # quand le nom est laissé vide — et filtrer dessus retirait les deux.
+        # L'hôte et le port sont affichés pour que le choix soit possible.
+        for rang, serveur in enumerate(connus, 1):
+            print(f"[{rang}] {serveur.label}  ({serveur.host}:{serveur.port})")
         try:
-            choisis = self._parse_index_selection(
-                click.prompt(t("Delete a server")), noms
-            )
-            if not choisis:
+            brut = click.prompt(t("Delete a server")).strip()
+            if not brut:
                 return
+            if not brut.isdigit() or not 1 <= int(brut) <= len(connus):
+                print(t("Command not found !"))
+                return
+            rang = int(brut) - 1
+            cible = connus[rang]
             frappe = click.prompt(
                 t("Type the server name in full to delete it:"),
                 prompt_suffix=" ",
@@ -356,16 +1086,22 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
-        if frappe != choisis[0]:
+        # Le nom retapé CONFIRME, il ne sélectionne pas : c'est le rang qui
+        # désigne, et un homonyme ne peut donc plus partir avec.
+        if not cible.label or frappe != cible.label:
             print(t("Destination not retyped — nothing was sent."))
             return
-        restants = [s for s in connus if s.label != choisis[0]]
+        restants = [s for i, s in enumerate(connus) if i != rang]
         llm_servers.save(
             llm_servers.assign_handles(restants),
             set_config=self._llm_set_config,
         )
         state = self._llm_state()
-        if state["serveur"] and state["serveur"].label == choisis[0]:
+        courant = state.get("serveur")
+        if courant is not None and (courant.host, courant.port) == (
+            cible.host,
+            cible.port,
+        ):
             state["serveur"] = None
 
     def _llm_search(self):
@@ -384,10 +1120,16 @@ class AssistantMenuMixin:
 
         while True:
             reseaux = llm_disc.local_networks()
+            # Le compte est CALCULÉ et non écrit : les tunnels déclarés
+            # s'ajoutent aux ports connus, donc un nombre figé dans
+            # l'étiquette annoncerait moins de travail qu'il n'y en a.
+            ports_ici = self._llm_loopback_ports()
             choices = [
                 {
                     "prompt_description": (
-                        f"{t('Here (127.0.0.1)')}  ({t('11 ports, instant')})"
+                        f"{t('Here (127.0.0.1)')}"
+                        f"  ({self._llm_count(len(ports_ici), 'port', 'ports')}"
+                        f", {t('instant')})"
                     )
                 },
                 {
@@ -433,7 +1175,9 @@ class AssistantMenuMixin:
                 continue
             if rang == 1:
                 self._llm_state()["sonde"] = None
-                self._llm_probe_and_keep(["127.0.0.1"])
+                self._llm_probe_and_keep(
+                    ["127.0.0.1"], tunnels=self._llm_tunnels()
+                )
             elif rang == 2:
                 self._llm_search_qemu()
             elif rang == 3:
@@ -482,6 +1226,13 @@ class AssistantMenuMixin:
 
         Une entrée sans `HostName` n'est jamais écartée : `ssh -G` rend alors
         l'alias comme nom d'hôte, et le DNS ou /etc/hosts le résout souvent.
+
+        Les TUNNELS déclarés par ces mêmes entrées sont sondés avec elles, et
+        c'est souvent eux qui répondent : un service derrière un pare-feu qui
+        ne laisse passer que le port de ssh n'ouvre aucun port vu du dehors,
+        et ne se joint que par l'extrémité locale de sa redirection. Sonder
+        les seuls noms d'hôte annonce alors vide un hôte qui sert des
+        modèles.
         """
         from script.todo.assistant import discover as llm_disc
 
@@ -489,10 +1240,13 @@ class AssistantMenuMixin:
             list_aliases=self._ssh_config_hosts,
             resolve=self._ssh_resolve,
         )
-        if not hotes:
+        tunnels = self._llm_tunnels()
+        if not hotes and not tunnels:
             print(t("~/.ssh/config absent — nothing to probe"))
             return
-        self._llm_probe_and_keep([hote for _, hote, _ in hotes])
+        self._llm_probe_and_keep(
+            [hote for _, hote, _ in hotes], tunnels=tunnels
+        )
 
     def _llm_search_cidr(self):
         """Balayer un réseau que la machine ne porte pas.
@@ -677,7 +1431,9 @@ class AssistantMenuMixin:
 
         return imprimer
 
-    def _llm_probe_and_keep(self, adresses, *, cible=None, restreint=False):
+    def _llm_probe_and_keep(
+        self, adresses, *, cible=None, restreint=False, tunnels=()
+    ):
         """Frapper, reconnaître, puis proposer de garder.
 
         Le balayage n'ouvre que des connexions ; la reconnaissance, elle,
@@ -688,6 +1444,13 @@ class AssistantMenuMixin:
         `cible` nomme. L'absence de trouvaille se dit alors autrement : un
         réseau dont on n'a vu qu'une adresse n'est pas un réseau vide, et
         l'annoncer comme tel est un faux négatif.
+
+        `tunnels` porte des extrémités locales à frapper EN PLUS du produit
+        adresses × ports. Ce sont des couples précis et non un produit : un
+        tunnel nomme son port, et le croiser avec les autres adresses
+        frapperait des portes que personne n'a déclarées. Un tunnel déclaré
+        dont le port ne répond pas n'est pas une absence de serveur mais un
+        tunnel à monter, et il est proposé comme tel.
         """
         from script.todo.assistant import discover as llm_disc
 
@@ -695,17 +1458,33 @@ class AssistantMenuMixin:
         jobs = [
             (adresse, port) for adresse in adresses for port in llm_fp.PORTS
         ]
-        etiquette = cible or ", ".join(adresses[:3])
+        # Ce que le produit couvrait DÉJÀ. Un tunnel qui y tombe n'ajoute
+        # aucune cible, et surtout il n'en nomme aucune : le port aurait été
+        # frappé sans lui, donc ce qui répond peut tout aussi bien être un
+        # service local qui occupe ce port — celui-là même qui empêche le
+        # tunnel de se lier. Seuls les tunnels HORS du produit prêtent leur
+        # alias à l'étiquette.
+        produit = set(jobs)
+        propres = []
+        for tunnel in tunnels:
+            couple = (tunnel.bind, tunnel.local_port)
+            if couple in produit:
+                continue
+            produit.add(couple)
+            propres.append(tunnel)
+            jobs.append(couple)
+        etiquette = cible or ", ".join(adresses[:3]) or t("SSH tunnels")
         combien = self._llm_count(len(adresses), "host", "hosts")
         combien_ports = self._llm_count(len(llm_fp.PORTS), "port", "ports")
+        entete = f"🔎 {etiquette} · {combien} × {combien_ports}"
+        if tunnels:
+            entete += (
+                f" · {self._llm_count(len(tunnels), 'tunnel', 'tunnels')}"
+            )
         # Vidée avant que la piscine démarre : un balayage silencieux de
         # plusieurs secondes se lit comme un blocage, et l'en-tête est ce qui
         # dit ce qu'on attend et comment l'interrompre.
-        print(
-            f"🔎 {etiquette} · {combien} × {combien_ports}"
-            f" · {t('Ctrl+C interrupts')}",
-            flush=True,
-        )
+        print(f"{entete} · {t('Ctrl+C interrupts')}", flush=True)
         debut = time.monotonic()
         try:
             touches = llm_disc.sweep(
@@ -713,6 +1492,7 @@ class AssistantMenuMixin:
                 on_event=self._llm_sweep_printer(),
                 **self._llm_sweep_tuning(),
             )
+            touches = touches + self._llm_mount_tunnels(tunnels, touches)
         except KeyboardInterrupt:
             print(f"\n⏹ {t('answer interrupted')}")
             return
@@ -724,9 +1504,17 @@ class AssistantMenuMixin:
             if not empreinte.software:
                 print(f"  ⚠ {adresse}:{port} {t('Answered, not identified')}")
                 continue
+            # La version est jointe par un espace SEULEMENT si elle existe :
+            # la moitié des étages n'en publient aucune, et une ligne qui
+            # porte deux espaces d'affilée se lit comme un champ vide qu'on a
+            # oublié de remplir.
+            nomme = " ".join(
+                part
+                for part in (empreinte.software, empreinte.version)
+                if part
+            )
             print(
-                f"  → {adresse}:{port} · {empreinte.software}"
-                f" {empreinte.version} ·"
+                f"  → {adresse}:{port} · {nomme} ·"
                 f" {self._llm_count(len(empreinte.models), 'model', 'models')}"
             )
             trouves.append((adresse, port, empreinte))
@@ -755,9 +1543,104 @@ class AssistantMenuMixin:
             f" {self._llm_count(len(adresses), 'host swept', 'hosts swept')}"
             f" ({self._fmt_dur(duree)})"
         )
-        self._llm_keep(trouves)
+        self._llm_keep(trouves, tunnels=propres)
 
-    def _llm_keep(self, trouves):
+    def _llm_mount_tunnels(self, tunnels, touches):
+        """Proposer de monter les tunnels déclarés qui ne répondent pas.
+
+        Rend les couples qui ont accepté APRÈS montage, à joindre à ceux du
+        balayage. Rien n'est lancé sans un oui.
+
+        Un port de tunnel fermé ne dit pas la même chose qu'un port fermé
+        ordinaire : la déclaration prouve que quelqu'un a désigné ce service,
+        et seul le processus qui porte la redirection manque. Le taire
+        laisserait l'utilisateur devant un « aucun serveur » qu'un mot
+        corrige.
+
+        Les tunnels sont groupés par ALIAS parce que c'est l'unité que ssh
+        monte : une commande ouvre toutes les redirections d'une entrée, et
+        poser la question par port en poserait trois pour un seul oui.
+
+        Le compte annoncé est celui des tunnels SANS RÉPONSE, et non « aucun
+        n'est monté » : une entrée dont deux redirections sur trois tournent
+        déjà est le cas exact où la troisième vient d'être ajoutée au
+        fichier, et affirmer qu'aucune ne tient y serait faux.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        vivants = set(touches)
+        morts = {}
+        for tunnel in tunnels:
+            if (tunnel.bind, tunnel.local_port) not in vivants:
+                morts.setdefault(tunnel.alias, []).append(tunnel)
+        repris = []
+        for alias, dormants in morts.items():
+            combien = self._llm_count(
+                len(dormants),
+                "declared tunnel without an answer",
+                "declared tunnels without an answer",
+            )
+            print(f"  ⚠ {alias} — {combien}")
+            try:
+                reponse = click.prompt(
+                    f"{t('Mount the tunnels of %s?') % alias} (o/N)"
+                )
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return repris
+            if not self._is_yes(reponse):
+                continue
+            if not self._llm_mount_tunnel(alias):
+                continue
+            repris += llm_disc.sweep(
+                [(one.bind, one.local_port) for one in dormants],
+                on_event=self._llm_sweep_printer(),
+                **self._llm_sweep_tuning(),
+            )
+        return repris
+
+    def _llm_mount_tunnel(self, alias):
+        """Monter les redirections d'un alias par un ssh détaché. Vrai si
+        elles tiennent.
+
+        `ExitOnForwardFailure` est ce qui rend le code de retour croyable :
+        sans lui, un ssh détaché rend 0 alors qu'aucune redirection n'a pu
+        être liée, et le menu annoncerait un tunnel monté devant un port
+        fermé. Le port déjà pris par un tunnel oublié est le cas courant, et
+        c'est exactement celui-là qu'il attrape.
+
+        Sa contrepartie est que le montage est TOUT OU RIEN : une entrée dont
+        une redirection est déjà liée échoue en entier, y compris pour les
+        ports libres. Le message d'erreur de ssh nomme alors le port en
+        cause, et c'est lui qu'on rapporte — l'issue est de défaire le tunnel
+        partiel, ce que ce menu ne fait pas à la place de l'utilisateur :
+        tuer un processus que quelqu'un d'autre utilise ne se devine pas.
+
+        Aucune redirection n'est passée en argument : les `LocalForward` de
+        l'entrée suffisent, et les recopier ici les ferait diverger du
+        fichier au premier changement.
+        """
+        import subprocess
+
+        commande = ["ssh", "-f", "-N", "-o", "ExitOnForwardFailure=yes", alias]
+        try:
+            res = subprocess.run(
+                commande,
+                capture_output=True,
+                text=True,
+                timeout=DELAI_TUNNEL,
+            )
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⚠ {souci}")
+            return False
+        if res.returncode:
+            # Tronqué : ssh raconte volontiers la négociation entière, et le
+            # menu n'a pas de pagination.
+            print(f"  ⚠ {res.stderr.strip()[:200]}")
+            return False
+        return True
+
+    def _llm_keep(self, trouves, tunnels=()):
         """Proposer de garder ce qui a été reconnu.
 
         Seuls les serveurs RETENUS descendent sur le disque. Aucun rapport de
@@ -773,16 +1656,25 @@ class AssistantMenuMixin:
         if not self._is_yes(reponse):
             print(t("nothing kept"))
             return
+        alias_de = {
+            (tunnel.bind, tunnel.local_port): tunnel.alias
+            for tunnel in tunnels
+        }
         connus = llm_servers.load(get_config=self._llm_get_config)
         for adresse, port, empreinte in trouves:
             connus.append(
                 llm_servers.Server(
                     handle="",
-                    label=f"{empreinte.software} ({adresse}:{port})",
+                    label=self._llm_found_label(
+                        alias_de.get((adresse, port), ""),
+                        adresse,
+                        port,
+                        empreinte,
+                    ),
                     host=adresse,
                     port=port,
                     software=empreinte.software,
-                    model=empreinte.models[0] if empreinte.models else "",
+                    model=self._llm_default_model(empreinte),
                     hosting=llm_caps.classify_hosting(adresse),
                     secret_ref="",
                 )
@@ -848,12 +1740,701 @@ class AssistantMenuMixin:
         }.get(hosting, "third party")
 
     # ------------------------------------------------------------------
+    # Les modèles d'un serveur connu
+
+    def _llm_models_label(self):
+        """L'étiquette de l'entrée modèles, et ce qu'elle promet.
+
+        Dire dès le menu qu'une famille n'offre rien évite d'ouvrir un écran
+        pour n'y trouver qu'un refus. Sans serveur, l'étiquette le dit aussi :
+        l'entrée reste choisissable et mène à la liste des serveurs.
+        """
+        from script.todo.assistant import models as llm_models
+
+        serveur = self._llm_current()
+        if serveur is None:
+            glose = t("no server yet")
+        elif not llm_models.gere(serveur.software):
+            glose = t("nothing offered here")
+        else:
+            glose = self._llm_label(serveur)
+        return f"{t('Models on a server')}  ({glose})"
+
+    def _llm_models(self):
+        """Poser ou retirer un modèle sur le serveur en usage.
+
+        Sans serveur, l'entrée tombe dans la liste des serveurs plutôt que
+        d'imprimer une erreur : une entrée de menu n'a jamais de raison
+        d'être une impasse.
+        """
+        from script.todo.assistant import models as llm_models
+
+        serveur = self._llm_current()
+        if serveur is None:
+            print(t("no server yet"))
+            self._llm_servers()
+            return
+        table = llm_models.famille(serveur.software)
+        if table is None or not (table.pose or table.retrait):
+            raison = table.raison_pose if table else llm_models.REFUS_FAMILLE
+            print(f"⛔ {t(raison)}")
+            return
+        jeton = self._llm_server_token(serveur)
+        while True:
+            print(f"  {serveur.label} — {self._llm_label(serveur)}")
+            presents = llm_models.listing(serveur, jeton=jeton)
+            self._llm_models_show(presents)
+            choices = [
+                {"section": t("Models")},
+                {"prompt_description": t("Install a model")},
+                {"prompt_description": t("Remove a model")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._llm_model_pose(serveur, jeton)
+            elif status == "2":
+                self._llm_model_retrait(serveur, jeton, presents)
+            else:
+                print(t("Command not found !"))
+
+    def _llm_models_show(self, presents):
+        """Ce que le serveur porte déjà, choisi par LETTRE.
+
+        Le menu qui suit numérote ses entrées ; une seconde liste numérotée
+        juste avant invite à retaper un numéro de menu.
+        """
+        if not presents:
+            print(f"  {t('No model on this server.')}")
+            return
+        marques = [
+            f"{LETTRES[rang]}) {nom}"
+            for rang, nom in enumerate(presents[: len(LETTRES)])
+        ]
+        print(f"  {self._llm_count(len(presents), 'model', 'models')} :")
+        print(f"    {'  '.join(marques)}")
+
+    def _llm_model_pose(self, serveur, jeton):
+        """Poser un modèle, sa destination retapée d'abord.
+
+        Une pose tire plusieurs gigaoctets sur une machine qui n'est pas
+        toujours celle-ci, et un serveur classé tiers est tenu pour tel ici
+        comme ailleurs : la confirmation est celle de tout premier envoi.
+        """
+        from script.todo.assistant import models as llm_models
+
+        if not self._llm_confirm_third_party(serveur):
+            return
+        try:
+            nom = click.prompt(t("Model name")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        print(f"🔎 {t('Pulling — Ctrl+C interrupts')}", flush=True)
+        issue = llm_models.pose(
+            serveur,
+            nom,
+            jeton=jeton,
+            sur_evenement=self._llm_models_printer,
+        )
+        self._llm_models_verdict(issue, serveur)
+
+    def _llm_model_retrait(self, serveur, jeton, presents):
+        """Retirer un modèle, son nom retapé en entier.
+
+        Un retrait est irréversible chez le serveur, et les poids se
+        retéléchargent par gigaoctets : recopier le nom oblige à regarder ce
+        qu'on retire, là où « o » se tape par réflexe.
+        """
+        from script.todo.assistant import models as llm_models
+
+        table = llm_models.famille(serveur.software)
+        if table is not None and table.retrait is None:
+            print(f"⛔ {t(table.raison_retrait)}")
+            return
+        if not presents:
+            print(t("No model on this server."))
+            return
+        try:
+            # La lettre DÉSIGNE, la frappe CONFIRME. Désigner seul suffirait à
+            # perdre des gigaoctets sur une touche voisine ; retaper seul
+            # ferait recopier un nom long depuis l'écran du dessus.
+            choix = click.prompt(t("Remove a model")).strip()
+            rang = self._llm_rang(choix, len(presents))
+            if rang is None:
+                print(t("Command not found !"))
+                return
+            vise = presents[rang]
+            frappe = click.prompt(
+                t("Type the model name in full to remove it:"),
+                prompt_suffix=" ",
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if frappe != vise:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        self._llm_models_verdict(
+            llm_models.retrait(serveur, frappe, jeton=jeton), serveur
+        )
+
+    def _llm_models_verdict(self, issue, serveur):
+        """Dire ce qu'a donné une pose ou un retrait, et périmer le cache.
+
+        Les marques ✅/⚠️/⛔ du catalogue gpt se lisent dans un cache dont la
+        clé porte le modèle : sans cette péremption, un modèle fraîchement
+        posé garderait les verdicts de l'ancien.
+        """
+        detail = f" {issue.brut}" if issue.brut else ""
+        if issue.note:
+            detail += f" {t(issue.note)}"
+        if issue.ok:
+            print(f"✅ {t(issue.detail)}{detail}")
+            state = self._llm_state()
+            state["caps"] = None
+            state["caps_cle"] = None
+        else:
+            print(f"⛔ {t(issue.detail)}{detail}")
+
+    def _llm_models_printer(self, event):
+        """Rendre un événement de pose. Le module n'imprime pas lui-même."""
+        genre = event[0]
+        if genre == "etat":
+            print(f"  ✓ {event[1]}")
+        elif genre == "octets":
+            part = 100 * event[1] // max(event[2], 1)
+            print(f"  ⏳ {part}%")
+        elif genre == "fini":
+            print(f"  ✅ {event[1]}")
+
+    def _llm_server_token(self, serveur):
+        """La clé de ce serveur, lue dans le coffre, ou une chaîne vide.
+
+        `secret_ref` vaut « kdbx:<titre d'entrée> » : la clé elle-même n'est
+        jamais dans la configuration. Elle reste en mémoire du processus et
+        n'entre dans aucun argument — /proc expose la ligne de commande de
+        chaque processus à tout compte de la machine.
+
+        Un coffre absent ou fermé rend une chaîne vide plutôt que de lever :
+        une famille qui accepte une clé sans l'exiger répond quand même.
+        """
+        reference = (serveur.secret_ref or "").strip()
+        if not reference.startswith("kdbx:"):
+            return ""
+        titre = reference[len("kdbx:") :].strip()
+        if not titre:
+            return ""
+        kp = self.kdbx_manager.get_kdbx()
+        if not kp:
+            return ""
+        entree = kp.find_entries_by_title(titre, first=True)
+        return getattr(entree, "password", "") or ""
+
+    # ------------------------------------------------------------------
+    # Poser un ERPLibre sur une cible
+
+    def _llm_deploy(self):
+        """Poser un ERPLibre sur cette machine ou sur un hôte de ~/.ssh/config.
+
+        Tout se demande AVANT de rien lancer — la cible, la méthode, le
+        chemin, la branche, le transfert — pour qu'une pose qui dure de
+        longues minutes tourne ensuite sans surveillance.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        cible = self._llm_deploy_cible()
+        if cible is None:
+            return
+        # La sonde AVANT la méthode : le verdict ne dépend pas d'elle, et un
+        # chemin occupé refuse alors sans avoir fait répondre à trois écrans.
+        if not self._llm_deploy_libre(cible):
+            return
+        methode = self._llm_deploy_methode(cible)
+        if methode is None:
+            return
+        commande = self._llm_deploy_commande(cible, methode)
+        if commande is None:
+            return
+        transfert = self._llm_transfert_choix(cible)
+        if transfert is None:
+            return
+        print(f"{t('Will execute:')} {commande}")
+        try:
+            frappe = click.prompt(
+                t("Type the target path in full to install there:"),
+                prompt_suffix=" ",
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if frappe != cible.path:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        code = self.execute.exec_command_live(
+            commande, source_erplibre=False, single_source_erplibre=True
+        )
+        # La garde rejouée dans le bloc sort en 3, et une installation ratée
+        # sort autrement : dans les deux cas il n'y a rien là-bas à
+        # configurer. Transférer quand même poserait la liste des serveurs —
+        # et, si on l'a demandée, celle des noms interdits — sur un hôte où
+        # aucun ERPLibre n'a été posé.
+        if code:
+            print(f"⛔ {t('The install failed — nothing was transferred.')}")
+            return
+        if transfert:
+            self._llm_transfert_poser(cible, transfert)
+        print(f"✅ {llm_deploy.resume(cible)}")
+
+    def _llm_deploy_cible(self):
+        """Où poser : un chemin d'ici, ou un hôte de ~/.ssh/config.
+
+        Rend None quand l'utilisateur renonce. L'alias choisi n'est jamais
+        résolu en adresse : ssh lit lui-même l'utilisateur, le port et le
+        ProxyJump de son entrée.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        choices = [
+            {"section": t("Target")},
+            {"prompt_description": t("A path on this machine")},
+            {"prompt_description": t("A host of ~/.ssh/config")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "1":
+            alias = ""
+        elif status == "2":
+            alias = self._llm_deploy_alias()
+            if not alias:
+                return None
+        else:
+            if status != "0":
+                print(t("Command not found !"))
+            return None
+        try:
+            chemin = click.prompt(
+                t("Path on the target"),
+                default=llm_deploy.CHEMIN_DEFAUT,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        if not chemin:
+            print(t("Nothing to do."))
+            return None
+        if llm_deploy.tilde_etranger(chemin):
+            # Personne ici ne sait où vit le compte d'autrui sur la cible :
+            # la sonde et l'écriture cesseraient de juger le même répertoire.
+            print(f"⛔ {t('Only ~/ is expanded — give a full path.')}")
+            return None
+        return llm_deploy.Cible(handle="cible-1", alias=alias, path=chemin)
+
+    def _llm_deploy_alias(self):
+        """L'alias choisi dans ~/.ssh/config, ou "" si l'on renonce.
+
+        La lecture ne suit pas `Include` : un alias déclaré dans un fichier
+        inclus n'apparaît pas ici, alors que ssh le résoudrait. L'écran
+        accepte donc aussi un nom TAPÉ, faute de quoi une entrée parfaitement
+        valide serait inatteignable.
+        """
+        alias = self._ssh_config_hosts()
+        if not alias:
+            print(t("~/.ssh/config absent — nothing to probe"))
+        choices = [{"section": t("SSH")}] + [
+            {"prompt_description": nom} for nom in alias
+        ]
+        choices.append({"prompt_description": t("Type a name")})
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return ""
+        print()
+        if status == "0":
+            return ""
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return ""
+        if 1 <= rang <= len(alias):
+            return alias[rang - 1]
+        if rang == len(alias) + 1:
+            try:
+                tape = click.prompt(t("Type a name")).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return ""
+            # ssh n'accepte pas « -- » : un nom qui s'ouvre sur un tiret est
+            # lu comme une option, et « -o ProxyCommand=… » exécuterait une
+            # commande avant même que l'écran ait demandé confirmation.
+            if tape.startswith("-"):
+                print(f"⛔ {t('A name cannot begin with a dash.')}")
+                return ""
+            return tape
+        print(t("Command not found !"))
+        return ""
+
+    def _llm_deploy_methode(self, cible):
+        """Cloner depuis git, ou recopier cet arbre-ci. None si l'on renonce.
+
+        Rend ("clone", branche) ou ("copie", ""). La copie emporte `.git`,
+        sans quoi l'installation ne saurait pas résoudre la branche de son
+        manifeste.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        choices = [
+            {"section": t("Install")},
+            {"prompt_description": t("Clone from git")},
+            {"prompt_description": t("Copy this checkout")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "1":
+            try:
+                branche = click.prompt(
+                    t("Branch to clone"),
+                    default=llm_deploy.BRANCHE_DEFAUT,
+                ).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return None
+            return ("clone", branche or llm_deploy.BRANCHE_DEFAUT)
+        if status == "2":
+            return ("copie", "")
+        if status != "0":
+            print(t("Command not found !"))
+        return None
+
+    def _llm_deploy_libre(self, cible):
+        """Vrai quand le chemin est libre. Sonde AVANT toute écriture.
+
+        Ce qui n'a pas été lu compte pour occupé : une sortie vide se produit
+        aussi bien sur un hôte injoignable que sur une clé refusée, et aucun
+        des deux ne prouve qu'il n'y a rien là-bas.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        if cible.alias:
+            code, sortie = self._ssh_run(
+                cible.alias, llm_deploy.sonde_shell(cible.path)
+            )
+            etat = llm_deploy.lire_sonde(code, sortie)
+            vus = llm_deploy.marqueurs_vus(sortie)
+        else:
+            etat = llm_deploy.etat_local(cible.path)
+            vus = []
+        if etat == llm_deploy.LIBRE:
+            return True
+        if etat == llm_deploy.MUET:
+            avis = t("The probe said nothing — the path counts as occupied:")
+            print(f"⛔ {avis} {cible.path}")
+            return False
+        if etat == llm_deploy.ERPLIBRE:
+            trace = f" ({', '.join(vus)})" if vus else ""
+            print(
+                f"⛔ {t('An ERPLibre is already there — nothing was touched:')}"
+                f" {cible.path}{trace}"
+            )
+            return False
+        print(
+            f"⛔ {t('Something is already there — nothing was touched:')}"
+            f" {cible.path}"
+        )
+        return False
+
+    def _llm_deploy_commande(self, cible, methode):
+        """Le bloc shell qui posera l'installation, ou None.
+
+        La copie vers un hôte distant part d'ICI : rsync pousse l'arbre, puis
+        ssh lance l'installation là-bas. Le clone, lui, tourne entièrement
+        chez la cible.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        genre, branche = methode
+        make = self.ERPLIBRE_ODOO_TARGET
+        if genre == "clone":
+            bloc = llm_deploy.bloc_clone(
+                cible.path,
+                git_url=self.ERPLIBRE_GIT_URL,
+                branche=branche,
+                cible_make=make,
+            )
+            if cible.alias:
+                return llm_deploy.bloc_distant(cible.alias, bloc)
+            return bloc
+        if cible.alias:
+            return llm_deploy.bloc_copie(cible, cible_make=make)
+        return llm_deploy.bloc_local_copie(cible.path, cible_make=make)
+
+    def _ssh_run(self, alias, commande, timeout=20):
+        """(code, sortie) d'une commande courte chez `alias`, sans invite.
+
+        `BatchMode` refuse toute question : un hôte qui demanderait un mot de
+        passe bloquerait le menu sur une invite que personne ne voit venir.
+        La commande part en UN SEUL argument, que l'interpréteur de là-bas
+        relit une fois et une seule.
+
+        Seule la sortie STANDARD est rendue. Un avertissement de ssh — clé
+        d'hôte apprise, bannière — sort sur l'erreur, et le confondre avec le
+        texte de la sonde laisserait un message étranger porter un marqueur.
+        """
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    f"ConnectTimeout={timeout}",
+                    alias,
+                    commande,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 12,
+                env=self._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 255, ""
+        return res.returncode, res.stdout
+
+    # ------------------------------------------------------------------
+    # Le transfert de la configuration LLM
+
+    def _llm_transfert_choix(self, cible):
+        """Ce qui voyagera vers l'installation neuve. None si l'on renonce.
+
+        Rend une liste d'articles, vide quand l'utilisateur dit non. La
+        question se pose AVANT la pose, pour que celle-ci tourne sans
+        surveillance.
+        """
+        articles = self._llm_transfert_articles()
+        if not articles:
+            return []
+        choices = [
+            {"section": t("Transfer")},
+            {"prompt_description": t("Everything")},
+            {"prompt_description": t("Choose…")},
+        ]
+        print(
+            f"{t('Transfer the LLM configuration to the new installation?')}"
+        )
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "0":
+            return []
+        if status == "1":
+            return [a for a in articles if not a["reserve"]]
+        if status != "2":
+            print(t("Command not found !"))
+            return None
+        return self._llm_transfert_granulaire(articles)
+
+    def _llm_transfert_granulaire(self, articles):
+        """Un numéro par article, plusieurs numéros à la fois.
+
+        Les articles RÉSERVÉS ne sont jamais pris par « tout » : celui qui
+        porte la liste des noms interdits déplace des noms de clients sur une
+        machine neuve, et ne part que nommé un par un.
+        """
+        etiquettes = []
+        for rang, article in enumerate(articles, 1):
+            garde = "  ⚠" if article["reserve"] else ""
+            print(f"[{rang}] {article['label']}{garde}")
+            if article["glose"]:
+                print(f"      {article['glose']}")
+            etiquettes.append(str(rang))
+        try:
+            reponse = click.prompt(t("Choose…"))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        pris = self._parse_index_selection(reponse, etiquettes)
+        if reponse.strip() and not pris:
+            # Une saisie qu'on ne sait pas lire n'est pas un « rien » : la
+            # confondre avec lui ferait passer un doigt qui a glissé pour une
+            # décision, sans un mot.
+            print(t("Command not found !"))
+            return None
+        return [articles[int(n) - 1] for n in pris]
+
+    def _llm_transfert_articles(self):
+        """Ce qui PEUT voyager, un article par ligne de l'écran granulaire.
+
+        Un serveur par ligne, et non une ligne pour la liste : la classe
+        d'hébergement est par serveur et change de sens d'une machine à
+        l'autre, et un seul oui/non forcerait à déplacer un tiers pour
+        déplacer une boucle locale.
+
+        Les commandes Claude Code ne se COPIENT pas : elles se posent depuis
+        le dépôt que la cible vient de recevoir, donc à la version qu'elle
+        exécute, et sans le nom ni le courriel de l'opérateur d'ici.
+        """
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        articles = []
+        for serveur in connus:
+            glose = t(self._llm_hosting_key(serveur.hosting))
+            if serveur.hosting == "loopback":
+                glose = f"{glose} — {t('points at the target own loopback')}"
+            articles.append(
+                {
+                    "genre": "serveur",
+                    "label": f"{serveur.label} — {self._llm_label(serveur)}",
+                    "glose": glose,
+                    "reserve": False,
+                    "valeur": serveur,
+                }
+            )
+        articles.append(
+            {
+                "genre": "claude",
+                "label": t("The Claude Code commands"),
+                "glose": t("posed from the target own checkout"),
+                "reserve": False,
+                "valeur": None,
+            }
+        )
+        articles.append(
+            {
+                "genre": "noms",
+                "label": t("The forbidden-names list"),
+                "glose": t(
+                    "carries client, database and host names; without it no"
+                    " third-party send is allowed"
+                ),
+                "reserve": True,
+                "valeur": None,
+            }
+        )
+        return articles
+
+    def _llm_transfert_poser(self, cible, articles):
+        """Porter les articles retenus sur l'installation qu'on vient de poser.
+
+        La liste des serveurs part par l'ENTRÉE STANDARD et jamais par la
+        ligne de commande : elle porte des adresses, et une ligne de commande
+        se lit dans un journal comme dans la table des processus. L'écran, lui,
+        n'annonce que les poignées.
+
+        Le fichier privé n'est JAMAIS recopié en bloc : il porte aussi le mot
+        de passe du coffre et les profils VPN. La charge se bâtit clé par clé,
+        et l'écriture passe par `set_config_value` de là-bas.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        serveurs = [a["valeur"] for a in articles if a["genre"] == "serveur"]
+        if serveurs:
+            charge = llm_deploy.payload_serveurs(serveurs)
+            bloc = llm_deploy.bloc_ecrire_config(
+                cible.path, list(llm_servers.CONFIG_KEYS)
+            )
+            if self._llm_pousser(cible, bloc, json.dumps(charge)):
+                for serveur in serveurs:
+                    print(f"  ✅ {llm_servers.redacted(serveur)}")
+        if any(a["genre"] == "claude" for a in articles):
+            bloc = llm_deploy.bloc_commandes_claude(
+                cible.path, self._QEMU_AIDEV_CLAUDE_CMDS
+            )
+            if self._llm_pousser(cible, bloc, ""):
+                print(f"  ✅ {t('The Claude Code commands')}")
+        if any(a["genre"] == "noms" for a in articles):
+            self._llm_transfert_noms(cible)
+
+    def _llm_transfert_noms(self, cible):
+        """Porter la liste des noms interdits, lue ici, écrite là-bas.
+
+        C'est le seul article qui déplace des noms de clients sur une machine
+        neuve. Il ne part que nommé, jamais par « tout », et son absence
+        là-bas REFUSE tout envoi vers un tiers — ce qui est un défaut de
+        configuration et non une panne.
+        """
+        from script.lib_identifiant import NOMS_INTERDITS
+        from script.todo.assistant import deploy as llm_deploy
+
+        try:
+            with open(NOMS_INTERDITS, encoding="utf-8") as fh:
+                contenu = fh.read()
+        except OSError:
+            print(f"  ⚠ {t('The forbidden-names list')} — {t('Not found')}")
+            return
+        # `chemin_shell` et non `shlex.quote` : citer le tilde lui ôte son
+        # sens, et le fichier atterrirait dans un répertoire NOMMÉ « ~ »,
+        # hors de l'arbre posé, pendant que l'écran annoncerait un succès.
+        racine = llm_deploy.chemin_shell(cible.path)
+        # 0700 et 0600 comme `set_config_value` ailleurs : ce fichier porte
+        # des noms de clients, et le umask du compte distant ne le protège
+        # pas de lui-même.
+        bloc = (
+            f"mkdir -p {racine}/private && "
+            f"chmod 700 {racine}/private && "
+            f"touch {racine}/private/noms_interdits.txt && "
+            f"chmod 600 {racine}/private/noms_interdits.txt && "
+            f"cat > {racine}/private/noms_interdits.txt"
+        )
+        if self._llm_pousser(cible, bloc, contenu):
+            print(f"  ✅ {t('The forbidden-names list')}")
+
+    def _llm_pousser(self, cible, bloc, entree):
+        """Exécuter un bloc chez la cible, sa charge sur l'ENTRÉE STANDARD.
+
+        Ici comme là-bas : un chemin local se traite par le même chemin de
+        code qu'un alias SSH, la seule différence étant l'enveloppe `ssh`.
+        Rien de la charge n'entre dans un argument.
+        """
+        argv = (
+            ["ssh", "-o", "BatchMode=yes", cible.alias, bloc]
+            if cible.alias
+            else ["bash", "-c", bloc]
+        )
+        try:
+            res = subprocess.run(
+                argv,
+                input=entree,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=self._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⛔ {souci}")
+            return False
+        if res.returncode != 0:
+            print(f"  ⛔ {res.stderr.strip()[:200]}")
+            return False
+        return True
+
+    # ------------------------------------------------------------------
     # Les sessions Claude Code de la machine
 
     def prompt_claude_sessions(self):
         """Voir les sessions locales, en interroger une, ou la reprendre.
 
-        Sous « GPT code » et non sous le sous-menu LLM : une session est un
+        Sous « Assistant › IA » et non sous le sous-menu LLM : une session est
         processus adressé par identifiant, un serveur est un hôte adressé par
         port. Les mêler dans une seule liste numérotée ferait partager cinq
         numéros à deux modèles mentaux, alors que toutes les entrées Claude
@@ -870,6 +2451,7 @@ class AssistantMenuMixin:
                 if flotte
                 else t("No session on this machine.")
             )
+            detaches = self._claude_compte_detaches(flotte)
             choices = [
                 {
                     "prompt_description": (
@@ -880,6 +2462,24 @@ class AssistantMenuMixin:
                 {
                     "prompt_description": t(
                         "Resume a session in a new terminal"
+                    )
+                },
+                {"section": t("Background")},
+                {
+                    "prompt_description": (
+                        f"{t('Attach a background agent')}  ({detaches})"
+                    )
+                },
+                {"prompt_description": t("Read a background agent's output")},
+                {
+                    "prompt_description": t(
+                        "Stop, restart or delete a background agent…"
+                    )
+                },
+                {"section": t("Inspect")},
+                {
+                    "prompt_description": t(
+                        "Context and environment of a session"
                     )
                 },
             ]
@@ -897,8 +2497,759 @@ class AssistantMenuMixin:
                 self._claude_questionner(flotte)
             elif status == "3":
                 self._claude_reprendre(flotte)
+            elif status == "4":
+                self._claude_attacher()
+            elif status == "5":
+                self._claude_journal()
+            elif status == "6":
+                self._claude_gerer()
+            elif status == "7":
+                self._claude_contexte(flotte)
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    def _agents_mcp_compte(self):
+        """Ce que l'entrée annonce SANS toucher au réseau.
+
+        Le compte des serveurs déclarés localement, ou la mention qu'il faut
+        interroger. `claude mcp list` contrôle la santé de chaque serveur en
+        réseau : l'appeler pour afficher une entrée de menu ferait attendre à
+        chaque passage.
+        """
+        from script.todo.assistant.agents import mcp
+
+        declares = mcp.declares(depot=self._agents_racine())
+        return (
+            self._llm_count(len(declares), "declared", "declared")
+            if declares
+            else t("to be queried")
+        )
+
+    def _agents_mcp(self):
+        """Les serveurs MCP : les déclarations d'ici, et l'interrogation.
+
+        Les deux populations sont séparées à l'écran parce qu'elles ne se
+        connaissent pas de la même façon. Une déclaration locale se lit dans
+        un fichier ; un connecteur de compte n'existe dans aucun fichier et
+        ne se sait qu'en demandant.
+        """
+        from script.todo.assistant.agents import mcp
+
+        while True:
+            declares = mcp.declares(depot=self._agents_racine())
+            print(f"{t('Locally declared MCP servers')} :")
+            if declares:
+                for serveur in declares:
+                    cible = serveur.cible or "—"
+                    print(
+                        f"  {serveur.origine:<14} {serveur.nom:<20}"
+                        f" {serveur.transport:<6} {cible}"
+                    )
+            else:
+                print(f"  {t('no server declared here')}")
+            print(f"  {t('Account connectors live in no file here.')}")
+            choices = [
+                {"prompt_description": t("Query the servers (network)")},
+                {"prompt_description": t("Detail one server (network)")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._agents_mcp_lancer(mcp.argv_lister())
+            elif status == "2":
+                self._agents_mcp_detail()
+            else:
+                print(t("Command not found !"))
+
+    def _agents_mcp_detail(self):
+        """Détailler un serveur nommé. Lecture seule."""
+        from script.todo.assistant.agents import mcp
+
+        try:
+            nom = click.prompt(t("Server name")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        try:
+            argv = mcp.argv_detail(nom)
+        except ValueError as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        self._agents_mcp_lancer(argv)
+
+    def _agents_mcp_lancer(self, argv):
+        """Lancer une commande de lecture, en disant qu'elle attend le réseau."""
+        print(f"  {t('Checking over the network…')}", flush=True)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
+    @staticmethod
+    def _agents_volume():
+        """Le volume total, pour l'entrée du menu. Vide si rien n'est là."""
+        from script.todo.assistant.agents import disque
+
+        total = sum(p.octets for p in disque.mesurer())
+        return disque.octets_lisibles(total) if total else t("nothing")
+
+    def _agents_disque(self):
+        """Ce que Claude Code occupe, et ce qui se retire sans regret.
+
+        L'écran descend d'un cran sous le total : l'historique se range par
+        session, et une session porte un plus gros fichier capturé. « 10 Go »
+        n'est pas une information sur laquelle agir ; « 10 Go dont 10 Go en un
+        seul fichier » dit que quelque chose d'énorme est entré par accident.
+
+        Une session VIVANTE n'est jamais proposée. Elle écrit encore, et
+        retirer son historique sous elle laisserait une session qui croit
+        pouvoir restaurer ce qui n'existe plus.
+
+        Un listage qui n'a PAS répondu ferme la garde de la même façon, et
+        l'écran le dit autrement : « non demandé » et non « vivante ». Les
+        deux protègent également, mais la seconde est une mesure et la
+        première une absence de mesure, et confondre les deux envoie chercher
+        des sessions à fermer qui n'existent pas.
+        """
+        from script.todo.assistant.agents import disque
+
+        while True:
+            postes = disque.mesurer()
+            # La question est POSÉE, elle n'est pas devinée. Se fier à la
+            # présence du binaire sur le PATH laissait la garde tomber en
+            # ouvert dès que le listage échouait autrement : compte
+            # déconnecté, version qui ignore la sous-commande, délai dépassé,
+            # sortie qui n'est pas du JSON. `live()` rend None dans tous ces
+            # cas, et `historiques` ne propose alors rien.
+            vivantes = self._claude_vivantes()
+            # La garde tombe fermée quand le listage n'a pas répondu, et
+            # l'écran doit dire POURQUOI. Marquer chaque session « vivante,
+            # non proposée » affirmerait un fait qu'on n'a pas mesuré, et
+            # enverrait chercher des sessions à fermer qui n'existent pas.
+            repondu = vivantes is not None
+            histoires = disque.historiques(vivantes=vivantes)
+            print(f"{t('What Claude Code occupies')} :")
+            for poste in postes:
+                if not poste.present:
+                    continue
+                print(
+                    f"  {disque.octets_lisibles(poste.octets):>10}"
+                    f"  {self._llm_count(poste.fichiers, 'file', 'files'):>16}"
+                    f"  {poste.nom}"
+                )
+            print(f"\n{t('File history, per session')} :")
+            for histoire in histoires:
+                if not repondu:
+                    marque = MARQUE["unknown"]
+                    detail = t("not asked: the listing did not answer")
+                elif histoire.vivante:
+                    marque, detail = MARQUE["no"], t("alive, not offered")
+                else:
+                    marque, detail = MARQUE["ok"], t("removable")
+                print(
+                    f"  {marque} {disque.octets_lisibles(histoire.octets):>10}"
+                    f"  {t('largest')} {disque.octets_lisibles(histoire.plus_gros)}"
+                    f"  {histoire.session[:8]}  ({detail})"
+                )
+            retirables = [h for h in histoires if h.retirable]
+            if not retirables:
+                print(f"  {MARQUE['unknown']} {t('Nothing can be removed:')}")
+                print(
+                    f"     {t('every session with a history is alive.')}"
+                    if repondu
+                    else f"     {t('the listing did not answer, so nothing is offered.')}"
+                )
+            choices = [
+                {"prompt_description": t("Remove one session's file history")}
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status != "1":
+                print(t("Command not found !"))
+                continue
+            if not retirables:
+                print(f"{MARQUE['unknown']} {t('Nothing can be removed:')}")
+                continue
+            self._agents_retirer_historique(retirables)
+
+    def _agents_retirer_historique(self, retirables):
+        """Retirer l'historique d'UNE session, son identifiant retapé.
+
+        Rien ne reconstitue un historique : c'est ce qui permet de restaurer
+        une version antérieure d'un fichier de cette session. Le préfixe
+        affiché ne suffit donc pas, comme pour la suppression d'un agent.
+        """
+        import shutil
+
+        from script.todo.assistant.agents import disque
+
+        for histoire in retirables:
+            print(
+                f"  {disque.octets_lisibles(histoire.octets):>10}"
+                f"  {histoire.session}"
+            )
+        print(
+            f"{MARQUE['no']} {t('This loses the ability to restore a file')}"
+        )
+        print(f"   {t('to an earlier version within that session.')}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        choisie = [h for h in retirables if h.session == frappe]
+        if not choisie:
+            print(t("Nothing has been sent."))
+            return
+        try:
+            chemin = disque.chemin_historique(choisie[0].session)
+            shutil.rmtree(chemin)
+        except (OSError, ValueError) as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        print(
+            f"{MARQUE['ok']} {disque.octets_lisibles(choisie[0].octets)}"
+            f" {t('freed')}"
+        )
+
+    def _agents_hooks_etat(self):
+        """« global », « dépôt », « les deux », « illisible » ou « aucun ».
+
+        Les deux endroits sont nommés parce qu'ils ne se remplacent pas : le
+        global mesure toute la machine, celui du dépôt mesure ce dépôt pour
+        tout clone. Un utilisateur qui pose le global et voit ses appels
+        manquer doit pouvoir apprendre que le dépôt en portait un autre.
+
+        Un fichier de réglages qu'on n'a pas su relire n'est pas un fichier
+        sans hooks. Le confondre avec « aucun posé » invite à en poser un
+        par-dessus, et deux blocs de hooks comptent chaque appel d'outil deux
+        fois. L'écran de pose le distinguait déjà ; le libellé du menu, qui
+        est ce qu'on lit d'abord, non.
+        """
+        from script.todo.assistant.agents import pose
+
+        etat = pose.etat(racine_depot=self._agents_racine())
+        poses = [nom for nom, (_, actifs) in etat.items() if actifs]
+        inconnus = [nom for nom, (_, actifs) in etat.items() if actifs is None]
+        if len(poses) == 2:
+            libelle = t("both")
+        elif poses:
+            libelle = (
+                t("global") if poses[0] == pose.GLOBAL else t("repository")
+            )
+        elif inconnus:
+            return t("unreadable settings")
+        else:
+            return t("none installed")
+        # Un endroit posé, l'autre illisible : le libellé est vrai et
+        # incomplet, et la marque est ce qui le dit.
+        return f"{libelle} {MARQUE['unknown']}" if inconnus else libelle
+
+    @staticmethod
+    def _agents_racine():
+        """La racine du dépôt, pour le fichier de réglages qu'il porte."""
+        return os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+
+    def _agents_hooks(self):
+        """Poser ou retirer les hooks, et dire ce que chaque endroit porte.
+
+        Rien n'est écrit sans que l'écran ait d'abord montré les deux états :
+        poser à l'aveugle sur une machine où le dépôt en porte déjà ferait
+        compter deux fois chaque appel d'outil.
+        """
+        from script.todo.assistant.agents import journal, pose
+
+        while True:
+            etat = pose.etat(racine_depot=self._agents_racine())
+            print(f"{t('Where the telemetry hooks are installed')} :")
+            for endroit in (pose.GLOBAL, pose.DEPOT):
+                chemin, actifs = etat[endroit]
+                if actifs is None:
+                    # Un fichier illisible n'est pas un fichier sans hooks :
+                    # l'annoncer « aucun posé » inviterait à poser par-dessus.
+                    print(
+                        f"  {MARQUE['unknown']} {chemin}"
+                        f"  ({t('unreadable, nothing will be written')})"
+                    )
+                    continue
+                marque = MARQUE["ok"] if actifs else MARQUE["no"]
+                compte = (
+                    f"{len(actifs)}/{len(journal.EVENEMENTS)}"
+                    if actifs
+                    else t("none installed")
+                )
+                print(f"  {marque} {chemin}  ({compte})")
+            print(
+                f"  {t('The log lives under')} {journal.RACINE},"
+                f" {journal.RETENTION_JOURS} {t('days')}"
+            )
+            choices = [
+                {
+                    "prompt_description": t(
+                        "Install into ~/.claude (this machine)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "Install into the repository (every clone)"
+                    )
+                },
+                {"prompt_description": t("Remove from ~/.claude")},
+                {"prompt_description": t("Remove from the repository")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            geste = {
+                "1": (pose.poser, pose.GLOBAL),
+                "2": (pose.poser, pose.DEPOT),
+                "3": (pose.retirer, pose.GLOBAL),
+                "4": (pose.retirer, pose.DEPOT),
+            }.get(status)
+            if geste is None:
+                print(t("Command not found !"))
+                continue
+            faire, endroit = geste
+            try:
+                chemin = faire(endroit, racine_depot=self._agents_racine())
+            except OSError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                continue
+            print(f"{MARQUE['ok']} {chemin}")
+            if endroit == pose.DEPOT:
+                print(
+                    f"{MARQUE['unknown']} {t('That file is tracked by git.')}"
+                )
+
+    def _agents_telemetrie(self):
+        """L'écran vivant de la télémétrie des agents.
+
+        Textual n'est pas une dépendance dure du CLI : `ensure` répond à sa
+        place à la question « est-il là, et sinon veut-on l'installer ».
+        """
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return
+        from script.todo.assistant.agents import tui
+
+        # L'écran rend une commande quand il sort pour la laisser passer :
+        # « claude attach » prend le terminal et ne peut pas le partager avec
+        # une application qui le tient déjà.
+        commande = tui.run_tui()
+        if commande:
+            self._ouvrir_plein_ecran(commande)
+
+    @staticmethod
+    def _claude_transcription(session):
+        """Le fichier de transcription d'une session, ou la chaîne vide.
+
+        Trouvé par l'identifiant et non par le nom de répertoire de projet :
+        celui-ci encode le chemin de travail en tirets, et la transformation
+        ne s'inverse pas.
+        """
+        import glob
+
+        motif = os.path.expanduser(
+            f"~/.claude/projects/*/{session.session_id}.jsonl"
+        )
+        trouves = glob.glob(motif)
+        return trouves[0] if trouves else ""
+
+    def _claude_contexte(self, flotte):
+        """Ce qu'une session porte : son contexte, puis son environnement.
+
+        Les deux blocs disent leur DISPONIBILITÉ avant leur contenu. Trois
+        causes produisent le même vide et n'appellent pas le même geste : la
+        version du CLI n'écrit pas l'enregistrement, le processus appartient à
+        un autre compte, le processus est mort. Un zéro partout transformerait
+        l'inconnu en « il n'y a rien », ce qui est le message le plus trompeur
+        d'un écran de diagnostic.
+        """
+        from script.todo.assistant.agents import contexte as ctx
+        from script.todo.assistant.agents import environnement as env
+
+        session = self._claude_choisir(flotte)
+        if session is None:
+            return
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"\n{vue['id']} · {vue['dir']} · {vue['branch']}")
+
+        chemin = self._claude_transcription(session)
+        if not chemin:
+            print(
+                f"{MARQUE['unknown']} {t('No transcript for this session.')}"
+            )
+        else:
+            self._claude_contexte_bloc(ctx.lire(chemin), ctx)
+
+        # `live` et non `pid` : une session reprenable garde le pid du
+        # processus qui l'a écrite, et un pid se réemploie. Lire
+        # /proc/<pid>/environ sur une session éteinte montre l'environnement
+        # d'un AUTRE processus, sous le nom de celle-ci.
+        liste = env.variables(session.pid) if session.live else None
+        self._claude_environ_bloc(session, liste, env)
+        if liste:
+            self._claude_devoiler(session, liste, env)
+
+    def _claude_devoiler(self, session, liste, env):
+        """Démasquer UNE variable, nommée et sur demande.
+
+        C'est la soupape de la liste blanche, qui masque par construction
+        toute variable neuve et utile. Une à la fois, et jamais le bloc : un
+        écran qui démasque tout d'un coup rend copiable ce que le noyau
+        réservait au propriétaire du processus.
+
+        Les SECRETS n'y entrent pas. Le paquet tient deux paliers, et ils ne
+        disent pas la même chose : « masqué » veut dire « ce nom n'est pas
+        déclaré », et se lève à la demande ; « secret » veut dire « la
+        longueur même est un renseignement », et ne se lève pas. Les
+        confondre laisse taper le nom d'une clé d'API pour la voir en clair,
+        ce qui rend inutile tout le reste du module.
+        """
+        masquees = [v.nom for v in liste if not v.visible and not v.secret]
+        if not masquees:
+            return
+        try:
+            nom = click.prompt(
+                t("Unmask one variable (empty to skip):"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        if nom in {v.nom for v in liste if v.secret}:
+            # Le dire plutôt que de répondre « aucune de ce nom » : la
+            # variable EXISTE, et c'est le refus qui est l'information.
+            print(f"{MARQUE['no']} {t('A secret is never unmasked here.')}")
+            return
+        if nom not in masquees:
+            print(
+                f"{MARQUE['unknown']} {t('No masked variable by that name.')}"
+            )
+            return
+        valeur = env.devoile(session.pid, nom)
+        if valeur is None:
+            print(f"{MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(f"   {nom} = {valeur}")
+
+    @staticmethod
+    def _claude_contexte_bloc(contexte, ctx):
+        """Le bloc « contexte » : ce que la session a chargé."""
+        print(f"\n {t('CONTEXT')}")
+        if contexte.modele:
+            print(
+                f"   {t('model'):<14} {contexte.modele}"
+                f"  {contexte.modele_id}"
+                f"  {t('knowledge cutoff')} {contexte.coupure}"
+            )
+        else:
+            print(
+                f"   {t('model'):<14} {t('not carried by this CLI version')}"
+            )
+        if contexte.plateforme:
+            git = t("git repository") if contexte.depot_git else ""
+            print(
+                f"   {t('machine'):<14} {contexte.plateforme}"
+                f" · {contexte.shell} {git}"
+            )
+        if contexte.skills >= 0:
+            print(f"   {t('skills'):<14} {contexte.skills}")
+        if contexte.annonces_permissions:
+            print(
+                f"   {t('permissions'):<14}"
+                f" {contexte.annonces_permissions} {t('announcements')}"
+                f" · {t('latest')} {contexte.derniere_permission}"
+            )
+        fichiers = ctx.instructions_affichables(contexte)
+        if fichiers:
+            print(f"   {t('instructions'):<14} {len(contexte.instructions)}")
+            for chem, origine, octets in fichiers:
+                print(f"       {origine:<12} {chem:<50} {octets}")
+        else:
+            print(
+                f"   {t('instructions'):<14}"
+                f" {t('not carried by this CLI version')}"
+            )
+        for nom, code, duree in contexte.hooks:
+            detail = f" · {code} · {duree} ms" if code else ""
+            print(f"   {t('hook'):<14} {nom}{detail}")
+
+    @staticmethod
+    def _claude_environ_bloc(session, liste, env):
+        """Le bloc « environnement » : les noms, et ce qu'on montre des valeurs.
+
+        Une valeur ne s'affiche que si son nom est déclaré et que sa valeur a
+        la forme attendue. Le reste montre sa FORME — le noyau réserve déjà ce
+        fichier au propriétaire du processus, et un écran qui recopie une
+        valeur en clair casse cette frontière pour de bon.
+        """
+        print(f"\n {t('ENVIRONMENT')}")
+        if liste is None:
+            print(f"   {MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(
+            f"   /proc/{session.pid}/environ · {env.resume(liste)}"
+            f"  ({t('total · in clear · masked · secret')})"
+        )
+        for variable in liste:
+            marque = (
+                "🔒"
+                if variable.secret
+                else ("  " if variable.visible else "· ")
+            )
+            print(f"   {marque} {variable.nom:<28} {variable.forme}")
+        absentes = env.familles_absentes(liste)
+        if absentes:
+            print(
+                f"   {MARQUE['unknown']} {t('No')} "
+                + ", ".join(f"{f}*" for f in absentes)
+            )
+            print(
+                f"      {t('The process carries the login shell environment,')}"
+            )
+            print(
+                f"      {t('frozen at exec; Claude Code sets its own in children.')}"
+            )
+
+    # ------------------------------------------------------------------
+    # Les agents d'arrière-plan
+
+    @staticmethod
+    def _claude_detaches(flotte):
+        """Les agents détachés VIVANTS, dans l'ordre de la flotte.
+
+        Un agent détaché se pilote par `attach`, `logs`, `stop`, `respawn` et
+        `rm` ; un terminal se reprend par `--resume` et se questionne par une
+        copie branchée. Les mélanger ferait proposer `stop` sur la fenêtre où
+        l'on travaille.
+
+        La vivacité est exigée en plus du genre, et c'est ce qui sépare deux
+        choses que la flotte réunit : le registre annonce ce qui TOURNE, et un
+        balayage des transcriptions annonce ce qui se REPREND. Une session
+        dormante n'a ni genre ni processus — la compter comme un agent
+        d'arrière-plan afficherait un agent là où il n'y a qu'un fichier.
+
+        Un agent d'arrière-plan déjà SORTI n'est donc pas ici non plus. Il
+        existe — `rm` sait encore nettoyer son arbre de travail — mais il
+        faut `claude agents --all` pour le voir, et la flotte ne le demande
+        pas encore.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        return [s for s in flotte if s.live and adaptateur.est_arriere_plan(s)]
+
+    def _claude_compte_detaches(self, flotte):
+        """« 2 » ou « aucun » — ce que l'entrée affiche avant qu'on y entre."""
+        detaches = self._claude_detaches(flotte)
+        return str(len(detaches)) if detaches else t("no background agent")
+
+    def _claude_choisir_detache(self):
+        """L'agent détaché désigné par un rang, ou `None`.
+
+        Aucun détaché n'est une réponse et non une panne : la liste des
+        sessions montre alors ce qui tourne, et l'écran le dit plutôt que
+        d'ouvrir un choix vide.
+        """
+        detaches = self._claude_detaches(self._claude_flotte())
+        if not detaches:
+            print(f"{MARQUE['unknown']} {t('no background agent')}")
+            return None
+        return self._claude_choisir(detaches)
+
+    def _claude_lancer_action(self, sous_commande, session):
+        """Lancer UNE des cinq sous-commandes, avec la confirmation qu'elle
+        mérite.
+
+        Trois niveaux, et l'écart entre les deux derniers est tout : `respawn`
+        coupe le travail en cours et se demande, `rm` supprime la session ET
+        son arbre de travail et se fait retaper. Une frappe sur « o » se donne
+        par réflexe ; recopier un identifiant oblige à regarder ce qu'on
+        détruit.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        exigence = adaptateur.confirmation_exigee(sous_commande)
+        if exigence == "oui" and not self._claude_dit_oui(session):
+            return
+        if exigence == "id" and not self._claude_retape_id(session):
+            return
+        argv = adaptateur.argv_action(sous_commande, session.poignee)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
+    def _claude_dit_oui(self, session):
+        """Une confirmation simple, pour ce qui coupe sans détruire."""
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{MARQUE['unknown']} {t('The work in progress is cut.')}")
+        try:
+            reponse = click.prompt(
+                f"{vue['id']} — {t('Restart it? (y/N)')}",
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        return self._is_yes(reponse)
+
+    def _claude_retape_id(self, session):
+        """L'identifiant retapé en entier avant une suppression.
+
+        `claude rm` supprime la session ET son arbre de travail, et rien ne la
+        récupère. Le préfixe affiché ne suffit donc pas : c'est l'identifiant
+        complet qui se recopie.
+        """
+        print(
+            f"{MARQUE['no']} {t('This deletes the session and its worktree.')}"
+        )
+        print(f"   {session.session_id}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        # Un identifiant VIDE rendrait la comparaison vraie sur une frappe
+        # d'Entrée : la garde la plus forte du paquet s'ouvrirait sur rien.
+        if not session.session_id or frappe != session.session_id:
+            print(t("Nothing has been sent."))
+            return False
+        return True
+
+    def _ouvrir_plein_ecran(self, commande):
+        """Lancer une commande qui EXIGE un terminal, ou la faire copier.
+
+        Le lanceur ordinaire passe par un tube et lit la sortie : un programme
+        plein écran n'y trouve pas le terminal qu'il réclame, et l'utilisateur
+        perd l'écran sans obtenir la session. Sans fenêtre possible, la
+        commande est donc IMPRIMÉE plutôt que lancée là où elle ne survivrait
+        pas.
+        """
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  {commande}")
+            return
+        self.execute.exec_command_live(
+            commande, source_erplibre=False, new_window=True
+        )
+
+    def _claude_attacher(self):
+        """Ouvrir un agent détaché dans une fenêtre à lui.
+
+        Comme la reprise d'une session : c'est un programme plein écran, et le
+        tube du lanceur ordinaire ne fournit pas le terminal qu'il exige. Sans
+        fenêtre possible, la commande est IMPRIMÉE plutôt que lancée là où
+        elle ne survivrait pas.
+        """
+        import shlex
+
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        argv = adaptateur.argv_action(adaptateur.ATTACHER, session.poignee)
+        self._ouvrir_plein_ecran(" ".join(shlex.quote(m) for m in argv))
+
+    def _claude_journal(self):
+        """Imprimer la sortie récente d'un agent détaché. Elle ne fait que lire."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        self._claude_lancer_action(adaptateur.JOURNAL, session)
+
+    def _claude_gerer(self):
+        """Arrêter, relancer ou supprimer — trois dommages, trois questions."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        choices = [
+            {"prompt_description": t("Stop it, keeping its conversation")},
+            {"prompt_description": t("Restart it on the current binary")},
+            {"prompt_description": t("Delete it, and its worktree")},
+        ]
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{vue['id']} · {vue['dir']}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        sous = {
+            "1": adaptateur.ARRETER,
+            "2": adaptateur.RELANCER,
+            "3": adaptateur.SUPPRIMER,
+        }.get(status)
+        if status == "0":
+            return
+        if sous is None:
+            print(t("Command not found !"))
+            return
+        self._claude_lancer_action(sous, session)
+
+    @staticmethod
+    def _claude_vivantes():
+        """Les identifiants des sessions qui TOURNENT, ou None.
+
+        None veut dire « le listage n'a pas répondu », ce qui n'est pas
+        « aucune session ne tourne ». Seul l'appelant qui protège un geste
+        destructeur a besoin de la différence, et c'est pour lui qu'elle
+        remonte jusqu'ici.
+        """
+        from script.todo.assistant import claude_sessions as cs
+
+        try:
+            trouvees = cs.live()
+        except Exception:
+            return None
+        if trouvees is None:
+            return None
+        return {s.session_id for s in trouvees if s.live}
 
     def _claude_flotte(self):
         """La flotte, relue à chaque tour du menu.
@@ -956,6 +3307,234 @@ class AssistantMenuMixin:
             return None
         rang = int(reponse) - 1
         return flotte[rang] if 0 <= rang < len(flotte) else None
+
+    def _llm_courses_label(self):
+        """Ce qui tourne et ce qui attend d'être lu, avant qu'on entre."""
+        from script.todo.assistant.agents import fond as llm_fond
+
+        vues = llm_fond.courses()
+        if not vues:
+            return t("none")
+        tournent = sum(1 for un in vues if un.etat == llm_fond.EN_COURS)
+        finis = sum(1 for un in vues if un.etat == llm_fond.FINI)
+        parts = []
+        if tournent:
+            parts.append(t("%s running") % tournent)
+        if finis:
+            parts.append(self._llm_count(finis, "returned", "returned-plural"))
+        return ", ".join(parts) or t("none")
+
+    def _llm_specialistes_label(self):
+        """Combien d'agents sont déclarés, et combien peuvent écrire.
+
+        Le second compte figure DANS l'étiquette du menu : ce qui écrit se
+        dit avant qu'on entre, pas seulement une fois dedans.
+        """
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        connus = llm_specs.catalogue()
+        combien = self._llm_count(len(connus), "agent", "agents")
+        ecrivains = sum(
+            1 for un in connus if self._llm_outils_qui_ecrivent(un.outils)
+        )
+        if not ecrivains:
+            return combien
+        return f"{combien}, {t('%s can write') % ecrivains}"
+
+    def _llm_specialistes(self):
+        """Les agents spécialisés du dépôt, et ce qu'on leur confie.
+
+        Les OUTILS de chaque agent paraissent à côté de son rôle, et une
+        seconde fois avant l'envoi : plusieurs déclarent `Write` et `Edit`,
+        donc l'appel peut écrire dans l'arbre de travail. Le dire une fois
+        dans une liste qu'on parcourt ne suffit pas — on choisit un agent
+        pour ce qu'il fait, pas pour ce qu'il peut.
+        """
+        import shutil
+
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        connus = llm_specs.catalogue()
+        if not connus:
+            print(t("No specialised agent is declared here."))
+            return
+        if not shutil.which("claude"):
+            print(t("claude is not on the PATH."))
+            return
+        choices = []
+        for un in connus:
+            choices.append(
+                {"prompt_description": self._llm_ligne_specialiste(un)}
+            )
+        print(f"\n{t('Specialised agents')}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, len(connus))
+        if rang is None:
+            return
+        self._llm_specialiste_agir(connus[rang - 1])
+
+    @staticmethod
+    def _llm_ligne_specialiste(un):
+        """Un agent, en une ligne : ce qu'il fait, et ce qu'il peut."""
+        from script.todo.assistant.agents import specialistes as llm_specs
+
+        parts = [un.cle, llm_specs.role(un.description)]
+        if un.outils:
+            parts.append("(" + ", ".join(un.outils) + ")")
+        if un.origine and un.origine != "dépôt":
+            parts.append(un.origine)
+        return " · ".join(part for part in parts if part)
+
+    def _llm_specialiste_agir(self, un):
+        """Ce que l'agent peut, puis la question.
+
+        Les outils se disent une SECONDE fois ici, après la liste : on
+        choisit un agent pour ce qu'il fait, et c'est au moment de lancer
+        qu'on regarde ce qu'il peut.
+        """
+        ecrit = self._llm_outils_qui_ecrivent(un.outils)
+        print(f"\n🧑‍🔧 {un.cle} · {un.modele or t('default model')}")
+        print(f"  {t('tools')}: {', '.join(un.outils) or t('read-only')}")
+        if ecrit:
+            print(f"  ⚠ {t('May write here: %s') % ', '.join(ecrit)}")
+        choices = [
+            {"prompt_description": t("Ask a question")},
+            {"prompt_description": t("Run it in the background")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, 2)
+        if rang == 1:
+            self._llm_specialiste_question(un)
+        elif rang == 2:
+            self._llm_specialiste_fond(un)
+
+    def _llm_specialiste_fond(self, un):
+        """Détache l'agent, et dit où sa réponse arrivera.
+
+        Rien ne s'affiche à la fin : le menu ne tient plus le processus. La
+        liste des courses est le seul endroit où le résultat revient, et
+        c'est elle qu'on nomme AVANT de lancer.
+        """
+        import uuid
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant.agents import fond as llm_fond
+        from script.todo.assistant.context import repo_root as llm_racine
+
+        try:
+            question = click.prompt(t("Write your question "))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        depot = str(llm_racine())
+        argv = llm_backends.claude_argv(
+            session_id=None,
+            cwd=depot,
+            fork=False,
+            agent=un.cle,
+            outils=un.outils,
+        )
+        jour = llm_fond.maintenant()[:10]
+        cle = f"{jour}-{uuid.uuid4().hex[:8]}"
+        course = llm_fond.lancer(
+            cle, un.cle, question, argv, cwd=depot, outils=un.outils
+        )
+        if course is None:
+            print(f"⚠ {t('Could not start it:')}")
+            return
+        print(f"  → {t('Running in the background')} ({course.cle})")
+        print(f"  {t('Its answer lands in')} : {t('Background agents')}")
+
+    def _llm_courses(self):
+        """Les agents détachés : ce qui tourne, ce qui est revenu.
+
+        Un agent PERDU est parti sans rendre d'enveloppe : la machine a
+        redémarré, le processus a été tué, le binaire a refusé. Le dire
+        ainsi vaut mieux que de le laisser « en cours » pour toujours.
+        """
+        from script.todo.assistant.agents import fond as llm_fond
+
+        vues = llm_fond.courses()
+        if not vues:
+            print(t("No background agent has been started."))
+            return
+        choices = [
+            {"prompt_description": self._llm_ligne_course(vue)} for vue in vues
+        ]
+        print(f"\n{t('Background agents')}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, len(vues))
+        if rang is None:
+            return
+        vue = vues[rang - 1]
+        print(f"\n🧑‍🔧 {vue.agent} · {vue.etat}")
+        if vue.resultat:
+            print(vue.resultat)
+        if vue.cout is not None:
+            print(f"── {vue.cout} USD ──")
+
+    @staticmethod
+    def _llm_ligne_course(vue):
+        """Une course, en une ligne de liste."""
+        quand = (vue.debut or "")[:16].replace("T", " ")
+        parts = [quand, vue.agent, vue.etat]
+        if vue.cout is not None:
+            parts.append(f"{vue.cout} USD")
+        return " · ".join(part for part in parts if part)
+
+    @staticmethod
+    def _llm_outils_qui_ecrivent(outils):
+        """Ceux des outils qui touchent la machine. Fonction PURE.
+
+        La liste est FERMÉE et nommée ici : un outil inconnu ne compte pas
+        comme inoffensif, il compte comme inconnu — et c'est pourquoi la
+        ligne des outils s'affiche en entier à côté de celle-ci.
+        """
+        return tuple(un for un in outils if un in OUTILS_QUI_ECRIVENT)
+
+    def _llm_specialiste_question(self, un):
+        """Une question à l'agent, la réponse au terminal."""
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant.context import repo_root as llm_racine
+
+        try:
+            question = click.prompt(t("Write your question "))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        backend = llm_backends.ClaudeCliBackend(
+            session_id=None,
+            cwd=str(llm_racine()),
+            fork=False,
+            agent=un.cle,
+            outils=un.outils,
+        )
+        try:
+            texte, faits = backend.send(
+                [{"role": "user", "content": question}]
+            )
+        except Exception as panne:  # noqa: BLE001
+            print(f"⚠ {panne}")
+            return
+        print(texte)
+        cout = faits.get("cost_usd") or faits.get("total_cost_usd")
+        if cout:
+            print(f"── {cout} USD ──")
 
     def _claude_questionner(self, flotte):
         """Poser UNE question à une session, sans ouvrir de terminal.
@@ -1169,7 +3748,7 @@ class AssistantMenuMixin:
             if fatals:
                 print(
                     f"      ⚠ {len(fatals)} {t('unreadable gpt files')}"
-                    f" — [d] {t('details')}"
+                    f" — [?] {t('details')}"
                 )
             try:
                 reponse = click.prompt(t("Choice")).strip().lower()
@@ -1178,7 +3757,12 @@ class AssistantMenuMixin:
                 return
             if reponse in ("0", ""):
                 return
-            if reponse == "d" and fatals:
+            # « ? » et non une lettre : les rangs sont eux-mêmes des
+            # lettres, et « d » désignait donc à la fois la quatrième entrée
+            # et ce détail-ci. La branche étant testée avant le rang, le
+            # quatrième outil devenait injoignable dès qu'un fichier gpt était
+            # illisible — l'écran n'affichant aucun chiffre pour le rattraper.
+            if reponse == "?" and fatals:
                 for souci in problemes:
                     self._llm_dire_probleme(souci)
                 continue
@@ -1380,8 +3964,221 @@ class AssistantMenuMixin:
         state["confirmes"].add(serveur.host)
         return True
 
-    def _llm_conversation(self):
+    def _llm_serveur_du_dossier(self, vu):
+        """Le serveur d'un dossier, retrouvé parmi les connus. `None` sinon.
+
+        Le dossier hérite d'un hôte, d'un port et d'un modèle ; c'est le
+        COUPLE hôte-port qui désigne la machine, le modèle se posant par
+        dessus. Un serveur retiré depuis laisse le dossier sans défaut, et
+        la conversation s'ouvre sur celui du menu — mieux que de refuser
+        d'ouvrir pour une adresse qui n'existe plus.
+        """
+        if not vu.hote or not vu.port:
+            return None
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        for connu in connus:
+            if connu.host == vu.hote and connu.port == vu.port:
+                return replace(connu, model=vu.modele or connu.model)
+        return None
+
+    def _llm_ligne_dossier(self, vu):
+        """Un dossier, en une ligne de liste."""
+        combien = self._llm_count(vu.seances, "session", "sessions")
+        parts = [f"📁 {vu.nom}", combien, vu.modele or vu.logiciel]
+        if vu.outil:
+            parts.append(vu.outil)
+        return " · ".join(part for part in parts if part)
+
+    def _llm_dossier(self, nom):
+        """Les séances d'un dossier, et de quoi en ouvrir une neuve.
+
+        Le serveur du dossier prime sur celui du menu : c'est ce qui rend un
+        dossier utile, puisqu'un fil de travail garde son modèle sans qu'on
+        le rechoisisse à chaque fois.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        vus = llm_seances.dossiers()
+        vu = next((un for un in vus if un.nom == nom), None)
+        if vu is not None:
+            serveur = self._llm_serveur_du_dossier(vu)
+            if serveur is not None:
+                self._llm_state()["serveur"] = serveur
+        gardees = llm_seances.lister(combien=REPRISES_MAX, dossier=nom)
+        choices = [{"prompt_description": t("New conversation here")}]
+        if gardees:
+            choices.append({"section": t("Resume")})
+            for garde in gardees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_seance(garde)}
+                )
+        print(f"\n📁 {nom}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, 1 + len(gardees))
+        if rang is None:
+            return
+        if rang == 1:
+            self._llm_conversation(dossier=nom)
+        else:
+            self._llm_conversation(reprise=gardees[rang - 2].chemin)
+
+    @staticmethod
+    def _llm_ligne_choisie(status, combien):
+        """Le numéro d'une ligne choisie, ou None pour « rien ».
+
+        Rend None sur le retour comme sur une entrée qui ne désigne aucune
+        ligne : l'appelant n'a qu'un cas à traiter, et aucune frappe ne
+        tombe dans une branche qu'elle ne visait pas.
+
+        La LECTURE reste chez l'appelant, et ce n'est pas un oubli : la
+        cartographie des menus reconnaît un menu à son appel de
+        `fill_help_info`, et le remonter ici ferait passer cette aide pour
+        un menu de plus, sans fil d'Ariane et sans étiquette.
+        """
+        if status == "0":
+            return None
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return None
+        if not 1 <= rang <= combien:
+            print(t("Command not found !"))
+            return None
+        return rang
+
+    def _llm_reprendre(self):
+        """Les dossiers, les séances isolées, ou une conversation neuve.
+
+        Le choix passe AVANT la conversation parce qu'une question posée à un
+        modèle en appelle une autre : reprendre un fil est le cas courant, en
+        ouvrir un sans rapport avec aucun autre l'exception.
+
+        Les séances RANGÉES ne paraissent pas ici : elles s'atteignent par
+        leur dossier, et les lister deux fois ferait douter qu'il s'agisse
+        des mêmes. Sans dossier ni séance, la conversation s'ouvre
+        directement — une liste d'une seule entrée demande une frappe pour
+        ne rien apprendre.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        rangees = llm_seances.dossiers()
+        isolees = llm_seances.lister(combien=REPRISES_MAX, dossier="")
+        if not rangees and not isolees:
+            self._llm_conversation()
+            return
+        choices = [{"prompt_description": t("Start a new conversation")}]
+        if rangees:
+            choices.append({"section": t("Folders")})
+            for vu in rangees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_dossier(vu)}
+                )
+        if isolees:
+            choices.append({"section": t("Resume")})
+            for garde in isolees:
+                choices.append(
+                    {"prompt_description": self._llm_ligne_seance(garde)}
+                )
+        combien = 1 + len(rangees) + len(isolees)
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        rang = self._llm_ligne_choisie(status, combien)
+        if rang is None:
+            return
+        if rang == 1:
+            self._llm_conversation()
+        elif rang <= 1 + len(rangees):
+            self._llm_dossier(rangees[rang - 2].nom)
+        else:
+            depart = rang - 2 - len(rangees)
+            self._llm_conversation(reprise=isolees[depart].chemin)
+
+    @staticmethod
+    def _llm_ligne_seance(vue):
+        """Une séance, en une ligne de liste.
+
+        La date situe, le modèle explique ce qui a répondu, et le TITRE —
+        la première question — est ce qui fait reconnaître la séance : deux
+        conversations du même après-midi sur le même modèle ne se
+        distinguent pas autrement.
+        """
+        quand = (vue.debut or "")[:16].replace("T", " ")
+        combien = AssistantMenuMixin._llm_count(vue.tours, "turn", "turns")
+        parts = [quand, vue.modele or vue.logiciel or "?", combien]
+        if vue.outil:
+            parts.append(vue.outil)
+        ligne = " · ".join(part for part in parts if part)
+        return f"{ligne} — {vue.titre}" if vue.titre else ligne
+
+    def _llm_ask_ui(self):
+        """Écran plein ou tours en ligne, demandé une fois puis mémorisé.
+
+        Le choix se pose ICI plutôt qu'à l'entrée du menu : il dépend de ce
+        qu'on vient faire — copier une réponse depuis le terminal appelle les
+        tours en ligne, suivre une longue génération appelle l'écran.
+        """
+        from script.todo import todo_prefs
+
+        choisi = todo_prefs.get("chat_ui")
+        if choisi in ("tui", "cli"):
+            return choisi
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')}")
+        print(f"  [2] {t('Classic questions (line by line)')} *")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        reponse = input(t("Choice (1-2, default 1): ")).strip()
+        return "tui" if reponse == "1" else "cli"
+
+    def _llm_conversation_tui(self, conversation, invite):
+        """La conversation en plein écran. Rend vrai si l'écran a bien tenu.
+
+        Faux quand la bibliothèque manque ou que le terminal ne peut pas
+        l'héberger : l'appelant enchaîne alors sur les tours en ligne, qui
+        n'ont aucun prérequis.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import chat as llm_chat
+
+        if not textual_setup.ensure():
+            return False
+        try:
+            from script.todo.chat_form import run_chat
+        except ImportError:
+            return False
+        from script.todo.assistant import sessions as llm_seances
+
+        fichier = self._llm_state().get("seance_fichier")
+        run_chat(
+            conversation,
+            invite,
+            on_save=lambda: self._llm_save(conversation),
+            archiver=lambda tour: llm_seances.noter(fichier, tour),
+            aide=[
+                (nom, t(llm_chat.COMMANDS[nom])) for nom in COMMANDES_PHASE_1
+            ],
+        )
+        return True
+
+    def _llm_conversation(self, reprise=None, dossier=""):
         """La boucle de conversation.
+
+        `reprise` est le chemin d'une séance gardée : ses tours repartent
+        dans l'historique, et la suite s'ajoute AU MÊME fichier. Rouvrir sur
+        un fichier neuf couperait la conversation en deux au milieu.
+
+        `dossier` range la séance neuve dès son ouverture. Une reprise garde
+        le sien : il appartient à la séance, pas à la façon dont on y est
+        entré.
 
         L'invite d'une ligne EST la ligne d'état : elle porte le serveur et le
         modèle, elle est réimprimée par la lecture à chaque tour, et elle ne
@@ -1410,12 +4207,9 @@ class AssistantMenuMixin:
             cle = self._llm_openai_key()
         if not self._llm_confirm_third_party(serveur):
             return
-        print(
-            t(
-                "The history lives in memory and dies with this menu. /save"
-                " writes it to a file."
-            )
-        )
+        from script.todo.assistant import sessions as llm_seances
+
+        print(t("Every turn is written under ~/.erplibre, and nowhere else."))
         print(t("Commands start with a slash. /? lists them."))
         outil = self._llm_state().get("gpt")
         systeme = ""
@@ -1428,21 +4222,68 @@ class AssistantMenuMixin:
             systeme = "\n\n".join(
                 part for part in (outil.system, joint) if part
             )
-        backend = llm_backends.HttpBackend(
-            serveur,
-            serveur.model,
-            api_key=cle or None,
-            params=dict(outil.params) if outil is not None else None,
-        )
-        conversation = llm_chat.Conversation(backend, system=systeme)
-        # Le RADICAL du nom de fichier, et non le nom traduit : celui-ci est
-        # une phrase, et l'invite d'état est réimprimée à chaque tour. Un
-        # radical est court, stable, et désigne le fichier sans ambiguïté.
-        marque_outil = f" · {outil.stem}" if outil is not None else ""
-        invite = (
-            f"{self._llm_label(serveur)}{marque_outil}"
-            f" · {t(self._llm_hosting_key(serveur.hosting))} ▸ "
-        )
+        serveur = self._llm_resolve_model(serveur)
+        etat = self._llm_state()
+        etat["mesures"] = []
+        if reprise is None:
+            # Un identifiant NEUF par conversation. Le garder d'une
+            # conversation à l'autre les fait tomber dans le même fichier :
+            # deux échanges sans rapport s'y suivent, la liste n'en montre
+            # qu'un, et le reprendre rejoue les deux comme s'ils n'en
+            # faisaient qu'un.
+            etat["seance"] = ""
+            etat["rang_depart"] = 0
+            etat["seance_fichier"] = llm_seances.ouvrir(
+                self._llm_seance(),
+                serveur,
+                outil=outil.stem if outil else "",
+                dossier=dossier,
+            )
+        else:
+            # La reprise garde l'identifiant du fichier : les tours qui
+            # suivent appartiennent à la même séance, dans le journal des
+            # mesures comme dans la conversation.
+            vue = llm_seances.resume(reprise)
+            etat["seance"] = (vue.seance if vue else "") or self._llm_seance()
+            etat["rang_depart"] = vue.tours if vue else 0
+            etat["seance_fichier"] = reprise
+
+        def ouvrir(cible):
+            """Le backend et la conversation d'un serveur, l'invite avec.
+
+            Refaite telle quelle quand le modèle change : le backend porte le
+            modèle, et l'invite le nomme à chaque tour.
+            """
+            neuf = llm_backends.HttpBackend(
+                cible,
+                cible.model,
+                api_key=cle or None,
+                params=dict(outil.params) if outil is not None else None,
+            )
+            # Le RADICAL du nom de fichier, et non le nom traduit : celui-ci
+            # est une phrase, et l'invite d'état est réimprimée à chaque tour.
+            # Un radical est court, stable, et désigne le fichier sans
+            # ambiguïté.
+            marque_outil = f" · {outil.stem}" if outil is not None else ""
+            return (
+                llm_chat.Conversation(neuf, system=systeme),
+                f"{self._llm_label(cible)}{marque_outil}"
+                f" · {t(self._llm_hosting_key(cible.hosting))} ▸ ",
+            )
+
+        conversation, invite = ouvrir(serveur)
+        if reprise is not None:
+            # Les tours repartent dans l'historique : le modèle reçoit au
+            # tour suivant ce qu'il aurait reçu sans l'interruption.
+            conversation.turns = llm_seances.charger(reprise)
+            combien = self._llm_count(
+                len(conversation.turns) // 2, "turn", "turns"
+            )
+            print(f"  ↩ {t('%s resumed') % combien}")
+        if self._llm_ask_ui() == "tui" and self._llm_conversation_tui(
+            conversation, invite
+        ):
+            return
         while True:
             try:
                 ligne = input(invite)
@@ -1469,6 +4310,26 @@ class AssistantMenuMixin:
             if commande == "/srv":
                 self._llm_servers()
                 return
+            if commande == "/model":
+                autre = self._llm_pick_model(serveur, reste)
+                if autre is None:
+                    continue
+                serveur = autre
+                self._llm_state()["serveur"] = serveur
+                self._llm_remember_model(serveur)
+                # L'historique est VIDÉ, pour la raison qui le vide sur un
+                # changement de serveur : les tours d'avant ont été écrits
+                # par un autre modèle, et les lui rejouer comme les siens lui
+                # prête des mots qu'il n'a pas dits.
+                conversation, invite = ouvrir(serveur)
+                print(f"✅ {self._llm_label(serveur)}")
+                continue
+            if commande == "/dossier":
+                self._llm_ranger(reste)
+                continue
+            if commande == "/tui":
+                self._llm_tui(conversation, serveur, outil)
+                continue
             if commande == "/ctx":
                 for message in conversation.last_sent:
                     print(f"  [{message['role']}] {message['content']}")
@@ -1483,22 +4344,158 @@ class AssistantMenuMixin:
                 continue
             if not reste.strip():
                 continue
-            tour = conversation.ask(reste)
+            tour, prise = self._llm_tour(conversation, serveur, outil, reste)
             if tour.role == "error":
                 print(f"⚠ {tour.text}")
+                self._llm_say_served(serveur)
                 continue
-            print(tour.text)
             if tour.interrupted:
                 print(f"⏹ {t('answer interrupted')}")
-            # Le pied de ligne existe pour une réponse qui a défilé : il dit
-            # sa longueur et où l'écrire. Sous deux lignes, il n'apprend rien
-            # et le pluriel sonnerait faux.
-            lignes = len(tour.text.splitlines())
-            if lignes > 1:
-                print(
-                    f"── {lignes} {t('lines')} ·"
-                    f" {t('/save to write it to a file')} ──"
-                )
+            # Le pied de ligne dit ce que la réponse a coûté et où l'écrire.
+            # Il paraît à CHAQUE tour depuis qu'il porte des mesures : la
+            # longueur seule n'apprenait rien sous deux lignes, un débit et
+            # un délai de premier jeton en apprennent autant sur une ligne
+            # que sur trente.
+            combien = self._llm_count(
+                len(tour.text.splitlines()), "line", "lines"
+            )
+            print(
+                f"── {combien} · {llm_perf.pied(prise)}"
+                f" · {t('/save to write it to a file')} ──"
+            )
+
+    def _llm_tour(self, conversation, serveur, outil, question):
+        """Un tour posé AU FIL, mesuré et journalisé. Rend (tour, mesure).
+
+        Le texte s'imprime fragment par fragment plutôt qu'en un bloc, et
+        c'est ce qui rend le délai du premier jeton observable : c'est lui
+        qui sépare un serveur lent d'un modèle lent, et aucune mesure prise
+        après coup ne le retrouve.
+
+        Un backend qui ne diffuse pas n'appelle jamais le fil ; sa réponse
+        s'imprime alors entière, et le délai reste inconnu plutôt que nul.
+        """
+        import time
+
+        from script.todo.assistant import chat as llm_chat
+        from script.todo.assistant import sessions as llm_seances
+
+        etat = self._llm_state()
+        mesures = self._llm_mesures()
+        debut = time.monotonic()
+        premier = [None]
+
+        def au_fil(morceau):
+            if premier[0] is None:
+                premier[0] = time.monotonic() - debut
+            print(morceau, end="", flush=True)
+
+        fichier = etat.get("seance_fichier")
+        llm_seances.noter(fichier, llm_chat.Turn("user", question))
+        tour = conversation.ask(question, on_chunk=au_fil)
+        llm_seances.noter(fichier, tour)
+        duree = time.monotonic() - debut
+        if premier[0] is None:
+            # Rien n'est passé par le fil : personne n'a encore rien imprimé.
+            print(tour.text)
+        else:
+            # Le dernier fragment ne finit pas la ligne, et l'invite suivante
+            # se collerait à la fin de la réponse.
+            print()
+        mesures.append(
+            llm_mesure.mesurer(
+                seance=self._llm_seance(),
+                rang=etat.get("rang_depart", 0) + len(mesures) + 1,
+                serveur=serveur,
+                outil=outil,
+                question=question,
+                duree=duree,
+                premier=premier[0],
+                faits=conversation.last_meta,
+                interrompu=bool(tour.interrupted),
+                erreur="BackendError" if tour.role == "error" else "",
+            )
+        )
+        prise = mesures[-1]
+        try:
+            llm_mesure.ecrire(prise)
+        except Exception:  # noqa: BLE001
+            # Compter ne doit jamais interrompre une conversation.
+            pass
+        return tour, prise
+
+    def _llm_mesures(self):
+        """Les mesures de cette séance, créées à la première demande.
+
+        `setdefault` et non un accès direct : un état de session fabriqué à
+        la main n'a pas de raison de porter toutes les cases, et une case
+        absente dit « aucun tour encore », jamais une panne.
+        """
+        return self._llm_state().setdefault("mesures", [])
+
+    def _llm_ranger(self, nom):
+        """Range la conversation en cours dans un dossier, ou l'en sort.
+
+        Un nom vide l'en sort, ce qui est un geste et non une erreur : une
+        conversation rangée par mégarde doit pouvoir en ressortir sans qu'on
+        aille éditer un fichier.
+        """
+        from script.todo.assistant import sessions as llm_seances
+
+        fichier = self._llm_state().get("seance_fichier")
+        if fichier is None:
+            print(f"⚠ {t('This conversation is not being kept.')}")
+            return
+        propre = llm_seances.nom_dossier(nom)
+        if not llm_seances.ranger(fichier, propre):
+            print(f"⚠ {t('Could not file this conversation.')}")
+            return
+        if propre:
+            print(f"  📁 {t('Filed under %s') % propre}")
+        else:
+            print(f"  📂 {t('Taken out of its folder.')}")
+
+    def _llm_seance(self):
+        """L'identifiant opaque de cette séance de conversation.
+
+        Il relie les tours d'une même séance dans le journal sans rien dire
+        de la machine ni de l'utilisateur : un rang seul ne les relierait pas
+        d'un fichier mensuel à l'autre, et une heure de départ nommerait
+        quand quelqu'un était devant son écran.
+        """
+        import uuid
+
+        etat = self._llm_state()
+        if not etat.get("seance"):
+            etat["seance"] = uuid.uuid4().hex[:12]
+        return etat["seance"]
+
+    def _llm_tui(self, conversation, serveur, outil):
+        """L'écran vivant : le tableau des tours, le flux, la saisie.
+
+        L'écran REPREND la conversation en cours — même objet, même
+        historique — et la liste des mesures est partagée : les tours posés
+        là comptent dans la même séance, et revenir à l'invite texte ne perd
+        ni l'un ni l'autre.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import perf_tui as llm_ecran
+
+        if not textual_setup.ensure():
+            return
+        from script.todo.assistant import sessions as llm_seances
+
+        mesures = self._llm_mesures()
+        fichier = self._llm_state().get("seance_fichier")
+        llm_ecran.run_tui(
+            conversation,
+            serveur,
+            mesures=mesures,
+            outil=outil,
+            seance=self._llm_seance(),
+            depart=self._llm_state().get("rang_depart", 0) + len(mesures),
+            archiver=lambda tour: llm_seances.noter(fichier, tour),
+        )
 
     @staticmethod
     def _llm_quiet_http():
@@ -1552,17 +4549,826 @@ class AssistantMenuMixin:
         est lisible par tous les comptes de la machine, et une conversation
         porte ce que la session y a collé.
 
-        Le nom de fichier est tiré du compteur de tours, jamais d'une
-        horloge : une date rendrait le fichier reconnaissable dans le temps
-        sans rien apporter à qui le relit.
+        Le nom porte l'identifiant de SÉANCE, et non le nombre de tours :
+        deux conversations de la même longueur portaient le même nom, et la
+        seconde effaçait la première sans un mot. Le nombre de tours reste
+        dans le nom, parce qu'il dit d'un coup d'œil ce qu'on rouvre.
         """
         base = os.path.join(os.path.expanduser("~/.erplibre"), "assistant")
         os.makedirs(base, mode=0o700, exist_ok=True)
         os.chmod(base, 0o700)
         chemin = os.path.join(
-            base, f"conversation-{len(conversation.turns)}.md"
+            base,
+            f"conversation-{self._llm_seance()}"
+            f"-{len(conversation.turns)}.md",
         )
         drapeaux = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         with os.fdopen(os.open(chemin, drapeaux, 0o600), "w") as fichier:
             fichier.write(conversation.transcript())
         print(f"✅ {t('Conversation written to')} {chemin}")
+
+    # ------------------------------------------------------------------
+    # Apertus : installer un LLM ouvert, ici ou sur une autre machine.
+    # ------------------------------------------------------------------
+
+    def _apertus_state(self):
+        """Les choix de la session : cible, moteur, modèle.
+
+        Vit sur l'instance. Seule la PROGRESSION d'une installation descend
+        sur le disque, et elle descend hors du dépôt.
+        """
+        if getattr(self, "_apertus_session", None) is None:
+            from script.todo.assistant import apertus as apt
+
+            self._apertus_session = {
+                "cible": {
+                    "kind": "local",
+                    "destination": "",
+                    "host": "127.0.0.1",
+                    "label": t("Here (127.0.0.1)"),
+                },
+                "moteur": apt.MOTEUR_DEFAUT,
+                "modele": apt.MODELE_DEFAUT,
+            }
+        return self._apertus_session
+
+    @staticmethod
+    def _apertus_cle(cible):
+        """La clé durable d'une cible dans le fichier de progression.
+
+        La destination elle-même, parce qu'elle ne bouge pas. La poignée
+        « server-N » du registre ne peut pas servir : elle se rattribue par
+        rang à chaque chargement, et supprimer un voisin ferait hériter une
+        machine de la progression d'une autre.
+        """
+        return cible.get("destination") or "local"
+
+    @staticmethod
+    def _apertus_duree(secondes):
+        """Une durée en minutes et secondes, sans mot à traduire."""
+        secondes = int(secondes or 0)
+        return f"{secondes // 60}:{secondes % 60:02d}"
+
+    @staticmethod
+    def _apertus_gio(octets):
+        """Des octets en gigaoctets, à une décimale."""
+        return f"{(octets or 0) / 1024 ** 3:.1f} Go"
+
+    def _apertus_label(self):
+        """Le suffixe de l'entrée du menu : où en est l'installation."""
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cle = self._apertus_cle(state["cible"])
+        etat = apt_state.lire(cle)
+        modele = apt_state.resume(cle)
+        if modele == "step %s/%s - failed":
+            return t(modele) % (
+                etat.get("etape_faite", 0),
+                etat.get("etapes_total", 0),
+            )
+        if modele == "installed on %s":
+            return t(modele) % (etat.get("fin", "") or "")[:10]
+        return t(modele)
+
+    def _apertus_menu(self):
+        """L'écran d'Apertus : comprendre, préparer, installer, s'en servir."""
+        from script.todo.assistant import apertus as apt
+
+        print(f"🇨🇭 {t('Apertus, the open LLM of the Swiss Confederation.')}")
+        while True:
+            state = self._apertus_state()
+            moteur = apt.MOTEURS[state["moteur"]]
+            modele = apt.MODELES[state["modele"]]
+            choices = [
+                {"section": t("Understand")},
+                {
+                    "prompt_description": t(
+                        "Guide - what Apertus is, and how to use it"
+                    )
+                },
+                {"section": t("Prepare")},
+                {
+                    "prompt_description": (
+                        f"{t('Target - the machine to install on')}"
+                        f"  ({state['cible']['label']})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Engine - how to serve the model')}"
+                        f"  ({moteur.nom})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Model - full 8B, or distilled Mini')}"
+                        f"  ({modele.nom})"
+                    )
+                },
+                {"section": t("Install")},
+                {
+                    "prompt_description": (
+                        f"{t('Install or resume')}  ({self._apertus_label()})"
+                    )
+                },
+                {"prompt_description": t("Check and keep the server")},
+                {"section": t("Use")},
+                {"prompt_description": t("Chat with the model")},
+                {"prompt_description": t("Uninstall")},
+            ]
+            actions = [
+                self._apertus_guide,
+                self._apertus_cible,
+                self._apertus_moteur,
+                self._apertus_modele,
+                self._apertus_installer,
+                self._apertus_verifier,
+                self._llm_conversation,
+                self._apertus_desinstaller,
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            try:
+                rang = int(status)
+            except ValueError:
+                print(t("Command not found !"))
+                continue
+            if 1 <= rang <= len(actions):
+                actions[rang - 1]()
+            else:
+                print(t("Command not found !"))
+
+    def _apertus_guide(self):
+        """Ce qu'est Apertus, en quelques lignes, et où lire le reste.
+
+        Le menu dit le strict nécessaire pour choisir ; le guide complet vit
+        dans la documentation, qui se relit sans lancer le CLI.
+        """
+        from script.todo.assistant import apertus as apt
+
+        print("🇨🇭 Apertus — EPFL, ETH Zurich, CSCS — Apache-2.0")
+        print(
+            f"   {t('No official GGUF exists; this build is community-made.')}"
+        )
+        print("   https://apertus-ai.org/")
+        print()
+        for cle, modele in apt.MODELES.items():
+            marque = "🪶" if modele.distille else "🧠"
+            print(
+                f"  {marque} {cle:10} {modele.nom}\n"
+                f"     {modele.depot}\n"
+                f"     {self._apertus_gio(modele.taille)},"
+                f" {modele.contexte} ⇢ {apt.contexte_utile(modele)}"
+            )
+        print()
+        for cle, moteur in apt.MOTEURS.items():
+            print(
+                f"  ⚙️  {cle:10} {moteur.nom:21} {moteur.licence:11}"
+                f" :{moteur.port}{moteur.chemin}  ≥ {moteur.version_min}"
+                + (f"  [{moteur.plateforme}]" if moteur.plateforme else "")
+            )
+        print()
+        print("  📖 doc/APERTUS.md · doc/APERTUS.fr.md")
+
+    def _apertus_cible(self):
+        """Où installer : ici, une VM libvirt, un hôte ssh, une adresse tapée.
+
+        Les énumérateurs sont ceux du balayage des serveurs — le résolveur
+        d'adresse de VM est celui qui ne patiente pas, une VM éteinte suffit
+        sinon à tenir le menu plusieurs minutes.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        vms = llm_disc.qemu_hosts(
+            list_domains=self._qemu_list_domains,
+            vm_ip=self._qemu_vm_ip_now,
+        )
+        hotes = llm_disc.ssh_hosts(
+            list_aliases=self._ssh_config_hosts,
+            resolve=self._ssh_resolve,
+        )
+        choices = [{"prompt_description": t("Here (127.0.0.1)")}]
+        cibles = [
+            {
+                "kind": "local",
+                "destination": "",
+                "host": "127.0.0.1",
+                "label": t("Here (127.0.0.1)"),
+            }
+        ]
+        for nom, adresse in vms:
+            if not adresse:
+                continue
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('The QEMU VMs of this machine (virsh)')}"
+                        f"  {nom}"
+                    )
+                }
+            )
+            cibles.append(
+                {
+                    "kind": "ssh",
+                    "destination": adresse,
+                    "host": adresse,
+                    "label": nom,
+                }
+            )
+        for alias, hote, _port in hotes:
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('The hosts of ~/.ssh/config')}  {alias}"
+                    )
+                }
+            )
+            cibles.append(
+                {
+                    "kind": "ssh",
+                    "destination": alias,
+                    "host": hote or alias,
+                    "label": alias,
+                }
+            )
+        choices.append({"prompt_description": t("An address I type")})
+        print(t("Where should I install Apertus?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cibles):
+            self._apertus_state()["cible"] = cibles[rang - 1]
+            return
+        if rang != len(cibles) + 1:
+            print(t("Command not found !"))
+            return
+        try:
+            saisie = click.prompt(t("Host or IP")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not saisie:
+            print(t("Cancelled."))
+            return
+        self._apertus_state()["cible"] = {
+            "kind": "ssh",
+            "destination": saisie,
+            "host": saisie,
+            "label": saisie,
+        }
+
+    def _apertus_moteur(self):
+        """Quel logiciel sert le modèle. Les quatre sont sous licence libre."""
+        from script.todo.assistant import apertus as apt
+
+        cles = list(apt.MOTEURS)
+        choices = []
+        for c in cles:
+            moteur = apt.MOTEURS[c]
+            # La plateforme exigée se dit ICI. Apprise à l'étape 2 d'une
+            # installation, elle aurait déjà coûté une question et un choix.
+            ou = f", {moteur.plateforme}" if moteur.plateforme else ""
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{moteur.nom}  ({moteur.licence},"
+                        f" :{moteur.port}, ≥ {moteur.version_min}{ou})"
+                    )
+                }
+            )
+        print(t("Which engine should serve the model?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cles):
+            self._apertus_state()["moteur"] = cles[rang - 1]
+        else:
+            print(t("Command not found !"))
+
+    def _apertus_modele(self):
+        """Le 8B complet, ou un Mini distillé.
+
+        La distillation se paie en contexte : les Mini plafonnent à 4096
+        jetons là où le 8B en accepte 65536. Le libellé le porte, parce que
+        c'est la surprise que le choix réserve.
+        """
+        from script.todo.assistant import apertus as apt
+
+        cles = list(apt.MODELES)
+        choices = []
+        for c in cles:
+            modele = apt.MODELES[c]
+            # Le contexte du modèle, et non une phrase qui nomme une taille :
+            # la même phrase servait au 8B et au 70B, et annonçait « 8B » pour
+            # les deux.
+            note = (
+                t("Distilled Mini - lighter, 4096 tokens only")
+                if modele.distille
+                else t("%s tokens of context") % modele.contexte
+            )
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{modele.nom}  ({self._apertus_gio(modele.taille)}"
+                        f" · {note})"
+                    )
+                }
+            )
+        print(t("Which model?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cles):
+            self._apertus_state()["modele"] = cles[rang - 1]
+        else:
+            print(t("Command not found !"))
+
+    def _apertus_ask_ui(self):
+        """TUI ou invites en ligne, demandé une fois puis mémorisé.
+
+        La préférence répond pour l'utilisateur qui a tranché ; « ask » pose
+        la question à chaque installation.
+        """
+        from script.todo import todo_prefs
+
+        choisi = todo_prefs.get("apertus_progress")
+        if choisi in ("tui", "cli"):
+            return choisi
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')}")
+        print(f"  [2] {t('Classic questions (line by line)')} *")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        return (
+            "tui"
+            if input(t("Choice (1-2, default 1): ")).strip() == "1"
+            else "cli"
+        )
+
+    def _apertus_jouer(self, liste, cle, depart, moteur_cle):
+        """Joue les étapes à partir de `depart`, et s'arrête à la première
+        qui échoue.
+
+        Rend le rang de l'étape en échec, ou 0 si tout est passé. Une étape
+        dont le test de complétion répond déjà 0 est sautée : c'est ce qui
+        rend une reprise bon marché après un téléchargement réussi.
+
+        L'étape de version est la seule dont le CODE DE RETOUR ne suffit
+        pas : un moteur trop ancien répond 0 et annonce son numéro. La
+        comparaison se fait donc sur sa sortie, avant que le modèle ne se
+        télécharge.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        debut = time.time()
+        total = len(liste)
+        for rang, etape in enumerate(liste, 1):
+            if rang < depart:
+                continue
+            print(f"\n  → {rang}/{total} {t(etape.label)}")
+            if etape.deja_fait:
+                fait, _ = self.execute.exec_command_live(
+                    etape.deja_fait,
+                    source_erplibre=False,
+                    quiet=True,
+                    return_status_and_output=True,
+                )
+                if fait == 0:
+                    apt_state.avancer(cle, rang, int(time.time() - debut))
+                    continue
+            code, sortie = self.execute.exec_command_live(
+                etape.commande,
+                source_erplibre=False,
+                return_status_and_output=True,
+            )
+            texte = "\n".join(sortie or [])
+            if code != 0:
+                if not etape.critique:
+                    print(f"  ⚠️  {t(etape.label)} — {code}")
+                    apt_state.avancer(cle, rang, int(time.time() - debut))
+                    continue
+                pourquoi = self._apertus_diagnostic(etape, moteur_cle, texte)
+                if pourquoi:
+                    print(f"⛔ {pourquoi}")
+                apt_state.noter_echec(cle, etape.cle, etape.label, code, texte)
+                print(
+                    "⛔ "
+                    + t("Step %s/%s (%s) failed with code %s.")
+                    % (rang, total, t(etape.label), code)
+                )
+                return rang
+            apt_state.avancer(cle, rang, int(time.time() - debut))
+        apt_state.terminer(cle, int(time.time() - debut))
+        return 0
+
+    def _apertus_diagnostic(self, etape, moteur_cle, texte):
+        """Ce qu'une étape en échec apprend à l'utilisateur.
+
+        Trois étapes échouent pour une raison qu'on peut nommer, et la
+        nommer évite d'avoir à lire la sortie brute : la version du moteur,
+        le sudo qui réclame un mot de passe, la place manquante. Les autres
+        rendent une chaîne VIDE — leur sortie est déjà à l'écran, et répéter
+        leur libellé sous la ligne qui le porte déjà n'ajoute rien.
+
+        Un moteur INTROUVABLE se distingue d'un moteur trop ancien : la
+        commande de version n'imprime alors aucun numéro, et annoncer une
+        version périmée enverrait chercher une mise à jour là où il n'y a
+        rien d'installé.
+        """
+        from script.todo.assistant import apertus as apt
+
+        if etape.cle == "version":
+            moteur = apt.MOTEURS[moteur_cle]
+            lignes = [x for x in (texte or "").strip().splitlines() if x]
+            if not lignes:
+                return f"{t('Binary not found at: ')}{moteur.binaire}"
+            return t(
+                "%s %s is too old; Apertus needs %s (xIELU activation)."
+            ) % (moteur.nom, lignes[-1][:40], moteur.version_min)
+        if etape.cle == "plateforme":
+            return (
+                t("This engine needs %s; this target runs something else.")
+                % apt.MOTEURS[moteur_cle].plateforme
+            )
+        if etape.cle == "sudo":
+            return t("This host needs an interactive sudo password.")
+        if etape.cle == "place":
+            modele = apt.MODELES[self._apertus_state()["modele"]]
+            return t("Not enough space: %s needed, %s free.") % (
+                self._apertus_gio(
+                    apt.place_requise(modele, self._apertus_state()["moteur"])
+                ),
+                "?",
+            )
+        return ""
+
+    def _apertus_jouer_tui(self, liste, cle, depart):
+        """Le même jeu d'étapes, en plein écran.
+
+        Rend None quand l'écran plein ne peut pas s'ouvrir — bibliothèque
+        absente, terminal inapte. L'appelant retombe alors sur le rendu
+        texte, qui n'a pas de prérequis.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import apertus_state as apt_state
+
+        if not textual_setup.ensure():
+            return None
+        try:
+            from script.todo.apertus_form import run_apertus_progress
+        except ImportError:
+            return None
+
+        def note(rang, etape_cle, code, texte, secondes):
+            if code == 0:
+                apt_state.avancer(cle, rang, secondes)
+            else:
+                apt_state.noter_echec(cle, etape_cle, etape_cle, code, texte)
+
+        echec = run_apertus_progress(liste, depart, on_step=note)
+        if not echec:
+            apt_state.terminer(cle)
+        return echec
+
+    def _apertus_reprise(self, ctx):
+        """L'écran d'une installation interrompue : ce qui est fait, ce qui a
+        cassé, et par où repartir.
+
+        Le dictionnaire reçu vient de `apertus.contexte_reprise`, qui ne fait
+        aucune entrée-sortie : le rendu texte et le rendu plein écran
+        décrivent donc forcément le même état.
+
+        Rend le rang de départ, ou None pour renoncer.
+        """
+        print(t("Interrupted install on %s.") % (ctx["debut"] or "?"))
+        print()
+        for etape in ctx["etapes"]:
+            print(
+                f"  {etape['icone']} {etape['rang']}" f" {t(etape['label'])}"
+            )
+        print()
+        print(
+            "  "
+            + t("%s/%s steps, %s elapsed, %s attempts.")
+            % (
+                ctx["faites"],
+                ctx["total"],
+                self._apertus_duree(ctx["secondes"]),
+                ctx["tentatives"],
+            )
+        )
+        if ctx["erreur"]:
+            print("  " + t("Last error: %s") % ctx["erreur"].strip()[-200:])
+        print()
+        choices = [
+            {
+                "prompt_description": (
+                    t("Resume at step %s") % ctx["reprise_a"]
+                )
+            },
+            {"prompt_description": t("Start over")},
+            {"prompt_description": t("See the full last output")},
+        ]
+        while True:
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return None
+            print()
+            if status == "0":
+                return None
+            if status == "1":
+                return ctx["reprise_a"]
+            if status == "2":
+                return 1
+            if status == "3":
+                print(ctx["erreur"] or t("Nothing to do."))
+                continue
+            print(t("Command not found !"))
+
+    def _apertus_installer(self):
+        """Installer Apertus sur la cible, ou reprendre une installation.
+
+        Le plan complet s'affiche AVANT la confirmation : tirer plusieurs
+        gigaoctets sur une machine qu'on ne possède pas se décide en voyant
+        les commandes, pas après.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cible = state["cible"]
+        cle = self._apertus_cle(cible)
+        moteur = apt.MOTEURS[state["moteur"]]
+        modele = apt.MODELES[state["modele"]]
+        liste = apt.etapes(state["moteur"], state["modele"], cible)
+
+        depart = 1
+        if apt_state.a_reprendre(cle):
+            ctx = apt.contexte_reprise(apt_state.lire(cle), liste)
+            depart = self._apertus_reprise(ctx)
+            if depart is None:
+                return
+            if depart == 1:
+                apt_state.oublier(cle)
+            else:
+                apt_state.reprendre(cle)
+
+        print(f"{t('Target')} : {cible['label']}")
+        print(f"⚙️  {moteur.nom} ({moteur.licence})")
+        print(
+            f"🧠 {modele.nom} —"
+            f" {self._apertus_gio(modele.taille)},"
+            f" {t('%s tokens of context') % apt.contexte_utile(modele)}"
+        )
+        besoin = apt.place_requise(modele, state["moteur"])
+        print(f"💾 {self._apertus_gio(besoin)}")
+        if moteur.cle == "mlx" and modele.mlx_source:
+            # La conversion tire les poids pleins AVANT d'écrire la version
+            # quantifiée : annoncer la seule taille finale tromperait de 130 Go.
+            print(
+                "   "
+                + t(
+                    "No MLX build is published; the model is converted"
+                    " locally."
+                )
+            )
+        print()
+        print(t("Will execute:"))
+        print(apt.plan_lisible(liste[depart - 1 :]))
+        print()
+        try:
+            reponse = click.prompt(
+                f"{t('Run these %s steps?') % (len(liste) - depart + 1)} (o/N)",
+                default="n",
+                show_default=False,
+            )
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not self._is_yes(reponse):
+            print(t("Cancelled."))
+            return
+
+        if depart == 1:
+            apt_state.commencer(
+                cle, state["moteur"], state["modele"], len(liste)
+            )
+        echec = None
+        if self._apertus_ask_ui() == "tui":
+            echec = self._apertus_jouer_tui(liste, cle, depart)
+        if echec is None:
+            echec = self._apertus_jouer(liste, cle, depart, state["moteur"])
+        print()
+        if echec:
+            return
+        print("✅ " + t("Apertus answers on this target."))
+        self._apertus_verifier()
+
+    def _apertus_verifier(self):
+        """Sonder la cible et proposer de retenir le serveur.
+
+        L'enregistrement passe par le chemin existant du registre : la sonde
+        reconnaît le moteur sur son port, et l'écriture n'a qu'un seul
+        auteur dans tout le dépôt.
+        """
+        from script.todo.assistant import apertus as apt
+
+        state = self._apertus_state()
+        moteur = apt.MOTEURS[state["moteur"]]
+        hote = state["cible"]["host"]
+        corps = llm_fp.collect(hote, moteur.port, budget=2.0)
+        if not corps:
+            print(t("Apertus is not installed on this target."))
+            return
+        empreinte = llm_fp.identify(corps, port=moteur.port, host=hote)
+        if not empreinte.software:
+            print(t("Apertus is not installed on this target."))
+            return
+        print(f"✅ {empreinte.software} — {hote}:{moteur.port}")
+        self._llm_probe_and_keep([hote])
+
+    def _apertus_desinstaller(self):
+        """Retirer le modèle et arrêter le service. Le moteur reste posé.
+
+        La cible se retape en entier : le geste n'est pas réversible sans
+        retélécharger plusieurs gigaoctets, et un menu qui l'exécute sur une
+        confirmation d'une lettre se trompe de machine un jour.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cible = state["cible"]
+        cle = self._apertus_cle(cible)
+        if not apt_state.lire(cle):
+            print(t("Apertus is not installed on this target."))
+            return
+        liste = apt.desinstaller(state["moteur"], state["modele"], cible)
+        print(t("Will execute:"))
+        print(apt.plan_lisible(liste))
+        print()
+        try:
+            saisie = click.prompt(
+                t("Retype the target in full to remove it")
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if saisie != cible["label"]:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        for etape in liste:
+            self.execute.exec_command_live(
+                etape.commande, source_erplibre=False
+            )
+        apt_state.oublier(cle)
+        print(t("Removed."))
+
+    # ------------------------------------------------------------------
+    # Panorama : ce qui existe, ce que ça coûte, et depuis quand on le sait.
+    # ------------------------------------------------------------------
+
+    def _panorama_label(self):
+        """L'âge du relevé, en suffixe de l'entrée de menu.
+
+        L'âge passe avant le verdict parce que c'est lui qui se vérifie : un
+        lecteur qui voit « 200 jours » n'a pas besoin qu'on lui dise que
+        c'est vieux.
+        """
+        from script.todo.assistant import panorama as pan
+
+        return f"{pan.age_jours()} j · {t(pan.fraicheur())}"
+
+    def _panorama(self):
+        """Le panorama : les moteurs, les modèles, et la date du relevé."""
+        from script.todo.assistant import panorama as pan
+
+        print(
+            f"🗺 {t('A survey has a shelf life; this one carries its date.')}"
+        )
+        while True:
+            choices = [
+                {
+                    "prompt_description": (
+                        f"{t('The engines')}  ({len(pan.MOTEURS)})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('The open models')}  ({len(pan.MODELES)})"
+                    )
+                },
+                {"prompt_description": t("The full guide")},
+            ]
+            print(
+                t("Surveyed on %s, %s days ago.")
+                % (pan.DATE_RELEVE.isoformat(), pan.age_jours())
+                + f"  {t(pan.fraicheur())}"
+            )
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._panorama_moteurs()
+            elif status == "2":
+                self._panorama_modeles()
+            elif status == "3":
+                print("  📖 doc/LLM_OUVERTS.md · doc/LLM_OUVERTS.fr.md")
+            else:
+                print(t("Command not found !"))
+
+    @staticmethod
+    def _panorama_dit(etiquette, valeur, largeur=22):
+        """Une ligne de fiche : une étiquette alignée, puis sa valeur."""
+        print(f"     {etiquette:<{largeur}} {valeur}")
+
+    def _panorama_moteurs(self):
+        """Les moteurs, une fiche chacun.
+
+        Une fiche plutôt qu'un tableau : les colonnes utiles ici sont des
+        phrases — les formats consommés, les plateformes — et un tableau les
+        tronquerait ou déborderait de la largeur du terminal.
+        """
+        from script.todo.assistant import panorama as pan
+
+        langue = get_lang()
+        for moteur in pan.MOTEURS.values():
+            print(
+                f"\n  ⚙️  {moteur.nom}  ·  {moteur.licence}"
+                f"  ·  :{moteur.port}{moteur.api}"
+            )
+            self._panorama_dit(t("formats"), moteur.formats)
+            self._panorama_dit(t("platforms"), moteur.plateformes)
+            self._panorama_dit(t("minimum for Apertus"), moteur.version_min)
+            print(f"     ✅ {moteur.force[langue]}")
+            print(f"     ⚠️  {moteur.faiblesse[langue]}")
+        if pan.NON_RELEVES:
+            print(
+                f"\n  {t('Not surveyed yet: %s') % ', '.join(pan.NON_RELEVES)}"
+            )
+
+    def _panorama_modeles(self):
+        """Les modèles ouverts, une fiche chacun.
+
+        Le cache par jeton est affiché à côté du contexte, et non ailleurs :
+        c'est leur produit qui dit si une fenêtre annoncée est payable, et les
+        séparer laisserait croire que le contexte est gratuit.
+        """
+        from script.todo.assistant import panorama as pan
+
+        langue = get_lang()
+        for modele in pan.MODELES.values():
+            print(f"\n  🧠 {modele.nom}  ·  {modele.editeur}")
+            self._panorama_dit(t("parameters"), modele.parametres)
+            self._panorama_dit(t("context"), modele.contexte)
+            self._panorama_dit(t("KV cache per token"), modele.kv_par_jeton)
+            self._panorama_dit(t("licence"), modele.licence)
+            self._panorama_dit(t("weights"), modele.poids)
+            self._panorama_dit(t("engines"), modele.moteurs)
+            self._panorama_dit(t("coding"), modele.codage)
+            print(f"     ✅ {modele.forces[langue]}")
+            print(f"     ⚠️  {modele.faiblesses[langue]}")

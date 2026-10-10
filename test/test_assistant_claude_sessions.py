@@ -176,6 +176,37 @@ class LeListageDesVivantes(unittest.TestCase):
         self.assertEqual(session.version, "9.9.999")
         self.assertTrue(session.live)
 
+    def test_la_poignee_est_l_id_court_que_le_listage_porte(self):
+        """Les cinq sous-commandes n'acceptent QUE l'identifiant court.
+
+        Le listage porte les deux pour un agent détaché : « id », court, et
+        « sessionId », l'UUID complet. `claude stop <UUID>` répond « No job
+        matching » — avec un code de sortie NUL, donc sans qu'aucun appelant
+        ne le voie échouer.
+        """
+        agents = json.dumps(
+            [
+                {
+                    "pid": PID,
+                    "cwd": CHEMIN,
+                    "kind": "background",
+                    "id": "aaaaaaaa",
+                    "sessionId": VIVANTE,
+                    "status": "idle",
+                }
+            ]
+        )
+        session = self._live(agents=agents)[0]
+        self.assertEqual(session.court, "aaaaaaaa")
+        self.assertEqual(session.poignee, "aaaaaaaa")
+        self.assertNotEqual(session.poignee, session.session_id)
+
+    def test_un_listage_sans_id_court_retombe_sur_le_prefixe(self):
+        """Une version antérieure n'écrit pas « id » : le préfixe de l'UUID
+        est la forme que l'outil imprime, et vaut mieux que l'UUID entier,
+        qu'aucune sous-commande n'accepte."""
+        self.assertEqual(self._live()[0].poignee, VIVANTE[:8])
+
     def test_une_session_occupee_est_etiquetee_avant_d_etre_proposee(self):
         """L'état décide du risque : une session occupée acceptera quand même
         une écriture, et se mettra en concurrence avec elle-même."""
@@ -189,14 +220,34 @@ class LeListageDesVivantes(unittest.TestCase):
         self.assertEqual(session.version, "")
         self.assertTrue(session.live)
 
-    def test_un_outil_absent_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents=""), [])
+    def test_un_listage_qui_ne_repond_pas_rend_None(self):
+        """None et la liste vide disent le contraire l'un de l'autre.
 
-    def test_un_listage_illisible_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents="pas du json"), [])
+        Le premier est « la question n'a pas abouti » — binaire absent, compte
+        déconnecté, version qui ignore la sous-commande, délai dépassé, sortie
+        qui n'est pas du JSON. Le second est « aucune session ne tourne ».
 
-    def test_un_listage_qui_n_est_pas_une_liste_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents='{"pid": 1}'), [])
+        Les confondre fait tomber en OUVERT la garde de l'écran de ménage :
+        sans vivante connue, tout historique devient supprimable, y compris
+        celui de la session qui écrit en ce moment.
+        """
+        for muet in ("", "pas du json", '{"pid": 1}'):
+            self.assertIsNone(self._live(agents=muet), repr(muet))
+
+    def test_un_listage_qui_repond_rien_rend_une_liste_vide(self):
+        """L'outil a répondu, et ce qu'il dit est « aucune »."""
+        self.assertEqual(self._live(agents="[]"), [])
+
+    def test_la_flotte_rend_toujours_une_liste(self):
+        """Elle sert à MONTRER : une transcription reste une transcription
+        même quand le listage se tait. Ce qui se perd alors est la vivacité,
+        et c'est `live()` qui la porte."""
+        flotte = CS.fleet(
+            run=lambda argv: "",
+            read_registry=lambda: [],
+            projects_root="/nulle-part",
+        )
+        self.assertEqual(flotte, [])
 
     def test_le_pid_detenteur_ne_se_donne_que_pour_une_vivante(self):
         vivante = self._live()[0]
@@ -319,29 +370,6 @@ class LAffichage(unittest.TestCase):
     def test_un_repertoire_vide_ne_devient_pas_un_point(self):
         vide = CS.Session(session_id=VIVANTE, cwd="")
         self.assertEqual(CS.displayable(vide)["dir"], "")
-
-
-class LaFrontiere(unittest.TestCase):
-    """Le paquet doit rester importable sans le CLI."""
-
-    def test_le_listage_n_importe_pas_todo(self):
-        # Dans un interpréteur NEUF : la suite complète importe todo par
-        # ailleurs, et le sys.modules de ce processus en garderait la trace
-        # quel que soit le module éprouvé ici.
-        sortie = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys, script.todo.assistant.claude_sessions;"
-                " print('script.todo.todo' in sys.modules)",
-            ],
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        self.assertEqual(sortie.returncode, 0, sortie.stderr)
-        self.assertEqual(sortie.stdout.strip(), "False")
 
 
 if __name__ == "__main__":

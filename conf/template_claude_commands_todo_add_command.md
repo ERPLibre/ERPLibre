@@ -22,7 +22,7 @@ allowed-tools:
 `/todo_plan_max` plans one entry at maximum effort: it asks what forks the
 design, uses the superpowers plugin when it is installed, and writes the
 specification to `tasks/todo.md`. Both commands are deployed together by
-`TODO › Execute › GPT code › Claude configs`. When such a specification
+`TODO › Assistant › IA › Claude configs`. When such a specification
 exists, implement it rather than re-deciding the design here.
 
 ## Architecture Reference
@@ -101,7 +101,7 @@ These are automatically picked up by `execute_from_configuration()`.
 | Database | `prompt_execute_database` | — |
 | Doc | `prompt_execute_doc` | — |
 | Git | `prompt_execute_git` | `git_from_makefile` |
-| GPT code | `prompt_execute_gpt_code` | — |
+| AI (under Assistant) | `prompt_assistant_ia` | — |
 | Network | `prompt_execute_network` | — |
 | Process | `prompt_execute_process` | — |
 | Run | `prompt_execute_instance` | `instance` |

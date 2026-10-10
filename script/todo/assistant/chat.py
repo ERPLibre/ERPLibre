@@ -3,10 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La conversation : les tours, en mémoire, et les commandes qui la pilotent.
 
-L'historique vit dans cet objet et NULLE PART ailleurs : rien ici n'ouvre un
-fichier. Il meurt avec le menu, et `/save` — dont l'écriture appartient au
-menu — est le seul moyen d'en garder une trace, ce qui doit se dire AVANT la
-conversation qui méritait d'être gardée.
+L'historique vit dans cet objet, et RIEN ICI n'ouvre un fichier. Il meurt
+pourtant moins qu'avant : le menu écrit chaque tour dans la séance gardée, au
+fil, et sait recharger ces tours pour reprendre une conversation. Cette
+écriture appartient au menu et à lui seul — ce module tient la conversation,
+il ne décide pas de ce qui survit.
 
 Deux subtilités que la forme de la boucle impose :
 
@@ -46,6 +47,11 @@ COMMANDS: dict[str, str] = {
     "/srv": (
         "change server, history CLEARED — the model is no longer the same"
     ),
+    "/model": (
+        "change model on this server, history CLEARED; /model <text> filters"
+    ),
+    "/dossier": "file this conversation: /dossier <name>, empty to take it out",
+    "/tui": "open the live screen, with the timings of each turn",
     "/ctx": "show again what was sent",
     "/m": 'multi-line entry, end with a single "." line',
     "/save": "write the conversation to a file",
@@ -59,11 +65,17 @@ class Turn:
 
     `role` vaut `user`, `assistant` ou `error`. Un tour `error` n'entre jamais
     dans l'historique : il rapporte une panne, pas un échange.
+
+    `reasoning` porte les jetons de réflexion d'un modèle qui raisonne. Il ne
+    repart JAMAIS dans le tour suivant — `_messages` n'envoie que `text` —
+    parce qu'une réflexion déjà faite se paierait deux fois. Il est là pour
+    être montré, puisqu'il est déjà compté dans les jetons de réponse.
     """
 
     role: str
     text: str
     interrupted: bool = False
+    reasoning: str = ""
 
 
 def parse_command(line: str) -> tuple[str | None, str]:
@@ -138,14 +150,21 @@ class Conversation:
         except (Interrupted, KeyboardInterrupt) as coupure:
             partiel = getattr(coupure, "partial", "")
             self.last_meta = getattr(coupure, "meta", {}) or {}
-            tour = Turn("assistant", partiel, interrupted=True)
+            tour = Turn(
+                "assistant",
+                partiel,
+                interrupted=True,
+                reasoning=self.last_meta.get("reasoning", ""),
+            )
             if partiel:
                 self.turns.extend((question, tour))
             return tour
         except BackendError as panne:
             return Turn("error", str(panne))
         self.last_meta = faits or {}
-        tour = Turn("assistant", reponse)
+        tour = Turn(
+            "assistant", reponse, reasoning=self.last_meta.get("reasoning", "")
+        )
         self.turns.extend((question, tour))
         return tour
 

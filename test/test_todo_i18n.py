@@ -31,6 +31,41 @@ class TestTranslations(unittest.TestCase):
     def test_translations_not_empty(self):
         self.assertGreater(len(todo_i18n.TRANSLATIONS), 0)
 
+    def test_no_key_appears_twice(self):
+        """Une clé en double ne lève JAMAIS : Python garde la dernière.
+
+        Les deux contrôles ci-dessus ne peuvent pas la voir, puisqu'ils
+        regardent le dictionnaire une fois effondré. Il faut donc lire la
+        SOURCE. Neuf doublons s'y étaient installés, dont trois où les deux
+        traductions différaient — « échouées » d'une migration remplacé par
+        « échoués » d'un appel d'outil, sur deux écrans qui ne demandaient
+        rien. Un doublon de valeurs identiques ne casse rien aujourd'hui et
+        casse le jour où l'une des deux change ; il tombe ici aussi.
+        """
+        with open(todo_i18n.__file__, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        noeud = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Assign)
+            and any(
+                getattr(cible, "id", "") == "TRANSLATIONS"
+                for cible in n.targets
+            )
+        )
+        cles = [
+            c.value
+            for c in noeud.value.keys
+            if isinstance(c, ast.Constant) and isinstance(c.value, str)
+        ]
+        self.assertTrue(cles, "aucune clé lue : le test ne garde rien")
+        doubles = sorted(
+            cle
+            for cle, combien in collections.Counter(cles).items()
+            if combien > 1
+        )
+        self.assertEqual(doubles, [])
+
 
 class TestT(unittest.TestCase):
     """Test t() translation function."""

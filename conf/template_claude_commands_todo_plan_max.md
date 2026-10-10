@@ -81,7 +81,7 @@ debugging skill when the entry wraps something that already misbehaves.
 
 When it is absent, say so in one line and plan without it — plan mode, the
 repository's own conventions, and the menus already written. Do not install it
-from here: `TODO › Execute › GPT code › Plugins Claude Code` carries the
+from here: `TODO › Assistant › IA › Plugins` carries the
 ERPLibre list and the install is the user's decision, not a side effect of
 asking for a plan.
 

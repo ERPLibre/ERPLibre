@@ -178,13 +178,39 @@ class TestPathLine(unittest.TestCase):
         for shell in ("bash", "zsh"):
             self.assertEqual(
                 todo._shell_path_line(shell, "~/.local/bin"),
-                'export PATH="~/.local/bin:$PATH"',
+                'export PATH="$HOME/.local/bin:$PATH"',
             )
 
     def test_fish_has_its_own_builtin(self):
         self.assertEqual(
             TODO()._shell_path_line("fish", "~/.local/bin"),
-            "fish_add_path ~/.local/bin",
+            "fish_add_path $HOME/.local/bin",
+        )
+
+    def test_no_tilde_survives_into_the_written_line(self):
+        """Un tilde entre guillemets n'est PAS étendu par le shell.
+
+        La ligne ajoute alors un répertoire littéralement nommé « ~ », que
+        rien ne porte : le binaire est posé et la commande reste introuvable.
+        Le défaut se cache tant qu'un installateur amont écrit sa propre
+        ligne, correcte, juste à côté.
+        """
+        for shell in ("bash", "zsh", "fish"):
+            with self.subTest(shell=shell):
+                ligne = TODO()._shell_path_line(shell, "~/.opencode/bin")
+                self.assertNotIn("~", ligne)
+                self.assertIn("$HOME/.opencode/bin", ligne)
+
+    def test_an_absolute_directory_is_left_alone(self):
+        """Seul un tilde de TÊTE se traduit : un chemin absolu ne change pas,
+        et un tilde au milieu d'un nom n'en est pas un."""
+        self.assertEqual(
+            TODO()._shell_path_line("bash", "/opt/outil/bin"),
+            'export PATH="/opt/outil/bin:$PATH"',
+        )
+        self.assertEqual(
+            TODO()._shell_path_line("bash", "/opt/a~b/bin"),
+            'export PATH="/opt/a~b/bin:$PATH"',
         )
 
 
