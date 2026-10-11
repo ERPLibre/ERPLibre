@@ -193,17 +193,32 @@ Pour le tester, vous devez nettoyer les caches et l'installer :
 <!-- [en] -->
 ## Generate new prod and release
 
-Generate production manifest and freeze all repos versions.
+Freeze all repos versions: every project receives the commit of its clone in its source file of `manifest/`, next to
+its branch. Check first what would change, then freeze and commit the manifest files. A clone whose commit is on no
+remote branch is skipped: push it first. [GIT_REPO.md](./GIT_REPO.md#freeze-the-versions) details what is skipped.
 
 <!-- [fr] -->
 ## Générer la nouvelle production et publication
 
-Générer le manifeste de production et geler toutes les versions des dépôts.
+Geler toutes les versions des dépôts : chaque projet reçoit le commit de son clone dans son fichier source de
+`manifest/`, à côté de sa branche. Vérifier d'abord ce qui changerait, puis geler et committer les fichiers de
+manifeste. Un clone dont le commit n'est sur aucune branche distante est écarté : le pousser d'abord.
+[GIT_REPO.fr.md](./GIT_REPO.fr.md#geler-les-versions) détaille ce qui est écarté.
 
 <!-- [common] -->
 ```bash
-.venv.erplibre/bin/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run
+make repo_freeze
+git add manifest/
 ```
+
+<!-- [en] -->
+An installation made from this commit follows the frozen commits with `make repo_configure_all FREEZE=1`; without the
+argument, it follows the branches.
+
+<!-- [fr] -->
+Une installation faite depuis ce commit suit les commits gelés avec `make repo_configure_all FREEZE=1` ; sans
+l'argument, elle suit les branches.
 
 <!-- [en] -->
 Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg)
@@ -303,12 +318,15 @@ Ajouter le commentaire `Release v#.#.#`.
 <!-- [en] -->
 ## Create tag
 
-Add a tag on the commit in branch master with your release. When adding tag, be sure to update default.xml
+Add a tag on the commit in branch master with your release. The tagged commit must carry the freeze: check that
+`.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run` reports no change before tagging.
 
 <!-- [fr] -->
 ## Créer le tag
 
-Ajouter un tag sur le commit dans la branche master avec votre publication. Lors de l'ajout du tag, assurez-vous de mettre à jour default.xml
+Ajouter un tag sur le commit dans la branche master avec votre publication. Le commit étiqueté doit porter le gel :
+vérifier que `.venv.erplibre/bin/python script/git/git_freeze_manifest.py --dry-run` ne signale aucun changement
+avant de poser le tag.
 
 <!-- [common] -->
 ```bash

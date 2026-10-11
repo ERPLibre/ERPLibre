@@ -125,6 +125,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Search the cache of the open folder, of the account or of every account, and put the same question to the server when the cache cannot answer it. A sealed cache carries no full-text index — the sealing is what forbids one — and the search then compares the fields it can still read
 - The installers set up gettext (gettext-tools on SUSE) on every supported system, without ever blocking: `msgfmt --check` catches a translation that lost a `%s` before it shows on a page, and `msgmerge` carries translations over to a regenerated `.pot`
 - `coverage` is in the Odoo 18 venv: `ODOO_MODE_COVERAGE=true` runs Odoo under coverage instead of failing on « command not found »
+- The versions of a release are frozen in the manifests themselves: `make repo_freeze` writes the commit of every cloned project into its source file of `manifest/`, in `freeze-revision`, beside the branch that `revision` keeps. One file carries both readings, and the choice is an argument stored nowhere: `make repo_configure_all FREEZE=1` installs or reconfigures on the commits, `make repo_configure_all` follows the branches, `make repo_unfreeze` removes the attribute. A project that is not cloned, that several source files define, or whose commit no remote branch contains is skipped and listed, since a new installation could not fetch that commit. `.repo/local_manifests/erplibre_manifest.xml`, written again at each reconfiguration, never carries `freeze-revision`
 
 ## Changed
 
