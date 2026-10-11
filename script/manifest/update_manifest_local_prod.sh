@@ -20,7 +20,7 @@ git daemon --base-path=. --export-all --reuseaddr --informative-errors ${DAEMON_
 DAEMON_PID=$!
 
 if [ -L "$EL_MANIFEST_DEV" ]; then
-  MANIFEST_TARGET=$(readlink -f "EL_MANIFEST_PROD")
+  MANIFEST_TARGET=$(readlink -f "$EL_MANIFEST_DEV")
 else
   MANIFEST_TARGET="$EL_MANIFEST_DEV"
 fi
