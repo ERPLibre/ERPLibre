@@ -35,6 +35,7 @@ sys.path.append(new_path)
 
 from script.execute import execute
 from script.git.git_tool import GitTool
+from script.git.manifest_freeze import manifest_branch
 
 _logger = logging.getLogger(__name__)
 
@@ -4436,6 +4437,13 @@ class TodoUpgrade:
             )
 
     def get_branch_name_from_local_manifest(self, addons_path, default_branch):
+        """La branche que suit le dépôt `addons_path` dans le manifeste local.
+
+        Un manifeste fusionné avec --freeze porte un commit dans
+        « revision » : la branche est alors lue dans « dest-branch » puis
+        « upstream ». Rend `default_branch` pour un dépôt absent du
+        manifeste, ou un commit sans branche connue.
+        """
         relative_addons_path = addons_path.replace(os.getcwd() + "/", "")
         git_tool = GitTool()
         dct_remote, dct_project, default_remote = (
@@ -4444,8 +4452,12 @@ class TodoUpgrade:
         for dct_repo in dct_project.values():
             path = dct_repo.get("@path")
             if path == relative_addons_path:
-                revision = dct_repo.get("@revision")
-                return revision
+                branch = manifest_branch(
+                    dct_repo.get("@revision"),
+                    dct_repo.get("@upstream"),
+                    dct_repo.get("@dest-branch"),
+                )
+                return branch or default_branch
         return default_branch
 
     def get_local_branch_remote_actual_branch_git(self, lst_output):
