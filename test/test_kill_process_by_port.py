@@ -2,6 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import io
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -10,14 +11,16 @@ import psutil
 from script.process import kill_process_by_port as kpp
 from script.process.kill_process_by_port import (
     PROTECTED_NAMES,
-    WRAPPER_SCRIPT_NAMES,
     ask_target,
     choose_target,
+    executed_program,
     find_listeners,
     get_ancestry,
     kill_process,
-    kill_tree,
     proc_desc,
+    service_of_cgroup,
+    stop_procs,
+    tree_of,
 )
 
 
@@ -28,6 +31,8 @@ def _make_proc(pid, name="python", cmdline=None, username="user"):
     p.name.return_value = name
     p.cmdline.return_value = cmdline or [name]
     p.username.return_value = username
+    p.children.return_value = []
+    p.is_running.return_value = True
     return p
 
 
@@ -95,16 +100,19 @@ class TestChooseTarget(unittest.TestCase):
     def test_stops_at_run_sh(self):
         p1 = _make_proc(100, "python", ["python", "odoo-bin"])
         p2 = _make_proc(99, "bash", ["./run.sh"])
-        p3 = _make_proc(1, "systemd", ["systemd"])
-        chain = [p1, p2, p3]
-        target, lst = choose_target(chain, 1)
+        p3 = _make_proc(98, "bash", ["-bash"])
+        p4 = _make_proc(1, "systemd", ["systemd"])
+        chain = [p1, p2, p3, p4]
+        target, lst = choose_target(chain)
         self.assertEqual(target.pid, 99)
+        self.assertEqual([p.pid for p in lst], [100, 99])
 
     def test_stops_at_odoo_bin_sh(self):
         p1 = _make_proc(200, "python", ["python", "odoo-bin"])
-        p2 = _make_proc(199, "bash", ["./odoo_bin.sh"])
-        chain = [p1, p2]
-        target, lst = choose_target(chain, 1)
+        p2 = _make_proc(199, "bash", ["/bin/bash", "./odoo_bin.sh", "-c"])
+        p3 = _make_proc(198, "make", ["make", "run"])
+        chain = [p1, p2, p3]
+        target, lst = choose_target(chain)
         self.assertEqual(target.pid, 199)
 
     def test_nb_parent_counts_parents_above_the_listener(self):
@@ -116,8 +124,8 @@ class TestChooseTarget(unittest.TestCase):
         self.assertEqual(choose_target(chain, 1)[0].pid, 299)
 
     def test_nb_parent_never_goes_past_a_protected_process(self):
-        """Le cas qui ne tuait rien : un Odoo orphelin, dont le seul parent
-        est systemd, et un nb_parent qui visait ce parent."""
+        """Un nb_parent qui vise au-delà d'un Odoo orphelin, dont le seul
+        parent est systemd, s'arrête sur Odoo lui-même."""
         odoo = _make_proc(470, "python", ["python", "./odoo/odoo-bin"])
         chain = [odoo, _make_proc(1, "systemd", ["systemd"])]
         self.assertEqual(choose_target(chain, 5)[0].pid, 470)
@@ -158,6 +166,15 @@ class TestLaCibleReconnue(unittest.TestCase):
         )
         self.assertEqual(choose_target(chain)[0].pid, 499)
 
+    def test_a_launcher_naming_run_sh_in_its_arguments_is_spared(self):
+        chain = _chaine(
+            ODOO,
+            (499, "bash", ["bash", "./run.sh"]),
+            (498, "fake_term", ["fake_term", "./run.sh", "8069"]),
+            SYSTEMD,
+        )
+        self.assertEqual(choose_target(chain)[0].pid, 499)
+
     def test_an_ide_above_odoo_is_never_the_target(self):
         chain = _chaine(ODOO, (400, "java", ["java", "-jar", "ide.jar"]))
         self.assertEqual(choose_target(chain)[0].pid, 500)
@@ -171,6 +188,76 @@ class TestLaCibleReconnue(unittest.TestCase):
     def test_a_protected_listener_is_reported_as_such(self):
         chain = _chaine((22, "sshd", ["sshd"]), SYSTEMD)
         self.assertTrue(kpp.is_protected(choose_target(chain)[0]))
+
+
+class TestLeProgrammeExecute(unittest.TestCase):
+    """Le programme est argv[0], ou ce qu'exécute un interpréteur."""
+
+    def test_argv0_by_its_basename(self):
+        self.assertEqual(executed_program(["./run.sh", "-x"]), "run.sh")
+        self.assertEqual(executed_program(["/venv/bin/odoo"]), "odoo")
+
+    def test_the_script_after_a_shell_and_its_options(self):
+        self.assertEqual(
+            executed_program(["/bin/bash", "-e", "./odoo_bin.sh", "-c"]),
+            "odoo_bin.sh",
+        )
+
+    def test_the_script_after_python_and_its_options(self):
+        args = ["python3.12", "-W", "ignore", "-u", "./odoo/odoo-bin", "-c"]
+        self.assertEqual(executed_program(args), "odoo-bin")
+
+    def test_python_m_odoo(self):
+        self.assertEqual(executed_program(["python3", "-m", "odoo"]), "odoo")
+
+    def test_coverage_run(self):
+        args = ["/venv/bin/python", "/venv/bin/coverage", "run", "-p"]
+        args += ["./odoo/odoo-bin", "-c", "c"]
+        self.assertEqual(executed_program(args), "odoo-bin")
+        args = ["python", "-m", "coverage", "run", "--rcfile", "r", "x/odoo"]
+        self.assertEqual(executed_program(args), "odoo")
+
+    def test_debugpy_options_with_a_value(self):
+        args = ["python", "-m", "debugpy", "--listen", "5678", "odoo-bin"]
+        self.assertEqual(executed_program(args), "odoo-bin")
+
+    def test_arguments_of_the_program_are_not_read(self):
+        self.assertEqual(
+            executed_program(["fake_term", "./run.sh", "8069"]), "fake_term"
+        )
+        self.assertEqual(
+            executed_program(["python", "serve.py", "odoo-bin"]), "serve.py"
+        )
+
+    def test_inline_code_and_empty_line(self):
+        self.assertIsNone(executed_program(["bash", "-c", "./run.sh"]))
+        self.assertIsNone(executed_program([]))
+
+
+class TestLeServiceSystemd(unittest.TestCase):
+    def test_a_system_service_v2(self):
+        text = "0::/system.slice/odoo18.service\n"
+        self.assertEqual(service_of_cgroup(text), ("odoo18.service", False))
+
+    def test_a_system_service_v1(self):
+        text = "12:cpu:/\n1:name=systemd:/system.slice/odoo.service\n"
+        self.assertEqual(service_of_cgroup(text), ("odoo.service", False))
+
+    def test_a_user_service(self):
+        text = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/o.service"
+        self.assertEqual(service_of_cgroup(text), ("o.service", True))
+
+    def test_a_terminal_or_ssh_session_is_not_a_service(self):
+        for text in (
+            "0::/user.slice/user-1000.slice/session-3.scope",
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/"
+            "app-org.gnome.Terminal.slice/vte-spawn-1.scope",
+            "0::/user.slice/user-1000.slice/user@1000.service/"
+            "gnome-terminal-server.service",
+            "0::/user.slice/user-1000.slice/user@1000.service",
+            "",
+        ):
+            self.assertIsNone(service_of_cgroup(text), text)
 
 
 class TestLaQuestion(unittest.TestCase):
@@ -193,42 +280,144 @@ class TestLaQuestion(unittest.TestCase):
             self.assertIsNone(ask_target(chain, chain[0]))
 
 
+RUN_SH = (498, "bash", ["/bin/bash", "./run.sh"])
+ODOO_BIN_SH = (499, "bash", ["/bin/bash", "./odoo_bin.sh", "-c", "c"])
+SHELL = (497, "bash", ["-bash"])
+
+
 class TestLeDeroule(unittest.TestCase):
     """main() de bout en bout, les processus et le port simulés."""
 
-    def lancer(self, chain, reponses, liberes):
-        tues = []
+    def lancer(self, chain, reponses, liberes, options=(), service=None):
+        """Lance main() ; rend (code, signaux, texte affiché). Chaque signal
+        est (pids signalés, force). `liberes` donne les écouteurs à chaque
+        appel de find_listeners."""
+        signaux = []
         ecoute = iter(liberes)
+        lignes = []
+
+        def stop(procs, force):
+            signaux.append(([p.pid for p in procs], force))
+            return [], []
+
+        def imprime(*a, **_k):
+            lignes.append(" ".join(str(x) for x in a))
+
         with (
-            patch("sys.argv", ["kill", "8069", "--kill-tree"]),
+            patch("sys.argv", ["kill", "8069", *options]),
             patch.object(
                 kpp, "find_listeners", side_effect=lambda port: next(ecoute)
             ),
             patch.object(kpp, "get_ancestry", return_value=chain),
-            patch.object(
-                kpp,
-                "kill_tree",
-                side_effect=lambda p, force: tues.append((p.pid, force)) or [],
-            ),
+            patch.object(kpp, "stop_procs", side_effect=stop),
+            patch.object(kpp, "systemd_service", return_value=service),
             patch.object(kpp, "GRACE_SECONDS", 0),
             patch("builtins.input", side_effect=reponses),
-            patch("builtins.print"),
+            patch("builtins.print", side_effect=imprime),
         ):
             code = kpp.main()
-        return code, tues
+        return code, signaux, "\n".join(lignes)
 
     def test_an_orphan_odoo_is_stopped(self):
         chain = _chaine(ODOO, SYSTEMD)
         # écouteurs : au départ, puis libre
-        code, tues = self.lancer(chain, [""], [[500], []])
-        self.assertEqual((code, tues), (0, [(500, False)]))
+        code, signaux, _ = self.lancer(chain, [""], [[500], []])
+        self.assertEqual((code, signaux), (0, [([500], False)]))
+
+    def test_kill_tree_adds_the_children_of_the_listener(self):
+        chain = _chaine(ODOO, SYSTEMD)
+        chain[0].children.return_value = [_make_proc(501), _make_proc(502)]
+        code, signaux, _ = self.lancer(
+            chain, [""], [[500], []], options=["--kill-tree"]
+        )
+        self.assertEqual(signaux, [([501, 502, 500], False)])
+
+    def test_a_wrapper_target_is_stopped_with_its_tree_without_kill_tree(self):
+        chain = _chaine(ODOO, ODOO_BIN_SH, RUN_SH, SHELL, SYSTEMD)
+        chain[2].children.return_value = [chain[1], chain[0]]
+        code, signaux, _ = self.lancer(chain, [""], [[500], []])
+        self.assertEqual((code, signaux), (0, [([499, 500, 498], False)]))
+
+    def test_a_systemd_service_is_refused_with_the_hint(self):
+        chain = _chaine(ODOO, RUN_SH, SYSTEMD)
+        code, signaux, texte = self.lancer(
+            chain, [], [[500]], service=("odoo.service", True)
+        )
+        self.assertEqual((code, signaux), (0, []))
+        self.assertIn("If this unit is the Odoo service", texte)
+        self.assertIn("systemctl --user stop odoo.service", texte)
+
+    def test_access_denied_is_reported(self):
+        chain = _chaine(ODOO, SYSTEMD)
+        chain[0].terminate.side_effect = psutil.AccessDenied(500)
+        with (
+            patch("sys.argv", ["kill", "8069", "--automatic"]),
+            patch.object(kpp, "find_listeners", side_effect=[[500], []]),
+            patch.object(kpp, "get_ancestry", return_value=chain),
+            patch.object(kpp, "systemd_service", return_value=None),
+            patch.object(kpp, "GRACE_SECONDS", 0),
+            patch.object(kpp.psutil, "wait_procs", return_value=([], [])),
+            patch("sys.stderr", new_callable=io.StringIO) as err,
+            patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            self.assertEqual(kpp.main(), 0)
+        self.assertIn("AccessDenied: pid=500", err.getvalue())
+        self.assertNotIn("Still running", out.getvalue())
 
     def test_a_port_still_held_offers_sigkill_on_odoo_only(self):
         chain = _chaine(ODOO, SYSTEMD)
         # écouteurs : départ, attente (tenu), avant SIGKILL, attente (libre)
-        code, tues = self.lancer(chain, ["", "o"], [[500], [500], [500], []])
+        code, signaux, _ = self.lancer(
+            chain, ["", "o"], [[500], [500], [500], []]
+        )
         self.assertEqual(code, 0)
-        self.assertEqual(tues, [(500, False), (500, True)])
+        self.assertEqual(signaux, [([500], False), ([500], True)])
+
+    def test_sigkill_forces_the_tree_chosen_by_the_user(self):
+        chain = _chaine(ODOO, ODOO_BIN_SH, RUN_SH, SHELL, SYSTEMD)
+        chain[1].children.return_value = [chain[0]]
+        chain[2].children.return_value = [chain[1], chain[0]]
+        # Index 1 choisi : odoo_bin.sh, et non run.sh, la cible par défaut.
+        code, signaux, _ = self.lancer(
+            chain, ["1", "o"], [[500], [500], [500], []]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(signaux, [([500, 499], False), ([500, 499], True)])
+
+    def test_sigkill_leaves_an_unconfirmed_listener_alone(self):
+        odoo = _chaine(ODOO, SYSTEMD)
+        autre = _chaine((700, "python", ["python", "serve.py"]), SYSTEMD)
+        ancetres = {500: odoo, 700: autre}
+        signaux = []
+        lignes = []
+
+        def stop(procs, force):
+            signaux.append(([p.pid for p in procs], force))
+            return [], []
+
+        def imprime(*a, **_k):
+            lignes.append(" ".join(str(x) for x in a))
+
+        with (
+            patch("sys.argv", ["kill", "8069"]),
+            patch.object(
+                kpp,
+                "find_listeners",
+                side_effect=[[500, 700], [700], [700], [700]],
+            ),
+            patch.object(kpp, "get_ancestry", side_effect=ancetres.get),
+            patch.object(kpp, "stop_procs", side_effect=stop),
+            patch.object(kpp, "systemd_service", return_value=None),
+            patch.object(kpp, "GRACE_SECONDS", 0),
+            # Odoo confirmé, l'autre annulé, puis SIGKILL accepté.
+            patch("builtins.input", side_effect=["", "c", "o"]),
+            patch("builtins.print", side_effect=imprime),
+        ):
+            self.assertEqual(kpp.main(), 1)
+        self.assertEqual(signaux, [([500], False), ([500], True)])
+        self.assertIn(
+            "Listener pid=700 was not confirmed: left alone.", lignes
+        )
 
 
 class TestKillProcess(unittest.TestCase):
@@ -245,32 +434,31 @@ class TestKillProcess(unittest.TestCase):
         p.terminate.assert_not_called()
 
 
-class TestKillTree(unittest.TestCase):
+class TestStopProcs(unittest.TestCase):
+    """stop_procs appliqué à un arbre, tel que main() l'emploie."""
+
     @patch("script.process.kill_process_by_port.psutil.wait_procs")
     def test_kills_children_then_root(self, mock_wait):
         root = _make_proc(10, "root_proc")
         child1 = _make_proc(11, "child1")
         child2 = _make_proc(12, "child2")
         root.children.return_value = [child1, child2]
-        mock_wait.return_value = (
-            [root, child1, child2],
-            [],
-        )
+        mock_wait.return_value = ([root, child1, child2], [])
 
-        alive = kill_tree(root, force=False)
+        alive, denied = stop_procs(tree_of(root), force=False)
         child1.terminate.assert_called_once()
         child2.terminate.assert_called_once()
         root.terminate.assert_called_once()
-        self.assertEqual(alive, [])
+        self.assertEqual((alive, denied), ([], []))
 
     @patch("script.process.kill_process_by_port.psutil.wait_procs")
     def test_returns_alive_processes(self, mock_wait):
         root = _make_proc(10)
-        root.children.return_value = []
         mock_wait.return_value = ([], [root])
 
-        alive = kill_tree(root, force=True)
+        alive, _denied = stop_procs(tree_of(root), force=True)
         self.assertEqual(len(alive), 1)
+        root.kill.assert_called_once()
 
     @patch("script.process.kill_process_by_port.psutil.wait_procs")
     def test_handles_psutil_error_on_child(self, mock_wait):
@@ -278,10 +466,29 @@ class TestKillTree(unittest.TestCase):
         child = _make_proc(11)
         child.terminate.side_effect = psutil.NoSuchProcess(11)
         root.children.return_value = [child]
+        mock_wait.return_value = ([child, root], [])
+
+        alive, denied = stop_procs(tree_of(root), force=False)
+        self.assertEqual((alive, denied), ([], []))
+
+    @patch("script.process.kill_process_by_port.psutil.wait_procs")
+    def test_access_denied_is_collected_and_not_awaited(self, mock_wait):
+        root = _make_proc(10)
+        child = _make_proc(11)
+        child.terminate.side_effect = psutil.AccessDenied(11)
+        root.children.return_value = [child]
         mock_wait.return_value = ([root], [])
 
-        alive = kill_tree(root, force=False)
+        alive, denied = stop_procs(tree_of(root), force=False)
+        self.assertEqual([p.pid for p in denied], [11])
         self.assertEqual(alive, [])
+        root.terminate.assert_called_once()
+        self.assertEqual(mock_wait.call_args.args[0], [root])
+
+    def test_tree_of_a_vanished_root_is_the_root_alone(self):
+        root = _make_proc(10)
+        root.children.side_effect = psutil.NoSuchProcess(10)
+        self.assertEqual(tree_of(root), [root])
 
 
 class TestFindListeners(unittest.TestCase):
@@ -354,14 +561,11 @@ class TestProtectedNames(unittest.TestCase):
 
     def test_sshd_is_protected(self):
         self.assertIn("sshd", PROTECTED_NAMES)
+        self.assertIn("sshd-session", PROTECTED_NAMES)
 
-
-class TestStopParentKill(unittest.TestCase):
-    def test_contains_run_sh(self):
-        self.assertIn("./run.sh", WRAPPER_SCRIPT_NAMES)
-
-    def test_contains_odoo_bin_sh(self):
-        self.assertIn("./odoo_bin.sh", WRAPPER_SCRIPT_NAMES)
+    def test_editors_are_protected(self):
+        for name in ("code-oss", "codium", "electron"):
+            self.assertIn(name, PROTECTED_NAMES)
 
 
 if __name__ == "__main__":
