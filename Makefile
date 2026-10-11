@@ -296,6 +296,12 @@ repo_freeze:
 repo_unfreeze:
 	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py --unfreeze
 
+# compare two freezes; FROM and TO: an ERPLibre revision, worktree or clones
+# (default HEAD -> clones); ARGS: more options, see --help
+.PHONY: repo_freeze_diff
+repo_freeze_diff:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_diff.py $(if $(FROM),--from $(FROM),) $(if $(TO),--to $(TO),) $(ARGS)
+
 # configure only group code_generator
 .PHONY: repo_configure_group_code_generator
 repo_configure_group_code_generator:

@@ -217,3 +217,53 @@ make repo_configure_all
 # remove the freeze from every source file, then commit
 make repo_unfreeze
 ```
+
+#### Compare two freezes
+
+A side of the comparison is an ERPLibre revision (`HEAD`, a tag, a commit), `worktree` for the files of `manifest/` on
+disk, or `clones` for the commit each clone is on. Without argument, the committed freeze is compared to the clones:
+what moved since the last freeze. The report also says which commit ERPLibre is on, whether `manifest/` holds a freeze
+not committed yet, and which clones carry uncommitted changes.
+
+```bash
+make repo_freeze_diff                                # HEAD -> clones
+make repo_freeze_diff TO=worktree                    # what the last freeze wrote
+make repo_freeze_diff ARGS=--previous                # previous freeze -> last freeze
+make repo_freeze_diff FROM=v1.8.0 TO=HEAD ARGS="--log --group-by module"
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list   # commits that changed a freeze
+```
+
+A compact table lists each changed project: old and new commit, commits gained and lost (`rollback` when the new
+commit only goes back), files and lines changed. Below it, each project's diffstat is shown whole when the total is
+short, and limited to 10 files beyond 60 changed files; `--stat-count N` decides, 0 shows everything. The changed lines
+are then grouped by file type, Odoo module or folder (`--group-by`), per project and for all of them. `--log` adds the
+`git log --oneline` of each project, `--tig N` opens the history of project N in tig, or of each in turn without N.
+
+Commits are compared inside the local clone, without network. A commit the clone lacks is listed with its full SHA;
+`--fetch` fetches those commits from every remote of the clone, in parallel, before counting. In a shallow clone, two
+commits without a known common ancestor are not counted (`? shallow`): the cut history would show a divergence that
+does not exist. `--previous` and `--list` keep the commits that pin at least one project to a new commit; a commit that
+only unfreezes, or only edits another part of a frozen line, is not a freeze.
+
+The `vs branch` column places both commits on the branch the manifest names: `18.0 -12->tip` means the old commit was
+12 commits behind the tip of `18.0`, and the new one is the tip; `+2 off` counts commits that are not on that branch.
+Below it, each project names the refs of the clone that point to or contain each commit (branches, remote branches,
+tags, git-repo's `m/`), the ERPLibre branches and tags whose `manifest/` freezes that same commit, and the date of the
+clone's last fetch: remote branches are as fresh as that fetch, and a clone not fetched for over 7 days is listed.
+`--fetch` refreshes the branches and tags of every changed clone and fetches the commits it lacks, in parallel.
+`--graph N` opens the decorated graph of both commits and the tip of their branch, from their common ancestor.
+
+A side may be any ERPLibre branch or tag: `--list-refs` lists those holding a freeze. `--matrix` shows, project by
+project, the frozen commit in several sides at once, by default those branches and tags, `worktree` and `clones`;
+only the projects where they differ, `=` standing for the commit of the column to its left:
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list-refs
+make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
+make repo_freeze_diff ARGS="--graph 1"
+```
+
+In TODO › Git repo, entry 12 offers the usual comparisons, a choice of two revisions among the freeze commits and the
+ERPLibre branches and tags, and the matrix. On the report: a number opens tig on that project, `a` on each in turn,
+`b N` the graph with the branches, `l` the log, `d` and `s N` the diffstats, `g` the next grouping, `f` the refresh,
+`w` the command that opens an old commit in a git worktree beside the clone, without moving it.

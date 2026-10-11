@@ -42,6 +42,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git import (  # noqa: E402
+    git_freeze_diff,
     git_freeze_manifest,
     manifest_freeze,
     repo_apply,
@@ -161,6 +162,7 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🧊 Freeze the versions")},
             {"prompt_description": t("📌 Reconfigure on the frozen commits")},
             {"prompt_description": t("🫗 Unfreeze the versions")},
+            {"prompt_description": t("🔀 Compare two freezes")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -190,6 +192,8 @@ class GitRepoMenuMixin:
                 self._git_repo_reconfigurer(freeze=True)
             elif status == "11":
                 self._git_repo_geler(unfreeze=True)
+            elif status == "12":
+                self._git_repo_comparer()
             else:
                 print(t("Command not found !"))
 
@@ -551,3 +555,198 @@ class GitRepoMenuMixin:
         else:
             print(f"   {t('Apply with: Reconfigure on the frozen commits.')}")
         return 0
+
+    def _git_repo_comparer(self):
+        """Compare deux gels, puis ouvre l'historique d'un projet sur demande.
+
+        Le rapport se calcule une fois, en mémoire : la boucle qui suit en
+        relit les lignes sans refaire la comparaison. Rend 0, ou 2 sur une
+        révision inconnue.
+        """
+        print(f"🔀 {t('Compare two freezes')}")
+        cas = self._git_repo_choisir_comparaison()
+        if not cas:
+            return 0
+        try:
+            rapport = git_freeze_diff.build(RACINE, *cas)
+        except ValueError as exc:
+            print(f"⚠  {exc}")
+            return 2
+        print("\n".join(git_freeze_diff.render_summary(rapport, menu=True)))
+        self._git_repo_parcourir_comparaison(rapport)
+        return 0
+
+    def _git_repo_choisir_comparaison(self):
+        """(gauche, droite) que l'on compare, ou None pour revenir."""
+        print(f"  [1] {t('Committed freeze → clones (real state)')}")
+        print(f"  [2] {t('Written freeze (manifest/) → clones')}")
+        print(f"  [3] {t('Committed freeze → written freeze, not committed')}")
+        print(f"  [4] {t('Previous freeze → last freeze')}")
+        print(f"  [5] {t('Two revisions of your choice')}")
+        print(
+            f"  [6] {t('Matrix: the ERPLibre branches and tags side by side')}"
+        )
+        print(f"  [0] {t('Back')}")
+        choix = input("  : ").strip()
+        cas = {
+            "1": ("HEAD", git_freeze_diff.CLONES),
+            "2": (git_freeze_diff.WORKTREE, git_freeze_diff.CLONES),
+            "3": ("HEAD", git_freeze_diff.WORKTREE),
+        }
+        if choix in cas:
+            return cas[choix]
+        if choix == "4":
+            paire = git_freeze_diff.previous_freeze(RACINE)
+            if not paire:
+                print(f"⚠  {t('Fewer than two commits changed a freeze.')}")
+            return paire
+        if choix == "5":
+            return self._git_repo_saisir_revisions()
+        if choix == "6":
+            self._git_repo_matrice()
+            return None
+        if choix not in ("", "0"):
+            print(t("Command not found !"))
+        return None
+
+    def _git_repo_saisir_revisions(self):
+        """Demande les deux côtés : un numéro des listes affichées (commits
+        de gel, puis branches et tags d'ERPLibre qui portent un gel), une
+        révision d'ERPLibre, « worktree » ou « clones »."""
+        gels = git_freeze_diff.freeze_commits(RACINE)
+        refs, _ = git_freeze_diff.frozen_refs(RACINE)
+        choix = [sha for sha, _, _ in gels] + [c for _, c in refs]
+        if gels:
+            print(f"  {t('Commits that changed a freeze:')}")
+            for i, (sha, date, sujet) in enumerate(gels, 1):
+                print(f"   {i:>2}. {sha[:8]}  {date}  {sujet}")
+        else:
+            print(f"  {t('No commit changed a freeze yet.')}")
+        if refs:
+            print(f"  {t('ERPLibre branches and tags holding a freeze:')}")
+            for i, (noms, commit) in enumerate(refs, len(gels) + 1):
+                print(f"   {i:>2}. {commit[:8]}  {noms}")
+
+        def lire(question, defaut):
+            valeur = click.prompt(question, default=defaut).strip()
+            if valeur.isdecimal() and 1 <= int(valeur) <= len(choix):
+                return choix[int(valeur) - 1]
+            return valeur
+
+        aide = t("number, revision, worktree or clones")
+        gauche = lire(f"  {t('From')} ({aide})", "HEAD")
+        droite = lire(f"  {t('To')} ({aide})", git_freeze_diff.CLONES)
+        return gauche, droite
+
+    def _git_repo_matrice(self):
+        """Affiche la matrice des gels : les branches et tags d'ERPLibre qui
+        en portent un, le disque et les clones, ou les côtés saisis."""
+        defaut = ",".join(git_freeze_diff.default_matrix_sides(RACINE))
+        cotes = click.prompt(
+            f"  {t('Sides, separated by commas')}", default=defaut
+        )
+        try:
+            table = git_freeze_diff.matrix(
+                RACINE, [c.strip() for c in cotes.split(",") if c.strip()]
+            )
+        except ValueError as exc:
+            print(f"⚠  {exc}")
+            return 2
+        print("\n".join(git_freeze_diff.render_matrix(table)))
+        return 0
+
+    def _git_repo_geste_projet(self, rapport, prefixe, choix, groupe):
+        """Un geste sur les projets que `choix` désigne (un numéro, ou
+        « all ») : « s » le diffstat complet, « b » le graphe avec les
+        branches, rien l'historique dans tig.
+
+        Un tig quitté autrement que par « q » (Ctrl-C, une erreur) arrête la
+        suite : « a » se laisse interrompre.
+        """
+        lignes = git_freeze_diff.select_rows(rapport, choix)
+        if not lignes:
+            print(f"⚠  {t('No changed project with both commits here.')}")
+            return
+        if prefixe == "s":
+            details = git_freeze_diff.render_details(
+                rapport,
+                stat_count=0,
+                group_by=groupe,
+                numeros={int(choix)},
+                menu=True,
+            )
+            print("\n".join(details))
+            return
+        ouvrir = (
+            git_freeze_diff.open_graph
+            if prefixe == "b"
+            else git_freeze_diff.open_history
+        )
+        for ligne in lignes:
+            if ouvrir(RACINE, ligne):
+                break
+
+    def _git_repo_parcourir_comparaison(self, rapport):
+        """Les gestes offerts sur un rapport de comparaison.
+
+        tig hérite du terminal : il ne passe pas par `exec_command_live`,
+        dont le tube sur la sortie le priverait de son écran.
+        """
+        groupes = [g for g in git_freeze_diff.GROUPS if g != "none"]
+        groupe = groupes[0]
+        while True:
+            if not git_freeze_diff.changed_rows(rapport):
+                return
+            print()
+            print(f"  N   🐯 {t('tig on project N of the table')}")
+            print(f"  a   🐯 {t('tig on each project, one after another')}")
+            print("  l   📜 git log --oneline")
+            print(f"  d   📊 {t('Diffstat and groups')} ({groupe})")
+            print(f"  s N 📊 {t('Full diffstat of project N')}")
+            print(f"  b N 🌿 {t('Graph of project N with its branches')}")
+            print(f"  g   🗂  {t('Next grouping: file type, module, folder')}")
+            print(
+                f"  f   📥 {t('Refresh: branches, tags and missing commits')}"
+            )
+            print(f"  w   🌳 {t('Open an old commit in a git worktree')}")
+            print(f"  ⏎   {t('Back')}")
+            choix = input("  : ").strip().lower()
+            if choix in ("", "0"):
+                return
+            prefixe = choix[:1] if choix[:1] in ("s", "b") else ""
+            numero = choix[len(prefixe) :].strip()
+            if numero.isdecimal() or choix == "a":
+                self._git_repo_geste_projet(
+                    rapport, prefixe, "all" if choix == "a" else numero, groupe
+                )
+            elif choix == "l":
+                print("\n".join(git_freeze_diff.render_logs(rapport)))
+            elif choix == "d":
+                print(
+                    "\n".join(
+                        git_freeze_diff.render_details(
+                            rapport, group_by=groupe, menu=True
+                        )
+                    )
+                )
+            elif choix == "g":
+                groupe = groupes[(groupes.index(groupe) + 1) % len(groupes)]
+                print(f"  {t('Grouping:')} {groupe}")
+            elif choix == "f":
+                print(
+                    f"  📥 {t('Refreshing the clones, in parallel.')}"
+                )
+                restes = git_freeze_diff.fetch_missing(RACINE, rapport["rows"])
+                for chemin, shas in sorted(restes.items()):
+                    print(
+                        f"⚠  {t('Still missing:')} {chemin} {', '.join(shas)}"
+                    )
+                print(
+                    "\n".join(
+                        git_freeze_diff.render_summary(rapport, menu=True)
+                    )
+                )
+            elif choix == "w":
+                print("\n".join(git_freeze_diff.render_tip(rapport)))
+            else:
+                print(t("Command not found !"))

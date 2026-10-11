@@ -18801,6 +18801,118 @@ TRANSLATIONS = {
         "fr": "Appliquer par : Reconfigurer sur les commits gelés.",
         "en": "Apply with: Reconfigure on the frozen commits.",
     },
+    "🔀 Compare two freezes": {
+        "fr": "🔀 Comparer deux gels",
+        "en": "🔀 Compare two freezes",
+    },
+    "Compare two freezes": {
+        "fr": "Comparer deux gels",
+        "en": "Compare two freezes",
+    },
+    "Committed freeze → clones (real state)": {
+        "fr": "Gel committé → clones (état réel)",
+        "en": "Committed freeze → clones (real state)",
+    },
+    "Written freeze (manifest/) → clones": {
+        "fr": "Gel écrit (manifest/) → clones",
+        "en": "Written freeze (manifest/) → clones",
+    },
+    "Committed freeze → written freeze, not committed": {
+        "fr": "Gel committé → gel écrit, pas encore committé",
+        "en": "Committed freeze → written freeze, not committed",
+    },
+    "Previous freeze → last freeze": {
+        "fr": "Gel précédent → dernier gel",
+        "en": "Previous freeze → last freeze",
+    },
+    "Two revisions of your choice": {
+        "fr": "Deux révisions au choix",
+        "en": "Two revisions of your choice",
+    },
+    "Fewer than two commits changed a freeze.": {
+        "fr": "Moins de deux commits ont changé un gel.",
+        "en": "Fewer than two commits changed a freeze.",
+    },
+    "Commits that changed a freeze:": {
+        "fr": "Commits qui ont changé un gel :",
+        "en": "Commits that changed a freeze:",
+    },
+    "No commit changed a freeze yet.": {
+        "fr": "Aucun commit n'a encore changé un gel.",
+        "en": "No commit changed a freeze yet.",
+    },
+    "number, revision, worktree or clones": {
+        "fr": "numéro, révision, worktree ou clones",
+        "en": "number, revision, worktree or clones",
+    },
+    "From": {
+        "fr": "De",
+        "en": "From",
+    },
+    "To": {
+        "fr": "Vers",
+        "en": "To",
+    },
+    "tig on project N of the table": {
+        "fr": "tig sur le projet N du tableau",
+        "en": "tig on project N of the table",
+    },
+    "tig on each project, one after another": {
+        "fr": "tig sur chaque projet, l'un après l'autre",
+        "en": "tig on each project, one after another",
+    },
+    "Diffstat and groups": {
+        "fr": "Diffstat et regroupements",
+        "en": "Diffstat and groups",
+    },
+    "Full diffstat of project N": {
+        "fr": "Diffstat complet du projet N",
+        "en": "Full diffstat of project N",
+    },
+    "Next grouping: file type, module, folder": {
+        "fr": "Regroupement suivant : type de fichier, module, dossier",
+        "en": "Next grouping: file type, module, folder",
+    },
+    "Open an old commit in a git worktree": {
+        "fr": "Ouvrir un ancien commit dans un worktree git",
+        "en": "Open an old commit in a git worktree",
+    },
+    "No changed project with both commits here.": {
+        "fr": "Aucun projet changé dont les deux commits sont présents ici.",
+        "en": "No changed project with both commits here.",
+    },
+    "Grouping:": {
+        "fr": "Regroupement :",
+        "en": "Grouping:",
+    },
+    "Matrix: the ERPLibre branches and tags side by side": {
+        "fr": "Matrice : les branches et tags d'ERPLibre côte à côte",
+        "en": "Matrix: the ERPLibre branches and tags side by side",
+    },
+    "ERPLibre branches and tags holding a freeze:": {
+        "fr": "Branches et tags d'ERPLibre qui portent un gel :",
+        "en": "ERPLibre branches and tags holding a freeze:",
+    },
+    "Sides, separated by commas": {
+        "fr": "Côtés, séparés par des virgules",
+        "en": "Sides, separated by commas",
+    },
+    "Graph of project N with its branches": {
+        "fr": "Graphe du projet N avec ses branches",
+        "en": "Graph of project N with its branches",
+    },
+    "Refresh: branches, tags and missing commits": {
+        "fr": "Rafraîchir : branches, tags et commits absents",
+        "en": "Refresh: branches, tags and missing commits",
+    },
+    "Refreshing the clones, in parallel.": {
+        "fr": "Rafraîchissement des clones, en parallèle.",
+        "en": "Refreshing the clones, in parallel.",
+    },
+    "Still missing:": {
+        "fr": "Toujours absent :",
+        "en": "Still missing:",
+    },
 }
 
 

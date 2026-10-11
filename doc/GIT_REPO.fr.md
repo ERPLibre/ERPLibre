@@ -220,3 +220,57 @@ make repo_configure_all
 # remove the freeze from every source file, then commit
 make repo_unfreeze
 ```
+
+#### Comparer deux gels
+
+Un côté de la comparaison est une révision d'ERPLibre (`HEAD`, un tag, un commit), `worktree` pour les fichiers de
+`manifest/` sur le disque, ou `clones` pour le commit où se trouve chaque clone. Sans argument, le gel committé est
+comparé aux clones : ce qui a bougé depuis le dernier gel. Le rapport dit aussi sur quel commit se trouve ERPLibre, si
+`manifest/` porte un gel pas encore committé, et quels clones ont des modifications non commitées.
+
+```bash
+make repo_freeze_diff                                # HEAD -> clones
+make repo_freeze_diff TO=worktree                    # what the last freeze wrote
+make repo_freeze_diff ARGS=--previous                # previous freeze -> last freeze
+make repo_freeze_diff FROM=v1.8.0 TO=HEAD ARGS="--log --group-by module"
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list   # commits that changed a freeze
+```
+
+Un tableau compact liste chaque projet changé : ancien et nouveau commit, commits gagnés et perdus (`rollback` quand
+le nouveau commit ne fait que reculer), fichiers et lignes changés. En dessous, le diffstat de chaque projet s'affiche
+en entier quand le total est court, et se borne à 10 fichiers au-delà de 60 fichiers changés ; `--stat-count N`
+tranche, 0 montre tout. Les lignes changées sont ensuite regroupées par type de fichier, module Odoo ou dossier
+(`--group-by`), par projet et pour l'ensemble. `--log` ajoute le `git log --oneline` de chaque projet, `--tig N` ouvre
+l'historique du projet N dans tig, ou de chacun à la suite sans N.
+
+Les commits se comparent dans le clone local, sans réseau. Un commit absent du clone se liste avec son SHA complet ;
+`--fetch` va chercher ces commits sur chaque distant du clone, en parallèle, avant de compter. Dans un clone
+superficiel, deux commits sans ancêtre commun connu ne se comptent pas (`? shallow`) : l'historique coupé montrerait
+une divergence qui n'existe pas. `--previous` et `--list` retiennent les commits qui posent au moins un projet sur un
+nouveau commit ; un commit qui ne fait que dégeler, ou que modifier une autre partie d'une ligne gelée, n'est pas un
+gel.
+
+La colonne `vs branch` place les deux commits sur la branche que nomme le manifeste : `18.0 -12->tip` veut dire que
+l'ancien commit était à 12 commits de la pointe de `18.0`, et que le nouveau en est la pointe ; `+2 off` compte les
+commits qui ne sont pas sur cette branche. En dessous, chaque projet nomme les refs du clone qui pointent sur chaque
+commit ou le contiennent (branches, branches distantes, tags, `m/` de git-repo), les branches et tags d'ERPLibre dont
+`manifest/` gèle ce même commit, et la date du dernier fetch du clone : les branches distantes sont aussi fraîches que
+ce fetch, et un clone sans fetch depuis plus de 7 jours est listé. `--fetch` rafraîchit les branches et les tags de
+chaque clone changé et va chercher les commits qui lui manquent, en parallèle. `--graph N` ouvre le graphe décoré des
+deux commits et de la pointe de leur branche, depuis leur ancêtre commun.
+
+Un côté peut être n'importe quelle branche ou tag d'ERPLibre : `--list-refs` liste ceux qui portent un gel. `--matrix`
+montre, projet par projet, le commit gelé dans plusieurs côtés à la fois, par défaut ces branches et tags, `worktree`
+et `clones` ; seulement les projets où ils diffèrent, `=` tenant lieu du commit de la colonne de gauche :
+
+```bash
+.venv.erplibre/bin/python script/git/git_freeze_diff.py --list-refs
+make repo_freeze_diff ARGS="--matrix v1.8.0,origin/master,clones"
+make repo_freeze_diff ARGS="--graph 1"
+```
+
+Dans TODO › Git repo, l'entrée 12 propose les comparaisons courantes, le choix de deux révisions parmi les commits de
+gel et les branches et tags d'ERPLibre, et la matrice. Sur le rapport : un numéro ouvre tig sur ce projet, `a` sur
+chacun à la suite, `b N` le graphe avec les branches, `l` le journal, `d` et `s N` les diffstats, `g` le regroupement
+suivant, `f` le rafraîchissement, `w` la commande qui ouvre un ancien commit dans un worktree git à côté du clone, sans
+le déplacer.

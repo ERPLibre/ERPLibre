@@ -592,6 +592,7 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🧊 Freeze the versions": "_git_repo_geler",
         "📌 Reconfigure on the frozen commits": "_git_repo_reconfigurer",
         "🫗 Unfreeze the versions": "_git_repo_geler",
+        "🔀 Compare two freezes": "_git_repo_comparer",
     }
 
 
@@ -708,6 +709,181 @@ class TestGitRepoFreezeEntries(unittest.TestCase):
             code = self.obj._git_repo_reconfigurer(freeze=True)
         self.assertEqual(code, 1)
         self.assertEqual(self.cmds, [])
+
+
+class TestGitRepoCompareFreezes(unittest.TestCase):
+    """L'entrée qui compare deux gels : le choix des côtés, puis les gestes.
+
+    Le rapport et l'historique viennent de `git_freeze_diff`, remplacé ici :
+    ces tests vérifient seulement ce que le menu en demande.
+    """
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.fd = git_repo_menu.git_freeze_diff
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = None
+
+        self.obj = Menu()
+
+    def choisir(self, *saisies):
+        with self.mock.patch("builtins.input", side_effect=saisies):
+            return self.obj._git_repo_choisir_comparaison()
+
+    def test_les_cas_courants(self):
+        self.assertEqual(self.choisir("1"), ("HEAD", self.fd.CLONES))
+        self.assertEqual(self.choisir("2"), (self.fd.WORKTREE, self.fd.CLONES))
+        self.assertEqual(self.choisir("3"), ("HEAD", self.fd.WORKTREE))
+        self.assertIsNone(self.choisir("0"))
+        self.assertIsNone(self.choisir(""))
+
+    def test_gel_precedent(self):
+        with self.mock.patch.object(
+            self.fd, "previous_freeze", return_value=("a", "b")
+        ):
+            self.assertEqual(self.choisir("4"), ("a", "b"))
+        with self.mock.patch.object(
+            self.fd, "previous_freeze", return_value=None
+        ):
+            self.assertIsNone(self.choisir("4"))
+
+    def test_deux_revisions_dont_un_numero_de_la_liste(self):
+        gels = [
+            ("f" * 40, "2026-01-02", "gel 2"),
+            ("e" * 40, "2026-01-01", "x"),
+        ]
+        refs = [("release, origin/release", "d" * 40)]
+        with self.mock.patch.object(
+            self.fd, "freeze_commits", return_value=gels
+        ), self.mock.patch.object(
+            self.fd, "frozen_refs", return_value=(refs, 0)
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", side_effect=["2", "3"]
+        ):
+            self.assertEqual(self.choisir("5"), ("e" * 40, "d" * 40))
+
+    def test_la_matrice(self):
+        with self.mock.patch.object(
+            self.fd, "default_matrix_sides", return_value=["v1", "clones"]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", return_value="v1, clones"
+        ), self.mock.patch.object(
+            self.fd, "matrix", return_value={"columns": [], "rows": []}
+        ) as matrice, self.mock.patch.object(
+            self.fd, "render_matrix", return_value=["ok"]
+        ):
+            self.assertIsNone(self.choisir("6"))
+        self.assertEqual(matrice.call_args[0][1], ["v1", "clones"])
+        with self.mock.patch.object(
+            self.fd, "default_matrix_sides", return_value=[]
+        ), self.mock.patch.object(
+            self.menu.click, "prompt", return_value="nulle"
+        ), self.mock.patch.object(
+            self.fd, "matrix", side_effect=ValueError("unknown revision")
+        ):
+            self.assertEqual(self.obj._git_repo_matrice(), 2)
+
+    def rapport(self, manquant=False):
+        stats = {"missing": ["new"] if manquant else [], "files": []}
+        ligne = {
+            "status": self.fd.STATUS_CHANGED,
+            "path": "x/a",
+            "stats": stats,
+        }
+        return {"rows": [ligne, dict(ligne, path="x/b")]}
+
+    def parcourir(self, rapport, *saisies):
+        with self.mock.patch(
+            "builtins.input", side_effect=list(saisies) + [""]
+        ), self.mock.patch.object(
+            self.fd, "open_history", return_value=0
+        ) as tig, self.mock.patch(
+            "builtins.print"
+        ) as sortie:
+            self.obj._git_repo_parcourir_comparaison(rapport)
+        return tig, sortie
+
+    def test_tig_sur_un_numero_puis_sur_chacun(self):
+        rapport = self.rapport()
+        tig, _ = self.parcourir(rapport, "2", "a")
+        chemins = [appel.args[1]["path"] for appel in tig.call_args_list]
+        self.assertEqual(chemins, ["x/b", "x/a", "x/b"])
+
+    def test_un_commit_absent_offre_la_recherche(self):
+        rapport = self.rapport(manquant=True)
+        with self.mock.patch.object(
+            self.fd, "fetch_missing", return_value={}
+        ) as recherche, self.mock.patch.object(
+            self.fd, "render_summary", return_value=[]
+        ):
+            tig, sortie = self.parcourir(rapport, "1", "f")
+        tig.assert_not_called()
+        recherche.assert_called_once()
+        texte = " ".join(str(a) for c in sortie.call_args_list for a in c.args)
+        self.assertIn(
+            self.menu.t("Refresh: branches, tags and missing commits"), texte
+        )
+
+    def test_le_graphe_d_un_projet(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "open_graph", return_value=0
+        ) as graphe:
+            tig, _ = self.parcourir(rapport, "b 2", "b9")
+        tig.assert_not_called()
+        self.assertEqual(
+            [c.args[1]["path"] for c in graphe.call_args_list], ["x/b"]
+        )
+
+    def test_le_regroupement_tourne(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "render_details", return_value=[]
+        ) as details:
+            self.parcourir(rapport, "g", "d", "g", "g", "d", "s2")
+        groupes = [c.kwargs["group_by"] for c in details.call_args_list]
+        self.assertEqual(groupes, ["module", "ext", "ext"])
+        self.assertEqual(details.call_args_list[-1].kwargs["numeros"], {2})
+        self.assertEqual(details.call_args_list[-1].kwargs["stat_count"], 0)
+
+    def test_tig_a_la_suite_s_arrete_sur_une_sortie_en_erreur(self):
+        rapport = self.rapport()
+        with self.mock.patch(
+            "builtins.input", side_effect=["a", ""]
+        ), self.mock.patch.object(
+            self.fd, "open_history", return_value=-2
+        ) as tig, self.mock.patch(
+            "builtins.print"
+        ):
+            self.obj._git_repo_parcourir_comparaison(rapport)
+        self.assertEqual(tig.call_count, 1)
+
+    def test_saisies_hors_limites(self):
+        rapport = self.rapport()
+        with self.mock.patch.object(
+            self.fd, "render_details", return_value=[]
+        ) as details:
+            tig, sortie = self.parcourir(rapport, "s 9", "s", "²", "S x", "9")
+        details.assert_not_called()
+        tig.assert_not_called()
+        texte = " ".join(str(a) for c in sortie.call_args_list for a in c.args)
+        self.assertIn(
+            self.menu.t("No changed project with both commits here."), texte
+        )
+
+    def test_une_revision_inconnue_rend_2(self):
+        with self.mock.patch.object(
+            self.obj, "_git_repo_choisir_comparaison", return_value=("x", "y")
+        ), self.mock.patch.object(
+            self.fd, "build", side_effect=ValueError("unknown revision: x")
+        ):
+            self.assertEqual(self.obj._git_repo_comparer(), 2)
 
 
 class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):
