@@ -21,6 +21,11 @@ et prédit la fusion en mémoire, sans déplacer de référence ni toucher l'arb
 de travail. Le constat coûte quelques secondes sur l'ensemble des forks, et
 se rejoue autant de fois qu'on veut.
 
+Le GEL écrit le commit de chaque clone à côté de sa branche, dans les
+fichiers de `manifest/`. Suivre les branches ou les commits gelés est un
+argument de la reconfiguration, jamais un état enregistré : le mode que
+l'en-tête affiche se lit dans le manifeste local que git-repo utilise.
+
 Module à part plutôt que méthodes de `TODO` : le fichier principal passe les
 cinq mille lignes, et chaque sujet y a désormais le sien.
 """
@@ -36,15 +41,26 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git import repo_apply, repo_upgrade  # noqa: E402
+from script.git import (  # noqa: E402
+    git_freeze_manifest,
+    manifest_freeze,
+    repo_apply,
+    repo_upgrade,
+)
 from script.todo.todo_i18n import t  # noqa: E402
-from script.version import erplibre_state  # noqa: E402
 
 # La racine du dépôt. Le lanceur de git-repo porte un shebang RELATIF vers le
 # venv : lancé depuis un autre répertoire, il ne trouve pas son interpréteur
 # et meurt sur « bad interpreter ». Toutes ses invocations partent donc d'ici.
 RACINE = new_path
 REPO_BIN = ".venv.erplibre/bin/repo"
+PYTHON_ERPLIBRE = "./.venv.erplibre/bin/python"
+FREEZE_SCRIPT = "script/git/git_freeze_manifest.py"
+# Le manifeste que git-repo lit, produit par la fusion des fichiers de
+# `manifest/`. Ses « revision » disent ce que le checkout suit réellement.
+MANIFESTE_LOCAL = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
 
 # Les états que « repo_apply » rend, traduits en clés d'affichage. Les clés
 # du catalogue sont des phrases anglaises ; les états sont des identifiants
@@ -59,20 +75,76 @@ ETATS = {
 }
 
 
+def etat_manifeste_local(racine=RACINE):
+    """(épinglés, total) des projets du manifeste local, ou None s'il manque.
+
+    Un projet est épinglé quand sa « revision » est un commit complet. Le
+    mode du checkout se LIT ici plutôt que de s'enregistrer à part : c'est
+    la dernière reconfiguration qui l'a fixé, et ce fichier en est la trace.
+    """
+    try:
+        with open(os.path.join(racine, MANIFESTE_LOCAL)) as fh:
+            texte = fh.read()
+    except OSError:
+        return None
+    projets = [attrs for _, _, attrs in manifest_freeze.iter_projects(texte)]
+    epingles = [
+        p for p in projets if manifest_freeze.is_sha(p.get("revision"))
+    ]
+    return len(epingles), len(projets)
+
+
+def libelle_mode(etat):
+    """Le mode que l'en-tête affiche, tiré d'`etat_manifeste_local`."""
+    if etat is None:
+        return t("no local manifest")
+    epingles, total = etat
+    if epingles:
+        return f"{epingles}/{total} {t('projects pinned to a commit')}"
+    return t("follows the branches")
+
+
+def gel_des_sources(racine=RACINE):
+    """(gelés, total) des projets des fichiers sources, ou None illisible.
+
+    Un projet est gelé quand l'un de ses fichiers lui donne
+    « freeze-revision ». Les chemins des sources sont relatifs à la racine
+    du dépôt : le répertoire courant y passe le temps de la lecture, puis
+    revient.
+    """
+    depart = os.getcwd()
+    try:
+        os.chdir(racine)
+        definitions = git_freeze_manifest.read_sources(
+            git_freeze_manifest.default_sources()
+        )
+    except OSError:
+        return None
+    finally:
+        os.chdir(depart)
+    geles = [
+        cle
+        for cle, defs in definitions.items()
+        if any(attrs.get(manifest_freeze.FREEZE_ATTR) for _, attrs in defs)
+    ]
+    return len(geles), len(definitions)
+
+
 class GitRepoMenuMixin:
     def prompt_execute_git_repo(self):
         version = repo_upgrade.version_active(RACINE) or "?"
         forks = repo_upgrade.etat_forks(version)
         print(f"🔃 {t('Update and upgrade the git repositories')}")
-        reglages = erplibre_state.get_git_repo()
-        mode = (
-            t("frozen mode, pinned to a commit")
-            if reglages["mode"] == erplibre_state.MODE_FIGE
-            else t("dev mode, follows the branches")
+        print(
+            f"   Odoo {version} · {len(forks)} {t('forks')}"
+            f" · {libelle_mode(etat_manifeste_local())}"
         )
-        print(f"   Odoo {version} · {len(forks)} {t('forks')} · {mode}")
-        if reglages.get("gel"):
-            print(f"   {t('freeze')} : {reglages['gel']}")
+        sources = gel_des_sources()
+        if sources:
+            print(
+                f"   {t('Frozen in the manifest files:')}"
+                f" {sources[0]}/{sources[1]}"
+            )
         choices = [
             {"section": t("Update")},
             {"prompt_description": t("🔄 Synchronize the repositories")},
@@ -87,7 +159,8 @@ class GitRepoMenuMixin:
             {"prompt_description": t("🔗 Fork and upstream status")},
             {"section": t("Versions")},
             {"prompt_description": t("🧊 Freeze the versions")},
-            {"prompt_description": t("🔀 Toggle frozen or dev mode")},
+            {"prompt_description": t("📌 Reconfigure on the frozen commits")},
+            {"prompt_description": t("🫗 Unfreeze the versions")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -114,12 +187,17 @@ class GitRepoMenuMixin:
             elif status == "9":
                 self._git_repo_geler()
             elif status == "10":
-                self._git_repo_basculer_mode()
+                self._git_repo_reconfigurer(freeze=True)
+            elif status == "11":
+                self._git_repo_geler(unfreeze=True)
             else:
                 print(t("Command not found !"))
 
     def _git_repo_sync(self):
-        """Ramène chaque dépôt sur la pointe de sa branche de manifeste.
+        """Ramène chaque dépôt sur la révision de son manifeste local.
+
+        Cette révision est la pointe de la branche, ou le commit gelé quand
+        la dernière reconfiguration a tourné sur les commits gelés.
 
         Le chemin court : il ne régénère pas le manifeste local. Une
         modification apportée aux fichiers de `manifest/` ne prendra donc
@@ -138,14 +216,28 @@ class GitRepoMenuMixin:
             print(f"✅ {t('Repositories synchronized.')}")
         return status
 
-    def _git_repo_reconfigurer(self):
+    def _git_repo_reconfigurer(self, freeze=False):
         """Régénère le manifeste local, puis synchronise.
 
         Le chemin complet, et le seul qui prenne en compte une modification
         des fichiers de `manifest/` : il refond les fragments en un manifeste
         local et relance `repo init` avant de synchroniser.
+
+        Sans `freeze`, chaque projet suit sa branche. Avec `freeze`, chaque
+        projet qui porte « freeze-revision » est posé sur ce commit, et les
+        autres suivent leur branche ; la fusion les liste. Le choix n'est
+        enregistré nulle part : la reconfiguration suivante, lancée sans
+        l'argument, revient aux branches.
         """
+        if freeze:
+            sources = gel_des_sources()
+            if sources is not None and not sources[0]:
+                print(f"⚠  {t('No commit is frozen in the manifest files.')}")
+                print(f"   {t('Freeze the versions first.')}")
+                return 1
         cmd = "make repo_configure_all"
+        if freeze:
+            cmd += " FREEZE=1"
         print(f"  {t('Will execute:')} {cmd}")
         status = self.execute.exec_command_live(
             f"cd {RACINE} && {cmd}", source_erplibre=False
@@ -415,61 +507,47 @@ class GitRepoMenuMixin:
         git_repo_tui.run_git_repo_tui({"version": version, "forks": lst})
         return len(lst)
 
-    def _git_repo_geler(self):
-        """Épingle chaque dépôt à son commit, dans un fichier versé.
+    def _git_repo_geler(self, unfreeze=False):
+        """Écrit le commit de chaque clone dans son fichier source, ou l'ôte.
 
-        Le fichier porte le COMMIT dans « revision » et la BRANCHE dans
-        « upstream » : un seul fichier sert donc les deux modes, et il n'y
-        a pas deux manifestes à tenir alignés.
+        Le geste écrit des fichiers de `manifest/` à committer et ne déplace
+        aucun clone. La passe à sec tourne d'abord et montre chaque fichier
+        touché ; rien ne s'écrit sans confirmation. Le gel prend effet à la
+        reconfiguration sur les commits gelés ; le dégel, à la
+        reconfiguration qui suit les branches.
 
-        Le gel est ENREGISTRÉ mais ne prend effet qu'à la reconfiguration :
-        c'est elle qui régénère le manifeste local que git-repo lit.
+        Rend le code de sortie du script : 1 quand aucun clone n'est gelable.
         """
-        version = repo_upgrade.version_active(RACINE) or "?"
-        horodatage = datetime.datetime.now().strftime("%Y%m%dT%H%M")
-        relatif = os.path.join(
-            "manifest", "snapshot", f"odoo{version}_{horodatage}.xml"
-        )
-        sortie = os.path.join(RACINE, relatif)
-        os.makedirs(os.path.dirname(sortie), exist_ok=True)
-        cmd = f"{REPO_BIN} manifest -r -o {relatif}"
-        print(f"🧊 {t('Freeze the versions')} — Odoo {version}")
+        script = f"{PYTHON_ERPLIBRE} {FREEZE_SCRIPT}"
+        if unfreeze:
+            script += " --unfreeze"
+            print(f"🫗 {t('Unfreeze the versions')}")
+        else:
+            print(f"🧊 {t('Freeze the versions')}")
+        cmd = f"{script} --dry-run"
         print(f"  {t('Will execute:')} {cmd}")
         status = self.execute.exec_command_live(
             f"cd {RACINE} && {cmd}", source_erplibre=False
         )
-        if status or not os.path.isfile(sortie):
-            print(f"⚠  {t('The freeze could not be produced.')} ({status})")
-            return status or 1
-        erplibre_state.set_git_repo_gel(relatif)
-        print(f"✅ {t('Freeze written to')} {relatif}")
-        print(f"   {t('Reconfigure and synchronize to apply it.')}")
-        return 0
-
-    def _git_repo_basculer_mode(self):
-        """Fait passer le plan de travail du suivi de branche à l'épinglage.
-
-        Le mode est un état du checkout et non un argument de la commande :
-        une reconfiguration lancée ailleurs, par le Makefile par exemple,
-        doit lire le même choix, sans quoi le plan de travail bougerait sans
-        que personne ne l'ait demandé.
-        """
-        reglages = erplibre_state.get_git_repo()
-        ancien = reglages["mode"]
-        neuf = (
-            erplibre_state.MODE_DEV
-            if ancien == erplibre_state.MODE_FIGE
-            else erplibre_state.MODE_FIGE
+        if status:
+            echec = t("Nothing was written; see the messages above.")
+            print(f"⚠  {echec} ({status})")
+            return status
+        if not click.confirm(
+            t("Write these changes to the manifest files?"), default=False
+        ):
+            print(f"↩️  {t('Cancelled: nothing was written.')}")
+            return 0
+        print(f"  {t('Will execute:')} {script}")
+        status = self.execute.exec_command_live(
+            f"cd {RACINE} && {script}", source_erplibre=False
         )
-        if neuf == erplibre_state.MODE_FIGE and not reglages.get("gel"):
-            print(f"⚠  {t('No freeze file recorded; freeze first.')}")
-            return 1
-        erplibre_state.set_git_repo_mode(neuf)
-        libelle = (
-            t("frozen mode, pinned to a commit")
-            if neuf == erplibre_state.MODE_FIGE
-            else t("dev mode, follows the branches")
-        )
-        print(f"✅ {libelle}")
-        print(f"   {t('Reconfigure and synchronize to apply it.')}")
+        if status:
+            print(f"⚠  {t('The manifest files were not written.')} ({status})")
+            return status
+        print(f"✅ {t('Manifest files written; commit them to share them.')}")
+        if unfreeze:
+            print(f"   {t('Apply with: Reconfigure and synchronize.')}")
+        else:
+            print(f"   {t('Apply with: Reconfigure on the frozen commits.')}")
         return 0

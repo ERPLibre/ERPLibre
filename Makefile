@@ -270,10 +270,31 @@ clean_test:
 repo_clear_all:
 	./script/git/clean_repo_manifest.sh
 
-# configure all repo
+# FREEZE=1: repos are checked out on their freeze-revision SHA instead of
+# following their branch. repo_configure_all passes --freeze; the install
+# targets reach the manifest scripts through the exported EL_FREEZE, which is
+# set to 0 otherwise: a value left in the calling shell never freezes a target
+# that was not given FREEZE=1.
+ifeq ($(FREEZE),1)
+export EL_FREEZE := 1
+else
+export EL_FREEZE := 0
+endif
+
+# configure all repo (FREEZE=1: on the frozen SHAs)
 .PHONY: repo_configure_all
 repo_configure_all:
-	./script/manifest/update_manifest_local_dev.sh
+	./script/manifest/update_manifest_local_dev.sh $(if $(filter 1,$(FREEZE)),--freeze,)
+
+# write the SHA of every cloned repo into manifest/ as freeze-revision
+.PHONY: repo_freeze
+repo_freeze:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py
+
+# remove freeze-revision from manifest/, repos follow their branch again
+.PHONY: repo_unfreeze
+repo_unfreeze:
+	./.venv.erplibre/bin/python ./script/git/git_freeze_manifest.py --unfreeze
 
 # configure only group code_generator
 .PHONY: repo_configure_group_code_generator

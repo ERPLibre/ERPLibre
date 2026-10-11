@@ -18733,37 +18733,73 @@ TRANSLATIONS = {
         "fr": "🧊 Geler les versions",
         "en": "🧊 Freeze the versions",
     },
-    "🔀 Toggle frozen or dev mode": {
-        "fr": "🔀 Basculer le mode figé ou dev",
-        "en": "🔀 Toggle frozen or dev mode",
+    "📌 Reconfigure on the frozen commits": {
+        "fr": "📌 Reconfigurer sur les commits gelés",
+        "en": "📌 Reconfigure on the frozen commits",
+    },
+    "🫗 Unfreeze the versions": {
+        "fr": "🫗 Dégeler les versions",
+        "en": "🫗 Unfreeze the versions",
     },
     "Freeze the versions": {
         "fr": "Geler les versions",
         "en": "Freeze the versions",
     },
+    "Unfreeze the versions": {
+        "fr": "Dégeler les versions",
+        "en": "Unfreeze the versions",
+    },
     "Versions": {
         "fr": "Versions",
         "en": "Versions",
     },
-    "freeze": {
-        "fr": "gel",
-        "en": "freeze",
+    "no local manifest": {
+        "fr": "aucun manifeste local",
+        "en": "no local manifest",
     },
-    "The freeze could not be produced.": {
-        "fr": "Le gel n'a pas pu être produit.",
-        "en": "The freeze could not be produced.",
+    "projects pinned to a commit": {
+        "fr": "projets épinglés sur un commit",
+        "en": "projects pinned to a commit",
     },
-    "Freeze written to": {
-        "fr": "Gel écrit dans",
-        "en": "Freeze written to",
+    "follows the branches": {
+        "fr": "suit les branches",
+        "en": "follows the branches",
     },
-    "Reconfigure and synchronize to apply it.": {
-        "fr": "Reconfigurez et synchronisez pour l'appliquer.",
-        "en": "Reconfigure and synchronize to apply it.",
+    "Frozen in the manifest files:": {
+        "fr": "Gelés dans les fichiers de manifeste :",
+        "en": "Frozen in the manifest files:",
     },
-    "No freeze file recorded; freeze first.": {
-        "fr": "Aucun fichier de gel enregistré ; gelez d'abord.",
-        "en": "No freeze file recorded; freeze first.",
+    "No commit is frozen in the manifest files.": {
+        "fr": "Aucun commit n'est gelé dans les fichiers de manifeste.",
+        "en": "No commit is frozen in the manifest files.",
+    },
+    "Freeze the versions first.": {
+        "fr": "Gelez d'abord les versions.",
+        "en": "Freeze the versions first.",
+    },
+    "Nothing was written; see the messages above.": {
+        "fr": "Rien n'a été écrit ; voir les messages ci-dessus.",
+        "en": "Nothing was written; see the messages above.",
+    },
+    "Write these changes to the manifest files?": {
+        "fr": "Écrire ces changements dans les fichiers de manifeste ?",
+        "en": "Write these changes to the manifest files?",
+    },
+    "The manifest files were not written.": {
+        "fr": "Les fichiers de manifeste n'ont pas été écrits.",
+        "en": "The manifest files were not written.",
+    },
+    "Manifest files written; commit them to share them.": {
+        "fr": "Fichiers de manifeste écrits ; à committer pour les partager.",
+        "en": "Manifest files written; commit them to share them.",
+    },
+    "Apply with: Reconfigure and synchronize.": {
+        "fr": "Appliquer par : Reconfigurer et synchroniser.",
+        "en": "Apply with: Reconfigure and synchronize.",
+    },
+    "Apply with: Reconfigure on the frozen commits.": {
+        "fr": "Appliquer par : Reconfigurer sur les commits gelés.",
+        "en": "Apply with: Reconfigure on the frozen commits.",
     },
 }
 

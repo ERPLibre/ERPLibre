@@ -11,6 +11,26 @@ if [ "${EL_VERBOSE:-0}" = "1" ]; then
 else
   REPO_VERBOSE=""; DAEMON_VERBOSE=""
 fi
+
+# --freeze : chaque dépôt est installé sur le SHA de son freeze-revision
+# plutôt que sur la tête de sa branche ; un projet sans freeze-revision suit
+# sa branche. Le choix vaut pour cet appel et n'est conservé nulle part.
+# EL_FREEZE=1 fait le même choix pour un appelant qui ne transmet pas
+# d'argument : le Makefile l'exporte quand une cible reçoit FREEZE=1.
+# L'argument est retiré de "$@" ; les autres sont gardés dans leur ordre.
+MERGE_FREEZE=()
+if [ "${EL_FREEZE:-0}" = "1" ]; then
+  MERGE_FREEZE=(--freeze)
+fi
+FORWARD_ARGS=()
+for arg in "$@"; do
+  if [ "${arg}" = "--freeze" ]; then
+    MERGE_FREEZE=(--freeze)
+  else
+    FORWARD_ARGS+=("${arg}")
+  fi
+done
+set -- "${FORWARD_ARGS[@]}"
 #EL_MANIFEST_PROD="./default.xml"
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
@@ -31,7 +51,7 @@ else
 fi
 
 # Generate local manifest
-.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_mobile
+.venv.erplibre/bin/python ./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_mobile "${MERGE_FREEZE[@]}"
 
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --verify HEAD) -m ${MANIFEST_TARGET} "$@"
 .venv.erplibre/bin/repo sync -c -j "$JOBS" ${REPO_VERBOSE} -m ${MANIFEST_TARGET}

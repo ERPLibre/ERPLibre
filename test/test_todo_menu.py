@@ -590,8 +590,124 @@ class TestGitRepoMenuNumbering(MenuCoherence, unittest.TestCase):
         "🖥️ Browse the upgrade on screen": "_git_repo_ecran",
         "🔗 Fork and upstream status": "_git_repo_etat_forks",
         "🧊 Freeze the versions": "_git_repo_geler",
-        "🔀 Toggle frozen or dev mode": "_git_repo_basculer_mode",
+        "📌 Reconfigure on the frozen commits": "_git_repo_reconfigurer",
+        "🫗 Unfreeze the versions": "_git_repo_geler",
     }
+
+
+class TestGitRepoFreezeEntries(unittest.TestCase):
+    """Les entrées du gel : ce qu'elles lancent, et dans quel ordre.
+
+    Le gel et le dégel écrivent des fichiers suivis par git ; la passe à sec
+    tourne donc toujours avant, et rien ne s'écrit sans confirmation. Le
+    mode affiché se lit dans le manifeste local, jamais dans un état
+    enregistré.
+    """
+
+    SHA = "0123456789abcdef0123456789abcdef01234567"
+
+    def setUp(self):
+        from unittest import mock
+
+        from script.todo import git_repo_menu
+
+        self.mock = mock
+        self.menu = git_repo_menu
+        self.cmds = []
+        self.status = []
+
+        class Execute:
+            def exec_command_live(inner, cmd, source_erplibre=True):
+                self.cmds.append(cmd)
+                return self.status.pop(0) if self.status else 0
+
+        class Menu(git_repo_menu.GitRepoMenuMixin):
+            execute = Execute()
+
+        self.obj = Menu()
+
+    def _manifeste(self, dossier, texte):
+        import os
+
+        chemin = os.path.join(dossier, self.menu.MANIFESTE_LOCAL)
+        os.makedirs(os.path.dirname(chemin))
+        with open(chemin, "w") as fh:
+            fh.write(texte)
+
+    def test_mode_is_read_from_the_local_manifest(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as dossier:
+            self.assertIsNone(self.menu.etat_manifeste_local(dossier))
+            self._manifeste(
+                dossier,
+                "<manifest>\n"
+                f'  <project name="a" path="x/a" revision="{self.SHA}"/>\n'
+                '  <project name="b" path="x/b" revision="18.0"/>\n'
+                f'  <!-- <project name="c" path="x/c"'
+                f' revision="{self.SHA}"/> -->\n'
+                "</manifest>\n",
+            )
+            etat = self.menu.etat_manifeste_local(dossier)
+        self.assertEqual(etat, (1, 2))
+        self.assertTrue(self.menu.libelle_mode(etat).startswith("1/2 "))
+        self.assertEqual(
+            self.menu.libelle_mode((0, 2)),
+            self.menu.t("follows the branches"),
+        )
+
+    def _geler(self, confirme, **kw):
+        with self.mock.patch.object(
+            self.menu.click, "confirm", return_value=confirme
+        ) as confirm:
+            code = self.obj._git_repo_geler(**kw)
+        return code, confirm
+
+    def test_freeze_runs_the_dry_run_and_stops_without_consent(self):
+        code, confirm = self._geler(False)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cmds), 1)
+        self.assertIn("git_freeze_manifest.py --dry-run", self.cmds[0])
+        confirm.assert_called_once()
+
+    def test_freeze_writes_after_consent(self):
+        code, _ = self._geler(True)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cmds), 2)
+        self.assertTrue(self.cmds[1].endswith("git_freeze_manifest.py"))
+
+    def test_unfreeze_passes_its_flag_to_both_runs(self):
+        self._geler(True, unfreeze=True)
+        self.assertIn("--unfreeze --dry-run", self.cmds[0])
+        self.assertTrue(self.cmds[1].endswith("--unfreeze"))
+
+    def test_a_failed_dry_run_asks_nothing(self):
+        self.status = [1]
+        code, confirm = self._geler(True)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(self.cmds), 1)
+        confirm.assert_not_called()
+
+    def test_reconfigure_follows_branches_without_the_argument(self):
+        self.obj._git_repo_reconfigurer()
+        self.assertTrue(self.cmds[0].endswith("make repo_configure_all"))
+
+    def test_reconfigure_on_frozen_commits_passes_freeze(self):
+        with self.mock.patch.object(
+            self.menu, "gel_des_sources", return_value=(3, 5)
+        ):
+            self.obj._git_repo_reconfigurer(freeze=True)
+        self.assertTrue(
+            self.cmds[0].endswith("make repo_configure_all FREEZE=1")
+        )
+
+    def test_reconfigure_on_frozen_commits_refuses_an_empty_freeze(self):
+        with self.mock.patch.object(
+            self.menu, "gel_des_sources", return_value=(0, 5)
+        ):
+            code = self.obj._git_repo_reconfigurer(freeze=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.cmds, [])
 
 
 class TestUpdateMenuNumbering(MenuCoherence, unittest.TestCase):

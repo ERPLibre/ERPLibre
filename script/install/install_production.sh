@@ -2,6 +2,20 @@
 
 . ./env_var.sh
 
+# --freeze, ou EL_FREEZE=1 : l'installation prend le SHA du freeze-revision de
+# chaque dépôt (voir script/manifest/update_manifest_prod.sh). « sudo su »
+# repart d'un environnement propre où EL_FREEZE n'arrive pas : le choix y
+# passe donc en argument. PROD_ARGS ne vaut que « --freeze » ou rien.
+PROD_ARGS=""
+if [ "${EL_FREEZE:-0}" = "1" ]; then
+  PROD_ARGS="--freeze"
+fi
+for arg in "$@"; do
+  if [ "${arg}" = "--freeze" ]; then
+    PROD_ARGS="--freeze"
+  fi
+done
+
 echo -e "\n---- Create ERPLIBRE system user ----"
 sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPLIBRE' --group ${EL_USER}
 #The user should also be added to the sudo'ers group.
@@ -35,7 +49,7 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
-sudo su ${EL_USER} -c "./script/install/install_locally_prod.sh"
+sudo su ${EL_USER} -c "./script/install/install_locally_prod.sh ${PROD_ARGS}"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"
